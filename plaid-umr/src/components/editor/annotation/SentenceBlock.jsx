@@ -37,6 +37,7 @@ import { DOC_CONSTANTS } from '../../../domain/format/inventory.js';
 import { followIds, stableKey } from '@ui/domain/pendingIds.js';
 import { useFollowedState } from '@ui/hooks/useFollowedState.js';
 import { SentenceComments } from '@ui/components/shared/SentenceComments';
+import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import './canvas.css';
 
 // The margin to the left of every graph, where the document graph's
@@ -135,6 +136,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   commentAnchorLabel = null,
   canComment = false,
   canDeleteAnyComment = false,
+  // Opens the assistant on this sentence. Absent where there is no assistant,
+  // no room for its panel, or a past state is on screen.
+  onAskAssistant = undefined,
 }) {
   const confirm = useConfirm();
   const nodesById = useMemo(() => liveNodes(doc), [doc]);
@@ -1392,6 +1396,17 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             }}
           >
             Text
+          </button>
+        )}
+        {onAskAssistant && (
+          <button
+            type="button"
+            className="umr-text-toggle inline-flex items-center gap-1"
+            onClick={() => onAskAssistant({ ref: `s${sentence.index}`, label: 'Sentence' })}
+            title="Ask the assistant about this sentence"
+          >
+            <AssistantMark className="h-3.5 w-3.5" />
+            Ask
           </button>
         )}
         {/* Comments are about the sentence, not the graph, so a reader sees

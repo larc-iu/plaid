@@ -7,6 +7,7 @@ import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
+import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
 import { getUmrLayerInfo } from '../../utils/umrLayerUtils.js';
 import { UmrCanvas } from './annotation/UmrCanvas.jsx';
 import { DraftDialog } from './services/DraftDialog.jsx';
@@ -35,7 +36,12 @@ export const AnnotationEditor = () => {
     comments,
     canComment,
     canDeleteAnyComment,
+    assistantAvailable,
+    askAssistant,
   } = useDocumentEditor();
+  // Ask hands the shell a reference and the shell opens the assistant panel on
+  // it, so where there is no room for a panel Ask does nothing at all.
+  const roomToDock = useWideEnoughToDock();
   const { getClient, user } = useAuth();
   // The deep link: ?sent=<sentence number>, and ?var= for one of its nodes.
   // The canvas answers it, since the block may be on another page.
@@ -168,6 +174,11 @@ export const AnnotationEditor = () => {
             comments={selectedEntry ? null : comments}
             canComment={canComment}
             canDeleteAnyComment={canDeleteAnyComment}
+            // Asking is a read, so a reader gets it too. A past state is not
+            // what the assistant reads, as in plaid-ud.
+            onAskAssistant={
+              selectedEntry || !assistantAvailable || !roomToDock ? undefined : askAssistant
+            }
           />
         </>
       )}

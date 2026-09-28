@@ -72,6 +72,8 @@ export const UmrCanvas = ({
   comments = null,
   canComment = false,
   canDeleteAnyComment = false,
+  // Opens the assistant on a sentence, or undefined where Ask is not offered.
+  onAskAssistant = undefined,
 }) => {
   const frames = useFrames(readProjectLanguage(doc.project));
   const lexicon = useLexicon(doc.client, doc.project);
@@ -252,6 +254,7 @@ export const UmrCanvas = ({
           comments={comments}
           canComment={canComment}
           canDeleteAnyComment={canDeleteAnyComment}
+          onAskAssistant={onAskAssistant}
           commentAnchorLabel={anchorCaption(anchors.get(sentence.tokenId))}
         />
       ))}

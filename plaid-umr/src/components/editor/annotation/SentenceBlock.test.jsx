@@ -837,6 +837,57 @@ describe('SentenceBlock comments', () => {
   });
 });
 
+// Ask on the sentence row, as in plaid-ud: it opens the assistant on "s1".
+// Asking is a read, so a reader gets it too. The editor hands no handler
+// where there is no assistant, no room for its panel, or a past state.
+describe('SentenceBlock Ask', () => {
+  const mount = (props) => {
+    const { sentence, nodesById } = fixture();
+    return renderComponent(
+      <SentenceBlock sentence={sentence} nodesById={nodesById} dataVersion={1} {...props} />,
+    );
+  };
+  const askButton = (r) =>
+    all(r.container, '.umr-block-header button').find((b) => b.textContent.trim() === 'Ask');
+
+  it('opens the assistant on this sentence, for a writer and for a reader', async () => {
+    for (const readOnly of [false, true]) {
+      const onAskAssistant = vi.fn();
+      const r = await mount({ onAskAssistant, readOnly });
+      const button = askButton(r);
+      expect(button).toBeTruthy();
+      await r.step(() => button.click());
+      expect(onAskAssistant).toHaveBeenCalledWith({ ref: 's1', label: 'Sentence' });
+      await r.unmount();
+    }
+  });
+
+  it('is not drawn without a handler', async () => {
+    const r = await mount({});
+    expect(askButton(r)).toBeUndefined();
+    await r.unmount();
+  });
+
+  it('keeps its own keys while a node is focused', async () => {
+    const doc = {
+      canConfirmSentence: () => false,
+      canDiscardSentence: () => false,
+      canConfirm: () => false,
+      graph: {},
+    };
+    const r = await mount({ onAskAssistant: vi.fn(), readOnly: false, doc });
+    await r.step(() => r.container.querySelector('.umr-node').focus());
+    const button = askButton(r);
+    await r.step(() => button.focus());
+    for (const key of ['Enter', 'ArrowDown', 'Tab']) {
+      const ev = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      await r.step(() => button.dispatchEvent(ev));
+      expect([key, ev.defaultPrevented]).toEqual([key, false]);
+    }
+    await r.unmount();
+  });
+});
+
 // The UMR round of 2026-09-28: the keyboard's ways in and back, and the
 // problem list.
 describe('SentenceBlock keyboard, with no node focused', () => {
