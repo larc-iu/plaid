@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { FRAME_LANGUAGES, baseTag, framesFor } from './lexicon.js';
+import { FRAME_LANGUAGES, argSummary, argsOf, baseTag, framesFor } from './lexicon.js';
 
 const FILE = {
   en: 'english.json',
@@ -33,6 +33,33 @@ describe('the bundled frame files', () => {
   it('holds a roleset in the shape the pickers read', () => {
     const english = read(FILE.en);
     expect(english['give-01']).toMatchObject({ ARG0: expect.any(String) });
+  });
+
+  // The README's shape, `"give-01": { "ARG0": "giver", ... }`. Chinese came
+  // with `"ARG0:"` and Portuguese with `{ args, examples, name }`, and the
+  // role picker offered neither a single argument.
+  it.each(Object.keys(FILE))('holds %s rolesets as flat argument lists', (tag) => {
+    const frames = read(FILE[tag]);
+    const bad = Object.entries(frames).filter(
+      ([, args]) =>
+        !args ||
+        typeof args !== 'object' ||
+        Object.entries(args).some(
+          ([k, v]) => !/^ARG[-A-Za-z0-9]*$/.test(k) || typeof v !== 'string',
+        ),
+    );
+    expect(bad.slice(0, 3)).toEqual([]);
+    // Some rolesets name no argument at all in the source (131 of the
+    // Portuguese ones), but most must read.
+    const readable = Object.keys(frames).filter((id) => argsOf(frames, id).length);
+    expect(readable.length / Object.keys(frames).length).toBeGreaterThan(0.9);
+  });
+
+  it('reads the Chinese and Portuguese arguments', () => {
+    expect(argsOf(read(FILE.zh), '\u751f\u6d3b-01').map((a) => a.role)).toEqual([':ARG0', ':ARG1']);
+    const pt = read(FILE.pt);
+    expect(argsOf(pt, 'abandonar-01').length).toBeGreaterThan(0);
+    expect(argSummary(pt['abandonar-01'])).not.toMatch(/object Object/);
   });
 });
 

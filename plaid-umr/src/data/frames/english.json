@@ -26049,8 +26049,7 @@
   },
   "prostrate-01": {
     "ARG0": "agent or one who prostrates",
-    "ARG1": "one who prostrates (if different from",
-    "ARG0)": "",
+    "ARG1": "one who prostrates (if different from ARG0)",
     "ARG2": "prostrate to"
   },
   "protect-01": {
