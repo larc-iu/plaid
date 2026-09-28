@@ -33,3 +33,60 @@ describe('ExampleCard', () => {
     await r.unmount();
   });
 });
+
+describe('ExampleCard scrolling', () => {
+  // happy-dom lays nothing out, so the box is given a width and a content
+  // width: a 900px sentence in a 300px card.
+  const stub = (name, value) => {
+    const before = Object.getOwnPropertyDescriptor(HTMLElement.prototype, name);
+    Object.defineProperty(HTMLElement.prototype, name, { configurable: true, get: () => value });
+    return () => {
+      if (before) Object.defineProperty(HTMLElement.prototype, name, before);
+      else delete HTMLElement.prototype[name];
+    };
+  };
+
+  it('opens an RTL sentence with nothing cited at its start, which is the far right', async () => {
+    const undo = [stub('scrollWidth', 900), stub('clientWidth', 300)];
+    try {
+      const rtl = {
+        ...c,
+        text: 'שלום עולם',
+        words: [
+          { index: 1, surface: 'שלום', lines: [{ field: 'Gloss', value: 'peace' }] },
+          { index: 2, surface: 'עולם', lines: [{ field: 'Gloss', value: 'world' }] },
+        ],
+        focus: [],
+      };
+      const r = await renderComponent(<ExampleCard c={rtl} projectId="p1" />);
+      expect(r.container.querySelector('table').getAttribute('dir')).toBe('rtl');
+      expect(r.container.querySelector('.overflow-x-auto').scrollLeft).toBe(600);
+      await r.unmount();
+      // An LTR one stays at its start, the left.
+      const l = await renderComponent(<ExampleCard c={{ ...c, focus: [] }} projectId="p1" />);
+      expect(l.container.querySelector('.overflow-x-auto').scrollLeft).toBe(0);
+      await l.unmount();
+    } finally {
+      undo.forEach((f) => f());
+    }
+  });
+
+  it('caps a long pinned label and keeps the whole name as its tooltip', async () => {
+    const long = 'Morpheme gloss in the contact language';
+    const r = await renderComponent(
+      <ExampleCard
+        c={{
+          ...c,
+          tiers: [{ name: long, kind: 'word' }],
+          words: c.words.map((w) => ({ ...w, lines: [{ field: long, value: 'x' }] })),
+        }}
+        projectId="p1"
+      />,
+    );
+    const span = all(r.container, 'th[scope="row"] span').find((s) => s.textContent === long);
+    expect(span.className).toMatch(/\btruncate\b/);
+    expect(span.className).toMatch(/max-w-/);
+    expect(span.getAttribute('title')).toBe(long);
+    await r.unmount();
+  });
+});

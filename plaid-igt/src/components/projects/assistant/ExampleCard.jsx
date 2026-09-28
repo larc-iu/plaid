@@ -26,7 +26,7 @@ export const ExampleCard = ({ c, projectId }) => {
   // `dir` goes on the TABLE, which reverses its columns, and not on the
   // scroller around it: that box stays LTR so the centering below keeps
   // measuring `scrollLeft` the one way every browser agrees on.
-  const dir = detectDirection(c.text || words.map((w) => w.form).join(' '));
+  const dir = detectDirection(c.text || words.map((w) => w.surface).join(' '));
 
   // A long sentence scrolls inside the card, so bring what is cited into view:
   // centre the highlighted columns before the card is painted (only the card
@@ -37,7 +37,13 @@ export const ExampleCard = ({ c, projectId }) => {
     const box = scroller.current;
     if (!box || box.scrollWidth <= box.clientWidth) return;
     const marks = [...box.querySelectorAll('[data-cited]')].map((m) => m.getBoundingClientRect());
-    if (!marks.length) return;
+    if (!marks.length) {
+      // Nothing to centre on: open where the sentence starts. The scroller
+      // is LTR, so an RTL table's start is its far right, and scrollLeft 0
+      // showed the sentence's END.
+      if (dir === 'rtl') box.scrollLeft = box.scrollWidth - box.clientWidth;
+      return;
+    }
     const outer = box.getBoundingClientRect();
     const left = Math.min(...marks.map((r) => r.left)) - outer.left + box.scrollLeft;
     const right = Math.max(...marks.map((r) => r.right)) - outer.left + box.scrollLeft;
@@ -83,7 +89,12 @@ export const ExampleCard = ({ c, projectId }) => {
                   // panel's colour, or the words would show through.
                   className="sticky start-0 z-10 bg-card bg-[linear-gradient(hsl(var(--muted)/0.3),hsl(var(--muted)/0.3))] pe-3 text-start align-top text-[11px] font-normal leading-5 text-muted-foreground"
                 >
-                  {r.label}
+                  {/* Capped, since it stays in view: a long field name would
+                      otherwise pin most of a narrow panel. The whole name is
+                      the tooltip. */}
+                  <span className="block max-w-[7rem] truncate" title={r.label || undefined}>
+                    {r.label}
+                  </span>
                 </th>
                 {r.cells.map((v, j) => {
                   const w = words[j] || {};
