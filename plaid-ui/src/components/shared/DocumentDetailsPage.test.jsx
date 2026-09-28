@@ -85,11 +85,14 @@ let view = null;
 
 // On its own route, so a copy or a delete takes the screen away as it does in
 // the app: what ends a draft is the screen holding it going.
-const mount = async () => {
+const mount = async (props = {}) => {
   view = await renderComponent(
     <MemoryRouter initialEntries={['/projects/p1/documents/d1/details']}>
       <Routes>
-        <Route path="/projects/:p/documents/:d/details" element={<DocumentDetailsPage />} />
+        <Route
+          path="/projects/:p/documents/:d/details"
+          element={<DocumentDetailsPage {...props} />}
+        />
         <Route path="*" element={<p>somewhere else</p>} />
       </Routes>
       <Probe />
@@ -223,6 +226,56 @@ describe('the document details screen', () => {
     await tick();
     expect(idx()).toBe(0);
     expect(hasUnsavedDraft()).toBe(null);
+  });
+
+  it('asks for a name only when the app offers no kinds of copy', async () => {
+    const view = await mount();
+    await view.step(() => click(button(view.container, 'Copy document')));
+    expect(document.body.querySelector('[data-testid="copy-choices"]')).toBeNull();
+  });
+
+  it('makes the kind of copy chosen, the first one unless another is picked', async () => {
+    const own = vi.fn(async ({ doc, name, client }) => {
+      expect(doc).toBe(editor.doc);
+      expect(client.documents.delete).toBe(deleteDocument);
+      return { id: 'd3', name, notified: true };
+    });
+    const copyChoices = [
+      { value: 'all', label: 'Everything' },
+      { value: 'text', label: 'Text only', hint: 'Words and glosses.', copy: own },
+    ];
+    const view = await mount({ copyChoices });
+    await view.step(() => click(button(view.container, 'Copy document')));
+    const radios = all(document.body, '[data-testid="copy-choices"] input[type="radio"]');
+    expect(radios.map((r) => r.checked)).toEqual([true, false]);
+    expect(document.body.textContent).toContain('Words and glosses.');
+
+    const { notifySuccess } = await import('../../lib/notify.js');
+    notifySuccess.mockClear();
+    await view.step(() => click(radios[1]));
+    await view.step(async () => click(button(document.body, 'Copy')));
+    await flush();
+
+    expect(own).toHaveBeenCalledTimes(1);
+    expect(copied).toEqual([]);
+    expect(path).toBe('/projects/p1/documents/d3/annotate');
+    // The choice said how the copy went, so the screen does not say it again.
+    expect(notifySuccess).not.toHaveBeenCalled();
+  });
+
+  it('makes the plain copy when the first kind is kept', async () => {
+    const own = vi.fn();
+    const view = await mount({
+      copyChoices: [
+        { value: 'all', label: 'Everything' },
+        { value: 'text', label: 'Text only', copy: own },
+      ],
+    });
+    await view.step(() => click(button(view.container, 'Copy document')));
+    await view.step(async () => click(button(document.body, 'Copy')));
+    await flush();
+    expect(own).not.toHaveBeenCalled();
+    expect(copied).toEqual(['One (copy)']);
   });
 
   it('deletes without a second question, and takes its history entry with it', async () => {

@@ -13,6 +13,7 @@ import { DocumentList } from './components/documents/DocumentList';
 import { AnnotationEditor } from './components/editor/AnnotationEditor.jsx';
 import { DocumentEditorShell } from './components/editor/DocumentEditorShell.jsx';
 import { DocumentDetailsPage } from '@ui/components/shared/DocumentDetailsPage.jsx';
+import { UMR_COPY_CHOICES } from './components/editor/copyChoices.js';
 import { ProjectTabs } from './components/projects/ProjectTabs.jsx';
 import { UMR_ASSISTANT } from './components/assistant/adapter.js';
 import { buildAnchorIndex } from './domain/commentAnchors.js';
@@ -188,7 +189,10 @@ function App() {
                   URL, opens the work surface rather than an empty body. */}
               <Route index element={<Navigate to="annotate" replace />} />
               <Route path="annotate" element={<AnnotationEditor />} />
-              <Route path="details" element={<DocumentDetailsPage />} />
+              <Route
+                path="details"
+                element={<DocumentDetailsPage copyChoices={UMR_COPY_CHOICES} />}
+              />
               <Route
                 path="comments"
                 element={

@@ -34,13 +34,24 @@ import { TextDirectionField } from './TextDirectionField.jsx';
  * document, drawn under Details where it has one. It is handed
  * `{ doc, project, readOnly }` and saves its own section.
  *
+ * `copyChoices` is an app's list of kinds of copy, offered in the Copy dialog
+ * with the first one chosen: `[{ value, label, hint?, copy? }]`. A choice with
+ * no `copy` is the plain whole-document copy. `copy({ client, doc, name })`
+ * makes the copy its own way and resolves to `{ id, name }` or null, as
+ * `doc.copyTo` does, marking it `notified` when it has already said how the
+ * copy went. Without the list the dialog asks for a name only.
+ *
  * What the page shows comes from the app's document shell: plaid-ud and
  * plaid-umr hand it down their outlet (`useDocumentEditor`), and plaid-igt,
  * whose tabs are not routes, passes the same shape as `context`. `doc` is
  * what is on screen, a past state while a history entry is open, and the page
  * is read-only then, as it is for a reader and while a service run writes.
  */
-export const DocumentDetailsPage = ({ metadata: Metadata = null, context = null }) => {
+export const DocumentDetailsPage = ({
+  metadata: Metadata = null,
+  context = null,
+  copyChoices = null,
+}) => {
   const outlet = useDocumentEditor();
   const { projectId, documentId, doc, project, pastEntry, writeLockHeld } = context ?? outlet;
   // Follows the document itself (a rename landing, a save starting), whoever
@@ -57,6 +68,7 @@ export const DocumentDetailsPage = ({ metadata: Metadata = null, context = null 
   const [name, setName] = useState(doc.name || '');
   const [copyOpen, setCopyOpen] = useState(false);
   const [copyName, setCopyName] = useState('');
+  const [copyChoice, setCopyChoice] = useState(null);
   const [copying, setCopying] = useState(false);
 
   // Follow the document's own name whenever it changes underneath us (a rename
@@ -88,16 +100,20 @@ export const DocumentDetailsPage = ({ metadata: Metadata = null, context = null 
 
   const openCopy = () => {
     setCopyName(`${doc.name} (copy)`);
+    setCopyChoice(copyChoices?.[0]?.value ?? null);
     setCopyOpen(true);
   };
 
   const handleCopy = async () => {
     setCopying(true);
     try {
-      const created = await doc.copyTo(copyName);
+      const chosen = copyChoices?.find((c) => c.value === copyChoice);
+      const created = chosen?.copy
+        ? await chosen.copy({ client: getClient(), doc, name: copyName })
+        : await doc.copyTo(copyName);
       if (!created?.id) return;
       setCopyOpen(false);
-      notifySuccess(`Copied to “${created.name}”`);
+      if (!created.notified) notifySuccess(`Copied to “${created.name}”`);
       // The copy is made either way; what is asked about is LEAVING this
       // screen for it, because the name typed above goes with the screen. The
       // question stands immediately before the navigation, not at the top of
@@ -230,6 +246,30 @@ export const DocumentDetailsPage = ({ metadata: Metadata = null, context = null 
               autoFocus
             />
           </div>
+          {copyChoices?.length > 1 && (
+            <fieldset className="flex flex-col gap-2" data-testid="copy-choices">
+              <legend className="mb-1.5 text-sm font-medium">Contents</legend>
+              {copyChoices.map((choice) => (
+                <div key={choice.value} className="flex items-start gap-2">
+                  <input
+                    type="radio"
+                    id={`copy-choice-${choice.value}`}
+                    name="copy-choice"
+                    className="mt-0.5 h-4 w-4 accent-primary"
+                    checked={copyChoice === choice.value}
+                    disabled={copying}
+                    onChange={() => setCopyChoice(choice.value)}
+                  />
+                  <label htmlFor={`copy-choice-${choice.value}`} className="cursor-pointer text-sm">
+                    {choice.label}
+                    {choice.hint && (
+                      <span className="block text-xs text-muted-foreground">{choice.hint}</span>
+                    )}
+                  </label>
+                </div>
+              ))}
+            </fieldset>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setCopyOpen(false)} disabled={copying}>
               Cancel
