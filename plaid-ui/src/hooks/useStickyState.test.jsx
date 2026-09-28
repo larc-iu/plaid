@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { StrictMode, useEffect, useRef, useState } from 'react';
+import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { MemoryRouter, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { renderComponent } from '../test/renderComponent.jsx';
 import { listPrefKey, useStickyState, useStickySort } from './useStickyState.js';
@@ -377,6 +377,58 @@ describe('usePagedList', () => {
       expect(shown(r.container)).toBe('2 /list?page=3');
       await press(r, 'back');
       expect(shown(r.container)).toBe('0 /list');
+      await r.unmount();
+    });
+
+    // A turn made in the moment its previous turn reaches the URL (ud's review
+    // sweep, Ctrl+Shift+Down to page 2 and straight back up). The router takes
+    // a new location in a transition, so the list shows the page it is heading
+    // to until then. The effect that drops a heading once its page has arrived
+    // ran after the second turn had set its own, and dropped that one too: the
+    // list stayed on page 2 until the router caught up, and the sweep, which
+    // looks for its row on the next frame, found page 2 and gave up.
+    const Chained = () => {
+      const items = Array.from({ length: 500 }, (_, i) => i);
+      const paged = usePagedList(items, { storageKey: 'p', urlParam: 'page' });
+      const { search } = useLocation();
+      const [armed, setArmed] = useState(false);
+      const shownLog = useRef([]);
+      const { setPage } = paged;
+      useLayoutEffect(() => {
+        shownLog.current.push(`${paged.page} ${search}`);
+      });
+      useLayoutEffect(() => {
+        if (armed && search === '?page=3') {
+          setArmed(false);
+          setPage(0);
+        }
+      }, [armed, search, setPage]);
+      return (
+        <>
+          <output>{shownLog.current.join(',')}</output>
+          <button
+            data-do="turn"
+            onClick={() => {
+              setArmed(true);
+              paged.setPage(2);
+            }}
+          />
+        </>
+      );
+    };
+    it('turns straight back when the previous turn has just reached the URL', async () => {
+      const r = await renderComponent(
+        <MemoryRouter initialEntries={['/list']}>
+          <Chained />
+        </MemoryRouter>,
+      );
+      await press(r, 'turn');
+      await r.step(() => {});
+      const log = r.container.querySelector('output').textContent.split(',');
+      const arrived = log.indexOf('2 ?page=3');
+      expect(arrived).toBeGreaterThan(-1);
+      // Page 1 from the moment it was asked for, never page 3 again.
+      expect(log.slice(arrived + 1).filter((s) => !s.startsWith('0 '))).toEqual([]);
       await r.unmount();
     });
 

@@ -137,9 +137,15 @@ export const usePagedList = (
     [setParams, urlParam, storageKey, search],
   );
 
-  // Arrived, or overtaken.
+  // Arrived, or overtaken. Only the heading judged here is dropped: a turn
+  // made before this effect ran (in the same moment its previous turn reached
+  // the URL, as ud's review sweep does) has set a heading of its own, and
+  // dropping that one left the list on the old page until the router caught
+  // up, which a deep link or a sweep looking for its row does not wait for.
   useEffect(() => {
-    if (heading && (headed == null || (inUrl ?? 0) === headed)) setHeading(null);
+    if (heading && (headed == null || (inUrl ?? 0) === headed)) {
+      setHeading((now) => (now === heading ? null : now));
+    }
   }, [heading, headed, inUrl]);
 
   // The first render under this key: a bare URL showing the remembered page
