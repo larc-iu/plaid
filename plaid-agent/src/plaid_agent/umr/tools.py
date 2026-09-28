@@ -16,9 +16,9 @@ from typing import Any, Dict, List, Optional
 from ..core import docload, opkind
 from ..core.args import sentence_number
 from plaid_client.workflows.umr import (attr_value_problem, concept_problem,
-                                        parse_attribute_line, relation_form_problem,
-                                        unknown_doc_relation_problem, unknown_relation_problem,
-                                        variable_form_problem)
+                                        new_variable_problem, parse_attribute_line,
+                                        relation_form_problem, unknown_doc_relation_problem,
+                                        unknown_relation_problem, variable_form_problem)
 
 from ..core.limits import OVERVIEW_DOCS, SAMPLE_LINES
 from ..core.tools import ToolError, truncate
@@ -87,11 +87,11 @@ class Workspace(BaseWorkspace):
 
     def guard_op(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
         super().guard_op(op, replacing=replacing)
-        self.refuse_unwritable(op)
+        self.refuse_unwritable(op, replacing=replacing)
         self.refuse_unknown_relation(op)
         self.refuse_second_graph(op, replacing=replacing)
 
-    def refuse_unwritable(self, op: Dict[str, Any]) -> None:
+    def refuse_unwritable(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
         """A concept, relation, variable or value the .umr file cannot hold,
         as every editor path in the app refuses it: stored anyway, the export
         refuses the document (ruled 2026-09-27).
@@ -100,6 +100,13 @@ class Workspace(BaseWorkspace):
         :meth:`refuse_unknown_relation`. A value already stored under that
         relation on that node is kept, as the app keeps it, so an edit of a
         node's other attributes is not refused for one it did not write.
+
+        A new node's variable is held to what the app asks of every new name
+        (``UmrDocument._newVariableProblem``): the convention, its own
+        sentence, not a document graph's ``s<n>s0``, and not in use in the
+        document. Otherwise the assistant could plan a second document block
+        or a new variable shared with another sentence, which the export lets
+        through. A constant (``author``) belongs to no sentence and is not one.
         """
         kind = op.get('kind')
         doc = self._docs.get(op.get('document_id'))
@@ -112,6 +119,9 @@ class Workspace(BaseWorkspace):
         problems = []
         if kind == 'create_node':
             problems += [variable_form_problem(op.get('var')), concept_problem(op.get('concept'))]
+            if not op.get('constant') and doc is not None:
+                problems.append(new_variable_problem(op.get('var'), op.get('sentence'),
+                                                     self._taken_variables(doc, replacing)))
         if kind == 'set_concept':
             problems.append(concept_problem(op.get('concept')))
         if kind == 'create_edge':
@@ -129,6 +139,18 @@ class Workspace(BaseWorkspace):
         if why:
             var = op.get('var') or op.get('source_var')
             raise ToolError((f'{var}: ' if var else '') + why)
+
+    def _taken_variables(self, doc: UmrDoc, replacing: Optional[int] = None) -> set:
+        """Every variable the document holds once this plan is applied, as far
+        as a new name is concerned: what is stored, less what the plan deletes
+        (the batch deletes first), plus what the plan already creates. The op
+        ``replacing`` names is not part of the plan any more."""
+        taken = {n.var for n in doc.nodes_by_id.values() if n.var}
+        ops = [o for i, o in enumerate(self.ops)
+               if i != replacing and o.get('document_id') == doc.id]
+        taken -= {o.get('var') for o in ops if o.get('kind') == 'delete_node'}
+        taken |= {o.get('var') for o in ops if o.get('kind') == 'create_node'}
+        return taken
 
     def refuse_unknown_relation(self, op: Dict[str, Any]) -> None:
         """A relation UMR does not have, as the app refuses it on every editor

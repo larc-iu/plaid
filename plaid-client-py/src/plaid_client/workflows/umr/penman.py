@@ -163,6 +163,34 @@ def variable_form_problem(variable) -> Optional[str]:
     return None
 
 
+#: What the export calls a sentence's document-level block
+#: (``UmrDocument.js`` ``DOC_GRAPH_VARIABLE``), so a node called that is a
+#: second definition of it.
+DOC_GRAPH_VARIABLE = re.compile(r's[0-9]+s0')
+
+
+def new_variable_problem(variable, sentence_index: Optional[int], taken) -> Optional[str]:
+    """Why ``variable`` cannot name a NEW node of sentence ``sentence_index``,
+    or None when it can. The app's ``UmrDocument._newVariableProblem``, which
+    its canvas and text mode ask of every new node and rename: a new name
+    follows the convention, names its own sentence, is not a sentence's
+    document graph (``s2s0``) and is not already in use anywhere in the
+    document (``taken``), since a variable is unique per document. A stored
+    name that breaks the rule is kept (``variable_form_problem`` is the check
+    for those)."""
+    text = variable if isinstance(variable, str) else ''
+    if not is_variable(text):
+        return f'{text} is not a variable: s, the sentence number, letters, a number.'
+    n = int(_VARIABLE_HEAD.match(text).group()[1:])
+    if sentence_index is not None and n != sentence_index:
+        return f'{text} names sentence {n}, and the node is in sentence {sentence_index}.'
+    if DOC_GRAPH_VARIABLE.fullmatch(text):
+        return f"{text} names the sentence's document graph."
+    if text in taken:
+        return f'{text} is already in use.'
+    return None
+
+
 @dataclass
 class Child:
     rel: str
