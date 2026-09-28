@@ -105,16 +105,20 @@ Each file becomes a document named after the file, with its sentences, words, gr
 
 When the project already has a document of the file's name whose words match the file's, sentence by sentence, and which has no graph yet, the file's graphs land on that document's words instead.
 This is how a document glossed in Plaid IGT gets its UMR annotation from a file.
-Otherwise the file becomes a new document of that name.
-When it is the words that differ, the report says so: `Imported as a new document: ...`.
+A document of the file's name that already has a graph, or a graph kept as text, refuses the file: `"Okul" already has a graph.`
+When that document's words differ from the file's, or it has none, the file becomes a new document of that name, and the report says why: `Imported as a new document: ...`.
 A file whose name two documents of the project already share is refused.
+
+A `Sentence:` line is read as the sentence's text.
+Onto a document from Plaid IGT, the document's own text stays the sentence's text.
 
 The report lists each note under its file, with its sentence number.
 A note that recurs across sentences is one line with the count (`5 sentences: No sentence id line. ...`).
 
 A sentence whose graph the parser cannot read is kept as text and written back unchanged on export, and the sentence's header says so. **Text** opens on the kept text, to mend it and apply it. Once the sentence has a node, made there or on the canvas, the graph you see is the one exported and the kept text is not written.
 Mending such a graph in Text mode keeps the alignment the file gave each node.
-The document-level relations that name a node of such a sentence are dropped, and the report lists each one: `(s37e :before s36x) dropped, no node s37e.`
+The document-level relations that name a node of such a sentence are kept with the sentence whose block wrote them and written back there on export, and the report counts them (`Sentence 38: 3 document-level relations are held until sentence 37 is mended.`).
+Mending the graph in Text mode makes them relations again, in the same change.
 A node named like a document-level block (`s8s0`) is imported with a note to rename it.
 Older files are read as they are: an obsolete gloss header is written back in its current form, and `-1--1` is read as unaligned.
 
@@ -124,6 +128,12 @@ A document's **Export** tab shows it as `.umr`, to copy or download.
 **Import and export** exports every document of the project as a zip.
 
 The file is written in the 2026 UMR file format: a sentence's graph in PENMAN with children in the order they were made, an alignment line for every node (`0-0` for an unaligned one), and the document-level block with the temporal, modal and coreference triples of that sentence.
+Each sentence starts with a bare `# :: snt1` line.
+The sentence's text is written on a `Sentence:` line after the gloss lines of the words and morphemes, only when it is not the words joined by spaces (`Sentence: Ali, eve gitti.` under `Words: Ali eve gitti`).
+A sentence whose text has more items than its words, such as punctuation standing apart (`Tu viens ?`) or a word holding a space, has no `Sentence:` line.
+The whole file is written in Unicode NFC.
+The export numbers the sentences 1, 2, 3 in order, except in a document imported from a file whose numbers start elsewhere.
+There each sentence keeps its file's number, and a sentence added in Plaid IGT takes its position, or the next number past the highest when that one is taken. No number is written twice.
 A triple between nodes of two sentences is written in the block of the later one.
 A re-entrant node is written in full where it is first reached from the root and as a bare variable elsewhere.
 The file holds one graph a sentence, the root's. A part of the sentence the root does not reach (a node made with no parent, or what a deleted edge cut off) is shown on the canvas and marked as an error, and the export leaves it out, with its alignment and its document-level relations.
@@ -309,7 +319,7 @@ Compare and Comments are not shown at a past state.
 
 = Validation
 
-The **Validation** tab lists what the official UMR checks find in every document of the project: unknown relations, values outside their set, an event without `:aspect`, alignment problems, references a sentence cannot make, values the official validator cannot read (a capital letter, an accented letter or a space in a bare value, an empty string or a quote inside one), text not in Unicode NFC, coreference between an event and an entity, coreferent nodes with different Wikidata ids, and the rest.
+The **Validation** tab lists what the official UMR checks find in every document of the project: unknown relations, values outside their set, an event without `:aspect`, alignment problems, references a sentence cannot make, values the official validator cannot read (a capital letter, an accented letter or a space in a bare value, a bare value that starts like a variable such as `s1x-b`, an empty string or a quote inside one), a variable, concept or value not in Unicode NFC, coreference between an event and an entity, coreferent nodes with different Wikidata ids, a node whose vocabulary entry now reads another concept, and the rest.
 Temporal contradictions (`temporal-mismatch`) are not checked yet.
 A graph kept as text is one error, with what the parser found.
 Two nodes of one sentence under the same variable are an error, and the export refuses the document until one is renamed.
