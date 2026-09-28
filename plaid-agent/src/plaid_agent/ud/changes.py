@@ -10,7 +10,7 @@ addressing inside a document: UD locates a change by its CoNLL-U reference
 
 from typing import Any, Dict, List, Optional
 
-from ..core import opkind
+from ..core import opkind, work
 from .plan import KIND
 from .project import resolve
 
@@ -26,7 +26,8 @@ def describe_changes(ws, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def describe_change(ws, op: Dict[str, Any]) -> Dict[str, Any]:
     return {'label': op.get('label') or '', 'where': locate(ws, op),
-            'writes_text': op.get('kind') in _PROSE_KINDS}
+            'writes_text': op.get('kind') in _PROSE_KINDS,
+            'replaces_work': bool(op.get(work.FLAG))}
 
 
 def locate(ws, op: Dict[str, Any]) -> Optional[Dict[str, Any]]:

@@ -290,11 +290,14 @@ def compact_ops(ops: List[Dict[str, Any]], spec: Dict[str, Dict[str, Any]]) -> L
     foresee keeps an op out of a group rather than being dropped from it.
     ``label(first, members)`` writes the group's line. A group at or under
     :data:`COMPACT_ABOVE` is left as it is. Order is the order of first
-    appearance."""
+    appearance.
+
+    A change flagged as replacing a person's work (``replaces_work``, see
+    core/work.py) is never folded: the card lists it on a row of its own."""
     groups: Dict[tuple, List[int]] = {}
     for i, op in enumerate(ops):
         s = spec.get(op.get('kind'))
-        if s is None:
+        if s is None or op.get('replaces_work'):
             continue
         each = set(s['each'])
         key = tuple(sorted((k, _hashable(v)) for k, v in op.items() if k not in each and k != 'label'))

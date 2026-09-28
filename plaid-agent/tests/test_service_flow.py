@@ -186,7 +186,7 @@ def test_approving_applies_the_plan_from_the_record_and_settles_it():
     assert len(client.payloads('spans.create')) == 1
 
 
-def test_a_stale_plan_is_refused_and_left_undecided():
+def test_a_stale_plan_is_refused_and_settled_as_out_of_date():
     client = FakeClient()
     store = _seed_plan(client)
     client._documents['d1']['version'] = 8
@@ -195,10 +195,15 @@ def test_a_stale_plan_is_refused_and_left_undecided():
     assert helper.errors and 'has changed since the plan was made' in helper.errors[0]
     assert not client.payloads('spans.create')
     conv, meta = store.load('c1')
-    assert conv['display'][1]['status'] is None and meta['pending'] is None
+    # Settled, so the card stops offering an Approve that can only fail, and
+    # the model reads on its next turn that nothing happened.
+    assert conv['display'][1]['status'] == 'stale' and meta['pending'] is None
+    assert conv['messages'][-1]['content'].startswith('(note) The plan was not applied: Document "Text 1"')
 
 
-@pytest.mark.parametrize('status, expected', [('discarded', 'The plan was discarded')])
+@pytest.mark.parametrize('status, expected', [
+    ('discarded', 'The plan was discarded'),
+    ('stale', 'The plan is out of date. Ask the assistant to plan again.')])
 def test_a_settled_plan_is_not_applied(status, expected):
     client = FakeClient()
     _seed_plan(client, status=status)

@@ -10,7 +10,7 @@ there is one, the node's variable.
 
 from typing import Any, Dict, List, Optional
 
-from ..core import opkind
+from ..core import opkind, work
 from .plan import KIND
 
 # Changes that replace prose a person wrote. UMR annotates graphs rather than
@@ -25,7 +25,8 @@ def describe_changes(ws, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def describe_change(ws, op: Dict[str, Any]) -> Dict[str, Any]:
     label = op.get('label') or ''
     return {'label': label, 'where': locate(ws, op), 'change': _change(op, label),
-            'writes_text': op.get('kind') in _PROSE_KINDS}
+            'writes_text': op.get('kind') in _PROSE_KINDS,
+            'replaces_work': bool(op.get(work.FLAG))}
 
 
 def _change(op: Dict[str, Any], label: str) -> Optional[str]:

@@ -62,14 +62,28 @@ describe('planRows', () => {
       ],
     };
     expect(planRows(plan)).toEqual([
-      { index: 0, where: word, change: 'Gloss = "x"', label: 'a', writesText: false },
-      { index: 1, where: null, change: null, label: 'b', writesText: false },
+      {
+        index: 0,
+        where: word,
+        change: 'Gloss = "x"',
+        label: 'a',
+        writesText: false,
+        replacesWork: false,
+      },
+      { index: 1, where: null, change: null, label: 'b', writesText: false, replacesWork: false },
     ]);
   });
 
   it('falls back to the labels for a plan without located changes', () => {
     expect(planRows({ ops: [{}], labels: ['only a label'] })).toEqual([
-      { index: 0, where: null, change: null, label: 'only a label', writesText: false },
+      {
+        index: 0,
+        where: null,
+        change: null,
+        label: 'only a label',
+        writesText: false,
+        replacesWork: false,
+      },
     ]);
     expect(planRows(null)).toEqual([]);
   });

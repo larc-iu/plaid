@@ -452,7 +452,9 @@ def test_plan_status_numbers_the_changes_and_drop_removes_one(ws):
 def test_the_payload_carries_the_document_version_it_was_read_at(ws):
     run(ws, 'set_field', document='Viaje', refs=['s2.w1'], field='lemma', value='correr')
     payload = ws.plan_payload()
-    assert payload['documents'] == [{'id': 'ud1', 'name': 'Viaje', 'version': 3}]
+    [doc] = payload['documents']
+    assert {k: doc[k] for k in ('id', 'name', 'version')} == {'id': 'ud1', 'name': 'Viaje', 'version': 3}
+    assert [s['id'] for s in doc['sentences']] == ['us-2']
     where = payload['changes'][0]['where']
     assert {k: v for k, v in where.items() if k != 'sentence_id'} == {
         'kind': 'token', 'document_id': 'ud1', 'document_name': 'Viaje', 'ref': 's2.w1',

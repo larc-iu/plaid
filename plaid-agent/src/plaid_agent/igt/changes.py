@@ -18,13 +18,14 @@ past its loading budget) names the document alone.
     None                     nothing to link to yet (a new document)
 ``change`` is the label without its location, or None when the label did
 not have the expected shape (the card then shows the label whole).
-``writes_text`` marks the changes that rewrite the baseline itself.
+``writes_text`` marks the changes that rewrite the baseline itself, and
+``replaces_work`` the ones that replace a person's work (core/work.py).
 """
 
 import re
 from typing import Any, Dict, List, Optional
 
-from ..core import opkind
+from ..core import opkind, work
 from .plan import ENTRY, KIND, SCOPES, TEXT_SHAPE, TOKEN
 from .project import Sentence, Word, Morpheme
 
@@ -49,7 +50,7 @@ def describe_change(ws, op: Dict[str, Any]) -> Dict[str, Any]:
     label = op.get('label') or ''
     where = locate(ws, op)
     return {'label': label, 'where': where, 'change': split_change(ws, label, where),
-            'writes_text': writes_text(op)}
+            'writes_text': writes_text(op), 'replaces_work': bool(op.get(work.FLAG))}
 
 
 def writes_text(op: Dict[str, Any]) -> bool:

@@ -19,10 +19,11 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from ..core import docload, opkind
+from ..core.plan import docs_of_op
 from ..core.tools import ToolError
 from ..core.workspace import BaseWorkspace
 
-from .plan import KIND, removed_entries
+from .plan import KIND, TEXT_SHAPE, removed_entries
 
 # What only a maintainer of the lexicon may do to its entries (a merge deletes
 # the entry it folds away), and what a tool says to anyone else.
@@ -45,6 +46,10 @@ PLAN_NOTE = ('A corpus-wide replace or respell counts as one change, and so does
 _DOC_CACHE = docload.DocCache()
 
 
+# The kinds that rewrite the text itself.
+TEXT_KINDS = frozenset(opkind.shaped(KIND, TEXT_SHAPE))
+
+
 class Workspace(BaseWorkspace):
     """One turn's view of an interlinear project: what it has loaded, the
     lexicon it is building on, and the plan it is proposing."""
@@ -54,6 +59,9 @@ class Workspace(BaseWorkspace):
     SPAN_KIND = 'set_span'
     DOC_CACHE = _DOC_CACHE
     RESTORE_TOOL = 'restore_document'
+    # An analysis names the text as well as its word, at the word's own
+    # offsets, which the word's sentence's fingerprint holds.
+    NOT_CONTENT_KEYS = ('text_id',)
 
     def __init__(self, client, project: IgtProject, on_progress=None):
         super().__init__(client, project, on_progress)
@@ -72,6 +80,14 @@ class Workspace(BaseWorkspace):
     def make_corpus(self):
         from .corpus import Corpus
         return Corpus(self)
+
+    def op_sentences(self, op: Dict[str, Any], doc) -> Optional[set]:
+        """A change to the text itself is placed by offsets into the whole
+        text, which may run past the sentence it names, so it stays pinned
+        to the whole document."""
+        if op.get('kind') in TEXT_KINDS:
+            return None
+        return super().op_sentences(op, doc)
 
     def doc_tag(self, doc, show: bool = True) -> str:
         """The ``"<document>" `` prefix on a printed reference: the document's
@@ -402,7 +418,7 @@ class Workspace(BaseWorkspace):
         # clears it) since it is what the user approves later. Large groups
         # of like ops are stored as one op: a bulk respell cost over a
         # kilobyte per word stored, and the record could not hold one.
-        ops = copy.deepcopy(self.ops)
+        ops = self.mark_replaced_work(copy.deepcopy(self.ops))
         spec = compact_spec(self)
         # An op the scan path staged names no document; the group it joins
         # must, so the card can place it and the label can head it.
@@ -455,8 +471,11 @@ class Workspace(BaseWorkspace):
                                 ids.add(m.link.id)
                 ids.discard(None)
                 self._doc_ids[did] = ids
-            if any(_op_mentions(op, ids) for op in self.ops):
-                out.append({'id': doc.id, 'name': doc.name, 'version': doc.version})
+            mine = [op for op in self.ops
+                    if _op_mentions(op, ids) or did in docs_of_op(op) or op.get('doc') == did]
+            if any(_op_mentions(op, ids) for op in mine):
+                out.append(self.pinned({'id': doc.id, 'name': doc.name, 'version': doc.version},
+                                       doc, mine))
         return out
 
 def _op_mentions(value, ids: set) -> bool:
@@ -574,3 +593,98 @@ def _sentence_of(doc: IgtDoc, w: Word) -> Sentence:
             return s
     raise ToolError('internal: word not in document')
 
+
+# --- whose work a change replaces -----------------------------------------------
+#
+# What each kind rewrites or removes, for the card's "replace accepted work"
+# line (core/work.py). A value's provenance sits on its span, a link's on the
+# link, a segmentation's on its morpheme tokens. A word token is the text's
+# own division, not anybody's analysis, so it never counts by itself.
+
+def _found(ws: Workspace, entity_id: str):
+    """(sentence, word, morpheme) for an id in a document this turn read."""
+    for doc in ws._docs.values():
+        hit = doc.find(entity_id)
+        if hit:
+            return hit
+    return None
+
+
+def _analysis(morphemes) -> List[str]:
+    """The ids of a word's analysis: each morpheme's values and link, and the
+    morphemes themselves where there is a segmentation (more than one). A
+    word's single morpheme is the word itself until someone segments it."""
+    morphemes = [m for m in morphemes if m is not None]
+    out = [sp.id for m in morphemes for sp in m.fields.values()]
+    out += [m.link.id for m in morphemes if m.link]
+    if len(morphemes) > 1:
+        out += [m.id for m in morphemes]
+    return out
+
+
+def _morphemes(ws: Workspace, ids) -> List[Morpheme]:
+    return [hit[2] for hit in (_found(ws, i) for i in ids or []) if hit and hit[2] is not None]
+
+
+def _word_and_analysis(ws: Workspace, op: Dict[str, Any]) -> List[str]:
+    """A word that goes, with its values, its link and its analysis."""
+    hit = _found(ws, op.get('word_id'))
+    w = hit[1] if hit else None
+    out = list(op.get('link_ids') or [])
+    if w is not None:
+        out += [sp.id for sp in w.fields.values()] + ([w.link.id] if w.link else [])
+        out += _analysis(w.morphemes)
+    return out
+
+
+def _replaced_orthography(ws: Workspace, op: Dict[str, Any]) -> List[str]:
+    """An orthography value is kept on the word token. Replacing one a word
+    already has, with something else, replaces what someone wrote there."""
+    hit = _found(ws, op.get('word_id'))
+    w = hit[1] if hit else None
+    if w is None:
+        return []
+    old = (w.metadata or {}).get(op.get('key'))
+    return [w.id] if old and old != (op.get('value') or '') else []
+
+
+def _replaced_analysis(ws: Workspace, op: Dict[str, Any]) -> List[str]:
+    existing = [m.get('id') for m in op.get('existing') or []]
+    return _analysis(_morphemes(ws, existing)) + [sid for m in op.get('existing') or []
+                                                  for sid in m.get('span_ids') or []]
+
+
+_NONE = None
+REPLACES = {
+    'set_span': lambda ws, op: [op.get('span_id')],
+    'set_analysis': _replaced_analysis,
+    'discard_analysis': lambda ws, op: (list(op.get('span_ids') or []) + list(op.get('link_ids') or [])
+                                        + _analysis(_morphemes(ws, op.get('morpheme_ids')))),
+    'set_morpheme_form': lambda ws, op: [op.get('morpheme_id')],
+    'set_morph_type': lambda ws, op: [op.get('morpheme_id')],
+    'set_orthography': _replaced_orthography,
+    'link': lambda ws, op: [op.get('existing_link_id')],
+    'link_phrase': lambda ws, op: [op.get('existing_link_id')],
+    'unlink': lambda ws, op: [op.get('link_id')],
+    'delete_word': _word_and_analysis,
+    'split_word': lambda ws, op: _analysis(_morphemes(ws, op.get('morpheme_ids'))),
+    'merge_words': lambda ws, op: (_analysis(_morphemes(ws, op.get('morpheme_ids')))
+                                   + [sid for sp in op.get('spans') or [] for sid in sp.get('delete_ids') or []]
+                                   + list((op.get('links') or {}).get('delete_ids') or [])),
+    'merge_sentences': lambda ws, op: [sid for sp in op.get('spans') or []
+                                       for sid in sp.get('delete_ids') or []],
+    # Confirming takes nothing away, a comment adds, and a new document or a
+    # new sentence boundary replaces nothing anyone annotated.
+    'confirm': _NONE, 'add_comment': _NONE, 'create_document': _NONE, 'split_sentence': _NONE,
+    'rename_document': _NONE, 'set_doc_metadata': _NONE,
+    # The lexicon: an entry is not a document's annotation.
+    'create_entry': _NONE, 'set_entry_field': _NONE, 'set_entry_metadata': _NONE,
+    'rename_entry': _NONE, 'merge_entries': _NONE, 'delete_entry': _NONE,
+    # The text itself and prose: the card's Rewrite line says so already.
+    'edit_text': _NONE, 'respell': _NONE,
+    'add_guideline': _NONE, 'revise_guideline': _NONE, 'rewrite_guideline': _NONE,
+    # Resolved when approved, from the documents as they are then, and a
+    # restore puts back what was there: neither names what it replaces now.
+    'bulk_scope': _NONE, 'restore_document': _NONE,
+}
+Workspace.REPLACES = REPLACES

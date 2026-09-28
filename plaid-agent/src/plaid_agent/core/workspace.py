@@ -16,7 +16,8 @@ refusals only it owes (:meth:`BaseWorkspace.guard_op`).
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
-from . import docload, opkind
+from . import docload, fingerprint as fp, opkind, work
+from .limits import PIN_SENTENCES_MAX
 from .plan import PLAN_MAX_OPS, PlanFull, docs_of_op, reserve as core_reserve
 from .tools import ToolError
 
@@ -62,6 +63,22 @@ class BaseWorkspace:
     # so the change history can say what its `as_of` is for. None where the app
     # has no such tool: the instant is still printed, it is just not offered.
     RESTORE_TOOL = None
+    # The fields of the app's parsed sentence that hold the id of something in
+    # the document, for telling which sentences a planned change depends on
+    # (core/fingerprint.py). Every parsed thing's own ``id`` is one; an app
+    # whose sentence holds another entity's id under another name adds it.
+    SENTENCE_ID_FIELDS: tuple = ('id',)
+    # Keys of the app's changes that name something without the change
+    # depending on it, beside the ones every app shares
+    # (``fingerprint.ADDRESSING_KEYS``). Anything else carrying an id that no
+    # sentence holds pins the change to the whole document.
+    NOT_CONTENT_KEYS: tuple = ()
+    # Which existing things a change of each kind rewrites or removes, so the
+    # card can say when they are a person's work (core/work.py): kind ->
+    # ``fn(ws, op) -> ids``, or None for a kind that replaces nothing a person
+    # could have made. Every kind the app declares is named here, which a test
+    # holds each app to, so a new kind has to answer.
+    REPLACES: Dict[str, Any] = {}
 
     def __init__(self, client, project, on_progress=None):
         self.client = client
@@ -100,6 +117,10 @@ class BaseWorkspace:
         # The turn's document reads. Made on first use so a turn that reads no
         # document opens no thread pool.
         self._reader = None
+        # Per document read: which sentence each id in it belongs to.
+        self._sentence_indexes: Dict[tuple, Dict[str, set]] = {}
+        # Per document read: the provenance of everything in it, by id.
+        self._entity_indexes: Dict[int, Dict[str, Any]] = {}
         # The other projects this turn may read (a core.reach.Reach), or None
         # when it reads this project alone. ``home`` is False on the workspace
         # of another project, and ``writable`` False wherever nothing may be
@@ -252,13 +273,99 @@ class BaseWorkspace:
         for did in touched:
             doc = self._docs.get(did)
             if doc is not None:
-                out.append({'id': did, 'name': doc.name, 'version': doc.version})
+                out.append(self.pinned({'id': did, 'name': doc.name, 'version': doc.version}, doc,
+                                       [op for op in self.ops if did in docs_of_op(op)]))
             elif did in listed:
                 # Matched by a corpus-wide op without being read: the list
                 # carries its version, which is all the stale check needs.
                 out.append({'id': did, 'name': listed[did].get('name'),
                             'version': listed[did].get('version')})
         return out
+
+    # --- which sentences a plan depends on --------------------------------
+
+    def sentence_index(self, doc) -> Dict[str, set]:
+        """id -> the sentences of ``doc`` it appears in, once per read."""
+        key = (doc.id, doc.version, id(doc))
+        if key not in self._sentence_indexes:
+            self._sentence_indexes[key] = fp.sentence_index(doc.sentences, self.SENTENCE_ID_FIELDS)
+        return self._sentence_indexes[key]
+
+    def op_sentences(self, op: Dict[str, Any], doc) -> Optional[set]:
+        """The ids of the sentences of ``doc`` a planned change depends on, or
+        None when it depends on the whole document. A scope reads the whole
+        document when it is approved, so it is pinned to all of it."""
+        if opkind.resolver(self.KIND, op):
+            return None
+        whole = {doc.id, getattr(doc, 'text_id', None)} - {None}
+        return fp.sentences_of_op(op, self.sentence_index(doc), whole, self.NOT_CONTENT_KEYS)
+
+    def sentence_print(self, doc, sentence) -> str:
+        """The fingerprint of one parsed sentence: everything it holds."""
+        return fp.fingerprint(sentence)
+
+    def pinned(self, entry: Dict[str, Any], doc, ops: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """A touched document's record, with the fingerprint of each sentence
+        the plan's changes to it depend on (``sentences``), so an approval
+        after an edit elsewhere in the document still goes through. Left
+        without them, the whole document is pinned by its version: a change
+        that is not about particular sentences, or a plan that holds one."""
+        wanted: set = set()
+        for op in ops:
+            got = self.op_sentences(op, doc)
+            if got is None:
+                return entry
+            wanted |= got
+        if not wanted or len(wanted) > PIN_SENTENCES_MAX:
+            return entry
+        return {**entry, 'sentences': [{'id': s.id, 'print': self.sentence_print(doc, s)}
+                                       for s in doc.sentences if s.id in wanted]}
+
+    def current_prints(self, doc_id: str) -> Dict[str, tuple]:
+        """sentence id -> (its number, its fingerprint) in the document as it
+        is now, read afresh, for an approval to compare against the plan's."""
+        doc = self.load_doc(doc_id)
+        return {s.id: (s.index, self.sentence_print(doc, s)) for s in doc.sentences}
+
+    # --- whose work a plan replaces -----------------------------------------
+
+    def entity_index(self, doc) -> Dict[str, Any]:
+        """id -> metadata for everything in ``doc`` that carries provenance."""
+        key = id(doc)
+        if key not in self._entity_indexes:
+            self._entity_indexes[key] = work.entity_index(doc)
+        return self._entity_indexes[key]
+
+    def metadata_of(self, entity_id: str):
+        """(found, metadata) for a thing in any document this turn read."""
+        for doc in self._docs.values():
+            index = self.entity_index(doc)
+            if entity_id in index:
+                return True, index[entity_id]
+        return False, None
+
+    def replaces_work(self, op: Dict[str, Any]) -> bool:
+        """Whether a planned change rewrites or removes something a person
+        made or accepted, by the app's ``REPLACES`` answer for its kind."""
+        fn = self.REPLACES.get(op.get('kind'))
+        if fn is None:
+            return False
+        for entity_id in fn(self, op) or ():
+            if not entity_id:
+                continue
+            found, metadata = self.metadata_of(entity_id)
+            if found and work.protected(metadata):
+                return True
+        return False
+
+    def mark_replaced_work(self, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Flag, on the card's copy of the plan, each change that replaces a
+        person's work. Asked before like changes are folded into groups,
+        which leaves a flagged change out (``core.plan.compact_ops``)."""
+        for op in ops:
+            if self.replaces_work(op):
+                op[work.FLAG] = True
+        return ops
 
     def op_target(self, op: Dict[str, Any]):
         """What an op writes to, for last-wins replacement within one plan.

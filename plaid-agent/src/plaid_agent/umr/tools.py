@@ -49,6 +49,10 @@ class Workspace(BaseWorkspace):
     # an anchor token, so nothing reads a planned value back.
     SPAN_KIND = ''
     DOC_CACHE = _DOC_CACHE
+    # A new node's anchor names the text, but at its sentence's own extent,
+    # which the sentence's fingerprint holds: the node depends on its
+    # sentence, not on the whole text.
+    NOT_CONTENT_KEYS = ('text_id',)
 
     def render(self, doc, **kw) -> str:
         return render_document(doc, self.project, doc.gloss, **kw)
@@ -247,7 +251,8 @@ class Workspace(BaseWorkspace):
         # A snapshot: the payload must not alias the live list, since it is
         # what the user approves later. Large groups of like ops are stored as
         # one (the summary still counts what they stand for).
-        ops = compact_ops(copy.deepcopy(self.ops), opkind.compact_spec(KIND))
+        ops = compact_ops(self.mark_replaced_work(copy.deepcopy(self.ops)),
+                          opkind.compact_spec(KIND))
         return {'id': uuid.uuid4().hex, 'summary': summarize(self.ops),
                 'labels': [op['label'] for op in ops], 'ops': ops,
                 'changes': describe_changes(self, ops),
@@ -569,7 +574,59 @@ def t_delete_triple(ws: Workspace, document: str = None, a: str = None, rel: str
            )
 
 
-__all__ = ['PLAN_NOTE', 'Workspace',
+# --- whose work a change replaces -----------------------------------------------
+#
+# What each kind rewrites or removes, for the card's "replace accepted work"
+# line (core/work.py). A node's provenance sits on its concept span, an edge's
+# and a triple's on the relation.
+
+def _node_of(ws: Workspace, op: Dict[str, Any]) -> Optional[GNode]:
+    doc = ws._docs.get(op.get('document_id'))
+    return doc.nodes_by_id.get(op.get('span_id')) if doc is not None else None
+
+
+def _replaced_attrs(ws: Workspace, op: Dict[str, Any]) -> List[str]:
+    """A node's attributes are its work only where a value it held goes or
+    changes: adding one beside them replaces nothing."""
+    node = _node_of(ws, op)
+    if node is None:
+        return []
+    kept = {(a.get('rel'), str(a.get('value'))) for a in op.get('attrs') or []}
+    lost = [a for a in node.attrs if (a.get('rel'), str(a.get('value'))) not in kept]
+    return [node.id] if lost else []
+
+
+def _replaced_by_scope(ws: Workspace, op: Dict[str, Any]) -> List[str]:
+    """The nodes a concept-wide change takes a value from: an overwrite's,
+    or a removal's."""
+    doc = ws._docs.get(op.get('document_id'))
+    if doc is None:
+        return []
+    rel = op.get('rel') or ''
+    return [node.id for _s, node, _placed in attrs_scope_targets(doc, op) if holds(node, rel)]
+
+
+_NONE = None
+REPLACES = {
+    'set_concept': lambda ws, op: [op.get('span_id')],
+    'unset_root': lambda ws, op: [op.get('span_id')],
+    'delete_node': lambda ws, op: [op.get('span_id')] + list(op.get('relation_ids') or []),
+    'set_attrs': _replaced_attrs,
+    'delete_edge': lambda ws, op: [op.get('relation_id')],
+    'set_edge_order': lambda ws, op: [op.get('relation_id')],
+    'delete_triple': lambda ws, op: [op.get('relation_id')],
+    'attrs_scope': _replaced_by_scope,
+    # A root mark put on a node takes nothing: the node that loses it is the
+    # plan's unset_root.
+    'set_root': _NONE,
+    'create_node': _NONE, 'create_edge': _NONE, 'create_triple': _NONE,
+    # Prose: the card's Rewrite line says so already.
+    'add_guideline': _NONE, 'revise_guideline': _NONE, 'rewrite_guideline': _NONE,
+}
+Workspace.REPLACES = REPLACES
+
+
+__all__ = ['PLAN_NOTE', 'REPLACES', 'Workspace',
            't_add_triple', 't_apply_penman', 't_delete_triple', 't_document_graph',
            't_project_overview', 't_set_attribute_for_concept',
            't_set_attributes']

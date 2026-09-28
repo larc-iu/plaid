@@ -537,6 +537,10 @@ class BaseAssistantService(BaseService):
             settled()
             response_helper.error('The plan was discarded')
             return
+        if item.get('status') == 'stale':
+            settled()
+            response_helper.error('The plan is out of date. Ask the assistant to plan again.')
+            return
         ops = plan.get('ops') or []
         if not ops:
             settled()
@@ -545,11 +549,14 @@ class BaseAssistantService(BaseService):
         contributor = approve.get('contributed_by') or None
         as_human = bool(approve.get('as_human'))
         stamp_mode = 'contributed' if contributor else 'human' if as_human else 'verified'
-        stale = stale_documents(client, plan.get('documents') or [])
+        stale = self._stale(client, project, plan.get('documents') or [])
         if stale:
-            settled()
-            response_helper.error('Nothing was written. ' + ' '.join(_sentence(s) for s in stale)
-                                  + ' Ask the assistant to plan again.')
+            # Settled as out of date, so the card stops offering an Approve
+            # that can only fail again, and the model is told on the next turn.
+            said = ' '.join(_sentence(s) for s in stale)
+            settled(settle_plan(conv, index, 'stale',
+                                f'(note) The plan was not applied: {said} Nothing was written.'))
+            response_helper.error(f'Nothing was written. {said} Ask the assistant to plan again.')
             return
         response_helper.progress(10, 'Applying changes…')
         summary = plan.get('summary') or self.summarize(ops)
@@ -594,6 +601,24 @@ class BaseAssistantService(BaseService):
             'counts': [{'kind': k, 'count': n} for k, n in counts.items()],
             'message': f'Applied {self.summarize(ops)}.' + ''.join(' ' + _sentence(n) for n in notes),
         })
+
+    def _stale(self, client, project, documents: list) -> list:
+        """What stands in the way of applying a plan made against
+        ``documents``. A document whose version moved is read again, once, and
+        only the sentences the plan recorded are compared."""
+        ws = None
+
+        def reread(doc_id: str):
+            nonlocal ws
+            if ws is None:
+                ws = self.make_workspace(client, project, lambda *a, **k: None)
+            return ws.current_prints(doc_id)
+
+        try:
+            return stale_documents(client, documents, reread=reread)
+        finally:
+            if ws is not None:
+                self._release(ws)
 
     @staticmethod
     def _release(ws) -> None:
@@ -667,10 +692,40 @@ def _named(name) -> str:
     return f'document "{name}"' if name else 'a document'
 
 
-def stale_documents(client, documents: list) -> list:
+def _numbers(indexes: List[int]) -> str:
+    """Sentence numbers as a reader says them: "3", "3 and 5", "3, 5 and 8"."""
+    shown = [str(i) for i in sorted(indexes)]
+    return shown[0] if len(shown) == 1 else ', '.join(shown[:-1]) + ' and ' + shown[-1]
+
+
+def changed_sentences(recorded: list, now: Dict[str, tuple]) -> Optional[List[int]]:
+    """The numbers of the recorded sentences whose fingerprint differs now, or
+    None when one of them is gone (the plan names a sentence that no longer
+    exists, so it cannot apply at all)."""
+    out: List[int] = []
+    for entry in recorded:
+        if not isinstance(entry, dict) or not entry.get('id') or not entry.get('print'):
+            return None
+        found = now.get(entry['id'])
+        if found is None:
+            return None
+        if found[1] != entry['print']:
+            out.append(found[0])
+    return out
+
+
+def stale_documents(client, documents: list, reread=None) -> list:
     """Which of the plan's documents changed since it was made: every write
     inside a document bumps its version, so a version mismatch means the
-    plan's ids and offsets were read from data that is no longer there."""
+    plan's ids and offsets may have been read from data that is no longer
+    there.
+
+    A document whose record lists ``sentences`` (the fingerprint of each one
+    the plan's changes depend on) is checked more finely when its version has
+    moved: ``reread(document_id)`` gives the fingerprints as they are now, and
+    only those sentences are compared, so an edit elsewhere in the document
+    does not refuse the plan (ruled 2026-09-28). Without a list, or
+    without ``reread``, the version alone decides, as it always did."""
     out = []
     for d in documents:
         # A record with no id or no version cannot be checked, and skipping it
@@ -689,8 +744,22 @@ def stale_documents(client, documents: list) -> list:
         except Exception as e:  # noqa: BLE001 - deleted or unreadable: the plan cannot apply
             out.append(f'{_named(d.get("name"))} could not be read ({requester_message(e)})')
             continue
-        if now.get('version') != d['version']:
-            out.append(f'{_named(now.get("name") or d.get("name"))} has changed since the plan was made')
+        if now.get('version') == d['version']:
+            continue
+        named = _named(now.get('name') or d.get('name'))
+        changed = None
+        if d.get('sentences') and reread is not None:
+            try:
+                changed = changed_sentences(d['sentences'], reread(d['id']))
+            except Exception:  # noqa: BLE001 - unreadable now: fall back to the version, which moved
+                traceback.print_exc()
+                changed = None
+        if changed is None:
+            out.append(f'{named} has changed since the plan was made')
+        elif changed:
+            many = len(changed) > 1
+            out.append(f'sentence{"s" if many else ""} {_numbers(changed)} of {named} '
+                       f'{"have" if many else "has"} changed since the plan was made')
     return out
 
 # The stamp that records which place a question was asked from, written onto

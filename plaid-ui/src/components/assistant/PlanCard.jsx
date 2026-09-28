@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from 'react';
-import { RotateCcw, Check, X, Loader2, ChevronDown, PenLine } from 'lucide-react';
+import { RotateCcw, Check, X, Loader2, ChevronDown, PenLine, UserCheck } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { Badge } from '../ui/badge.jsx';
 import { cn } from '../../lib/utils.js';
@@ -9,6 +9,7 @@ import {
   planRows,
   ROWS_COLLAPSED,
   textRewrites,
+  workReplaced,
 } from './planChanges.js';
 
 // A proposed change set, row by row, with its apply controls.
@@ -40,10 +41,16 @@ export const PlanCard = ({
   // gone. The summary counts a text edit alongside a field value, which reads
   // as one more line of the same thing, so the card says it separately.
   const rewrites = useMemo(() => textRewrites(allRows), [allRows]);
+  // Approving is the person's own act, so a plan may change what someone made
+  // or accepted, and the card says how many of its changes do.
+  const replaced = useMemo(() => workReplaced(allRows), [allRows]);
   const [asHuman, setAsHuman] = useState(!!recordedAsHuman);
   const humanId = `plan-human-${plan.id}`;
   const shown = expanded ? { groups, hidden: 0 } : collapseGroups(groups);
   const undecided = status === null;
+  // Refused because what it changes has changed since: approving again would
+  // only be refused again.
+  const stale = status === 'stale';
   // The record says the plan was approved but the request that applied it is
   // gone, so whether the changes landed is unknown. The same buttons as an
   // undecided plan: applying again is safe, since the service refuses to
@@ -55,7 +62,7 @@ export const PlanCard = ({
         'rounded-lg border px-3 py-2 text-sm',
         undecided && 'border-primary/40 bg-primary/5',
         status === 'applied' && 'border-success/40 bg-success/5',
-        status === 'discarded' && 'opacity-60',
+        (status === 'discarded' || stale) && 'opacity-60',
       )}
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -69,6 +76,11 @@ export const PlanCard = ({
         {status === 'discarded' && (
           <Badge variant="outline" className="ml-auto">
             Discarded
+          </Badge>
+        )}
+        {stale && (
+          <Badge variant="outline" className="ml-auto">
+            Out of date
           </Badge>
         )}
         {applying && (
@@ -89,6 +101,14 @@ export const PlanCard = ({
           {rewrites === 1
             ? `1 change rewrites ${adapter.textName}.`
             : `${rewrites} changes rewrite ${adapter.textName}.`}
+        </p>
+      )}
+      {replaced > 0 && (
+        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-warning-foreground">
+          <UserCheck className="h-3.5 w-3.5 shrink-0" />
+          {replaced === 1
+            ? '1 change replaces accepted work.'
+            : `${replaced} changes replace accepted work.`}
         </p>
       )}
       {/* A size container, so a row's place can be held to a share of the
@@ -133,6 +153,13 @@ export const PlanCard = ({
         >
           <ChevronDown className="h-3 w-3" /> Show all {allRows.length}
         </button>
+      )}
+      {stale && (
+        <div className="mt-2">
+          <Button type="button" size="sm" disabled>
+            <Check className="h-4 w-4" /> Approve and apply
+          </Button>
+        </div>
       )}
       {undecided && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -218,6 +245,14 @@ const ChangeRow = ({ row, projectId, adapter }) => {
             className="mr-1.5 border-warning/40 px-1 py-0 align-[1px] text-[10px] font-medium text-warning-foreground"
           >
             Rewrite
+          </Badge>
+        )}
+        {row.replacesWork && (
+          <Badge
+            variant="outline"
+            className="mr-1.5 border-warning/40 px-1 py-0 align-[1px] text-[10px] font-medium text-warning-foreground"
+          >
+            Accepted
           </Badge>
         )}
         {row.change ?? row.label}

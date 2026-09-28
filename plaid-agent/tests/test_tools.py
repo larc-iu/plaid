@@ -367,10 +367,15 @@ def test_plan_payload_records_the_documents_it_touches_with_versions():
     call_tool(w, 'set_entry_field', {'entry_form': 'Ali', 'field': 'pos', 'value': 'PN'})
     assert w.plan_payload()['documents'] == []  # a lexicon-only plan touches no document
     call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'fish'})
-    assert w.plan_payload()['documents'] == [{'id': 'd1', 'name': 'Text 1', 'version': 7}]
+    [doc] = w.plan_payload()['documents']
+    assert {k: doc[k] for k in ('id', 'name', 'version')} == {'id': 'd1', 'name': 'Text 1', 'version': 7}
+    # A value on one word depends on that word's sentence only.
+    assert [s['id'] for s in doc['sentences']] == ['s-1']
     w2 = ws()
     call_tool(w2, 'respell', {'document': 'd1', 'ref': 's1.w2', 'new_text': 'gham'})  # text id only
     assert [d['id'] for d in w2.plan_payload()['documents']] == ['d1']
+    # A respelling names the text, so it is pinned to the whole document.
+    assert 'sentences' not in w2.plan_payload()['documents'][0]
     w3 = ws()
     call_tool(w3, 'rename_document', {'document': 'd1', 'new_name': 'T'})
     assert [d['id'] for d in w3.plan_payload()['documents']] == ['d1']
@@ -608,11 +613,11 @@ def test_a_large_group_of_like_changes_is_stored_as_one_op_and_applies_whole(mon
     from plaid_agent.igt.plan import execute_plan, summarize
     monkeypatch.setattr(core_plan, 'COMPACT_ABOVE', 2)
     w = scan_ws(FakeClient())
-    call_tool(w, 'set_field', {'document': 'Text 1', 'refs': ['s1.w1', 's1.w2', 's1.w3'], 'field': 'Gloss', 'value': 'X'})
+    call_tool(w, 'set_field', {'document': 'Text 1', 'refs': ['s1.w2', 's1.w3', 's2.w1'], 'field': 'Gloss', 'value': 'X'})
     payload = w.plan_payload()
     assert len(payload['ops']) == 1 and len(payload['changes']) == 1
     group = payload['ops'][0]
-    assert group['compact'] and group['count'] == 3 and group['items']['token_id'] == ['w-1', 'w-2', 'w-3']
+    assert group['compact'] and group['count'] == 3 and group['items']['token_id'] == ['w-2', 'w-3', 'w-4']
     assert group['label'].startswith('Text 1: 3 changes: ')
     assert payload['changes'][0]['where']['kind'] == 'document'
     assert payload['changes'][0]['change'].startswith('3 changes: ')

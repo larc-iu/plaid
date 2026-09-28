@@ -11,6 +11,13 @@ export const ROWS_COLLAPSED = 12;
 /** How many of these changes rewrite the text itself. */
 export const textRewrites = (rows) => (rows || []).filter((r) => r.writesText).length;
 
+/** How many of these changes replace work a person made or accepted. */
+export const workReplaced = (rows) => (rows || []).filter((r) => r.replacesWork).length;
+
+// A row the collapsed card never folds away: a rewrite of the text, or a
+// change to a person's work, is not something to approve unread.
+const alwaysShown = (r) => r.writesText || r.replacesWork;
+
 // The changes to show, in plan order: the service's located changes when
 // they line up with the ops, else the labels alone.
 export const planRows = (plan) => {
@@ -26,6 +33,10 @@ export const planRows = (plan) => {
       // service decides which ops those are; a plan recorded before it did
       // says nothing, and those are all long since settled.
       writesText: !!c.writesText,
+      // A change to something a person made or accepted, which the service
+      // decides from its provenance. Such a change is never folded into a
+      // group, service side or here.
+      replacesWork: !!c.replacesWork,
     }));
   }
   return (plan?.labels || []).map((label, i) => ({
@@ -34,6 +45,7 @@ export const planRows = (plan) => {
     change: null,
     label,
     writesText: false,
+    replacesWork: false,
   }));
 };
 
@@ -62,9 +74,10 @@ export const collapseGroups = (groups, limit = ROWS_COLLAPSED) => {
   if (total <= limit) return { groups, hidden: 0 };
   // A change to the text itself is never one of the ones folded away. Sitting
   // as row 40 of a plan headed "1 text edit, 1 field value" is how a rewrite
-  // of someone's own transcription gets approved unread.
+  // of someone's own transcription gets approved unread. The same goes for a
+  // change to a person's work.
   const keep = new Set();
-  for (const g of groups) for (const r of g.rows) if (r.writesText) keep.add(r);
+  for (const g of groups) for (const r of g.rows) if (alwaysShown(r)) keep.add(r);
   let left = Math.max(0, limit - keep.size);
   const out = [];
   for (const g of groups) {

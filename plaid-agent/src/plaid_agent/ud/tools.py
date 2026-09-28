@@ -55,9 +55,25 @@ class Workspace(BaseWorkspace):
     SPAN_KIND = 'set_span'
     DOC_CACHE = _DOC_CACHE
     RESTORE_TOOL = 'restore_document'
+    # A word holds its basic relation and the suppressor over it by id, and a
+    # change to either depends on that word's sentence.
+    SENTENCE_ID_FIELDS = ('id', 'relation_id', 'suppressor_id')
+    # A token's new words name the text, at the token's own offsets, which
+    # its sentence's fingerprint holds.
+    NOT_CONTENT_KEYS = ('text_id',)
 
     def render(self, doc, **kw) -> str:
         return render_document(doc, **kw)
+
+    def entity_index(self, doc) -> Dict[str, Any]:
+        """Everything that carries provenance, a word's basic relation
+        included, which the parsed word holds by id beside its metadata."""
+        index = super().entity_index(doc)
+        for s in doc.sentences:
+            for w in s.words:
+                if w.relation_id and w.relation_id not in index:
+                    index[w.relation_id] = w.relation_metadata
+        return index
 
     def comment_anchor(self, doc: 'UdDoc', ref: str) -> str:
         # A sentence's comments hang off its token.
@@ -183,11 +199,50 @@ class Workspace(BaseWorkspace):
         # A snapshot: the payload must not alias the live list, since it is
         # what the user approves later. Large groups of like ops are stored
         # as one (the summary still counts what they stand for).
-        ops = compact_ops(copy.deepcopy(self.ops), compact_spec(self))
+        ops = compact_ops(self.mark_replaced_work(copy.deepcopy(self.ops)), compact_spec(self))
         return {'id': uuid.uuid4().hex, 'summary': summarize(self.ops),
                 'labels': [op['label'] for op in ops], 'ops': ops,
                 'changes': describe_changes(self, ops),
                 'documents': self.touched_documents()}
+
+
+# --- whose work a change replaces -----------------------------------------------
+#
+# What each kind rewrites or removes, for the card's "replace accepted work"
+# line (core/work.py). A value's provenance sits on its span and a dependency's
+# on its relation, which a parsed word holds as ``relation_metadata``.
+
+def _words(ws: 'Workspace', ids) -> List[Any]:
+    wanted = set(ids or [])
+    return [w for doc in ws._docs.values() for s in doc.sentences for w in s.words if w.id in wanted]
+
+
+def _words_work(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
+    """A token's words, when it is cut again: their values and their heads."""
+    return [x for w in _words(ws, op.get('existing_word_ids'))
+            for x in [sp.id for sp in w.fields.values()] + [w.relation_id]]
+
+
+_NONE = None
+REPLACES = {
+    'set_span': lambda ws, op: [op.get('span_id')],
+    'set_head': lambda ws, op: [op.get('relation_id')],
+    'del_relation': lambda ws, op: [op.get('relation_id')],
+    'set_deprel': lambda ws, op: [op.get('relation_id')],
+    'set_words': _words_work,
+    # The relations a cut or a join leaves spanning two sentences go with it.
+    'split_sentence': lambda ws, op: list(op.get('relation_ids') or []),
+    'merge_sentences': lambda ws, op: list(op.get('relation_ids') or []),
+    'confirm': _NONE, 'add_comment': _NONE,
+    # Resolved when approved, from the documents as they are then, and a
+    # restore puts back what was there: none of them names what it replaces
+    # now. A parse is a service run with its own overwrite rule.
+    'confirm_scope': _NONE, 'discard_scope': _NONE, 'replace_scope': _NONE,
+    'restore_document': _NONE, 'run_parse': _NONE,
+    # Prose: the card's Rewrite line says so already.
+    'add_guideline': _NONE, 'revise_guideline': _NONE, 'rewrite_guideline': _NONE,
+}
+Workspace.REPLACES = REPLACES
 
 
 def op_target(op: Dict[str, Any]):

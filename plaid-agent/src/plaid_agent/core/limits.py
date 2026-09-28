@@ -104,3 +104,10 @@ MAX_PROJECTS = 5
 # Characters of the system prompt one other project's paragraph may take. Past
 # it the paragraph is cut and says where the rest is.
 OTHER_PROJECT_CHARS = 3000
+
+# Sentences one document's record in a plan may pin by fingerprint. A plan is
+# stored in the conversation record, and each pinned sentence costs about
+# seventy bytes there, so a plan reaching more of a document than this is
+# pinned to the whole document by its version instead, as every plan was
+# before sentences were pinned. An edit anywhere in it then refuses the plan.
+PIN_SENTENCES_MAX = 200
