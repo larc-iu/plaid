@@ -118,7 +118,8 @@ export const normalizeRole = (text) => {
 // Concepts for a node anchored to `words`: the frame file's senses of those
 // words first (with their arguments), then the surface forms, then the
 // abstract inventory. `typed` adds rolesets starting with what was typed,
-// for a node with no word to go on.
+// after the words' own senses, on every node (ruled 2026-09-28): the lemma of
+// "bought" or "abandonou" is found by typing it.
 const nameOf = (c) => (typeof c === 'string' ? c : c.name);
 // The inventory's groups never change: built once.
 const STATIC_CONCEPT_GROUPS = [
@@ -136,7 +137,9 @@ const STATIC_CONCEPT_GROUPS = [
 // and the lexicon the typed text searches.
 export const conceptOptions = (words = [], frames = null, typed = '', vocab = null) => {
   const senses = uniq(words.flatMap((w) => sensesFor(frames, w.text).map((x) => x.id)));
-  const byPrefix = typed && !words.length ? rolesetsStartingWith(frames, typed) : [];
+  const byPrefix = typed
+    ? rolesetsStartingWith(frames, typed).filter((x) => !senses.includes(x.id))
+    : [];
   const senseItem = (id) => ({ value: id, label: `${id} ${argSummary(frames?.[id])}` });
   const surface = uniq(words.map((w) => w.text));
   // An entry whose concept a graph cannot hold (a headword with a space in

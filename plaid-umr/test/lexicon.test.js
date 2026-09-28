@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
   lemmaCandidates,
   sensesFor,
@@ -68,4 +69,63 @@ test('argSummary lists the numbered arguments in order, anything else after', ()
     'ARG2 two, ARG10 ten, ARGM-LOC place, ARG bare',
   );
   assert.equal(argSummary(null), '');
+});
+
+// umr-igt-inflected-forms, the Arabic half: alif folded on both sides, and a
+// word less one proclitic and a suffix.
+const arabic = {
+  'قال-01': { ARG0: 'sayer' },
+  'اعلن-01': { ARG0: 'announcer' },
+  'ٱنكشف-01': { ARG1: 'thing revealed' },
+  'كتب-01': { ARG0: 'writer' },
+  'كتاب-01': { ARG0: 'book' },
+};
+
+test('an Arabic word less its proclitic and suffix finds its roleset', () => {
+  // و + قال + ت
+  assert.deepEqual(
+    sensesFor(arabic, 'وقالت').map((s) => s.id),
+    ['قال-01'],
+  );
+  // The hamza the text writes is not in the file's key.
+  assert.deepEqual(
+    sensesFor(arabic, 'أعلنت').map((s) => s.id),
+    ['اعلن-01'],
+  );
+  // ال + كتاب, and nothing shorter than two letters is guessed.
+  assert.deepEqual(
+    sensesFor(arabic, 'الكتاب').map((s) => s.id),
+    ['كتاب-01'],
+  );
+  assert.ok(lemmaCandidates('وقالت').every((c) => [...c].length >= 2));
+  // Diacritics are not letters and do not block the match.
+  assert.deepEqual(
+    sensesFor(arabic, 'قَالَ').map((s) => s.id),
+    ['قال-01'],
+  );
+});
+
+test('typed search folds alif on both sides', () => {
+  assert.deepEqual(
+    rolesetsStartingWith(arabic, 'أعلن').map((s) => s.id),
+    ['اعلن-01'],
+  );
+  assert.deepEqual(
+    rolesetsStartingWith(arabic, 'انكشف').map((s) => s.id),
+    ['ٱنكشف-01'],
+  );
+});
+
+test('the English candidates are unchanged by the Arabic ones', () => {
+  assert.deepEqual(lemmaCandidates('Leaving'), ['leaving', 'leav', 'leave']);
+});
+
+// The ruling's own examples, on the bundled Arabic file.
+test('the bundled Arabic file offers قال-01 for وقالت and اعلن-01 for أعلنت', () => {
+  const file = JSON.parse(
+    fs.readFileSync(new URL('../src/data/frames/arabic.json', import.meta.url), 'utf8'),
+  );
+  assert.ok(sensesFor(file, 'وقالت').some((s) => s.id === 'قال-01'));
+  assert.ok(sensesFor(file, 'أعلنت').some((s) => s.id === 'اعلن-01'));
+  assert.ok(rolesetsStartingWith(file, 'قال').some((s) => s.id === 'قال-01'));
 });

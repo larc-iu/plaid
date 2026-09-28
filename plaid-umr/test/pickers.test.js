@@ -156,3 +156,28 @@ test('a document-level relation outside its group is refused', () => {
   assert.ok(unknownDocRelationProblem('temporal', ':same-entity'));
   assert.equal(unknownDocRelationProblem('coref', ':same-entity'), null);
 });
+
+// umr-igt-inflected-forms: typing searches the frame file on a node with a
+// word too, after the word's own senses. "bought" has no `buy-01` of its own.
+test('typing searches the frame file on a node anchored to a word', () => {
+  const frames = { 'buy-01': { ARG0: 'buyer' }, 'buy-05': { ARG0: 'believer' }, 'bought-01': {} };
+  // The typed rolesets are the first group of that name: the inventory's
+  // -91 rolesets are another, at the end.
+  const typedGroup = (groups) => groups.find((g) => g.group === 'Rolesets');
+  const groups = conceptOptions([{ text: 'bought' }], frames, 'bu');
+  assert.deepEqual(
+    groups.slice(0, 2).map((g) => g.group),
+    ['Senses', 'Rolesets'],
+  );
+  assert.deepEqual(
+    typedGroup(groups).items.map((i) => i.value),
+    ['buy-01', 'buy-05'],
+  );
+  // A sense the word already offers is not listed twice.
+  const again = conceptOptions([{ text: 'bought' }], frames, 'bou');
+  assert.deepEqual(
+    again.find((g) => g.group === 'Senses').items.map((i) => i.value),
+    ['bought-01'],
+  );
+  assert.ok(!typedGroup(again).items.some((i) => i === 'bought-01' || i.value === 'bought-01'));
+});

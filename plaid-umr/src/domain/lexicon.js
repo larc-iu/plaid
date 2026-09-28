@@ -60,15 +60,84 @@ export function loadFrames(languageTag) {
 // `have-org-role`.
 const lemmaOf = (roleset) => String(roleset).replace(/-\d+$/, '');
 
-// What a surface form might be the lemma of, in English at least: the form
-// itself, lowercased, and the form less the common inflections. A wrong
-// guess costs nothing but a listing; a missing one costs the annotator a
-// search.
+// The forms of alif an Arabic text writes with a hamza (and the wasla), all
+// read as plain alif: the bundled Arabic file keys `اعلن-01` without the
+// hamza a text writes in أعلنت, and `ٱنكشف-01` with a wasla nobody types.
+// Folded on both sides, the typed or written form and the file's keys.
+const ALIF_FORMS = /[\u0622\u0623\u0625\u0671]/g;
+const foldAlif = (text) => String(text ?? '').replace(ALIF_FORMS, '\u0627');
+
+const ARABIC = /\p{Script=Arabic}/u;
+
+// One proclitic at most (and, but, with, for, like, will, the), then common
+// suffixes of person, number and gender and the object pronouns: وقالت is
+// و + قال + ت. Longest first, so ها is tried before ا.
+const ARABIC_PROCLITICS = [
+  '\u0627\u0644',
+  '\u0648',
+  '\u0641',
+  '\u0628',
+  '\u0644',
+  '\u0643',
+  '\u0633',
+];
+const ARABIC_SUFFIXES = [
+  '\u0647\u0645\u0627', // هما
+  '\u0648\u0627', // وا
+  '\u0648\u0646', // ون
+  '\u064a\u0646', // ين
+  '\u0627\u0646', // ان
+  '\u0627\u062a', // ات
+  '\u062a\u0645', // تم
+  '\u062a\u0646', // تن
+  '\u0647\u0627', // ها
+  '\u0647\u0645', // هم
+  '\u0647\u0646', // هن
+  '\u0643\u0645', // كم
+  '\u0646\u0627', // نا
+  '\u0646\u064a', // ني
+  '\u062a', // ت
+  '\u0629', // ة
+  '\u0627', // ا
+  '\u0647', // ه
+  '\u0643', // ك
+  '\u064a', // ي
+];
+
+// A stem is left at two letters or more: a guess shorter than that lists
+// half the file.
+const MIN_STEM = 2;
+
+function arabicCandidates(form) {
+  const out = new Set([form]);
+  const stems = [form];
+  ARABIC_PROCLITICS.forEach((clitic) => {
+    if (form.startsWith(clitic) && [...form].length - [...clitic].length >= MIN_STEM) {
+      stems.push(form.slice(clitic.length));
+    }
+  });
+  stems.forEach((stem) => out.add(stem));
+  stems.forEach((stem) => {
+    ARABIC_SUFFIXES.forEach((suffix) => {
+      if (stem.endsWith(suffix) && [...stem].length - [...suffix].length >= MIN_STEM) {
+        out.add(stem.slice(0, -suffix.length));
+      }
+    });
+  });
+  return [...out];
+}
+
+// What a surface form might be the lemma of: the form itself, lowercased,
+// and the form less the common inflections, English's, or for a word in
+// Arabic script its alif folded, less one proclitic and a suffix (ruled
+// 2026-09-28). Other languages find their lemma by typing it. A wrong guess
+// costs nothing but a listing; a missing one costs the annotator a search.
 export function lemmaCandidates(form) {
   const f = String(form || '')
     .toLowerCase()
     .replace(/[^\p{L}\p{N}'-]/gu, '');
   if (!f) return [];
+  if (ARABIC.test(f)) return arabicCandidates(foldAlif(f));
   const out = new Set([f]);
   const strip = (suffix, replacement = '') => {
     if (f.endsWith(suffix) && f.length > suffix.length + 1) {
@@ -98,9 +167,12 @@ export function sensesFor(frames, form) {
   if (!frames) return [];
   const candidates = lemmaCandidates(form);
   const out = [];
+  const seen = new Set();
   candidates.forEach((lemma, rank) => {
     rolesetsStartingWith(frames, `${lemma}-`, 200).forEach(({ id, args }) => {
-      if (lemmaOf(id) === lemma) out.push({ id, lemma, args, rank });
+      if (foldAlif(lemmaOf(id)) !== lemma || seen.has(id)) return;
+      seen.add(id);
+      out.push({ id, lemma: lemmaOf(id), args, rank });
     });
   });
   return out
@@ -108,29 +180,32 @@ export function sensesFor(frames, form) {
     .map(({ id, lemma, args }) => ({ id, lemma, args }));
 }
 
-// A frame file's ids, sorted, once per file: the picker asks on every
-// keystroke and a file has tens of thousands of entries.
+// A frame file's ids, each with its alif folded, sorted by that, once per
+// file: the picker asks on every keystroke and a file has tens of thousands
+// of entries.
 const keyLists = new WeakMap();
 const keysOf = (frames) => {
   let keys = keyLists.get(frames);
   if (!keys) {
-    keys = Object.keys(frames).sort();
+    keys = Object.keys(frames)
+      .map((id) => [foldAlif(id), id])
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
     keyLists.set(frames, keys);
   }
   return keys;
 };
 
-// The rolesets whose id starts with what was typed, for a picker with no
-// anchored word to go on. Capped: a frame file has thousands.
+// The rolesets whose id starts with what was typed, alif folded on both
+// sides (أعلن finds `اعلن-01`). Capped: a frame file has thousands.
 export function rolesetsStartingWith(frames, prefix, limit = 40) {
   if (!frames) return [];
-  const p = String(prefix || '').toLowerCase();
+  const p = foldAlif(String(prefix || '').toLowerCase());
   if (!p) return [];
   const out = [];
-  for (const id of keysOf(frames)) {
-    if (id < p && !id.startsWith(p)) continue;
-    if (id > p && !id.startsWith(p)) break;
-    if (id.startsWith(p)) {
+  for (const [key, id] of keysOf(frames)) {
+    if (key < p && !key.startsWith(p)) continue;
+    if (key > p && !key.startsWith(p)) break;
+    if (key.startsWith(p)) {
       out.push({ id, lemma: lemmaOf(id), args: frames[id] });
       if (out.length >= limit) break;
     }
