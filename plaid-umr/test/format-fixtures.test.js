@@ -15,13 +15,30 @@ import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parseUmrFile, serializeUmrFile } from '../src/domain/format/umrFile.js';
+import { planImport } from '../src/domain/umrImport.js';
+import { UmrDocument } from '../src/domain/UmrDocument.js';
+import { rawFromPlan } from './rawFromPlan.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES = path.join(here, 'fixtures', 'umr');
-const VALIDATOR = path.join(
-  os.homedir(),
-  '.claude/projects/-home-luke-local-plaid/docs/umr/umrtools/validate.py',
-);
+// umrtools lives outside git, beside the design docs. `UMR_VALIDATOR` names
+// it anywhere else. On larc it is under the plaid-main project, and the path
+// this used to name alone (the laptop's) does not exist there, so the oracle
+// skipped on every run.
+const VALIDATOR =
+  [
+    process.env.UMR_VALIDATOR,
+    path.join(
+      os.homedir(),
+      '.claude/projects/-home-lgessler-plaid-main/docs/umr/umrtools/validate.py',
+    ),
+    path.join(
+      os.homedir(),
+      '.claude/projects/-home-luke-local-plaid/docs/umr/umrtools/validate.py',
+    ),
+  ]
+    .filter(Boolean)
+    .find((candidate) => fs.existsSync(candidate)) ?? '(no umrtools/validate.py found)';
 
 // The sentences whose graphs the corpora themselves got wrong, and what is
 // wrong with each. Every other sentence must parse without an error.
@@ -150,6 +167,7 @@ function findPython() {
   const candidates = [
     process.env.UMR_PYTHON,
     'python3',
+    path.join(os.homedir(), '.miniforge3/envs/plaid-agent/bin/python'),
     path.join(os.homedir(), '.mambaforge/bin/python3'),
     path.join(os.homedir(), 'mambaforge/bin/python3'),
     path.join(os.homedir(), 'miniforge3/bin/python3'),
@@ -231,4 +249,38 @@ describe('the official validator', () => {
       );
     });
   });
+});
+
+// What the app exports, which is not what the parser hands back: a sentence
+// in the app has its text (the body under its token), and the file above
+// round-trips parser output, whose text is empty for most corpora. The
+// Portuguese sample is the one whose export reaches the end of validate.py's
+// checks with nothing but its own unaligned words to report, so every error
+// here is the app's.
+describe('the official validator on an export from the app', () => {
+  test(
+    'the Portuguese sample, imported and exported, passes',
+    {
+      todo: 'the sentence text after a tab on the snt line fails tokens-vs-ilg (umr-export-sentence-text)',
+    },
+    (t) => {
+      if (!fs.existsSync(VALIDATOR)) {
+        t.skip(`umrtools/validate.py is not at ${VALIDATOR}`);
+        return;
+      }
+      const python = findPython();
+      if (!python) {
+        t.skip("no python3 with the 'regex' module; set UMR_PYTHON to one");
+        return;
+      }
+      const parsed = parseUmrFile(read('portuguese_umr-0001.umr'));
+      const doc = new UmrDocument({ raw: rawFromPlan(planImport(parsed.sentences, [])) });
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'umr-oracle-app-'));
+      const file = path.join(dir, 'portuguese.umr');
+      fs.writeFileSync(file, doc.toUmr());
+      const run = spawnSync(python, [VALIDATOR, '--max-err', '0', file], { encoding: 'utf8' });
+      const output = `${run.stdout ?? ''}${run.stderr ?? ''}`;
+      assert.match(output, /\*\*\* PASSED \*\*\*/, output.slice(-3000));
+    },
+  );
 });
