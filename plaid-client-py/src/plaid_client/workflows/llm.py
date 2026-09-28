@@ -17,15 +17,24 @@ need it installed.
     def setup(self, args):
         setup_service(self, args)          # self.model is a ChatModel
 
-        reply = self.model.complete(system, prompt)
+        reply = self.model.complete(system, prompt,
+                                    should_stop=lambda: response_helper.cancelled)
         if reply.truncated: ...            # the model ran out of room
         reply.text
+
+Every call has a deadline (``--timeout``, :data:`DEFAULT_TIMEOUT_S` unless the
+operator says otherwise), and a call that passes ``should_stop`` ends with
+:class:`~plaid_client.services.ServiceCancelled` within a second of a stop,
+even while the provider has not answered.
 """
 
 import random
+import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
+
+from plaid_client.services import ServiceCancelled
 
 #: How many times a call is retried when the provider says it is over its rate
 #: limit or briefly unavailable. Short and bounded: the run reports nothing
@@ -33,6 +42,25 @@ from typing import Any, Dict, Optional
 #: per-sentence failure worth showing the linguist.
 RETRIES = 3
 RETRY_BASE_S = 2.0
+
+#: Seconds one model call may take before it is abandoned, unless the operator
+#: sets ``--timeout``. Without a deadline the provider SDK's own applies, and
+#: litellm's is 6000 s: an endpoint that accepts the request and never answers
+#: held the document's write lock for most of an hour per sentence.
+DEFAULT_TIMEOUT_S = 120.0
+
+#: A timed-out call is tried again at most this many times. A model that did
+#: not answer in the whole window is not rate limiting, it is down or stuck,
+#: and every retry costs the requester another full window of waiting.
+TIMEOUT_RETRIES = 1
+
+#: How often a waiting call looks at ``should_stop``.
+STOP_POLL_S = 1.0
+
+
+class ModelTimeout(Exception):
+    """The model did not answer within the operator's deadline, twice. The
+    message is written for the requester, unlike the provider's own."""
 
 
 @dataclass
@@ -59,8 +87,9 @@ class ChatModel:
     """
 
     def __init__(self, model, api_base=None, api_key=None, temperature=0.0,
-                 max_tokens=None, retries=RETRIES):
+                 max_tokens=None, retries=RETRIES, timeout=DEFAULT_TIMEOUT_S):
         self.model = model
+        self.timeout = timeout
         self.api_base = api_base
         self.api_key = api_key
         self.temperature = temperature
@@ -74,11 +103,10 @@ class ChatModel:
         self.cost = 0.0
 
     def describe(self):
-        """What goes in provDetail, so a row says which model wrote it."""
-        d = {'model': self.model}
-        if self.api_base:
-            d['api_base'] = self.api_base
-        return d
+        """What goes in provDetail, so a row says which model wrote it. The
+        base URL stays out: every reader of the project can read provDetail,
+        and an internal endpoint is the operator's business."""
+        return {'model': self.model}
 
     def usage_line(self) -> str:
         """One line of accounting for the operator's log."""
@@ -86,14 +114,24 @@ class ChatModel:
                 f'{self.prompt_tokens} prompt + {self.completion_tokens} completion tokens')
         return line + (f', {self.cost:.4f} in provider cost' if self.cost else '')
 
-    def complete(self, system: str, user: str) -> Reply:
-        """One chat completion, retried while the provider is rate limiting."""
+    def complete(self, system: str, user: str,
+                 should_stop: Optional[Callable[[], bool]] = None) -> Reply:
+        """One chat completion, retried while the provider is rate limiting.
+
+        ``should_stop`` is read about once a second while the call waits and
+        before every retry, and a True ends the call with ``ServiceCancelled``
+        (pass ``lambda: response_helper.cancelled``). Without it a stop is
+        noticed only after the model answers or the deadline passes. A call
+        that times out is tried once more, then raises :class:`ModelTimeout`.
+        """
         import litellm  # only the running service needs it
         kwargs: Dict[str, Any] = {
             'model': self.model,
             'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}],
             'temperature': self.temperature,
         }
+        if self.timeout:
+            kwargs['timeout'] = self.timeout
         if self.api_base:
             kwargs['api_base'] = self.api_base
         if self.api_key:
@@ -101,7 +139,7 @@ class ChatModel:
         if self.max_tokens:
             kwargs['max_tokens'] = self.max_tokens
 
-        resp = self._with_retries(litellm, kwargs)
+        resp = self._with_retries(litellm, kwargs, should_stop)
         choice = resp.choices[0]
         self._record(resp)
         return Reply(
@@ -112,29 +150,92 @@ class ChatModel:
 
     # --- the parts worth having in one place --------------------------------
 
-    def _with_retries(self, litellm, kwargs):
+    def _with_retries(self, litellm, kwargs, should_stop=None):
         """Retry a call the provider refused for a reason that passes.
 
         A whole document is one call per sentence, so a rate limit is not an
         edge case: without this, a burst of 429s turned into a run that failed
         every sentence it touched and wrote nothing. Full jitter, so two
         services hitting one provider do not march in step and collide again.
+        A timeout is retried :data:`TIMEOUT_RETRIES` times at most, whatever
+        ``retries`` says.
         """
+        timeout_error = getattr(litellm, 'Timeout', None)
+        if not (isinstance(timeout_error, type) and issubclass(timeout_error, Exception)):
+            timeout_error = None
         transient = tuple(
             e for e in (getattr(litellm, name, None) for name in
                         ('RateLimitError', 'ServiceUnavailableError',
-                         'InternalServerError', 'APIConnectionError', 'Timeout'))
+                         'InternalServerError', 'APIConnectionError'))
             if isinstance(e, type) and issubclass(e, Exception))
-        for attempt in range(self.retries + 1):
+        attempt = 0
+        timeouts = 0
+        while True:
+            self._check_stop(should_stop)
             try:
-                return litellm.completion(**kwargs)
-            except transient as e:
-                if attempt == self.retries:
+                return self._call(litellm, kwargs, should_stop)
+            except Exception as e:
+                if timeout_error is not None and isinstance(e, timeout_error):
+                    timeouts += 1
+                    window = f'within {self.timeout:g} seconds' if self.timeout else 'in time'
+                    if timeouts > TIMEOUT_RETRIES:
+                        raise ModelTimeout(f'The model did not answer {window}.') from e
+                    delay = 0.0
+                    print(f'{self.model} did not answer {window}; trying once more')
+                elif isinstance(e, transient):
+                    if attempt == self.retries:
+                        raise
+                    delay = random.uniform(0, RETRY_BASE_S * (2 ** attempt))
+                    attempt += 1
+                    print(f'{type(e).__name__} from {self.model}; retrying in {delay:.1f}s '
+                          f'({attempt} of {self.retries})')
+                else:
                     raise
-                delay = random.uniform(0, RETRY_BASE_S * (2 ** attempt))
-                print(f'{type(e).__name__} from {self.model}; retrying in {delay:.1f}s '
-                      f'({attempt + 1} of {self.retries})')
+            self._sleep(delay, should_stop)
+
+    @staticmethod
+    def _check_stop(should_stop) -> None:
+        if should_stop is not None and should_stop():
+            raise ServiceCancelled('The requester stopped this request')
+
+    def _sleep(self, delay: float, should_stop) -> None:
+        """Wait out a retry delay, looking for a stop while it passes."""
+        if should_stop is None:
+            if delay > 0:
                 time.sleep(delay)
+            return
+        remaining = delay
+        while remaining > 0:
+            self._check_stop(should_stop)
+            step = min(STOP_POLL_S, remaining)
+            time.sleep(step)
+            remaining -= step
+        self._check_stop(should_stop)
+
+    def _call(self, litellm, kwargs, should_stop):
+        """One provider call. With ``should_stop`` it runs on a worker thread
+        so the stop can be seen while the provider is silent: litellm offers
+        no way to interrupt a request in flight, so a stopped call is left to
+        finish or time out on its own, and its answer is dropped."""
+        if should_stop is None:
+            return litellm.completion(**kwargs)
+        done = threading.Event()
+        box: Dict[str, Any] = {}
+
+        def work():
+            try:
+                box['value'] = litellm.completion(**kwargs)
+            except BaseException as e:  # handed to the waiting thread as is
+                box['error'] = e
+            finally:
+                done.set()
+
+        threading.Thread(target=work, name='model-call', daemon=True).start()
+        while not done.wait(STOP_POLL_S):
+            self._check_stop(should_stop)
+        if 'error' in box:
+            raise box['error']
+        return box['value']
 
     def _usage_of(self, resp) -> Dict[str, Any]:
         usage = getattr(resp, 'usage', None)
@@ -177,6 +278,7 @@ def add_model_arguments(parser, default_service_id: Optional[str] = None) -> Non
     parser.add_argument('--api-key', default=None, help="Provider API key (else the provider's env var)")
     parser.add_argument('--temperature', type=float, default=0.0)
     parser.add_argument('--max-tokens', type=int, default=None)
+    add_timeout_argument(parser)
     parser.add_argument('--service-id', default=None,
                         help=(f'Registered service id (default {default_service_id}); '
                               'set one per model to run several')
@@ -185,12 +287,22 @@ def add_model_arguments(parser, default_service_id: Optional[str] = None) -> Non
                         help='Display name (default is the service plus the model)')
 
 
+def add_timeout_argument(parser) -> None:
+    """``--timeout``, the seconds one model call may take. Its own function so
+    a model caller that does not use :func:`add_model_arguments` (the
+    assistants in plaid-agent) takes the same flag with the same default."""
+    parser.add_argument('--timeout', type=float, default=DEFAULT_TIMEOUT_S,
+                        help=f'Seconds to wait for one model reply before giving up '
+                             f'(tried once more after a timeout; default {DEFAULT_TIMEOUT_S:g})')
+
+
 def setup_service(service, args) -> ChatModel:
     """Build the model, take the operator's identity overrides, and keep the
     provider key out of everything a requester sees. Returns the model, which
     it has also set as ``service.model``."""
     service.model = ChatModel(args.model, api_base=args.api_base, api_key=args.api_key,
-                              temperature=args.temperature, max_tokens=args.max_tokens)
+                              temperature=args.temperature, max_tokens=args.max_tokens,
+                              timeout=args.timeout)
     service.REQUEST_SECRETS = provider_secrets(args.api_key)
     if args.service_id:
         service.service_id = args.service_id

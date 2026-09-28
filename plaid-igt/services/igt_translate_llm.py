@@ -289,7 +289,8 @@ class LLMTranslateService(BaseService):
             prompt = build_user_prompt(language, metalanguage, words, gloss_line(s, gloss_layer_id), context)
             try:
                 reply = self.model.complete(
-                    SYSTEM_PROMPT.format(language=language, metalanguage=metalanguage), prompt)
+                    SYSTEM_PROMPT.format(language=language, metalanguage=metalanguage), prompt,
+                    should_stop=lambda: response_helper.cancelled)
             except Exception as exc:
                 # The provider's own error text is the operator's: it can carry
                 # the endpoint, the request body, and the key that was refused.

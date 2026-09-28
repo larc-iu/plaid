@@ -15,6 +15,7 @@ import pathlib
 import pytest
 from plaid_client import testing as servicetest
 from plaid_client.http import PlaidAPIError
+from plaid_client.services import ServiceCancelled
 from plaid_client.workflows.llm import Reply
 
 SERVICES = pathlib.Path(__file__).resolve().parent.parent
@@ -56,14 +57,20 @@ class _Model:
     """Stands in for a ChatModel: records what it was asked and replies with a
     fixed text, or raises."""
 
-    def __init__(self, replies=None, error=None, truncated=False):
+    def __init__(self, replies=None, error=None, truncated=False, during=None):
         self.calls = []          # (system, user)
+        #: called with ``should_stop`` while the call "waits", as a provider
+        #: that has not answered yet
+        self._during = during
         self._replies = list(replies if replies is not None else [GOOD_REPLY])
         self._error = error
         self._truncated = truncated
 
-    def complete(self, system, user):
+    def complete(self, system, user, should_stop=None):
         self.calls.append((system, user))
+        self.should_stop = should_stop
+        if self._during:
+            self._during(should_stop)
         if self._error:
             raise self._error
         text = self._replies[min(len(self.calls) - 1, len(self._replies) - 1)]
@@ -640,6 +647,24 @@ def test_every_phase_says_what_it_is_doing_and_the_bar_only_moves_forward():
 def test_a_stop_before_the_writes_ends_the_run_with_one_report(stop_at):
     service = _service()
     helper = servicetest.Helper(stop_when=lambda pct, msg: msg == stop_at)
+    servicetest.run(service, REQUEST, helper)
+
+    assert helper.reports == [('completed', {'stopped': True})]
+    assert service.client.writes == []
+
+
+def test_a_stop_while_the_model_is_silent_ends_the_run():
+    """The model call is the one long step, and a provider that never answers
+    must not hold the document: the stop is read while the call waits
+    (``ChatModel.complete`` polls ``should_stop``), not at the next beat."""
+    helper = servicetest.Helper()
+
+    def silent_provider(should_stop):
+        helper.stop()
+        assert should_stop is not None and should_stop()
+        raise ServiceCancelled('The requester stopped this request')
+
+    service = _service(model=_Model(during=silent_provider))
     servicetest.run(service, REQUEST, helper)
 
     assert helper.reports == [('completed', {'stopped': True})]

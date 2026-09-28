@@ -373,7 +373,8 @@ class UmrDraftService(BaseService):
             prompt = build_user_prompt(sentence, gloss_lines, language)
             try:
                 with progress.heartbeat(DraftProgress.DRAFT, n / total, message):
-                    reply = self.model.complete(SYSTEM_PROMPT, prompt)
+                    reply = self.model.complete(SYSTEM_PROMPT, prompt,
+                                                should_stop=lambda: response_helper.cancelled)
             except Exception as exc:
                 # The provider's own error text is the operator's: it can carry
                 # the endpoint, the request body and the key that was refused.
