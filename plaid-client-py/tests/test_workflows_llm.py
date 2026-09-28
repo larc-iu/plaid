@@ -262,4 +262,5 @@ def test_a_run_stops_after_two_sentences_in_a_row_get_no_answer(monkeypatch):
     assert run.stop_line(38) == ('The model did not answer 2 sentences in a row, so the run '
                                  'stopped. 38 sentences were not drafted.')
     assert run.stop_line(1, verb='glossed').endswith('1 sentence was not glossed.')
-    assert run.stop_line(0).endswith('so the run stopped.')
+    # The last two sentences unanswered: nothing was left, so nothing stopped.
+    assert run.stop_line(0) == ''

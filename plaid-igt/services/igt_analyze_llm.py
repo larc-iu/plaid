@@ -494,7 +494,8 @@ class LLMAnalyzeService(BaseService):
                 if unanswered.failed(exc):
                     untried = [t[0]['id'] for t in targets[n + 1:]]
                     ended = unanswered.stop_line(len(untried), verb='glossed')
-                    print(f'{ended} Not asked: {", ".join(untried)}')
+                    if untried:
+                        print(f'{ended} Not asked: {", ".join(untried)}')
                     failed += [{'sentence_id': sid, 'reason': NOT_ASKED} for sid in untried]
                     break
                 continue

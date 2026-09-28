@@ -962,3 +962,17 @@ def test_an_error_the_model_answered_with_does_not_end_the_run():
     helper = servicetest.run(service, REQUEST)
     [result] = helper.results
     assert (result['drafted'], result['failed']) == (1, 2)
+
+
+def test_a_run_whose_last_two_sentences_get_no_answer_did_not_stop():
+    """Nothing was left to ask, so the run finished: the notice names the two
+    sentences with their reason and does not say the run stopped."""
+    service = _service(documents=[_sentences_document(3)],
+                       model=_Scripted([GOOD_REPLY, _timeout(), _timeout()]))
+    helper = servicetest.run(service, REQUEST)
+
+    [result] = helper.results
+    assert result['sentences_not_drafted'] == []
+    assert result['notice']['message'] == (
+        'Failed to draft 2 sentences. Sentences 2 and 3: The model did not answer within '
+        '120 seconds.')

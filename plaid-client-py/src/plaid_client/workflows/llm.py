@@ -110,13 +110,15 @@ class UnansweredRun:
     def stop_line(self, left: int, verb: str = 'drafted') -> str:
         """The report's line for a run that stopped: ``The model did not
         answer 2 sentences in a row, so the run stopped. 38 sentences were not
-        drafted.``"""
+        drafted.`` Empty when no sentence was left: a run whose last two
+        sentences got no answer did not stop, it finished, and each of the two
+        is already named with its reason."""
+        if not left:
+            return ''
         line = f'The model did not answer {self.limit} sentences in a row, so the run stopped.'
         if left == 1:
-            line += f' 1 sentence was not {verb}.'
-        elif left:
-            line += f' {left} sentences were not {verb}.'
-        return line
+            return line + f' 1 sentence was not {verb}.'
+        return line + f' {left} sentences were not {verb}.'
 
 
 @dataclass
