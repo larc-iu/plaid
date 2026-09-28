@@ -144,11 +144,25 @@ def test_every_model_call_carries_the_operators_timeout(monkeypatch):
     script = Script(_resp(calls=[_call(1, 'read', '{}')]), _resp(''), _resp('ok'))
 
     def spy(**kwargs):
-        seen.append(kwargs.get('timeout'))
+        seen.append((kwargs.get('timeout'), kwargs.get('max_retries')))
         return script(**kwargs)
 
     _turn(monkeypatch, spy, timeout=120)
-    assert seen == [120, 120, 120]
+    assert seen == [(120, 1)] * 3, 'the SDK retries a timeout twice on its own unless told'
+
+
+def test_a_streamed_call_that_times_out_is_not_asked_again_without_streaming(monkeypatch):
+    calls = []
+
+    def slow(**kwargs):
+        calls.append(kwargs.get('stream'))
+        raise agent.litellm.Timeout('Request timed out.', model='x', llm_provider='openai')
+
+    monkeypatch.setattr(agent.litellm, 'completion', slow)
+    with pytest.raises(agent.litellm.Timeout):
+        run_turn(ModelConfig(model='fake/m', timeout=5), _kit(lambda ws, n, a: 'ok'), Ws(), 'system',
+                 [{'role': 'user', 'content': 'hi'}])
+    assert calls == [True]
 
 
 def test_no_timeout_is_sent_when_the_operator_gave_none(monkeypatch):

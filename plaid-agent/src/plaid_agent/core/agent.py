@@ -68,6 +68,9 @@ class ModelConfig:
 
 
 PING_TIMEOUT_S = 30
+# How many times a model call is tried again after it fails (a timeout
+# included) when the operator set a deadline.
+TIMEOUT_RETRIES = 1
 # The ping's own token budget. A REASONING model spends its first tokens
 # thinking, so a small budget comes back with finish_reason 'length' and no
 # content at all: the ping then proves only that the provider answers, not
@@ -97,7 +100,11 @@ def _provider_kwargs(cfg: ModelConfig) -> Dict[str, Any]:
     key when the operator gave them (else litellm reads the provider's env)."""
     out: Dict[str, Any] = {'model': cfg.model}
     if cfg.timeout:
+        # A deadline, and one more try after it passes, as the model services
+        # do: the provider SDK retries a timed-out call twice on its own, which
+        # made a dead endpoint cost three whole windows.
         out['timeout'] = cfg.timeout
+        out['max_retries'] = TIMEOUT_RETRIES
     if cfg.api_base:
         out['api_base'] = cfg.api_base
     if cfg.api_key:
@@ -152,8 +159,10 @@ def _complete(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str],
                 if now - last >= STREAM_INTERVAL_S:
                     last = now
                     on_text(text)
-    except Exception:
-        if chunks:
+    except Exception as e:
+        # A timeout is not a provider that refuses to stream: asking again
+        # without streaming would only wait out the whole deadline once more.
+        if chunks or (_ProviderTimeout and isinstance(e, _ProviderTimeout)):
             raise
         return litellm.completion(**kwargs)
     if text:
