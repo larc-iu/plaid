@@ -928,6 +928,50 @@
           (edits choice)
           [r])))))
 
+;; A replace that takes whole words and the edge of the next one: deleting
+;; `Yarın ` and capitalizing `köye` is delete `Yarın k`, insert `K`, which
+;; pair into one replace. No token holds it, so `köye` would lose its `k` and
+;; `K` stand outside every word. Cut at the edge of the word it reaches into,
+;; it is `Yarın ` deleted and `k` replaced by `K`, and the word keeps its
+;; first letter.
+
+(defn- split-at-token-edges
+  "The edits for `r`, a replace of [s, t) in `o`, cut where it reaches into
+  tokens it does not hold. When tokens begin inside [s, t) and end past it,
+  and none begins before it and ends inside it, the part from the last such
+  beginning to t is replaced by the new text after its last whitespace, and
+  the part before is replaced by the rest (deleted when there is none). The
+  same at the other end: tokens beginning before it and ending inside it get
+  the new text up to its first whitespace. A replace reaching into tokens at
+  both ends stays as it is, since the text cannot tell which of them the new
+  letters belong to. `near` gives the tokens that begin or end in a stretch
+  (see `tokens-near`)."
+  [near r]
+  (let [{s :start t :end ^String value :value} r
+        ts (filter (fn [{:token/keys [begin end]}] (< begin end)) (near s t))
+        into-next (filter (fn [{:token/keys [begin end]}] (and (< s begin t) (< t end))) ts)
+        into-prev (filter (fn [{:token/keys [begin end]}] (and (< begin s) (< s end t))) ts)
+        v (.toArray (.codePoints value))
+        n (alength v)
+        ws? (fn [i] (Character/isWhitespace (aget v (int i))))
+        sub (fn [p q] (String. v (int p) (int (- q p))))
+        piece (fn [p q value]
+                (if (= "" value)
+                  {:kind :delete :start p :end q}
+                  {:kind :replace :start p :end q :value value}))]
+    (cond
+      (and (seq into-next) (empty? into-prev))
+      (let [b (reduce max (map :token/begin into-next))
+            k (loop [k n] (if (and (pos? k) (not (ws? (dec k)))) (recur (dec k)) k))]
+        [(piece s b (sub 0 k)) (piece b t (sub k n))])
+
+      (and (seq into-prev) (empty? into-next))
+      (let [a (reduce min (map :token/end into-prev))
+            k (loop [k 0] (if (and (< k n) (not (ws? k))) (recur (inc k)) k))]
+        [(piece s a (sub 0 k)) (piece a t (sub k n))])
+
+      :else [r])))
+
 (declare apply-text-edits)
 
 (defn fold-whole-words
@@ -1176,8 +1220,12 @@
                    true)
             (recur (inc i) (conj out e0) folded?)))
         ;; A word typed beside the replaced letters stays out of them,
-        ;; here and in the replaces `pair-replacements` made.
-        (let [out' (into [] (mapcat #(if (= :replace (:kind %)) (split-off-new-words o @near %) [%]))
+        ;; here and in the replaces `pair-replacements` made, and a replace
+        ;; reaching into the edge of a token it does not hold is cut there.
+        (let [replace? #(= :replace (:kind %))
+              out' (into []
+                         (comp (mapcat #(if (replace? %) (split-off-new-words o @near %) [%]))
+                               (mapcat #(if (replace? %) (split-at-token-edges @near %) [%])))
                          out)]
           (if (or folded? (not= out out')) (edits->ops out') ops))))))
 

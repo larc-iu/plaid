@@ -835,6 +835,90 @@
                                       [(tok :s1 0 9) (tok :s2 9 16)])]
       (is (= #{[:s1 0 12] [:s2 12 19]} (extents tokens))))))
 
+;; ---------------------------------------------------------------------------
+;; A replace that takes whole words and the edge of the next one. Deleting
+;; `Yarın ` and capitalizing `köye` is delete `Yarın k`, insert `K`, one
+;; replace that no token holds: `köye` lost its first letter and `K` stood
+;; outside every word. Cut at the edge of the word it reaches into, it is
+;; `Yarın ` deleted and `k` replaced by `K` inside `köye`.
+
+(deftest a-replace-into-the-edge-of-a-word-keeps-the-word-whole
+  (let [on (fn [layer t] (assoc t :token/layer layer))
+        old "Ali kitabı verdi.\nYarın köye döneceğiz.\n"
+        new "Ali kitabı verdi.\nKöye döneceğiz.\n"
+        tokens [(on :s (tok :s1 0 18)) (on :s (tok :s2 18 40))
+                (on :w (tok :ali 0 3)) (on :w (tok :kitabi 4 10)) (on :w (tok :verdi 11 16))
+                (on :w (tok :p1 16 17)) (on :w (tok :yarin 18 23)) (on :w (tok :koye 24 28))
+                (on :w (tok :donecegiz 29 38)) (on :w (tok :p2 38 39))
+                ;; a morpheme over the whole word, as igt makes them
+                (on :m (tok :koye-m 24 28))]
+        {:keys [text tokens deleted]} (body-edit old new tokens)]
+    (is (= new (:text/body text)))
+    (is (= [:yarin] deleted))
+    (is (= #{[:s1 0 18] [:s2 18 34] [:ali 0 3] [:kitabi 4 10] [:verdi 11 16] [:p1 16 17]
+             [:koye 18 22] [:koye-m 18 22] [:donecegiz 23 32] [:p2 32 33]}
+           (extents tokens))))
+  (testing "a word typed in place of the deleted ones stays out of the word"
+    (let [ops [(ta/replace-op 2 7 "Bugün K")]
+          old "x Yarın köye y"
+          tokens [(tok :x 0 1) (tok :yarin 2 7) (tok :koye 8 12) (tok :y 13 14)]
+          {:keys [text tokens deleted]} (apply-all (ta/fold-whole-words ops old tokens) old tokens)]
+      (is (= "x Bugün Köye y" (:text/body text)))
+      (is (= [:yarin] deleted))
+      (is (= #{[:x 0 1] [:koye 8 12] [:y 13 14]} (extents tokens)))))
+  (testing "the last letter of a word respelled and the words after it deleted"
+    (let [{:keys [text tokens deleted]} (body-edit "the cat sat on" "the caQ on"
+                                                   [(tok :the 0 3) (tok :cat 4 7) (tok :sat 8 11)
+                                                    (tok :on 12 14)])]
+      (is (= "the caQ on" (:text/body text)))
+      (is (= [:sat] deleted))
+      (is (= #{[:the 0 3] [:cat 4 7] [:on 8 10]} (extents tokens)))))
+  (testing "a marker where the kept word begins stays at its start"
+    (let [{:keys [tokens deleted]} (body-edit "x Yarın köye y" "x Köye y"
+                                              [(tok :yarin 2 7) (tok :koye 8 12) (tok :z 8 8)])]
+      (is (= [:yarin] deleted))
+      (is (= #{[:koye 2 6] [:z 2 2]} (extents tokens)))))
+  (testing "a replace from inside one word into another is left as it is"
+    (let [{:keys [tokens]} (body-edit "x cat dog y" "x cQog y"
+                                      [(tok :cat 2 5) (tok :dog 6 9)])]
+      (is (= #{[:cat 2 3] [:dog 4 6]} (extents tokens))))))
+
+(deftest words-deleted-before-a-respelled-word-leave-every-other-word-token-on-its-word
+  ;; Seeded. Delete one to three words, and respell the first letter of the
+  ;; word after them, or the last letter of the word before them. Every token
+  ;; left must sit exactly on a word of the new body, one per word. The
+  ;; respelled word has two letters at least: one letter respelled is a word
+  ;; replaced, and the body cannot tell which of the words it stands for.
+  (let [vocab ["the" "cat" "sat" "on" "a" "mat" "at" "tat" "ta" "kai" "kaki" "𐌰𐌱" "é" "köye"]
+        long-words (filterv #(< 1 (cp/cp-count %)) vocab)]
+    (doseq [seed (range 1 7)]
+      (let [rng (java.util.Random. seed)
+            pick #(nth % (.nextInt rng (count %)))]
+        (dotimes [case-n 150]
+          (let [m (inc (.nextInt rng 3))
+                j (inc (.nextInt rng 4))
+                after? (.nextBoolean rng)
+                k (if after? (+ j m) (dec j))
+                w (pick long-words)
+                words (-> (vec (repeatedly (+ j m 1 (.nextInt rng 3)) #(pick vocab)))
+                          (assoc k w))
+                n (cp/cp-count w)
+                w' (if after?
+                     (str "Q" (cp/cp-subs w 1 n))
+                     (str (cp/cp-subs w 0 (dec n)) "Q"))
+                words' (-> (assoc words k w')
+                           (as-> v (into (subvec v 0 j) (subvec v (+ j m)))))
+                old (str/join " " words)
+                new (str/join " " words')
+                before (word-tokens words)
+                {:keys [text tokens deleted]} (body-edit old new before)
+                want (set (map (juxt :token/begin :token/end) (word-tokens words')))
+                got (map (juxt :token/begin :token/end) tokens)]
+            (is (= new (:text/body text)))
+            (is (= m (count deleted)) (str "seed " seed " case " case-n ": " (pr-str old) " -> " (pr-str new)))
+            (is (= want (set got)) (str "seed " seed " case " case-n ": " (pr-str old) " -> " (pr-str new)))
+            (is (= (count got) (count (set got))))))))))
+
 (deftest two-edits-sliding-towards-each-other-do-not-meet
   ;; Each delete cuts a token where it stands and could slide into the run of
   ;; `a` between them, and both would have taken the same letter.
