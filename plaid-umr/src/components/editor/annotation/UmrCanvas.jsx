@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SentenceBlock } from './SentenceBlock.jsx';
 import { CrossLinks } from './CrossLinks.jsx';
+import { EditorLegend } from './EditorLegend.jsx';
 import { ListPager } from '@ui/components/shared/list-search';
 import { usePagedList, pageKey, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { readProjectLanguage } from '../../../utils/umrLayerUtils.js';
@@ -85,10 +86,12 @@ export const UmrCanvas = ({
   const anchors = useMemo(() => buildAnchorIndex(doc), [doc, version]);
 
   // The page is remembered per document, because coming back to a corpus
-  // means coming back to where the work stopped.
+  // means coming back to where the work stopped, and it is in the URL
+  // (`?page=`), so a reload, a bookmark or a link opens the page it named.
   const paged = usePagedList(sentences, {
     pageSize: TALL_LIST_PAGE_SIZE,
     storageKey: pageKey('umr-annotate', doc.id),
+    urlParam: 'page',
   });
   const { page, setPage } = paged;
 
@@ -106,10 +109,12 @@ export const UmrCanvas = ({
     (sentenceIndex, selector) => {
       const target = pageOfSentence.get(String(sentenceIndex));
       if (target == null) return;
-      setPage(target);
+      // Turning to the page already shown would push a second history entry
+      // of the same URL, and Back would take two presses.
+      if (target !== page) setPage(target);
       setPending({ selector, nonce: Date.now() });
     },
-    [pageOfSentence, setPage],
+    [pageOfSentence, setPage, page],
   );
 
   useEffect(() => {
@@ -147,11 +152,33 @@ export const UmrCanvas = ({
     answered.current = asked;
     const index = String(sentParam).replace(/^s/, '');
     const block = `.umr-block[data-sentence-index="${index}"]`;
-    const root = doc.sentence(Number(index))?.roots[0]?.var;
-    const named = varParam || root;
+    const sentence = doc.sentence(Number(index));
+    const root = sentence?.roots[0]?.var;
+    // A variable the sentence does not draw as a node (a constant such as
+    // `author`, which a Validation row can name) falls back to the root.
+    const drawn = varParam && sentence?.nodes.some((n) => n.var === varParam);
+    const named = drawn ? varParam : root;
     const node = named ? `[data-node-var="${CSS.escape(named)}"]` : '.umr-node';
     reveal(index, `${block} ${node}`);
   }, [sentParam, varParam, focusNonce, reveal, doc]);
+
+  // Opening a document leaves focus on the page, where every key of the
+  // canvas is dead: the first sentence's keyboard stop takes it (its first
+  // node, or an empty graph), unless the deep link above is placing it or
+  // something else already has it.
+  const openedRef = useRef(null);
+  useEffect(() => {
+    if (openedRef.current === doc.id || sentParam) return undefined;
+    const raf = requestAnimationFrame(() => {
+      openedRef.current = doc.id;
+      const now = window.document.activeElement;
+      if (now && now !== window.document.body) return;
+      const block = listTopRef.current?.querySelector('.umr-block');
+      const stop = block?.querySelector('[tabindex="0"]') || block;
+      stop?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [doc.id, sentParam]);
 
   // The node whose cross-sentence relations are drawn. Each block says which
   // of its nodes is active, and at most two are at once (one hovered, one
@@ -193,6 +220,11 @@ export const UmrCanvas = ({
         activeId={activeId}
         version={doc.dataVersion}
       />
+      {!readOnly && (
+        <div className="px-6 pb-3">
+          <EditorLegend project={doc.project} direction={doc.textDirection} />
+        </div>
+      )}
       <ListPager {...paged} onPage={setPage} position="top" className="mx-6 rounded-md border" />
       {paged.pageItems.map((sentence) => (
         <SentenceBlock

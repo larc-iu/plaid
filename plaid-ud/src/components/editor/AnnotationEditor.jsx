@@ -153,10 +153,12 @@ export const AnnotationEditor = () => {
   // stays GLOBAL to the document — its number, its tab order, what the
   // assistant calls it — so paging changes what is rendered and nothing else.
   // The page is remembered per document, because coming back to a treebank
-  // means coming back to where the work stopped.
+  // means coming back to where the work stopped, and it is in the URL
+  // (`?page=`), so a reload, a bookmark or a link opens the page it named.
   const paged = usePagedList(processedSentences, {
     pageSize: TALL_LIST_PAGE_SIZE,
     storageKey: pageKey('ud-annotate', documentId),
+    urlParam: 'page',
   });
   const { page, setPage } = paged;
 
@@ -173,9 +175,12 @@ export const AnnotationEditor = () => {
     (sentenceId) => {
       const index = indexById.get(String(sentenceId));
       if (index == null) return;
-      setPage(Math.floor(index / TALL_LIST_PAGE_SIZE));
+      // The page already shown is not turned to again: that would push a
+      // second history entry of the same URL on every review jump.
+      const target = Math.floor(index / TALL_LIST_PAGE_SIZE);
+      if (target !== page) setPage(target);
     },
-    [indexById, setPage],
+    [indexById, setPage, page],
   );
 
   // Turning the page from the bottom of the list leaves the reader at the
