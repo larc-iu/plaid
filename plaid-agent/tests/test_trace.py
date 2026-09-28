@@ -23,7 +23,7 @@ def test_every_tool_has_a_progress_line_of_its_own():
     ``progress_label``, not ``describe_step``, and it had its own fallback to a
     bare function name. Three meta tools reached it, so a linguist watching a
     turn saw ``discard_plan…`` and ``plan_status…`` in among "Looking at the
-    project…" and "Running code…". The past-tense test above could not catch
+    project…" and "Reading across the corpus…". The past-tense test above could not catch
     it, because those tools do have past-tense lines.
     """
     missing = [t['function']['name'] for t in TOOLS
@@ -83,3 +83,13 @@ def test_a_step_names_the_call_it_belongs_to():
     # result is never sent twice.
     assert step == {'id': 'call-7', 'name': 'read_document', 'kind': DOCUMENT,
                     'label': 'Read “Text 1”', 'document': 'Text 1'}
+
+
+def test_code_steps_read_as_reads_in_igt_and_ud():
+    """The reader asked a question, not for a program: a code step is a read
+    across their data, as the UMR trace already says it."""
+    from plaid_agent.ud import trace as ud_trace
+    for describe, tracer in ((describe_step, TRACER), (ud_trace.describe_step, ud_trace.TRACER)):
+        for name in ('run_code', 'code_help'):
+            assert 'code' not in describe(name, {}).lower()
+            assert 'code' not in tracer.progress(name, {}).lower()

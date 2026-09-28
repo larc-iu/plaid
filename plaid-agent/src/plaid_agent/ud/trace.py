@@ -123,9 +123,9 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
     if name == 'add_comment':
         return f'Planned a comment on {a.get("ref") or "the document"}{in_doc(a)}'
     if name == 'run_code':
-        return 'Ran code over the project'
+        return 'Read across the project'
     if name == 'code_help':
-        return 'Read what code can see'
+        return 'Looked up how to read across the project'
 
     # --- bookkeeping ----------------------------------------------------------
     if name == 'discard_plan':
@@ -151,8 +151,8 @@ _PROGRESS = {
     'restore_document': lambda a: f'Checking a restore of "{a.get("document", "")}"…',
     'query': lambda a: 'Running a query…',
     'query_help': lambda a: 'Reading the query language…',
-    'run_code': lambda a: 'Running code…',
-    'code_help': lambda a: 'Reading what code can see…',
+    'run_code': lambda a: 'Reading across the project…',
+    'code_help': lambda a: 'Looking up how to read across the project…',
     'merge_sentences': lambda a: 'Joining two sentences…',
     'search': lambda a: f'Searching for "{a.get("pattern", "")}"…',
     'replace_in_field': lambda a: f'Finding every {a.get("field", "value")} matching "{a.get("pattern", "")}"…',
