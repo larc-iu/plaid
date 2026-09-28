@@ -15,7 +15,7 @@ import {
   DOC_CONSTANTS,
   DOC_RELATIONS,
   DISCOURSE_CONCEPTS,
-  INTEGER_ATTRIBUTES,
+  LIST_ITEM_ATTRIBUTES,
   KNOWN_RELATIONS,
   NON_EVENT_ROLESETS,
 } from './inventory.js';
@@ -297,8 +297,8 @@ const VARIABLE_FRONT = /^s[0-9]+\p{Ll}+[0-9]*/u;
  * the next quote). A bare value is an atom of lowercase letters, digits, `+`
  * and `-`, or a number, and does not start like a variable.
  *
- * Under a relation that takes a whole number (`:li`), anything else is
- * `unexpected-value`.
+ * Under `:li` and `:list-item`, a value that is neither a whole number nor a
+ * quoted label is `unexpected-value`.
  *
  * The editors refuse NEW input with this (ruled 2026-09-28: Text mode Apply,
  * the pickers and rename). An imported value is only reported, by the
@@ -310,14 +310,17 @@ const VARIABLE_FRONT = /^s[0-9]+\p{Ll}+[0-9]*/u;
  */
 export function valueGrammarProblem(value, rel = null) {
   const problem = grammarProblem(value, rel);
-  if (problem || !INTEGER_ATTRIBUTES.includes(rel)) return problem;
+  if (problem || !LIST_ITEM_ATTRIBUTES.includes(rel)) return problem;
   const text = String(value ?? '');
-  if (/^-?[0-9]+$/.test(text)) return null;
+  if (/^-?[0-9]+$/.test(text) || text.startsWith('"')) return null;
   return {
     code: 'unexpected-value',
-    message: `The value '${text.replace(/^"|"$/g, '')}' of '${rel}' is not a whole number. '${rel}' takes the item's place in the list, -1 for the last.`,
+    message: `The value '${text}' of '${rel}' is neither a number nor a quoted label. ${listItemTakes(rel)}`,
   };
 }
+
+const listItemTakes = (rel) =>
+  `'${rel}' takes the item's place in the list (-1 for the last) or its label in quotes, such as "(a)".`;
 
 function grammarProblem(value, rel) {
   const text = String(value ?? '');
@@ -575,11 +578,11 @@ function checkContents(sentence, findings, options) {
         type = 'attribute';
         values = [];
       }
-      if (INTEGER_ATTRIBUTES.includes(child.rel) && child.kind === 'node') {
+      if (LIST_ITEM_ATTRIBUTES.includes(child.rel) && child.kind === 'node') {
         findings.push({
           level: 'error',
           code: 'unexpected-value',
-          message: `'${child.rel}' takes a whole number, the item's place in the list, -1 for the last. Found the node '${child.value}'.`,
+          message: `${listItemTakes(child.rel)} Found the node '${child.value}'.`,
           var: variable,
         });
         return;

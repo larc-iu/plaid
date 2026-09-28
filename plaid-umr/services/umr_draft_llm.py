@@ -54,7 +54,7 @@ from plaid_client.workflows.umr import (DraftProgress, anchor_pieces, begin_draf
                                         next_variable, parse_penman, project_language, run_label,
                                         unknown_relation_problem)
 from plaid_client.workflows.umr.inventory import (ATTRIBUTE_VALUES, edge_only,
-                                                  whole_number_problem)
+                                                  list_item_problem)
 
 DEFAULT_SERVICE_ID = 'umr-draft-llm'
 
@@ -101,7 +101,7 @@ ROLES. Participant: :actor :co-actor :undergoer :theme :recipient :force :causer
 :goal :affectee :cause :manner :reason :purpose :result :temporal :extent
 :other-role. Non-participant: :direction :path :quant :degree :duration
 :frequency :mod :topic :vocative :medium :possessor :part :group :age :example
-:ord :list-item. Spatial: :size :color :configuration :orientation :anchor :axis.
+:ord. Spatial: :size :color :configuration :orientation :anchor :axis.
 Also :name (to a (n / name :op1 "..." :op2 "...")) and :wiki (a quoted Wikidata
 id). Every role starts with a colon.
 
@@ -109,7 +109,8 @@ ATTRIBUTES take an atom, never a node. :aspect on every event, one of: {aspect}.
 :modal-strength one of {modal_strength}. :polarity - or +. :mode
 interrogative, imperative or expressive. :refer-person one of {refer_person}.
 :refer-number one of {refer_number}. :degree downtoner or equal. :polite + or -.
-:quant a number.
+:quant a number. :li on an item of a list, its place (1, 2, -1 for the last) or
+its label in quotes ("(a)").
 
 ABSTRACT CONCEPTS where no word carries the meaning: person thing animal event
 place temporal quantity; umr-unknown truth-value umr-choice umr-empty;
@@ -277,9 +278,9 @@ def validate_graph(graph, alignment=None) -> Optional[str]:
                 if value in aligned or _MODEL_VARIABLE.fullmatch(value):
                     return f"{var} {child.rel} names {value}, which no node defines."
                 return f"{var} {child.rel} takes a node, not the value {value}."
-            whole = whole_number_problem(child.rel, value)
-            if whole:
-                return f"{var}: {whole}"
+            listed = list_item_problem(child.rel, value)
+            if listed:
+                return f"{var}: {listed}"
             closed = ATTRIBUTE_VALUES.get(child.rel)
             if closed and value not in closed:
                 return f"{value} is not a value of {child.rel}."

@@ -55,7 +55,8 @@ export const ROLES = {
     ':age',
     ':example',
     ':ord',
-    ':list-item',
+    // `:list-item` is in the table too, but it takes a value, not a node
+    // (LIST_ITEM_ATTRIBUTES), so the role picker does not offer it.
   ],
   spatial: [':size', ':color', ':configuration', ':orientation', ':anchor', ':axis'],
   // docs/umr/schema/discourse_relations.json: the relation half of the table.
@@ -415,10 +416,13 @@ export const NON_EVENT_ROLESETS = [
 ];
 
 /**
- * The attributes whose value is a whole number: `:li`, a list item's place in
- * the list, -1 for the last, as AMR writes it.
+ * The attributes that mark an item of a list (decided 2026-09-28): the item's
+ * place as a whole number, as AMR writes it (`:li 1`, `:li -1` for the last),
+ * or its label as a quoted string, as the UMR guidelines' own example does
+ * (`:li "(a)"`, 3-2-2-6 (1c)). `:list-item` is the same relation under the
+ * schema table's name (roles_and_reifications.json, `:list-item "1"`).
  */
-export const INTEGER_ATTRIBUTES = [':li'];
+export const LIST_ITEM_ATTRIBUTES = [':li', ':list-item'];
 
 /**
  * Every relation validate.py knows, with the type it expects on the right and
@@ -588,9 +592,9 @@ export const KNOWN_RELATIONS = (() => {
       ':year2',
       ':end-state',
       ':list-item',
-      // A list item's place, as in AMR: `:li 1`, `:li -1` for the last.
-      // validate.py types it a modifier, which takes a node (decided
-      // 2026-09-28 against it).
+      // LIST_ITEM_ATTRIBUTES. validate.py types `:li` a modifier, which
+      // takes a node, and so fails even the guidelines' `:li "(a)"`: decided
+      // 2026-09-28 against it.
       ':li',
     ],
     'attribute',

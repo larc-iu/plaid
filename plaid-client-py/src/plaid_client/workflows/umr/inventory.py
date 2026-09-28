@@ -55,10 +55,11 @@ ATTRIBUTE_RELATIONS = frozenset({
     ':refer-number', ':refer-person', ':smood', ':time', ':value', ':wiki', ':x', ':y',
     ':year', ':year2', ':z'})
 
-#: The attributes whose value is a whole number: ``INTEGER_ATTRIBUTES`` in
-#: ``inventory.js``. ``:li`` is a list item's place in the list, ``-1`` for the
-#: last, as AMR writes it.
-INTEGER_ATTRIBUTES = frozenset({':li'})
+#: The attributes that mark an item of a list: ``LIST_ITEM_ATTRIBUTES`` in
+#: ``inventory.js``. Their value is the item's place as a whole number, as AMR
+#: writes it (``:li 1``, ``-1`` for the last), or its label as a quoted string,
+#: as the UMR guidelines do (``:li "(a)"``).
+LIST_ITEM_ATTRIBUTES = frozenset({':li', ':list-item'})
 
 #: The attributes whose values the validator holds to a closed set:
 #: ``ATTRIBUTES[rel].validator`` in ``inventory.js``, the non-empty ones. An
@@ -105,18 +106,20 @@ def edge_only(rel: str, concept: str) -> bool:
     return rel in NODE_ROLES
 
 
-def whole_number_problem(rel: str, value) -> Optional[str]:
-    """Why ``value`` cannot stand under ``rel``, an attribute that takes a whole
-    number (``:li``), or None when it can or ``rel`` takes other values
+def list_item_problem(rel, value) -> Optional[str]:
+    """Why ``value`` cannot stand under ``rel`` when ``rel`` marks a list item
+    (``:li``, ``:list-item``), or None when it can or ``rel`` is another
+    relation: it must be a whole number or a quoted label
     (``valueGrammarProblem`` in ``validate.js``)."""
-    if rel not in INTEGER_ATTRIBUTES:
+    rel = _as_relation(rel)
+    if rel not in LIST_ITEM_ATTRIBUTES:
         return None
-    text = str(value)
-    if re.fullmatch(r'-?[0-9]+', text):
+    text = str(value if value is not None else '').strip()
+    if re.fullmatch(r'-?[0-9]+', text) or text.startswith('"'):
         return None
-    bare = text.strip('"')
-    return (f"The value '{bare}' of '{rel}' is not a whole number. '{rel}' "
-            "takes the item's place in the list, -1 for the last.")
+    return (f"The value '{text}' of '{rel}' is neither a number nor a quoted label. '{rel}' "
+            "takes the item's place in the list (-1 for the last) or its label in quotes, "
+            'such as "(a)".')
 
 
 def attribute_value_problem(rel: str, value) -> Optional[str]:
@@ -131,9 +134,9 @@ def attribute_value_problem(rel: str, value) -> Optional[str]:
     text = value if isinstance(value, str) else ''
     if not text.strip() or re.search(r'\s', text):
         return f'{rel} needs a value of one word, not {value!r}.'
-    whole = whole_number_problem(rel, text)
-    if whole:
-        return whole
+    listed = list_item_problem(rel, text)
+    if listed:
+        return listed
     closed = ATTRIBUTE_VALUES.get(rel)
     if closed and text not in closed:
         guess = difflib.get_close_matches(text, closed, n=1, cutoff=0.7)
@@ -242,7 +245,7 @@ def unknown_doc_relation_problem(group: Optional[str], relation) -> Optional[str
 
 
 __all__ = ['KNOWN_RELATIONS', 'ATTRIBUTE_RELATIONS', 'ATTRIBUTE_VALUES', 'NODE_ROLES',
-           'INTEGER_ATTRIBUTES', 'VALUE_ARGUMENTS', 'ARG_ROLE', 'DOC_RELATIONS',
-           'DOC_CONSTANTS', 'GROUPS', 'edge_only', 'whole_number_problem',
+           'LIST_ITEM_ATTRIBUTES', 'VALUE_ARGUMENTS', 'ARG_ROLE', 'DOC_RELATIONS',
+           'DOC_CONSTANTS', 'GROUPS', 'edge_only', 'list_item_problem',
            'attribute_value_problem', 'is_known_relation', 'nearest',
            'unknown_relation_problem', 'unknown_doc_relation_problem']

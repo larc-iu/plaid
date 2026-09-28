@@ -20,6 +20,7 @@ from plaid_client.workflows.umr import (attr_value_problem, concept_problem,
                                         relation_form_problem, triple_sentence_number,
                                         unknown_doc_relation_problem,
                                         unknown_relation_problem, variable_form_problem)
+from plaid_client.workflows.umr.inventory import list_item_problem
 
 from ..core.limits import OVERVIEW_DOCS, SAMPLE_LINES
 from ..core.tools import ToolError, truncate
@@ -146,11 +147,13 @@ class Workspace(BaseWorkspace):
             for a in op.get('attrs') or []:
                 if (a.get('rel'), a.get('value')) in stored:
                     continue
-                problems += [relation_form_problem(a.get('rel')), attr_value_problem(a.get('value'))]
+                problems += [relation_form_problem(a.get('rel')), attr_value_problem(a.get('value')),
+                             list_item_problem(a.get('rel'), a.get('value'))]
         if kind == 'attrs_scope':
             problems.append(relation_form_problem(op.get('rel')))
             if op.get('value'):
-                problems.append(attr_value_problem(op.get('value')))
+                problems += [attr_value_problem(op.get('value')),
+                             list_item_problem(op.get('rel'), op.get('value'))]
         why = next((p for p in problems if p), None)
         if why:
             var = op.get('var') or op.get('source_var')
