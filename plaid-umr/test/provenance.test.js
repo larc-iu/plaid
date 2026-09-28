@@ -443,9 +443,18 @@ test("discarding keeps a person's node, a contributor's node, and a node a perso
     },
   });
   assert.equal(await doc.discardSentence(1), true);
-  assert.deepEqual(nodesOf(doc, 1), ['s1d', 's1f', 's1m']);
-  // The drafted edges among what stays go too, so the kept nodes stand alone.
-  assert.equal(doc.sentence(1).edges.length, 0);
+  // The drafted edges into s1d and s1f stay, still drafted, since a person
+  // made the node each leads to, and so does their parent s1a, which those
+  // edges need. The drafted edge from s1f down to s1m goes: s1m is drafted.
+  assert.deepEqual(nodesOf(doc, 1), ['s1a', 's1d', 's1f', 's1m']);
+  assert.deepEqual(
+    doc
+      .sentence(1)
+      .edges.map((e) => `${doc.node(e.source).var} ${e.role} ${doc.node(e.target).var}`)
+      .sort(),
+    ['s1a :op1 s1d', 's1a :op2 s1f'],
+  );
+  doc.sentence(1).edges.forEach((e) => assert.equal(provState(e.metadata), PROV_STATES.MACHINE));
   assert.ok(calls.some((c) => c.name === 'relations.delete'));
   const m = byVar(doc, 's1m');
   assert.deepEqual(

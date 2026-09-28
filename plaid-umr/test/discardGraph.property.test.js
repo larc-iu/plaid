@@ -7,8 +7,11 @@
 // - only drafted material ever goes (provState MACHINE),
 // - every drafted edge of the sentence and every drafted triple its block
 //   alone writes goes,
-// - a drafted node of the sentence goes unless a relation that is not
-//   drafted is on it,
+// - except a drafted edge of the sentence whose child is not drafted (a
+//   person made or corrected it), which stays (the owner's ruling of
+//   2026-09-28),
+// - a drafted node of the sentence goes unless a relation that stays is on
+//   it,
 // - and the relations on a node that goes go with it.
 // The calls sent are then replayed on the raw document the way the server's
 // cascade runs, and must leave what the optimistic state shows.
@@ -147,12 +150,16 @@ function runOne(file, seed) {
     ...sentence.triples.filter((t) => !otherTriples.has(t.id)).map((t) => t.id),
   ]);
   const on = (node) => [...node.in, ...node.out, ...node.docIn, ...node.docOut];
+  const keptEdges = new Set(
+    sentence.edges.filter((e) => drafted.get(e.id) && !drafted.get(e.target)).map((e) => e.id),
+  );
+  const goes = (id) => drafted.get(id) && !keptEdges.has(id);
   const doomed = new Set(
     sentence.nodes
-      .filter((nd) => !nd.constant && drafted.get(nd.id) && on(nd).every((r) => drafted.get(r.id)))
+      .filter((nd) => !nd.constant && drafted.get(nd.id) && on(nd).every((r) => goes(r.id)))
       .map((nd) => nd.id),
   );
-  const gone = new Set([...own].filter((id) => drafted.get(id)));
+  const gone = new Set([...own].filter(goes));
   doomed.forEach((id) => on(doc.node(id)).forEach((r) => gone.add(r.id)));
   const others = new Set([...gone].filter((id) => !own.has(id)));
 
@@ -170,16 +177,18 @@ function runOne(file, seed) {
   );
   assert.equal(planned.otherRelations, others.size, 'relations other sentences lose');
   assert.equal(doc.canDiscardSentence(index), doomed.size + gone.size > 0);
-  return { doc, index, before, doomed, gone, drafted, pristine, calls, requests };
+  return { doc, index, before, doomed, gone, drafted, keptEdges, pristine, calls, requests };
 }
 
 test('Discard graph removes exactly the drafted material the convention allows, on random provenance', async () => {
   let discarded = 0;
   let heldNodes = 0;
+  let keptSeen = 0;
   for (const file of FILES) {
     for (let seed = 1; seed <= 40; seed++) {
       const ctx = runOne(file, seed * 7919 + file.length);
-      const { doc, index, before, doomed, gone, drafted, pristine, calls, requests } = ctx;
+      const { doc, index, before, doomed, gone, drafted, keptEdges, pristine, calls, requests } =
+        ctx;
       const where = `${file} seed ${seed} sentence ${index}`;
       const ok = await doc.discardSentence(index);
       assert.equal(ok, doomed.size + gone.size > 0, where);
@@ -216,7 +225,7 @@ test('Discard graph removes exactly the drafted material the convention allows, 
           heldNodes++;
           const holders = [...nd.in, ...nd.out, ...nd.docIn, ...nd.docOut];
           assert.ok(
-            holders.some((r) => !drafted.get(r.id)),
+            holders.some((r) => !drafted.get(r.id) || keptEdges.has(r.id)),
             `${where}: ${nd.var} is drafted and held by nothing kept`,
           );
         }
@@ -224,8 +233,13 @@ test('Discard graph removes exactly the drafted material the convention allows, 
       doc
         .sentence(index)
         .edges.forEach((e) =>
-          assert.equal(drafted.get(e.id), false, `${where}: drafted edge ${e.role} left`),
+          assert.equal(
+            drafted.get(e.id) && !keptEdges.has(e.id),
+            false,
+            `${where}: drafted edge ${e.role} left`,
+          ),
         );
+      if (keptEdges.size) keptSeen++;
       // The server, running the same calls with its cascade, ends where
       // the optimistic state does.
       const server = replay(pristine, calls);
@@ -241,6 +255,7 @@ test('Discard graph removes exactly the drafted material the convention allows, 
   }
   assert.ok(discarded > 60, `enough discards (${discarded})`);
   assert.ok(heldNodes > 5, `drafted nodes held by a kept relation came up (${heldNodes})`);
+  assert.ok(keptSeen > 5, `drafted edges to a corrected child came up (${keptSeen})`);
 });
 
 test('a random discard counts the drafted relations other sentences lose', () => {
