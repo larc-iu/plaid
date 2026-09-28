@@ -141,7 +141,7 @@ describe('what a text-only copy leaves out', () => {
 });
 
 // A client that records the operation, the copy's read and the batch.
-function fakeClient(raw, { batchFails = null } = {}) {
+function fakeClient(raw, { batchFails = null, deleteFails = null } = {}) {
   const log = [];
   const client = {
     log,
@@ -157,6 +157,10 @@ function fakeClient(raw, { batchFails = null } = {}) {
       get: async (id, includeBody) => {
         log.push(['get', id, includeBody]);
         return raw;
+      },
+      delete: async (id, label) => {
+        log.push(['delete', id, label]);
+        if (deleteFails) throw deleteFails;
       },
     },
     batched: async (fn) => {
@@ -213,14 +217,41 @@ describe('copying as text only', () => {
     );
   });
 
-  test('a copy whose graphs could not be taken off says so and names the copy', async () => {
-    const client = fakeClient(annotatedRaw(), { batchFails: new Error('HTTP 500') });
+  // The copy still has the graphs a blind second annotator must not see:
+  // it is deleted, and the failure is the copy's, so a retry starts clean.
+  test('a copy whose graphs could not be taken off is deleted, and the copy fails', async () => {
+    const failure = new Error('HTTP 500');
+    const client = fakeClient(annotatedRaw(), { batchFails: failure });
+    await assert.rejects(copyTextOnly(client, docThatCopies({ id: 'd9' }), 'x'), (err) => {
+      assert.equal(err, failure);
+      assert.ok(!(err instanceof CopyKeptGraphs));
+      return true;
+    });
+    assert.deepEqual(
+      client.log.map((entry) => (entry[0] === 'delete' ? entry : entry[0])),
+      ['begin', 'get', 'batch', 'end', ['delete', 'd9', 'Delete "x"']],
+    );
+  });
+
+  test('a copy that could not be deleted either says so and names the copy', async () => {
+    const client = fakeClient(annotatedRaw(), {
+      batchFails: new Error('HTTP 500'),
+      deleteFails: new Error('HTTP 503'),
+    });
     await assert.rejects(copyTextOnly(client, docThatCopies({ id: 'd9' }), 'x'), (err) => {
       assert.ok(err instanceof CopyKeptGraphs);
       assert.deepEqual(err.created, { id: 'd9', name: 'x' });
       assert.equal(err.cause.message, 'HTTP 500');
       return true;
     });
+    assert.ok(client.log.some(([k]) => k === 'delete'));
+  });
+
+  test('a copy that failed is never deleted', async () => {
+    const client = fakeClient(annotatedRaw());
+    const failing = { name: 'lunch', copyTo: async () => Promise.reject(new Error('HTTP 500')) };
+    await assert.rejects(copyTextOnly(client, failing, 'x'), /HTTP 500/);
+    assert.ok(!client.log.some(([k]) => k === 'delete'));
   });
 
   test('taking the graphs off a document with none sends nothing', async () => {

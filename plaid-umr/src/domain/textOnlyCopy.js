@@ -65,8 +65,12 @@ export async function leaveOutGraphs(client, documentId) {
 /**
  * Copy `doc` as `name` and leave the UMR graphs out of the copy, as one
  * History entry. Resolves to `{ id, name }` for the copy, or null when the
- * copy itself failed (the screen has been told). A copy made whose graphs
- * could not be taken off throws `CopyKeptGraphs`, carrying the copy.
+ * copy itself failed (the screen has been told).
+ *
+ * A copy made whose graphs could not be taken off is the wrong document, one
+ * a blind second annotator must not open, so it is deleted and the failure
+ * thrown as the copy's own: a retry starts clean. Only when that delete fails
+ * too does it throw `CopyKeptGraphs`, carrying the copy that is left.
  */
 export async function copyTextOnly(client, doc, name) {
   const next = (name || '').trim() || `${doc.name} (copy)`;
@@ -78,12 +82,18 @@ export async function copyTextOnly(client, doc, name) {
     });
   } catch (error) {
     if (!created?.id) throw error;
-    throw new CopyKeptGraphs(created, error);
+    try {
+      await client.documents.delete(created.id, `Delete "${created.name}"`);
+    } catch {
+      throw new CopyKeptGraphs(created, error);
+    }
+    throw error;
   }
   return created;
 }
 
-/** The copy was made, and its UMR graphs could not be taken off. */
+/** The copy was made, its UMR graphs could not be taken off, and it could
+ * not be deleted either. */
 export class CopyKeptGraphs extends Error {
   constructor(created, cause) {
     super(cause?.message || 'The UMR graphs could not be taken off the copy.');

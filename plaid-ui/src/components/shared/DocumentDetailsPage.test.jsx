@@ -263,6 +263,26 @@ describe('the document details screen', () => {
     expect(notifySuccess).not.toHaveBeenCalled();
   });
 
+  // A copy the app could neither finish nor take back (plaid-umr's text-only
+  // copy left with its graphs): the screen stays on Details, the dialog shut.
+  it('stays put when the kind of copy says so', async () => {
+    const own = vi.fn(async ({ name }) => ({ id: 'd3', name, notified: true, stay: true }));
+    const view = await mount({
+      copyChoices: [
+        { value: 'all', label: 'Everything' },
+        { value: 'text', label: 'Text only', copy: own },
+      ],
+    });
+    await view.step(() => click(button(view.container, 'Copy document')));
+    const radios = all(document.body, '[data-testid="copy-choices"] input[type="radio"]');
+    await view.step(() => click(radios[1]));
+    await view.step(async () => click(button(document.body, 'Copy')));
+    await flush();
+    expect(own).toHaveBeenCalledTimes(1);
+    expect(path).toBe('/projects/p1/documents/d1/details');
+    expect(button(document.body, 'Copy')).toBeUndefined();
+  });
+
   it('makes the plain copy when the first kind is kept', async () => {
     const own = vi.fn();
     const view = await mount({

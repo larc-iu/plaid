@@ -15,12 +15,15 @@ export const UMR_COPY_CHOICES = [
       try {
         return await copyTextOnly(client, doc, name);
       } catch (error) {
+        // The copy with its graphs could not be deleted: the page stays
+        // here instead of opening it, and the toast stays until closed.
         if (error instanceof CopyKeptGraphs) {
           notifyError(
             humanizeError(error.cause),
             `Copied to “${error.created.name}” with its UMR graphs`,
+            { duration: Infinity },
           );
-          return { ...error.created, notified: true };
+          return { ...error.created, notified: true, stay: true };
         }
         notifyError(humanizeError(error), 'Failed to copy document');
         return null;

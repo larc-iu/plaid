@@ -39,7 +39,8 @@ import { TextDirectionField } from './TextDirectionField.jsx';
  * no `copy` is the plain whole-document copy. `copy({ client, doc, name })`
  * makes the copy its own way and resolves to `{ id, name }` or null, as
  * `doc.copyTo` does, marking it `notified` when it has already said how the
- * copy went. Without the list the dialog asks for a name only.
+ * copy went, and `stay` when the page is not to open it. Without the list the
+ * dialog asks for a name only.
  *
  * What the page shows comes from the app's document shell: plaid-ud and
  * plaid-umr hand it down their outlet (`useDocumentEditor`), and plaid-igt,
@@ -114,6 +115,7 @@ export const DocumentDetailsPage = ({
       if (!created?.id) return;
       setCopyOpen(false);
       if (!created.notified) notifySuccess(`Copied to “${created.name}”`);
+      if (created.stay) return;
       // The copy is made either way; what is asked about is LEAVING this
       // screen for it, because the name typed above goes with the screen. The
       // question stands immediately before the navigation, not at the top of
