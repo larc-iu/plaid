@@ -2,11 +2,13 @@
 // about lines rather than meaning.
 //
 // Left out on purpose: the file-format tests (trailing whitespace, block
-// counts, empty lines, NFC) and the interlinear-glossing tests, because Plaid
-// stores structure and regenerates the lines. What is kept is everything that
-// judges the graph: the sentence graph, the alignment, the document graph and
-// the level-3 contents checks. Each finding carries validate.py's own test id
-// as `code`, so a message here can be traced to the line it came from.
+// counts, empty lines) and the interlinear-glossing tests, because Plaid
+// stores structure and regenerates the lines. Kept: NFC, which regenerating
+// the lines does not give (a string stored with a combining accent is written
+// with one), and everything that judges the graph: the sentence graph and the
+// values in it, the alignment, the document graph and the level-3 contents
+// checks. Each finding carries validate.py's own test id as `code`, so a
+// message here can be traced to the line it came from.
 
 import {
   ATTRIBUTES,
@@ -16,7 +18,7 @@ import {
   KNOWN_RELATIONS,
   NON_EVENT_ROLESETS,
 } from './inventory.js';
-import { treeEdges } from './penman.js';
+import { nfc, treeEdges } from './penman.js';
 
 const OP = /^:op([1-9][0-9]*)$/;
 const VARIABLE = /^s[0-9]+\p{Ll}+[0-9]*$/u;
@@ -27,6 +29,18 @@ const ARG = /^:ARG[0-6]$/;
 const ARG_OF = /^:ARG[0-6]-of$/;
 
 const uninvert = (relation) => relation.replace(/-of$/, '');
+
+// "a node", "an atom": the kinds a child of a node comes in.
+const aKind = (kind) => `${/^[aeiou]/.test(kind) ? 'an' : 'a'} ${kind}`;
+
+// The bare values validate.py reads (validate.py:393-398): an atom of
+// lowercase letters, digits, `+` and `-`, or a number with a decimal point
+// or a time's colon. An atom with a capital or an underscore is read and
+// reported; anything else is not read at all, and the reader then expects a
+// node where the value stands.
+const ATOM = /^[-+a-z0-9]+$/;
+const NUMBER = /^[0-9]+(?:[.:][0-9]+)?$/;
+const UPPER_ATOM = /^[-+a-z0-9A-Z_]+$/;
 
 // What the validator knows of a relation, inverse or numbered `:opN` read as
 // their base, or null for a relation it calls unknown.
@@ -110,7 +124,7 @@ function dominates(var0, var1, nodes, tried = new Set()) {
  * connective or a metadata roleset never is; a `-91` roleset, an `:ARGn`
  * child, an `:ARGn-of` parent, `:aspect` or `:modal-strength` all make one.
  */
-function detectEvents(sentence, sets) {
+function detectEvents(sentence, sets, { sameEvent = true } = {}) {
   const nodes = sentence.graph?.nodes ?? new Map();
   const incoming = incomingByVar(nodes);
   const discourse = new Set(DISCOURSE_CONCEPTS[sets] ?? DISCOURSE_CONCEPTS.validator);
@@ -143,6 +157,7 @@ function detectEvents(sentence, sets) {
     if (reason) events.set(variable, reason);
   }
   // The document-level :same-event relation says so outright.
+  if (!sameEvent) return events;
   for (const [a, relation, b] of sentence.docGraph?.coref ?? []) {
     if (relation !== ':same-event') continue;
     [a, b].forEach((variable) => {
@@ -232,7 +247,11 @@ function checkGraph(sentence, findings, options) {
       });
     }
     outgoing(node).forEach((child) => {
-      if (child.kind !== 'node') return;
+      if (child.kind !== 'node') {
+        const problem = valueProblem(child);
+        if (problem) findings.push({ level: 'error', ...problem, var: variable });
+        return;
+      }
       if (!defined.has(child.value)) {
         const code = previous.has(child.value) ? 'cross-sentence-reference' : 'unknown-node-id';
         const message = previous.has(child.value)
@@ -262,6 +281,86 @@ function checkGraph(sentence, findings, options) {
       var: variable,
     });
   });
+}
+
+/**
+ * Why validate.py cannot read an attribute's value as the value, as
+ * `{code, message}` with its test id, or null when it reads it. A string
+ * holds no quote and no line break and is not empty (validate.py:392 reads a
+ * string line by line, up to the next quote). A bare value is an atom or a
+ * number.
+ */
+function valueProblem(child) {
+  const value = String(child.value ?? '');
+  if (child.kind === 'string') {
+    const inner = /^"([\s\S]*)"$/.exec(value)?.[1];
+    // An unclosed string is the export's refusal (umrFileProblems).
+    if (inner === undefined) return null;
+    if (/[\r\n\u2028\u2029]/.test(inner)) {
+      return {
+        code: 'invalid-line',
+        message: `The string value of '${child.rel}' runs over more than one line.`,
+      };
+    }
+    if (!inner) {
+      return {
+        code: 'missing-node-definition',
+        message: `The string value of '${child.rel}' is empty.`,
+      };
+    }
+    if (inner.includes('"')) {
+      return {
+        code: 'invalid-sentence-level',
+        message: `The string value of '${child.rel}' holds a quote: ${value}`,
+      };
+    }
+    return null;
+  }
+  if (ATOM.test(value) || NUMBER.test(value)) return null;
+  if (UPPER_ATOM.test(value)) {
+    return {
+      code: 'value-wrong-chars',
+      message: `The value '${value}' of '${child.rel}' holds a capital letter or an underscore.`,
+    };
+  }
+  return {
+    code: 'missing-node-definition',
+    message: `The value '${value}' of '${child.rel}' is not a number or a word of lowercase letters, digits, + and -.`,
+  };
+}
+
+/**
+ * Text that is not in Unicode NFC, which the format requires of the whole
+ * file (validate.py `unicode-normalization`): each variable, concept and
+ * value of the graph, and the sentence's words, the first of them only.
+ */
+function checkNormalization(sentence, findings) {
+  const push = (message, variable) =>
+    findings.push({
+      level: 'error',
+      code: 'unicode-normalization',
+      message,
+      ...(variable ? { var: variable } : {}),
+    });
+  const off = (text) => typeof text === 'string' && nfc(text) !== text;
+  for (const [variable, node] of sentence.graph?.nodes ?? new Map()) {
+    if (off(variable)) push(`The variable '${variable}' is not in Unicode NFC.`, variable);
+    if (off(node.concept)) {
+      push(`The concept '${node.concept}' of '${variable}' is not in Unicode NFC.`, variable);
+    }
+    for (const child of node.children ?? []) {
+      if (child.kind !== 'node' && off(child.value)) {
+        push(
+          `The value ${child.value} of '${variable} ${child.rel}' is not in Unicode NFC.`,
+          variable,
+        );
+      }
+    }
+  }
+  const word = (sentence.words ?? []).findIndex(off);
+  if (word !== -1) {
+    push(`Word ${word + 1} ('${sentence.words[word]}') is not in Unicode NFC.`);
+  }
 }
 
 function checkAlignment(sentence, findings, options) {
@@ -545,7 +644,7 @@ function checkName(variable, node, incoming, findings) {
       findings.push({
         level: 'error',
         code: 'unexpected-value',
-        message: `Expected a quoted string for '${child.rel}' of a 'name' concept, found a ${child.kind}.`,
+        message: `Expected a quoted string for '${child.rel}' of a 'name' concept, found ${aKind(child.kind)}.`,
         var: variable,
       });
     }
@@ -575,7 +674,7 @@ function checkWiki(variable, children, findings) {
       findings.push({
         level: 'error',
         code: 'unexpected-value',
-        message: `Expected a quoted string for ':wiki', found a ${child.kind}.`,
+        message: `Expected a quoted string for ':wiki', found ${aKind(child.kind)}.`,
         var: variable,
       });
       return;
@@ -631,7 +730,7 @@ function checkEvents(sentence, findings, options) {
           findings.push({
             level: 'error',
             code: 'invalid-attribute',
-            message: `':modal-strength' on '${variable}' takes an atom, not a ${strength.kind}.`,
+            message: `':modal-strength' on '${variable}' takes an atom, not ${aKind(strength.kind)}.`,
             var: variable,
           });
         }
@@ -663,6 +762,111 @@ function checkEvents(sentence, findings, options) {
   }
 }
 
+/**
+ * A node in a :same-event relation must not be an entity, and a node in a
+ * :same-entity relation not an event (validate.py:1624). What a node is
+ * carries over from sentence to sentence in `kinds`: its shape says it is an
+ * event, and each coreference relation, taken in order, says what its two
+ * nodes are from then on.
+ */
+function checkCorefKinds(sentence, findings, options) {
+  if (!options.checkCorefEntityEvent) return;
+  const { kinds } = options;
+  const nodes = sentence.graph?.nodes ?? new Map();
+  const previous = options.previousVars ?? new Set();
+  detectEvents(sentence, options.sets ?? 'validator', { sameEvent: false }).forEach(
+    (reason, variable) => {
+      if (!kinds.event.has(variable)) kinds.event.set(variable, reason);
+    },
+  );
+  const RULES = {
+    ':same-event': { is: 'event', not: 'entity' },
+    ':same-entity': { is: 'entity', not: 'event' },
+  };
+  for (const [a, relation, b] of sentence.docGraph?.coref ?? []) {
+    const rule = RULES[relation];
+    if (!rule) continue;
+    [a, b].forEach((variable) => {
+      if (!nodes.has(variable) && !previous.has(variable)) return;
+      const against = kinds[rule.not].get(variable);
+      if (against) {
+        findings.push({
+          level: 'error',
+          code: 'coref-entity-event-mismatch',
+          message: `'${variable}' cannot be in a ${relation} relation. It is an ${rule.not} because ${against}.`,
+          var: variable,
+        });
+      }
+      if (!kinds[rule.is].has(variable)) {
+        kinds[rule.is].set(variable, `it is in a ${relation} relation`);
+      }
+    });
+  }
+}
+
+/**
+ * Nodes in one coreference cluster with different Wikidata ids
+ * (validate.py:1849). A cluster is what :same-entity and :same-event join,
+ * across the whole document. In each, the members in order of variable are
+ * held to the first one with a `:wiki`.
+ *
+ * @param {Array<object>} sentences
+ * @returns {Array<{level, code, message, var, sentence}>}
+ */
+function corefWikiMismatches(sentences) {
+  const where = new Map();
+  sentences.forEach((sentence, i) => {
+    for (const [variable, node] of sentence.graph?.nodes ?? new Map()) {
+      if (!where.has(variable)) where.set(variable, { node, sentence: sentence.index ?? i + 1 });
+    }
+  });
+  const parent = new Map();
+  const find = (v) => {
+    while (parent.get(v) !== v) v = parent.get(v);
+    return v;
+  };
+  sentences.forEach((sentence) => {
+    for (const [a, relation, b] of sentence.docGraph?.coref ?? []) {
+      if (relation !== ':same-entity' && relation !== ':same-event') continue;
+      if (!where.has(a) || !where.has(b)) continue;
+      [a, b].forEach((v) => parent.has(v) || parent.set(v, v));
+      parent.set(find(a), find(b));
+    }
+  });
+  const clusters = new Map();
+  for (const v of parent.keys()) {
+    const root = find(v);
+    if (!clusters.has(root)) clusters.set(root, []);
+    clusters.get(root).push(v);
+  }
+  const wikiOf = (v) => {
+    const child = (where.get(v).node.children ?? []).find((c) => c.rel === ':wiki');
+    return child ? String(child.value).replace(/^"|"$/g, '') : '';
+  };
+  const findings = [];
+  for (const members of clusters.values()) {
+    let first = null;
+    for (const v of members.sort()) {
+      const wiki = wikiOf(v);
+      if (!wiki) continue;
+      if (!first) {
+        first = { v, wiki };
+        continue;
+      }
+      if (wiki !== first.wiki) {
+        findings.push({
+          level: 'error',
+          code: 'coref-wiki-mismatch',
+          message: `'${v}' has the Wikidata id ${wiki}, and it corefers with '${first.v}', whose Wikidata id is ${first.wiki}.`,
+          var: v,
+          sentence: where.get(v).sentence,
+        });
+      }
+    }
+  }
+  return findings;
+}
+
 const DEFAULTS = {
   sets: 'validator',
   previousVars: new Set(),
@@ -673,6 +877,7 @@ const DEFAULTS = {
   checkAspectModstr: true,
   requireDocumentLevel: true,
   checkMisplaced: true,
+  checkCorefEntityEvent: true,
 };
 
 /**
@@ -685,12 +890,18 @@ const DEFAULTS = {
  * @returns {Array<{level: 'error'|'warning', code: string, message: string, var?: string}>}
  */
 export function validateSentence(sentence, options = {}) {
-  const settings = { ...DEFAULTS, ...options };
+  const settings = {
+    ...DEFAULTS,
+    kinds: { event: new Map(), entity: new Map() },
+    ...options,
+  };
   const findings = [];
+  checkNormalization(sentence, findings);
   checkGraph(sentence, findings, settings);
   checkAlignment(sentence, findings, settings);
   checkDocGraph(sentence, findings, settings);
   checkContents(sentence, findings, settings);
+  checkCorefKinds(sentence, findings, settings);
   return findings;
 }
 
@@ -699,8 +910,11 @@ export function validateSentence(sentence, options = {}) {
  * variables the earlier ones defined, so that a cross-sentence reference and
  * a document-level relation that touches no current node are both caught.
  *
- * Left for later, as validate.py does them document-wide: coreference cluster
- * consistency, `:wiki` agreement within a cluster, and temporal contradictions.
+ * Coreference is checked across the document as well: a node's kind (event or
+ * entity) against the coreference relations it is in, and `:wiki` agreement
+ * within a cluster. Not checked yet: temporal contradictions
+ * (`temporal-mismatch`), which validate.py infers over the whole temporal
+ * graph.
  *
  * @param {Array<object>} sentences
  * @param {object} [options] as validateSentence, plus nothing else
@@ -709,12 +923,14 @@ export function validateSentence(sentence, options = {}) {
 export function validateDocument(sentences, options = {}) {
   const findings = [];
   const previousVars = new Set();
+  const kinds = { event: new Map(), entity: new Map() };
   (sentences ?? []).forEach((sentence, i) => {
-    validateSentence(sentence, { ...options, previousVars }).forEach((finding) => {
+    validateSentence(sentence, { ...options, previousVars, kinds }).forEach((finding) => {
       findings.push({ ...finding, sentence: sentence.index ?? i + 1 });
     });
     for (const variable of sentence.graph?.nodes.keys() ?? []) previousVars.add(variable);
     if (sentence.docGraph?.var) previousVars.add(sentence.docGraph.var);
   });
+  if ({ ...DEFAULTS, ...options }.checkWiki) findings.push(...corefWikiMismatches(sentences ?? []));
   return findings;
 }

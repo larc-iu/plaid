@@ -314,3 +314,202 @@ s2g: 1-1
     });
   });
 });
+
+// The value grammar validate.py reads a sentence graph with
+// (validate.py:392-398). The app's own reader is looser, so a value it takes
+// can still break the whole sentence for the official validator.
+describe('values validate.py cannot read', () => {
+  const valueCodes = (graph) =>
+    codes(validateSentence(sentence({ graph }), quiet)).filter(
+      (code) => code !== 'unexpected-value',
+    );
+
+  test('an atom with a capital or an underscore', () => {
+    assert.deepEqual(valueCodes('(s1b / boy\n    :mode Imperative)'), ['value-wrong-chars']);
+    assert.deepEqual(valueCodes('(s1b / boy\n    :mod big_one)'), ['value-wrong-chars']);
+  });
+
+  test('an atom it does not read at all', () => {
+    assert.deepEqual(valueCodes('(s1b / boy\n    :quant .5)'), ['missing-node-definition']);
+    assert.deepEqual(valueCodes('(s1b / boy\n    :mod caf\u00e9)'), ['missing-node-definition']);
+    assert.deepEqual(valueCodes('(s1b / boy\n    :mod a/b)'), ['missing-node-definition']);
+  });
+
+  test('a string that is empty, holds a quote or runs over a line', () => {
+    assert.deepEqual(valueCodes('(s1b / boy\n    :mod "")'), ['missing-node-definition']);
+    assert.deepEqual(valueCodes('(s1b / boy\n    :mod "O\\"Brien")'), ['invalid-sentence-level']);
+    assert.deepEqual(valueCodes('(s1b / boy\n    :mod "a\nb")'), ['invalid-line']);
+  });
+
+  test('what it does read', () => {
+    [
+      ':quant 3.5',
+      ':quant 12',
+      ':time 15:30',
+      ':polarity -',
+      ':mod +',
+      ':mod "Caf\u00e9 Noir"',
+    ].forEach((child) => assert.deepEqual(valueCodes(`(s1b / boy\n    ${child})`), [], child));
+  });
+
+  test('the message says what is wrong in the value', () => {
+    const [found] = validateSentence(
+      sentence({ graph: '(s1b / boy\n    :mode Imperative)' }),
+      quiet,
+    );
+    assert.equal(
+      found.message,
+      "The value 'Imperative' of ':mode' holds a capital letter or an underscore.",
+    );
+    assert.equal(found.var, 's1b');
+  });
+});
+
+describe('text in NFC', () => {
+  // As the app hands a sentence to the checks, not as a file reads: the
+  // reader normalizes, the model may hold what the API stored.
+  const inApp = ({ variable = 's1c', concept = 'cat', value = '"x"', words = ['cat'] }) => ({
+    index: 1,
+    words,
+    graph: {
+      root: variable,
+      nodes: new Map([
+        [variable, { var: variable, concept, children: [{ rel: ':mod', kind: 'string', value }] }],
+      ]),
+      errors: [],
+    },
+    alignment: new Map([[variable, [[1, 1]]]]),
+    docGraph: null,
+  });
+  const nfcFindings = (s) =>
+    validateSentence(s, quiet).filter((finding) => finding.code === 'unicode-normalization');
+
+  test('a concept, a variable, a value and a word are each named', () => {
+    const e = 'e\u0301';
+    assert.deepEqual(
+      nfcFindings(inApp({ concept: `caf${e}` })).map((f) => f.message),
+      [`The concept 'caf${e}' of 's1c' is not in Unicode NFC.`],
+    );
+    assert.equal(nfcFindings(inApp({ variable: `s1${e}` })).length, 1);
+    assert.equal(nfcFindings(inApp({ value: `"caf${e}"` })).length, 1);
+    assert.deepEqual(
+      nfcFindings(inApp({ words: ['le', `caf${e}`, `th${e}`] })).map((f) => f.message),
+      [`Word 2 ('caf${e}') is not in Unicode NFC.`],
+    );
+  });
+
+  test('composed text is not reported', () => {
+    assert.deepEqual(nfcFindings(inApp({ concept: 'caf\u00e9', words: ['caf\u00e9'] })), []);
+  });
+});
+
+describe('messages', () => {
+  test('an atom is "an atom"', () => {
+    const found = validateSentence(
+      sentence({ graph: '(s1p / person\n    :name (s1n / name\n        :op1 bob))' }),
+      quiet,
+    );
+    const message = found.find((f) => f.code === 'unexpected-value').message;
+    assert.match(message, /found an atom\.$/);
+  });
+});
+
+describe('coreference across the document', () => {
+  const at = (index, spec) => ({ ...sentence(spec), index });
+
+  test('an event in a :same-entity relation', () => {
+    const found = validateDocument(
+      [
+        at(1, { graph: '(s1g / go-01\n    :aspect performance)' }),
+        at(2, {
+          graph: '(s2b / boy)',
+          doc: '(s2s0 / sentence\n    :coref ((s1g :same-entity s2b)))',
+        }),
+      ],
+      quiet,
+    ).filter((f) => f.code === 'coref-entity-event-mismatch');
+    assert.deepEqual(
+      found.map((f) => [f.sentence, f.var, f.message]),
+      [
+        [
+          2,
+          's1g',
+          "'s1g' cannot be in a :same-entity relation. It is an event because it has the outgoing relation :aspect.",
+        ],
+      ],
+    );
+  });
+
+  test('a node an earlier relation made an entity, in a :same-event relation', () => {
+    const found = validateDocument(
+      [
+        at(1, {
+          graph: '(s1b / boy)',
+          doc: '(s1s0 / sentence\n    :coref ((s1b :same-entity s1b)))',
+        }),
+        at(2, {
+          graph: '(s2t / thing)',
+          doc: '(s2s0 / sentence\n    :coref ((s1b :same-event s2t)))',
+        }),
+      ],
+      quiet,
+    ).filter((f) => f.code === 'coref-entity-event-mismatch');
+    assert.deepEqual(
+      found.map((f) => [f.sentence, f.var]),
+      [[2, 's1b']],
+    );
+    assert.match(found[0].message, /entity because it is in a :same-entity relation/);
+  });
+
+  test('two entities and two events are fine', () => {
+    const found = validateDocument(
+      [
+        at(1, { graph: '(s1g / go-01\n    :aspect performance\n    :ARG0 (s1b / boy))' }),
+        at(2, {
+          graph: '(s2g / go-01\n    :aspect performance\n    :ARG0 (s2h / he))',
+          doc: '(s2s0 / sentence\n    :coref ((s1b :same-entity s2h)\n        (s1g :same-event s2g)))',
+        }),
+      ],
+      quiet,
+    );
+    assert.deepEqual(
+      found.filter((f) => f.code === 'coref-entity-event-mismatch'),
+      [],
+    );
+  });
+
+  test('a cluster with two Wikidata ids', () => {
+    const person = (v, wiki) => `(${v} / person\n    :wiki "${wiki}")`;
+    const sentences = [
+      at(1, { graph: person('s1p', 'Q1') }),
+      at(2, {
+        graph: person('s2p', 'Q2'),
+        doc: '(s2s0 / sentence\n    :coref ((s1p :same-entity s2p)))',
+      }),
+      at(3, {
+        graph: person('s3p', 'Q1'),
+        doc: '(s3s0 / sentence\n    :coref ((s3p :same-entity s2p)))',
+      }),
+    ];
+    const found = validateDocument(sentences, quiet).filter(
+      (f) => f.code === 'coref-wiki-mismatch',
+    );
+    assert.deepEqual(
+      found.map((f) => [f.sentence, f.var, f.message]),
+      [
+        [
+          2,
+          's2p',
+          "'s2p' has the Wikidata id Q2, and it corefers with 's1p', whose Wikidata id is Q1.",
+        ],
+      ],
+    );
+    // As validate.py's --no-check-wiki.
+    assert.deepEqual(
+      validateDocument(sentences, { ...quiet, checkWiki: false }).filter(
+        (f) => f.code === 'coref-wiki-mismatch',
+      ),
+      [],
+    );
+  });
+});
