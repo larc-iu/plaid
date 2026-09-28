@@ -685,10 +685,17 @@ export const VocabularyItems = ({
     });
   }, [selectedId, newParent, items, tree, draft.seedKey, pastTime]);
 
-  const dirty = isNew ? isDirty(draft, null) : selectedItem ? isDirty(draft, selectedItem) : false;
+  // A row of the roleset band whose name is not an ARG or repeats another
+  // (RolesetBand's onProblem). The draft's fields keep that argument as it was
+  // read, so they alone would call the entry unchanged: the row still counts
+  // as typed, Cancel takes it back, and Save refuses while it shows.
+  const [argProblem, setArgProblem] = useState(null);
+  const dirty =
+    !!argProblem ||
+    (isNew ? isDirty(draft, null) : selectedItem ? isDirty(draft, selectedItem) : false);
   // What leaving would lose. A new sense still holding only its headword's
   // form can be saved, but leaving it loses nothing.
-  const typed = isNew ? hasTyped(draft, null) : dirty;
+  const typed = isNew ? !!argProblem || hasTyped(draft, null) : dirty;
   // The draft's fields read as the morph type it has now: its own, else its
   // headword's (morphTypeOf), as the list above reads a saved entry.
   const draftTagsetFor = entryTagsetFor(
@@ -712,7 +719,7 @@ export const VocabularyItems = ({
     draftRoleset !== (isNew ? '' : readRoleset(editableMetadata(selectedItem?.metadata)))
       ? rolesetProblem(draftRoleset)
       : null;
-  const saveAllowed = tagsetsAllow && !rolesetRefused;
+  const saveAllowed = tagsetsAllow && !rolesetRefused && !argProblem;
 
   const cancelEdit = () => {
     if (isNew) {
@@ -785,6 +792,10 @@ export const VocabularyItems = ({
     }
     if (rolesetRefused) {
       notifyError(rolesetRefused, 'Not saved');
+      return;
+    }
+    if (argProblem) {
+      notifyError(argProblem, 'Not saved');
       return;
     }
     if (!saveAllowed) {
@@ -1119,6 +1130,7 @@ export const VocabularyItems = ({
       dispatch={dispatch}
       dirty={dirty}
       saveAllowed={saveAllowed}
+      onRolesetProblem={setArgProblem}
       canManage={canManage}
       tagsetFor={draftTagsetFor}
       statusKey={statusKey}

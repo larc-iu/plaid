@@ -227,6 +227,61 @@ describe('the entry form', () => {
     await view.unmount();
   });
 
+  it('refuses to save while an argument row of the roleset band names no ARG or repeats one', async () => {
+    // Saved as it stood, the row would keep the argument as it was read and
+    // say nothing of the name typed over it.
+    const { client, calls } = stub([
+      {
+        id: 'a',
+        form: 'uno',
+        metadata: {
+          gloss: 'one',
+          umr: { roleset: 'uno-01', args: { ARG0: 'giver', ARG1: 'gift' } },
+        },
+      },
+    ]);
+    // A project set up for UMR links the vocabulary, so the band shows.
+    client.projects.list = async () => [
+      {
+        id: 'p1',
+        vocabs: [{ id: 'v1' }],
+        textLayers: [{ tokenLayers: [{ config: { umr: { nodes: true } } }] }],
+      },
+    ];
+    const view = await mount(client, '/vocabularies/v1?item=a');
+    const argName = (n) => document.querySelector(`input[aria-label="Argument ${n} name"]`);
+    expect(argName(2).value).toBe('ARG1');
+
+    await view.step(() => setValue(glossInput(), 'ONE'));
+    await view.step(() => setValue(argName(2), 'ARG0'));
+    expect(document.body.textContent).toContain('ARG0 is named twice.');
+    expect(button('Save').disabled).toBe(true);
+    // Enter in the form box saves too, and is refused the same way.
+    await view.step(() =>
+      formInput().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })),
+    );
+    expect(feedback.notifyError).toHaveBeenCalledWith('ARG0 is named twice.', 'Not saved');
+    expect(calls).toEqual([]);
+
+    // A name typed over with nothing else changed still counts as typed, and
+    // Cancel takes the row back to the entry's.
+    await view.step(() => setValue(glossInput(), 'one'));
+    await view.step(() => setValue(argName(2), 'ARG'));
+    expect(hasUnsavedDraft()).toBeTruthy();
+    await view.step(() => button('Cancel').click());
+    expect(argName(2).value).toBe('ARG1');
+    expect(hasUnsavedDraft()).toBeFalsy();
+
+    await view.step(() => setValue(argName(2), 'ARG2'));
+    expect(button('Save').disabled).toBe(false);
+    await view.step(async () => {
+      button('Save').click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(calls.length).toBe(1);
+    await view.unmount();
+  });
+
   it('asks before the tab closes while a save is on its way, after the screen is left too', async () => {
     const { client, holds } = stub([{ id: 'a', form: 'uno' }]);
     const held = deferred();

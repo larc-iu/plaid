@@ -40,6 +40,7 @@ export const EntryEditor = ({
   dispatch,
   dirty,
   saveAllowed,
+  onRolesetProblem,
   canManage,
   tagsetFor,
   statusKey,
@@ -263,6 +264,7 @@ export const EntryEditor = ({
             fields={draft.fields}
             setFields={setFields}
             disabled={!canManage}
+            onProblem={onRolesetProblem}
           />
         )}
       </div>

@@ -102,4 +102,42 @@ describe('RolesetBand', () => {
     expect(view.input('Argument 1 description').value).toBe('giver ');
     await view.unmount();
   });
+
+  it('tells the entry of a row problem once a name is typed, and not of rows as read', async () => {
+    const heard = [];
+    const Harness = ({ initial }) => {
+      const [fields, setFields] = useState(initial);
+      return (
+        <RolesetBand
+          uid="e1"
+          fields={fields}
+          setFields={setFields}
+          onProblem={(p) => heard.push(p)}
+        />
+      );
+    };
+    // Stored as two keys that read as one name: nothing typed, nothing heard.
+    const asRead = await renderComponent(
+      <Harness initial={{ umr: { args: { ARG1: 'thing', arg1: 'other' } } }} />,
+    );
+    expect(texts(asRead.container, 'p.text-destructive')).toEqual(['ARG1 is named twice.']);
+    expect(heard.filter(Boolean)).toEqual([]);
+    await asRead.unmount();
+
+    heard.length = 0;
+    const view = await renderComponent(
+      <Harness initial={{ umr: { args: { ARG0: 'giver', ARG1: 'thing' } } }} />,
+    );
+    const name = (n) => view.container.querySelector(`input[aria-label="Argument ${n} name"]`);
+    // The first row renamed onto the second: the problem shows on the second,
+    // which was not touched, and still counts.
+    await view.step(() => type(name(1), 'ARG1'));
+    expect(heard.at(-1)).toBe('ARG1 is named twice.');
+    await view.step(() => type(name(1), 'ARG0'));
+    expect(heard.at(-1)).toBeNull();
+    await view.step(() => type(name(2), 'AR'));
+    expect(heard.at(-1)).toBe('An argument is named ARG0, ARG1 and so on: AR');
+    await view.unmount();
+    expect(heard.at(-1)).toBeNull();
+  });
 });

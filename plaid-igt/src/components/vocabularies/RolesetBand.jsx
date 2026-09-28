@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
@@ -36,7 +36,13 @@ const seedDraft = (fields) => ({
 // it was: read back from the fields on every keystroke, a space typed at the
 // end of a description was trimmed away before the next letter, and a name
 // retyped through `ARG` took its row with it.
-export const RolesetBand = ({ uid, fields, setFields, disabled = false }) => {
+//
+// `onProblem` hears the first row problem once a name has been typed or a row
+// added here (null when there is none), so the entry's Save can refuse while
+// one shows. Rows as read (an entry holding `ARG1` and `arg1` reads as two
+// `ARG1` rows) do not lock the entry, as an off-tagset value an import left
+// behind does not.
+export const RolesetBand = ({ uid, fields, setFields, disabled = false, onProblem }) => {
   const bandId = useId();
   const [draft, setDraft] = useState(() => seedDraft(fields));
   // The fields this band last wrote or was seeded from. A `umr` object other
@@ -55,6 +61,14 @@ export const RolesetBand = ({ uid, fields, setFields, disabled = false }) => {
   const { roleset, rows } = current;
   const refused = rolesetProblem(roleset);
   const problems = argRowProblems(rows);
+  // A name renamed onto another row's makes that row the repeated one, so
+  // any name typed here brings every row's problem in.
+  const namesTyped = rows.some((r) => r.key !== r.base?.key);
+  const typedProblem = (namesTyped && problems.find(Boolean)) || null;
+  useEffect(() => {
+    onProblem?.(typedProblem);
+  }, [onProblem, typedProblem]);
+  useEffect(() => () => onProblem?.(null), [onProblem]);
 
   const write = (patch) => {
     const next = { ...current, ...patch };
