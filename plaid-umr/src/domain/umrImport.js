@@ -384,6 +384,15 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
     }
     if (readable) {
       ps.graph.nodes.forEach((node, v) => {
+        // The export names each sentence's document-level block `s<n>s0`,
+        // and the editors refuse a node of that name (UmrDocument), so a
+        // file's node of that name can clash with a block the export writes.
+        const docGraphOf = /^s([0-9]+)s0$/.exec(v)?.[1];
+        if (docGraphOf) {
+          warnings.push(
+            `Sentence ${index}: ${v} names the document graph of sentence ${Number(docGraphOf)}. Rename the node.`,
+          );
+        }
         const ranges = ps.alignment?.get(v) || [];
         const pieceIndexes = [];
         ranges.forEach(([a, b]) => {

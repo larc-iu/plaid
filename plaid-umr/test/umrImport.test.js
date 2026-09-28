@@ -176,3 +176,23 @@ test('a note the reader makes per node is said once per sentence', () => {
     ['2 sentences: Alignment lines have a space before the colon.'],
   );
 });
+
+test('a node named like a document graph is kept and reported', () => {
+  // `s1s0` is what the export calls sentence 1's document-level block, and
+  // the editors refuse the name, so the import says so and keeps the node.
+  const warnings = [];
+  const plan = planImport(
+    parseUmrFile(
+      file(CAT, {
+        graph: '(s2s / sleep-01\n    :ARG0 (s1s0 / cat))',
+        alignment: 's2s: 3-3\ns1s0: 2-2',
+      }),
+    ).sentences,
+    warnings,
+  );
+  assert.deepEqual(
+    warnings.filter((w) => /document graph/.test(w)),
+    ['Sentence 2: s1s0 names the document graph of sentence 1. Rename the node.'],
+  );
+  assert.ok(plan.nodes.some((n) => n.key === '2:s1s0'));
+});
