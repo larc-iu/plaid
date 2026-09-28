@@ -36,7 +36,7 @@ const graphOf = (list, nodes) => {
   return { sentences: list, nodesById: new Map(nodes.map((n) => [n.id, n])) };
 };
 const plan = (graph) => planUnalignedHeal(graph, 'umr');
-const nothing = { remove: [], rebind: [], resize: [] };
+const nothing = { remove: [], rebind: [], resize: [], unanchor: [] };
 
 test('a node standing over the sentence it records is left alone', () => {
   const graph = graphOf(sentences(['A', 0, 10], ['B', 10, 20]), [
@@ -57,6 +57,7 @@ test('a node anchored to a point is put back over its sentence', () => {
     remove: [],
     rebind: [],
     resize: [{ nodeId: 'b1', pieceId: 'p-b1', begin: 10, end: 20 }],
+    unanchor: [],
   });
 });
 
@@ -85,6 +86,7 @@ test("a joined sentence's node is bound to the sentence it joined", () => {
       { nodeId: 'b1', pieceId: 'p-b1', begin: 0, end: 20 },
       { nodeId: 'b2', pieceId: 'p-b2', begin: 0, end: 20 },
     ],
+    unanchor: [],
   });
 });
 
@@ -99,6 +101,7 @@ test('a boundary removed and put back keeps the sentence its nodes', () => {
     remove: [],
     rebind: [{ nodeId: 'b1', sentenceTokenId: 'C' }],
     resize: [],
+    unanchor: [],
   });
 });
 
@@ -115,6 +118,7 @@ test('records naming sentences of another document rebind, and remove nothing', 
       { nodeId: 'b1', sentenceTokenId: 'B2' },
     ],
     resize: [],
+    unanchor: [],
   });
 });
 

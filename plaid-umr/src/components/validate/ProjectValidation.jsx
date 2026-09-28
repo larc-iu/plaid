@@ -62,6 +62,7 @@ export const ProjectValidation = () => {
       const found = await validateProject(client, projectId, {
         conceptLayerId: layerInfo.conceptLayer?.id,
         wordLayerId: layerInfo.wordTokenLayer?.id,
+        project,
       });
       // The position in the report is the row's identity: two identical
       // problems in one sentence are two rows, and nothing else tells them
@@ -74,7 +75,7 @@ export const ProjectValidation = () => {
     } finally {
       setBusy(false);
     }
-  }, [client, layerInfo, projectId]);
+  }, [client, layerInfo, projectId, project]);
 
   useEffect(() => {
     scan();

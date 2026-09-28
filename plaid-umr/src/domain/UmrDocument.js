@@ -17,7 +17,7 @@ import {
 } from '@larc-iu/plaid-client';
 import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
 import { pendingId, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
-import { vocabLinksByToken } from './vocabLexicon.js';
+import { buildLexicon, vocabLinksByToken } from './vocabLexicon.js';
 import { getUmrLayerInfo, UMR_NAMESPACE, readIlgConfig } from '../utils/umrLayerUtils.js';
 import { resolveIlg, ilgLinesFor } from './ilg.js';
 import {
@@ -33,7 +33,13 @@ import {
   keepUnchangedSentences,
 } from './sentenceGraph.js';
 import { DOC_CONSTANTS } from './format/inventory.js';
-import { describeUmrReconcile, planUnalignedHeal } from './umrReconcile.js';
+import {
+  describeUmrReconcile,
+  planEntryUnlink,
+  planRenumber,
+  planStrayTokens,
+  planUnalignedHeal,
+} from './umrReconcile.js';
 import {
   serializeUmrFile,
   readAlignment,
@@ -51,6 +57,7 @@ import {
   validateDocument,
   unknownRelationProblem,
   unknownDocRelationProblem,
+  valueGrammarProblem,
 } from './format/validate.js';
 
 const VARIABLE = /^s[0-9]+\p{Ll}+[0-9]*$/u;
@@ -58,6 +65,46 @@ const VARIABLE = /^s[0-9]+\p{Ll}+[0-9]*$/u;
 const DOC_GRAPH_VARIABLE = /^s[0-9]+s0$/;
 
 const umrOf = (entity) => entity?.metadata?.[UMR_NAMESPACE] || {};
+
+/**
+ * The project's vocabularies as the lexicon buildLexicon makes, and whether
+ * every one of them was read. A vocabulary that cannot be read is left out
+ * of the lexicon, and `complete` says so: an entry missing from an
+ * incomplete read may only be unread, so nothing is judged gone on one.
+ * Null when the project does not say which vocabularies it has.
+ */
+export async function readEntryLexicon(client, project) {
+  if (!client || !Array.isArray(project?.vocabs)) return null;
+  const ids = project.vocabs.map((v) => v.id);
+  const got = await Promise.all(
+    ids.map((id) =>
+      client.vocabLayers.get(id, true).catch((err) => {
+        console.warn(`Could not read vocabulary ${id}:`, err);
+        return null;
+      }),
+    ),
+  );
+  return { lexicon: buildLexicon(got.filter(Boolean)), complete: got.every(Boolean) };
+}
+
+/**
+ * What changed in the entry a node was picked from, or null: the entry's
+ * current concept (its roleset, else its headword) when that is no longer
+ * the node's. A node that names no entry, or an entry the lexicon does not
+ * hold, has nothing to compare.
+ */
+export function entryChangeOf(node, lexicon) {
+  const id = node?.metadata?.[UMR_NAMESPACE]?.entry;
+  const entry = id && lexicon ? lexicon.byId.get(id) : null;
+  if (!entry || node.constant || entry.concept === node.concept) return null;
+  return { entryId: id, form: entry.form, from: node.concept, to: entry.concept };
+}
+
+// The warning an entry change is reported with: "s2v was picked from ver,
+// now ver-02." An entry renamed to its own new concept (kitap to kitab) is
+// named by the concept the node took from it.
+const entryChangeMessage = (v, { form, from, to }) =>
+  `${v} was picked from ${form === to ? from : form}, now ${to}.`;
 
 // Every string the model takes is in NFC, as the format requires of the file
 // (penman.js `nfc`): a concept, variable, relation or value typed with a
@@ -82,9 +129,21 @@ const umrOps = (changes) =>
 const QUIET_ON_CANVAS = new Set(['unaligned-token']);
 
 export class UmrDocument extends DocumentModel {
-  constructor({ raw, client = null, projectId = null, project = null, user = null, asOf = null }) {
+  constructor({
+    raw,
+    client = null,
+    projectId = null,
+    project = null,
+    user = null,
+    asOf = null,
+    lexicon = null,
+  }) {
     super({ raw, client, projectId, project, user, asOf });
     this._writer = null;
+    // The project's vocabularies (readEntryLexicon), once read: what the
+    // entry check compares a node picked from an entry with.
+    this._lexicon = lexicon;
+    this._lexiconRead = null;
     // The graph and the per-sentence problems of the last version read, kept
     // so the next version can hand back what an edit left as it was.
     this._lastGraph = null;
@@ -104,7 +163,126 @@ export class UmrDocument extends DocumentModel {
       project: this._project,
       user: this._user,
       asOf,
+      lexicon: this._lexicon,
     });
+  }
+
+  // ----- the vocabulary the nodes were picked from -----
+
+  /** The project's vocabularies as a lexicon, or null until read. */
+  get lexicon() {
+    return this._lexicon;
+  }
+
+  /** Take a lexicon read elsewhere: the entry checks are read again. */
+  setLexicon(lexicon) {
+    if (this._lexicon === lexicon) return;
+    this._lexicon = lexicon;
+    this._derivedCache.delete('problems');
+    this._derivedCache.delete('problemsBySentence');
+    this._emit();
+  }
+
+  /**
+   * Read the project's vocabularies, once per document, and take them as
+   * the lexicon. Resolves to readEntryLexicon's answer, or null.
+   */
+  loadLexicon() {
+    if (!this._lexiconRead) {
+      this._lexiconRead = readEntryLexicon(this._client, this._project).then((read) => {
+        if (read) this.setLexicon(read.lexicon);
+        return read;
+      });
+    }
+    return this._lexiconRead;
+  }
+
+  /** What changed in the entry the node was picked from (entryChangeOf). */
+  entryChange(nodeId) {
+    return entryChangeOf(this.node(nodeId), this._lexicon);
+  }
+
+  // The nodes `takeEntryValue` changes: the node alone, or every node of
+  // the document picked from the same entry and not reading its value.
+  _entryTargets(nodeId, everywhere) {
+    const change = this.entryChange(nodeId);
+    if (!change) return [];
+    if (!everywhere) return [this.node(nodeId)];
+    return [...this.graph.nodesById.values()].filter(
+      (n) =>
+        n.sentence != null &&
+        umrOf(n).entry === change.entryId &&
+        entryChangeOf(n, this._lexicon) !== null,
+    );
+  }
+
+  /**
+   * How many nodes of the document take the entry's new value with
+   * `takeEntryValue(nodeId, { everywhere: true })`: 0 when the node's entry
+   * has not changed.
+   */
+  entryChangeCount(nodeId) {
+    return this._entryTargets(nodeId, true).length;
+  }
+
+  /**
+   * The node takes the current concept of the vocabulary entry it was picked
+   * from, which changed since (see `entryChange`). With `everywhere`, every
+   * node of the document picked from that entry and not reading it does.
+   * A person's edit, so it carries the writer's stamp. One operation.
+   * Resolves false when there was nothing to take.
+   */
+  takeEntryValue(nodeId, { everywhere = false } = {}) {
+    const change = this.entryChange(nodeId);
+    const targets = this._entryTargets(nodeId, everywhere);
+    if (!change || !targets.length) return Promise.resolve(false);
+    const concept = nfc(change.to);
+    if (this._refused(conceptProblem(concept))) return Promise.resolve(false);
+    const label = 'Failed to change the concept';
+    if (!this._canWrite(label)) return Promise.resolve(false);
+    const writes = targets.map((n) => [n.id, this._editStampOps(n.metadata)]);
+    this._applyRawPatch((next, infoNext) => {
+      const spans = this._layers(infoNext).spans;
+      writes.forEach(([id, ops]) => {
+        const span = spans.find((x) => x.id === id);
+        if (!span) return;
+        span.value = concept;
+        if (ops.length) span.metadata = applyMetadataOps(span.metadata, ops);
+      });
+    });
+    const who = targets.length === 1 ? targets[0].var : `${targets.length} nodes`;
+    return this._queueWrite(
+      label,
+      () =>
+        this._client.batched(async (b) => {
+          writes.forEach(([id, ops]) => {
+            b.spans.update(settledId(id), concept);
+            if (ops.length) b.spans.patchMetadata(settledId(id), ops);
+          });
+        }),
+      `Take ${concept} from the entry ${change.form} for ${who}`,
+    );
+  }
+
+  // The entry check, over every node: a warning where the entry a node was
+  // picked from now reads something else.
+  _entryProblems() {
+    const lexicon = this._lexicon;
+    if (!lexicon) return [];
+    const out = [];
+    this.graph.nodesById.forEach((node) => {
+      if (node.sentence == null) return;
+      const change = entryChangeOf(node, lexicon);
+      if (!change) return;
+      out.push({
+        level: 'warning',
+        code: 'entry-changed',
+        sentence: node.sentence,
+        var: node.var,
+        message: entryChangeMessage(node.var, change),
+      });
+    });
+    return out;
   }
 
   // ----- who is writing (provenance) -----
@@ -213,6 +391,7 @@ export class UmrDocument extends DocumentModel {
       ...crossSentenceEdges(this.graph),
       ...unreachedByRoot(this.graph),
       ...variablesSharedInSentence(this.graph),
+      ...this._entryProblems(),
     ]);
   }
 
@@ -255,34 +434,84 @@ export class UmrDocument extends DocumentModel {
 
   // ----- reconcile on open -----
 
-  // What another app's edit to the sentences left of a node aligned to no
-  // word (umrReconcile.js): a node whose sentence token is gone is bound to
-  // the sentence it stands in, an anchor that no longer covers its sentence
-  // is put back over it, and a node left outside every sentence goes. One
-  // batch, so the audit entry names one repair. History keeps what was
-  // removed.
+  // What another app's edit, or an edit cut off, left in the document
+  // (umrReconcile.js), put right in ONE batch, so the audit entry names one
+  // repair. History keeps what was removed.
+  //
+  // - A node aligned to no word: a node whose sentence token is gone is bound
+  //   to the sentence it stands in, an anchor that no longer covers its
+  //   sentence is put back over it, and a node left outside every sentence
+  //   goes.
+  // - A node whose words were deleted (in IGT) becomes an ordinary unaligned
+  //   node, named in the entry.
+  // - An anchor token no node stands on, what an add cut off after its first
+  //   request left, is removed.
+  // - A variable whose sentence number no longer matches its sentence (IGT
+  //   added or removed a sentence before it) is renumbered.
+  // - A node picked from a vocabulary entry that was deleted forgets it.
   //
   // NOT stamped, deliberately: a repair that runs on open decides nothing
   // and vouches for nothing, so it leaves provenance exactly as it found it
   // (the same rule igt's morpheme heal follows).
   async _reconcile() {
-    const { remove, rebind, resize } = planUnalignedHeal(this.graph, UMR_NAMESPACE);
-    if (!remove.length && !rebind.length && !resize.length) return { findings: [] };
+    const graph = this.graph;
+    const { remove, rebind, resize, unanchor } = planUnalignedHeal(graph, UMR_NAMESPACE);
+    const strays = planStrayTokens(this.layerInfo);
+    const removed = new Set(remove);
+    const renumber = planRenumber(graph, removed);
+    // Only on a complete read of the vocabularies: an entry missing from a
+    // read that skipped one may only be unread.
+    const read = await this.loadLexicon().catch(() => null);
+    const unlink = read?.complete
+      ? planEntryUnlink(graph, UMR_NAMESPACE, read.lexicon).filter((id) => !removed.has(id))
+      : [];
+    const nothing =
+      !remove.length &&
+      !rebind.length &&
+      !resize.length &&
+      !unanchor.length &&
+      !strays.length &&
+      !renumber.length &&
+      !unlink.length;
+    if (nothing) return { findings: [] };
     try {
-      const tokenIds = remove.flatMap((id) => this.node(id).pieces.map((p) => p.id));
+      const tokenIds = [
+        ...strays,
+        ...remove.flatMap((id) => this.node(id).pieces.map((p) => p.id)),
+      ];
+      // Every metadata change of one node in one patch.
+      const metaOf = new Map();
+      const change = (id, changes) => metaOf.set(id, { ...metaOf.get(id), ...changes });
+      rebind.forEach(({ nodeId, sentenceTokenId }) =>
+        change(nodeId, { sentence: sentenceTokenId }),
+      );
+      unanchor.forEach(({ nodeId, sentenceTokenId }) =>
+        change(nodeId, { sentence: sentenceTokenId }),
+      );
+      renumber.forEach(({ nodeId, to }) => change(nodeId, { var: to }));
+      unlink.forEach((nodeId) => change(nodeId, { entry: undefined }));
       await this._client.batched(async (b) => {
         if (tokenIds.length) b.tokens.bulkDelete(tokenIds);
-        rebind.forEach(({ nodeId, sentenceTokenId }) => {
-          b.spans.patchMetadata(nodeId, umrOps({ sentence: sentenceTokenId }));
+        metaOf.forEach((changes, nodeId) => b.spans.patchMetadata(nodeId, umrOps(changes)));
+        resize.forEach(({ nodeId, pieceId, begin, end, extra }) => {
+          b.tokens.update(pieceId, begin, end);
+          if (extra) {
+            b.spans.setTokens(nodeId, [pieceId]);
+            b.tokens.bulkDelete(extra);
+          }
         });
-        resize.forEach(({ pieceId, begin, end }) => b.tokens.update(pieceId, begin, end));
       });
       await this._reload();
+      const unanchored = new Set(unanchor.map((u) => u.nodeId));
       return {
         findings: [],
         removed: remove.length,
         rebound: rebind.length,
-        resized: resize.length,
+        resized: resize.filter((r) => !unanchored.has(r.nodeId)).length,
+        strays: strays.length,
+        unanchored: unanchor.map((u) => u.var),
+        renumbered: renumber.length,
+        unlinked: unlink.length,
       };
     } catch (error) {
       return { findings: [], error };
@@ -493,6 +722,28 @@ export class UmrDocument extends DocumentModel {
     tokens.forEach((t, i) => ids.set(t.id, createdIds(created)[i]));
   }
 
+  // A send that makes anchor pieces and then needs more requests to stand a
+  // node on them (core cannot name an id made earlier in its own batch). When
+  // a later step fails, the pieces it made are deleted again, and a node
+  // already on them with them (the server's cascade), inside the same
+  // operation, so no token nobody can see is left and History holds no add
+  // that half happened. Best effort: a connection that is gone takes this
+  // request too, and reconcile on the next open removes what is left
+  // (planStrayTokens). `ids` is where `_createPieces` records the pieces.
+  async _undoPiecesOnFailure(tokens, ids, work) {
+    try {
+      return await work();
+    } catch (error) {
+      const made = tokens.map((t) => ids.get(t.id)).filter(Boolean);
+      if (made.length) {
+        await this._client.tokens.bulkDelete(made).catch((err) => {
+          console.warn('Could not remove the anchors of an edit that failed:', err);
+        });
+      }
+      throw error;
+    }
+  }
+
   /**
    * A new node in a sentence: anchored to `wordIds` (none for an abstract
    * concept), under `parentId` with `role` when given. `entry` is the
@@ -568,24 +819,26 @@ export class UmrDocument extends DocumentModel {
       label,
       async () => {
         const info = this.layerInfo;
-        await this._createPieces(pieces, ids);
-        const span = await this._client.spans.create(
-          info.conceptLayer.id,
-          pieces.map((p) => ids.get(p.id)),
-          concept,
-          { ...stamp, [UMR_NAMESPACE]: meta },
-        );
-        ids.set(spanId, createdId(span));
-        if (parent) {
-          const rel = await this._client.relations.create(
-            info.relationLayer.id,
-            settledId(parent.id),
-            ids.get(spanId),
-            role,
-            { ...stamp, [UMR_NAMESPACE]: { order } },
+        await this._undoPiecesOnFailure(pieces, ids, async () => {
+          await this._createPieces(pieces, ids);
+          const span = await this._client.spans.create(
+            info.conceptLayer.id,
+            pieces.map((p) => ids.get(p.id)),
+            concept,
+            { ...stamp, [UMR_NAMESPACE]: meta },
           );
-          ids.set(edgeId, createdId(rel));
-        }
+          ids.set(spanId, createdId(span));
+          if (parent) {
+            const rel = await this._client.relations.create(
+              info.relationLayer.id,
+              settledId(parent.id),
+              ids.get(spanId),
+              role,
+              { ...stamp, [UMR_NAMESPACE]: { order } },
+            );
+            ids.set(edgeId, createdId(rel));
+          }
+        });
         this._settle(ids);
       },
       parent ? `Add ${role} ${concept} under ${parent.concept}` : `Add ${concept}`,
@@ -693,10 +946,13 @@ export class UmrDocument extends DocumentModel {
   attrValueProblem(rel, value, { nodeId = null } = {}) {
     rel = nfc(rel);
     value = nfc(value);
-    const why = valueFormProblem(value);
-    if (!why || !nodeId) return why;
     const text = String(rel ?? '').trim();
     const r = text.startsWith(':') ? text : `:${text}`;
+    // What the file cannot hold, then what validate.py cannot read (the
+    // owner's ruling: new input is refused with the reason, and a value an
+    // import brought is only reported, by the Validation tab).
+    const why = valueFormProblem(value) || valueGrammarProblem(value, r)?.message || null;
+    if (!why || !nodeId) return why;
     const stored = (this.node(nodeId)?.attrs ?? []).some((a) => a.rel === r && a.value === value);
     return stored ? null : why;
   }
@@ -839,15 +1095,17 @@ export class UmrDocument extends DocumentModel {
       label,
       async () => {
         const ids = new Map();
-        await this._createPieces(pieces, ids);
         const id = settledId(node.id);
-        await this._client.batched(async (b) => {
-          b.spans.setTokens(
-            id,
-            pieces.map((p) => ids.get(p.id)),
-          );
-          if (patchMeta) b.spans.patchMetadata(id, metaOps);
-          b.tokens.bulkDelete(oldIds.map(settledId));
+        await this._undoPiecesOnFailure(pieces, ids, async () => {
+          await this._createPieces(pieces, ids);
+          await this._client.batched(async (b) => {
+            b.spans.setTokens(
+              id,
+              pieces.map((p) => ids.get(p.id)),
+            );
+            if (patchMeta) b.spans.patchMetadata(id, metaOps);
+            b.tokens.bulkDelete(oldIds.map(settledId));
+          });
         });
         this._settle(ids);
       },
@@ -1227,8 +1485,23 @@ export class UmrDocument extends DocumentModel {
   // it, from this sentence or another, keeps the node it needs. The
   // relations on a node that goes are then all drafted ones, another
   // sentence's included, and the server's cascade takes them with it.
+  //
+  // A drafted edge whose child a person made or corrected stays, still a
+  // draft (the owner's ruling): editing a node stamps the node and not the
+  // edge into it, and cutting that edge left the corrected node an
+  // unconnected graph. Its parent then stays too, since a kept relation is
+  // on it.
   _discardPlan(sentence) {
-    const drafted = (x) => provState(x.metadata) === PROV_STATES.MACHINE;
+    const machine = (x) => provState(x.metadata) === PROV_STATES.MACHINE;
+    const keptEdges = new Set(
+      sentence.edges
+        .filter((e) => {
+          const child = this.node(e.target);
+          return machine(e) && child && !child.constant && !machine(child);
+        })
+        .map((e) => e.id),
+    );
+    const drafted = (x) => machine(x) && !keptEdges.has(x.id);
     const others = this.sentences.filter((s) => s !== sentence);
     // By id: a sentence an edit left as it was keeps its objects from the
     // version before (see `graph`), so a triple two blocks write is not one
@@ -1425,17 +1698,20 @@ export class UmrDocument extends DocumentModel {
     const ok = await this._queueWrite(
       failed,
       async () => {
-        if (newSource) await this._createConstant(newSource, ids);
-        if (newTarget) await this._createConstant(newTarget, ids);
-        const serverId = (id) => ids.get(id) || settledId(id);
-        const created = await this._client.relations.create(
-          this.layerInfo.documentGraphLayer.id,
-          serverId(sourceId),
-          serverId(targetId),
-          rel,
-          { ...stamp, [UMR_NAMESPACE]: meta },
-        );
-        ids.set(tripleId, createdId(created));
+        const made = [newSource, newTarget].filter(Boolean).map((c) => c.token);
+        await this._undoPiecesOnFailure(made, ids, async () => {
+          if (newSource) await this._createConstant(newSource, ids);
+          if (newTarget) await this._createConstant(newTarget, ids);
+          const serverId = (id) => ids.get(id) || settledId(id);
+          const created = await this._client.relations.create(
+            this.layerInfo.documentGraphLayer.id,
+            serverId(sourceId),
+            serverId(targetId),
+            rel,
+            { ...stamp, [UMR_NAMESPACE]: meta },
+          );
+          ids.set(tripleId, createdId(created));
+        });
         this._settle(ids);
       },
       `Add ${rel} from ${s?.var || source} to ${t?.var || target}`,
@@ -1562,7 +1838,12 @@ export class UmrDocument extends DocumentModel {
     if (!sentence) return { errors: [{ message: 'No such sentence.' }] };
     const parsed = parsePenman(text, { several: true });
     if (parsed.errors.length) return { errors: parsed.errors };
-    if (!parsed.root) return { errors: [{ message: 'The text has no graph.' }] };
+    // An empty text names no node, so every node goes, as any node missing
+    // from the text does (the owner's ruling). Text that is not empty and
+    // holds no graph is a mistake, not a deletion.
+    if (!parsed.root && String(text).trim()) {
+      return { errors: [{ message: 'The text has no graph.' }] };
+    }
     // The text shows every node of the sentence, so every one is its to keep
     // or delete.
     const written = new Set(sentence.nodes.map((n) => n.id));
@@ -1596,7 +1877,7 @@ export class UmrDocument extends DocumentModel {
         return;
       }
       if (old.concept !== node.concept)
-        plan.concept.push({ nodeId: old.id, concept: node.concept });
+        plan.concept.push({ nodeId: old.id, var: v, from: old.concept, concept: node.concept });
       // With their places among the children: an attribute moved past an edge
       // is a change, and was once counted as applied without being stored.
       const attrKey = (a) => `${a.rel} ${a.value} @${a.order ?? 0}`;
@@ -1761,6 +2042,50 @@ export class UmrDocument extends DocumentModel {
     return { ...plan, changes };
   }
 
+  // What an apply to `sentence` does to the held relations (see applyPenman):
+  // `heldTriples`, the rows to create, under pending ids, and `sentenceOps`,
+  // the metadata ops on the sentence tokens that held them. `idByVar` is the
+  // sentence's names after the apply, new nodes included.
+  _heldResolved(sentence, plan, idByVar) {
+    const fresh = new Set(plan.create.map((c) => c.var));
+    const gone = new Set(plan.delete);
+    const elsewhere = new Map();
+    this.graph.nodesById.forEach((n) => {
+      if (n.constant || n.sentence === sentence.index || gone.has(n.id)) return;
+      if (n.var && !elsewhere.has(n.var)) elsewhere.set(n.var, n.id);
+    });
+    const idOf = (name) =>
+      idByVar.get(name) || elsewhere.get(name) || this.constantNode(name)?.id || null;
+    const heldTriples = [];
+    const opsByToken = new Map();
+    const add = (tokenId, changes) =>
+      opsByToken.set(tokenId, { ...opsByToken.get(tokenId), ...changes });
+    if (fresh.size) {
+      this.sentences.forEach((s) => {
+        if (!s.held.length) return;
+        const keep = s.held.filter((h) => {
+          const source = idOf(h.source);
+          const target = idOf(h.target);
+          if (!source || !target || !(fresh.has(h.source) || fresh.has(h.target))) return true;
+          heldTriples.push({
+            id: pendingId(),
+            source,
+            target,
+            value: h.rel,
+            metadata: { [UMR_NAMESPACE]: { group: h.group } },
+          });
+          return false;
+        });
+        if (keep.length !== s.held.length) add(s.tokenId, { held: keep.length ? keep : undefined });
+      });
+    }
+    // The graph kept as text, mended: its text is no longer what is kept.
+    if (fresh.size && !sentence.nodes.length && typeof sentence.rawGraph === 'string') {
+      add(sentence.tokenId, { rawGraph: undefined, rawAlignment: undefined });
+    }
+    return { heldTriples, sentenceOps: [...opsByToken].map(([id, c]) => [id, umrOps(c)]) };
+  }
+
   /**
    * Apply a PENMAN text to a sentence as ONE operation. The whole plan shows
    * at once, new nodes and edges under pending ids, and is sent in THREE
@@ -1911,8 +2236,22 @@ export class UmrDocument extends DocumentModel {
       });
     });
 
+    // The relations the import held for a graph kept as text (sentenceGraph
+    // `held`), made real now that this apply defines a name they wait for,
+    // and taken off the sentence that held them. Stored as the import stores
+    // a triple: they are the file's, not this writer's. A graph mended here
+    // also stops keeping its old text, which would otherwise come back if
+    // the graph were emptied.
+    const { heldTriples, sentenceOps } = this._heldResolved(sentence, plan, idByVar);
+
     this._applyRawPatch((next, infoNext) => {
       const layers = this._layers(infoNext);
+      heldTriples.forEach((t) => layers.triples.push({ ...t }));
+      const sentenceTokens = infoNext.sentenceTokenLayer?.tokens || [];
+      sentenceOps.forEach(([id, ops]) => {
+        const token = sentenceTokens.find((x) => x.id === id);
+        if (token) token.metadata = applyMetadataOps(token.metadata, ops);
+      });
       spanOps.forEach(([id, ops]) => {
         const span = layers.spans.find((x) => x.id === id);
         if (span) span.metadata = applyMetadataOps(span.metadata, ops);
@@ -1980,18 +2319,21 @@ export class UmrDocument extends DocumentModel {
         }
         pieces.forEach((p, i) => ids.set(p.id, pieceIds[i]));
 
-        // Pass 2. The new nodes, on the anchors pass 1 made.
+        // Pass 2. The new nodes, on the anchors pass 1 made. Should it fail,
+        // those anchors are removed again: nobody could see or delete them.
         if (newNodes.length) {
-          const secondPass = await client.batched(async (b) => {
-            b.spans.bulkCreate(
-              newNodes.map((n) => ({
-                spanLayerId: info.conceptLayer.id,
-                tokens: n.pieces.map((p) => ids.get(p.id)),
-                value: n.value,
-                metadata: n.metadata,
-              })),
-            );
-          });
+          const secondPass = await this._undoPiecesOnFailure(pieces, ids, () =>
+            client.batched(async (b) => {
+              b.spans.bulkCreate(
+                newNodes.map((n) => ({
+                  spanLayerId: info.conceptLayer.id,
+                  tokens: n.pieces.map((p) => ids.get(p.id)),
+                  value: n.value,
+                  metadata: n.metadata,
+                })),
+              );
+            }),
+          );
           const spanIds = createdIds(secondPass.at(-1));
           if (spanIds.length !== newNodes.length) {
             throw new Error(
@@ -2001,21 +2343,31 @@ export class UmrDocument extends DocumentModel {
           newNodes.forEach((n, i) => ids.set(n.id, spanIds[i]));
         }
 
-        // Pass 3. The new edges.
-        if (newEdges.length) {
+        // Pass 3. The new edges, the held relations made real, and the
+        // sentences that held them, together: a held relation leaves its
+        // sentence only as it is made.
+        if (newEdges.length || heldTriples.length || sentenceOps.length) {
           const thirdPass = await client.batched(async (b) => {
-            b.relations.bulkCreate(
-              newEdges.map((e) => ({
-                relationLayerId: info.relationLayer.id,
-                source: serverId(e.source),
-                target: serverId(e.target),
-                value: e.value,
-                metadata: e.metadata,
-              })),
-            );
+            const bulk = (list, layerId) =>
+              b.relations.bulkCreate(
+                list.map((e) => ({
+                  relationLayerId: layerId,
+                  source: serverId(e.source),
+                  target: serverId(e.target),
+                  value: e.value,
+                  metadata: e.metadata,
+                })),
+              );
+            if (newEdges.length) bulk(newEdges, info.relationLayer.id);
+            if (heldTriples.length) bulk(heldTriples, info.documentGraphLayer.id);
+            sentenceOps.forEach(([id, ops]) => b.tokens.patchMetadata(settledId(id), ops));
           });
-          const edgeIds = createdIds(thirdPass.at(-1));
+          const edgeIds = newEdges.length ? createdIds(thirdPass[0]) : [];
           newEdges.forEach((e, i) => edgeIds[i] && ids.set(e.id, edgeIds[i]));
+          const tripleIds = heldTriples.length
+            ? createdIds(thirdPass[newEdges.length ? 1 : 0])
+            : [];
+          heldTriples.forEach((t, i) => tripleIds[i] && ids.set(t.id, tripleIds[i]));
         }
         this._settle(ids);
       },

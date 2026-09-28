@@ -20,14 +20,18 @@
 //            constants (which belongs to no sentence by itself), the
 //            sentences whose blocks write it
 //   sentence token metadata.umr = { snt, text?, ilg, meta, rawGraph?,
-//            rawAlignment? } where the raw pair holds a graph the parser
-//            could not read, kept as text so nothing is lost
+//            rawAlignment?, held? } where the raw pair holds a graph the
+//            parser could not read, kept as text so nothing is lost, and
+//            `held` the document-level relations this sentence's block
+//            wrote that name a node of such a graph, by name: [{ source,
+//            rel, target, group }], made real when the graph is mended
 //
 // By its real path rather than through `@ui`: the node suite has no alias.
 import { cpSlicer } from '@larc-iu/plaid-client';
 import { UMR_NAMESPACE } from '../utils/umrLayerUtils.js';
 import { treeEdges, serializePenman } from './format/penman.js';
 import { perWordStored } from './ilg.js';
+import { DOC_CONSTANTS } from './format/inventory.js';
 
 const umrMeta = (entity) => entity?.metadata?.[UMR_NAMESPACE] || {};
 
@@ -88,6 +92,7 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
       snt: meta.snt || null,
       rawGraph: meta.rawGraph || null,
       rawAlignment: meta.rawAlignment || null,
+      held: Array.isArray(meta.held) ? meta.held : [],
       nodes: [],
       edges: [],
       triples: [],
@@ -95,6 +100,11 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
   });
   const sentenceOf = (piece) => sentences.find((s) => beginsIn(piece, s));
   const byTokenId = new Map(sentences.map((s) => [s.tokenId, s]));
+  // Whether a word of the text overlaps the piece.
+  const overWord = (piece) => {
+    const s = sentenceOf(piece);
+    return !!s && s.words.some((w) => overlaps(piece, w));
+  };
 
   wordTokens.forEach((token) => {
     const s = sentenceOf(token);
@@ -147,11 +157,15 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
       constant: meta.constant === true,
       root: meta.root === true,
       pieces,
-      // Aligned to words, which is what the absence of a sentence record
-      // says. Reading the anchor's width instead was only true while an
-      // unaligned node stood on a point of text, which a deletion across
-      // that point took away with the node on it.
-      aligned: !meta.sentence && pieces.some((p) => p.end > p.begin),
+      // Aligned to words: no sentence record, and a word under the anchor.
+      // Reading the anchor's width alone was only true while an unaligned
+      // node stood on a point of text, which a deletion across that point
+      // took away with the node on it. And a word deleted in another app
+      // leaves the anchor over its text with no word there: such a node was
+      // drawn aligned while the export wrote `0-0`. Reconcile makes it an
+      // ordinary unaligned node (umrReconcile.js), and a view that does not
+      // reconcile (a past state, a reader) reads it as one already.
+      aligned: !meta.sentence && pieces.some((p) => p.end > p.begin && overWord(p)),
       metadata: span.metadata || null,
       sentence: null,
       chain: null,
@@ -679,6 +693,15 @@ export function toUmrSentences(graph) {
   const written = new Set();
   sentences.forEach((s) => writtenIds(s, nodesById).forEach((id) => written.add(id)));
   const inFile = (id) => nodesById.get(id)?.constant || written.has(id);
+  // The names a held relation may use (see buildDocumentGraph): a written
+  // node's, a constant's, and a variable a graph kept as text defines while
+  // that text is what the file writes.
+  const named = new Set(DOC_CONSTANTS);
+  written.forEach((id) => named.add(nodesById.get(id)?.var));
+  sentences.forEach((s) => {
+    if (s.nodes.length || typeof s.rawGraph !== 'string') return;
+    for (const m of s.rawGraph.matchAll(KEPT_VARIABLE)) named.add(m[1]);
+  });
 
   return sentences.map((s) => {
     // Only the nodes the file writes: the alignment block and the checks read
@@ -706,6 +729,13 @@ export function toUmrSentences(graph) {
         groups[t.group].push([nameOf(t.source), t.rel, nameOf(t.target)]);
       }
     });
+    // Held relations, back in the block that wrote them, while both names
+    // are in the file.
+    s.held.forEach((h) => {
+      if (named.has(h.source) && named.has(h.target) && groups[h.group]) {
+        groups[h.group].push([h.source, h.rel, h.target]);
+      }
+    });
     const hasTriples = groups.temporal.length || groups.modal.length || groups.coref.length;
 
     return {
@@ -726,6 +756,10 @@ export function toUmrSentences(graph) {
     };
   });
 }
+
+// A variable a graph kept as text defines: the name before a slash after an
+// opening bracket.
+export const KEPT_VARIABLE = /\(\s*([^\s/()"]+)\s*\//g;
 
 // A sentence's nodes as parsePenman's map, each node's attributes and
 // in-sentence edges in their stored order. `keep` picks the nodes.
@@ -800,14 +834,23 @@ function ilgLines(s) {
 
 /**
  * The next free variable for a concept in a sentence, by the standard rule:
- * `s` + sentence number + the concept's first letter (`x` when that is not a
- * letter) + a counter from 2 on when the bare form is taken.
+ * `s` + sentence number + the concept's first letter + a counter from 2 on
+ * when the bare form is taken.
+ *
+ * The letter is always one of a to z: an accented letter gives its base
+ * letter (`ébrio` gives `s4e`), anything else `x`. The spec allows accented
+ * variables, but validate.py reads them only in the sentence graph, and the
+ * first document-level relation on `s4é` failed its sentence's whole block.
+ * A person may still type one (the owner's ruling): only the name the app
+ * picks by itself is held to ASCII.
  */
 export function nextVariable(sentenceIndex, concept, taken) {
   const first = String(concept || '')
     .charAt(0)
-    .toLowerCase();
-  const letter = /\p{Ll}/u.test(first) ? first : 'x';
+    .toLowerCase()
+    .normalize('NFD')
+    .charAt(0);
+  const letter = /^[a-z]$/.test(first) ? first : 'x';
   const base = `s${sentenceIndex}${letter}`;
   if (!taken.has(base)) return base;
   for (let n = 2; ; n++) {

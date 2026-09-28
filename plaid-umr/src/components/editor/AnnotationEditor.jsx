@@ -63,6 +63,26 @@ export const AnnotationEditor = () => {
     canWrite: canEditProject(project, user),
     onRepaired: () => getClient()?.enterStrictMode(documentId),
   });
+  // The project's vocabularies, which the entry check compares a node picked
+  // from an entry with: a warning on the node, its sentence's badge and the
+  // Validation tab when the entry now reads another concept. Read once per
+  // document (reconcile reads it too, to forget a deleted entry), and handed
+  // to a past state shown in its place, since what the vocabulary says now
+  // is the lexicon.
+  useEffect(() => {
+    if (!doc) return undefined;
+    let live = true;
+    doc
+      .loadLexicon()
+      .then((read) => {
+        if (live && read && shown && shown !== doc) shown.setLexicon(read.lexicon);
+      })
+      .catch((err) => console.warn('Could not read the vocabularies:', err));
+    return () => {
+      live = false;
+    };
+  }, [doc, shown]);
+
   // Strict mode is client-GLOBAL, so it is exited on the way out of this tab,
   // or it leaks onto unrelated writes (a copy on Details, a rename) with a
   // stale document-version and spurious 409s.

@@ -14,7 +14,7 @@
 // report is how a corpus manager sees it is not annotated. Asking only for the graphs read clean over a corpus that had
 // barely been started. A document with neither has nothing to check: every
 // check walks either the nodes or the words.
-import { UmrDocument } from './UmrDocument.js';
+import { UmrDocument, readEntryLexicon } from './UmrDocument.js';
 import { writtenIds } from './sentenceGraph.js';
 import { parsePenman } from './format/penman.js';
 
@@ -160,9 +160,16 @@ export function reportOf(doc) {
 export async function validateProject(
   client,
   projectId,
-  { conceptLayerId = null, wordLayerId = null, onProgress } = {},
+  { conceptLayerId = null, wordLayerId = null, project = null, onProgress } = {},
 ) {
   const docs = await client.projects.listDocuments(projectId);
+  // The project's vocabularies, read once for every document, so a node
+  // picked from an entry that changed since is reported (UmrDocument
+  // `entry-changed`). Without the project, or when a read fails, the check
+  // is left out and the rest still runs.
+  const lexicon = project
+    ? ((await readEntryLexicon(client, project).catch(() => null))?.lexicon ?? null)
+    : null;
   let candidates = docs;
   if (conceptLayerId && wordLayerId) {
     const [nodes, words] = await Promise.all([
@@ -177,7 +184,7 @@ export async function validateProject(
   let done = 0;
   const perDocument = await mapLimit(candidates, READERS, async (summary) => {
     const raw = await client.documents.get(summary.id, true);
-    const doc = new UmrDocument({ raw, client, projectId });
+    const doc = new UmrDocument({ raw, client, projectId, lexicon });
     const rows = reportOf(doc).map((p) => ({
       documentId: summary.id,
       documentName: summary.name,
