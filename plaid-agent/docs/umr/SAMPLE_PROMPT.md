@@ -165,11 +165,12 @@ The commonest values, with counts, across the project or inside one document: co
 
 ### apply_penman
 
-PLAN: replace one sentence's graph with the PENMAN text you give. The difference against the stored graph is worked out for you: nodes are matched BY VARIABLE and relations BY ROLE AND TARGET, so a node written back with the same variable is kept, a renamed variable is a new node and the old one goes, and a changed role is a new relation and the old one goes. The text is the ROOT's graph, so a node the root does not reach is left alone. A node this creates is UNALIGNED until somebody anchors it to words on the canvas. Start from what read_document printed and edit it. Roles are a closed set: one UMR does not have (:poss for :possessor) is refused unless that node or edge already holds it.
+PLAN: replace one sentence's graph with the PENMAN text you give. The difference against the stored graph is worked out for you: nodes are matched BY VARIABLE and relations BY ROLE AND TARGET, so a node written back with the same variable is kept, a renamed variable is a new node and the old one goes, and a changed role is a new relation and the old one goes. The text is the ROOT's graph, so a node the root does not reach is left alone. A node this creates is UNALIGNED until somebody anchors it to words on the canvas. Start from what read_document printed and edit it. Roles are a closed set: one UMR does not have (:poss for :possessor) is refused unless that node or edge already holds it. The order you write a node's children in is ignored: one already there keeps its place and a new one goes after them. Set reorder only when the user asks for the children in a different order.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `sentence` (integer or string, required): The sentence, 1-based: 3 or "s3".
 - `text` (string, required): The whole sentence graph in PENMAN, from its root node.
+- `reorder` (boolean): Apply the order the text writes each node's children in. Default false.
 
 ### set_attributes
 

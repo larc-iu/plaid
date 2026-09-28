@@ -262,3 +262,42 @@ def test_a_plan_built_some_other_way_still_refuses_two_changes_to_one_graph(ws):
     # Each on its own, and both from ONE call, are fine.
     validate_ops([replacement])
     validate_ops([replacement, {**attrs, 'staging': 'a'}])
+
+
+# --- child order ---------------------------------------------------------------
+
+def test_a_graph_written_back_in_another_order_plans_nothing(ws):
+    """PENMAN order is kept for export and the canvas draws by anchor, so a
+    model re-serializing the graph with its roles in another order changes
+    nothing. It used to stage "moves to position 2" rows nobody asked for."""
+    text = ('(s1b / bark-01\n    :aspect performance\n    :ARG0 (s1d / dog\n'
+            '        :refer-number singular))')
+    assert diff_for(ws, text).ops == []
+
+
+def test_a_new_child_goes_after_the_rest_and_moves_nothing(ws):
+    """A new attribute or relation written first used to renumber every child
+    after it, one "relation order" row each."""
+    b = ws.doc('Story').nodes_by_id['mc-b']
+    tail = max([e.order for e in b.out] + [a.get('order') or 0 for a in b.attrs]) + 1
+    text = ('(s1b / bark-01\n    :polarity -\n    :place (s1y / yard)\n    :ARG0 (s1d / dog\n'
+            '        :refer-number singular)\n    :aspect performance)')
+    diff = diff_for(ws, text)
+    assert kinds(diff) == ['create_edge', 'create_node', 'set_attrs']
+    attrs = next(op for op in diff.ops if op['kind'] == 'set_attrs')['attrs']
+    kept = next(a['order'] for a in b.attrs if a['rel'] == ':aspect')
+    assert attrs == [{'rel': ':aspect', 'value': 'performance', 'order': kept},
+                     {'rel': ':polarity', 'value': '-', 'order': tail}]
+    edge = next(op for op in diff.ops if op['kind'] == 'create_edge')
+    assert edge['order'] == tail + 1
+
+
+def test_reorder_applies_the_texts_order_when_asked(ws):
+    text = ('(s1b / bark-01\n    :aspect performance\n    :ARG0 (s1d / dog\n'
+            '        :refer-number singular))')
+    out = call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1, 'text': text})
+    assert out.startswith('Nothing to change')
+    call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1, 'text': text, 'reorder': True})
+    assert sorted(op['kind'] for op in ws.ops) == ['set_attrs', 'set_edge_order']
+    order = next(op for op in ws.ops if op['kind'] == 'set_edge_order')
+    assert order['order'] == 1 and 'moves to position 2' in order['label']

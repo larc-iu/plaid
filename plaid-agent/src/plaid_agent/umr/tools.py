@@ -360,13 +360,14 @@ def _no_graph_planned(ws: Workspace, doc: UmrDoc, s: Sentence) -> None:
                         f'the two (plan_status, drop_planned), or plan them in separate turns.')
 
 
-def t_apply_penman(ws: Workspace, document: str = None, sentence=None, text: str = None) -> str:
+def t_apply_penman(ws: Workspace, document: str = None, sentence=None, text: str = None,
+                   reorder: bool = False) -> str:
     doc = ws.doc(document)
     s = _sentence(ws, doc, sentence)
     _no_graph_planned(ws, doc, s)
     if not (text or '').strip():
         raise ToolError('Give text: the sentence graph in PENMAN, starting at its root node.')
-    diff = plan_penman(doc, s, text, ws.project)
+    diff = plan_penman(doc, s, text, ws.project, reorder=str(reorder).strip().lower() == 'true')
     if diff.errors:
         raise ToolError('The graph could not be read. ' + diff.errors[0])
     if not diff.ops:

@@ -17,11 +17,23 @@ edges already hold are kept as text mode keeps them.
 
 The ops this returns are the plan's own, one per change, so the card the user
 approves names each of them.
+
+**Child order is not the text's to change unless asked** (``reorder``). The
+order a node's children are written in is kept for export only (the canvas
+draws by anchor order), and a model re-serializing a graph writes roles in
+whatever order it likes. So by default a child already there keeps its place,
+and a new one, attribute or relation, goes after everything, which is the rule
+the editor writes by (``place_attributes``). Applying the text's positions
+instead staged "s2e: :actor s2h moves to position 2" rows that nobody asked
+for, most of them only because a sibling before them came or went. With
+``reorder`` the text's order is applied as written, and a relation whose place
+changes is a row of its own.
 """
 
 from typing import Any, Dict, List, Tuple
 
 from plaid_client.workflows.umr import Graph, parse_penman
+from plaid_client.workflows.umr.graph import next_order
 
 from .project import Sentence, UmrDoc, UmrProject, attrs_change, penman_of, reachable_from_root
 
@@ -41,6 +53,38 @@ def _children(node) -> Tuple[List[dict], List[dict]]:
 
 def _attr_key(attrs) -> str:
     return '\n'.join(f'{a.get("rel")} {a.get("value")}' for a in attrs)
+
+
+def _placed_key(attrs) -> list:
+    """Attributes with their places, in place order, for comparing two sets."""
+    return sorted((a.get('order') or 0, str(a.get('rel')), str(a.get('value'))) for a in attrs)
+
+
+def _keep_places(old, node, old_edge_order: Dict[str, int]) -> Tuple[List[dict], Dict[str, int]]:
+    """``node``'s attributes, and the order of each relation it adds, when the
+    children ``old`` already has keep their places and new ones go after them
+    all, in the order the text writes them. An attribute keeps its place when
+    ``old`` has one of that relation (its value may change), as the editor
+    places them."""
+    free = [(a.get('rel'), a.get('order') or 0) for a in old.attrs]
+    tail = next_order(old)
+    attrs: List[dict] = []
+    new_edges: Dict[str, int] = {}
+    for child in node.children:
+        if child.kind == 'node':
+            key = f'{child.rel} {child.value}'
+            if key not in old_edge_order and key not in new_edges:
+                new_edges[key] = tail
+                tail += 1
+            continue
+        at = next((i for i, (rel, _o) in enumerate(free) if rel == child.rel), None)
+        if at is None:
+            order = tail
+            tail += 1
+        else:
+            order = free.pop(at)[1]
+        attrs.append({'rel': child.rel, 'value': child.value, 'order': order})
+    return sorted(attrs, key=lambda a: a['order']), new_edges
 
 
 class GraphDiff:
@@ -84,10 +128,12 @@ def _rename_in(doc: UmrDoc, sentence: Sentence, parsed: Graph, written) -> Tuple
     return node, to
 
 
-def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject) -> GraphDiff:
+def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
+                reorder: bool = False) -> GraphDiff:
     """The plan ops that would make ``sentence``'s graph the one ``text``
     writes. ``errors`` is non-empty when the text does not parse, and the ops
-    are then empty."""
+    are then empty. ``reorder`` applies the order the text writes each node's
+    children in; without it, children already there keep their places."""
     parsed: Graph = parse_penman(text)
     if parsed.errors:
         return GraphDiff([], [f'line {e.line}, column {e.col}: {e.message}' for e in parsed.errors])
@@ -125,22 +171,30 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject)
                     'label': f'{var} {e["role"]} {e["target"]}'})
             continue
 
+        old_edges = [(e, f'{e.role} {doc.nodes_by_id[e.target].var}')
+                     for e in old.out
+                     if doc.nodes_by_id.get(e.target) is not None
+                     and doc.nodes_by_id[e.target].sentence == sentence.index]
+        if reorder:
+            changed_attrs = _attr_key(old.attrs) != _attr_key(attrs) or \
+                _placed_key(old.attrs) != _placed_key(attrs)
+            new_edge_order = {f'{e["role"]} {e["target"]}': e['order'] for e in edges}
+        else:
+            attrs, new_edge_order = _keep_places(old, node, {key: e.order for e, key in old_edges})
+            changed_attrs = _placed_key(old.attrs) != _placed_key(attrs)
+
         if old.concept != node.concept:
             updates.append({
                 'kind': 'set_concept', 'document_id': did, 'ref': f's{sentence.index}.{var}',
                 'span_id': old.id, 'var': var, 'concept': node.concept,
                 'label': f'{var}: {old.concept or "(no concept)"} becomes {node.concept}'})
-        if _attr_key(old.attrs) != _attr_key(attrs):
+        if changed_attrs:
             updates.append({
                 'kind': 'set_attrs', 'document_id': did, 'ref': f's{sentence.index}.{var}',
                 'span_id': old.id, 'var': var, 'attrs': attrs,
                 'umr_set': {'attrs': attrs},
                 'label': f'{var}: {attrs_change(old.attrs, attrs)}'})
 
-        old_edges = [(e, f'{e.role} {doc.nodes_by_id[e.target].var}')
-                     for e in old.out
-                     if doc.nodes_by_id.get(e.target) is not None
-                     and doc.nodes_by_id[e.target].sentence == sentence.index]
         next_by_key = {f'{e["role"]} {e["target"]}': e for e in edges}
         for edge, key in old_edges:
             wanted = next_by_key.get(key)
@@ -149,7 +203,7 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject)
                     'kind': 'delete_edge', 'document_id': did, 'ref': f's{sentence.index}.{var}',
                     'relation_id': edge.id, 'source': edge.source, 'target': edge.target,
                     'label': f'remove {var} {key}'})
-            elif wanted['order'] != edge.order:
+            elif reorder and wanted['order'] != edge.order:
                 orders.append({
                     'kind': 'set_edge_order', 'document_id': did, 'ref': f's{sentence.index}.{var}',
                     'relation_id': edge.id, 'order': wanted['order'],
@@ -160,7 +214,8 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject)
                 edges_add.append({
                     'kind': 'create_edge', 'document_id': did, 'ref': f's{sentence.index}.{var}',
                     'relation_layer_id': project.relation_layer_id, 'source_var': var,
-                    'target_var': e['target'], 'role': e['role'], 'order': e['order'],
+                    'target_var': e['target'], 'role': e['role'],
+                    'order': new_edge_order[f'{e["role"]} {e["target"]}'],
                     'source_span_id': old.id,
                     'label': f'{var} {e["role"]} {e["target"]}'})
 
@@ -170,12 +225,16 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject)
         for op in creates:
             if op['var'] == renamed_to:
                 op['renamed_from'] = renamed.id
-        stored_edges = {(name_of.get(e.source), e.role, name_of.get(e.target)): e.id
+        stored_edges = {(name_of.get(e.source), e.role, name_of.get(e.target)): e
                         for n in sentence.nodes for e in n.out}
         for op in edges_add:
-            rid = stored_edges.get((op['source_var'], op['role'], op['target_var']))
-            if rid is not None:
-                op['renamed_edge'] = rid
+            was = stored_edges.get((op['source_var'], op['role'], op['target_var']))
+            if was is not None:
+                op['renamed_edge'] = was.id
+                # The same relation re-made for the rename: from a node that
+                # stays, it keeps its place rather than going after the rest.
+                if not reorder and op['source_var'] in old_by_var:
+                    op['order'] = was.order
 
     # The ends of a new edge, where both are nodes that already exist. A var
     # the plan is creating is left to the executor, which knows the span id

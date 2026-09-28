@@ -135,10 +135,16 @@ TOOLS = [
         'old one goes. The text is the ROOT\'s graph, so a node the root does not reach is left '
         'alone. A node this creates is UNALIGNED until somebody anchors it to words on the canvas. '
         'Start from what read_document printed and edit it. Roles are a closed set: one UMR does '
-        'not have (:poss for :possessor) is refused unless that node or edge already holds it.',
+        'not have (:poss for :possessor) is refused unless that node or edge already holds it. '
+        'The order you write a node\'s children in is ignored: one already there keeps its place '
+        'and a new one goes after them. Set reorder only when the user asks for the children in a '
+        'different order.',
         {'document': _DOC, 'sentence': _SENTENCE,
          'text': {'type': 'string',
-                  'description': 'The whole sentence graph in PENMAN, from its root node.'}},
+                  'description': 'The whole sentence graph in PENMAN, from its root node.'},
+         'reorder': {'type': 'boolean',
+                     'description': 'Apply the order the text writes each node\'s children in. '
+                                    'Default false.'}},
         ['document', 'sentence', 'text']),
     _fn('set_attributes',
         'PLAN: set the attributes of ONE node, whole. Give every attribute the node should end up '
