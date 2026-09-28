@@ -992,6 +992,110 @@
                 (str "seed " seed " case " case-n ": " (pr-str old) " -> " (pr-str (str/join " " beside))
                      ", morphemes cut at " (pr-str cuts)))))))))
 
+(deftest a-word-edge-need-not-be-a-space-to-cut-a-replace-at
+  ;; Only a space counted as a word's edge, so a replace reaching into a word
+  ;; beside a punctuation mark the tokenizer left out of it, a punctuation
+  ;; token (UD), a no-break space or a script written without spaces was not
+  ;; cut, and the word lost the letters respelled at its edge.
+  (let [on (fn [layer t] (assoc t :token/layer layer))
+        words #(filter (comp #{:w} :token/layer) %)]
+    (doseq [[old new tokens want]
+            [;; igt leaves the comma and the full stop in the gaps
+             ["Ali geldi, Veli gitti." "Ali geldI."
+              [(on :w (tok :ali 0 3)) (on :w (tok :geldi 4 9)) (on :w (tok :veli 11 15)) (on :w (tok :gitti 16 21))]
+              #{[:ali 0 3] [:geldi 4 9]}]
+             ["well-known cat" "Known cat"
+              [(on :w (tok :well 0 4)) (on :w (tok :known 5 10)) (on :w (tok :cat 11 14))]
+              #{[:known 0 5] [:cat 6 9]}]
+             ;; UD makes the full stop a token of its own
+             ["verdi. Sonra geldi" "verdI geldi"
+              [(on :w (tok :verdi 0 5)) (on :w (tok :stop 5 6)) (on :w (tok :sonra 7 12)) (on :w (tok :geldi 13 18))]
+              #{[:verdi 0 5] [:geldi 6 11]}]
+             ["Yarın köye döneceğiz" "Köye döneceğiz"
+              [(on :w (tok :yarin 0 5)) (on :w (tok :koye 6 10)) (on :w (tok :donecegiz 11 20))]
+              #{[:koye 0 4] [:donecegiz 5 14]}]
+             ["你好世界\n" "大界\n"
+              [(on :s (tok :s1 0 5)) (on :w (tok :nihao 0 2)) (on :w (tok :shijie 2 4))]
+              #{[:shijie 0 2]}]]]
+      (let [{:keys [text tokens]} (body-edit old new tokens #{:s})]
+        (is (= new (:text/body text)))
+        (is (= want (extents (words tokens))) (str (pr-str old) " -> " (pr-str new)))))))
+
+(deftest a-token-over-several-words-does-not-stop-the-cut
+  ;; A UMR node over `köye cat` begins inside the replace of `t köye` by `Ж`
+  ;; and goes on past it, but past a space: the replace takes `köye` whole
+  ;; and reaches into no word there. Counted as reaching in, it stopped the
+  ;; cut at the end of `mat`, which lost its `t`.
+  (let [on (fn [layer t] (assoc t :token/layer layer))
+        {:keys [text tokens]} (body-edit "mat köye cat\n" "maЖ cat\n"
+                                         [(on :s (tok :s1 0 13)) (on :w (tok :mat 0 3)) (on :w (tok :koye 4 8))
+                                          (on :w (tok :cat 9 12)) (on :u (tok :node 4 12))]
+                                         #{:s})]
+    (is (= "maЖ cat\n" (:text/body text)))
+    (is (= #{[:mat 0 3] [:cat 4 7]} (extents (filter (comp #{:w} :token/layer) tokens)))))
+  (testing "one that ends where the replace ends still marks where a word begins"
+    ;; `\né` replaced by ` ЖQ`: the sentence after the line break goes on past
+    ;; `é`, and the cut at its start keeps `é`'s token on `ЖQ`.
+    (let [on (fn [layer t] (assoc t :token/layer layer))
+          {:keys [text tokens]} (body-edit "mat\né tatu\n" "mat ЖQ tatu\n"
+                                           [(on :s (tok :s1 0 4)) (on :s (tok :s2 4 11))
+                                            (on :w (tok :mat 0 3)) (on :w (tok :e 4 5)) (on :w (tok :tatu 6 10))]
+                                           #{:s})]
+      (is (= "mat ЖQ tatu\n" (:text/body text)))
+      (is (= #{[:mat 0 3] [:e 4 6] [:tatu 7 11]} (extents (filter (comp #{:w} :token/layer) tokens)))))))
+
+(deftest words-deleted-beside-a-respelled-word-with-any-separator
+  ;; Seeded, as `words-deleted-before-a-respelled-word-...` but with the words
+  ;; apart by a space, a tab, a no-break space, or a punctuation mark left in
+  ;; the gap (`, ` or `-`), and with a sentence partition and UMR-like nodes
+  ;; over one word or two. Every word token left must sit exactly on a word.
+  ;; The respelled word has two letters at least, as there.
+  (let [vocab ["the" "cat" "sat" "on" "a" "mat" "kai" "kaki" "𐌰𐌱" "köye" "كتاب" "你好"]
+        long-words (filterv #(< 1 (cp/cp-count %)) vocab)
+        seps [" " "\t" " " ", " "-"]]
+    (doseq [seed (range 1 5)]
+      (let [rng (java.util.Random. seed)
+            pick #(nth % (.nextInt rng (count %)))]
+        (dotimes [case-n 150]
+          (let [m (inc (.nextInt rng 3))
+                j (inc (.nextInt rng 4))
+                after? (.nextBoolean rng)
+                k (if after? (+ j m) (dec j))
+                n-words (+ j m 1 (.nextInt rng 3))
+                words (-> (vec (repeatedly n-words #(pick vocab))) (assoc k (pick long-words)))
+                gaps (vec (repeatedly (dec n-words) #(pick seps)))
+                w (words k)
+                n (cp/cp-count w)
+                w' (if after?
+                     (str "Q" (cp/cp-subs w 1 n))
+                     (str (cp/cp-subs w 0 (dec n)) "Q"))
+                ;; deleting words [j, j+m) takes the gap after each of them
+                keep? (fn [i] (not (<= j i (dec (+ j m)))))
+                build (fn [ws gs]
+                        (loop [i 0 p 0 sb (StringBuilder.) out []]
+                          (if (= i (count ws))
+                            [(str sb "\n") out]
+                            (let [x (ws i) e (+ p (cp/cp-count x))
+                                  g (if (< i (dec (count ws))) (gs i) "")]
+                              (recur (inc i) (+ e (cp/cp-count g)) (.append (.append sb ^String x) ^String g)
+                                     (conj out [p e]))))))
+                [old spans] (build words gaps)
+                kept (filterv keep? (range n-words))
+                [new new-spans] (build (mapv #(if (= % k) w' (words %)) kept)
+                                       (mapv gaps (butlast kept)))
+                on (fn [layer t] (assoc t :token/layer layer))
+                tokens (-> [(on :s (tok :s 0 (cp/cp-count old)))]
+                           (into (map-indexed (fn [i [b e]] (on :w (tok i b e)))) spans)
+                           (into (keep (fn [i] (when (.nextBoolean rng)
+                                                 (on :u (tok [:u i] (first (spans i)) (second (spans (inc i))))))))
+                                 (range (dec n-words))))
+                {:keys [text tokens deleted]} (body-edit old new tokens #{:s})
+                got (map (juxt :token/begin :token/end) (filter (comp #{:w} :token/layer) tokens))
+                msg (str "seed " seed " case " case-n ": " (pr-str old) " -> " (pr-str new))]
+            (is (= new (:text/body text)))
+            (is (= (set new-spans) (set got)) msg)
+            (is (= (count got) (count (set got))) msg)))))))
+
 (deftest two-edits-sliding-towards-each-other-do-not-meet
   ;; Each delete cuts a token where it stands and could slide into the run of
   ;; `a` between them, and both would have taken the same letter.

@@ -830,6 +830,14 @@
                         (not (and (<= begin s) (<= e end)))))
                  tokens)))
 
+(defn- space?
+  "Whether code point `c` separates words, as the apps' tokenizers take it
+  (JavaScript's `\\s`): Java's whitespace, and also the no-break spaces
+  (U+00A0, U+2007, U+202F) and U+FEFF, which Java counts as letters."
+  [c]
+  (let [c (int c)]
+    (or (Character/isWhitespace c) (Character/isSpaceChar c) (= c 0xFEFF))))
+
 ;; A word replaced by another comes out of the diff as pieces with kept
 ;; letters between them: `cow` to `abc` is insert `ab`, keep `c`, delete
 ;; `ow`, and applied as it is that leaves the token of `cow` on the `c` of
@@ -939,32 +947,75 @@
   "The edits for `r`, a replace of [s, t) in `o`, cut where it reaches into
   tokens it does not hold. When tokens begin inside [s, t) and end past it,
   and none begins before it and ends inside it, the part from the last such
-  beginning to t is replaced by the new text after its last whitespace, and
-  the part before is replaced by the rest (deleted when there is none). The
-  same at the other end: tokens beginning before it and ending inside it get
-  the new text up to its first whitespace. A replace reaching into tokens at
-  both ends stays as it is, since the text cannot tell which of them the new
-  letters belong to. Only a word's edge in `o` is a place to cut: a token
-  reaching in must begin after whitespace with none in the part of it the
-  replace takes, or end before whitespace with none in that part. A
-  sentence ends after the whitespace that follows it, and a morpheme's edge
-  is inside its word, so neither is one: cut there, `a` replaced over `\na`
-  put the new text's space on the word (`mat \na` to `mat Qx `). `near`
-  gives the tokens that begin or end in a stretch (see `tokens-near`)."
+  beginning to t is replaced by the new text after its last space, and the
+  part before is replaced by the rest (deleted when there is none). The same
+  at the other end: tokens beginning before it and ending inside it get the
+  new text up to its first space. A replace reaching into tokens at both
+  ends stays as it is, since the text cannot tell which of them the new
+  letters belong to.
+
+  Only a word's edge in `o` is a place to cut: a space or the text's edge
+  beside it, or a token beginning or ending there, unless two tokens meet
+  there inside a token without a space (a morpheme's edge inside its word).
+  So a punctuation mark the tokenizer left out of the words (`well-known`,
+  `verdi.`), a punctuation token, a no-break space, and two words of a script
+  written without spaces all make edges. A token reaching in has no space in
+  the part the replace takes: a sentence ends after the space that follows
+  it, and cut there, `a` replaced over `\na` put the new text's space on the
+  word (`mat \na` to `mat Qx `). A replace that ends at a word's edge takes
+  that word whole, and a token going on past it is over several words (a
+  sentence, a UMR node over `köye cat` when `t köye` becomes `Ж`). It marks
+  where to cut only when the replace starts inside no word at the other end,
+  or `mat` would lose its `t`. `near` gives the tokens that
+  begin or end in a stretch (see `tokens-near`)."
   [^ints o near r]
   (let [{s :start t :end ^String value :value} r
-        o-ws? (fn [i] (Character/isWhitespace (aget o (int i))))
-        no-ws? (fn [p q] (not-any? o-ws? (range p q)))
-        ts (filter (fn [{:token/keys [begin end]}] (< begin end)) (near s t))
-        into-next (filter (fn [{:token/keys [begin end]}]
-                            (and (< s begin t) (< t end) (o-ws? (dec begin)) (no-ws? begin t)))
-                          ts)
-        into-prev (filter (fn [{:token/keys [begin end]}]
-                            (and (< begin s) (< s end t) (o-ws? end) (no-ws? s end)))
-                          ts)
+        o-space? (fn [i] (space? (aget o (int i))))
+        no-space? (fn [p q] (not-any? o-space? (range p q)))
+        ;; the run of `o` without a space around i
+        run (fn [i] [(loop [k i] (if (and (pos? k) (not (o-space? (dec k)))) (recur (dec k)) k))
+                     (loop [k i] (if (and (< k (alength o)) (not (o-space? k))) (recur (inc k)) k))])
+        width? (fn [{:token/keys [begin end]}] (< begin end))
+        ;; Two tokens meet at p inside a token without a space that runs
+        ;; across it: p is between two morphemes of a word. Where a
+        ;; punctuation mark is left between two words, nothing meets.
+        inside-word? (fn [p]
+                       (let [[B E] (run p)
+                             ts (filter width? (near B E))
+                             in (fn [S] (filter (fn [{:token/keys [begin end]}]
+                                                  (and (<= (:token/begin S) begin) (<= end (:token/end S))
+                                                       (not= [begin end] [(:token/begin S) (:token/end S)])))
+                                                ts))]
+                         (some (fn [{:token/keys [begin end] :as S}]
+                                 (and (<= B begin) (< begin p end) (<= end E)
+                                      (some #(= p (:token/end %)) (in S))
+                                      (some #(= p (:token/begin %)) (in S))))
+                               ts)))
+        ;; p is at a word's edge: a space or the text's edge beside it, or a
+        ;; token beginning or ending there that is not a morpheme's edge
+        edge? (fn [p]
+                (or (<= p 0) (>= p (alength o)) (o-space? (dec p)) (o-space? p)
+                    (and (some #(and (width? %) (or (= p (:token/begin %)) (= p (:token/end %)))) (near p p))
+                         (not (inside-word? p)))))
+        ts (filter width? (near s t))
+        next-all (filter (fn [{:token/keys [begin end]}]
+                           (and (< s begin t) (< t end) (no-space? begin t) (edge? begin)))
+                         ts)
+        prev-all (filter (fn [{:token/keys [begin end]}]
+                           (and (< begin s) (< s end t) (no-space? s end) (edge? end)))
+                         ts)
+        ;; A replace ending inside a word reaches into it. One ending at a
+        ;; word's edge takes that word whole, and a token going on past it is
+        ;; over several words (a sentence, a UMR node): it still marks where
+        ;; the word begins, but a word reached into at the other end decides.
+        next-in (if (edge? t) [] next-all)
+        prev-in (if (edge? s) [] prev-all)
+        [into-next into-prev] (if (or (seq next-in) (seq prev-in))
+                                [next-in prev-in]
+                                [next-all prev-all])
         v (.toArray (.codePoints value))
         n (alength v)
-        ws? (fn [i] (Character/isWhitespace (aget v (int i))))
+        ws? (fn [i] (space? (aget v (int i))))
         sub (fn [p q] (String. v (int p) (int (- q p))))
         piece (fn [p q value]
                 (if (= "" value)
