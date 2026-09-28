@@ -386,7 +386,7 @@ def _record_fields(holder: Optional[dict], begin: int, end: int, body: str) -> d
     return dict(
         record_token=holder['id'] if holder and meta else None,
         text=meta.get('text') or body[begin:end].rstrip('\n'),
-        snt=meta.get('snt'), stored_ilg=list(meta.get('ilg') or []),
+        snt=meta.get('snt') or None, stored_ilg=list(meta.get('ilg') or []),
         meta=list(meta.get('meta') or []), raw_graph=meta.get('rawGraph'),
         raw_alignment=meta.get('rawAlignment'))
 
@@ -411,6 +411,45 @@ def _numbered_by_file(sentences: List[Sentence]) -> bool:
     Every other document is numbered by position (``numberedByFile``)."""
     first = next((s for s in sentences if s.snt is not None), None)
     return first is not None and str(first.snt) != '1'
+
+
+def file_numbers(sentences: List[Sentence]) -> List[Any]:
+    """The number each sentence's ``# :: snt`` line writes, in order
+    (``fileNumbers`` in sentenceGraph.js): its position, as its variables carry
+    it, unless the document goes by its file's numbers. Then a stored number
+    is written as it is, and a sentence that stores none, or repeats one, is
+    written by position, or past the highest number when that is taken, since
+    the official validator refuses a repeated number. A sentence typed in
+    before the first one in IGT stores nothing, and its position would repeat
+    the old first sentence's stored 1."""
+    if not _numbered_by_file(sentences):
+        return [s.index for s in sentences]
+
+    def numeric(n) -> int:
+        return int(n) if re.fullmatch(r'[0-9]+', str(n)) else 0
+
+    highest = max([0, len(sentences)] + [numeric(s.snt if s.snt is not None else 0)
+                                         for s in sentences])
+    stored: Dict[str, int] = {}
+    for i, s in enumerate(sentences):
+        if s.snt is not None and str(s.snt) not in stored:
+            stored[str(s.snt)] = i
+    out: List[Any] = [None] * len(sentences)
+    taken = set()
+    for i, s in enumerate(sentences):
+        if s.snt is not None and stored[str(s.snt)] == i:
+            out[i] = s.snt
+            taken.add(str(s.snt))
+    for i, s in enumerate(sentences):
+        if out[i] is not None:
+            continue
+        n = s.index
+        if str(n) in taken:
+            highest += 1
+            n = highest
+        out[i] = n
+        taken.add(str(n))
+    return out
 
 
 def _records_follow_their_graphs(sentences: List[Sentence], tokens: Dict[str, dict],

@@ -50,9 +50,9 @@ from typing import Any, Dict, List, Optional
 from plaid_client import BaseService, Param, TASKS
 from plaid_client.service import check_unchanged
 from plaid_client.workflows.requester import REQUESTED_BY, requester_of
-from plaid_client.workflows.umr import (UMR_NAMESPACE, Graph, group_of, penman_nodes,
-                                        read_document, resolve_layers, sentence_penman,
-                                        serialize_penman, tree_edges)
+from plaid_client.workflows.umr import (UMR_NAMESPACE, Graph, file_numbers, group_of,
+                                        penman_nodes, read_document, resolve_layers,
+                                        sentence_penman, serialize_penman, tree_edges)
 
 DEFAULT_SERVICE_ID = 'umr-ancast'
 
@@ -97,7 +97,10 @@ def to_umr_sentences(document):
     file has one graph per sentence.
     """
     out = []
-    for s in document.sentences:
+    # Each sentence's `# :: snt` number as the app's export writes it: by
+    # position, unless the document goes by its file's numbers.
+    numbers = file_numbers(document.sentences)
+    for s, snt in zip(document.sentences, numbers):
         root = s.roots[0].var if s.roots else None
         penman = None
         if root:
@@ -122,7 +125,7 @@ def to_umr_sentences(document):
         words = [w.text for w in s.words]
         out.append({
             'index': s.index,
-            'snt': s.snt or s.index,
+            'snt': snt,
             'sentence_text': s.text,
             'meta': s.meta,
             # Index and Words only. AnCast reads none of the gloss lines, and
