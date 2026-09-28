@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import { PROV, PROV_STATES, provOrigin, provState } from '@larc-iu/plaid-client';
 import { stableKey } from '@ui/domain/pendingIds.js';
 
@@ -54,9 +54,9 @@ const MAX_ENDS = 4;
 // is hollow (a state, so a shape and not a pattern). The grip on the bottom
 // edge starts an edge drag.
 //
-// Every part a click can edit waits for the node to be focused first (see
-// `live` below); the ⋯ and the chain chip do not, since neither edits
-// anything on its own.
+// Every part that edits opens on a double-click (see `act` below); the ⋯,
+// the chain chip and the document tags answer a single click, since each is
+// a control of its own.
 export const UmrNode = React.memo(function UmrNode({
   node,
   position,
@@ -80,20 +80,15 @@ export const UmrNode = React.memo(function UmrNode({
   // leave-02". Null for a node with no parent.
   parent = null,
 }) {
-  // One rule for the whole node: a click FOCUSES it, and a second click on
-  // one of its parts opens that part's editor. Without it, a click meant to
-  // focus a node landed on whichever chip happened to be under the pointer,
-  // and the parts a node shows would each need their own answer to "what
-  // does a plain click do here".
-  //
-  // Read at POINTER-DOWN, because the pointer going down is what focuses the
-  // node: by the time the click arrives the node is focused either way, and
-  // asking then would make every first click an edit.
-  const wasFocused = useRef(false);
-  const live = !!onAction && focused;
+  // One rule for the whole node: a click FOCUSES it, and a DOUBLE-click on
+  // one of its parts opens that part's editor, as Enter opens the concept.
+  // A second single click only keeps focus: while a node is focused its
+  // letters are commands, and an editor opened by a click meant to make sure
+  // of the focus took the next command letter as the new concept.
+  const editable = !!onAction;
   const act = (action) => (event) => {
     event.stopPropagation();
-    if (wasFocused.current) onAction(action, node.id);
+    onAction(action, node.id);
   };
   const worst = problems?.some((p) => p.level === 'error')
     ? 'error'
@@ -138,15 +133,14 @@ export const UmrNode = React.memo(function UmrNode({
         }
       : undefined;
   // The rest of a node's relations, past what it shows: read off the
-  // tooltip, and listed in full by a click once the node is focused.
+  // tooltip, and listed in full by a double-click.
   const more = (list, key) => (
     <span
       key={key}
       className="umr-doc-tag-end umr-doc-more"
-      role={live ? 'button' : undefined}
       title={list.map((t) => t.text).join('\n')}
       aria-label={`${list.length} more document relations`}
-      onClick={live ? act('node.docRelations') : undefined}
+      onDoubleClick={editable ? act('node.docRelations') : undefined}
     >
       +{list.length}
     </span>
@@ -173,9 +167,6 @@ export const UmrNode = React.memo(function UmrNode({
       title={provTitle(node.metadata)}
       data-node-id={node.id}
       data-prov={PROV_CLASS[prov] ? prov : undefined}
-      onPointerDownCapture={() => {
-        wasFocused.current = focused;
-      }}
       data-node-var={node.var || undefined}
       onFocus={onFocus ? () => onFocus(node.id) : undefined}
       onClick={
@@ -226,10 +217,9 @@ export const UmrNode = React.memo(function UmrNode({
         {node.var && (
           <span
             className="umr-node-var"
-            role={live ? 'button' : undefined}
             tabIndex={-1}
-            title={live ? 'Rename' : undefined}
-            onClick={live ? act('node.variable') : undefined}
+            title={editable ? 'Double-click to rename' : undefined}
+            onDoubleClick={editable ? act('node.variable') : undefined}
           >
             {node.var}
           </span>
@@ -237,9 +227,8 @@ export const UmrNode = React.memo(function UmrNode({
         <span
           className="umr-node-concept"
           dir="auto"
-          role={live ? 'button' : undefined}
-          title={live ? 'Edit the concept' : undefined}
-          onClick={live ? act('node.concept') : undefined}
+          title={editable ? 'Double-click to edit the concept' : undefined}
+          onDoubleClick={editable ? act('node.concept') : undefined}
         >
           {node.concept}
         </span>
@@ -250,10 +239,9 @@ export const UmrNode = React.memo(function UmrNode({
             <span
               key={i}
               className="umr-chip"
-              role={live ? 'button' : undefined}
               tabIndex={-1}
-              title={live ? 'Edit the attributes' : `${a.rel} ${a.value}`}
-              onClick={live ? act('node.attributes') : undefined}
+              title={editable ? 'Double-click to edit the attributes' : `${a.rel} ${a.value}`}
+              onDoubleClick={editable ? act('node.attributes') : undefined}
             >
               <span className="umr-chip-rel">{a.rel.replace(/^:/, '')}</span>
               <span className="umr-chip-value" dir="auto">

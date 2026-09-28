@@ -24,15 +24,63 @@ const tag = (id, rel, otherVar, { out = false, group = 'coref', isDefault = fals
   text: out ? `${rel} ${otherVar}` : `${otherVar} ${rel}`,
 });
 
-// A pointer-down on the node records it as focused, which a part's click
-// then reads.
-const pressAndClick = async (r, el) =>
+const click = async (r, el) => r.step(() => el.click());
+const doubleClick = async (r, el) =>
   r.step(() => {
-    r.container
-      .querySelector('.umr-node')
-      .dispatchEvent(new Event('pointerdown', { bubbles: true }));
     el.click();
+    el.click();
+    el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
   });
+
+// A click focuses the node and a second click only keeps it focused: the
+// focused node takes letters as commands, and an editor a second click
+// opened took the next command letter as the new concept. A double-click
+// opens the part's editor, focused or not.
+describe('UmrNode parts', () => {
+  const withAttrs = { ...node, attrs: [{ rel: ':aspect', value: 'state' }] };
+  const parts = [
+    ['.umr-node-concept', 'node.concept'],
+    ['.umr-node-var', 'node.variable'],
+    ['.umr-chip', 'node.attributes'],
+  ];
+
+  it('opens a part on a double-click, never on a second click', async () => {
+    for (const focused of [false, true]) {
+      for (const [selector, action] of parts) {
+        const onAction = vi.fn();
+        const onClick = vi.fn();
+        const r = await renderComponent(
+          <UmrNode
+            node={withAttrs}
+            position={position}
+            focused={focused}
+            onAction={onAction}
+            onClick={onClick}
+          />,
+        );
+        const part = r.container.querySelector(selector);
+        await click(r, part);
+        await click(r, part);
+        expect(onAction).not.toHaveBeenCalled();
+        // The clicks reach the node, which focuses it.
+        expect(onClick).toHaveBeenCalledTimes(2);
+        await doubleClick(r, part);
+        expect(onAction).toHaveBeenCalledTimes(1);
+        expect(onAction).toHaveBeenCalledWith(action, 'n1');
+        await r.unmount();
+      }
+    }
+  });
+
+  it('opens nothing where there is no editing: read-only, or in a mode', async () => {
+    const r = await renderComponent(<UmrNode node={withAttrs} position={position} focused />);
+    for (const [selector] of parts) {
+      await doubleClick(r, r.container.querySelector(selector));
+    }
+    expect(r.container.querySelector('.umr-node-concept').getAttribute('title')).toBeNull();
+    await r.unmount();
+  });
+});
 
 describe('UmrNode document tags', () => {
   it('marks which end of the triple the node is', async () => {
@@ -74,7 +122,7 @@ describe('UmrNode document tags', () => {
     ]);
     // Each end of the merged tag is its own click.
     const second = r.container.querySelector('.umr-doc-tag-end[data-triple-id="b"]');
-    await pressAndClick(r, second);
+    await click(r, second);
     expect(onDocTagClick).toHaveBeenCalledWith(tags[1]);
     await r.unmount();
   });
@@ -97,7 +145,7 @@ describe('UmrNode document tags', () => {
   });
 
   // The node 26 others are a subset of: one tag, three of the ends and a
-  // count of the rest, which lists them all once the node is focused.
+  // count of the rest, which a double-click lists in full.
   it('caps the ends one tag lists', async () => {
     const onAction = vi.fn();
     const tags = Array.from({ length: 26 }, (_, i) => tag(`t${i}`, ':subset-of', `s${i + 3}x`));
@@ -107,7 +155,9 @@ describe('UmrNode document tags', () => {
     expect(texts(r.container, '.umr-doc-tag')).toEqual(['s3x s4x s5x +23 :subset-of ●']);
     const more = r.container.querySelector('.umr-doc-more');
     expect(more.title.split('\n')).toHaveLength(23);
-    await pressAndClick(r, more);
+    await click(r, more);
+    expect(onAction).not.toHaveBeenCalled();
+    await doubleClick(r, more);
     expect(onAction).toHaveBeenCalledWith('node.docRelations', 'n1');
     await r.unmount();
   });

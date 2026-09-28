@@ -110,7 +110,7 @@ export const EditorLegend = ({ project, direction = 'ltr' }) => {
         </Row>
 
         <Row title="Mouse">
-          A click focuses a node, and a second click on one of its parts edits that part. A
+          A click focuses a node, and a double-click on one of its parts edits that part. A
           right-click or ⋯ lists every action with its key.
         </Row>
       </div>

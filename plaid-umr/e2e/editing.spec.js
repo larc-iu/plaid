@@ -336,24 +336,24 @@ test.describe('editing', () => {
       const block = page.locator('.umr-block').first();
       await expect(block.locator('.umr-edge-label').first()).toBeVisible();
 
-      // One rule for the node's parts: the first click focuses, and a second
-      // click on a part edits that part. So a click on a chip cannot swallow
-      // the click that was only meant to focus the node.
+      // One rule for the node's parts: a click focuses, and a double-click
+      // on a part edits that part. So a click on a chip cannot swallow the
+      // click that was only meant to focus the node.
       const leave = nodeByConcept(page, 'leave-02');
       const picker = page.getByRole('dialog', { name: 'Attributes' });
       await leave.locator('.umr-chip').first().click();
       await expect(picker).toHaveCount(0);
       await expect(leave).toHaveClass(/umr-node--focused/);
 
-      // Focused, the variable renames.
-      await leave.locator('.umr-node-var').click();
+      // A double-click on the variable renames.
+      await leave.locator('.umr-node-var').dblclick();
       await expect(editor(page)).toHaveValue('s1l');
       await editor(page).fill('s1go');
       await page.keyboard.press('Enter');
       await expect(leave.locator('.umr-node-var')).toHaveText('s1go');
 
       // And the chip opens the attribute picker at that node.
-      await leave.locator('.umr-chip').first().click();
+      await leave.locator('.umr-chip').first().dblclick();
       await expect(picker).toBeVisible();
       await expect(picker.locator('[aria-pressed="true"]')).toHaveText('performance');
       await page.keyboard.press('Escape');
@@ -378,13 +378,15 @@ test.describe('editing', () => {
       await block.locator('.umr-block-text').click();
       await expect(picker).toHaveCount(0);
 
-      // The concept takes a click to focus and a second one to edit, so a
-      // double-click on a node edits its concept.
+      // A second single click on the concept only keeps the focus, so a
+      // command letter typed next is a command. A double-click edits it.
       const person = nodeByConcept(page, 'person').first();
       await person.locator('.umr-node-concept').click();
       await expect(editor(page)).toHaveCount(0);
       await expect(person).toHaveClass(/umr-node--focused/);
       await person.locator('.umr-node-concept').click();
+      await expect(editor(page)).toHaveCount(0);
+      await person.locator('.umr-node-concept').dblclick();
       await expect(editor(page)).toHaveValue('person');
       await page.keyboard.press('Escape');
 

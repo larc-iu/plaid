@@ -1006,13 +1006,15 @@
   padding-inline-end: 14px;
 }
 
-/* What a click edits says so under the pointer. */
-.umr-node-var[role='button']:hover,
-.umr-node-concept[role='button']:hover,
-.umr-chip[role='button']:hover {
-  text-decoration: underline;
+/* What a double-click edits says so under the pointer, with the dotted
+   underline that marks an opener in igt. No pointer cursor: a single click
+   only focuses the node. */
+.umr-node--focused .umr-node-var:hover,
+.umr-node--focused .umr-node-concept:hover,
+.umr-node--focused .umr-chip:hover,
+.umr-node--focused .umr-doc-more:hover {
+  text-decoration: underline dotted;
   text-underline-offset: 2px;
-  cursor: pointer;
 }
 
 /* The way out of a mode for a mouse. Escape does the same. */
