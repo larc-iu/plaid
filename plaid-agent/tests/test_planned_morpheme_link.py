@@ -284,3 +284,42 @@ def test_the_change_is_read_off_the_label_on_every_link_row():
     payload = w.plan_payload()
     for op, row in zip(payload['ops'][1:], payload['changes'][1:]):
         assert row['change'] == change_of(op)
+
+
+# --- review 2026-09-28 -------------------------------------------------------
+
+def _linked_kept_first():
+    """The fixture with s2.w1's stored first morpheme m-4a linked to gam#2
+    (l-3): the morpheme an analysis of s2.w1 keeps."""
+    c = FakeClient()
+    morph = c._documents['d1']['text_layers'][0]['token_layers'][2]
+    morph['vocabs'][0]['vocab_links'].append(
+        {'id': 'l-3', 'vocab_item': {'id': 'vi-gam2', 'form': 'gam'}, 'tokens': ['m-4a']})
+    return c
+
+
+def test_the_link_a_planned_link_replaces_goes_in_the_batch_that_writes_its_replacement():
+    """The replacement is written in the second batch, once the analysis has
+    run. Deleting the stored link in the first left the morpheme with no link
+    at all when the second failed (an entry deleted since the plan was made)."""
+    w = scan_ws(_linked_kept_first())
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'Gam'}, {'form': 'ar'}]})
+    call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s2.w1.m1'], 'entry_id': 'vi-ali'})
+    c = _linked_kept_first()
+    execute_plan(c, w.plan_payload()['ops'], source='s', label='l')
+    [second] = [b for b in c.batches if any(k == 'vocab_links.create' for k, _ in b)]
+    assert ('vocab_links.delete', 'l-3') in second
+    assert ('vocab_links.delete', 'l-3') not in c.batches[0]
+
+
+def test_a_link_by_place_on_the_kept_first_morpheme_must_name_the_morpheme_the_analysis_keeps():
+    """The executor writes a link at m1 on whatever the analysis keeps. A link
+    made against another first morpheme (a chain read in another order) would
+    replace the link of a morpheme the analysis deletes."""
+    w = scan_ws(_linked_kept_first())
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'Gam'}, {'form': 'ar'}]})
+    call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s2.w1.m1'], 'entry_id': 'vi-ali'})
+    analysis, link = w.ops
+    moved = dict(analysis, existing=list(reversed(analysis['existing'])))
+    with pytest.raises(ValueError, match='names morpheme 1 of an analysis this plan does not hold'):
+        execute_plan(FakeClient(), [moved, link], source='s', label='l')

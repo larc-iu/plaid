@@ -231,10 +231,9 @@ def _link(ctx: Context, op, tokens: List[str]) -> int:
 def _apply_link(ctx: Context, op) -> int:
     if op.get('analysis_word_id'):
         # A morpheme the plan's own analysis creates: written in the second
-        # pass, once that morpheme has an id. The link it replaces (the reused
-        # first morpheme's) goes now.
-        if op.get('existing_link_id'):
-            ctx.drop('vocab_links', op['existing_link_id'])
+        # pass, once that morpheme has an id. The link it replaces (the kept
+        # first morpheme's) goes in that batch too, so a second batch that
+        # fails leaves the stored link where it was.
         ctx.planned_links.append(op)
         return 1
     return _link(ctx, op, [op['token_id']])
@@ -702,9 +701,13 @@ def planned_morpheme(ops: List[Dict[str, Any]], link: Dict[str, Any]) -> Optiona
     for op in ops:
         if op.get('kind') == 'set_analysis' and op.get('word_id') == link.get('analysis_word_id'):
             chain = op.get('morphemes') or []
-            if k <= len(chain) and chain[k - 1].get('form') == link.get('morpheme_form'):
-                return chain[k - 1]
-            return None
+            if not (k <= len(chain) and chain[k - 1].get('form') == link.get('morpheme_form')):
+                return None
+            # At the first place, the stored morpheme the analysis keeps is the
+            # one the link replaces the link of, so it must be the one the
+            # link was made against.
+            kept = ((op.get('existing') or [{}])[0] or {}).get('id') if k == 1 else None
+            return chain[k - 1] if link.get('reuses_morpheme_id') == kept else None
     return None
 
 
@@ -992,6 +995,7 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
                 iid = created_id(b.results[i]) if i is not None and i < len(b.results) else None
             if not iid:
                 raise RuntimeError('a created lexicon entry came back without an id, so a link to it was not written')
+            ctx.drop('vocab_links', op.get('existing_link_id'))
             b.add(lambda batch, i=iid, m=mid: batch.vocab_links.create(i, [m], stamps.stamp()))
         for iid in ctx.pending_deletes:
             ctx.drop('vocab_items', iid)
