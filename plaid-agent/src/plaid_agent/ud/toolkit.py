@@ -326,7 +326,7 @@ def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:
     """Run one tool. Every failure comes back as text for the model."""
     fn = _IMPL.get(name)
     if not fn:
-        return f'Unknown tool {name}'
+        return f'Error: there is no tool named {name}.'
     # The project the call names, in a turn that may read several: its own
     # workspace, and the arguments without the name (see core/reach.py).
     try:

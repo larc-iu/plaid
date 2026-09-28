@@ -12,11 +12,13 @@ one read without re-reading.
 """
 
 import json
+import random
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
 import litellm
+from plaid_client.workflows.llm import RETRIES, RETRY_BASE_S, TIMEOUT_RETRIES
 
 from .trace import Tracer, summarize_steps, trace_step
 
@@ -64,13 +66,13 @@ class ModelConfig:
     stream: bool = True
 
     def describe(self) -> Dict[str, Any]:
-        return {'model': self.model, **({'api_base': self.api_base} if self.api_base else {})}
+        """Which model answers. The base URL stays out, as it does from the
+        model services' ``describe()``: an internal endpoint is the operator's
+        business, not the reader's."""
+        return {'model': self.model}
 
 
 PING_TIMEOUT_S = 30
-# How many times a model call is tried again after it fails (a timeout
-# included) when the operator set a deadline.
-TIMEOUT_RETRIES = 1
 # The ping's own token budget. A REASONING model spends its first tokens
 # thinking, so a small budget comes back with finish_reason 'length' and no
 # content at all: the ping then proves only that the provider answers, not
@@ -98,13 +100,13 @@ STREAM_INTERVAL_S = 0.15
 def _provider_kwargs(cfg: ModelConfig) -> Dict[str, Any]:
     """What every call to this model needs: the model string, and the base and
     key when the operator gave them (else litellm reads the provider's env)."""
-    out: Dict[str, Any] = {'model': cfg.model}
+    # The retries are :func:`_complete`'s alone, as they are the model
+    # services' (plaid_client.workflows.llm). The OpenAI SDK under litellm
+    # otherwise retries a timeout, a rate limit and a server error on its own,
+    # unseen by the loop, so a deadline did not say how long a call could take.
+    out: Dict[str, Any] = {'model': cfg.model, 'max_retries': 0}
     if cfg.timeout:
-        # A deadline, and one more try after it passes, as the model services
-        # do: the provider SDK retries a timed-out call twice on its own, which
-        # made a dead endpoint cost three whole windows.
         out['timeout'] = cfg.timeout
-        out['max_retries'] = TIMEOUT_RETRIES
     if cfg.api_base:
         out['api_base'] = cfg.api_base
     if cfg.api_key:
@@ -133,7 +135,60 @@ def ping_model(cfg: ModelConfig, timeout: float = PING_TIMEOUT_S) -> None:
         raise RuntimeError('the provider answered without a completion')
 
 
-def _complete(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str], None]):
+def _transient_errors() -> tuple:
+    """The provider failures that pass: a rate limit, a provider briefly
+    down or unreachable. The same list the model services retry."""
+    return tuple(e for e in (getattr(litellm, n, None) for n in
+                             ('RateLimitError', 'ServiceUnavailableError', 'InternalServerError',
+                              'APIConnectionError'))
+                 if isinstance(e, type) and issubclass(e, Exception))
+
+
+def _complete(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str], None],
+              cancelled: Callable[[], bool] = lambda: False):
+    """One model call, tried again the way the model services try theirs.
+
+    A call that passes the operator's deadline is tried :data:`TIMEOUT_RETRIES`
+    more times and no more: a model that did not answer in the whole window is
+    down or stuck, and every try costs the reader another window. A rate limit
+    or a provider briefly down is tried up to :data:`RETRIES` more times after
+    a jittered wait. ``cancelled`` is read before every retry and during the
+    wait, and a stop ends the call with :class:`TurnCancelled`."""
+    transient = _transient_errors()
+    attempt = timeouts = 0
+    while True:
+        try:
+            return _complete_once(cfg, kwargs, on_text)
+        except Exception as e:
+            if _ProviderTimeout and isinstance(e, _ProviderTimeout):
+                timeouts += 1
+                if timeouts > TIMEOUT_RETRIES:
+                    raise
+                delay = 0.0
+                print(f'{cfg.model} did not answer within {cfg.timeout:g} seconds; trying once more'
+                      if cfg.timeout else f'{cfg.model} did not answer in time; trying once more')
+            elif transient and isinstance(e, transient):
+                if attempt >= RETRIES:
+                    raise
+                delay = random.uniform(0, RETRY_BASE_S * (2 ** attempt))
+                attempt += 1
+                # The operator's log, never the reader's.
+                print(f'{cfg.model} failed ({" ".join(str(e).split())[:200]}); '
+                      f'retrying in {delay:.1f}s ({attempt} of {RETRIES})')
+            else:
+                raise
+        end = time.monotonic() + delay
+        while True:
+            if cancelled():
+                raise TurnCancelled()
+            left = end - time.monotonic()
+            if left <= 0:
+                break
+            time.sleep(min(0.5, left))
+        on_text('')
+
+
+def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str], None]):
     """One model call. Streamed when configured: the text so far goes to
     ``on_text`` at intervals and the full response is rebuilt from the
     chunks at the end (tool calls included), so the caller reads it as it
@@ -160,9 +215,11 @@ def _complete(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str],
                     last = now
                     on_text(text)
     except Exception as e:
-        # A timeout is not a provider that refuses to stream: asking again
-        # without streaming would only wait out the whole deadline once more.
-        if chunks or (_ProviderTimeout and isinstance(e, _ProviderTimeout)):
+        # A timeout, a rate limit or a provider that is down is not a provider
+        # that refuses to stream: asking again at once without streaming would
+        # only fail the same way, and :func:`_complete` decides about retries.
+        if chunks or (_ProviderTimeout and isinstance(e, _ProviderTimeout)) \
+                or isinstance(e, _transient_errors()):
             raise
         return litellm.completion(**kwargs)
     if text:
@@ -348,7 +405,7 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
         kwargs.pop('tools', None)
         kwargs.pop('tool_choice', None)
         on_text('')
-        resp = _complete(cfg, kwargs, on_text)
+        resp = _complete(cfg, kwargs, on_text, cancelled)
         spent['usage'] = usage_of(resp) or spent['usage']
         choice = resp.choices[0]
         d = _message_to_dict(choice.message)
@@ -376,7 +433,7 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
         if cfg.max_tokens:
             kwargs['max_tokens'] = cfg.max_tokens
         on_text('')
-        resp = _complete(cfg, kwargs, on_text)
+        resp = _complete(cfg, kwargs, on_text, cancelled)
         spent['usage'] = usage_of(resp) or spent['usage']
         choice = resp.choices[0]
         d = _message_to_dict(choice.message)

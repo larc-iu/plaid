@@ -44,7 +44,7 @@ def test_frequency_list_reports_field_values_with_empties():
     out = call_tool(w, 'frequency_list', {'what': 'Morph Gloss'})
     assert out.startswith('2 Morph Gloss values, 2 tokens, 3 empty.')
     assert '  1\t1\tERG' in out
-    assert call_tool(w, 'field_values', {'field': 'Morph Gloss'}) == 'Unknown tool field_values'
+    assert call_tool(w, 'field_values', {'field': 'Morph Gloss'}) == 'Error: there is no tool named field_values.'
 
 
 def test_read_lexicon():
@@ -138,7 +138,7 @@ def test_orthography_respell_links_entries():
 
 def test_tool_errors_come_back_as_text():
     w = ws()
-    assert call_tool(w, 'nope', {}) == 'Unknown tool nope'
+    assert call_tool(w, 'nope', {}) == 'Error: there is no tool named nope.'
     assert call_tool(w, 'set_field', {'document': 'd1'}).startswith('Error:')
     # The same sentence both apps use, wherever a pattern is compiled.
     out = call_tool(w, 'search', {'pattern': '(', 'regex': True})

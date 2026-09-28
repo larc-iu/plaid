@@ -148,7 +148,93 @@ def test_every_model_call_carries_the_operators_timeout(monkeypatch):
         return script(**kwargs)
 
     _turn(monkeypatch, spy, timeout=120)
-    assert seen == [(120, 1)] * 3, 'the SDK retries a timeout twice on its own unless told'
+    assert seen == [(120, 0)] * 3, 'the SDK retries a timeout twice on its own unless told'
+
+
+def _no_waiting(monkeypatch):
+    monkeypatch.setattr(agent.time, 'sleep', lambda s: None)
+    monkeypatch.setattr(agent.random, 'uniform', lambda a, b: 0.0)
+
+
+def test_a_timed_out_call_is_tried_once_more_by_the_loop_and_no_more(monkeypatch):
+    """Measured on a slow endpoint before the fix: the SDK's own retry made the
+    second request, unseen. Now the SDK makes none and the loop makes one, as
+    the model services do (plaid_client.workflows.llm)."""
+    _no_waiting(monkeypatch)
+    calls = []
+
+    def slow(**kwargs):
+        calls.append(kwargs.get('max_retries'))
+        raise agent.litellm.Timeout('Request timed out.', model='x', llm_provider='openai')
+
+    monkeypatch.setattr(agent.litellm, 'completion', slow)
+    with pytest.raises(agent.litellm.Timeout):
+        run_turn(ModelConfig(model='fake/m', timeout=5, stream=False), _kit(lambda ws, n, a: 'ok'), Ws(),
+                 'system', [{'role': 'user', 'content': 'hi'}])
+    assert calls == [0, 0]
+
+
+def test_a_rate_limit_is_waited_out_and_the_turn_goes_on(monkeypatch):
+    _no_waiting(monkeypatch)
+    replies = iter([agent.litellm.RateLimitError('slow down', model='x', llm_provider='openai'),
+                    agent.litellm.InternalServerError('busy', model='x', llm_provider='openai'),
+                    _resp('ok')])
+
+    def flaky(**kwargs):
+        r = next(replies)
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+    turn = _turn(monkeypatch, flaky)
+    assert turn.text == 'ok'
+
+
+def test_a_provider_that_stays_down_is_tried_a_bounded_number_of_times(monkeypatch):
+    _no_waiting(monkeypatch)
+    calls = []
+
+    def down(**kwargs):
+        calls.append(kwargs.get('stream'))
+        raise agent.litellm.InternalServerError('down', model='x', llm_provider='openai')
+
+    monkeypatch.setattr(agent.litellm, 'completion', down)
+    with pytest.raises(agent.litellm.InternalServerError):
+        run_turn(ModelConfig(model='fake/m'), _kit(lambda ws, n, a: 'ok'), Ws(), 'system',
+                 [{'role': 'user', 'content': 'hi'}])
+    assert calls == [True] * (agent.RETRIES + 1), 'streamed each time, never re-asked unstreamed at once'
+
+
+def test_a_stop_while_waiting_to_retry_ends_the_turn(monkeypatch):
+    _no_waiting(monkeypatch)
+    stop = {'now': False}
+    calls = []
+
+    def limited(**kwargs):
+        calls.append(1)
+        stop['now'] = True
+        raise agent.litellm.RateLimitError('slow down', model='x', llm_provider='openai')
+
+    monkeypatch.setattr(agent.litellm, 'completion', limited)
+    with pytest.raises(agent.TurnCancelled):
+        run_turn(ModelConfig(model='fake/m', stream=False), _kit(lambda ws, n, a: 'ok'), Ws(), 'system',
+                 [{'role': 'user', 'content': 'hi'}], cancelled=lambda: stop['now'])
+    assert calls == [1]
+
+
+def test_the_model_description_leaves_the_endpoint_out():
+    cfg = ModelConfig(model='openai/gpt-oss-120b', api_base='http://gpu-internal:8000/v1', api_key='sk-x')
+    assert cfg.describe() == {'model': 'openai/gpt-oss-120b'}
+
+
+def test_an_unknown_tool_is_a_failed_step_in_every_app():
+    """A model that keeps calling a tool that does not exist is repeating a
+    failing call, and the turn stops after three as it does for any other."""
+    from plaid_agent.igt import toolkit as igt
+    from plaid_agent.ud import toolkit as ud
+    from plaid_agent.umr import toolkit as umr
+    for kit in (igt, ud, umr):
+        assert kit.call_tool(None, 'delete_everything', {}).startswith('Error'), kit.__name__
 
 
 def test_a_streamed_call_that_times_out_is_not_asked_again_without_streaming(monkeypatch):
@@ -162,7 +248,7 @@ def test_a_streamed_call_that_times_out_is_not_asked_again_without_streaming(mon
     with pytest.raises(agent.litellm.Timeout):
         run_turn(ModelConfig(model='fake/m', timeout=5), _kit(lambda ws, n, a: 'ok'), Ws(), 'system',
                  [{'role': 'user', 'content': 'hi'}])
-    assert calls == [True]
+    assert calls == [True, True], 'the one retry streams again, and nothing is asked unstreamed'
 
 
 def test_no_timeout_is_sent_when_the_operator_gave_none(monkeypatch):
