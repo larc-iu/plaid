@@ -119,6 +119,9 @@ VALUES = [
     ['" "', ':op1'], ['"C#"', None], ['"a (b): c/d"', None], ['"back\\\\"', None],
     ['\u6771\u4eac', ':op1'], ["o'brien", None], ['a\\b', None], ['new_york', ':op1'],
     ['s1y', ':mod'], ['"\u0627\u0644\u0642\u0627\u0647\u0631\u0629"', None],
+    # A list item takes a whole number or a quoted label (LIST_ITEM_ATTRIBUTES).
+    ['first', ':li'], ['1', ':li'], ['-1', ':list-item'], ['"(a)"', ':li'], ['1.5', ':li'],
+    ['+1', ':list-item'], ['""', ':li'], ['s1x', ':li'], ['First', ':li'], ['first', 'li'],
 ]
 
 #: Concepts a service names a node for, with the sentence and the names taken,

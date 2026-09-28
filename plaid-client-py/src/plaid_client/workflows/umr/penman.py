@@ -23,6 +23,8 @@ import unicodedata
 from dataclasses import dataclass, field as dc_field
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from .inventory import LIST_ITEM_ATTRIBUTES, list_item_problem
+
 # Concepts, atoms and variables all stop at whitespace, brackets, a colon or
 # the start of a comment (validate.py:390).
 TOKEN = re.compile(r'[^\s():#]+')
@@ -190,7 +192,9 @@ def value_grammar_problem(value, rel: Optional[str] = None) -> Optional[Dict[str
                 'message': f"The value '{text}'{of} is read as the variable "
                            f"'{text[:front]}'. Quote it."}
     if _GRAMMAR_ATOM.fullmatch(text) or _GRAMMAR_NUMBER.fullmatch(text):
-        return None
+        # A list item's value is a whole number or a quoted label.
+        listed = list_item_problem(rel, text) if rel in LIST_ITEM_ATTRIBUTES else None
+        return {'code': 'unexpected-value', 'message': listed} if listed else None
     if _GRAMMAR_UPPER_ATOM.fullmatch(text):
         return {'code': 'value-wrong-chars',
                 'message': f"The value '{text}'{of} holds a capital letter or an underscore."}
