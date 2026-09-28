@@ -153,4 +153,63 @@ describe('Combobox keyboard state', () => {
     expect(seen).toEqual([null, 'NOUN', null]);
     await v.unmount();
   });
+
+  // The list opens wherever the pointer happens to rest, and Chromium tells
+  // the option that appears under a still pointer it was entered. A hovered
+  // option is not a choice, and the arrows start from where the keyboard
+  // left off, not from the pointer.
+  describe('a hovered option', () => {
+    const hover = (v, label) =>
+      v.step(() => {
+        const option = [...document.querySelectorAll('[role="option"]')].find(
+          (o) => o.textContent === label,
+        );
+        option.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      });
+
+    it('is shown, but is not what Enter or the call site takes', async () => {
+      const seen = [];
+      const submitted = [];
+      const v = await mount({
+        onKeyDown: (_e, state) => seen.push(state.activeValue),
+        onSubmit: (value) => submitted.push(value),
+      });
+      await v.focus();
+      await hover(v, 'VERB');
+      const verb = [...document.querySelectorAll('[role="option"]')][1];
+      expect(verb.getAttribute('data-hovered')).toBe('true');
+      expect(verb.getAttribute('aria-selected')).toBe('false');
+      await v.press('Enter');
+      expect(seen).toEqual([null]);
+      expect(submitted).toEqual([]);
+      await v.unmount();
+    });
+
+    it('does not move where the first ArrowDown lands', async () => {
+      const seen = [];
+      const v = await mount({ onKeyDown: (_e, state) => seen.push(state.activeValue) });
+      await v.focus();
+      await hover(v, 'VERB');
+      await v.press('ArrowDown');
+      await hover(v, 'ADV');
+      await v.press('ArrowDown');
+      await v.press('Enter');
+      expect(seen).toEqual([null, 'NOUN', 'VERB']);
+      await v.unmount();
+    });
+
+    it('is still what a click takes', async () => {
+      const submitted = [];
+      const v = await mount({ onSubmit: (value) => submitted.push(value) });
+      await v.focus();
+      await hover(v, 'ADV');
+      await v.step(() =>
+        [...document.querySelectorAll('[role="option"]')][2].dispatchEvent(
+          new MouseEvent('click', { bubbles: true }),
+        ),
+      );
+      expect(submitted).toEqual(['ADV']);
+      await v.unmount();
+    });
+  });
 });

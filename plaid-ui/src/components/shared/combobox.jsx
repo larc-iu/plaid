@@ -20,6 +20,13 @@ import { normalizeOptions, flattenOptions, defaultFilter } from './comboboxOptio
 // acts on the key, and `event.preventDefault()` is how a call site says it took
 // the key. `state` is `{ open, activeOption, activeValue, count, close }`.
 //
+// The pointer shows where it is and a click takes that option, but a hovered
+// option is not the keyboard's: Enter, the arrows and `state` go by the option
+// the arrows (or `autoHighlight`) put the cursor on. The list opens wherever
+// the pointer happens to rest, and Chromium tells the option that appears
+// under a still pointer that it was entered, so a hover that moved the cursor
+// made Enter take an option nobody chose and the first ArrowDown start from it.
+//
 // Options may be strings, `{value, label}`, or `{group, items}` in any mix.
 // `filter({options, search})` receives them normalized and returns the same
 // shape, so a call site can order matches however it likes.
@@ -66,11 +73,16 @@ export const Combobox = React.forwardRef(function Combobox(
     autoHighlight && flat.length ? 0 : -1,
   );
   const [lastListKey, setLastListKey] = React.useState(listKey);
+  // The option under the pointer, shown apart from the keyboard's cursor.
+  const [hoverIndex, setHoverIndex] = React.useState(-1);
   let active = activeIndex;
+  let hovered = hoverIndex;
   if (listKey !== lastListKey) {
     active = autoHighlight && flat.length ? 0 : -1;
+    hovered = -1;
     setLastListKey(listKey);
     setActiveIndex(active);
+    setHoverIndex(-1);
   }
 
   const activeOption = active >= 0 ? (flat[active] ?? null) : null;
@@ -128,15 +140,18 @@ export const Combobox = React.forwardRef(function Combobox(
       role="option"
       aria-selected={index === active}
       data-active={index === active || undefined}
+      data-hovered={(index === hovered && index !== active) || undefined}
       className={cn(
         'cursor-pointer whitespace-nowrap rounded-sm px-2 py-1 text-sm',
         index === active && 'bg-accent text-accent-foreground',
+        index === hovered && index !== active && 'bg-accent/50',
         optionClassName,
       )}
       // The input has to keep focus through the click, or it blurs (and
       // commits) before the click lands on anything.
       onMouseDown={(event) => event.preventDefault()}
-      onMouseEnter={() => setActiveIndex(index)}
+      onMouseEnter={() => setHoverIndex(index)}
+      onMouseLeave={() => setHoverIndex((h) => (h === index ? -1 : h))}
       onClick={() => submit(option)}
     >
       {renderOption ? renderOption({ option, active: index === active }) : option.label}
