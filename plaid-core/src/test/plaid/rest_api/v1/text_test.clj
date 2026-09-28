@@ -329,6 +329,48 @@
     (is (= [1 2 "界"] (extent jie)))
     (is (= [0 2 "大界"] (extent node)))))
 
+(deftest text-body-edit-in-a-script-without-spaces-reads-a-time-alignment-segment-as-no-word
+  ;; igt's Time Alignment layer forbids overlap like the word layer, but it
+  ;; has no parent. A segment over `你好世界` is not a word around the
+  ;; morphemes `你好` and `世界`: deleting `你好` and respelling `世` as `大`
+  ;; keeps `世界` whole on `大界`, and the segment follows it.
+  (let [proj (create-test-project admin-request "TextAlignmentProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        sentences (-> (create-token-layer-opts admin-request tl "Sentences"
+                                               {:overlap-mode "partitioning"})
+                      :body :id)
+        words (-> (create-token-layer-opts admin-request tl "Words"
+                                           {:overlap-mode "non-overlapping"
+                                            :parent-token-layer-id sentences})
+                  :body :id)
+        morphemes (-> (create-token-layer-opts admin-request tl "Morphemes"
+                                               {:parent-token-layer-id words})
+                      :body :id)
+        alignment (-> (create-token-layer-opts admin-request tl "Time Alignment"
+                                               {:overlap-mode "non-overlapping"})
+                      :body :id)
+        text-id (-> (create-text admin-request tl doc "你好世界再见\n") :body :id)
+        _ (assert-created (bulk-create-tokens admin-request [{:token-layer-id sentences :text text-id
+                                                              :begin 0 :end 7}]))
+        nihao (-> (create-token admin-request words text-id 0 2) :body :id)
+        shijie (-> (create-token admin-request words text-id 2 4) :body :id)
+        zaijian (-> (create-token admin-request words text-id 4 6) :body :id)
+        shi (-> (create-token admin-request morphemes text-id 2 3) :body :id)
+        jie (-> (create-token admin-request morphemes text-id 3 4) :body :id)
+        segment (-> (create-token admin-request alignment text-id 0 4) :body :id)
+        extent (fn [id]
+                 (let [t (get-token admin-request id)]
+                   (assert-ok t)
+                   ((juxt :token/begin :token/end :token/value) (:body t))))]
+    (assert-ok (update-text admin-request text-id "大界再见\n"))
+    (assert-not-found (get-token admin-request nihao))
+    (is (= [0 2 "大界"] (extent shijie)))
+    (is (= [2 4 "再见"] (extent zaijian)))
+    (is (= [0 1 "大"] (extent shi)))
+    (is (= [1 2 "界"] (extent jie)))
+    (is (= [0 2 "大界"] (extent segment)))))
+
 (deftest text-combining-mark-typed-at-a-words-end-joins-the-word
   ;; An accent typed as a separate mark after `cafe` makes the word `café`,
   ;; through a whole body and through an explicit insert (ruled 2026-09-27).

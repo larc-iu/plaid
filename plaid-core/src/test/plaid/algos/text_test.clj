@@ -371,14 +371,13 @@
        (ta/pair-replacements old tokens)
        (ta/fold-whole-words old tokens)
        (apply-all old tokens)))
-  ;; `overlap-free` is the set of layers that forbid overlap, the
-  ;; partitions among them
-  ([old new tokens partitioning overlap-free]
+  ;; `word-layers` is the set of layers that hold words
+  ([old new tokens partitioning word-layers]
    (-> (ta/diff old new)
        (ta/slide-to-tokens old tokens partitioning)
        (ta/normalize-deletes old tokens)
        (ta/pair-replacements old tokens)
-       (ta/fold-whole-words old tokens partitioning overlap-free)
+       (ta/fold-whole-words old tokens word-layers)
        (apply-all old tokens))))
 
 (deftest pair-replacements-turns-a-respelled-letter-into-a-replace
@@ -1047,7 +1046,8 @@
     ;; words, has no space in it, and two words meeting inside it read as two
     ;; morphemes of one word. The replace was not cut and the word respelled
     ;; at its start lost its new letter. The layers say which is a word: one
-    ;; that forbids overlap and is not a partition.
+    ;; that forbids overlap, is not a partition and has a parent, which
+    ;; update-body works out.
     (let [on (fn [layer t] (assoc t :token/layer layer))]
       (doseq [[old new tokens want]
               [["tatuabשלוםthe" "Zbשלוםthe"
@@ -1072,7 +1072,7 @@
                 [(on :s (tok :s1 0 5)) (on :w (tok :nihao 0 2)) (on :w (tok :shijie 2 4))
                  (on :m (tok :shi 2 3)) (on :m (tok :jie 3 4))]
                 #{[:shijie 0 2]}]]]
-        (let [{:keys [text tokens]} (body-edit old new tokens #{:s} #{:s :w})]
+        (let [{:keys [text tokens]} (body-edit old new tokens #{:s} #{:w})]
           (is (= new (:text/body text)))
           (is (= want (extents (filter (comp #{:w} :token/layer) tokens))) (str (pr-str old) " -> " (pr-str new)))))))
   (testing "one that ends where the replace ends still marks where a word begins"

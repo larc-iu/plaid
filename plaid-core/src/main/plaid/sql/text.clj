@@ -252,23 +252,28 @@
              ;; Explicit client ops are applied as sent. The slide is told
              ;; which layers are partitions, where an insert at a boundary
              ;; goes into the token that ends there, and the fold which
-             ;; layers forbid overlap as well, since a word is a token of such
-             ;; a layer that is no partition: in a script without spaces a
-             ;; sentence or a UMR node over several words looks like a word.
-             overlap-modes (when (and (string? new-body-or-ops) (seq tokens))
-                             (psc/q tx {:select [:id :overlap_mode]
-                                        :from [:token_layers]
-                                        :where [:and
-                                                [:in :id (vec (distinct (map :token/layer tokens)))]
-                                                [:in :overlap_mode ["partitioning" "non-overlapping"]]]}))
-             partitioning (into #{} (comp (filter #(= "partitioning" (:overlap_mode %))) (map :id)) overlap-modes)
-             overlap-free (into #{} (map :id) overlap-modes)
+             ;; layers hold words: those that forbid overlap, are no
+             ;; partition and nest under another layer. In a script without
+             ;; spaces a sentence, a UMR node or a time-alignment segment (no
+             ;; parent) over several words looks like a word.
+             layer-rows (when (and (string? new-body-or-ops) (seq tokens))
+                          (psc/q tx {:select [:id :overlap_mode :parent_token_layer_id]
+                                     :from [:token_layers]
+                                     :where [:and
+                                             [:in :id (vec (distinct (map :token/layer tokens)))]
+                                             [:in :overlap_mode ["partitioning" "non-overlapping"]]]}))
+             partitioning (into #{} (comp (filter #(= "partitioning" (:overlap_mode %))) (map :id)) layer-rows)
+             word-layers (into #{}
+                               (comp (filter #(and (= "non-overlapping" (:overlap_mode %))
+                                                   (some? (:parent_token_layer_id %))))
+                                     (map :id))
+                               layer-rows)
              ops (if (string? new-body-or-ops)
                    (-> (ta/diff old-body new-body-or-ops)
                        (ta/slide-to-tokens old-body tokens partitioning)
                        (ta/normalize-deletes old-body tokens)
                        (ta/pair-replacements old-body tokens)
-                       (ta/fold-whole-words old-body tokens partitioning overlap-free))
+                       (ta/fold-whole-words old-body tokens word-layers))
                    (vec new-body-or-ops))
              indexed-old (reduce (fn [m t] (assoc m (:token/id t) t)) {} tokens)
              {new-text :text new-tokens :tokens deleted-ids :deleted}

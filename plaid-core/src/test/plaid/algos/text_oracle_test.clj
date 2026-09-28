@@ -364,9 +364,9 @@
                    (ta/slide-to-tokens old tokens #{:s})
                    (ta/normalize-deletes old tokens)
                    (ta/pair-replacements old tokens)
-                   ;; the sentences are a partition, the words and the
-                   ;; punctuation tokens forbid overlap, as in the apps
-                   (ta/fold-whole-words old tokens #{:s} #{:s :w :p})
+                   ;; the words and the punctuation tokens are the word
+                   ;; layers (overlap forbidden, no partition, a parent)
+                   (ta/fold-whole-words old tokens #{:w :p})
                    (ta/apply-text-edits {:text/body old} tokens))
         ps (problems c result)]
     (if (and (seq ps) (some #(empty? (problems (reading c %) result)) (rest (:group info))))

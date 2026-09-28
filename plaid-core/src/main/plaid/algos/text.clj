@@ -1011,8 +1011,9 @@
         ;; Two tokens meet at p inside a word without a space that runs
         ;; across it: p is between two morphemes of the word. Where a
         ;; punctuation mark is left between two words, nothing meets. In a
-        ;; script without spaces a sentence or a UMR node over several words
-        ;; is such a token too, and only its layer tells it from a word.
+        ;; script without spaces a sentence, a UMR node or a time-alignment
+        ;; segment over several words is such a token too, and only its
+        ;; layer tells it from a word.
         inside-word? (fn [p]
                        (let [[B E] (run p)
                              ts (filter width? (near B E))
@@ -1104,20 +1105,18 @@
   not over both (`NY` to `New York`). The reconstructed string is
   unchanged.
 
-  `partitioning` is the set of the tokens' layers that are partitions and
-  `overlap-free` the set of those that forbid overlap, partitions included.
-  A word is a token on a layer that forbids overlap and is not a partition,
-  so a sentence or a UMR node over several words of a script without spaces
-  is never taken for a word around morphemes. Without them any token
+  `word-layers` is the set of the tokens' layers that hold words: those
+  that forbid overlap, are no partition and nest under another layer (see
+  `update-body`). Only a token on one is a word around morphemes, so a
+  sentence, a UMR node or a time-alignment segment over several words of a
+  script without spaces is never taken for one. Without it any token
   without a space may be a word. Edits leaving only spaces in a word's place
   are not folded onto it: the word is deleted."
-  ([ops old tokens] (fold-whole-words ops old tokens nil nil))
-  ([ops old tokens partitioning overlap-free]
-   (let [word? (if (nil? overlap-free)
+  ([ops old tokens] (fold-whole-words ops old tokens nil))
+  ([ops old tokens word-layers]
+   (let [word? (if (nil? word-layers)
                  (constantly true)
-                 (fn [{:token/keys [layer]}]
-                   (and (contains? overlap-free layer)
-                        (not (contains? partitioning layer)))))]
+                 (fn [{:token/keys [layer]}] (contains? word-layers layer)))]
      (fold-whole-words* ops old tokens word?))))
 
 (defn- fold-whole-words*
