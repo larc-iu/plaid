@@ -31,6 +31,7 @@ import {
   groupOf,
   variablesSharedInSentence,
   keepUnchangedSentences,
+  KEPT_VARIABLE,
 } from './sentenceGraph.js';
 import { DOC_CONSTANTS } from './format/inventory.js';
 import {
@@ -458,7 +459,14 @@ export class UmrDocument extends DocumentModel {
     const { remove, rebind, resize, unanchor } = planUnalignedHeal(graph, UMR_NAMESPACE);
     const strays = planStrayTokens(this.layerInfo);
     const removed = new Set(remove);
-    const renumber = planRenumber(graph, removed);
+    // A graph kept as text still names its variables, and a renumbered node
+    // must not take one of them.
+    const keptNames = new Set();
+    graph.sentences.forEach((s) => {
+      if (s.nodes.length || typeof s.rawGraph !== 'string') return;
+      for (const m of s.rawGraph.matchAll(KEPT_VARIABLE)) keptNames.add(m[1]);
+    });
+    const renumber = planRenumber(graph, removed, keptNames);
     // Only on a complete read of the vocabularies: an entry missing from a
     // read that skipped one may only be unread.
     const read = await this.loadLexicon().catch(() => null);
@@ -490,9 +498,11 @@ export class UmrDocument extends DocumentModel {
       );
       renumber.forEach(({ nodeId, to }) => change(nodeId, { var: to }));
       unlink.forEach((nodeId) => change(nodeId, { entry: undefined }));
+      const heldRenamed = this._heldRenamed(renumber);
       await this._client.batched(async (b) => {
         if (tokenIds.length) b.tokens.bulkDelete(tokenIds);
         metaOf.forEach((changes, nodeId) => b.spans.patchMetadata(nodeId, umrOps(changes)));
+        heldRenamed.forEach(([tokenId, held]) => b.tokens.patchMetadata(tokenId, umrOps({ held })));
         resize.forEach(({ nodeId, pieceId, begin, end, extra }) => {
           b.tokens.update(pieceId, begin, end);
           if (extra) {
@@ -518,6 +528,30 @@ export class UmrDocument extends DocumentModel {
     } catch (error) {
       return { findings: [], error };
     }
+  }
+
+  // The held relations (sentenceGraph `held`) that name a renumbered node,
+  // with the new names: `[sentenceTokenId, held]` for each sentence whose
+  // list changes. A name two renumbered nodes share is left as it is.
+  _heldRenamed(renumber) {
+    const to = new Map();
+    renumber.forEach((r) =>
+      to.set(r.from, to.has(r.from) && to.get(r.from) !== r.to ? null : r.to),
+    );
+    const rename = (name) => to.get(name) || name;
+    const out = [];
+    this.sentences.forEach((s) => {
+      if (!s.held.length) return;
+      const held = s.held.map((h) => ({
+        ...h,
+        source: rename(h.source),
+        target: rename(h.target),
+      }));
+      if (held.some((h, i) => h.source !== s.held[i].source || h.target !== s.held[i].target)) {
+        out.push([s.tokenId, held]);
+      }
+    });
+    return out;
   }
 
   describeReconcile(result) {
@@ -2152,7 +2186,17 @@ export class UmrDocument extends DocumentModel {
         .filter((n) => n.root && (renamed.get(n.id) ?? n.var) !== plan.root && !gone.has(n.id))
         .forEach((o) => spanOps.push([o.id, umrPatchFor(o.id, { root: undefined })]));
     }
-    for (const c of plan.concept) spanValues.push([c.nodeId, c.concept, editSpan(c.nodeId)]);
+    // A concept typed over is no longer the one its vocabulary entry gave,
+    // so the node forgets the entry, as a concept typed on the canvas does
+    // (setConcept): the entry check would otherwise say the entry changed.
+    for (const c of plan.concept) {
+      const had = umrOf(L.spans.find((x) => x.id === c.nodeId)).entry;
+      spanValues.push([
+        c.nodeId,
+        c.concept,
+        [...(had ? umrOps({ entry: undefined }) : []), ...editSpan(c.nodeId)],
+      ]);
+    }
     // A renumber moves a child's place and nothing else, so it carries no
     // stamp: an untouched machine edge or attribute stays unverified.
     for (const a of plan.attrs) {

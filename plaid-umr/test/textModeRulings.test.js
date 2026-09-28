@@ -148,3 +148,19 @@ test('Discard graph keeps a drafted edge into a node a person corrected, still d
   assert.ok(color);
   assert.equal(provState(color.metadata), PROV_STATES.MACHINE);
 });
+
+test('a concept typed over in Text mode forgets the vocabulary entry it was picked from', async () => {
+  const { doc, calls } = load();
+  const cat = byVar(doc, 's1x');
+  doc._raw.textLayers[0].tokenLayers
+    .find((l) => l.config?.umr?.nodes)
+    .spanLayers[0].spans.find((s) => s.id === cat.id).metadata.umr.entry = 'e1';
+  doc._dataVersion += 1;
+  assert.equal(
+    await doc.applyPenman(1, '(s1y / sleep-01\n    :ARG0 (s1x / dog)\n    :mode Imperative)'),
+    1,
+  );
+  assert.equal(byVar(doc, 's1x').metadata.umr.entry, undefined);
+  const ops = calls.find((c) => c.name === 'spans.patchMetadata' && c.args[0] === cat.id).args[1];
+  assert.ok(ops.some((o) => o.op === 'delete' && o.path.join('.') === 'umr.entry'));
+});

@@ -127,12 +127,14 @@ const NUMBERED = /^s([0-9]+)(\p{L}.*)$/u;
  * `s1v`). A name already taken by a node that keeps its own takes a counter
  * after it, as a new variable does (`s1v2`). Constants and names not of this
  * shape are left alone. Relations point at nodes, so only the names change.
+ * `reserved` holds names taken by something that is not a node, the
+ * variables a graph kept as text defines.
  *
  * @returns {{ nodeId: string, from: string, to: string }[]}
  */
-export function planRenumber(graph, skip = new Set()) {
+export function planRenumber(graph, skip = new Set(), reserved = new Set()) {
   const moves = [];
-  const fixed = new Set();
+  const fixed = new Set(reserved);
   graph.nodesById.forEach((node) => {
     if (!node.var) return;
     const m = NUMBERED.exec(node.var);
