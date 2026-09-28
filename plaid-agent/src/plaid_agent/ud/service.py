@@ -9,7 +9,8 @@ from typing import Any, Dict, List, Optional
 from ..core.agent import Toolkit
 from ..core.service import BaseAssistantService, build_web_config, check_hint, stale_documents  # noqa: F401
 from .citations import resolve_citations
-from .plan import execute_plan, summarize
+from ..core.plan import documents_to_lock
+from .plan import REWRITES_DOCUMENT, execute_plan, summarize
 from .project import load_project
 from .prompt import build_system_prompt, project_brief
 from .toolkit import call_tool, tools_for
@@ -68,6 +69,11 @@ class AssistantService(BaseAssistantService):
 
     def summarize(self, ops: List[Dict[str, Any]]) -> str:
         return summarize(ops)
+
+    def documents_to_lock(self, ops: List[Dict[str, Any]], documents: List[Dict[str, Any]]) -> List[str]:
+        # The parser locks the document it rewrites itself, as another
+        # service, so holding it here would refuse the parse.
+        return documents_to_lock(ops, documents, exclude=REWRITES_DOCUMENT)
 
 
 def main():

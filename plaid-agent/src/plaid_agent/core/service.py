@@ -72,7 +72,7 @@ from .files import Attachments
 from .guidelines import in_context as guidelines_in_context
 from .conversation import (ConversationStore, MissingConversation, assistant_item, build_meta, error_item,
                            find_plan, prune, record_budget, settle_plan)
-from .plan import PlanError
+from .plan import DocumentsBusy, PlanError, documents_to_lock, holding
 from .web import BACKENDS, WebConfig, session_for, ping as ping_search
 
 
@@ -192,6 +192,13 @@ class BaseAssistantService(BaseService):
     def summarize(self, ops: List[Dict[str, Any]]) -> str:
         """A plan in one phrase, for the audit label and the applied message."""
         raise NotImplementedError
+
+    def documents_to_lock(self, ops: List[Dict[str, Any]], documents: List[Dict[str, Any]]) -> List[str]:
+        """The documents an approval holds locked from its staleness check to
+        its last write: every one the plan writes. An app whose plan hands a
+        document to another service, which locks it itself, leaves that one
+        out."""
+        return documents_to_lock(ops, documents)
 
     # --- the model and the web ---------------------------------------------------
 
@@ -549,37 +556,32 @@ class BaseAssistantService(BaseService):
         contributor = approve.get('contributed_by') or None
         as_human = bool(approve.get('as_human'))
         stamp_mode = 'contributed' if contributor else 'human' if as_human else 'verified'
-        stale = self._stale(client, project, plan.get('documents') or [])
-        if stale:
-            # Settled as out of date, so the card stops offering an Approve
-            # that can only fail again, and the model is told on the next turn.
-            said = ' '.join(_sentence(s) for s in stale)
-            settled(settle_plan(conv, index, 'stale',
-                                f'(note) The plan was not applied: {said} Nothing was written.'))
-            response_helper.error(f'Nothing was written. {said} Ask the assistant to plan again.')
-            return
-        response_helper.progress(10, 'Applying changes…')
+        documents = plan.get('documents') or []
         summary = plan.get('summary') or self.summarize(ops)
+        # The plan is written in several requests, and a document opened in
+        # between is half written: its editor's repair on open can delete what
+        # the first batch made, and the next batch fails. So every document the
+        # plan writes is held (see core/plan.py `holding`) from the staleness
+        # check, which then reads the state the writes go onto, to the last
+        # write.
         try:
-            counts = self.execute_plan(client, ops, source=service_source(self.service_id),
-                                       label=f'Assistant: {summary}', project=project,
-                                       stamp_mode=stamp_mode, contributor=contributor,
-                                       requester=store.user_id)
-        except PlanError as e:
-            if e.applied:
-                self._remember_applied(plan_id)
+            with holding(client, self.documents_to_lock(ops, documents)):
+                counts = self._check_and_execute(client, project, ops, documents, plan_id, summary,
+                                                 index, conv, settled, stamp_mode, contributor, store,
+                                                 response_helper)
+        except DocumentsBusy as e:
             settled()
-            # No fraction: `applied` counts batch calls and `total` counts plan
-            # ops, and one op can be several calls, so the two together read as
-            # "failed after 10 of 3 changes were applied".
-            response_helper.error(
-                f'Failed to apply the plan: {e}. '
-                + ('Stopped partway. What was written before the failure is in the documents.'
-                   if e.applied else 'Nothing was written.'))
+            name = next((d.get('name') for d in documents
+                         if isinstance(d, dict) and d.get('id') == e.document_id), None)
+            which = f'"{name}"' if name else 'A document'
+            if e.cause is None:
+                said = f'{which} is locked by another run on it. Approve again once it has finished.'
+            else:
+                said = (f'{which} could not be locked for the change '
+                        f'({requester_message(e.cause, secrets=self.REQUEST_SECRETS)}). Approve again.')
+            response_helper.error(f'Nothing was written. {said}')
             return
-        except ValueError as e:
-            settled()
-            response_helper.error(f'The plan was rejected before anything was written: {e}')
+        if counts is None:
             return
         self._remember_applied(plan_id)
         notes = counts.pop('notes', [])
@@ -601,6 +603,45 @@ class BaseAssistantService(BaseService):
             'counts': [{'kind': k, 'count': n} for k, n in counts.items()],
             'message': f'Applied {self.summarize(ops)}.' + ''.join(' ' + _sentence(n) for n in notes),
         })
+
+    def _check_and_execute(self, client, project, ops, documents, plan_id, summary, index, conv,
+                           settled, stamp_mode, contributor, store,
+                           response_helper) -> Optional[Dict[str, Any]]:
+        """The staleness check and the writes, under the documents' locks.
+        The counts of what was applied, or None when the request was already
+        answered (refused as stale, or failed)."""
+        stale = self._stale(client, project, documents)
+        if stale:
+            # Settled as out of date, so the card stops offering an Approve
+            # that can only fail again, and the model is told on the next turn.
+            said = ' '.join(_sentence(s) for s in stale)
+            settled(settle_plan(conv, index, 'stale',
+                                f'(note) The plan was not applied: {said} Nothing was written.'))
+            response_helper.error(f'Nothing was written. {said} Ask the assistant to plan again.')
+            return None
+        response_helper.progress(10, 'Applying changes…')
+        try:
+            counts = self.execute_plan(client, ops, source=service_source(self.service_id),
+                                       label=f'Assistant: {summary}', project=project,
+                                       stamp_mode=stamp_mode, contributor=contributor,
+                                       requester=store.user_id)
+        except PlanError as e:
+            if e.applied:
+                self._remember_applied(plan_id)
+            settled()
+            # No fraction: `applied` counts batch calls and `total` counts plan
+            # ops, and one op can be several calls, so the two together read as
+            # "failed after 10 of 3 changes were applied".
+            response_helper.error(
+                f'Failed to apply the plan: {e}. '
+                + ('Stopped partway. What was written before the failure is in the documents.'
+                   if e.applied else 'Nothing was written.'))
+            return None
+        except ValueError as e:
+            settled()
+            response_helper.error(f'The plan was rejected before anything was written: {e}')
+            return None
+        return counts
 
     def _stale(self, client, project, documents: list) -> list:
         """What stands in the way of applying a plan made against

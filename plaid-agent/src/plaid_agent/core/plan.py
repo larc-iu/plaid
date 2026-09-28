@@ -16,11 +16,13 @@ ops with a :class:`TrackingBatcher` and a :class:`Stamps`, and lets
 """
 
 import json
+import logging
 import unicodedata
-from typing import Any, Dict, List, Optional
+from contextlib import ExitStack, contextmanager
+from typing import Any, Dict, Iterable, List, Optional
 
 # created_id is plaid_client's reader of a create response, which the plans take from here.
-from plaid_client import created_id, metadata_ops  # noqa: F401
+from plaid_client import DocumentLockLost, PlaidAPIError, created_id, metadata_ops  # noqa: F401
 from plaid_client.provenance import (confirmed_inferred, stamp_contributed, PROV_KEY, PROV_SOURCE_KEY,
                                      PROV_CONFIRMED_KEY, PROV_PROB_KEY, PROV_DETAIL_KEY)
 
@@ -421,6 +423,81 @@ def docs_of_op(op: Dict[str, Any]) -> set:
     out.update(op.get('document_ids') or [])
     out.update(op.get('documents') or [])
     return out
+
+
+# --- holding the documents a plan writes ----------------------------------------
+#
+# A plan is applied in several requests: an app's executor needs the ids one
+# batch mints before it can write what hangs off them. Between two of them the
+# document is half written, and whoever opens it then sees the half. An editor
+# that repairs on open can take what the first batch made for what an
+# interrupted edit left and delete it, and the plan's next batch then fails on
+# an id that is gone. A person's edit can land in the same gap. So an approval
+# holds the lock on every document it writes, from the staleness check to the
+# last write, as every multi-request writer does.
+
+logger = logging.getLogger(__name__)
+
+
+class DocumentsBusy(Exception):
+    """A document the plan writes could not be locked, so nothing was
+    written. ``document_id`` names it. ``cause`` is None when another user
+    holds it, else the failure the request met."""
+
+    def __init__(self, document_id: str, cause: Optional[BaseException] = None):
+        super().__init__(document_id)
+        self.document_id = document_id
+        self.cause = cause
+
+
+def documents_to_lock(ops: List[Dict[str, Any]], documents: Iterable[Dict[str, Any]] = (),
+                      exclude: Iterable[str] = ()) -> List[str]:
+    """The documents an approved plan writes, in one order for every caller:
+    every document the plan was pinned to and every one an op names, less
+    those reached by a kind in ``exclude``, which another service carries out
+    under a lock of its own (holding that document would refuse it)."""
+    ops = expand_ops(ops)
+    exclude = set(exclude)
+    ids = {d.get('id') for d in documents or () if isinstance(d, dict)}
+    for op in ops:
+        ids |= docs_of_op(op)
+    for op in ops:
+        if op.get('kind') in exclude:
+            ids -= docs_of_op(op)
+    ids.discard(None)
+    return sorted(ids)
+
+
+@contextmanager
+def holding(client, document_ids: Iterable[str]):
+    """Hold the lock on each of ``document_ids`` for the block, released on
+    the way out however it ends. Raises :class:`DocumentsBusy` before the block
+    runs when one of them cannot be locked, releasing what it took. A document
+    that is gone or unreadable (403, 404) is passed over: nothing can be
+    written to it, and the staleness check inside the block names it.
+
+    Each is ``client.documents.locked``, renewed on a beat while the block
+    runs, and a write after a lock lapsed is refused (``DocumentLockLost``).
+    A block that ran to its end made every write before any lapse, so a lapse
+    found only on the way out is logged rather than raised over a plan that
+    was applied."""
+    finished = False
+    try:
+        with ExitStack() as stack:
+            for did in document_ids:
+                try:
+                    stack.enter_context(client.documents.locked(did))
+                except PlaidAPIError as e:
+                    status = getattr(e, 'status', 0)
+                    if status in (403, 404):
+                        continue
+                    raise DocumentsBusy(did, None if status == 423 else e) from e
+            yield
+            finished = True
+    except DocumentLockLost as e:
+        if not finished:
+            raise
+        logger.warning('The lock on document %s lapsed after the last write: %s', e.document_id, e)
 
 
 # --- the plan, as the model reads and edits it --------------------------------
