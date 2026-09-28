@@ -591,12 +591,16 @@ export class UmrDocument extends DocumentModel {
   // says nothing of when a token was made (UUIDv7 orders only across
   // milliseconds), so the document's audit log is asked: while it records a
   // token made in the last STRAY_GRACE_MS, every bare anchor is left for a
-  // later open. A log that cannot be read leaves them too.
+  // later open. A log that cannot be read leaves them too. The window is
+  // measured on the server's clock, which stamped the log (the lock check
+  // just before is a response that sets it): a browser clock minutes fast
+  // would otherwise ask about a window after the add.
   async _leftoverTokens(ids) {
     if (!ids.length) return ids;
     try {
+      const now = this._client.serverNow().getTime();
       const recent = await this._client.documents.auditPage(this.id, {
-        startTime: new Date(Date.now() - STRAY_GRACE_MS).toISOString(),
+        startTime: new Date(now - STRAY_GRACE_MS).toISOString(),
         opTypes: ['token/create', 'token/bulk-create'],
         limit: 1,
       });

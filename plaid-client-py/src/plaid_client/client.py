@@ -6,6 +6,7 @@ import re
 import time
 import uuid
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote, urlencode
 
@@ -3278,6 +3279,9 @@ class PlaidClient:
         else:
             self.batch_timeout = DEFAULT_BATCH_TIMEOUT_S
         self.document_versions: dict[str, str] = {}
+        # The server's clock minus this machine's, in seconds, from the last
+        # response with a Date header (None before one). See server_now().
+        self.server_clock_offset_s: float | None = None
         self.strict_mode_document_id: str | None = None
         # Set to a DocumentLockLost while a ``documents.locked()`` block's
         # keep-alive has failed. Every write raises it until the block exits;
@@ -3291,6 +3295,14 @@ class PlaidClient:
         self.session = req_lib.Session()
 
         _install_resources(self)
+
+    def server_now(self) -> datetime:
+        """The server's time now (UTC), as its last response's Date header
+        put it (to the second), else this machine's. Judge a time the server
+        stamped, such as an audit entry's ``ts``, against this rather than the
+        machine's own clock, which can be minutes off."""
+        return datetime.fromtimestamp(time.time() + (self.server_clock_offset_s or 0),
+                                      tz=timezone.utc)
 
     def query(self, body: Any) -> Any:
         """Run a query over every project you can read.

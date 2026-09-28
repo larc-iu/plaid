@@ -136,3 +136,19 @@ test('an anchor an add left long ago is removed on open', async () => {
   assert.equal(result.strays, 1);
   assert.deepEqual(b.calls.find((c) => c.name === 'tokens.bulkDelete').args[0], ['left-over']);
 });
+
+test('a browser clock minutes fast still leaves an add under way alone', async () => {
+  // The server's clock is ten minutes behind this browser's: the anchor made
+  // a moment ago is stamped by the server's.
+  const serverNow = () => new Date(Date.now() - 10 * 60e3);
+  const server = sharedServer();
+  server.nodes().tokens.push({ id: 'fresh-0', begin: 0, end: 3 });
+  server.log.push({ type: 'token/bulk-create', time: serverNow().toISOString() });
+  const b = recordingClient();
+  b.client.documents.auditPage = auditFrom(server.log);
+  b.client.serverNow = serverNow;
+  const B = new UmrDocument({ raw: structuredClone(server.raw), client: b.client });
+  B._reload = async () => {};
+  assert.deepEqual(await B._reconcile(), { findings: [] });
+  assert.equal(b.calls.filter((c) => c.name === 'tokens.bulkDelete').length, 0);
+});

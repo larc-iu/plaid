@@ -4,6 +4,7 @@ import logging
 import random
 import threading
 import time
+from email.utils import parsedate_to_datetime
 from urllib.parse import urlencode, quote
 
 from plaid_client.transforms import transform_request, transform_response
@@ -187,6 +188,21 @@ def build_api_error(response, url, method):
         status=response.status_code, url=url, method=method,
         response_data=error_data, status_text=response.reason or '',
     )
+
+
+def note_server_clock(client, response_headers):
+    """Note how far the server's clock is from this machine's, from a
+    response's Date header, for ``client.server_now()``. A time the server
+    stamped (an audit entry's ``ts``) has to be judged against the server's
+    clock. A response with no readable Date header leaves the last offset as
+    it was."""
+    try:
+        at = parsedate_to_datetime((response_headers or {}).get('Date') or '')
+    except (TypeError, ValueError):
+        return
+    if at is None or at.tzinfo is None:
+        return
+    client.server_clock_offset_s = at.timestamp() - time.time()
 
 
 def extract_document_versions(client, response_headers, response_body=None, historical=False):
@@ -617,6 +633,7 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
                                     original_error=e)
             raise PlaidAPIError(f'Network error: {e} at {url}', url=url, method=method,
                                 original_error=e)
+        note_server_clock(client, getattr(resp, 'headers', None))
         # Raise a 503 from inside so retry_while_busy can see it; every other
         # failure is raised here too and simply propagates.
         if not resp.ok:

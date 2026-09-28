@@ -1352,6 +1352,10 @@ export declare class PlaidClient {
   documentVersions: Record<string, number>;
   /** True once a response left its version list out (X-Document-Versions-Omitted, past fifty documents). Every version held was then forgotten, and the strict-mode document's is read again before the next write. */
   documentVersionsOmitted?: boolean;
+  /** The server's clock minus this machine's, in ms, from the last response with a Date header, or null before one. */
+  serverClockOffsetMs: number | null;
+  /** The server's time now, from its last response's Date header (to the second), else this machine's. Judge a time the server stamped, such as an audit entry's `ts`, against this rather than `Date.now()`. */
+  serverNow(): Date;
 
   // Batches.
   //

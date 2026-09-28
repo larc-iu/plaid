@@ -232,6 +232,9 @@ class PlaidClient {
           ? options.timeout
           : DEFAULT_BATCH_TIMEOUT_MS;
     this.documentVersions = {};
+    // The server's clock minus this machine's, in ms, from the last response
+    // with a Date header (null before one). See serverNow().
+    this.serverClockOffsetMs = null;
     this.strictModeDocumentId = null;
     // Set to a DocumentLockLost while a `documents.locked()` block's keep-alive
     // has failed. Every write throws it until the block exits; see
@@ -249,6 +252,17 @@ class PlaidClient {
     this._authErrorFired = false;
 
     this._installResources();
+  }
+
+  /**
+   * The server's time now, as its last response's Date header put it (to the
+   * second), else this machine's. Judge a time the server stamped, such as an
+   * audit entry's `ts`, against this rather than `Date.now()`: a browser
+   * clock can be minutes off.
+   * @returns {Date}
+   */
+  serverNow() {
+    return new Date(Date.now() + (this.serverClockOffsetMs ?? 0));
   }
 
   /**

@@ -65,6 +65,18 @@ export const DEFAULT_TIMEOUT_MS = 30000;
 export const DEFAULT_BATCH_TIMEOUT_MS = 180000;
 
 /**
+ * Note how far the server's clock is from this machine's, from a response's
+ * Date header, for `client.serverNow()`. A time the server stamped (an audit
+ * entry's `ts`) has to be judged against the server's clock: a browser clock
+ * minutes off would misjudge it. A response with no readable Date header
+ * leaves the last offset as it was.
+ */
+export function noteServerClock(client, headers) {
+  const at = Date.parse(headers?.get?.("date") ?? "");
+  if (!Number.isNaN(at)) client.serverClockOffsetMs = at - Date.now();
+}
+
+/**
  * Extract and update document versions from response headers and body.
  *
  * `historical` marks a read made with `as-of`: its body carries the version
@@ -600,6 +612,7 @@ export async function makeRequest(client, method, path, options = {}) {
       }
       return res;
     });
+    noteServerClock(client, response.headers);
 
     if (!response.ok) {
       const error = makeHttpError(
