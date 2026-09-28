@@ -7,7 +7,6 @@ The last test holds every bundled service in every app to it.
 
 import ast
 import pathlib
-import subprocess
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'src'))
@@ -83,10 +82,9 @@ def test_the_detail_it_is_given_is_not_changed_in_place():
 # --- every service in every app ---------------------------------------------------
 
 def _service_files():
-    listed = subprocess.run(['git', 'ls-files', '*/services/*.py'], cwd=REPO,
-                            capture_output=True, text=True, check=True).stdout.split()
-    return [REPO / f for f in listed
-            if '/tests/' not in f and '/probes/' not in f and (REPO / f).is_file()]
+    """Every app's service scripts, read off the disk rather than the git
+    index, so a new service is held to the helper before it is committed."""
+    return sorted(REPO.glob('*/services/*.py'))
 
 
 def _is_service(tree):
