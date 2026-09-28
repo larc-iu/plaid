@@ -667,6 +667,50 @@ def test_a_variable_the_reply_never_defines_is_named_as_that(reply):
     assert result['sentences_failed'][0]['reason'] == 'v1 :actor names p, which no node defines.'
 
 
+def test_a_reply_written_one_block_per_node_is_joined_and_drafted():
+    """A flat reply, the shape 4 of 13 real gpt-oss-120b replies took, is one
+    graph in another layout. It is joined where each variable is first used
+    and drafted like any other, with no second model call."""
+    reply = ('(v1 / bark-01\n   :ARG0 v2\n   :aspect process\n   :temporal v3)\n'
+             '(v2 / dog\n   :refer-number singular)\n(v3 / now)\n\n'
+             '# alignment:\nv1: 3-3\nv2: 2-2\nv3: 0-0\n')
+    model = _Model([reply])
+    service = _service(model=model)
+    [result] = servicetest.run(service, REQUEST).results
+
+    assert (result['drafted'], result['failed']) == (1, 0)
+    assert len(model.calls) == 1
+    nodes = _ops(service.client, 'spans.bulk_create')
+    assert [n['value'] for n in nodes] == ['bark-01', 'dog', 'now']
+    assert nodes[0]['metadata']['umr']['attrs'] == [
+        {'rel': ':aspect', 'value': 'process', 'order': 1}]
+    [relations] = service.client.payloads('relations.bulk_create')
+    assert [(r['value'], r['metadata']['umr']) for r in relations] == [
+        (':ARG0', {'order': 0}), (':temporal', {'order': 2})]
+
+
+@pytest.mark.parametrize('reply, reason', [
+    # A block no earlier block uses is a second graph, not part of this one.
+    ('(v1 / bark-01 :ARG0 v2)\n(v2 / dog)\n(v3 / cat :ARG0-of v1)\n\n'
+     '# alignment:\nv1: 3-3\nv2: 2-2\nv3: 0-0\n',
+     "Unexpected content after the topmost closing bracket: '(v3 / cat :ARG0-of v1)'."),
+    # Joined, and still refused for a relation UMR does not have.
+    ('(v1 / bark-01 :ARG0 v2)\n(v2 / dog :location v3)\n(v3 / yard)\n\n'
+     '# alignment:\nv1: 3-3\nv2: 2-2\nv3: 0-0\n',
+     "Unknown relation ':location'"),
+    # Joined, and still refused for a variable nothing defines.
+    ('(v1 / bark-01 :ARG0 v2)\n(v2 / dog :possessor p)\n\n# alignment:\nv1: 3-3\nv2: 2-2\n'
+     'p: 1-1\n',
+     'v2 :possessor names p, which no node defines.'),
+])
+def test_a_flat_reply_that_is_wrong_once_joined_is_still_refused(reply, reason):
+    service = _service(model=_Model([reply]))
+    [result] = servicetest.run(service, REQUEST).results
+    assert (result['drafted'], result['failed']) == (0, 1)
+    assert reason in result['sentences_failed'][0]['reason']
+    assert service.client.writes == []
+
+
 def test_the_prompt_teaches_only_values_the_validator_takes():
     """Every closed attribute set in the prompt is the inventory's, so the
     model is never taught a value the canvas marks as wrong."""

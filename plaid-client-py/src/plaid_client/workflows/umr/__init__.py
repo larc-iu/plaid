@@ -21,6 +21,8 @@ the bundled UMR services:
 - :mod:`inventory` — the closed relation sets and why a relation is not in
   them (``unknown_relation_problem``, ``unknown_doc_relation_problem``).
 - :mod:`penman` — the notation: the reader, the writer, the variable rule.
+- :mod:`flat`: a graph a model wrote one block per node, joined back into one
+  (``join_flat_graph``).
 - :mod:`write` — a drafting service's run: its parameters, the sentences it
   drafts, writing the graphs in three batched passes, the progress budget and
   what the run reports.
@@ -38,6 +40,7 @@ from .graph import (COREF_RELATIONS, CYCLE_ROLES, DOC_CONSTANTS, Edge, GROUPS, M
                     alignment_of, group_of, next_order, penman_nodes, penman_of,
                     place_attributes, read_document, reachable_from_root, roots_of,
                     sentence_penman, with_attribute)
+from .flat import join_flat_graph
 from .inventory import DOC_RELATIONS, unknown_doc_relation_problem, unknown_relation_problem
 from .layers import (GlossLayer, UMR_NAMESPACE, UmrLayers, gloss_values, project_language,
                      resolve_layers, umr_config)
@@ -68,6 +71,8 @@ __all__ = [
     'next_variable', 'is_variable', 'variable_from', 'parse_attribute_line',
     'concept_problem', 'relation_form_problem', 'attr_value_problem', 'variable_form_problem',
     'new_variable_problem',
+    # flat
+    'join_flat_graph',
     # write
     'anchor_pieces', 'write_graphs', 'DraftProgress', 'draft_params', 'begin_draft',
     'finish_draft', 'run_label',

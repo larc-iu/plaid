@@ -14,10 +14,12 @@ sentence-scoped fields), and the project's language. The system prompt is a
 compact UMR reference: the role inventory, the attributes and their value
 sets, the aspect lattice, the PENMAN shape and the alignment block.
 
-The model answers with ONE PENMAN graph and an `# alignment:` block, which is
-read here into the same storage the `.umr` importer writes: one node token per
-contiguous anchor piece (the whole sentence when the concept is not overtly
-realized), one concept span per node carrying
+The model answers with ONE PENMAN graph and an `# alignment:` block. A graph
+written flat, one block per node linked by variables, is joined back into one
+(`join_flat_graph`). The graph is read here into the same storage the `.umr`
+importer writes: one node token per contiguous anchor piece (the whole
+sentence when the concept is not overtly realized), one concept span per node
+carrying
 `metadata.umr = {var, attrs, root?}`, and one relation per edge carrying
 `metadata.umr = {order}`. Variables are re-generated under the project's own
 rule (`s{N}{initial}{counter}`, unique per document), so a model that invents
@@ -48,8 +50,8 @@ from plaid_client.service import requester_message
 from plaid_client.workflows.llm import (ChatModel, UnansweredRun, add_model_arguments,
                                         setup_service)
 from plaid_client.workflows.umr import (DraftProgress, anchor_pieces, begin_draft,
-                                        draft_params, finish_draft, next_variable,
-                                        parse_penman, project_language, run_label,
+                                        draft_params, finish_draft, join_flat_graph,
+                                        next_variable, parse_penman, project_language, run_label,
                                         unknown_relation_problem)
 from plaid_client.workflows.umr.inventory import ATTRIBUTE_VALUES, edge_only
 
@@ -418,7 +420,9 @@ class UmrDraftService(BaseService):
                                  'reason': 'The reply was cut off at the token limit.'})
                 continue
             graph_text, alignment_text = split_reply(reply.text)
-            graph = parse_penman(graph_text)
+            # A graph written one block per node is one graph in another
+            # layout: joined here, then read and checked like any other.
+            graph = parse_penman(join_flat_graph(graph_text))
             alignment = parse_alignment(alignment_text)
             problem = validate_graph(graph, alignment)
             if problem:
