@@ -45,7 +45,8 @@ from typing import Any, Dict, List, Optional
 
 from plaid_client import BaseService, TASKS, stamp_inferred, service_source
 from plaid_client.service import requester_message
-from plaid_client.workflows.llm import ChatModel, add_model_arguments, setup_service
+from plaid_client.workflows.llm import (ChatModel, UnansweredRun, add_model_arguments,
+                                        setup_service)
 from plaid_client.workflows.umr import (DraftProgress, anchor_pieces, begin_draft,
                                         draft_params, finish_draft, next_variable,
                                         parse_penman, project_language, run_label,
@@ -380,8 +381,14 @@ class UmrDraftService(BaseService):
         # named; the rest of the document is still drafted, because a run that
         # threw away twenty good graphs over one bad reply would be worse than
         # useless on a long document.
+        # A model that does not answer at all is down, and would cost a full
+        # deadline per sentence with the document locked: the run stops after
+        # UNANSWERED_IN_A_ROW sentences in a row get no answer.
         plans = []
         failures = []
+        not_drafted = []
+        ended = ''
+        unanswered = UnansweredRun()
         total = len(run.targets)
         for n, sentence in enumerate(run.targets):
             message = f'Drafting sentence {sentence.index} ({n + 1} of {total})…'
@@ -398,7 +405,12 @@ class UmrDraftService(BaseService):
                 print(f'Model call failed for sentence {sentence.index}: {exc}')
                 failures.append({'sentence': sentence.index,
                                  'reason': requester_message(exc, secrets=self.REQUEST_SECRETS)})
+                if unanswered.failed(exc):
+                    not_drafted = [s.index for s in run.targets[n + 1:]]
+                    ended = unanswered.stop_line(len(not_drafted))
+                    break
                 continue
+            unanswered.answered()
             if reply.truncated:
                 # Half a graph is not a graph: a cut-off reply is a failure, not
                 # a partial result to write.
@@ -422,7 +434,8 @@ class UmrDraftService(BaseService):
 
         finish_draft(self.client, response_helper, run, plans, failures, frag,
                      operation=run_label('UMR draft', plans),
-                     writing=f"Writing {len(plans)} graph{'' if len(plans) == 1 else 's'}…")
+                     writing=f"Writing {len(plans)} graph{'' if len(plans) == 1 else 's'}…",
+                     not_drafted=not_drafted, ended=ended)
 
 
 def main():

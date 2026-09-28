@@ -236,3 +236,30 @@ def test_setup_service_takes_the_operators_identity_overrides():
     assert svc.service_id == 'llm-analyzer-llama'
     assert svc.service_name == 'LLM glossing (ollama/llama3.1)'
     assert 'sk-flag' in svc.REQUEST_SECRETS
+
+
+# --- a run that stops asking a model that does not answer ---------------------
+
+class _Unreachable(Exception):
+    pass
+
+
+def test_a_run_stops_after_two_sentences_in_a_row_get_no_answer(monkeypatch):
+    from plaid_client.workflows.llm import ModelTimeout, UnansweredRun, did_not_answer
+    monkeypatch.setitem(sys.modules, 'litellm', types.SimpleNamespace(
+        APIConnectionError=_Unreachable, ServiceUnavailableError=_Unreachable))
+    down = _Unreachable('refused')
+    assert did_not_answer(ModelTimeout('x')) and did_not_answer(down)
+    assert not did_not_answer(RuntimeError('400 bad request'))
+
+    run = UnansweredRun()
+    assert run.failed(ModelTimeout('x')) is False
+    run.answered()
+    assert run.failed(down) is False
+    assert run.failed(RuntimeError('an answer, if a bad one')) is False
+    assert run.failed(ModelTimeout('x')) is False
+    assert run.failed(down) is True
+    assert run.stop_line(38) == ('The model did not answer 2 sentences in a row, so the run '
+                                 'stopped. 38 sentences were not drafted.')
+    assert run.stop_line(1, verb='glossed').endswith('1 sentence was not glossed.')
+    assert run.stop_line(0).endswith('so the run stopped.')

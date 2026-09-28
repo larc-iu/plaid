@@ -48,7 +48,8 @@ from typing import List, Optional
 
 from plaid_client import BaseService, TASKS, Param, service_source
 from plaid_client.service import check_unchanged, requester_message
-from plaid_client.workflows.llm import ChatModel, add_model_arguments, setup_service
+from plaid_client.workflows.llm import (NOT_ASKED, ChatModel, UnansweredRun,
+                                        add_model_arguments, setup_service)
 from plaid_client.workflows.igt import (
     derive, field_layer_id, select_targets, word_state, parse_interleaved, align_words, analysis_for,
     write_analyses, tagset_for, mode_rule, value_lines,
@@ -470,6 +471,10 @@ class LLMAnalyzeService(BaseService):
         failed = []
         replaced = 0
         total = len(targets)
+        # A model that does not answer at all is down: the run stops after two
+        # sentences in a row get no answer, rather than wait out a deadline on
+        # every sentence with the document locked.
+        unanswered = UnansweredRun()
         for n, (s, idxs) in enumerate(targets):
             response_helper.progress(20 + int(65 * n / total), f'Glossing sentences ({n + 1}/{total})…')
             words = [w['text'] for w in s['words']]
@@ -486,7 +491,14 @@ class LLMAnalyzeService(BaseService):
                 print(f'Model call failed for sentence {s["id"]}: {exc}')
                 failed.append({'sentence_id': s['id'],
                                'reason': f'model error: {requester_message(exc, secrets=self.REQUEST_SECRETS)}'})
+                if unanswered.failed(exc):
+                    untried = [t[0]['id'] for t in targets[n + 1:]]
+                    ended = unanswered.stop_line(len(untried), verb='glossed')
+                    print(f'{ended} Not asked: {", ".join(untried)}')
+                    failed += [{'sentence_id': sid, 'reason': NOT_ASKED} for sid in untried]
+                    break
                 continue
+            unanswered.answered()
             if reply.truncated:
                 # The model ran out of room mid-line. What it did reach still
                 # aligns, so the words it glossed are written and the rest are

@@ -33,7 +33,8 @@ from typing import Dict, Optional
 
 from plaid_client import BaseService, TASKS, Param, service_source
 from plaid_client.service import check_unchanged, requester_message
-from plaid_client.workflows.llm import ChatModel, add_model_arguments, setup_service
+from plaid_client.workflows.llm import (NOT_ASKED, ChatModel, UnansweredRun,
+                                        add_model_arguments, setup_service)
 from plaid_client.provenance import stamp_inferred, prov_state, MACHINE
 from plaid_client.workflows.igt import derive
 
@@ -277,6 +278,10 @@ class LLMTranslateService(BaseService):
         drafts: Dict[str, str] = {}
         plans = []  # (sentence, existing span or None, text)
         failed = []
+        # A model that does not answer at all is down: the run stops after two
+        # sentences in a row get no answer, rather than wait out a deadline on
+        # every sentence with the document locked.
+        unanswered = UnansweredRun()
         for n, (i, s, span) in enumerate(targets):
             response_helper.progress(5 + int(80 * n / len(targets)), f'Translating sentences ({n + 1}/{len(targets)})…')
             words = [w['text'] for w in s['words']]
@@ -297,7 +302,14 @@ class LLMTranslateService(BaseService):
                 print(f'Model call failed for sentence {s["id"]}: {exc}')
                 failed.append({'sentence_id': s['id'],
                                'reason': f'model error: {requester_message(exc, secrets=self.REQUEST_SECRETS)}'})
+                if unanswered.failed(exc):
+                    untried = [t[1]['id'] for t in targets[n + 1:]]
+                    ended = unanswered.stop_line(len(untried), verb='translated')
+                    print(f'{ended} Not asked: {", ".join(untried)}')
+                    failed += [{'sentence_id': sid, 'reason': NOT_ASKED} for sid in untried]
+                    break
                 continue
+            unanswered.answered()
             if reply.truncated:
                 # Half a translation reads like a whole one. A draft the model
                 # did not finish is not written at all.

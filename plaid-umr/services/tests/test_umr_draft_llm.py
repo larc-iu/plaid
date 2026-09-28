@@ -883,3 +883,82 @@ def test_the_draft_refuses_a_value_by_the_shared_inventory():
     ``test_umr_inventory_mirror.py`` holds to the app's inventory.js."""
     from plaid_client.workflows.umr import inventory
     assert umr.edge_only is inventory.edge_only
+
+
+# --- a model that does not answer --------------------------------------------
+
+class _Scripted(_Model):
+    """One outcome per call, in order: a reply's text, or an exception."""
+
+    def __init__(self, outcomes):
+        super().__init__()
+        self._outcomes = list(outcomes)
+
+    def complete(self, system, user, should_stop=None):
+        self.calls.append((system, user))
+        outcome = self._outcomes[len(self.calls) - 1]
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return Reply(text=outcome)
+
+
+def _timeout():
+    from plaid_client.workflows.llm import ModelTimeout
+    return ModelTimeout('The model did not answer within 120 seconds.')
+
+
+def test_a_run_ends_after_two_sentences_in_a_row_get_no_answer():
+    """With the model down, a 40-sentence draft used to try every sentence,
+    two full deadlines each, with the document read-only for hours. It stops
+    after two sentences in a row, names them, and writes what it drafted."""
+    service = _service(documents=[_sentences_document(6)],
+                       model=_Scripted([GOOD_REPLY, _timeout(), _timeout(), GOOD_REPLY]))
+    helper = servicetest.run(service, REQUEST)
+
+    assert len(service.model.calls) == 3
+    [result] = helper.results
+    assert (result['drafted'], result['failed']) == (1, 2)
+    assert [f['sentence'] for f in result['sentences_failed']] == [2, 3]
+    assert result['sentences_not_drafted'] == [4, 5, 6]
+    assert result['notice'] == {
+        'level': 'success', 'title': 'Drafted 1 sentence', 'sticky': True,
+        'message': ('Failed to draft 2 sentences. Sentences 2 and 3: The model did not answer '
+                    'within 120 seconds. The model did not answer 2 sentences in a row, so the '
+                    'run stopped. 3 sentences were not drafted.')}
+    assert service.client.operations == ['UMR draft of sentence 1']
+
+
+def test_a_run_with_the_model_down_from_the_start_drafts_nothing_and_says_why():
+    service = _service(documents=[_sentences_document(3)],
+                       model=_Scripted([_timeout(), _timeout(), GOOD_REPLY]))
+    helper = servicetest.run(service, REQUEST)
+
+    [result] = helper.results
+    assert result['notice']['title'] == 'Nothing drafted'
+    assert result['notice']['message'].endswith(
+        'so the run stopped. 1 sentence was not drafted.')
+    assert service.client.writes == []
+
+
+def test_one_silent_sentence_between_answers_does_not_end_the_run():
+    """Only sentences IN A ROW count: a reply, a bad one included, starts the
+    count again."""
+    service = _service(documents=[_sentences_document(5)],
+                       model=_Scripted([_timeout(), 'not a graph', _timeout(), GOOD_REPLY,
+                                        _timeout()]))
+    helper = servicetest.run(service, REQUEST)
+
+    assert len(service.model.calls) == 5
+    [result] = helper.results
+    assert result['sentences_not_drafted'] == []
+    assert 'run stopped' not in result['notice']['message']
+
+
+def test_an_error_the_model_answered_with_does_not_end_the_run():
+    """A refused request is an answer: the next sentence may well get a reply."""
+    boom = RuntimeError('400 bad request')
+    service = _service(documents=[_sentences_document(3)],
+                       model=_Scripted([boom, boom, GOOD_REPLY]))
+    helper = servicetest.run(service, REQUEST)
+    [result] = helper.results
+    assert (result['drafted'], result['failed']) == (1, 2)

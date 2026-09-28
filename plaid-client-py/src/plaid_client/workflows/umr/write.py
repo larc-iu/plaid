@@ -122,7 +122,7 @@ def _failure_line(failures: Sequence[dict]) -> str:
 
 
 def build_draft_notice(drafted, skipped, failures: Sequence[dict] = (), kept=0,
-                       linked=0) -> Dict[str, Any]:
+                       linked=0, ended: str = '') -> Dict[str, Any]:
     """The toast the editor shows when a run finishes. The service owns the
     wording and the severity; the editor maps ``level`` to a colour. A run that
     drafted nothing must not congratulate anyone.
@@ -135,7 +135,9 @@ def build_draft_notice(drafted, skipped, failures: Sequence[dict] = (), kept=0,
     another sentence's graph links into them. ``failures`` are
     ``{'sentence': n, 'reason': str}``, each named with its own reason. A
     notice with failures is ``sticky``: it stays until dismissed, since it is
-    the only record of which sentences a run could not draft.
+    the only record of which sentences a run could not draft. ``ended`` is
+    the line of a run that stopped before its last sentence (the model did
+    not answer), said after the failures.
     """
     def s(n):
         return '' if n == 1 else 's'
@@ -145,11 +147,11 @@ def build_draft_notice(drafted, skipped, failures: Sequence[dict] = (), kept=0,
         held.append(f'Kept {kept} sentence{s(kept)} a person had worked on.')
     if linked:
         held.append(f'Kept {linked} sentence{s(linked)} that another sentence links to.')
-    failed = [_failure_line(failures)] if failures else []
+    failed = ([_failure_line(failures)] if failures else []) + ([ended] if ended else [])
 
     def notice(level, title, parts):
         out = {'level': level, 'title': title, 'message': ' '.join(parts)}
-        if failures:
+        if failures or ended:
             out['sticky'] = True
         return out
 
@@ -364,7 +366,8 @@ def begin_draft(client, request_data: Dict[str, Any], response_helper) -> Option
 
 
 def finish_draft(client, response_helper, run: DraftRun, plans: Sequence[dict],
-                 failures: List[dict], frag: dict, operation: str, writing: str) -> None:
+                 failures: List[dict], frag: dict, operation: str, writing: str,
+                 not_drafted: Sequence[int] = (), ended: str = '') -> None:
     """Write ``plans`` and send the run's report, or send the report alone when
     there is nothing to write.
 
@@ -376,20 +379,27 @@ def finish_draft(client, response_helper, run: DraftRun, plans: Sequence[dict],
     written would leave anchors with no nodes, and one after the last write
     would call a finished run stopped. The plans were made from the read in
     :func:`begin_draft`, so nothing is written if the document has moved since.
+
+    A run that stopped before its last sentence names the sentences it never
+    asked about in ``not_drafted`` and says why in ``ended``, the notice's
+    closing line.
     """
     drafted = len(plans)
     for failure in failures:
         print(f"Sentence {failure['sentence']} not drafted: {failure['reason']}")
+    if not_drafted:
+        print(f'Not asked: sentences {", ".join(str(n) for n in not_drafted)}')
 
     def complete():
         notice = build_draft_notice(drafted, run.skipped, failures,
-                                    kept=run.kept, linked=run.linked)
+                                    kept=run.kept, linked=run.linked, ended=ended)
         response_helper.progress(100, notice['title'])
         response_helper.complete({'document_id': run.document_id, 'status': 'success',
                                   'sentences': len(run.document.sentences), 'drafted': drafted,
                                   'skipped': run.skipped, 'kept': run.kept,
                                   'linked': run.linked, 'failed': len(failures),
-                                  'sentences_failed': list(failures), 'notice': notice})
+                                  'sentences_failed': list(failures),
+                                  'sentences_not_drafted': list(not_drafted), 'notice': notice})
 
     if not plans:
         complete()

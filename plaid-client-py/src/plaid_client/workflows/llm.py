@@ -63,6 +63,62 @@ class ModelTimeout(Exception):
     message is written for the requester, unlike the provider's own."""
 
 
+#: A run that asks the model once per sentence stops after this many sentences
+#: in a row the model did not answer. A model that is down otherwise costs a
+#: full deadline per sentence, and the document stays locked for hours.
+UNANSWERED_IN_A_ROW = 2
+
+#: The per-sentence reason, in igt's lower-case style, for a sentence a run
+#: never asked about because it had stopped.
+NOT_ASKED = f'not asked: the model did not answer {UNANSWERED_IN_A_ROW} sentences in a row'
+
+
+def did_not_answer(exc: BaseException) -> bool:
+    """Whether a failed call means the model is not answering at all: it
+    passed the deadline (:class:`ModelTimeout`), or the provider could not be
+    reached or said it was unavailable, after the retries. An answer that is
+    an error (a bad request, a refused key) is not this: the next sentence may
+    well get a reply."""
+    if isinstance(exc, ModelTimeout):
+        return True
+    try:
+        import litellm
+    except ImportError:  # pragma: no cover - only a service that calls a model gets here
+        return False
+    down = tuple(e for e in (getattr(litellm, n, None) for n in
+                             ('APIConnectionError', 'ServiceUnavailableError'))
+                 if isinstance(e, type) and issubclass(e, BaseException))
+    return bool(down) and isinstance(exc, down)
+
+
+class UnansweredRun:
+    """Counts the sentences in a row a run's model did not answer, so the run
+    can stop asking. ``answered()`` after any reply, a bad one included, and
+    ``failed(exc)`` after a call that raised, which says whether to stop."""
+
+    def __init__(self, limit: int = UNANSWERED_IN_A_ROW):
+        self.limit = limit
+        self.in_a_row = 0
+
+    def answered(self) -> None:
+        self.in_a_row = 0
+
+    def failed(self, exc: BaseException) -> bool:
+        self.in_a_row = self.in_a_row + 1 if did_not_answer(exc) else 0
+        return self.in_a_row >= self.limit
+
+    def stop_line(self, left: int, verb: str = 'drafted') -> str:
+        """The report's line for a run that stopped: ``The model did not
+        answer 2 sentences in a row, so the run stopped. 38 sentences were not
+        drafted.``"""
+        line = f'The model did not answer {self.limit} sentences in a row, so the run stopped.'
+        if left == 1:
+            line += f' 1 sentence was not {verb}.'
+        elif left:
+            line += f' {left} sentences were not {verb}.'
+        return line
+
+
 @dataclass
 class Reply:
     """One model reply. ``truncated`` means the model stopped because it ran
