@@ -381,6 +381,19 @@ describe('valueGrammarProblem agrees with the official validator', () => {
     '"a\nb"',
     's2x',
     's1x-b',
+    // The text-mode cases a hunter typed (U6), as they reach the value.
+    '" "',
+    '"C#"',
+    '"a (b): c/d"',
+    '"back\\\\"',
+    '"\u0627\u0644\u0642\u0627\u0647\u0631\u0629"',
+    '"\u{1F469}\u200d\u{1F467}"',
+    '\u6771\u4eac',
+    "o'brien",
+    'a\\b',
+    'new_york',
+    's1y',
+    '10:30',
   ];
   VALUES.forEach((value) => {
     test(JSON.stringify(value), (t) => {

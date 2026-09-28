@@ -115,6 +115,10 @@ VALUES = [
     ['-1.5', None], ['a/b', None], ['""', ':wiki'], ['"O\\"Brien"', None], ['"a\nb"', ':wiki'],
     ['"a\u2028b"', None], ['"unclosed', None], ['s2x', None], ['s1x-b', ':mod'],
     ['s1\u03c1', None], ['s1P', None], ['', None], ['caf\u0065\u0301', None],
+    # The text-mode cases a hunter typed (U6).
+    ['" "', ':op1'], ['"C#"', None], ['"a (b): c/d"', None], ['"back\\\\"', None],
+    ['\u6771\u4eac', ':op1'], ["o'brien", None], ['a\\b', None], ['new_york', ':op1'],
+    ['s1y', ':mod'], ['"\u0627\u0644\u0642\u0627\u0647\u0631\u0629"', None],
 ]
 
 #: Concepts a service names a node for, with the sentence and the names taken,
