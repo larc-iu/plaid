@@ -83,6 +83,37 @@
 
         (release-lock admin-request doc second-id)))))
 
+(deftest a-renewal-never-takes-back-a-lock-that-lapsed
+  ;; A renewal that found the document free used to take it again under the
+  ;; old id. The holder then carried on as if it had held the lock all along,
+  ;; although an admin had dropped it and another run had taken it, written and
+  ;; released it in between. A renewal answers 423 once the lock is gone, so
+  ;; the block ends in DocumentLockLost instead of writing over that edit.
+  (let [proj (create-test-project admin-request "LockLapsedRenewProj")
+        doc (create-test-document admin-request proj "Doc")
+        first-id (-> (acquire-lock admin-request doc) :body :lock-id)]
+    (assert-ok (api-call admin-request {:method :delete
+                                        :path (str "/api/v1/admin/locks/" doc)}))
+    (let [second-id (-> (acquire-lock admin-request doc) :body :lock-id)]
+      (is (string? second-id))
+      (assert-status 204 (release-lock admin-request doc second-id)))
+
+    (testing "the first holder's renewal is a 423 and takes nothing"
+      (let [r (acquire-lock admin-request doc first-id)]
+        (assert-status 423 r)
+        (is (not (contains? (:body r) :lock-id))))
+      (assert-status 204 (check-lock admin-request doc)))
+
+    (testing "a renewal with an id nobody was given takes nothing either"
+      (assert-status 423 (acquire-lock admin-request doc "chosen-by-the-client"))
+      (assert-status 204 (check-lock admin-request doc)))
+
+    (testing "an acquire still takes the free document, under a new id"
+      (let [r (acquire-lock admin-request doc)]
+        (assert-ok r)
+        (is (not= first-id (-> r :body :lock-id)))
+        (release-lock admin-request doc (-> r :body :lock-id))))))
+
 (deftest the-holding-users-writes-pass
   ;; A write carries no lock id. It is let through for the user who holds
   ;; the lock and refused for everyone else, as before.

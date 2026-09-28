@@ -120,6 +120,41 @@
                             "held by" (:user-id previous-lock) "requested by" user-id))
      result)))
 
+(defn renew-lock!
+  "Extend the lock on `document-id` that the holder `lock-id`, acting as
+  `user-id`, still holds.
+
+  Unlike an acquire, a renewal never takes a free document. Once a holder's
+  lock has expired or been dropped (by an admin, say), somebody else may have
+  written in between, even have taken and released the lock, and the work
+  that planned its writes from an earlier read has to hear that rather than
+  carry on under a lock taken again in silence.
+
+  Returns:
+   - :refreshed if `lock-id` holds the live lock, which is now extended
+   - :conflict if another holder has it, whatever its user
+   - :lapsed if nobody holds it live: this holder's lock expired or was
+     dropped"
+  [document-id user-id lock-id]
+  (let [now (current-time-ms)
+        expires-at (+ now (lock-expiration-ms))
+        [before _]
+        (swap-vals! locks
+                    (fn [lock-map]
+                      (let [existing-lock (get lock-map document-id)]
+                        (if (and existing-lock
+                                 (not (expired-at? existing-lock now))
+                                 (holds? existing-lock user-id lock-id))
+                          (assoc-in lock-map [document-id :expires-at] expires-at)
+                          lock-map))))
+        previous-lock (get before document-id)
+        result (cond
+                 (or (nil? previous-lock) (expired-at? previous-lock now)) :lapsed
+                 (holds? previous-lock user-id lock-id) :refreshed
+                 :else :conflict)]
+    (log/debug "Renewing lock for document" document-id "user" user-id ":" result)
+    result))
+
 (defn release-lock!
   "Release a lock if it is held by the holder `lock-id` acting as `user-id`.
    Returns:

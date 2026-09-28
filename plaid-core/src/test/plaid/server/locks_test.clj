@@ -49,3 +49,26 @@
   (let [id (:lock-id (locks/get-lock-info :document))]
     (is (string? id))
     (is (= :released (locks/release-lock! :document :user id)))))
+
+(deftest a-renewal-extends-only-a-live-lock-its-holder-has
+  (is (= :acquired (locks/acquire-lock! :document :user "first")))
+  (let [before (:expires-at (locks/get-lock-info :document))]
+    (Thread/sleep 5)
+    (is (= :refreshed (locks/renew-lock! :document :user "first")))
+    (is (< before (:expires-at (locks/get-lock-info :document))))
+    (is (= "first" (:lock-id (locks/get-lock-info :document)))))
+  (testing "another holder, of the same user or not, is a conflict and changes nothing"
+    (let [before (locks/get-lock-info :document)]
+      (is (= :conflict (locks/renew-lock! :document :user "second")))
+      (is (= :conflict (locks/renew-lock! :document :other "first")))
+      (is (= before (locks/get-lock-info :document)))))
+  (testing "once released, the renewal has lapsed and takes nothing"
+    (is (= :released (locks/release-lock! :document :user "first")))
+    (is (= :lapsed (locks/renew-lock! :document :user "first")))
+    (is (nil? (locks/get-lock-info :document))))
+  (testing "once expired, the renewal has lapsed and takes nothing"
+    (with-redefs [locks/lock-expiration-ms (constantly 1)]
+      (is (= :acquired (locks/acquire-lock! :document :user "third"))))
+    (Thread/sleep 5)
+    (is (= :lapsed (locks/renew-lock! :document :user "third")))
+    (is (nil? (locks/get-lock-info :document)))))

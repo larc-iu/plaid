@@ -1205,6 +1205,7 @@ await client2.documents.checkLock(documentId);
 A lock belongs to the acquire that took it, not to the user.
 While it is held, every other acquire is refused with HTTP 423, one by the same user included, so two runs of one user's work cannot share a lock and one cannot release it under the other.
 The acquire answers with a `lockId`, and only that id renews or releases the lock.
+A renewal only extends a live lock: once the lock has expired or an admin has dropped it, `renewLock` is refused with HTTP 423 even when nobody holds the document, because another user's edit may have landed in between.
 It is given to the holder alone: `checkLock`, a refused acquire and the admin list of locks name the user who holds the lock, never its id.
 Writes carry no lock id. A write to a locked document passes for the user who holds the lock and renews it. Anyone else's write is refused with HTTP 423.
 
