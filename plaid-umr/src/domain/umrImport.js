@@ -54,13 +54,7 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
     const info = getUmrLayerInfo(raw);
     if (!info.isConfigured) throw new Error('The document is not set up for UMR.');
     const graph = buildDocumentGraph(info);
-    // Constants (author, root) are not a graph: a document whose only nodes
-    // are those is as bare as one with none.
-    if (graph.sentences.some((s) => s.nodes.length)) {
-      throw new Error(
-        `"${raw.name}" already holds UMR nodes. Delete them first, or import as a new document.`,
-      );
-    }
+    if (standingOf(info, graph) === 'graph') throw new Error(hasGraph(raw.name));
     existing = { raw, info, graph };
   }
 
@@ -230,6 +224,38 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
     }
     throw err;
   }
+}
+
+const hasGraph = (name) => `"${name}" already has a graph.`;
+
+const standingOf = (info, graph) => {
+  // Constants (author, root) are not a graph: a document whose only nodes
+  // are those is as bare as one with none. A graph kept as text is one.
+  if (graph.sentences.some((s) => s.nodes.length || typeof s.rawGraph === 'string')) {
+    return 'graph';
+  }
+  return (info.wordTokenLayer?.tokens || []).length ? 'words' : 'empty';
+};
+
+/**
+ * What an import of a file does with the project's document of the same
+ * name (ruled 2026-09-28, umr-import-repeat-file), from that document read
+ * with its body: `{ into }`, its id, when it has words and no graph, and the
+ * file's graphs go onto its words; `{ into: null, note }` when it has no
+ * words, and the file becomes a new document with that note. A document that
+ * already has a graph (a node, or a graph kept as text) refuses: a repeated
+ * import is the common accident. Words that differ are found by the import
+ * itself (`importUmrDocument` with `into`), and also make a new document.
+ *
+ * @param {object} raw the document, from `documents.get(id, true)`
+ * @returns {{into: string|null, note?: string}}
+ */
+export function importTarget(raw) {
+  const info = getUmrLayerInfo(raw);
+  const standing = info.isConfigured ? standingOf(info, buildDocumentGraph(info)) : 'empty';
+  if (standing === 'graph') throw new Error(hasGraph(raw.name));
+  if (standing === 'empty') return { into: null, note: `"${raw.name}" has no words.` };
+  return { into: raw.id };
 }
 
 // Notes the reader makes once per node, said once per sentence instead: the

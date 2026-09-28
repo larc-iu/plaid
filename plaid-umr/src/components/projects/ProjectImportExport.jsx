@@ -1,24 +1,11 @@
 import JSZip from 'jszip';
-import { importUmrDocument } from '../../domain/umrImport.js';
+import { importTarget, importUmrDocument } from '../../domain/umrImport.js';
 import { exportProjectUmr } from '../../domain/umrExport.js';
 import { UnwritableUmrError } from '../../domain/format/umrFile.js';
 import { ExportProblems } from '../editor/ExportProblems.jsx';
 import { getUmrLayerInfo } from '../../utils/umrLayerUtils.js';
 import { ProjectImportExportPage } from '@ui/components/shared/ProjectImportExportPage.jsx';
 import { ProjectTabs } from './ProjectTabs.jsx';
-
-// A document's id when a .umr file may be imported onto it: it has words and
-// no UMR node yet. Null otherwise, and the file makes a new document.
-const annotatable = async (client, documentId) => {
-  const raw = await client.documents.get(documentId, true);
-  const info = getUmrLayerInfo(raw);
-  if (!info.isConfigured) return null;
-  // Constants (author, root) are not a graph.
-  const nodes = (info.conceptLayer.spans || []).filter((sp) => sp.metadata?.umr?.constant !== true);
-  if (nodes.length) return null;
-  if (!(info.wordTokenLayer.tokens || []).length) return null;
-  return documentId;
-};
 
 const prepareImport = async ({ client, project, projectId }) => {
   // Layer config is the same for every document, so it is read once here and
@@ -41,30 +28,40 @@ const prepareImport = async ({ client, project, projectId }) => {
       push({ key: `${index}-empty`, name, status: 'rejected', reason: 'File is empty' });
       return;
     }
-    // A document by the file's name that holds no UMR nodes yet takes the
-    // file's graphs onto its own words (an IGT document, say). Otherwise the
-    // file becomes a new document. One audit-log operation either way, labeled
-    // with the document name.
+    // A document by the file's name with words and no graph takes the file's
+    // graphs onto its own words (an IGT document, say). One that already has
+    // a graph refuses the file (importTarget). Otherwise the file becomes a
+    // new document, with a note when a document of that name was there. One
+    // audit-log operation either way, labeled with the document name.
     const matches = (existingDocs || []).filter((d) => d.name === name);
     if (matches.length > 1) {
       throw new Error(
         `${matches.length} documents are named "${name}". Rename the file, or the documents.`,
       );
     }
-    const into = matches.length ? await annotatable(client, matches[0].id) : null;
+    const target = matches.length
+      ? importTarget(await client.documents.get(matches[0].id, true))
+      : { into: null };
+    const { into } = target;
+    const asNew = (why) => (res) => {
+      res.warnings = [`Imported as a new document: ${why}`, ...(res.warnings || [])];
+      return res;
+    };
     let result;
     try {
       result = await client.withOperation(`Import UMR document "${name}"`, () =>
         importUmrDocument(client, projectId, name, text, layerInfo, { into, before }),
       );
+      if (target.note) result = asNew(target.note)(result);
     } catch (err) {
       // Words that differ from the document of that name: the file is a
       // document of its own, and the row says why.
       if (!into || !/differs|sentences and the document/.test(err?.message || '')) throw err;
-      result = await client.withOperation(`Import UMR document "${name}"`, () =>
-        importUmrDocument(client, projectId, name, text, layerInfo, { before }),
+      result = asNew(err.message)(
+        await client.withOperation(`Import UMR document "${name}"`, () =>
+          importUmrDocument(client, projectId, name, text, layerInfo, { before }),
+        ),
       );
-      result.warnings = [`Imported as a new document: ${err.message}`, ...(result.warnings || [])];
     }
     const { warnings, attached } = result;
     if (before && !attached) before.push(result.document);

@@ -4,7 +4,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseUmrFile } from '../src/domain/format/umrFile.js';
-import { planImport, readerNotes } from '../src/domain/umrImport.js';
+import { importTarget, planImport, readerNotes } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
 import { rawFromPlan } from './rawFromPlan.js';
 
@@ -195,4 +195,34 @@ test('a node named like a document graph is kept and reported', () => {
     ['Sentence 2: s1s0 names the document graph of sentence 1. Rename the node.'],
   );
   assert.ok(plan.nodes.some((n) => n.key === '2:s1s0'));
+});
+
+// umr-import-repeat-file: a document of the file's name that already has a
+// graph refuses a repeated import, one with words and no graph takes the
+// file's graphs, and one with no words leaves the file a new document with a
+// note.
+describe("the project's document of the file's name", () => {
+  const rawOf = (...sentences) =>
+    rawFromPlan(planImport(parseUmrFile(file(...sentences)).sentences, []));
+
+  test('with a graph, the import refuses', () => {
+    assert.throws(() => importTarget(rawOf(CAT)), { message: '"doc" already has a graph.' });
+  });
+
+  test('with only a graph kept as text, the import refuses too', () => {
+    const raw = rawOf({ graph: '((s1s / sleep-01)', alignment: 's1s: 3-3' });
+    assert.throws(() => importTarget(raw), { message: '"doc" already has a graph.' });
+  });
+
+  test('with words and no graph, the file goes onto its words', () => {
+    assert.deepEqual(importTarget(rawOf({})), { into: 'doc' });
+  });
+
+  test('with no words, the file is a new document with a note', () => {
+    const raw = rawOf({});
+    raw.textLayers[0].tokenLayers.find((tl) => tl.config.plaid?.role === 'word').tokens = [];
+    const target = importTarget(raw);
+    assert.equal(target.into, null);
+    assert.equal(target.note, '"doc" has no words.');
+  });
 });
