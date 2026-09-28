@@ -1,5 +1,6 @@
 import React from 'react';
 import { HEADERS, morphemeJoinersFor } from '../../../domain/ilg.js';
+import { modernHeader } from '../../../domain/format/umrFile.js';
 
 // The words of a sentence as columns, with the gloss lines beneath. A line
 // that can be told word by word (ilg.js) is laid under the words column by
@@ -9,6 +10,14 @@ import { HEADERS, morphemeJoinersFor } from '../../../domain/ilg.js';
 //
 // Lines are keyed by position: a project may have several lines of one kind
 // (a morpheme gloss in each of three languages), so `line.key` repeats.
+//
+// A line is named as the export writes it (`modernHeader`), so the screen and
+// the file agree: an imported `MORPHEME GLOSS(EN)` is `Morpheme Gloss (en)` in
+// both. The names are the app's words, not the document's, so they read left
+// to right and stand in the margin column on the stage's left in either
+// script. `dir="ltr"` does both: the names' logical insets resolve by their
+// own direction, and a right-to-left one put them past the stage's right
+// edge, where the scroller cannot reach.
 //
 // The MORPHEME lines of a word share one grid, a column per morpheme, so a
 // morpheme's form sits above its gloss and its category the way an
@@ -41,12 +50,12 @@ export const TokenRow = React.memo(function TokenRow({
     <div className={`umr-tokens${pickingWords ? ' umr-tokens--pick' : ''}`} dir={direction}>
       <div className="umr-word-row">
         {perWord.length > 0 && (
-          <div className="umr-legend" aria-hidden="true">
+          <div className="umr-legend" dir="ltr" aria-hidden="true">
             <span className="umr-legend-index">&nbsp;</span>
             <span className="umr-legend-word">&nbsp;</span>
             {perWord.map((line, li) => (
               <span key={li} className="umr-tier-label">
-                {line.header}
+                {modernHeader(line)}
               </span>
             ))}
           </div>
@@ -89,7 +98,7 @@ export const TokenRow = React.memo(function TokenRow({
                               line.key === 'morphemes' ? ' umr-morph-form' : ''
                             }`}
                             dir="auto"
-                            title={line.header}
+                            title={modernHeader(line)}
                           >
                             {line.perWord[i][ci] ?? ''}
                           </span>
@@ -100,7 +109,7 @@ export const TokenRow = React.memo(function TokenRow({
                 </div>
               ) : (
                 block.lines.map((line, li) => (
-                  <span key={li} className="umr-word-gloss" dir="auto" title={line.header}>
+                  <span key={li} className="umr-word-gloss" dir="auto" title={modernHeader(line)}>
                     {line.perWord[i].join(' ')}
                   </span>
                 ))
@@ -111,7 +120,9 @@ export const TokenRow = React.memo(function TokenRow({
       </div>
       {rows.map((line, li) => (
         <div key={li} className="umr-ilg-row">
-          <span className="umr-ilg-header umr-tier-label">{line.header}</span>
+          <span className="umr-ilg-header umr-tier-label" dir="ltr">
+            {modernHeader(line)}
+          </span>
           <span className="umr-ilg-items" dir="auto">
             {line.items.join(' ')}
           </span>

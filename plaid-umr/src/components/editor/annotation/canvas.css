@@ -92,6 +92,12 @@
 .umr-graph {
   position: relative;
 }
+/* An empty graph is a keyboard stop of its own (SentenceBlock's `emptyStop`). */
+.umr-graph:focus-visible {
+  outline: 2px solid var(--umr-edge-lit);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
 
 .umr-edges {
   position: absolute;
@@ -300,9 +306,10 @@
   width: max-content;
   min-width: 100%;
 }
-/* The names of the gloss lines, just left of where the lines start. The
+/* The names of the gloss lines, in the margin left of the word row. The
    column is built like a word's (a number, the word, a line each), so each
-   name is level with its line. */
+   name is level with its line. The element says `dir="ltr"` (TokenRow.jsx),
+   so its insets put it on the left in a right-to-left document as well. */
 .umr-legend {
   position: absolute;
   inset-inline-end: 100%;
@@ -871,12 +878,19 @@
 }
 .umr-attr-label {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 2px;
   flex: 0 0 128px;
   padding-top: 3px;
   color: hsl(var(--muted-foreground));
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+/* Under the attribute's name, on a line of its own. */
+.umr-attr-deprecated {
+  flex-basis: 100%;
+  font-size: 0.65rem;
+  font-style: italic;
 }
 .umr-attr-clear {
   display: inline-flex;

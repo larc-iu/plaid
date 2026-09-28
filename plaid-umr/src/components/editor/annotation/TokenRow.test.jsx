@@ -49,3 +49,33 @@ describe('TokenRow', () => {
     }
   });
 });
+
+// A line is named as the export writes it, and the names read left to right
+// in either script, which is also what keeps them in the left margin of an
+// RTL document (their logical insets resolve by their own direction).
+describe('TokenRow line names', () => {
+  it('prints the header the file is written with, not the one it was imported with', async () => {
+    const s = {
+      words: [{ id: 'w1', index: 1, begin: 0, end: 3, text: 'abc' }],
+      morphemes: [],
+      ilg: [
+        { header: 'MORPHEME GLOSS(EN)', key: 'morpheme-gloss', lang: 'en', perWord: [['x']] },
+        { header: 'Word Gloss', key: 'word-gloss', lang: 'en', perWord: [['y']] },
+        { header: 'Speaker', key: 'other', lang: null, perWord: [['z']] },
+        { header: 'SPANISH SENT GLOSS', key: 'sentence-gloss', lang: 'es', items: ['w'] },
+      ],
+    };
+    const r = await renderComponent(
+      <TokenRow sentence={s} direction="rtl" wordRef={() => undefined} />,
+    );
+    expect(texts(r.container, '.umr-legend .umr-tier-label')).toEqual([
+      'Morpheme Gloss (en)',
+      'Word Gloss (en)',
+      'Speaker',
+    ]);
+    expect(texts(r.container, '.umr-ilg-header')).toEqual(['Sentence Gloss (es)']);
+    expect(r.container.querySelector('.umr-legend').getAttribute('dir')).toBe('ltr');
+    expect(r.container.querySelector('.umr-ilg-header').getAttribute('dir')).toBe('ltr');
+    await r.unmount();
+  });
+});

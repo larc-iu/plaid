@@ -6,9 +6,11 @@ import { latticeFor, linesFor, valuesFor } from '../../../domain/lattices.js';
 import { attrsToLine, focusValue, readAttrLine } from './pickers.js';
 
 // The attributes with a value set, in the order the picker lists them.
+// `:modal-strength` is last and marked: UMR 1.0 moved modality into the
+// document graph, and the Validation tab warns on the attribute. It stays for
+// what an import carried.
 const PICKED = [
   ':aspect',
-  ':modal-strength',
   ':polarity',
   ':mode',
   ':refer-person',
@@ -16,7 +18,9 @@ const PICKED = [
   ':refer-definiteness',
   ':degree',
   ':polite',
+  ':modal-strength',
 ].filter((rel) => ATTRIBUTES[rel]);
+const DEPRECATED = new Set([':modal-strength']);
 
 // The attribute picker, floating under a node. One row per attribute with a
 // value set: a lattice from coarse to fine where the guidelines draw one
@@ -221,6 +225,7 @@ export function AttributePopover({
                 <X size={11} />
               </button>
             )}
+            {DEPRECATED.has(row.rel) && <span className="umr-attr-deprecated">deprecated</span>}
           </div>
           <div className="umr-attr-lines">
             {row.lines.map((line, i) => (

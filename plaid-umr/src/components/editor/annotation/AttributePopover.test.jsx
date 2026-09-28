@@ -200,3 +200,25 @@ const typeLine = (r, input, text) =>
     setter.call(input, text);
     input.dispatchEvent(new Event('input', { bubbles: true }));
   });
+
+// UMR 1.0 moved modality into the document graph and the Validation tab warns
+// on `:modal-strength`. The picker listed it second, as weighty as aspect.
+describe('AttributePopover, the deprecated attribute', () => {
+  it('lists :modal-strength last, marked deprecated', async () => {
+    const r = await renderComponent(
+      <AttributePopover
+        attrs={[]}
+        relationProblem={unknownRelationProblem}
+        onChange={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const rels = all(document.body, '.umr-attr-row[data-rel]').map((row) => row.dataset.rel);
+    expect(rels.at(-1)).toBe(':modal-strength');
+    expect(texts(document.body, '.umr-attr-deprecated')).toEqual(['deprecated']);
+    expect(
+      document.body.querySelector('[data-rel=":modal-strength"] .umr-attr-deprecated'),
+    ).not.toBeNull();
+    await r.unmount();
+  });
+});
