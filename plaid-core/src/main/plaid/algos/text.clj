@@ -513,10 +513,12 @@
 (defn- space?
   "Whether code point `c` separates words, as the apps' tokenizers take it
   (JavaScript's `\\s`): Java's whitespace, and also the no-break spaces
-  (U+00A0, U+2007, U+202F) and U+FEFF, which Java counts as letters."
+  (U+00A0, U+2007, U+202F) and U+FEFF, which Java counts as letters, but not
+  the information separators (U+001C to U+001F), which only Java counts."
   [c]
   (let [c (int c)]
-    (or (Character/isWhitespace c) (Character/isSpaceChar c) (= c 0xFEFF))))
+    (and (not (<= 0x1C c 0x1F))
+         (or (Character/isWhitespace c) (Character/isSpaceChar c) (= c 0xFEFF)))))
 
 (def ^:private slide-reach
   "How far an edit is moved at most, in code points each way. A word edit's

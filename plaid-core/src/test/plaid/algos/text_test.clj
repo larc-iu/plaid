@@ -1142,6 +1142,18 @@
         (is (= new (:text/body text)))
         (is (= want (extents tokens)) (str (pr-str old) " -> " (pr-str new)))))))
 
+(deftest a-word-edge-is-a-space-as-the-apps-tokenizers-read-one
+  ;; The apps split words on JavaScript's `\s`. Java also counts the four
+  ;; information separators (U+001C to U+001F) as whitespace, and JavaScript
+  ;; does not, so to the apps they are letters inside a word, and the cut
+  ;; took them for the word's edge and left the respelled letter out.
+  (let [us (str (char 0x1F))
+        on (fn [layer t] (assoc t :token/layer layer))
+        {:keys [text tokens]} (body-edit (str "x a" us "b\n") "Qb\n"
+                                         [(on :w (tok :x 0 1)) (on :w (tok :ab 2 5))])]
+    (is (= "Qb\n" (:text/body text)))
+    (is (= #{[:ab 0 2]} (extents tokens)))))
+
 (deftest a-word-deleted-at-the-edge-of-a-token-over-several-words-takes-its-space-along
   ;; UMR anchors a node aligned to words next to each other on one token over
   ;; them. Deleting the word at either edge could take the space before it
