@@ -262,3 +262,33 @@ def test_the_reply_carries_its_usage_only_when_there_is_one():
     # reported" for "zero".
     assert 'usage' not in assistant_item('hi', None, [], [], '', 'm')
     assert 'usage' not in assistant_item('hi', None, [], [], '', 'm', None)
+
+
+def test_a_turn_counts_every_model_call_as_well_as_the_last():
+    """The last call answers whether the next turn fits. What the turn COST is
+    every call added up: a turn of ten tool calls sends the thread ten times,
+    and recording only the last call understated a conversation's spend about
+    tenfold."""
+    from plaid_agent.core.agent import Spend
+
+    def resp(sent, received):
+        class R:
+            class usage:
+                prompt_tokens = sent
+                completion_tokens = received
+        return R()
+
+    class Silent:
+        usage = None
+
+    s = Spend()
+    assert s.usage() is None, 'no call reported anything: no figure at all'
+    s.add(resp(1000, 50))
+    s.add(resp(1500, 20))
+    s.add(resp(2000, 300))
+    assert s.usage() == {'sent': 2000, 'received': 300,
+                         'total': {'sent': 4500, 'received': 370, 'calls': 3}}
+    # A call the provider said nothing about is not counted as zero in silence.
+    s.add(Silent())
+    assert s.usage()['total'] == {'sent': 4500, 'received': 370, 'calls': 3, 'partial': True}
+    assert s.usage()['sent'] == 2000, 'the last REPORTED call stays the fullness figure'

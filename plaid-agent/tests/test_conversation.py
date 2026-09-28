@@ -75,7 +75,9 @@ def test_the_record_budget_is_the_cap_the_server_publishes():
         def __init__(self, limits):
             self.server = Server(limits)
 
-    assert record_budget(C({'user_data_value_bytes': 250_000})) == 250_000
+    # Less the browser's room: it adds the next message to the record as the
+    # service left it, and a record filled to the cap refused that message.
+    assert record_budget(C({'user_data_value_bytes': 1_000_000})) == 900_000
     # Not reported, reported as nonsense, or no /info at all: the fallback.
     assert record_budget(C({})) == CONVERSATION_BUDGET
     assert record_budget(C({'user_data_value_bytes': 'lots'})) == CONVERSATION_BUDGET
@@ -124,6 +126,8 @@ def test_items_and_plan_settlement():
     assert out['display'][0] == conv['display'][0]
     assert out['messages'][-1] == {'role': 'user', 'content': '(note) applied'}
     assert conv['display'][1]['status'] is None, 'the input is not mutated'
+    assert out['display'][1]['plan'] == {'id': 'p1', 'summary': '1 field value', 'labels': [], 'op_count': 0}, \
+        'a settled plan keeps its card and drops what only approving it needed'
     assert error_item('Stopped.', stopped=True) == {'kind': 'error', 'text': 'Stopped.', 'stopped': True}
     assert error_item('x') == {'kind': 'error', 'text': 'x'}
 
@@ -189,3 +193,25 @@ def test_prune_leaves_a_record_that_already_fits_alone():
     conv = {'messages': [{'role': 'tool', 'tool_call_id': 't', 'content': 'small'}],
             'display': [{'kind': 'user', 'text': 'hi'}]}
     assert prune(conv) == conv
+
+
+def test_every_settled_plan_is_compacted_and_an_undecided_one_never_is():
+    """Eline's 1MB thread was 618KB of plans, most of them already applied or
+    discarded, and prune never touched a plan. The card is drawn from
+    `changes` and `labels`, so dropping `ops` and `documents` changes nothing
+    on screen."""
+    ops = [{'kind': 'set_span', 'value': 'x' * 1000}] * 50
+    docs = [{'id': 'd1', 'name': 'Text', 'version': 3}]
+
+    def item(status, pid):
+        return {**assistant_item('a', {'id': pid, 'summary': '50 field values', 'ops': ops,
+                                       'labels': ['l'] * 50, 'changes': [{'label': 'l'}] * 50,
+                                       'documents': docs}, [], [], '', 'm'), 'status': status}
+
+    conv = _conv(item('applied', 'p1'), item('discarded', 'p2'), item('stale', 'p3'), item(None, 'p4'))
+    out = prune(conv, 10_000_000)
+    for d in out['display'][:3]:
+        assert 'ops' not in d['plan'] and 'documents' not in d['plan']
+        assert d['plan']['op_count'] == 50 and len(d['plan']['changes']) == 50
+    assert out['display'][3]['plan']['ops'] == ops, 'an undecided plan can still be approved'
+    assert out['display'][3]['plan']['documents'] == docs

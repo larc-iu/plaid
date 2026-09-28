@@ -460,6 +460,12 @@ export const AssistantChat = ({
         activeRef.current = j.result.conv;
         setActive(j.result.conv);
         clearJob();
+        // A message that could not be saved was not sent. It comes back to
+        // the composer, unless the record kept it after all (then the tab
+        // offers to send it again) or something new has been typed since.
+        if (j.unsent && j.result.conv.display.at(-1)?.kind !== 'user') {
+          setInput((typed) => typed || j.unsent);
+        }
         inputRef.current?.focus();
       } else {
         showJob(j);

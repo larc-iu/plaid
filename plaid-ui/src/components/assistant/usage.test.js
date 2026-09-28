@@ -30,18 +30,20 @@ describe('latestUsage', () => {
 });
 
 describe('totalSpend', () => {
-  it('adds every turn, because each turn re-sends the whole thread', () => {
+  it('adds every model call of every turn, not only the last call of each', () => {
     const display = [
       ask,
-      reply({ sent: 100, received: 10 }),
+      reply({ sent: 100, received: 10, total: { sent: 250, received: 30, calls: 3 } }),
       ask,
-      reply({ sent: 400, received: 20 }),
+      reply({ sent: 400, received: 20, total: { sent: 400, received: 20, calls: 1 } }),
     ];
-    expect(totalSpend(display)).toBe(530);
+    expect(totalSpend(display)).toBe(700);
   });
 
-  it('counts a reply from before usage was recorded as nothing, not as a gap', () => {
-    expect(totalSpend([reply(null), reply({ sent: 50, received: 5 })])).toBe(55);
+  it('counts a reply with no counts as nothing, not as a gap', () => {
+    expect(
+      totalSpend([reply(null), reply({ sent: 50, received: 5, total: { sent: 50, received: 5 } })]),
+    ).toBe(55);
   });
 });
 

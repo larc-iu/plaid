@@ -31,12 +31,12 @@ export const latestUsage = (display) => {
 };
 
 // Everything this conversation has sent and been sent, added up over its
-// turns. Replies written before the service recorded usage contribute nothing,
-// so a thread that predates it reads low rather than wrong.
+// turns. A turn's `total` is every model call it made, where `sent` and
+// `received` beside it are only the last call's.
 export const totalSpend = (display) =>
   (display || []).reduce((sum, item) => {
-    const u = usageOf(item);
-    return u ? sum + (u.sent || 0) + (u.received || 0) : sum;
+    const t = usageOf(item)?.total;
+    return t ? sum + (t.sent || 0) + (t.received || 0) : sum;
   }, 0);
 
 // What fraction of the window the last turn used, or null when the window is

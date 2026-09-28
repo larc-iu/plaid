@@ -17,6 +17,10 @@ const TITLE_MAX = 60;
 const LOST_CONTACT =
   'Lost contact with the assistant. It is still working. Reload to pick it back up.';
 
+// The record is at the server's size limit, so a message cannot be added.
+const CONVERSATION_FULL =
+  'This conversation is full, so the message was not sent. Start a new conversation to go on.';
+
 // The record keys carry the app's tag, the same one the service writes
 // (plaid_agent/core/conversation.py), so one user's ud: and igt: records
 // never collide.
@@ -155,9 +159,13 @@ export const buildMeta = (store, prev, conv, service, pending = null, about = nu
 // Write a conversation (transcript + sidebar entry, or the entry alone).
 // Writes for one conversation run one after another so a slow earlier PUT
 // cannot land on top of a newer one.
+//
+// Resolves to whether the write landed. A failure is reported here, and a
+// caller about to act on the record (a turn reads the message from it) must
+// not go on without it.
 export const persistConv = (store, conv, meta, { metaOnly = false } = {}) => {
   const { client, userId, app, projectId } = store;
-  if (!userId) return Promise.resolve();
+  if (!userId) return Promise.resolve(false);
   const prev = saveQueues.get(conv.id) || Promise.resolve();
   const next = prev
     .then(async () => {
@@ -168,10 +176,16 @@ export const persistConv = (store, conv, meta, { metaOnly = false } = {}) => {
         });
       }
       await client.userData.put(userId, metaKey(app, projectId, conv.id), meta);
+      return true;
     })
     .catch((e) => {
       console.error('[Assistant] could not save the conversation', e);
-      notifyError(humanizeError(e, 'Failed to save the conversation.'));
+      notifyError(
+        e?.status === 413
+          ? CONVERSATION_FULL
+          : humanizeError(e, 'Failed to save the conversation.'),
+      );
+      return false;
     })
     .finally(() => {
       // Nothing queued behind this one: stop holding the chain.
@@ -220,12 +234,24 @@ export const deleteConversation = async (store, meta) => {
   ]);
 };
 
+// A settled plan's card without what only approving it needed: the ops and
+// the documents they were checked against. The card is drawn from `changes`
+// and `labels`, and the audit log records what was written. The service does
+// the same to every settled plan (plaid_agent/core/conversation.py
+// `compact_plan`).
+export const compactPlan = (item) => {
+  const plan = item?.plan;
+  if (!plan || item.status === null || item.status === undefined || !('ops' in plan)) return item;
+  const { ops, documents: _documents, ...kept } = plan;
+  return { ...item, plan: { ...kept, opCount: (ops || []).length } };
+};
+
 // A plan's outcome decided here (a discard): the status on its card, plus a
 // note in the model transcript (user role) so the next turn knows.
 export const settle = (conv, index, status, note) => ({
   ...conv,
   messages: note ? [...conv.messages, { role: 'user', content: note }] : conv.messages,
-  display: conv.display.map((d, i) => (i === index ? { ...d, status } : d)),
+  display: conv.display.map((d, i) => (i === index ? compactPlan({ ...d, status }) : d)),
 });
 
 // The user's message leaves the model transcript when its turn ends without
@@ -388,7 +414,13 @@ export const startTurn = ({ store, service, conv, prevMeta, where = null }) => {
     // already stored: the chat writes those before it builds the message, so a
     // file that could not be stored stops the send instead of going with it as
     // a reference to nothing.
-    await persistConv(store, conv, meta);
+    // A message that did not reach the record is never sent: the service
+    // reads the message FROM the record, so it would answer the one before.
+    // The text goes back to the composer (`unsent`) rather than being lost.
+    if (!(await persistConv(store, conv, meta))) {
+      j.unsent = conv.display.at(-1)?.text ?? null;
+      return finishJob(j, store, service);
+    }
     await watch(j, () =>
       client.messages.requestService(
         projectId,

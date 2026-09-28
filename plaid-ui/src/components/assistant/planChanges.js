@@ -26,9 +26,11 @@ const alwaysShown = (r) => r.writesText || r.replacesWork;
 // The changes to show, in plan order: the service's located changes when
 // they line up with the ops, else the labels alone.
 export const planRows = (plan) => {
-  const ops = plan?.ops || [];
+  // A settled plan keeps its changes and the count of its ops, not the ops
+  // themselves (`compactPlan` in jobs.js).
+  const opCount = plan?.opCount ?? (plan?.ops || []).length;
   const changes = plan?.changes || [];
-  if (changes.length && changes.length === ops.length) {
+  if (changes.length && changes.length === opCount) {
     return changes.map((c, i) => ({
       index: i,
       where: c.where || null,

@@ -46,6 +46,11 @@ from plaid_client.http import PlaidAPIError
 # The real cap is the server's and it publishes it (`record_budget`); this is
 # the fallback for a server too old to report one.
 CONVERSATION_BUDGET = 700_000
+# The share of the server's cap the service fills. The service is not the
+# record's only writer: the browser adds the next message and a discard's note
+# to the record as it stands, so a record pruned to the cap exactly took the
+# user's next message back as a 413, and the turn ran without it.
+RECORD_HEADROOM = 0.9
 DROPPED = '[This result was dropped to keep the conversation within its size limit.]'
 TITLE_MAX = 60
 
@@ -137,8 +142,10 @@ def assistant_item(text: str, plan: Optional[Dict[str, Any]], citations: List[Di
     """What the person sees of a reply. A step's own output is not repeated
     here: it is the ``tool`` message with the same id in the transcript.
 
-    ``usage`` is ``{sent, received, window}`` for the turn that produced this
-    reply, with ``window`` absent when the model's limit is not known. It lives
+    ``usage`` is ``{sent, received, window, total}`` for the turn that
+    produced this reply: ``sent`` and ``received`` are its last model call,
+    ``total`` is every call added up (`agent.Spend`), and ``window`` is absent
+    when the model's limit is not known. It lives
     per reply rather than on the sidebar entry so that the growth is visible
     and so that reading the newest is how you get the current figure.
 
@@ -203,11 +210,36 @@ def find_plan(conv: Dict[str, Any], plan_id: str) -> Tuple[int, Optional[Dict[st
     return -1, None
 
 
+def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
+    """A settled plan's card without what only approving it needed.
+
+    ``ops`` and ``documents`` are what approval executes and checks, and they
+    were most of a long conversation's weight (Eline's 1MB thread was 618KB of
+    plans). Once the plan is applied, discarded or out of date, nothing reads
+    them again: the card is drawn from ``changes`` and ``labels``, and the
+    audit log is the record of what was written. ``op_count`` keeps the card's
+    rows lined up with the ops they stood for (`planRows` in plaid-ui).
+    An undecided plan is never compacted: it can still be approved.
+    """
+    plan = item.get('plan')
+    if not plan or item.get('status') is None or 'ops' not in plan:
+        return item
+    kept = {k: v for k, v in plan.items() if k not in ('ops', 'documents')}
+    kept['op_count'] = len(plan.get('ops') or [])
+    return {**item, 'plan': kept}
+
+
+def compact_settled(display: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [compact_plan(d) if isinstance(d, dict) else d for d in display]
+
+
 def settle_plan(conv: Dict[str, Any], index: int, status: Optional[str], note: Optional[str],
                 **fields) -> Dict[str, Any]:
     """A plan's outcome: the status on its card, plus a note in the model
-    transcript (user role) so the next turn knows whether its proposal happened."""
-    display = [({**d, 'status': status, **fields} if i == index else d) for i, d in enumerate(conv['display'])]
+    transcript (user role) so the next turn knows whether its proposal happened.
+    A settled plan is compacted at once (`compact_plan`)."""
+    display = [(compact_plan({**d, 'status': status, **fields}) if i == index else d)
+               for i, d in enumerate(conv['display'])]
     messages = conv['messages'] + ([{'role': 'user', 'content': note}] if note else [])
     return {'messages': messages, 'display': display}
 
@@ -233,14 +265,17 @@ def conversation_bytes(conv: Dict[str, Any]) -> int:
 
 
 def record_budget(client, default: int = CONVERSATION_BUDGET) -> int:
-    """The cap the server enforces on one stored value, which it publishes at
-    ``GET /info``. A server that does not report one gets the fallback, which
-    is what the budget was before anybody asked."""
+    """What the service may fill of the cap the server enforces on one stored
+    value, which it publishes at ``GET /info``: the cap less the browser's
+    room (`RECORD_HEADROOM`). A server that does not report one gets the
+    fallback, which is what the budget was before anybody asked."""
     try:
         reported = (client.server.limits() or {}).get('user_data_value_bytes')
     except Exception:  # noqa: BLE001 - an unreachable or older server just has no figure
         return default
-    return int(reported) if isinstance(reported, int) and reported > 0 else default
+    if not (isinstance(reported, int) and reported > 0):
+        return default
+    return int(reported * RECORD_HEADROOM)
 
 
 def prune(conv: Dict[str, Any], budget: int = CONVERSATION_BUDGET) -> Dict[str, Any]:
@@ -254,9 +289,15 @@ def prune(conv: Dict[str, Any], budget: int = CONVERSATION_BUDGET) -> Dict[str, 
     What a stage may take is the question. A tool RESULT is recoverable by
     asking again. A step TRACE is diagnostic, and its output is the `tool`
     message stage one already took. CITATIONS are the evidence a reply rests
-    on, so they go last and never from the newest reply. A PLAN is never
-    touched at any stage: the user has not decided on it yet.
+    on, so they go last and never from the newest reply. An undecided PLAN is
+    never touched at any stage: the user has not decided on it yet.
+
+    Before any of that, and whatever the size, every settled plan is compacted
+    (`compact_plan`). That is not trimming: it drops only what nothing reads.
     """
+    display = conv.get('display') or []
+    if any(compact_plan(d) is not d for d in display if isinstance(d, dict)):
+        conv = {**conv, 'display': compact_settled(display)}
     excess = conversation_bytes(conv) - budget
     if excess <= 0:
         return conv

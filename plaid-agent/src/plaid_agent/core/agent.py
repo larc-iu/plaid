@@ -439,12 +439,52 @@ class TurnResult:
     steps: List[Dict[str, Any]]
     # What the LAST model call of the turn sent and got back, plus the window
     # it was sent into. The last call is the high-water mark: a turn's prompt
-    # only grows as its tool results pile up.
-    usage: Optional[Dict[str, int]] = None
+    # only grows as its tool results pile up. ``total`` is every call of the
+    # turn added up, which is what the turn cost (see `Spend`).
+    usage: Optional[Dict[str, Any]] = None
 
     @property
     def summary(self) -> str:
         return summarize_steps(self.steps)
+
+
+class Spend:
+    """What one turn's model calls sent and got back.
+
+    Two figures answer two questions. The LAST call's counts are the most the
+    thread has ever sent, since a turn's prompt only grows as its tool results
+    accumulate, and that answers whether another turn will fit. The TOTAL over
+    every call is what the turn cost: a turn of ten tool calls sends the thread
+    ten times, and recording only the last call understated it about tenfold.
+
+    A call whose provider reported nothing adds nothing, and ``total`` then
+    says ``partial`` rather than passing an undercount off as the whole.
+    """
+
+    def __init__(self):
+        self.last: Optional[Dict[str, int]] = None
+        self.sent = 0
+        self.received = 0
+        self.calls = 0
+        self.unreported = 0
+
+    def add(self, resp) -> None:
+        u = usage_of(resp)
+        if u is None:
+            self.unreported += 1
+            return
+        self.last = u
+        self.sent += u['sent']
+        self.received += u['received']
+        self.calls += 1
+
+    def usage(self) -> Optional[Dict[str, Any]]:
+        if self.last is None:
+            return None
+        total: Dict[str, Any] = {'sent': self.sent, 'received': self.received, 'calls': self.calls}
+        if self.unreported:
+            total['partial'] = True
+        return {**self.last, 'total': total}
 
 
 def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: List[Dict[str, Any]],
@@ -464,11 +504,7 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
     # arguments). Only an IDENTICAL repeat counts: a model that changes its
     # arguments after a refusal is trying something else.
     failing: Dict[str, Any] = {'call': None, 'times': 0}
-    # The last call's usage, whichever call turns out to be last. A turn's
-    # prompt only grows as its tool results accumulate, so the last call is the
-    # most the thread has ever sent, which is the figure that answers whether
-    # another turn will fit.
-    spent: Dict[str, Any] = {'usage': None}
+    spend = Spend()
 
     def ask_for_the_reply(kwargs: Dict[str, Any], nudge: str) -> str:
         """One more call, without tools, when the model owes the user words."""
@@ -478,7 +514,7 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
         kwargs.pop('tool_choice', None)
         on_text('')
         resp = _complete(cfg, kwargs, on_text, cancelled)
-        spent['usage'] = usage_of(resp) or spent['usage']
+        spend.add(resp)
         choice = resp.choices[0]
         d = _message_to_dict(choice.message)
         d.pop('tool_calls', None)
@@ -506,7 +542,7 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
             kwargs['max_tokens'] = cfg.max_tokens
         on_text('')
         resp = _complete(cfg, kwargs, on_text, cancelled)
-        spent['usage'] = usage_of(resp) or spent['usage']
+        spend.add(resp)
         choice = resp.choices[0]
         d = _message_to_dict(choice.message)
         new.append(d)
@@ -521,7 +557,7 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
                                                  'Reply now with your answer to the user.')
             else:
                 text += _length_note(choice)
-            return TurnResult(text, new, trace, spent['usage'])
+            return TurnResult(text, new, trace, spend.usage())
         rounds += 1
         for c in calls:
             if cancelled():
@@ -554,7 +590,7 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
                                              f'{REPEATED_FAILURES} times in a row. Do not call it again. '
                                              'Reply now with what you found and what remains to do.')
             return TurnResult(text + f'\n\n*(Stopped after the same step failed {REPEATED_FAILURES} times.)*',
-                              new, trace, spent['usage'])
+                              new, trace, spend.usage())
         if rounds >= cfg.max_steps:
             text = ask_for_the_reply(kwargs, '(system) You have used the tool budget for this turn. '
                                              'Reply now with what you found and what remains to do.')
@@ -563,4 +599,4 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
             # Raising it is the operator's `--max-steps`, which is not named to
             # the reader.
             return TurnResult(text + '\n\n*(Stopped at the step limit.)*',
-                              new, trace, spent['usage'])
+                              new, trace, spend.usage())
