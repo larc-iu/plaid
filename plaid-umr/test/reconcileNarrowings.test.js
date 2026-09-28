@@ -200,3 +200,67 @@ test('an open reads the vocabularies only when a node names an entry', async () 
   assert.deepEqual(asked, ['v1']);
   assert.equal(result.unlinked, 1);
 });
+
+// ----- 5. a sentence typed in before the first one -----
+
+test("a sentence typed in before the first keeps the first sentence's unaligned node with its tree", async () => {
+  const TR = `${SEP}
+# :: snt1
+Index: 1 2 3 4
+Words: Ali kitap verdi .
+
+# sentence level graph:
+(s1v / ver-01
+    :ARG0 (s1a / person
+        :name (s1n / name :op1 "Ali"))
+    :ARG1 (s1k / kitap))
+
+# alignment:
+s1v: 3-3
+s1a: 1-1
+s1n: 0-0
+s1k: 2-2
+
+# document level annotation:
+(s1s0 / sentence)
+`;
+  const raw = fromText(TR);
+  // IGT keeps the first sentence's token on the new text, which s1n records.
+  const kept = insertSentenceAtStart(raw);
+  const { doc, calls } = open(raw);
+  const name = [...doc.graph.nodesById.values()].find((n) => n.var === 's1n');
+  assert.equal(name.metadata.umr.sentence, kept);
+  // It is read in the sentence its anchor and its parent are in, not the
+  // one its record names, so no edge crosses a sentence.
+  assert.equal(name.sentence, 2);
+  assert.equal(name.aligned, false);
+  const result = await doc._reconcile();
+  assert.equal(result.rebound, 1);
+  const patches = calls.filter((c) => c.name === 'spans.patchMetadata' && c.args[0] === name.id);
+  assert.deepEqual(patches[0].args[1], [
+    { op: 'set', path: ['umr', 'sentence'], value: 'igt-right' },
+    { op: 'set', path: ['umr', 'var'], value: 's2n' },
+  ]);
+  assert.equal(
+    doc.describeReconcile(result),
+    'Repaired: rebound 1 unaligned node to the sentence it is in, renumbered 4 variables to match the sentences',
+  );
+});
+
+test('a boundary moved later keeps an unaligned node in the sentence it records', () => {
+  const raw = fromText(`${block(1)}\n${block(2)}`);
+  const [, second] = role(raw, 'sentence').tokens;
+  const nodes = raw.textLayers[0].tokenLayers.find((l) => l.config?.umr?.nodes);
+  const span = nodes.spanLayers[0].spans.find((s) => s.metadata.umr.var === 's2a');
+  // s2a is unaligned: it records sentence 2 and stands over it.
+  span.metadata.umr.sentence = second.id;
+  const piece = nodes.tokens.find((t) => t.id === span.tokens[0]);
+  piece.begin = second.begin;
+  piece.end = second.end;
+  // IGT moves the boundary between them two characters later: sentence 1
+  // takes the start of sentence 2's text, and with it where s2a begins.
+  role(raw, 'sentence').tokens[0].end += 2;
+  second.begin += 2;
+  const { doc } = open(raw);
+  assert.equal([...doc.graph.nodesById.values()].find((n) => n.var === 's2a').sentence, 2);
+});

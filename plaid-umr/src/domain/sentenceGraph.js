@@ -184,8 +184,16 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
     // anchor into the sentence before, and reading position alone drew it,
     // and wrote it to the file, under that one. Reconcile brings the anchor
     // back; the canvas, the export and the Export tab agree before it runs.
+    //
+    // Unless the anchor begins in a LATER sentence. IGT splits a sentence
+    // keeping its token on the left, so a sentence typed in before the first
+    // one and split off takes the first one's token, and with it the record
+    // of every unaligned node there, while their anchors and their trees are
+    // in the right half. Nothing else puts a recorded sentence before where
+    // the anchor begins.
     const recorded = node.aligned ? null : byTokenId.get(meta.sentence);
-    const s = recorded || (pieces.length ? sentenceOf(pieces[0]) : null);
+    const standing = pieces.length ? sentenceOf(pieces[0]) : null;
+    const s = recorded && !(standing && standing.index > recorded.index) ? recorded : standing;
     if (s) {
       node.sentence = s.index;
       s.nodes.push(node);

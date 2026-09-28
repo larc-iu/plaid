@@ -55,7 +55,6 @@
  */
 export function planUnalignedHeal(graph, namespace) {
   const { sentences, nodesById } = graph;
-  const byToken = new Map(sentences.map((s) => [s.tokenId, s]));
   const recordOf = (node) => node.metadata?.[namespace]?.sentence || null;
   const remove = [];
   const rebind = [];
@@ -92,14 +91,15 @@ export function planUnalignedHeal(graph, namespace) {
       standOver(node, home);
       return;
     }
-    // The sentence it belongs to: the one it records while that token is
-    // alive, else the one it stands in.
-    const home = byToken.get(record) || (node.sentence ? sentences[node.sentence - 1] : null);
+    // The sentence it belongs to, as sentenceGraph.js reads it: the one it
+    // records while that token is alive and the anchor does not begin in a
+    // later one, else the one it stands in.
+    const home = node.sentence ? sentences[node.sentence - 1] : null;
     if (!home) {
       remove.push(node.id);
       return;
     }
-    if (!byToken.has(record)) rebind.push({ nodeId: node.id, sentenceTokenId: home.tokenId });
+    if (home.tokenId !== record) rebind.push({ nodeId: node.id, sentenceTokenId: home.tokenId });
     standOver(node, home);
   });
   return { remove, rebind, resize, unanchor };
