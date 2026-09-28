@@ -149,8 +149,15 @@ export function argsOf(frames, roleset) {
     .map(([k, description]) => ({ role: `:${k.toUpperCase()}`, description }));
 }
 
-// One line summarizing a roleset for a list: `ARG0 giver, ARG1 thing given`.
+// An argument's number for ordering, the numbered ones first: a stored
+// roleset's keys come back in any order (core keeps none).
+const argNumber = (key) => (/^ARG\d+$/i.test(key) ? Number(key.slice(3)) : Infinity);
+
+// One line summarizing a roleset for a list: `ARG0 giver, ARG1 thing given`,
+// in number order, anything else (`ARGM-LOC`) after in the order given.
 export const argSummary = (args) =>
   Object.entries(args || {})
-    .map(([k, v]) => `${k} ${v}`)
+    .map((entry, i) => [entry, i])
+    .sort(([[a], i], [[b], j]) => argNumber(a) - argNumber(b) || i - j)
+    .map(([[k, v]]) => `${k} ${v}`)
     .join(', ');

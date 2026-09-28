@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lemmaCandidates, sensesFor, argsOf, rolesetsStartingWith } from '../src/domain/lexicon.js';
+import {
+  lemmaCandidates,
+  sensesFor,
+  argsOf,
+  argSummary,
+  rolesetsStartingWith,
+} from '../src/domain/lexicon.js';
 
 const frames = {
   'leave-02': { ARG0: 'leaver', ARG1: 'thing left' },
@@ -48,4 +54,18 @@ test('rolesets by prefix, capped', () => {
   );
   assert.equal(rolesetsStartingWith(frames, 'lea', 1).length, 1);
   assert.deepEqual(rolesetsStartingWith(frames, ''), []);
+});
+
+// A roleset stored on a vocabulary entry comes back from core in any key
+// order, and the picker printed it that way.
+test('argSummary lists the numbered arguments in order, anything else after', () => {
+  assert.equal(
+    argSummary({ ARG0: 'giver', ARG2: 'recipient', ARG1: 'thing given' }),
+    'ARG0 giver, ARG1 thing given, ARG2 recipient',
+  );
+  assert.equal(
+    argSummary({ 'ARGM-LOC': 'place', ARG10: 'ten', ARG2: 'two', ARG: 'bare' }),
+    'ARG2 two, ARG10 ten, ARGM-LOC place, ARG bare',
+  );
+  assert.equal(argSummary(null), '');
 });
