@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  centeredPastPinned,
   centeredScrollLeft,
   citePlain,
   citationFocus,
@@ -177,5 +178,22 @@ describe('centeredScrollLeft', () => {
     expect(centeredScrollLeft(400, 500, 200, 900)).toBe(350);
     expect(centeredScrollLeft(0, 60, 200, 900)).toBe(0); // already at the left
     expect(centeredScrollLeft(850, 900, 200, 900)).toBe(700); // clamped to the end
+  });
+});
+
+describe('centeredPastPinned', () => {
+  // The row labels are sticky, so they cover the first 60px of a 260px box.
+  // The cited span belongs in the middle of the 200px they leave free.
+  it('centres in what the pinned labels leave free, at the left of an LTR table', () => {
+    const at = centeredPastPinned(460, 560, 260, 960, 60);
+    expect((460 + 560) / 2 - at).toBe(60 + 200 / 2);
+    expect(centeredPastPinned(60, 120, 260, 960, 60)).toBe(0);
+    expect(centeredPastPinned(910, 960, 260, 960, 60)).toBe(700); // the end, as before
+  });
+
+  it('keeps the labels at the right of an RTL table', () => {
+    const at = centeredPastPinned(400, 500, 260, 960, 60, true);
+    expect((400 + 500) / 2 - at).toBe(200 / 2);
+    expect(centeredPastPinned(850, 900, 260, 960, 60, true)).toBe(700);
   });
 });

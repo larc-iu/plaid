@@ -2,7 +2,7 @@ import { Fragment, useLayoutEffect, useRef } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { cn } from '@ui/lib/utils';
 import { detectDirection } from '@ui/domain/textDirection.js';
-import { centeredScrollLeft } from '@ui/components/assistant/citations.js';
+import { centeredPastPinned } from '@ui/components/assistant/citations.js';
 import { citationHighlights, citationRows, citationTitle, sentenceHref } from './cite.js';
 
 // A cited sentence as IGT draws it: the interlinear table, with the words the
@@ -30,7 +30,9 @@ export const ExampleCard = ({ c, projectId }) => {
 
   // A long sentence scrolls inside the card, so bring what is cited into view:
   // centre the highlighted columns before the card is painted (only the card
-  // scrolls, never the page).
+  // scrolls, never the page). The row labels stay put at the table's start
+  // (sticky), so the centring is over the part of the box they leave free:
+  // at the left of an LTR table, at the right of an RTL one.
   useLayoutEffect(() => {
     const box = scroller.current;
     if (!box || box.scrollWidth <= box.clientWidth) return;
@@ -39,8 +41,16 @@ export const ExampleCard = ({ c, projectId }) => {
     const outer = box.getBoundingClientRect();
     const left = Math.min(...marks.map((r) => r.left)) - outer.left + box.scrollLeft;
     const right = Math.max(...marks.map((r) => r.right)) - outer.left + box.scrollLeft;
-    box.scrollLeft = centeredScrollLeft(left, right, box.clientWidth, box.scrollWidth);
-  }, [c]);
+    const label = box.querySelector('th')?.getBoundingClientRect().width || 0;
+    box.scrollLeft = centeredPastPinned(
+      left,
+      right,
+      box.clientWidth,
+      box.scrollWidth,
+      label,
+      dir === 'rtl',
+    );
+  }, [c, dir]);
 
   return (
     <div className="my-3 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
@@ -68,7 +78,10 @@ export const ExampleCard = ({ c, projectId }) => {
               <tr key={i}>
                 <th
                   scope="row"
-                  className="pe-3 text-start align-top text-[11px] font-normal leading-5 text-muted-foreground"
+                  // Sticky, so the labels stay in view while the words scroll
+                  // under them. Opaque: the card's own tint laid over the
+                  // panel's colour, or the words would show through.
+                  className="sticky start-0 z-10 bg-card bg-[linear-gradient(hsl(var(--muted)/0.3),hsl(var(--muted)/0.3))] pe-3 text-start align-top text-[11px] font-normal leading-5 text-muted-foreground"
                 >
                   {r.label}
                 </th>

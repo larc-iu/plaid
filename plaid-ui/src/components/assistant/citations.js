@@ -29,6 +29,14 @@ export const citationFocus = (c) => c?.focus || [];
 export const centeredScrollLeft = (left, right, viewport, scrollWidth) =>
   Math.max(0, Math.min((left + right) / 2 - viewport / 2, scrollWidth - viewport));
 
+// The same, when a column `pinned` wide stays in view at one edge while the
+// rest scrolls under it (sticky row labels): at the left, or at the right
+// when the table runs right to left. The middle is that of what it leaves free.
+export const centeredPastPinned = (left, right, viewport, scrollWidth, pinned, rtl = false) => {
+  const shift = rtl ? 0 : pinned;
+  return centeredScrollLeft(left - shift, right - shift, viewport - pinned, scrollWidth - pinned);
+};
+
 // The one Markdown escaper. Every name, title and cell value the assistant
 // writes into Markdown (a reply, the conversation export, the admin
 // transcript) goes through it. A document is named by whoever imported it,
