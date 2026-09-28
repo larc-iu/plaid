@@ -919,6 +919,79 @@
             (is (= want (set got)) (str "seed " seed " case " case-n ": " (pr-str old) " -> " (pr-str new)))
             (is (= (count got) (count (set got))))))))))
 
+(deftest a-sentence-edge-is-not-a-word-edge-to-cut-a-replace-at
+  ;; A sentence ends after the whitespace that follows it. Cut there, `\na`
+  ;; replaced by `Qx ` put `Qx` in the sentence before and left the word
+  ;; token of `a` on the space.
+  (let [on (fn [layer t] (assoc t :token/layer layer))
+        ws-in (fn [body {:token/keys [begin end]}]
+                (boolean (re-find #"\s" (cp/cp-subs body begin end))))]
+    (doseq [[old new tokens]
+            [["cat mat \na" "cat mat Qx "
+              [(on :s (tok :s1 0 9)) (on :s (tok :s2 9 10))
+               (on :w (tok :cat 0 3)) (on :w (tok :mat 4 7)) (on :w (tok :a 9 10))]]
+             ["Ali geldi.\nYarın" "Ali geldi. Bugün "
+              [(on :s (tok :s1 0 11)) (on :s (tok :s2 11 16))
+               (on :w (tok :ali 0 3)) (on :w (tok :geldi 4 10)) (on :w (tok :yarin 11 16))]]
+             ;; a node standing over its whole sentence, as UMR anchors one
+             ["köye\né" "köye x "
+              [(on :u (tok :node 0 5)) (on :w (tok :koye 0 4)) (on :w (tok :e 5 6))]]]]
+      (let [{:keys [text tokens]} (body-edit old new tokens #{:s})
+            body (:text/body text)]
+        (is (= new body))
+        (is (not-any? #(ws-in body %) (filter #(= :w (:token/layer %)) tokens))
+            (str (pr-str old) " -> " (pr-str new) ": " (pr-str (extents tokens))))))))
+
+(deftest a-word-respelled-beside-deleted-words-folds-as-it-does-alone
+  ;; Seeded. A word with an analysis (one to three morphemes, split at random)
+  ;; has letters at one edge respelled, and the words beside that edge
+  ;; deleted, or not. The word and its morphemes must come out the same both
+  ;; ways, so the fold rulings (`cow` to `cab` drops `co` + `w`, a change
+  ;; inside one morpheme keeps it) hold beside a deletion too. The new
+  ;; letters appear in no word, so the diff cannot take them from the
+  ;; deleted ones.
+  (let [vocab ["the" "cat" "sat" "on" "mat" "kai" "kaki" "𐌰𐌱" "köye" "كتاب" "שלום" "你好" "dog" "tatu"]
+        letters ["Q" "X" "Z" "𐍂" "ڤ"]
+        tokens-for (fn [words k cuts]
+                     (loop [i 0 p 0 out []]
+                       (if (= i (count words))
+                         out
+                         (let [n (cp/cp-count (words i))]
+                           (recur (inc i) (+ p n 1)
+                                  (cond-> (conj out (assoc (tok (if (= i k) :W i) p (+ p n)) :token/layer :w))
+                                    (= i k) (into (map-indexed (fn [j [a b]] (assoc (tok [:m j] (+ p a) (+ p b)) :token/layer :m))
+                                                               (partition 2 1 (concat [0] cuts [n]))))))))))
+        view (fn [{:keys [text tokens]}]
+               (into {} (keep (fn [{:token/keys [id layer begin end]}]
+                                (when (or (= :W id) (= :m layer))
+                                  [id (cp/cp-subs (:text/body text) begin end)])))
+                     tokens))]
+    (doseq [seed (range 1 5)]
+      (let [rng (java.util.Random. seed)
+            pick #(nth % (.nextInt rng (count %)))]
+        (dotimes [case-n 200]
+          (let [m (inc (.nextInt rng 2))
+                before? (.nextBoolean rng)
+                k (+ (inc (.nextInt rng 3)) (if before? m 0))
+                w (loop [] (let [w (pick vocab)] (if (< 2 (cp/cp-count w)) w (recur))))
+                words (assoc (vec (repeatedly (+ k m 2) #(pick vocab))) k w)
+                n (cp/cp-count w)
+                cuts (sort (distinct (repeatedly (.nextInt rng 3) #(inc (.nextInt rng (dec n))))))
+                r (inc (.nextInt rng (dec n)))
+                rep (apply str (repeatedly (inc (.nextInt rng 2)) #(pick letters)))
+                alone (assoc words k (if before?
+                                       (str rep (cp/cp-subs w r n))
+                                       (str (cp/cp-subs w 0 (- n r)) rep)))
+                beside (if before?
+                         (into (subvec alone 0 (- k m)) (subvec alone k))
+                         (into (subvec alone 0 (inc k)) (subvec alone (+ k 1 m))))
+                old (str/join " " words)
+                tokens (tokens-for words k cuts)]
+            (is (= (view (body-edit old (str/join " " alone) tokens))
+                   (view (body-edit old (str/join " " beside) tokens)))
+                (str "seed " seed " case " case-n ": " (pr-str old) " -> " (pr-str (str/join " " beside))
+                     ", morphemes cut at " (pr-str cuts)))))))))
+
 (deftest two-edits-sliding-towards-each-other-do-not-meet
   ;; Each delete cuts a token where it stands and could slide into the run of
   ;; `a` between them, and both would have taken the same letter.

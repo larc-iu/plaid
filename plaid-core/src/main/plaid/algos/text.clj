@@ -944,13 +944,24 @@
   same at the other end: tokens beginning before it and ending inside it get
   the new text up to its first whitespace. A replace reaching into tokens at
   both ends stays as it is, since the text cannot tell which of them the new
-  letters belong to. `near` gives the tokens that begin or end in a stretch
-  (see `tokens-near`)."
-  [near r]
+  letters belong to. Only a word's edge in `o` is a place to cut: a token
+  reaching in must begin after whitespace with none in the part of it the
+  replace takes, or end before whitespace with none in that part. A
+  sentence ends after the whitespace that follows it, and a morpheme's edge
+  is inside its word, so neither is one: cut there, `a` replaced over `\na`
+  put the new text's space on the word (`mat \na` to `mat Qx `). `near`
+  gives the tokens that begin or end in a stretch (see `tokens-near`)."
+  [^ints o near r]
   (let [{s :start t :end ^String value :value} r
+        o-ws? (fn [i] (Character/isWhitespace (aget o (int i))))
+        no-ws? (fn [p q] (not-any? o-ws? (range p q)))
         ts (filter (fn [{:token/keys [begin end]}] (< begin end)) (near s t))
-        into-next (filter (fn [{:token/keys [begin end]}] (and (< s begin t) (< t end))) ts)
-        into-prev (filter (fn [{:token/keys [begin end]}] (and (< begin s) (< s end t))) ts)
+        into-next (filter (fn [{:token/keys [begin end]}]
+                            (and (< s begin t) (< t end) (o-ws? (dec begin)) (no-ws? begin t)))
+                          ts)
+        into-prev (filter (fn [{:token/keys [begin end]}]
+                            (and (< begin s) (< s end t) (o-ws? end) (no-ws? s end)))
+                          ts)
         v (.toArray (.codePoints value))
         n (alength v)
         ws? (fn [i] (Character/isWhitespace (aget v (int i))))
@@ -1001,12 +1012,26 @@
   not over both (`NY` to `New York`). The reconstructed string is
   unchanged."
   [ops old tokens]
-  (let [edits (vec (ops->edits ops))
+  (let [edits0 (vec (ops->edits ops))
         ^ints o (.toArray (.codePoints ^String old))
+        near (delay (tokens-near tokens (count edits0)))
+        ;; A replace reaching into the edge of a word it does not hold is cut
+        ;; there first, so the part inside the word is judged below as any
+        ;; edit of that word is: `dog cow` to `cab` folds `cow` as `cow` to
+        ;; `cab` does.
+        edits (into [] (mapcat #(if (= :replace (:kind %)) (split-at-token-edges o @near %) [%])) edits0)
+        cut? (not= edits edits0)
         whole (alength o)
         old-text (fn [p q] (String. o (int p) (int (- q p))))
         start-of (fn [e] (or (:start e) (:at e)))
         reach-of (fn [e] (or (:end e) (:at e)))
+        ;; Whether the edits beside [b e) leave it to itself: none touches
+        ;; it, or a delete or replace ends at b or begins at e, as the parts
+        ;; of a replace cut at a word's edge do. Text typed at an edge does
+        ;; not, since it stays outside the word.
+        clear-before? (fn [prev b] (or (nil? prev) (< (reach-of prev) b) (= (:end prev) b)))
+        clear-after? (fn [j e] (or (= j (count edits)) (> (start-of (edits j)) e)
+                                   (and (:end (edits j)) (= (:start (edits j)) e))))
         starts (set (map start-of edits))
         ends-at (reduce (fn [m {:token/keys [begin end]}]
                           (if (and (starts begin) (< begin end)
@@ -1014,7 +1039,6 @@
                             (update m begin (fnil conj (sorted-set)) end)
                             m))
                         {} tokens)
-        near (delay (tokens-near tokens (count edits)))
         parts (fn [b e]
                 (filter (fn [{tb :token/begin te :token/end}]
                           (if (= tb te)
@@ -1097,7 +1121,7 @@
                       g (subvec edits i j)
                       kinds (set (map :kind g))]
                   (when (and (seq g)
-                             (or (= j (count edits)) (> (start-of (edits j)) e))
+                             (clear-after? j e)
                              (or (and (> (count g) 1)
                                       (= b (start-of (first g)))
                                       (= e (reduce max (map reach-of g)))
@@ -1169,7 +1193,7 @@
                                     j))
                               g (subvec edits i j)]
                           (when (and (seq g)
-                                     (or (= j (count edits)) (> (start-of (edits j)) e))
+                                     (clear-after? j e)
                                      (some #(and (:end %) (< (:start %) (:end %))) g)
                                      (not-any? #(ws? (aget o %)) (range b e))
                                      (analysis-lost? g b e)
@@ -1205,13 +1229,13 @@
               b (start-of e0)
               prev (peek out)
               lo (if prev (inc (reach-of prev)) 0)
-              g-e (when (or (nil? prev) (< (reach-of prev) b))
+              g-e (when (clear-before? prev b)
                     (or (some (fn [e] (when-let [g (group i b e)] [g b e])) (ends-at b))
                         (some (fn [{tb :token/begin te :token/end}]
                                 (when-let [g (group i tb te)] [g tb te]))
                               (around lo e0))
                         (some (fn [{tb :token/begin te :token/end}]
-                                (when (or (nil? prev) (< (reach-of prev) tb))
+                                (when (clear-before? prev tb)
                                   (when-let [g (partial-group i tb te)] [g tb te])))
                               (holding e0))))]
           (if-let [[g b e] g-e]
@@ -1225,9 +1249,9 @@
         (let [replace? #(= :replace (:kind %))
               out' (into []
                          (comp (mapcat #(if (replace? %) (split-off-new-words o @near %) [%]))
-                               (mapcat #(if (replace? %) (split-at-token-edges @near %) [%])))
+                               (mapcat #(if (replace? %) (split-at-token-edges o @near %) [%])))
                          out)]
-          (if (or folded? (not= out out')) (edits->ops out') ops))))))
+          (if (or folded? cut? (not= out out')) (edits->ops out') ops))))))
 
 (defn pair-replacements
   "Rewrite `ops` (as produced by `diff` for `old`, after `normalize-deletes`)
