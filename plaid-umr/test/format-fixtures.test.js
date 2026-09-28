@@ -259,12 +259,14 @@ describe('the official validator', () => {
 // checks with nothing but its own unaligned words to report, so every error
 // here is the app's.
 describe('the official validator on an export from the app', () => {
-  test(
-    'the Portuguese sample, imported and exported, passes',
-    {
-      todo: 'the sentence text after a tab on the snt line fails tokens-vs-ilg (umr-export-sentence-text)',
-    },
-    (t) => {
+  // Each sentence also with its untokenized text, as an IGT document has it
+  // ("abandonou a candidatura ontem."), decomposed as IGT may store it: the
+  // export writes a Sentence line in NFC, and an import reads the text back.
+  [false, true].forEach((untokenized) => {
+    const title = untokenized
+      ? 'the Portuguese sample with its untokenized text, exported, passes and reads back'
+      : 'the Portuguese sample, imported and exported, passes';
+    test(title, (t) => {
       if (!fs.existsSync(VALIDATOR)) {
         t.skip(`umrtools/validate.py is not at ${VALIDATOR}`);
         return;
@@ -275,15 +277,83 @@ describe('the official validator on an export from the app', () => {
         return;
       }
       const parsed = parseUmrFile(read('portuguese_umr-0001.umr'));
-      const doc = new UmrDocument({ raw: rawFromPlan(planImport(parsed.sentences, [])) });
+      const plan = planImport(parsed.sentences, []);
+      const texts = parsed.sentences.map((ps) => ps.words.join(' ').replace(/ ([.,!?])/g, '$1'));
+      if (untokenized) {
+        plan.sentences.forEach((s, i) => {
+          s.meta.text = texts[i].normalize('NFD');
+        });
+      }
+      const doc = new UmrDocument({ raw: rawFromPlan(plan) });
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'umr-oracle-app-'));
       const file = path.join(dir, 'portuguese.umr');
-      fs.writeFileSync(file, doc.toUmr());
+      const written = doc.toUmr();
+      fs.writeFileSync(file, written);
       const run = spawnSync(python, [VALIDATOR, '--max-err', '0', file], { encoding: 'utf8' });
       const output = `${run.stdout ?? ''}${run.stderr ?? ''}`;
       assert.match(output, /\*\*\* PASSED \*\*\*/, output.slice(-3000));
-    },
-  );
+      if (!untokenized) return;
+      assert.match(written, /^Sentence: /m);
+      const back = planImport(parseUmrFile(written).sentences, []);
+      assert.deepEqual(
+        back.sentences.map((s) => s.meta.text),
+        texts.map((text) => text.normalize('NFC')),
+      );
+      assert.ok(back.sentences.every((s) => !s.meta.ilg.some((l) => l.key === 'sentence')));
+    });
+  });
+});
+
+// Every sample through the app, at the validator's first two levels: what
+// is left is the corpora's own (a graph kept as text, a gloss line of the
+// wrong length, a cycle), and nothing the writing itself causes. The sentence
+// text on the id line (tokens-vs-ilg) failed every sentence of every export.
+const WRITING_TESTS = new Set([
+  'tokens-vs-ilg',
+  'tokens-in-sent-id-comment',
+  'sentence-word-mismatch',
+  'unicode-normalization',
+  'missing-sent-id',
+  'multiple-sent-id',
+  'missing-words',
+  'invalid-ilg',
+  'duplicate-ilg',
+  'obsolete-ilg',
+  'too-few-blocks',
+  'too-many-blocks',
+  'missing-empty-line',
+  'extra-empty-line',
+  'misplaced-comment',
+  'non-unix-newline',
+]);
+
+describe('the official validator on each sample exported from the app', () => {
+  fixtures.forEach((name) => {
+    test(name, (t) => {
+      if (!fs.existsSync(VALIDATOR)) {
+        t.skip(`umrtools/validate.py is not at ${VALIDATOR}`);
+        return;
+      }
+      const python = findPython();
+      if (!python) {
+        t.skip("no python3 with the 'regex' module; set UMR_PYTHON to one");
+        return;
+      }
+      const parsed = parseUmrFile(read(name));
+      const doc = new UmrDocument({ raw: rawFromPlan(planImport(parsed.sentences, [])) });
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'umr-oracle-sample-'));
+      const file = path.join(dir, name);
+      fs.writeFileSync(file, doc.toUmr());
+      const run = spawnSync(python, [VALIDATOR, '--level', '2', '--max-err', '0', file], {
+        encoding: 'utf8',
+      });
+      const output = `${run.stdout ?? ''}${run.stderr ?? ''}`;
+      const found = [...output.matchAll(/\[L[0-9] [A-Za-z]+ ([a-z-]+)\]/g)]
+        .map((m) => m[1])
+        .filter((id) => WRITING_TESTS.has(id));
+      assert.deepEqual(found, [], output.slice(0, 3000));
+    });
+  });
 });
 
 // The check the editors refuse new values with (umr-export-value-grammar)

@@ -3,9 +3,9 @@
 //
 // Left out on purpose: the file-format tests (trailing whitespace, block
 // counts, empty lines) and the interlinear-glossing tests, because Plaid
-// stores structure and regenerates the lines. Kept: NFC, which regenerating
-// the lines does not give (a string stored with a combining accent is written
-// with one), and everything that judges the graph: the sentence graph and the
+// stores structure and regenerates the lines. Kept: NFC of the graph's own
+// strings (the export normalizes the file, but a stored string that is not in
+// NFC came from a writer that skipped the editors), and everything that judges the graph: the sentence graph and the
 // values in it, the alignment, the document graph and the level-3 contents
 // checks. Each finding carries validate.py's own test id as `code`, so a
 // message here can be traced to the line it came from.
@@ -351,20 +351,16 @@ export function valueGrammarProblem(value, rel = null) {
 const valueProblem = (child) => valueGrammarProblem(child.value, child.rel);
 
 /**
- * Text that is not in Unicode NFC, which the format requires of the whole
- * file (validate.py `unicode-normalization`): each variable, concept and
- * value of the graph, the sentence's words (the first of them only), each
- * interlinear line (its first such item), the sentence text and each
- * metadata line.
+ * Graph text that is not in Unicode NFC, which the format requires of the
+ * whole file (validate.py `unicode-normalization`): each variable, concept
+ * and value. The export writes the file in NFC (ruled 2026-09-28), so the
+ * words, gloss lines and sentence text IGT stores are not reported. The
+ * editors store graph text in NFC, so one that is not came from a writer that
+ * skipped it (the API, a service), and is named.
  */
 function checkNormalization(sentence, findings) {
   const push = (message, variable) =>
-    findings.push({
-      level: 'error',
-      code: 'unicode-normalization',
-      message,
-      ...(variable ? { var: variable } : {}),
-    });
+    findings.push({ level: 'error', code: 'unicode-normalization', message, var: variable });
   const off = (text) => typeof text === 'string' && nfc(text) !== text;
   for (const [variable, node] of sentence.graph?.nodes ?? new Map()) {
     if (off(variable)) push(`The variable '${variable}' is not in Unicode NFC.`, variable);
@@ -380,21 +376,6 @@ function checkNormalization(sentence, findings) {
       }
     }
   }
-  const word = (sentence.words ?? []).findIndex(off);
-  if (word !== -1) {
-    push(`Word ${word + 1} ('${sentence.words[word]}') is not in Unicode NFC.`);
-  }
-  // The other lines the export writes from what is stored: a gloss or a
-  // translation typed in IGT, the sentence's text, a metadata line.
-  for (const line of sentence.ilg ?? []) {
-    if (line.key === 'words') continue;
-    const item = (line.items ?? []).find(off);
-    if (item !== undefined) push(`The ${line.header} line ('${item}') is not in Unicode NFC.`);
-  }
-  if (off(sentence.sentenceText)) push('The sentence text is not in Unicode NFC.');
-  (sentence.meta ?? []).filter(off).forEach((line) => {
-    push(`The metadata line '${line}' is not in Unicode NFC.`);
-  });
 }
 
 function checkAlignment(sentence, findings, options) {

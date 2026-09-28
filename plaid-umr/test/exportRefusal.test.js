@@ -119,6 +119,8 @@ test('a graph the file can hold is written, and reads back the same', () => {
 test('a line break in text writes as a space and makes no phantom sentence or graph', () => {
   const s = sentence({
     sentenceText: `the dog\n${SEPARATOR}\n# :: snt2\tphantom`,
+    // As many words as the text has items, or the export leaves it out.
+    words: ['the', 'dog', 'a', 'b', 'c', 'd', 'e', 'f'],
     meta: ['# ::id x\n# sentence level graph:\n(s1m / meta-injected)'],
     ilg: [
       {
@@ -247,7 +249,12 @@ test('a bare value that reads as a variable is refused, and quoted it is written
 });
 
 test('a line or paragraph separator in the sentence text writes as a space', () => {
-  const s = sentence({ snt: 7, sentenceText: 'the dog barks', meta: ['# ::id a b'] });
+  const s = sentence({
+    snt: 7,
+    sentenceText: 'the dog barks',
+    words: ['the', 'dog', 'barks', '.'],
+    meta: ['# ::id a b'],
+  });
   const back = parseUmrFile(serializeUmrFile({ sentences: [s] })).sentences;
   assert.equal(back.length, 1);
   assert.equal(back[0].snt, 7);

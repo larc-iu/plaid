@@ -370,6 +370,7 @@ function parseSentence(chunk, index, warn, error) {
 
   let snt = null;
   let sentenceText = '';
+  let sentenceLine = null;
   const meta = [];
   const ilg = [];
   for (const line of blocks.tokens) {
@@ -399,6 +400,10 @@ function parseSentence(chunk, index, warn, error) {
       warn('unknown-ilg', `Unknown interlinear glossing header '${header.trim()}'.`);
     }
     const value = trimmed.slice(colon + 1).trim();
+    // The untokenized text, where an export writes it (ruled 2026-09-28): it
+    // wins over text after the sentence id, which validate.py rejects once a
+    // Words line follows.
+    if (kind.key === 'sentence' && value && !sentenceLine) sentenceLine = value;
     ilg.push({
       header: header.trim(),
       key: kind.key,
@@ -406,6 +411,7 @@ function parseSentence(chunk, index, warn, error) {
       items: value === '' ? [] : value.split(/\s+/),
     });
   }
+  if (sentenceLine !== null) sentenceText = sentenceLine;
   if (snt === null) {
     warn('missing-sent-id', 'No sentence id line. The position in the file is used instead.');
     snt = index;
@@ -448,6 +454,22 @@ function parseSentence(chunk, index, warn, error) {
   };
 }
 
+// The `Sentence:` line an export adds for the sentence's text, or null. Only
+// where the text is not the Words joined by spaces (ruled 2026-09-28), so a
+// file shaped like the released samples is written as they are, and never
+// beside a Sentence line the sentence already has. Not either when the text
+// has more items than the Words line: validate.py fails that
+// (`sentence-word-mismatch`), and it happens only where a word holds a space,
+// which the Words line writes as `_`.
+function sentenceTextLine(sentence, lines) {
+  const text = nfc(oneLine(sentence.sentenceText).trim());
+  if (!text || lines.some((line) => line.key === 'sentence')) return null;
+  const words = lines.find((line) => line.key === 'words')?.items ?? [];
+  if (text === nfc(words.join(' '))) return null;
+  if (text.split(/\s+/).length > words.length) return null;
+  return { key: 'sentence', lang: null, header: 'Sentence', items: [text] };
+}
+
 function ilgLinesToWrite(sentence) {
   const given = sentence.ilg ?? [];
   const words = sentence.words ?? [];
@@ -466,7 +488,15 @@ function ilgLinesToWrite(sentence) {
   const rest = given.filter((line) => line.key !== 'index' && line.key !== 'words');
   // A line with nothing on it is dropped: the standard's grammar requires at
   // least one item after the header, and an empty gloss carries no annotation.
-  return [index, wordsLine, ...rest].filter((line) => (line.items ?? []).length > 0);
+  const lines = [index, wordsLine, ...rest].filter((line) => (line.items ?? []).length > 0);
+  // The text goes before the sentence's translations, where the standard's
+  // example has it.
+  const text = sentenceTextLine(sentence, lines);
+  if (text) {
+    const at = lines.findIndex((line) => line.key === 'sentence-gloss');
+    lines.splice(at === -1 ? lines.length : at, 0, text);
+  }
+  return lines;
 }
 
 const formatSpans = (spans) =>
@@ -600,7 +630,7 @@ export class UnwritableUmrError extends Error {
 /**
  * Write sentences back as a .umr file, in the shape the standard prescribes:
  * 80 hashes, the four blocks in order with their header comments, one empty
- * line after each block and two after the last.
+ * line after each block and two after the last, all of it in Unicode NFC.
  *
  * Throws UnwritableUmrError when anything cannot be written as it is stored
  * (`umrFileProblems`): the file would not match the graphs.
@@ -615,8 +645,9 @@ export function serializeUmrFile({ sentences }) {
   (sentences ?? []).forEach((sentence) => {
     out.push(SEPARATOR);
     (sentence.meta ?? []).forEach((line) => out.push(oneLine(line)));
-    const text = oneLine(sentence.sentenceText).trim();
-    out.push(`# :: snt${sentence.snt ?? sentence.index}${text ? `\t${text}` : ''}`);
+    // Bare: validate.py rejects tokens on this line once a Words line
+    // follows, and one always does. The text has its own line below.
+    out.push(`# :: snt${sentence.snt ?? sentence.index}`);
     const ilg = ilgLinesToWrite(sentence);
     const width = Math.max(0, ...ilg.map((line) => modernHeader(line).length + 1));
     ilg.forEach((line) => {
@@ -649,5 +680,8 @@ export function serializeUmrFile({ sentences }) {
     out.push('');
     out.push('');
   });
-  return out.length ? `${out.join('\n')}\n` : '';
+  // In Unicode NFC, as the format requires of the whole file (ruled
+  // 2026-09-28): a word IGT stores with a combining accent is written as the
+  // one character. The Validation tab still names a graph string that is not.
+  return out.length ? nfc(`${out.join('\n')}\n`) : '';
 }

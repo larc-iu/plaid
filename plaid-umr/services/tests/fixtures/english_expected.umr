@@ -1,6 +1,6 @@
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s1-root
-# :: snt1	200 dead , 1,500 feared missing in Philippines landslide .
+# :: snt1
 Index: 1 2 3 4 5 6 7 8 9 10
 Words: 200 dead , 1,500 feared missing in Philippines landslide .
 
@@ -50,7 +50,7 @@ s1l: 9-9
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s2-root
-# :: snt2	TACLOBAN , Philippines , Feb 17 , 2006 .
+# :: snt2
 Index: 1 2 3 4 5 6 7 8 9
 Words: TACLOBAN , Philippines , Feb 17 , 2006 .
 
@@ -89,7 +89,7 @@ s2d: 5-8
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s3-root
-# :: snt3	About 200 people were believed killed and 1,500 others were missing in the central Philippines on Friday when a landslide buried an entire village , the Red Cross said .
+# :: snt3
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
 Words: About 200 people were believed killed and 1,500 others were missing in the central Philippines on Friday when a landslide buried an entire village , the Red Cross said .
 
@@ -179,7 +179,7 @@ s3s: 29-29
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s4-root
-# :: snt4	Eyewitnesses said only a few houses were left standing after the landslide hit the village of Guinsaugon in the south of the Philippine island of Leyte .
+# :: snt4
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27
 Words: Eyewitnesses said only a few houses were left standing after the landslide hit the village of Guinsaugon in the south of the Philippine island of Leyte .
 
@@ -255,7 +255,7 @@ s4n2: 26-26
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s5-root
-# :: snt5	" There are about 1,500 missing , 200 dead , " Richard Gordon , the head of the Philippine Red Cross , said in a radio interview .
+# :: snt5
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28
 Words: " There are about 1,500 missing , 200 dead , " Richard Gordon , the head of the Philippine Red Cross , said in a radio interview .
 
@@ -326,7 +326,7 @@ s5i2: 26-26
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s6-root
-# :: snt6	The first footage from the devastated village showed a sea of mud covering what had been lush green valley farmland .
+# :: snt6
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21
 Words: The first footage from the devastated village showed a sea of mud covering what had been lush green valley farmland .
 
@@ -386,7 +386,7 @@ s6f2: 20-20
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s7-root
-# :: snt7	Only a few sheets of tin roofing and the occasional coconut tree could be seen .
+# :: snt7
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16
 Words: Only a few sheets of tin roofing and the occasional coconut tree could be seen .
 
@@ -425,7 +425,7 @@ s7s: 15-15
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s8-root
-# :: snt8	Tiny groups of mud - spattered survivors were also shown , walking through the muck , apparently stunned by the scope of the destruction .
+# :: snt8
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25
 Words: Tiny groups of mud - spattered survivors were also shown , walking through the muck , apparently stunned by the scope of the destruction .
 
@@ -490,7 +490,7 @@ s8d: 24-24
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s9-root
-# :: snt9	In a televised address to the nation , President Gloria Arroyo said rescue teams were rushing to the area from " air , land and sea " to cope with the catastrophe .
+# :: snt9
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33
 Words: In a televised address to the nation , President Gloria Arroyo said rescue teams were rushing to the area from " air , land and sea " to cope with the catastrophe .
 
@@ -565,7 +565,7 @@ s9c2: 32-32
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s10-root
-# :: snt10	" I have ordered the Coast Guard and our entire naval force in the ( central Philippines ) region to the area , " she said .
+# :: snt10
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27
 Words: " I have ordered the Coast Guard and our entire naval force in the ( central Philippines ) region to the area , " she said .
 
@@ -638,7 +638,7 @@ s10s: 26-26
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s11-root
-# :: snt11	" Naval ships will be used as floating hospitals and command centres for relief and rescue . "
+# :: snt11
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18
 Words: " Naval ships will be used as floating hospitals and command centres for relief and rescue . "
 
@@ -708,7 +708,7 @@ s11r2: 16-16
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s12-root
-# :: snt12	Leyte Governor Rosette Lerias said the latest census indicated there were 375 houses with 3,000 people living in Guinsaugon before the landslide .
+# :: snt12
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23
 Words: Leyte Governor Rosette Lerias said the latest census indicated there were 375 houses with 3,000 people living in Guinsaugon before the landslide .
 
@@ -792,7 +792,7 @@ s12l3: 22-22
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s13-root
-# :: snt13	She described the village as totally flattened .
+# :: snt13
 Index: 1 2 3 4 5 6 7 8
 Words: She described the village as totally flattened .
 
@@ -834,7 +834,7 @@ s13f: 7-7
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s14-root
-# :: snt14	" It was like mud running down the mountain and it covered the village in seconds , " she said , quoting survivors .
+# :: snt14
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24
 Words: " It was like mud running down the mountain and it covered the village in seconds , " she said , quoting survivors .
 
@@ -904,7 +904,7 @@ s14p: 22-22
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s15-root
-# :: snt15	Experts blamed deforestation for the tragedy , which came after days of rainfall that was five times higher than usual .
+# :: snt15
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21
 Words: Experts blamed deforestation for the tragedy , which came after days of rainfall that was five times higher than usual .
 
@@ -965,7 +965,7 @@ s15u: 20-20
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s16-root
-# :: snt16	Lerias said that many Guinsaugon residents had been evacuated after landslides earlier in the week had killed more than 20 people on Leyte , but that many had returned Friday because the rains had stopped and the sun had come out.
+# :: snt16
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41
 Words: Lerias said that many Guinsaugon residents had been evacuated after landslides earlier in the week had killed more than 20 people on Leyte , but that many had returned Friday because the rains had stopped and the sun had come out.
 
@@ -1088,7 +1088,7 @@ s16c2: 40-40
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s17-root
-# :: snt17	A mild 2.6 - magnitude earthquake which struck before the landslide may also have helped set off the wall of mud that crashed down on the village , said Rene Solidum , head of the government vulcanology office.
+# :: snt17
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38
 Words: A mild 2.6 - magnitude earthquake which struck before the landslide may also have helped set off the wall of mud that crashed down on the village , said Rene Solidum , head of the government vulcanology office.
 
@@ -1183,7 +1183,7 @@ s17o: 38-38
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s18-root
-# :: snt18	" The area could have really been ready for a landslide because of the amount of rainfall and if there was a minor earthquake , it might have hastened it , " Solidum said .
+# :: snt18
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35
 Words: " The area could have really been ready for a landslide because of the amount of rainfall and if there was a minor earthquake , it might have hastened it , " Solidum said .
 
@@ -1238,7 +1238,7 @@ s18s: 34-34
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s19-root
-# :: snt19	Army Colonel Nestor Sadirin , head of a rescue task force , said 16 dead bodies had been recovered so far and 100 people rescued .
+# :: snt19
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26
 Words: Army Colonel Nestor Sadirin , head of a rescue task force , said 16 dead bodies had been recovered so far and 100 people rescued .
 
@@ -1299,7 +1299,7 @@ s19r3: 25-25
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s20-root
-# :: snt20	Leyte Congressman Roger Mercado said in a radio interview that the village had a population of 3,000 to 4,000 and expressed fears that as many as 2,000 people had been buried .
+# :: snt20
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32
 Words: Leyte Congressman Roger Mercado said in a radio interview that the village had a population of 3,000 to 4,000 and expressed fears that as many as 2,000 people had been buried .
 
@@ -1377,7 +1377,7 @@ s20b2: 31-31
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s21-root
-# :: snt21	Lerias called for more rescuers to come to the site to help look for bodies as heavy earth moving equipment could not work in the mud , which officials said was more than six metres (yards) deep in many areas.
+# :: snt21
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40
 Words: Lerias called for more rescuers to come to the site to help look for bodies as heavy earth moving equipment could not work in the mud , which officials said was more than six metres (yards) deep in many areas.
 
@@ -1472,7 +1472,7 @@ s21a: 40-40
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s22-root
-# :: snt22	Volunteer rescue teams from the country's mining companies , skilled in digging through the earth to rescue people , were also going to the area , said President Arroyo said.
+# :: snt22
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
 Words: Volunteer rescue teams from the country's mining companies , skilled in digging through the earth to rescue people , were also going to the area , said President Arroyo said.
 
@@ -1546,7 +1546,7 @@ s22p: 29-29
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s23-root
-# :: snt23	Gordon said the Red Cross said was trying to dispatch sniffer dogs to hunt for survivors .
+# :: snt23
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17
 Words: Gordon said the Red Cross said was trying to dispatch sniffer dogs to hunt for survivors .
 
@@ -1610,7 +1610,7 @@ s23p2: 16-16
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s24-root
-# :: snt24	Military helicopters were able to reach the area despite heavy clouds but the flights ceased after nightfall because the aircraft did not have night - flying capabilities.
+# :: snt24
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27
 Words: Military helicopters were able to reach the area despite heavy clouds but the flights ceased after nightfall because the aircraft did not have night - flying capabilities.
 
@@ -1671,7 +1671,7 @@ s24c4: 26-26
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s25-root
-# :: snt25	Lerias said a smaller landslide later in the afternoon caused no damage but left many of the rescuers worried about a possible new disaster .
+# :: snt25
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25
 Words: Lerias said a smaller landslide later in the afternoon caused no damage but left many of the rescuers worried about a possible new disaster .
 
@@ -1734,7 +1734,7 @@ s25d3: 24-24
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s26-root
-# :: snt26	Relief groups called for drinking water , food , blankets and body bags to be brought to the scene .
+# :: snt26
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20
 Words: Relief groups called for drinking water , food , blankets and body bags to be brought to the scene .
 
@@ -1782,7 +1782,7 @@ s26s: 19-19
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s27-root
-# :: snt27	Provincial board member Eva Dumol said in a radio interview that heavy equipment that was already in the area to clear up earlier landslides was being sent to the Guinasaugon area .
+# :: snt27
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32
 Words: Provincial board member Eva Dumol said in a radio interview that heavy equipment that was already in the area to clear up earlier landslides was being sent to the Guinasaugon area .
 
@@ -1855,7 +1855,7 @@ s27a3: 31-31
 
 ################################################################################
 # meta-info :: sent_id = u_tree-cs-s28-root
-# :: snt28	More than 5,000 people were killed in a combined flood and mudslide on Leyte in November 1991.
+# :: snt28
 Index: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17
 Words: More than 5,000 people were killed in a combined flood and mudslide on Leyte in November 1991.
 

@@ -363,9 +363,11 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
       bodyLines.push(line);
       offset = end;
     }
+    // A Sentence line is the sentence's text (parseUmrFile), which the
+    // export writes back from the text, so it is not also kept as a line.
     const meta = {
       snt: ps.snt ?? index,
-      ilg: (ps.ilg || []).filter((l) => l.key !== 'index' && l.key !== 'words'),
+      ilg: (ps.ilg || []).filter((l) => !['index', 'words', 'sentence'].includes(l.key)),
       meta: ps.meta || [],
     };
     const sentenceText = (ps.sentenceText || '').trim();

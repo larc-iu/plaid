@@ -253,3 +253,101 @@ s1b: 2-2
     assert.equal(serializeUmrFile(parseUmrFile(once)), once);
   });
 });
+
+// umr-export-sentence-text: validate.py rejects tokens on the sentence id
+// line once a Words line follows, so the id line is bare and the text has a
+// Sentence line of its own, only where it is not the Words joined by spaces.
+describe('the sentence text', () => {
+  const withText = (sentenceText, over = {}) => ({
+    ...first(MINIMAL),
+    sentenceText,
+    words: ['the', 'boy', '.'],
+    ilg: [],
+    ...over,
+  });
+  const lines = (sentence) => serializeUmrFile({ sentences: [sentence] }).split('\n');
+
+  test('the sentence id line is bare', () => {
+    assert.ok(lines(withText('The boy.')).includes('# :: snt1'));
+  });
+
+  test('a text that is not the words joined by spaces has a Sentence line', () => {
+    const out = lines(withText('The boy.'));
+    assert.deepEqual(out.slice(3, 6), [
+      'Index:    1 2 3',
+      'Words:    the boy .',
+      'Sentence: The boy.',
+    ]);
+    assert.equal(first(out.join('\n')).sentenceText, 'The boy.');
+  });
+
+  test('a text that is the words joined by spaces has none', () => {
+    assert.ok(!lines(withText('the boy .')).some((line) => line.startsWith('Sentence')));
+    assert.ok(!lines(withText('')).some((line) => line.startsWith('Sentence')));
+  });
+
+  test('the Sentence line goes before the translations', () => {
+    const out = lines(
+      withText('The boy.', {
+        ilg: [
+          {
+            key: 'sentence-gloss',
+            lang: 'es',
+            header: 'Sentence Gloss (es)',
+            items: ['El', 'niño.'],
+          },
+        ],
+      }),
+    );
+    const at = (prefix) => out.findIndex((line) => line.startsWith(prefix));
+    assert.ok(at('Sentence:') !== -1 && at('Sentence:') < at('Sentence Gloss'));
+  });
+
+  test('a sentence that already has a Sentence line gets no second one', () => {
+    const out = lines(
+      withText('The boy.', {
+        ilg: [{ key: 'sentence', lang: null, header: 'Sentence', items: ['The', 'boy!'] }],
+      }),
+    );
+    assert.deepEqual(
+      out.filter((line) => line.startsWith('Sentence')),
+      ['Sentence: The boy!'],
+    );
+  });
+
+  // validate.py fails a Sentence line with more items than Words
+  // (sentence-word-mismatch), which only a word holding a space can make.
+  test('a text with more items than the Words line has none', () => {
+    const s = withText('in order to go', { words: ['in_order', 'to', 'go'] });
+    assert.ok(!lines(s).some((line) => line.startsWith('Sentence')));
+  });
+
+  test('read: a Sentence line is the text, and wins over text after the id', () => {
+    const text = MINIMAL.replace('# :: snt1', '# :: snt1\tthe boy').replace(
+      'Words: the boy',
+      'Words: the boy\nSentence: The  boy!',
+    );
+    assert.equal(first(text).sentenceText, 'The  boy!');
+    assert.equal(first(MINIMAL.replace('# :: snt1', '# :: snt1\tthe boy')).sentenceText, 'the boy');
+  });
+});
+
+// umr-export-nfc: the format requires the whole file in NFC, and IGT may
+// store a word with a combining accent.
+test('the export is written in Unicode NFC', () => {
+  const e = 'e\u0301';
+  const out = serializeUmrFile({
+    sentences: [
+      {
+        ...first(MINIMAL),
+        words: ['the', `caf${e}`],
+        ilg: [],
+        sentenceText: `The caf${e}.`,
+        meta: [`# note caf${e}`],
+      },
+    ],
+  });
+  assert.equal(out, out.normalize('NFC'));
+  assert.match(out, /Words: {4}the caf\u00e9\n/);
+  assert.match(out, /Sentence: The caf\u00e9\.\n/);
+});

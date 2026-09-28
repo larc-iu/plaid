@@ -419,7 +419,7 @@ describe('text in NFC', () => {
   const nfcFindings = (s) =>
     validateSentence(s, quiet).filter((finding) => finding.code === 'unicode-normalization');
 
-  test('a concept, a variable, a value and a word are each named', () => {
+  test('a concept, a variable and a value are each named', () => {
     const e = 'e\u0301';
     assert.deepEqual(
       nfcFindings(inApp({ concept: `caf${e}` })).map((f) => f.message),
@@ -427,32 +427,23 @@ describe('text in NFC', () => {
     );
     assert.equal(nfcFindings(inApp({ variable: `s1${e}` })).length, 1);
     assert.equal(nfcFindings(inApp({ value: `"caf${e}"` })).length, 1);
-    assert.deepEqual(
-      nfcFindings(inApp({ words: ['le', `caf${e}`, `th${e}`] })).map((f) => f.message),
-      [`Word 2 ('caf${e}') is not in Unicode NFC.`],
-    );
   });
 
-  test('a gloss line, the sentence text and a metadata line are each named', () => {
-    // A gloss or translation typed in IGT is written as it is stored.
-    const e = 'é';
+  // The export writes the file in NFC (umr-export-nfc), so the text IGT
+  // stores is not a finding: a word, a gloss line, the sentence text and a
+  // metadata line.
+  test('words and the lines around the graph are not reported', () => {
+    const e = 'e\u0301';
     const s = {
-      ...inApp({}),
+      ...inApp({ words: ['le', `caf${e}`] }),
       ilg: [
-        { key: 'words', header: 'Words', items: ['cat'] },
+        { key: 'words', header: 'Words', items: ['le', `caf${e}`] },
         { key: 'morpheme-gloss', header: 'Morpheme Gloss (en)', items: ['cat', `caf${e}`] },
       ],
       sentenceText: `le caf${e}`,
       meta: [`# note: caf${e}`],
     };
-    assert.deepEqual(
-      nfcFindings(s).map((f) => f.message),
-      [
-        `The Morpheme Gloss (en) line ('caf${e}') is not in Unicode NFC.`,
-        'The sentence text is not in Unicode NFC.',
-        `The metadata line '# note: caf${e}' is not in Unicode NFC.`,
-      ],
-    );
+    assert.deepEqual(nfcFindings(s), []);
   });
 
   test('composed text is not reported', () => {
