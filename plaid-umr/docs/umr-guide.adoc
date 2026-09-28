@@ -95,6 +95,14 @@ Write it in Plaid IGT, in the entry editor: the **UMR** band takes the roleset t
 A name that is not an ARG, or that another row already has, is marked under its row there, and the entry cannot be saved until it is mended.
 The concept picker then offers the roleset in place of the headword, and the argument descriptions show beside the roles when you attach one.
 
+A node whose concept was picked from an entry remembers the entry.
+When the entry's roleset or headword is changed in Plaid IGT, the node gets a warning (`s2v was picked from ver, now ver-02.`), counted in its sentence's header and listed on the Validation tab.
+**Take entry value** on the node's menu, or **e**, takes the entry's new concept for that node.
+**Take entry value for all 5 nodes**, or **Shift+E**, takes it for every node of the document picked from that entry, and the row names how many there are.
+A concept typed over, on the canvas or in Text mode, no longer follows its entry.
+A node forgets its entry when the entry is deleted from its vocabulary.
+Unlinking the vocabulary from the project does not count: link it again and the nodes still follow their entries.
+
 = Importing and Exporting
 
 == Importing a `.umr` file
@@ -152,11 +160,14 @@ A node shows its variable, its concept, and its attributes as a line of text (`a
 A node anchored to words sits above them. The anchored words are underlined, and hovering or focusing a node lights them.
 A node with no anchor (`person`, `name`, a `-91` roleset) is drawn hollow and sits above its parent.
 A node a service drafted has a dashed violet border, and one made by a member whose work the project reviews a dashed amber one. The mark goes when you edit the node, which records it as yours, or when you accept it.
+A relation's label and a document-level tag carry the same dashed violet or amber border while the relation is unreviewed. The edge's line does not change.
+Hovering a marked node or label shows where it came from (`Machine-made, unverified`), and an accepted one still says so (`Machine-made, confirmed`).
 To accept a node as it stands, choose **Accept** on its menu or press Ctrl+Enter (Cmd+Enter). That accepts the node and its relation to its parent. **Accept graph** beside a sentence accepts every node and relation of it.
 A sentence with anything a person made or accepted is kept whole when a draft overwrites.
 **Discard graph** beside it deletes the drafted nodes and relations of the sentence that nobody has accepted, after asking.
 It keeps what a person made, what a member whose work the project reviews made, and what was accepted, and a drafted node that one of those relations hangs from or points to.
-A drafted relation between two nodes that stay is deleted, and so is one another sentence has onto a deleted node. The question says how many of those other sentences lose.
+A drafted relation between two nodes that stay is deleted, unless it leads to a node a person made or corrected. That one stays, still drafted, and so does the node it hangs from.
+A relation another sentence has onto a deleted node is deleted too. The question says how many of those other sentences lose.
 History lists it as one change.
 The root's concept is underlined.
 
@@ -173,6 +184,8 @@ The children of one parent that lie beyond its box share one line across the gap
 The words carry their number.
 Under them, the project's gloss lines: the morphemes and their glosses grouped under the word they belong to, a part of speech per word, and a translation as a row.
 Each line is named to its left.
+A node aligns to whole words. A word's morphemes are shown as plain text under it and stand for their word.
+A word nobody has segmented in Plaid IGT shows as itself on the Morphemes line, as IGT shows it, and its morpheme gloss is `_`.
 The lines of an imported file go under the words wherever the file lets that be told: a line with one item per word, a line whose hyphens and equals signs join its items into as many words as the sentence has (`’a- ní- dz- oo- d- záa =go` is one word), or a gloss line that pairs item for item with such a Morphemes line.
 Any other line, and a translation, runs as a row of its own.
 Which layers feed which lines is set in **Settings → UMR settings** (see <<Gloss lines>>).
@@ -185,7 +198,7 @@ A document-level relation reads on each node it joins as a tag, in this sentence
 The tag reads the triple in its own order, with a dot where the node itself stands: `(s3d :before s3b)` is `● :before s3b` on `s3d` and `s3d :before ●` on `s3b`. A temporal relation says how the second node stands to the first, its reference time, so here `s3b` is before `s3d`.
 The relations of one kind and one direction share a tag (`● :overlap s1d s1m`), each variable in it its own click.
 `author :full-affirmative`, which nearly every event carries, is grey, so that any other modality stands out.
-A node wears at most five tags and a tag names at most four other nodes. Past that a count (`+22`) takes their place, which lists them all when clicked on a focused node. A click on a tag changes its relation.
+A node wears at most five tags and a tag names at most four other nodes. Past that a count (`+22`) takes their place, which lists them all when clicked. A click on a tag changes its relation.
 Focusing or hovering a node draws its own relations, each in its tag's color: a line to the constant, a line to the other node, and for a node of another sentence a line across the sentences between, with the node at the far end outlined.
 Nothing is drawn for the others, so a long sentence stays readable.
 
@@ -212,19 +225,37 @@ A node anchored to no word belongs to the sentence it was made in and stands ove
 Two sentences joined into one bring their nodes together in it, where they are two graphs until the annotator joins them, which the sentence's header counts and the Validation tab lists.
 A sentence's text deleted takes that sentence's nodes with it, and its history keeps them.
 
+A node whose words are deleted (deleting a word in Plaid IGT keeps its text) becomes a node anchored to no word, drawn hollow, and the history entry names it (`1 node lost its word (s3y2)`).
+Tokenizing the text again does not anchor it again.
+A sentence with no words at all (after **Clear tokens** in Plaid IGT) is left as it is until it is tokenized again, and its nodes keep their anchors.
+Its graph is still drawn, with every node unaligned, and can be edited as usual except for **Change anchor**, which needs a word.
+
+When sentences are added or removed before a sentence, its variables take its new number and keep the rest of the name (`s2v` in what is now sentence 1 is `s1v`).
+Variables are not renumbered in a document whose first `# :: snt` number, as imported, is not 1, such as an excerpt that starts at `snt5`. Its variables stay as the file named them.
+A graph kept as text is mended under the names it has, even when sentences were added or removed before it since the import. The next time the document is opened, they take the sentence's number.
+
+When a sentence is typed in before an existing one in Plaid IGT, the existing sentence keeps its imported lines: its number, its gloss and metadata lines, and its document-level relations.
+The history entry of the next opening names the repair: `moved the stored lines of 1 sentence to the sentence they describe`.
+
+An addition cut off partway (a closed tab, a lost connection) leaves nothing behind once the document is opened again.
+A node picked from a vocabulary entry that has since been deleted no longer names it.
+No repair is made while a service run or an approved assistant plan is writing to the document. It is made the next time the document is opened.
+
 = Editing
 
 Every edit is written as it happens and lands in the document's history. There is no save button.
 Focus a node by clicking it or with the arrows, then the keys below act on it.
-The default shortcuts are listed here. Every letter and chord can be rebound under your profile. Arrows, Tab, Enter and Escape are fixed.
+The default shortcuts are listed here. Arrows, Tab, Enter and Escape are fixed, and every other key can be rebound under your profile.
 **? Keys and marks** over the sentences lists every key, with any you have rebound.
 
 == With the mouse
 
 Every one of the actions below can be reached without the keyboard.
 
-A click on a node focuses it. Once it is focused, a click on one of its parts edits that part: the concept, the variable, an attribute chip, a document-level tag.
-A relation's label works the same way: click it to change the relation, drag it onto another node to move the subtree there.
+A click on a node focuses it, and a double-click on one of its parts edits that part: the concept, the variable, or an attribute chip.
+A second single click only keeps the node focused.
+A document-level tag, the `+N` count, a relation's label and the chain chip act on a single click.
+Click a relation's label to change the relation, or drag it onto another node to move the subtree there.
 
 Everything else is on the node's own menu, which opens on a right-click anywhere on the node or with the **⋯** button at its top right, and from the keyboard with the Menu key or Shift+F10.
 The menu lists every action with the key that does the same thing, and greys out the ones that do not apply (a root has no relation to a parent).
@@ -236,7 +267,8 @@ The menu lists every action with the key that does the same thing, and greys out
 * Alt+Left and Alt+Right move the focused node earlier or later among its siblings in the written order, the order the export and text mode use. The canvas keeps drawing children over their words.
 A node with two parents is written in full and drawn under the parent the written order reaches first. Moving it past a sibling whose subtree also holds it moves it into that subtree, on the canvas and in the file, and the graph stays the same.
 In a right-to-left document the arrows follow the screen, so Alt+Right moves earlier.
-* Shift+Tab leaves the block.
+* Shift+Tab leaves the block. Escape, then Tab, goes on to the next sentence's root.
+* PageDown and PageUp go to the root of the next or previous sentence, turning the page when needed, in a read-only view too. They can be rebound, to a plain letter as well.
 * A sentence with no graph is a stop of its own for Tab.
 
 == Making nodes and edges
@@ -245,18 +277,27 @@ In a right-to-left document the arrows follow the screen, so Alt+Right moves ear
 * Drag the grip on a node's lower edge onto another node for an edge (a second edge into a node is a re-entrancy), onto a word for a new node anchored there, or onto empty space for an abstract node. The relation is asked at the drop.
 * **n** makes a node with no parent, from a focused node, the sentence, or an empty sentence's graph. A double-click on a word or on empty space does the same. Either way the concept picker opens, prefilled with the word when there is one.
 * Drag the grip under a node onto another node, a word, empty space or a margin constant to make a relation from it.
-* **r** adds a second parent to the focused node: click the parent, then give the relation.
+* **r** adds a second parent to the focused node: pick the parent from the list of the sentence's nodes, or click it, then give the relation.
 
-While a mode waits for its click (**u**, **m**, **r**, or **Add a child** on the menu), the arrows still move and Escape leaves it. Other keys do nothing until it ends.
+While **u** or **Add a child** waits for its click, the arrows still move and Escape leaves it.
+Other keys do nothing until it ends, except the digits, Backspace and Enter of **u**.
+The list of **m** and **r** closes on Escape, and ends the wait with it.
 
 == Changing a node
 
 * **Enter** edits the concept. The picker lists the frame file's senses of the anchored word first, with their arguments, then the vocabulary entries the word is linked to, then the word itself, then the abstract concepts, rolesets and discourse concepts.
+Typing searches the bundled frame file too, on any node, so `buy` finds `buy-01` for bought.
+In Arabic a word also finds its roleset with one proclitic (و ف ب ل ك ال) and a suffix taken off, so وقالت offers `قال-01`, and the word's own roleset comes first.
+A hamza on the alif and a tatweel make no difference: أعلن finds `اعلن-01`, and قـال finds `قال-01`.
 * **:** (colon) edits the relation to the parent. The picker lists the parent roleset's own arguments first, with what each means.
 * **a** opens the attribute picker. Aspect, person and number are lattices: pick the coarsest value you are sure of, and the finer values under it appear. The other attributes are lists, and anything without a set (`:quant`, `:wiki`) is a text line at the bottom. A time is written bare, `:time 15:30`. `:modal-strength` is last and marked deprecated, since modality belongs in the document graph. Every pick is saved at once. Arrows move, Enter picks, Backspace clears the row, Escape closes.
+A value the official validator cannot read (`Imperative`, `.5`, `""`) is refused with the reason. One an imported file carried is kept, exported as it came, and listed on the Validation tab.
 * **v** renames the variable. A variable is `s`, the sentence number, letters, and a number, unique in the document. A variable cannot be `s8s0` and the like, which the file uses for sentence 8's document-level block. A name that is taken or malformed is refused with the reason under the box, which stays open to correct it.
-* **u** changes the anchor: click words to add or remove them, then **Done** in the sentence's header, or Escape.
-* **m** moves the node under another parent: click the new parent. Dragging an edge's label onto a node does the same.
+A new node's variable is made from its concept's first letter, from a to z: an accented letter gives its base letter (`ébrio` gives `s4e`), and anything else gives `x`.
+A variable typed by hand may hold an accented letter, but the official validator then refuses a document-level relation that names it.
+* **u** changes the anchor: click words, or type a word's number and press Enter, to add or remove them, then **Done** in the sentence's header, or Escape.
+* **m** moves the node under another parent: pick the new parent from the list, or click it. The list leaves out the node's parent and the nodes under it. Dragging an edge's label onto a node does the same.
+* **e** takes the new concept of the vocabulary entry the node was picked from, and **Shift+E** takes it for every node picked from that entry (see <<Vocabulary>>).
 * **Ctrl+Shift+R** (Cmd+Shift+R) makes the focused node the sentence's root.
 
 == Deleting
@@ -279,7 +320,9 @@ Every node of the sentence is in the text: the root's graph first, then each par
 The text is parsed as you type, and the first problem shows under it.
 Ctrl+Enter (Cmd+Enter) applies, as **Apply** does.
 **Apply** compares the text with the stored graph, node by variable and edge by relation and target, and writes the difference as one operation: a node that is new in the text is made unaligned (anchor it on the canvas afterwards), a node missing from the text is deleted with what only it reached, a changed root moves the root.
-Apply refuses what the canvas refuses: a new node's variable that is malformed or used elsewhere in the document, a relation UMR does not have, and a new edge that closes a cycle through anything but `:quote`.
+An empty text deletes every node of the sentence.
+The line under the text names every concept Apply changes, by variable (`s9x changes from sleep-01 to cat, s9y from cat to sleep-01.`). Nodes are matched by variable, so exchanging two variables exchanges their concepts, and each node keeps its words and document-level relations.
+Apply refuses what the canvas refuses: a new node's variable that is malformed or used elsewhere in the document, a relation UMR does not have, a new edge that closes a cycle through anything but `:quote`, and a value the official validator cannot read, with the reason. A value a node already has from an import is kept as it is.
 A variable typed over is read as a rename when one variable goes and one arrives and they are plainly the same node: the same concept, under the same parents by the same relations, or both the sentence's root. The node keeps its anchor, its edges and its document-level relations, and the line under the text says which name changed.
 Anything less clear-cut, two variables typed over at once or a concept changed along with the name, is a node deleted and a node made, and the line names what Apply would delete that way.
 Cancel with unapplied changes asks first.
@@ -424,7 +467,7 @@ Conversations already saved are unaffected and open from their own links.
 
 = Keyboard reference
 
-The defaults. Every letter and chord can be rebound under your profile, Keyboard. Arrows, Tab, Enter and Escape are fixed.
+The defaults. Arrows, Tab, Enter and Escape are fixed, and every other key can be rebound under your profile, Keyboard.
 
 [cols="1,3"]
 |===
@@ -436,15 +479,18 @@ The defaults. Every letter and chord can be rebound under your profile, Keyboard
 | : | Edit the relation to the parent
 | a | Edit the attributes
 | v | Rename the variable
-| u | Change the anchor
-| m | Move under another node
+| u | Change the anchor: click words or type their numbers
+| m | Move under another node: pick or click it
 | Alt+Left, Alt+Right | Move earlier or later among its siblings
-| r | Add a second parent
+| r | Add a second parent: pick or click it
 | c | Coreference with another node
 | t | Temporal relation
 | o | Modal relation
 | d | Change or delete a document relation of the node
 | n | New node with no parent, also with no node focused
+| e | Take the new concept of a changed vocabulary entry
+| Shift+E | The same, for every node picked from that entry
+| PageDown, PageUp | Next or previous sentence
 | Ctrl+Shift+R | Make the node the root
 | Ctrl+Enter | Accept the node and its relation to its parent
 | Shift+Backspace | Delete the edge to the parent, with what only it reached
