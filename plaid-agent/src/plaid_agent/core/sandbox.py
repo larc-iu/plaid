@@ -120,8 +120,7 @@ def _explain(e) -> str:
     return text
 
 
-def run(code: str, api: Dict[str, Callable], on_progress: Optional[Callable[[str], None]] = None,
-        *, session: Session) -> str:
+def run(code: str, api: Dict[str, Callable], *, session: Session) -> str:
     """Run ``code`` with ``api`` as its host functions, in ``session``: the
     turn's own worker, so names persist from one call to the next. Returns
     what it printed and the value of its last expression, capped. Raises
@@ -133,8 +132,6 @@ def run(code: str, api: Dict[str, Callable], on_progress: Optional[Callable[[str
         raise CodeError('Give code to run, as a string.')
     from pydantic_monty import CollectString, MontyCrashedError, MontyRuntimeError
     printed = CollectString(max_bytes=4 * 1024 * 1024)
-    if on_progress:
-        on_progress('Running code…')
     try:
         value = session.get().feed_run(code, external_lookup=dict(api), print_callback=printed)
     except MontyRuntimeError as e:
@@ -335,6 +332,6 @@ def run_tool(ws, code: Optional[str], api: Callable[[Any], Dict[str, Callable]])
     if getattr(ws, 'code', None) is None:
         ws.code = Session()
     try:
-        return run(code, api(ws), on_progress=ws.on_progress, session=ws.code)
+        return run(code, api(ws), session=ws.code)
     except CodeError as e:
         raise ToolError(str(e))
