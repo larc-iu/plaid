@@ -19,6 +19,8 @@ export const ITEMS = [
   [['node.confirm', 'Accept']],
   [
     ['node.concept', 'Edit concept', 'fixed:canvas:Enter'],
+    ['node.takeEntry', 'Take entry value'],
+    ['node.takeEntryAll', 'Take entry value for all nodes'],
     ['node.relation', 'Relation to parent'],
     ['node.attributes', 'Attributes'],
     ['node.variable', 'Rename variable'],

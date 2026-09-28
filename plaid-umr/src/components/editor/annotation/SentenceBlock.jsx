@@ -1011,6 +1011,14 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       case 'node.concept':
         setEditor({ kind: 'concept', nodeId: id, ...positionBelow(id), value: node.concept });
         break;
+      // The concept a changed vocabulary entry now gives, for this node or
+      // every node picked from that entry.
+      case 'node.takeEntry':
+        await doc.takeEntryValue(id);
+        break;
+      case 'node.takeEntryAll':
+        await doc.takeEntryValue(id, { everywhere: true });
+        break;
       case 'node.relation': {
         const edge = treeEdgeInto(id);
         if (edge) askRole({ edgeId: edge.id, role: edge.role }, positionAtLabel(edge.id));
@@ -1112,6 +1120,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       'node.confirm': !doc.canConfirm(menu.id),
       'node.delete': !edge,
       'node.docRelations': !docTagsByNode.get(menu.id)?.length,
+      'node.takeEntry': !doc.entryChange?.(menu.id),
+      'node.takeEntryAll': !doc.entryChange?.(menu.id),
     };
   })();
 

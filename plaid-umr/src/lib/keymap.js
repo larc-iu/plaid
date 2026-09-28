@@ -29,6 +29,22 @@ export const KEY_GROUPS = [
 export const KEY_ACTIONS = [
   // ---- the focused node -------------------------------------------------
   {
+    id: 'node.takeEntry',
+    scope: 'canvas',
+    group: 'node',
+    label: 'Take the new value of the vocabulary entry the concept was picked from',
+    keys: ['e'],
+    outsideText: true,
+  },
+  {
+    id: 'node.takeEntryAll',
+    scope: 'canvas',
+    group: 'node',
+    label: 'Take the new value of the vocabulary entry for every node picked from it',
+    keys: ['Shift+E'],
+    outsideText: true,
+  },
+  {
     id: 'node.relation',
     scope: 'canvas',
     group: 'node',

@@ -1723,3 +1723,65 @@ describe('SentenceBlock leaving a sentence', () => {
     await r.unmount();
   });
 });
+
+// The owner's ruling on a changed vocabulary entry: a key and a menu row take
+// the entry's new concept, for the node or every node picked from it.
+describe('SentenceBlock taking a changed entry value', () => {
+  const press = (el, key, init = {}) =>
+    el.dispatchEvent(
+      new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }),
+    );
+  const mount = async (entryChange) => {
+    const { sentence, nodesById } = fixture();
+    const doc = {
+      graph: {},
+      canConfirmSentence: () => false,
+      canDiscardSentence: () => false,
+      canConfirm: () => false,
+      entryChange: (id) => entryChange(id),
+      takeEntryValue: vi.fn(async () => true),
+    };
+    const r = await renderComponent(
+      <SentenceBlock doc={doc} readOnly={false} sentence={sentence} nodesById={nodesById} />,
+    );
+    return { r, doc };
+  };
+
+  it('takes it on e for the node and Shift+E for every node from the entry', async () => {
+    const { r, doc } = await mount(() => ({ entryId: 'v1', form: 'ver', from: 'a', to: 'b' }));
+    const eat = r.container.querySelector('[data-node-var="s1e"]');
+    await r.step(() => eat.focus());
+    await r.step(() => press(eat, 'e'));
+    expect(doc.takeEntryValue).toHaveBeenLastCalledWith('n3');
+    await r.step(() => press(eat, 'E', { shiftKey: true }));
+    expect(doc.takeEntryValue).toHaveBeenLastCalledWith('n3', { everywhere: true });
+    await r.unmount();
+  });
+
+  it('offers the menu rows only on a node whose entry changed', async () => {
+    const { r } = await mount((id) =>
+      id === 'n3' ? { entryId: 'v1', form: 'ver', from: 'a', to: 'b' } : null,
+    );
+    const rows = async (v) => {
+      const node = r.container.querySelector(`[data-node-var="${v}"]`);
+      await r.step(() =>
+        node.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })),
+      );
+      const found = all(document, '[role="menuitem"]')
+        .filter((m) => m.textContent.startsWith('Take entry value'))
+        .map((m) => [m.textContent, m.hasAttribute('data-disabled')]);
+      await r.step(() =>
+        document.activeElement.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+        ),
+      );
+      return found;
+    };
+    expect(await rows('s1e')).toEqual([
+      [`Take entry value${keys.words('node.takeEntry')}`, false],
+      [`Take entry value for all nodes${keys.words('node.takeEntryAll')}`, false],
+    ]);
+    expect((await rows('s1l')).map(([, disabled]) => disabled)).toEqual([true, true]);
+    await r.unmount();
+  });
+});

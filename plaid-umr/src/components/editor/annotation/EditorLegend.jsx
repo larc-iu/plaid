@@ -94,7 +94,8 @@ export const EditorLegend = ({ project, direction = 'ltr' }) => {
           {k('node.attributes')} attributes · {k('node.variable')} variable · {k('node.anchor')}{' '}
           anchor, by clicking words or typing their numbers · {k('node.move')} move under another
           node · {k('node.earlier')} {k('node.later')} earlier or later among its siblings ·{' '}
-          {k('node.root')} make it the root
+          {k('node.root')} make it the root · {k('node.takeEntry')} {k('node.takeEntryAll')} the new
+          concept of a changed vocabulary entry, for the node or every node picked from it
         </Row>
 
         <Row title="Document">
