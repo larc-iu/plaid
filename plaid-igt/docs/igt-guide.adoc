@@ -757,6 +757,7 @@ Reading needs Reader access, and applying a plan needs Writer.
 Approving a plan after a sentence it changes has been edited is refused, and the card then reads **Out of date**.
 An edit to another sentence does not stop it.
 A text edit is refused after any edit to its document.
+A replacement across documents is also out of date when a document starts or stops matching it after the plan was made.
 Approving a plan on a document that a service run (a transcription, an analysis) is writing to is refused with nothing written. Approve again once the run has finished.
 
 A reply is written into the conversation as it arrives, and it lands whether or not the page stays open: leave the tab, reload, or close the browser, and the answer is there when the conversation is next opened.
