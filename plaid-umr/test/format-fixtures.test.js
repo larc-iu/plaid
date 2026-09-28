@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { parseUmrFile, serializeUmrFile } from '../src/domain/format/umrFile.js';
 import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
+import { valueGrammarProblem } from '../src/domain/format/validate.js';
 import { rawFromPlan } from './rawFromPlan.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -283,4 +284,70 @@ describe('the official validator on an export from the app', () => {
       assert.match(output, /\*\*\* PASSED \*\*\*/, output.slice(-3000));
     },
   );
+});
+
+// The check the editors refuse new values with (umr-export-value-grammar)
+// answers as validate.py does: a value it passes, the validator reads, and a
+// value it refuses fails the sentence.
+describe('valueGrammarProblem agrees with the official validator', () => {
+  const VALUES = [
+    'imperative',
+    '15:30',
+    '3.5',
+    '12',
+    '-',
+    '+',
+    '3rd',
+    '"Café Noir"',
+    '"Q76"',
+    'Imperative',
+    'big_one',
+    'café',
+    '.5',
+    '-1.5',
+    'a/b',
+    '""',
+    '"O\\"Brien"',
+    '"a\nb"',
+    's2x',
+    's1x-b',
+  ];
+  VALUES.forEach((value) => {
+    test(JSON.stringify(value), (t) => {
+      if (!fs.existsSync(VALIDATOR)) {
+        t.skip(`umrtools/validate.py is not at ${VALIDATOR}`);
+        return;
+      }
+      const python = findPython();
+      if (!python) {
+        t.skip("no python3 with the 'regex' module; set UMR_PYTHON to one");
+        return;
+      }
+      const text = [
+        '#'.repeat(80),
+        '# :: snt1',
+        'Index: 1',
+        'Words: boy',
+        '',
+        '# sentence level graph:',
+        '(s1b / boy',
+        `    :mod ${value})`,
+        '',
+        '# alignment:',
+        's1b: 1-1',
+        '',
+        '# document level annotation:',
+        '(s1s0 / sentence)',
+        '',
+        '',
+        '',
+      ].join('\n');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'umr-oracle-value-'));
+      const file = path.join(dir, 'value.umr');
+      fs.writeFileSync(file, text);
+      const errors = countErrors(python, file);
+      const problem = valueGrammarProblem(value);
+      assert.equal(errors === 0, problem === null, `${value}: ${errors} errors, ${problem?.code}`);
+    });
+  });
 });

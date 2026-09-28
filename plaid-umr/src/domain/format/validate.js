@@ -283,51 +283,72 @@ function checkGraph(sentence, findings, options) {
   });
 }
 
+// What validate.py reads a bare value's front as a reference to a node
+// (validate.py:142 tried before the atom), unanchored: `s1x-b` is read as
+// `s1x` and a stray `-b`.
+const VARIABLE_FRONT = /^s[0-9]+\p{Ll}+[0-9]*/u;
+
 /**
- * Why validate.py cannot read an attribute's value as the value, as
- * `{code, message}` with its test id, or null when it reads it. A string
- * holds no quote and no line break and is not empty (validate.py:392 reads a
- * string line by line, up to the next quote). A bare value is an atom or a
- * number.
+ * Why validate.py cannot read `value`, an attribute's value as it is stored
+ * (a string with its quotes, else a bare value), as `{code, message}` with
+ * its test id, or null when it reads it. A string holds no quote and no line
+ * break and is not empty (validate.py:392 reads a string line by line, up to
+ * the next quote). A bare value is an atom of lowercase letters, digits, `+`
+ * and `-`, or a number, and does not start like a variable.
+ *
+ * The editors refuse NEW input with this (ruled 2026-09-28: Text mode Apply,
+ * the pickers and rename). An imported value is only reported, by the
+ * Validation tab, and the export writes it as it came.
+ *
+ * @param {string} value
+ * @param {string} [rel] the relation it stands under, to name in the message
+ * @returns {{code: string, message: string}|null}
  */
-function valueProblem(child) {
-  const value = String(child.value ?? '');
-  if (child.kind === 'string') {
-    const inner = /^"([\s\S]*)"$/.exec(value)?.[1];
+export function valueGrammarProblem(value, rel = null) {
+  const text = String(value ?? '');
+  const of = rel ? ` of '${rel}'` : '';
+  if (text.startsWith('"')) {
+    const inner = /^"([\s\S]*)"$/.exec(text)?.[1];
     // An unclosed string is the export's refusal (umrFileProblems).
     if (inner === undefined) return null;
     if (/[\r\n\u2028\u2029]/.test(inner)) {
       return {
         code: 'invalid-line',
-        message: `The string value of '${child.rel}' runs over more than one line.`,
+        message: `The string value${of} runs over more than one line.`,
       };
     }
     if (!inner) {
-      return {
-        code: 'missing-node-definition',
-        message: `The string value of '${child.rel}' is empty.`,
-      };
+      return { code: 'missing-node-definition', message: `The string value${of} is empty.` };
     }
     if (inner.includes('"')) {
       return {
         code: 'invalid-sentence-level',
-        message: `The string value of '${child.rel}' holds a quote: ${value}`,
+        message: `The string value${of} holds a quote: ${text}`,
       };
     }
     return null;
   }
-  if (ATOM.test(value) || NUMBER.test(value)) return null;
-  if (UPPER_ATOM.test(value)) {
+  const front = VARIABLE_FRONT.exec(text)?.[0];
+  if (front) {
+    return {
+      code: 'invalid-sentence-level',
+      message: `The value '${text}'${of} is read as the variable '${front}'. Quote it.`,
+    };
+  }
+  if (ATOM.test(text) || NUMBER.test(text)) return null;
+  if (UPPER_ATOM.test(text)) {
     return {
       code: 'value-wrong-chars',
-      message: `The value '${value}' of '${child.rel}' holds a capital letter or an underscore.`,
+      message: `The value '${text}'${of} holds a capital letter or an underscore.`,
     };
   }
   return {
     code: 'missing-node-definition',
-    message: `The value '${value}' of '${child.rel}' is not a number or a word of lowercase letters, digits, + and -.`,
+    message: `The value '${text}'${of} is not a number or a word of lowercase letters, digits, + and -.`,
   };
 }
+
+const valueProblem = (child) => valueGrammarProblem(child.value, child.rel);
 
 /**
  * Text that is not in Unicode NFC, which the format requires of the whole

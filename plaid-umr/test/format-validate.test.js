@@ -1,7 +1,11 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseUmrFile } from '../src/domain/format/umrFile.js';
-import { validateSentence, validateDocument } from '../src/domain/format/validate.js';
+import {
+  validateSentence,
+  validateDocument,
+  valueGrammarProblem,
+} from '../src/domain/format/validate.js';
 
 const SEPARATOR = '#'.repeat(80);
 
@@ -350,6 +354,37 @@ describe('values validate.py cannot read', () => {
       ':mod +',
       ':mod "Caf\u00e9 Noir"',
     ].forEach((child) => assert.deepEqual(valueCodes(`(s1b / boy\n    ${child})`), [], child));
+  });
+
+  test('a bare value that starts like a variable is read as a reference', () => {
+    assert.deepEqual(valueCodes('(s1b / boy\n    :mod s1x-b)'), ['invalid-sentence-level']);
+  });
+
+  // The check the editors refuse new input with (umr-export-value-grammar),
+  // on the value as it is stored.
+  test('valueGrammarProblem judges a stored value alone', () => {
+    const code = (value) => valueGrammarProblem(value)?.code ?? null;
+    assert.equal(code('imperative'), null);
+    assert.equal(code('15:30'), null);
+    assert.equal(code('3.5'), null);
+    assert.equal(code('-'), null);
+    assert.equal(code('"Caf\u00e9 Noir"'), null);
+    assert.equal(code('Imperative'), 'value-wrong-chars');
+    assert.equal(code('caf\u00e9'), 'missing-node-definition');
+    assert.equal(code('.5'), 'missing-node-definition');
+    assert.equal(code(''), 'missing-node-definition');
+    assert.equal(code('""'), 'missing-node-definition');
+    assert.equal(code('"O\\"Brien"'), 'invalid-sentence-level');
+    assert.equal(code('"a\nb"'), 'invalid-line');
+    assert.equal(code('s2x'), 'invalid-sentence-level');
+    assert.equal(
+      valueGrammarProblem('Imperative', ':mode').message,
+      "The value 'Imperative' of ':mode' holds a capital letter or an underscore.",
+    );
+    assert.equal(
+      valueGrammarProblem('caf\u00e9').message,
+      "The value 'caf\u00e9' is not a number or a word of lowercase letters, digits, + and -.",
+    );
   });
 
   test('the message says what is wrong in the value', () => {

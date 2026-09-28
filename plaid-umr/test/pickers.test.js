@@ -132,6 +132,17 @@ test('the attribute line keeps a stored value its check keeps', () => {
   assert.equal(readAttrLine(':quant re"d', () => null, kept).problem, 'quote');
 });
 
+// Left to itself the line refuses a value validate.py cannot read
+// (umr-export-value-grammar), as the document's own check does.
+test('the attribute line refuses a value the official validator cannot read', () => {
+  assert.equal(
+    readAttrLine(':mode Imperative', () => null).problem,
+    "The value 'Imperative' of ':mode' holds a capital letter or an underscore.",
+  );
+  assert.match(readAttrLine(':mod ""', () => null).problem, /empty/);
+  assert.equal(readAttrLine(':mode imperative :quant 3.5', () => null).problem, null);
+});
+
 // A document-level relation is a closed set too, per group: the relation
 // editor refuses what `unknown-document-relation` reports, `:FullAff` as the
 // guidelines' examples write it among them.

@@ -16,6 +16,7 @@ import {
 } from '../../../domain/vocabLexicon.js';
 import { DOC_RELATIONS, DOC_CONSTANTS } from '../../../domain/format/inventory.js';
 import { conceptProblem, attrValueProblem } from '../../../domain/format/penman.js';
+import { valueGrammarProblem } from '../../../domain/format/validate.js';
 
 // How a temporal relation reads, child first: the label of `:before` in
 // `(document-creation-time :before s9p)` is "s9p before document-creation-time".
@@ -172,14 +173,16 @@ export const attrsToLine = (attrs) => attrs.map((a) => `${a.rel} ${a.value}`).jo
  * `quant 4`, a forgotten colon, read as nothing and deleted the attribute it
  * was typed over. `relationProblem` says why a relation cannot be written on
  * the node (the document's, which keeps one the node already stores), and
- * `valueProblem` the same of a value under its relation.
+ * `valueProblem` the same of a value under its relation. Left out, a value is
+ * refused where it cannot be written or validate.py cannot read it.
  *
  * @returns {{ attrs: {rel: string, value: string}[], problem: string|null }}
  */
 export const readAttrLine = (
   line,
   relationProblem,
-  valueProblem = (_rel, value) => attrValueProblem(value),
+  valueProblem = (rel, value) =>
+    attrValueProblem(value) ?? valueGrammarProblem(value.trim(), rel)?.message ?? null,
 ) => {
   const attrs = [];
   let rest = String(line ?? '').trim();
