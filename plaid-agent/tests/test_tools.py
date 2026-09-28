@@ -57,7 +57,7 @@ def test_set_field_plans_create_update_clear_and_respects_scope():
     out = call_tool(w, 'set_field', {'document': 'Text 1', 'refs': ['s1.w1', 's1.w2'], 'field': 'Gloss', 'value': 'X'})
     assert out.startswith('Planned 2 changes')
     assert w.ops[0] == {'kind': 'set_span', 'layer_id': 'sl-gloss', 'token_id': 'w-1', 'span_id': 'sp-g1', 'value': 'X',
-                        'label': 'Text 1 s1.w1 "Ali-di": Gloss "Ali" → "X"'}
+                        'label': 'Text 1 s1.w1 "Ali-di": Gloss "Ali" → "X"', 'change_at': 23}
     assert w.ops[1]['span_id'] is None and w.ops[1]['token_id'] == 'w-2'
     # unchanged value -> nothing planned
     assert call_tool(w, 'set_field', {'document': 'd1', 'refs': 's1.w1', 'field': 'Gloss', 'value': 'Ali'}).startswith('Planned 0')
@@ -97,11 +97,12 @@ def test_orthography_respell_links_entries():
     w = ws()
     call_tool(w, 'set_orthography', {'document': 'd1', 'refs': ['s1.w1', 's1.w2'], 'orthography': 'ipa', 'value': 'alidi'})
     assert len(w.ops) == 1 and w.ops[0] == {'kind': 'set_orthography', 'word_id': 'w-2', 'key': 'orthog:IPA',
-                                            'value': 'alidi', 'label': 'Text 1 s1.w2 "gam": IPA = "alidi"'}
+                                            'value': 'alidi', 'label': 'Text 1 s1.w2 "gam": IPA = "alidi"',
+                                            'change_at': 20}
     assert 'No orthography named "Cyr"' in call_tool(w, 'set_orthography', {'document': 'd1', 'refs': 's1.w1', 'orthography': 'Cyr', 'value': 'x'})
     call_tool(w, 'respell', {'document': 'd1', 'ref': 's1.w3', 'new_text': 'akun'})
     assert w.ops[-1] == {'kind': 'respell', 'text_id': 'text1', 'begin': 11, 'end': 16, 'value': 'akun',
-                         'label': 'Text 1 s1.w3: respell "akuna" → "akun"'}
+                         'label': 'Text 1 s1.w3: respell "akuna" → "akun"', 'change_at': 14}
     # ambiguous entry -> candidates with ids
     out = call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w2'], 'entry_form': 'gam'})
     # Each candidate is offered under the number the app shows beside it, so
@@ -280,7 +281,7 @@ def test_single_respell_carries_a_lone_matching_morpheme_form():
     assert 'Planned 2 changes' in out
     assert [o['kind'] for o in w.ops] == ['respell', 'set_morpheme_form'] and w.ops[1] == {
         'kind': 'set_morpheme_form', 'morpheme_id': 'm-2', 'form': 'gham',
-        'label': 'Text 1 s1.w2.m1 (in "gam"): morpheme form "gam" → "gham"'}
+        'label': 'Text 1 s1.w2.m1 (in "gam"): morpheme form "gam" → "gham"', 'change_at': 28}
     # A chain cannot be re-derived from a whole-word respelling: kept, and said so.
     out = call_tool(w, 'respell', {'document': 'd1', 'ref': 's1.w1', 'new_text': 'Alidi'})
     assert 'Planned 1 change' in out and 'Morpheme forms Ali, di are kept' in out
@@ -618,9 +619,10 @@ def test_a_large_group_of_like_changes_is_stored_as_one_op_and_applies_whole(mon
     assert len(payload['ops']) == 1 and len(payload['changes']) == 1
     group = payload['ops'][0]
     assert group['compact'] and group['count'] == 3 and group['items']['token_id'] == ['w-2', 'w-3', 'w-4']
-    assert group['label'].startswith('Text 1: 3 changes: ')
+    # One change made three times is its count alone.
+    assert group['label'] == 'Text 1: 3 × Gloss = "X"'
     assert payload['changes'][0]['where']['kind'] == 'document'
-    assert payload['changes'][0]['change'].startswith('3 changes: ')
+    assert payload['changes'][0]['change'] == '3 × Gloss = "X"'
     assert payload['summary'] == summarize(payload['ops']) == '3 field values'
     counts = execute_plan(w.client, payload['ops'], source='s', label='l')
     assert counts == {'field values': 3}
@@ -655,12 +657,15 @@ def test_hits_from_one_document_are_capped_and_the_rest_counted():
     assert lines[1] == f'  … {len(words) - 1} more in this document (name the document to see them all)'
 
 
-def _engine_for_replace(w, spans):
-    """A fake engine answering the query path's replace: (span id, value, doc, token id) rows."""
+def _engine_for_replace(w, spans, metadata=None):
+    """A fake engine answering the query path's replace: (span id, value, doc, token id) rows.
+    Each span carries ``metadata`` when given (none is a person's work)."""
+    extra = {} if metadata is None else {'metadata': metadata}
+
     def query(body):
         if body.get('return') == 'entities':
             return {'return': 'entities', 'results': [
-                [{'id': i, 'value': v, 'document': d, 'layer': 'sl-gloss', 'tokens': [t]},
+                [{'id': i, 'value': v, 'document': d, 'layer': 'sl-gloss', 'tokens': [t], **extra},
                  {'id': t, 'document': d, 'value': 'x', 'begin': 0, 'end': 1}] for i, v, d, t in spans]}
         return {'return': 'aggregate', 'results': []}
     w.client.query = query
@@ -679,7 +684,9 @@ def test_a_replacement_past_the_cap_is_one_predicate_op_resolved_at_approval(mon
     spans = [('s1', 'Ali', 'd1', 'w-1'), ('s2', 'ali-x', 'd1', 'w-2'), ('s3', 'ALI', 'd1', 'w-3')]
     _engine_for_replace(w, spans)
     out = call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': 'ali', 'replacement': 'Bob'})
-    assert 'One change covering 3 changes to Gloss values in 1 documents' in out
+    assert 'One change covering 3 changes to Gloss values.' in out
+    assert '\nIn 1 document: "Text 1" 3.\n' in out
+    assert 'more' not in out  # three lines of sample, and no "… -5 more" under it
     op = w.ops[0]
     assert op['kind'] == 'bulk_scope' and op['tool'] == 'replace_in_field' and op['count'] == 3
     assert op['documents'] == ['d1'] and op['args']['pattern'] == 'ali'
@@ -753,3 +760,98 @@ def test_read_document_reads_the_sentences_named_in_one_call():
                                                           {'document': 'Text 1', 'from_sentence': 5})
     spec = next(t['function'] for t in TOOLS if t['function']['name'] == 'read_document')
     assert 'sentences' in spec['parameters']['properties'] and 'sentences' in spec['description']
+
+
+def _two_documents(name='Elicited: LLEC Wordlist'):
+    """The fixture's Text 1 and a copy of it as d2, named with a ": " in it."""
+    import copy
+    c = FakeClient()
+    d2 = copy.deepcopy(c._documents['d1'])
+    d2['id'], d2['name'] = 'd2', name
+    c._documents['d2'] = d2
+    return c
+
+
+def test_a_group_line_reads_each_change_where_its_label_says_and_counts_repeats(monkeypatch):
+    """The group line split every member's label at its first ": ", which in a
+    document named "Elicited: LLEC Wordlist" lands inside the name, so the
+    card read 'LLEC Wordlist s33.w4.m2 "do": Gloss …'. And one change made
+    twenty times was written out five times over."""
+    from plaid_agent.core import plan as core_plan
+    from plaid_agent.core.plan import change_of
+    monkeypatch.setattr(core_plan, 'COMPACT_ABOVE', 2)
+    c = FakeClient()
+    c._documents['d1']['name'] = 'Elicited: LLEC Wordlist'
+    w = scan_ws(c)
+    call_tool(w, 'set_orthography', {'document': 'd1', 'refs': ['s1.w1', 's1.w2', 's1.w3', 's2.w1'],
+                                      'orthography': 'IPA', 'value': 'q'})
+    # The group's line, over changes that differ and changes that repeat.
+    from plaid_agent.igt.workspace import compact_spec
+    members = [dict(op, doc='d1') for op in w.ops]
+    line = compact_spec(w)['set_orthography']['label'](members[0], members)
+    assert line['label'] == 'Elicited: LLEC Wordlist: 4 changes: IPA "alidi" → "q"; 3 × IPA = "q"'
+    assert change_of(line) == '4 changes: IPA "alidi" → "q"; 3 × IPA = "q"'
+    # On the card, s1.w1 replaces a person's IPA and keeps a row of its own,
+    # and the one change made three times is its count alone.
+    payload = w.plan_payload()
+    own, group = payload['ops']
+    assert own['label'].endswith('IPA "alidi" → "q"') and own.get('replaces_work')
+    assert group['label'] == 'Elicited: LLEC Wordlist: 3 × IPA = "q"'
+    change = payload['changes'][1]
+    assert change['where']['document_name'] == 'Elicited: LLEC Wordlist'
+    assert change['change'] == '3 × IPA = "q"'
+
+
+def test_every_member_change_is_read_off_its_label_not_split(monkeypatch):
+    """Each kind that folds into a group gets its change from `labelled`, so
+    the card shows the change after a document name holding ": " too."""
+    from plaid_agent.core.plan import change_of
+    c = FakeClient()
+    c._documents['d1']['name'] = 'A: B'
+    w = scan_ws(c)
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1'], 'field': 'Gloss', 'value': 'X'})
+    call_tool(w, 'set_orthography', {'document': 'd1', 'refs': ['s1.w1'], 'orthography': 'IPA', 'value': 'q'})
+    call_tool(w, 'respell', {'document': 'd1', 'ref': 's1.w2', 'new_text': 'gham'})
+    call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's2.w1.m2', 'form': 'är'})
+    kinds = {op['kind'] for op in w.ops}
+    assert {'set_span', 'set_orthography', 'respell', 'set_morpheme_form'} <= kinds
+    for op in w.ops:
+        if op['kind'] in ('set_span', 'set_orthography', 'respell', 'set_morpheme_form'):
+            assert op['label'].startswith('A: B s') and change_of(op) and not change_of(op).startswith('B ')
+    payload = w.plan_payload()
+    for op, ch in zip(payload['ops'], payload['changes']):
+        assert ch['change'] == change_of(op)
+
+
+def test_a_bulk_answer_counts_its_changes_by_document(monkeypatch):
+    """replace_in_field listed 8 of 20 changes and "… 12 more", and the model
+    made up a breakdown by document three times over. The answer now gives
+    the exact count in each document, under the cap and past it."""
+    from plaid_agent.igt import bulk
+    from plaid_agent.core import plan as core_plan
+    monkeypatch.setattr(core_plan, 'COMPACT_ABOVE', 2)
+    w = scan_ws(_two_documents())
+    w.prefer_scan = False
+    spans = [('s1', 'NOM.PAT', 'd1', 'w-1'), ('s2', 'NOM.PAT', 'd2', 'w-2'), ('s3', 'NOM.PAT', 'd2', 'w-3'),
+             ('s4', 'NOM.PAT', 'd2', 'w-4')]
+    # Machine output, so no change replaces a person's work and all four fold.
+    _engine_for_replace(w, spans, metadata={'prov': 'inferred', 'provSource': 'service:x'})
+    out = call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': '.', 'replacement': ':'})
+    assert out.startswith('Planned 4 changes')
+    assert '\nIn 2 documents: "Elicited: LLEC Wordlist" 3, "Text 1" 1.\n' in out
+    group, = w.plan_payload()['ops']
+    assert group['label'] == '4 changes in 2 documents: 4 × Gloss "NOM.PAT" → "NOM:PAT"'
+    # Past the cap: one stored op, and the same counts.
+    monkeypatch.setattr(bulk, 'PLAN_MAX_OPS', 2)
+    w.ops.clear()
+    out = call_tool(w, 'replace_in_field', {'field': 'Gloss', 'pattern': '.', 'replacement': ':'})
+    assert '\nIn 2 documents: "Elicited: LLEC Wordlist" 3, "Text 1" 1.\n' in out
+
+
+def test_a_scan_bulk_answer_counts_by_document_too():
+    """The scan path's ops name no document of their own; the count finds it."""
+    w = scan_ws(FakeClient())
+    out = call_tool(w, 'replace_in_field', {'document': 'd1', 'field': 'Gloss', 'pattern': '.*', 'regex': True,
+                                            'whole': True, 'replacement': 'Z'})
+    n = len(w.ops)
+    assert n and f'\nIn 1 document: "Text 1" {n}.\n' in out

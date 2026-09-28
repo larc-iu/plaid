@@ -56,7 +56,7 @@ def test_set_morpheme_changes_form_or_type_in_place():
     assert [o['kind'] for o in w.ops] == ['set_morph_type', 'set_morpheme_form']  # the type op was replaced (last wins)
     assert w.ops[0]['morph_type'] is None and '(cleared)' in w.ops[0]['label']
     assert w.ops[1] == {'kind': 'set_morpheme_form', 'morpheme_id': 'm-4b', 'form': 'är',
-                        'label': 'Text 1 s2.w1.m2 (in "Gam-ar"): morpheme form "ar" → "är"'}
+                        'label': 'Text 1 s2.w1.m2 (in "Gam-ar"): morpheme form "ar" → "är"', 'change_at': 31}
     assert 'superseded' in call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's2.w1.m2', 'form': 'är'})  # last wins
     assert call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's2.w1.m2', 'form': 'ar'}).startswith('Planned 0')
     assert 'is not a morpheme' in call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's2.w1', 'form': 'x'})

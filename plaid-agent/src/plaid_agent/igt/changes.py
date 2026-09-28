@@ -17,7 +17,9 @@ past its loading budget) names the document alone.
     {'kind': 'entry', 'vocab_id', 'vocab_name', 'item_id', 'form'}
     None                     nothing to link to yet (a new document)
 ``change`` is the label without its location, or None when the label did
-not have the expected shape (the card then shows the label whole).
+not have the expected shape (the card then shows the label whole). An op
+built by ``core.plan.labelled`` carries where its change starts; the older
+label shapes are read by ``split_change``.
 ``writes_text`` marks the changes that rewrite the baseline itself, and
 ``replaces_work`` how many of a person's things each one replaces (core/work.py).
 """
@@ -26,6 +28,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from ..core import opkind, work
+from ..core.plan import change_of
 from .plan import ENTRY, KIND, SCOPES, TEXT_SHAPE, TOKEN
 from .project import Sentence, Word, Morpheme
 
@@ -49,7 +52,12 @@ def describe_changes(ws, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def describe_change(ws, op: Dict[str, Any]) -> Dict[str, Any]:
     label = op.get('label') or ''
     where = locate(ws, op)
-    return {'label': label, 'where': where, 'change': split_change(ws, label, where),
+    # An op built by `labelled` says where its change starts. Nothing to place
+    # it at shows the label whole, as a label of an unexpected shape does.
+    change = change_of(op) if where else None
+    if change is None:
+        change = split_change(ws, label, where)
+    return {'label': label, 'where': where, 'change': change,
             'writes_text': writes_text(op), 'replaces_work': int(op.get(work.FLAG) or 0)}
 
 

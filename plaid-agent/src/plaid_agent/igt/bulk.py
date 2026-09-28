@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from ..core import work
 from ..core.limits import SAMPLE_LINES
-from ..core.plan import PLAN_MAX_OPS
+from ..core.plan import PLAN_MAX_OPS, by_document, labelled
 from ..core.replace import replacer as core_replacer
 from .plan import SCOPES
 from .project import word_ref
@@ -26,12 +26,33 @@ def _replacer(pattern: str, replacement: str, regex: bool, whole: bool, case_sen
     return core_replacer(pattern, replacement, regex, whole, case_sensitive, ToolError)
 
 
-def _bulk_note(ws: Workspace, n: int, labels: List[str], what: str) -> str:
+def _bulk_note(ws: Workspace, ops: List[Dict[str, Any]], what: str) -> str:
+    """What a bulk tool says back: the count, how many land in each
+    document, and a sample. The counts are exact, since a model given only a
+    sample made up a breakdown of its own."""
+    n = len(ops)
     if not n:
         return f'Nothing to change: no {what} matched.'
-    head = ws.planned_note(n)
-    return head + '\n  ' + '\n  '.join(labels[:SAMPLE_LINES]) \
-        + (f'\n  … {n - SAMPLE_LINES} more (plan_status lists them all)' if n > SAMPLE_LINES else '')
+    return (ws.planned_note(n) + _by_document(ws, ops) + '\n  '
+            + '\n  '.join(op['label'] for op in ops[:SAMPLE_LINES])
+            + (f'\n  … {n - SAMPLE_LINES} more (plan_status lists them all)' if n > SAMPLE_LINES else ''))
+
+
+def _by_document(ws: Workspace, ops: List[Dict[str, Any]]) -> str:
+    """The per-document count line for these ops, or ''. An op on no
+    document (a lexicon headword) is not counted here."""
+    from .changes import _doc_of
+    names: List[str] = []
+    seen: Dict[str, str] = {}
+    for op in ops:
+        did = op.get('doc') or _doc_of(ws, op)
+        if not did:
+            continue
+        if did not in seen:
+            seen[did] = ws.doc_label(did)
+        names.append(seen[did])
+    line = by_document(names)
+    return '\n' + line if line else ''
 
 
 def _check_cap(n: int):
@@ -49,7 +70,6 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
     ``field`` may also name the stored morpheme forms (Bulk Edit's morpheme
     domain) when no field is so named."""
     rep = _replacer(pattern, replacement, bool(regex), bool(whole), bool(case_sensitive))
-    labels: List[str] = []
     staged: List[Dict[str, Any]] = []
     if not ws.use_scan(document) and not _names_morpheme_forms(ws, field):
         args = {'field': field, 'pattern': pattern, 'replacement': replacement, 'regex': bool(regex),
@@ -69,12 +89,10 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
                             continue
                         if not new.strip():
                             raise ToolError(f'{ws.doc_label(doc.id)} {word_ref(s, w)}.m{m.index}: "{m.form}" would become empty')
-                        op = morpheme_form_op(ws, doc, word_ref(s, w), w, m, new)
-                        staged.append(op)
-                        labels.append(op['label'])
+                        staged.append(morpheme_form_op(ws, doc, word_ref(s, w), w, m, new))
         _check_cap(len(staged))
         ws.add_ops(staged)
-        return _bulk_note(ws, len(labels), labels, 'morpheme forms')
+        return _bulk_note(ws, staged, 'morpheme forms')
     f = ws.project.field(field)
     for doc in _docs(ws, document):
         for s in doc.sentences:
@@ -92,13 +110,13 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
                 new = rep(cur)
                 if new == cur:
                     continue
-                label = f'{ws.doc_label(doc.id)} {ref} "{what[:30]}": {f.name} "{cur}" → "{new}"' + (' (cleared)' if new == '' else '')
                 staged.append({'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': u.id,
-                               'span_id': sp.id if sp else None, 'value': new, 'label': label})
-                labels.append(label)
+                               'span_id': sp.id if sp else None, 'value': new,
+                               **labelled(f'{ws.doc_label(doc.id)} {ref} "{what[:30]}"',
+                                          f'{f.name} "{cur}" → "{new}"' + (' (cleared)' if new == '' else ''))})
     _check_cap(len(staged))
     ws.add_ops(staged)
-    return _bulk_note(ws, len(labels), labels, f'{f.name} values')
+    return _bulk_note(ws, staged, f'{f.name} values')
 
 
 # --- corpus-wide changes as ONE op ----------------------------------------------
@@ -141,7 +159,7 @@ def _lexicon_renames(ws: Workspace, rep) -> List[Dict[str, Any]]:
             if new == old or not new.strip():
                 continue
             out.append({'kind': 'rename_entry', 'item_id': it['id'], 'form': new,
-                        'label': f'{v["name"]}: rename entry "{old}" → "{new}"'})
+                        **labelled(v['name'], f'rename entry "{old}" → "{new}"')})
     return out
 
 
@@ -211,7 +229,7 @@ def _stage(ws: Workspace, tool: str, args: Dict[str, Any], staged: List[Dict[str
     ws.note_versions(docs)
     if len(staged) <= PLAN_MAX_OPS:
         ws.add_ops(staged)
-        return _bulk_note(ws, len(staged), [op['label'] for op in staged], what)
+        return _bulk_note(ws, staged, what)
     _clear_of_reshapes(ws, docs)
     counts: Dict[str, int] = {}
     for op in staged:
@@ -222,11 +240,11 @@ def _stage(ws: Workspace, tool: str, args: Dict[str, Any], staged: List[Dict[str
                'label': f'{tool}: {len(staged)} changes in {len(docs)} documents ('
                         + ', '.join(f'{k}={v}' for k, v in args.items() if v not in (None, '', False)) + ')'
                         + work.counted_phrase(accepted)})
-    return (ws.planned_note(1) + f'\n  One change covering {len(staged)} changes to {what} in {len(docs)} documents. '
-            + (f'{accepted} of them replace work a person made or accepted, and the card says so. '
+    return (ws.planned_note(1) + f'\n  One change covering {len(staged)} changes to {what}.'
+            + (f' {accepted} of them replace work a person made or accepted, and the card says so.'
                if accepted else '')
-            + f'For example:\n  ' + '\n  '.join(op['label'] for op in staged[:SAMPLE_LINES])
-            + f'\n  … {len(staged) - SAMPLE_LINES} more')
+            + _by_document(ws, staged) + '\nFor example:\n  ' + '\n  '.join(op['label'] for op in staged[:SAMPLE_LINES])
+            + (f'\n  … {len(staged) - SAMPLE_LINES} more' if len(staged) > SAMPLE_LINES else ''))
 
 
 def scope_reaches(ws: Workspace, doc_id: Optional[str]) -> bool:
@@ -266,7 +284,6 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
     into the stored morpheme forms of the respelled words and into every
     lexicon headword it matches, unless switched off."""
     rep = _replacer(pattern, replacement, bool(regex), bool(whole), bool(case_sensitive))
-    labels: List[str] = []
     staged: List[Dict[str, Any]] = []
     n_words = n_morphs = n_entries = 0
     if not ws.use_scan(document):
@@ -289,10 +306,8 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
                     raise ToolError(f'{ws.doc_label(doc.id)} {word_ref(s, w)}: "{w.surface}" would become empty; '
                                     'a respelling cannot remove a word (retype_sentence can)')
                 check_respell_overlap(ws, w.text_id, w.begin, w.end, f'{ws.doc_label(doc.id)} {word_ref(s, w)}')
-                label = f'{ws.doc_label(doc.id)} {word_ref(s, w)}: respell "{w.surface}" → "{new}"'
                 staged.append({'kind': 'respell', 'text_id': w.text_id, 'begin': w.begin, 'end': w.end, 'value': new,
-                               'label': label})
-                labels.append(label)
+                               **labelled(f'{ws.doc_label(doc.id)} {word_ref(s, w)}', f'respell "{w.surface}" → "{new}"')})
                 n_words += 1
                 if not morpheme_forms:
                     continue
@@ -302,19 +317,16 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
                     nm = rep(m.form)
                     if nm == m.form or not nm.strip():
                         continue
-                    op = morpheme_form_op(ws, doc, word_ref(s, w), w, m, nm)
-                    staged.append(op)
-                    labels.append(op['label'])
+                    staged.append(morpheme_form_op(ws, doc, word_ref(s, w), w, m, nm))
                     n_morphs += 1
     if lexicon:
         renames = _lexicon_renames(ws, rep)
         staged += renames
-        labels += [op['label'] for op in renames]
         n_entries = len(renames)
     _check_cap(len(staged))
     ws.add_ops(staged)
-    out = _bulk_note(ws, len(labels), labels, 'words')
-    if labels:
+    out = _bulk_note(ws, staged, 'words')
+    if staged:
         out += (f'\n({n_words} words, {n_morphs} morpheme forms, {n_entries} lexicon headwords.)')
     return out + (_kept_lexicons(ws, rep) if lexicon else '')
 
@@ -326,7 +338,6 @@ def t_copy_to_orthography(ws: Workspace, orthography: str, source: str = 'baseli
     starting point for a transcription tier."""
     target = ws.project.orthography(orthography)
     src = None if (source or 'baseline').lower() == 'baseline' else ws.project.orthography(source)
-    labels: List[str] = []
     staged: List[Dict[str, Any]] = []
     if not ws.use_scan(document):
         args = {'orthography': orthography, 'source': source or 'baseline', 'overwrite': bool(overwrite)}
@@ -340,12 +351,11 @@ def t_copy_to_orthography(ws: Workspace, orthography: str, source: str = 'baseli
                 value = w.surface if src is None else w.orthographies.get(src, '')
                 if not value or value == cur:
                     continue
-                label = f'{ws.doc_label(doc.id)} {word_ref(s, w)} "{w.surface}": {target} = "{value}"'
-                staged.append({'kind': 'set_orthography', 'word_id': w.id, 'key': f'orthog:{target}', 'value': value, 'label': label})
-                labels.append(label)
+                staged.append({'kind': 'set_orthography', 'word_id': w.id, 'key': f'orthog:{target}', 'value': value,
+                               **labelled(f'{ws.doc_label(doc.id)} {word_ref(s, w)} "{w.surface}"', f'{target} = "{value}"')})
     _check_cap(len(staged))
     ws.add_ops(staged)
-    return _bulk_note(ws, len(labels), labels, 'words')
+    return _bulk_note(ws, staged, 'words')
 
 
 def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_empty: bool = True,
@@ -379,8 +389,7 @@ def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_
                     staged.append(span_op(ws, doc, ref, what, f, u.id, old, value))
     _check_cap(len(staged))
     ws.add_ops(staged)
-    return _bulk_note(ws, len(staged), [op['label'] for op in staged], f'occurrences of "{form}"'
-                      + (' without a value' if only_empty else ''))
+    return _bulk_note(ws, staged, f'occurrences of "{form}"' + (' without a value' if only_empty else ''))
 
 
 def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document: Optional[str] = None,
@@ -429,8 +438,8 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
     # By target, not by position: an analysis already planned for one of these
     # words is REPLACED where it stands rather than appended.
     by_target = {op_target(op): op for op in ws.ops}
-    labels = [by_target[t]['label'] for t in planned if t in by_target]
-    return _bulk_note(ws, len(labels), labels, f'occurrences of "{form}"') + (' ' + first_note if first_note else '')
+    ops = [by_target[t] for t in planned if t in by_target]
+    return _bulk_note(ws, ops, f'occurrences of "{form}"') + (' ' + first_note if first_note else '')
 
 
 def _set_analysis_for_form_q(ws: Workspace, form: str, morphemes: list, skip_analyzed: bool) -> str:
@@ -468,7 +477,7 @@ def _set_analysis_for_form_q(ws: Workspace, form: str, morphemes: list, skip_ana
         if not first_note and note:
             first_note = note.strip()
     ws.add_ops(staged)
-    return _bulk_note(ws, len(staged), [op['label'] for op in staged], f'occurrences of "{form}"') + (' ' + first_note if first_note else '')
+    return _bulk_note(ws, staged, f'occurrences of "{form}"') + (' ' + first_note if first_note else '')
 
 
 # --- lexicon and document operations ----------------------------------------------

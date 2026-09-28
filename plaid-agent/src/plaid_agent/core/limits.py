@@ -94,6 +94,10 @@ GUIDELINES_INLINE_CHARS = 24000
 # pattern did, few enough to leave room for the answer around it.
 SAMPLE_LINES = 8
 
+# Documents a bulk answer counts by name before "and n more documents". The
+# model once invented a per-document breakdown when it was given none.
+BY_DOCUMENT_LINES = 10
+
 # Projects one conversation may read, the one it belongs to included. Each
 # other project costs a paragraph of the system prompt on every turn, so this
 # bounds the prompt as much as the reads. Advertised to the browser as

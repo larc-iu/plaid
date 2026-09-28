@@ -1185,14 +1185,14 @@ def test_a_replacement_and_a_reshape_of_a_document_it_reaches_cannot_share_a_pla
 
 def test_a_review_over_several_documents_is_one_scope_op_each(ws):
     out = run(ws, 'confirm', documents=['Viaje', 'ud1'])
-    assert out == 'Planned confirming 1 value(s) across 1 document(s), one planned change each: "Viaje".'
+    assert out == 'Planned confirming 1 value(s), one planned change per document. In 1 document: "Viaje" 1.'
     assert [op['kind'] for op in ws.ops] == ['confirm_scope']
     ws.ops.clear()
 
     def engine(body):
         return {'return': 'aggregate', 'results': [['ud1', 1]]}
     ws.client.query = engine
-    assert 'across 1 document(s)' in run(ws, 'discard_predictions', documents=['all'])
+    assert 'In 1 document: "Viaje" 1.' in run(ws, 'discard_predictions', documents=['all'])
     assert ws.ops[0]['kind'] == 'discard_scope'
     ws.client.query = lambda body: {'return': 'aggregate', 'results': []}
     ws.ops.clear()
@@ -1248,7 +1248,7 @@ def test_every_document_with_an_unconfirmed_head_is_found():
         asked.append(body)
         return {'return': 'aggregate', 'results': [['ud1', 1]]}
     client.query = engine
-    assert 'across 1 document(s)' in run(w, 'confirm', documents=['all'], field='deprel')
+    assert 'In 1 document: "Viaje" 1.' in run(w, 'confirm', documents=['all'], field='deprel')
     assert w.ops[0]['kind'] == 'confirm_scope' and w.ops[0]['fields'] == ['deprel']
     kinds = [c[0] for body in asked for c in body['where'] if isinstance(c, list)]
     assert 'relation' in kinds, 'the heads are looked for on the relation layer'

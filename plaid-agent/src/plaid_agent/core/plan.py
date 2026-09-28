@@ -280,6 +280,53 @@ class Stamps:
 
 COMPACT_ABOVE = 12  # a group larger than this is stored as one op
 
+# The keys an op carries for people rather than for the write. Two ops that
+# differ only in these are the same change, so they never keep ops apart.
+PRESENTATION_KEYS = ('label', 'change_at')
+
+
+def labelled(place: str, change: str) -> Dict[str, Any]:
+    """An op's ``label`` (``<place>: <change>``) and ``change_at``, where in
+    it the change starts. A reader wanting the change alone asks
+    :func:`change_of`, never splits the label: a document name may itself
+    hold ``": "``. With no place the label is the change."""
+    if not place:
+        return {'label': change, 'change_at': 0}
+    return {'label': f'{place}: {change}', 'change_at': len(place) + 2}
+
+
+def change_of(op: Dict[str, Any]) -> Optional[str]:
+    """The change an op's label describes, without its location, or None when
+    the op was not built by :func:`labelled`."""
+    at = op.get('change_at')
+    label = op.get('label')
+    if not isinstance(at, int) or not isinstance(label, str) or not 0 <= at <= len(label):
+        return None
+    return label[at:]
+
+
+def by_document(names: List[str], limit: int = 0) -> str:
+    """How many changes land in each document, largest first: one name per
+    change, so the counts are exact. ``'In 2 documents: "A" 12, "B" 8.'``,
+    and past ``limit`` names ``'…, and 3 more documents (5 changes).'``."""
+    from .limits import BY_DOCUMENT_LINES
+    limit = limit or BY_DOCUMENT_LINES
+    counts: Dict[str, int] = {}
+    for name in names:
+        counts[name] = counts.get(name, 0) + 1
+    if not counts:
+        return ''
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    shown = ', '.join(f'"{name}" {n}' for name, n in ranked[:limit])
+    rest = ranked[limit:]
+    more = ''
+    if rest:
+        left = sum(n for _, n in rest)
+        more = (f', and {len(rest)} more document{"s" if len(rest) != 1 else ""} '
+                f'({left} change{"s" if left != 1 else ""})')
+    k = len(counts)
+    return f'In {k} document{"s" if k != 1 else ""}: {shown}{more}.'
+
 
 def _hashable(v: Any):
     return json.dumps(v, sort_keys=True, ensure_ascii=False, default=str)
@@ -288,7 +335,7 @@ def _hashable(v: Any):
 def compact_ops(ops: List[Dict[str, Any]], spec: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
     """``spec`` maps an op kind to ``{'each': keys, 'label': fn}``: ``each``
     are the keys that vary per member, and ops of that kind equal in EVERY
-    other key (the label aside) form a group, so a key the spec did not
+    other key (the :data:`PRESENTATION_KEYS` aside) form a group, so a key the spec did not
     foresee keeps an op out of a group rather than being dropped from it.
     ``label(first, members)`` writes the group's line. A group at or under
     :data:`COMPACT_ABOVE` is left as it is. Order is the order of first
@@ -302,7 +349,7 @@ def compact_ops(ops: List[Dict[str, Any]], spec: Dict[str, Dict[str, Any]]) -> L
         if s is None or op.get('replaces_work'):
             continue
         each = set(s['each'])
-        key = tuple(sorted((k, _hashable(v)) for k, v in op.items() if k not in each and k != 'label'))
+        key = tuple(sorted((k, _hashable(v)) for k, v in op.items() if k not in each and k not in PRESENTATION_KEYS))
         groups.setdefault(key, []).append(i)
     replaced: Dict[int, Dict[str, Any]] = {}
     dropped: set = set()
@@ -312,10 +359,12 @@ def compact_ops(ops: List[Dict[str, Any]], spec: Dict[str, Dict[str, Any]]) -> L
         first = ops[members[0]]
         s = spec[first['kind']]
         each = list(s['each'])
-        group = {k: v for k, v in first.items() if k not in each and k != 'label'}
+        group = {k: v for k, v in first.items() if k not in each and k not in PRESENTATION_KEYS}
         group.update({'items': {k: [ops[i].get(k) for i in members] for k in each},
-                      'count': len(members), 'compact': True,
-                      'label': s['label'](first, [ops[i] for i in members])})
+                      'count': len(members), 'compact': True})
+        # The line is a string, or what `labelled` returns for one.
+        line = s['label'](first, [ops[i] for i in members])
+        group.update(line if isinstance(line, dict) else {'label': line})
         replaced[members[0]] = group
         dropped.update(members[1:])
     out = []

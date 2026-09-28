@@ -19,7 +19,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from ..core import docload, opkind
-from ..core.plan import docs_of_op
+from ..core.plan import change_of, docs_of_op, labelled
 from ..core.tools import ToolError
 from ..core.workspace import BaseWorkspace
 
@@ -573,9 +573,8 @@ def _op_mentions(value, ids: set) -> bool:
     return False
 
 
-def _change_part(label: str) -> str:
-    """The change a label describes, after its location head."""
-    return label.split(': ', 1)[1] if ': ' in label else label
+# Distinct changes a group's line spells out before "… n more".
+GROUP_LINE_CHANGES = 5
 
 
 def compact_spec(ws: Workspace) -> Dict[str, Dict[str, Any]]:
@@ -584,17 +583,29 @@ def compact_spec(ws: Workspace) -> Dict[str, Dict[str, Any]]:
     document among them, so a bulk change over a whole corpus is one group
     and not one per document, most of which held too few to fold at all).
     The line is headed by the document when the group has one, the way every
-    label is, so the card can split it the same way."""
+    label is, so the card can place it the same way. Each member's change is
+    read from where its label says it starts (``core.plan.labelled``), never
+    by splitting the label, since a document name may hold ``": "``; and the
+    same change made many times is one entry with its count."""
     def label(first, members):
         n = len(members)
-        parts = [_change_part(m.get('label') or '') for m in members[:5]]
-        body = f'{n} changes: ' + '; '.join(parts) + (f'; … {n - 5} more' if n > 5 else '')
+        counts: Dict[str, int] = {}
+        for m in members:
+            change = change_of(m)
+            change = change if change is not None else (m.get('label') or '')
+            counts[change] = counts.get(change, 0) + 1
+        distinct = list(counts.items())
+        parts = [f'{k} × {c}' if k > 1 else c for c, k in distinct[:GROUP_LINE_CHANGES]]
+        left = sum(k for _, k in distinct[GROUP_LINE_CHANGES:])
+        listing = '; '.join(parts) + (f'; … {left} more' if left else '')
+        # One change made n times says so in its count alone.
+        body = listing if len(distinct) == 1 else f'{n} changes: {listing}'
         docs = {m.get('doc') for m in members} - {None}
         if len(docs) == 1:
-            return f'{ws.doc_label(next(iter(docs)))}: {body}'
+            return labelled(ws.doc_label(next(iter(docs))), body)
         if docs:
-            return f'{n} changes in {len(docs)} documents: ' + body.split(': ', 1)[1]
-        return body
+            return labelled(f'{n} changes in {len(docs)} documents', listing)
+        return labelled('', body)
 
     return opkind.compact_spec(KIND, label)
 

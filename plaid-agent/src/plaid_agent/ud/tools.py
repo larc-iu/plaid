@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 from ..core import docload, opkind
 from ..core.args import whole
 from ..core.limits import MAX_SCOPE_DOCS, OVERVIEW_DOCS
+from ..core.plan import by_document
 from ..core.workspace import BaseWorkspace
 from ..core.tools import ToolError, server_refused
 from .plan import (KIND, RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, docs_of_op,
@@ -666,20 +667,20 @@ def _many(ws: Workspace, documents, field: str, one) -> str:
     kind = 'confirm' if one is t_confirm else 'discard'
     ids = _scope_documents(ws, documents, kind, fields)
     planned = 0
-    covered = []
+    per_doc: List[str] = []  # one name per value, for the exact count by document
     with ws.staging():
         for did in ids:
             before = len(ws.ops)
             one(ws, document=did, field=field)
             if len(ws.ops) > before:
-                planned += ws.ops[-1].get('count') or 0
-                covered.append(ws.doc(did).name)
-    if not covered:
+                n = ws.ops[-1].get('count') or 0
+                planned += n
+                per_doc += [ws.doc(did).name] * n
+    if not per_doc:
         return f'Nothing is waiting for review in the {len(ids)} document(s) named.'
     verb = 'confirming' if kind == 'confirm' else 'discarding'
-    return (f'Planned {verb} {planned} value(s) across {len(covered)} document(s), one planned change '
-            f'each: ' + ', '.join(f'"{n}"' for n in covered[:20])
-            + (f', … {len(covered) - 20} more' if len(covered) > 20 else '') + '.')
+    return (f'Planned {verb} {planned} value(s), one planned change per document. '
+            + by_document(per_doc))
 
 
 def t_confirm(ws: Workspace, document: str = None, refs=None, field: str = None, documents=None) -> str:

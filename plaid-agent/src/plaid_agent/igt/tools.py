@@ -17,6 +17,7 @@ from plaid_client.provenance import prov_state, MACHINE
 from ..core import opkind
 from ..core.args import whole
 from ..core.limits import MAX_SCOPE_DOCS
+from ..core.plan import by_document, labelled
 from ..core.tools import ToolError
 
 from .plan import ANALYSIS, KIND, TEXT_SHAPE, WORD_SHAPE, reshaped_subjects
@@ -50,9 +51,9 @@ def span_op(ws: Workspace, doc, ref: str, what: str, f, token_id: str, old, valu
     """A set_span op with its human label. ``old`` is the current Span or None."""
     return {'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': token_id,
             'span_id': old.id if old else None, 'value': value,
-            'label': f'{ws.doc_label(doc.id)} {ref} "{what[:40]}": {f.name} '
-                     + (f'"{old.value}" → "{value}"' if old and old.value != '' else f'= "{value}"')
-                     + (' (cleared)' if value == '' else '')}
+            **labelled(f'{ws.doc_label(doc.id)} {ref} "{what[:40]}"',
+                       f'{f.name} ' + (f'"{old.value}" → "{value}"' if old and old.value != '' else f'= "{value}"')
+                       + (' (cleared)' if value == '' else ''))}
 
 
 MAX_ANALYSES_PER_CALL = 200
@@ -223,7 +224,8 @@ def t_set_orthography(ws: Workspace, document: str, refs, orthography: str, valu
         if old == (value or ''):
             continue
         staged.append({'kind': 'set_orthography', 'word_id': w.id, 'key': f'orthog:{o}', 'value': value or '',
-                       'label': f'{ws.doc_label(doc.id)} {ref} "{w.surface}": {o} ' + (f'"{old}" → "{value}"' if old else f'= "{value}"')})
+                       **labelled(f'{ws.doc_label(doc.id)} {ref} "{w.surface}"',
+                                  f'{o} ' + (f'"{old}" → "{value}"' if old else f'= "{value}"'))})
     ws.add_ops(staged)
     return ws.planned_note(len(staged))
 
@@ -235,7 +237,8 @@ def has_own_form(m: Morpheme) -> bool:
 
 def morpheme_form_op(ws: Workspace, doc, ref: str, w: Word, m: Morpheme, new: str) -> Dict[str, Any]:
     return {'kind': 'set_morpheme_form', 'morpheme_id': m.id, 'form': new,
-            'label': f'{ws.doc_label(doc.id)} {ref}.m{m.index} (in "{w.surface}"): morpheme form "{m.form}" → "{new}"'}
+            **labelled(f'{ws.doc_label(doc.id)} {ref}.m{m.index} (in "{w.surface}")',
+                       f'morpheme form "{m.form}" → "{new}"')}
 
 
 def t_respell(ws: Workspace, document: str, ref: str, new_text: str, morpheme_forms: bool = True) -> str:
@@ -249,7 +252,7 @@ def t_respell(ws: Workspace, document: str, ref: str, new_text: str, morpheme_fo
         return ws.planned_note(0)
     check_respell_overlap(ws, w.text_id, w.begin, w.end, f'{ws.doc_label(doc.id)} {ref}')
     staged = [{'kind': 'respell', 'text_id': w.text_id, 'begin': w.begin, 'end': w.end, 'value': new_text,
-               'label': f'{ws.doc_label(doc.id)} {ref}: respell "{w.surface}" → "{new_text}"'}]
+               **labelled(f'{ws.doc_label(doc.id)} {ref}', f'respell "{w.surface}" → "{new_text}"')}]
     # A single-morpheme own form spelt like the word follows it. A longer
     # chain cannot be re-derived from a whole-word replacement.
     kept = []
@@ -626,11 +629,16 @@ def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: O
         if op:
             staged.append(op)
     ws.add_ops(staged)
-    n = sum(len(v) for op in staged for k, v in op.items() if k.endswith('_ids'))
+
+    def size(op):
+        return sum(len(v) for k, v in op.items() if k.endswith('_ids'))
+    n = sum(size(op) for op in staged)
     if not staged:
         return 'Nothing to confirm: no annotations awaiting review there.'
-    return ws.planned_note(len(staged)) + f' ({n} annotation{"s" if n != 1 else ""} will be marked verified' \
-        + (f' across {len(staged)} documents' if not document and len(staged) > 1 else '') + '.)'
+    out = ws.planned_note(len(staged)) + f' ({n} annotation{"s" if n != 1 else ""} will be marked verified.)'
+    if not document and len(staged) > 1:
+        out += '\n' + by_document([ws.doc_label(op['doc']) for op in staged for _ in range(size(op))])
+    return out
 
 
 def t_discard_analysis(ws: Workspace, document: str, refs) -> str:

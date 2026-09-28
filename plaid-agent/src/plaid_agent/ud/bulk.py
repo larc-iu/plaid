@@ -16,6 +16,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..core import opkind, work
 from ..core.limits import SAMPLE_LINES
+from ..core.plan import by_document
 from ..core.replace import replacer as core_replacer
 from .corpus import Corpus, rx
 from .plan import DOCUMENT_SHAPE, KIND, SENTENCE_SHAPE, WORD_SHAPE
@@ -160,10 +161,13 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
                work.COUNTED: accepted,
                'label': f'{field}: replace "{pattern}" with "{replacement}" on {len(found)} value(s){where}'
                         + work.counted_phrase(accepted)})
-    return (f'Planned {len(found)} {field} change(s){where}, as one planned change. '
-            + (f'{accepted} of them replace work a person made or accepted, and the card says so. '
+    counts = '' if document_id else by_document([names.get(ch['document_id'], ch['document_id'])
+                                                 for ch in found if ch['document_id']])
+    counts = '\n' + counts if counts else ''
+    return (f'Planned {len(found)} {field} change(s){where}, as one planned change.'
+            + (f' {accepted} of them replace work a person made or accepted, and the card says so.'
                if accepted else '')
-            + 'For example:\n  '
+            + f'{counts}\nFor example:\n  '
             + '\n  '.join(sample) + (f'\n  … {len(found) - SAMPLE_LINES} more' if len(found) > SAMPLE_LINES else '')
             + '\nsearch shows every match with its reference.')
 
