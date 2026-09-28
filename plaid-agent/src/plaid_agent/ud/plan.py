@@ -26,7 +26,7 @@ from ..core import opkind as ok
 from ..core.opkind import OpKind
 from plaid_client import metadata_ops
 
-from ..core.plan import (CONFIRM, PlanError, Resolution, Stamps, TrackingBatcher,
+from ..core.plan import (CONFIRM, PlanError, Resolution, Stamps, TrackingBatcher, check_reach,
                          apply_add_comment, apply_restore_document, applying, created_id,
                          docs_of_op, expand_ops)
 from .project import load_document, word_ref
@@ -633,7 +633,11 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
             return False
         return not named_too(o)
 
-    return ok.resolve_ops(KIND, Resolution(client, project, load_document), ops, keep), notes
+    # The documents a scope reaches now must be the ones it was pinned to,
+    # checked and locked by: `check_reach` refuses the plan otherwise.
+    return ok.resolve_ops(KIND, Resolution(client, project, load_document), ops, keep,
+                          check=lambda op, found: check_reach(op, found,
+                                                              lambda o: o.get('document_id'))), notes
 
 
 def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None) -> Dict[str, int]:

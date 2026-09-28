@@ -72,7 +72,7 @@ from .files import Attachments
 from .guidelines import in_context as guidelines_in_context
 from .conversation import (ConversationStore, MissingConversation, assistant_item, build_meta, error_item,
                            find_plan, prune, record_budget, settle_plan)
-from .plan import DocumentsBusy, PlanError, documents_to_lock, holding
+from .plan import DocumentsBusy, PlanError, ScopeMoved, documents_to_lock, holding
 from .web import BACKENDS, WebConfig, session_for, ping as ping_search
 
 
@@ -616,23 +616,30 @@ class BaseAssistantService(BaseService):
         failed, the answer to give once the locks are released: it writes the
         conversation record, which must not be written under a lock that may
         have lapsed."""
-        stale = self._stale(client, project, documents)
-        if stale:
+        def out_of_date(reasons):
             # Settled as out of date, so the card stops offering an Approve
             # that can only fail again, and the model is told on the next turn.
-            said = ' '.join(_sentence(s) for s in stale)
+            said = ' '.join(_sentence(s) for s in reasons)
 
             def refuse():
                 settled(settle_plan(conv, index, 'stale',
                                     f'(note) The plan was not applied: {said} Nothing was written.'))
                 response_helper.error(f'Nothing was written. {said} Ask the assistant to plan again.')
             return refuse
+
+        stale = self._stale(client, project, documents)
+        if stale:
+            return out_of_date(stale)
         response_helper.progress(10, 'Applying changes…')
         try:
             counts = self.execute_plan(client, ops, source=service_source(self.service_id),
                                        label=f'Assistant: {summary}', project=project,
                                        stamp_mode=stamp_mode, contributor=contributor,
                                        requester=store.user_id)
+        except ScopeMoved as e:
+            # A corpus-wide change found again reaches documents the plan was
+            # not made over: never checked, never locked, not on the card.
+            return out_of_date(_reach_moved(client, documents, e))
         except PlanError as e:
             if e.applied:
                 self._remember_applied(plan_id)
@@ -737,6 +744,56 @@ def _sentence(text: str) -> str:
     them read as one long clause."""
     text = str(text).strip()
     return text[:1].upper() + text[1:] + ('' if text.endswith('.') else '.')
+
+
+def _document_name(client, documents: list, document_id: str) -> Optional[str]:
+    """A document's name, from the plan's record or else read, or None."""
+    for d in documents or ():
+        if isinstance(d, dict) and d.get('id') == document_id and d.get('name'):
+            return d['name']
+    try:
+        return (client.documents.get(document_id) or {}).get('name') or None
+    except Exception:  # noqa: BLE001 - a name is only for the message
+        return None
+
+
+# Names a message lists before it counts the rest.
+_NAMES_SHOWN = 3
+
+
+def _documents_named(client, documents: list, ids: List[str]) -> str:
+    """Documents as a reader says them: document "A", documents "A" and "B",
+    documents "A", "B", "C" and 4 more."""
+    if len(ids) == 1:
+        return _named(_document_name(client, documents, ids[0]))
+    shown = []
+    for i in ids:
+        if len(shown) == _NAMES_SHOWN:
+            break
+        name = _document_name(client, documents, i)
+        if name:
+            shown.append(f'"{name}"')
+    rest = len(ids) - len(shown)
+    if not shown:
+        return f'{rest} documents'
+    if rest:
+        shown.append(f'{rest} more')
+    return 'documents ' + (shown[0] if len(shown) == 1 else ', '.join(shown[:-1]) + ' and ' + shown[-1])
+
+
+def _reach_moved(client, documents: list, e) -> List[str]:
+    """What a corpus-wide change found again at approval reaches that it did
+    not, and what it no longer reaches, in the reader's words."""
+    out = []
+    if e.gained:
+        many = len(e.gained) > 1
+        out.append(f'{_documents_named(client, documents, e.gained)} now also '
+                   f'{"match" if many else "matches"} a change in the plan')
+    if e.lost:
+        many = len(e.lost) > 1
+        out.append(f'{_documents_named(client, documents, e.lost)} no longer '
+                   f'{"match" if many else "matches"} a change in the plan')
+    return out
 
 
 def _named(name) -> str:

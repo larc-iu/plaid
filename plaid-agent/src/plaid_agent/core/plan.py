@@ -450,6 +450,37 @@ class DocumentsBusy(Exception):
         self.cause = cause
 
 
+class ScopeMoved(Exception):
+    """A change the plan stored as a scope, found again at approval, reaches
+    other documents than it did when the plan was made. ``gained`` are the
+    ids it reaches now and did not, ``lost`` the ones it no longer reaches.
+    Raised before anything is written.
+
+    A document it now reaches was never pinned, checked for staleness or
+    locked, and its change was not on the card the user approved. One it no
+    longer reaches means the card's count is wrong."""
+
+    def __init__(self, gained: List[str], lost: List[str]):
+        super().__init__(f'reaches {gained} it did not and no longer reaches {lost}')
+        self.gained = gained
+        self.lost = lost
+
+
+def check_reach(op: Dict[str, Any], resolved: Iterable[Dict[str, Any]], doc_of) -> None:
+    """Refuse a scope whose resolved changes reach other documents than the
+    ``documents`` it recorded when it was staged. ``doc_of(change)`` is the
+    document a resolved change writes to, or None for one outside any
+    document. A scope that recorded no set names its one document itself,
+    and cannot reach another."""
+    recorded = op.get('documents')
+    if recorded is None:
+        return
+    recorded = set(recorded)
+    now = {doc_of(o) for o in resolved} - {None}
+    if now != recorded:
+        raise ScopeMoved(sorted(now - recorded), sorted(recorded - now))
+
+
 def documents_to_lock(ops: List[Dict[str, Any]], documents: Iterable[Dict[str, Any]] = (),
                       exclude: Iterable[str] = ()) -> List[str]:
     """The documents an approved plan writes, in one order for every caller:

@@ -227,10 +227,14 @@ def resolver(reg: Mapping[str, OpKind], op: Dict[str, Any]) -> Optional[Callable
 
 
 def resolve_ops(reg: Mapping[str, OpKind], ctx: Any, ops: Iterable[Dict[str, Any]],
-                keep: Optional[Callable[[Dict[str, Any]], bool]] = None) -> List[Dict[str, Any]]:
+                keep: Optional[Callable[[Dict[str, Any]], bool]] = None,
+                check: Optional[Callable[[Dict[str, Any], List[Dict[str, Any]]], None]] = None
+                ) -> List[Dict[str, Any]]:
     """``ops`` with every scope replaced, in its place, by the operations it
     stands for. ``ctx`` is whatever the app's resolvers read with, and ``keep``
-    says which of the resolved operations join the plan.
+    says which of the resolved operations join the plan. ``check(scope,
+    resolved)`` sees everything a scope resolved to, before ``keep`` drops
+    any, and raises to refuse the plan.
 
     No kind is named here, so a scope kind added later is resolved by declaring
     a resolver. The loop this replaced dispatched on the name, and a kind it
@@ -242,7 +246,10 @@ def resolve_ops(reg: Mapping[str, OpKind], ctx: Any, ops: Iterable[Dict[str, Any
         if fn is None:
             out.append(op)
             continue
-        out.extend(o for o in fn(ctx, op) if keep is None or keep(o))
+        resolved = list(fn(ctx, op))
+        if check is not None:
+            check(op, resolved)
+        out.extend(o for o in resolved if keep is None or keep(o))
     return out
 
 

@@ -82,7 +82,7 @@ from plaid_client import metadata_ops
 
 from ..core.plan import (CLEAR_PROV, CONFIRM, PlanError, Stamps,  # noqa: F401 - PlanError is re-exported
                          TrackingBatcher, apply_add_comment, apply_restore_document, applying,
-                         created_id, expand_ops)
+                         check_reach, created_id, expand_ops)
 from .vocab import parent_of
 
 # How a kind tags what it does to the shape of the text. RESHAPES is every
@@ -863,8 +863,11 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]],
     # A change the model made by name beats one a scope finds at approval,
     # whichever came first (the scope previewed stored values, not planned).
     explicit = {op_target(op) for op in ops if not ok.resolver(KIND, op)} - {None}
+    # The documents a scope reaches now must be the ones it was pinned to,
+    # checked and locked by: `check_reach` refuses the plan otherwise.
     return ok.resolve_ops(KIND, Resolution(client, project, requester), ops,
-                          lambda o: op_target(o) not in explicit)
+                          lambda o: op_target(o) not in explicit,
+                          check=lambda op, found: check_reach(op, found, lambda o: o.get('doc')))
 
 
 def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, tracker=None) -> Dict[str, int]:
