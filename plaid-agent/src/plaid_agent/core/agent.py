@@ -65,6 +65,10 @@ class ModelConfig:
     # Stream the model's text as it is written (progress events carry the
     # text so far). Off for a provider that misbehaves under streaming.
     stream: bool = True
+    # How many tokens the model can be sent, as the operator stated it
+    # (--context-window). None asks the model library, which knows many
+    # models by name and nothing about one behind a proxy.
+    context_window: Optional[int] = None
 
     def describe(self) -> Dict[str, Any]:
         """Which model answers. The base URL stays out, as it does from the
@@ -399,14 +403,22 @@ def usage_of(resp) -> Optional[Dict[str, int]]:
     return {'sent': sent, 'received': received if isinstance(received, int) else 0}
 
 
-def context_window(model: str) -> Optional[int]:
+def context_window(model: str, stated: Optional[int] = None) -> Optional[int]:
     """How much this model can be sent, or None when that is not known.
 
     An operator can point the assistant at any model litellm can reach,
     including one behind a proxy that litellm has no record of. None means the
     caller must say the count WITHOUT a percentage: a made-up denominator would
     be worse than no denominator, because it reads as a measurement.
+
+    ``stated`` is the operator's own figure (``--context-window``), which wins
+    over litellm's: it is a fact about the deployment in front of them, where
+    litellm's record is about a model of that name somewhere. Nothing else is
+    tried, such as the same model under another provider's name, because that
+    would be a guess.
     """
+    if stated:
+        return stated
     try:
         info = litellm.get_model_info(model) or {}
     except Exception:  # noqa: BLE001 - an unknown model is the normal case, not an error

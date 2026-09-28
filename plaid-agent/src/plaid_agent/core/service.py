@@ -205,6 +205,11 @@ class BaseAssistantService(BaseService):
         parser.add_argument('--temperature', type=float, default=None)
         parser.add_argument('--max-tokens', type=int, default=None)
         add_timeout_argument(parser)
+        parser.add_argument('--context-window', type=_positive_int, default=None, metavar='TOKENS',
+                            help='How many tokens the model can be sent. The conversation gauge shows '
+                                 'how full a conversation is against it and warns near the limit. '
+                                 'Without it the model library\'s figure is used, and a model it does '
+                                 'not know shows a count with no percentage.')
         parser.add_argument('--no-stream', action='store_true',
                             help='Do not stream the reply as it is written (for a provider that misbehaves '
                                  'under streaming); the reply then arrives whole')
@@ -230,7 +235,8 @@ class BaseAssistantService(BaseService):
     def setup(self, args) -> None:
         self.cfg = ModelConfig(model=args.model, api_base=args.api_base, api_key=args.api_key,
                                max_steps=args.max_steps, temperature=args.temperature, max_tokens=args.max_tokens,
-                               stream=not getattr(args, 'no_stream', False), timeout=args.timeout)
+                               stream=not getattr(args, 'no_stream', False), timeout=args.timeout,
+                               context_window=getattr(args, 'context_window', None))
         self.kit = self.toolkit()
         # A provider quotes the key it refused back in its own error text.
         self.REQUEST_SECRETS = provider_secrets(args.api_key)
@@ -252,6 +258,14 @@ class BaseAssistantService(BaseService):
         # it: the one number, so the control and the service cannot disagree.
         self.extras['max_projects'] = MAX_PROJECTS
         print(f'Model: {self.cfg.model}' + (f' via {self.cfg.api_base}' if self.cfg.api_base else ''))
+        window = context_window(self.cfg.model, self.cfg.context_window)
+        if self.cfg.context_window:
+            print(f'  Context window: {window} tokens (--context-window).')
+        elif window:
+            print(f'  Context window: {window} tokens (the model library\'s figure).')
+        else:
+            print('  Context window: unknown, so the conversation gauge shows a count with no '
+                  'percentage. State it with --context-window.')
         # Ask the model one question before registering. A service that cannot
         # reach its model has nothing to offer, and the operator is here NOW.
         started = time.monotonic()
@@ -452,7 +466,7 @@ class BaseAssistantService(BaseService):
         # points the service at a different model.
         usage = dict(turn.usage) if turn.usage else None
         if usage:
-            window = context_window(model)
+            window = context_window(model, self.cfg.context_window)
             if window:
                 usage['window'] = window
         item = assistant_item(turn.text, ws.plan_payload(), self.citations(ws, turn.text),
@@ -597,6 +611,17 @@ class BaseAssistantService(BaseService):
     def _remember_applied(self, plan_id: str) -> None:
         self._applied_plans.append(plan_id)
         del self._applied_plans[:-500]
+
+
+def _positive_int(text: str) -> int:
+    """An argparse type for a count that has to be above zero."""
+    try:
+        n = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f'{text!r} is not a whole number') from None
+    if n <= 0:
+        raise argparse.ArgumentTypeError(f'{n} is not above zero')
+    return n
 
 
 def check_hint(backend) -> str:

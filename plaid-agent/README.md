@@ -143,6 +143,13 @@ then arrives whole. Each model call has a deadline, `--timeout` seconds
 (default 120, the same flag the model services take). A turn whose model does
 not answer in that time fails, and the reader can retry it.
 
+The panel shows how full a conversation is against the model's context
+window and warns near the limit. The window is litellm's figure for the model
+name, and a model litellm does not know (a name served by your own endpoint,
+such as `openai/gpt-oss-120b`) shows a token count with no percentage and no
+warning. State the window with `--context-window TOKENS`, which is used
+instead of litellm's figure. The startup log says which figure is in use.
+
 Each instance registers as `igt:assist:<model>` (override with `--service-id`
 and `--service-name`), so several assistants with different models can be
 online on the same project; the Assistant tab shows a picker. Two instances
