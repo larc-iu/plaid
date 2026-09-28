@@ -34,6 +34,7 @@ from node_exe import node_or_skip
 import pytest
 
 from plaid_client.workflows.umr import parse_penman, serialize_penman, tree_edges
+from plaid_client.workflows.umr.inventory import KNOWN_RELATIONS, node_under_attribute_problem
 from plaid_client.workflows.umr.penman import (next_variable, value_grammar_problem,
                                                written_value_problem)
 
@@ -129,6 +130,15 @@ VALUES = [
     ['  ', ':mod'], ['Big_one', ':mod'],
 ]
 
+#: A relation and the concept of the node it leaves, for
+#: ``node_under_attribute_problem`` against the app's ``nodeUnderAttributeProblem``:
+#: whether a node may stand under it, word for word.
+NODE_UNDER = ([[rel, 'thing'] for rel in sorted(KNOWN_RELATIONS)] + [
+    [':ARG2', 'have-polarity-91'], [':ARG2', 'have-quant-91'], [':op1', 'name'],
+    [':op12', 'name'], [':op2', 'thing'], ['li', None], [':aspect-of', 'thing'],
+    [':mod', 'name'], [' :wiki ', None], [':ARG2', 'have-polarity-91 '],
+])
+
 #: Concepts a service names a node for, with the sentence and the names taken,
 #: for ``next_variable`` against the app's ``nextVariable``: the letter is a to z
 #: only (umr-export-non-ascii-variables), an accented one its base letter.
@@ -168,7 +178,8 @@ def compared():
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, 'cases.json')
         with open(path, 'w', encoding='utf-8') as fh:
-            json.dump({'texts': CASES, 'values': VALUES, 'variables': VARIABLES}, fh,
+            json.dump({'texts': CASES, 'values': VALUES, 'variables': VARIABLES,
+                       'nodeUnder': NODE_UNDER}, fh,
                       ensure_ascii=False)
         run = subprocess.run([node, RUNNER, path], capture_output=True, text=True, timeout=120)
     if run.returncode != 0:
@@ -215,6 +226,15 @@ def test_both_refuse_a_new_value_the_same_way(compared, index):
     (``UmrDocument.attrValueProblem``): the same refusal, word for word."""
     value, rel = VALUES[index]
     assert written_value_problem(value, rel) == compared['written'][index], f'on {value!r}'
+
+
+@pytest.mark.parametrize('index', range(len(NODE_UNDER)), ids=[repr(v)[:30] for v in NODE_UNDER])
+def test_both_refuse_a_node_under_the_same_relations(compared, index):
+    """What the assistant and the draft service refuse a new node under,
+    against what the app's Text mode and canvas refuse."""
+    rel, concept = NODE_UNDER[index]
+    assert node_under_attribute_problem(rel, concept) == compared['nodeUnder'][index], \
+        f'on {rel!r} under {concept!r}'
 
 
 @pytest.mark.parametrize('index', range(len(VARIABLES)), ids=[repr(v)[:30] for v in VARIABLES])

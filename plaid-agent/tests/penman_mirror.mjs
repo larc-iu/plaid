@@ -6,7 +6,8 @@
 // to stdout, or reads `{texts, values, variables}` and writes the same keys, a
 // value's result being what valueGrammarProblem says of `[value, rel]` (and,
 // under `written`, what the editors refuse a new value with) and a
-// variable's what nextVariable names for `[sentence, concept, taken]`. The one
+// variable's what nextVariable names for `[sentence, concept, taken]`, and
+// `nodeUnder` what nodeUnderAttributeProblem says of `[rel, concept]`. The one
 // package the modules import is stubbed below, so this needs no node_modules:
 // `node penman_mirror.mjs cases.json` from anywhere.
 import { readFileSync } from 'node:fs';
@@ -19,7 +20,7 @@ const PENMAN = resolve(HERE, '../../plaid-umr/src/domain/format/penman.js');
 const VALIDATE = resolve(HERE, '../../plaid-umr/src/domain/format/validate.js');
 const { parsePenman, serializePenman, treeEdges, attrValueProblem, nfc } = await import(PENMAN);
 // validate.js imports only its siblings, so this still needs no node_modules.
-const { valueGrammarProblem } = await import(VALIDATE);
+const { valueGrammarProblem, nodeUnderAttributeProblem } = await import(VALIDATE);
 // nextVariable lives in sentenceGraph.js, whose imports reach the client
 // package for helpers nextVariable never calls. A stub stands in for it, so
 // this still runs where plaid-umr has no node_modules.
@@ -83,6 +84,9 @@ process.stdout.write(
           texts: texts.map(shapeOf),
           values: input.values.map(([value, rel]) => valueGrammarProblem(value, rel)),
           written: input.values.map(([value, rel]) => writtenValueProblem(value, rel)),
+          nodeUnder: (input.nodeUnder ?? []).map(([rel, concept]) =>
+            nodeUnderAttributeProblem(rel, concept),
+          ),
           variables: (input.variables ?? []).map(([index, concept, taken]) =>
             nextVariable(index, concept, new Set(taken)),
           ),

@@ -319,6 +319,32 @@ export function valueGrammarProblem(value, rel = null) {
   };
 }
 
+/**
+ * Why a node cannot stand under `rel` from a node whose concept is `concept`,
+ * or null when it can: a list item's relation, an attribute whose values are
+ * a closed set (`:aspect`, `:refer-number`), `:ARG2` of have-polarity-91,
+ * `:wiki` and a name's `:opN` take a value only. These are the places `checkContents` reports a node in
+ * as `unexpected-value`. Every writer refuses a NEW edge there with this
+ * (Text mode, the canvas, and in Python the assistant and the draft service,
+ * `node_under_attribute_problem`); one an import brought is only reported.
+ *
+ * @param {string} rel
+ * @param {string} [concept] the concept of the node the relation leaves
+ * @returns {string|null}
+ */
+export function nodeUnderAttributeProblem(rel, concept = null) {
+  const text = String(nfc(rel) ?? '').trim();
+  const r = text.startsWith(':') ? text : `:${text}`;
+  const valueOnly =
+    LIST_ITEM_ATTRIBUTES.includes(r) ||
+    (r === ':ARG2' && nfc(concept) === 'have-polarity-91') ||
+    // Quoted strings: a Wikidata id, and a name's parts (checkWiki, checkName).
+    r === ':wiki' ||
+    (nfc(concept) === 'name' && OP.test(r)) ||
+    (knownRelation(r)?.values ?? []).length > 0;
+  return valueOnly ? `'${r}' takes a value, not a node.` : null;
+}
+
 const listItemTakes = (rel) =>
   `'${rel}' takes the item's place in the list (-1 for the last) or its label in quotes, such as "(a)".`;
 

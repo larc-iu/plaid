@@ -58,6 +58,7 @@ import {
 } from './format/penman.js';
 import {
   validateDocument,
+  nodeUnderAttributeProblem,
   unknownRelationProblem,
   unknownDocRelationProblem,
   valueGrammarProblem,
@@ -907,7 +908,10 @@ export class UmrDocument extends DocumentModel {
     if (parentId && !role) return false;
     const refused = this._refused(
       conceptProblem(concept),
-      parentId ? this.relationProblem(role) : null,
+      parentId
+        ? this.relationProblem(role) ||
+            nodeUnderAttributeProblem(role, this.node(parentId)?.concept)
+        : null,
       ...attrs.map((a) => this.relationProblem(a.rel) || this.attrValueProblem(a.rel, a.value)),
     );
     if (refused) return false;
@@ -1260,7 +1264,11 @@ export class UmrDocument extends DocumentModel {
     const source = this.node(sourceId);
     const target = this.node(targetId);
     if (!source || !target || !role) return false;
-    if (this._refused(this.relationProblem(role))) return false;
+    if (
+      this._refused(this.relationProblem(role) || nodeUnderAttributeProblem(role, source.concept))
+    ) {
+      return false;
+    }
     if (source.sentence !== target.sentence) {
       this.setError('An edge joins two nodes of one sentence.');
       return false;
@@ -1304,7 +1312,14 @@ export class UmrDocument extends DocumentModel {
     role = nfc(role);
     const edge = this.edge(edgeId);
     if (!edge || !role || edge.role === role) return false;
-    if (this._refused(this.relationProblem(role, { edgeId }))) return false;
+    if (
+      this._refused(
+        this.relationProblem(role, { edgeId }) ||
+          nodeUnderAttributeProblem(role, this.node(edge.source)?.concept),
+      )
+    ) {
+      return false;
+    }
     const label = 'Failed to change the relation';
     if (!this._canWrite(label)) return false;
     // Relabelling a drafted edge settles it, as re-typing a cell does in ud.
@@ -1441,6 +1456,10 @@ export class UmrDocument extends DocumentModel {
       this.setError(`Moving ${edge.role} under ${source.var} would close a cycle.`);
       return false;
     }
+    // Only a move that puts the node where it may not stand: an edge an
+    // import brought under an attribute keeps moving as it came.
+    const was = nodeUnderAttributeProblem(edge.role, this.node(edge.source)?.concept);
+    if (!was && this._refused(nodeUnderAttributeProblem(edge.role, source.concept))) return false;
     const label = 'Failed to move the edge';
     if (!this._canWrite(label)) return false;
     const order = this.nextOrder(source);
@@ -2132,7 +2151,11 @@ export class UmrDocument extends DocumentModel {
             : {};
         const bad =
           this.relationProblem(child.rel, at) ||
-          (child.kind === 'node' ? null : this.attrValueProblem(child.rel, child.value, at));
+          (child.kind !== 'node'
+            ? this.attrValueProblem(child.rel, child.value, at)
+            : at.edgeId
+              ? null
+              : nodeUnderAttributeProblem(child.rel, node.concept));
         if (bad) errors.push({ message: `${v}: ${bad}` });
       });
     });

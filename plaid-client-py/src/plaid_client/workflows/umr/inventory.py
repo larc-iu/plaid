@@ -14,6 +14,7 @@ failing test here rather than a silent drift.
 
 import difflib
 import re
+import unicodedata
 from typing import Dict, Optional, Tuple
 
 #: Every sentence-level relation the validator knows, participant, modifier or
@@ -120,6 +121,26 @@ def list_item_problem(rel, value) -> Optional[str]:
     return (f"The value '{text}' of '{rel}' is neither a number nor a quoted label. '{rel}' "
             "takes the item's place in the list (-1 for the last) or its label in quotes, "
             'such as "(a)".')
+
+
+def node_under_attribute_problem(rel, concept: Optional[str] = None) -> Optional[str]:
+    """Why a node cannot stand under ``rel`` from a node whose concept is
+    ``concept``, or None when it can: a list item's relation, an attribute
+    whose values are a closed set (``:aspect``, ``:refer-number``), ``:ARG2``
+    of have-polarity-91, ``:wiki`` and a name's ``:opN`` take a value only,
+    and Validation reports a node there. What the assistant and the draft
+    service refuse a new node or edge with, word for word as the app's Text
+    mode and canvas refuse it (``nodeUnderAttributeProblem`` in
+    ``validate.js``, held to it by ``plaid-agent/tests/test_penman_mirror.py``)."""
+    rel = _as_relation(unicodedata.normalize('NFC', rel) if isinstance(rel, str) else rel)
+    concept = unicodedata.normalize('NFC', concept) if isinstance(concept, str) else concept
+    base = re.sub(r'-of$', '', rel)
+    value_only = (rel in LIST_ITEM_ATTRIBUTES
+                  or (rel == ':ARG2' and concept == 'have-polarity-91')
+                  or rel == ':wiki'
+                  or (concept == 'name' and bool(_OP.match(rel)))
+                  or base in ATTRIBUTE_VALUES)
+    return f"'{rel}' takes a value, not a node." if value_only else None
 
 
 def attribute_value_problem(rel: str, value) -> Optional[str]:
@@ -249,5 +270,6 @@ def unknown_doc_relation_problem(group: Optional[str], relation) -> Optional[str
 __all__ = ['KNOWN_RELATIONS', 'ATTRIBUTE_RELATIONS', 'ATTRIBUTE_VALUES', 'NODE_ROLES',
            'LIST_ITEM_ATTRIBUTES', 'VALUE_ARGUMENTS', 'ARG_ROLE', 'DOC_RELATIONS',
            'DOC_CONSTANTS', 'GROUPS', 'edge_only', 'list_item_problem',
+           'node_under_attribute_problem',
            'attribute_value_problem', 'is_known_relation', 'nearest',
            'unknown_relation_problem', 'unknown_doc_relation_problem']

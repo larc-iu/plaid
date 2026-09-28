@@ -54,7 +54,8 @@ from plaid_client.workflows.umr import (DraftProgress, anchor_pieces, begin_draf
                                         next_variable, parse_penman, project_language, run_label,
                                         unknown_relation_problem)
 from plaid_client.workflows.umr.inventory import (ATTRIBUTE_VALUES, edge_only,
-                                                  list_item_problem)
+                                                  list_item_problem,
+                                                  node_under_attribute_problem)
 
 DEFAULT_SERVICE_ID = 'umr-draft-llm'
 
@@ -272,6 +273,9 @@ def validate_graph(graph, alignment=None) -> Optional[str]:
             if child.kind == 'node' and child.value not in graph.nodes:
                 return f"{var} {child.rel} names {child.value}, which no node defines."
             if child.kind == 'node':
+                under = node_under_attribute_problem(child.rel, node.concept)
+                if under:
+                    return f"{var}: {under}"
                 continue
             value = str(child.value)
             if edge_only(child.rel, node.concept):

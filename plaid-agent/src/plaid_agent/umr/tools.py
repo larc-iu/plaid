@@ -19,8 +19,9 @@ from plaid_client.workflows.umr import (concept_problem,
                                         new_variable_problem, parse_attribute_line,
                                         relation_form_problem, triple_sentence_number,
                                         unknown_doc_relation_problem,
-                                        unknown_relation_problem, variable_form_problem)
-from plaid_client.workflows.umr.penman import written_value_problem
+                                        unknown_relation_problem, variable_form_problem,
+                                        written_value_problem)
+from plaid_client.workflows.umr.inventory import node_under_attribute_problem
 
 from ..core.limits import OVERVIEW_DOCS, SAMPLE_LINES
 from ..core.tools import ToolError, truncate
@@ -142,7 +143,8 @@ class Workspace(BaseWorkspace):
         if kind == 'set_concept':
             problems.append(concept_problem(op.get('concept')))
         if kind == 'create_edge':
-            problems.append(relation_form_problem(op.get('role')))
+            problems += [relation_form_problem(op.get('role')),
+                         self._node_under_problem(op, doc, replacing)]
         if kind in ('create_node', 'set_attrs'):
             for a in op.get('attrs') or []:
                 if (a.get('rel'), a.get('value')) in stored:
@@ -157,6 +159,28 @@ class Workspace(BaseWorkspace):
         if why:
             var = op.get('var') or op.get('source_var')
             raise ToolError((f'{var}: ' if var else '') + why)
+
+    def _node_under_problem(self, op: Dict[str, Any], doc: Optional[UmrDoc],
+                            replacing: Optional[int] = None) -> Optional[str]:
+        """Why the node a new edge points at cannot stand under its role, as
+        Text mode refuses it (``node_under_attribute_problem``), or None. The
+        source's concept is the one the plan gives it (a node it creates or a
+        concept it sets) before the one stored. An edge re-made for a rename
+        keeps what the stored edge held."""
+        was = _stored_edge(doc, op.get('renamed_edge'))
+        if was is not None and was.role == op.get('role'):
+            return None
+        source = op.get('source_var')
+        concept = None
+        for i, o in enumerate(self.ops + [op]):
+            if i == replacing or o.get('document_id') != op.get('document_id'):
+                continue
+            if o.get('kind') in ('create_node', 'set_concept') and o.get('var') == source:
+                concept = o.get('concept')
+        if concept is None and doc is not None:
+            node = doc.nodes_by_id.get(op.get('source_span_id'))
+            concept = node.concept if node is not None else None
+        return node_under_attribute_problem(op.get('role'), concept)
 
     def _taken_variables(self, doc: UmrDoc, replacing: Optional[int] = None) -> set:
         """Every variable the document holds once this plan is applied, as far
