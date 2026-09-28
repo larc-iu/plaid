@@ -218,3 +218,19 @@ test('stored lines go under the words wherever the file lets that be told', () =
   // Nothing tells which word each of three items belongs to.
   assert.equal(laid[4].perWord, null);
 });
+
+// A merge in IGT moves the dying sentence's translation onto the survivor, so
+// one token carries two. IGT joins them with ` | ` when it next opens the
+// document, and until then UMR showed only the last.
+test('two values of one layer on one token are joined as IGT joins them', () => {
+  const info = layerInfo();
+  info.glossLayers[2].layer.spans.push(
+    { tokens: ['s1'], value: 'The door opened.' },
+    { tokens: ['s1'], value: 'Dogs bark.' },
+  );
+  info.glossLayers[1].layer.spans.push({ tokens: ['w1'], value: 'V' });
+  const lines = ilgLinesFor(sentence(), info, resolveIlg(null, info));
+  const line = (header) => lines.find((l) => l.header === header);
+  assert.equal(line('Sentence Gloss').items.join(' '), 'Dogs bark. | The door opened.');
+  assert.deepEqual(line('Part of Speech').perWord, [['N | V'], ['_']]);
+});

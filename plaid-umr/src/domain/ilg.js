@@ -289,13 +289,21 @@ export const languageCode = (lang) => {
   return /^[a-z]{2,3}$/.test(base) ? base : 'und';
 };
 
-// A span layer's value by the first token of each span.
+// A span layer's value by the first token of each span. Two spans on one
+// token (another app's merge moved a sentence's translation onto the one
+// before) are joined with ` | `, their distinct values in span order, which is
+// what IGT heals them into when it next opens the document
+// (igtReconcile.js planLayerSpanDedup). Keeping the last hid the others, and
+// the two apps showed different glosses until IGT had run.
 function valueByToken(layer) {
   const map = new Map();
   (layer.spans || []).forEach((span) => {
     const first = span.tokens?.[0];
-    if (first != null && span.value != null && span.value !== '')
-      map.set(first, String(span.value));
+    if (first == null || span.value == null || span.value === '') return;
+    const values = map.get(first) ?? [];
+    const value = String(span.value);
+    if (!values.includes(value)) values.push(value);
+    map.set(first, values);
   });
-  return (tokenId) => map.get(tokenId) ?? null;
+  return (tokenId) => map.get(tokenId)?.join(' | ') ?? null;
 }
