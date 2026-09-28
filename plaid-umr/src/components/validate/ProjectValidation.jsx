@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Check } from 'lucide-react';
 import { Badge } from '@ui/components/ui/badge';
+import { Button } from '@ui/components/ui/button';
 import { DataTable } from '@ui/components/shared/data-table.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { ValidationHeader } from '@ui/components/shared/ValidationHeader.jsx';
@@ -52,6 +53,19 @@ export const ProjectValidation = () => {
   const layerInfo = useMemo(() => (project ? getUmrLayerInfo(project) : null), [project]);
   const [problems, setProblems] = useState(null);
   const [busy, setBusy] = useState(false);
+  // The rows whose list of findings is open (a row with `details`: the
+  // temporal contradictions one stated relation sets off). Drawn only when
+  // open, since one wrong relation can set off thousands.
+  const [opened, setOpened] = useState(() => new Set());
+  const toggleOpened = useCallback(
+    (key) =>
+      setOpened((prev) => {
+        const next = new Set(prev);
+        if (!next.delete(key)) next.add(key);
+        return next;
+      }),
+    [],
+  );
 
   const scan = useCallback(async () => {
     if (!client || !layerInfo?.isConfigured) return;
@@ -69,6 +83,7 @@ export const ProjectValidation = () => {
       // apart. Zero-padded, since the table breaks a tie on the key as text
       // and the report's order (by sentence) is the one wanted.
       setProblems((found || []).map((p, i) => ({ ...p, key: String(i).padStart(8, '0') })));
+      setOpened(new Set());
     } catch (err) {
       console.error('Validation scan failed:', err);
       notifyError(err, 'Failed to read the project');
@@ -121,15 +136,36 @@ export const ProjectValidation = () => {
         key: 'message',
         label: 'Problem',
         sort: (p) => p.message?.toLowerCase() ?? '',
-        render: (p) => (
-          <div className="min-w-0">
-            <p>{p.message}</p>
-            {p.code && <code className="text-xs text-muted-foreground">{p.code}</code>}
-          </div>
-        ),
+        render: (p) => {
+          const isOpen = opened.has(p.key);
+          return (
+            <div className="min-w-0">
+              <p>{p.message}</p>
+              {p.code && <code className="text-xs text-muted-foreground">{p.code}</code>}
+              {p.details && (
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="ml-2 h-auto p-0 text-xs"
+                  aria-expanded={isOpen}
+                  onClick={() => toggleOpened(p.key)}
+                >
+                  {isOpen ? 'Hide list' : 'Show list'}
+                </Button>
+              )}
+              {p.details && isOpen && (
+                <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs text-muted-foreground">
+                  {p.details.map((message, i) => (
+                    <li key={i}>{message}</li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          );
+        },
       },
     ],
-    [projectId],
+    [projectId, opened, toggleOpened],
   );
 
   if (loading) return <Loading />;

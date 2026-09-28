@@ -1047,10 +1047,11 @@ class TemporalGraph {
  * Temporal relations that contradict each other once what follows from them
  * is worked out (validate.py's `temporal-mismatch`). Findings come in
  * validate.py's order, one per collision, on the sentence whose document
- * graph states the relation that caused it.
+ * graph states the relation that caused it, and with that relation as
+ * `cause`.
  *
  * @param {Array<object>} sentences
- * @returns {Array<{level, code, message, var?, sentence}>}
+ * @returns {Array<{level, code, message, var?, sentence, cause}>}
  */
 function temporalMismatches(sentences) {
   // The answer turns on the temporal and coreference relations and the
@@ -1123,7 +1124,13 @@ function inferTemporalMismatches(sentences) {
   sentences.forEach((sentence, i) => {
     for (const [a, relation, b] of sentence.docGraph?.temporal ?? []) {
       const node = [a, b].find((v) => VARIABLE.test(v));
-      current = { sentence: indexOf(sentence, i), ...(node ? { var: node } : {}) };
+      // `cause` is the stated relation whose addition found the collision,
+      // which the Validation tab groups a relation's findings by.
+      current = {
+        sentence: indexOf(sentence, i),
+        ...(node ? { var: node } : {}),
+        cause: triple(a, relation, b),
+      };
       temporal.state(a, relation, b, [triple(a, relation, b)]);
     }
   });

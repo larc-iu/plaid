@@ -76,6 +76,11 @@ async function mapLimit(items, limit, work) {
  * A sentence whose graph was kept as text (the import could not read it) gets
  * one ERROR row with the parser's first message, and none for its words: the
  * export writes that text back, and the official validator fails on it.
+ *
+ * The `temporal-mismatch` findings one stated relation sets off are one row,
+ * counted, with the findings themselves as `details`. validate.py reports
+ * each, and one wrong relation that closes a long timeline into a cycle sets
+ * off thousands (2,394 over 300 sentences), each naming its whole chain.
  */
 export function reportOf(doc) {
   const graphless = new Set();
@@ -128,7 +133,7 @@ export function reportOf(doc) {
       rows.push(first);
     }
   });
-  return rows
+  return foldTemporal(rows)
     .map((row) =>
       row.problem
         ? {
@@ -144,6 +149,37 @@ export function reportOf(doc) {
     .map(([p]) => p);
 }
 
+// One row for the temporal contradictions each stated relation sets off, in
+// the place of the first. A relation that sets off one keeps its own message.
+function foldTemporal(rows) {
+  const groups = new Map();
+  const out = [];
+  rows.forEach((row) => {
+    if (row.code !== 'temporal-mismatch' || !row.cause) {
+      out.push(row);
+      return;
+    }
+    const key = `${row.sentence}\u0000${row.cause}`;
+    const group = groups.get(key);
+    if (group) group.push(row);
+    else {
+      const first = [row];
+      groups.set(key, first);
+      out.push(first);
+    }
+  });
+  return out.map((row) => {
+    if (!Array.isArray(row)) return row;
+    const [first] = row;
+    if (row.length === 1) return first;
+    return {
+      ...first,
+      message: `${row.length} contradictions follow from the temporal relation ${first.cause}.`,
+      details: row.map((r) => r.message),
+    };
+  });
+}
+
 /**
  * The official checks over every document of the project.
  *
@@ -155,7 +191,7 @@ export function reportOf(doc) {
  * several reads in flight the documents finish out of order, so `name` is
  * the one that just landed rather than the one being read.
  *
- * @returns {Promise<Array<{ documentId, documentName, sentenceIndex, level, code, message, var }>>}
+ * @returns {Promise<Array<{ documentId, documentName, sentenceIndex, level, code, message, var, details? }>>}
  */
 export async function validateProject(
   client,
@@ -193,6 +229,7 @@ export async function validateProject(
       code: p.code,
       message: p.message,
       var: p.var ?? null,
+      ...(p.details ? { details: p.details } : {}),
     }));
     onProgress?.(++done, candidates.length, summary.name);
     return rows;

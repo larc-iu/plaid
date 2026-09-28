@@ -251,3 +251,82 @@ test('a graph kept as text is one error row with what the parser found, and no w
     ],
   );
 });
+
+test('temporal contradictions are one row per stated relation that sets them off, with the list under it', () => {
+  const t = (sentence, cause, n) => ({
+    sentence,
+    level: 'error',
+    code: 'temporal-mismatch',
+    message: `Contradiction ${n}.`,
+    var: 's4y',
+    cause,
+  });
+  const doc = {
+    graph: { nodesById: new Map() },
+    sentences: [],
+    problems: [
+      { sentence: 2, level: 'error', code: 'unreached', message: 'Not reached.' },
+      t(4, '(s4y :before s1x)', 1),
+      t(4, '(s4y :before s1x)', 2),
+      t(4, '(s4y :before s1x)', 3),
+      t(5, '(s5x :after s4y)', 4),
+    ],
+  };
+  assert.deepEqual(
+    reportOf(doc).map((p) => [p.sentence, p.code, p.var, p.message, p.details]),
+    [
+      [2, 'unreached', undefined, 'Not reached.', undefined],
+      [
+        4,
+        'temporal-mismatch',
+        's4y',
+        '3 contradictions follow from the temporal relation (s4y :before s1x).',
+        ['Contradiction 1.', 'Contradiction 2.', 'Contradiction 3.'],
+      ],
+      [5, 'temporal-mismatch', 's4y', 'Contradiction 4.', undefined],
+    ],
+  );
+});
+
+test('a timeline closed into a cycle reads as a handful of rows', async () => {
+  // Sentence n says s(n-1)y :before snx and snx :before sny, and the last
+  // sentence closes the timeline: validate.py finds 2,394 contradictions.
+  const SEP = '#'.repeat(80);
+  const n = 300;
+  const text = Array.from({ length: n }, (_, i) => {
+    const k = i + 1;
+    const temporal = [
+      i === 0 ? 'document-creation-time :before s1x' : `s${i}y :before s${k}x`,
+      `s${k}x :before s${k}y`,
+      ...(k === n ? [`s${k}y :before s1x`] : []),
+    ];
+    return [
+      SEP,
+      `# :: snt${k}`,
+      'Index: 1 2 3',
+      'Words: and go come',
+      '',
+      '# sentence level graph:',
+      `(s${k}a / and\n    :op1 (s${k}x / go-01\n        :aspect performance)\n    :op2 (s${k}y / come-01\n        :aspect performance))`,
+      '',
+      '# alignment:',
+      `s${k}a: 1-1\ns${k}x: 2-2\ns${k}y: 3-3`,
+      '',
+      '# document level annotation:',
+      `(s${k}s0 / sentence\n    :temporal (${temporal.map((t) => `(${t})`).join('\n        ')}))`,
+      '',
+      '',
+      '',
+    ].join('\n');
+  }).join('');
+  const raw = rawFromPlan(planImport(parseUmrFile(text).sentences, []));
+  const client = {
+    projects: { listDocuments: async () => [{ id: 'd1', name: 'Timeline' }] },
+    documents: { get: async () => raw },
+  };
+  const rows = (await validateProject(client, 'p1')).filter((r) => r.code === 'temporal-mismatch');
+  assert.deepEqual(
+    rows.map((r) => [r.sentenceIndex, r.message, r.details?.length]),
+    [[300, '2394 contradictions follow from the temporal relation (s300y :before s1x).', 2394]],
+  );
+});
