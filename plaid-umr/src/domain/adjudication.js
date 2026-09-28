@@ -9,7 +9,12 @@
 //               scores: { sentence, modal, temporal, coref, comprehensive } }
 //   sentence: { index, at, concept, labeled, unlabeled, weighted, smatch,
 //               matches: [[this, other, thisConcept, otherConcept, leftover]],
-//               unmatched: [var], unmatchedOther: [var], skipped }
+//               unmatched: [var], unmatchedOther: [var], skipped,
+//               thisGraph, otherGraph }
+//
+// `thisGraph` and `otherGraph` are the two graphs the row scored, as
+// `UmrDocument.penmanOf` prints them, so the tab can mark a sentence edited
+// on either side since the comparison.
 //
 // A match is stored as a list because the server caps the keys in a token's
 // metadata, and a long sentence's matches as objects would pass the cap. The
