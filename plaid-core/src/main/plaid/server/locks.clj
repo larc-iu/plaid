@@ -29,7 +29,16 @@
   (or (get-in config [:plaid.server.locks/config :expiration-ms])
       default-lock-expiration-ms))
 
-;; Map of document-id -> {:user-id user-id :expires-at instant}
+;; Map of document-id -> {:lock-id lock-id :user-id user-id :expires-at instant}
+;;
+;; A lock belongs to one HOLDER, named by `:lock-id`, not to a user. Two
+;; holders can share a user id: two assistant turns approving at once, or a
+;; plan and a service run under one person's delegated token. When the lock
+;; was keyed on the user alone, the second acquire was a refresh, both went
+;; ahead, and the first to finish released the lock under the other. So an
+;; acquire names a new holder and is refused while anyone holds the document,
+;; and only the holder's id renews or releases it. Writes carry no lock id: a
+;; write passes for the user who holds the lock and renews it, as before.
 ;;
 ;; The atom itself is held in a `defonce` (mount's `DerefableState`
 ;; doesn't implement IAtom, so it can't back a `swap!` directly). A
@@ -63,49 +72,66 @@
                            (expired? lock-entry))
                          lock-map)))))
 
+(defn new-lock-id
+  "A fresh holder id. It is the only thing that renews or releases the lock it
+  names, so it goes back to the holder alone and is never shown to others."
+  []
+  (str (random-uuid)))
+
+(defn- holds? [lock-entry user-id lock-id]
+  (and (= (:lock-id lock-entry) lock-id)
+       (= (:user-id lock-entry) user-id)))
+
 (defn acquire-lock!
-  "Attempt to acquire a lock for the given document-id and user-id.
-   Returns:
-   - :acquired if lock was successfully acquired
-   - :refreshed if user already held the lock (refreshed)
-   - :conflict if lock is held by another user"
-  [document-id user-id]
-  (let [now (current-time-ms)
-        expires-at (+ now (lock-expiration-ms))
-        [before _]
-        (swap-vals! locks
-                    (fn [lock-map]
-                      (let [existing-lock (get lock-map document-id)]
-                        (if (or (nil? existing-lock)
-                                (expired-at? existing-lock now)
-                                (= (:user-id existing-lock) user-id))
-                          (assoc lock-map document-id {:user-id user-id
-                                                       :expires-at expires-at})
-                          lock-map))))
-        previous-lock (get before document-id)
-        result (cond
-                 (or (nil? previous-lock) (expired-at? previous-lock now)) :acquired
-                 (= (:user-id previous-lock) user-id) :refreshed
-                 :else :conflict)]
-    (case result
-      :acquired (log/debug "Acquired lock for document" document-id "user" user-id)
-      :refreshed (log/debug "Refreshed lock for document" document-id "user" user-id)
-      :conflict (log/debug "Lock conflict for document" document-id
-                           "held by" (:user-id previous-lock) "requested by" user-id))
-    result))
+  "Take the lock on `document-id` for the holder `lock-id`, acting as `user-id`.
+  Without a `lock-id` the acquire is a new holder with a fresh id.
+
+  Returns:
+   - :acquired if the document was free (or its lock had expired), and is now
+     held by `lock-id`
+   - :refreshed if `lock-id` already held it, which extends it
+   - :conflict if another holder has it, whatever its user. The same user
+     acquiring again is a second holder and is refused."
+  ([document-id user-id]
+   (acquire-lock! document-id user-id (new-lock-id)))
+  ([document-id user-id lock-id]
+   (let [now (current-time-ms)
+         expires-at (+ now (lock-expiration-ms))
+         [before _]
+         (swap-vals! locks
+                     (fn [lock-map]
+                       (let [existing-lock (get lock-map document-id)]
+                         (if (or (nil? existing-lock)
+                                 (expired-at? existing-lock now)
+                                 (holds? existing-lock user-id lock-id))
+                           (assoc lock-map document-id {:lock-id lock-id
+                                                        :user-id user-id
+                                                        :expires-at expires-at})
+                           lock-map))))
+         previous-lock (get before document-id)
+         result (cond
+                  (or (nil? previous-lock) (expired-at? previous-lock now)) :acquired
+                  (holds? previous-lock user-id lock-id) :refreshed
+                  :else :conflict)]
+     (case result
+       :acquired (log/debug "Acquired lock for document" document-id "user" user-id)
+       :refreshed (log/debug "Refreshed lock for document" document-id "user" user-id)
+       :conflict (log/debug "Lock conflict for document" document-id
+                            "held by" (:user-id previous-lock) "requested by" user-id))
+     result)))
 
 (defn release-lock!
-  "Release a lock if held by the given user.
+  "Release a lock if it is held by the holder `lock-id` acting as `user-id`.
    Returns:
    - :released if lock was successfully released
-   - :not-held if user didn't hold the lock"
-  [document-id user-id]
+   - :not-held if that holder didn't hold the lock"
+  [document-id user-id lock-id]
   (let [released? (atom false)]
     (swap! locks
            (fn [lock-map]
              (if-let [existing-lock (get lock-map document-id)]
                (if (and (not (expired? existing-lock))
-                        (= (:user-id existing-lock) user-id))
+                        (holds? existing-lock user-id lock-id))
                  (do
                    (reset! released? true)
                    (log/debug "Releasing lock for document" document-id "user" user-id)
@@ -118,7 +144,8 @@
   "Get information about a lock.
    Returns:
    - nil if no lock exists or lock is expired
-   - {:user-id user-id :expires-at expires-at} if lock exists"
+   - {:lock-id lock-id :user-id user-id :expires-at expires-at} if lock exists.
+     Only the holder is ever shown `:lock-id`."
   [document-id]
   (when-let [lock-entry (get @locks document-id)]
     (when-not (expired? lock-entry)
@@ -141,11 +168,24 @@
       (first conflicts))))
 
 (defn refresh-locks!
-  "Refresh locks for the given document IDs if held by the user"
+  "Extend the live locks on the given document IDs that `user-id` holds. A
+  write carries no lock id, so this is the user's write renewing their own
+  holder's lock, which keeps its id."
   [document-ids user-id]
-  (doseq [doc-id document-ids]
-    (when (get-lock-info doc-id)
-      (acquire-lock! doc-id user-id))))
+  (let [now (current-time-ms)
+        expires-at (+ now (lock-expiration-ms))]
+    (swap! locks
+           (fn [lock-map]
+             (reduce (fn [m doc-id]
+                       (let [existing-lock (get m doc-id)]
+                         (if (and existing-lock
+                                  (not (expired-at? existing-lock now))
+                                  (= (:user-id existing-lock) user-id))
+                           (assoc-in m [doc-id :expires-at] expires-at)
+                           m)))
+                     lock-map
+                     document-ids)))
+    nil))
 
 (defn list-locks
   "Every live lock, as `{:document-id :user-id :expires-at}` maps. Expired

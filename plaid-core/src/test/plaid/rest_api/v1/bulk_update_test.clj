@@ -178,11 +178,12 @@
 (deftest a-locked-document-refuses-the-whole-update
   (let [{:keys [proj d1 d2]} (setup)
         _ (assert-no-content (add-project-writer admin-request proj "user1@example.com"))
-        _ (assert-ok (acquire-lock user1-request (:doc d2)))
+        lock-id (-> (acquire-lock user1-request (:doc d2)) :body :lock-id)
         res (bulk-update-spans admin-request [{:id (:s1 d1) :value "X"} {:id (:s1 d2) :value "Y"}])]
+    (is (string? lock-id))
     (assert-status 423 res)
     (is (= "A" (-> (get-span admin-request (:s1 d1)) :body :span/value)) "nothing was written")
-    (release-lock user1-request (:doc d2))))
+    (release-lock user1-request (:doc d2) lock-id)))
 
 (deftest spans-of-two-projects-are-refused
   (let [a (setup)

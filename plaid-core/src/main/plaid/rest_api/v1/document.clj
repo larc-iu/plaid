@@ -287,21 +287,36 @@
                                  :expires-at (:expires-at lock-info)}}
                          {:status 204}))}
 
-      :post {:summary "Acquire or refresh a document lock"
+      :post {:summary (str "Acquire or renew a document lock. Without <body>lock-id</body> this takes the "
+                           "lock as a new holder, and answers 423 while anyone holds it, the same user "
+                           "included. The answer's <body>lock-id</body> names the holder. Sent back as "
+                           "<body>lock-id</body>, it renews that holder's lock. Writes carry no lock id: "
+                           "they pass for the user who holds the lock.")
              :middleware [[pra/wrap-writer-required get-project-id]]
-             :handler (fn [{{{:keys [document-id]} :path} :parameters user-id :user/id}]
-                        (let [result (locks/acquire-lock! document-id user-id)]
-                          (case result
-                            :acquired {:status 200 :body (locks/get-lock-info document-id)}
-                            :refreshed {:status 200 :body (locks/get-lock-info document-id)}
-                            :conflict {:status 423
-                                       :body {:error "Document is locked by another user"
-                                              :user-id (:user-id (locks/get-lock-info document-id))}})))}
+             :parameters {:query [:map [:lock-id {:optional true} [:string {:min 1}]]]}
+             :handler (fn [{{{:keys [document-id]} :path {:keys [lock-id]} :query} :parameters
+                            user-id :user/id}]
+                        (let [lock-id (or lock-id (locks/new-lock-id))
+                              result (locks/acquire-lock! document-id user-id lock-id)
+                              info (locks/get-lock-info document-id)]
+                          ;; Read back only when it is still this holder's, so
+                          ;; a lock force-released and taken again in between
+                          ;; never answers with the new holder's id.
+                          (if (and (not= :conflict result) (= lock-id (:lock-id info)))
+                            {:status 200
+                             :body (select-keys info [:lock-id :user-id :expires-at])}
+                            {:status 423
+                             :body {:error "Document is locked"
+                                    :user-id (:user-id info)}})))}
 
-      :delete {:summary "Release a document lock"
+      :delete {:summary (str "Release a document lock. <body>lock-id</body> is the id the acquire "
+                             "answered with, and only that holder's lock is released. Answers 204 "
+                             "either way.")
                :middleware [[pra/wrap-writer-required get-project-id]]
-               :handler (fn [{{{:keys [document-id]} :path} :parameters user-id :user/id}]
-                          (let [result (locks/release-lock! document-id user-id)]
+               :parameters {:query [:map [:lock-id [:string {:min 1}]]]}
+               :handler (fn [{{{:keys [document-id]} :path {:keys [lock-id]} :query} :parameters
+                              user-id :user/id}]
+                          (let [result (locks/release-lock! document-id user-id lock-id)]
                             (case result
                               :released {:status 204}
                               :not-held {:status 204})))}}]

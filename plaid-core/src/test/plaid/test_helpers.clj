@@ -335,17 +335,28 @@
                              :path (str "/api/v1/projects/" project-id "/writers/" user-id)}))
 
 ;; Lock helpers
-(defn acquire-lock [user-request-fn document-id]
-  (api-call user-request-fn {:method :post
-                             :path (str "/api/v1/documents/" document-id "/lock")}))
+(defn acquire-lock
+  "Take a document's lock as a new holder, or with `lock-id`, renew the lock
+  that id holds."
+  ([user-request-fn document-id]
+   (api-call user-request-fn {:method :post
+                              :path (str "/api/v1/documents/" document-id "/lock")}))
+  ([user-request-fn document-id lock-id]
+   (api-call user-request-fn {:method :post
+                              :path (str "/api/v1/documents/" document-id "/lock?lock-id=" lock-id)})))
 
 (defn check-lock [user-request-fn document-id]
   (api-call user-request-fn {:method :get
                              :path (str "/api/v1/documents/" document-id "/lock")}))
 
-(defn release-lock [user-request-fn document-id]
-  (api-call user-request-fn {:method :delete
-                             :path (str "/api/v1/documents/" document-id "/lock")}))
+(defn release-lock
+  "Release the lock `lock-id` holds. Without an id the request names no holder."
+  ([user-request-fn document-id]
+   (api-call user-request-fn {:method :delete
+                              :path (str "/api/v1/documents/" document-id "/lock")}))
+  ([user-request-fn document-id lock-id]
+   (api-call user-request-fn {:method :delete
+                              :path (str "/api/v1/documents/" document-id "/lock?lock-id=" lock-id)})))
 
 ;; Audit helpers
 (defn- audit-query-string [{:keys [start-time end-time limit cursor op-types order]}]

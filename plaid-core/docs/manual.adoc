@@ -1190,20 +1190,29 @@ Consider:
 ----
 await client2.documents.checkLock(documentId);
 // => HTTP 204
-await client1.documents.acquireLock(documentId);
-// -> { userId: "client1", expiresAt: 1752260966446 }
+const { lockId } = await client1.documents.acquireLock(documentId);
+// -> { lockId: "0b6f…", userId: "client1", expiresAt: 1752260966446 }
 await client2.documents.checkLock(documentId);
 // -> { userId: "client1", expiresAt: 1752260966446 }
-await client1.documents.releaseLock(documentId);
+await client1.documents.renewLock(documentId, lockId);
+// -> { lockId: "0b6f…", userId: "client1", expiresAt: 1752260996446 }
+await client1.documents.releaseLock(documentId, lockId);
 // -> HTTP 204
 await client2.documents.checkLock(documentId);
 // -> HTTP 204
 ----
 
+A lock belongs to the acquire that took it, not to the user.
+While it is held, every other acquire is refused with HTTP 423, one by the same user included, so two runs of one user's work cannot share a lock and one cannot release it under the other.
+The acquire answers with a `lockId`, and only that id renews or releases the lock.
+It is given to the holder alone: `checkLock`, a refused acquire and the admin list of locks name the user who holds the lock, never its id.
+Writes carry no lock id. A write to a locked document passes for the user who holds the lock and renews it. Anyone else's write is refused with HTTP 423.
+
 Locks are useful for situations where a concurrent edit by another user could yield an invalid state with respect to data integrity constraints beyond what is enforced in Plaid's core.
 They should be used only where necessary in order to minimize the risk of invariant violations stemming from concurrent modifications.
 
-Both clients wrap the three calls in a block that holds the lock for the length of the work and releases it on the way out, including on error:
+Both clients wrap these calls in a block that holds the lock for the length of the work and releases it on the way out, including on error.
+The block is one holder, and its handle carries the id as `lock.lockId` (`lock.lock_id` in Python):
 
 [,js]
 ----

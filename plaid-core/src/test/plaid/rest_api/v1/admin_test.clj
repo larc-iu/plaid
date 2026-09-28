@@ -94,7 +94,9 @@
       (let [entries (:entries (:body (admin-get "/locks")))]
         (is (= 1 (count entries)))
         (is (= doc (:document-id (first entries))))
-        (is (= "someone-else@example.com" (:user-id (first entries))))))
+        (is (= "someone-else@example.com" (:user-id (first entries))))
+        (is (not (contains? (first entries) :lock-id))
+            "the holder's id is what renews and releases it, so it stays with the holder")))
 
     (testing "An admin can release a lock they do not hold"
       (let [r (api-call admin-request {:method :delete
