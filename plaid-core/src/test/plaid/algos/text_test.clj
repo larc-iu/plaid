@@ -1100,8 +1100,9 @@
   ;; A zero-width marker at a word's start kept the text typed in front of
   ;; the word inside it, so its first letter stays after the marker. A space
   ;; typed there went into the word too: `café` to ` xcat` left the word
-  ;; token on ` xcat`. Only the space goes in front of the marker, and the
-  ;; same for a space typed after the word, behind a marker at its end.
+  ;; token on ` xcat`. Only the space goes out of the word. Text inserted
+  ;; where a marker stands goes after it, so the marker is left in front of
+  ;; the space. A space typed after the word goes behind a marker at its end.
   (let [on (fn [layer t] (assoc t :token/layer layer))
         spaced? (fn [body {:token/keys [begin end]}] (boolean (re-find #"\s" (cp/cp-subs body begin end))))]
     (doseq [[old new tokens want]
@@ -1116,6 +1117,29 @@
         (is (= new (:text/body text)))
         (is (not-any? #(spaced? new %) (filter (comp #{:w} :token/layer) tokens))
             (str (pr-str old) " -> " (pr-str new) ": " (pr-str (extents tokens))))
+        (is (= want (extents tokens)) (str (pr-str old) " -> " (pr-str new)))))))
+
+(deftest a-word-typed-after-a-word-with-an-end-marker-stays-out-of-it
+  ;; A zero-width marker at a word's end kept every new word typed after a
+  ;; respelled word inside it, when the word's last letter came through: the
+  ;; split only took a new word reaching to the end of the new text. `sat` to
+  ;; `Xat XQ` left the word token on `Xat XQ`. A new word that ends with the
+  ;; old last letter takes the token, and the marker stays at its end. `NY`
+  ;; to `New York` still gives the token to `York`, which holds the `Y`.
+  (let [on (fn [layer t] (assoc t :token/layer layer))]
+    (doseq [[old new tokens want]
+            [["a sat\n" "a Xat XQ\n" [(on :w (tok :a 0 1)) (on :w (tok :sat 2 5)) (on :z (tok :z 5 5))]
+              #{[:a 0 1] [:sat 2 5] [:z 5 5]}]
+             ;; the case the oracle found, beside deleted words
+             ["b sat\n" "Xat XQ\n" [(on :w (tok :b 0 1)) (on :w (tok :sat 2 5)) (on :z (tok :z 5 5))]
+              #{[:sat 0 3] [:z 3 3]}]
+             ;; a letter added after the old last one goes into the word, and the marker to its end
+             ["a sat\n" "a Xats XQ\n" [(on :w (tok :a 0 1)) (on :w (tok :sat 2 5)) (on :z (tok :z 5 5))]
+              #{[:a 0 1] [:sat 2 6] [:z 6 6]}]
+             ["x NY y" "x New York y" [(on :w (tok :ny 2 4)) (on :z (tok :z 4 4))]
+              #{[:ny 6 10] [:z 10 10]}]]]
+      (let [{:keys [text tokens]} (body-edit old new tokens)]
+        (is (= new (:text/body text)))
         (is (= want (extents tokens)) (str (pr-str old) " -> " (pr-str new)))))))
 
 (deftest a-word-deleted-at-the-edge-of-a-token-over-several-words-takes-its-space-along

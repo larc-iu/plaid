@@ -928,12 +928,19 @@
                             (near s s))
         back-ok? (or (not (:tail-kept r))
                      (not-any? (fn [{:token/keys [begin end]}] (= begin end t)) (near t t)))
-        ;; Spaces alone go outside the word whatever stands at its edge: a
-        ;; space typed before a marked word goes in front of its marker, as
-        ;; one typed after a word's marker goes behind it.
+        ;; Spaces alone go outside the word whatever stands at its edge. A
+        ;; space typed before a marked word goes after the marker, as all
+        ;; text inserted where a zero-width token stands does, so the marker
+        ;; is left in front of the space. One typed after a word goes behind
+        ;; a marker at its end.
         blank? (fn [p q] (every? #(ws? (aget v %)) (range p q)))
+        ;; A new word holding the old last letter can take the token even
+        ;; with text after it: the marker at t follows the replace's end,
+        ;; and the text inserted at t goes behind it (`sat` to `Xat XQ`).
+        tail-at (:tail-at r)
+        holds-tail? (fn [p q] (and tail-at (<= p tail-at) (< tail-at q)))
         allowed? (fn [[p q]] (and (or (zero? p) front-ok? (blank? 0 p))
-                                  (or (= q (alength v)) back-ok? (blank? q (alength v)))))]
+                                  (or (= q (alength v)) back-ok? (blank? q (alength v)) (holds-tail? p q))))]
     (if (empty? covering)
       [r]
       (let [before? (< (reduce min (map :token/begin covering)) s)
@@ -1180,10 +1187,18 @@
                               (parts b e)))))
         ;; The edits of `g` as one replace of [b e).
         as-replace (fn [g b e]
-                     {:kind :replace :start b :end e :value (new-text g b e)
-                      ;; the old word's last letter came through
-                      :tail-kept (not-any? #(= e (:end %)) g)
-                      :head-kept (not-any? #(and (:end %) (= b (:start %))) g)})
+                     (let [v (new-text g b e)
+                           ;; the old word's last letter came through
+                           tail-kept (not-any? #(= e (:end %)) g)]
+                       {:kind :replace :start b :end e :value v
+                        :tail-kept tail-kept
+                        ;; where it is in the new text: before what is typed after it
+                        :tail-at (when tail-kept
+                                   (- (cp/cp-count v) 1
+                                      (reduce + 0 (keep #(when (and (= :insert (:kind %)) (= e (:at %)))
+                                                           (cp/cp-count (:value %)))
+                                                        g))))
+                        :head-kept (not-any? #(and (:end %) (= b (:start %))) g)}))
         ;; The edits from i on that make up the whole of [b e), or nil.
         group (fn [i b e]
                 (let [j (loop [j i]
