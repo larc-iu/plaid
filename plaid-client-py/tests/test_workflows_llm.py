@@ -80,6 +80,8 @@ def test_a_reply_carries_its_text_and_its_usage(monkeypatch):
     assert fake.calls[0]['api_base'] == 'http://gpu:8000/v1'
     assert fake.calls[0]['max_tokens'] == 64
     assert fake.calls[0]['timeout'] == llm.DEFAULT_TIMEOUT_S
+    # The provider SDK does not retry on its own under ours.
+    assert fake.calls[0]['max_retries'] == 0
 
 
 def test_the_endpoint_stays_out_of_what_a_row_records():

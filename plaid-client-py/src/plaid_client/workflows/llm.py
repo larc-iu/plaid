@@ -132,6 +132,10 @@ class ChatModel:
         }
         if self.timeout:
             kwargs['timeout'] = self.timeout
+        # The retries are this class's alone. The OpenAI SDK under litellm
+        # otherwise retries a timeout twice more on its own, which tripled
+        # every deadline.
+        kwargs['max_retries'] = 0
         if self.api_base:
             kwargs['api_base'] = self.api_base
         if self.api_key:
