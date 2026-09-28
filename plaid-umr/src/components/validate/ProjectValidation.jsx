@@ -15,6 +15,7 @@ import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { notifyError } from '../../utils/feedback.jsx';
 import { getUmrLayerInfo } from '../../utils/umrLayerUtils.js';
 import { validateProject } from '../../domain/validationQueries.js';
+import { APP_ROUTES } from '../../appRoutes.js';
 
 // What this project's UMR annotation does not satisfy: one row per problem,
 // each naming the document and the sentence it is in.
@@ -23,6 +24,14 @@ import { validateProject } from '../../domain/validationQueries.js';
 // so nothing is refused at write time: an import, a service or the API can
 // store whatever it has, and this is where a maintainer finds out what that
 // was.
+
+// Where a row leads: the sentence it is about, at the node it names, or the
+// document when it is about the document as a whole.
+const problemHref = (projectId, p) => {
+  if (p.sentenceIndex == null) return APP_ROUTES.document(projectId, p.documentId);
+  const at = APP_ROUTES.sentence(projectId, p.documentId, p.sentenceIndex);
+  return p.var ? `${at}&var=${encodeURIComponent(p.var)}` : at;
+};
 
 // A problem's level decides how loud its row is. Anything unrecognized reads
 // as a warning rather than as nothing.
@@ -77,14 +86,10 @@ export const ProjectValidation = () => {
         key: 'document',
         label: 'Document',
         sort: (p) => p.documentName?.toLowerCase() ?? '',
-        // A real anchor: middle-click and cmd-click open the document in a new
-        // browser tab.
+        // A real anchor, to the sentence: middle-click and cmd-click open it
+        // in a new browser tab.
         render: (p) => (
-          <Link
-            to={`/projects/${projectId}/documents/${p.documentId}/annotate`}
-            className="font-medium hover:underline"
-            dir="auto"
-          >
+          <Link to={problemHref(projectId, p)} className="font-medium hover:underline" dir="auto">
             {p.documentName || '(untitled)'}
           </Link>
         ),
@@ -96,7 +101,14 @@ export const ProjectValidation = () => {
         sort: (p) => p.sentenceIndex ?? null,
         // The sentence's number, counting from one, as the editor shows it. A
         // problem about the document as a whole has none.
-        render: (p) => p.sentenceIndex ?? '',
+        render: (p) =>
+          p.sentenceIndex == null ? (
+            ''
+          ) : (
+            <Link to={problemHref(projectId, p)} className="hover:underline">
+              {p.sentenceIndex}
+            </Link>
+          ),
       },
       {
         key: 'level',
