@@ -106,3 +106,28 @@ def test_a_provider_error_on_the_worker_reaches_the_turn(monkeypatch):
     with pytest.raises(ValueError, match='bad request'):
         run_turn(ModelConfig(model='fake/m', stream=False), _kit(), Ws(), 'system',
                  [{'role': 'user', 'content': 'hi'}])
+
+
+def test_a_stopped_stream_that_then_fails_asks_the_provider_nothing_more(monkeypatch):
+    """A streamed call that errors before its first chunk is asked again
+    unstreamed (a provider that refuses to stream). Once the turn is stopped,
+    the call left running on its worker must not make that second request."""
+    release = threading.Event()
+    calls = []
+
+    def refuses_late(**kwargs):
+        calls.append(kwargs.get('stream'))
+        if kwargs.get('stream'):
+            release.wait(30)
+            raise RuntimeError('streaming is not supported')
+        return _resp('unstreamed')
+
+    monkeypatch.setattr(agent.litellm, 'completion', refuses_late)
+    with pytest.raises(TurnCancelled):
+        run_turn(ModelConfig(model='fake/m', stream=True, timeout=120), _kit(), Ws(), 'system',
+                 [{'role': 'user', 'content': 'hi'}], cancelled=_stop_after(0.3))
+    workers = [t for t in threading.enumerate() if t.name == 'model-call']
+    release.set()
+    for t in workers:
+        t.join(5)
+    assert calls == [True], calls

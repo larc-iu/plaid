@@ -277,6 +277,9 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
         if chunks or (_ProviderTimeout and isinstance(e, _ProviderTimeout)) \
                 or isinstance(e, _transient_errors()):
             raise
+        # A call abandoned at a stop asks nothing more of the provider.
+        if abandoned is not None and abandoned.is_set():
+            raise TurnCancelled() from e
         return litellm.completion(**kwargs)
     if text:
         on_text(text)
