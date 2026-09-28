@@ -9,19 +9,16 @@ aligned to no word, which is the kind that records the sentence it belongs to
 token is gone, puts an anchor back over the sentence it drifted off, and
 removes a node left outside every sentence.
 
-The reader here never consults that record. It places a node by where its
-anchor BEGINS (`sentence_of(pieces[0].begin)` in project.py), which is the
-same answer a rebind would arrive at, and a node that begins inside no
-sentence is simply attached to none, which is what a remove leaves behind. So
-an unhealed document reads the same as a healed one, and the app still heals
-it the moment somebody opens it.
-
-The one case both sides would get wrong is an anchor whose begin has drifted
-into a NEIGHBOURING sentence. Core moves a token with the text it covers, so
-that takes a sentence boundary moving across a stale anchor, and the node is
-misplaced by one sentence until the app is opened. Left alone deliberately:
-healing it here means a second copy of the rule in a second language, which is
-the thing the ruling refuses.
+The reader here reads a node as the app's reader does (`buildDocumentGraph`),
+which is the answer the heal arrives at: in the sentence it records while that
+sentence token is alive, unless its anchor begins in a LATER sentence (IGT's
+split keeps a sentence's token, and the record, on new text typed in before
+it), and otherwise where its anchor BEGINS. A record naming a token that is
+gone is what a rebind repairs, and reading by position gives the same
+sentence. A node that begins inside no sentence and records none that is
+alive is attached to none, which is what a remove leaves behind. So an
+unhealed document reads the same as a healed one, and the app still heals it
+the moment somebody opens it.
 """
 
 import copy
@@ -97,12 +94,20 @@ def test_a_node_whose_anchor_drifted_off_its_sentence_stays_in_it():
 def test_a_node_outside_every_sentence_belongs_to_none_and_reads_fine():
     """What the app's remove takes away. Here it lands in no sentence, which
     is the same thing every reader downstream sees, and nothing raises."""
-    document = _load(_with_unaligned((40, 40), 'ms-2'))
+    document = _load(_with_unaligned((40, 40), 'ms-DELETED'))
     sentence, _node_ = _node(document, 's2p')
     assert sentence is None
     # The rest of the document still reads: a stray is ignored, not fatal.
     assert [s.index for s in document.sentences] == [1, 2]
     assert sorted(n.var for n in document.sentences[0].nodes) == ['s1b', 's1d']
+
+
+def test_a_node_outside_every_sentence_that_records_a_live_one_is_in_it():
+    """The app reads it in the sentence it records, and its heal puts the
+    anchor back over that sentence rather than removing the node."""
+    document = _load(_with_unaligned((40, 40), 'ms-2'))
+    sentence, _node_ = _node(document, 's2p')
+    assert sentence is not None and sentence.index == 2
 
 
 @pytest.mark.parametrize('anchor', [SENT_2, (17, 25), (40, 40)])
