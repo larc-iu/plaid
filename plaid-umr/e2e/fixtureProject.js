@@ -11,7 +11,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import PlaidClient from '@larc-iu/plaid-client';
+import PlaidClient, {
+  PLAID_NAMESPACE,
+  PRESERVE_ON_SPLIT_KEY,
+  PROVENANCE_KEYS,
+  ROLE_KEY,
+  ROLES,
+} from '@larc-iu/plaid-client';
 import { createUmrProject } from '../src/domain/umrProjectSetup.js';
 import { importUmrDocument } from '../src/domain/umrImport.js';
 import {
@@ -114,31 +120,132 @@ s1e: 6-6
 
 
 `;
+// How sentence 1 is analyzed, word by word, as an annotator leaves it in IGT:
+// "left" segmented as lef-t, "." never touched, every other word glossed as
+// it stands.
+const GLOSSED_WORDS = [
+  { gloss: 'Lindsay' },
+  {
+    pieces: [
+      { form: 'lef', gloss: 'leave' },
+      { form: 't', gloss: 'PST' },
+    ],
+  },
+  { gloss: 'in' },
+  { gloss: 'order' },
+  { gloss: 'to' },
+  { gloss: 'eat' },
+  { gloss: 'lunch' },
+  null,
+];
+const LEFT = 1;
+
+// The morphemes plaid-igt writes for that analysis (its
+// `domain/mutations/morphemes.js` and `pending.js`). Every morpheme covers the
+// WHOLE of its word, its place in the word is `precedence` from 1, and a
+// segmented word's pieces carry their forms in `metadata.form`. A word glossed
+// without being segmented got its one morpheme when the gloss was written, at
+// precedence 1 with no metadata, so it reads as its word. A word nobody
+// touched has no morpheme at all: IGT derives one for it
+// (`virtualMorpheme.js`) and stores nothing.
+function igtMorphemes(words) {
+  const out = [];
+  words.forEach((w, i) => {
+    const analysis = GLOSSED_WORDS[i];
+    if (!analysis) return;
+    const pieces = analysis.pieces || [{ gloss: analysis.gloss }];
+    pieces.forEach((p, j) =>
+      out.push({
+        word: i,
+        begin: w.begin,
+        end: w.end,
+        precedence: j + 1,
+        metadata: p.form == null ? undefined : { form: p.form },
+        gloss: p.gloss,
+      }),
+    );
+  });
+  return out;
+}
+
+const sameExtent = (a, b) => a.begin === b.begin && a.end === b.end;
+
+// Whether the stored morphemes are the ones `igtMorphemes` writes. An older
+// version of this fixture cut "left" into sub-word tokens with no precedence,
+// a shape IGT never writes, so a project left over from it is rebuilt.
+function hasIgtShape(words, morphemes) {
+  const want = igtMorphemes(words);
+  const key = (m) => `${m.begin}:${m.end}:${m.precedence}:${m.metadata?.form ?? ''}`;
+  const have = morphemes.map((m) => key(m)).sort();
+  return (
+    have.length === want.length &&
+    want
+      .map((m) => key(m))
+      .sort()
+      .every((k, i) => k === have[i])
+  );
+}
+
+// The shared dev core is Luke's: nothing on it is ever deleted. Asked of the
+// request itself, so a run whose requests are routed to a private core (the
+// round runner's shim) counts as private.
+async function reachesSharedDevCore() {
+  const res = await fetch(`${BASE_URL}/api/v1/projects`);
+  return new URL(res.url).port === '8085';
+}
+
+async function createGlossedProject(client) {
+  const created = await createUmrProject(client, GLOSSED_NAME);
+  let project = await client.projects.get(created.id);
+  const info = getUmrLayerInfo(project);
+  // The morpheme layer as IGT's project setup makes it (executeSetup.js):
+  // overlap `any` under the words, since a word's morphemes share its extent.
+  const morphemes = await client.tokenLayers.create(
+    info.textLayer.id,
+    'Main Morphemes',
+    'any',
+    info.wordTokenLayer.id,
+  );
+  const morphemeId = morphemes?.id || morphemes;
+  await client.tokenLayers.setConfig(morphemeId, PLAID_NAMESPACE, ROLE_KEY, ROLES.MORPHEME);
+  await client.tokenLayers.setConfig(morphemeId, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, [
+    ...PROVENANCE_KEYS,
+  ]);
+  const gloss = await client.spanLayers.create(morphemeId, 'Gloss');
+  await client.spanLayers.setConfig(gloss?.id || gloss, 'igt', 'scope', 'Morpheme');
+  await client.spanLayers.setConfig(gloss?.id || gloss, 'igt', 'lang', 'en');
+  const translation = await client.spanLayers.create(info.sentenceTokenLayer.id, 'Translation');
+  await client.spanLayers.setConfig(translation?.id || translation, 'igt', 'scope', 'Sentence');
+  await client.spanLayers.setConfig(translation?.id || translation, 'igt', 'lang', 'en');
+  project = await client.projects.get(project.id);
+  return project;
+}
 
 async function ensureGlossedFixture() {
   const { token } = readToken();
   const client = new PlaidClient(BASE_URL, token);
   let project = await findProjectByName(client, GLOSSED_NAME);
-  if (!project) {
-    const created = await createUmrProject(client, GLOSSED_NAME);
-    project = await client.projects.get(created.id);
-    const info = getUmrLayerInfo(project);
-    const morphemes = await client.tokenLayers.create(
-      info.textLayer.id,
-      'Morphemes',
-      'any',
-      info.wordTokenLayer.id,
-    );
-    const morphemeId = morphemes?.id || morphemes;
-    await client.tokenLayers.setConfig(morphemeId, 'plaid', 'role', 'morpheme');
-    const gloss = await client.spanLayers.create(morphemeId, 'Gloss');
-    await client.spanLayers.setConfig(gloss?.id || gloss, 'igt', 'scope', 'Morpheme');
-    await client.spanLayers.setConfig(gloss?.id || gloss, 'igt', 'lang', 'en');
-    const translation = await client.spanLayers.create(info.sentenceTokenLayer.id, 'Translation');
-    await client.spanLayers.setConfig(translation?.id || translation, 'igt', 'scope', 'Sentence');
-    await client.spanLayers.setConfig(translation?.id || translation, 'igt', 'lang', 'en');
-    project = await client.projects.get(project.id);
+  if (project) {
+    const docs = await client.projects.listDocuments(project.id);
+    const existing = docs.find((d) => d.name === GLOSSED_DOC);
+    if (existing) {
+      const info = getUmrLayerInfo(await client.documents.get(existing.id, true));
+      const words = [...(info.wordTokenLayer?.tokens || [])].sort((a, b) => a.begin - b.begin);
+      const stored = info.morphemeTokenLayer?.tokens || [];
+      if (stored.length && !hasIgtShape(words, stored)) {
+        if (await reachesSharedDevCore()) {
+          throw new Error(
+            `Project "${GLOSSED_NAME}" (${project.id}) holds morphemes of an older fixture, ` +
+              'cut inside their words. This is the shared dev core, so it is left as it is: ' +
+              'run the suite on a private core, or delete the project by hand to rebuild it.',
+          );
+        }
+        await client.projects.delete(project.id);
+        project = null;
+      }
+    }
   }
+  if (!project) project = await createGlossedProject(client);
   const projectId = project.id;
   const info = getUmrLayerInfo(project);
   const docs = await client.projects.listDocuments(projectId);
@@ -147,36 +254,35 @@ async function ensureGlossedFixture() {
     const result = await importUmrDocument(client, projectId, GLOSSED_DOC, GLOSSED_FILE, info);
     doc = result.document;
   }
-  // Sentence 1's morphemes and glosses, as an annotator in IGT would leave
-  // them: "left" as lef-t, everything else one morpheme. Each step is skipped
-  // when a previous run already did it, so a run that failed halfway heals.
+  // Each step below is skipped when a previous run already did it, so a run
+  // that failed halfway heals.
   let raw = await client.documents.get(doc.id, true);
   let full = getUmrLayerInfo(raw);
   const textId = full.textLayer.text.id;
   const words = [...full.wordTokenLayer.tokens].sort((a, b) => a.begin - b.begin);
-  const glosses = ['Lindsay', 'leave', 'PST', 'in', 'order', 'to', 'eat', 'lunch', '.'];
+  const plan = igtMorphemes(words);
   if (!(full.morphemeTokenLayer.tokens || []).length) {
-    const pieces = [];
-    words.forEach((w, i) => {
-      if (i === 1) {
-        pieces.push({ begin: w.begin, end: w.begin + 3 }, { begin: w.begin + 3, end: w.end });
-      } else {
-        pieces.push({ begin: w.begin, end: w.end });
-      }
-    });
     await client.tokens.bulkCreate(
-      pieces.map((pc) => ({ tokenLayerId: full.morphemeTokenLayer.id, text: textId, ...pc })),
+      plan.map((m) => ({
+        tokenLayerId: full.morphemeTokenLayer.id,
+        text: textId,
+        begin: m.begin,
+        end: m.end,
+        precedence: m.precedence,
+        ...(m.metadata ? { metadata: m.metadata } : {}),
+      })),
     );
     raw = await client.documents.get(doc.id, true);
     full = getUmrLayerInfo(raw);
   }
-  const morphemes = [...full.morphemeTokenLayer.tokens].sort((a, b) => a.begin - b.begin);
+  const stored = full.morphemeTokenLayer.tokens;
+  const tokenOf = (m) => stored.find((t) => sameExtent(t, m) && t.precedence === m.precedence).id;
   const glossLayer = full.morphemeTokenLayer.spanLayers.find((l) => l.name === 'Gloss');
   const translationLayer = full.sentenceTokenLayer.spanLayers.find((l) => l.name === 'Translation');
   // One layer per bulk create: the server's rule.
   if (!(glossLayer.spans || []).length) {
     await client.spans.bulkCreate(
-      morphemes.map((m, i) => ({ spanLayerId: glossLayer.id, tokens: [m.id], value: glosses[i] })),
+      plan.map((m) => ({ spanLayerId: glossLayer.id, tokens: [tokenOf(m)], value: m.gloss })),
     );
   }
   if (!(translationLayer.spans || []).length) {
@@ -188,8 +294,9 @@ async function ensureGlossedFixture() {
       },
     ]);
   }
-  // A vocabulary linked to the project, with "left" analyzed as its entry
-  // "leave": what the concept picker offers first for that word.
+  // A vocabulary linked to the project, with the stem of "left" analyzed as
+  // its entry "leave", on the morpheme as IGT links it: what the concept
+  // picker offers first for that word.
   const LEXICON_NAME = 'E2E UMR Lexicon';
   let vocab = (await client.vocabLayers.list()).find((v) => v.name === LEXICON_NAME);
   if (!vocab) {
@@ -206,10 +313,11 @@ async function ensureGlossedFixture() {
   }
   const items = (await client.vocabLayers.get(vocab.id, true)).items || [];
   const leave = items.find((it) => it.form === 'leave');
-  const linkedAlready = (full.wordTokenLayer.vocabs || []).some((v) =>
+  const stem = tokenOf(plan.find((m) => m.word === LEFT && m.precedence === 1));
+  const linkedAlready = (full.morphemeTokenLayer.vocabs || []).some((v) =>
     (v.vocabLinks || []).some((l) => l.vocabItem?.id === leave.id),
   );
-  if (!linkedAlready) await client.vocabLinks.create(leave.id, [words[1].id]);
+  if (!linkedAlready) await client.vocabLinks.create(leave.id, [stem]);
   return { projectId, documentId: doc.id };
 }
 

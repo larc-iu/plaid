@@ -25,9 +25,9 @@ test("glosses from the project's layers show under the words and export", async 
   await expect(block.locator('.umr-ilg-items')).toHaveText('Lindsay went off to have lunch.');
   await block.screenshot({ path: process.env.UMR_GLOSS_SHOT || 'test-results/glosses.png' });
 
-  // The vocabulary is a lexicon: "left" is linked to the entry "leave", so
-  // the concept picker on its node offers that entry first, with its gloss,
-  // and typing finds the entry that names a roleset.
+  // The vocabulary is a lexicon: the stem of "left" is linked to the entry
+  // "leave", so the concept picker on its node offers that entry first, with
+  // its gloss, and typing finds the entry that names a roleset.
   const leave = block.locator('.umr-node').filter({ hasText: 'leave-02' }).first();
   await leave.click();
   await page.keyboard.press('Enter');
@@ -43,6 +43,6 @@ test("glosses from the project's layers show under the words and export", async 
   await page.goto(`/#/projects/${projectId}/documents/${documentId}/export`);
   const out = page.locator('pre, textarea').first();
   await expect(out).toContainText('Morphemes: Lindsay lef t in order to eat lunch .');
-  await expect(out).toContainText('Morpheme Gloss (en): Lindsay leave PST in order to eat lunch .');
+  await expect(out).toContainText('Morpheme Gloss (en): Lindsay leave PST in order to eat lunch _');
   await expect(out).toContainText('Sentence Gloss (en): Lindsay went off to have lunch.');
 });
