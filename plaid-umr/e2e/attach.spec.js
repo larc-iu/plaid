@@ -70,10 +70,10 @@ test('a file lands on the words of a document that has them', async () => {
     expect(doc.toUmr()).toContain(':ARG0 (s1d / dog)');
     expect(doc.toUmr()).toContain('(author :full-affirmative s1b)');
 
-    // Twice is refused: it holds nodes now.
+    // Twice is refused: it has a graph now.
     await expect(
       importUmrDocument(client, projectId, name, FILE, layerInfo, { into: first.document.id }),
-    ).rejects.toThrow(/already holds/);
+    ).rejects.toThrow(/already has a graph/);
 
     // Different words are refused before anything is written.
     const other = await importUmrDocument(
