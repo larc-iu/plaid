@@ -91,3 +91,22 @@ describe('the splitter', () => {
     await view.unmount();
   });
 });
+
+// The splitter closed only when the pointer left the word, so a pointer
+// resting on it kept the scissors up and a Ctrl+click there landed on a letter.
+describe('Escape on the splitter', () => {
+  const press = (key) =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+
+  it('closes it, wherever focus is', async () => {
+    const word = { id: 'w2', begin: 0, end: 5, content: 'Plaid', isToken: true };
+    const view = await mount({}, { piece: word, sentence: { id: 's1', pieces: [word] } });
+    await view.step(() => click(view.container.querySelector('.token')));
+    await view.step(() => press('a'));
+    expect(view.container.querySelector('.splitter-box')).not.toBeNull();
+    await view.step(() => press('Escape'));
+    expect(view.container.querySelector('.splitter-box')).toBeNull();
+    expect(view.container.querySelector('.token')).not.toBeNull();
+    await view.unmount();
+  });
+});

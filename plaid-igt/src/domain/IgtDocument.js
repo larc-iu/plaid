@@ -627,7 +627,21 @@ export class IgtDocument extends DocumentModel {
     }
     const label = 'Failed to split token';
     if (!this._canWrite(label)) return false;
-    const leftEnd = token.begin + splitOffset + 1;
+    // A split next to whitespace (scissors either side of the space in a word
+    // merged over two) goes around the whole run of it, so neither half
+    // begins or ends with a space: the right half starts after the run and
+    // the left half is trimmed back to its start. Offsets are code points.
+    const at = token.begin + splitOffset + 1;
+    const cps = Array.from(this.body);
+    const ws = (i) => /\s/u.test(cps[i] ?? '');
+    let leftEnd = at;
+    let rightBegin = at;
+    while (leftEnd > token.begin && ws(leftEnd - 1)) leftEnd -= 1;
+    while (rightBegin < token.end && ws(rightBegin)) rightBegin += 1;
+    if (leftEnd === token.begin || rightBegin === token.end) {
+      leftEnd = at;
+      rightBegin = at;
+    }
     const coincident = (info.morphemeTokenLayer?.tokens || [])
       .filter((m) => m.begin === token.begin && m.end === token.end)
       .map((m) => m.id);
@@ -650,7 +664,7 @@ export class IgtDocument extends DocumentModel {
           infoNext.primaryTokenLayer.tokens = [];
         infoNext.primaryTokenLayer.tokens.push({
           id: rightId,
-          begin: leftEnd,
+          begin: rightBegin,
           end: token.end,
           metadata: rightMetadata ? { ...rightMetadata } : {},
         });
@@ -668,10 +682,11 @@ export class IgtDocument extends DocumentModel {
       const id = settledId(tokenId);
       const results = await this._client.batched(async (b) => {
         if (coincident.length > 0) b.tokens.bulkDelete(coincident.map(settledId));
-        b.tokens.split(id, leftEnd);
+        b.tokens.split(id, rightBegin);
+        if (leftEnd < rightBegin) b.tokens.update(id, undefined, leftEnd);
       });
-      // `tokens.split` is the last queued op; its body is `{ id: <new right id> }`.
-      const newRightTokenId = createdId(results[results.length - 1]);
+      // The body of `tokens.split` is `{ id: <new right id> }`.
+      const newRightTokenId = createdId(results[coincident.length > 0 ? 1 : 0]);
       if (leftPatch || (newRightTokenId && rightMetadata)) {
         await this._client.batched(async (b) => {
           if (leftPatch) b.tokens.patchMetadata(id, metadataOps(leftPatch));

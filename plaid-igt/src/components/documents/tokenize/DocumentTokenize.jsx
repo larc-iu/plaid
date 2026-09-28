@@ -612,6 +612,16 @@ function TokenSplitter({ ops, token, close }) {
     await ops.splitToken(token.id, wordOffset);
   }
 
+  // Escape closes it, wherever focus is: it is open while the pointer rests
+  // on the word, and a pointer left there kept it up.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') close();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [close]);
+
   // The letters are boxes in a flex row, which orders them by its direction,
   // so the box takes the word's own: a Latin word or a number in an Arabic
   // sentence reads left to right, as it does in the row around it.

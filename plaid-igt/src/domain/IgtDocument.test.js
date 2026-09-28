@@ -544,12 +544,49 @@ describe('word-token structural ops', () => {
       body: 'the cat',
     });
     const doc = makeDoc({ raw });
-    await doc.splitToken('w-1', 2); // split after index 2 -> leftEnd = 0+2+1 = 3
+    await doc.splitToken('w-1', 1); // split after index 1 -> leftEnd = 0+1+1 = 2
     const toks = doc.sentences[0].tokens;
     expect(toks).toHaveLength(2);
-    expect(toks[0].end).toBe(3);
-    expect(toks[1].begin).toBe(3);
+    expect(toks[0].end).toBe(2);
+    expect(toks[1].begin).toBe(2);
     expect(toks[1].end).toBe(7);
+  });
+
+  // Scissors either side of a space in a word merged over two: the split goes
+  // around the space, so neither half begins or ends with it.
+  it.each([
+    ['before the space', 2, 3, 4],
+    ['after the space', 3, 3, 4],
+    ['inside a run of spaces', 3, 3, 5],
+  ])('splitToken %s leaves the space out of both halves', async (_where, offset, end, begin) => {
+    const body = begin === 5 ? 'the  cat' : 'the cat';
+    const raw = buildRawDoc({
+      words: [{ id: 'w-1', begin: 0, end: body.length }],
+      morphemes: [],
+      body,
+    });
+    const doc = makeDoc({ raw });
+    await doc.splitToken('w-1', offset);
+    const toks = doc.sentences[0].tokens;
+    expect(toks.map((t) => [t.begin, t.end])).toEqual([
+      [0, end],
+      [begin, body.length],
+    ]);
+    const split = doc._client.calls.find((c) => c.kind === 'tokens.split');
+    const update = doc._client.calls.find((c) => c.kind === 'tokens.update');
+    expect(split.args[1]).toBe(begin);
+    expect(update.args.slice(1, 3)).toEqual([undefined, end]);
+  });
+
+  it('splitToken counts the space in code points after an astral letter', async () => {
+    const body = '𐌰𐌱 cat';
+    const raw = buildRawDoc({ words: [{ id: 'w-1', begin: 0, end: 6 }], morphemes: [], body });
+    const doc = makeDoc({ raw });
+    await doc.splitToken('w-1', 1);
+    expect(doc.sentences[0].tokens.map((t) => [t.begin, t.end])).toEqual([
+      [0, 2],
+      [3, 6],
+    ]);
   });
 
   // The server gives the new half no metadata and leaves the old half's alone,
