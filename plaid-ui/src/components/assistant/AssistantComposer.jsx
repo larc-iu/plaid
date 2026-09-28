@@ -212,7 +212,7 @@ export const AssistantComposer = ({
               ? 'No assistant online'
               : pendingPlan
                 ? 'Approve or discard the plan above, or keep talking'
-                : 'Message the assistant… (Enter to send, Shift+Enter for a new line)'
+                : 'Message the assistant… (Shift+Enter for a new line)'
           }
           disabled={!canSend}
           rows={2}

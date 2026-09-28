@@ -91,7 +91,10 @@ export const PlanCard = ({
             : `${rewrites} changes rewrite ${adapter.textName}.`}
         </p>
       )}
-      <div className="mt-1 max-h-80 overflow-auto">
+      {/* A size container, so a row's place can be held to a share of the
+          card's own width: the panel is narrow and the tab is wide, and a
+          fixed cap left the change itself one letter wide in the panel. */}
+      <div className="mt-1 max-h-80 overflow-auto [container-type:inline-size]">
         <table className="w-full border-collapse text-xs leading-5">
           <tbody>
             {shown.groups.map((g) => (
@@ -132,7 +135,7 @@ export const PlanCard = ({
         </button>
       )}
       {undecided && (
-        <div className="mt-2 flex items-center gap-2">
+        <div className="mt-2 flex flex-wrap items-center gap-2">
           {canWrite ? (
             <Button type="button" size="sm" onClick={() => onApprove({ asHuman })} disabled={busy}>
               {lost ? (
@@ -154,7 +157,7 @@ export const PlanCard = ({
           {canWrite && !contributor && (
             <label
               htmlFor={humanId}
-              className="ml-auto flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground"
+              className="ml-auto flex cursor-pointer items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground"
               title="By default the changes are recorded as made by the assistant and verified by you. Tick this to record them as if you had made them yourself (no machine provenance)."
             >
               <input
@@ -189,7 +192,7 @@ const ChangeRow = ({ row, projectId, adapter }) => {
   return (
     <tr className="align-top">
       <td className="w-px whitespace-nowrap py-0.5 pr-4">
-        <span className="inline-block max-w-[18rem] truncate align-bottom">
+        <span className="inline-block max-w-[min(18rem,40cqi)] truncate align-bottom">
           {place && (
             <>
               {place.href ? (
