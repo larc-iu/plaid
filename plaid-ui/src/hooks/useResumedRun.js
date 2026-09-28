@@ -59,6 +59,18 @@ export function useResumedRun(client, doc, acquireWriteLock) {
             `${record.label} was interrupted. The step that was running finished. The ones after it did not.`,
             record.label,
           );
+        } else if (result?.notice) {
+          // The service's own words, as the page that started the run would
+          // have shown them (useServiceRequest's `succeed`): a run that failed
+          // every item still comes back a success, and only its notice says
+          // so. A sticky one names what failed and stays until dismissed.
+          const { level, title, message, sticky } = result.notice;
+          const say = level === 'success' ? notifySuccess : notifyWarning;
+          say(
+            message || `${record.label} finished.`,
+            title || record.label,
+            ...(sticky === true ? [{ duration: Infinity }] : []),
+          );
         } else {
           notifySuccess(`${record.label} finished.`, record.label);
         }
