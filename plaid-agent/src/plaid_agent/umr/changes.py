@@ -23,8 +23,22 @@ def describe_changes(ws, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def describe_change(ws, op: Dict[str, Any]) -> Dict[str, Any]:
-    return {'label': op.get('label') or '', 'where': locate(ws, op),
+    label = op.get('label') or ''
+    return {'label': label, 'where': locate(ws, op), 'change': _change(op, label),
             'writes_text': op.get('kind') in _PROSE_KINDS}
+
+
+def _change(op: Dict[str, Any], label: str) -> Optional[str]:
+    """The change as the card's second cell says it, beside the place. A row
+    located at a node already names the node in its first cell, so a label
+    that opens with the same variable ("s3s: no attributes") drops it there.
+    None (show the label whole) for everything else, a phrase of its own such
+    as "add (s3s / say-01)" included. The label itself stays whole for the
+    export, which has no first cell."""
+    var = op.get('var')
+    if var and op.get('sentence') and label.startswith(f'{var}: '):
+        return label[len(var) + 2:]
+    return None
 
 
 def locate(ws, op: Dict[str, Any]) -> Optional[Dict[str, Any]]:

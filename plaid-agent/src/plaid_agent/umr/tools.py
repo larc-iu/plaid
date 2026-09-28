@@ -421,6 +421,14 @@ def _end(ws: Workspace, doc: UmrDoc, name: str, side: str) -> Dict[str, Any]:
                     + ', '.join(DOC_CONSTANTS) + '.')
 
 
+def _later_end(a: Optional[GNode], b: Optional[GNode]) -> Optional[GNode]:
+    """The end of a triple in the LATER sentence, which is where the app writes
+    a cross-sentence triple (in that sentence's block), so the card files it
+    there too. A constant (no sentence) loses to any node."""
+    ends = [n for n in (a, b) if n is not None]
+    return max(ends, key=lambda n: n.sentence or 0) if ends else None
+
+
 def t_add_triple(ws: Workspace, document: str = None, a: str = None, rel: str = None,
                  b: str = None, group: str = None, sentence=None) -> str:
     doc = ws.doc(document)
@@ -479,7 +487,7 @@ def t_add_triple(ws: Workspace, document: str = None, a: str = None, rel: str = 
         op['sentence_id'] = s.id
         op['ref'] = f's{s.index}'
     else:
-        anchor = source['node'] or target['node']
+        anchor = _later_end(source['node'], target['node'])
         if anchor is not None and anchor.sentence:
             op['sentence'] = anchor.sentence
             op['sentence_id'] = doc.sentences[anchor.sentence - 1].id
@@ -506,8 +514,8 @@ def t_delete_triple(ws: Workspace, document: str = None, a: str = None, rel: str
     op: Dict[str, Any] = {
         'kind': 'delete_triple', 'document_id': doc.id, 'relation_id': found.id,
         'label': f'remove ({source["var"]} {found.rel} {target["var"]})'}
-    anchor = source['node'] if source['node'].sentence else target['node']
-    if anchor.sentence:
+    anchor = _later_end(source['node'], target['node'])
+    if anchor is not None and anchor.sentence:
         op['sentence'] = anchor.sentence
         op['sentence_id'] = doc.sentences[anchor.sentence - 1].id
         op['ref'] = f's{anchor.sentence}.{anchor.var}'

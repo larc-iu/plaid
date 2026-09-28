@@ -315,9 +315,57 @@ def test_the_plan_card_places_every_change(ws):
     run(ws, 'set_attributes', document='Story', sentence=2, var='s2r', line=':aspect process')
     rows = ws.plan_payload()['changes']
     assert [r['where']['kind'] for r in rows] == ['token', 'token']
-    assert rows[0]['where']['sentence_id'] == 'ms-1'
+    # A cross-sentence triple is filed under the LATER sentence, whose block
+    # the app writes it in, not under its source's.
+    assert rows[0]['where']['sentence'] == 2 and rows[0]['where']['ref'] == 's2.s2r'
     assert rows[1]['where']['surface'] == 's2r'
     assert rows[1]['where']['ref'] == 's2.s2r'
+
+
+def test_a_node_row_does_not_name_its_node_twice(ws):
+    """The row's place already names the node, so the change beside it drops
+    the variable its label opens with. The label stays whole for the export."""
+    run(ws, 'set_attributes', document='Story', sentence=2, var='s2r', line=':aspect process')
+    row = ws.plan_payload()['changes'][0]
+    assert row['label'] == 's2r: attributes :aspect process'
+    assert row['change'] == 'attributes :aspect process'
+
+
+def test_a_row_that_is_a_phrase_of_its_own_is_shown_whole(ws):
+    run(ws, 'add_triple', document='Story', a='s1b', rel=':before', b='s2r')
+    row = ws.plan_payload()['changes'][0]
+    assert row['change'] is None and row['label'] == '(s1b :before s2r)'
+
+
+def test_a_triple_is_placed_in_its_later_sentence_whichever_end_comes_first(ws):
+    run(ws, 'add_triple', document='Story', a='s2r', rel=':after', b='s1b')
+    run(ws, 'delete_triple', document='Story', a='s2t', rel=':same-entity', b='s1d')
+    assert [(op['sentence'], op['ref']) for op in ws.ops] == [(2, 's2.s2r'), (2, 's2.s2t')]
+
+
+def test_a_folded_group_says_what_it_does_and_names_each_node():
+    """Twenty deletions used to fold into "20 changes to the graph (s3.s3a2,
+    ...)", which never said they were removals or named a concept."""
+    from plaid_agent.core.opkind import compact_spec
+    from plaid_agent.core.plan import compact_ops
+    from plaid_agent.umr.plan import KIND
+
+    def node(i):
+        return {'kind': 'delete_node', 'document_id': 'd1', 'ref': f's3.s3x{i}', 'span_id': f'sp{i}',
+                'var': f's3x{i}', 'token_ids': [f't{i}'], 'relation_ids': [],
+                'label': f'remove (s3x{i} / thing-{i})'}
+
+    def concept(i):
+        return {'kind': 'set_concept', 'document_id': 'd1', 'ref': f's3.s3x{i}', 'span_id': f'sp{i}',
+                'var': f's3x{i}', 'concept': 'go-02', 'label': f's3x{i}: go-01 becomes go-02'}
+
+    spec = compact_spec(KIND)
+    [removed] = compact_ops([node(i) for i in range(20)], spec)
+    assert removed['label'] == ('remove 20 nodes: (s3x0 / thing-0), (s3x1 / thing-1), (s3x2 / thing-2), '
+                                '(s3x3 / thing-3), (s3x4 / thing-4), (s3x5 / thing-5), (s3x6 / thing-6), '
+                                '(s3x7 / thing-7), … 12 more')
+    [changed] = compact_ops([concept(i) for i in range(13)], spec)
+    assert changed['label'].startswith('change 13 concepts: s3x0: go-01 becomes go-02, ')
 
 
 def test_what_run_code_sees_speaks_the_same_references_as_the_tools(ws):

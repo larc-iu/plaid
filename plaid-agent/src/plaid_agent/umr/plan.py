@@ -15,7 +15,7 @@ That is the order ``umrImport.js`` writes a document in, and the order
 
 import re
 from collections import Counter
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from plaid_client import created_id, created_ids, metadata_ops
 
@@ -224,14 +224,26 @@ def _attrs_scope_summary(op, n):
 
 # --- what a group of like ops reads as ----------------------------------------
 
-def _refs_phrase(members, limit: int = 8) -> str:
-    refs = [m.get('ref') for m in members if m.get('ref')]
-    shown = ', '.join(refs[:limit])
-    return shown + (f', … {len(refs) - limit} more' if len(refs) > limit else '')
+def _labels_phrase(members, drop: str = '', limit: int = 8) -> str:
+    """The members' own lines, so a folded row still names each node and its
+    concept ("(s3d / die-01)") rather than only where it is. ``drop`` is the
+    verb every member's line starts with, said once for the group instead."""
+    lines = []
+    for m in members:
+        line = m.get('label') or m.get('ref') or ''
+        lines.append(line[len(drop):] if drop and line.startswith(drop) else line)
+    shown = ', '.join(lines[:limit])
+    return shown + (f', … {len(lines) - limit} more' if len(lines) > limit else '')
 
 
-def _group_label(first, members) -> str:
-    return f'{len(members)} changes to the graph ({_refs_phrase(members)})'
+def _kind_label(verb: str, noun: Tuple[str, str], drop: str = ''):
+    """A folded group's line, saying what the group does: "remove 20 nodes:
+    (s3a2 / and), (s3d / die-01), …". One generic line for every kind hid
+    that a group was twenty deletions."""
+    def label(first, members) -> str:
+        n = len(members)
+        return f'{verb} {n} {noun[0] if n == 1 else noun[1]}: {_labels_phrase(members, drop)}'
+    return label
 
 
 # --- the registry --------------------------------------------------------------
@@ -258,7 +270,7 @@ KIND = ok.registry([
            deletes=lambda op: [op.get('span_id')] + list(op.get('relation_ids') or []),
            deletes_tokens=lambda op: list(op.get('token_ids') or []),
            compact_each=('span_id', 'token_ids', 'relation_ids', 'var', 'ref', 'label'),
-           compact_label=_group_label),
+           compact_label=_kind_label('remove', ('node', 'nodes'), drop='remove ')),
     # `relation_id` is named as something the op NEEDS as well as something it
     # removes: a single relation delete of an id already gone is a 404 that
     # takes its whole batch with it, so a plan holding this and a node delete
@@ -270,7 +282,7 @@ KIND = ok.registry([
            token_keys=('relation_id',),
            deletes=lambda op: [op['relation_id']],
            compact_each=('relation_id', 'source', 'target', 'ref', 'label'),
-           compact_label=_group_label),
+           compact_label=_kind_label('remove', ('relation', 'relations'), drop='remove ')),
     OpKind('delete_triple', ('removed document-level relation',
                              'removed document-level relations'),
            required=('relation_id',), apply=_apply_delete_relation,
@@ -279,11 +291,12 @@ KIND = ok.registry([
            deletes=lambda op: [op['relation_id']]),
     OpKind('set_concept', _CONCEPT, required=('span_id',), apply=_apply_set_concept,
            target=lambda op: ('concept', op.get('span_id')), token_keys=('span_id',),
-           compact_each=('span_id', 'var', 'concept', 'ref', 'label'), compact_label=_group_label),
+           compact_each=('span_id', 'var', 'concept', 'ref', 'label'),
+           compact_label=_kind_label('change', ('concept', 'concepts'))),
     OpKind('set_attrs', _ATTRS, required=('span_id',), apply=_apply_span_meta,
            target=lambda op: ('attrs', op.get('span_id')), token_keys=('span_id',),
            compact_each=('span_id', 'var', 'attrs', 'umr_set', 'ref', 'label'),
-           compact_label=_group_label),
+           compact_label=_kind_label('set attributes on', ('node', 'nodes'))),
     OpKind('set_root', _ROOT, required=('span_id',), apply=_apply_span_meta,
            target=lambda op: ('root-on', op.get('span_id')), token_keys=('span_id',)),
     OpKind('unset_root', _ROOT, required=('span_id',), apply=_apply_span_meta,
@@ -291,12 +304,13 @@ KIND = ok.registry([
     OpKind('set_edge_order', ('relation order', 'relation orders'), required=('relation_id',),
            apply=_apply_set_edge_order, target=lambda op: ('order', op.get('relation_id')),
            token_keys=('relation_id',),
-           compact_each=('relation_id', 'order', 'ref', 'label'), compact_label=_group_label),
+           compact_each=('relation_id', 'order', 'ref', 'label'),
+           compact_label=_kind_label('reorder', ('relation', 'relations'))),
     OpKind('create_node', _NODE, required=('var', 'node_layer_id', 'concept_layer_id', 'text_id'),
            apply=_apply_create_node,
            target=lambda op: ('new-node', op.get('document_id'), op.get('var')),
            compact_each=('var', 'concept', 'attrs', 'begin', 'end', 'root', 'ref', 'label'),
-           compact_label=_group_label),
+           compact_label=_kind_label('add', ('node', 'nodes'), drop='add ')),
     OpKind('create_edge', _EDGE, stage=LINKS, required=('relation_layer_id', 'role'),
            apply=_apply_create_edge,
            target=lambda op: ('new-edge', op.get('document_id'), op.get('source_var'),
@@ -304,7 +318,7 @@ KIND = ok.registry([
            token_keys=('source_span_id', 'target_span_id'),
            compact_each=('source_var', 'target_var', 'role', 'order', 'source_span_id',
                          'target_span_id', 'ref', 'label'),
-           compact_label=_group_label),
+           compact_label=_kind_label('add', ('relation', 'relations'))),
     OpKind('create_triple', _TRIPLE, stage=LINKS,
            required=('document_graph_layer_id', 'rel', 'group'), apply=_apply_create_triple,
            target=lambda op: ('new-triple', op.get('document_id'), op.get('source_var'),
