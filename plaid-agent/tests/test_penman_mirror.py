@@ -99,6 +99,12 @@ CASES = [
     '(s1a / a : b)',                                                             # a bare colon
     '(s1a / a) trailing',
     '(s1a / a :ARG0 (s1b / b) extra)',
+    # --- a time of day, the one value holding a colon, and NFC -----------------
+    '(s8a / date-entity :time 15:30)',
+    '(s8a / date-entity :time 15:30 :mod (s8b / thing))',
+    '(s8a / date-entity :time 15:30:00)',                                        # not a time
+    '(s8a / 10:30)',                                                             # a concept stops at the colon
+    '(s6e\u0301 / cafe\u0301 :mod (s6x / cafe\u0301))',                           # NFD, read as NFC
 ]
 
 

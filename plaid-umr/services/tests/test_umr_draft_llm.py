@@ -689,6 +689,26 @@ def test_a_value_outside_an_attributes_set_is_refused(rel, value):
     assert service.client.writes == []
 
 
+def test_a_reply_never_writes_the_sentences_reserved_variable_or_one_twice():
+    """`s1s0` names sentence 1's document graph, and the editor refuses it.
+    The draft re-generates every variable (s + sentence + letter, then a
+    counter from 2), so a reply's own `s1s0` is renamed, and a reply that
+    defines one variable twice is refused by the reader."""
+    reply = ('(s1s0 / bark-01 :ARG0 (s1s / dog) :ARG1 (v3 / sound))'
+             '\n\n# alignment:\ns1s0: 3-3\ns1s: 2-2\nv3: 0-0\n')
+    service = _service(model=_Model([reply]))
+    servicetest.run(service, REQUEST)
+    written = [n['metadata']['umr']['var'] for n in _ops(service.client, 'spans.bulk_create')]
+    assert written == ['s1b', 's1d', 's1s']
+    assert len(set(written)) == len(written)
+
+    twice = '(v1 / bark-01 :ARG0 (v1 / dog))\n\n# alignment:\nv1: 3-3\n'
+    service = _service(model=_Model([twice]))
+    [result] = servicetest.run(service, REQUEST).results
+    assert result['failed'] == 1 and service.client.writes == []
+    assert 'used twice' in result['sentences_failed'][0]['reason']
+
+
 def test_a_provider_key_never_reaches_the_person_who_asked():
     """A provider quotes the key it refused back in its own error text, and
     that text is reported against the sentence that failed."""

@@ -27,6 +27,10 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 # the start of a comment (validate.py:390).
 TOKEN = re.compile(r'[^\s():#]+')
 
+#: A time of day, the one value that holds a colon (validate.py:393 reads
+#: ``23:45`` as a number). Only in a value: a concept still stops at the colon.
+TIME = re.compile(r'[0-9]+:[0-9]+(?![^\s()#])')
+
 #: The front of the UMR variable convention, UFAL's own (validate.py:142):
 #: ``s`` then digits. The letter run after it is matched by hand, because the
 #: spec's ``\p{Ll}`` is a Unicode general category and Python's ``re`` has no
@@ -135,6 +139,8 @@ def attr_value_problem(value) -> Optional[str]:
         return None
     if '"' in text:
         return f'A value holds a quote only around the whole of it: {text}'
+    if TIME.fullmatch(text):
+        return None
     if _NOT_IN_TOKEN.search(text):
         return f'A value cannot hold spaces, brackets, colons or #, unless it is quoted: {text}'
     if is_variable(text):
@@ -276,7 +282,9 @@ def parse_penman(text: str) -> Graph:
     """Parse PENMAN text into a graph. Never raises: everything it cannot read
     becomes an entry in ``errors``."""
     graph = Graph()
-    source = text if isinstance(text, str) else ''
+    # The format requires NFC of the whole file, and the app's reader
+    # normalizes too, so `e` plus a combining accent reads as one letter.
+    source = unicodedata.normalize('NFC', text) if isinstance(text, str) else ''
     defined = _defined_variables(_mask_literals(source))
     sc = _Scanner(source)
 
@@ -299,7 +307,7 @@ def parse_penman(text: str) -> Graph:
                 return
             children.append(Child(rel, STRING_KIND, raw))
             return
-        token = sc.take(TOKEN)
+        token = sc.take(TIME) or sc.take(TOKEN)
         if token is None:
             fail(f"Expected a value after '{rel}', found '{sc.rest() or 'end of graph'}'.", at)
             return
