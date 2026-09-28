@@ -105,9 +105,16 @@ export const usePagedList = (
   // A page written to the URL and not in it yet. The router can take the new
   // location a render later than this hook's own state, and a list that read
   // the old URL meanwhile showed page 1 for that render: long enough for a
-  // deep link to look for its row there, not find it, and give up.
+  // deep link to look for its row there, not find it, and give up. It counts
+  // only while the URL is still the one it was written over: a write of
+  // another param in the same moment, from the query as it was before (the
+  // igt project page dropping an unknown `?tab=`), can land last and take the
+  // page off, and then the URL is what the list shows, not a page it no
+  // longer names.
+  const search = params.toString();
   const [heading, setHeading] = useState(null);
-  const headed = heading && heading.key === storageKey ? heading.page : null;
+  const headed =
+    heading && heading.key === storageKey && heading.from === search ? heading.page : null;
   let page = remembered;
   if (urlParam) page = headed ?? inUrl ?? (restoring ? remembered : 0);
 
@@ -115,7 +122,7 @@ export const usePagedList = (
   // follows what it shows (the effect below).
   const write = useCallback(
     (next, { replace = false } = {}) => {
-      setHeading({ key: storageKey, page: next });
+      setHeading({ key: storageKey, page: next, from: search });
       setParams(
         (prev) => {
           // Copy so the rest of the query (`?tab=`, `?item=`) survives.
@@ -127,13 +134,13 @@ export const usePagedList = (
         { replace },
       );
     },
-    [setParams, urlParam, storageKey],
+    [setParams, urlParam, storageKey, search],
   );
 
-  // Arrived.
+  // Arrived, or overtaken.
   useEffect(() => {
-    if (headed != null && (inUrl ?? 0) === headed) setHeading(null);
-  }, [headed, inUrl]);
+    if (heading && (headed == null || (inUrl ?? 0) === headed)) setHeading(null);
+  }, [heading, headed, inUrl]);
 
   // The first render under this key: a bare URL showing the remembered page
   // is made to say so, in place. Asked once per key: StrictMode runs an effect

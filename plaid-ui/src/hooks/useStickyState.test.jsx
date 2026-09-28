@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { StrictMode, useEffect, useRef, useState } from 'react';
-import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { renderComponent } from '../test/renderComponent.jsx';
 import { listPrefKey, useStickyState, useStickySort } from './useStickyState.js';
 import { usePagedList, pageKey } from './usePagedList.js';
@@ -345,6 +345,40 @@ describe('usePagedList', () => {
         await r.unmount();
       });
     }
+
+    // Another param written in the same moment as the restore, from the query
+    // as it was (igt's project page drops an unknown `?tab=` as its Documents
+    // list restores its page), lands last and takes `?page=` off. The list
+    // then showed the remembered page under a bare URL until the next turn.
+    const Clobbered = () => {
+      const [params, setParams] = useSearchParams();
+      useEffect(() => {
+        if (params.get('tab') !== 'bogus') return;
+        setParams(
+          (prev) => {
+            const out = new URLSearchParams(prev);
+            out.delete('tab');
+            return out;
+          },
+          { replace: true },
+        );
+      }, [params, setParams]);
+      return <Probe storageKey="p" />;
+    };
+    it('shows what the URL says when a write of another param takes the page off', async () => {
+      localStorage.setItem('p', JSON.stringify(4));
+      const r = await renderComponent(
+        <MemoryRouter initialEntries={['/before', '/list?tab=bogus']} initialIndex={1}>
+          <Clobbered />
+        </MemoryRouter>,
+      );
+      expect(shown(r.container)).toBe('0 /list');
+      await press(r, 'turn');
+      expect(shown(r.container)).toBe('2 /list?page=3');
+      await press(r, 'back');
+      expect(shown(r.container)).toBe('0 /list');
+      await r.unmount();
+    });
 
     // A push here would leave `?page=3` behind the new search, and Back would
     // show page 3 of the new results.
