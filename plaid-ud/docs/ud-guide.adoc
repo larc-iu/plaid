@@ -333,12 +333,18 @@ It reads the documents, the search results, the project's guidelines and the his
 When you ask it to change something, it does not touch the data.
 It proposes a **plan**, which you **Approve** or **Discard**.
 Every change is listed under the document it lands in, naming the word and its reference, and each one links to that sentence in the annotation editor, so a plan can be checked before it is approved.
+A change to something a person made or accepted is marked **Accepted**, counted on a line of its own above the list, and never folded away.
+A replacement across the corpus counts the values it replaces that a person made or accepted, and says so on its row.
 Approved changes are written under your own account, recorded as the assistant's work accepted by you, and show as accepted.
 Tick **Record as human-made** before approving to record them as your own work instead.
 Reading needs Reader access, and applying a plan needs Writer.
 
+Approving a plan after a sentence it changes has been edited is refused, and the card then reads **Out of date**.
+An edit to another sentence does not stop it.
+Approving a plan on a document that a parser run is writing to is refused with nothing written. Approve again once the run has finished.
+
 A reply lands whether or not the page stays open: leave the tab, reload, or close the browser, and the answer is there when the conversation is next opened.
-**Stop** ends a turn early.
+**Stop** ends a turn early, even while the model is still working on its answer.
 Conversations are private to you, kept per project, and can be downloaded or copied as Markdown.
 Your server's administrator can read them.
 
@@ -482,6 +488,7 @@ After an apply the preview runs again by itself. **No sentences to change** mean
 Every change is recorded.
 **History** at the end of a document's tab row, on any tab, opens its **history**, where you can select an earlier point to view the document exactly as it was then.
 Each entry is one action as you performed it (for example "Update upos", "Create relation", or a parser run), even when it was made up of several underlying changes.
+A parser run is listed under the service's name and names the person who ran it: `Stanza UD parse (en), requested by Ana`.
 Selecting an entry shows the document as it was right after that action. Entries made of several changes have an arrow you can expand to see, and select, each individual change.
 Historical views are **read-only**, on every tab that can show them: Annotate, Export and Details.
 The Text Editor and Comments are not shown at a past state.

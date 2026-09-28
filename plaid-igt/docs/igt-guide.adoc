@@ -748,9 +748,16 @@ It proposes a **plan**, which you **Approve** or **Discard**.
 The plan lists every change under the document or lexicon it lands in. Each word is a link to its place in the editor, so a change can be checked before it is approved.
 A change that rewrites your baseline text, rather than annotating it, is marked **Rewrite**, counted on a line of its own above the list, and never folded away when the list is long.
 The assistant is told not to propose one unless you asked for it.
+A change to something a person made or accepted is marked **Accepted**, counted on a line of its own above the list, and never folded away.
+A replacement across the corpus counts the values it replaces that a person made or accepted, and says so on its row.
 Approved changes are written under your own account, recorded as the assistant's work accepted by you, and show as accepted.
 Tick **Record as human-made** before approving to record them as your own work instead, with no machine marking.
 Reading needs Reader access, and applying a plan needs Writer.
+
+Approving a plan after a sentence it changes has been edited is refused, and the card then reads **Out of date**.
+An edit to another sentence does not stop it.
+A text edit is refused after any edit to its document.
+Approving a plan on a document that a service run (a transcription, an analysis) is writing to is refused with nothing written. Approve again once the run has finished.
 
 A reply is written into the conversation as it arrives, and it lands whether or not the page stays open: leave the tab, reload, or close the browser, and the answer is there when the conversation is next opened.
 A conversation that is still being answered says so in the list, and opening it picks the answer up as it comes.
@@ -801,7 +808,7 @@ A plan approved in the panel re-reads what is on screen, so the grid or the entr
 The panel's header shows how much of the model's limit the last turn used, with the counts behind it on hover.
 A conversation fills up as it grows, because every turn sends the whole thread again.
 Past 85 percent the panel says so, and a new conversation starts with room again.
-Where the model's limit is not known the count is shown without a percentage.
+Where the model's limit is not known the count is shown without a percentage, unless the assistant was started with its limit stated.
 
 == When no assistant is connected
 
@@ -976,7 +983,7 @@ Each entry is one action as you performed it, such as "Merge morphemes" or "Toke
 Selecting an entry shows the document as it was right after that action.
 An entry made of several changes has an arrow you can expand to see, and select, each individual change.
 
-Actions performed by a service, such as a transcription, show up the same way, under the service's name, or under your own name when you triggered it.
+Actions performed by a service, such as a transcription, show up the same way, under the service's name and naming the person who ran it: `LLM translation (12 sentences), requested by Ana`.
 A change made through an API token names the token too, so a script's work is told apart from yours.
 
 Viewing history changes nothing.
