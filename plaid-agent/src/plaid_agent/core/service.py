@@ -57,7 +57,7 @@ import traceback
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlsplit
 
-from plaid_client import BaseService, TASKS, service_source
+from plaid_client import BaseService, DocumentLockLost, TASKS, service_source
 from plaid_client.service import requester_message
 from plaid_client.workflows.llm import add_timeout_argument, provider_secrets
 
@@ -650,7 +650,7 @@ class BaseAssistantService(BaseService):
                 # plan ops, and one op can be several calls, so the two together
                 # read as "failed after 10 of 3 changes were applied".
                 response_helper.error(
-                    f'Failed to apply the plan: {e}. '
+                    f'Failed to apply the plan: {_failure(client, documents, e)}. '
                     + ('Stopped partway. What was written before the failure is in the documents.'
                        if e.applied else 'Nothing was written.'))
             return failed
@@ -779,6 +779,20 @@ def _documents_named(client, documents: list, ids: List[str]) -> str:
     if rest:
         shown.append(f'{rest} more')
     return 'documents ' + (shown[0] if len(shown) == 1 else ', '.join(shown[:-1]) + ' and ' + shown[-1])
+
+
+def _failure(client, documents: list, e: PlanError) -> str:
+    """Why a plan stopped, as the clause after "Failed to apply the plan:".
+    A lock that lapsed names its document as the reader knows it. Anything
+    else is the failure's own text, without the period it may end in, since
+    the answer goes on after it."""
+    cause = e
+    while cause is not None and not isinstance(cause, DocumentLockLost):
+        cause = cause.__cause__
+    if cause is not None:
+        return f'the lock on {_named(_document_name(client, documents, cause.document_id))} lapsed'
+    said = str(e).rstrip()
+    return said[:-1] if said.endswith('.') and not said.endswith('..') else said
 
 
 def _reach_moved(client, documents: list, e) -> List[str]:

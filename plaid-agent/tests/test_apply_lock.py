@@ -205,13 +205,14 @@ def test_a_document_that_cannot_be_found_is_left_to_the_staleness_check(spec):
 
 # --- a lock that lapses while the plan is written ---------------------------------
 
-def _lapse_before_the_first_batch(monkeypatch, client):
+def _lapse_before_the_first_batch(monkeypatch, client, document_id='d'):
     """The keep-alive fails as the plan is written. As on the real client,
     the loss is recorded on the client, every later non-GET it makes raises
     it (the record's writes too) and the ``locked()`` block clears it on its
     way out."""
     from plaid_client import DocumentLockLost
-    lost = DocumentLockLost('The lock on document d lapsed: it could not be renewed.', document_id='d')
+    lost = DocumentLockLost(f'The lock on document {document_id} lapsed: it could not be renewed.',
+                            document_id=document_id)
     state = {'lost': None}
     real_locked = client.documents.locked
 
@@ -256,3 +257,30 @@ def test_a_lock_that_lapses_during_the_apply_still_answers_and_settles_the_card(
     from plaid_agent.core.conversation import ConversationStore
     _, meta = ConversationStore(client, 'u@x', spec['pid'], spec['app']).load('c1')
     assert not (meta or {}).get('pending')
+
+
+NAMES = {'igt': 'Text 1', 'ud': 'Viaje', 'umr': 'Story'}
+
+
+def test_a_lapse_is_told_by_the_documents_name_in_plain_words(spec, monkeypatch):
+    """Not the document's id, not the exception's class name, and one period
+    at the end of the clause."""
+    client = spec['client']()
+    plan, _ = sbs._plan(spec, client)
+    _lapse_before_the_first_batch(monkeypatch, client, spec['did'])
+    helper = sbs._approve(spec, client, plan)
+    assert helper.errors == [f'Failed to apply the plan: the lock on document "{NAMES[spec["app"]]}" '
+                             'lapsed. Nothing was written.'], helper.errors
+
+
+def test_a_failure_whose_text_ends_in_a_period_is_not_given_a_second(spec, monkeypatch):
+    client = spec['client']()
+    plan, _ = sbs._plan(spec, client)
+
+    def flush(self):
+        raise core_plan.PlanError('The server refused the batch.', 0, 1)
+
+    monkeypatch.setattr(core_plan.TrackingBatcher, 'flush', flush)
+    helper = sbs._approve(spec, client, plan)
+    assert helper.errors == ['Failed to apply the plan: The server refused the batch. Nothing was written.'], \
+        helper.errors
