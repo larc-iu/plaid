@@ -10,7 +10,7 @@
 // Sanapaná still has UMR 1.0's '-1--1' for unaligned. Each tolerance used
 // leaves a warning behind, and writing always produces the modern spelling.
 
-import { parsePenman, penmanProblems, serializePenman, relationProblem } from './penman.js';
+import { nfc, parsePenman, penmanProblems, serializePenman, relationProblem } from './penman.js';
 
 const SEPARATOR = '#'.repeat(80);
 
@@ -282,7 +282,8 @@ function trimBlankEnds(lines) {
 }
 
 /**
- * Read a .umr file.
+ * Read a .umr file, in Unicode NFC as the format requires: a file written
+ * with combining accents reads as the composed characters.
  *
  * @param {string} text
  * @returns {{ sentences: Array<object>, warnings: Array<{code: string, message: string, sentence: number|null}>, errors: Array<{code: string, message: string, sentence: number|null}> }}
@@ -294,7 +295,7 @@ export function parseUmrFile(text) {
   const warn = (code, message) => warnings.push({ code, message, sentence: currentSentence });
   const error = (code, message) => errors.push({ code, message, sentence: currentSentence });
 
-  const lines = String(text ?? '').split('\n');
+  const lines = nfc(String(text ?? '')).split('\n');
   const chunks = [];
   let preamble = [];
   let current = null;

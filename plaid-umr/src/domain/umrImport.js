@@ -6,6 +6,7 @@
 import { cpLength, createdIds } from '@larc-iu/plaid-client';
 import { UMR_NAMESPACE, missingUmrLayerLabels, getUmrLayerInfo } from '../utils/umrLayerUtils.js';
 import { parseUmrFile } from './format/umrFile.js';
+import { nfc } from './format/penman.js';
 import { DOC_CONSTANTS } from './format/inventory.js';
 import { buildDocumentGraph, wordForFile } from './sentenceGraph.js';
 import { findLostCreate } from '../../../plaid-ui/src/lib/lostCreate.js';
@@ -43,10 +44,7 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
       first ? `Failed to read the file: ${first.message}` : 'No sentences found in the file.',
     );
   }
-  const warnings = [
-    ...(parsed.warnings || []).map((w) => (typeof w === 'string' ? w : w.message)),
-    ...(parsed.errors || []).map((e) => (typeof e === 'string' ? e : e.message)),
-  ];
+  const warnings = [];
 
   // Onto an existing document: its words are the file's, sentence by sentence,
   // and nothing of the substrate is written.
@@ -204,7 +202,11 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
       });
     }
 
-    return { document: { id: documentId, name }, warnings, attached: !!existing };
+    return {
+      document: { id: documentId, name },
+      warnings: [...warnings, ...readerNotes(parsed)],
+      attached: !!existing,
+    };
   } catch (err) {
     if (existing && createdTokenIds.length) {
       // Take back what this run put on the document, so a retry is possible.
@@ -230,6 +232,43 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
   }
 }
 
+/**
+ * What the reader noted about the file, as lines of the import report, after
+ * the lines about what the import did. Each names its sentence, and a note
+ * the reader made in many sentences (an obsolete header, a missing sentence
+ * id) is one line with a count, so it does not bury the rest. A graph the
+ * reader could not parse is left out: its sentence has its own "unreadable
+ * graph" line (planImport).
+ *
+ * @param {{warnings?: Array, errors?: Array}} parsed what parseUmrFile returned
+ * @returns {string[]}
+ */
+export function readerNotes(parsed) {
+  const lines = [];
+  const sentencesOf = new Map();
+  const notes = [
+    ...(parsed.warnings || []),
+    ...(parsed.errors || []).filter((e) => e.code !== 'sentence-graph'),
+  ];
+  notes.forEach(({ message, sentence }) => {
+    if (sentence == null) {
+      if (!lines.includes(message)) lines.push(message);
+      return;
+    }
+    if (!sentencesOf.has(message)) sentencesOf.set(message, []);
+    const list = sentencesOf.get(message);
+    if (!list.includes(sentence)) list.push(sentence);
+  });
+  sentencesOf.forEach((sentences, message) => {
+    lines.push(
+      sentences.length === 1
+        ? `Sentence ${sentences[0]}: ${message}`
+        : `${message.replace(/\.$/, '')}, in ${sentences.length} sentences.`,
+    );
+  });
+  return lines;
+}
+
 // Everything the writes need, computed before the first request so a file
 // that cannot be imported costs no document. Node keys are `sentence:var`,
 // constants are their own name. A sentence whose graph the parser could not
@@ -247,7 +286,9 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
       // Word by word, as the export writes them: joined, the words of a
       // document with a merged word ("in order") matched a file that split
       // it, and every anchor after it landed one word late.
-      const have = existing.sentences[i].words.map(wordForFile);
+      // In NFC, as the file is read: a document whose text has combining
+      // accents still holds the file's words.
+      const have = existing.sentences[i].words.map((w) => nfc(wordForFile(w)));
       if (have.length !== ps.words.length || have.some((w, k) => w !== ps.words[k])) {
         throw new Error(
           `Sentence ${i + 1} differs: the file has "${ps.words.join(' ')}", the document "${have.join(' ')}".`,
@@ -322,8 +363,10 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
     if (sentenceText && sentenceText !== line) meta.text = sentenceText;
     sentences.push({ index, begin, end, words, meta });
 
+    // Any graph with a parse error is kept as text, a graph whose root could
+    // not be found too: `((s2d / ...` lost the whole sentence.
     const readable = ps.graph?.root && !ps.graph.errors?.length;
-    if (ps.graph?.root && !readable) {
+    if (ps.graph?.errors?.length) {
       meta.rawGraph = ps.raw?.graph || '';
       meta.rawAlignment = ps.raw?.alignment || '';
       warnings.push(
@@ -396,19 +439,19 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
         }
         return name;
       }
-      const key = varToKey.get(name);
-      if (!key) {
-        warnings.push(
-          `Sentence ${index}: document-level triple names ${name}, which no sentence defines.`,
-        );
-      }
-      return key || null;
+      return varToKey.get(name) || null;
     };
     ['temporal', 'modal', 'coref'].forEach((group) => {
       (dg[group] || []).forEach(([a, rel, b]) => {
         const source = resolve(a);
         const target = resolve(b);
-        if (!source || !target) return;
+        if (!source || !target) {
+          const missing = [...new Set([source ? null : a, target ? null : b])].filter(Boolean);
+          warnings.push(
+            `Sentence ${index}: (${a} ${rel} ${b}) dropped, no node ${missing.join(' or ')}.`,
+          );
+          return;
+        }
         const sig = `${source} ${rel} ${target}`;
         if (existingTriples.has(`${a} ${rel} ${b}`)) return;
         const constantOnly = DOC_CONSTANTS.includes(a) && DOC_CONSTANTS.includes(b);
@@ -440,7 +483,8 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
     return ok;
   });
 
-  const empty = parsedSentences.filter((ps) => !ps.graph?.root).length;
+  // A graph kept as text is not "no graph": it has its own line above.
+  const empty = parsedSentences.filter((ps) => !ps.graph?.root && !ps.graph?.errors?.length).length;
   if (empty) warnings.push(`${count(empty, 'sentence has', 'sentences have')} no graph.`);
 
   return {
