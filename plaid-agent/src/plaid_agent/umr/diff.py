@@ -87,12 +87,31 @@ def _keep_places(old, node, old_edge_order: Dict[str, int]) -> Tuple[List[dict],
     return sorted(attrs, key=lambda a: a['order']), new_edges
 
 
-class GraphDiff:
-    """The ops a PENMAN text stands for, and what they add up to."""
+def _order_differs(old, node, old_edge_order: Dict[str, int]) -> bool:
+    """Whether the text writes the children ``old`` already has in another
+    order than they are stored in. Only children on both sides count, so a
+    child added or removed moves nothing here."""
+    stored_attrs = sorted((a.get('order') or 0, a.get('rel')) for a in old.attrs)
+    stored = sorted([(o, 'edge ' + key) for key, o in old_edge_order.items()]
+                    + [(o, 'attr ' + str(rel)) for o, rel in stored_attrs])
+    written = []
+    for child in node.children:
+        written.append(('edge ' if child.kind == 'node' else 'attr ') + (
+            f'{child.rel} {child.value}' if child.kind == 'node' else str(child.rel)))
+    both = set(written) & {k for _o, k in stored}
+    return [k for k in written if k in both] != [k for _o, k in stored if k in both]
 
-    def __init__(self, ops: List[Dict[str, Any]], errors: List[str]):
+
+class GraphDiff:
+    """The ops a PENMAN text stands for, and what they add up to.
+    ``order_kept`` names the nodes whose children the text writes in another
+    order than they are stored in, when that order was not applied (no
+    ``reorder``), so the tool can say so rather than let it pass unnoticed."""
+
+    def __init__(self, ops: List[Dict[str, Any]], errors: List[str], order_kept: List[str] = None):
         self.ops = ops
         self.errors = errors
+        self.order_kept = order_kept or []
 
     @property
     def changes(self) -> int:
@@ -149,6 +168,7 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
     edges_add: List[Dict[str, Any]] = []
     edges_delete: List[Dict[str, Any]] = []
     orders: List[Dict[str, Any]] = []
+    order_kept: List[str] = []
 
     for var, node in parsed.nodes.items():
         attrs, edges = _children(node)
@@ -180,8 +200,11 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
                 _placed_key(old.attrs) != _placed_key(attrs)
             new_edge_order = {f'{e["role"]} {e["target"]}': e['order'] for e in edges}
         else:
-            attrs, new_edge_order = _keep_places(old, node, {key: e.order for e, key in old_edges})
+            stored_order = {key: e.order for e, key in old_edges}
+            attrs, new_edge_order = _keep_places(old, node, stored_order)
             changed_attrs = _placed_key(old.attrs) != _placed_key(attrs)
+            if _order_differs(old, node, stored_order):
+                order_kept.append(var)
 
         if old.concept != node.concept:
             updates.append({
@@ -304,7 +327,7 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
         op.setdefault('sentence', sentence.index)
         op.setdefault('sentence_id', sentence.id)
         op['graph_of'] = f'{did}:{sentence.index}'
-    return GraphDiff(ops, [])
+    return GraphDiff(ops, [], order_kept)
 
 
 def round_trip(doc: UmrDoc, sentence: Sentence) -> str:

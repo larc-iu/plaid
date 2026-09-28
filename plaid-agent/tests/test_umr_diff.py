@@ -301,3 +301,26 @@ def test_reorder_applies_the_texts_order_when_asked(ws):
     assert sorted(op['kind'] for op in ws.ops) == ['set_attrs', 'set_edge_order']
     order = next(op for op in ws.ops if op['kind'] == 'set_edge_order')
     assert order['order'] == 1 and 'moves to position 2' in order['label']
+
+
+def test_an_order_the_text_writes_but_does_not_apply_is_said(ws):
+    """Without reorder the text's child order is not applied, so a model that
+    rewrote a graph because the user asked for another order would have been
+    told "Nothing to change" and nothing more, and could report it done. The
+    answer says the order was kept and how to apply it."""
+    text = ('(s1b / bark-01\n    :aspect performance\n    :ARG0 (s1d / dog\n'
+            '        :refer-number singular))')
+    assert diff_for(ws, text).order_kept == ['s1b']
+    out = call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1, 'text': text})
+    assert out.startswith('Nothing to change') and 's1b' in out and 'reorder=true' in out
+    # A change beside it says so too.
+    text2 = text.replace('performance', 'activity')
+    out = call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1, 'text': text2})
+    assert out.startswith('Planned 1 change') and 'reorder=true' in out
+    # The stored order written back, or a new child alone, says nothing of order.
+    assert diff_for(ws, SENTENCE_1_PENMAN).order_kept == []
+    added = SENTENCE_1_PENMAN.replace(':aspect performance)', ':aspect performance\n    :polarity -)')
+    assert diff_for(ws, added).order_kept == []
+    # With reorder the order is applied, so nothing is "kept".
+    doc = ws.doc('Story')
+    assert plan_penman(doc, doc.sentences[0], text, ws.project, reorder=True).order_kept == []

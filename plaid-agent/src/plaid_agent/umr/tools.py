@@ -370,15 +370,22 @@ def t_apply_penman(ws: Workspace, document: str = None, sentence=None, text: str
     diff = plan_penman(doc, s, text, ws.project, reorder=str(reorder).strip().lower() == 'true')
     if diff.errors:
         raise ToolError('The graph could not be read. ' + diff.errors[0])
+    # The order the text writes children in is not applied without reorder.
+    # Said, so a user who asked for a new order is not told it was done.
+    kept = ''
+    if diff.order_kept:
+        kept = (f' The text writes the children of {", ".join(diff.order_kept)} in another order than '
+                f'they are stored in, and that order was not applied: pass reorder=true only if the '
+                f'user asked for it.')
     if not diff.ops:
-        return f'Nothing to change: s{s.index} already holds that graph.'
+        return f'Nothing to change: s{s.index} already holds that graph.' + kept
     ws.add_ops(_staged(diff.ops))
     counts: Dict[str, int] = {}
     for op in diff.ops:
         counts[op['kind']] = counts.get(op['kind'], 0) + 1
     what = ', '.join(f'{n} {k.replace("_", " ")}' for k, n in sorted(counts.items()))
     return (f'Planned {len(diff.ops)} change(s) to the graph of s{s.index} in "{doc.name}" '
-            f'({what}).')
+            f'({what}).' + kept)
 
 
 def t_set_attributes(ws: Workspace, document: str = None, sentence=None, var: str = None,
