@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Combobox } from '@ui/components/shared/combobox';
 import { textIncludes } from '@ui/domain/collation.js';
+import { foldAlif } from '../../../domain/lexicon.js';
 
 // A small editor floating over the canvas at a point of the graph: a
 // Combobox seeded with options, a free value allowed unless `strict`.
@@ -47,6 +48,10 @@ export function InlineEditor({
   className = '',
 }) {
   const [value, setValue] = useState(initial);
+  // How far the box moves sideways to stay in view: it is placed centred
+  // under a node or a word, and one at the edge of the canvas (the first
+  // word of a right-to-left sentence) put half of it past the window.
+  const [nudge, setNudge] = useState(0);
   const [problem, setProblem] = useState(null);
   const [pristine, setPristine] = useState(true);
   // Whether the arrows have picked an option. A hovered option is highlighted
@@ -80,7 +85,8 @@ export function InlineEditor({
   const matchFor = (typed) => {
     const t = String(typed ?? '').trim();
     if (!t) return null;
-    const bare = (v) => String(v).replace(/^:/, '');
+    // Alif read as the frame file keys it, so أعلن-01 typed is اعلن-01.
+    const bare = (v) => foldAlif(String(v).replace(/^:/, ''));
     const all = flatOptions(options);
     const exact = all.find((o) => o.value === t || bare(o.value) === bare(t));
     if (exact || !complete) return exact || null;
@@ -137,10 +143,31 @@ export function InlineEditor({
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   });
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    // Where it sits unmoved, read off what it is placed in rather than off
+    // the box itself, so a move never feeds back into the next one.
+    const parent = root.offsetParent;
+    const origin = parent ? parent.getBoundingClientRect().left + parent.clientLeft : 0;
+    const left = origin + x;
+    const boxWidth = root.getBoundingClientRect().width || width;
+    const [lo, hi] = visibleSpan(root);
+    // Moved in from whichever edge it crosses, the start edge winning in a
+    // space too narrow for it.
+    let next = 0;
+    if (left + boxWidth > hi - EDGE) next = hi - EDGE - (left + boxWidth);
+    if (left + next < lo + EDGE) next = lo + EDGE - left;
+    setNudge(next);
+  }, [x, width]);
   const filter = ({ options: all, search }) => {
     const q = String(search || '').trim();
     if (pristine || !q) return all;
-    const keep = (item) => textIncludes(item.value, q) || textIncludes(item.label || '', q);
+    // Alif folded on both sides, as the frame search folds it: the file keys
+    // اعلن-01 without the hamza a person types in أعلن.
+    const typed = foldAlif(q);
+    const keep = (item) =>
+      textIncludes(foldAlif(item.value), typed) || textIncludes(foldAlif(item.label || ''), typed);
     return all
       .map((o) => ('group' in o ? { ...o, items: o.items.filter(keep) } : keep(o) ? o : null))
       .filter((o) => o && (!('group' in o) || o.items.length));
@@ -150,7 +177,7 @@ export function InlineEditor({
     <div
       ref={rootRef}
       className={`umr-inline-editor ${className}`}
-      style={{ left: `${x}px`, top: `${y}px`, width: `${width}px` }}
+      style={{ left: `${x + nudge}px`, top: `${y}px`, width: `${width}px` }}
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
@@ -251,6 +278,26 @@ const fellToPage = (el) => {
 
 const FOCUS_HOLDERS =
   '[role="menu"], [role="menubar"], [role="dialog"], [role="alertdialog"], [role="listbox"]';
+
+// The room kept between the box and the edge it was moved in from.
+const EDGE = 8;
+
+// The horizontal span of the window in which `el` can be seen: the window,
+// narrowed by every ancestor that clips what overflows it sideways (a
+// sentence's canvas scrolls in its own box).
+const visibleSpan = (el) => {
+  let lo = 0;
+  let hi = document.documentElement.clientWidth || window.innerWidth;
+  for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+    const overflow = getComputedStyle(p).overflowX;
+    if (overflow === 'visible') continue;
+    const r = p.getBoundingClientRect();
+    if (r.width <= 0) continue;
+    lo = Math.max(lo, r.left);
+    hi = Math.min(hi, r.right);
+  }
+  return [lo, hi];
+};
 
 // Every option as `{ value, label? }`, groups flattened.
 const flatOptions = (options) =>

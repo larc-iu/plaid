@@ -380,3 +380,75 @@ describe('InlineEditor', () => {
     await r.unmount();
   });
 });
+
+// An Arabic concept typed with a hamza on its alif finds the roleset the
+// frame file keys without one, as the frame search itself folds it.
+describe('InlineEditor on Arabic', () => {
+  const senses = [
+    {
+      group: 'Rolesets',
+      items: [
+        { value: 'اعلن-01', label: 'اعلن-01 ARG0 announcer' },
+        { value: 'اعلن-02', label: 'اعلن-02 ARG0 nominator' },
+      ],
+    },
+  ];
+  const shown = () =>
+    [...document.querySelectorAll('[role="option"]')].map((o) => o.textContent.trim());
+
+  it('lists and takes a roleset typed with its alif in any form', async () => {
+    const onCommit = vi.fn();
+    const r = await renderComponent(
+      <InlineEditor
+        x={0}
+        y={0}
+        value=""
+        options={senses}
+        onCommit={onCommit}
+        onCancel={() => {}}
+      />,
+    );
+    const input = r.container.querySelector('input');
+    await type(r, input, 'أعلن');
+    expect(shown()).toEqual(['اعلن-01 ARG0 announcer', 'اعلن-02 ARG0 nominator']);
+    await type(r, input, 'إعلن-02');
+    await r.step(() => press(input, 'Enter'));
+    expect(onCommit).toHaveBeenCalledWith('اعلن-02', expect.objectContaining({ value: 'اعلن-02' }));
+    await r.unmount();
+  });
+});
+
+// The box is placed centred under a node or a word, so one at the edge of
+// the canvas (the first word of a right-to-left sentence) ran half past the
+// window. It moves in, and never past the other edge.
+describe('InlineEditor at the edge of the window', () => {
+  const at = (x) => {
+    const spy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function rect() {
+        if (!this.classList.contains('umr-inline-editor')) {
+          return { left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0 };
+        }
+        const left = parseFloat(this.style.left);
+        return { left, right: left + 220, top: 0, bottom: 28, width: 220, height: 28 };
+      });
+    return renderComponent(
+      <InlineEditor x={x} y={0} value="" options={[]} onCommit={() => {}} onCancel={() => {}} />,
+    ).then((r) => ({ r, spy }));
+  };
+  const left = (r) => parseFloat(r.container.querySelector('.umr-inline-editor').style.left);
+
+  it('moves in from the end edge, from the start edge, and not at all in between', async () => {
+    const width = window.innerWidth;
+    for (const [x, want] of [
+      [width - 100, width - 8 - 220],
+      [-80, 8],
+      [300, 300],
+    ]) {
+      const { r, spy } = await at(x);
+      expect(left(r)).toBe(want);
+      await r.unmount();
+      spy.mockRestore();
+    }
+  });
+});

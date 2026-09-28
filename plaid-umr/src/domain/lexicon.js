@@ -65,7 +65,7 @@ const lemmaOf = (roleset) => String(roleset).replace(/-\d+$/, '');
 // hamza a text writes in أعلنت, and `ٱنكشف-01` with a wasla nobody types.
 // Folded on both sides, the typed or written form and the file's keys.
 const ALIF_FORMS = /[\u0622\u0623\u0625\u0671]/g;
-const foldAlif = (text) => String(text ?? '').replace(ALIF_FORMS, '\u0627');
+export const foldAlif = (text) => String(text ?? '').replace(ALIF_FORMS, '\u0627');
 
 const ARABIC = /\p{Script=Arabic}/u;
 
