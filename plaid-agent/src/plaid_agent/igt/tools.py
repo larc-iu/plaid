@@ -848,8 +848,11 @@ def t_drop_planned(ws: Workspace, indexes) -> str:
     keys = {op['key'] for op in dropped if op.get('kind') == 'create_entry'}
     for k in keys:
         ws.new_entries.pop(k, None)
+    # Whatever links to one, a word's own link or a multi-word expression's:
+    # the phrase link was left behind, and approval then failed after the
+    # first batch had landed.
     ws.ops = [op for i, op in enumerate(ws.ops, start=1)
-              if i not in wanted and not (op.get('kind') == 'link' and op.get('new_entry_key') in keys)]
+              if i not in wanted and not (op.get('new_entry_key') and op.get('new_entry_key') in keys)]
     return f'Dropped {len(dropped)} planned change{"s" if len(dropped) != 1 else ""}.' + \
         (' Links to the dropped new entries were dropped with them.' if keys else '') + '\n' + t_plan_status(ws)
 

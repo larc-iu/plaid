@@ -855,3 +855,24 @@ def test_a_scan_bulk_answer_counts_by_document_too():
                                             'whole': True, 'replacement': 'Z'})
     n = len(w.ops)
     assert n and f'\nIn 1 document: "Text 1" {n}.\n' in out
+
+
+def test_dropping_a_new_entry_takes_a_multi_word_expression_on_it_along():
+    """drop_planned took a word's own link to a dropped new entry along, but
+    not a multi-word expression's, which approval then failed on after the
+    first batch had landed. And approval refuses such a link up front, before
+    anything is written, however the plan came to hold it."""
+    import pytest
+    from plaid_agent.igt.plan import execute_plan
+    w = ws()
+    out = call_tool(w, 'create_entry', {'form': 'Ali gam', 'type': 'phrase'})
+    key = out.split('entry_id: ')[1].split()[0]
+    call_tool(w, 'link_phrase', {'document': 'd1', 'refs': ['s1.w1', 's1.w2'], 'entry_id': key})
+    assert [o['kind'] for o in w.ops] == ['create_entry', 'link_phrase']
+    orphan = dict(w.ops[1])
+    out = call_tool(w, 'drop_planned', {'indexes': [1]})
+    assert 'Links to the dropped new entries were dropped with them' in out and w.ops == []
+    c = FakeClient()
+    with pytest.raises(ValueError, match='does not create'):
+        execute_plan(c, [orphan], source='s', label='l')
+    assert c.batches == []

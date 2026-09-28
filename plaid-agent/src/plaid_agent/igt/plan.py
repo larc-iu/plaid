@@ -670,6 +670,10 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
             if op.get('kind') in RESHAPES and (not op.get('doc') or op['doc'] in reach):
                 raise ValueError('this plan holds a corpus-wide change and reshapes a document it reaches; '
                                  'the two would meet for the first time in the batch')
+    # A link to an entry the plan creates is written once that entry has an
+    # id, in the executor's second pass, so one naming no entry of the plan
+    # would fail there with the first batch already written.
+    new_keys = {op.get('key') for op in ops if op.get('kind') == 'create_entry'}
     for i, op in enumerate(ops):
         spec = ok.kind_of(KIND, op, index=i + 1)
         kind = spec.name
@@ -681,6 +685,8 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
             raise ValueError(f'op {i + 1} (set_analysis): morphemes must be a non-empty list with non-empty forms')
         if kind in ('link', 'link_phrase') and not (op.get('item_id') or op.get('new_entry_key')):
             raise ValueError(f'op {i + 1} ({kind}): needs item_id or new_entry_key')
+        if kind in ('link', 'link_phrase') and not op.get('item_id') and op.get('new_entry_key') not in new_keys:
+            raise ValueError(f'op {i + 1} ({kind}): links to an entry this plan does not create')
         if kind == 'link_phrase' and (not isinstance(op['token_ids'], list) or len(op['token_ids']) < 2):
             raise ValueError(f'op {i + 1} (link_phrase): token_ids must list two or more words')
         if kind == 'confirm' and not any(op.get(k) for k in ('span_ids', 'token_ids', 'link_ids')):
