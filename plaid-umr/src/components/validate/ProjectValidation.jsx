@@ -179,7 +179,7 @@ export const ProjectValidation = () => {
       {/* The same width in every app: a form's, from the page's left edge. */}
       <div className={cn('w-full', FORM_PAGE_WIDTH)}>
         <ValidationHeader
-          description="Problems in this project's UMR annotation, one row each."
+          description="Problems in this project's UMR annotation."
           busy={busy}
           disabled={!configured}
           onCheck={scan}

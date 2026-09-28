@@ -283,6 +283,7 @@ In a right-to-left document the arrows follow the screen, so Alt+Right moves ear
 
 A relation that takes a value does not take a node: `:aspect` and the other attributes with a set of values, `:li`, `:list-item`, `:wiki`, a name's `:op1`, `:op2` and so on, and `:ARG2` of `have-polarity-91`.
 A new edge there, made, moved or relabeled, is refused with `':aspect' takes a value, not a node.`
+So is a concept change that would put a node there, such as `and` with a node under `:op1` changed to `name`.
 The assistant and **Draft** refuse it too.
 An edge an imported file brought there is kept, and the Validation tab lists it.
 
