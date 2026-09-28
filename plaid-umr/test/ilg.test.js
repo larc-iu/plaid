@@ -167,7 +167,7 @@ test('an empty layer neither pushes out a stored line nor writes placeholders', 
   );
 });
 
-test('a word with no morphemes keeps its slot, a gloss with a space is one item', () => {
+test('a word with no morphemes is its own morpheme, its gloss is _, a gloss with a space is one item', () => {
   const info = layerInfo();
   info.glossLayers[0].layer.spans.push({ tokens: ['m3'], value: 'bark loudly' });
   info.glossLayers[0].layer.spans = info.glossLayers[0].layer.spans.filter(
@@ -177,7 +177,8 @@ test('a word with no morphemes keeps its slot, a gloss with a space is one item'
   s.words.push({ id: 'w3', index: 3, begin: 10, end: 11, text: '.' });
   const lines = ilgLinesFor(s, info, resolveIlg(null, info));
   const morphemes = lines.find((l) => l.key === 'morphemes');
-  assert.deepEqual(morphemes.items, ['dog', '-s', 'bark', '_']);
+  assert.deepEqual(morphemes.items, ['dog', '-s', 'bark', '.']);
+  assert.deepEqual(morphemes.perWord.at(-1), ['.']);
   const gloss = lines.find((l) => l.key === 'morpheme-gloss');
   assert.deepEqual(gloss.items, ['dog', 'PL', 'bark_loudly', '_']);
 });
@@ -233,4 +234,33 @@ test('two values of one layer on one token are joined as IGT joins them', () => 
   const line = (header) => lines.find((l) => l.header === header);
   assert.equal(line('Sentence Gloss').items.join(' '), 'Dogs bark. | The door opened.');
   assert.deepEqual(line('Part of Speech').perWord, [['N | V'], ['_']]);
+});
+
+// umr-igt-unanalyzed-word: `Çocuklar okula gidiyorlar` writes its Morphemes
+// line as IGT's exporters do, `Çocuklar okula gid iyor lar`.
+test('an unanalyzed word reads as itself on the Morphemes line, as in IGT', () => {
+  const info = layerInfo();
+  info.glossLayers.forEach((g) => (g.layer.spans = []));
+  const s = {
+    ...sentence(),
+    words: [
+      { id: 'w1', index: 1, begin: 0, end: 8, text: 'Çocuklar' },
+      { id: 'w2', index: 2, begin: 9, end: 14, text: 'okula' },
+      { id: 'w3', index: 3, begin: 15, end: 24, text: 'gidiyorlar' },
+    ],
+    morphemes: [
+      { id: 'm1', begin: 15, end: 24, precedence: 0, text: 'gid' },
+      { id: 'm2', begin: 15, end: 24, precedence: 1, text: 'iyor' },
+      { id: 'm3', begin: 15, end: 24, precedence: 2, text: 'lar' },
+    ],
+  };
+  const lines = ilgLinesFor(s, info, resolveIlg(null, info));
+  const morphemes = lines.find((l) => l.key === 'morphemes');
+  assert.deepEqual(morphemes.items, ['Çocuklar', 'okula', 'gid', 'iyor', 'lar']);
+  // With no word segmented, the line would repeat the Words, and is left out.
+  assert.ok(
+    !ilgLinesFor({ ...s, morphemes: [] }, info, resolveIlg(null, info)).some(
+      (l) => l.key === 'morphemes',
+    ),
+  );
 });

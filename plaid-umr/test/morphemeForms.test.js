@@ -68,9 +68,9 @@ test('the Morphemes line writes one item per morpheme', () => {
   assert.deepEqual(line.perWord[0], FORMS);
   // Four distinct forms, not the word four times over.
   assert.equal(new Set(line.perWord[0]).size, 4);
-  // A word nobody segmented keeps its place on the line.
-  assert.deepEqual(line.perWord[1], ['_']);
-  assert.deepEqual(line.perWord[2], ['_']);
+  // A word nobody segmented is its own morpheme, as IGT has it.
+  assert.deepEqual(line.perWord[1], ['wala']);
+  assert.deepEqual(line.perWord[2], ['.']);
 });
 
 test('a morpheme recording no form falls back to the word it covers', () => {
@@ -95,8 +95,9 @@ test('an emptied form stays empty rather than becoming its word', () => {
 });
 
 test('a line with nothing on it is not written, which is the existing rule', () => {
-  // Every morpheme emptied: `_ _ _` says less than no line at all, and a
-  // stored Morphemes line from an import would be pushed out by it.
+  // Every morpheme emptied: `_ wala .` says less than no line at all (the
+  // other words are only themselves), and a stored Morphemes line from an
+  // import would be pushed out by it.
   const info = layerInfo();
   info.morphemeTokenLayer.tokens = [
     { id: 'm-blank', ...WORD_1, precedence: 1, metadata: { form: '' } },

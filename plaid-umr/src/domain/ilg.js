@@ -148,9 +148,13 @@ export function ilgLinesFor(sentence, layerInfo, mapping) {
     if (!h) return;
     const base = { header: h.header, key: h.key, lang: h.lang ? languageCode(entry.lang) : null };
     if (entry.source === 'morphemes') {
-      // A word with no morphemes (IGT's unanalyzed word) keeps its place.
-      const perWord = morphemesByWord.map((ms) =>
-        ms.length ? ms.map((m) => shown(m.text)) : ['_'],
+      // A word nobody has segmented is its own one morpheme, as IGT shows it
+      // and its exporters write it (IGT's virtual morpheme, ruled 2026-09-28).
+      // Its gloss lines keep `_`. A sentence where no morpheme has a form has
+      // no line: it would only repeat the Words.
+      if (!morphemesByWord.flat().some((m) => shown(m.text) !== '_')) return;
+      const perWord = morphemesByWord.map((ms, i) =>
+        ms.length ? ms.map((m) => shown(m.text)) : [shown(words[i]?.text)],
       );
       push({ ...base, items: fileItems(perWord), perWord });
       return;
