@@ -18,17 +18,18 @@ the two sides word a refusal for different readers, and what they must agree on
 is the decision, which is that a text with errors or with no root is not one to
 write from.
 
-It skips where it cannot run (no node, or plaid-umr not beside the agent); it
-does not skip when the two disagree.
+It skips where it cannot run (no node, or plaid-umr not beside the agent), and
+says so in the warnings summary too (see ``node_exe``); it does not skip when
+the two disagree.
 """
 
 import json
 import os
-import shutil
 import subprocess
 import tempfile
 
 from live import _skip_or_fail
+from node_exe import node_or_skip
 
 import pytest
 
@@ -40,17 +41,12 @@ JS_READER = os.path.abspath(os.path.join(HERE, '..', '..', 'plaid-umr', 'src', '
                                          'format', 'penman.js'))
 
 
-def _node():
-    """The node to run the app's reader with, or None to skip. ``penman.js`` is
-    ESM and imports nothing, so no node_modules are needed."""
-    exe = shutil.which('node')
-    if not exe or not os.path.isfile(JS_READER):
-        return None
-    try:
-        v = subprocess.run([exe, '--version'], capture_output=True, text=True, timeout=30).stdout
-        return exe if int(v.strip().lstrip('v').split('.')[0]) >= 18 else None
-    except Exception:  # noqa: BLE001 - any trouble asking means do not rely on it
-        return None
+def _node() -> str:
+    """The node to run the app's reader with, or a skip that says why.
+    ``penman.js`` is ESM and imports nothing, so no node_modules are needed."""
+    if not os.path.isfile(JS_READER):
+        _skip_or_fail('needs plaid-umr beside the agent')
+    return node_or_skip("The PENMAN mirror runs the app's reader with it.")
 
 
 SIMPLE = ('(s1b / bark-01\n    :ARG0 (s1d / dog\n        :refer-number singular)'
@@ -134,8 +130,6 @@ def _python_shape(text):
 @pytest.fixture(scope='module')
 def compared():
     node = _node()
-    if not node:
-        _skip_or_fail('needs node 18+ and plaid-umr beside the agent')
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, 'cases.json')
         with open(path, 'w', encoding='utf-8') as fh:

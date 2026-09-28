@@ -6,16 +6,18 @@ those sets. A copy drifts silently: a relation added to the app would be one
 the assistant refuses, or the other way round. This runs the app's module and
 compares the sets whole.
 
-It skips where it cannot run (no node, or plaid-umr not beside the agent); it
-does not skip when the two disagree.
+It skips where it cannot run (no node, or plaid-umr not beside the agent), and
+says so in the warnings summary too (see ``node_exe``); it does not skip when
+the two disagree.
 """
 
 import json
 import os
-import shutil
 import subprocess
 
 import pytest
+from live import _skip_or_fail
+from node_exe import node_or_skip
 
 from plaid_client.workflows.umr import inventory
 
@@ -40,9 +42,9 @@ console.log(JSON.stringify({{
 
 @pytest.fixture(scope='module')
 def js():
-    exe = shutil.which('node')
-    if not exe or not os.path.isfile(JS_INVENTORY):
-        pytest.skip('node or plaid-umr is not here')
+    if not os.path.isfile(JS_INVENTORY):
+        _skip_or_fail('needs plaid-umr beside the agent')
+    exe = node_or_skip("The relation inventory mirror reads the app's inventory with it.")
     out = subprocess.run([exe, '--input-type=module', '-e', SCRIPT], capture_output=True,
                          text=True, timeout=60, check=True).stdout
     return json.loads(out)

@@ -28,11 +28,11 @@ import copy
 import json
 import os
 import random
-import shutil
 import subprocess
 import tempfile
 
 from live import _skip_or_fail
+from node_exe import node_or_skip
 
 import pytest
 
@@ -54,17 +54,13 @@ NAME = 'Mirror'
 LABELS = ['nsubj', 'obj', 'obl', 'conj:and', 'obl:in:loc', 'obl|x', 'nmod', 'é']
 
 
-def _node():
-    """The node to run plaid-ud with, or None to skip. Its domain modules are
-    ESM and reach @larc-iu/plaid-client through plaid-ud's own node_modules."""
-    exe = shutil.which('node')
-    if not exe or not os.path.isdir(os.path.join(UD, 'node_modules')):
-        return None
-    try:
-        v = subprocess.run([exe, '--version'], capture_output=True, text=True, timeout=30).stdout
-        return exe if int(v.strip().lstrip('v').split('.')[0]) >= 18 else None
-    except Exception:  # noqa: BLE001 - any trouble asking means do not rely on it
-        return None
+def _node() -> str:
+    """The node to run plaid-ud with, or a skip that says why. Its domain
+    modules are ESM and reach @larc-iu/plaid-client through plaid-ud's own
+    node_modules."""
+    if not os.path.isdir(os.path.join(UD, 'node_modules')):
+        _skip_or_fail('needs plaid-ud installed beside the agent')
+    return node_or_skip("The enhanced-dependency mirror runs plaid-ud's modules with it.")
 
 
 def _case(seed: int) -> dict:
@@ -281,8 +277,6 @@ def _python_side(raw: dict) -> dict:
 @pytest.fixture(scope='module')
 def compared():
     node = _node()
-    if not node:
-        _skip_or_fail('needs node 18+ and plaid-ud installed beside the agent')
     raws = [_case(s) for s in range(CASES)]
     py = [_python_side(raw) for raw in raws]
     cases = [{'raw': _camel(raw), 'splitAt': [int(k) for k in p['splits']],

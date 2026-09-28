@@ -29,12 +29,12 @@ import json
 import os
 import random
 import re
-import shutil
 import subprocess
 import tempfile
 import warnings
 
 from live import _skip_or_fail
+from node_exe import node_or_skip
 
 import pytest
 
@@ -53,17 +53,13 @@ MODULES = os.path.abspath(os.path.join(HERE, '..', '..', 'plaid-igt', 'node_modu
 CASES = 300
 
 
-def _node():
-    """The node to run the app's modules with, or None to skip. They are ESM
-    and reach @larc-iu/plaid-client through plaid-igt's own node_modules."""
-    exe = shutil.which('node')
-    if not exe or not os.path.isdir(DOMAIN) or not os.path.isdir(MODULES):
-        return None
-    try:
-        v = subprocess.run([exe, '--version'], capture_output=True, text=True, timeout=30).stdout
-        return exe if int(v.strip().lstrip('v').split('.')[0]) >= 18 else None
-    except Exception:  # noqa: BLE001 - any trouble asking means do not rely on it
-        return None
+def _node() -> str:
+    """The node to run the app's modules with, or a skip that says why. They
+    are ESM and reach @larc-iu/plaid-client through plaid-igt's own
+    node_modules."""
+    if not os.path.isdir(DOMAIN) or not os.path.isdir(MODULES):
+        _skip_or_fail('needs plaid-igt installed beside the agent')
+    return node_or_skip("The vocabulary mirror runs plaid-igt's modules with it.")
 
 
 FORMS = ['ama', 'run', 'bank', 'kita', 'x']
@@ -186,8 +182,6 @@ def _python_side(c: dict) -> dict:
 @pytest.fixture(scope='module')
 def compared():
     node = _node()
-    if not node:
-        _skip_or_fail('needs node 18+ and plaid-igt installed beside the agent')
     cases = [_case(s) for s in range(CASES)]
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, 'cases.json')
@@ -251,8 +245,6 @@ def test_every_app_function_is_ported_or_exempted():
     """The value comparison runs the functions both sides have, so it is blind
     to one the app grew and the port never got. This is not."""
     node = _node()
-    if not node:
-        _skip_or_fail('node or plaid-igt not available')
     run = subprocess.run([node, RUNNER, '--surface'], capture_output=True, text=True, timeout=120)
     assert run.returncode == 0, run.stderr
     surface = json.loads(run.stdout)
