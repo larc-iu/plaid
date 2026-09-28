@@ -1734,7 +1734,7 @@ describe('SentenceBlock taking a changed entry value', () => {
     el.dispatchEvent(
       new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }),
     );
-  const mount = async (entryChange) => {
+  const mount = async (entryChange, entryChangeCount = (id) => (entryChange(id) ? 5 : 0)) => {
     const { sentence, nodesById } = fixture();
     const doc = {
       graph: {},
@@ -1742,6 +1742,7 @@ describe('SentenceBlock taking a changed entry value', () => {
       canDiscardSentence: () => false,
       canConfirm: () => false,
       entryChange: (id) => entryChange(id),
+      entryChangeCount,
       takeEntryValue: vi.fn(async () => true),
     };
     const r = await renderComponent(
@@ -1780,11 +1781,36 @@ describe('SentenceBlock taking a changed entry value', () => {
       );
       return found;
     };
+    // The take-all row names the count before the click.
     expect(await rows('s1e')).toEqual([
       [`Take entry value${keys.words('node.takeEntry')}`, false],
-      [`Take entry value for all nodes${keys.words('node.takeEntryAll')}`, false],
+      [`Take entry value for all 5 nodes${keys.words('node.takeEntryAll')}`, false],
     ]);
-    expect((await rows('s1l')).map(([, disabled]) => disabled)).toEqual([true, true]);
+    expect(await rows('s1l')).toEqual([
+      [`Take entry value${keys.words('node.takeEntry')}`, true],
+      [`Take entry value for all nodes${keys.words('node.takeEntryAll')}`, true],
+    ]);
+    await r.unmount();
+  });
+
+  it('names one node as one', async () => {
+    const { r } = await mount(
+      () => ({ entryId: 'v1', form: 'ver', from: 'a', to: 'b' }),
+      () => 1,
+    );
+    const node = r.container.querySelector('[data-node-var="s1e"]');
+    await r.step(() =>
+      node.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })),
+    );
+    const row = all(document, '[role="menuitem"]').find((m) =>
+      m.textContent.startsWith('Take entry value for'),
+    );
+    expect(row.textContent).toBe(`Take entry value for 1 node${keys.words('node.takeEntryAll')}`);
+    await r.step(() =>
+      document.activeElement.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      ),
+    );
     await r.unmount();
   });
 });

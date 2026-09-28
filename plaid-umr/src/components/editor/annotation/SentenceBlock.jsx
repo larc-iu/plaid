@@ -1124,6 +1124,16 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       'node.takeEntryAll': !doc.entryChange?.(menu.id),
     };
   })();
+  // A row whose label names what it will do here: the count of nodes the
+  // entry's new value goes to, read before the click.
+  const menuLabels = (() => {
+    const count = menu ? doc.entryChangeCount?.(menu.id) : 0;
+    if (!count) return null;
+    return {
+      'node.takeEntryAll':
+        count === 1 ? 'Take entry value for 1 node' : `Take entry value for all ${count} nodes`,
+    };
+  })();
 
   // ----- the new parent and the second parent -----
 
@@ -1925,6 +1935,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
               at={menu}
               direction={direction}
               disabled={menuDisabled}
+              labels={menuLabels}
               onAction={(action) => runAction(action, menu.id)}
               onClose={() => setMenu(null)}
               // Once the menu has gone: whatever it opened takes focus, and

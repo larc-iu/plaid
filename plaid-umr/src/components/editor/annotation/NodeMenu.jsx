@@ -14,8 +14,9 @@ import { wordsInDirection } from '../../../lib/siblingMoves.js';
 // invisible trigger the block moves to wherever the menu was asked for (the
 // pointer for a right-click, the button for a click on it). What it offers
 // is `nodeMenuItems.js`. The key beside a move is the one that makes it in
-// this sentence's `direction` (siblingMoves.js).
-export function NodeMenu({ at, direction, disabled, onAction, onClose, onClosed }) {
+// this sentence's `direction` (siblingMoves.js). `labels` replaces a row's
+// label for this node, as the take-all row names its count.
+export function NodeMenu({ at, direction, disabled, labels, onAction, onClose, onClosed }) {
   return (
     <DropdownMenu open={!!at} onOpenChange={(open) => !open && onClose()}>
       <DropdownMenuTrigger asChild>
@@ -55,7 +56,7 @@ export function NodeMenu({ at, direction, disabled, onAction, onClose, onClosed 
             {i > 0 && <DropdownMenuSeparator />}
             {group.map(([id, label, keyId]) => (
               <DropdownMenuItem key={id} disabled={!!disabled?.[id]} onSelect={() => onAction(id)}>
-                <span className="whitespace-nowrap">{label}</span>
+                <span className="whitespace-nowrap">{labels?.[id] || label}</span>
                 <span className="ml-auto pl-6 font-mono text-[0.7rem] whitespace-nowrap text-muted-foreground">
                   {wordsInDirection(keys, keyId || id, direction)}
                 </span>
