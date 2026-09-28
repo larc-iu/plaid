@@ -1002,11 +1002,12 @@
 
 /* What a double-click edits says so under the pointer, with the dotted
    underline that marks an opener in igt. No pointer cursor: a single click
-   only focuses the node. */
-.umr-node--focused .umr-node-var:hover,
-.umr-node--focused .umr-node-concept:hover,
-.umr-node--focused .umr-chip:hover,
-.umr-node--focused .umr-doc-more:hover {
+   only focuses the node. Only where a double-click opens something: not in a
+   read-only or past view, and not while a mode waits. */
+.umr-node--focused.umr-node--editable .umr-node-var:hover,
+.umr-node--focused.umr-node--editable .umr-node-concept:hover,
+.umr-node--focused.umr-node--editable .umr-chip:hover,
+.umr-node--focused.umr-node--editable .umr-doc-more:hover {
   text-decoration: underline dotted;
   text-underline-offset: 2px;
 }

@@ -136,6 +136,8 @@ export const UmrNode = React.memo(function UmrNode({
         node.constant ? 'umr-node--constant' : '',
         node.root ? 'umr-node--root' : '',
         focused ? 'umr-node--focused' : '',
+        // Its parts open on a double-click, which the hover hint says.
+        editable ? 'umr-node--editable' : '',
         dropTarget ? 'umr-node--drop' : '',
         modeTarget ? 'umr-node--target' : '',
         PROV_CLASS[prov.mark] || '',
@@ -315,9 +317,20 @@ export const UmrNode = React.memo(function UmrNode({
               </span>
             );
           })}
-          {hiddenItems.length > 0 && (
-            <span className="umr-doc-tag umr-doc-tag--more">{more(hiddenItems, 'rest')}</span>
-          )}
+          {hiddenItems.length > 0 &&
+            (() => {
+              // The relations past the tags shown, marked as a tag is when
+              // one of them awaits review, or the count hid it.
+              const mark = worstMark(hiddenItems.map((one) => one.prov));
+              return (
+                <span
+                  className={`umr-doc-tag umr-doc-tag--more${mark ? ` umr-doc-tag--${mark}` : ''}`}
+                  data-prov={mark || undefined}
+                >
+                  {more(hiddenItems, 'rest')}
+                </span>
+              );
+            })()}
         </div>
       )}
       {onMenu && (

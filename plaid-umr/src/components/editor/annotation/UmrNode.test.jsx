@@ -80,6 +80,20 @@ describe('UmrNode parts', () => {
     expect(r.container.querySelector('.umr-node-concept').getAttribute('title')).toBeNull();
     await r.unmount();
   });
+
+  // The hover hint (canvas.css) keys on this class: a focused node in a
+  // read-only or past view, or while a mode waits, underlined its parts as
+  // openers that a double-click then did not open.
+  it('carries the class the opener hint needs only where a double-click edits', async () => {
+    let r = await renderComponent(<UmrNode node={withAttrs} position={position} focused />);
+    expect(r.container.querySelector('.umr-node').className).not.toMatch(/umr-node--editable/);
+    await r.unmount();
+    r = await renderComponent(
+      <UmrNode node={withAttrs} position={position} focused onAction={vi.fn()} />,
+    );
+    expect(r.container.querySelector('.umr-node').className).toMatch(/umr-node--editable/);
+    await r.unmount();
+  });
 });
 
 describe('UmrNode document tags', () => {
@@ -197,6 +211,19 @@ describe('UmrNode document tags', () => {
       '● :contains s3e',
       '+2',
     ]);
+    // Nothing marks the count while what it hides is settled.
+    expect(r.container.querySelector('.umr-doc-tag--more').dataset.prov).toBeUndefined();
+    await r.unmount();
+
+    // A relation the count hides that awaits review marks the count, as it
+    // would mark its own tag: hidden, it was the one relation unmarked.
+    const drafted = six.map((t, i) =>
+      i === 5 ? { ...t, prov: 'machine', provTitle: 'Machine-made, unverified' } : t,
+    );
+    r = await renderComponent(<UmrNode node={node} position={position} docTags={drafted} />);
+    const rest = r.container.querySelector('.umr-doc-tag--more');
+    expect(rest.className).toMatch(/umr-doc-tag--machine/);
+    expect(rest.dataset.prov).toBe('machine');
     await r.unmount();
   });
 });
