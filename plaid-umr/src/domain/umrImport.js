@@ -8,7 +8,7 @@ import { UMR_NAMESPACE, missingUmrLayerLabels, getUmrLayerInfo } from '../utils/
 import { parseUmrFile } from './format/umrFile.js';
 import { nfc } from './format/penman.js';
 import { DOC_CONSTANTS } from './format/inventory.js';
-import { buildDocumentGraph, wordForFile } from './sentenceGraph.js';
+import { buildDocumentGraph, KEPT_VARIABLE, wordForFile } from './sentenceGraph.js';
 import { findLostCreate } from '../../../plaid-ui/src/lib/lostCreate.js';
 import { humanizeError } from '../../../plaid-ui/src/lib/errors.js';
 
@@ -475,6 +475,23 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
   // Document-level triples, resolved once every sentence's nodes are known:
   // a file may name a node of a later sentence, and the export writes the
   // triple where the later of its two nodes lives.
+  //
+  // One naming a node of a graph kept as text (it could not be read) has
+  // nothing to point at yet. It is HELD, by name, on the sentence whose block
+  // wrote it (`held` on its token), written back in that block on export,
+  // and made a real relation when the graph is mended in Text mode (the
+  // owner's ruling). It was dropped with "no node s37e", which the kept
+  // graph did define. The variables a kept graph defines, by sentence:
+  const keptVars = new Map();
+  sentences.forEach((s) => {
+    const raw = s.meta.rawGraph;
+    if (typeof raw !== 'string') return;
+    for (const m of raw.matchAll(KEPT_VARIABLE)) {
+      if (!keptVars.has(m[1])) keptVars.set(m[1], s.index);
+    }
+  });
+  // Per block sentence: how many it holds, and for which kept sentences.
+  const heldBy = new Map();
   pendingTriples.forEach(({ index, dg }) => {
     const resolve = (name) => {
       if (DOC_CONSTANTS.includes(name)) {
@@ -493,6 +510,15 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
         const target = resolve(b);
         if (!source || !target) {
           const missing = [...new Set([source ? null : a, target ? null : b])].filter(Boolean);
+          if (missing.every((v) => keptVars.has(nfc(v)) || keptVars.has(v))) {
+            const meta = sentences[index - 1].meta;
+            (meta.held ||= []).push({ source: a, rel, target: b, group });
+            const note = heldBy.get(index) || { count: 0, kept: new Set() };
+            note.count += 1;
+            missing.forEach((v) => note.kept.add(keptVars.get(nfc(v)) ?? keptVars.get(v)));
+            heldBy.set(index, note);
+            return;
+          }
           warnings.push(
             `Sentence ${index}: (${a} ${rel} ${b}) dropped, no node ${missing.join(' or ')}.`,
           );
@@ -515,6 +541,17 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
         triples.push(triple);
       });
     });
+  });
+
+  heldBy.forEach(({ count: n, kept }, index) => {
+    const which = [...kept].sort((x, y) => x - y);
+    const names =
+      which.length === 1
+        ? `sentence ${which[0]}`
+        : `sentences ${which.slice(0, -1).join(', ')} and ${which.at(-1)}`;
+    warnings.push(
+      `Sentence ${index}: ${count(n, 'document-level relation is', 'document-level relations are')} held until ${names} ${which.length === 1 ? 'is' : 'are'} mended.`,
+    );
   });
 
   // An edge to a node the sentence never defined (a reference the parser

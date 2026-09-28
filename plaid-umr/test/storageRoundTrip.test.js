@@ -87,11 +87,17 @@ for (const file of fs.readdirSync(FIXTURES).filter((f) => f.endsWith('.umr'))) {
     // Triples as a document-wide set: duplicates and order are the file's,
     // and a triple a file writes in a later sentence than the two it joins
     // (the validator's "misplaced") is written where it belongs. A triple
-    // naming a variable no readable sentence defines is dropped on import.
+    // naming a variable no sentence defines is dropped on import. One naming
+    // a variable of a graph kept as text is held and written back (the
+    // owner's ruling of 2026-09-28), so that graph's variables count, read
+    // here apart from the app's own reading.
     const defined = new Set(DOC_CONSTANTS);
-    original.sentences
-      .filter(readable)
-      .forEach((s) => s.graph.nodes.forEach((_, v) => defined.add(v)));
+    original.sentences.forEach((s) => {
+      if (readable(s)) s.graph.nodes.forEach((_, v) => defined.add(v));
+      else if (s.raw?.graph) {
+        for (const m of s.raw.graph.matchAll(/\(\s*(s[0-9]+[^\s/()]*)\s*\//g)) defined.add(m[1]);
+      }
+    });
     const setOf = (sentences) =>
       [...new Set(sentences.flatMap((s) => tripleSet(s.docGraph)))].sort();
     const known = setOf(original.sentences).filter((t) =>
