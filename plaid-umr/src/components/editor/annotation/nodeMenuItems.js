@@ -36,6 +36,7 @@ export const ITEMS = [
     ['node.coref', 'Coreference'],
     ['node.temporal', 'Temporal relation'],
     ['node.modal', 'Modal relation'],
+    ['node.docRelations', 'Change a document relation'],
   ],
   [
     ['node.delete', 'Delete relation to parent'],

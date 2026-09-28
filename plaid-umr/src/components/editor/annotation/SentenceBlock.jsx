@@ -133,6 +133,11 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const errorCount = problems.filter((p) => p.level === 'error').length;
   const warningCount = problems.length - errorCount;
   const [showProblems, setShowProblems] = useState(false);
+  // The list closes with its last problem: the toggle that would close it
+  // goes then, and a problem coming back later does not reopen it unasked.
+  useEffect(() => {
+    if (!problems.length) setShowProblems(false);
+  }, [problems.length]);
   // Text mode: the graph as PENMAN in place of the canvas until applied.
   const [textMode, setTextMode] = useState(false);
   const textModeRef = useRef(false);
@@ -141,14 +146,16 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // land: refused, or after a conflict refused unsent.
   const [unapplied, setUnapplied] = useState(null);
   // Out of text mode, focus goes to the graph: the node focused before, else
-  // the root. The textarea it was in is gone.
+  // the root, else the block. The textarea it was in is gone. The node is
+  // read from the DOCUMENT, which already holds what the apply made, and not
+  // from this render's sentence: a blank sentence's first graph has no root
+  // here. The effect further down focuses it once it is drawn.
+  const refocusRef = useRef(null);
   const leaveTextMode = () => {
     setTextMode(false);
     setUnapplied(null);
-    requestAnimationFrame(() => {
-      const id = (focusedId && nodesById.has(focusedId) && focusedId) || sentence.roots[0]?.id;
-      if (id) nodeRefs.current.get(followIds(id))?.focus();
-    });
+    const kept = focusedId && doc?.node?.(focusedId) ? focusedId : null;
+    refocusRef.current = { id: kept || doc?.sentence?.(sentence.index)?.roots[0]?.id || null };
   };
   // Text mode is an editor, so a read-only view has none: the History drawer's
   // past state kept one open, and its Apply wrote the past's plan into the
@@ -275,6 +282,19 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   useEffect(() => {
     if (focusedId && !nodesById.has(focusedId)) setFocusedId(null);
   }, [focusedId, nodesById, setFocusedId]);
+
+  // Focus back from text mode (leaveTextMode). A node the document has and
+  // this block has not drawn yet is waited for. With none, or once it has
+  // gone (a refused apply taken back), focus rests in the block.
+  useEffect(() => {
+    const want = refocusRef.current;
+    if (!want || textMode) return;
+    const el = want.id ? nodeRefs.current.get(followIds(want.id)) : null;
+    if (want.id && !el && doc?.node?.(want.id)) return;
+    refocusRef.current = null;
+    if (el) el.focus();
+    else restFocus();
+  });
 
   const shownFocusId = focusWithin ? focusedId : null;
   const active = hoveredId || shownFocusId;
@@ -474,11 +494,15 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       null
     );
   };
-  const treeChildren = (id) =>
-    (nodesById.get(id)?.out || [])
+  // A node's children in READING order, as `rowNeighbor` below: ArrowDown
+  // goes to the first child a reader meets, the rightmost in an RTL sentence.
+  const treeChildren = (id) => {
+    const sign = direction === 'rtl' ? -1 : 1;
+    return (nodesById.get(id)?.out || [])
       .filter((e) => layout.tree.treeEdgeIds.has(e.id))
       .map((e) => e.target)
-      .sort((a, b) => (layout.nodes.get(a)?.x ?? 0) - (layout.nodes.get(b)?.x ?? 0));
+      .sort((a, b) => sign * ((layout.nodes.get(a)?.x ?? 0) - (layout.nodes.get(b)?.x ?? 0)));
+  };
   // The next node along the row in READING order, which is the x order in an
   // LTR sentence and its reverse in an RTL one: the words run right to left
   // and the nodes are placed over them. `arrowStep` says which way a key
@@ -523,7 +547,12 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // by then, so the blur this causes does nothing.
   const closeEditor = () => {
     setEditor(null);
-    if (!focusedId) return;
+    if (!focusedId) {
+      // An editor opened with no node focused (`n` on an empty sentence, a
+      // double-click on empty space) hands focus back to where it came from.
+      if (document.activeElement?.closest?.('.umr-inline-editor')) restFocus();
+      return;
+    }
     if (document.activeElement?.closest?.('.umr-inline-editor')) {
       nodeRefs.current.get(followIds(focusedId))?.focus();
     }
@@ -733,7 +762,13 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // click or key starts from here.
   const unfocus = () => {
     takeFocus(null);
-    sectionRef.current?.focus({ preventScroll: true });
+    restFocus();
+  };
+  // Where focus rests in the block with no node focused: the empty graph's
+  // own stop when it has no nodes, else the section.
+  const restFocus = () => {
+    const stop = canvasRef.current?.tabIndex === 0 ? canvasRef.current : sectionRef.current;
+    stop?.focus({ preventScroll: true });
   };
 
   // Discard graph: the sentence's drafted nodes and relations go, after a
@@ -779,6 +814,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // ----- keys -----
 
   const handleKeyDown = async (e) => {
+    // The node menu is portaled but inside this block's React tree, so its
+    // keys bubble here. They are the menu's: its Escape closed the menu and
+    // then unfocused the node it had been opened on.
+    if (e.target.closest?.('[role="menu"]')) return;
     // Read-only too: a node focused to look at it (a deep link) lets go.
     if (e.key === 'Escape' && readOnly && focusedId && !editor && !menu) {
       e.preventDefault();
@@ -806,8 +845,16 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       return;
     }
     const id = focusedId;
-    // This block's own nodes: `nodesById` is the whole document's.
-    if (!id || !layout.nodes.has(id)) return;
+    // This block's own nodes: `nodesById` is the whole document's. With none
+    // focused (an empty sentence, or after Escape) the one key that needs no
+    // node still works.
+    if (!id || !layout.nodes.has(id)) {
+      if (keys.is('canvas.newRoot', e)) {
+        e.preventDefault();
+        await runAction('canvas.newRoot', null);
+      }
+      return;
+    }
     const fixedKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter'];
     if (fixedKeys.includes(e.key) && !e.altKey && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
@@ -838,7 +885,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // depending on which way it was reached.
   const runAction = async (action, id = focusedId) => {
     const node = nodesById.get(id);
-    if (!node) return;
+    if (!node && action !== 'canvas.newRoot') return;
     switch (action) {
       case 'node.concept':
         setEditor({ kind: 'concept', nodeId: id, ...positionBelow(id), value: node.concept });
@@ -894,10 +941,13 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       case 'node.modal':
         askPick('modal', id);
         break;
-      // Every document relation of a node, when there are more than it
-      // shows as tags: pick one to change it.
+      // Every document relation of a node, listed to pick one to change or
+      // delete: the keyboard's and the menu's way to a tag, and the `+N`
+      // chip's to the ones past what the node shows.
       case 'node.docRelations':
-        setEditor({ kind: 'docList', nodeId: id, ...positionBelow(id), value: '' });
+        if (docTagsByNode.get(id)?.length) {
+          setEditor({ kind: 'docList', nodeId: id, ...positionBelow(id), value: '' });
+        }
         break;
       case 'canvas.newRoot':
         askNewNode(null, [], { x: 16, y: stageHeight - 44 });
@@ -934,6 +984,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       'node.root': !!node.root,
       'node.confirm': !doc.canConfirm(menu.id),
       'node.delete': !edge,
+      'node.docRelations': !docTagsByNode.get(menu.id)?.length,
     };
   })();
 
@@ -1204,6 +1255,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     return [];
   };
 
+  // The empty graph's keyboard stop (see `.umr-graph` below).
+  const emptyStop = !readOnly && !textMode && sentence.nodes.length === 0;
+
   // Unique to this block, so two blocks' markers cannot collide.
   const arrows = `umr-arrow-${sentence.tokenId}`;
 
@@ -1326,7 +1380,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
           </button>
         )}
       </header>
-      {showProblems && (
+      {showProblems && problems.length > 0 && (
         <ul className="umr-problems">
           {problems.map((p, i) => (
             <li key={i} className={`umr-problem umr-problem--${p.level}`}>
@@ -1489,6 +1543,12 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             className="umr-graph"
             ref={canvasRef}
             style={{ height: `${stageHeight}px` }}
+            // A sentence with no graph has no node to Tab to, so the graph
+            // itself is the keyboard's way in, where `n` starts one.
+            tabIndex={emptyStop ? 0 : undefined}
+            aria-label={
+              emptyStop ? `No graph. ${keys.words('canvas.newRoot')} adds a node.` : undefined
+            }
             // Empty space in child mode: a child with no word, where the
             // click was. Only when the press began on empty space too: a drag
             // from a grip or a label ends in a click on this, the common

@@ -40,10 +40,6 @@ const runActionCases = () =>
 
 const menuIds = ITEMS.flat().map(([id]) => id);
 
-// Reached from the node's `+N` chip rather than from a key or the menu: the
-// node's other document-level relations, listed so one can be changed.
-const NOT_IN_A_TABLE = new Set(['node.docRelations']);
-
 describe('the canvas action tables agree', () => {
   it('every action a key reaches is a runAction case', () => {
     const cases = runActionCases();
@@ -58,7 +54,7 @@ describe('the canvas action tables agree', () => {
   });
 
   it('every runAction case is reachable by a key or the menu', () => {
-    const reachable = new Set([...CANVAS_ACTIONS, ...menuIds, ...NOT_IN_A_TABLE]);
+    const reachable = new Set([...CANVAS_ACTIONS, ...menuIds]);
     expect([...runActionCases()].filter((id) => !reachable.has(id))).toEqual([]);
   });
 

@@ -819,3 +819,385 @@ describe('SentenceBlock comments', () => {
     await r.unmount();
   });
 });
+
+// The UMR round of 2026-09-28: the keyboard's ways in and back, and the
+// problem list.
+describe('SentenceBlock keyboard, with no node focused', () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const docStub = (extra = {}) => ({
+    graph: {},
+    canConfirmSentence: () => false,
+    canDiscardSentence: () => false,
+    canConfirm: () => false,
+    ...extra,
+  });
+  const press = (el, key, init = {}) =>
+    el.dispatchEvent(
+      new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }),
+    );
+
+  it('gives an empty sentence a keyboard stop, where n starts a node', async () => {
+    const { sentence, nodesById } = fixture();
+    const empty = { ...sentence, nodes: [], edges: [], roots: [] };
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={docStub()}
+        dataVersion={1}
+        readOnly={false}
+        sentence={empty}
+        nodesById={nodesById}
+      />,
+    );
+    const stop = r.container.querySelector('.umr-graph');
+    expect(stop.tabIndex).toBe(0);
+    expect(stop.getAttribute('aria-label')).toBe('No graph. N adds a node.');
+    await r.step(() => stop.focus());
+    await r.step(() => press(stop, 'n'));
+    expect(r.container.querySelector('.umr-inline-editor input')).not.toBeNull();
+    // Escape hands focus back to the stop, not to the page.
+    await r.step(() => press(r.container.querySelector('.umr-inline-editor input'), 'Escape'));
+    await r.step(() => wait(20));
+    expect(r.container.querySelector('.umr-inline-editor input')).toBeNull();
+    expect(document.activeElement).toBe(stop);
+    await r.unmount();
+  });
+
+  it('is no stop in a sentence with a graph, or for a reader', async () => {
+    const { sentence, nodesById } = fixture();
+    const withGraph = await renderComponent(
+      <SentenceBlock
+        doc={docStub()}
+        dataVersion={1}
+        readOnly={false}
+        sentence={sentence}
+        nodesById={nodesById}
+      />,
+    );
+    expect(withGraph.container.querySelector('.umr-graph').hasAttribute('tabindex')).toBe(false);
+    await withGraph.unmount();
+    const reader = await renderComponent(
+      <SentenceBlock
+        doc={docStub()}
+        dataVersion={1}
+        sentence={{ ...sentence, nodes: [], edges: [], roots: [] }}
+        nodesById={nodesById}
+      />,
+    );
+    expect(reader.container.querySelector('.umr-graph').hasAttribute('tabindex')).toBe(false);
+    await reader.unmount();
+  });
+
+  it('takes n on the block after Escape let the node go', async () => {
+    const { sentence, nodesById } = fixture();
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={docStub()}
+        dataVersion={1}
+        readOnly={false}
+        sentence={sentence}
+        nodesById={nodesById}
+      />,
+    );
+    const node = all(r.container, '.umr-node')[0];
+    await r.step(() => node.focus());
+    await r.step(() => press(node, 'Escape'));
+    const section = r.container.querySelector('section');
+    expect(document.activeElement).toBe(section);
+    await r.step(() => press(section, 'n'));
+    expect(r.container.querySelector('.umr-inline-editor input')).not.toBeNull();
+    await r.unmount();
+  });
+});
+
+describe('SentenceBlock node menu, Escape', () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // The menu is portaled but in the block's React tree, so its Escape used
+  // to reach the block's own key handler too, which let the node go.
+  it('closes the menu and leaves the node focused', async () => {
+    const { sentence, nodesById } = fixture();
+    const doc = {
+      graph: {},
+      canConfirmSentence: () => false,
+      canDiscardSentence: () => false,
+      canConfirm: () => false,
+    };
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={doc}
+        dataVersion={1}
+        readOnly={false}
+        sentence={sentence}
+        nodesById={nodesById}
+      />,
+    );
+    const node = all(r.container, '.umr-node')[0];
+    await r.step(() =>
+      node.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })),
+    );
+    const item = document.querySelector('[role="menuitem"]');
+    expect(item).not.toBeNull();
+    await r.step(() =>
+      item.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      ),
+    );
+    await r.step(() => wait(100));
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(node);
+    expect(all(r.container, '.umr-node--focused')).toEqual([node]);
+    await r.unmount();
+  });
+});
+
+describe('SentenceBlock document relations from the keyboard and the menu', () => {
+  const withTag = () => {
+    const { sentence, nodesById } = fixture();
+    const author = {
+      id: 'c1',
+      var: 'author',
+      concept: 'author',
+      constant: true,
+      wordIds: [],
+      attrs: [],
+      out: [],
+      in: [],
+    };
+    const leave = nodesById.get('n1');
+    const triple = {
+      id: 'tr1',
+      source: 'c1',
+      target: 'n1',
+      rel: ':full-affirmative',
+      group: 'modal',
+    };
+    author.out.push(triple);
+    const leaveT = { ...leave, docOut: [], docIn: [triple] };
+    const map = new Map(nodesById);
+    map.set('c1', author);
+    map.set('n1', leaveT);
+    return { sentence: { ...sentence, nodes: [leaveT, ...sentence.nodes.slice(1)] }, map };
+  };
+
+  it('lists a node relation to change on d, and greys the menu row out without any', async () => {
+    const { sentence, nodesById } = fixture();
+    const doc = {
+      graph: {},
+      canConfirmSentence: () => false,
+      canDiscardSentence: () => false,
+      canConfirm: () => false,
+    };
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={doc}
+        dataVersion={1}
+        readOnly={false}
+        sentence={sentence}
+        nodesById={nodesById}
+      />,
+    );
+    const node = all(r.container, '.umr-node')[0];
+    await r.step(() =>
+      node.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })),
+    );
+    const row = all(document, '[role="menuitem"]').find((m) =>
+      m.textContent.includes('Change a document relation'),
+    );
+    expect(row.hasAttribute('data-disabled')).toBe(true);
+    expect(row.lastChild.textContent).toBe(keys.words('node.docRelations'));
+    await r.unmount();
+  });
+
+  it('opens the list on d, and a pick opens that relation to change or delete', async () => {
+    const { sentence, map } = withTag();
+    const deleted = [];
+    const doc = {
+      graph: {},
+      canConfirmSentence: () => false,
+      canDiscardSentence: () => false,
+      canConfirm: () => false,
+      deleteTriple: (id) => deleted.push(id),
+    };
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={doc}
+        dataVersion={1}
+        readOnly={false}
+        sentence={sentence}
+        nodesById={map}
+      />,
+    );
+    const node = all(r.container, '.umr-node')[0];
+    await r.step(() => node.focus());
+    await r.step(() =>
+      node.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'd', bubbles: true, cancelable: true }),
+      ),
+    );
+    const input = r.container.querySelector('.umr-inline-editor input');
+    expect(input.placeholder).toBe('Relation');
+    expect(texts(document, '[role="option"]')).toEqual(['author :full-affirmative']);
+    await r.step(() => all(document, '[role="option"]')[0].click());
+    const relation = r.container.querySelector('.umr-inline-editor input');
+    expect(relation.value).toBe(':full-affirmative');
+    // Shift+Backspace before anything is typed deletes it, as in any
+    // relation editor.
+    await r.step(() =>
+      relation.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Backspace',
+          shiftKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    expect(deleted).toEqual(['tr1']);
+    await r.unmount();
+  });
+});
+
+describe('SentenceBlock problem list', () => {
+  it('goes when its last problem is fixed, and stays shut when one comes back', async () => {
+    const { sentence, nodesById } = fixture();
+    const problems = [{ level: 'warning', code: 'missing-attribute', message: 'No aspect.' }];
+    const props = { dataVersion: 1, sentence, nodesById };
+    const r = await renderComponent(<SentenceBlock {...props} problems={problems} />);
+    await r.step(() => r.container.querySelector('.umr-problems-toggle').click());
+    expect(texts(r.container, '.umr-problem')).toHaveLength(1);
+    await r.rerender(<SentenceBlock {...props} dataVersion={2} problems={[]} />);
+    expect(r.container.querySelector('.umr-problems')).toBeNull();
+    await r.rerender(<SentenceBlock {...props} dataVersion={3} problems={problems} />);
+    expect(r.container.querySelector('.umr-problems')).toBeNull();
+    await r.unmount();
+  });
+});
+
+// ArrowDown goes to the first child in READING order, as Left and Right walk
+// a row in it: in an RTL sentence that is the rightmost child. It took the
+// leftmost in either script.
+describe('SentenceBlock ArrowDown in either script', () => {
+  const place = (direction) => {
+    // Words 100px apart, running the way the script reads.
+    const spot = (id) => {
+      const i = Number(String(id).slice(1)) - 1;
+      const left = direction === 'rtl' ? 400 - i * 100 : i * 100;
+      return { left, right: left + 60, width: 60, top: 0, bottom: 20, height: 20, x: left, y: 0 };
+    };
+    return vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function rect() {
+        const id = this.dataset?.wordId;
+        return id
+          ? spot(id)
+          : { left: 0, right: 0, width: 0, top: 0, bottom: 0, height: 0, x: 0, y: 0 };
+      });
+  };
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each(['ltr', 'rtl'])('in %s, goes to the child a reader meets first', async (direction) => {
+    place(direction);
+    const { sentence, nodesById } = fixture();
+    const doc = {
+      graph: {},
+      canConfirmSentence: () => false,
+      canDiscardSentence: () => false,
+      canConfirm: () => false,
+    };
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={doc}
+        dataVersion={1}
+        readOnly={false}
+        direction={direction}
+        sentence={sentence}
+        nodesById={nodesById}
+      />,
+    );
+    const byConcept = (c) =>
+      all(r.container, '.umr-node').find(
+        (n) => n.querySelector('.umr-node-concept')?.textContent === c,
+      );
+    const children = ['person', 'eat-01'].map((c) => [c, parseFloat(byConcept(c).style.left)]);
+    expect(children[0][1]).not.toBe(children[1][1]);
+    const sign = direction === 'rtl' ? -1 : 1;
+    const first = [...children].sort((a, b) => sign * (a[1] - b[1]))[0][0];
+    const root = byConcept('leave-02');
+    await r.step(() => root.focus());
+    await r.step(() =>
+      root.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
+      ),
+    );
+    expect(document.activeElement).toBe(byConcept(first));
+    await r.unmount();
+  });
+});
+
+// Out of text mode, focus goes to the graph. On a sentence that had none,
+// the root was read from the render BEFORE the apply, which had no root,
+// and focus fell to the page.
+describe('SentenceBlock text mode, focus after Apply', () => {
+  const type = (el, value) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    setter.call(el, value);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const button = (root, name) => all(root, 'button').find((b) => b.textContent.trim() === name);
+  const stub = (applied = null) => ({
+    graph: {},
+    canConfirmSentence: () => false,
+    canDiscardSentence: () => false,
+    penmanOf: () => '',
+    planPenman: () => ({ changes: 1 }),
+    applyPenman: () => new Promise(() => {}),
+    // The document once the apply's plan is in, which is before the block
+    // has drawn it.
+    sentence: () => applied,
+    node: (id) => applied?.nodes.find((n) => n.id === id) || null,
+  });
+
+  it('lands on the new root of a sentence that had no graph', async () => {
+    const { sentence, nodesById } = fixture();
+    const blank = { ...sentence, nodes: [], edges: [], roots: [] };
+    const lone = { ...nodesById.get('n1'), out: [], in: [] };
+    const applied = { ...blank, nodes: [lone], roots: [lone] };
+    const props = { doc: stub(applied), readOnly: false };
+    const r = await renderComponent(
+      <SentenceBlock {...props} dataVersion={1} sentence={blank} nodesById={new Map()} />,
+    );
+    await r.step(() => button(r.container, 'Text').click());
+    await r.step(() => type(r.container.querySelector('textarea'), '(s1l / leave-02)'));
+    await r.step(() => button(r.container, 'Apply').click());
+    // The render after the apply's, which draws the node.
+    await r.rerender(
+      <SentenceBlock
+        {...props}
+        dataVersion={2}
+        sentence={applied}
+        nodesById={new Map([['n1', lone]])}
+      />,
+    );
+    expect(document.activeElement).toBe(r.container.querySelector('.umr-node'));
+    await r.unmount();
+  });
+
+  it('lands on the empty graph when the sentence is still blank', async () => {
+    const { sentence } = fixture();
+    const blank = { ...sentence, nodes: [], edges: [], roots: [] };
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={stub(blank)}
+        readOnly={false}
+        dataVersion={1}
+        sentence={blank}
+        nodesById={new Map()}
+      />,
+    );
+    await r.step(() => button(r.container, 'Text').click());
+    await r.step(() => button(r.container, 'Cancel').click());
+    expect(document.activeElement).toBe(r.container.querySelector('.umr-graph'));
+    await r.unmount();
+  });
+});

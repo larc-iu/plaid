@@ -142,6 +142,14 @@ export const KEY_ACTIONS = [
     outsideText: true,
   },
   {
+    id: 'node.docRelations',
+    scope: 'canvas',
+    group: 'node',
+    label: 'Change a document relation: pick it',
+    keys: ['d'],
+    outsideText: true,
+  },
+  {
     id: 'canvas.newRoot',
     scope: 'canvas',
     group: 'canvas',
