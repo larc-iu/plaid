@@ -47,7 +47,7 @@ from .layers import (GlossLayer, UMR_NAMESPACE, UmrLayers, gloss_values, project
 from .penman import (Graph, attr_value_problem, concept_problem, is_variable,
                      new_variable_problem, next_variable, parse_attribute_line, parse_penman,
                      relation_form_problem, serialize_penman, tree_edges, variable_form_problem,
-                     variable_from)
+                     variable_from, written_value_problem)
 from .write import (DraftProgress, anchor_pieces, begin_draft, draft_params, finish_draft,
                     run_label, write_graphs)
 
@@ -71,7 +71,7 @@ __all__ = [
     'Graph', 'parse_penman', 'serialize_penman', 'tree_edges',
     'next_variable', 'is_variable', 'variable_from', 'parse_attribute_line',
     'concept_problem', 'relation_form_problem', 'attr_value_problem', 'variable_form_problem',
-    'new_variable_problem',
+    'new_variable_problem', 'written_value_problem',
     # flat
     'join_flat_graph',
     # write

@@ -170,9 +170,9 @@ def _table_entry(key: str, value) -> tuple:
     it: a marker, or a UMR attribute and a value the validator takes. What a
     table maps to is written as an attribute, so a relation UMR does not have
     (`:definite`, `:polarityy`), a role that points at a node (`:manner`,
-    `:ARG0`), and a value outside the attribute's set (`:refer-number
-    plurall`) or empty are refused here, as the app and the assistant refuse
-    them."""
+    `:ARG0`), a value outside the attribute's set (`:refer-number plurall`),
+    and a value the app's editors refuse (empty, an unclosed quote, `Big_one`)
+    are refused here, with the app's words."""
     if not (isinstance(value, list) and value and all(isinstance(v, str) for v in value)):
         raise ValueError(f'Abbreviation {key!r} must map to a list of strings or null.')
     entry = tuple(value)

@@ -126,9 +126,9 @@ def relation_form_problem(relation) -> Optional[str]:
 
 def attr_value_problem(value) -> Optional[str]:
     """Why ``value`` cannot be written as an attribute's value, or None when it
-    can. A quoted string may hold anything but a line break (the .umr file is
-    split by line before PENMAN reads it); a bare atom stops where a token
-    stops. The app's ``attrValueProblem``."""
+    can. A quoted string may hold anything (a line break in one is
+    :func:`value_grammar_problem`'s refusal, as in the app); a bare atom stops
+    where a token stops. The app's ``attrValueProblem``."""
     text = str(value if value is not None else '').strip()
     if not text:
         return 'An attribute needs a value.'
@@ -136,8 +136,6 @@ def attr_value_problem(value) -> Optional[str]:
         m = STRING.match(text)
         if not m or m.group(0) != text:
             return f'A quoted value needs its closing quote: {text}'
-        if '\n' in text or '\r' in text:
-            return f'A value cannot hold a line break: {text}'
         return None
     if '"' in text:
         return f'A value holds a quote only around the whole of it: {text}'
@@ -201,6 +199,21 @@ def value_grammar_problem(value, rel: Optional[str] = None) -> Optional[Dict[str
     return {'code': 'missing-node-definition',
             'message': f"The value '{text}'{of} is not a number or a word of lowercase "
                        f"letters, digits, + and -."}
+
+
+def written_value_problem(value, rel: Optional[str] = None) -> Optional[str]:
+    """Why ``value`` cannot be written as a NEW value of the attribute ``rel``,
+    or None when it can: what the file cannot hold (:func:`attr_value_problem`),
+    then what validate.py cannot read (:func:`value_grammar_problem`, a list
+    item's value included). What every editor in the app refuses a new value
+    with (``UmrDocument.attrValueProblem``), word for word, held to it by
+    ``plaid-agent/tests/test_penman_mirror.py``. The assistant and the
+    skeleton service ask it of every value they write."""
+    if isinstance(value, str):
+        value = unicodedata.normalize('NFC', value)
+    text = unicodedata.normalize('NFC', str(rel or '')).strip()
+    grammar = value_grammar_problem(value, text if text.startswith(':') else f':{text}')
+    return attr_value_problem(value) or (grammar['message'] if grammar else None)
 
 
 def variable_form_problem(variable) -> Optional[str]:

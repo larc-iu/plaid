@@ -125,18 +125,20 @@ def list_item_problem(rel, value) -> Optional[str]:
 def attribute_value_problem(rel: str, value) -> Optional[str]:
     """Why ``value`` cannot be written as the value of the attribute ``rel`` on
     a node, or None when it can: the relation is not an attribute, the value is
-    empty or holds a space, or it is outside the attribute's closed set
-    (``validate.js`` reports each as ``unexpected-value``)."""
+    one the app's editors refuse (``penman.written_value_problem``: what the
+    file cannot hold, then what validate.py cannot read), or it is outside the
+    attribute's closed set (``validate.js`` reports it as
+    ``unexpected-value``)."""
+    # penman imports this module, so this import waits until it is asked.
+    from .penman import written_value_problem
     rel = _as_relation(rel)
     if rel not in ATTRIBUTE_RELATIONS and not _OP.match(rel):
         return (f'{rel} is a relation to another node, not an attribute: its value would '
                 'have to be a node.')
     text = value if isinstance(value, str) else ''
-    if not text.strip() or re.search(r'\s', text):
-        return f'{rel} needs a value of one word, not {value!r}.'
-    listed = list_item_problem(rel, text)
-    if listed:
-        return listed
+    written = written_value_problem(text, rel)
+    if written:
+        return written
     closed = ATTRIBUTE_VALUES.get(rel)
     if closed and text not in closed:
         guess = difflib.get_close_matches(text, closed, n=1, cutoff=0.7)

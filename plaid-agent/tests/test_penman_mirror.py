@@ -34,7 +34,8 @@ from node_exe import node_or_skip
 import pytest
 
 from plaid_client.workflows.umr import parse_penman, serialize_penman, tree_edges
-from plaid_client.workflows.umr.penman import next_variable, value_grammar_problem
+from plaid_client.workflows.umr.penman import (next_variable, value_grammar_problem,
+                                               written_value_problem)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUNNER = os.path.join(HERE, 'penman_mirror.mjs')
@@ -122,6 +123,10 @@ VALUES = [
     # A list item takes a whole number or a quoted label (LIST_ITEM_ATTRIBUTES).
     ['first', ':li'], ['1', ':li'], ['-1', ':list-item'], ['"(a)"', ':li'], ['1.5', ':li'],
     ['+1', ':list-item'], ['""', ':li'], ['s1x', ':li'], ['First', ':li'], ['first', 'li'],
+    # What the skeleton's table check got wrong: a space inside quotes, an
+    # unclosed or stray quote.
+    ['"big one"', ':mod'], ['yes no', ':mode'], ['"(a)', ':li'], ['a"b', ':mod'],
+    ['  ', ':mod'], ['Big_one', ':mod'],
 ]
 
 #: Concepts a service names a node for, with the sentence and the names taken,
@@ -201,6 +206,15 @@ def test_the_mirror_actually_ran_the_app_s_reader(compared):
 def test_both_value_grammars_judge_one_value_the_same_way(compared, index):
     value, rel = VALUES[index]
     assert value_grammar_problem(value, rel) == compared['values'][index], f'on {value!r}'
+
+
+@pytest.mark.parametrize('index', range(len(VALUES)), ids=[repr(v)[:30] for v in VALUES])
+def test_both_refuse_a_new_value_the_same_way(compared, index):
+    """``written_value_problem``, which the assistant and the skeleton service
+    ask of every value they write, against what the app's editors ask
+    (``UmrDocument.attrValueProblem``): the same refusal, word for word."""
+    value, rel = VALUES[index]
+    assert written_value_problem(value, rel) == compared['written'][index], f'on {value!r}'
 
 
 @pytest.mark.parametrize('index', range(len(VARIABLES)), ids=[repr(v)[:30] for v in VARIABLES])

@@ -664,8 +664,15 @@ def test_a_possessed_noun_keeps_its_own_plural():
     ([':ARG1-of', 'y'], 'not an attribute'),
     ([':mod-of', 'y'], 'not an attribute'),
     ([':refer-number', 'plurall'], 'Did you mean plural?'),
-    ([':polarity', ''], 'a value of one word'),
-    ([':mode', 'yes no'], 'a value of one word'),
+    ([':polarity', ''], 'An attribute needs a value.'),
+    ([':mode', 'yes no'], 'cannot hold spaces'),
+    # The app's value check (UmrDocument.attrValueProblem): what the file
+    # cannot hold, then what validate.py cannot read.
+    ([':mod', '"(a)'], 'needs its closing quote'),
+    ([':mod', 'a"b'], 'a quote only around the whole of it'),
+    ([':mod', 'Big_one'], 'holds a capital letter or an underscore'),
+    ([':mod', '""'], 'is empty'),
+    ([':mod', 's1y-x'], "is read as the variable 's1y'"),
 ])
 def test_a_language_table_is_refused_when_it_names_no_umr_relation(tmp_path, value, why):
     """A table is a writer too: what it maps to is written as an attribute, so
@@ -691,6 +698,15 @@ def test_a_language_table_may_map_to_any_attribute_value_the_validator_takes(tmp
                                 'NMZ': [':op2', 'x'], 'AUG': [':degree', 'intensifier']}))
     table = boot.load_abbreviations(str(path))
     assert table['ID'] == (':mod', 'ideophone') and table['NMZ'] == (':op2', 'x')
+
+
+def test_a_language_table_may_map_to_a_quoted_value_with_a_space(tmp_path):
+    """The app takes any quoted value that holds no quote or line break, so a
+    table may too."""
+    path = tmp_path / 'table.json'
+    path.write_text(json.dumps({'CL': [':mod', '"noun class"'], 'LI': [':li', '"(a)"']}))
+    table = boot.load_abbreviations(str(path))
+    assert table['CL'] == (':mod', '"noun class"') and table['LI'] == (':li', '"(a)"')
 
 
 # --- which layers are glosses ---------------------------------------------------
