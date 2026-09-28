@@ -24,7 +24,7 @@
 //            could not read, kept as text so nothing is lost
 //
 // By its real path rather than through `@ui`: the node suite has no alias.
-import { cpSlice } from '@larc-iu/plaid-client';
+import { cpSlicer } from '@larc-iu/plaid-client';
 import { UMR_NAMESPACE } from '../utils/umrLayerUtils.js';
 import { treeEdges, serializePenman } from './format/penman.js';
 import { perWordStored } from './ilg.js';
@@ -55,6 +55,10 @@ const anchorPieces = (span, tokensById) =>
  */
 export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
   const body = layerInfo.textLayer?.text?.body ?? '';
+  // One code-point view of the body for every slice below: `cpSlice` spread
+  // the whole body once per word, which on a 320-sentence document was about
+  // 120 ms of every rebuild, and grew with words times body length.
+  const slice = cpSlicer(body);
   const sentenceTokens = [...(layerInfo.sentenceTokenLayer?.tokens || [])].sort(byBegin);
   const wordTokens = [...(layerInfo.wordTokenLayer?.tokens || [])].sort(byBegin);
   const morphemeTokens = [...(layerInfo.morphemeTokenLayer?.tokens || [])].sort(byBegin);
@@ -73,7 +77,7 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
       tokenId: token.id,
       begin: token.begin,
       end: token.end,
-      text: meta.text || cpSlice(body, token.begin, token.end).replace(/\n+$/, ''),
+      text: meta.text || slice(token.begin, token.end).replace(/\n+$/, ''),
       words: [],
       morphemes: [],
       // What an import stored, and (once the words are known) the lines the
@@ -100,7 +104,7 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
       index: s.words.length + 1,
       begin: token.begin,
       end: token.end,
-      text: cpSlice(body, token.begin, token.end),
+      text: slice(token.begin, token.end),
       metadata: token.metadata || null,
     });
   });
@@ -121,7 +125,7 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
       id: token.id,
       begin: token.begin,
       end: token.end,
-      text: typeof form === 'string' ? form : cpSlice(body, token.begin, token.end),
+      text: typeof form === 'string' ? form : slice(token.begin, token.end),
       // The FLEx morph-type name, which says how this morpheme joins the one
       // before it when the word is drawn. Absent on every hand-entered one.
       morphType: token.metadata?.morphType ?? null,
@@ -241,6 +245,69 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
   const chains = corefChains(docRelations, nodesById);
 
   return { sentences, constants, nodesById, chains };
+}
+
+/**
+ * `next` with every sentence that reads exactly as it did in `prev` replaced
+ * by `prev`'s object, and `nodesById` pointing at that object's nodes, so a
+ * screen that memoizes per sentence skips the ones an edit did not touch. On a
+ * 320-sentence document an edit re-rendered every block on the page.
+ *
+ * "Reads exactly as it did" is the sentence object itself, compared whole,
+ * plus what it shows of the rest of the document: the nodes at the far end of
+ * its edges and triples in other sentences (a tag names the other node's
+ * variable), and the size of each coreference chain its nodes are in. Returns
+ * `next` itself when there is nothing to keep.
+ */
+export function keepUnchangedSentences(prev, next) {
+  if (!prev || !next) return next;
+  const before = new Map(prev.sentences.map((s) => [s.tokenId, s]));
+  let kept = 0;
+  const sentences = next.sentences.map((s) => {
+    const old = before.get(s.tokenId);
+    if (!old || sentenceKey(old, prev) !== sentenceKey(s, next)) return s;
+    kept += 1;
+    return old;
+  });
+  if (!kept) return next;
+  const nodesById = new Map(next.nodesById);
+  sentences.forEach((s, i) => {
+    if (s !== next.sentences[i]) s.nodes.forEach((n) => nodesById.set(n.id, n));
+  });
+  return { ...next, sentences, nodesById };
+}
+
+// What a sentence shows, as one string: see keepUnchangedSentences. Cached
+// on the object, which is never changed once built.
+const KEY = Symbol('sentenceKey');
+function sentenceKey(s, { nodesById, chains }) {
+  if (s[KEY]) return s[KEY];
+  const own = new Set(s.nodes.map((n) => n.id));
+  const far = new Map();
+  const note = (id) => {
+    if (own.has(id) || far.has(id)) return;
+    const n = nodesById.get(id);
+    far.set(id, n ? [n.var, n.concept, n.sentence, n.constant, n.chain] : null);
+  };
+  s.nodes.forEach((n) => {
+    n.in.forEach((e) => note(e.source));
+    n.out.forEach((e) => note(e.target));
+    [...n.docIn, ...n.docOut].forEach((t) => {
+      note(t.source);
+      note(t.target);
+    });
+  });
+  s.triples.forEach((t) => {
+    note(t.source);
+    note(t.target);
+  });
+  // Every field but `edges` and `roots`, which repeat what the nodes hold
+  // (each node's edges out, and which nodes are roots, by id).
+  const { edges: _edges, roots, ...rest } = s;
+  const chainSizes = s.nodes.map((n) => (n.chain == null ? null : chains[n.chain]?.nodes.length));
+  const key = JSON.stringify([rest, roots.map((r) => r.id), [...far], chainSizes]);
+  Object.defineProperty(s, KEY, { value: key });
+  return key;
 }
 
 // The coreference relations, whichever way they point, join nodes into chains.
@@ -539,6 +606,52 @@ export const crossSentenceEdges = (graph) => {
       });
     }),
   );
+  return out;
+};
+
+/**
+ * Variables that name more than one stored node, as `{ var, nodes }`. Read
+ * over `nodesById`, since every map keyed by
+ * variable (the export's, the checks') keeps only the last of them: two nodes
+ * one variable names were written as one re-entrant node and nothing said so.
+ * Constants are left out, since a triple's constant is found by its name.
+ */
+const sharedVariables = (graph) => {
+  const byVar = new Map();
+  graph.nodesById.forEach((n) => {
+    if (n.constant || !n.var) return;
+    if (!byVar.has(n.var)) byVar.set(n.var, []);
+    byVar.get(n.var).push(n);
+  });
+  return [...byVar]
+    .filter(([, nodes]) => nodes.length > 1)
+    .map(([v, nodes]) => ({ var: v, nodes }));
+};
+
+/**
+ * Two nodes of ONE sentence under one variable, as an error on that
+ * sentence. Two sentences sharing one are the official check's to report
+ * (validate.js, `non-unique-node-id`), since both graphs reach it whole, and
+ * the file reads back as it was.
+ */
+export const variablesSharedInSentence = (graph) => {
+  const out = [];
+  sharedVariables(graph).forEach(({ var: v, nodes }) => {
+    const counts = new Map();
+    nodes.forEach((n) => {
+      if (n.sentence != null) counts.set(n.sentence, (counts.get(n.sentence) || 0) + 1);
+    });
+    counts.forEach((count, sentence) => {
+      if (count < 2) return;
+      out.push({
+        level: 'error',
+        code: 'non-unique-node-id',
+        sentence,
+        var: v,
+        message: `Variable '${v}' names ${count} nodes.`,
+      });
+    });
+  });
   return out;
 };
 

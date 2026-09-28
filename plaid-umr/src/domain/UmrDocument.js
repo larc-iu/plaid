@@ -29,14 +29,22 @@ import {
   crossSentenceEdges,
   unreachedByRoot,
   groupOf,
+  variablesSharedInSentence,
+  keepUnchangedSentences,
 } from './sentenceGraph.js';
 import { DOC_CONSTANTS } from './format/inventory.js';
 import { describeUmrReconcile, planUnalignedHeal } from './umrReconcile.js';
-import { serializeUmrFile, readAlignment, umrFileProblems } from './format/umrFile.js';
+import {
+  serializeUmrFile,
+  readAlignment,
+  umrFileProblems,
+  UnwritableUmrError,
+} from './format/umrFile.js';
 import {
   conceptProblem,
   relationProblem as relationFormProblem,
   attrValueProblem as valueFormProblem,
+  nfc,
   parsePenman,
 } from './format/penman.js';
 import {
@@ -46,8 +54,18 @@ import {
 } from './format/validate.js';
 
 const VARIABLE = /^s[0-9]+\p{Ll}+[0-9]*$/u;
+// What the export calls a sentence's document-level block.
+const DOC_GRAPH_VARIABLE = /^s[0-9]+s0$/;
 
 const umrOf = (entity) => entity?.metadata?.[UMR_NAMESPACE] || {};
+
+// Every string the model takes is in NFC, as the format requires of the file
+// (penman.js `nfc`): a concept, variable, relation or value typed with a
+// combining accent is stored as the one character, so it compares equal to
+// the same text typed precomposed and exports as the file must hold it. Text
+// mode's PENMAN is normalized where it is parsed.
+const nfcAttrs = (attrs) =>
+  (attrs || []).map((a) => ({ ...a, rel: nfc(a.rel), value: nfc(a.value) }));
 
 // The metadata ops that write each key of `changes` into the `umr`
 // namespace, an undefined value deleting its key. The namespace's other keys
@@ -67,6 +85,10 @@ export class UmrDocument extends DocumentModel {
   constructor({ raw, client = null, projectId = null, project = null, user = null, asOf = null }) {
     super({ raw, client, projectId, project, user, asOf });
     this._writer = null;
+    // The graph and the per-sentence problems of the last version read, kept
+    // so the next version can hand back what an edit left as it was.
+    this._lastGraph = null;
+    this._lastProblems = null;
   }
 
   static async load({ client, documentId, projectId, project = null, user = null }) {
@@ -136,12 +158,17 @@ export class UmrDocument extends DocumentModel {
   }
 
   // The whole document as graphs: sentences with words, nodes, edges and
-  // triples, plus the constants. Cached per data version.
+  // triples, plus the constants. Cached per data version. A sentence an edit
+  // left as it was keeps its object from the version before, so the canvas's
+  // memoized blocks can skip it (keepUnchangedSentences).
   get graph() {
     return this._derived('graph', () => {
       const info = this.layerInfo;
       const mapping = resolveIlg(readIlgConfig(this._project), info);
-      return buildDocumentGraph(info, { ilg: (s) => ilgLinesFor(s, info, mapping) });
+      const built = buildDocumentGraph(info, { ilg: (s) => ilgLinesFor(s, info, mapping) });
+      const graph = keepUnchangedSentences(this._lastGraph, built);
+      this._lastGraph = graph;
+      return graph;
     });
   }
 
@@ -152,15 +179,30 @@ export class UmrDocument extends DocumentModel {
   // The document in the .umr file format. Throws UnwritableUmrError when
   // `exportProblems` lists anything.
   toUmr() {
-    return this._derived('umr', () => serializeUmrFile({ sentences: toUmrSentences(this.graph) }));
+    return this._derived('umr', () => {
+      const problems = this.exportProblems;
+      if (problems.length) throw new UnwritableUmrError(problems);
+      return serializeUmrFile({ sentences: toUmrSentences(this.graph) });
+    });
   }
 
   // Each stored value the .umr file cannot hold as it is, by sentence and
   // variable: a concept with a space, a relation or value with a bracket or a
   // line break. Only the API and older writers store such a value, since every
   // editor path refuses it. The export refuses the document while any is left.
+  //
+  // And a variable two nodes of one sentence share, which the file would
+  // write as one re-entrant node. (Two sentences sharing one read back as
+  // they were, and a released corpus has them.)
   get exportProblems() {
-    return this._derived('exportProblems', () => umrFileProblems(toUmrSentences(this.graph)));
+    return this._derived('exportProblems', () => [
+      ...umrFileProblems(toUmrSentences(this.graph)),
+      ...variablesSharedInSentence(this.graph).map(({ sentence, var: v, message }) => ({
+        sentence,
+        var: v,
+        message,
+      })),
+    ]);
   }
 
   // What the official checks find, over the same sentences the export writes,
@@ -170,6 +212,7 @@ export class UmrDocument extends DocumentModel {
       ...validateDocument(toUmrSentences(this.graph)),
       ...crossSentenceEdges(this.graph),
       ...unreachedByRoot(this.graph),
+      ...variablesSharedInSentence(this.graph),
     ]);
   }
 
@@ -183,6 +226,9 @@ export class UmrDocument extends DocumentModel {
   // that reads as noise and buries the count of things to act on. It is a
   // real umrtools/validate.py test, so `problems` keeps it and the Validation
   // tab still answers "what would the official validator say".
+  //
+  // A sentence's list is the one of the version before when it reads the
+  // same, as its sentence object is (see `graph`).
   get problemsBySentence() {
     return this._derived('problemsBySentence', () => {
       const map = new Map();
@@ -191,6 +237,14 @@ export class UmrDocument extends DocumentModel {
         if (!map.has(p.sentence)) map.set(p.sentence, []);
         map.get(p.sentence).push(p);
       });
+      const last = this._lastProblems;
+      if (last) {
+        map.forEach((list, sentence) => {
+          const old = last.get(sentence);
+          if (old && JSON.stringify(old) === JSON.stringify(list)) map.set(sentence, old);
+        });
+      }
+      this._lastProblems = map;
       return map;
     });
   }
@@ -458,6 +512,9 @@ export class UmrDocument extends DocumentModel {
     entry = null,
     onShown = null,
   }) {
+    concept = nfc(concept);
+    role = nfc(role);
+    attrs = nfcAttrs(attrs);
     const sentence = this.sentence(sentenceIndex);
     if (!sentence || !concept) return false;
     if (parentId && !role) return false;
@@ -543,6 +600,7 @@ export class UmrDocument extends DocumentModel {
    * concept with different arguments, so picking the other one is a change.
    */
   async setConcept(nodeId, concept, { entry = null } = {}) {
+    concept = nfc(concept);
     const node = this.node(nodeId);
     if (!node || !concept) return false;
     const had = node.metadata?.[UMR_NAMESPACE]?.entry ?? null;
@@ -607,6 +665,7 @@ export class UmrDocument extends DocumentModel {
    * Every write method asks this, and so do the screens and text mode.
    */
   relationProblem(rel, { nodeId = null, edgeId = null, tripleId = null, group = null } = {}) {
+    rel = nfc(rel);
     const why = relationFormProblem(rel);
     if (why) return why;
     const text = String(rel).trim();
@@ -632,6 +691,8 @@ export class UmrDocument extends DocumentModel {
    * other attributes sends it back unchanged.
    */
   attrValueProblem(rel, value, { nodeId = null } = {}) {
+    rel = nfc(rel);
+    value = nfc(value);
     const why = valueFormProblem(value);
     if (!why || !nodeId) return why;
     const text = String(rel ?? '').trim();
@@ -650,6 +711,7 @@ export class UmrDocument extends DocumentModel {
 
   /** Why `variable` cannot name the node, or null when it can. */
   variableProblem(nodeId, variable) {
+    variable = nfc(variable);
     const node = this.node(nodeId);
     if (!node || node.var === variable) return null;
     return this._newVariableProblem(variable, node.sentence);
@@ -665,11 +727,16 @@ export class UmrDocument extends DocumentModel {
     if (sentenceIndex != null && n !== sentenceIndex) {
       return `${variable} names sentence ${n}, and the node is in sentence ${sentenceIndex}.`;
     }
+    // The file names each sentence's document-level block `s<n>s0`
+    // (toUmrSentences), so a node called that is a second definition of it.
+    if (DOC_GRAPH_VARIABLE.test(variable))
+      return `${variable} names the sentence's document graph.`;
     if (this.takenVariables().has(variable)) return `${variable} is already in use.`;
     return null;
   }
 
   async setVariable(nodeId, variable) {
+    variable = nfc(variable);
     const node = this.node(nodeId);
     if (!node || node.var === variable) return false;
     const problem = this.variableProblem(nodeId, variable);
@@ -682,6 +749,7 @@ export class UmrDocument extends DocumentModel {
 
   // The node's attributes, whole: `[{ rel, value }]` in the order to write.
   async setAttrs(nodeId, attrs) {
+    attrs = nfcAttrs(attrs);
     const node = this.node(nodeId);
     if (!node) return false;
     const refused = this._refused(
@@ -790,6 +858,7 @@ export class UmrDocument extends DocumentModel {
   // An edge from one node to another of the same sentence. A second edge into
   // a node is a re-entrancy. Resolves to the edge id, or false.
   async createEdge(sourceId, targetId, role) {
+    role = nfc(role);
     const source = this.node(sourceId);
     const target = this.node(targetId);
     if (!source || !target || !role) return false;
@@ -834,6 +903,7 @@ export class UmrDocument extends DocumentModel {
   }
 
   async setRole(edgeId, role) {
+    role = nfc(role);
     const edge = this.edge(edgeId);
     if (!edge || !role || edge.role === role) return false;
     if (this._refused(this.relationProblem(role, { edgeId }))) return false;
@@ -936,6 +1006,11 @@ export class UmrDocument extends DocumentModel {
     const doomed = subtree ? this.exclusiveDescendants(edge.id) : [];
     const tokenIds = doomed.flatMap((n) => n.pieces.map((p) => p.id));
     const spanIds = doomed.map((n) => n.id);
+    // Named BEFORE the patch, which takes the doomed nodes and with them the
+    // target's variable: the label printed its id. What goes with the target
+    // is counted as deleteNode counts it, the target aside.
+    const below = doomed.filter((n) => n.id !== edge.target).length;
+    const operation = `Delete ${edge.role} ${this._ends(edge)}${below ? ` and ${below} below it` : ''}`;
     this._applyRawPatch((next, infoNext) => {
       const L = this._layers(infoNext);
       infoNext.relationLayer.relations = L.relations.filter((r) => r.id !== edge.id);
@@ -948,9 +1023,7 @@ export class UmrDocument extends DocumentModel {
           b.relations.delete(settledId(edge.id));
           if (tokenIds.length) b.tokens.bulkDelete(tokenIds.map(settledId));
         }),
-      doomed.length
-        ? `Delete ${edge.role} ${this._ends(edge)} and ${doomed.length} node${doomed.length === 1 ? '' : 's'} under it`
-        : `Delete ${edge.role} ${this._ends(edge)}`,
+      operation,
     );
     return ok ? doomed.length : false;
   }
@@ -1157,7 +1230,12 @@ export class UmrDocument extends DocumentModel {
   _discardPlan(sentence) {
     const drafted = (x) => provState(x.metadata) === PROV_STATES.MACHINE;
     const others = this.sentences.filter((s) => s !== sentence);
-    const ownTriples = sentence.triples.filter((t) => !others.some((s) => s.triples.includes(t)));
+    // By id: a sentence an edit left as it was keeps its objects from the
+    // version before (see `graph`), so a triple two blocks write is not one
+    // object in both.
+    const ownTriples = sentence.triples.filter(
+      (t) => !others.some((s) => s.triples.some((x) => x.id === t.id)),
+    );
     const relations = new Map();
     [...sentence.edges, ...ownTriples].filter(drafted).forEach((r) => relations.set(r.id, r));
     const nodes = sentence.nodes.filter(
@@ -1295,6 +1373,7 @@ export class UmrDocument extends DocumentModel {
    * triple between two constants. Resolves to the triple's id, or false.
    */
   async createTriple({ source, target, rel, group = null, sentenceIndex = null }) {
+    rel = nfc(rel);
     if (!source || !target || !rel) return false;
     const isConst = (x) => DOC_CONSTANTS.includes(x);
     const nodeOf = (x) => (isConst(x) ? this.constantNode(x) : this.node(x));
@@ -1365,6 +1444,7 @@ export class UmrDocument extends DocumentModel {
   }
 
   async setTripleRelation(id, rel) {
+    rel = nfc(rel);
     const t = this.triple(id);
     if (!t || !rel || t.rel === rel) return false;
     if (this._refused(this.relationProblem(rel, { tripleId: id }))) return false;
@@ -1772,7 +1852,9 @@ export class UmrDocument extends DocumentModel {
     // its words would be lost with it.
     const kept = sentence.nodes.length ? null : sentence.rawAlignment;
     const keptWords = kept ? readAlignment(kept) : null;
-    const anchorFor = (v) => {
+    // The words the kept block gives a variable, as anchor pieces: none for
+    // a variable it aligns to nothing (`0-0`) or does not name.
+    const keptPieces = (v) => {
       const ranges = keptWords?.get(v) || [];
       const pieces = [];
       ranges.forEach(([a, b]) => {
@@ -1780,18 +1862,21 @@ export class UmrDocument extends DocumentModel {
         const last = sentence.words[b - 1];
         if (first && last && a <= b) pieces.push({ begin: first.begin, end: last.end });
       });
-      return pieces.length ? pieces : this.piecesFor(sentence, []);
+      return pieces;
     };
     // The new nodes, each on its own new anchor pieces.
     const newNodes = plan.create.map((c) => {
       // Unaligned, like every node text mode makes unless the file it is
-      // mending said which words it covers: it records its sentence (see
-      // _reconcile).
-      const meta = { var: c.var, attrs: c.attrs, sentence: sentence.tokenId };
+      // mending said which words it covers: only then does it record its
+      // sentence (see _reconcile), since the record is what says a node is
+      // aligned to nothing, whatever its anchor covers.
+      const words = keptPieces(c.var);
+      const meta = { var: c.var, attrs: c.attrs };
+      if (!words.length) meta.sentence = sentence.tokenId;
       if (plan.root === c.var) meta.root = true;
       const node = {
         id: pendingId(),
-        pieces: this._pendingPieces(anchorFor(c.var)),
+        pieces: this._pendingPieces(words.length ? words : this.piecesFor(sentence, [])),
         value: c.concept,
         metadata: { ...stamp, [UMR_NAMESPACE]: meta },
       };
