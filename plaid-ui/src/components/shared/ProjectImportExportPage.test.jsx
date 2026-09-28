@@ -146,6 +146,51 @@ describe('import', () => {
   });
 });
 
+// The drop zone was a div with a click handler: Tab never reached it, and
+// after an import focus fell to the page with the new documents' names plain
+// text.
+describe('import from the keyboard', () => {
+  const zone = (view) => view.container.querySelector('[role="button"]');
+
+  it('is a stop in the tab order that Enter and Space open the file picker from', async () => {
+    const view = await mount(baseFormat());
+    expect(zone(view)).not.toBeNull();
+    expect(zone(view).tabIndex).toBe(0);
+    const input = view.container.querySelector('input[type="file"]');
+    const clicked = vi.spyOn(input, 'click').mockImplementation(() => {});
+    for (const key of ['Enter', ' ']) {
+      await view.step(() =>
+        zone(view).dispatchEvent(
+          new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
+        ),
+      );
+    }
+    expect(clicked).toHaveBeenCalledTimes(2);
+    await view.unmount();
+  });
+
+  it('puts focus on the result after an import, each new document a link to it', async () => {
+    const format = baseFormat();
+    format.prepareImport = vi.fn(async () => async ({ index, name, push }) => {
+      if (index === 0) push({ key: '0', name, status: 'imported', documentId: 'd9', warnings: [] });
+      else push({ key: '1', name, status: 'rejected', reason: 'Bad.' });
+    });
+    const view = await mount(format);
+    await drop(view, [file('one.xy', 'a'), file('two.xy', 'b')]);
+    await view.step(async () => {
+      button(view.container, 'Import').focus();
+      button(view.container, 'Import').click();
+      await settle();
+    });
+    await view.step(settle);
+    expect(document.activeElement?.textContent).toContain('Imported 1 of 2');
+    const links = all(view.container, 'a').filter((a) => a.textContent === 'one');
+    expect(links.map((a) => a.getAttribute('href'))).toEqual(['/projects/p1/documents/d9']);
+    expect(all(view.container, 'a').some((a) => a.textContent === 'two')).toBe(false);
+    await view.unmount();
+  });
+});
+
 describe('export', () => {
   const run = async (view) =>
     view.step(async () => {

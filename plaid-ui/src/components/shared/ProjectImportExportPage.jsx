@@ -30,7 +30,8 @@ const downloadBlob = (blob, filename) => {
 
 // A drop target with a hidden file input behind it. `dragging` is counted
 // rather than set, because dragging over a child element fires dragleave on the
-// parent and a boolean would flicker.
+// parent and a boolean would flicker. It is a button to the keyboard: a stop in
+// the tab order that Enter and Space open the file picker from.
 const Dropzone = ({ onFiles, disabled, accept, children }) => {
   const [depth, setDepth] = useState(0);
   const inputRef = useRef(null);
@@ -42,12 +43,22 @@ const Dropzone = ({ onFiles, disabled, accept, children }) => {
 
   return (
     <div
+      role="button"
+      tabIndex={disabled ? -1 : 0}
+      aria-disabled={disabled || undefined}
       className={cn(
-        'flex min-h-[120px] cursor-pointer flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed p-6 text-center transition-colors',
+        'flex min-h-[120px] cursor-pointer flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed p-6 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         depth > 0 ? 'border-primary bg-primary/5' : 'hover:bg-muted/40',
         disabled && 'pointer-events-none opacity-50',
       )}
       onClick={() => inputRef.current?.click()}
+      onKeyDown={(e) => {
+        if (disabled || e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          inputRef.current?.click();
+        }
+      }}
       onDragEnter={(e) => {
         e.preventDefault();
         setDepth((d) => d + 1);
@@ -99,7 +110,8 @@ const code = (text) => <code className="rounded bg-muted px-1 py-0.5 font-mono">
  *   import, resolves to `importFile({ file, text, index, name, push })`, which
  *   imports one file's text and `push`es a row per document it made or
  *   refused: `{ key, name, status: 'imported' | 'rejected', warnings, reason,
- *   attached }`.
+ *   attached, documentId }`. A row with a `documentId` names its document
+ *   as a link to it.
  * - `exportDocuments({ client, project, projectId, onProgress })`: resolves
  *   to `{ documents, entries: [{ name, text }], skipped: [{ name, reason }] }`,
  *   where `documents` is how many the project has.
@@ -121,6 +133,8 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState({ done: 0, total: 0, current: '' });
   const [results, setResults] = useState([]);
+  // Where focus goes when an import finishes: the count of what it did.
+  const resultRef = useRef(null);
 
   // Export state
   const [exporting, setExporting] = useState(false);
@@ -318,6 +332,12 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
           className="max-w-md [&>button]:hidden"
           onEscapeKeyDown={(e) => e.preventDefault()}
           onInteractOutside={(e) => e.preventDefault()}
+          // The Import button it would go back to is disabled by then.
+          onCloseAutoFocus={(e) => {
+            if (!resultRef.current) return;
+            e.preventDefault();
+            resultRef.current.focus();
+          }}
         >
           <DialogHeader>
             <DialogTitle>Importing documents</DialogTitle>
@@ -434,7 +454,11 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
 
                   {results.length > 0 && (
                     <div>
-                      <p className="mb-2 font-semibold">
+                      <p
+                        ref={resultRef}
+                        tabIndex={-1}
+                        className="mb-2 font-semibold focus:outline-none"
+                      >
                         Imported {importedCount} of {results.length}
                         {rejectedCount ? `, ${rejectedCount} rejected` : ''}
                       </p>
@@ -453,7 +477,16 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
                                     <X className="h-4 w-4 shrink-0 text-destructive" />
                                   )}
                                   <span className="text-sm font-medium" dir="auto">
-                                    {r.name}
+                                    {r.status === 'imported' && r.documentId ? (
+                                      <Link
+                                        className="text-primary underline-offset-4 hover:underline"
+                                        to={appRoutes().document(projectId, r.documentId)}
+                                      >
+                                        {r.name}
+                                      </Link>
+                                    ) : (
+                                      r.name
+                                    )}
                                   </span>
                                   {/* The file name takes its own direction, the
                                       brackets stay with the chrome. */}
