@@ -294,41 +294,63 @@ def alignment_of(node: Node, words: List[Word]) -> List[Tuple[int, int]]:
 
 
 def roots_of(sentence: Sentence, nodes_by_id: Dict[str, Node]) -> List[Node]:
-    """The sentence's roots (``sentenceGraph.js`` ``rootsOf``). A node marked as
-    the root (the file's own, kept at import) is one whatever reaches it, since a
-    released graph may cycle back into its root through more than ``:quote``.
-    Otherwise: nodes no in-sentence edge reaches, cycle roles aside. A graph with
-    neither still needs a root to write from, so the node that reaches the most
-    others stands in, ties to the first in anchor order."""
+    """The sentence's roots, as ``sentenceGraph.js`` ``rootsOf`` has them, in
+    the same order. A node marked as the root (the file's own, kept at import)
+    is one whatever reaches it, since a released graph may cycle back into its
+    root through more than ``:quote``. Then one root for each part no root
+    reaches: a node of it nothing in the sentence reaches but a cycle role, the
+    largest part first, and for a cycle with no way in, the node that reaches
+    the most of it, ties to the first in anchor order. A node a marked root
+    reaches is never a root, so a clause re-entered only by ``:quote`` is not
+    a second one.
+
+    The order is the app's because the first root is the one the file writes
+    and every part after it is printed in this order (:func:`sentence_penman`),
+    which the Compare tab reads back byte for byte."""
+    if not sentence.nodes:
+        return []
+
     def in_sentence(node_id: str) -> bool:
         node = nodes_by_id.get(node_id)
         return node is not None and node.sentence == sentence.index
 
-    marked = [n for n in sentence.nodes if n.root]
-    derived = [n for n in sentence.nodes
-               if not n.root and not any(in_sentence(e.source) and e.role not in CYCLE_ROLES
-                                         for e in n.into)]
-    roots = marked + derived
-    if roots or not sentence.nodes:
-        return roots
-
-    def reach(start: Node) -> int:
-        seen = {start.id}
-        stack = [start]
+    def reach(starts, into: Optional[set] = None) -> set:
+        into = set() if into is None else into
+        stack = list(starts)
         while stack:
             node = stack.pop()
-            for e in node.out:
-                if in_sentence(e.target) and e.target not in seen:
-                    seen.add(e.target)
-                    stack.append(nodes_by_id[e.target])
-        return len(seen)
+            if node is None or node.id in into:
+                continue
+            into.add(node.id)
+            stack.extend(nodes_by_id[e.target] for e in node.out if in_sentence(e.target))
+        return into
 
-    best, best_reach = sentence.nodes[0], -1
-    for node in sentence.nodes:
-        r = reach(node)
-        if r > best_reach:
-            best, best_reach = node, r
-    return [best]
+    roots = [n for n in sentence.nodes if n.root]
+    reached = reach(roots)
+
+    def new_reach(node: Node) -> int:
+        return len(reach([node]) - reached)
+
+    entries = [(n, new_reach(n)) for n in sentence.nodes
+               if n.id not in reached
+               and not any(in_sentence(e.source) and e.role not in CYCLE_ROLES for e in n.into)]
+    entries.sort(key=lambda entry: -entry[1])  # stable, as the app's sort is
+    for node, _size in entries:
+        if node.id in reached:
+            continue
+        roots.append(node)
+        reach([node], reached)
+    while True:
+        left = [n for n in sentence.nodes if n.id not in reached]
+        if not left:
+            return roots
+        best, best_size = left[0], -1
+        for node in left:
+            size = new_reach(node)
+            if size > best_size:
+                best, best_size = node, size
+        roots.append(best)
+        reach([best], reached)
 
 
 def _tokens_of(layer) -> List[dict]:
