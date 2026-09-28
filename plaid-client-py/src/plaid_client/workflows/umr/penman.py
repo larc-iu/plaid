@@ -558,12 +558,18 @@ def serialize_penman(graph: Optional[Graph], indent: int = 4) -> str:
 def next_variable(sentence_index: int, concept: str, taken) -> str:
     """The next free variable for a concept in a sentence, by the standard rule
     (``sentenceGraph.js`` ``nextVariable``): ``s`` + the sentence number + the
-    concept's first letter (``x`` where that is not a lowercase letter) + a
-    counter from 2 on. A variable is unique per DOCUMENT, not per sentence,
-    because the document graph cites an earlier sentence's nodes by name, so
-    ``taken`` is the document's."""
-    first = (str(concept or '')[:1]).lower()
-    letter = first if is_lower_letter(first) else 'x'
+    concept's first letter + a counter from 2 on. A variable is unique per
+    DOCUMENT, not per sentence, because the document graph cites an earlier
+    sentence's nodes by name, so ``taken`` is the document's.
+
+    The letter is always one of a to z (ruled 2026-09-28): an accented letter
+    gives its base letter (``ébrio`` gives ``s4e``), anything else ``x``.
+    validate.py reads an accented variable only in the sentence graph, so the
+    first document-level relation on ``s4é`` failed its sentence's block. A
+    person may still type one: only a name picked by itself is held to ASCII.
+    Held to the app's by ``plaid-agent/tests/test_penman_mirror.py``."""
+    first = unicodedata.normalize('NFD', str(concept or '')[:1].lower())[:1]
+    letter = first if re.fullmatch('[a-z]', first) else 'x'
     base = f's{sentence_index}{letter}'
     if base not in taken:
         return base

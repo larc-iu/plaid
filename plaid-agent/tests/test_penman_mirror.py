@@ -34,7 +34,7 @@ from node_exe import node_or_skip
 import pytest
 
 from plaid_client.workflows.umr import parse_penman, serialize_penman, tree_edges
-from plaid_client.workflows.umr.penman import value_grammar_problem
+from plaid_client.workflows.umr.penman import next_variable, value_grammar_problem
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUNNER = os.path.join(HERE, 'penman_mirror.mjs')
@@ -117,6 +117,16 @@ VALUES = [
     ['s1\u03c1', None], ['s1P', None], ['', None], ['caf\u0065\u0301', None],
 ]
 
+#: Concepts a service names a node for, with the sentence and the names taken,
+#: for ``next_variable`` against the app's ``nextVariable``: the letter is a to z
+#: only (umr-export-non-ascii-variables), an accented one its base letter.
+VARIABLES = [
+    [4, 'ébrio', []], [4, 'Ébrio', []], [4, 'e\u0301brio', []], [1, 'dog', ['s1d']],
+    [2, 'İstanbul', []], [2, 'ñandú', ['s2n']], [3, 'ß', []], [3, 'øre', []], [3, 'æble', []],
+    [3, '生活-01', []], [3, 'ǅemal', []], [3, '\u212aelvin', []], [3, '𝐀bc', []],
+    [3, '\ufb01le', []], [3, 'σοφία', []], [3, '-91', []], [3, '', []], [5, 'çocuk', ['s5c']],
+]
+
 #: The one place the two readings differ, named rather than papered over: the
 #: value of a child the reader could not read at all. Both REFUSE the text (the
 #: comparison below still holds them to that), and nothing serializes a graph it
@@ -146,7 +156,8 @@ def compared():
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, 'cases.json')
         with open(path, 'w', encoding='utf-8') as fh:
-            json.dump({'texts': CASES, 'values': VALUES}, fh)
+            json.dump({'texts': CASES, 'values': VALUES, 'variables': VARIABLES}, fh,
+                      ensure_ascii=False)
         run = subprocess.run([node, RUNNER, path], capture_output=True, text=True, timeout=120)
     if run.returncode != 0:
         pytest.fail(f"the app's PENMAN reader would not run:\n{run.stderr[:2000]}")
@@ -172,6 +183,7 @@ def test_the_mirror_actually_ran_the_app_s_reader(compared):
     mirror test stops being one."""
     assert len(compared['texts']) == len(CASES) >= 20
     assert len(compared['values']) == len(VALUES)
+    assert compared['variables'][:2] == ['s4e', 's4e']
     assert compared['values'][VALUES.index(['Imperative', ':mode'])]['code'] == 'value-wrong-chars'
     shape = compared['texts'][0]
     assert shape['root'] == 's1b' and len(shape['nodes']) == 2
@@ -182,3 +194,11 @@ def test_the_mirror_actually_ran_the_app_s_reader(compared):
 def test_both_value_grammars_judge_one_value_the_same_way(compared, index):
     value, rel = VALUES[index]
     assert value_grammar_problem(value, rel) == compared['values'][index], f'on {value!r}'
+
+
+@pytest.mark.parametrize('index', range(len(VARIABLES)), ids=[repr(v)[:30] for v in VARIABLES])
+def test_both_name_a_new_node_the_same_way(compared, index):
+    sentence, concept, taken = VARIABLES[index]
+    mine = next_variable(sentence, concept, set(taken))
+    assert mine == compared['variables'][index], f'on {concept!r}'
+    assert mine.isascii(), f'on {concept!r}'
