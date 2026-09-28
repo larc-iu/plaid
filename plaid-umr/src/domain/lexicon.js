@@ -160,25 +160,56 @@ export function lemmaCandidates(form) {
   return [...out];
 }
 
+// `lemmaCandidates` on the word as it was written, the tatweel dropped but
+// every hamza kept: الأم gives أم, where the folded guesses give ام and so
+// also match ألام. Elsewhere the two are the same.
+function writtenCandidates(form) {
+  const f = String(form || '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}'-]/gu, '');
+  if (!f || !ARABIC.test(f)) return lemmaCandidates(form);
+  return arabicCandidates(f.replace(TATWEEL, ''));
+}
+
+// A roleset's lemma less the second hyphen of a lost vowel class: upstream's
+// Arabic keeps `أثر--01` beside a different `أثر-01`, and it is a sense of أثر.
+const DOUBLED = /-$/;
+
 /**
  * The rolesets of a frame file whose lemma is one of the candidates, best
- * first: an exact lemma before a stripped one, lower sense numbers first.
+ * first: a lemma guessed from the word as written before one only its alif
+ * fold finds (الأم lists أم-01 before ألام-01), then an exact lemma before a
+ * stripped one, a lemma's plain senses before its `lemma--NN` ones, lower
+ * sense numbers first.
  * @returns {Array<{ id: string, lemma: string, args: object }>}
  */
 export function sensesFor(frames, form) {
   if (!frames) return [];
   const candidates = lemmaCandidates(form);
+  const written = writtenCandidates(form);
   const out = [];
   const seen = new Set();
   candidates.forEach((lemma, rank) => {
     rolesetsStartingWith(frames, `${lemma}-`, 200).forEach(({ id, args }) => {
-      if (foldAlif(lemmaOf(id)) !== lemma || seen.has(id)) return;
+      const full = lemmaOf(id);
+      const doubled = DOUBLED.test(full);
+      const own = doubled ? full.slice(0, -1) : full;
+      if (foldAlif(own) !== lemma || seen.has(id)) return;
       seen.add(id);
-      out.push({ id, lemma: lemmaOf(id), args, rank });
+      // Guessed from the word as written, it ranks among those guesses.
+      const asWritten = written.indexOf(own);
+      const folded = asWritten < 0;
+      out.push({ id, lemma: own, args, rank: folded ? rank : asWritten, folded, doubled });
     });
   });
   return out
-    .sort((a, b) => a.rank - b.rank || a.id.localeCompare(b.id, undefined, { numeric: true }))
+    .sort(
+      (a, b) =>
+        a.folded - b.folded ||
+        a.rank - b.rank ||
+        a.doubled - b.doubled ||
+        a.id.localeCompare(b.id, undefined, { numeric: true }),
+    )
     .map(({ id, lemma, args }) => ({ id, lemma, args }));
 }
 

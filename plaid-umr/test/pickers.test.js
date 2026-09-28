@@ -181,3 +181,15 @@ test('typing searches the frame file on a node anchored to a word', () => {
   );
   assert.ok(!typedGroup(again).items.some((i) => i === 'bought-01' || i.value === 'bought-01'));
 });
+
+// Review of T-ARABIC, 2026-09-28: a word's Senses hold its `lemma--NN`
+// rolesets after the plain ones, and the lemma it writes before a fold's.
+test('an Arabic word lists its own senses, then lemma--NN, then a folded lemma', () => {
+  const frames = { 'أثر-01': {}, 'أثر--01': {}, 'ألام-01': {}, 'أم-01': {} };
+  const senses = (text) =>
+    conceptOptions([{ text }], frames)
+      .find((g) => g.group === 'Senses')
+      .items.map((i) => i.value);
+  assert.deepEqual(senses('أثرت'), ['أثر-01', 'أثر--01']);
+  assert.deepEqual(senses('الأم'), ['أم-01', 'ألام-01']);
+});

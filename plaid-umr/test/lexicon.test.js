@@ -176,3 +176,44 @@ test('on the bundled Arabic file, سخرت lists سخر-01 first and قـال fi
   assert.ok(!sensesFor(file, 'سخرت').some((s) => s.id === 'خرت-01'));
   assert.equal(sensesFor(file, 'قـال')[0].id, 'قال-01');
 });
+
+// Review of T-ARABIC, 2026-09-28. Upstream keeps a second verb of a root as
+// `أثر--01` beside `أثر-01`, and its word offers it after the plain senses.
+test('a word offers its lemma--NN rolesets after the plain senses', () => {
+  const file = { 'أثر-01': {}, 'أثر-02': {}, 'أثر--01': {}, 'ثر-01': {} };
+  assert.deepEqual(
+    sensesFor(file, 'أثر').map((s) => s.id),
+    ['أثر-01', 'أثر-02', 'أثر--01'],
+  );
+  assert.deepEqual(
+    sensesFor(file, 'أثرت').map((s) => s.id),
+    ['أثر-01', 'أثر-02', 'أثر--01'],
+  );
+  // Its lemma is the word's, not `أثر-`.
+  assert.equal(sensesFor(file, 'أثر')[2].lemma, 'أثر');
+  // Only a doubled hyphen: `أثر---01` or a longer lemma is not the word's.
+  assert.deepEqual(
+    sensesFor({ 'أثر---01': {}, 'أثر-ب-01': {} }, 'أثر').map((s) => s.id),
+    [],
+  );
+});
+
+// الأم is ال + أم, and folded it is also ألام. A lemma written as the word
+// is written ranks above one that only its alif fold matches.
+test('a lemma matching the word as written comes before one matching only folded', () => {
+  const file = { 'ألام-01': {}, 'أم-01': {}, 'أم-02': {} };
+  assert.deepEqual(
+    sensesFor(file, 'الأم').map((s) => s.id),
+    ['أم-01', 'أم-02', 'ألام-01'],
+  );
+  assert.equal(sensesFor(file, 'ألام')[0].id, 'ألام-01');
+  // Same place in the guesses: the hamza written decides.
+  assert.deepEqual(
+    sensesFor({ 'امن-01': {}, 'آمن-01': {}, 'أمن-01': {} }, 'آمن').map((s) => s.id),
+    ['آمن-01', 'أمن-01', 'امن-01'],
+  );
+  // Written without its hamza, the word matches the plain key as written.
+  assert.equal(sensesFor({ 'اعلن-01': {}, 'أعلن-01': {} }, 'اعلنت')[0].id, 'اعلن-01');
+  // A tatweel is no difference.
+  assert.equal(sensesFor(file, 'الأـم')[0].id, 'أم-01');
+});
