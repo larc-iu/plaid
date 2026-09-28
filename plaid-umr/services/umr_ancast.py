@@ -44,6 +44,7 @@ import importlib.metadata
 import logging
 import math
 import re
+import unicodedata
 from typing import Any, Dict, List, Optional
 
 from plaid_client import BaseService, Param, TASKS
@@ -196,10 +197,43 @@ def _serialize_doc_graph(doc_graph) -> List[str]:
     return lines
 
 
+def _nfc(text: str) -> str:
+    return unicodedata.normalize('NFC', text)
+
+
+def _one_line(text) -> str:
+    """``oneLine`` in umrFile.js: a line break and the space around it become
+    one space."""
+    return re.sub(r'\s*[\r\n\u2028\u2029]+\s*', ' ', str(text or ''))
+
+
+def _sentence_text_line(sentence, lines):
+    """``sentenceTextLine`` in umrFile.js: the sentence's text on a Sentence
+    line, only when it is not the Words joined by spaces. None when a line
+    already carries it, or when the text has more items than the Words line,
+    which validate.py fails."""
+    text = _nfc(_one_line(sentence.get('sentence_text')).strip())
+    if not text or any(line['key'] == 'sentence' for line in lines):
+        return None
+    words = next((line['items'] for line in lines if line['key'] == 'words'), [])
+    if text == _nfc(' '.join(words)):
+        return None
+    if len(re.split(r'\s+', text)) > len(words):
+        return None
+    return {'key': 'sentence', 'header': 'Sentence', 'items': [text]}
+
+
 def _ilg_lines_to_write(sentence):
     """A line with nothing on it is dropped: the standard's grammar requires at
-    least one item after the header."""
-    return [line for line in (sentence.get('ilg') or []) if line['items']]
+    least one item after the header. The text goes before the sentence's
+    translations, where the standard's example has it."""
+    lines = [line for line in (sentence.get('ilg') or []) if line['items']]
+    text = _sentence_text_line(sentence, lines)
+    if text:
+        at = next((i for i, line in enumerate(lines) if line['key'] == 'sentence-gloss'),
+                  len(lines))
+        lines.insert(at, text)
+    return lines
 
 
 def serialize_umr_file(sentences) -> str:
@@ -210,9 +244,10 @@ def serialize_umr_file(sentences) -> str:
     for sentence in sentences or []:
         out.append(SEPARATOR)
         out.extend(sentence.get('meta') or [])
-        text = (sentence.get('sentence_text') or '').strip()
+        # Bare, as the app writes it: validate.py rejects tokens on this line
+        # once a Words line follows. The text has its own line below.
         snt = sentence.get('snt') or sentence['index']
-        out.append(f'# :: snt{snt}' + (f'\t{text}' if text else ''))
+        out.append(f'# :: snt{snt}')
         ilg = _ilg_lines_to_write(sentence)
         width = max([0] + [len(_MODERN_HEADERS.get(line['key'], line['header'])) + 1
                            for line in ilg])
@@ -246,7 +281,8 @@ def serialize_umr_file(sentences) -> str:
         out.extend(_serialize_doc_graph(sentence.get('doc_graph')))
         out.append('')
         out.append('')
-    return '\n'.join(out) + '\n' if out else ''
+    # In Unicode NFC, as the app's writer and the format require.
+    return _nfc('\n'.join(out) + '\n') if out else ''
 
 
 def read_umr(raw):

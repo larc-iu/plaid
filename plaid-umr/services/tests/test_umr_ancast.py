@@ -65,6 +65,42 @@ def test_the_writer_produces_exactly_what_the_app_exports():
     assert umr.render_umr(raw) == expected
 
 
+def _written_sentence(words, text, graph='(s1x / thing)'):
+    return {'index': 1, 'snt': 1, 'sentence_text': text, 'meta': [],
+            'ilg': [{'header': 'Index', 'key': 'index',
+                     'items': [str(i + 1) for i in range(len(words))]},
+                    {'header': 'Words', 'key': 'words', 'items': words}],
+            'words': words, 'graph': None, 'raw_graph': graph, 'raw_alignment': 's1x: 1-1',
+            'alignment': {}, 'doc_graph': None}
+
+
+def test_the_writer_puts_the_sentence_text_where_the_app_does():
+    """The English corpus has no sentence whose text differs from its words,
+    so the fixture above never shows a Sentence line. Each expected head is
+    what the app's ``serializeUmrFile`` writes for the same sentence: a bare id
+    line, and the text on a Sentence line only when it is not the Words joined
+    by spaces, the whole file in NFC."""
+    def head(words, text, graph='(s1x / thing)'):
+        written = umr.serialize_umr_file([_written_sentence(words, text, graph)])
+        return written.split('\n\n# sentence level graph:')[0].split('\n')[1:]
+
+    assert head(['Ali', 'eve', 'gitti'], 'Ali, eve gitti.') == [
+        '# :: snt1', 'Index:    1 2 3', 'Words:    Ali eve gitti', 'Sentence: Ali, eve gitti.']
+    # Only a line break differs: no Sentence line, and the id line stays bare.
+    assert head(['a', 'b'], 'a\n b') == ['# :: snt1', 'Index: 1 2', 'Words: a b']
+    # A line break inside a differing text is one space, as the app writes it.
+    assert head(['a', 'b'], 'a\n b!')[-1] == 'Sentence: a b!'
+    # More items than words (a word holding a space) fails validate.py.
+    assert head(['New_York'], 'New York') == ['# :: snt1', 'Index: 1', 'Words: New_York']
+    assert head(['x'], '   ') == ['# :: snt1', 'Index: 1', 'Words: x']
+    # Decomposed text is the words once in NFC, and the file is written in NFC.
+    written = umr.serialize_umr_file([_written_sentence(['cafe\u0301'], 'cafe\u0301',
+                                                    '(s1x / cafe\u0301)')])
+    assert 'Sentence' not in written
+    assert 'Words: caf\u00e9' in written and '(s1x / caf\u00e9)' in written
+    assert 'e\u0301' not in written
+
+
 def test_the_written_file_carries_the_whole_corpus():
     """A guard on the fixture itself: a writer that produced an empty file for
     every sentence would pass the comparison above if the fixture were empty
