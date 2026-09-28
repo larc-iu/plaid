@@ -144,6 +144,7 @@ You can move sentence breaks afterwards on the Tokenize tab.
 You can edit the baseline later too.
 Existing sentences, words, and annotations are kept and adjusted to fit the new text.
 Words inside text you delete go with it, along with their annotations.
+A line added later joins the sentence before it. Split it on the Tokenize tab.
 
 A project may define additional **orthographies**, alternate representations of each word such as a phonetic transcription or a practical spelling.
 These appear as their own rows in the Analyze grid (see <<_text_and_vocab>>).
@@ -252,7 +253,7 @@ Nothing is annotated here: that happens on the Analyze tab.
 You can tokenize by hand:
 
 * **Drag** across plain text to make a word of it, or across several words to merge them.
-* **Click** a word to split it at a character.
+* **Click** a word to split it at a character. A split beside a space leaves the space out of both words. **Esc** closes the split points.
 * **Right-click** a word to delete it.
 * **Ctrl/Cmd+click** a word to split its sentence there, making that word the first of a new one. This is how a merge is undone.
 * **Alt+click** a word to open it on the Analyze tab.
@@ -427,6 +428,12 @@ Define one there, then pick it on the field.
 A closed tagset becomes a dropdown on the entry form and refuses a value outside the list in Bulk Add.
 It also marks the entries already outside it: the table counts them, and a click shows only those.
 A lexicon imported before the tagset existed can thus be brought into line one entry at a time, or by adding the value to the list.
+
+An entry in a vocabulary linked to a Plaid UMR project also has a **UMR** band, below its fields.
+**Roleset** is the concept the entry stands for on a UMR graph, such as `lunch-01`. Left empty, the entry stands for its headword.
+**Arguments** describe the roleset's roles, one row each: a name (`ARG0`, `ARG1`, and so on) and a description (`the one eating`).
+A name that is not an ARG, or that another row already has, is marked under its row, and the entry keeps that argument as it was until the name is mended.
+Plaid UMR offers the roleset in its concept picker and the descriptions beside the roles (see the Vocabulary section of the UMR guide).
 
 == Headwords and senses
 
@@ -741,7 +748,7 @@ It proposes a **plan**, which you **Approve** or **Discard**.
 The plan lists every change under the document or lexicon it lands in. Each word is a link to its place in the editor, so a change can be checked before it is approved.
 A change that rewrites your baseline text, rather than annotating it, is marked **Rewrite**, counted on a line of its own above the list, and never folded away when the list is long.
 The assistant is told not to propose one unless you asked for it.
-Approved changes are written under your own account and marked as machine-made, in violet, until you confirm them like any other proposal.
+Approved changes are written under your own account, recorded as the assistant's work accepted by you, and show as accepted.
 Tick **Record as human-made** before approving to record them as your own work instead, with no machine marking.
 Reading needs Reader access, and applying a plan needs Writer.
 
@@ -1160,7 +1167,7 @@ A shortcut is also refused when the browser already uses it, when it would type 
 | Gesture | Action
 
 | **Drag** | Make a word of plain text, or merge the words dragged across.
-| **Click** a word | Split it at a character.
+| **Click** a word | Split it at a character. **Esc** closes the split points.
 | **Right-click** a word | Delete it.
 | **Ctrl/Cmd+click** a word | Split its sentence there, undoing a merge.
 | **Alt+click** a word | Open it on the Analyze tab.

@@ -228,6 +228,10 @@ export function DocumentTokenize() {
                     Split token
                   </div>
                   <div>
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Esc</kbd>: Close
+                    the split points
+                  </div>
+                  <div>
                     <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Right click</kbd>
                     : Delete token
                   </div>

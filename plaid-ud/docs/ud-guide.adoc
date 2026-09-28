@@ -333,7 +333,7 @@ It reads the documents, the search results, the project's guidelines and the his
 When you ask it to change something, it does not touch the data.
 It proposes a **plan**, which you **Approve** or **Discard**.
 Every change is listed under the document it lands in, naming the word and its reference, and each one links to that sentence in the annotation editor, so a plan can be checked before it is approved.
-Approved changes are written under your own account and marked as machine-made until you confirm them like any other proposal.
+Approved changes are written under your own account, recorded as the assistant's work accepted by you, and show as accepted.
 Tick **Record as human-made** before approving to record them as your own work instead.
 Reading needs Reader access, and applying a plan needs Writer.
 
