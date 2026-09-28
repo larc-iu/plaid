@@ -98,14 +98,23 @@ The concept picker then offers the roleset in place of the headword, and the arg
 
 == Importing a `.umr` file
 
-**Import and export** takes `.umr` files (the UMR 2.0 release format, one file per document) by drop or picker.
+**Import and export** takes `.umr` files (the UMR 2.0 release format, one file per document) by drop or picker, and **Import** reads them.
+Tab reaches the drop zone, and Enter or Space opens the file picker.
 Each file becomes a document named after the file, with its sentences, words, graphs, alignments, gloss lines and document-level annotation.
 
 When the project already has a document of the file's name whose words match the file's, sentence by sentence, and which has no graph yet, the file's graphs land on that document's words instead.
 This is how a document glossed in Plaid IGT gets its UMR annotation from a file.
-Words that differ, or a graph already there, refuse the import before anything is written.
+Otherwise the file becomes a new document of that name.
+When it is the words that differ, the report says so: `Imported as a new document: ...`.
+A file whose name two documents of the project already share is refused.
+
+The report lists what each file needed, a line per problem with its sentence number.
+A note that recurs across sentences is one line with the count (`5 sentences: No sentence id line. ...`).
 
 A sentence whose graph the parser cannot read is kept as text and written back unchanged on export, and the sentence's header says so. **Text** opens on the kept text, to mend it and apply it. Once the sentence has a node, made there or on the canvas, the graph you see is the one exported and the kept text is not written.
+Mending such a graph in Text mode keeps the alignment the file gave each node.
+The document-level relations that name a node of such a sentence are dropped, and the report lists each one: `(s37e :before s36x) dropped, no node s37e.`
+A node named like a document-level block (`s8s0`) is imported with a note to rename it.
 Older files are read as they are: an obsolete gloss header is written back in its current form, and `-1--1` is read as unaligned.
 
 == Exporting
@@ -114,9 +123,11 @@ A document's **Export** tab shows it as `.umr`, to copy or download.
 **Import and export** exports every document of the project as a zip.
 
 The file is written in the 2026 UMR file format: a sentence's graph in PENMAN with children in the order they were made, an alignment line for every node (`0-0` for an unaligned one), and the document-level block with the temporal, modal and coreference triples of that sentence.
+A triple between nodes of two sentences is written in the block of the later one.
 A re-entrant node is written in full where it is first reached from the root and as a bare variable elsewhere.
 The file holds one graph a sentence, the root's. A part of the sentence the root does not reach (a node made with no parent, or what a deleted edge cut off) is shown on the canvas and marked as an error, and the export leaves it out, with its alignment and its document-level relations.
 The Words line is split on spaces, so a word holding one (two words merged in IGT) is written with `_` in its place.
+A document the file cannot hold, such as one with two nodes of a sentence under one variable, is not exported, and the page lists each problem.
 
 = The Canvas
 
@@ -288,8 +299,14 @@ Compare and Comments are not shown at a past state.
 
 = Validation
 
-The **Validation** tab lists what the official UMR checks find in every document of the project: unknown relations, values outside their set, an event without `:aspect`, alignment problems, references a sentence cannot make, and the rest.
+The **Validation** tab lists what the official UMR checks find in every document of the project: unknown relations, values outside their set, an event without `:aspect`, alignment problems, references a sentence cannot make, values the official validator cannot read (a capital letter, an accented letter or a space in a bare value, an empty string or a quote inside one), text not in Unicode NFC, coreference between an event and an entity, coreferent nodes with different Wikidata ids, and the rest.
+Temporal contradictions (`temporal-mismatch`) are not checked yet.
+A graph kept as text is one error, with what the parser found.
+Two nodes of one sentence under the same variable are an error, and the export refuses the document until one is renamed.
 The same checks mark the canvas as you edit.
+
+Each row links to its sentence, at the node it names.
+The table's page is in the address, so Back from a row's sentence returns to that page.
 
 The value sets the pickers offer and the checks accept are the official validator's.
 
