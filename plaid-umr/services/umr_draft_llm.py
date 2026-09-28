@@ -53,7 +53,8 @@ from plaid_client.workflows.umr import (DraftProgress, anchor_pieces, begin_draf
                                         draft_params, finish_draft, join_flat_graph,
                                         next_variable, parse_penman, project_language, run_label,
                                         unknown_relation_problem)
-from plaid_client.workflows.umr.inventory import ATTRIBUTE_VALUES, edge_only
+from plaid_client.workflows.umr.inventory import (ATTRIBUTE_VALUES, edge_only,
+                                                  whole_number_problem)
 
 DEFAULT_SERVICE_ID = 'umr-draft-llm'
 
@@ -276,6 +277,9 @@ def validate_graph(graph, alignment=None) -> Optional[str]:
                 if value in aligned or _MODEL_VARIABLE.fullmatch(value):
                     return f"{var} {child.rel} names {value}, which no node defines."
                 return f"{var} {child.rel} takes a node, not the value {value}."
+            whole = whole_number_problem(child.rel, value)
+            if whole:
+                return f"{var}: {whole}"
             closed = ATTRIBUTE_VALUES.get(child.rel)
             if closed and value not in closed:
                 return f"{value} is not a value of {child.rel}."

@@ -415,6 +415,12 @@ export const NON_EVENT_ROLESETS = [
 ];
 
 /**
+ * The attributes whose value is a whole number: `:li`, a list item's place in
+ * the list, -1 for the last, as AMR writes it.
+ */
+export const INTEGER_ATTRIBUTES = [':li'];
+
+/**
  * Every relation validate.py knows, with the type it expects on the right and
  * whether one parent may carry it more than once (validate.py:1224). An
  * `values` array, where present, is the validator's set for that attribute.
@@ -459,7 +465,6 @@ export const KNOWN_RELATIONS = (() => {
       ':calendar',
       ':domain',
       ':group',
-      ':li',
       ':medium',
       ':modal-predicate',
       ':name',
@@ -583,6 +588,10 @@ export const KNOWN_RELATIONS = (() => {
       ':year2',
       ':end-state',
       ':list-item',
+      // A list item's place, as in AMR: `:li 1`, `:li -1` for the last.
+      // validate.py types it a modifier, which takes a node (decided
+      // 2026-09-28 against it).
+      ':li',
     ],
     'attribute',
     false,

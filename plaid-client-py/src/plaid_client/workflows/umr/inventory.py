@@ -50,10 +50,15 @@ KNOWN_RELATIONS = frozenset({
 #: whose type is ``attribute``. Every other known relation is a role.
 ATTRIBUTE_RELATIONS = frozenset({
     ':aspect', ':century', ':day', ':dayperiod', ':decade', ':degree', ':end-state', ':era',
-    ':frequency', ':lat', ':list-item', ':long', ':mod', ':modal-strength', ':mode', ':month',
-    ':op1', ':polarity', ':polite', ':quant', ':quarter', ':refer-definiteness',
+    ':frequency', ':lat', ':li', ':list-item', ':long', ':mod', ':modal-strength', ':mode',
+    ':month', ':op1', ':polarity', ':polite', ':quant', ':quarter', ':refer-definiteness',
     ':refer-number', ':refer-person', ':smood', ':time', ':value', ':wiki', ':x', ':y',
     ':year', ':year2', ':z'})
+
+#: The attributes whose value is a whole number: ``INTEGER_ATTRIBUTES`` in
+#: ``inventory.js``. ``:li`` is a list item's place in the list, ``-1`` for the
+#: last, as AMR writes it.
+INTEGER_ATTRIBUTES = frozenset({':li'})
 
 #: The attributes whose values the validator holds to a closed set:
 #: ``ATTRIBUTES[rel].validator`` in ``inventory.js``, the non-empty ones. An
@@ -100,6 +105,20 @@ def edge_only(rel: str, concept: str) -> bool:
     return rel in NODE_ROLES
 
 
+def whole_number_problem(rel: str, value) -> Optional[str]:
+    """Why ``value`` cannot stand under ``rel``, an attribute that takes a whole
+    number (``:li``), or None when it can or ``rel`` takes other values
+    (``valueGrammarProblem`` in ``validate.js``)."""
+    if rel not in INTEGER_ATTRIBUTES:
+        return None
+    text = str(value)
+    if re.fullmatch(r'-?[0-9]+', text):
+        return None
+    bare = text.strip('"')
+    return (f"The value '{bare}' of '{rel}' is not a whole number. '{rel}' "
+            "takes the item's place in the list, -1 for the last.")
+
+
 def attribute_value_problem(rel: str, value) -> Optional[str]:
     """Why ``value`` cannot be written as the value of the attribute ``rel`` on
     a node, or None when it can: the relation is not an attribute, the value is
@@ -112,6 +131,9 @@ def attribute_value_problem(rel: str, value) -> Optional[str]:
     text = value if isinstance(value, str) else ''
     if not text.strip() or re.search(r'\s', text):
         return f'{rel} needs a value of one word, not {value!r}.'
+    whole = whole_number_problem(rel, text)
+    if whole:
+        return whole
     closed = ATTRIBUTE_VALUES.get(rel)
     if closed and text not in closed:
         guess = difflib.get_close_matches(text, closed, n=1, cutoff=0.7)
@@ -220,6 +242,7 @@ def unknown_doc_relation_problem(group: Optional[str], relation) -> Optional[str
 
 
 __all__ = ['KNOWN_RELATIONS', 'ATTRIBUTE_RELATIONS', 'ATTRIBUTE_VALUES', 'NODE_ROLES',
-           'VALUE_ARGUMENTS', 'ARG_ROLE', 'DOC_RELATIONS', 'DOC_CONSTANTS', 'GROUPS',
-           'edge_only', 'attribute_value_problem', 'is_known_relation', 'nearest',
+           'INTEGER_ATTRIBUTES', 'VALUE_ARGUMENTS', 'ARG_ROLE', 'DOC_RELATIONS',
+           'DOC_CONSTANTS', 'GROUPS', 'edge_only', 'whole_number_problem',
+           'attribute_value_problem', 'is_known_relation', 'nearest',
            'unknown_relation_problem', 'unknown_doc_relation_problem']
