@@ -293,7 +293,9 @@ The list of **m** and **r** closes on Escape, and ends the wait with it.
 * **Enter** edits the concept. The picker lists the frame file's senses of the anchored word first, with their arguments, then the vocabulary entries the word is linked to, then the word itself, then the abstract concepts, rolesets and discourse concepts.
 Typing searches the bundled frame file too, on any node, so `buy` finds `buy-01` for bought.
 In Arabic a word also finds its roleset with one proclitic (و ف ب ل ك ال) and a suffix taken off, so وقالت offers `قال-01`, and the word's own roleset comes first.
-A hamza on the alif and a tatweel make no difference: أعلن finds `اعلن-01`, and قـال finds `قال-01`.
+A hamza on the alif and a tatweel make no difference: اعلن finds `أعلن-01`, and قـال finds `قال-01`.
+A roleset whose lemma is written as the word writes it comes first: الأم lists `أم-01` before `ألام-01`, and أعلن lists `أعلن-01` before `اعلن-01`.
+A second verb of a root that the Arabic file keys with a doubled hyphen (`أثر--01`) is listed after the lemma's other senses.
 * **:** (colon) edits the relation to the parent. The picker lists the parent roleset's own arguments first, with what each means.
 * **a** opens the attribute picker. Aspect, person and number are lattices: pick the coarsest value you are sure of, and the finer values under it appear. The other attributes are lists, and anything without a set (`:quant`, `:wiki`) is a text line at the bottom. A time is written bare, `:time 15:30`. A list item is `:li` with the item's place as a number (`:li 1`, and `:li -1` for the last) or its label in quotes (`:li "(a)"`). `:list-item` is the same relation and takes the same values. `:modal-strength` is last and marked deprecated, since modality belongs in the document graph. Every pick is saved at once. Arrows move, Enter picks, Backspace clears the row, Escape closes.
 A value the official validator cannot read (`Imperative`, `.5`, `""`) is refused with the reason. One an imported file carried is kept, exported as it came, and listed on the Validation tab.
