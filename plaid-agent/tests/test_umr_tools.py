@@ -367,6 +367,18 @@ def test_a_folded_group_says_what_it_does_and_names_each_node():
     [changed] = compact_ops([concept(i) for i in range(13)], spec)
     assert changed['label'].startswith('change 13 concepts: s3x0: go-01 becomes go-02, ')
 
+    # The document-level relations a node's delete cascades are a loss the
+    # canvas does not show, so the group says so once, and each node is named
+    # without them. No total: a relation between two deleted nodes is on both
+    # of their lines.
+    cascading = [node(i) for i in range(13)]
+    cascading[0]['label'] += ' and 2 document-level relations'
+    cascading[5]['label'] += ' and 1 document-level relation'
+    [removed] = compact_ops(cascading, spec)
+    assert removed['label'].startswith('remove 13 nodes and their document-level relations: '
+                                       '(s3x0 / thing-0), (s3x1 / thing-1), ')
+    assert removed['label'].count('document-level') == 1
+
 
 def test_what_run_code_sees_speaks_the_same_references_as_the_tools(ws):
     """Plain data, no ids: the code reaches the project through four host

@@ -224,26 +224,52 @@ def _attrs_scope_summary(op, n):
 
 # --- what a group of like ops reads as ----------------------------------------
 
-def _labels_phrase(members, drop: str = '', limit: int = 8) -> str:
-    """The members' own lines, so a folded row still names each node and its
-    concept ("(s3d / die-01)") rather than only where it is. ``drop`` is the
-    verb every member's line starts with, said once for the group instead."""
-    lines = []
-    for m in members:
-        line = m.get('label') or m.get('ref') or ''
-        lines.append(line[len(drop):] if drop and line.startswith(drop) else line)
+def _labels_phrase(lines, limit: int = 8) -> str:
     shown = ', '.join(lines[:limit])
     return shown + (f', … {len(lines) - limit} more' if len(lines) > limit else '')
 
 
 def _kind_label(verb: str, noun: Tuple[str, str], drop: str = ''):
-    """A folded group's line, saying what the group does: "remove 20 nodes:
-    (s3a2 / and), (s3d / die-01), …". One generic line for every kind hid
-    that a group was twenty deletions."""
+    """A folded group's line, saying what the group does and naming each
+    member by its own line, so it still names each node and its concept:
+    "remove 20 nodes: (s3a2 / about), (s3d / date-entity), …". One generic
+    line for every kind hid that a group was twenty deletions. ``drop`` is
+    the verb every member's line starts with, said once for the group."""
     def label(first, members) -> str:
         n = len(members)
-        return f'{verb} {n} {noun[0] if n == 1 else noun[1]}: {_labels_phrase(members, drop)}'
+        lines = []
+        for m in members:
+            line = m.get('label') or m.get('ref') or ''
+            lines.append(line[len(drop):] if drop and line.startswith(drop) else line)
+        return f'{verb} {n} {noun[0] if n == 1 else noun[1]}: {_labels_phrase(lines)}'
     return label
+
+
+_CASCADE = re.compile(r' and (\d+) document-level relations?$')
+
+
+def _delete_nodes_label(first, members) -> str:
+    """A group of node deletions. Each member's line may end with the
+    document-level relations its cascade takes ("remove (s1d / dog) and 2
+    document-level relations"), a loss the reader cannot see on the canvas,
+    so the group says so once instead of after every node. Without a number:
+    a relation between two of the deleted nodes is on both lines, so a sum
+    would count it twice."""
+    lines, cascades = [], False
+    for m in members:
+        line = m.get('label') or m.get('ref') or ''
+        if line.startswith('remove '):
+            line = line[len('remove '):]
+        found = _CASCADE.search(line)
+        if found:
+            cascades = True
+            line = line[:found.start()]
+        lines.append(line)
+    n = len(members)
+    head = f'remove {n} node{"" if n == 1 else "s"}'
+    if cascades:
+        head += ' and their document-level relations'
+    return f'{head}: {_labels_phrase(lines)}'
 
 
 # --- the registry --------------------------------------------------------------
@@ -270,7 +296,7 @@ KIND = ok.registry([
            deletes=lambda op: [op.get('span_id')] + list(op.get('relation_ids') or []),
            deletes_tokens=lambda op: list(op.get('token_ids') or []),
            compact_each=('span_id', 'token_ids', 'relation_ids', 'var', 'ref', 'label'),
-           compact_label=_kind_label('remove', ('node', 'nodes'), drop='remove ')),
+           compact_label=_delete_nodes_label),
     # `relation_id` is named as something the op NEEDS as well as something it
     # removes: a single relation delete of an id already gone is a 404 that
     # takes its whole batch with it, so a plan holding this and a node delete
