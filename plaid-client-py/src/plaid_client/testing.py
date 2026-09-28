@@ -297,10 +297,11 @@ class _Batch:
             setattr(self, name, Resource(self, name))
         # The client's own resources, bound to this batch so their writes
         # queue. One a test swapped in for its own is used as it is.
-        for name in ('documents', 'comments', 'guidelines', 'vocab_layers'):
+        for name in ('documents', 'comments', 'guidelines', 'vocab_layers', 'vocab_items'):
             resource = getattr(client, name, None)
             if isinstance(resource, (FakeClient._Documents, FakeClient._Comments,
-                                     FakeClient._Guidelines, FakeClient._VocabLayers)):
+                                     FakeClient._Guidelines, FakeClient._VocabLayers,
+                                     FakeClient._VocabItems)):
                 setattr(self, name, type(resource)(self))
         if isinstance(client.user_data, FakeClient._UserData):
             self.user_data = _BatchUserData(self, client.user_data)
@@ -683,7 +684,8 @@ class FakeClient:
     ``get_item_at``, ``audit`` and ``audit_page`` answer from them, and an
     entry restore answers, done or dry, with ``vocab_restore_summary``. An
     ``as_of`` is accepted and answered with the fixture as it is: the fake
-    has no history.
+    has no history. ``vocab_items.get`` reads one entry out of them, and an
+    entry no vocabulary holds is the server's 404.
     """
 
     #: resources a caller may write through, each recording under its own name.
@@ -749,6 +751,7 @@ class FakeClient:
             self.vocab_layers = FakeClient._VocabLayers(self)
         for name in self.RESOURCES:
             setattr(self, name, Resource(self, name))
+        self.vocab_items = FakeClient._VocabItems(self)
 
     # -- recording --
     def new_id(self, prefix):
@@ -1030,6 +1033,27 @@ class FakeClient:
                           {'args': (id, item_id, as_of), 'kwargs': {'dry_run': dry_run}},
                           {'body': summary})
             return {'batched': True} if isinstance(writer, _Batch) else summary
+
+    class _VocabItems(Resource):
+        """One entry read by id, answered from ``vocabularies`` as the server
+        shapes it (the entry with its vocabulary as ``layer``). An entry no
+        vocabulary holds, deleted or merged away, is the server's 404 (an
+        administrator's answer: anyone else gets a 403, which a test gives
+        through ``fails``). Writes record like any resource's, and queue when
+        made on a batch."""
+
+        def __init__(self, writer):
+            super().__init__(writer, 'vocab_items')
+            self._root = _root(writer)
+
+        def get(self, id):
+            root = self._root
+            root.fail_if_asked('vocab_items.get')
+            for vid, vocabulary in root.vocabularies.items():
+                for item in vocabulary.get('items') or []:
+                    if item.get('id') == id:
+                        return copy.deepcopy({**item, 'layer': vid})
+            raise _refusal(root, 404, 'Vocab item not found', 'GET', f'/api/v1/vocab-items/{id}')
 
     class _Comments:
         """The project's comments, read from the fixture. A comment posted is

@@ -260,6 +260,31 @@ def test_a_vocabularys_reads_log_and_entry_restore():
                               {'args': ('v1', 'i1', 'T'), 'kwargs': {'dry_run': False}})]
 
 
+def test_an_entry_is_read_by_id_as_the_server_answers_one():
+    """``vocab_items.get`` answers from ``vocabularies`` with the entry's
+    vocabulary as ``layer``, as the server shapes it, and an entry no
+    vocabulary holds (deleted, merged away) is the server's 404. Writes on the
+    same resource still record, on the client and on a batch."""
+    lex = {'id': 'v1', 'name': 'Lex', 'items': [{'id': 'i1', 'form': 'kai', 'metadata': {'gloss': 'eat'}}]}
+    c = _project_client(vocabularies={'v1': lex})
+    assert c.vocab_items.get('i1') == {'id': 'i1', 'form': 'kai', 'metadata': {'gloss': 'eat'}, 'layer': 'v1'}
+    c.vocab_items.get('i1')['metadata']['gloss'] = 'changed'
+    assert lex['items'][0]['metadata']['gloss'] == 'eat'
+    with pytest.raises(PlaidAPIError) as e:
+        c.vocab_items.get('gone')
+    assert e.value.status == 404 and e.value.url.endswith('/api/v1/vocab-items/gone')
+    denied = _project_client(vocabularies={'v1': lex},
+                             fails={'vocab_items.get': PlaidAPIError('HTTP 403', status=403)})
+    with pytest.raises(PlaidAPIError):
+        denied.vocab_items.get('i1')
+    assert c.calls == []
+    c.vocab_items.update('i1', 'kaa')
+    with c.batched() as b:
+        assert b.vocab_items.get('i1')['form'] == 'kai'
+        b.vocab_items.delete('i1')
+    assert c.kinds == ['vocab_items.update', 'vocab_items.delete']
+
+
 def test_the_user_data_store_matches_the_real_client_surface():
     """A fake that lies about a signature teaches the first caller written
     against it to call the real client wrong."""
@@ -502,6 +527,7 @@ def test_the_fake_methods_take_the_real_signatures():
              (testing.FakeClient._UserData, real.UserDataResource),
              (testing.FakeClient._Messages, real.MessagesResource),
              (testing.FakeClient._VocabLayers, real.VocabLayersResource),
+             (testing.FakeClient._VocabItems, real.VocabItemsResource),
              (testing._BatchUserData, real.UserDataResource),
              (testing._Operation, real._OperationContext)]
     for fake, real_cls in pairs:
