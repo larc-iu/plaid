@@ -149,6 +149,56 @@ def attr_value_problem(value) -> Optional[str]:
     return None
 
 
+# The bare values validate.py reads (validate.py:393-398): an atom of
+# lowercase letters, digits, `+` and `-`, or a number with a decimal point or
+# a time's colon. An atom with a capital or an underscore is read and reported.
+_GRAMMAR_ATOM = re.compile(r'[-+a-z0-9]+')
+_GRAMMAR_NUMBER = re.compile(r'[0-9]+(?:[.:][0-9]+)?')
+_GRAMMAR_UPPER_ATOM = re.compile(r'[-+a-z0-9A-Z_]+')
+
+
+def value_grammar_problem(value, rel: Optional[str] = None) -> Optional[Dict[str, str]]:
+    """Why validate.py cannot read ``value``, an attribute's value as it is
+    stored (a string with its quotes, else a bare value), as ``{'code',
+    'message'}`` with its test id, or None when it reads it. A string holds no
+    quote and no line break and is not empty; a bare value is an atom of
+    lowercase letters, digits, ``+`` and ``-``, or a number, and does not start
+    like a variable (validate.py reads ``s1x-b`` as ``s1x``). What is NEW is
+    refused with this (ruled 2026-09-28), and an imported value is only
+    reported. The app's ``valueGrammarProblem`` in ``format/validate.js``, held
+    to it by ``plaid-agent/tests/test_penman_mirror.py``."""
+    text = str(value if value is not None else '')
+    of = f" of '{rel}'" if rel else ''
+    if text.startswith('"'):
+        m = re.fullmatch(r'"([\s\S]*)"', text)
+        if not m:
+            return None  # An unclosed string is the export's refusal.
+        inner = m.group(1)
+        if re.search('[\r\n\u2028\u2029]', inner):
+            return {'code': 'invalid-line',
+                    'message': f'The string value{of} runs over more than one line.'}
+        if not inner:
+            return {'code': 'missing-node-definition',
+                    'message': f'The string value{of} is empty.'}
+        if '"' in inner:
+            return {'code': 'invalid-sentence-level',
+                    'message': f'The string value{of} holds a quote: {text}'}
+        return None
+    front = variable_length(text)
+    if front:
+        return {'code': 'invalid-sentence-level',
+                'message': f"The value '{text}'{of} is read as the variable "
+                           f"'{text[:front]}'. Quote it."}
+    if _GRAMMAR_ATOM.fullmatch(text) or _GRAMMAR_NUMBER.fullmatch(text):
+        return None
+    if _GRAMMAR_UPPER_ATOM.fullmatch(text):
+        return {'code': 'value-wrong-chars',
+                'message': f"The value '{text}'{of} holds a capital letter or an underscore."}
+    return {'code': 'missing-node-definition',
+            'message': f"The value '{text}'{of} is not a number or a word of lowercase "
+                       f"letters, digits, + and -."}
+
+
 def variable_form_problem(variable) -> Optional[str]:
     """Why ``variable`` cannot be written and read back as itself, or None when
     it can. Any token will do (a released file may break the convention), but

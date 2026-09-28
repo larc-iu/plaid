@@ -3,7 +3,9 @@
 // compared against it text by text.
 //
 // Reads a JSON array of texts as argv[2] and writes one result object per text
-// to stdout. The module has no imports of its own, so this needs no
+// to stdout, or reads `{texts, values}` and writes `{texts, values}`, a value's
+// result being what valueGrammarProblem says of `[value, rel]`. The modules
+// import nothing outside plaid-umr's format directory, so this needs no
 // node_modules: `node penman_mirror.mjs cases.json` from anywhere.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -11,9 +13,14 @@ import { dirname, resolve } from 'node:path';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PENMAN = resolve(HERE, '../../plaid-umr/src/domain/format/penman.js');
+const VALIDATE = resolve(HERE, '../../plaid-umr/src/domain/format/validate.js');
 const { parsePenman, serializePenman, treeEdges } = await import(PENMAN);
+// validate.js imports only its siblings, so this still needs no node_modules.
+const { valueGrammarProblem } = await import(VALIDATE);
 
-const texts = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+const input = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+// An array of texts, or `{texts, values}` with values for valueGrammarProblem.
+const texts = Array.isArray(input) ? input : input.texts;
 
 const shapeOf = (text) => {
   const g = parsePenman(text);
@@ -40,4 +47,13 @@ const shapeOf = (text) => {
   };
 };
 
-process.stdout.write(JSON.stringify(texts.map(shapeOf)));
+process.stdout.write(
+  JSON.stringify(
+    Array.isArray(input)
+      ? texts.map(shapeOf)
+      : {
+          texts: texts.map(shapeOf),
+          values: input.values.map(([value, rel]) => valueGrammarProblem(value, rel)),
+        },
+  ),
+);

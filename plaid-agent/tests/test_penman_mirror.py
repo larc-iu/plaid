@@ -34,6 +34,7 @@ from node_exe import node_or_skip
 import pytest
 
 from plaid_client.workflows.umr import parse_penman, serialize_penman, tree_edges
+from plaid_client.workflows.umr.penman import value_grammar_problem
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUNNER = os.path.join(HERE, 'penman_mirror.mjs')
@@ -104,6 +105,18 @@ CASES = [
 ]
 
 
+#: Attribute values as stored, each with the relation it stands under or None,
+#: for ``value_grammar_problem`` against the app's ``valueGrammarProblem``
+#: (umr-export-value-grammar): code and message must agree.
+VALUES = [
+    ['imperative', ':mode'], ['15:30', None], ['3.5', ':quant'], ['12', None], ['-', None],
+    ['+', None], ['3rd', None], ['"Caf\u00e9 Noir"', ':wiki'], ['"Q76"', None],
+    ['Imperative', ':mode'], ['big_one', None], ['caf\u00e9', ':mod'], ['.5', None],
+    ['-1.5', None], ['a/b', None], ['""', ':wiki'], ['"O\\"Brien"', None], ['"a\nb"', ':wiki'],
+    ['"a\u2028b"', None], ['"unclosed', None], ['s2x', None], ['s1x-b', ':mod'],
+    ['s1\u03c1', None], ['s1P', None], ['', None], ['caf\u0065\u0301', None],
+]
+
 #: The one place the two readings differ, named rather than papered over: the
 #: value of a child the reader could not read at all. Both REFUSE the text (the
 #: comparison below still holds them to that), and nothing serializes a graph it
@@ -133,7 +146,7 @@ def compared():
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, 'cases.json')
         with open(path, 'w', encoding='utf-8') as fh:
-            json.dump(CASES, fh)
+            json.dump({'texts': CASES, 'values': VALUES}, fh)
         run = subprocess.run([node, RUNNER, path], capture_output=True, text=True, timeout=120)
     if run.returncode != 0:
         pytest.fail(f"the app's PENMAN reader would not run:\n{run.stderr[:2000]}")
@@ -143,7 +156,7 @@ def compared():
 @pytest.mark.parametrize('index', range(len(CASES)), ids=[repr(t)[:40] for t in CASES])
 def test_both_readers_read_one_text_the_same_way(compared, index):
     text = CASES[index]
-    mine, theirs = _python_shape(text), compared[index]
+    mine, theirs = _python_shape(text), compared['texts'][index]
     exempt = EXEMPT.get(text)
     if exempt:
         key, reason = exempt
@@ -157,7 +170,15 @@ def test_both_readers_read_one_text_the_same_way(compared, index):
 def test_the_mirror_actually_ran_the_app_s_reader(compared):
     """Without this the sweep is green on a skip nobody notices, which is how a
     mirror test stops being one."""
-    assert len(compared) == len(CASES) >= 20
-    shape = compared[0]
+    assert len(compared['texts']) == len(CASES) >= 20
+    assert len(compared['values']) == len(VALUES)
+    assert compared['values'][VALUES.index(['Imperative', ':mode'])]['code'] == 'value-wrong-chars'
+    shape = compared['texts'][0]
     assert shape['root'] == 's1b' and len(shape['nodes']) == 2
     assert shape['text'] == SIMPLE
+
+
+@pytest.mark.parametrize('index', range(len(VALUES)), ids=[repr(v)[:30] for v in VALUES])
+def test_both_value_grammars_judge_one_value_the_same_way(compared, index):
+    value, rel = VALUES[index]
+    assert value_grammar_problem(value, rel) == compared['values'][index], f'on {value!r}'
