@@ -45,7 +45,7 @@ from .penman import (Graph, attr_value_problem, concept_problem, is_variable, ne
                      parse_attribute_line, parse_penman, relation_form_problem,
                      serialize_penman, tree_edges, variable_form_problem, variable_from)
 from .write import (DraftProgress, anchor_pieces, begin_draft, draft_params, finish_draft,
-                    write_graphs)
+                    run_label, write_graphs)
 
 __all__ = [
     'graph', 'inventory', 'layers', 'penman', 'write',
@@ -68,5 +68,5 @@ __all__ = [
     'concept_problem', 'relation_form_problem', 'attr_value_problem', 'variable_form_problem',
     # write
     'anchor_pieces', 'write_graphs', 'DraftProgress', 'draft_params', 'begin_draft',
-    'finish_draft',
+    'finish_draft', 'run_label',
 ]

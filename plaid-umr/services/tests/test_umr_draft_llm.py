@@ -247,9 +247,20 @@ def test_a_good_answer_becomes_anchors_nodes_and_relations():
         assert meta['prov'] == 'inferred'
         assert meta['provSource'] == SOURCE
         assert 'provConfirmed' not in meta
-        assert meta['provDetail'] == {'model': 'openai/gpt-4o-mini', 'language': 'English'}
 
-    assert service.client.operations == ['UMR draft (1 sentences)']
+    # Each item records what was drafted, so a node accepted as drafted and
+    # one corrected before it was verified stay distinguishable
+    # (provDetail.value, the provenance convention's prediction extra).
+    base = {'model': 'openai/gpt-4o-mini', 'language': 'English'}
+    assert [n['metadata']['provDetail'] for n in nodes] == [
+        {**base, 'value': 'bark-01', 'attrs': [{'rel': ':aspect', 'value': 'process'}]},
+        {**base, 'value': 'dog', 'attrs': [{'rel': ':refer-number', 'value': 'singular'}]},
+        {**base, 'value': 'now'},
+    ]
+    assert [r['metadata']['provDetail'] for r in relations] == [
+        {**base, 'value': ':ARG0'}, {**base, 'value': ':temporal'}]
+
+    assert service.client.operations == ['UMR draft of sentence 1']
 
 
 def test_an_alignment_lands_on_the_words_it_names_and_0_0_is_unaligned():
@@ -405,6 +416,11 @@ def _two_drafted_sentences(relations=(), doc_relations=()):
     ([], [{'id': 't1', 'source': 'sp2', 'target': 'sp1', 'value': ':same-entity',
            'metadata': {'umr': {'group': 'coref'}, **MACHINE}}],
      "a triple sentence 2's block writes"),
+    # A person's triple is still sentence 2's work, not sentence 1's: sentence
+    # 1 is kept as linked to, and nothing says a person worked on it.
+    ([], [{'id': 't1', 'source': 'sp2', 'target': 'sp1', 'value': ':same-entity',
+           'metadata': {'umr': {'group': 'coref'}}}],
+     "a person's triple sentence 2's block writes"),
     ([{'id': 'r1', 'source': 'sp2', 'target': 'sp1', 'value': ':ARG1',
        'metadata': {'umr': {'order': 0}, **MACHINE}}], [],
      "an edge from sentence 2's node"),
@@ -425,6 +441,42 @@ def test_overwrite_keeps_a_sentence_whose_edges_or_triples_it_may_not_delete(
         'Kept 1 sentence that another sentence links to.' if by_link
         else 'Kept 1 sentence a person had worked on.'), why
     assert service.client.writes == [], f'{why} is not deleted'
+
+
+@pytest.mark.parametrize('node_metadata, why', [
+    ({}, 'hand-made'),
+    ({'prov': 'inferred', 'provSource': SOURCE, 'provConfirmed': True}, 'verified'),
+])
+def test_without_overwrite_a_persons_sentence_is_kept_and_overwrite_is_not_offered(
+        node_metadata, why):
+    """Overwrite would refuse this sentence too, so the notice must not
+    recommend it: the sentence is counted as kept in both modes."""
+    service = _service(documents=[_drafted_document(node_metadata)])
+    [result] = servicetest.run(service, REQUEST).results
+
+    assert (result['drafted'], result['skipped'], result['kept']) == (0, 0, 1), why
+    assert result['notice'] == {'level': 'warning', 'title': 'Document not modified',
+                                'message': 'Kept 1 sentence a person had worked on.'}
+
+
+def test_without_overwrite_the_hint_counts_only_the_sentences_it_would_redraft():
+    document = _document(
+        body='The dog barks\nThe cat sleeps\n', sentences=((0, 14), (14, 30)),
+        words=[(0, 3), (4, 7), (8, 13), (14, 17), (18, 21), (22, 28)],
+        node_tokens=[('n1', 0, 3), ('n2', 14, 17)],
+        concept_spans=[
+            {'id': 'sp1', 'tokens': ['n1'], 'value': 'dog',
+             'metadata': {'umr': {'var': 's1d', 'attrs': []}, **MACHINE}},
+            {'id': 'sp2', 'tokens': ['n2'], 'value': 'cat',
+             'metadata': {'umr': {'var': 's2c', 'attrs': []}}},
+        ])
+    service = _service(documents=[document])
+    [result] = servicetest.run(service, REQUEST).results
+
+    assert (result['drafted'], result['skipped'], result['kept']) == (0, 1, 1)
+    assert result['notice']['message'] == (
+        "1 sentence already has a graph. Enable 'Overwrite existing graphs' to draft over it. "
+        'Kept 1 sentence a person had worked on.')
 
 
 def test_overwrite_redrafts_the_machine_sentences_beside_a_kept_one():
@@ -546,8 +598,95 @@ def test_one_bad_sentence_does_not_throw_away_the_good_ones():
     assert (result['drafted'], result['failed']) == (1, 1)
     assert result['notice']['level'] == 'success'
     assert result['notice']['title'] == 'Drafted 1 sentence'
-    assert 'Failed to draft 1 sentence' in result['notice']['message']
+    assert result['notice']['message'] == (
+        "Failed to draft sentence 1: Expected the opening bracket of the root node, "
+        "found 'not a graph'.")
+    assert result['notice']['sticky'] is True
     assert len(_ops(service.client, 'spans.bulk_create')) == 3
+    assert service.client.operations == ['UMR draft of sentence 2']
+
+
+def _sentences_document(n):
+    words = ['The', 'dog', 'barks']
+    body, sentences, spans = '', [], []
+    for _ in range(n):
+        start = len(body)
+        for w in words:
+            spans.append((len(body), len(body) + len(w)))
+            body += w + ' '
+        body = body[:-1] + '\n'
+        sentences.append((start, len(body)))
+    return _document(body=body, sentences=sentences, words=spans)
+
+
+def test_the_notice_names_every_failed_sentence_with_its_own_reason_and_stays():
+    """A whole-document run used to report one reason for all its failures,
+    in a toast gone in four seconds. Each sentence is named now, sentences
+    that failed alike together, and the notice stays until dismissed."""
+    two_graphs = '(v1 / bark-01)\n(v2 / dog)\n\n# alignment:\nv1: 3-3\nv2: 2-2\n'
+    size = '(v1 / dog :size small)\n\n# alignment:\nv1: 2-2\n'
+    replies = [GOOD_REPLY, two_graphs, size, two_graphs]
+    service = _service(documents=[_sentences_document(4)], model=_Model(replies))
+    helper = servicetest.run(service, REQUEST)
+
+    [result] = helper.results
+    assert (result['drafted'], result['failed']) == (1, 3)
+    assert [f['sentence'] for f in result['sentences_failed']] == [2, 3, 4]
+    assert result['notice'] == {
+        'level': 'success', 'title': 'Drafted 1 sentence', 'sticky': True,
+        'message': ("Failed to draft 3 sentences. Sentences 2 and 4: Unexpected content "
+                    "after the topmost closing bracket: '(v2 / dog)'. Sentence 3: v1 :size "
+                    "takes a node, not the value small.")}
+
+
+def test_every_failure_reason_reaches_the_operators_log(capsys):
+    service = _service(model=_Model(['(v1 / dog :size small)\n\n# alignment:\nv1: 2-2\n']))
+    servicetest.run(service, REQUEST)
+
+    log = capsys.readouterr().out
+    assert 'Sentence 1 not drafted: v1 :size takes a node, not the value small.' in log
+    # And the reply itself, which is what anyone improving the prompt needs.
+    assert '(v1 / dog :size small)' in log
+
+
+def test_a_run_that_drafts_several_sentences_is_counted_in_history():
+    service = _service(documents=[_sentences_document(2)])
+    servicetest.run(service, REQUEST)
+    assert service.client.operations == ['UMR draft (2 sentences)']
+
+
+@pytest.mark.parametrize('reply', [
+    # The model names a variable only its alignment block defines.
+    '(v1 / bark-01 :actor p)\n\n# alignment:\nv1: 3-3\np: 2-2\n',
+    # Or one in its own naming that nothing defines.
+    '(v1 / bark-01 :actor p)\n\n# alignment:\nv1: 3-3\n',
+])
+def test_a_variable_the_reply_never_defines_is_named_as_that(reply):
+    service = _service(model=_Model([reply]))
+    [result] = servicetest.run(service, REQUEST).results
+    assert result['sentences_failed'][0]['reason'] == 'v1 :actor names p, which no node defines.'
+
+
+def test_the_prompt_teaches_only_values_the_validator_takes():
+    """Every closed attribute set in the prompt is the inventory's, so the
+    model is never taught a value the canvas marks as wrong."""
+    from plaid_client.workflows.umr.inventory import ATTRIBUTE_VALUES
+    for rel in (':aspect', ':modal-strength', ':refer-person', ':refer-number'):
+        assert ' '.join(ATTRIBUTE_VALUES[rel]) in umr.SYSTEM_PROMPT, rel
+    for wrong in ('nonsingular', 'iterative', '1st-inclusive', '1st-exclusive'):
+        assert wrong not in umr.SYSTEM_PROMPT
+    assert '4th' in umr.SYSTEM_PROMPT
+
+
+@pytest.mark.parametrize('rel, value', [
+    (':refer-number', 'nonsingular'), (':aspect', 'iterative'), (':refer-person', '1st-inclusive'),
+])
+def test_a_value_outside_an_attributes_set_is_refused(rel, value):
+    reply = f'(v1 / dog {rel} {value})\n\n# alignment:\nv1: 2-2\n'
+    service = _service(model=_Model([reply]))
+    [result] = servicetest.run(service, REQUEST).results
+    assert result['sentences_failed'][0]['reason'] == f'{value} is not a value of {rel}.'
+    assert service.client.writes == []
 
 
 def test_a_provider_key_never_reaches_the_person_who_asked():
@@ -632,7 +771,7 @@ def test_every_phase_says_what_it_is_doing_and_the_bar_only_moves_forward():
         'Reading the project…',
         'Reading the document…',
         'Drafting sentence 1 (1 of 1)…',
-        'Writing 1 graphs…',
+        'Writing 1 graph…',
         'Writing 3 anchors…',
         'Writing 3 nodes…',
         'Writing 2 relations…',

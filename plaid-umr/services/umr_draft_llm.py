@@ -48,9 +48,9 @@ from plaid_client.service import requester_message
 from plaid_client.workflows.llm import ChatModel, add_model_arguments, setup_service
 from plaid_client.workflows.umr import (DraftProgress, anchor_pieces, begin_draft,
                                         draft_params, finish_draft, next_variable,
-                                        parse_penman, project_language,
+                                        parse_penman, project_language, run_label,
                                         unknown_relation_problem)
-from plaid_client.workflows.umr.inventory import edge_only
+from plaid_client.workflows.umr.inventory import ATTRIBUTE_VALUES, edge_only
 
 DEFAULT_SERVICE_ID = 'umr-draft-llm'
 
@@ -78,7 +78,9 @@ person edits or confirms it.
 # in docs/umr/DIGEST.md, not from the full guidelines, which no prompt budget
 # survives. Roles, attribute value sets and the aspect lattice are listed in
 # full because an off-inventory value is a correction the annotator has to make
-# by hand; everything else is named rather than enumerated.
+# by hand; everything else is named rather than enumerated. The closed value
+# sets come from the shared inventory, the validator's own, so the prompt never
+# teaches a value `validate_graph` refuses.
 SYSTEM_PROMPT = """\
 You are an expert annotator of Uniform Meaning Representation (UMR). Given one
 sentence with its numbered words, write that sentence's sentence-level graph.
@@ -99,18 +101,11 @@ ROLES. Participant: :actor :co-actor :undergoer :theme :recipient :force :causer
 Also :name (to a (n / name :op1 "..." :op2 "...")) and :wiki (a quoted Wikidata
 id). Every role starts with a colon.
 
-ATTRIBUTES take an atom, never a node. :aspect on every event, one of: habitual
-generic imperfective state reversible-state irreversible-state point-state
-inherent-state process atelic-process activity directed-activity
-undirected-activity iterative perfective endeavor semelfactive
-undirected-endeavor directed-endeavor performance inceptive
-incremental-accomplishment nonincremental-accomplishment directed-achievement
-reversible-directed-achievement irreversible-directed-achievement.
-:modal-strength one of full-affirmative partial-affirmative neutral-affirmative
-neutral-negative partial-negative full-negative. :polarity - or +. :mode
-interrogative, imperative or expressive. :refer-person non-1st non-3rd 1st 2nd
-3rd 1st-inclusive 1st-exclusive. :refer-number singular nonsingular paucal plural
-dual trial. :degree downtoner or equal. :polite + or -. :quant a number.
+ATTRIBUTES take an atom, never a node. :aspect on every event, one of: {aspect}.
+:modal-strength one of {modal_strength}. :polarity - or +. :mode
+interrogative, imperative or expressive. :refer-person one of {refer_person}.
+:refer-number one of {refer_number}. :degree downtoner or equal. :polite + or -.
+:quant a number.
 
 ABSTRACT CONCEPTS where no word carries the meaning: person thing animal event
 place temporal quantity; umr-unknown truth-value umr-choice umr-empty;
@@ -124,7 +119,11 @@ one line per variable in the graph, `variable: begin-end`, where begin and end
 are 1-based inclusive indices into the numbered words, `0-0` for a concept no
 word realizes, and comma-separated ranges for a discontiguous anchor. List every
 variable of the graph exactly once. Write nothing else: no prose, no explanation,
-no code fences, no other comment lines."""
+no code fences, no other comment lines.""".format(
+    aspect=' '.join(ATTRIBUTE_VALUES[':aspect']),
+    modal_strength=' '.join(ATTRIBUTE_VALUES[':modal-strength']),
+    refer_person=' '.join(ATTRIBUTE_VALUES[':refer-person']),
+    refer_number=' '.join(ATTRIBUTE_VALUES[':refer-number']))
 
 
 #: One alignment line: a variable, an optional space, a colon, then ranges.
@@ -237,11 +236,21 @@ def plan_sentence(graph, alignment, sentence, taken):
     return pieces, nodes, edges
 
 
-def validate_graph(graph) -> Optional[str]:
+#: A token a model writes as a variable of its own: a letter, then digits
+#: (``p``, ``e2``). The reader takes an undefined one for an atom.
+_MODEL_VARIABLE = re.compile(r'[a-z][0-9]*')
+
+
+def validate_graph(graph, alignment=None) -> Optional[str]:
     """What is wrong with a parsed graph, in one line for the requester, or
     None. Everything here would otherwise land as an unreadable node the
     annotator has to find and delete. A relation UMR does not have is refused
-    with the inventory's own check, the one the assistant's guard uses."""
+    with the inventory's own check, the one the assistant's guard uses, and so
+    is a value outside an attribute's closed set.
+
+    ``alignment`` is the reply's alignment block as read: a value the block
+    lists as a variable is one the graph never defined, not an atom."""
+    aligned = set(alignment or ())
     if graph.errors:
         return graph.errors[0].message
     if not graph.root or graph.root not in graph.nodes:
@@ -257,8 +266,16 @@ def validate_graph(graph) -> Optional[str]:
                 return unknown
             if child.kind == 'node' and child.value not in graph.nodes:
                 return f"{var} {child.rel} names {child.value}, which no node defines."
-            if child.kind != 'node' and edge_only(child.rel, node.concept):
-                return f"{var} {child.rel} takes a node, not the value {child.value}."
+            if child.kind == 'node':
+                continue
+            value = str(child.value)
+            if edge_only(child.rel, node.concept):
+                if value in aligned or _MODEL_VARIABLE.fullmatch(value):
+                    return f"{var} {child.rel} names {value}, which no node defines."
+                return f"{var} {child.rel} takes a node, not the value {value}."
+            closed = ATTRIBUTE_VALUES.get(child.rel)
+            if closed and value not in closed:
+                return f"{value} is not a value of {child.rel}."
     return None
 
 
@@ -386,23 +403,26 @@ class UmrDraftService(BaseService):
                 # Half a graph is not a graph: a cut-off reply is a failure, not
                 # a partial result to write.
                 failures.append({'sentence': sentence.index,
-                                 'reason': 'the reply was cut off at the token limit'})
+                                 'reason': 'The reply was cut off at the token limit.'})
                 continue
             graph_text, alignment_text = split_reply(reply.text)
             graph = parse_penman(graph_text)
-            problem = validate_graph(graph)
+            alignment = parse_alignment(alignment_text)
+            problem = validate_graph(graph, alignment)
             if problem:
+                # The reply itself goes to the operator's log: what the model
+                # wrote is what anyone improving the prompt needs to see.
+                print(f'Reply for sentence {sentence.index} refused ({problem}):\n{reply.text}')
                 failures.append({'sentence': sentence.index, 'reason': problem})
                 continue
-            pieces, nodes, edges = plan_sentence(graph, parse_alignment(alignment_text),
-                                                 sentence, run.taken)
+            pieces, nodes, edges = plan_sentence(graph, alignment, sentence, run.taken)
             plans.append({'sentence': sentence, 'pieces': pieces, 'nodes': nodes, 'edges': edges})
         if run.targets:
             print(self.model.usage_line())
 
         finish_draft(self.client, response_helper, run, plans, failures, frag,
-                     operation=f'UMR draft ({len(plans)} sentences)',
-                     writing=f'Writing {len(plans)} graphs…')
+                     operation=run_label('UMR draft', plans),
+                     writing=f"Writing {len(plans)} graph{'' if len(plans) == 1 else 's'}…")
 
 
 def main():

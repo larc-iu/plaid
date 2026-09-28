@@ -300,9 +300,12 @@ def test_a_triple_another_sentence_writes_keeps_the_sentence():
     doc = _read(raw)
     assert doc.sentences[0].triples == []
     assert [t.blocks for t in doc.sentences[1].triples] == [[2]]
-    # Human-made: neither sentence may be replaced.
+    # Human-made: neither sentence may be replaced. It is sentence 2's work,
+    # though: sentence 1 is kept as one another sentence links to.
     assert not doc.sentences[0].redraftable
     assert not doc.sentences[1].redraftable
+    assert doc.sentences[1].person_made
+    assert not doc.sentences[0].person_made
     # Machine-made: sentence 2 owns it and may replace it, sentence 1 may not.
     concept['relation_layers'][1]['relations'][0]['metadata'] = {'prov': 'inferred'}
     doc = _read(raw)
@@ -358,6 +361,38 @@ class _Client:
             self._client.calls.append((f'{self._name}.bulk_delete', ids))
 
 
+def test_the_draft_notice_names_each_failed_sentence_and_sticks():
+    from plaid_client.workflows.umr.write import build_draft_notice
+    one = build_draft_notice(0, 0, [{'sentence': 3, 'reason': 'x is wrong'}])
+    assert one == {'level': 'warning', 'title': 'Nothing drafted', 'sticky': True,
+                   'message': 'Failed to draft sentence 3: x is wrong.'}
+    many = build_draft_notice(2, 0, [{'sentence': 1, 'reason': 'A.'},
+                                     {'sentence': 4, 'reason': 'B.'},
+                                     {'sentence': 5, 'reason': 'A.'},
+                                     {'sentence': 9, 'reason': 'A.'}])
+    assert many['message'] == ('Failed to draft 4 sentences. Sentences 1, 5 and 9: A. '
+                               'Sentence 4: B.')
+    assert 'sticky' not in build_draft_notice(2, 0, [])
+
+
+def test_the_overwrite_hint_is_worded_for_what_it_would_redraft():
+    from plaid_client.workflows.umr.write import build_draft_notice
+    assert build_draft_notice(0, 3)['message'] == (
+        "All 3 sentences already have graphs. Enable 'Overwrite existing graphs' to draft "
+        "over them.")
+    assert build_draft_notice(0, 2, kept=1)['message'] == (
+        "2 sentences already have graphs. Enable 'Overwrite existing graphs' to draft over "
+        "them. Kept 1 sentence a person had worked on.")
+
+
+def test_run_labels_name_one_sentence_and_count_several():
+    from plaid_client.workflows.umr.write import run_label
+    doc = _read(_document())
+    assert run_label('UMR draft', [{'sentence': doc.sentences[1]}]) == 'UMR draft of sentence 2'
+    assert run_label('UMR draft', [{'sentence': s} for s in doc.sentences]) == (
+        f'UMR draft ({len(doc.sentences)} sentences)')
+
+
 def test_a_drafted_graph_is_written_as_anchors_then_nodes_then_edges():
     """An op cannot reference an id produced earlier in the same batch, so the
     three passes are three batches, in the order the importer writes in."""
@@ -378,9 +413,12 @@ def test_a_drafted_graph_is_written_as_anchors_then_nodes_then_edges():
     spans = client.calls[2][1]
     assert [s['value'] for s in spans] == ['dog', 'bark-01']
     # The provenance stamp is FLAT and the app's own half sits beside it.
-    assert spans[0]['metadata'] == {'prov': 'inferred', 'umr': {'var': 's1d'}}
+    # provDetail records what was drafted, per item.
+    assert spans[0]['metadata'] == {'prov': 'inferred', 'provDetail': {'value': 'dog'},
+                                    'umr': {'var': 's1d'}}
     [edge] = client.calls[3][1]
     assert (edge['source'], edge['target'], edge['value']) == ('spans1', 'spans0', ':ARG0')
+    assert edge['metadata']['provDetail'] == {'value': ':ARG0'}
 
 
 def test_the_writer_refuses_a_short_answer_rather_than_writing_the_wrong_ids():

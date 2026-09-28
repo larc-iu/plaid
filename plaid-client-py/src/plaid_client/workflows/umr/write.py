@@ -25,6 +25,7 @@ import contextlib
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from plaid_client.provenance import PROV_DETAIL_KEY, PROV_KEY
 from plaid_client.service import check_unchanged, progress_heartbeat
 from plaid_client.service_schema import Param
 
@@ -84,51 +85,112 @@ class DraftProgress:
         return progress_heartbeat(self._helper, self._percent(phase, fraction), message)
 
 
-def build_draft_notice(drafted, skipped, failed, first_error=None, kept=0,
+def _count(n: int, noun: str) -> str:
+    return f'{n} {noun}' + ('' if n == 1 else 's')
+
+
+def _sentences(numbers) -> str:
+    """``Sentence 3``, ``Sentences 3 and 5``, ``Sentences 2, 4 and 7``."""
+    numbers = [str(n) for n in numbers]
+    if len(numbers) == 1:
+        return f'Sentence {numbers[0]}'
+    return f'Sentences {", ".join(numbers[:-1])} and {numbers[-1]}'
+
+
+def _sentence_reason(reason) -> str:
+    text = str(reason or '').strip() or 'No reason given.'
+    return text if text[-1] in '.!?' else text + '.'
+
+
+def _failure_line(failures: Sequence[dict]) -> str:
+    """Every failed sentence with its own reason, sentences that failed for
+    the same reason named together, in document order::
+
+        Failed to draft sentence 3: The reply was cut off at the token limit.
+        Failed to draft 3 sentences. Sentence 2: ... Sentences 4 and 7: ...
+    """
+    if not failures:
+        return ''
+    if len(failures) == 1:
+        [only] = failures
+        return f"Failed to draft sentence {only['sentence']}: {_sentence_reason(only['reason'])}"
+    by_reason: Dict[str, List[Any]] = {}
+    for failure in failures:
+        by_reason.setdefault(_sentence_reason(failure['reason']), []).append(failure['sentence'])
+    groups = ' '.join(f'{_sentences(numbers)}: {reason}' for reason, numbers in by_reason.items())
+    return f'Failed to draft {len(failures)} sentences. {groups}'
+
+
+def build_draft_notice(drafted, skipped, failures: Sequence[dict] = (), kept=0,
                        linked=0) -> Dict[str, Any]:
     """The toast the editor shows when a run finishes. The service owns the
     wording and the severity; the editor maps ``level`` to a colour. A run that
     drafted nothing must not congratulate anyone.
 
-    ``skipped`` and ``kept`` cannot both stand: a sentence with a graph is
-    skipped when ``overwrite`` is off, and one a person built is kept when it
-    is on. What is kept is what a person made, contributed or verified (the
-    three protected states of the provenance convention), so the line says
-    that rather than naming one of them. ``linked`` counts the sentences kept
-    for another reason: nobody worked on them, but another sentence's graph
-    links into them, and replacing them would cut that link.
+    ``skipped`` counts the sentences with a machine-made graph that were left
+    alone because ``overwrite`` was off: the only ones the Overwrite hint is
+    true of. ``kept`` counts the sentences a person made, contributed or
+    verified anything in (the three protected states of the provenance
+    convention), which no run replaces, and ``linked`` the ones kept because
+    another sentence's graph links into them. ``failures`` are
+    ``{'sentence': n, 'reason': str}``, each named with its own reason. A
+    notice with failures is ``sticky``: it stays until dismissed, since it is
+    the only record of which sentences a run could not draft.
     """
     def s(n):
         return '' if n == 1 else 's'
 
-    tail = []
-    if skipped:
-        tail.append(f'Skipped {skipped} sentence{s(skipped)} that already had a graph.')
+    held = []
     if kept:
-        tail.append(f'Kept {kept} sentence{s(kept)} a person had worked on.')
+        held.append(f'Kept {kept} sentence{s(kept)} a person had worked on.')
     if linked:
-        tail.append(f'Kept {linked} sentence{s(linked)} that another sentence links to.')
-    if failed:
-        tail.append(f'Failed to draft {failed} sentence{s(failed)}'
-                    + (f': {first_error}' if first_error else '.'))
+        held.append(f'Kept {linked} sentence{s(linked)} that another sentence links to.')
+    failed = [_failure_line(failures)] if failures else []
+
+    def notice(level, title, parts):
+        out = {'level': level, 'title': title, 'message': ' '.join(parts)}
+        if failures:
+            out['sticky'] = True
+        return out
+
     if drafted:
-        return {'level': 'success', 'title': f'Drafted {drafted} sentence{s(drafted)}',
-                'message': ' '.join(tail)}
+        skipped_line = ([f'Skipped {skipped} sentence{s(skipped)} that already had a graph.']
+                        if skipped else [])
+        return notice('success', f'Drafted {drafted} sentence{s(drafted)}',
+                      skipped_line + held + failed)
     if skipped:
-        subject = ('1 sentence already has a graph' if skipped == 1
-                   else f'All {skipped} sentences already have graphs')
-        return {'level': 'warning', 'title': 'Document not modified',
-                'message': (f"{subject}. Enable 'Overwrite existing graphs' to draft over them."
-                            + (f' Failed to draft {failed} sentence{s(failed)}.' if failed else ''))}
-    if kept or linked:
-        return {'level': 'warning', 'title': 'Document not modified',
-                'message': ' '.join(tail)}
-    if failed:
-        return {'level': 'warning', 'title': 'Nothing drafted',
-                'message': f'Failed to draft {failed} sentence{s(failed)}'
-                           + (f': {first_error}' if first_error else '.')}
-    return {'level': 'warning', 'title': 'Nothing to draft',
-            'message': 'The document has no sentences in scope.'}
+        if skipped == 1:
+            subject, them = '1 sentence already has a graph', 'it'
+        elif held or failed:
+            subject, them = f'{skipped} sentences already have graphs', 'them'
+        else:
+            subject, them = f'All {skipped} sentences already have graphs', 'them'
+        return notice('warning', 'Document not modified',
+                      [f"{subject}. Enable 'Overwrite existing graphs' to draft over {them}."]
+                      + held + failed)
+    if held:
+        return notice('warning', 'Document not modified', held + failed)
+    if failures:
+        return notice('warning', 'Nothing drafted', failed)
+    return notice('warning', 'Nothing to draft', ['The document has no sentences in scope.'])
+
+
+def run_label(name: str, plans: Sequence[dict]) -> str:
+    """What a run's write is called in History: ``UMR draft of sentence 3``,
+    or ``UMR draft (4 sentences)``."""
+    if len(plans) == 1:
+        return f"{name} of sentence {plans[0]['sentence'].index}"
+    return f'{name} ({len(plans)} sentences)'
+
+
+def _predicted(frag: dict, prediction: dict) -> dict:
+    """``frag`` with what the writer predicted added to its ``provDetail``,
+    so accepted as drafted and corrected afterwards stay distinguishable once
+    a person has verified the item (``plaid_client.provenance``). A write
+    with no provenance stamp is a person's, and records no prediction."""
+    if not frag.get(PROV_KEY):
+        return frag
+    return {**frag, PROV_DETAIL_KEY: {**(frag.get(PROV_DETAIL_KEY) or {}), **prediction}}
 
 
 def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
@@ -142,7 +204,8 @@ def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
     anything is written, whatever the caller decided. ``frag`` is the
     provenance stamp every write carries: it is FLAT and the app's own half
     sits beside it under ``umr``, exactly as the importer and the canvas write
-    it.
+    it. Each node's ``provDetail`` also records the concept and attributes it
+    was drafted with, and each edge's its role.
     """
     progress = progress or DraftProgress(None)
     kept = [plan['sentence'].index for plan in plans
@@ -152,7 +215,7 @@ def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
     doomed = [pid for plan in plans for node in plan['sentence'].nodes
               for pid in node.piece_ids]
     if doomed:
-        progress.report(DraftProgress.WRITE, 0.1, f'Clearing {len(doomed)} anchors…')
+        progress.report(DraftProgress.WRITE, 0.1, f'Clearing {_count(len(doomed), "anchor")}…')
         client.tokens.bulk_delete(doomed)
 
     piece_ops: List[dict] = []
@@ -163,7 +226,7 @@ def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
                           'text': layers.text_id, 'begin': begin, 'end': end}
                          for begin, end in plan['pieces'])
         bases.append((piece_base, 0))
-    progress.report(DraftProgress.WRITE, 0.3, f'Writing {len(piece_ops)} anchors…')
+    progress.report(DraftProgress.WRITE, 0.3, f'Writing {_count(len(piece_ops), "anchor")}…')
     piece_ids = client.tokens.bulk_create(piece_ops)['ids'] if piece_ops else []
     if len(piece_ids) != len(piece_ops):
         raise RuntimeError(f'The server returned {len(piece_ids)} anchor ids for '
@@ -174,13 +237,18 @@ def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
         piece_base, _ = bases[n]
         bases[n] = (piece_base, len(span_ops))
         for node in plan['nodes']:
+            prediction = {'value': node['concept']}
+            attrs = [{'rel': a['rel'], 'value': a['value']}
+                     for a in node['meta'].get('attrs') or []]
+            if attrs:
+                prediction['attrs'] = attrs
             span_ops.append({
                 'span_layer_id': layers.concept_layer['id'],
                 'tokens': [piece_ids[piece_base + i] for i in node['piece_indexes']],
                 'value': node['concept'],
-                'metadata': {**frag, UMR_NAMESPACE: node['meta']},
+                'metadata': {**_predicted(frag, prediction), UMR_NAMESPACE: node['meta']},
             })
-    progress.report(DraftProgress.WRITE, 0.6, f'Writing {len(span_ops)} nodes…')
+    progress.report(DraftProgress.WRITE, 0.6, f'Writing {_count(len(span_ops), "node")}…')
     span_ids = client.spans.bulk_create(span_ops)['ids'] if span_ops else []
     if len(span_ids) != len(span_ops):
         raise RuntimeError(f'The server returned {len(span_ids)} node ids for '
@@ -195,10 +263,11 @@ def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
                 'source': span_ids[node_base + edge['source']],
                 'target': span_ids[node_base + edge['target']],
                 'value': edge['role'],
-                'metadata': {**frag, UMR_NAMESPACE: {'order': edge['order']}},
+                'metadata': {**_predicted(frag, {'value': edge['role']}),
+                             UMR_NAMESPACE: {'order': edge['order']}},
             })
     if edge_ops:
-        progress.report(DraftProgress.WRITE, 0.9, f'Writing {len(edge_ops)} relations…')
+        progress.report(DraftProgress.WRITE, 0.9, f'Writing {_count(len(edge_ops), "relation")}…')
         client.relations.bulk_create(edge_ops)
 
 
@@ -248,12 +317,13 @@ def begin_draft(client, request_data: Dict[str, Any], response_helper) -> Option
     report the missing document id and return None.
 
     A sentence with words is a target when it has no graph, or when
-    ``overwrite`` is on and its graph is :attr:`Sentence.redraftable`. With
-    ``overwrite`` off every sentence with a graph is skipped. With it on, a
-    sentence a person built or confirmed is kept, and so is one that another
-    sentence's block writes an edge or triple on (the machine-writer
-    contract), as igt's analyzers redraft machine output only. A sentence
-    number the document does not have is a ValueError."""
+    ``overwrite`` is on and its graph is :attr:`Sentence.redraftable`. A
+    sentence a person built or confirmed is kept whatever ``overwrite`` says,
+    and so is one that another sentence's block writes an edge or triple on
+    (the machine-writer contract), as igt's analyzers redraft machine output
+    only. With ``overwrite`` off the rest of the sentences with a graph are
+    skipped: the ones an overwrite would redraft. A sentence number the
+    document does not have is a ValueError."""
     document_id = request_data.get('document_id')
     if not document_id:
         response_helper.error('Missing required parameter: documentId')
@@ -287,10 +357,9 @@ def begin_draft(client, request_data: Dict[str, Any], response_helper) -> Option
         document_id=document_id, project_id=request_data.get('project_id'),
         read_version=raw.get('version'), layers=layers, document=document, progress=progress,
         targets=targets,
-        skipped=0 if overwrite else len(with_graph),
-        kept=len([s for s in with_graph if s.person_made]) if overwrite else 0,
-        linked=(len([s for s in with_graph if not s.redraftable and not s.person_made])
-                if overwrite else 0),
+        skipped=0 if overwrite else len([s for s in with_graph if s.redraftable]),
+        kept=len([s for s in with_graph if s.person_made]),
+        linked=len([s for s in with_graph if not s.redraftable and not s.person_made]),
         taken=taken)
 
 
@@ -300,7 +369,8 @@ def finish_draft(client, response_helper, run: DraftRun, plans: Sequence[dict],
     there is nothing to write.
 
     ``failures`` are ``{'sentence': n, 'reason': str}`` for the sentences the
-    service could not plan. ``operation`` names the write in the history and
+    service could not plan, each also printed to the operator's log here.
+    ``operation`` names the write in the history (see :func:`run_label`) and
     ``writing`` is the progress line while it runs. The write, and the report
     after it, cannot be stopped once begun: a stop while the document is half
     written would leave anchors with no nodes, and one after the last write
@@ -308,10 +378,11 @@ def finish_draft(client, response_helper, run: DraftRun, plans: Sequence[dict],
     :func:`begin_draft`, so nothing is written if the document has moved since.
     """
     drafted = len(plans)
-    first_error = failures[0]['reason'] if failures else None
+    for failure in failures:
+        print(f"Sentence {failure['sentence']} not drafted: {failure['reason']}")
 
     def complete():
-        notice = build_draft_notice(drafted, run.skipped, len(failures), first_error,
+        notice = build_draft_notice(drafted, run.skipped, failures,
                                     kept=run.kept, linked=run.linked)
         response_helper.progress(100, notice['title'])
         response_helper.complete({'document_id': run.document_id, 'status': 'success',

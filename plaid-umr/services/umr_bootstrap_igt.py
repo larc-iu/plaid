@@ -78,7 +78,7 @@ from typing import Any, Dict, List, Optional
 
 from plaid_client import BaseService, TASKS, stamp_inferred, service_source
 from plaid_client.workflows.umr import (DraftProgress, begin_draft, draft_params, finish_draft,
-                                        next_variable, unknown_relation_problem)
+                                        next_variable, run_label, unknown_relation_problem)
 from plaid_client.workflows.igt.glossing import (GLOSS_ABBREVIATIONS, PERSON_NUMBER,
                                                  can_name_word, gloss_morphemes, line_flags)
 from plaid_client.workflows.umr.inventory import attribute_value_problem
@@ -536,15 +536,15 @@ class UmrBootstrapService(BaseService):
                                                  listed)
             if not nodes:
                 failures.append({'sentence': sentence.index,
-                                 'reason': 'no word has a vocabulary link or a gloss'})
+                                 'reason': 'No word has a vocabulary link or a gloss.'})
                 continue
             plans.append({'sentence': sentence, 'pieces': pieces, 'nodes': nodes,
                           'edges': edges})
 
         frag = stamp_inferred(service_source(self.service_id), detail={'method': 'glosses'})
         finish_draft(self.client, response_helper, run, plans, failures, frag,
-                     operation=f'UMR skeleton from glosses ({len(plans)} sentences)',
-                     writing=f'Writing {len(plans)} skeletons…')
+                     operation=run_label('UMR skeleton from glosses', plans),
+                     writing=f"Writing {len(plans)} skeleton{'' if len(plans) == 1 else 's'}…")
 
 
 def main():

@@ -156,7 +156,9 @@ def test_a_sentence_with_nothing_to_go_on_is_a_counted_failure():
     [result] = helper.results
     assert (result['drafted'], result['failed']) == (0, 1)
     assert result['notice']['level'] == 'warning'
-    assert 'no word has a vocabulary link or a gloss' in result['notice']['message']
+    assert result['notice']['message'] == (
+        'Failed to draft sentence 1: No word has a vocabulary link or a gloss.')
+    assert result['notice']['sticky'] is True
     assert service.client.writes == []
 
 

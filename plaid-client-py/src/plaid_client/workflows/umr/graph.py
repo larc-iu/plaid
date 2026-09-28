@@ -186,17 +186,25 @@ class Sentence:
             yield from n.doc_out
             yield from n.doc_in
 
+    def _own(self, relation) -> bool:
+        """Whether this sentence's block writes ``relation``."""
+        if isinstance(relation, Triple):
+            return self.index in relation.blocks
+        return relation.sentence == self.index
+
     @property
     def person_made(self) -> bool:
         """Whether anything of this sentence's graph was built or confirmed by
-        a person: a node, an edge or a document-level triple on one of its
-        nodes that is human-made, contributed or verified, which the
+        a person: a node, or an edge or document-level triple this sentence's
+        block writes, that is human-made, contributed or verified, which the
         machine-writer contract (``plaid_client.provenance``, rule 2) says a
-        service must not replace. Replacing a graph deletes its nodes, and with
-        them every edge and triple on them, so those count as much as the
-        nodes do."""
+        service must not replace. A person's edge or triple that ANOTHER
+        sentence's block writes onto one of its nodes does not make it this
+        sentence's work: that keeps it too, as a sentence another links to
+        (:attr:`redraftable`)."""
         return (any(is_protected(n.metadata or {}) for n in self.nodes)
-                or any(is_protected(r.metadata or {}) for r in self._touching()))
+                or any(is_protected(r.metadata or {})
+                       for r in self._touching() if self._own(r)))
 
     @property
     def redraftable(self) -> bool:
@@ -211,7 +219,7 @@ class Sentence:
             if isinstance(r, Triple):
                 if r.blocks != [self.index]:
                     return False
-            elif r.sentence != self.index:
+            elif not self._own(r):
                 return False
         return True
 

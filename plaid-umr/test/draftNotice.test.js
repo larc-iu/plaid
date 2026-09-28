@@ -21,6 +21,19 @@ test("a service's own notice is passed through, words and severity", () => {
   );
 });
 
+test('a notice that names failed sentences stays until dismissed', () => {
+  const notice = draftNotice({
+    notice: {
+      level: 'success',
+      title: 'Drafted 2 sentences',
+      message: 'Failed to draft sentence 3: The reply was cut off at the token limit.',
+      sticky: true,
+    },
+  });
+  assert.equal(notice.sticky, true);
+  assert.equal(draftNotice({ notice: { level: 'success', title: 'Drafted' } }).sticky, undefined);
+});
+
 test('an unknown severity is a warning, never a success', () => {
   const notice = draftNotice({ notice: { level: 'info', title: 'Drafted' } });
   assert.equal(notice.level, 'warning');

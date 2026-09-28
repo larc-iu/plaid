@@ -100,6 +100,27 @@ describe('a run that was stopped', () => {
     expect(notify.notifyWarning).toHaveBeenCalledWith('No word was written.', 'Nothing to do');
     await r.unmount();
   });
+
+  it('keeps a sticky notice on screen until it is dismissed', async () => {
+    // A notice naming each failed sentence is the only record of them.
+    const r = await mount(fakeClient(() => ({ failed: 1 })));
+    await run(r, {
+      ...COPY,
+      notice: () => ({
+        level: 'success',
+        title: 'Drafted 2 sentences',
+        message: 'Failed to draft sentence 3: The reply was cut off at the token limit.',
+        sticky: true,
+      }),
+    });
+
+    expect(notify.notifySuccess).toHaveBeenCalledWith(
+      'Failed to draft sentence 3: The reply was cut off at the token limit.',
+      'Drafted 2 sentences',
+      { duration: Infinity },
+    );
+    await r.unmount();
+  });
 });
 
 describe('a run the client stopped waiting for', () => {

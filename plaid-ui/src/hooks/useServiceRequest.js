@@ -88,9 +88,12 @@ export const useServiceRequest = (client) => {
     // back a success. A caller that can read the counts passes `notice`, and
     // what it returns replaces the fixed copy, warning where a fixed
     // "Finished" would have congratulated an untouched document.
+    // A `sticky` notice stays until dismissed: one that names what failed is
+    // the only record of it once the toast is gone.
     const notice = copy.notice?.(result);
-    if (notice?.level === 'warning') notifyWarning(notice.message, notice.title);
-    else if (notice) notifySuccess(notice.message, notice.title);
+    const sticky = notice?.sticky ? [{ duration: Infinity }] : [];
+    if (notice?.level === 'warning') notifyWarning(notice.message, notice.title, ...sticky);
+    else if (notice) notifySuccess(notice.message, notice.title, ...sticky);
     else notifySuccess(copy.successMessage, copy.successTitle);
   }, []);
 

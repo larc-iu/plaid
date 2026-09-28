@@ -22,6 +22,9 @@ export const draftNotice = (summary) => {
       level: notice.level === 'success' ? 'success' : 'warning',
       title: notice.title || undefined,
       message: notice.message || undefined,
+      // A notice that names failed sentences stays until dismissed: it is
+      // the only record of which sentences the run could not draft.
+      ...(notice.sticky === true ? { sticky: true } : {}),
     };
   }
   // A service that reports no notice at all: say that, and nothing about
