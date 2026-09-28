@@ -232,7 +232,7 @@ Its graph is still drawn, with every node unaligned, and can be edited as usual 
 
 When sentences are added or removed before a sentence, its variables take its new number and keep the rest of the name (`s2v` in what is now sentence 1 is `s1v`).
 Variables are not renumbered in a document whose first `# :: snt` number, as imported, is not 1, such as an excerpt that starts at `snt5`. Its variables stay as the file named them.
-A graph kept as text is mended under the names it has, even when sentences were added or removed before it since the import. The next time the document is opened, they take the sentence's number.
+A graph kept as text is mended under the names it has, even when sentences were added or removed before it since the import. The next time the document is opened, its variables take the sentence's number.
 
 When a sentence is typed in before an existing one in Plaid IGT, the existing sentence keeps its imported lines: its number, its gloss and metadata lines, and its document-level relations.
 The history entry of the next opening names the repair: `moved the stored lines of 1 sentence to the sentence they describe`.
