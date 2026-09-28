@@ -8,7 +8,11 @@ import { appRoutes } from '../lib/uiConfig.js';
 
 // Loader and guard for the manager-only project screens (Activity, Validation,
 // the settings sections): fetch the project, expose a refetch for after a save,
-// and bounce anyone who may not manage it back to the project list.
+// and bounce anyone who may not manage it back to the project list, saying why
+// (ruling umr-collab-validation-writers): a page met by URL that quietly turns
+// into the project list reads as a broken link.
+export const NOT_A_MAINTAINER = "Only a project's maintainers can open this page.";
+
 export const useManagedProject = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -61,7 +65,11 @@ export const useManagedProject = () => {
   const canConfigure = canManageProject(loaded, user);
 
   useEffect(() => {
-    if (loaded && !canConfigure) navigate(appRoutes().projects);
+    if (loaded && !canConfigure) {
+      // One toast however often the effect runs (StrictMode runs it twice).
+      notifyError(NOT_A_MAINTAINER, undefined, { id: 'not-a-maintainer' });
+      navigate(appRoutes().projects);
+    }
   }, [loaded, canConfigure, navigate]);
 
   return { projectId, project: loaded, loading, fetchProject, canConfigure };

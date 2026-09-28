@@ -15,6 +15,7 @@ const auth = vi.hoisted(() => ({ getClient: vi.fn(), user: { id: 'u', isAdmin: t
 vi.mock('../contexts/useAuth.js', () => ({ useAuth: () => auth }));
 
 const { useManagedProject } = await import('./useManagedProject.js');
+const { notifyError } = await import('../lib/notify.js');
 
 // One deferred `projects.get` per id.
 const deferred = () => {
@@ -122,6 +123,23 @@ describe('the managed project when the reader walks to another one', () => {
     await view.step(async () => d.settle('A', { id: 'A', name: 'Ay' }));
     expect(seen.project.id).toBe('A');
     expect(seen.loading).toBe(false);
+    await view.unmount();
+  });
+});
+
+// Ruling umr-collab-validation-writers: a page only maintainers may open, met
+// by URL, sends the reader back to the project list and says why.
+describe('a reader who may not manage the project', () => {
+  it('is sent back to the project list and told the page is for maintainers', async () => {
+    const d = deferred();
+    auth.getClient.mockReturnValue(d.client);
+    auth.user = { id: 'u' };
+    notifyError.mockClear();
+    const view = await renderComponent(app);
+    await view.step(async () => d.settle('A', { id: 'A', name: 'Ay', maintainers: ['other'] }));
+    expect(view.container.textContent).toContain('Projects');
+    expect(notifyError).toHaveBeenCalledTimes(1);
+    expect(notifyError.mock.calls[0][0]).toBe("Only a project's maintainers can open this page.");
     await view.unmount();
   });
 });
