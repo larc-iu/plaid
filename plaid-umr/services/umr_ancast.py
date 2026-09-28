@@ -204,10 +204,21 @@ def _nfc(text: str) -> str:
     return unicodedata.normalize('NFC', text)
 
 
+# What JS counts as space in ``\s`` and ``trim()``. Python's ``\s`` and
+# ``strip()`` differ: they leave U+FEFF, which a pasted text can start with,
+# and take U+001C to U+001F and U+0085, which JS keeps. The Sentence line must
+# be the one the app writes, so the writer uses the JS set.
+_JS_SPACE = '\t\n\x0b\x0c\r \xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff'
+
+
+def _js_trim(text: str) -> str:
+    return re.sub(f'^[{_JS_SPACE}]+|[{_JS_SPACE}]+$', '', text)
+
+
 def _one_line(text) -> str:
     """``oneLine`` in umrFile.js: a line break and the space around it become
     one space."""
-    return re.sub(r'\s*[\r\n\u2028\u2029]+\s*', ' ', str(text or ''))
+    return re.sub(f'[{_JS_SPACE}]*[\r\n\u2028\u2029]+[{_JS_SPACE}]*', ' ', str(text or ''))
 
 
 def _sentence_text_line(sentence, lines):
@@ -215,13 +226,13 @@ def _sentence_text_line(sentence, lines):
     line, only when it is not the Words joined by spaces. None when a line
     already carries it, or when the text has more items than the Words line,
     which validate.py fails."""
-    text = _nfc(_one_line(sentence.get('sentence_text')).strip())
+    text = _nfc(_js_trim(_one_line(sentence.get('sentence_text'))))
     if not text or any(line['key'] == 'sentence' for line in lines):
         return None
     words = next((line['items'] for line in lines if line['key'] == 'words'), [])
     if text == _nfc(' '.join(words)):
         return None
-    if len(re.split(r'\s+', text)) > len(words):
+    if len(re.split(f'[{_JS_SPACE}]+', text)) > len(words):
         return None
     return {'key': 'sentence', 'header': 'Sentence', 'items': [text]}
 

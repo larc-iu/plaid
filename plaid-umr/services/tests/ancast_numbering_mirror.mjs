@@ -11,6 +11,8 @@
 //   between    the same corpus with a sentence split off after the first
 //   excerpt    a file numbered from snt5, with a sentence prepended
 //   repeated   a file numbered from snt5 whose second sentence repeats 5
+//   bom        a sentence text starting with U+FEFF (no Sentence line)
+//   separator  a sentence text ending in U+001F (a Sentence line)
 //
 // Writes `[{name, raw, expected}]` to stdout, `raw` laid out as the Python
 // client's `documents.get(id, include_body=True)` hands a document back.
@@ -96,6 +98,30 @@ function insertAfterFirst(raw) {
   });
 }
 
+// The first sentence's text with `before` put ahead of it and `after` behind
+// its last word, inside the sentence's token: every other token moves along.
+function withEdges(raw, before, after) {
+  const layer = raw.textLayers[0];
+  const sentence = [...role(raw, 'sentence').tokens].sort((a, b) => a.begin - b.begin)[0];
+  const body = [...layer.text.body];
+  let at = sentence.end;
+  while (at > sentence.begin && /\s/.test(body[at - 1])) at -= 1;
+  layer.text.body = [before, ...body.slice(0, at), after, ...body.slice(at)].join('');
+  const b = [...before].length;
+  const a = [...after].length;
+  layer.tokenLayers.forEach((l) =>
+    l.tokens.forEach((t) => {
+      if (t === sentence) {
+        t.end += b + a;
+      } else {
+        t.end += t.end > at ? b + a : b;
+        t.begin += t.begin >= at ? b + a : b;
+      }
+    }),
+  );
+  return raw;
+}
+
 const ENGLISH = fs.readFileSync(
   path.join(UMR, 'test', 'fixtures', 'umr', 'english_umr-0001.umr'),
   'utf8',
@@ -118,6 +144,13 @@ const CASES = {
     return raw;
   },
   repeated: () => fromText(`${block(5)}\n${block(5, 6)}\n${block(7)}`),
+  // A sentence whose text starts with a byte-order mark, as a pasted text can.
+  // JS counts U+FEFF as space and trims it, so the text is the Words line and
+  // the app writes no Sentence line.
+  bom: () => withEdges(fromText(block(1)), '\uFEFF', ''),
+  // A text ending in U+001F, which Python counts as space and JS does not: the
+  // app writes a Sentence line.
+  separator: () => withEdges(fromText(block(1)), '', '\u001F'),
 };
 
 const out = Object.entries(CASES).map(([name, make]) => {

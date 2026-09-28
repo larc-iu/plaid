@@ -56,7 +56,7 @@ def cases():
     return {c['name']: c for c in json.loads(run.stdout)}
 
 
-@pytest.mark.parametrize('name', ['prepended', 'between', 'excerpt', 'repeated'])
+@pytest.mark.parametrize('name', ['prepended', 'between', 'excerpt', 'repeated', 'bom', 'separator'])
 def test_the_file_is_the_one_the_app_exports(cases, name):
     case = cases[name]
     assert umr.render_umr(case['raw']) == case['expected']
