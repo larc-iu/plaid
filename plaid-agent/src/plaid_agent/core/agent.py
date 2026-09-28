@@ -13,6 +13,7 @@ one read without re-reading.
 
 import json
 import random
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
@@ -152,13 +153,14 @@ def _complete(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str],
     more times and no more: a model that did not answer in the whole window is
     down or stuck, and every try costs the reader another window. A rate limit
     or a provider briefly down is tried up to :data:`RETRIES` more times after
-    a jittered wait. ``cancelled`` is read before every retry and during the
-    wait, and a stop ends the call with :class:`TurnCancelled`."""
+    a jittered wait. ``cancelled`` is read while the call waits, before every
+    retry and during the wait, and a stop ends the call with
+    :class:`TurnCancelled`."""
     transient = _transient_errors()
     attempt = timeouts = 0
     while True:
         try:
-            return _complete_once(cfg, kwargs, on_text)
+            return _watched(cfg, kwargs, on_text, cancelled)
         except Exception as e:
             if _ProviderTimeout and isinstance(e, _ProviderTimeout):
                 timeouts += 1
@@ -188,12 +190,59 @@ def _complete(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str],
         on_text('')
 
 
-def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str], None]):
+#: How often a waiting model call looks for a stop, in seconds.
+STOP_POLL_S = 0.5
+
+
+def _watched(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str], None],
+             cancelled: Callable[[], bool]):
+    """One model call on a worker thread, so a stop is seen while the model
+    is silent, as the model services see it (``plaid_client.workflows.llm``).
+    Without this a stop waited for the call to end, up to two deadlines.
+
+    litellm offers no way to interrupt a request in flight, so a stopped call
+    is left to finish or time out on its own and its answer is dropped. A
+    streamed one stops reading at its next chunk, and nothing it writes after
+    the stop reaches ``on_text``."""
+    if cancelled():
+        raise TurnCancelled()
+    abandoned = threading.Event()
+    done = threading.Event()
+    gate = threading.Lock()
+    box: Dict[str, Any] = {}
+
+    def text(t: str) -> None:
+        with gate:
+            if not abandoned.is_set():
+                on_text(t)
+
+    def work():
+        try:
+            box['value'] = _complete_once(cfg, kwargs, text, abandoned)
+        except BaseException as e:  # handed to the waiting thread as is
+            box['error'] = e
+        finally:
+            done.set()
+
+    threading.Thread(target=work, name='model-call', daemon=True).start()
+    while not done.wait(STOP_POLL_S):
+        if cancelled():
+            with gate:
+                abandoned.set()
+            raise TurnCancelled()
+    if 'error' in box:
+        raise box['error']
+    return box['value']
+
+
+def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str], None],
+                   abandoned: Optional[threading.Event] = None):
     """One model call. Streamed when configured: the text so far goes to
     ``on_text`` at intervals and the full response is rebuilt from the
     chunks at the end (tool calls included), so the caller reads it as it
     would an unstreamed one. A provider that refuses to stream (an error
-    before the first chunk) is asked again without streaming."""
+    before the first chunk) is asked again without streaming. Once
+    ``abandoned`` is set a stream is closed at its next chunk."""
     if not cfg.stream:
         return litellm.completion(**kwargs)
     chunks: List[Any] = []
@@ -204,6 +253,11 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
         if hasattr(stream, 'choices'):
             return stream  # a whole response (a test double, a provider that ignored stream=)
         for chunk in stream:
+            if abandoned is not None and abandoned.is_set():
+                close = getattr(stream, 'close', None)
+                if callable(close):
+                    close()
+                raise TurnCancelled()
             chunks.append(chunk)
             choices = getattr(chunk, 'choices', None) or []
             delta = getattr(choices[0], 'delta', None) if choices else None
@@ -214,6 +268,8 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
                 if now - last >= STREAM_INTERVAL_S:
                     last = now
                     on_text(text)
+    except TurnCancelled:
+        raise
     except Exception as e:
         # A timeout, a rate limit or a provider that is down is not a provider
         # that refuses to stream: asking again at once without streaming would
@@ -277,8 +333,9 @@ def _length_note(choice) -> str:
 
 
 class TurnCancelled(Exception):
-    """The requester asked for the turn to stop. Raised between steps (never
-    inside a model call or a tool), so nothing is left half done."""
+    """The requester asked for the turn to stop. Raised between steps or while
+    a model call waits (never inside a tool), so nothing is left half done: a
+    model call writes nothing."""
 
 
 class TurnFailed(Exception):
@@ -380,7 +437,7 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
              cancelled: Callable[[], bool] = lambda: False,
              on_text: Callable[[str], None] = lambda t: None) -> TurnResult:
     """Run one turn: model call, tool calls, repeat, final text. ``cancelled``
-    is polled before every model call and every tool call; once it answers
+    is polled before every tool call and while a model call waits; once it answers
     True the turn ends with :class:`TurnCancelled`. ``on_text`` receives the
     text of the reply being written, whole each time, as it grows (and ''
     when a new model call starts)."""
