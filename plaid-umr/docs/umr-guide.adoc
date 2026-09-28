@@ -360,8 +360,57 @@ Everyone in the project can open both copies.
 
 = The Assistant
 
-When an assistant service is connected to the server, a project's **Assistant** tab and the panel on every screen let you ask about the project's annotation and have changes proposed.
-A proposed change is shown before it is applied and lands in history like any other edit.
+The **Assistant** tab is a chat with a language model that knows your project.
+Ask it which events still lack `:aspect`, what the document graph says about a sentence, or to summarize the concepts used across the corpus.
+It reads the documents and their graphs, the search results, the project's guidelines, the comments and the history to answer, and it shows what it read.
+Steps it could not make are shown in red and are not counted.
+
+When you ask it to change something, it does not touch the data.
+It proposes a **plan**, which you **Approve** or **Discard**.
+The plan lists every change under the document it lands in. Each node is a link to its place on the canvas, so a change can be checked before it is approved.
+A long group of like changes is folded into one line that names what it does and each node with its concept (`remove 20 nodes: (s3a2 / about), (s3d / date-entity), …`).
+A document-level relation is listed under the later of its two sentences.
+Approved changes are written under your own account, recorded as the assistant's work accepted by you, and show as accepted.
+Tick **Record as human-made** before approving to record them as your own work instead, with no machine marking.
+Reading needs Reader access, and applying a plan needs Writer.
+
+A reply is written into the conversation as it arrives, and it lands whether or not the page stays open: leave the tab, reload, or close the browser, and the answer is there when the conversation is next opened.
+**Stop** ends a turn early, even while the model is still working on its answer.
+A turn the model does not finish ends with the reason and **Retry**.
+Conversations are private to you, kept per project, and can be downloaded or copied as Markdown.
+Your server's administrator can read them.
+
+== The panel
+
+The **Assistant** button in the header opens the same assistant in a panel beside whatever you are looking at.
+A handle on the right edge of the window, halfway down, opens it too.
+The panel stays where it is as you move around, and the page narrows to make room for it.
+It can be dragged wider or narrower and hidden again, and its width and whether it is open are remembered.
+A narrow window has no room for it, and neither the button, the handle nor the panel is offered there.
+
+One conversation runs per project.
+The panel picks up the last one you had in the project you are in and keeps it as you move from document to document.
+A question asked on a document is about that document: name no document and that is the one it reads, though it can still look at the rest of the project when the question calls for it.
+**Ask**, beside **Text** and **Comment** on a sentence, puts that sentence into the question, and you can take it out again before sending.
+
+Typing **@** in the message box names something without leaving the message: the sentences of the document you have open (`s3`), and the documents of the project.
+Sentences are matched on what they say, so **@** followed by a word finds the sentence that contains it.
+Arrow keys move through the list, Enter takes the one that is highlighted, and Escape closes the list and leaves what you typed.
+
+A plan approved in the panel re-reads the document, so the canvas shows the result without losing your place.
+
+== How full a conversation is
+
+The panel's header shows how much of the model's limit the last turn used, with the counts behind it on hover.
+A conversation fills up as it grows, because every turn sends the whole thread again.
+Past 85 percent the panel says so, and a new conversation starts with room again.
+Where the model's limit is not known the count is shown without a percentage.
+
+== When no assistant is connected
+
+The assistant is a service that your server's operator runs and picks the model for (`plaid-umr-agent`, installed from a checkout of the source tree).
+When none is connected there is nothing to open, so the tab, the button, the handle and **Ask** are not shown.
+Conversations already saved are unaffected and open from their own links.
 
 = Keyboard reference
 
