@@ -87,6 +87,12 @@ export const Combobox = React.forwardRef(function Combobox(
 
   const activeOption = active >= 0 ? (flat[active] ?? null) : null;
   const isOpen = open && flat.length > 0;
+  // A closing list takes no mouseleave with it, so the pointer's shading goes
+  // when it closes rather than coming back on a row the pointer left.
+  if (!isOpen && hovered !== -1) {
+    hovered = -1;
+    setHoverIndex(-1);
+  }
 
   const move = (delta) => {
     if (!flat.length) return;

@@ -198,6 +198,17 @@ describe('Combobox keyboard state', () => {
       await v.unmount();
     });
 
+    it('is not shown again when the list opens again', async () => {
+      const v = await mount({});
+      await v.focus();
+      await hover(v, 'VERB');
+      await v.press('Escape');
+      await v.press('ArrowDown');
+      expect(document.querySelectorAll('[role="option"]').length).toBe(3);
+      expect(document.querySelector('[data-hovered]')).toBeNull();
+      await v.unmount();
+    });
+
     it('is still what a click takes', async () => {
       const submitted = [];
       const v = await mount({ onSubmit: (value) => submitted.push(value) });
