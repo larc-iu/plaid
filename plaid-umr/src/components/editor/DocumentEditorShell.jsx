@@ -4,7 +4,9 @@ import { isReviewed } from '@larc-iu/plaid-client';
 import { History } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { useAssistantSubject } from '@ui/components/assistant/subject.js';
+import { useAskAssistant, useAssistantSubject } from '@ui/components/assistant/subject.js';
+import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
+import { UMR_ASSISTANT } from '../assistant/adapter.js';
 import { UmrDocument } from '../../domain/UmrDocument.js';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { DocumentTabs } from './DocumentTabs.jsx';
@@ -279,6 +281,12 @@ const DocumentEditor = () => {
     },
   });
 
+  // "Ask" on a sentence is only worth drawing where there is an assistant to
+  // ask. It hands the panel a {ref, label} and opens it, and goes down the
+  // outlet to the canvas, as in plaid-ud.
+  const assistantAvailable = useAssistantAvailable(client, projectId, UMR_ASSISTANT.app);
+  const askAssistant = useAskAssistant();
+
   const wide = isWideRoute(pathname);
 
   return (
@@ -370,6 +378,8 @@ const DocumentEditor = () => {
                 writeLockHeld: writeLock.held,
                 setChromeBusy,
                 focusNonce,
+                assistantAvailable,
+                askAssistant,
               }}
             />
           )}
