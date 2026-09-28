@@ -27,7 +27,7 @@ them on the wire, so both sides read one record.
 
 import json
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from plaid_client.http import PlaidAPIError
 
@@ -37,14 +37,12 @@ from plaid_client.http import PlaidAPIError
 # question and every plan. Past the budget the oldest tool results are
 # dropped, in order, until it fits.
 #
-# This is a budget in BYTES, for the store. It bounds what the next turn sends
-# the model, but it is not the model's own limit and must not be read as one:
-# the same 700KB is comfortable for one model and beyond another. What a turn
-# actually sent, against the window it was sent into, is reported per reply
-# (`assistant_item`'s `usage`).
-#
-# The real cap is the server's and it publishes it (`record_budget`); this is
-# the fallback for a server too old to report one.
+# This is a budget in BYTES. The record's real cap is the server's, which it
+# publishes (`record_budget`), and this is the fallback for a server that does
+# not. It is also what the model TRANSCRIPT is held to when the model's window
+# is not known: when the server's cap was 1MB the cap bounded the transcript
+# as well, and at 5MB it no longer does. With the window known the transcript
+# is held to a share of it in tokens instead (`prune`'s ``transcript``).
 CONVERSATION_BUDGET = 700_000
 # The share of the server's cap the service fills. The service is not the
 # record's only writer: the browser adds the next message and a discard's note
@@ -278,8 +276,16 @@ def record_budget(client, default: int = CONVERSATION_BUDGET) -> int:
     return int(reported * RECORD_HEADROOM)
 
 
-def prune(conv: Dict[str, Any], budget: int = CONVERSATION_BUDGET) -> Dict[str, Any]:
+def prune(conv: Dict[str, Any], budget: int = CONVERSATION_BUDGET,
+          transcript: Optional[Tuple[int, Callable[[Any], int]]] = None) -> Dict[str, Any]:
     """Thin the record until it fits its budget, oldest and cheapest first.
+
+    ``transcript`` is ``(limit, measure)``: the most the model transcript
+    (``messages``) may cost by ``measure``, which is the model's tokens when
+    its window is known. Stage one then also drops old tool results until the
+    transcript fits, whatever the record weighs. Without it the transcript is
+    held to `CONVERSATION_BUDGET` bytes, which is what bounded it when the
+    record's own limit was 1MB.
 
     Three stages, because the budget counts `display` as well as `messages`
     and only the first stage used to run: a conversation whose weight was in
@@ -298,18 +304,22 @@ def prune(conv: Dict[str, Any], budget: int = CONVERSATION_BUDGET) -> Dict[str, 
     display = conv.get('display') or []
     if any(compact_plan(d) is not d for d in display if isinstance(d, dict)):
         conv = {**conv, 'display': compact_settled(display)}
+    limit, measure = transcript or (CONVERSATION_BUDGET, _bytes)
     excess = conversation_bytes(conv) - budget
-    if excess <= 0:
+    over = sum(measure(m) for m in conv['messages']) - limit
+    if excess <= 0 and over <= 0:
         return conv
 
     dropped = _bytes(DROPPED)
     messages = []
     for m in conv['messages']:
-        if excess <= 0 or m.get('role') != 'tool' or m.get('content') == DROPPED:
+        if (excess <= 0 and over <= 0) or m.get('role') != 'tool' or m.get('content') == DROPPED:
             messages.append(m)
             continue
         excess -= _bytes(m.get('content')) - dropped
-        messages.append({**m, 'content': DROPPED})
+        thinner = {**m, 'content': DROPPED}
+        over -= measure(m) - measure(thinner)
+        messages.append(thinner)
     conv = {**conv, 'messages': messages}
     if excess <= 0:
         return conv

@@ -14,10 +14,13 @@
   (:refer-clojure :exclude [get list]))
 
 (def max-value-bytes
-  "Upper bound on one stored value's JSON text, in bytes (UTF-8). Generous for
-  a long conversation, small enough that the store cannot become a file
-  dump; media has its own endpoints."
-  1000000)
+  "Upper bound on one stored value's JSON text, in bytes (UTF-8). Sized for a
+  long assistant conversation, whose record is mostly what the reader sees
+  (plan cards, citations) rather than what the model is sent: at 1MB a
+  working session filled it in a morning. Small enough that the store cannot
+  become a file dump (media has its own endpoints), and well under the 10MB
+  JSON body limit a write has to pass first."
+  5000000)
 
 (defn- row->entry [row include-value?]
   (when row

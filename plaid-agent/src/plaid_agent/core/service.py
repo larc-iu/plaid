@@ -64,10 +64,10 @@ from plaid_client.workflows.llm import add_timeout_argument, provider_secrets
 from . import filetools
 from . import prompt as shared_prompt
 from .guidelines import in_reading_order
-from .limits import MAX_PROJECTS
+from .limits import MAX_PROJECTS, TRANSCRIPT_WINDOW_SHARE
 from .reach import Reach
 from .agent import (ModelConfig, ModelTooSlow, PING_TIMEOUT_S, Toolkit, TurnCancelled, TurnFailed,
-                    context_window, model_failure_line, ping_model, run_turn)
+                    context_window, model_failure_line, ping_model, run_turn, token_counter)
 from .files import Attachments
 from .guidelines import in_context as guidelines_in_context
 from .conversation import (ConversationStore, MissingConversation, assistant_item, build_meta, error_item,
@@ -447,6 +447,9 @@ class BaseAssistantService(BaseService):
         # unqualified question is about it. Nothing is taken away.
         if where and where[2]:
             system = f'{system}\n\n{where[2]}'
+        # What every call of the next turn sends besides the transcript, taken
+        # off the window before the transcript is held to its share of it.
+        overhead = (system, self.kit.tools_for(ws))
         try:
             turn = run_turn(self.cfg, self.kit, ws, system,
                             transcript, on_progress, cancelled=cancelled, on_text=on_text)
@@ -482,7 +485,7 @@ class BaseAssistantService(BaseService):
         if reach is not None and reach.unavailable:
             item['unavailable_projects'] = [dict(u) for u in reach.unavailable]
         done = prune({'messages': transcript + turn.messages, 'display': conv['display'] + [item]},
-                     record_budget(client))
+                     record_budget(client), self.transcript_budget(model, overhead))
         try:
             self._write(store, conv_id, done, build_meta(meta, conv_id, done, self.service_id, model), request_id)
         except Exception as e:  # noqa: BLE001 - the answer is in hand; say so rather than lose it
@@ -504,6 +507,17 @@ class BaseAssistantService(BaseService):
         response_helper.progress(100, 'Done')
         response_helper.complete({'kind': 'turn', 'message': turn.text, 'plan': item['plan'],
                                   'citations': item['citations'], 'steps': turn.steps, 'steps_summary': turn.summary})
+
+    def transcript_budget(self, model: str, overhead) -> Optional[tuple]:
+        """``(tokens, measure)`` the stored transcript may cost the model:
+        its share of the window (`TRANSCRIPT_WINDOW_SHARE`) less what the
+        system prompt and tool schemas take. None when the window is not
+        known, and then prune holds the transcript to a byte figure instead."""
+        window = context_window(model, self.cfg.context_window)
+        if not window:
+            return None
+        measure = token_counter(model)
+        return int(window * TRANSCRIPT_WINDOW_SHARE) - measure(overhead), measure
 
     def turn_failure_line(self, e: BaseException) -> str:
         """What the reader is told when a turn fails: one plain line. The

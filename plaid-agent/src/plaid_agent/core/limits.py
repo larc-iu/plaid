@@ -122,3 +122,11 @@ PIN_SENTENCES_MAX = 200
 # thousand-odd changes, and a record past its budget is refused whole. Past
 # it, the documents pinning the most are pinned by their version instead.
 PIN_SENTENCES_PLAN_MAX = 1000
+
+# The share of the model's context window the stored transcript may fill
+# between turns. The rest is for the system prompt and tool schemas (measured
+# and taken off separately), the next message, and the tool results the next
+# turn piles up before it answers. The record's own size limit is far larger
+# than any window, so this, and not that, is what keeps a long thread
+# sendable.
+TRANSCRIPT_WINDOW_SHARE = 0.8

@@ -4,7 +4,8 @@
   size cap."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler with-admin with-test-users
-                                    with-clean-db api-call admin-request user1-request user2-request]]))
+                                    with-clean-db api-call admin-request user1-request user2-request]]
+            [plaid.sql.user-data :as user-data]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
@@ -159,7 +160,7 @@
     (is (= 404 (:status (api-call user1-request {:method :get :path (path u1 "k")}))))))
 
 (deftest value-size-cap
-  (let [big (apply str (repeat 1000001 "a"))]
+  (let [big (apply str (repeat (inc user-data/max-value-bytes) "a"))]
     (is (= 413 (:status (api-call user1-request {:method :put :path (path u1 "big") :body big}))))
     (is (= 404 (:status (api-call user1-request {:method :get :path (path u1 "big")}))))))
 

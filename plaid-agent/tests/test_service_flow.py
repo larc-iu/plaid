@@ -36,6 +36,7 @@ def _service():
     svc = AssistantService()
     svc.cfg = ModelConfig(model='fake/model')
     svc.service_id = 'igt:assist:fake'
+    svc.kit = svc.toolkit()  # as `setup` makes it: a turn asks it for the tool schemas
     return svc
 
 

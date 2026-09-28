@@ -403,6 +403,16 @@ def usage_of(resp) -> Optional[Dict[str, int]]:
     return {'sent': sent, 'received': received if isinstance(received, int) else 0}
 
 
+def token_counter(model: str) -> Callable[[Any], int]:
+    """A function giving the tokens a message, a string or any JSON value
+    costs this model, by litellm's tokenizer for it (a common one for a model
+    it does not know, which is close enough to budget with, never to report)."""
+    def count(value: Any) -> int:
+        text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+        return litellm.token_counter(model=model, text=text)
+    return count
+
+
 def context_window(model: str, stated: Optional[int] = None) -> Optional[int]:
     """How much this model can be sent, or None when that is not known.
 

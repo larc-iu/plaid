@@ -215,3 +215,34 @@ def test_every_settled_plan_is_compacted_and_an_undecided_one_never_is():
         assert d['plan']['op_count'] == 50 and len(d['plan']['changes']) == 50
     assert out['display'][3]['plan']['ops'] == ops, 'an undecided plan can still be approved'
     assert out['display'][3]['plan']['documents'] == docs
+
+
+def test_the_transcript_is_held_to_the_models_share_even_when_the_record_fits():
+    """The record's limit is 5MB, far past any model's window, so the record
+    fitting says nothing about whether the next turn can be sent. Old tool
+    results go until the transcript fits its token budget, oldest first."""
+    words = lambda v: len(str(v).split())  # a stand-in tokenizer: one token a word
+    result = ' '.join(['w'] * 1000)
+    conv = _conv(user_item('q'), messages=[
+        {'role': 'user', 'content': 'q'},
+        {'role': 'tool', 'tool_call_id': 'a', 'content': result},
+        {'role': 'tool', 'tool_call_id': 'b', 'content': result},
+        {'role': 'tool', 'tool_call_id': 'c', 'content': result},
+        {'role': 'assistant', 'content': 'answer'},
+    ])
+    out = prune(conv, 10_000_000, (2500, words))
+    contents = [m['content'] for m in out['messages'] if m['role'] == 'tool']
+    assert contents == [DROPPED, result, result], 'one dropped result is enough, and it is the oldest'
+    assert sum(words(m) for m in out['messages']) <= 2500
+    # Within both budgets: untouched.
+    assert prune(conv, 10_000_000, (10_000, words)) is conv
+
+
+def test_a_model_of_unknown_window_keeps_the_old_byte_bound_on_its_transcript():
+    """Without a window there is no token budget, and the transcript is held
+    to CONVERSATION_BUDGET bytes, what the 1MB record limit used to give it."""
+    big = 'x' * (CONVERSATION_BUDGET // 2)
+    conv = _conv(messages=[{'role': 'tool', 'tool_call_id': str(i), 'content': big} for i in range(3)])
+    out = prune(conv, 10_000_000)
+    assert conversation_bytes(out) <= CONVERSATION_BUDGET
+    assert out['messages'][-1]['content'] == big

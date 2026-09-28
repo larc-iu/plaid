@@ -81,3 +81,16 @@ def test_the_turn_records_the_stated_window_beside_its_usage(monkeypatch, stated
     usage = conv['display'][-1]['usage']
     assert usage['sent'] == 1000
     assert usage.get('window') == window
+
+
+def test_the_transcript_budget_is_the_windows_share_less_the_prompt_and_tools():
+    from plaid_agent.core.limits import TRANSCRIPT_WINDOW_SHARE
+
+    svc = _service()
+    svc.cfg = ModelConfig(model=UNKNOWN, context_window=100_000)
+    tokens, measure = svc.transcript_budget(UNKNOWN, ('system prompt', [{'name': 'tool'}]))
+    assert tokens == int(100_000 * TRANSCRIPT_WINDOW_SHARE) - measure(('system prompt', [{'name': 'tool'}]))
+    assert measure('hello world') > 0
+    # No window known: no token budget (prune falls back to bytes).
+    svc.cfg = ModelConfig(model=UNKNOWN)
+    assert svc.transcript_budget(UNKNOWN, ('s', [])) is None
