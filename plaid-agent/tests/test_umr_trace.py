@@ -37,3 +37,14 @@ def test_a_described_call_names_what_it_touched():
         'set_attributes', {'document': 'Story', 'var': 's3e', 'line': ':aspect state'})
     assert '(s1b :before s2r)' in describe_step(
         'add_triple', {'document': 'Story', 'a': 's1b', 'rel': ':before', 'b': 's2r'})
+
+
+def test_a_sentence_is_named_once_however_the_model_wrote_it():
+    for sentence in (7, '7', 's7', 's7.s7a'):
+        assert describe_step('apply_penman', {'sentence': sentence}) == 'Planned a new graph for s7'
+
+
+def test_code_steps_read_as_reads():
+    for name in ('run_code', 'code_help'):
+        assert 'code' not in describe_step(name, {}).lower()
+        assert 'code' not in TRACER.progress(name, {}).lower()

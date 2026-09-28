@@ -111,7 +111,7 @@ def test_a_failed_turn_is_written_as_an_error_item(monkeypatch):
     monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
     helper = Helper()
     _service().process_request(_request(client), helper)
-    assert helper.errors == ['provider down']
+    assert helper.errors == ['The assistant could not answer: provider down']
     conv, meta = store.load('c1')
     assert conv['display'][-1]['kind'] == 'error' and 'provider down' in conv['display'][-1]['text']
     assert meta['pending'] is None

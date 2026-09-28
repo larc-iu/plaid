@@ -139,7 +139,9 @@ picked up as they appear); pass one or more project ids to serve just those.
 
 The reply is streamed to the Assistant tab as the model writes it. A provider
 that misbehaves under streaming can be run with `--no-stream`, and the reply
-then arrives whole.
+then arrives whole. Each model call has a deadline, `--timeout` seconds
+(default 120, the same flag the model services take). A turn whose model does
+not answer in that time fails, and the reader can retry it.
 
 Each instance registers as `igt:assist:<model>` (override with `--service-id`
 and `--service-name`), so several assistants with different models can be

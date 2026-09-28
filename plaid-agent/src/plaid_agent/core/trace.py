@@ -100,18 +100,43 @@ def plural(n: int, one: str, many: Optional[str] = None) -> str:
 
 # --- items ----------------------------------------------------------------------
 
-def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+# A failed step reads as what it tried, never as done: "Planned X" on a call
+# the tool refused would say a change was made that the card does not hold.
+_FAILED_VERBS = (('Planned ', 'Could not plan '), ('Drafted ', 'Could not draft '),
+                 ('Edited ', 'Could not edit '), ('Rewrote ', 'Could not rewrite '))
+
+
+def failed_label(label: str) -> str:
+    """The line for a call whose tool answered with an error. A read keeps
+    its own line (the tab already shows the step in red with the error under
+    it), a change says it could not be made."""
+    for done, tried in _FAILED_VERBS:
+        if label.startswith(done):
+            return tried + label[len(done):]
+    return label
+
+
+def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
+               failed: bool = False) -> Dict[str, Any]:
     """One trace item. ``document`` rides along on a document read so the
-    summary can count distinct documents without re-reading the arguments."""
+    summary can count distinct documents without re-reading the arguments.
+    ``failed`` marks a call the tool refused: it keeps its kind (the tab
+    still shows it where it happened) but is left out of every count."""
     kind = tracer.kind(name)
-    item = {'id': call_id, 'name': name, 'kind': kind, 'label': tracer.describe(name, args)}
-    if kind == DOCUMENT and args.get('document'):
+    label = tracer.describe(name, args)
+    item = {'id': call_id, 'name': name, 'kind': kind,
+            'label': failed_label(label) if failed else label}
+    if failed:
+        item['failed'] = True
+    elif kind == DOCUMENT and args.get('document'):
         item['document'] = str(args['document'])
     return item
 
 
 def summarize_steps(steps: List[Dict[str, Any]]) -> str:
     """The one line the trace collapses to."""
+    total = plural(len(steps), 'step')
+    steps = [s for s in steps if not s.get('failed')]
     docs = {s['document'] for s in steps if s.get('document')}
     parts = []
     if docs:
@@ -125,5 +150,4 @@ def summarize_steps(steps: List[Dict[str, Any]]) -> str:
     planned = sum(1 for s in steps if s['kind'] == PLAN)
     if planned:
         parts.append(plural(planned, 'planned change'))
-    total = plural(len(steps), 'step')
     return ' · '.join(parts + [total]) if parts else total

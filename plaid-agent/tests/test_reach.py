@@ -117,7 +117,7 @@ def test_the_service_advertises_the_cap(monkeypatch):
 
     class Args:
         model, api_base, api_key, max_steps, temperature, max_tokens = 'fake/m', None, None, 5, None, None
-        no_stream, service_id, service_name, web_search = False, None, None, None
+        no_stream, service_id, service_name, web_search, timeout = False, None, None, None, 120.0
         url = 'http://localhost:8085'
 
     monkeypatch.setattr(service_mod, 'ping_model', lambda cfg: None)

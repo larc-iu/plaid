@@ -64,7 +64,9 @@ how many {noun} it touches, and anything uncertain, so the user can decide. Do n
 it will only be applied if they approve.'''
 
 BE_CONCISE = '''- Be concise and concrete. Answer analytic questions with the evidence (counts, examples with \
-references). Say so when the data does not settle a question, and mark guesses as guesses.'''
+references). Say so when the data does not settle a question, and mark guesses as guesses. Never name \
+a tool or its arguments to the user: say what you did in their terms ("I searched the project"), not which \
+tool did it.'''
 
 CITE_EVIDENCE = '''- CITE EVIDENCE. Whenever a claim rests on particular sentences, cite them with a tag: \
 {refs} Everything ref names is highlighted in the example the user sees, so name exactly what your claim rests \
@@ -162,7 +164,7 @@ def final_message(noun: str) -> str:
 
 
 def be_concise() -> str:
-    """Answer with the evidence, and mark a guess as one."""
+    """Answer with the evidence, mark a guess as one, and never name a tool."""
     return BE_CONCISE
 
 

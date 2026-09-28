@@ -59,7 +59,7 @@ def test_a_ping_that_times_out_is_told_apart_from_a_misconfigured_one(monkeypatc
 
 def service_args(**kw):
     base = dict(model='openai/x', api_base=None, api_key=None, max_steps=50, temperature=None,
-                max_tokens=None, service_id=None, service_name=None, url='http://localhost:8085',
+                max_tokens=None, timeout=120.0, service_id=None, service_name=None, url='http://localhost:8085',
                 web_search=None, web_search_key=None, web_search_url=None)
     return argparse.Namespace(**{**base, **kw})
 
@@ -172,3 +172,23 @@ def test_a_whole_response_from_a_stream_call_is_taken_as_is(monkeypatch):
     whole = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content='x', tool_calls=None))])
     monkeypatch.setattr(agent.litellm, 'completion', lambda **kw: whole)
     assert agent._complete(agent.ModelConfig(model='m'), {'model': 'm', 'messages': []}, lambda t: None) is whole
+
+
+def test_the_operators_timeout_is_the_model_services_flag_and_reaches_the_model(monkeypatch):
+    """The assistants called litellm with no deadline, whose own is 6000 s,
+    so a request to an endpoint that never answered held the turn for over an
+    hour (V4 F1). The flag is the one every model service takes."""
+    from plaid_agent.igt.service import AssistantService
+    from plaid_client.workflows.llm import DEFAULT_TIMEOUT_S
+
+    parser = argparse.ArgumentParser()
+    AssistantService().add_arguments(parser)
+    assert parser.parse_args(['--model', 'openai/x']).timeout == DEFAULT_TIMEOUT_S
+    assert parser.parse_args(['--model', 'openai/x', '--timeout', '30']).timeout == 30
+
+    monkeypatch.setattr(agent.litellm, 'completion', lambda **kw: SimpleNamespace(choices=[SimpleNamespace()]))
+    svc = AssistantService()
+    svc.setup(service_args(timeout=45.0))
+    assert svc.cfg.timeout == 45.0
+    assert svc.turn_failure_line(agent.litellm.Timeout('slow', model='x', llm_provider='openai')) \
+        == 'The model did not answer within 45 seconds.'

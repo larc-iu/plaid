@@ -20,6 +20,11 @@ import litellm
 
 from .trace import Tracer, summarize_steps, trace_step
 
+try:  # litellm raises the openai SDK's exception classes, its own included
+    from openai import APITimeoutError as _ProviderTimeout, OpenAIError as _ProviderError
+except ImportError:  # pragma: no cover - litellm depends on openai
+    _ProviderTimeout = _ProviderError = ()
+
 litellm.drop_params = True  # providers that lack a param get it dropped, not an error
 
 
@@ -49,6 +54,11 @@ class ModelConfig:
     max_steps: int = 50
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
+    # Seconds one model call may take before it is abandoned (the operator's
+    # --timeout, the same flag and default as the model services), None for
+    # the provider's own default, which for litellm is 6000 s: long enough for
+    # a request to a dead endpoint to hold a turn for over an hour.
+    timeout: Optional[float] = None
     # Stream the model's text as it is written (progress events carry the
     # text so far). Off for a provider that misbehaves under streaming.
     stream: bool = True
@@ -86,6 +96,8 @@ def _provider_kwargs(cfg: ModelConfig) -> Dict[str, Any]:
     """What every call to this model needs: the model string, and the base and
     key when the operator gave them (else litellm reads the provider's env)."""
     out: Dict[str, Any] = {'model': cfg.model}
+    if cfg.timeout:
+        out['timeout'] = cfg.timeout
     if cfg.api_base:
         out['api_base'] = cfg.api_base
     if cfg.api_key:
@@ -105,7 +117,7 @@ def ping_model(cfg: ModelConfig, timeout: float = PING_TIMEOUT_S) -> None:
     provider that is slow from one that is misconfigured.
     """
     try:
-        resp = litellm.completion(**_provider_kwargs(cfg), timeout=timeout,
+        resp = litellm.completion(**{**_provider_kwargs(cfg), 'timeout': timeout},
                                   max_tokens=PING_MAX_TOKENS,
                                   messages=[{'role': 'user', 'content': 'ping'}])
     except litellm.Timeout as e:
@@ -190,17 +202,51 @@ def _clean_transcript(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def _length_note(choice) -> str:
-    """A reply the provider cut off at its output limit says so, since the
-    operator is the only one who can raise it."""
+    """A reply the provider cut off at its output limit says so. The flag
+    that raises the limit is the operator's (``--max-tokens``), not something
+    the reader can act on, so it is not named here."""
     if getattr(choice, 'finish_reason', None) != 'length':
         return ''
-    return ('\n\n*(The reply was cut off by the model\'s output limit. The operator can raise it '
-            'with `--max-tokens`.)*')
+    return '\n\n*(The reply was cut off at the model\'s output limit.)*'
 
 
 class TurnCancelled(Exception):
     """The requester asked for the turn to stop. Raised between steps (never
     inside a model call or a tool), so nothing is left half done."""
+
+
+class TurnFailed(Exception):
+    """The turn ended without an answer worth keeping. Its message is written
+    for the reader, and the turn is recorded as failed (with Retry), exactly
+    as a provider error would be."""
+
+
+EMPTY_REPLY = 'The model returned an empty reply.'
+
+# How many times in a row the SAME call (same tool, same arguments) may fail
+# before the turn stops. A model that repeats a refused call does not learn
+# from the refusal, and every further round is a paid request that ends the
+# same way.
+REPEATED_FAILURES = 3
+
+
+def model_failure_line(e: BaseException, timeout: Optional[float] = None) -> Optional[str]:
+    """One plain line for a failure of the model provider, or None when the
+    failure is not the provider's.
+
+    A provider's own error text is never shown: it names the library and the
+    upstream ("litellm.InternalServerError: OpenAIException - ...") and can
+    quote the request, the endpoint or the key it refused. The operator's log
+    has the whole of it. ``timeout`` is the operator's deadline, named in the
+    line the way the model services name it."""
+    if _ProviderTimeout and isinstance(e, _ProviderTimeout):
+        return f'The model did not answer within {timeout:g} seconds.' if timeout \
+            else 'The model did not answer in time.'
+    if _ProviderError and isinstance(e, _ProviderError):
+        if isinstance(e, getattr(litellm, 'ContextWindowExceededError', ())):
+            return 'The conversation is too long for the model.'
+        return 'The model could not answer.'
+    return None
 
 
 def usage_of(resp) -> Optional[Dict[str, int]]:
@@ -276,6 +322,10 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
     new: List[Dict[str, Any]] = []
     trace: List[Dict[str, Any]] = []
     rounds = 0
+    # The call that last failed and how many times running, as (name, raw
+    # arguments). Only an IDENTICAL repeat counts: a model that changes its
+    # arguments after a refusal is trying something else.
+    failing: Dict[str, Any] = {'call': None, 'times': 0}
     # The last call's usage, whichever call turns out to be last. A turn's
     # prompt only grows as its tool results accumulate, so the last call is the
     # most the thread has ever sent, which is the figure that answers whether
@@ -295,7 +345,15 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
         d = _message_to_dict(choice.message)
         d.pop('tool_calls', None)
         new.append(d)  # the nudge itself never enters the saved transcript
-        text = (d.get('content') or '').strip() or '(The model returned an empty reply.)'
+        text = (d.get('content') or '').strip()
+        if not text:
+            if not getattr(ws, 'ops', None):
+                # Asked twice and nothing came back, and nothing was planned:
+                # a failed turn, which the reader can retry, not an answer.
+                raise TurnFailed(EMPTY_REPLY)
+            # The plan is the substance of this turn and the card shows it,
+            # so keep it rather than throw it away with the missing words.
+            text = f'({EMPTY_REPLY})'
         return text + _length_note(choice)
 
     while True:
@@ -331,8 +389,9 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
             if cancelled():
                 raise TurnCancelled()
             name = c['function']['name']
+            raw = c['function']['arguments'] or '{}'
             try:
-                args = json.loads(c['function']['arguments'] or '{}')
+                args = json.loads(raw)
                 if not isinstance(args, dict):
                     args = {}
             except json.JSONDecodeError as e:
@@ -343,11 +402,25 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
                 result = kit.call_tool(ws, name, args)
                 if len(ws.ops) != planned_before:
                     on_progress(min(85, 8 + rounds * 5), planned_progress(len(ws.ops)))
-            trace.append(trace_step(kit.tracer, c['id'], name, args))
+            failed = str(result).startswith('Error')
+            trace.append(trace_step(kit.tracer, c['id'], name, args, failed=failed))
             new.append({'role': 'tool', 'tool_call_id': c['id'], 'content': result})
+            if failed and failing['call'] == (name, raw):
+                failing['times'] += 1
+            else:
+                failing['call'], failing['times'] = ((name, raw), 1) if failed else (None, 0)
+        if failing['times'] >= REPEATED_FAILURES:
+            text = ask_for_the_reply(kwargs, '(system) The same tool call has failed '
+                                             f'{REPEATED_FAILURES} times in a row. Do not call it again. '
+                                             'Reply now with what you found and what remains to do.')
+            return TurnResult(text + f'\n\n*(Stopped after the same step failed {REPEATED_FAILURES} times.)*',
+                              new, trace, spent['usage'])
         if rounds >= cfg.max_steps:
             text = ask_for_the_reply(kwargs, '(system) You have used the tool budget for this turn. '
                                              'Reply now with what you found and what remains to do.')
-            return TurnResult(text + f'\n\n*(Stopped after {cfg.max_steps} rounds of tool calls, '
-                                     f'the per-turn limit; the operator can raise it with '
-                                     f'`--max-steps`.)*', new, trace, spent['usage'])
+            # The limit counts model calls, not steps (one call may take
+            # several), so the line gives no number the trace would contradict.
+            # Raising it is the operator's `--max-steps`, which is not named to
+            # the reader.
+            return TurnResult(text + '\n\n*(Stopped at the step limit.)*',
+                              new, trace, spent['usage'])

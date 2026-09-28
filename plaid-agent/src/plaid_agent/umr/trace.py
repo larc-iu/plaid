@@ -9,8 +9,19 @@ with no line of its own falls back to its name, and
 
 from typing import Any, Dict
 
+from ..core.args import sentence_number
 from ..core.trace import count, in_doc, plural, q, tracer_for
 from .toolkit import WEB_TOOLS, WRITE_TOOLS
+
+
+def _sentence(raw: Any) -> str:
+    """A sentence as the reader writes it, "s7", whether the model passed 7,
+    "7" or "s7". Anything that names no sentence is shown as it came."""
+    try:
+        n = sentence_number(raw)
+    except ValueError:
+        return str(raw)
+    return f's{n}' if n is not None else 'a sentence'
 
 
 def describe_step(name: str, a: Dict[str, Any]) -> str:
@@ -66,7 +77,7 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
 
     # --- plans ------------------------------------------------------------------
     if name == 'apply_penman':
-        return f'Planned a new graph for s{a.get("sentence")}{in_doc(a)}'
+        return f'Planned a new graph for {_sentence(a.get("sentence"))}{in_doc(a)}'
     if name == 'set_attributes':
         line = (a.get('line') or '').strip()
         what = q(line) if line else 'no attributes'
@@ -86,9 +97,9 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
     if name == 'rewrite_guideline':
         return f'Rewrote the guideline {q(a.get("title"))}'
     if name == 'run_code':
-        return 'Ran code over the corpus'
+        return 'Read across the corpus'
     if name == 'code_help':
-        return 'Read what code can see'
+        return 'Looked up how to read across the corpus'
 
     # --- bookkeeping --------------------------------------------------------------
     if name == 'discard_plan':
@@ -124,8 +135,8 @@ _PROGRESS = {
     'delete_triple': lambda a: 'Removing a document-level relation…',
     'query': lambda a: 'Running a query…',
     'query_help': lambda a: 'Reading the query language…',
-    'run_code': lambda a: 'Running code…',
-    'code_help': lambda a: 'Reading what code can see…',
+    'run_code': lambda a: 'Reading across the corpus…',
+    'code_help': lambda a: 'Looking up how to read across the corpus…',
     'plan_status': lambda a: 'Reviewing the plan…',
     'web_search': lambda a: f'Searching the web for "{a.get("query", "")}"…',
     'read_url': lambda a: f'Reading {a.get("url", "")}…',

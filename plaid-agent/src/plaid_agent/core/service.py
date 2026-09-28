@@ -59,14 +59,15 @@ from urllib.parse import urlsplit
 
 from plaid_client import BaseService, TASKS, service_source
 from plaid_client.service import requester_message
+from plaid_client.workflows.llm import add_timeout_argument, provider_secrets
 
 from . import filetools
 from . import prompt as shared_prompt
 from .guidelines import in_reading_order
 from .limits import MAX_PROJECTS
 from .reach import Reach
-from .agent import (ModelConfig, ModelTooSlow, PING_TIMEOUT_S, Toolkit, TurnCancelled,
-                    context_window, ping_model, run_turn)
+from .agent import (ModelConfig, ModelTooSlow, PING_TIMEOUT_S, Toolkit, TurnCancelled, TurnFailed,
+                    context_window, model_failure_line, ping_model, run_turn)
 from .files import Attachments
 from .guidelines import in_context as guidelines_in_context
 from .conversation import (ConversationStore, MissingConversation, assistant_item, build_meta, error_item,
@@ -203,6 +204,7 @@ class BaseAssistantService(BaseService):
         parser.add_argument('--max-steps', type=int, default=50, help='Tool-call rounds per turn (default 50)')
         parser.add_argument('--temperature', type=float, default=None)
         parser.add_argument('--max-tokens', type=int, default=None)
+        add_timeout_argument(parser)
         parser.add_argument('--no-stream', action='store_true',
                             help='Do not stream the reply as it is written (for a provider that misbehaves '
                                  'under streaming); the reply then arrives whole')
@@ -228,8 +230,10 @@ class BaseAssistantService(BaseService):
     def setup(self, args) -> None:
         self.cfg = ModelConfig(model=args.model, api_base=args.api_base, api_key=args.api_key,
                                max_steps=args.max_steps, temperature=args.temperature, max_tokens=args.max_tokens,
-                               stream=not getattr(args, 'no_stream', False))
+                               stream=not getattr(args, 'no_stream', False), timeout=args.timeout)
         self.kit = self.toolkit()
+        # A provider quotes the key it refused back in its own error text.
+        self.REQUEST_SECRETS = provider_secrets(args.api_key)
         # One registration per model by default, so an operator can run several
         # assistants side by side (different models, or the same model with a
         # different base) and users pick one in the tab. Two instances with the
@@ -436,10 +440,11 @@ class BaseAssistantService(BaseService):
         except Exception as e:  # noqa: BLE001 - whatever failed, the record must say so
             self._release(ws)
             traceback.print_exc()
+            line = self.turn_failure_line(e)
             failed = {'messages': transcript[:-1],
-                      'display': conv['display'] + [error_item(f'The assistant could not answer: {e}')]}
+                      'display': conv['display'] + [error_item(line)]}
             self._write(store, conv_id, failed, build_meta(meta, conv_id, failed, self.service_id, model), request_id)
-            response_helper.error(str(e))
+            response_helper.error(line)
             return
         self._release(ws)
         # The window goes on the item beside the counts: the reader is told how
@@ -468,7 +473,8 @@ class BaseAssistantService(BaseService):
             # over and say the record did not take it.
             traceback.print_exc()
             response_helper.error(
-                f'The answer is ready but the conversation could not be saved: {e}. '
+                f'The answer is ready but the conversation could not be saved: '
+                f'{requester_message(e, secrets=self.REQUEST_SECRETS)}. '
                 f'It is below, and this turn is not in the record.')
             response_helper.complete({'kind': 'turn', 'message': turn.text, 'plan': None,
                                       'citations': item['citations'], 'steps': turn.steps,
@@ -477,6 +483,17 @@ class BaseAssistantService(BaseService):
         response_helper.progress(100, 'Done')
         response_helper.complete({'kind': 'turn', 'message': turn.text, 'plan': item['plan'],
                                   'citations': item['citations'], 'steps': turn.steps, 'steps_summary': turn.summary})
+
+    def turn_failure_line(self, e: BaseException) -> str:
+        """What the reader is told when a turn fails: one plain line. The
+        exception itself went to the operator's log. A provider's error is
+        never quoted (it names the library and can carry the endpoint, the
+        request and the key), and anything else passes through
+        ``requester_message``, which strips URLs and secrets."""
+        if isinstance(e, TurnFailed):
+            return str(e)
+        return (model_failure_line(e, self.cfg.timeout)
+                or f'The assistant could not answer: {requester_message(e, secrets=self.REQUEST_SECRETS)}')
 
     def _apply(self, client, project, store, conv_id, conv, meta, approve: dict, request_id, response_helper) -> None:
         model = self.cfg.model
