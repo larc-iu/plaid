@@ -445,6 +445,12 @@ def _create_entry_writes(op):
     return [parent_of({'metadata': op.get('metadata') or {}})]
 
 
+def _sense_moved_under(op):
+    """The entry a structure change puts a sense under, named inside the
+    patch it writes."""
+    return [parent_of({'metadata': op.get('patch') or {}})]
+
+
 def _confirm_writes(op):
     """What a confirmation the model NAMED writes to: the ids it confirms, and
     the tokens they sit on, since a span or a link whose token is deleted goes
@@ -545,14 +551,14 @@ KIND = ok.registry([
            at=('token_ids',), at_kind=TOKEN, token_keys=('token_ids', 'item_id'),
            deletes=lambda op: [op.get('existing_link_id')], extra={'names_entry': ('item_id',)}),
     OpKind('create_entry', ('new lexicon entry', 'new lexicon entries'), required=('vocab_id', 'form', 'key'),
-           apply=_apply_create_entry, writes=_create_entry_writes),
+           apply=_apply_create_entry, writes=_create_entry_writes, extra={'hangs_off': _create_entry_writes}),
     OpKind('set_entry_field', ('entry field', 'entry fields'), required=('item_id', 'field'),
            apply=_apply_set_entry_field, at=('item_id',), at_kind=ENTRY, token_keys=('item_id',),
            target=lambda op: ('entry_field', op.get('item_id'), op.get('field')),
            extra={'names_entry': ('item_id',)}),
     OpKind('set_entry_metadata', ('entry structure change', 'entry structure changes'),
            required=('item_id', 'patch'), apply=_apply_set_entry_metadata, at=('item_id',), at_kind=ENTRY,
-           token_keys=('item_id',), extra={'names_entry': ('item_id',)},
+           token_keys=('item_id',), extra={'names_entry': ('item_id',), 'hangs_off': _sense_moved_under},
            # Keyed by the keys it writes, so renumbering a sense and promoting
            # an example on one entry are two changes rather than one replacing
            # the other.
@@ -706,15 +712,22 @@ def removed_entries(ops: List[Dict[str, Any]]) -> frozenset:
 def named_entries(ops: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     """The stored lexicon entries the plan's changes name (a link's entry,
     both entries of a merge, an entry whose field, structure or headword a
-    change sets, one it deletes), each with the first change naming it. An
-    entry the plan creates is named by its key and is never here. The keys
-    are each kind's own (``extra['names_entry']``)."""
+    change sets, one it deletes, one a new or moved sense hangs off), each
+    with the first change naming it. An entry the plan creates is named by
+    its key and is never here. The keys are each kind's own
+    (``extra['names_entry']``), and the entry a sense hangs off is named in
+    the metadata it writes (``extra['hangs_off']``)."""
+    created = {op.get('key') for op in ops if op.get('kind') == 'create_entry'} - {None}
     out: Dict[str, Dict[str, Any]] = {}
     for op in ops:
         spec = KIND.get(op.get('kind'))
-        for key in ((spec.extra.get('names_entry') if spec else None) or ()):
-            if op.get(key):
-                out.setdefault(op[key], op)
+        if spec is None:
+            continue
+        named = [op.get(key) for key in (spec.extra.get('names_entry') or ())]
+        named += list((spec.extra['hangs_off'](op) if 'hangs_off' in spec.extra else None) or [])
+        for iid in named:
+            if iid and iid not in created:
+                out.setdefault(iid, op)
     return out
 
 

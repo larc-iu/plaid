@@ -440,3 +440,23 @@ def test_the_model_is_told_an_analysis_took_the_changes_planned_on_its_morphemes
     # Said once.
     assert 'taken out' not in call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss',
                                                          'value': 'fish'})
+
+
+@pytest.mark.parametrize('tool, args', [
+    ('add_sense', {'entry_id': 'vi-gam', 'fields': {'gloss': 'fishing'}}),
+    ('make_sense_of', {'entry_id': 'vi-gam2', 'under_id': 'vi-gam'}),
+])
+def test_a_sense_under_an_entry_gone_is_refused(tool, args):
+    """The entry a new or moved sense hangs off is named in the metadata
+    the plan writes, not by a key of the change. Deleted since, the sense
+    was written hanging off nothing, which the lexicon then shows as an
+    entry of its own."""
+    w = scan_ws(FakeClient())
+    assert call_tool(w, tool, args).startswith('Planned'), w.ops
+    ops = w.plan_payload()['ops']
+    c = FakeClient()
+    _forget(c, 'vi-gam')
+    with pytest.raises(PlanOutOfDate, match='no longer exists'):
+        execute_plan(c, ops, source='s', label='l', project=w.project)
+    assert c.batches == []
+    execute_plan(FakeClient(), ops, source='s', label='l', project=w.project)
