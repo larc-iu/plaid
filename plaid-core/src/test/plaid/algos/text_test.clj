@@ -889,10 +889,11 @@
                                               [(tok :yarin 2 7) (tok :koye 8 12) (tok :z 8 8)])]
       (is (= [:yarin] deleted))
       (is (= #{[:koye 2 6] [:z 2 2]} (extents tokens)))))
-  (testing "a replace from inside one word into another is left as it is"
-    (let [{:keys [tokens]} (body-edit "x cat dog y" "x cQog y"
-                                      [(tok :cat 2 5) (tok :dog 6 9)])]
-      (is (= #{[:cat 2 3] [:dog 4 6]} (extents tokens))))))
+  (testing "a replace from inside one word into another makes one word, on the one sharing more letters"
+    (let [{:keys [tokens deleted]} (body-edit "x cat dog y" "x cQog y"
+                                              [(tok :cat 2 5) (tok :dog 6 9)])]
+      (is (= [:cat] deleted))
+      (is (= #{[:dog 2 6]} (extents tokens))))))
 
 (deftest words-deleted-before-a-respelled-word-leave-every-other-word-token-on-its-word
   ;; Seeded. Delete one to three words, and respell the first letter of the
@@ -1301,6 +1302,55 @@
             read (into {} (map (fn [{:token/keys [id begin end]}] [id (cp/cp-subs body begin end)])) tokens)]
         (is (= new body))
         (is (= want (select-keys read (keys want))) (str (pr-str old) " -> " (pr-str new)))))))
+
+(deftest a-word-respelled-beside-deleted-words-keeps-its-letters-from-itself
+  ;; The diff may keep a respelled word's letters from a deleted word beside
+  ;; it, or from another place in the word: `tat the` to `tZe` kept the `t`
+  ;; of `tat` and the `e` of `the`, which left a token on each. Each word left
+  ;; is to be one token on its new spelling.
+  (let [on (fn [layer t] (assoc t :token/layer layer))
+        w (fn [id b e] (on :w (tok id b e)))
+        m (fn [id b e] (on :m (tok id b e)))]
+    (doseq [[old new tokens want gone either]
+            [;; one replace reaching into both words: the one sharing more
+             ;; letters with the new word takes it
+             ["cat tat the\n" "cat tZe\n"
+              [(on :s (tok :s 0 12)) (w :cat 0 3) (w :tat 4 7) (m :t 4 5) (m :at 5 7) (w :the 8 11)
+               (on :u (tok :node 4 7))]
+              {:cat "cat" :the "tZe"} #{:tat :t :at :node}]
+             ["sat mat köye" "sQt köye"
+              [(w :sat 0 3) (w :mat 4 7) (w :köye 8 12)]
+              {:sat "sQt" :köye "köye"} #{:mat}]
+             ;; letters typed before a word, and some of its own deleted
+             ["on kaki é\n" "on QЖki\n"
+              [(on :s (tok :s 0 10)) (w :on 0 2) (w :kaki 3 7) (m :ka 3 5) (m :k 5 6) (m :i 6 7) (w :é 8 9)]
+              {:on "on" :kaki "QЖki"} #{:é}]
+             ;; the kept `t` is the last of `tat`, not its first
+             ["كتاب tat on mat" "كتاب Zڤt mat"
+              [(w :kitab 0 4) (w :tat 5 8) (m :t 5 6) (m :at 6 8) (w :on 9 11) (w :mat 12 15)]
+              {:kitab "كتاب" :tat "Zڤt" :mat "mat"} #{:on}]
+             ;; a delete beside another that moved away may take its place
+             ["köye tat\nkaki 你好 你好 tat the\n" "köye tat\nkaki 你好 thXQ\n"
+              [(on :s (tok :s0 0 9)) (on :s (tok :s1 9 28)) (w :köye 0 4) (w :tat 5 8) (w :kaki 9 13)
+               (w :nihao 14 16) (w :nihao2 17 19) (m :ni 17 18) (m :hao 18 19) (w :tat2 20 23) (w :the 24 27)
+               (on :u (tok :n1 17 19)) (on :u (tok :n2 24 27)) (on :u (tok :n3 17 27))]
+              ;; which `你好` is left the text cannot say
+              {:the "thXQ"} #{:tat2} #{:nihao :nihao2}]
+              ;; and before letters typed at a word's end: the kept `t` is the
+              ;; first of `tat`, not its last
+             ["kaki köye é كتاب tat\n" "kaki köye ڤ tڤ𐍂\n"
+              [(on :s (tok :s 0 21)) (w :kaki 0 4) (w :köye 5 9) (w :é 10 11) (on :z (tok :z 11 11))
+               (w :kitab 12 16) (on :z (tok :z2 12 12)) (w :tat 17 20) (m :ta 17 19) (m :t 19 20)
+               (on :u (tok :node 12 20))]
+              {:kaki "kaki" :köye "köye" :é "ڤ" :tat "tڤ𐍂"} #{:kitab}]]]
+      (let [{:keys [text tokens]} (body-edit old new tokens #{:s} #{:w})
+            body (:text/body text)
+            read (into {} (map (fn [{:token/keys [id begin end]}] [id (cp/cp-subs body begin end)])) tokens)]
+        (is (= new body))
+        (is (= want (select-keys read (keys want))) (str (pr-str old) " -> " (pr-str new)))
+        (is (not-any? gone (keys read)) (str (pr-str old) " -> " (pr-str new) " " (pr-str read)))
+        (when either
+          (is (= ["你好"] (vals (select-keys read either))) (pr-str read)))))))
 
 (deftest two-edits-sliding-towards-each-other-do-not-meet
   ;; Each delete cuts a token where it stands and could slide into the run of

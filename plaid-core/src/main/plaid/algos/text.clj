@@ -711,6 +711,114 @@
             (into (filter #(< (:token/begin %) lo))
                   (subvec by-end (lower ends lo) (lower ends (inc hi)))))))))
 
+(defn- join-at-token-edges
+  "`edits` (old-body coordinates over the code points `o`) with each delete
+  that stands after an insert at a token's start, the kept letters between
+  them repeating the delete's end, moved back onto the insert, and each
+  delete that stands before an insert at a token's end moved up to it the
+  same way, when the token holds the letters then deleted. The diff can keep
+  a word's letters from a different place than the one that was respelled:
+  `kaki é` to `QЖki` came out as `QЖ` typed before `kaki`, its `ak` deleted
+  and ` é` deleted, which leaves the typed letters out of the word, where
+  `ka` deleted with them is one respelling of it that the word's token
+  holds. When the delete cannot move so, the kept letters may be the last
+  of the token instead, and the letters before them are deleted: `tat on`
+  to `Zڤt` keeps the last `t` of `tat` (and the first of a token ending at
+  the insert, in the mirror case). Only letters typed without a space, since
+  a new word typed in front of a word stays out of it, and only edits apart
+  from the others, since edits that touch are one stretch. `near` gives the
+  tokens that begin or end in a stretch (see `tokens-near`)."
+  [^ints o near edits]
+  (let [blank? (fn [^String v] (.anyMatch (.codePoints v) (reify java.util.function.IntPredicate
+                                                            (test [_ c] (space? c)))))
+        ;; [s e) slid by k code points, left when k is negative, when each
+        ;; step keeps the resulting string
+        slid (fn [s e k]
+               (if (neg? k)
+                 (loop [s s e e k k]
+                   (cond (zero? k) [s e]
+                         (and (pos? s) (= (aget o (dec s)) (aget o (dec e)))) (recur (dec s) (dec e) (inc k))
+                         :else nil))
+                 (loop [s s e e k k]
+                   (cond (zero? k) [s e]
+                         (and (< e (alength o)) (= (aget o s) (aget o e))) (recur (inc s) (inc e) (dec k))
+                         :else nil))))
+        width? (fn [{:token/keys [begin end]}] (< begin end))
+        reach (fn [e] (or (:end e) (:at e)))
+        start (fn [e] (or (:start e) (:at e)))]
+    (loop [i 0 out []]
+      (if (< i (count edits))
+        (let [x (edits i)
+              y (get edits (inc i))]
+          (cond
+            ;; insert at a, kept [a s), delete [s e)
+            (and (= :insert (:kind x)) (= :delete (:kind y)) (< (:at x) (:start y))
+                 (not (blank? (:value x)))
+                 ;; edits touching the edit before or after are part of
+                 ;; its stretch, and stay with it
+                 (not (some-> (peek out) reach (>= (:at x))))
+                 (not (some-> (get edits (+ i 2)) start (<= (:end y)))))
+            (let [a (:at x)
+                  {s :start e :end} y
+                  d (- e s)
+                  k (- s a)
+                  to (slid s e (- k))
+                  ;; Or the kept letters are the last of a token beginning
+                  ;; at a, and the letters before them deleted: `tat on`
+                  ;; to `Zڤt` keeps the last `t` of `tat`, not its first.
+                  q (when-not to
+                      (->> (near a a)
+                           (keep (fn [{:token/keys [begin end]}]
+                                   (when (and (= a begin) (< (+ a k) end) (<= end e)
+                                              (java.util.Arrays/equals (java.util.Arrays/copyOfRange o (int (- end k)) (int end))
+                                                                       (java.util.Arrays/copyOfRange o (int a) (int s))))
+                                     end)))
+                           sort first))]
+              (cond
+                (and to (some #(and (width? %) (= a (:token/begin %)) (<= (+ a d) (:token/end %)))
+                              (near a a)))
+                (recur (+ i 2) (conj out x (assoc y :start (first to) :end (second to))))
+
+                q
+                (recur (+ i 2) (cond-> (conj out x {:kind :delete :start a :end (- q k)})
+                                 (< q e) (conj {:kind :delete :start q :end e})))
+
+                :else (recur (inc i) (conj out x))))
+
+            ;; delete [s e), kept [e b), insert at b
+            (and (= :delete (:kind x)) (= :insert (:kind y)) (< (:end x) (:at y))
+                 (not (blank? (:value y)))
+                 (not (some-> (peek out) reach (>= (:start x))))
+                 (not (some-> (get edits (+ i 2)) start (<= (:at y)))))
+            (let [b (:at y)
+                  {s :start e :end} x
+                  d (- e s)
+                  k (- b e)
+                  to (slid s e k)
+                  ;; or the kept letters are the first of a token ending at b
+                  p (when-not to
+                      (->> (near b b)
+                           (keep (fn [{:token/keys [begin end]}]
+                                   (when (and (= b end) (<= s begin) (< (+ begin k) b)
+                                              (java.util.Arrays/equals (java.util.Arrays/copyOfRange o (int begin) (int (+ begin k)))
+                                                                       (java.util.Arrays/copyOfRange o (int e) (int b))))
+                                     begin)))
+                           sort last))]
+              (cond
+                (and to (some #(and (width? %) (= b (:token/end %)) (<= (:token/begin %) (- b d)))
+                              (near b b)))
+                (recur (+ i 2) (conj out (assoc x :start (first to) :end (second to)) y))
+
+                p
+                (recur (+ i 2) (-> out
+                                   (cond-> (< s p) (conj {:kind :delete :start s :end p}))
+                                   (conj {:kind :delete :start (+ p k) :end b} y)))
+
+                :else (recur (inc i) (conj out x))))
+
+            :else (recur (inc i) (conj out x))))
+        out))))
+
 (defn slide-to-tokens
   "Rewrite `ops` (as produced by `diff` for `old`) so that each delete or
   insert that stands apart from the others, and could stand elsewhere for the
@@ -737,9 +845,10 @@
                         nxt (get edits (inc i))
                         ;; A neighbour this edit touches makes the two one
                         ;; stretch, and a place that touches one would too.
-                        ;; The edit before may already have moved towards
-                        ;; this one, and the two must not meet.
-                        lo (if prev (inc (max (reach-of prev) (reach-of (peek moved)))) 0)
+                        ;; The edit before may already have moved, towards
+                        ;; this one or away from it, and the two must not
+                        ;; meet where it now stands.
+                        lo (if prev (inc (reach-of (peek moved))) 0)
                         hi (if nxt (dec (start-of nxt)) n)]
                     (conj moved
                           (if (or (< (start-of e) lo) (> (reach-of e) hi))
@@ -777,9 +886,12 @@
   "Rewrite `ops` (as produced by `diff` for `old`) so that two deletes
   separated by a kept run equal to an edge of the adjacent deleted text
   become one contiguous delete when that cuts fewer of `tokens` (old-body
-  code-point offsets). The reconstructed string is unchanged."
+  code-point offsets), and a delete that keeps a word's letters from the
+  wrong place beside letters typed at the word's edge is moved onto them
+  (see `join-at-token-edges`). The reconstructed string is unchanged."
   [ops old tokens]
   (let [edits (ops->edits ops)
+        near (tokens-near tokens (count edits))
         ranges-of (fn [edits] (keep #(when (= (:kind %) :delete) [(:start %) (:end %)]) edits))
         cp-sub (fn [s e] (cp/cp-subs old s e))
         step (fn [edits]
@@ -816,7 +928,8 @@
         (recur (vec (remove nil? next)) true)
         ;; Untouched input when nothing merged: the caller's ops are already
         ;; valid, so don't risk a lossy round trip.
-        (if merged? (edits->ops edits) ops)))))
+        (let [joined (join-at-token-edges (.toArray (.codePoints ^String old)) near (vec edits))]
+          (if (or merged? (not= joined edits)) (edits->ops joined) ops))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Replace pairing
@@ -1000,9 +1113,12 @@
   beginning to t is replaced by the new text after its last space, and the
   part before is replaced by the rest (deleted when there is none). The same
   at the other end: tokens beginning before it and ending inside it get the
-  new text up to its first space. A replace reaching into tokens at both
-  ends stays as it is, since the text cannot tell which of them the new
-  letters belong to.
+  new text up to its first space. A replace reaching into words at both
+  ends with no space in its new text joins them into one word, which the
+  word sharing more letters with it takes whole (the first on a tie), and
+  the other is deleted: `cat dog` to `cQog` keeps `dog` on `cQog`, where
+  the replace as it was left `c` and `og` a token each. With a space typed
+  it stays as it is.
 
   Only a word's edge in `o` is a place to cut: a space or the text's edge
   beside it, or a token beginning or ending there, unless two tokens meet
@@ -1092,6 +1208,26 @@
       (let [a (reduce min (map :token/end into-prev))
             k (loop [k 0] (if (and (< k n) (not (ws? k))) (recur (inc k)) k))]
         (into (piece s a (sub 0 k) s) (piece a t (sub k n) t)))
+
+      ;; Reaching into a word at each end with no space typed, the replace
+      ;; makes the two words one, and one of them takes it whole: the one
+      ;; sharing more letters with it, the first on a tie. The other is
+      ;; deleted, with the words between, and the letters the kept one
+      ;; loses by that are typed back. `tat the` to `tZe` keeps `the` on
+      ;; `tZe`, where the replace alone left `tat` on `t` and `the` on `e`.
+      (and (seq prev-in) (seq next-in) (pos? n) (not-any? ws? (range n)))
+      (let [o-sub (fn [p q] (String. o (int p) (int (- q p))))
+            pb (loop [p s] (if (edge? p) p (recur (dec p))))
+            a (loop [p s] (if (edge? p) p (recur (inc p))))
+            b (loop [p t] (if (edge? p) p (recur (dec p))))
+            ne (loop [p t] (if (edge? p) p (recur (inc p))))
+            word (.toArray (.codePoints (str (o-sub pb s) value (o-sub t ne))))
+            shares (fn [p q] (lcs-length (java.util.Arrays/copyOfRange o (int p) (int q)) word))]
+        (if (>= (shares pb a) (shares b ne))
+          [{:kind :replace :start s :end a :value (str value (o-sub t ne))}
+           {:kind :delete :start a :end ne}]
+          [{:kind :delete :start pb :end b}
+           {:kind :replace :start b :end t :value (str (o-sub pb s) value)}]))
 
       :else [r])))
 

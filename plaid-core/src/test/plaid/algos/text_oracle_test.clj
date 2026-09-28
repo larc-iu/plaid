@@ -22,7 +22,9 @@
   settle: a word replaced whole beside deleted words may or may not keep a
   token, and which of two words of one spelling was deleted. The new word
   of such a replace may also be the one meant for any of the deleted
-  words (`tat你好on` to `tatZЖ`): the case passes when one of those
+  words (`tat你好on` to `tatZЖ`), and a word respelled in part beside
+  deleted words may be the respelling of a deleted one sharing as many of
+  its letters (`cat mat` to `Xڤat`): the case passes when one of those
   readings passes whole, and is not skipped.
 
   Classes still open are skipped by name in `open-classes`, one predicate
@@ -120,6 +122,16 @@
 (defn- fresh-word [^java.util.Random rng n]
   (apply str (repeatedly n #(nth fresh (.nextInt rng (count fresh))))))
 
+(defn- lcs
+  "The length of the longest common subsequence of two vectors."
+  [a b]
+  (peek (reduce (fn [prev x]
+                  (reduce (fn [row [j y]]
+                            (conj row (if (= x y) (inc (prev j)) (max (prev (inc j)) (peek row)))))
+                          [0] (map-indexed vector b)))
+                (vec (repeat (inc (count b)) 0))
+                a)))
+
 (defn- respell
   "[mode new-spelling kept-letters replaced-letters] for `w`."
   [^java.util.Random rng w]
@@ -174,12 +186,23 @@
                     [(delete-items (assoc-in doc [si r :w] w') si i (+ i k))
                      {:resp #{rid} :del (set (map :id dels)) :si si
                       ;; replaced whole, the new word may be the one meant for
-                      ;; any of these, and each reading is judged
-                      :group (when (= mode :whole) (into [rid] (map :id) dels))
+                      ;; any of these, and each reading is judged. Respelled
+                      ;; in part, it may be the one meant for a deleted word
+                      ;; that shares as many of its letters (`cat mat` to
+                      ;; `Xڤat`), and not for one that shares fewer (`tat
+                      ;; the` to `tZe` is `the` respelled).
+                      :group (if (= mode :whole)
+                               (into [rid] (map :id) dels)
+                               (let [shares #(lcs (cps %) (cps w'))
+                                     ties (filter #(<= (shares (:w (sent r))) (shares (:w %))) dels)]
+                                 (when (seq ties) (into [rid] (map :id) ties))))
                       :shape {:mode mode
                               ;; respelled at the edge beside the deleted words
                               :near? (or (and before? (= mode :prefix)) (and (not before?) (= mode :suffix)))
-                              :shared? (boolean (some (into (set (mapcat (comp cps :w) dels)) gone) kept))}
+                              :shared? (boolean (some (into (set (mapcat (comp cps :w) dels)) gone) kept))
+                              ;; the kept letter beside the deleted words is in one of them
+                              :edge-in-deleted? (boolean ((set (mapcat (comp cps :w) dels))
+                                                          (if before? (first kept) (last kept))))}
                       :amb (cond-> #{}
                              (= mode :whole) (conj rid)
                              (some #(= (:w %) (:w (sent r))) dels) (conj rid))}]))
@@ -348,8 +371,8 @@
      :old (:body lay) :new (:body (layout new-doc))}))
 
 (defn- reading
-  "The case with the new word of a whole replace taken for the one meant for
-  `c`, a word deleted beside it, and the respelled word taken for deleted."
+  "The case with the new word of a replace taken for the one meant for `c`,
+  a word deleted beside it, and the respelled word taken for deleted."
   [{:keys [info] :as case} c]
   (let [r (first (:group info))
         swap (fn [ids] (-> (set ids) (disj r) (conj c)))]
@@ -357,7 +380,7 @@
         (update :new-doc (fn [d] (mapv (fn [s] (mapv #(if (= r (:id %)) (assoc % :id c) %) s)) d)))
         (update :info #(-> %
                            (update :resp swap)
-                           (update :amb swap)
+                           (update :amb (fn [ids] (if (contains? ids r) (swap ids) ids)))
                            (update :del (fn [ids] (-> ids (disj c) (conj r)))))))))
 
 (defn- run-case [{:keys [old new tokens info] :as c}]
@@ -381,13 +404,17 @@
   "Classes of case the chain still gets wrong, all older than the fixes of
   2026-09-28 this test was written to hold. Each is a predicate over the
   generated case, so a fix for one deletes its entry."
-  {;; A replace reaching into words at both ends: letters the respelled word
-   ;; kept are also in a deleted word or among the letters it lost, and the
-   ;; diff may take them from there (`cat mat` to `cQt` leaves `c` and `t`,
-   ;; `tatu a` to `Xtu` gives the word only `tu`).
-   :kept-letters-found-elsewhere
-   (fn [{{{:keys [mode near? shared?]} :shape} :info}]
-     (and shared? (not near?) (not= mode :whole)))})
+  {;; A respelled word keeps its letters beside the deleted words, and the
+   ;; one kept there is also in a deleted word, so the diff may take it and
+   ;; the letters around it from the deleted word in more than one run of
+   ;; edits (`sat tat` to `tX` keeps the `t` of `sat` and deletes ` ta`,
+   ;; `a ab` to `aX` keeps `a` and replaces ` ab`, `kai ab` to `aXQ` keeps
+   ;; the `a` of `kai`). The replace reaching into both words, letters typed
+   ;; in front of a word with some of its own deleted, and a kept run that
+   ;; is the last of the respelled word's letters are no longer open.
+   :kept-edge-letter-also-in-a-deleted-word
+   (fn [{{{:keys [mode near? shared? edge-in-deleted?]} :shape} :info}]
+     (and shared? edge-in-deleted? (not near?) (not= mode :whole)))})
 
 (defn- open-class [c]
   (some (fn [[k pred]] (when (pred c) k)) open-classes))
