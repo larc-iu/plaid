@@ -84,6 +84,14 @@ const CHAIN_COLORS = [
 ];
 const chainColor = (index) => CHAIN_COLORS[index % CHAIN_COLORS.length];
 
+// The actions that need no focused node, and of them the two that walk the
+// sentences, which work read-only too.
+const SENTENCE_ACTIONS = ['canvas.nextSentence', 'canvas.previousSentence'];
+const NO_NODE_ACTIONS = ['canvas.newRoot', ...SENTENCE_ACTIONS];
+
+// Every option of a picker's list, groups flattened.
+const flatItems = (options) => options.flatMap((o) => ('group' in o ? o.items : [o]));
+
 // The whole document's nodes, read from the document at the moment of each
 // lookup. A block renders again only when its own sentence does (the domain
 // keeps an untouched sentence's object across versions), so a map handed down
@@ -121,6 +129,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // Jump to a node anywhere in the document. The canvas owns it, because the
   // node may be on a page that is not in the DOM yet.
   goToNode,
+  // Focus the root of the sentence `step` places on from this one (1 or -1),
+  // turning the page when it is on another. False when there is none. The
+  // canvas owns it, for the same reason.
+  goToSentence = null,
   direction = 'ltr',
   readOnly = true,
   frames = null,
@@ -233,7 +245,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const scrollerRef = useRef(null);
   const [scrollLeft, setScrollLeft] = useState(0);
   // A mode waits for a click: `{ kind: 'anchor' | 'move' | 'reentrancy' |
-  // 'child', nodeId }`.
+  // 'child', nodeId }`. Anchor mode also takes word numbers from the
+  // keyboard: `typed` is the number so far, `missing` one the sentence does
+  // not have. Move and second parent open a list of the sentence's nodes
+  // beside the mode (`askTarget`), so a click or a pick ends them.
   const [mode, setMode] = useFollowedState(null);
   // An open editor: `{ kind, x, y, ... }`, see askRole and askNewNode.
   const [editor, setEditor] = useFollowedState(null);
@@ -656,6 +671,15 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       } else closeEditor();
       return;
     }
+    if (ed.kind === 'target') {
+      const name = String(text).trim().split(/\s+/)[0];
+      const other = option?.nodeId
+        ? nodesById.get(option.nodeId)
+        : sentence.nodes.find((n) => n.var === name);
+      if (other) pickTarget(ed.purpose, ed.nodeId, other.id);
+      else endTarget();
+      return;
+    }
     if (ed.kind === 'pick') {
       const name = String(text).trim().split(/\s+/)[0];
       setEditor(null);
@@ -804,6 +828,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     takeFocus(null);
     restFocus();
   };
+  // Whether a key came to the block where focus rests with no node focused
+  // (see restFocus): the section itself, or an empty graph's stop.
+  const atRest = (e) =>
+    e.target === sectionRef.current || (e.target === canvasRef.current && e.target.tabIndex === 0);
   // Where focus rests in the block with no node focused: the empty graph's
   // own stop when it has no nodes, else the section.
   const restFocus = () => {
@@ -864,10 +892,25 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       unfocus();
       return;
     }
-    if (readOnly || editor || menu || e.isComposing) return;
+    if (editor || menu || e.isComposing) return;
     // A text box inside the block owns its keys. The bare letters below are
     // `outsideText` in the table, and this is where that is kept.
     if (e.target.closest?.('input, textarea, [contenteditable="true"]')) return;
+    // Walking the sentences, read-only too. Tab from the sentence itself
+    // (where Escape leaves focus) goes on to the next sentence's root rather
+    // than back into this one's header and nodes, and off the last sentence
+    // it goes wherever Tab would.
+    if (e.key === 'Tab' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && atRest(e)) {
+      if (goToSentence?.(sentence.index, 1)) e.preventDefault();
+      return;
+    }
+    const walk = keys.which(SENTENCE_ACTIONS, e);
+    if (walk) {
+      e.preventDefault();
+      await runAction(walk, null);
+      return;
+    }
+    if (readOnly) return;
     // Shift+Tab is the way out of the block for a keyboard.
     if (e.key === 'Tab' && e.shiftKey) return;
     // The header's buttons (Accept graph, Text, Comment) keep their own keys:
@@ -902,6 +945,27 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     // the node's menu and its parts do: Enter on the node the arrows had
     // reached opened that node's editor with the mode still waiting, a mode
     // and an editor at once on two nodes.
+    if (mode?.kind === 'anchor' && plain) {
+      // A word by its number, as the child picker reads them: digits, then
+      // Enter toggles that word.
+      if (/^[0-9]$/.test(e.key)) {
+        e.preventDefault();
+        setMode((m) => (m ? { ...m, typed: `${m.typed || ''}${e.key}`, missing: null } : m));
+        return;
+      }
+      if (e.key === 'Backspace' && mode.typed) {
+        e.preventDefault();
+        setMode((m) => (m ? { ...m, typed: m.typed.slice(0, -1) } : m));
+        return;
+      }
+      if (e.key === 'Enter' && mode.typed) {
+        e.preventDefault();
+        const word = sentence.words[Number(mode.typed) - 1];
+        setMode((m) => (m ? { ...m, typed: '', missing: word ? null : m.typed } : m));
+        if (word) await toggleAnchorWord(mode.nodeId, word.id);
+        return;
+      }
+    }
     if (mode) {
       const arrow = e.key.startsWith('Arrow') && plain;
       const ownTab = e.key === 'Tab' && plain && id === mode.nodeId;
@@ -942,7 +1006,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // depending on which way it was reached.
   const runAction = async (action, id = focusedId) => {
     const node = nodesById.get(id);
-    if (!node && action !== 'canvas.newRoot') return;
+    if (!node && !NO_NODE_ACTIONS.includes(action)) return;
     switch (action) {
       case 'node.concept':
         setEditor({ kind: 'concept', nodeId: id, ...positionBelow(id), value: node.concept });
@@ -966,7 +1030,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         setMode({ kind: 'child', nodeId: id });
         break;
       case 'node.move':
-        if (treeEdgeInto(id)) setMode({ kind: 'move', nodeId: id });
+        if (treeEdgeInto(id)) askTarget('move', id);
         break;
       case 'node.earlier':
       case 'node.later': {
@@ -975,7 +1039,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         break;
       }
       case 'node.reentrancy':
-        setMode({ kind: 'reentrancy', nodeId: id });
+        askTarget('reentrancy', id);
         break;
       case 'node.root':
         await doc.setRoot(id);
@@ -1008,6 +1072,12 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         break;
       case 'canvas.newRoot':
         askNewNode(null, [], { x: 16, y: stageHeight - 44 });
+        break;
+      case 'canvas.nextSentence':
+        goToSentence?.(sentence.index, 1);
+        break;
+      case 'canvas.previousSentence':
+        goToSentence?.(sentence.index, -1);
         break;
       default:
     }
@@ -1045,6 +1115,57 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     };
   })();
 
+  // ----- the new parent and the second parent -----
+
+  // `m` and `r` wait for the node, picked from a list of the sentence's
+  // nodes as `c`, `t` and `o` pick theirs, or clicked. The list is an editor
+  // and the click a mode, open together, and either one ends both.
+  const askTarget = (kind, nodeId) => {
+    setMode({ kind, nodeId });
+    setEditor({ kind: 'target', purpose: kind, nodeId, ...positionBelow(nodeId), value: '' });
+  };
+  const endTarget = () => {
+    setMode(null);
+    closeEditor();
+  };
+  // What the list offers: every other node of the sentence, and for a move
+  // not the parent it has or a node under it.
+  const targetOptions = (ed) => {
+    const edge = ed.purpose === 'move' ? treeEdgeInto(ed.nodeId) : null;
+    const fits = (n) =>
+      n.id !== ed.nodeId &&
+      n.var &&
+      (!edge || (n.id !== edge.source && !doc.wouldCycle?.(n.id, ed.nodeId, edge.role)));
+    return [
+      {
+        group: `Sentence ${sentence.index}`,
+        items: sentence.nodes
+          .filter(fits)
+          .map((n) => ({ value: n.var, label: `${n.var} ${n.concept}`, nodeId: n.id })),
+      },
+    ];
+  };
+  const targetProblem = (ed, text) => {
+    const name = String(text).trim().split(/\s+/)[0];
+    if (flatItems(targetOptions(ed)).some((o) => o.value === name)) return null;
+    return sentence.nodes.some((n) => n.var === name)
+      ? `${name} cannot be picked here.`
+      : `Sentence ${sentence.index} has no node ${name}.`;
+  };
+  const pickTarget = (kind, nodeId, targetId) => {
+    setMode(null);
+    setEditor(null);
+    if (kind === 'move') {
+      const edge = treeEdgeInto(nodeId);
+      if (edge && targetId !== nodeId) doc.moveEdge(edge.id, targetId);
+      focusNode(nodeId);
+    } else if (targetId !== nodeId) {
+      askRole({ sourceId: targetId, targetId: nodeId }, positionBelow(targetId));
+    } else {
+      focusNode(nodeId);
+    }
+  };
+
   // ----- clicks in a mode -----
 
   const clickNode = async (id) => {
@@ -1052,14 +1173,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       focusNode(id);
       return;
     }
-    if (mode.kind === 'move') {
-      const edge = treeEdgeInto(mode.nodeId);
-      setMode(null);
-      if (edge && id !== mode.nodeId) doc.moveEdge(edge.id, id);
-      focusNode(mode.nodeId);
-    } else if (mode.kind === 'reentrancy') {
-      setMode(null);
-      if (id !== mode.nodeId) askRole({ sourceId: id, targetId: mode.nodeId }, positionBelow(id));
+    if (mode.kind === 'move' || mode.kind === 'reentrancy') {
+      pickTarget(mode.kind, mode.nodeId, id);
     } else if (mode.kind === 'child') {
       // An existing node as the child, as a grip dropped on it.
       setMode(null);
@@ -1094,9 +1209,14 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     // A word takes no focus, so a click on one left it on the page, where
     // Escape and the arrows never reach the block: back to the node.
     nodeRefs.current.get(followIds(node.id))?.focus({ preventScroll: true });
+    await toggleAnchorWord(node.id, wordId);
+  };
+
+  // A word in or out of a node's anchor, by a click or by its number.
+  const toggleAnchorWord = async (nodeId, wordId) => {
     // Read from the document, which already shows any earlier click still
     // being saved.
-    const current = doc.node(node.id);
+    const current = doc.node(nodeId);
     if (!current) return;
     const has = current.wordIds.includes(wordId);
     const next = has ? current.wordIds.filter((w) => w !== wordId) : [...current.wordIds, wordId];
@@ -1301,6 +1421,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         },
       ];
     }
+    if (ed.kind === 'target') return targetOptions(ed);
     if (ed.kind === 'pick') {
       const constants =
         ed.group === 'modal' ? MODAL_CONSTANTS : ed.group === 'temporal' ? TEMPORAL_CONSTANTS : [];
@@ -1320,9 +1441,13 @@ export const SentenceBlock = React.memo(function SentenceBlock({
 
   const modeHint = mode
     ? {
-        anchor: 'Click words to anchor to them.',
-        move: 'Click the new parent.',
-        reentrancy: 'Click the second parent.',
+        anchor: mode.missing
+          ? `Sentence ${sentence.index} has no word ${mode.missing}.`
+          : mode.typed
+            ? `Word ${mode.typed}, Enter to anchor.`
+            : 'Click words or type their numbers to anchor to them.',
+        move: 'Pick or click the new parent.',
+        reentrancy: 'Pick or click the second parent.',
         child: "Click the child's word, an existing node, or empty space for no word.",
       }[mode.kind]
     : null;
@@ -1351,7 +1476,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
           {sentence.text}
         </span>
         {modeHint && (
-          <span className="umr-block-note umr-block-note--mode">
+          <span className="umr-block-note umr-block-note--mode" role="status">
             {modeHint}
             {/* Escape leaves a mode, and anchor mode ends no other way: a
                 click there is a word, not a way out. */}
@@ -1361,6 +1486,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
               onClick={() => {
                 const id = mode.nodeId;
                 setMode(null);
+                if (editor?.kind === 'target') setEditor(null);
                 focusNode(id);
               }}
             >
@@ -1628,6 +1754,14 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             // ancestor of where it began and ended.
             // Otherwise a click there unfocuses the node, unless it is the
             // click that closed an editor, which hands focus back.
+            // A click on a node while the list of `m` or `r` is open is the
+            // pick. The press must not move focus out of the list first, or
+            // the list would close on the blur and take the mode with it.
+            onMouseDown={(e) => {
+              if (editor?.kind === 'target' && e.target.closest?.('[data-node-id]')) {
+                e.preventDefault();
+              }
+            }}
             onPointerDown={(e) => {
               pressedEmptyRef.current = !e.target.closest?.(
                 '[data-node-id], .umr-edge-label, .umr-inline-editor',
@@ -1828,6 +1962,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                     role: 'Relation',
                     docRole: 'Relation',
                     pick: 'Variable or constant',
+                    target: 'Variable',
                     docList: 'Relation',
                     new: 'Word number or concept',
                     concept: 'Concept',
@@ -1836,7 +1971,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 }
                 strict={editor.kind === 'docList'}
                 onCommit={commitEditor}
-                onCancel={closeEditor}
+                onCancel={editor.kind === 'target' ? endTarget : closeEditor}
                 onDelete={
                   editor.kind === 'role' && editor.pending.edgeId
                     ? async () => {
@@ -1859,23 +1994,25 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 onTyped={(t) => setEditor((ed) => (ed ? { ...ed, typed: t } : ed))}
                 complete={editor.kind === 'role' || editor.kind === 'docRole'}
                 check={
-                  editor.kind === 'variable'
-                    ? (text) => doc.variableProblem(editor.nodeId, text)
-                    : editor.kind === 'new'
-                      ? (text) => missingWord(editor, text) || conceptProblem(text)
-                      : editor.kind === 'concept'
-                        ? conceptProblem
-                        : editor.kind === 'role'
-                          ? (text) => doc.relationProblem(text, { edgeId: editor.pending.edgeId })
-                          : editor.kind === 'docRole'
-                            ? (text) =>
-                                doc.relationProblem(
-                                  text,
-                                  editor.pending.tripleId
-                                    ? { tripleId: editor.pending.tripleId }
-                                    : { group: editor.pending.triple.group },
-                                )
-                            : undefined
+                  editor.kind === 'target'
+                    ? (text) => targetProblem(editor, text)
+                    : editor.kind === 'variable'
+                      ? (text) => doc.variableProblem(editor.nodeId, text)
+                      : editor.kind === 'new'
+                        ? (text) => missingWord(editor, text) || conceptProblem(text)
+                        : editor.kind === 'concept'
+                          ? conceptProblem
+                          : editor.kind === 'role'
+                            ? (text) => doc.relationProblem(text, { edgeId: editor.pending.edgeId })
+                            : editor.kind === 'docRole'
+                              ? (text) =>
+                                  doc.relationProblem(
+                                    text,
+                                    editor.pending.tripleId
+                                      ? { tripleId: editor.pending.tripleId }
+                                      : { group: editor.pending.triple.group },
+                                  )
+                              : undefined
                 }
               />
             )}

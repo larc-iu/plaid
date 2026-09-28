@@ -22,6 +22,17 @@ describe('EditorLegend', () => {
     await r.unmount();
   });
 
+  it('prints the sentence keys from the keymap', async () => {
+    const r = await renderComponent(<EditorLegend project={{ config: {} }} />);
+    const move = () => caps(row(r.container, 'Move'));
+    expect(move()).toContain('PageDown');
+    expect(move()).toContain('PageUp');
+    await r.step(() => keys.setOverrides({ 'canvas.nextSentence': ['j'] }));
+    expect(move()).toContain('J');
+    expect(move()).not.toContain('PageDown');
+    await r.unmount();
+  });
+
   it('mirrors the arrows of the two moves in a right-to-left document', async () => {
     const ltr = await renderComponent(<EditorLegend project={{ config: {} }} />);
     const moves = (root) => caps(row(root, 'Change')).filter((c) => c === '←' || c === '→');

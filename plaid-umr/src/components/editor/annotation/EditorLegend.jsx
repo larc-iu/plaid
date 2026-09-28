@@ -77,8 +77,10 @@ export const EditorLegend = ({ project, direction = 'ltr' }) => {
 
         <Row title="Move">
           <Kbd>↑</Kbd> parent · <Kbd>↓</Kbd> first child · <Kbd>←</Kbd>
-          <Kbd>→</Kbd> along the row · <Kbd>⇧</Kbd>+<Kbd>Tab</Kbd> out of the sentence ·{' '}
-          <Kbd>Esc</Kbd> leaves a mode, closes a picker, or unfocuses the node
+          <Kbd>→</Kbd> along the row · {k('canvas.nextSentence')} {k('canvas.previousSentence')}{' '}
+          next or previous sentence · <Kbd>Esc</Kbd> then <Kbd>Tab</Kbd> next sentence ·{' '}
+          <Kbd>⇧</Kbd>+<Kbd>Tab</Kbd> out of the sentence · <Kbd>Esc</Kbd> leaves a mode, closes a
+          picker, or unfocuses the node
         </Row>
 
         <Row title="Make">
@@ -90,8 +92,9 @@ export const EditorLegend = ({ project, direction = 'ltr' }) => {
         <Row title="Change">
           <Kbd>↵</Kbd> concept · {k('node.relation')} relation to the parent ·{' '}
           {k('node.attributes')} attributes · {k('node.variable')} variable · {k('node.anchor')}{' '}
-          anchor · {k('node.move')} move under another node · {k('node.earlier')} {k('node.later')}{' '}
-          earlier or later among its siblings · {k('node.root')} make it the root
+          anchor, by clicking words or typing their numbers · {k('node.move')} move under another
+          node · {k('node.earlier')} {k('node.later')} earlier or later among its siblings ·{' '}
+          {k('node.root')} make it the root
         </Row>
 
         <Row title="Document">

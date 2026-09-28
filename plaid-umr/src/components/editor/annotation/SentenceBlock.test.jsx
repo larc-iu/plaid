@@ -1297,11 +1297,7 @@ describe('SentenceBlock keys in a mode', () => {
     return r;
   };
 
-  for (const [key, mode] of [
-    ['m', 'move'],
-    ['r', 'second parent'],
-    ['u', 'anchor'],
-  ]) {
+  for (const [key, mode] of [['u', 'anchor']]) {
     it(`opens no editor on Enter, Tab or a letter in ${mode} mode, on another node`, async () => {
       const r = await mount();
       const eat = nodeByVar(r.container, 's1e');
@@ -1327,7 +1323,7 @@ describe('SentenceBlock keys in a mode', () => {
     const r = await mount();
     const leave = nodeByVar(r.container, 's1l');
     await r.step(() => leave.focus());
-    await r.step(() => press(leave, 'm'));
+    await r.step(() => press(leave, 'u'));
     await r.step(() => press(leave, 'Tab'));
     expect(editorOpen(r.container)).toBe(true);
     expect(modeOn(r.container)).toBe(false);
@@ -1462,6 +1458,268 @@ describe('SentenceBlock provenance of edges and relations', () => {
     const chip = r.container.querySelector('.umr-doc-chip');
     expect(chip.textContent).toBe('root :modal author');
     expect(chip.className).toMatch(/umr-doc-chip--contributed/);
+    await r.unmount();
+  });
+});
+
+// The owner's ruling on the mode keys: `m` and `r` open a list of the
+// sentence's nodes, as `c`, `t` and `o` do, and a click on a node still
+// picks it. `u` takes a word's number and Enter.
+describe('SentenceBlock mode targets from the keyboard', () => {
+  const press = (el, key, init = {}) =>
+    el.dispatchEvent(
+      new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }),
+    );
+  const nodeByVar = (root, v) => root.querySelector(`[data-node-var="${v}"]`);
+  const input = (root) => root.querySelector('.umr-inline-editor input');
+  const modeNote = (root) => root.querySelector('.umr-block-note--mode');
+  const docStub = (extra = {}) => ({
+    graph: {},
+    canConfirmSentence: () => false,
+    canDiscardSentence: () => false,
+    canConfirm: () => false,
+    wouldCycle: () => false,
+    moveEdge: vi.fn(),
+    setAnchor: vi.fn(),
+    node: () => null,
+    edge: () => null,
+    relationProblem: () => null,
+    ...extra,
+  });
+  const mount = async (doc) => {
+    const { sentence, nodesById } = fixture();
+    const r = await renderComponent(
+      <SentenceBlock doc={doc} readOnly={false} sentence={sentence} nodesById={nodesById} />,
+    );
+    return { r, sentence, nodesById };
+  };
+  const options = () =>
+    [...document.querySelectorAll('[role="option"]')].map((o) => o.textContent.trim());
+  const type = async (r, el, text) => {
+    for (const ch of text) {
+      await r.step(() => {
+        const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+        set.call(el, el.value + ch);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    }
+  };
+
+  it('m lists the nodes it can move under, and a pick moves it', async () => {
+    const doc = docStub();
+    const { r } = await mount(doc);
+    const person = nodeByVar(r.container, 's1p');
+    await r.step(() => person.focus());
+    await r.step(() => press(person, 'm'));
+    expect(modeNote(r.container).textContent).toMatch(/Pick or click the new parent/);
+    expect(document.activeElement).toBe(input(r.container));
+    // Not itself, and not the parent it hangs from (s1l); eat-01 is left.
+    expect(options()).toEqual(['s1e eat-01']);
+    await type(r, input(r.container), 's1e');
+    await r.step(() => press(input(r.container), 'Enter'));
+    expect(doc.moveEdge).toHaveBeenCalledWith('e1', 'n3');
+    expect(modeNote(r.container)).toBeNull();
+    expect(input(r.container)).toBeNull();
+    await r.unmount();
+  });
+
+  it('m leaves out a node under the one moving, and refuses it typed', async () => {
+    // Moving leave-02's child eat-01 under person would close no cycle, but
+    // under eat-01's own child it would.
+    const doc = docStub({ wouldCycle: (source) => source === 'n2' });
+    const { r } = await mount(doc);
+    const eat = nodeByVar(r.container, 's1e');
+    await r.step(() => eat.focus());
+    await r.step(() => press(eat, 'm'));
+    expect(options()).toEqual([]);
+    await type(r, input(r.container), 's1p');
+    await r.step(() => press(input(r.container), 'Enter'));
+    expect(doc.moveEdge).not.toHaveBeenCalled();
+    expect(r.container.querySelector('.umr-inline-problem').textContent).toBe(
+      's1p cannot be picked here.',
+    );
+    await r.step(() => press(input(r.container), 'Escape'));
+    expect(modeNote(r.container)).toBeNull();
+    expect(input(r.container)).toBeNull();
+    await r.unmount();
+  });
+
+  it('m still takes a click on the node, with the list open', async () => {
+    const doc = docStub();
+    const { r } = await mount(doc);
+    const person = nodeByVar(r.container, 's1p');
+    await r.step(() => person.focus());
+    await r.step(() => press(person, 'm'));
+    const eat = nodeByVar(r.container, 's1e');
+    const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    await r.step(() => eat.dispatchEvent(down));
+    // The press keeps focus in the list, whose blur would end the mode.
+    expect(down.defaultPrevented).toBe(true);
+    await r.step(() => eat.click());
+    expect(doc.moveEdge).toHaveBeenCalledWith('e1', 'n3');
+    expect(modeNote(r.container)).toBeNull();
+    await r.unmount();
+  });
+
+  it('r lists the other nodes, and a pick asks for the relation', async () => {
+    const doc = docStub();
+    const { r } = await mount(doc);
+    const eat = nodeByVar(r.container, 's1e');
+    await r.step(() => eat.focus());
+    await r.step(() => press(eat, 'r'));
+    expect(modeNote(r.container).textContent).toMatch(/Pick or click the second parent/);
+    expect(options()).toEqual(['s1l leave-02', 's1p person']);
+    await type(r, input(r.container), 's1p');
+    await r.step(() => press(input(r.container), 'Enter'));
+    expect(input(r.container).getAttribute('placeholder')).toBe('Relation');
+    expect(modeNote(r.container)).toBeNull();
+    await r.unmount();
+  });
+
+  it('u takes a word by its number and Enter, and says when there is none', async () => {
+    const setAnchor = vi.fn();
+    const { sentence, nodesById } = fixture();
+    const doc = docStub({ setAnchor, node: (id) => nodesById.get(id) });
+    const r = await renderComponent(
+      <SentenceBlock doc={doc} readOnly={false} sentence={sentence} nodesById={nodesById} />,
+    );
+    const eat = nodeByVar(r.container, 's1e');
+    await r.step(() => eat.focus());
+    await r.step(() => press(eat, 'u'));
+    await r.step(() => press(eat, '1'));
+    expect(modeNote(r.container).textContent).toMatch(/Word 1, Enter to anchor/);
+    await r.step(() => press(eat, 'Enter'));
+    // eat-01 stands on word 3; word 1 joins it.
+    expect(setAnchor).toHaveBeenCalledWith('n3', ['w3', 'w1']);
+    await r.step(() => press(eat, '3'));
+    await r.step(() => press(eat, 'Enter'));
+    expect(setAnchor).toHaveBeenLastCalledWith('n3', []);
+    await r.step(() => press(eat, '9'));
+    await r.step(() => press(eat, 'Enter'));
+    expect(setAnchor).toHaveBeenCalledTimes(2);
+    expect(modeNote(r.container).textContent).toMatch(/Sentence 1 has no word 9\./);
+    // Backspace takes back a digit typed.
+    await r.step(() => press(eat, '2'));
+    await r.step(() => press(eat, '5'));
+    await r.step(() => press(eat, 'Backspace'));
+    expect(modeNote(r.container).textContent).toMatch(/Word 2,/);
+    expect(input(r.container)).toBeNull();
+    await r.unmount();
+  });
+});
+
+// The owner's ruling on leaving a sentence: Escape then Tab goes on to the
+// next sentence, and a rebindable pair (PageDown, PageUp) walks them.
+describe('SentenceBlock leaving a sentence', () => {
+  afterEach(() => keys.setOverrides({}));
+  const press = (el, key, init = {}) => {
+    const e = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init });
+    el.dispatchEvent(e);
+    return e;
+  };
+  const docStub = () => ({
+    graph: {},
+    canConfirmSentence: () => false,
+    canDiscardSentence: () => false,
+    canConfirm: () => false,
+  });
+
+  for (const readOnly of [false, true]) {
+    it(`Escape then Tab asks for the next sentence${readOnly ? ', read-only too' : ''}`, async () => {
+      const { sentence, nodesById } = fixture();
+      const goToSentence = vi.fn(() => true);
+      const r = await renderComponent(
+        <SentenceBlock
+          doc={docStub()}
+          readOnly={readOnly}
+          sentence={sentence}
+          nodesById={nodesById}
+          goToSentence={goToSentence}
+        />,
+      );
+      const leave = r.container.querySelector('[data-node-var="s1l"]');
+      await r.step(() => leave.focus());
+      await r.step(() => press(leave, 'Escape'));
+      const section = r.container.querySelector('.umr-block');
+      expect(document.activeElement).toBe(section);
+      let e;
+      await r.step(() => {
+        e = press(section, 'Tab');
+      });
+      expect(goToSentence).toHaveBeenCalledWith(1, 1);
+      expect(e.defaultPrevented).toBe(true);
+      await r.unmount();
+    });
+  }
+
+  it('lets Tab go on as usual off the last sentence', async () => {
+    const { sentence, nodesById } = fixture();
+    const goToSentence = vi.fn(() => false);
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={docStub()}
+        readOnly={false}
+        sentence={sentence}
+        nodesById={nodesById}
+        goToSentence={goToSentence}
+      />,
+    );
+    const section = r.container.querySelector('.umr-block');
+    await r.step(() => section.focus());
+    let e;
+    await r.step(() => {
+      e = press(section, 'Tab');
+    });
+    expect(goToSentence).toHaveBeenCalledWith(1, 1);
+    expect(e.defaultPrevented).toBe(false);
+    await r.unmount();
+  });
+
+  it('keeps Tab on a node for a child, and Shift+Tab for leaving backwards', async () => {
+    const { sentence, nodesById } = fixture();
+    const goToSentence = vi.fn(() => true);
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={docStub()}
+        readOnly={false}
+        sentence={sentence}
+        nodesById={nodesById}
+        goToSentence={goToSentence}
+      />,
+    );
+    const section = r.container.querySelector('.umr-block');
+    await r.step(() => section.focus());
+    await r.step(() => press(section, 'Tab', { shiftKey: true }));
+    const leave = r.container.querySelector('[data-node-var="s1l"]');
+    await r.step(() => leave.focus());
+    await r.step(() => press(leave, 'Tab'));
+    expect(goToSentence).not.toHaveBeenCalled();
+    expect(r.container.querySelector('.umr-inline-editor')).not.toBeNull();
+    await r.unmount();
+  });
+
+  it('walks to the next and previous sentence on PageDown and PageUp, rebindable', async () => {
+    const { sentence, nodesById } = fixture();
+    const goToSentence = vi.fn(() => true);
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={docStub()}
+        readOnly={true}
+        sentence={{ ...sentence, index: 4 }}
+        nodesById={nodesById}
+        goToSentence={goToSentence}
+      />,
+    );
+    const leave = r.container.querySelector('[data-node-var="s1l"]');
+    await r.step(() => leave.focus());
+    await r.step(() => press(leave, 'PageDown'));
+    expect(goToSentence).toHaveBeenLastCalledWith(4, 1);
+    await r.step(() => press(leave, 'PageUp'));
+    expect(goToSentence).toHaveBeenLastCalledWith(4, -1);
+    await r.step(() => keys.setOverrides({ 'canvas.nextSentence': ['j'] }));
+    await r.step(() => press(leave, 'j'));
+    expect(goToSentence).toHaveBeenLastCalledWith(4, 1);
+    expect(goToSentence).toHaveBeenCalledTimes(3);
     await r.unmount();
   });
 });

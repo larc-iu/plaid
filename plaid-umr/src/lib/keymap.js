@@ -4,7 +4,8 @@
 // shape of an action and @ui/lib/chords.js for the chord grammar.
 //
 // Positional keys stay put and are listed as `fixed` rows so nothing can be
-// bound over them: the arrows move between nodes, Tab starts a child, Enter
+// bound over them: the arrows move between nodes, Tab starts a child (and,
+// from the sentence itself after Escape, goes on to the next sentence), Enter
 // opens the concept, Escape backs out of a mode or a picker. Bare letters
 // are `outsideText`: a node is not a text box, and a picker's input is.
 
@@ -55,7 +56,7 @@ export const KEY_ACTIONS = [
     id: 'node.anchor',
     scope: 'canvas',
     group: 'node',
-    label: 'Change the anchor: click words, Escape to finish',
+    label: 'Change the anchor: click words or type their numbers, Escape to finish',
     keys: ['u'],
     outsideText: true,
   },
@@ -63,7 +64,7 @@ export const KEY_ACTIONS = [
     id: 'node.move',
     scope: 'canvas',
     group: 'node',
-    label: 'Move under another node: click it',
+    label: 'Move under another node: pick it',
     keys: ['m'],
     outsideText: true,
   },
@@ -85,7 +86,7 @@ export const KEY_ACTIONS = [
     id: 'node.reentrancy',
     scope: 'canvas',
     group: 'node',
-    label: 'Add a second parent: click it',
+    label: 'Add a second parent: pick it',
     keys: ['r'],
     outsideText: true,
   },
@@ -148,6 +149,20 @@ export const KEY_ACTIONS = [
     label: 'Change a document relation: pick it',
     keys: ['d'],
     outsideText: true,
+  },
+  {
+    id: 'canvas.nextSentence',
+    scope: 'canvas',
+    group: 'canvas',
+    label: 'Next sentence',
+    keys: ['PageDown'],
+  },
+  {
+    id: 'canvas.previousSentence',
+    scope: 'canvas',
+    group: 'canvas',
+    label: 'Previous sentence',
+    keys: ['PageUp'],
   },
   {
     id: 'canvas.newRoot',

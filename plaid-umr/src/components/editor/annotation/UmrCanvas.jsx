@@ -120,10 +120,13 @@ export const UmrCanvas = ({
     [pageOfSentence, setPage],
   );
 
+  // A selector, or a list of them tried in turn.
   useEffect(() => {
     if (!pending) return;
     const raf = requestAnimationFrame(() => {
-      focusElement(window.document.querySelector(pending.selector));
+      const selectors = [pending.selector].flat();
+      const el = selectors.map((one) => window.document.querySelector(one)).find(Boolean);
+      focusElement(el);
       setPending(null);
     });
     return () => cancelAnimationFrame(raf);
@@ -147,6 +150,29 @@ export const UmrCanvas = ({
       const selector = `[data-node-id="${nodeId}"]`;
       if (node?.sentence != null) revealRef.current(node.sentence, selector);
       else focusElement(window.document.querySelector(selector));
+    },
+    [doc],
+  );
+
+  // The next or previous sentence (`step` 1 or -1) from the one numbered
+  // `from`, on this page or another: its root takes focus, or, with no graph,
+  // the empty graph's stop, or the sentence itself where there is neither (a
+  // read-only view). False when there is no such sentence. The same one
+  // function for the life of the canvas, as goToNode.
+  const goToSentence = useCallback(
+    (from, step) => {
+      const list = doc.graph.sentences;
+      const at = list.findIndex((s) => s.index === from);
+      const next = at < 0 ? null : list[at + step];
+      if (!next) return false;
+      const block = `.umr-block[data-sentence-index="${next.index}"]`;
+      const root = next.roots[0];
+      revealRef.current(next.index, [
+        ...(root ? [`${block} [data-node-id="${root.id}"]`] : []),
+        `${block} .umr-graph[tabindex="0"]`,
+        block,
+      ]);
+      return true;
     },
     [doc],
   );
@@ -250,6 +276,7 @@ export const UmrCanvas = ({
           lexicon={lexicon}
           problems={problems.get(sentence.index) || NO_PROBLEMS}
           goToNode={goToNode}
+          goToSentence={goToSentence}
           onActive={onActive}
           comments={comments}
           canComment={canComment}
