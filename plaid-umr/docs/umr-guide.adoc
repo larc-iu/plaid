@@ -61,6 +61,7 @@ The editor has three levels:
 
 * **Projects**: the list of projects you can open.
 * **Documents**: a project's documents, with the project's tabs (Guidelines, Assistant, Validation, Activity, Settings, Import and export). Validation, Activity and Settings are shown only to maintainers.
+Anyone else who opens Validation, Activity, **General** or **UMR settings** by its address is sent back to the project list with `Only a project's maintainers can open this page.`
 * **A document**: its Annotate, Details, Comments and Export tabs.
 
 = Projects

@@ -63,6 +63,7 @@ The editor has a few levels you move between:
 
 * **Projects**: the list of all projects you can access. This is your home screen after signing in.
 * **Documents**: the texts inside one project. Beside the document list sit the project's own tabs: **Search**, **Assistant**, and **Export** for everyone, and **Bulk Edit**, **Validation**, **Activity**, and **Settings** for maintainers.
+Anyone else who opens one of these four by its address is shown the documents with `Only a project's maintainers can open this page.`
 * **A document's tabs**: **Baseline**, **Media**, **Tokenize**, **Analyze**, **Comments**, **Export**, and **Details**, switched at the top of an open document.
 
 The **Vocabularies** link in the header leads to the shared lexicons (see <<_vocabularies>>), and **Guide** opens this document.

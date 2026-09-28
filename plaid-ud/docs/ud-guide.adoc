@@ -63,7 +63,7 @@ The editor has three levels you move between:
 * **Documents**: the texts inside one project.
 * **A document's own tabs**: `Text Editor`, `Annotate`, `Export`, `Comments` and `Details`, switched at the top of an open document.
 
-Project-wide tabs sit alongside the document list inside each project: `Search`, `Guidelines`, `Assistant`, `Validation`, `Activity`, `Settings` and `Import and export`. `Validation`, `Activity` and `Settings` are for maintainers, and `Assistant` appears only when one is running. The assistant is also a panel you can open beside any screen (see <<_the_panel>>).
+Project-wide tabs sit alongside the document list inside each project: `Search`, `Guidelines`, `Assistant`, `Validation`, `Activity`, `Settings` and `Import and export`. `Validation`, `Activity` and `Settings` are for maintainers, and `Assistant` appears only when one is running. Anyone else who opens `Validation`, `Activity`, `General` or `UD settings` by its address is sent back to the project list with `Only a project's maintainers can open this page.` The assistant is also a panel you can open beside any screen (see <<_the_panel>>).
 
 = Projects
 
