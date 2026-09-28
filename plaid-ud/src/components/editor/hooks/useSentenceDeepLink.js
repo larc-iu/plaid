@@ -57,7 +57,8 @@ export function useSentenceDeepLink({
     const index = indexById.get(sentId);
     const target = Math.floor(index / pageSize);
     if (target !== page) {
-      setPage(target);
+      // The link is the history entry already: its page is written in place.
+      setPage(target, { replace: true });
       return;
     }
     answeredRef.current = asked;

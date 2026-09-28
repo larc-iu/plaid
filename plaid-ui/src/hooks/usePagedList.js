@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { listPrefKey, useStickyState } from './useStickyState.js';
 
@@ -70,16 +70,27 @@ const fromParam = (raw) => {
 // since it is an effect dependency. `storageKey` (from `pageKey`) remembers the
 // page across visits; without one the paging is per-mount as before.
 //
-// `urlParam` puts the page in the query string as well. The URL WINS where it
-// says a page, and the remembered one is what a bare list URL falls back on, so
-// a link carries the page its sender was on while a return visit still lands
-// where that reader left. Page 1 is never written, the way `?tab=` leaves its
-// default off. Turning a page is a push, so Back undoes it.
+// `urlParam` puts the page in the query string as well, and from then on the
+// URL is what the list shows: page 1 is never written (the way `?tab=` leaves
+// its default off), so a bare list URL is page 1. The one exception is the
+// list's first render under a `storageKey`: a bare URL then opens the
+// remembered page, so a return visit lands where that reader left, and the
+// URL is corrected to say so in place (a replace, so Back does not return to
+// a bare entry that would now mean page 1). A link carries the page its
+// sender was on either way.
+//
+// Turning a page is a push, so Back undoes it. `setPage(n, { replace: true })`
+// is for a turn the reader did not ask for as such (a deep link to a row on
+// another page, a reset by a new search), which must not leave an entry of its
+// own for Back to stop at. Turning to the page already in the URL writes
+// nothing, so it pushes no duplicate entry either.
 //
 // Without this a bare project URL opened EWT's documents on page 12 of 12 with
 // nothing in the address saying so, and the link a colleague received showed
 // them a different page of the same list. The selected lexicon entry sitting
-// beside it has been in the URL (`?item=`) all along.
+// beside it has been in the URL (`?item=`) all along. And with the remembered
+// page as the fallback for EVERY bare URL, Back from `?page=2` to the bare
+// entry showed page 2 again.
 export const usePagedList = (
   items,
   { pageSize = LIST_PAGE_SIZE, resetKey, storageKey, urlParam } = {},
@@ -87,24 +98,81 @@ export const usePagedList = (
   const [remembered, setRemembered] = useStickyState(storageKey ?? null, 0, isPage);
   const [params, setParams] = useSearchParams();
   const inUrl = urlParam ? fromParam(params.get(urlParam)) : null;
-  const page = inUrl ?? remembered;
+  // The key the remembered page has been restored under, once it has: until
+  // then a bare URL means the remembered page, after it page 1.
+  const [restoredFor, setRestoredFor] = useState(undefined);
+  const restoring = !!urlParam && restoredFor !== storageKey;
+  // A page written to the URL and not in it yet. The router can take the new
+  // location a render later than this hook's own state, and a list that read
+  // the old URL meanwhile showed page 1 for that render: long enough for a
+  // deep link to look for its row there, not find it, and give up.
+  const [heading, setHeading] = useState(null);
+  const headed = heading && heading.key === storageKey ? heading.page : null;
+  let page = remembered;
+  if (urlParam) page = headed ?? inUrl ?? (restoring ? remembered : 0);
 
-  const setPage = useCallback(
-    (next) => {
-      setRemembered(next);
-      if (!urlParam) return;
-      setParams((prev) => {
-        // Copy so the rest of the query (`?tab=`, `?item=`) survives.
-        const out = new URLSearchParams(prev);
-        if (next <= 0) out.delete(urlParam);
-        else out.set(urlParam, String(next + 1));
-        return out;
-      });
+  // The page into the URL. The URL is the truth, and the remembered page
+  // follows what it shows (the effect below).
+  const write = useCallback(
+    (next, { replace = false } = {}) => {
+      setHeading({ key: storageKey, page: next });
+      setParams(
+        (prev) => {
+          // Copy so the rest of the query (`?tab=`, `?item=`) survives.
+          const out = new URLSearchParams(prev);
+          if (next <= 0) out.delete(urlParam);
+          else out.set(urlParam, String(next + 1));
+          return out;
+        },
+        { replace },
+      );
     },
-    [setRemembered, setParams, urlParam],
+    [setParams, urlParam, storageKey],
   );
 
-  useResetOnChange(resetKey, () => setPage(0));
+  // Arrived.
+  useEffect(() => {
+    if (headed != null && (inUrl ?? 0) === headed) setHeading(null);
+  }, [headed, inUrl]);
+
+  // The first render under this key: a bare URL showing the remembered page
+  // is made to say so, in place. Asked once per key: StrictMode runs an effect
+  // twice from the same render, and the second run wrote the remembered page
+  // back over a deep link's.
+  const restoreAsked = useRef(undefined);
+  useEffect(() => {
+    if (!restoring) return;
+    setRestoredFor(storageKey);
+    if (inUrl != null || remembered <= 0 || restoreAsked.current === storageKey) return;
+    restoreAsked.current = storageKey;
+    write(remembered, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restoring, storageKey]);
+
+  // What the URL shows is where this reader left the list, including where
+  // Back and Forward took them. Only a change is stored: a default nobody
+  // chose is not (useStickyState).
+  useEffect(() => {
+    if (urlParam && !restoring && page !== remembered) setRemembered(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, restoring]);
+
+  // A turn asked for in the same mount as the restore (a deep link's) wins
+  // over it: it is written after it. Otherwise a turn to the page already
+  // shown writes nothing, since a same-URL navigate pushes a no-op entry.
+  const setPage = useCallback(
+    (next, opts) => {
+      if (!urlParam) {
+        setRemembered(next);
+        return;
+      }
+      if (!restoring && next === page) return;
+      write(next, opts);
+    },
+    [setRemembered, write, urlParam, restoring, page],
+  );
+
+  useResetOnChange(resetKey, () => setPage(0, { replace: true }));
 
   const slice = useMemo(() => pageSlice(items, page, pageSize), [items, page, pageSize]);
   return { ...slice, setPage };

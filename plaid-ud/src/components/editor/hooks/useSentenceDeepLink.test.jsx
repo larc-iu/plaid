@@ -86,7 +86,7 @@ describe('the ?sent= deep link', () => {
       <Probe {...base} indexById={ids} sentParam="31" setPage={setPage} />,
     );
     // Sentence 31 is the 31st row, index 30: page 1.
-    expect(setPage).toHaveBeenCalledWith(1);
+    expect(setPage).toHaveBeenCalledWith(1, { replace: true });
     const row = putRow('id-30');
     await view.rerender(
       <Probe {...base} indexById={ids} sentParam="31" setPage={setPage} page={1} />,
@@ -101,7 +101,7 @@ describe('the ?sent= deep link', () => {
     const setPage = vi.fn();
     const view = await renderComponent(<Probe {...base} sentParam="s30" setPage={setPage} />);
     // Page 0 is showing and s30 is on page 1, so the first pass only turns it.
-    expect(setPage).toHaveBeenCalledWith(1);
+    expect(setPage).toHaveBeenCalledWith(1, { replace: true });
     expect(flashOf(view)).toBe('');
 
     const row = putRow('s30');
@@ -193,7 +193,7 @@ describe('the ?sent= deep link', () => {
     );
     expect(setPage).not.toHaveBeenCalled();
     await view.rerender(<Probe {...base} sentParam="s30" setPage={setPage} />);
-    expect(setPage).toHaveBeenCalledWith(1);
+    expect(setPage).toHaveBeenCalledWith(1, { replace: true });
     await view.unmount();
   });
 });

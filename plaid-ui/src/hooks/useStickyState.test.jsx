@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { StrictMode } from 'react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { StrictMode, useEffect, useRef, useState } from 'react';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { renderComponent } from '../test/renderComponent.jsx';
 import { listPrefKey, useStickyState, useStickySort } from './useStickyState.js';
 import { usePagedList, pageKey } from './usePagedList.js';
@@ -220,10 +220,11 @@ describe('usePagedList', () => {
     await unmount();
   });
 
-  it('falls back on the remembered page when the URL says none', async () => {
+  // And says so: the bare URL is corrected in place.
+  it('opens a bare URL on the remembered page, and writes it to the URL', async () => {
     localStorage.setItem('p', JSON.stringify(4));
     const { container, unmount } = await renderComponent(<Paged storageKey="p" urlParam="page" />);
-    expect(text(container)).toBe('4');
+    expect(text(container)).toBe('4?page=5');
     await unmount();
   });
 
@@ -233,6 +234,129 @@ describe('usePagedList', () => {
     );
     expect(text(container)).toBe('0?page=nope');
     await unmount();
+  });
+
+  // History, read off a probe with the router's own Back. The list is the
+  // second entry, so a Back past its first entry lands on '/before'.
+  describe('and history', () => {
+    const Probe = ({ storageKey }) => {
+      const items = Array.from({ length: 500 }, (_, i) => i);
+      const [resetKey, setResetKey] = useState('a');
+      const paged = usePagedList(items, { storageKey, resetKey, urlParam: 'page' });
+      const { pathname, search } = useLocation();
+      const navigate = useNavigate();
+      return (
+        <>
+          <output>{`${paged.page} ${pathname}${search}`}</output>
+          <button data-do="turn" onClick={() => paged.setPage(2)} />
+          <button data-do="same" onClick={() => paged.setPage(paged.page)} />
+          <button data-do="jump" onClick={() => paged.setPage(3, { replace: true })} />
+          <button data-do="search" onClick={() => setResetKey('b')} />
+          <button data-do="back" onClick={() => navigate(-1)} />
+          <button data-do="forward" onClick={() => navigate(1)} />
+        </>
+      );
+    };
+    const mount = (props = {}, at = '/list') =>
+      renderComponent(
+        <MemoryRouter initialEntries={['/before', at]} initialIndex={1}>
+          <Probe {...props} />
+        </MemoryRouter>,
+      );
+    const shown = (c) => c.querySelector('output').textContent;
+    const press = (r, what) => r.step(() => r.container.querySelector(`[data-do=${what}]`).click());
+
+    it('shows page 1 on Back to the bare URL, not the page it remembers', async () => {
+      const r = await mount({ storageKey: 'p' });
+      await press(r, 'turn');
+      expect(shown(r.container)).toBe('2 /list?page=3');
+      await press(r, 'back');
+      expect(shown(r.container)).toBe('0 /list');
+      await press(r, 'forward');
+      expect(shown(r.container)).toBe('2 /list?page=3');
+      await r.unmount();
+    });
+
+    it('remembers where Back left the list', async () => {
+      const r = await mount({ storageKey: 'p' });
+      await press(r, 'turn');
+      expect(JSON.parse(localStorage.getItem('p'))).toBe(2);
+      await press(r, 'back');
+      expect(JSON.parse(localStorage.getItem('p'))).toBe(0);
+      await r.unmount();
+    });
+
+    it('restores the remembered page in place, so Back leaves the list', async () => {
+      localStorage.setItem('p', JSON.stringify(4));
+      const r = await mount({ storageKey: 'p' });
+      expect(shown(r.container)).toBe('4 /list?page=5');
+      await press(r, 'turn');
+      await press(r, 'back');
+      expect(shown(r.container)).toBe('4 /list?page=5');
+      await press(r, 'back');
+      expect(shown(r.container)).toBe('0 /before');
+      await r.unmount();
+    });
+
+    it('pushes nothing for a turn to the page already shown', async () => {
+      const r = await mount({ storageKey: 'p' }, '/list?page=3');
+      await press(r, 'same');
+      await press(r, 'back');
+      expect(shown(r.container)).toBe('0 /before');
+      await r.unmount();
+    });
+
+    it('replaces the entry for a turn the reader did not ask for', async () => {
+      const r = await mount({ storageKey: 'p' });
+      await press(r, 'jump');
+      expect(shown(r.container)).toBe('3 /list?page=4');
+      await press(r, 'back');
+      expect(shown(r.container)).toBe('0 /before');
+      await r.unmount();
+    });
+
+    // A deep link turns to its row's page in the same mount as the restore.
+    // Under StrictMode the restore's effect ran twice and its second run
+    // wrote the remembered page back over the link's.
+    const Linked = ({ to }) => {
+      const items = Array.from({ length: 500 }, (_, i) => i);
+      const paged = usePagedList(items, { storageKey: 'p', urlParam: 'page' });
+      const { setPage } = paged;
+      const asked = useRef(false);
+      useEffect(() => {
+        if (asked.current) return;
+        asked.current = true;
+        setPage(to, { replace: true });
+      }, [setPage, to]);
+      const { search } = useLocation();
+      return <output>{`${paged.page}${search}`}</output>;
+    };
+    for (const to of [3, 0]) {
+      it(`lets a deep link to page ${to + 1} win over the remembered page`, async () => {
+        localStorage.setItem('p', JSON.stringify(4));
+        const r = await renderComponent(
+          <StrictMode>
+            <MemoryRouter initialEntries={['/list']}>
+              <Linked to={to} />
+            </MemoryRouter>
+          </StrictMode>,
+        );
+        expect(shown(r.container)).toBe(to ? `${to}?page=${to + 1}` : '0');
+        await r.unmount();
+      });
+    }
+
+    // A push here would leave `?page=3` behind the new search, and Back would
+    // show page 3 of the new results.
+    it('replaces the entry when a new search turns back to page 1', async () => {
+      const r = await mount({ storageKey: 'p' });
+      await press(r, 'turn');
+      await press(r, 'search');
+      expect(shown(r.container)).toBe('0 /list');
+      await press(r, 'back');
+      expect(shown(r.container)).toBe('0 /list');
+      await r.unmount();
+    });
   });
 
   it('keeps the rest of the query when it turns a page', async () => {

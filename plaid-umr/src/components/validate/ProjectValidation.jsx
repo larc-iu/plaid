@@ -170,6 +170,9 @@ export const ProjectValidation = () => {
             rowKey={(p) => p.key}
             defaultSort={{ key: 'document', dir: 'asc' }}
             noun="problem"
+            // In the URL, so Back from the sentence a row links to returns to
+            // the page the row was on.
+            pageParam="page"
             loading={busy}
             empty="Every check passed."
             search={{
