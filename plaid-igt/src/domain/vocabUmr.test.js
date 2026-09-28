@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   argKeyProblem,
+  argRowProblems,
+  argsToWrite,
   linksUmrProject,
   nextArgKey,
   readArgs,
@@ -158,5 +160,34 @@ describe('whether a vocabulary is linked to a UMR project', () => {
     const bare = umrProject('v1');
     expect(bare.config).toBeUndefined();
     expect(linksUmrProject([bare], 'v1')).toBe(true);
+  });
+});
+
+describe('argument rows as they are edited', () => {
+  const row = (key, description, base = null) => ({ key, description, base });
+
+  it('names each row’s problem, a later row repeating a name included', () => {
+    expect(
+      argRowProblems([row('ARG0', 'a'), row('ARG', 'b'), row('arg0', 'c'), row('ARG1', 'd')]),
+    ).toEqual([
+      null,
+      'An argument is named ARG0, ARG1 and so on: ARG',
+      'ARG0 is named twice.',
+      null,
+    ]);
+  });
+
+  it('writes a row with a problem as it was read, and a new one not at all', () => {
+    const base = { key: 'ARG2', description: 'recipient' };
+    expect(
+      argsToWrite([row('ARG0', 'giver '), row('ARG', 'recipient!', base), row('Agent', 'new')]),
+    ).toEqual([{ key: 'ARG0', description: 'giver ' }, base]);
+  });
+
+  it('never writes a row as it was read over a row now named the same', () => {
+    const base = { key: 'ARG1', description: 'thing' };
+    expect(argsToWrite([row('ARG1', 'renamed'), row('ARG1', 'thing', base)])).toEqual([
+      { key: 'ARG1', description: 'renamed' },
+    ]);
   });
 });

@@ -69,6 +69,42 @@ export const argKeyProblem = (key) => {
 };
 
 /**
+ * Each argument row's problem, or null: a name that is not an ARG, or one an
+ * earlier row already has. Names compare as they are written, upper case.
+ */
+export const argRowProblems = (rows) => {
+  const seen = new Set();
+  return (rows || []).map((row) => {
+    const bad = argKeyProblem(row.key);
+    if (bad) return bad;
+    const key = String(row.key).trim().toUpperCase();
+    if (seen.has(key)) return `${key} is named twice.`;
+    seen.add(key);
+    return null;
+  });
+};
+
+/**
+ * The argument rows as they are written to the entry. A row with a problem
+ * is not written as it stands: it keeps what it held when it was read
+ * (`base`, a `{key, description}` pair), or is left out when it is new. So
+ * a name half retyped, `ARG2` to `ARG` on its way to `ARG3`, never takes the
+ * argument out of the entry, and two rows given one name never fold into one.
+ */
+export const argsToWrite = (rows) => {
+  const problems = argRowProblems(rows);
+  const good = (rows || []).filter((_, i) => !problems[i]);
+  const named = new Set(good.map((r) => String(r.key).trim().toUpperCase()));
+  const kept = (rows || [])
+    .filter((r, i) => problems[i] && r.base && !named.has(String(r.base.key).toUpperCase()))
+    .map((r) => r.base);
+  return [
+    ...good.map(({ key, description }) => ({ key: String(key).trim(), description })),
+    ...kept,
+  ];
+};
+
+/**
  * The next free argument name for a list, so adding a row does not collide
  * with one already there.
  */
