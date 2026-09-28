@@ -201,3 +201,58 @@ def test_a_document_that_cannot_be_found_is_left_to_the_staleness_check(spec):
     client.documents.locked = gone
     helper = sbs._approve(spec, client, plan)
     assert helper.done and helper.done[-1]['kind'] == 'applied', helper.errors
+
+
+# --- a lock that lapses while the plan is written ---------------------------------
+
+def _lapse_before_the_first_batch(monkeypatch, client):
+    """The keep-alive fails as the plan is written. As on the real client,
+    the loss is recorded on the client, every later non-GET it makes raises
+    it (the record's writes too) and the ``locked()`` block clears it on its
+    way out."""
+    from plaid_client import DocumentLockLost
+    lost = DocumentLockLost('The lock on document d lapsed: it could not be renewed.', document_id='d')
+    state = {'lost': None}
+    real_locked = client.documents.locked
+
+    import contextlib
+
+    @contextlib.contextmanager
+    def locked(document_id, **kw):
+        with real_locked(document_id, **kw) as lock:
+            try:
+                yield lock
+            finally:
+                state['lost'] = None
+
+    client.documents.locked = locked
+    real_put = client.user_data.put
+
+    def put(*a, **kw):
+        if state['lost'] is not None:
+            raise state['lost']
+        return real_put(*a, **kw)
+
+    monkeypatch.setattr(client.user_data, 'put', put)
+
+    def flush(self):
+        state['lost'] = lost
+        raise lost
+
+    monkeypatch.setattr(core_plan.TrackingBatcher, 'flush', flush)
+
+
+def test_a_lock_that_lapses_during_the_apply_still_answers_and_settles_the_card(spec, monkeypatch):
+    """The record is written after the locks are released: written inside the
+    block, the lapse refused it too, the failure escaped the approval
+    unanswered and the card stayed pending over the plan."""
+    client = spec['client']()
+    plan, _ = sbs._plan(spec, client)
+    _lapse_before_the_first_batch(monkeypatch, client)
+    helper = sbs._approve(spec, client, plan)
+    assert not helper.done
+    assert helper.errors and helper.errors[-1].startswith('Failed to apply the plan:'), helper.errors
+    assert 'lapsed' in helper.errors[-1]
+    from plaid_agent.core.conversation import ConversationStore
+    _, meta = ConversationStore(client, 'u@x', spec['pid'], spec['app']).load('c1')
+    assert not (meta or {}).get('pending')
