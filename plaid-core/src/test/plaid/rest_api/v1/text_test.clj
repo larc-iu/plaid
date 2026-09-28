@@ -371,6 +371,43 @@
     (is (= [1 2 "界"] (extent jie)))
     (is (= [0 2 "大界"] (extent segment)))))
 
+(deftest text-body-edit-leaves-no-node-on-the-space-between-deleted-words
+  ;; Two UMR nodes over several words, one ending on the deleted words and
+  ;; one beginning on them: no place for the delete keeps both off the tab
+  ;; between, so the node is moved off it after the edit. Explicit ops are
+  ;; applied as sent.
+  (let [proj (create-test-project admin-request "TextNodeSpaceProj")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        sentences (-> (create-token-layer-opts admin-request tl "Sentences"
+                                               {:overlap-mode "partitioning"})
+                      :body :id)
+        words (-> (create-token-layer-opts admin-request tl "Words"
+                                           {:overlap-mode "non-overlapping"
+                                            :parent-token-layer-id sentences})
+                  :body :id)
+        nodes (-> (create-token-layer-opts admin-request tl "Nodes" {}) :body :id)
+        make (fn [doc-name]
+               (let [doc (create-test-document admin-request proj doc-name)
+                     text-id (-> (create-text admin-request tl doc "mat\ttat\tcat\n") :body :id)]
+                 (assert-created (bulk-create-tokens admin-request [{:token-layer-id sentences :text text-id
+                                                                     :begin 0 :end 12}]))
+                 (doseq [[b e] [[0 3] [4 7] [8 11]]] (create-token admin-request words text-id b e))
+                 [text-id
+                  (-> (create-token admin-request nodes text-id 0 7) :body :id)
+                  (-> (create-token admin-request nodes text-id 4 11) :body :id)]))
+        extent (fn [id]
+                 (let [t (get-token admin-request id)]
+                   (assert-ok t)
+                   ((juxt :token/begin :token/end :token/value) (:body t))))]
+    (let [[text-id n1 n2] (make "Body")]
+      (assert-ok (update-text admin-request text-id "mat\tcat\n"))
+      (is (= [0 3 "mat"] (extent n1)))
+      (is (= [4 7 "cat"] (extent n2))))
+    (let [[text-id n1 n2] (make "Ops")]
+      (assert-ok (update-text admin-request text-id [{:type "delete" :index 4 :value 4}]))
+      (is (= [0 4 "mat\t"] (extent n1)))
+      (is (= [4 7 "cat"] (extent n2))))))
+
 (deftest text-combining-mark-typed-at-a-words-end-joins-the-word
   ;; An accent typed as a separate mark after `cafe` makes the word `café`,
   ;; through a whole body and through an explicit insert (ruled 2026-09-27).

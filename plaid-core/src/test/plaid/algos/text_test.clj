@@ -361,7 +361,8 @@
 
 (defn- body-edit
   "Apply a whole-body edit the way update-body does: diff, slide, snap the
-  deletes, pair them with their inserts, fold a word replaced outright.
+  deletes, pair them with their inserts, fold a word replaced outright,
+  apply, and move token edges off spaces they did not stand on.
   `partitioning` is the set of layers that are partitions."
   ([old new tokens] (body-edit old new tokens #{}))
   ([old new tokens partitioning]
@@ -370,7 +371,8 @@
        (ta/normalize-deletes old tokens)
        (ta/pair-replacements old tokens)
        (ta/fold-whole-words old tokens)
-       (apply-all old tokens)))
+       (apply-all old tokens)
+       (as-> r (ta/keep-edges-off-spaces old tokens r partitioning))))
   ;; `word-layers` is the set of layers that hold words
   ([old new tokens partitioning word-layers]
    (-> (ta/diff old new)
@@ -378,7 +380,8 @@
        (ta/normalize-deletes old tokens)
        (ta/pair-replacements old tokens)
        (ta/fold-whole-words old tokens word-layers)
-       (apply-all old tokens))))
+       (apply-all old tokens)
+       (as-> r (ta/keep-edges-off-spaces old tokens r partitioning)))))
 
 (deftest pair-replacements-turns-a-respelled-letter-into-a-replace
   (testing "the diff spells the respelling as delete then insert at one index"
@@ -1222,6 +1225,56 @@
         (is (= new (:text/body text)))
         (is (= want [(:token/begin node) (:token/end node)]) (str (pr-str old) " -> " (pr-str new)))
         (is (not-any? #(spaced? new %) tokens) (str (pr-str old) " -> " (pr-str new)))))))
+
+(deftest a-token-is-left-on-no-space-a-delete-gave-it
+  ;; Deleting the words between two UMR nodes over several words, one ending
+  ;; on them and one beginning on them, has no place that keeps both off the
+  ;; space between: taking the space before moves the second node's start
+  ;; onto it, taking the one after moves the first node's end. The same
+  ;; when the separators either side differ, when a respelled word stands
+  ;; beside, or when a deleted word's marker holds the delete in place.
+  (let [on (fn [layer t] (assoc t :token/layer layer))
+        w (fn [id b e] (on :w (tok id b e)))]
+    (doseq [[old new tokens want]
+            [["mat\ttat\tcat" "mat\tcat"
+              [(w :mat 0 3) (w :tat 4 7) (w :cat 8 11)
+               (on :u (tok :n1 0 7)) (on :u (tok :n2 4 11))]
+              {:n1 "mat" :n2 "cat"}]
+             ["a\tköye kai ab\ta" "a\ta"
+              [(w :a 0 1) (w :köye 2 6) (w :kai 7 10) (w :ab 11 13) (w :a2 14 15)
+               (on :u (tok :n1 0 6)) (on :u (tok :n2 11 15))]
+              {:n1 "a" :n2 "a"}]
+             ;; two different separators either side of the deleted word
+             ["ab  sat\tcat" "ab  cat"
+              [(w :ab 0 2) (w :sat 4 7) (w :cat 8 11) (on :u (tok :n1 0 7))]
+              {:n1 "ab"}]
+             ;; a word respelled beside the deleted ones
+             ["tat Yarın mat on" "tڤZ on"
+              [(w :tat 0 3) (w :yarin 4 9) (w :mat 10 13) (w :on 14 16) (on :u (tok :n1 10 16))]
+              {:n1 "on"}]
+             ;; a marker at the deleted word's end, which a delete through it
+             ;; would take
+             ["köye cat كتاب" "köye كتاب"
+              [(w :köye 0 4) (w :cat 5 8) (w :kitab 9 13) (on :z (tok :z 8 8)) (on :u (tok :n1 5 13))]
+              {:n1 "كتاب"}]]]
+      (let [{:keys [text tokens]} (body-edit old new tokens)
+            body (:text/body text)
+            read (into {} (map (fn [{:token/keys [id begin end]}] [id (cp/cp-subs body begin end)])) tokens)]
+        (is (= new body))
+        (is (= want (select-keys read (keys want))) (str (pr-str old) " -> " (pr-str new)))))))
+
+(deftest a-token-is-moved-off-a-space-only-when-it-did-not-stand-on-one
+  (let [old "ab cd ef"
+        on (fn [layer t] (assoc t :token/layer layer))
+        ;; as if `cd` were deleted and every token left where it is below
+        result {:text {:text/body "ab  ef"}
+                :tokens [(on :s (tok :s 2 6)) (on :u (tok :n 2 6)) (on :u (tok :blank 2 4))
+                         (on :u (tok :spaced 2 6))]}
+        tokens [(on :s (tok :s 3 8)) (on :u (tok :n 3 8)) (on :u (tok :blank 3 5))
+                (on :u (tok :spaced 2 8))]]
+    (is (= {:s [2 6] :n [4 6] :blank [2 4] :spaced [2 6]}
+           (into {} (map (juxt :token/id (juxt :token/begin :token/end)))
+                 (:tokens (ta/keep-edges-off-spaces old tokens result #{:s})))))))
 
 (deftest two-edits-sliding-towards-each-other-do-not-meet
   ;; Each delete cuts a token where it stands and could slide into the run of

@@ -276,8 +276,12 @@
                        (ta/fold-whole-words old-body tokens word-layers))
                    (vec new-body-or-ops))
              indexed-old (reduce (fn [m t] (assoc m (:token/id t) t)) {} tokens)
+             ;; A diffed body's tokens are then moved off a space a delete
+             ;; left them on (see ta/keep-edges-off-spaces): no place for
+             ;; one delete keeps two UMR nodes pulling opposite ways off it.
              {new-text :text new-tokens :tokens deleted-ids :deleted}
-             (ta/apply-text-edits ops text-map tokens)
+             (cond-> (ta/apply-text-edits ops text-map tokens)
+               (string? new-body-or-ops) (as-> r (ta/keep-edges-off-spaces old-body tokens r partitioning)))
              new-body (:text/body new-text)
              ;; Checked on the result, so explicit ops' inserted text is
              ;; covered as well as a whole new body.

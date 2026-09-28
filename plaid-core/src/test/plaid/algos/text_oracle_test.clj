@@ -6,7 +6,8 @@
   words or a whole sentence. Each edit is made to the words (respell one,
   delete a run, delete a run beside a respelled word, insert a new word,
   join two sentences), and the new body goes through the chain
-  `update-body` runs (diff, slide, snap, pair, fold, apply).
+  `update-body` runs (diff, slide, snap, pair, fold, apply, and edges off
+  spaces).
 
   The oracle knows which word each token was made for, so it judges the
   places the text alone leaves open too, where an oracle that trusts the
@@ -367,22 +368,14 @@
                    ;; the words and the punctuation tokens are the word
                    ;; layers (overlap forbidden, no partition, a parent)
                    (ta/fold-whole-words old tokens #{:w :p})
-                   (ta/apply-text-edits {:text/body old} tokens))
+                   (ta/apply-text-edits {:text/body old} tokens)
+                   (as-> r (ta/keep-edges-off-spaces old tokens r #{:s})))
         ps (problems c result)]
     (if (and (seq ps) (some #(empty? (problems (reading c %) result)) (rest (:group info))))
       []
       ps)))
 
 ;; ---------------------------------------------------------------- open classes
-
-(defn- node-edges
-  "For each node over several words, [first-id last-id]."
-  [{:keys [tokens]}]
-  (for [{id :token/id layer :token/layer} tokens :when (and (= layer :u) (= :um (first id)))] [(id 1) (id 2)]))
-
-(defn- ids-between [doc a b]
-  (let [ids (->> doc (mapcat identity) (map :id) (drop-while #(not= % a)))]
-    (concat (take-while #(not= % b) ids) [b])))
 
 ;; The deleted run of a case: the items of sentence `si` that were deleted,
 ;; and the items either side of it.
@@ -406,43 +399,6 @@
    :kept-letters-found-elsewhere
    (fn [{{{:keys [mode near? shared?]} :shape} :info}]
      (and shared? (not near?) (not= mode :whole)))
-
-   ;; The cut runs after the slide, so a delete it makes at the edge of a
-   ;; node over several words can leave the node on a space.
-   :node-edge-at-a-word-deleted-beside-a-respelled-one
-   (fn [{:keys [info] :as c}]
-     (and (:shape info)
-          (some (fn [[a b]] (or ((:del info) a) ((:del info) b))) (node-edges c))))
-
-   ;; Deleting the words between two nodes, one ending on them and one
-   ;; beginning on them: one delete cannot keep both off the space.
-   :nodes-on-both-sides-of-deleted-words
-   (fn [{:keys [info doc] :as c}]
-     (let [del (:del info #{})
-           edges (for [[a b] (node-edges c)
-                       :let [ids (ids-between doc a b)]
-                       :when (some (complement del) ids)]
-                   [(del a) (del b)])]
-       (and (some (fn [[da _]] da) edges) (some (fn [[_ db]] db) edges))))
-
-   ;; Deleted words at a node's edge between two different separators
-   ;; (`ab  sat\tcat` to `ab  cat`): no place for the delete keeps the
-   ;; node off the separator left.
-   :node-edge-at-deleted-words-between-different-separators
-   (fn [{:keys [info] :as c}]
-     (let [del (:del info #{})
-           {:keys [before run]} (deleted-run c)]
-       (and before (not= (:sep before) (:sep (peek run)))
-            (some (fn [[a b]] (or (del a) (del b))) (node-edges c)))))
-
-   ;; A delete through a deleted word's zero-width marker counts as a cut
-   ;; in the slide, so the delete keeps clear of it and a node at those
-   ;; words can be left on the space.
-   :marker-on-a-deleted-word-at-a-node-edge
-   (fn [{:keys [info tokens] :as c}]
-     (let [del (:del info #{})]
-       (and (some (fn [t] (and (= :z (:token/layer t)) (del (second (:token/id t))))) tokens)
-            (some (fn [[a b]] (or (del a) (del b))) (node-edges c)))))
 
    ;; Without spaces, the slide counts a word whose neighbouring letter
    ;; changes as disturbed, so a deleted run whose first letter is also the

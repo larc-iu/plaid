@@ -1514,6 +1514,42 @@
               (and (= begin end) (= end ei)) (shift t delta)
               :else (some-> t del ins))))))))
 
+(defn keep-edges-off-spaces
+  "`result` (what `apply-text-edits` gave for a whole-body update of `old`
+  with `tokens`) with every token that now begins or ends on a space it did
+  not begin or end on moved off it, onto the letters it holds. Deleting the
+  words between two UMR nodes over several words, one ending on them and
+  one beginning on them, leaves one of the two on the space between, since
+  a delete that takes the space before them moves the second node's start
+  onto it and one that takes the space after moves the first node's end:
+  `mat\\ttat\\tcat` to `mat\\tcat` with nodes over `mat tat` and `tat cat`.
+  No place for the delete keeps both off it, and the same holds for a node
+  whose edge a delete takes between two different separators. A token on a
+  layer in `partitioning` is left as it is, since a partition has no gaps,
+  and so is one holding only spaces."
+  [old tokens result partitioning]
+  (let [^ints o (.toArray (.codePoints ^String old))
+        ^ints n (.toArray (.codePoints ^String (:text/body (:text result))))
+        before (into {} (map (juxt :token/id identity)) tokens)
+        on-space? (fn [^ints cs i] (space? (aget cs (int i))))]
+    (update result :tokens
+            (fn [ts]
+              (mapv (fn [{:token/keys [id layer begin end] :as t}]
+                      (let [was (before id)]
+                        (if (or (nil? was) (>= begin end) (contains? partitioning layer)
+                                (every? #(on-space? n %) (range begin end)))
+                          t
+                          (let [b (if (and (on-space? n begin)
+                                           (not (on-space? o (:token/begin was))))
+                                    (loop [k begin] (if (on-space? n k) (recur (inc k)) k))
+                                    begin)
+                                e (if (and (on-space? n (dec end))
+                                           (not (on-space? o (dec (:token/end was)))))
+                                    (loop [k end] (if (on-space? n (dec k)) (recur (dec k)) k))
+                                    end)]
+                            (assoc t :token/begin b :token/end e)))))
+                    ts)))))
+
 (defn- apply-text-edits-in-turn
   "`apply-text-edits` one op after another, each over the whole text and
   every token."
