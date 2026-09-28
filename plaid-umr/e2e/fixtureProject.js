@@ -27,6 +27,7 @@ import {
   UMR_NAMESPACE,
 } from '../src/utils/umrLayerUtils.js';
 import { readToken } from './fixtures.js';
+import { isPrivateCore } from './privateCore.js';
 
 const PROJECT_NAME = 'E2E UMR Fixture';
 const DOC_NAME = 'english_umr-0001';
@@ -187,11 +188,11 @@ function hasIgtShape(words, morphemes) {
 }
 
 // The shared dev core is Luke's: nothing on it is ever deleted. Asked of the
-// request itself, so a run whose requests are routed to a private core (the
-// round runner's shim) counts as private.
-async function reachesSharedDevCore() {
+// request itself, so a run whose requests the round runner's shim routes to
+// its private core counts as private, and nothing else does (privateCore.js).
+async function reachesPrivateCore() {
   const res = await fetch(`${BASE_URL}/api/v1/projects`);
-  return new URL(res.url).port === '8085';
+  return isPrivateCore(res.url, process.env.FINAL_CORE);
 }
 
 async function createGlossedProject(client) {
@@ -233,11 +234,11 @@ async function ensureGlossedFixture() {
       const words = [...(info.wordTokenLayer?.tokens || [])].sort((a, b) => a.begin - b.begin);
       const stored = info.morphemeTokenLayer?.tokens || [];
       if (stored.length && !hasIgtShape(words, stored)) {
-        if (await reachesSharedDevCore()) {
+        if (!(await reachesPrivateCore())) {
           throw new Error(
             `Project "${GLOSSED_NAME}" (${project.id}) holds morphemes of an older fixture, ` +
-              'cut inside their words. This is the shared dev core, so it is left as it is: ' +
-              'run the suite on a private core, or delete the project by hand to rebuild it.',
+              'cut inside their words. This run is not on a private core, so it is left as ' +
+              'it is: run the suite on a private core, or delete the project by hand to rebuild it.',
           );
         }
         await client.projects.delete(project.id);
