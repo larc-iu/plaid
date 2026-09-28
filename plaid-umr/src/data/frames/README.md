@@ -26,6 +26,9 @@ a verb's vowel class to a doubled hyphen (`نزح--01`). `fix-arabic.mjs` repair
 them from upstream's `frames_arabic.json` into `arabic.json`, and records every
 changed id in `arabic-renames.json`. A repaired id that another roleset
 already holds with the same arguments is merged into it (32). One that holds
-different arguments keeps its doubled hyphen (22). Six ids spelling English
-words in Arabic and Latin letters (`دeفeند-01`) are left as they are. Rerun
-the script when the upstream file changes. Its header says how.
+different arguments keeps its doubled hyphen (22), as upstream has it, and
+the word guess offers it after the lemma's plain senses (أثر lists أثر-01 to
+أثر-03, then أثر--01). Five ids kept a tanwin mark: `مثنياً-01` loses it, and
+`هٍع-01` to `-03`, PropBank's `haKaE` with K typed for k, become هكع. Six ids
+spelling English words in Arabic and Latin letters (`دeفeند-01`) are left as
+they are. Rerun the script when the upstream file changes. Its header says how.

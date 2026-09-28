@@ -23185,12 +23185,12 @@
     "ARG1": "entity carrying",
     "ARG2": "entity arrested"
   },
-  "\u0645\u062b\u0646\u064a\u0627\u064b-01": {
+  "\u0645\u062b\u0646\u064a\u0627-01": {
     "ARG0": "agent dissuading",
     "ARG1": "entity being dissuaded",
     "ARG2": "theme"
   },
-  "\u0645\u062b\u0646\u064a\u0627\u064b-02": {
+  "\u0645\u062b\u0646\u064a\u0627-02": {
     "ARG0": "the praiser",
     "ARG1": "thing praised",
     "ARG2": "reason"
@@ -35370,14 +35370,14 @@
   "\u0628\u0631\u0643-01": {
     "ARG0": "entity kneeling"
   },
-  "\u0647\u064d\u0639-01": {
+  "\u0647\u0643\u0639-01": {
     "ARG0": "entity coughing"
   },
-  "\u0647\u064d\u0639-02": {
+  "\u0647\u0643\u0639-02": {
     "ARG0": "entity having peace",
     "ARG1": "to what"
   },
-  "\u0647\u064d\u0639-03": {
+  "\u0647\u0643\u0639-03": {
     "ARG0": "entity sleeping"
   },
   "\u062a\u0623\u062c\u064a\u062c-01": {

@@ -99,8 +99,42 @@ describe('the Arabic frame file', () => {
     });
   });
 
+  it('offers every roleset for its lemma typed bare, a lemma--NN one after the plain', () => {
+    const lemma = (id) => id.replace(/-\d+$/, '').replace(/-$/, '');
+    const missed = Object.keys(arabic).filter(
+      (id) => !sensesFor(arabic, lemma(id)).some((s) => s.id === id),
+    );
+    expect(missed).toEqual([]);
+    const ids = sensesFor(arabic, '\u0623\u062b\u0631').map((s) => s.id); // أثر
+    expect(ids.slice(0, 4)).toEqual([
+      '\u0623\u062b\u0631-01',
+      '\u0623\u062b\u0631-02',
+      '\u0623\u062b\u0631-03',
+      '\u0623\u062b\u0631--01',
+    ]);
+  });
+
+  it('holds no tanwin or other mark in an id', () => {
+    expect(Object.keys(arabic).filter((id) => /[\u064b-\u0652]/.test(id))).toEqual([]);
+    const ids = (word) => sensesFor(arabic, word).map((s) => s.id);
+    expect(ids('\u0647\u0643\u0639')).toEqual([
+      '\u0647\u0643\u0639-01',
+      '\u0647\u0643\u0639-02',
+      '\u0647\u0643\u0639-03',
+    ]); // هكع
+    expect(ids('\u0645\u062b\u0646\u064a\u0627\u064b')).toContain(
+      '\u0645\u062b\u0646\u064a\u0627-02', // مثنياً finds مثنيا-02
+    );
+  });
+
+  // الأم is ال + أم, and folded it also reads as ألام.
+  it('lists the lemma the word writes before one only the alif fold finds', () => {
+    expect(sensesFor(arabic, '\u0627\u0644\u0623\u0645')[0].id).toBe('\u0623\u0645-01');
+    expect(sensesFor(arabic, '\u0642\u0631\u0623\u062a')[0].id).toBe('\u0642\u0631\u0623-01'); // قرأت
+  });
+
   it('records every changed id, and each points at a roleset', () => {
-    expect(Object.keys(renames)).toHaveLength(1461);
+    expect(Object.keys(renames)).toHaveLength(1466);
     Object.entries(renames).forEach(([old, id]) => {
       expect(arabic[old]).toBeUndefined();
       expect(arabic[id]).toBeDefined();
@@ -137,6 +171,26 @@ describe('the Arabic frame file', () => {
     });
     expect(out.leftLatin).toEqual(['دeفeند-01']);
     expect(out.leftTaken).toEqual(['Oثر--01']);
+  });
+
+  // Tanwin is written only on a word's last letter, so upstream's مثنياً loses
+  // it, and هٍع, from PropBank's `haKaE` where K (kasratan) was typed for k,
+  // is هكع, a verb of coughing, calm and sleep sitting.
+  it('takes a tanwin mark off a lemma, and reads one inside a word as the k it was', () => {
+    const out = repair({
+      '\u0645\u062b\u0646\u064a\u0627\u064b-01': { ARG0: 'a' }, // مثنياً
+      '\u0647\u064d\u0639-01': { ARG0: 'b' }, // هٍع
+      '\u0642\u0631-01': { ARG0: 'c' }, // قر
+    });
+    expect(out.frames).toEqual({
+      '\u0645\u062b\u0646\u064a\u0627-01': { ARG0: 'a' },
+      '\u0647\u0643\u0639-01': { ARG0: 'b' },
+      '\u0642\u0631-01': { ARG0: 'c' },
+    });
+    expect(out.renames).toEqual({
+      '\u0645\u062b\u0646\u064a\u0627\u064b-01': '\u0645\u062b\u0646\u064a\u0627-01',
+      '\u0647\u064d\u0639-01': '\u0647\u0643\u0639-01',
+    });
   });
 
   // Not in today's file, but a later upstream may key one roleset both ways.

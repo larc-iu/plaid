@@ -1,4 +1,4 @@
-// Repairs two classes of broken roleset ids in UMR-Writer's frames_arabic.json
+// Repairs three classes of broken roleset ids in UMR-Writer's frames_arabic.json
 // and writes the result to arabic.json beside this script, with every changed
 // id in arabic-renames.json (old id to new id).
 //
@@ -17,6 +17,11 @@
 // 2. A verb's vowel class (`-ai`, `-ui`) is all short vowels, which became
 //    diacritics and were stripped, leaving `نزح--01`. The id's lemma then reads
 //    `نزح-`, and the word نزح is never offered it.
+// 3. Five ids kept a tanwin mark, the one diacritic not stripped. On the last
+//    letter (`مثنياً-01`) it is dropped like the others. Tanwin is never
+//    written inside a word, so هٍع (PropBank's `haKaE`) had K, kasratan, typed
+//    for k: it is هكع, the verb of coughing, calm and sleep sitting its three
+//    rolesets gloss.
 //
 // A roleset whose repaired id is already taken is dropped for the one there
 // if the two have the same arguments, and otherwise keeps its old id, less
@@ -46,12 +51,18 @@ const split = (id) => {
   return [id.slice(0, at), id.slice(at + 1)];
 };
 
-// The lemma with its known Latin letters in Arabic, or null when any other
-// Latin letter is left.
+// The lemma with its known Latin letters in Arabic and no tanwin, or null
+// when any other Latin letter is left.
 const arabicLemma = (lemma) => {
-  const out = lemma.replace(/[OIMWXL]/g, (c) => LATIN_LETTERS[c]);
+  const out = unmarked(lemma).replace(/[OIMWXL]/g, (c) => LATIN_LETTERS[c]);
   return /[A-Za-z]/.test(out) ? null : out;
 };
+
+// Tanwin: fathatan, dammatan, kasratan. A kasratan before a letter is the
+// Buckwalter K typed for k, so ك.
+const TANWIN = /[\u064b-\u064d]/g;
+const KASRATAN_INSIDE = /\u064d(?=\p{L})/gu;
+const unmarked = (lemma) => lemma.replace(KASRATAN_INSIDE, '\u0643').replace(TANWIN, '');
 
 const sameArgs = (a, b) =>
   JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
@@ -69,7 +80,7 @@ export function repair(upstream) {
   // letters alone for a doubled hyphen, else the id as it is.
   const plans = Object.keys(upstream).map((id) => {
     const [lemma, sense] = split(id);
-    const lettered = /[A-Za-z]/.test(lemma) ? arabicLemma(lemma) : lemma;
+    const lettered = /[A-Za-z]/.test(lemma) ? arabicLemma(lemma) : unmarked(lemma);
     if (lettered === null) return { id, repaired: id, fallback: id, latin: true };
     const repaired = lemma.endsWith('-')
       ? `${lettered.slice(0, -1)}-${sense}`
