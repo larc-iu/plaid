@@ -1681,17 +1681,29 @@
   No place for the delete keeps both off it, and the same holds for a node
   whose edge a delete takes between two different separators. A token on a
   layer in `partitioning` is left as it is, since a partition has no gaps,
-  and so is one holding only spaces."
+  and so is one holding only spaces. So is one that stood over exactly a
+  partition token and still does: a UMR node aligned to no word stands
+  over the whole of its sentence, and deleting the sentence's last word so
+  that a space ends it leaves the sentence on that space, and the node
+  over it."
   [old tokens result partitioning]
   (let [^ints o (.toArray (.codePoints ^String old))
         ^ints n (.toArray (.codePoints ^String (:text/body (:text result))))
         before (into {} (map (juxt :token/id identity)) tokens)
-        on-space? (fn [^ints cs i] (space? (aget cs (int i))))]
+        on-space? (fn [^ints cs i] (space? (aget cs (int i))))
+        extent (juxt :token/begin :token/end)
+        part? #(contains? partitioning (:token/layer %))
+        parts-now (into {} (comp (filter part?) (map (juxt :token/id extent))) (:tokens result))
+        ;; [old-extent new-extent] of each partition token still there
+        over-part (into #{}
+                        (keep (fn [p] (some->> (parts-now (:token/id p)) (vector (extent p)))))
+                        (filter part? tokens))]
     (update result :tokens
             (fn [ts]
               (mapv (fn [{:token/keys [id layer begin end] :as t}]
                       (let [was (before id)]
                         (if (or (nil? was) (>= begin end) (contains? partitioning layer)
+                                (over-part [(extent was) [begin end]])
                                 (every? #(on-space? n %) (range begin end)))
                           t
                           (let [b (if (and (on-space? n begin)

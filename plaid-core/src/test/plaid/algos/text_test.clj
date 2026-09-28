@@ -1269,13 +1269,35 @@
         on (fn [layer t] (assoc t :token/layer layer))
         ;; as if `cd` were deleted and every token left where it is below
         result {:text {:text/body "ab  ef"}
-                :tokens [(on :s (tok :s 2 6)) (on :u (tok :n 2 6)) (on :u (tok :blank 2 4))
+                :tokens [(on :s (tok :s 0 6)) (on :u (tok :n 2 6)) (on :u (tok :blank 2 4))
                          (on :u (tok :spaced 2 6))]}
-        tokens [(on :s (tok :s 3 8)) (on :u (tok :n 3 8)) (on :u (tok :blank 3 5))
+        tokens [(on :s (tok :s 0 8)) (on :u (tok :n 3 8)) (on :u (tok :blank 3 5))
                 (on :u (tok :spaced 2 8))]]
-    (is (= {:s [2 6] :n [4 6] :blank [2 4] :spaced [2 6]}
+    (is (= {:s [0 6] :n [4 6] :blank [2 4] :spaced [2 6]}
            (into {} (map (juxt :token/id (juxt :token/begin :token/end)))
                  (:tokens (ta/keep-edges-off-spaces old tokens result #{:s})))))))
+
+(deftest a-token-over-its-whole-sentence-keeps-the-sentence-edge-a-space-is-on
+  ;; A UMR node aligned to no word stands over the whole of its sentence.
+  ;; Deleting the sentence's last word so that a space ends it, or its first
+  ;; word so that a space begins it, leaves the sentence on that space, and
+  ;; the node stays over the whole sentence with it rather than coming off
+  ;; it (the app would put it back over the sentence on the next open).
+  (let [on (fn [layer t] (assoc t :token/layer layer))
+        w (fn [id b e] (on :w (tok id b e)))]
+    (doseq [[old new tokens]
+            [["a b.\nThe cat dog" "a b.\nThe cat "
+              [(on :s (tok :s1 0 5)) (on :s (tok :s2 5 16)) (w :the 5 8) (w :cat 9 12) (w :dog 13 16)
+               (on :u (tok :n 5 16))]]
+             ["a b.\ncat dog.\n" "a b.\n dog.\n"
+              [(on :s (tok :s1 0 5)) (on :s (tok :s2 5 14)) (w :cat 5 8) (w :dog 9 13)
+               (on :u (tok :n 5 14))]]
+             ["cat dog" "cat "
+              [(on :s (tok :s1 0 7)) (w :cat 0 3) (w :dog 4 7) (on :u (tok :n 0 7))]]]]
+      (let [{:keys [text tokens]} (body-edit old new tokens #{:s})
+            at (into {} (map (juxt :token/id (juxt :token/begin :token/end))) tokens)]
+        (is (= new (:text/body text)))
+        (is (= (at :s2 (at :s1)) (at :n)) (str (pr-str old) " -> " (pr-str new)))))))
 
 (deftest a-word-deleted-between-words-without-spaces-leaves-the-next-one-whole
   ;; Without spaces, deleting a word whose first letter is also the next
