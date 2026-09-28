@@ -177,20 +177,44 @@ describe('UmrNode document tags', () => {
   });
 
   // The node 26 others are a subset of: one tag, three of the ends and a
-  // count of the rest, which a double-click lists in full.
-  it('caps the ends one tag lists', async () => {
-    const onAction = vi.fn();
-    const tags = Array.from({ length: 26 }, (_, i) => tag(`t${i}`, ':subset-of', `s${i + 3}x`));
-    const r = await renderComponent(
-      <UmrNode node={node} position={position} docTags={tags} focused onAction={onAction} />,
-    );
-    expect(texts(r.container, '.umr-doc-tag')).toEqual(['s3x s4x s5x +23 :subset-of ●']);
+  // count of the rest, which one click lists in full, as a tag end opens on
+  // one click. It opens a closed list, so the second-click hazard is not
+  // there, and it neither needs the node focused nor focuses it.
+  it('caps the ends one tag lists, and the count opens on one click', async () => {
+    for (const focused of [false, true]) {
+      const onAction = vi.fn();
+      const onClick = vi.fn();
+      const tags = Array.from({ length: 26 }, (_, i) => tag(`t${i}`, ':subset-of', `s${i + 3}x`));
+      const r = await renderComponent(
+        <UmrNode
+          node={node}
+          position={position}
+          docTags={tags}
+          focused={focused}
+          onAction={onAction}
+          onClick={onClick}
+        />,
+      );
+      expect(texts(r.container, '.umr-doc-tag')).toEqual(['s3x s4x s5x +23 :subset-of ●']);
+      const more = r.container.querySelector('.umr-doc-more');
+      expect(more.title.split('\n')).toHaveLength(23);
+      expect(more.getAttribute('role')).toBe('button');
+      await click(r, more);
+      expect(onAction).toHaveBeenCalledTimes(1);
+      expect(onAction).toHaveBeenCalledWith('node.docRelations', 'n1');
+      expect(onClick).not.toHaveBeenCalled();
+      await r.unmount();
+    }
+  });
+
+  // Where nothing opens (a read-only or past view, or a mode waiting), the
+  // count is only a count.
+  it('the count opens nothing without onAction', async () => {
+    const tags = Array.from({ length: 6 }, (_, i) => tag(`t${i}`, ':subset-of', `s${i + 3}x`));
+    const r = await renderComponent(<UmrNode node={node} position={position} docTags={tags} />);
     const more = r.container.querySelector('.umr-doc-more');
-    expect(more.title.split('\n')).toHaveLength(23);
+    expect(more.getAttribute('role')).toBeNull();
     await click(r, more);
-    expect(onAction).not.toHaveBeenCalled();
-    await doubleClick(r, more);
-    expect(onAction).toHaveBeenCalledWith('node.docRelations', 'n1');
     await r.unmount();
   });
 

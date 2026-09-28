@@ -1006,8 +1006,7 @@
    read-only or past view, and not while a mode waits. */
 .umr-node--focused.umr-node--editable .umr-node-var:hover,
 .umr-node--focused.umr-node--editable .umr-node-concept:hover,
-.umr-node--focused.umr-node--editable .umr-chip:hover,
-.umr-node--focused.umr-node--editable .umr-doc-more:hover {
+.umr-node--focused.umr-node--editable .umr-chip:hover {
   text-decoration: underline dotted;
   text-underline-offset: 2px;
 }

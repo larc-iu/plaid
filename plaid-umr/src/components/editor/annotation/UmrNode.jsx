@@ -36,9 +36,9 @@ const MAX_ENDS = 4;
 // is hollow (a state, so a shape and not a pattern). The grip on the bottom
 // edge starts an edge drag.
 //
-// Every part that edits opens on a double-click (see `act` below); the ⋯,
-// the chain chip and the document tags answer a single click, since each is
-// a control of its own.
+// Every part that edits opens on a double-click (see `act` below). The ⋯,
+// the chain chip, the document tags and their +N answer a single click,
+// since each is a control of its own.
 export const UmrNode = React.memo(function UmrNode({
   node,
   position,
@@ -115,14 +115,17 @@ export const UmrNode = React.memo(function UmrNode({
         }
       : undefined;
   // The rest of a node's relations, past what it shows: read off the
-  // tooltip, and listed in full by a double-click.
+  // tooltip, and listed in full by a single click, like the tag ends beside
+  // it. It opens a closed list, where a stray letter only filters, so the
+  // second-click hazard above does not reach it.
   const more = (list, key) => (
     <span
       key={key}
       className="umr-doc-tag-end umr-doc-more"
+      role={editable ? 'button' : undefined}
       title={list.map((t) => t.text).join('\n')}
       aria-label={`${list.length} more document relations`}
-      onDoubleClick={editable ? act('node.docRelations') : undefined}
+      onClick={editable ? act('node.docRelations') : undefined}
     >
       +{list.length}
     </span>
