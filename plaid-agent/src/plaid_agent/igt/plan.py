@@ -715,7 +715,22 @@ def _entry_named(op: Dict[str, Any]) -> str:
     return f'a lexicon entry this plan names ("{op.get("label") or op.get("kind")}")'
 
 
-def check_entries(client, ops: List[Dict[str, Any]]) -> None:
+#: Up to this many entries a plan names are read one by one at approval. Past
+#: it, each lexicon of the project is read once, whole: a respelling carried
+#: into the headwords names every entry it renames, and one read each cost
+#: about 6 ms against a core on the same machine (20 s for 3000), with every
+#: document of the plan held locked meanwhile.
+ENTRY_READS_ONE_BY_ONE = 20
+
+
+def _gone(op: Dict[str, Any], by_lexicon: bool = False) -> str:
+    if by_lexicon:
+        return (f"{_entry_named(op)} no longer exists in this project's lexicons (deleted, merged away or its "
+                'lexicon taken out of the project since the plan was made)')
+    return f'{_entry_named(op)} no longer exists (deleted or merged away since the plan was made)'
+
+
+def check_entries(client, ops: List[Dict[str, Any]], project=None) -> None:
     """Refuse the plan, before anything is written, when an entry it names is
     gone from the server.
 
@@ -723,18 +738,48 @@ def check_entries(client, ops: List[Dict[str, Any]]) -> None:
     document the plan pins links it, moved no version the staleness check
     reads. A link to it failed its batch: the second one, for a link to a
     morpheme the plan's own analysis creates, after the analysis had been
-    written. The server answers 404 to an administrator and 403 to anyone
-    else for an id it no longer has, so both mean gone."""
+    written.
+
+    A few entries are read by id. The server answers an id it no longer has
+    with a 404 to an administrator, and with a 403 to anyone else and to any
+    delegated token, which is also its answer for an entry in a lexicon the
+    reader cannot reach. So a 403 is settled by the project's lexicons
+    (``project.vocabs``): an entry none of them holds is gone, and a lexicon
+    that cannot be read is a failure to read, never a deletion. Many entries
+    are settled by those lexicons directly, one read each. Without a project
+    a 403 counts as gone."""
+    named = named_entries(ops)
+    if not named:
+        return
+    vocab_ids = [v['id'] for v in (getattr(project, 'vocabs', None) or []) if v.get('id')]
     reasons = []
-    for item_id, op in named_entries(ops).items():
-        try:
-            client.vocab_items.get(item_id)
-        except Exception as e:  # noqa: BLE001 - gone or unreadable: the plan cannot apply
-            if getattr(e, 'status', None) in (403, 404):
-                reasons.append(f'{_entry_named(op)} no longer exists (deleted or merged away since the plan '
-                               'was made)')
-            else:
-                reasons.append(f'{_entry_named(op)} could not be read ({requester_message(e)})')
+    unsure: Dict[str, Dict[str, Any]] = {}
+    if vocab_ids and len(named) > ENTRY_READS_ONE_BY_ONE:
+        unsure = dict(named)
+    else:
+        for item_id, op in named.items():
+            try:
+                client.vocab_items.get(item_id)
+            except Exception as e:  # noqa: BLE001 - gone or unreadable: the plan cannot apply
+                status = getattr(e, 'status', None)
+                if status == 404 or (status == 403 and not vocab_ids):
+                    reasons.append(_gone(op))
+                elif status == 403:
+                    unsure[item_id] = op
+                else:
+                    reasons.append(f'{_entry_named(op)} could not be read ({requester_message(e)})')
+    if unsure:
+        held = set()
+        for vid in vocab_ids:
+            try:
+                layer = client.vocab_layers.get(vid, include_items=True)
+            except Exception as e:  # noqa: BLE001 - the entries cannot be checked: the plan cannot apply
+                name = next((v.get('name') for v in project.vocabs if v.get('id') == vid), None)
+                where = f'the lexicon "{name}"' if name else 'a lexicon of this project'
+                raise PlanOutOfDate(reasons + [f'{where} could not be read to check the entries this plan names '
+                                               f'({requester_message(e)})']) from e
+            held.update(it.get('id') for it in layer.get('items') or [])
+        reasons.extend(_gone(op, by_lexicon=True) for item_id, op in unsure.items() if item_id not in held)
     if reasons:
         raise PlanOutOfDate(reasons)
 
@@ -1055,7 +1100,7 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     validate_ops(ops)
     ops = resolve_scopes(client, project, ops, requester)
     ops, notes = normalize_ops(ops)
-    check_entries(client, ops)
+    check_entries(client, ops, project)
     counts: Counter = Counter()
     return applying(ops, lambda tracker: _execute(client, ops, label=label, project=project,
                                                   counts=counts, notes=notes, stamps=stamps,

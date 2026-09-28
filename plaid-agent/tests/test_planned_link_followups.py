@@ -88,6 +88,70 @@ def test_an_entry_the_server_will_not_show_the_user_counts_as_gone():
         execute_plan(c, w.plan_payload()['ops'], source='s', label='l')
 
 
+def _counting_lexicon_reads(monkeypatch):
+    """How many times approval reads a whole lexicon."""
+    reads = []
+    real = FakeClient._VocabLayers.get
+
+    def get(self, vid, include_items=None, **kw):
+        reads.append((vid, include_items))
+        return real(self, vid, include_items=include_items, **kw)
+    monkeypatch.setattr(FakeClient._VocabLayers, 'get', get)
+    return reads
+
+
+def _renames(n):
+    """A lexicon of ``n`` entries and a plan renaming every one of them, as a
+    respelling carried into the headwords stages it."""
+    from fixtures import lexicon_raw
+    lex = lexicon_raw()
+    lex['items'] = [{'id': f'vi-{i}', 'form': f'w{i}', 'metadata': {}} for i in range(n)]
+    ops = [{'kind': 'rename_entry', 'item_id': f'vi-{i}', 'form': f'v{i}', 'label': f'rename {i}'}
+           for i in range(n)]
+    return lex, ops
+
+
+def test_a_plan_naming_many_entries_reads_each_lexicon_once_not_each_entry(monkeypatch):
+    """A respelling of the whole lexicon names thousands of entries. One GET
+    each cost about 6 ms against a core on the same machine, 20 seconds for
+    3000, with every document of the plan held locked."""
+    lex, ops = _renames(300)
+    project = scan_ws(FakeClient(lexicon=lex)).project
+    c = FakeClient(lexicon=lex, fails={'vocab_items.get': AssertionError('asked one entry at a time')})
+    reads = _counting_lexicon_reads(monkeypatch)
+    execute_plan(c, ops, source='s', label='l', project=project)
+    assert reads == [('v1', True)]
+    _forget(c, 'vi-7')
+    with pytest.raises(PlanOutOfDate) as e:
+        execute_plan(c, ops, source='s', label='l', project=project)
+    assert len(e.value.reasons) == 1 and 'no longer exists' in e.value.reasons[0], e.value.reasons
+
+
+def test_a_403_is_gone_only_when_the_lexicon_says_so():
+    """A delegated token gets a 403 for an id the server no longer has, and
+    the same 403 for an entry in a lexicon it cannot read (one taken out of
+    the project, say). The lexicons tell the two apart: an entry missing from
+    every one the project can read is gone, and a lexicon that cannot be read
+    is a failure to read, never "deleted"."""
+    w = scan_ws(FakeClient())
+    call_tool(w, 'link_entry', _link('s1.w2', 'vi-gam'))
+    ops, project = w.plan_payload()['ops'], w.project
+    denied = PlaidAPIError('HTTP 403 lacks read access', status=403)
+    # Still in the lexicon: nothing to refuse.
+    execute_plan(FakeClient(fails={'vocab_items.get': denied}), ops, source='s', label='l', project=project)
+    # Gone from it.
+    c = FakeClient(fails={'vocab_items.get': denied})
+    _forget(c, 'vi-gam')
+    with pytest.raises(PlanOutOfDate, match='"gam" no longer exists'):
+        execute_plan(c, ops, source='s', label='l', project=project)
+    # The lexicon itself cannot be read: not "gone".
+    c = FakeClient(fails={'vocab_items.get': denied, 'vocab_layers.get': denied})
+    with pytest.raises(PlanOutOfDate) as e:
+        execute_plan(c, ops, source='s', label='l', project=project)
+    assert 'could not be read' in e.value.reasons[0] and 'no longer exists' not in e.value.reasons[0], e.value.reasons
+    assert c.batches == []
+
+
 def test_an_entry_the_plan_creates_is_not_asked_for():
     w = scan_ws(FakeClient())
     call_tool(w, 'set_analysis', dict(AKUNA))

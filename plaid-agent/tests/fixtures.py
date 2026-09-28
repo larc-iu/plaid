@@ -129,6 +129,7 @@ class FakeClient(AgentFakeClient):
             self.c = c
 
         def get(self, vid, include_items=None, **kw):
+            self.c.fail_if_asked('vocab_layers.get')
             by_id = getattr(self.c, '_lexicons_by_id', None)
             return by_id[vid] if by_id else self.c._lexicon
 
