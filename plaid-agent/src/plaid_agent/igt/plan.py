@@ -137,6 +137,7 @@ class Context:
         self.entry_idx: Dict[str, int] = {}
         self.respells: Dict[str, List[tuple]] = {}
         self.pending_deletes: List[str] = []   # entries to delete once their links are gone
+        self.dead_tokens: set = set()          # tokens the plan certainly deletes
         self.text_edits: List[Dict[str, Any]] = []
         self.restores: List[Dict[str, Any]] = []
         self.new_docs: List[Dict[str, Any]] = []
@@ -247,6 +248,13 @@ def _apply_link_phrase(ctx: Context, op) -> int:
 
 
 def _apply_unlink(ctx: Context, op) -> int:
+    # A link on a token the plan deletes goes with the token (a morpheme a
+    # word change or a new analysis deletes), and the server refuses a delete
+    # of a link it no longer has. A multi-word expression's link goes only
+    # with the last of its words.
+    on = op.get('token_ids') or ([op['token_id_hint']] if op.get('token_id_hint') else [])
+    if on and all(t in ctx.dead_tokens for t in on):
+        return 1
     ctx.drop('vocab_links', op['link_id'])
     return 1
 
@@ -295,8 +303,11 @@ def _apply_merge_entries(ctx: Context, op) -> int:
 
 
 def _apply_delete_entry(ctx: Context, op) -> int:
-    for lid in op.get('links') or []:
-        ctx.drop('vocab_links', lid)
+    # The entry's delete takes every link to it along, so its links are not
+    # deleted by id. One of them can be gone already: on a morpheme a new
+    # analysis or a word change in the same batch deletes, which the server
+    # takes with the morpheme and then refuses to delete again. The op still
+    # lists them, for what the plan removes.
     ctx.pending_deletes.append(op['item_id'])
     return 1
 
@@ -1144,6 +1155,9 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
         # delete naming the same id is never issued beside it.
         for _tid in _bulk_gone(ops):
             ctx.gone.add(('tokens', _tid))
+        # Certainly: a text edit's token deletes are a guess, and an unlink
+        # skipped on a guess would leave the link.
+        ctx.dead_tokens = ok.removed_tokens(KIND, ops, only_certain=True)
 
         for op in ops:
             spec = KIND[op['kind']]

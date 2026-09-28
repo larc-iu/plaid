@@ -385,3 +385,42 @@ def test_the_query_path_leaves_them_too():
     out = _stage(w, 'set_field_for_form', {}, ops, 'set_span', 'values')
     assert [op.get('token_id') for op in w.ops] == [None, 'm-4a'], out
     assert 'was left as planned' in out
+
+
+@pytest.mark.parametrize('analysis_first', [True, False])
+def test_a_deleted_entry_never_deletes_a_link_an_analysis_took_with_its_morpheme(analysis_first):
+    """A new analysis of s1.w1 deletes m-1b, and the server takes l-2 (-di)
+    with it. Deleting -di in the same plan deleted l-2 by id as well, after
+    the morpheme, which the server refuses for a link it no longer has, and
+    the atomic batch took the whole plan down on every approval. The entry's
+    own delete takes its links with it."""
+    w = scan_ws(FakeClient())
+    steps = [('set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Alidi'}]}),
+             ('delete_entry', {'entry_id': 'vi-erg'})]
+    for tool, args in (steps if analysis_first else reversed(steps)):
+        assert call_tool(w, tool, args).startswith('Planned'), w.ops
+    c = FakeClient()
+    execute_plan(c, w.plan_payload()['ops'], source='s', label='l')
+    kinds = [(k, p) for k, p in c.calls if k in ('tokens.delete', 'vocab_links.delete', 'vocab_items.delete')]
+    at = kinds.index(('tokens.delete', 'm-1b'))
+    assert ('vocab_links.delete', 'l-2') not in kinds[at:], kinds
+    assert ('vocab_items.delete', 'vi-erg') in kinds
+
+
+@pytest.mark.parametrize('reshape', [
+    ('split_word', {'document': 'd1', 'ref': 's1.w1', 'at': '2'}),
+    ('merge_words', {'document': 'd1', 'refs': ['s1.w1', 's1.w2']}),
+    ('delete_word', {'document': 'd1', 'refs': ['s1.w1']}),
+])
+def test_an_unlink_on_a_morpheme_a_word_change_deletes_is_not_sent_again(reshape):
+    """Reshaping s1.w1 deletes its morphemes, and the server takes l-2 on
+    m-1b with them. Unlinking s1.w1.m2 in the same plan deleted l-2 by id
+    after that, which the server refuses for a link it no longer has, and
+    every approval failed. The link is gone either way."""
+    w = scan_ws(FakeClient())
+    assert call_tool(w, *reshape).startswith('Planned')
+    assert call_tool(w, 'unlink_entry', {'document': 'd1', 'refs': ['s1.w1.m2']}).startswith('Planned')
+    c = FakeClient()
+    counts = execute_plan(c, w.plan_payload()['ops'], source='s', label='l')
+    assert ('vocab_links.delete', 'l-2') not in c.calls, c.calls
+    assert counts.get('unlinks') == 1, counts

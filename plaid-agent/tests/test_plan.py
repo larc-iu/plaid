@@ -586,10 +586,11 @@ def test_execute_lexicon_and_document_ops():
     first = c.batches[0]
     assert first[0] == ('vocab_links.delete', 'l-2')
     assert first[1][0] == 'vocab_links.create' and first[1][1]['args'][:2] == ('vi-ali', ['m-1b'])
-    assert first[2] == ('vocab_links.delete', 'l-9')
-    assert first[3] == ('vocab_items.update', ('vi-gam2', 'net'))
-    assert first[4] == ('documents.update', ('d1', 'Text One'))
-    # entries are deleted only after their links are gone, in the second batch
+    # A deleted entry's links go with it (l-9 is not deleted by id).
+    assert first[2] == ('vocab_items.update', ('vi-gam2', 'net'))
+    assert first[3] == ('documents.update', ('d1', 'Text One'))
+    assert len(first) == 4
+    # entries are deleted last, in the second batch
     assert c.batches[1] == [('vocab_items.delete', 'vi-erg'), ('vocab_items.delete', 'vi-gam')]
 
 
