@@ -20,7 +20,7 @@ from plaid_client.workflows.umr import (attr_value_problem, concept_problem,
                                         relation_form_problem, triple_sentence_number,
                                         unknown_doc_relation_problem,
                                         unknown_relation_problem, variable_form_problem)
-from plaid_client.workflows.umr.inventory import list_item_problem
+from plaid_client.workflows.umr.penman import value_grammar_problem
 
 from ..core.limits import OVERVIEW_DOCS, SAMPLE_LINES
 from ..core.tools import ToolError, truncate
@@ -35,6 +35,16 @@ from .project import (DOC_CONSTANTS, GNode, GROUPS, Sentence, UmrDoc, UmrProject
 # What counts as one change here, appended to the plan-is-full refusal.
 PLAN_NOTE = ('Replacing a sentence graph counts as one change per node, relation and attribute '
              'set it touches.')
+
+def _value_problem(rel, value) -> Optional[str]:
+    """Why ``value`` cannot be written under ``rel``, or None: what the file
+    cannot hold, then what validate.py cannot read (a list item's value
+    included). The app's ``UmrDocument.attrValueProblem``, which every editor
+    path asks."""
+    text = str(rel or '').strip()
+    grammar = value_grammar_problem(value, text if text.startswith(':') else f':{text}')
+    return attr_value_problem(value) or (grammar['message'] if grammar else None)
+
 
 # Parsed documents, shared across turns and users of this process. See
 # plaid_agent.core.docload for what the key covers and what it does not.
@@ -147,13 +157,12 @@ class Workspace(BaseWorkspace):
             for a in op.get('attrs') or []:
                 if (a.get('rel'), a.get('value')) in stored:
                     continue
-                problems += [relation_form_problem(a.get('rel')), attr_value_problem(a.get('value')),
-                             list_item_problem(a.get('rel'), a.get('value'))]
+                problems += [relation_form_problem(a.get('rel')),
+                             _value_problem(a.get('rel'), a.get('value'))]
         if kind == 'attrs_scope':
             problems.append(relation_form_problem(op.get('rel')))
             if op.get('value'):
-                problems += [attr_value_problem(op.get('value')),
-                             list_item_problem(op.get('rel'), op.get('value'))]
+                problems.append(_value_problem(op.get('rel'), op.get('value')))
         why = next((p for p in problems if p), None)
         if why:
             var = op.get('var') or op.get('source_var')
