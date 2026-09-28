@@ -22,6 +22,7 @@ export const AnnotationEditor = () => {
   // named or the live document (`doc`).
   const {
     projectId,
+    documentId,
     doc: shown,
     liveDoc: doc,
     pastEntry: selectedEntry,
@@ -35,7 +36,7 @@ export const AnnotationEditor = () => {
     canComment,
     canDeleteAnyComment,
   } = useDocumentEditor();
-  const { user } = useAuth();
+  const { getClient, user } = useAuth();
   // The deep link: ?sent=<sentence number>, and ?var= for one of its nodes.
   // The canvas answers it, since the block may be on another page.
   const [searchParams] = useSearchParams();
@@ -45,12 +46,21 @@ export const AnnotationEditor = () => {
   useDocumentTitle('Annotate', doc?.name, project?.name);
 
   // The initial repair, and the gate the body holds behind a spinner while it
-  // runs. Strict mode is entered here once there are edits to guard.
+  // runs. Strict mode OCC-guards annotation edits, as in plaid-ud: every write
+  // carries the document's version, so an edit made over another person's
+  // newer one is refused with a 409 and the page resyncs, where it silently
+  // overwrote theirs (or minted a variable they had just taken). It is entered
+  // only AFTER the repair's own writes have landed, before the canvas opens.
   const reconciling = useReconcileOnOpen({
     doc,
     asOf,
     canWrite: canEditProject(project, user),
+    onRepaired: () => getClient()?.enterStrictMode(documentId),
   });
+  // Strict mode is client-GLOBAL, so it is exited on the way out of this tab,
+  // or it leaks onto unrelated writes (a copy on Details, a rename) with a
+  // stale document-version and spurious 409s.
+  useEffect(() => () => getClient()?.exitStrictMode(), [documentId, getClient]);
 
   // Lock the shell's tab strip for as long as the body is a spinner: a tab
   // switch mid-repair would leave the repair writing under a screen that has
