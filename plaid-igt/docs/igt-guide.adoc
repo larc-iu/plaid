@@ -432,7 +432,7 @@ A lexicon imported before the tagset existed can thus be brought into line one e
 An entry in a vocabulary linked to a Plaid UMR project also has a **UMR** band, below its fields.
 **Roleset** is the concept the entry stands for on a UMR graph, such as `lunch-01`. Left empty, the entry stands for its headword.
 **Arguments** describe the roleset's roles, one row each: a name (`ARG0`, `ARG1`, and so on) and a description (`the one eating`).
-A name that is not an ARG, or that another row already has, is marked under its row, and the entry keeps that argument as it was until the name is mended.
+A name that is not an ARG, or that another row already has, is marked under its row, and the entry cannot be saved until the name is mended.
 Plaid UMR offers the roleset in its concept picker and the descriptions beside the roles (see the Vocabulary section of the UMR guide).
 
 == Headwords and senses
@@ -754,7 +754,7 @@ Reading needs Reader access, and applying a plan needs Writer.
 
 A reply is written into the conversation as it arrives, and it lands whether or not the page stays open: leave the tab, reload, or close the browser, and the answer is there when the conversation is next opened.
 A conversation that is still being answered says so in the list, and opening it picks the answer up as it comes.
-**Stop** ends a turn early.
+**Stop** ends a turn early, even while the model is still working on its answer.
 Conversations are private to you, kept per project, and can be downloaded or copied as Markdown.
 Your server's administrator can read them.
 The tab opens on a new conversation. The list on the left holds the earlier ones, and each has its own link.
@@ -833,6 +833,7 @@ It takes effect at the next point the work reports progress, so how promptly dep
 Auto-analyze's built-in steps stop the same way, between the documents they read.
 A run part-way through writing always finishes writing, so a stop never leaves half a document.
 Whatever it wrote stays.
+A translation or analysis run by a language model stops early when the model gives no answer for two sentences in a row, and counts the sentences it did not reach among those it could not do.
 
 If the page loses contact with a service, because the connection dropped or the service went quiet for a long time, it says so rather than reporting the run as failed.
 The service is still working. Reload the document to pick the run back up.
