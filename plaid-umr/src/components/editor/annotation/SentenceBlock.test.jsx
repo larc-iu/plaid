@@ -1814,3 +1814,113 @@ describe('SentenceBlock taking a changed entry value', () => {
     await r.unmount();
   });
 });
+
+// A sentence whose words are gone (IGT's "Clear tokens") keeps its graph, and
+// reconcile leaves it alone until the text is tokenized again. Its nodes are
+// all unaligned then, and they still have to be drawn and reached: the block
+// waited for word columns that would never come, and hid every node.
+describe('SentenceBlock with no words', () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const wordless = () => {
+    const { sentence, nodesById } = fixture();
+    const unalign = (n) => ({ ...n, wordIds: [], aligned: false });
+    const nodes = sentence.nodes.map(unalign);
+    nodes.forEach((n, i) => Object.assign(sentence.nodes[i], n));
+    return {
+      sentence: { ...sentence, text: '', words: [], ilg: [], nodes: sentence.nodes },
+      nodesById,
+    };
+  };
+  const docStub = (extra = {}) => ({
+    graph: {},
+    canConfirmSentence: () => false,
+    canDiscardSentence: () => false,
+    canConfirm: () => false,
+    orphanedBy: () => [],
+    ...extra,
+  });
+
+  it('draws every node, edge and label, each node unaligned', async () => {
+    const { sentence, nodesById } = wordless();
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={docStub()}
+        dataVersion={1}
+        readOnly={false}
+        sentence={sentence}
+        nodesById={nodesById}
+      />,
+    );
+    const nodes = all(r.container, '.umr-node');
+    expect(nodes).toHaveLength(3);
+    nodes.forEach((n) => expect(n.style.visibility).not.toBe('hidden'));
+    expect(all(r.container, '.umr-node--unaligned')).toHaveLength(3);
+    expect(all(r.container, '.umr-edges path.umr-edge')).toHaveLength(3);
+    expect(texts(r.container, '.umr-edge-label').sort()).toEqual([':ARG0', ':ARG0', ':purpose']);
+    // The root on top, its children in the row under it.
+    const top = (concept) =>
+      parseFloat(
+        nodes.find((n) => n.querySelector('.umr-node-concept').textContent === concept).style.top,
+      );
+    expect(top('leave-02')).toBeLessThan(top('eat-01'));
+    expect(all(r.container, '.umr-word')).toHaveLength(0);
+    await r.unmount();
+  });
+
+  it('keeps its keyboard stop on the first node, and the node menu works', async () => {
+    const { sentence, nodesById } = wordless();
+    const deleted = [];
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={docStub({ deleteNode: (id) => deleted.push(id) })}
+        dataVersion={1}
+        readOnly={false}
+        sentence={sentence}
+        nodesById={nodesById}
+      />,
+    );
+    // Not the empty graph's stop: the graph is there.
+    expect(r.container.querySelector('.umr-graph').hasAttribute('tabindex')).toBe(false);
+    const first = all(r.container, '.umr-node')[0];
+    expect(first.tabIndex).toBe(0);
+    await r.step(() => first.focus());
+    expect(document.activeElement).toBe(first);
+    const eat = all(r.container, '.umr-node').find(
+      (n) => n.querySelector('.umr-node-concept').textContent === 'eat-01',
+    );
+    await r.step(() =>
+      eat.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })),
+    );
+    const row = (label) =>
+      all(document, '[role="menuitem"]').find((m) => m.textContent.includes(label));
+    // Nothing to anchor to, so that row is greyed out, and the rest are not.
+    expect(row('Change anchor').hasAttribute('data-disabled')).toBe(true);
+    expect(row('Add a child').hasAttribute('data-disabled')).toBe(false);
+    await r.step(() => row('Delete node and all below it').click());
+    await r.step(() => wait(50));
+    expect(deleted).toEqual(['n3']);
+    await r.unmount();
+  });
+
+  it('starts no anchor mode on u, and a child is a node or empty space', async () => {
+    const { sentence, nodesById } = wordless();
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={docStub()}
+        dataVersion={1}
+        readOnly={false}
+        sentence={sentence}
+        nodesById={nodesById}
+      />,
+    );
+    const first = all(r.container, '.umr-node')[0];
+    const press = (key) =>
+      first.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    await r.step(() => first.focus());
+    await r.step(() => press('u'));
+    expect(texts(r.container, '.umr-block-note--mode')).toEqual([]);
+    await r.step(() => press('Tab'));
+    expect(r.container.querySelector('.umr-inline-editor input').placeholder).toBe('Concept');
+    await r.unmount();
+  });
+});

@@ -299,7 +299,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     );
   }, [sentence, nodesById, columns, sizes, direction]);
 
-  const measured = columns.size >= sentence.words.length && sentence.words.length > 0;
+  // A sentence with no words (its tokens cleared in IGT) has no columns to
+  // wait for: its nodes are all unaligned, and are placed from the
+  // sentence's start once their boxes are.
+  const measured = columns.size >= sentence.words.length;
   // A node wider than its word overhangs the first or last column, and a
   // re-entrant edge can bow out past both. The stage is padded by the
   // overhang, which moves the words and the graph together and so changes no
@@ -1030,8 +1033,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       case 'node.variable':
         setEditor({ kind: 'variable', nodeId: id, ...positionBelow(id), value: node.var });
         break;
+      // A sentence with no words has nothing to anchor to.
       case 'node.anchor':
-        setMode({ kind: 'anchor', nodeId: id });
+        if (sentence.words.length) setMode({ kind: 'anchor', nodeId: id });
         break;
       // The grip drag as two clicks: the menu, then where the child is.
       case 'node.child':
@@ -1113,6 +1117,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     const at = edge ? siblings.findIndex((x) => x.id === edge.id) : -1;
     return {
       'node.relation': !edge,
+      'node.anchor': !sentence.words.length,
       'node.move': !edge,
       'node.earlier': at <= 0,
       'node.later': at < 0 || at >= siblings.length - 1,
@@ -1468,7 +1473,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             : 'Click words or type their numbers to anchor to them.',
         move: 'Pick or click the new parent.',
         reentrancy: 'Pick or click the second parent.',
-        child: "Click the child's word, an existing node, or empty space for no word.",
+        child: sentence.words.length
+          ? "Click the child's word, an existing node, or empty space for no word."
+          : 'Click an existing node, or empty space for a new node.',
       }[mode.kind]
     : null;
 
@@ -1985,7 +1992,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                     pick: 'Variable or constant',
                     target: 'Variable',
                     docList: 'Relation',
-                    new: 'Word number or concept',
+                    new: sentence.words.length ? 'Word number or concept' : 'Concept',
                     concept: 'Concept',
                     variable: 'Variable',
                   }[editor.kind]
