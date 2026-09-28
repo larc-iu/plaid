@@ -503,13 +503,15 @@ export class UmrDocument extends DocumentModel {
       });
       await this._reload();
       const unanchored = new Set(unanchor.map((u) => u.nodeId));
+      // A node that lost its word is named as it is called from now on.
+      const renamed = new Map(renumber.map((r) => [r.nodeId, r.to]));
       return {
         findings: [],
         removed: remove.length,
         rebound: rebind.length,
         resized: resize.filter((r) => !unanchored.has(r.nodeId)).length,
         strays: strays.length,
-        unanchored: unanchor.map((u) => u.var),
+        unanchored: unanchor.map((u) => renamed.get(u.nodeId) ?? u.var),
         renumbered: renumber.length,
         unlinked: unlink.length,
       };

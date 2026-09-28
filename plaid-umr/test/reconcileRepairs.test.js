@@ -257,3 +257,30 @@ test('an add whose concept failed removes the anchor it made, in the same operat
   const ops = calls.filter((c) => c.name === 'operation').map((c) => c.args[0]);
   assert.deepEqual(ops, ['Add :ARG2 person under ye-01']);
 });
+
+test('a node that lost its word in a sentence that moved is named by its new variable', async () => {
+  const loaded = withUpdate(
+    load((raw, L) => {
+      // Sentence 1 goes (as in the renumber test) and "yemek" loses its word.
+      const first = L.sentences.tokens[0];
+      L.sentences.tokens = L.sentences.tokens.slice(1);
+      const at = raw.textLayers[0].text.body.indexOf('yemek');
+      L.words.tokens = L.words.tokens.filter((t) => t.begin >= first.end && t.begin !== at);
+      const gone = new Set(L.nodes.tokens.filter((t) => t.end <= first.end).map((t) => t.id));
+      L.nodes.tokens = L.nodes.tokens.filter((t) => !gone.has(t.id));
+      const concepts = L.nodes.spanLayers[0];
+      const dead = new Set(
+        concepts.spans.filter((s) => s.tokens.every((t) => gone.has(t))).map((s) => s.id),
+      );
+      concepts.spans = concepts.spans.filter((s) => !dead.has(s.id));
+      concepts.relationLayers.forEach((rl) => {
+        rl.relations = rl.relations.filter((r) => !dead.has(r.source) && !dead.has(r.target));
+      });
+    }),
+  );
+  const { label } = await twice(loaded);
+  assert.equal(
+    label,
+    'Repaired: 1 node lost its word (s1y2), renumbered 4 variables to match the sentences',
+  );
+});
