@@ -59,6 +59,7 @@ const store = (over = {}) => {
               .map(([key, v]) => ({ key, updatedAt: v.updatedAt })),
           ),
         },
+        serverNow: over.serverNow || (() => new Date()),
       },
     },
   };
@@ -200,6 +201,20 @@ describe('sweepOrphanFiles', () => {
       'igt:assistant:p1:file:fresh:f3:part:0',
       'igt:assistant:p1:file:live:f1:part:0',
     ]);
+  });
+
+  // The store stamps `updatedAt` by its own clock, so a browser clock hours
+  // fast must not make a file written a moment ago look old.
+  it("judges a file's age by the server's clock", async () => {
+    const serverNow = () => new Date(Date.now() - 3 * 60 * 60e3);
+    const { records, store: s } = store({
+      serverNow,
+      records: {
+        'igt:assistant:p1:file:gone:f1:part:0': { updatedAt: serverNow().toISOString() },
+      },
+    });
+    expect(await sweepOrphanFiles(s, [])).toBe(0);
+    expect([...records.keys()]).toEqual(['igt:assistant:p1:file:gone:f1:part:0']);
   });
 
   it('runs once a page load, per project', async () => {

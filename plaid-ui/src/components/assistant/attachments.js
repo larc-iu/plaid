@@ -306,7 +306,9 @@ export const sweepOrphanFiles = async (store, liveIds) => {
     pageSize: 1000,
   });
   const live = new Set(liveIds || []);
-  const old = Date.now() - ORPHAN_AGE_MS;
+  // By the server's clock, which stamped `updatedAt` (the listing just read
+  // sets it): a browser clock an hour fast would take a file being written.
+  const old = client.serverNow().getTime() - ORPHAN_AGE_MS;
   const doomed = (entries || []).filter((e) => {
     const conv = convOfFileKey(app, projectId, e.key);
     if (!conv || live.has(conv)) return false;
