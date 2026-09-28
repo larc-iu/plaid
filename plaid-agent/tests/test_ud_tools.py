@@ -1344,3 +1344,17 @@ def test_a_change_made_by_name_beats_a_scope_at_approval(ws):
     execute_plan(ws.client, ws.plan_payload()['ops'], source='s', label='l', project=ws.project)
     updates = ws.client.updates('spans')
     assert ('sp-l3', 'océano') in updates and ('sp-l3', 'X') not in updates and ('sp-l1', 'X') in updates
+
+
+def test_a_review_counts_two_documents_of_one_name_apart():
+    """The count by document was keyed by NAME, so two documents both named
+    "Viaje" read as 'In 1 document: "Viaje" 2.'. Nothing forbids the shared
+    name (imports make it), so they are told apart by id."""
+    import copy
+    from ud_fixtures import document_raw
+    twin = copy.deepcopy(document_raw())
+    twin['id'] = 'ud2'
+    client = ud_client(documents={'ud1': document_raw(), 'ud2': twin})
+    w = Workspace(client, load_project(client, PID))
+    out = run(w, 'confirm', documents=['ud1', 'ud2'])
+    assert 'In 2 documents: "Viaje (ud1)" 1, "Viaje (ud2)" 1.' in out, out

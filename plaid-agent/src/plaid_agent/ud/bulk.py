@@ -16,6 +16,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..core import opkind, work
 from ..core.limits import SAMPLE_LINES
+from ..core.history import doc_label
 from ..core.plan import by_document
 from ..core.replace import replacer as core_replacer
 from .corpus import Corpus, rx
@@ -161,7 +162,10 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
                work.COUNTED: accepted,
                'label': f'{field}: replace "{pattern}" with "{replacement}" on {len(found)} value(s){where}'
                         + work.counted_phrase(accepted)})
-    counts = '' if document_id else by_document([names.get(ch['document_id'], ch['document_id'])
+    # Counted by document, never by name: two documents may share one, and
+    # their counts are then told apart by id.
+    labels = {did: doc_label(ws, did) for did in docs}
+    counts = '' if document_id else by_document([labels[ch['document_id']]
                                                  for ch in found if ch['document_id']])
     counts = '\n' + counts if counts else ''
     return (f'Planned {len(found)} {field} change(s){where}, as one planned change.'

@@ -129,10 +129,10 @@ def read_comments(ws, document: Optional[str], ref: Optional[str], field: Option
     if doc is not None and ref:
         etype, eid = ws.comment_target(doc, ref, field)
         kw: Dict[str, Any] = {'entity_type': etype, 'entity_id': eid}
-        scope = f'on {_doc_label(ws, doc.id)} {ref}' + (f' {field}' if field else '')
+        scope = f'on {doc_label(ws, doc.id)} {ref}' + (f' {field}' if field else '')
     elif doc is not None:
         kw = {'document_id': doc.id}
-        scope = f'in {_doc_label(ws, doc.id)}'
+        scope = f'in {doc_label(ws, doc.id)}'
     else:
         kw = {}
         scope = 'in the project'
@@ -180,7 +180,7 @@ def _ref_names(ws) -> Dict[str, str]:
     return {i: (i if taken[n.casefold()] > 1 else n) for i, n in names.items()}
 
 
-def _doc_label(ws, doc_id: str) -> str:
+def doc_label(ws, doc_id: str) -> str:
     """A document as a sentence names it: its name, with its id beside it
     where another document shares that name."""
     ref = _ref_names(ws).get(doc_id, doc_id)

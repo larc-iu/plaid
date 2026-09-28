@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 from ..core import docload, opkind
 from ..core.args import whole
 from ..core.limits import MAX_SCOPE_DOCS, OVERVIEW_DOCS
+from ..core.history import doc_label
 from ..core.plan import by_document
 from ..core.workspace import BaseWorkspace
 from ..core.tools import ToolError, server_refused
@@ -675,7 +676,8 @@ def _many(ws: Workspace, documents, field: str, one) -> str:
             if len(ws.ops) > before:
                 n = ws.ops[-1].get('count') or 0
                 planned += n
-                per_doc += [ws.doc(did).name] * n
+                # By label, not by name: two documents may share a name.
+                per_doc += [doc_label(ws, did)] * n
     if not per_doc:
         return f'Nothing is waiting for review in the {len(ids)} document(s) named.'
     verb = 'confirming' if kind == 'confirm' else 'discarding'
