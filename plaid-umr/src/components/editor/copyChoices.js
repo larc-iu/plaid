@@ -19,7 +19,7 @@ export const UMR_COPY_CHOICES = [
         // here instead of opening it, and the toast stays until closed.
         if (error instanceof CopyKeptGraphs) {
           notifyError(
-            humanizeError(error.cause),
+            `Delete “${error.created.name}” before copying again.`,
             `Copied to “${error.created.name}” with its UMR graphs`,
             { duration: Infinity },
           );
