@@ -19,7 +19,10 @@
 
   The only exemptions inside the oracle are the cases the text cannot
   settle: a word replaced whole beside deleted words may or may not keep a
-  token, and which of two words of one spelling was deleted.
+  token, and which of two words of one spelling was deleted. The new word
+  of such a replace may also be the one meant for any of the deleted
+  words (`tat你好on` to `tatZЖ`): the case passes when one of those
+  readings passes whole, and is not skipped.
 
   Classes still open are skipped by name in `open-classes`, one predicate
   each over the generated case. A fix for one deletes its entry, and the
@@ -169,6 +172,9 @@
                         dels (subvec sent i (+ i k))]
                     [(delete-items (assoc-in doc [si r :w] w') si i (+ i k))
                      {:resp #{rid} :del (set (map :id dels)) :si si
+                      ;; replaced whole, the new word may be the one meant for
+                      ;; any of these, and each reading is judged
+                      :group (when (= mode :whole) (into [rid] (map :id) dels))
                       :shape {:mode mode
                               ;; respelled at the edge beside the deleted words
                               :near? (or (and before? (= mode :prefix)) (and (not before?) (= mode :suffix)))
@@ -340,7 +346,20 @@
     {:seed seed :doc doc :new-doc new-doc :info info :tokens tokens :opts opts
      :old (:body lay) :new (:body (layout new-doc))}))
 
-(defn- run-case [{:keys [old new tokens] :as c}]
+(defn- reading
+  "The case with the new word of a whole replace taken for the one meant for
+  `c`, a word deleted beside it, and the respelled word taken for deleted."
+  [{:keys [info] :as case} c]
+  (let [r (first (:group info))
+        swap (fn [ids] (-> (set ids) (disj r) (conj c)))]
+    (-> case
+        (update :new-doc (fn [d] (mapv (fn [s] (mapv #(if (= r (:id %)) (assoc % :id c) %) s)) d)))
+        (update :info #(-> %
+                           (update :resp swap)
+                           (update :amb swap)
+                           (update :del (fn [ids] (-> ids (disj c) (conj r)))))))))
+
+(defn- run-case [{:keys [old new tokens info] :as c}]
   (let [result (-> (ta/diff old new)
                    (ta/slide-to-tokens old tokens #{:s})
                    (ta/normalize-deletes old tokens)
@@ -348,8 +367,11 @@
                    ;; the sentences are a partition, the words and the
                    ;; punctuation tokens forbid overlap, as in the apps
                    (ta/fold-whole-words old tokens #{:s} #{:s :w :p})
-                   (ta/apply-text-edits {:text/body old} tokens))]
-    (problems c result)))
+                   (ta/apply-text-edits {:text/body old} tokens))
+        ps (problems c result)]
+    (if (and (seq ps) (some #(empty? (problems (reading c %) result)) (rest (:group info))))
+      []
+      ps)))
 
 ;; ---------------------------------------------------------------- open classes
 
@@ -451,6 +473,8 @@
      :typed-beside-markers {:seps [" "] :marks 0.5 :kinds [:resp+space :resp+ins]}
      :nodes {:seps [" " "\t"] :nodes 4 :kinds [:del :del+resp :resp]}
      :no-spaces {:seps [""] :kinds [:resp :del :del+resp]}
+     ;; UMR nodes over the words of a script without spaces
+     :no-spaces-nodes {:seps [""] :nodes 4 :kinds [:resp :del :del+resp] :cases 2000}
      :joins {:seps [" "] :kinds [:join]}}))
 
 ;; ---------------------------------------------------------------- the test
@@ -460,11 +484,12 @@
 (deftest a-whole-body-update-leaves-every-token-where-the-user-meant
   (doseq [[k opts] (sort configs)]
     (testing (name k)
-      (let [cases (map #(gen-case % opts) (range cases-per-config))
+      (let [n (:cases opts cases-per-config)
+            cases (map #(gen-case % opts) (range n))
             judged (remove open-class cases)]
         ;; the open classes must not grow to swallow the test
-        (is (< (* 0.2 cases-per-config) (count judged))
-            (str (count judged) " of " cases-per-config " cases judged"))
+        (is (< (* 0.2 n) (count judged))
+            (str (count judged) " of " n " cases judged"))
         (doseq [c judged
                 :let [ps (run-case c)]
                 :when (seq ps)]
