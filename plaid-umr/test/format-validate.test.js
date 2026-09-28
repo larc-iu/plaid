@@ -398,6 +398,28 @@ describe('text in NFC', () => {
     );
   });
 
+  test('a gloss line, the sentence text and a metadata line are each named', () => {
+    // A gloss or translation typed in IGT is written as it is stored.
+    const e = 'é';
+    const s = {
+      ...inApp({}),
+      ilg: [
+        { key: 'words', header: 'Words', items: ['cat'] },
+        { key: 'morpheme-gloss', header: 'Morpheme Gloss (en)', items: ['cat', `caf${e}`] },
+      ],
+      sentenceText: `le caf${e}`,
+      meta: [`# note: caf${e}`],
+    };
+    assert.deepEqual(
+      nfcFindings(s).map((f) => f.message),
+      [
+        `The Morpheme Gloss (en) line ('caf${e}') is not in Unicode NFC.`,
+        'The sentence text is not in Unicode NFC.',
+        `The metadata line '# note: caf${e}' is not in Unicode NFC.`,
+      ],
+    );
+  });
+
   test('composed text is not reported', () => {
     assert.deepEqual(nfcFindings(inApp({ concept: 'caf\u00e9', words: ['caf\u00e9'] })), []);
   });

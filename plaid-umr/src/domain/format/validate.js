@@ -332,7 +332,9 @@ function valueProblem(child) {
 /**
  * Text that is not in Unicode NFC, which the format requires of the whole
  * file (validate.py `unicode-normalization`): each variable, concept and
- * value of the graph, and the sentence's words, the first of them only.
+ * value of the graph, the sentence's words (the first of them only), each
+ * interlinear line (its first such item), the sentence text and each
+ * metadata line.
  */
 function checkNormalization(sentence, findings) {
   const push = (message, variable) =>
@@ -361,6 +363,17 @@ function checkNormalization(sentence, findings) {
   if (word !== -1) {
     push(`Word ${word + 1} ('${sentence.words[word]}') is not in Unicode NFC.`);
   }
+  // The other lines the export writes from what is stored: a gloss or a
+  // translation typed in IGT, the sentence's text, a metadata line.
+  for (const line of sentence.ilg ?? []) {
+    if (line.key === 'words') continue;
+    const item = (line.items ?? []).find(off);
+    if (item !== undefined) push(`The ${line.header} line ('${item}') is not in Unicode NFC.`);
+  }
+  if (off(sentence.sentenceText)) push('The sentence text is not in Unicode NFC.');
+  (sentence.meta ?? []).filter(off).forEach((line) => {
+    push(`The metadata line '${line}' is not in Unicode NFC.`);
+  });
 }
 
 function checkAlignment(sentence, findings, options) {
