@@ -88,7 +88,12 @@ to the document graph. What it has to know that the others do not:
 - an approved plan writes in three batches, because a batch op cannot name an
   id an earlier op in the same batch minted: the anchor tokens, then the concept
   spans over them, then the relations between those spans. That is the order
-  `umrImport.js` writes a document in.
+  `umrImport.js` writes a document in. The document's lock is held across all
+  three, from the staleness check to the last write (`plan.holding`), so
+  another user's write cannot land between them. Anyone who opens the document then
+  finds it locked and does not repair it on open, which would otherwise take
+  the new anchors for ones an interrupted add left and delete them. A document
+  another run holds refuses the plan with nothing written.
 
 `docs/umr/SAMPLE_PROMPT.md` is what the model sees. `bb sample-prompts` (from
 the repo root) regenerates it with the other two.
@@ -435,7 +440,9 @@ The modules below are `igt/` unless they say otherwise.
   target wins; links to entries the plan deletes are dropped; overlapping
   respells are refused; an op naming something another op in the plan deletes
   is dropped with a note), then applies it with the requester's client in atomic batches
-  under one operation (`stamp_mode` verified or human), reporting how much
+  under one operation (`stamp_mode` verified or human), holding the lock on
+  every document it writes from the staleness check to the last batch
+  (`holding`), and reporting how much
   was applied if a later batch fails. A plan carries the version of every
   document it touches; approval is refused if any of them changed since, as
   the plan's ids and character offsets were read from that state.
