@@ -102,3 +102,20 @@ describe('the confirm key', () => {
     expect(keys.check('node.confirm', 'Mod+Enter')).toBeNull();
   });
 });
+
+// As plaid-igt's table test: a default refused by `check` is one the Keyboard
+// settings would not let anyone record back after moving it, and a default
+// that collides with another leaves one of the two dead.
+describe('the shortcut table', () => {
+  it('lets every action take its own defaults', () => {
+    const refused = [];
+    for (const a of keys.actions) {
+      if (a.fixed) continue;
+      for (const chord of a.keys) {
+        const found = keys.check(a.id, chord, {});
+        if (found) refused.push(`${a.id} ${chord}: ${found.problem} ${found.with?.id ?? ''}`);
+      }
+    }
+    expect(refused).toEqual([]);
+  });
+});

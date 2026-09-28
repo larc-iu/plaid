@@ -76,6 +76,18 @@ describe('createKeymap', () => {
     expect(km.check('fixed:grid:Enter', 'Alt+x')).toEqual({ problem: 'fixed' });
   });
 
+  // plaid-umr's sibling moves are on the browser's Back and Forward chords.
+  // Moved elsewhere, the Keyboard settings refused to record them back.
+  it('lets an action take back its own default on a reserved chord, and nobody else', () => {
+    const km = createKeymap([
+      { id: 'earlier', scope: 'canvas', group: 'c', label: 'Earlier', keys: ['Alt+ArrowLeft'] },
+      { id: 'later', scope: 'canvas', group: 'c', label: 'Later', keys: ['Alt+ArrowRight'] },
+    ]);
+    const moved = km.withBinding('earlier', 'Alt+e');
+    expect(km.check('earlier', 'Alt+ArrowLeft', moved)).toBeNull();
+    expect(km.check('later', 'Alt+ArrowLeft', moved)).toEqual({ problem: 'reserved' });
+  });
+
   it('checks against a draft, so a freed chord can be taken in the same edit', () => {
     const km = createKeymap(ACTIONS);
     const draft = km.withBinding('grid.accept', 'Alt+a');

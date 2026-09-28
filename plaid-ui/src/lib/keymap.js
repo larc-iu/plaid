@@ -139,10 +139,14 @@ export function createKeymap(actionList) {
       const c = canonicalChord(chord);
       if (!action || !c) return { problem: 'invalid' };
       if (action.fixed) return { problem: 'fixed' };
-      if (isReservedChord(c)) return { problem: 'reserved' };
-      // An action's own default is always allowed back: Shift+Space types a
-      // blank, and the Media rows claim it on purpose.
-      if (chordTypes(c) && !action.outsideText && !action.keys.includes(c)) {
+      // An action's own default is always allowed back, even one on a chord
+      // refused to everything else: Shift+Space types a blank, and the Media
+      // rows claim it on purpose. Alt+Left and Alt+Right are the browser's
+      // Back and Forward, and plaid-umr's sibling moves claim them from a
+      // focused node, whose handler takes the key first.
+      const ownDefault = action.keys.includes(c);
+      if (isReservedChord(c) && !ownDefault) return { problem: 'reserved' };
+      if (chordTypes(c) && !action.outsideText && !ownDefault) {
         return { problem: 'types' };
       }
       const draftKeys = clean(draft);
