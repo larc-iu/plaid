@@ -232,6 +232,14 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
   }
 }
 
+// Notes the reader makes once per node, said once per sentence instead: the
+// Navajo sample has a space before the colon on every alignment line, and the
+// report was a line per node.
+const PER_SENTENCE = {
+  'alignment-space-before-colon': 'Alignment lines have a space before the colon.',
+  'legacy-unaligned': "Alignment '-1--1' is UMR 1.0 for unaligned.",
+};
+
 /**
  * What the reader noted about the file, as lines of the import report, after
  * the lines about what the import did. Each names its sentence, and a note
@@ -250,7 +258,8 @@ export function readerNotes(parsed) {
     ...(parsed.warnings || []),
     ...(parsed.errors || []).filter((e) => e.code !== 'sentence-graph'),
   ];
-  notes.forEach(({ message, sentence }) => {
+  notes.forEach(({ code, message: said, sentence }) => {
+    const message = PER_SENTENCE[code] ?? said;
     if (sentence == null) {
       if (!lines.includes(message)) lines.push(message);
       return;
@@ -263,7 +272,7 @@ export function readerNotes(parsed) {
     lines.push(
       sentences.length === 1
         ? `Sentence ${sentences[0]}: ${message}`
-        : `${message.replace(/\.$/, '')}, in ${sentences.length} sentences.`,
+        : `${sentences.length} sentences: ${message}`,
     );
   });
   return lines;

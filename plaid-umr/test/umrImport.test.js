@@ -110,7 +110,7 @@ describe('the reader’s notes in the import report', () => {
     const notes = readerNotes(parsed);
     assert.deepEqual(
       notes.filter((n) => /tr'/.test(n)),
-      ["Obsolete interlinear glossing header 'tr', in 3 sentences."],
+      ["3 sentences: Obsolete interlinear glossing header 'tr'."],
     );
     const once = readerNotes(parseUmrFile(file(CAT, obsolete)));
     assert.deepEqual(
@@ -166,4 +166,13 @@ describe('text in NFC', () => {
       planImport(parseUmrFile(file({ words, ...CAT })).sentences, [], { existing }),
     );
   });
+});
+
+test('a note the reader makes per node is said once per sentence', () => {
+  const spaced = { ...CAT, alignment: 's1s : 3-3\ns1c : 2-2' };
+  const notes = readerNotes(parseUmrFile(file(spaced, spaced)));
+  assert.deepEqual(
+    notes.filter((n) => /colon/.test(n)),
+    ['2 sentences: Alignment lines have a space before the colon.'],
+  );
 });
