@@ -226,6 +226,21 @@ def test_a_node_standing_over_its_whole_sentence_is_aligned_to_no_word():
     assert doc.sentences[1].node('s2r').alignment == [(2, 2)]
 
 
+def test_a_node_whose_word_was_deleted_elsewhere_is_aligned_to_no_word():
+    """IGT deleting a word leaves the node's anchor over its text with no word
+    under it. The app reads that node as unaligned (sentenceGraph.js, ruling
+    umr-igt-deleted-word) and exports it with 0-0, and so does this reader."""
+    raw = _document()
+    words = raw['text_layers'][0]['token_layers'][1]
+    words['tokens'] = [t for t in words['tokens'] if t['id'] != 'w6']   # "ran"
+    doc = read_document(raw, resolve_layers(raw))
+    node = doc.sentences[1].node('s2r')
+    assert node.sentence_token is None and not node.aligned
+    assert node.alignment == []
+    # A node with a word under its anchor is still aligned.
+    assert doc.sentences[0].node('s1b').aligned
+
+
 def test_a_document_level_triple_is_written_in_the_later_sentence_s_block():
     doc = _read()
     assert [t.rel for t in doc.sentences[0].triples] == []

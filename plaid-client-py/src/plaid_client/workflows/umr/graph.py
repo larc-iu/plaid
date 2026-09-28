@@ -132,6 +132,9 @@ class Node:
     #: aligned to no word. Not the sentence it stands in (``sentence``).
     sentence_token: Optional[str] = None
     alignment: List[Tuple[int, int]] = dc_field(default_factory=list)
+    #: Whether a word of its sentence lies under a piece of the anchor that
+    #: has width. Set by :func:`read_document`, which has the words.
+    over_word: bool = False
     out: List[Edge] = dc_field(default_factory=list)
     into: List[Edge] = dc_field(default_factory=list)
     doc_out: List[Triple] = dc_field(default_factory=list)
@@ -139,10 +142,13 @@ class Node:
 
     @property
     def aligned(self) -> bool:
-        """Aligned to words, which is what the absence of a sentence record
-        says. A node aligned to nothing stands over the whole of its sentence,
-        so reading the anchor's width instead would align it to every word."""
-        return not self.sentence_token and any(p.end > p.begin for p in self.pieces)
+        """Aligned to words: no sentence record, and a word under the anchor,
+        as ``sentenceGraph.js`` has it. A node aligned to nothing stands over
+        the whole of its sentence, so reading the anchor's width instead would
+        align it to every word. And a word deleted in another app leaves the
+        anchor over its text with no word there, which the app reads as an
+        unaligned node before its reconcile repairs it."""
+        return not self.sentence_token and self.over_word
 
     @property
     def piece_ids(self) -> List[str]:
@@ -408,6 +414,11 @@ def read_document(raw: dict, layers: UmrLayers,
             text=form if isinstance(form, str) else body[token['begin']:token['end']],
             morph_type=morph_type if isinstance(morph_type, str) and morph_type else None))
 
+    def _over_word(piece: Piece) -> bool:
+        s = sentence_of(piece.begin)
+        return s is not None and any(_overlaps(piece.begin, piece.end, w.begin, w.end)
+                                     for w in s.words)
+
     node_tokens = {t['id']: t for t in ((layers.node_layer or {}).get('tokens') or [])}
     nodes_by_id: Dict[str, Node] = {}
     constants: List[Node] = []
@@ -426,6 +437,7 @@ def read_document(raw: dict, layers: UmrLayers,
             # keys beside it are what says whether a person made this node.
             metadata=span.get('metadata'), pieces=pieces,
             sentence_token=meta.get('sentence') or None)
+        node.over_word = any(p.end > p.begin and _over_word(p) for p in pieces)
         nodes_by_id[span['id']] = node
         if node.constant:
             constants.append(node)
