@@ -1,9 +1,9 @@
 // Three limits on what reconcile on open and Text mode do after IGT changes
 // the sentences (the defaults adopted with the rulings of 2026-09-28):
 //
-// - Renumbering leaves alone a document whose stored `snt` numbers do not
-//   run 1, 2, 3: a released excerpt starting at `# :: snt5` keeps its names.
-//   A sentence IGT added stores no number and is passed over.
+// - Renumbering leaves alone a document whose first stored `snt` number is
+//   not 1: a released excerpt starting at `# :: snt5` keeps its names. A
+//   sentence deleted later in an imported file does not stop it.
 // - Mending a graph kept as text accepts that graph's own names even when IGT
 //   has shifted the sentences since. The next open renumbers them.
 // - A sentence with no words at all (IGT's "Clear tokens", before it tokenizes
@@ -80,11 +80,11 @@ test('the same file starting at snt1 with a sentence IGT added before it is renu
   assert.equal(result.renumbered, 4);
   assert.equal(
     doc.describeReconcile(result),
-    'Repaired: renumbered 4 variables to match the sentences',
+    'Repaired: moved the stored lines of 1 sentence to the sentence they describe, renumbered 4 variables to match the sentences',
   );
 });
 
-test('numbers that skip one, as a sentence deleted in IGT leaves them, stop renumbering', () => {
+test('numbers that skip one, as a sentence deleted in IGT leaves them, still renumber', () => {
   const raw = fromText(`${block(1)}\n${block(2)}\n${block(3)}`);
   // IGT deleted sentence 2 with its words, and the cascade took its nodes.
   const second = role(raw, 'sentence').tokens[1];
@@ -103,6 +103,33 @@ test('numbers that skip one, as a sentence deleted in IGT leaves them, stop renu
   });
   const { doc } = open(raw);
   assert.deepEqual(vars(doc), ['s1a', 's1g', 's3a', 's3g']);
+  assert.deepEqual(
+    planRenumber(doc.graph).map((m) => [m.from, m.to]),
+    [
+      ['s3a', 's2a'],
+      ['s3g', 's2g'],
+    ],
+  );
+});
+
+test('a file whose first sentence was deleted in IGT reads as an excerpt, and keeps its names', () => {
+  const raw = fromText(`${block(1)}\n${block(2)}`);
+  const first = role(raw, 'sentence').tokens[0];
+  role(raw, 'sentence').tokens.splice(0, 1);
+  const inside = (t) => t.begin >= first.begin && t.end <= first.end;
+  role(raw, 'word').tokens = role(raw, 'word').tokens.filter((t) => !inside(t));
+  const nodes = raw.textLayers[0].tokenLayers.find((l) => l.config?.umr?.nodes);
+  const gone = new Set(nodes.tokens.filter(inside).map((t) => t.id));
+  nodes.tokens = nodes.tokens.filter((t) => !gone.has(t.id));
+  nodes.spanLayers[0].spans = nodes.spanLayers[0].spans.filter(
+    (s) => !s.tokens.every((t) => gone.has(t)),
+  );
+  nodes.spanLayers[0].relationLayers.forEach((rl) => {
+    const alive = new Set(nodes.spanLayers[0].spans.map((s) => s.id));
+    rl.relations = rl.relations.filter((r) => alive.has(r.source) && alive.has(r.target));
+  });
+  const { doc } = open(raw);
+  assert.deepEqual(vars(doc), ['s2a', 's2g']);
   assert.deepEqual(planRenumber(doc.graph), []);
 });
 
@@ -193,6 +220,7 @@ test('an open reads the vocabularies only when a node names an entry', async () 
   assert.deepEqual(asked, [], 'no node names an entry, so nothing is read');
   const node = [...doc.graph.nodesById.values()][0];
   node.metadata.umr.entry = 'gone';
+  node.metadata.umr.entryVocab = 'v1';
   const picked = new UmrDocument({ raw, client, project: { vocabs: [{ id: 'v1' }] } });
   picked._reload = async () => {};
   client.spans.patchMetadata = async () => {};
@@ -243,7 +271,7 @@ s1k: 2-2
   ]);
   assert.equal(
     doc.describeReconcile(result),
-    'Repaired: rebound 1 unaligned node to the sentence it is in, renumbered 4 variables to match the sentences',
+    'Repaired: rebound 1 unaligned node to the sentence it is in, moved the stored lines of 1 sentence to the sentence they describe, renumbered 4 variables to match the sentences',
   );
 });
 

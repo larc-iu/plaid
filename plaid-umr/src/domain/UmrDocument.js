@@ -37,8 +37,10 @@ import { DOC_CONSTANTS } from './format/inventory.js';
 import {
   describeUmrReconcile,
   planEntryUnlink,
+  planRecordMoves,
   planRenumber,
   planStrayTokens,
+  planTripleNumbers,
   planUnalignedHeal,
 } from './umrReconcile.js';
 import {
@@ -67,12 +69,19 @@ const DOC_GRAPH_VARIABLE = /^s[0-9]+s0$/;
 
 const umrOf = (entity) => entity?.metadata?.[UMR_NAMESPACE] || {};
 
+// How long a bare anchor token is taken to be an add still under way rather
+// than one an interrupted add left (_leftoverTokens). An add's requests
+// follow each other within a second or two, and the margin covers a slow
+// connection and a browser clock a little off the server's.
+const STRAY_GRACE_MS = 2 * 60 * 1000;
+
 /**
- * The project's vocabularies as the lexicon buildLexicon makes, and whether
- * every one of them was read. A vocabulary that cannot be read is left out
- * of the lexicon, and `complete` says so: an entry missing from an
- * incomplete read may only be unread, so nothing is judged gone on one.
- * Null when the project does not say which vocabularies it has.
+ * The project's vocabularies as the lexicon buildLexicon makes, with the
+ * vocabulary of each entry (`lexicon.vocabOf`), and the ids of the
+ * vocabularies that were read (`vocabs`). A vocabulary that cannot be read
+ * is left out of both: an entry missing from it may only be unread, so
+ * nothing in it is judged gone. Null when the project does not say which
+ * vocabularies it has.
  */
 export async function readEntryLexicon(client, project) {
   if (!client || !Array.isArray(project?.vocabs)) return null;
@@ -85,8 +94,22 @@ export async function readEntryLexicon(client, project) {
       }),
     ),
   );
-  return { lexicon: buildLexicon(got.filter(Boolean)), complete: got.every(Boolean) };
+  const read = got.filter(Boolean);
+  const lexicon = buildLexicon(read);
+  // The vocabulary each entry is in, which a node picked from it records
+  // (`entryVocab`): an entry missing later counts as deleted only when its
+  // vocabulary was read (umrReconcile.js planEntryUnlink).
+  lexicon.vocabOf = new Map(read.flatMap((v) => (v.items || []).map((it) => [it.id, v.id])));
+  return { lexicon, vocabs: new Set(read.map((v) => v.id)) };
 }
+
+// The metadata a node records of the vocabulary entry it was picked from:
+// the entry, and the vocabulary it is in when the lexicon knows. No entry
+// takes back both.
+const entryRecord = (entry, lexicon) => ({
+  entry: entry ?? undefined,
+  entryVocab: (entry && lexicon?.vocabOf?.get(entry)) || undefined,
+});
 
 /**
  * What changed in the entry a node was picked from, or null: the entry's
@@ -94,7 +117,7 @@ export async function readEntryLexicon(client, project) {
  * the node's. A node that names no entry, or an entry the lexicon does not
  * hold, has nothing to compare.
  */
-export function entryChangeOf(node, lexicon) {
+function entryChangeOf(node, lexicon) {
   const id = node?.metadata?.[UMR_NAMESPACE]?.entry;
   const entry = id && lexicon ? lexicon.byId.get(id) : null;
   if (!entry || node.constant || entry.concept === node.concept) return null;
@@ -449,15 +472,23 @@ export class UmrDocument extends DocumentModel {
   //   request left, is removed.
   // - A variable whose sentence number no longer matches its sentence (IGT
   //   added or removed a sentence before it) is renumbered.
+  // - A sentence's record (its file number, gloss and metadata lines, held
+  //   relations) left on new text IGT split off before it moves to it, and a
+  //   triple between two constants takes the numbers its sentences have now.
   // - A node picked from a vocabulary entry that was deleted forgets it.
   //
   // NOT stamped, deliberately: a repair that runs on open decides nothing
   // and vouches for nothing, so it leaves provenance exactly as it found it
   // (the same rule igt's morpheme heal follows).
   async _reconcile() {
+    // A service holding the document's lock is part way through rewriting
+    // it: an anchor it has just made looks like one an interrupted add left,
+    // and every write here would be refused (423). The document is repaired
+    // the next time it is opened.
+    if (await this._lockedByAService()) return { findings: [], deferred: true };
     const graph = this.graph;
     const { remove, rebind, resize, unanchor } = planUnalignedHeal(graph, UMR_NAMESPACE);
-    const strays = planStrayTokens(this.layerInfo);
+    const strays = await this._leftoverTokens(planStrayTokens(this.layerInfo));
     const removed = new Set(remove);
     // A graph kept as text still names its variables, and a renumbered node
     // must not take one of them.
@@ -467,14 +498,18 @@ export class UmrDocument extends DocumentModel {
       for (const m of s.rawGraph.matchAll(KEPT_VARIABLE)) keptNames.add(m[1]);
     });
     const renumber = planRenumber(graph, removed, keptNames);
-    // Only on a complete read of the vocabularies: an entry missing from a
-    // read that skipped one may only be unread.
-    // And only when a node names an entry, so an open waits on no read it
-    // does not need.
+    const recordMoves = planRecordMoves(graph);
+    const tripleNumbers = planTripleNumbers(graph, UMR_NAMESPACE);
+    // An entry counts as deleted only when the vocabulary the node picked it
+    // from was read and lacks it (planEntryUnlink). The vocabularies are read
+    // only when a node names an entry, so an open waits on no read it does
+    // not need.
     const picked = [...graph.nodesById.values()].some((n) => umrOf(n).entry);
     const read = picked ? await this.loadLexicon().catch(() => null) : null;
-    const unlink = read?.complete
-      ? planEntryUnlink(graph, UMR_NAMESPACE, read.lexicon).filter((id) => !removed.has(id))
+    const unlink = read
+      ? planEntryUnlink(graph, UMR_NAMESPACE, read.lexicon, read.vocabs).filter(
+          (id) => !removed.has(id),
+        )
       : [];
     const nothing =
       !remove.length &&
@@ -483,6 +518,8 @@ export class UmrDocument extends DocumentModel {
       !unanchor.length &&
       !strays.length &&
       !renumber.length &&
+      !recordMoves.length &&
+      !tripleNumbers.length &&
       !unlink.length;
     if (nothing) return { findings: [] };
     try {
@@ -500,10 +537,20 @@ export class UmrDocument extends DocumentModel {
         change(nodeId, { sentence: sentenceTokenId }),
       );
       renumber.forEach(({ nodeId, to }) => change(nodeId, { var: to }));
-      unlink.forEach((nodeId) => change(nodeId, { entry: undefined }));
+      unlink.forEach((nodeId) => change(nodeId, entryRecord(null)));
       const heldRenamed = this._heldRenamed(renumber);
+      const tokensById = new Map(this.layerInfo.sentenceTokenLayer.tokens.map((t) => [t.id, t]));
       await this._client.batched(async (b) => {
         if (tokenIds.length) b.tokens.bulkDelete(tokenIds);
+        // The record first, then the held relations renamed on it.
+        recordMoves.forEach(({ from, to }) => {
+          const record = tokensById.get(from).metadata[UMR_NAMESPACE];
+          b.tokens.patchMetadata(to, [{ op: 'set', path: [UMR_NAMESPACE], value: record }]);
+          b.tokens.patchMetadata(from, [{ op: 'delete', path: [UMR_NAMESPACE] }]);
+        });
+        tripleNumbers.forEach(({ relationId, sentences }) =>
+          b.relations.patchMetadata(relationId, umrOps({ sentences })),
+        );
         metaOf.forEach((changes, nodeId) => b.spans.patchMetadata(nodeId, umrOps(changes)));
         heldRenamed.forEach(([tokenId, held]) => b.tokens.patchMetadata(tokenId, umrOps({ held })));
         resize.forEach(({ nodeId, pieceId, begin, end, extra }) => {
@@ -527,9 +574,46 @@ export class UmrDocument extends DocumentModel {
         unanchored: unanchor.map((u) => renamed.get(u.nodeId) ?? u.var),
         renumbered: renumber.length,
         unlinked: unlink.length,
+        recordsMoved: recordMoves.length,
+        triplesMoved: tripleNumbers.length,
       };
     } catch (error) {
+      // A service took the lock after the check above.
+      if (error?.status === 423) return { findings: [], deferred: true };
       return { findings: [], error };
+    }
+  }
+
+  // The anchor tokens no node stands on that an interrupted add LEFT, rather
+  // than one an add is making now: the canvas writes the anchor, then the
+  // node on it, then its edge, and takes no lock, so another person opening
+  // the document between those requests sees the fresh anchor bare. An id
+  // says nothing of when a token was made (UUIDv7 orders only across
+  // milliseconds), so the document's audit log is asked: while it records a
+  // token made in the last STRAY_GRACE_MS, every bare anchor is left for a
+  // later open. A log that cannot be read leaves them too.
+  async _leftoverTokens(ids) {
+    if (!ids.length) return ids;
+    try {
+      const recent = await this._client.documents.auditPage(this.id, {
+        startTime: new Date(Date.now() - STRAY_GRACE_MS).toISOString(),
+        opTypes: ['token/create', 'token/bulk-create'],
+        limit: 1,
+      });
+      return recent?.entries?.length ? [] : ids;
+    } catch {
+      return [];
+    }
+  }
+
+  // Whether someone holds the document's lock, which only a service run or a
+  // script takes: the editors never do.
+  async _lockedByAService() {
+    try {
+      const lock = await this._client.documents.checkLock(this.id);
+      return !!lock?.userId;
+    } catch {
+      return false;
     }
   }
 
@@ -823,7 +907,11 @@ export class UmrDocument extends DocumentModel {
     // The first node of a sentence is its root. A later parentless node is a
     // fragment until it is connected, and the graph keeps its root.
     const meta = { var: variable, attrs };
-    if (entry) meta.entry = entry;
+    if (entry) {
+      const { entryVocab } = entryRecord(entry, this._lexicon);
+      meta.entry = entry;
+      if (entryVocab) meta.entryVocab = entryVocab;
+    }
     if (!parent && sentence.nodes.length === 0) meta.root = true;
     // A node aligned to no word records its sentence, which is what says so
     // (see _reconcile): its anchor covers the whole sentence.
@@ -911,7 +999,7 @@ export class UmrDocument extends DocumentModel {
     // batch, as ud's cell edit does, so the tint clears with the value and
     // the document's version bumps once.
     const ops = [
-      ...(entryChanges ? umrOps({ entry: entry ?? undefined }) : []),
+      ...(entryChanges ? umrOps(entryRecord(entry, this._lexicon)) : []),
       ...this._editStampOps(node.metadata),
     ];
     this._applyRawPatch((next, infoNext) => {
@@ -2205,7 +2293,7 @@ export class UmrDocument extends DocumentModel {
       spanValues.push([
         c.nodeId,
         c.concept,
-        [...(had ? umrOps({ entry: undefined }) : []), ...editSpan(c.nodeId)],
+        [...(had ? umrOps(entryRecord(null)) : []), ...editSpan(c.nodeId)],
       ]);
     }
     // A renumber moves a child's place and nothing else, so it carries no

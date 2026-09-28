@@ -72,6 +72,10 @@ export function recordingClient() {
     },
     documents: {
       get: async () => null,
+      // Reads reconcile makes first: nobody holds the lock, and the audit log
+      // records nothing in the window it asks about.
+      checkLock: async () => null,
+      auditPage: async () => ({ entries: [], nextCursor: null }),
       update: async (documentId, name) => record('documents.update', documentId, name),
       // The server answers a copy with the new document's id alone.
       copy: async (documentId, name) => {

@@ -37,11 +37,15 @@
 // that records no sentence and has a word under it is aligned, and is left
 // alone.
 //
-// Three more repairs run in the same pass (the owner's rulings of
-// 2026-09-28), each in its own function below: an anchor token no node
-// stands on (an add cut off after its first request) is removed, a variable
-// whose sentence number no longer matches its sentence is renumbered, and a
-// node picked from a vocabulary entry that is gone forgets the entry.
+// More repairs run in the same pass (the owner's rulings of 2026-09-28),
+// each in its own function below: an anchor token no node stands on (an add
+// cut off after its first request) is removed, a variable whose sentence
+// number no longer matches its sentence is renumbered, a sentence's record
+// left on new text split off before it moves to the sentence it describes, a
+// triple between two constants takes its sentences' numbers now, and a node
+// picked from a vocabulary entry that is gone forgets the entry.
+
+import { NUMBERED_VARIABLE, numberedByFile, sentenceNumberReader } from './sentenceGraph.js';
 
 /**
  * @param {{ sentences: Array, nodesById: Map }} graph from buildDocumentGraph
@@ -120,24 +124,6 @@ export function planStrayTokens(layerInfo) {
   return (layerInfo.nodeTokenLayer?.tokens || []).filter((t) => !used.has(t.id)).map((t) => t.id);
 }
 
-// `s<number><rest>`: the sentence number, then a letter and whatever follows.
-const NUMBERED = /^s([0-9]+)(\p{L}.*)$/u;
-
-// Whether the sentence numbers a file stored (`# :: snt<n>`, kept by the
-// import) run 1, 2, 3 in order. A sentence IGT added stores none and is passed
-// over. A document whose numbers start elsewhere, a released excerpt starting
-// at snt5, is numbered by its file, and its names are left as they came. So is
-// one whose numbers skip, which is also what a sentence deleted in IGT leaves.
-function numbersRunFromOne(sentences) {
-  let next = 1;
-  for (const s of sentences) {
-    if (s.snt == null) continue;
-    if (Number(s.snt) !== next) return false;
-    next += 1;
-  }
-  return true;
-}
-
 /**
  * The variables whose sentence number is not their node's sentence, after
  * another app added or removed sentences before them: each renamed to its
@@ -147,17 +133,20 @@ function numbersRunFromOne(sentences) {
  * shape are left alone. Relations point at nodes, so only the names change.
  * `reserved` holds names taken by something that is not a node, the
  * variables a graph kept as text defines. Nothing is renamed in a document
- * whose stored sentence numbers do not run 1, 2, 3 (`numbersRunFromOne`).
+ * that goes by its file's numbers, whose first stored `# :: snt` number is
+ * not 1, as a released excerpt starting at snt5 (`numberedByFile`). A
+ * sentence deleted or merged later in an imported file does not stop it: the
+ * numbers after it no longer run, and are then read by position.
  *
  * @returns {{ nodeId: string, from: string, to: string }[]}
  */
 export function planRenumber(graph, skip = new Set(), reserved = new Set()) {
-  if (!numbersRunFromOne(graph.sentences || [])) return [];
+  if (numberedByFile(graph.sentences || [])) return [];
   const moves = [];
   const fixed = new Set(reserved);
   graph.nodesById.forEach((node) => {
     if (!node.var) return;
-    const m = NUMBERED.exec(node.var);
+    const m = NUMBERED_VARIABLE.exec(node.var);
     const wrong = !node.constant && node.sentence != null && m && Number(m[1]) !== node.sentence;
     if (wrong && !skip.has(node.id)) moves.push({ node, rest: m[2] });
     else fixed.add(node.var);
@@ -177,19 +166,65 @@ export function planRenumber(graph, skip = new Set(), reserved = new Set()) {
 }
 
 /**
- * The nodes picked from a vocabulary entry that is no longer there, when the
- * lexicon read is known to be complete: each forgets the entry, since the
- * role picker and the entry check would otherwise ask after an id that
- * names nothing.
+ * The sentence records to move to the sentence they describe, as the reader
+ * found them (sentenceGraph.js `recordsFollowTheirGraphs`): IGT's split kept
+ * a sentence's token, and the record on it, on the new text typed in before
+ * it. Each is `{ from, to }`, sentence token ids.
+ *
+ * @returns {{ from: string, to: string }[]}
+ */
+export function planRecordMoves(graph) {
+  return (graph.sentences || [])
+    .filter((s) => s.recordToken && s.recordToken !== s.tokenId)
+    .map((s) => ({ from: s.recordToken, to: s.tokenId }));
+}
+
+/**
+ * The triples between two constants whose stored sentence numbers no longer
+ * name the sentences whose blocks write them, after another app added or
+ * removed a sentence before those: each with the numbers it is read by now
+ * (sentenceGraph.js `sentenceNumberReader`), written in the same pass that
+ * renumbers the variables.
+ *
+ * @returns {{ relationId: string, sentences: number[] }[]}
+ */
+export function planTripleNumbers(graph, namespace) {
+  const numberNow = sentenceNumberReader(graph.sentences || []);
+  const out = [];
+  const seen = new Set();
+  (graph.constants || []).forEach((c) =>
+    c.docOut.forEach((t) => {
+      if (seen.has(t.id) || !graph.nodesById.get(t.target)?.constant) return;
+      seen.add(t.id);
+      const stored = t.metadata?.[namespace]?.sentences || [];
+      const now = [...new Set(stored.map(numberNow))];
+      if (now.length !== stored.length || now.some((n, i) => n !== stored[i])) {
+        out.push({ relationId: t.id, sentences: now });
+      }
+    }),
+  );
+  return out;
+}
+
+/**
+ * The nodes picked from a vocabulary entry that was deleted: each forgets the
+ * entry, since the role picker and the entry check would otherwise ask after
+ * an id that names nothing. A node records the vocabulary it picked from
+ * (`entryVocab`), and the entry counts as deleted only when that vocabulary
+ * was read and lacks it. A vocabulary unlinked from the project is not read,
+ * and may be linked again, so the nodes picked from it keep their entries.
+ * So does a node that does not say which vocabulary its entry is in: nothing
+ * tells a deleted entry from one in a vocabulary this person cannot read.
  *
  * @param {{ byId: Map }} lexicon from buildLexicon
+ * @param {Set<string>} readVocabs the vocabularies that were read whole
  * @returns {string[]} node ids
  */
-export function planEntryUnlink(graph, namespace, lexicon) {
+export function planEntryUnlink(graph, namespace, lexicon, readVocabs) {
   const out = [];
   graph.nodesById.forEach((node) => {
-    const entry = node.metadata?.[namespace]?.entry;
-    if (entry && !lexicon.byId.has(entry)) out.push(node.id);
+    const { entry, entryVocab } = node.metadata?.[namespace] || {};
+    if (entry && readVocabs.has(entryVocab) && !lexicon.byId.has(entry)) out.push(node.id);
   });
   return out;
 }
@@ -205,6 +240,8 @@ export function describeUmrReconcile({
   unanchored = [],
   renumbered = 0,
   unlinked = 0,
+  recordsMoved = 0,
+  triplesMoved = 0,
 } = {}) {
   const nodes = (n) => `${n} unaligned node${n === 1 ? '' : 's'}`;
   const parts = [];
@@ -228,6 +265,18 @@ export function describeUmrReconcile({
   if (resized) {
     parts.push(
       `put ${nodes(resized)} back over ${resized === 1 ? 'its sentence' : 'their sentences'}`,
+    );
+  }
+  if (recordsMoved) {
+    parts.push(
+      recordsMoved === 1
+        ? 'moved the stored lines of 1 sentence to the sentence they describe'
+        : `moved the stored lines of ${recordsMoved} sentences to the sentences they describe`,
+    );
+  }
+  if (triplesMoved) {
+    parts.push(
+      `moved ${count(triplesMoved, 'document-level relation', 'document-level relations')} between constants to ${triplesMoved === 1 ? 'its sentences' : 'their sentences'}`,
     );
   }
   if (renumbered) {

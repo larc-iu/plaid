@@ -56,15 +56,20 @@ const VOCAB = {
   ],
 };
 
-// The nodes named, picked from the entries given: `{ s1v: 'ver' }`.
+// The nodes named, picked from the entries given: `{ s1v: 'ver' }`, from
+// vocabulary v1 unless another is named (`'ver@v2'`), or none (`'ver@'`).
 function load(entries, { vocabs = [VOCAB], failing = [] } = {}) {
   const plan = planImport(parseUmrFile(TEXT).sentences, []);
   const raw = rawFromPlan(plan);
   raw.textLayers[0].tokenLayers
     .find((l) => l.config?.umr?.nodes)
     .spanLayers[0].spans.forEach((s) => {
-      const entry = entries[s.metadata.umr.var];
-      if (entry) s.metadata.umr.entry = entry;
+      const picked = entries[s.metadata.umr.var];
+      if (picked) {
+        const [entry, vocab = 'v1'] = picked.split('@');
+        s.metadata.umr.entry = entry;
+        if (vocab) s.metadata.umr.entryVocab = vocab;
+      }
       s.metadata = { [PROV.key]: PROV.INFERRED, [PROV.sourceKey]: 'service:x', ...s.metadata };
     });
   const { client, calls } = recordingClient();
@@ -153,7 +158,7 @@ test('taking the new value everywhere changes every node picked from the entry',
   assert.equal(await doc.takeEntryValue(byVar(doc, 's2v').id), false);
 });
 
-test('reconcile forgets an entry that is gone, only on a complete read', async () => {
+test('reconcile forgets an entry that is gone from the vocabulary it was picked from', async () => {
   const gone = load({ s1v: 'deleted', s1k: 'kitap' });
   const result = await gone.doc._reconcile();
   assert.equal(result.unlinked, 1);
@@ -161,7 +166,15 @@ test('reconcile forgets an entry that is gone, only on a complete read', async (
   const patches = gone.calls.filter((c) => c.name === 'spans.patchMetadata');
   assert.deepEqual(
     patches.map((c) => c.args),
-    [[byVar(gone.doc, 's1v').id, [{ op: 'delete', path: ['umr', 'entry'] }]]],
+    [
+      [
+        byVar(gone.doc, 's1v').id,
+        [
+          { op: 'delete', path: ['umr', 'entry'] },
+          { op: 'delete', path: ['umr', 'entryVocab'] },
+        ],
+      ],
+    ],
   );
   assert.equal(
     gone.doc.describeReconcile(result),
@@ -169,10 +182,50 @@ test('reconcile forgets an entry that is gone, only on a complete read', async (
   );
 
   // A vocabulary that could not be read may hold the entry.
-  const unread = load({ s1v: 'deleted' }, { failing: ['v2'] });
+  const unread = load({ s1v: 'deleted@v2' }, { failing: ['v2'] });
   const again = await unread.doc._reconcile();
   assert.deepEqual(again, { findings: [] });
   assert.equal(unread.calls.length, 0);
+});
+
+test('a vocabulary unlinked from the project keeps the entries its nodes were picked from', async () => {
+  // v9 is not the project's any more: a maintainer unlinked it, and may link
+  // it again. Its entries are not in the lexicon, and are not deleted.
+  const unlinked = load({ s1v: 'fish@v9', s2v: 'fish@v9' });
+  assert.deepEqual(await unlinked.doc._reconcile(), { findings: [] });
+  assert.equal(unlinked.calls.length, 0);
+  assert.equal(byVar(unlinked.doc, 's1v').metadata.umr.entry, 'fish');
+  // Nor is an entry forgotten whose node does not say which vocabulary it is
+  // in: a deleted entry and one this person cannot read look the same.
+  const unsaid = load({ s1v: 'deleted@' });
+  assert.deepEqual(await unsaid.doc._reconcile(), { findings: [] });
+  assert.equal(unsaid.calls.length, 0);
+});
+
+test('a concept picked from an entry records the vocabulary the entry is in', async () => {
+  const { doc, calls } = load({});
+  await doc.loadLexicon();
+  const node = byVar(doc, 's1k');
+  await doc.setConcept(node.id, 'kitab', { entry: 'kitap' });
+  assert.deepEqual(byVar(doc, 's1k').metadata.umr.entry, 'kitap');
+  assert.deepEqual(byVar(doc, 's1k').metadata.umr.entryVocab, 'v1');
+  // Typed over: both go.
+  await doc.setConcept(node.id, 'defter');
+  assert.equal(byVar(doc, 's1k').metadata.umr.entry, undefined);
+  assert.equal(byVar(doc, 's1k').metadata.umr.entryVocab, undefined);
+  const ops = calls
+    .filter((c) => c.name === 'spans.patchMetadata' && c.args[0] === node.id)
+    .map((c) => c.args[1].filter((o) => o.path[0] === 'umr'));
+  assert.deepEqual(ops, [
+    [
+      { op: 'set', path: ['umr', 'entry'], value: 'kitap' },
+      { op: 'set', path: ['umr', 'entryVocab'], value: 'v1' },
+    ],
+    [
+      { op: 'delete', path: ['umr', 'entry'] },
+      { op: 'delete', path: ['umr', 'entryVocab'] },
+    ],
+  ]);
 });
 
 test('a project that does not say which vocabularies it has reads no lexicon', async () => {

@@ -43,6 +43,116 @@ const overlaps = (a, b) => a.begin < b.end && b.begin < a.end;
 
 const byBegin = (a, b) => a.begin - b.begin || a.end - b.end;
 
+// What a sentence token records of the sentence it describes (the file's
+// number, its text where that is not the words, its gloss lines, its other
+// metadata lines, a graph kept as text and the relations held on it), as the
+// sentence object's fields. `recordToken` is the token whose metadata holds
+// them, null for a sentence that records nothing (one made in Plaid).
+function recordFields(holder, sentence, slice) {
+  const meta = umrMeta(holder);
+  return {
+    recordToken: holder && Object.keys(meta).length ? holder.id : null,
+    text: meta.text || slice(sentence.begin, sentence.end).replace(/\n+$/, ''),
+    // What an import stored, and (once the words are known) the lines the
+    // mapping resolves them and the layers into (`ilg`).
+    storedIlg: meta.ilg || [],
+    meta: meta.meta || [],
+    snt: meta.snt || null,
+    rawGraph: meta.rawGraph || null,
+    rawAlignment: meta.rawAlignment || null,
+    held: Array.isArray(meta.held) ? meta.held : [],
+  };
+}
+
+// `s<number><rest>`: a variable's sentence number, then a letter and
+// whatever follows.
+export const NUMBERED_VARIABLE = /^s([0-9]+)(\p{L}.*)$/u;
+
+/**
+ * The one sentence number the variables of a sentence's nodes carry, or null
+ * when they carry none or disagree. A variable names the sentence it was made
+ * in, so after another app adds or removes a sentence before it, this is the
+ * number the sentence had, until reconcile renumbers it.
+ */
+function variableNumber(sentence) {
+  let number = null;
+  for (const node of sentence.nodes) {
+    const m = NUMBERED_VARIABLE.exec(node.var || '');
+    if (!m) continue;
+    if (number !== null && Number(m[1]) !== number) return null;
+    number = Number(m[1]);
+  }
+  return number;
+}
+
+/**
+ * Whether the document goes by the sentence numbers its file stored rather
+ * than by position: the first stored `# :: snt` number is not 1, as in a
+ * released excerpt starting at snt5. Its variables are left as the file
+ * named them (umrReconcile.js `planRenumber`) and its export writes the
+ * stored numbers. Every other document is numbered by position, a stored
+ * number included, once IGT has added or removed a sentence.
+ */
+export function numberedByFile(sentences) {
+  const first = (sentences || []).find((s) => s.snt != null);
+  return !!first && String(first.snt) !== '1';
+}
+
+// IGT splits a sentence keeping its token on the LEFT, so a sentence typed
+// in before an existing one and split off takes that one's token, and with
+// it everything the token records of it: its file number, gloss lines,
+// metadata lines and held relations, while its words and its graph are in
+// the right half, which is born recording nothing. The record goes with the
+// graph it describes: a sentence that records something and has no nodes,
+// followed (past any sentences that record nothing and have no nodes either,
+// several typed in at once) by one that records nothing and whose nodes'
+// variables carry the first one's number, as position or as the file's
+// number. Reconcile then moves the record there for good.
+function recordsFollowTheirGraphs(sentences, slice, tokensById) {
+  sentences.forEach((s, i) => {
+    if (s.recordToken !== s.tokenId || s.nodes.length) return;
+    let j = i + 1;
+    while (j < sentences.length && !sentences[j].recordToken && !sentences[j].nodes.length) j++;
+    const to = sentences[j];
+    if (!to || to.recordToken || !to.nodes.length) return;
+    const number = variableNumber(to);
+    if (number === null || (number !== s.index && String(number) !== String(s.snt))) return;
+    Object.assign(to, recordFields(tokensById.get(s.tokenId), to, slice));
+    Object.assign(s, recordFields(null, s, slice));
+  });
+}
+
+/**
+ * The sentence a stored sentence number now names, for a triple between two
+ * constants that lists the sentences whose blocks write it by number. A
+ * number is a position when it was written, so after another app adds or
+ * removes a sentence before it, it names the sentence whose variables still
+ * carry it. A number no sentence's variables carry, and every number in a
+ * document numbered by its file, is read as it is.
+ *
+ * @returns {(n: number) => number}
+ */
+export function sentenceNumberReader(sentences) {
+  if (numberedByFile(sentences)) return (n) => n;
+  // Each number, the sentences whose variables carry it: two sentences
+  // joined in IGT carry both numbers, and a number two sentences carry (one
+  // split in two) says nothing about where it went.
+  const holders = new Map();
+  sentences.forEach((s) =>
+    s.nodes.forEach((node) => {
+      const m = NUMBERED_VARIABLE.exec(node.var || '');
+      if (!m) return;
+      const n = Number(m[1]);
+      if (!holders.has(n)) holders.set(n, new Set());
+      holders.get(n).add(s.index);
+    }),
+  );
+  return (n) => {
+    const at = holders.get(n);
+    return at?.size === 1 ? [...at][0] : n;
+  };
+}
+
 // A raw span's anchor pieces, as token objects, in text order.
 const anchorPieces = (span, tokensById) =>
   (span.tokens || [])
@@ -74,30 +184,19 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
 
   // Sentences and their words. A word belongs to the sentence its begin
   // falls in.
-  const sentences = sentenceTokens.map((token, i) => {
-    const meta = umrMeta(token);
-    return {
-      index: i + 1,
-      tokenId: token.id,
-      begin: token.begin,
-      end: token.end,
-      text: meta.text || slice(token.begin, token.end).replace(/\n+$/, ''),
-      words: [],
-      morphemes: [],
-      // What an import stored, and (once the words are known) the lines the
-      // mapping resolves them and the layers into.
-      storedIlg: meta.ilg || [],
-      ilg: [],
-      meta: meta.meta || [],
-      snt: meta.snt || null,
-      rawGraph: meta.rawGraph || null,
-      rawAlignment: meta.rawAlignment || null,
-      held: Array.isArray(meta.held) ? meta.held : [],
-      nodes: [],
-      edges: [],
-      triples: [],
-    };
-  });
+  const sentences = sentenceTokens.map((token, i) => ({
+    index: i + 1,
+    tokenId: token.id,
+    begin: token.begin,
+    end: token.end,
+    ...recordFields(token, token, slice),
+    words: [],
+    morphemes: [],
+    ilg: [],
+    nodes: [],
+    edges: [],
+    triples: [],
+  }));
   const sentenceOf = (piece) => sentences.find((s) => beginsIn(piece, s));
   const byTokenId = new Map(sentences.map((s) => [s.tokenId, s]));
   // Whether a word of the text overlaps the piece.
@@ -200,6 +299,8 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
     }
   });
 
+  recordsFollowTheirGraphs(sentences, slice, new Map(sentenceTokens.map((t) => [t.id, t])));
+
   // Edges, attached to the head's sentence.
   relations.forEach((rel) => {
     const source = nodesById.get(rel.source);
@@ -221,7 +322,9 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
 
   // Document-level triples, attached to the LATER of the two sentences
   // involved: the one whose block the file writes them in. A triple between
-  // two constants belongs to the sentences its metadata lists.
+  // two constants belongs to the sentences its metadata lists, by the
+  // number each had when it was written (sentenceNumberReader).
+  const numberNow = sentenceNumberReader(sentences);
   docRelations.forEach((rel) => {
     const source = nodesById.get(rel.source);
     const target = nodesById.get(rel.target);
@@ -241,7 +344,9 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
     if (later > 0) {
       sentences[later - 1].triples.push(triple);
     } else if (source.constant && target.constant) {
-      (meta.sentences || []).forEach((n) => sentences[n - 1]?.triples.push(triple));
+      new Set((meta.sentences || []).map(numberNow)).forEach((n) =>
+        sentences[n - 1]?.triples.push(triple),
+      );
     }
   });
 
@@ -710,6 +815,7 @@ export function toUmrSentences(graph) {
     if (s.nodes.length || typeof s.rawGraph !== 'string') return;
     for (const m of s.rawGraph.matchAll(KEPT_VARIABLE)) named.add(m[1]);
   });
+  const sntOf = fileNumbers(sentences);
 
   return sentences.map((s) => {
     // Only the nodes the file writes: the alignment block and the checks read
@@ -748,7 +854,7 @@ export function toUmrSentences(graph) {
 
     return {
       index: s.index,
-      snt: s.snt || s.index,
+      snt: sntOf.get(s),
       sentenceText: s.text,
       meta: s.meta,
       ilg: ilgLines(s),
@@ -763,6 +869,43 @@ export function toUmrSentences(graph) {
       docGraph: hasTriples ? { var: `s${s.index}s0`, ...groups } : null,
     };
   });
+}
+
+// The number each sentence's `# :: snt` line writes: its position, as its
+// variables carry it, unless the document goes by its file's numbers
+// (numberedByFile). Then a stored number is written as it is, and a sentence
+// that stores none, or repeats one, is written by position, or past the
+// highest number when that is taken: the official validator refuses a
+// repeated number. A sentence typed in before the first one in IGT stored
+// nothing, and its position repeated the old first sentence's stored 1.
+function fileNumbers(sentences) {
+  const out = new Map();
+  if (!numberedByFile(sentences)) {
+    sentences.forEach((s) => out.set(s, s.index));
+    return out;
+  }
+  const taken = new Set();
+  const numeric = (n) => (/^[0-9]+$/.test(String(n)) ? Number(n) : 0);
+  let highest = Math.max(0, ...sentences.map((s) => numeric(s.snt ?? 0)), sentences.length);
+  const stored = new Map();
+  sentences.forEach((s) => {
+    if (s.snt == null || stored.has(String(s.snt))) return;
+    stored.set(String(s.snt), s);
+  });
+  sentences.forEach((s) => {
+    if (s.snt != null && stored.get(String(s.snt)) === s) {
+      out.set(s, s.snt);
+      taken.add(String(s.snt));
+    }
+  });
+  sentences.forEach((s) => {
+    if (out.has(s)) return;
+    let n = s.index;
+    if (taken.has(String(n))) n = ++highest;
+    out.set(s, n);
+    taken.add(String(n));
+  });
+  return out;
 }
 
 // A variable a graph kept as text defines: the name before a slash after an
