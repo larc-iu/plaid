@@ -911,7 +911,12 @@
                             (near s s))
         back-ok? (or (not (:tail-kept r))
                      (not-any? (fn [{:token/keys [begin end]}] (= begin end t)) (near t t)))
-        allowed? (fn [[p q]] (and (or (zero? p) front-ok?) (or (= q (alength v)) back-ok?)))]
+        ;; Spaces alone go outside the word whatever stands at its edge: a
+        ;; space typed before a marked word goes in front of its marker, as
+        ;; one typed after a word's marker goes behind it.
+        blank? (fn [p q] (every? #(ws? (aget v %)) (range p q)))
+        allowed? (fn [[p q]] (and (or (zero? p) front-ok? (blank? 0 p))
+                                  (or (= q (alength v)) back-ok? (blank? q (alength v)))))]
     (if (empty? covering)
       [r]
       (let [before? (< (reduce min (map :token/begin covering)) s)

@@ -1096,6 +1096,28 @@
             (is (= (set new-spans) (set got)) msg)
             (is (= (count got) (count (set got))) msg)))))))
 
+(deftest a-space-typed-before-a-marked-word-stays-out-of-it
+  ;; A zero-width marker at a word's start kept the text typed in front of
+  ;; the word inside it, so its first letter stays after the marker. A space
+  ;; typed there went into the word too: `café` to ` xcat` left the word
+  ;; token on ` xcat`. Only the space goes in front of the marker, and the
+  ;; same for a space typed after the word, behind a marker at its end.
+  (let [on (fn [layer t] (assoc t :token/layer layer))
+        spaced? (fn [body {:token/keys [begin end]}] (boolean (re-find #"\s" (cp/cp-subs body begin end))))]
+    (doseq [[old new tokens want]
+            [["café\n" " xcat\n" [(on :w (tok :w 0 4)) (on :z (tok :z 0 0))] #{[:w 1 5] [:z 0 0]}]
+             ["a café b\n" "a  xcat b\n" [(on :w (tok :a 0 1)) (on :w (tok :w 2 6)) (on :z (tok :z 2 2))
+                                          (on :w (tok :b 7 8))]
+              #{[:a 0 1] [:w 3 7] [:z 2 2] [:b 8 9]}]
+             ["a cafe b\n" "a xcafé\t b\n" [(on :w (tok :a 0 1)) (on :w (tok :w 2 6)) (on :z (tok :z 6 6))
+                                            (on :w (tok :b 7 8))]
+              #{[:a 0 1] [:w 2 7] [:z 7 7] [:b 9 10]}]]]
+      (let [{:keys [text tokens]} (body-edit old new tokens)]
+        (is (= new (:text/body text)))
+        (is (not-any? #(spaced? new %) (filter (comp #{:w} :token/layer) tokens))
+            (str (pr-str old) " -> " (pr-str new) ": " (pr-str (extents tokens))))
+        (is (= want (extents tokens)) (str (pr-str old) " -> " (pr-str new)))))))
+
 (deftest two-edits-sliding-towards-each-other-do-not-meet
   ;; Each delete cuts a token where it stands and could slide into the run of
   ;; `a` between them, and both would have taken the same letter.
