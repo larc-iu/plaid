@@ -80,7 +80,7 @@ def test_set_morpheme_changes_form_or_type_in_place():
     # Staged after them, the rewrite supersedes both: it replaces the chain
     # and every form and type on it.
     out = call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'Gamar'}]})
-    assert '2 earlier planned changes on the same targets superseded' in out, out
+    assert '2 changes planned on the morphemes of a word this analysis replaces were taken out' in out, out
     assert [o['kind'] for o in w.ops] == ['set_analysis']
     # The first morpheme of the chain is kept and reused, so a form change on
     # it is superseded rather than refused.

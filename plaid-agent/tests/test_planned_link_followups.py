@@ -334,7 +334,7 @@ def test_a_change_to_a_stored_morpheme_is_superseded_by_a_later_analysis_of_its_
     assert len(w.ops) == 1
     out = call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Ali'}, {'form': 'di'}]})
     assert [op['kind'] for op in w.ops] == ['set_analysis'], out
-    assert 'superseded' in out, out
+    assert '1 change planned on the morphemes of a word this analysis replaces was taken out' in out, out
     c = FakeClient()
     counts = execute_plan(c, w.plan_payload()['ops'], source='s', label='l')
     assert 'notes' not in counts and c.payloads('spans.bulk_update') == []
@@ -424,3 +424,19 @@ def test_an_unlink_on_a_morpheme_a_word_change_deletes_is_not_sent_again(reshape
     counts = execute_plan(c, w.plan_payload()['ops'], source='s', label='l')
     assert ('vocab_links.delete', 'l-2') not in c.calls, c.calls
     assert counts.get('unlinks') == 1, counts
+
+
+def test_the_model_is_told_an_analysis_took_the_changes_planned_on_its_morphemes():
+    """The note used to read as the generic "on the same targets", which a
+    gloss planned on a morpheme and a new segmentation of its word are not:
+    the model has to know the gloss is no longer planned, and how to plan it
+    again."""
+    w = scan_ws(FakeClient())
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1.m2'], 'field': 'Morph Gloss', 'value': 'DAT'})
+    call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's1.w1.m1', 'type': 'root'})
+    out = call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Ali'}, {'form': 'di'}]})
+    assert '2 changes planned on the morphemes of a word this analysis replaces were taken out' in out, out
+    assert 'set_field or set_morpheme with sN.wN.mN' in out, out
+    # Said once.
+    assert 'taken out' not in call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss',
+                                                         'value': 'fish'})

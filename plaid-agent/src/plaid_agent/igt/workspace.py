@@ -113,6 +113,10 @@ class Workspace(BaseWorkspace):
         # the plan whenever a note is written, so it follows the plan down as
         # well as up.
         self.reported_left = 0
+        # Changes a planned analysis took out of the plan (see `superseding`)
+        # and how many of them a note has told the model about.
+        self.analysis_took = 0
+        self.reported_took = 0
 
     def make_corpus(self):
         from .corpus import Corpus
@@ -442,7 +446,8 @@ class Workspace(BaseWorkspace):
         return {**super().snapshot(), 'new_entries': copy.deepcopy(self.new_entries),
                 'item_patches': copy.deepcopy(self.item_patches),
                 'unlinked': self.unlinked, 'reported_unlinked': self.reported_unlinked,
-                'reported_left': self.reported_left}
+                'reported_left': self.reported_left, 'analysis_took': self.analysis_took,
+                'reported_took': self.reported_took}
 
     def restore(self, saved: Dict[str, Any]) -> None:
         super().restore(saved)
@@ -451,6 +456,8 @@ class Workspace(BaseWorkspace):
         self.unlinked = saved['unlinked']
         self.reported_unlinked = saved['reported_unlinked']
         self.reported_left = saved['reported_left']
+        self.analysis_took = saved['analysis_took']
+        self.reported_took = saved['reported_took']
         self._patch_version += 1
 
     def add_op(self, op: Dict[str, Any]) -> None:
@@ -483,7 +490,7 @@ class Workspace(BaseWorkspace):
         """Take out of the plan what the analyses among ``ops`` make moot
         (a value, form or type planned on a morpheme of the word they
         re-analyse), then stage them, and put the plan back if staging them is
-        refused. Counted as superseded, so the note says so, rather than left
+        refused. Counted in `analysis_took`, so the note says so, rather than left
         on the card for approval to drop (a type or a form) or to fail on (a
         value on a span the analysis deletes)."""
         rewritten = analysed_morphemes(ops)
@@ -492,7 +499,7 @@ class Workspace(BaseWorkspace):
             yield
             return
         with self.staging():
-            self.replaced += len(self.ops) - len(keep)
+            self.analysis_took += len(self.ops) - len(keep)
             self.ops[:] = keep
             self._gone_at = -1
             yield
@@ -526,6 +533,13 @@ class Workspace(BaseWorkspace):
 
     def superseded_note(self) -> str:
         out = super().superseded_note()
+        took = self.analysis_took - self.reported_took
+        if took > 0:
+            self.reported_took = self.analysis_took
+            out += (f' {took} change{"s" if took != 1 else ""} planned on the morphemes of a word this analysis '
+                    f'replaces {"were" if took != 1 else "was"} taken out: the analysis writes only the forms, types '
+                    'and values it gives. To keep one, give it in the analysis, or use set_field or set_morpheme '
+                    'with sN.wN.mN, which now name the planned morphemes.')
         new = self.unlinked - self.reported_unlinked
         if new > 0:
             self.reported_unlinked = self.unlinked
