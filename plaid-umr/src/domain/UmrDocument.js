@@ -522,6 +522,28 @@ export class UmrDocument extends DocumentModel {
       !tripleNumbers.length &&
       !unlink.length;
     if (nothing) return { findings: [] };
+    const unanchored = new Set(unanchor.map((u) => u.nodeId));
+    // A node that lost its word is named as it is called from now on.
+    const renamed = new Map(renumber.map((r) => [r.nodeId, r.to]));
+    const tally = {
+      findings: [],
+      removed: remove.length,
+      rebound: rebind.length,
+      resized: resize.filter((r) => !unanchored.has(r.nodeId)).length,
+      strays: strays.length,
+      unanchored: unanchor.map((u) => renamed.get(u.nodeId) ?? u.var),
+      renumbered: renumber.length,
+      unlinked: unlink.length,
+      recordsMoved: recordMoves.length,
+      triplesMoved: tripleNumbers.length,
+    };
+    // The History entry takes its label from the first write, so the label
+    // goes on before any: past 1000 operations the batch is several requests,
+    // and a lock taken between them would otherwise leave the part already
+    // written under the generic label reconcileOnOpen opened with. Only the
+    // group reconcileOnOpen opened: an outer operation keeps its own label.
+    const group = this._client.operationGroup;
+    if (group?.depth === 1) group.message = describeUmrReconcile(tally);
     try {
       const tokenIds = [
         ...strays,
@@ -562,21 +584,7 @@ export class UmrDocument extends DocumentModel {
         });
       });
       await this._reload();
-      const unanchored = new Set(unanchor.map((u) => u.nodeId));
-      // A node that lost its word is named as it is called from now on.
-      const renamed = new Map(renumber.map((r) => [r.nodeId, r.to]));
-      return {
-        findings: [],
-        removed: remove.length,
-        rebound: rebind.length,
-        resized: resize.filter((r) => !unanchored.has(r.nodeId)).length,
-        strays: strays.length,
-        unanchored: unanchor.map((u) => renamed.get(u.nodeId) ?? u.var),
-        renumbered: renumber.length,
-        unlinked: unlink.length,
-        recordsMoved: recordMoves.length,
-        triplesMoved: tripleNumbers.length,
-      };
+      return tally;
     } catch (error) {
       // A service took the lock after the check above.
       if (error?.status === 423) return { findings: [], deferred: true };

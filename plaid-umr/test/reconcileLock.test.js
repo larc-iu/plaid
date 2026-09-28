@@ -152,3 +152,21 @@ test('a browser clock minutes fast still leaves an add under way alone', async (
   assert.deepEqual(await B._reconcile(), { findings: [] });
   assert.equal(b.calls.filter((c) => c.name === 'tokens.bulkDelete').length, 0);
 });
+
+test('a repair a lock cuts off part way leaves what it wrote under its own label', async () => {
+  // Past 1000 operations a batch goes as several requests. The first lands,
+  // a service takes the lock, and the second is refused.
+  const { doc } = open(() => null);
+  const group = { id: 'g1', message: 'Repair on open', depth: 1, written: false };
+  doc._client.operationGroup = group;
+  const stamped = [];
+  doc._client.batched = async () => {
+    stamped.push(group.message);
+    throw Object.assign(new Error('Document is locked by another user'), {
+      status: 423,
+      committed: 1000,
+    });
+  };
+  assert.deepEqual(await doc._reconcile(), { findings: [], deferred: true });
+  assert.deepEqual(stamped, ['Repaired: removed 1 empty node an interrupted add left']);
+});
