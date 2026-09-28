@@ -240,6 +240,7 @@ The history entry of the next opening names the repair: `moved the stored lines 
 An addition cut off partway (a closed tab, a lost connection) leaves nothing behind once the document is opened again.
 A node picked from a vocabulary entry that has since been deleted no longer names it.
 No repair is made while a service run or an approved assistant plan is writing to the document. It is made the next time the document is opened.
+A repair cut off partway is named `Repair on open (interrupted)` in the history, and the next opening finishes it.
 
 = Editing
 
