@@ -345,7 +345,9 @@
                    (ta/slide-to-tokens old tokens #{:s})
                    (ta/normalize-deletes old tokens)
                    (ta/pair-replacements old tokens)
-                   (ta/fold-whole-words old tokens)
+                   ;; the sentences are a partition, the words and the
+                   ;; punctuation tokens forbid overlap, as in the apps
+                   (ta/fold-whole-words old tokens #{:s} #{:s :w :p})
                    (ta/apply-text-edits {:text/body old} tokens))]
     (problems c result)))
 
@@ -419,20 +421,6 @@
      (let [del (:del info #{})]
        (and (some (fn [t] (and (= :z (:token/layer t)) (del (second (:token/id t))))) tokens)
             (some (fn [[a b]] (or (del a) (del b))) (node-edges c)))))
-
-   ;; In a script written without spaces, a token without a space over
-   ;; several words (a UMR node, or the last sentence when no newline ends
-   ;; it) makes two words that meet look like two morphemes of one word, so
-   ;; the replace is not cut there.
-   :token-without-a-space-over-several-words
-   (fn [{:keys [old tokens]}]
-     (let [o (.toArray (.codePoints ^String old))
-           words (filter #(= :w (:token/layer %)) tokens)]
-       (some (fn [{:token/keys [begin end]}]
-               (and (< begin end)
-                    (not (spaced? (String. o (int begin) (int (- end begin)))))
-                    (< 1 (count (filter #(<= begin (:token/begin %) (:token/end %) end) words)))))
-             tokens)))
 
    ;; Without spaces, the slide counts a word whose neighbouring letter
    ;; changes as disturbed, so a deleted run whose first letter is also the

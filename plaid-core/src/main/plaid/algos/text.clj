@@ -987,7 +987,8 @@
 
   Only a word's edge in `o` is a place to cut: a space or the text's edge
   beside it, or a token beginning or ending there, unless two tokens meet
-  there inside a token without a space (a morpheme's edge inside its word).
+  there inside a token without a space that `word?` takes for a word (a
+  morpheme's edge inside its word).
   So a punctuation mark the tokenizer left out of the words (`well-known`,
   `verdi.`), a punctuation token, a no-break space, and two words of a script
   written without spaces all make edges. A token reaching in has no space in
@@ -999,7 +1000,7 @@
   where to cut only when the replace starts inside no word at the other end,
   or `mat` would lose its `t`. `near` gives the tokens that
   begin or end in a stretch (see `tokens-near`)."
-  [^ints o near r]
+  [^ints o near word? r]
   (let [{s :start t :end ^String value :value} r
         o-space? (fn [i] (space? (aget o (int i))))
         no-space? (fn [p q] (not-any? o-space? (range p q)))
@@ -1007,9 +1008,11 @@
         run (fn [i] [(loop [k i] (if (and (pos? k) (not (o-space? (dec k)))) (recur (dec k)) k))
                      (loop [k i] (if (and (< k (alength o)) (not (o-space? k))) (recur (inc k)) k))])
         width? (fn [{:token/keys [begin end]}] (< begin end))
-        ;; Two tokens meet at p inside a token without a space that runs
-        ;; across it: p is between two morphemes of a word. Where a
-        ;; punctuation mark is left between two words, nothing meets.
+        ;; Two tokens meet at p inside a word without a space that runs
+        ;; across it: p is between two morphemes of the word. Where a
+        ;; punctuation mark is left between two words, nothing meets. In a
+        ;; script without spaces a sentence or a UMR node over several words
+        ;; is such a token too, and only its layer tells it from a word.
         inside-word? (fn [p]
                        (let [[B E] (run p)
                              ts (filter width? (near B E))
@@ -1018,7 +1021,7 @@
                                                        (not= [begin end] [(:token/begin S) (:token/end S)])))
                                                 ts))]
                          (some (fn [{:token/keys [begin end] :as S}]
-                                 (and (<= B begin) (< begin p end) (<= end E)
+                                 (and (word? S) (<= B begin) (< begin p end) (<= end E)
                                       (some #(= p (:token/end %)) (in S))
                                       (some #(= p (:token/begin %)) (in S))))
                                ts)))
@@ -1048,24 +1051,31 @@
         n (alength v)
         ws? (fn [i] (space? (aget v (int i))))
         sub (fn [p q] (String. v (int p) (int (- q p))))
-        piece (fn [p q value]
-                (if (= "" value)
-                  {:kind :delete :start p :end q}
-                  {:kind :replace :start p :end q :value value}))]
+        ;; [p q) given `value`. Spaces alone are no word, so [p q) is
+        ;; deleted and they go in at `at`, the end away from the word the
+        ;; cut keeps: a replace would leave a token over [p q) on a space.
+        piece (fn [p q value at]
+                (cond
+                  (= "" value) [{:kind :delete :start p :end q}]
+                  (every? space? (.toArray (.codePoints ^String value)))
+                  (if (= at p)
+                    [{:kind :insert :at p :value value} {:kind :delete :start p :end q}]
+                    [{:kind :delete :start p :end q} {:kind :insert :at q :value value}])
+                  :else [{:kind :replace :start p :end q :value value}]))]
     (cond
       (and (seq into-next) (empty? into-prev))
       (let [b (reduce max (map :token/begin into-next))
             k (loop [k n] (if (and (pos? k) (not (ws? (dec k)))) (recur (dec k)) k))]
-        [(piece s b (sub 0 k)) (piece b t (sub k n))])
+        (into (piece s b (sub 0 k) s) (piece b t (sub k n) t)))
 
       (and (seq into-prev) (empty? into-next))
       (let [a (reduce min (map :token/end into-prev))
             k (loop [k 0] (if (and (< k n) (not (ws? k))) (recur (inc k)) k))]
-        [(piece s a (sub 0 k)) (piece a t (sub k n))])
+        (into (piece s a (sub 0 k) s) (piece a t (sub k n) t)))
 
       :else [r])))
 
-(declare apply-text-edits)
+(declare apply-text-edits fold-whole-words*)
 
 (defn fold-whole-words
   "Rewrite `ops` (as produced by `pair-replacements` for `old`) so that the
@@ -1092,8 +1102,26 @@
   token without whitespace a space are folded the same way, inserts alone
   and wherever they begin, so the token goes on one of the new words and
   not over both (`NY` to `New York`). The reconstructed string is
-  unchanged."
-  [ops old tokens]
+  unchanged.
+
+  `partitioning` is the set of the tokens' layers that are partitions and
+  `overlap-free` the set of those that forbid overlap, partitions included.
+  A word is a token on a layer that forbids overlap and is not a partition,
+  so a sentence or a UMR node over several words of a script without spaces
+  is never taken for a word around morphemes. Without them any token
+  without a space may be a word. Edits leaving only spaces in a word's place
+  are not folded onto it: the word is deleted."
+  ([ops old tokens] (fold-whole-words ops old tokens nil nil))
+  ([ops old tokens partitioning overlap-free]
+   (let [word? (if (nil? overlap-free)
+                 (constantly true)
+                 (fn [{:token/keys [layer]}]
+                   (and (contains? overlap-free layer)
+                        (not (contains? partitioning layer)))))]
+     (fold-whole-words* ops old tokens word?))))
+
+(defn- fold-whole-words*
+  [ops old tokens word?]
   (let [edits0 (vec (ops->edits ops))
         ^ints o (.toArray (.codePoints ^String old))
         near (delay (tokens-near tokens (count edits0)))
@@ -1101,7 +1129,7 @@
         ;; there first, so the part inside the word is judged below as any
         ;; edit of that word is: `dog cow` to `cab` folds `cow` as `cow` to
         ;; `cab` does.
-        edits (into [] (mapcat #(if (= :replace (:kind %)) (split-at-token-edges o @near %) [%])) edits0)
+        edits (into [] (mapcat #(if (= :replace (:kind %)) (split-at-token-edges o @near word? %) [%])) edits0)
         cut? (not= edits edits0)
         whole (alength o)
         old-text (fn [p q] (String. o (int p) (int (- q p))))
@@ -1128,6 +1156,9 @@
                             (and (<= b tb) (<= te e) (not (and (= tb b) (= te e))))))
                         (@near b e)))
         inside? (fn [b e] (seq (parts b e)))
+        ;; Whether a word stands over [b e), so that the tokens inside it are
+        ;; its morphemes and not the words under a sentence or a UMR node.
+        word-at? (fn [b e] (some #(and (= b (:token/begin %)) (= e (:token/end %)) (word? %)) (@near b e)))
         ;; [b e) of `old` with the edits of `g` applied.
         new-text (fn [g b e]
                    (loop [g g p b sb (StringBuilder.)]
@@ -1212,6 +1243,9 @@
                       kinds (set (map :kind g))]
                   (when (and (seq g)
                              (clear-after? j e)
+                             ;; spaces alone are no word to fold onto: a word
+                             ;; they take the place of is deleted
+                             (not (every? space? (.toArray (.codePoints ^String (new-text g b e)))))
                              (or (and (> (count g) 1)
                                       (= b (start-of (first g)))
                                       (= e (reduce max (map reach-of g)))
@@ -1226,7 +1260,8 @@
                              ;; sentence start keeps the word and `co` on
                              ;; `co`, as the edits leave them).
                              (or (not (inside? b e))
-                                 (and (not-any? #(ws? (aget o %)) (range b e))
+                                 (and (word-at? b e)
+                                      (not-any? #(ws? (aget o %)) (range b e))
                                       (broken? g b e)
                                       (not-any? #(and (= :replace (:kind %)) (has-ws? (:value %)))
                                                 (split-off-new-words o @near (as-replace g b e))))))
@@ -1297,9 +1332,10 @@
                         B (loop [k p] (if (and (pos? k) (not (ws? (aget o (dec k))))) (recur (dec k)) k))
                         E (loop [k q] (if (and (< k whole) (not (ws? (aget o k)))) (recur (inc k)) k))]
                     (->> (@near B E)
-                         (filter (fn [{tb :token/begin te :token/end}]
+                         (filter (fn [{tb :token/begin te :token/end :as t}]
                                    (and (< tb te) (<= B tb p) (<= q te E)
-                                        (not (and (zero? tb) (= te whole))))))
+                                        (not (and (zero? tb) (= te whole)))
+                                        (word? t))))
                          (sort-by :token/begin))))
         ;; Tokens without whitespace that an edit giving one a space falls
         ;; strictly inside: `NY` to `New York` is `ew ` typed inside it and
@@ -1339,7 +1375,7 @@
         (let [replace? #(= :replace (:kind %))
               out' (into []
                          (comp (mapcat #(if (replace? %) (split-off-new-words o @near %) [%]))
-                               (mapcat #(if (replace? %) (split-at-token-edges o @near %) [%])))
+                               (mapcat #(if (replace? %) (split-at-token-edges o @near word? %) [%])))
                          out)]
           (if (or folded? cut? (not= out out')) (edits->ops out') ops))))))
 

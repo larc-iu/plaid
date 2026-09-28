@@ -370,6 +370,15 @@
        (ta/normalize-deletes old tokens)
        (ta/pair-replacements old tokens)
        (ta/fold-whole-words old tokens)
+       (apply-all old tokens)))
+  ;; `overlap-free` is the set of layers that forbid overlap, the
+  ;; partitions among them
+  ([old new tokens partitioning overlap-free]
+   (-> (ta/diff old new)
+       (ta/slide-to-tokens old tokens partitioning)
+       (ta/normalize-deletes old tokens)
+       (ta/pair-replacements old tokens)
+       (ta/fold-whole-words old tokens partitioning overlap-free)
        (apply-all old tokens))))
 
 (deftest pair-replacements-turns-a-respelled-letter-into-a-replace
@@ -1033,6 +1042,39 @@
                                          #{:s})]
     (is (= "maЖ cat\n" (:text/body text)))
     (is (= #{[:mat 0 3] [:cat 4 7]} (extents (filter (comp #{:w} :token/layer) tokens)))))
+  (testing "in a script without spaces, only a token of a word layer holds morphemes"
+    ;; A sentence with no line break after it, or a UMR node over neighbouring
+    ;; words, has no space in it, and two words meeting inside it read as two
+    ;; morphemes of one word. The replace was not cut and the word respelled
+    ;; at its start lost its new letter. The layers say which is a word: one
+    ;; that forbids overlap and is not a partition.
+    (let [on (fn [layer t] (assoc t :token/layer layer))]
+      (doseq [[old new tokens want]
+              [["tatuabשלוםthe" "Zbשלוםthe"
+                [(on :s (tok :s1 0 13)) (on :w (tok :tatu 0 4)) (on :w (tok :ab 4 6))
+                 (on :w (tok :shalom 6 10)) (on :w (tok :the 10 13))]
+                #{[:ab 0 2] [:shalom 2 6] [:the 6 9]}]
+               ["你好世界" "大界"
+                [(on :s (tok :s1 0 4)) (on :w (tok :nihao 0 2)) (on :w (tok :shijie 2 4))]
+                #{[:shijie 0 2]}]
+               ["你好世界再见\n" "大界再见\n"
+                [(on :s (tok :s1 0 7)) (on :w (tok :nihao 0 2)) (on :w (tok :shijie 2 4))
+                 (on :w (tok :zaijian 4 6)) (on :u (tok :node 0 4))]
+                #{[:shijie 0 2] [:zaijian 2 4]}]
+               ;; cut at the node's end, `mat` is replaced by a space alone,
+               ;; and a word is not kept on a space
+               ["你好。cafématYarın" "你好。QX Yarın"
+                [(on :s (tok :s1 0 15)) (on :w (tok :nihao 0 2)) (on :w (tok :cafe 3 7))
+                 (on :w (tok :mat 7 10)) (on :w (tok :yarin 10 15)) (on :u (tok :node 0 7))]
+                #{[:nihao 0 2] [:cafe 3 5] [:yarin 6 11]}]
+               ;; a morpheme edge inside a word stays uncut
+               ["你好世界\n" "大界\n"
+                [(on :s (tok :s1 0 5)) (on :w (tok :nihao 0 2)) (on :w (tok :shijie 2 4))
+                 (on :m (tok :shi 2 3)) (on :m (tok :jie 3 4))]
+                #{[:shijie 0 2]}]]]
+        (let [{:keys [text tokens]} (body-edit old new tokens #{:s} #{:s :w})]
+          (is (= new (:text/body text)))
+          (is (= want (extents (filter (comp #{:w} :token/layer) tokens))) (str (pr-str old) " -> " (pr-str new)))))))
   (testing "one that ends where the replace ends still marks where a word begins"
     ;; `\né` replaced by ` ЖQ`: the sentence after the line break goes on past
     ;; `é`, and the cut at its start keeps `é`'s token on `ЖQ`.

@@ -288,6 +288,47 @@
       (assert-ok s)
       (is (= [cow] (-> s :body :span/tokens))))))
 
+(deftest text-body-edit-in-a-script-without-spaces-keeps-each-word-whole
+  ;; `你好世界再见` with no line break after it, a node over `你好世界` on a
+  ;; layer that allows overlap, and `世界` analyzed `世` + `界`. Deleting `你好`
+  ;; and respelling `世` as `大` left `世界` on `界` alone: the sentence and
+  ;; the node have no space in them, so the words meeting inside them were
+  ;; taken for morphemes of one word. The layers' overlap modes tell them apart.
+  (let [proj (create-test-project admin-request "TextSpacelessProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        sentences (-> (create-token-layer-opts admin-request tl "Sentences"
+                                               {:overlap-mode "partitioning"})
+                      :body :id)
+        words (-> (create-token-layer-opts admin-request tl "Words"
+                                           {:overlap-mode "non-overlapping"
+                                            :parent-token-layer-id sentences})
+                  :body :id)
+        morphemes (-> (create-token-layer-opts admin-request tl "Morphemes"
+                                               {:parent-token-layer-id words})
+                      :body :id)
+        nodes (-> (create-token-layer-opts admin-request tl "Nodes" {}) :body :id)
+        text-id (-> (create-text admin-request tl doc "你好世界再见") :body :id)
+        _ (assert-created (bulk-create-tokens admin-request [{:token-layer-id sentences :text text-id
+                                                              :begin 0 :end 6}]))
+        nihao (-> (create-token admin-request words text-id 0 2) :body :id)
+        shijie (-> (create-token admin-request words text-id 2 4) :body :id)
+        zaijian (-> (create-token admin-request words text-id 4 6) :body :id)
+        shi (-> (create-token admin-request morphemes text-id 2 3) :body :id)
+        jie (-> (create-token admin-request morphemes text-id 3 4) :body :id)
+        node (-> (create-token admin-request nodes text-id 0 4) :body :id)
+        extent (fn [id]
+                 (let [t (get-token admin-request id)]
+                   (assert-ok t)
+                   ((juxt :token/begin :token/end :token/value) (:body t))))]
+    (assert-ok (update-text admin-request text-id "大界再见"))
+    (assert-not-found (get-token admin-request nihao))
+    (is (= [0 2 "大界"] (extent shijie)))
+    (is (= [2 4 "再见"] (extent zaijian)))
+    (is (= [0 1 "大"] (extent shi)))
+    (is (= [1 2 "界"] (extent jie)))
+    (is (= [0 2 "大界"] (extent node)))))
+
 (deftest text-combining-mark-typed-at-a-words-end-joins-the-word
   ;; An accent typed as a separate mark after `cafe` makes the word `café`,
   ;; through a whole body and through an explicit insert (ruled 2026-09-27).
