@@ -329,6 +329,9 @@ export const AssistantChat = ({
   // How long the current turn has been going. A turn that sits on "Writing…"
   // for eleven minutes is indistinguishable from a dead one without this.
   const [elapsedMs, setElapsedMs] = useState(0);
+  // When the job on screen was requested, so a turn rejoined after a reload
+  // shows how long it has really been going.
+  const [startedAt, setStartedAt] = useState(null);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   // The listener below is mounted once, so the project it compares against
@@ -342,11 +345,11 @@ export const AssistantChat = ({
   // Half-second tick, the same cadence and format the service runs use.
   useEffect(() => {
     if (!busy) return undefined;
-    const t0 = Date.now();
-    setElapsedMs(0);
-    const id = setInterval(() => setElapsedMs(Date.now() - t0), 500);
+    const t0 = startedAt ?? Date.now();
+    setElapsedMs(Math.max(0, Date.now() - t0));
+    const id = setInterval(() => setElapsedMs(Math.max(0, Date.now() - t0)), 500);
     return () => clearInterval(id);
-  }, [busy]);
+  }, [busy, startedAt]);
 
   // Reflect a job on screen. It does NOT clear the stop record: this runs on
   // every progress event, including the one `stopJob` fires the instant the
@@ -354,6 +357,7 @@ export const AssistantChat = ({
   // A new piece of work clears it (see send and approve).
   const showJob = (j) => {
     setBusy(j.kind);
+    setStartedAt(j.startedAt ?? null);
     setProgress(j.progress);
     setLiveSteps(j.steps);
     setPartial(j.partial || '');
@@ -361,6 +365,7 @@ export const AssistantChat = ({
   };
   const clearJob = () => {
     setBusy(null);
+    setStartedAt(null);
     setProgress('');
     setLiveSteps([]);
     setPartial('');

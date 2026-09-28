@@ -322,8 +322,12 @@ const finishJob = async (j, store, service) => {
   return j.result;
 };
 
+// `startedAt` (ms) is when the request was made, which is what the turn's
+// clock counts from. A job rejoined after a reload takes it from the record,
+// or the clock would start again at 0:00 on every load.
 const newJob = (fields) => ({
   controller: new AbortController(),
+  startedAt: Date.now(),
   steps: [],
   partial: '',
 
@@ -370,7 +374,12 @@ export const startTurn = ({ store, service, conv, prevMeta, where = null }) => {
     prevMeta,
     conv,
     service,
-    { kind: 'turn', requestId, serviceId: service.serviceId, startedAt: new Date().toISOString() },
+    {
+      kind: 'turn',
+      requestId,
+      serviceId: service.serviceId,
+      startedAt: new Date(j.startedAt).toISOString(),
+    },
     aboutOf(where),
   );
   j.promise = (async () => {
@@ -472,7 +481,7 @@ export const startApply = ({
     planId: plan.id,
     asHuman,
     contributedBy,
-    startedAt: new Date().toISOString(),
+    startedAt: new Date(j.startedAt).toISOString(),
   });
   j.promise = (async () => {
     await persistConv(store, conv, meta, { metaOnly: true });
@@ -513,6 +522,7 @@ export const attachJob = ({ store, conv, meta, docked = false }) => {
     conv,
     prevMeta: meta,
     progress: p.kind === 'apply' ? 'Applying changes…' : 'Thinking…',
+    startedAt: Date.parse(p.startedAt) || Date.now(),
   });
   jobs.set(conv.id, j);
   j.promise = (async () => {
