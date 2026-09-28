@@ -34,6 +34,15 @@ describe('useWriteLock', () => {
     expect(lock().held).toBe(null);
   });
 
+  it('keeps the start it is given, so a rejoined run does not restart its clock', async () => {
+    const { lock, step } = await mount();
+    const startedAt = Date.now() - 90_000;
+    await step(() => {
+      lock().acquire('Draft', { startedAt });
+    });
+    expect(lock().held.startedAt).toBe(startedAt);
+  });
+
   it('carries the status the holder pushes, and ignores one pushed after release', async () => {
     const { lock, step } = await mount();
     let handle;

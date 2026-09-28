@@ -31,7 +31,12 @@ export function useResumedRun(client, doc, acquireWriteLock) {
     const record = readRunRecord(documentId);
     if (!record) return;
 
-    const lock = acquireWriteLock(record.label || 'A service', { onCancel: cancelRequest });
+    // The record's start, so the banner's clock counts the whole run and not
+    // just the time since the reload.
+    const lock = acquireWriteLock(record.label || 'A service', {
+      onCancel: cancelRequest,
+      startedAt: record.startedAt,
+    });
     if (!lock) return; // something already holds it; this page did not reload
     lockRef.current = lock;
     lock.setStatus('Rejoining…');

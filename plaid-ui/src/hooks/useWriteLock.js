@@ -23,6 +23,9 @@ import { useCallback, useRef, useState } from 'react';
 // rejoined run lives in its own hook, so the tab's own dialog has no handle on
 // it and could otherwise only sit there saying it was busy.
 //
+// `startedAt` is when the run began, for a run rejoined after a reload: its
+// banner clock goes on from there rather than starting again at 0:00.
+//
 // `acquire` returns `{release, setStatus}`, or null when the lock is already
 // held — which is also what stops a second run from starting on top of the
 // first. (Each spot has its own useServiceRequest, so its `isProcessing` only
@@ -33,10 +36,15 @@ export function useWriteLock() {
   // what actually arbitrates.
   const heldRef = useRef(false);
 
-  const acquire = useCallback((label, { onCancel = null } = {}) => {
+  const acquire = useCallback((label, { onCancel = null, startedAt = null } = {}) => {
     if (heldRef.current) return null;
     heldRef.current = true;
-    setHeld({ label, startedAt: Date.now(), status: '', cancel: onCancel });
+    setHeld({
+      label,
+      startedAt: Number.isFinite(startedAt) ? startedAt : Date.now(),
+      status: '',
+      cancel: onCancel,
+    });
     let released = false;
     return {
       release: () => {
