@@ -189,20 +189,52 @@ def concept_matches(op: Dict[str, Any], concept: str) -> bool:
     return bool(re.search(p, concept or '', 0 if op.get('case_sensitive') else re.I))
 
 
+def holds(node, rel: str) -> List[str]:
+    """The values ``node`` holds under ``rel``, in its own order."""
+    return [str(a.get('value')) for a in node.attrs if a.get('rel') == rel]
+
+
 def attrs_scope_targets(doc, op: Dict[str, Any]):
     """The nodes in ``doc`` this scope changes, with the attributes each ends
     up with. One reader, because the tool previews the count on the card and
-    the resolver stages the changes, and the two have to mean the same set."""
+    the resolver stages the changes, and the two have to mean the same set.
+
+    A scope that SETS a value leaves a node that already has the attribute
+    alone unless the op says ``overwrite`` (ruling umr-assist-where-missing),
+    so "add :aspect where missing" can never replace a value a person chose.
+    A scope that removes the attribute acts on the nodes that have it."""
     rel, value = op.get('rel') or '', op.get('value') or ''
     for s in doc.sentences:
         for node in s.nodes:
             if node.constant or not concept_matches(op, node.concept):
+                continue
+            if value and not op.get('overwrite') and holds(node, rel):
                 continue
             placed = with_attribute(node, rel, value)
             if [(a.get('rel'), a.get('value')) for a in node.attrs] \
                     == [(a['rel'], a['value']) for a in placed]:
                 continue
             yield s, node, placed
+
+
+def attrs_scope_held(doc, op: Dict[str, Any]) -> List[Tuple[Any, Any]]:
+    """The (sentence, node) pairs the scope's concept matches that already
+    have its attribute, and so are left alone when it does not overwrite."""
+    rel = op.get('rel') or ''
+    return [(s, node) for s in doc.sentences for node in s.nodes
+            if not node.constant and concept_matches(op, node.concept) and holds(node, rel)]
+
+
+def replacing_phrase(targets, rel: str) -> str:
+    """What a scope's targets held under ``rel`` before it, counted by value,
+    most common first: "process on 5, state on 2". Empty when none of them
+    held it, so a scope that only adds says nothing here."""
+    counts: Counter = Counter()
+    for _s, node, _placed in targets:
+        was = holds(node, rel)
+        if was:
+            counts[' '.join(was)] += 1
+    return ', '.join(f'{v} on {n}' for v, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
 
 
 def _resolve_attrs_scope(res: Resolution, op):
@@ -558,6 +590,7 @@ def summarize(ops: List[Dict[str, Any]]) -> str:
 
 
 __all__ = ['KIND', 'STAGES', 'GRAPH_KINDS', 'SCOPES', 'EXCLUSIVE_KINDS', 'Context',
-           'PlanError', 'Resolution', 'attrs_scope_targets', 'concept_matches', 'docs_of_op',
+           'PlanError', 'Resolution', 'attrs_scope_held', 'attrs_scope_targets', 'concept_matches',
+           'docs_of_op', 'holds', 'replacing_phrase',
            'graphs_of_op', 'execute_plan', 'normalize_ops', 'resolve_scopes',
            'sentence_graph_key', 'summarize', 'validate_ops']

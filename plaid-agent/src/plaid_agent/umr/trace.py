@@ -85,6 +85,9 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
     if name == 'set_attribute_for_concept':
         rel, value = a.get('rel') or '', (a.get('value') or '').strip()
         what = f'{rel} {value}' if value else f'{rel} removed'
+        # Without overwrite a value lands only where the attribute is missing.
+        if value and not a.get('overwrite'):
+            return f'Planned {what} on {q(a.get("concept"))} nodes without {rel}{in_doc(a)}'
         return f'Planned {what} on every {q(a.get("concept"))} node{in_doc(a)}'
     if name == 'add_triple':
         return f'Planned ({a.get("a")} {a.get("rel")} {a.get("b")}){in_doc(a)}'

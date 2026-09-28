@@ -123,6 +123,31 @@ def resolve(doc: UmrDoc, ref: str):
     return node
 
 
+def attrs_change(old: List[dict], new: List[dict]) -> str:
+    """What a node's attributes become, one attribute at a time, the way a
+    concept row says "old becomes new": ":aspect process becomes performance,
+    adds :polarity -, removes :mode imperative". The card showed only the new
+    set, so a value a person chose went without being named."""
+    def by_rel(attrs):
+        out: Dict[str, List[str]] = {}
+        for a in attrs or []:
+            out.setdefault(a.get('rel'), []).append(str(a.get('value')))
+        return out
+    was, now = by_rel(old), by_rel(new)
+    parts = []
+    for rel in dict.fromkeys([*now, *was]):
+        before, after = was.get(rel, []), now.get(rel, [])
+        if before == after:
+            continue
+        if not before:
+            parts.append(f'adds {rel} {" ".join(after)}')
+        elif not after:
+            parts.append(f'removes {rel} {" ".join(before)}')
+        else:
+            parts.append(f'{rel} {" ".join(before)} becomes {" ".join(after)}')
+    return ', '.join(parts) or 'attributes reordered'
+
+
 # --- gloss lines --------------------------------------------------------------
 
 #: The gloss headers a ``.umr`` file may carry, with the scope each reads at.

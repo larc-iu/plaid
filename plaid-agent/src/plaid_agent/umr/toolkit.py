@@ -152,9 +152,9 @@ TOOLS = [
         ['document', 'sentence', 'var', 'line']),
     _fn('set_attribute_for_concept',
         'PLAN: set one attribute on every node in a document whose concept matches, or remove it '
-        'from them by leaving the value out. One change on the card, however many nodes it '
-        'covers, and the nodes are read again when you approve it. Use set_attributes for one '
-        'node.',
+        'from them by leaving the value out. A node that already has the attribute keeps its '
+        'value unless you pass overwrite. One change on the card, however many nodes it covers, '
+        'and the nodes are read again when you approve it. Use set_attributes for one node.',
         {'document': _DOC,
          'concept': {'type': 'string', 'description': 'Match the node\'s concept, e.g. "say-01".'},
          'rel': {'type': 'string',
@@ -163,7 +163,10 @@ TOOLS = [
                    'description': 'What to set it to. Leave it out to remove the attribute.'},
          'whole': {'type': 'boolean', 'description': 'Match the whole concept only.'},
          'regex': {'type': 'boolean'},
-         'case_sensitive': {'type': 'boolean'}},
+         'case_sensitive': {'type': 'boolean'},
+         'overwrite': {'type': 'boolean',
+                       'description': 'Replace the value on nodes that already have the attribute. '
+                                      'Only when the user asked to change existing values.'}},
         ['document', 'concept', 'rel']),
     _fn('add_triple',
         'PLAN: add one document-level relation between two nodes, or between a node and one of the '

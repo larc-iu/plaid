@@ -327,8 +327,8 @@ def test_a_node_row_does_not_name_its_node_twice(ws):
     the variable its label opens with. The label stays whole for the export."""
     run(ws, 'set_attributes', document='Story', sentence=2, var='s2r', line=':aspect process')
     row = ws.plan_payload()['changes'][0]
-    assert row['label'] == 's2r: attributes :aspect process'
-    assert row['change'] == 'attributes :aspect process'
+    assert row['label'] == 's2r: adds :aspect process'
+    assert row['change'] == 'adds :aspect process'
 
 
 def test_a_row_that_is_a_phrase_of_its_own_is_shown_whole(ws):

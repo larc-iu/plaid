@@ -24,8 +24,9 @@ from ..core.limits import OVERVIEW_DOCS, SAMPLE_LINES
 from ..core.tools import ToolError, truncate
 from ..core.workspace import BaseWorkspace
 from .diff import plan_penman
-from .plan import (GRAPH_KINDS, KIND, attrs_scope_targets, graphs_of_op, sentence_graph_key)
-from .project import (DOC_CONSTANTS, GNode, GROUPS, Sentence, UmrDoc, UmrProject,
+from .plan import (GRAPH_KINDS, KIND, attrs_scope_held, attrs_scope_targets, graphs_of_op, holds,
+                   replacing_phrase, sentence_graph_key)
+from .project import (DOC_CONSTANTS, GNode, GROUPS, Sentence, UmrDoc, UmrProject, attrs_change,
                       gloss_headers, group_of, load_document, node_ref, place_attributes,
                       render_document, render_document_graph, resolve)
 
@@ -382,14 +383,21 @@ def t_set_attributes(ws: Workspace, document: str = None, sentence=None, var: st
     ws.add_ops(_staged([{
         'kind': 'set_attrs', 'document_id': doc.id, 'ref': node_ref(s, node),
         'sentence': s.index, 'sentence_id': s.id, 'span_id': node.id, 'var': node.var,
-        'attrs': placed, 'umr_set': {'attrs': placed}, 'label': f'{node.var}: attributes {shown}'}]))
+        'attrs': placed, 'umr_set': {'attrs': placed},
+        'label': f'{node.var}: {attrs_change(node.attrs, placed)}'}]))
     return f'Planned the attributes of {node.var} in s{s.index}: {shown}.'
 
 
 def t_set_attribute_for_concept(ws: Workspace, document: str = None, concept: str = None,
                                 rel: str = None, value: str = None, regex: bool = False,
-                                whole: bool = False, case_sensitive: bool = False) -> str:
-    """One attribute over every node in a document whose concept matches."""
+                                whole: bool = False, case_sensitive: bool = False,
+                                overwrite: bool = False) -> str:
+    """One attribute over every node in a document whose concept matches.
+
+    A node that already has the attribute is left alone unless ``overwrite``
+    (ruling umr-assist-where-missing), and an overwrite names on the card what
+    it replaces ("replacing process on 5"), so neither the model nor the
+    approver can replace a value without seeing it."""
     doc = ws.doc(document)
     concept = (concept or '').strip()
     if not concept:
@@ -402,24 +410,39 @@ def t_set_attribute_for_concept(ws: Workspace, document: str = None, concept: st
     op: Dict[str, Any] = {
         'kind': 'attrs_scope', 'document_id': doc.id, 'concept': concept, 'rel': rel,
         'value': value, 'regex': bool(regex), 'whole': bool(whole),
-        'case_sensitive': bool(case_sensitive)}
+        'case_sensitive': bool(case_sensitive), 'overwrite': bool(overwrite)}
     # The count and the examples come from the same reader the resolver uses,
     # so the card counts what approval will stage. It is read again at
     # approval, against the document as it is then.
     targets = list(attrs_scope_targets(doc, op))
     what = f'{rel} {value}' if value else f'{rel} removed'
+    # The nodes left alone because they already have the attribute, said to
+    # the model so a request that meant to change them can be planned again.
+    kept = [] if (overwrite or not value) else attrs_scope_held(doc, op)
+    kept_note = ''
+    if kept:
+        kept_note = (f'{len(kept)} node(s) with that concept already have {rel} and are left as '
+                     f'they are (' + ', '.join(f's{s.index}.{n.var} {" ".join(holds(n, rel))}'
+                                               for s, n in kept[:SAMPLE_LINES])
+                     + (', …' if len(kept) > SAMPLE_LINES else '')
+                     + '). Pass overwrite=true only if the user asked to replace existing values.')
     if not targets:
         return (f'Nothing to change: no node in "{doc.name}" with a concept matching "{concept}" '
-                f'would end up different ({what}).')
+                f'would end up different ({what}).' + (f' {kept_note}' if kept_note else ''))
+    replacing = replacing_phrase(targets, rel) if value else ''
     op['count'] = len(targets)
-    op['label'] = f'{what} on {len(targets)} node(s) with concept "{concept}" in "{doc.name}"'
+    op['label'] = (f'{what} on {len(targets)} node(s) with concept "{concept}" in "{doc.name}"'
+                   + (f', replacing {replacing}' if replacing else ''))
     ws.add_ops(_staged([op]))
-    out = [f'Planned {what} on {len(targets)} node(s) in "{doc.name}", read again when you '
-           f'approve it:']
+    out = [f'Planned {what} on {len(targets)} node(s) in "{doc.name}"'
+           + (f', replacing {replacing}' if replacing else '') + ', read again when you approve it:']
     for s, node, _placed in targets[:SAMPLE_LINES]:
-        out.append(f'  s{s.index}.{node.var}  ({node.concept})')
+        was = ' '.join(holds(node, rel))
+        out.append(f'  s{s.index}.{node.var}  ({node.concept}' + (f', was {was}' if was else '') + ')')
     if len(targets) > SAMPLE_LINES:
         out.append(f'  … and {len(targets) - SAMPLE_LINES} more')
+    if kept_note:
+        out.append(kept_note)
     return '\n'.join(out)
 
 

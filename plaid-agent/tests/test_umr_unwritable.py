@@ -30,7 +30,8 @@ BAD_VALUES = ['very big', '1) (s1z / evil', 'x\n    :ARG0 (s1x / injected)', '"o
 
 @pytest.mark.parametrize('value', BAD_VALUES)
 def test_a_value_the_file_cannot_hold_is_refused(ws, value):
-    out = run(ws, 'set_attribute_for_concept', concept='dog', rel=':refer-number', value=value)
+    out = run(ws, 'set_attribute_for_concept', concept='dog', rel=':refer-number', value=value,
+              overwrite=True)
     assert ws.ops == [], out
     assert 'value' in out, out
 
@@ -43,7 +44,8 @@ def test_a_relation_the_file_cannot_hold_is_refused(ws, rel):
 
 
 def test_a_quoted_value_and_a_plain_one_are_planned(ws):
-    run(ws, 'set_attribute_for_concept', concept='dog', rel=':refer-number', value='plural')
+    run(ws, 'set_attribute_for_concept', concept='dog', rel=':refer-number', value='plural',
+        overwrite=True)
     assert len(ws.ops) == 1
     w = umr_ws(umr_client())
     run(w, 'set_attribute_for_concept', concept='dog', rel=':wiki', value='"Rex (the dog)"')

@@ -126,7 +126,7 @@ def test_a_stored_relation_is_kept_on_its_own_node_only():
     assert "Unknown relation ':legacy'" in out and w.ops == [], out
     # Where it is stored, its value may still change, one node or a scope.
     run(w, 'set_attribute_for_concept', document='Story', concept='dog', rel=':legacy',
-        value='2')
+        value='2', overwrite=True)
     assert len(w.ops) == 1
 
 

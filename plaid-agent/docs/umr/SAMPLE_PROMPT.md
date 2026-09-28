@@ -182,7 +182,7 @@ PLAN: set the attributes of ONE node, whole. Give every attribute the node shoul
 
 ### set_attribute_for_concept
 
-PLAN: set one attribute on every node in a document whose concept matches, or remove it from them by leaving the value out. One change on the card, however many nodes it covers, and the nodes are read again when you approve it. Use set_attributes for one node.
+PLAN: set one attribute on every node in a document whose concept matches, or remove it from them by leaving the value out. A node that already has the attribute keeps its value unless you pass overwrite. One change on the card, however many nodes it covers, and the nodes are read again when you approve it. Use set_attributes for one node.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `concept` (string, required): Match the node's concept, e.g. "say-01".
@@ -191,6 +191,7 @@ PLAN: set one attribute on every node in a document whose concept matches, or re
 - `whole` (boolean): Match the whole concept only.
 - `regex` (boolean)
 - `case_sensitive` (boolean)
+- `overwrite` (boolean): Replace the value on nodes that already have the attribute. Only when the user asked to change existing values.
 
 ### add_triple
 

@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Tuple
 
 from plaid_client.workflows.umr import Graph, parse_penman
 
-from .project import Sentence, UmrDoc, UmrProject, penman_of, reachable_from_root
+from .project import Sentence, UmrDoc, UmrProject, attrs_change, penman_of, reachable_from_root
 
 
 def _children(node) -> Tuple[List[dict], List[dict]]:
@@ -135,8 +135,7 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject)
                 'kind': 'set_attrs', 'document_id': did, 'ref': f's{sentence.index}.{var}',
                 'span_id': old.id, 'var': var, 'attrs': attrs,
                 'umr_set': {'attrs': attrs},
-                'label': (f'{var}: attributes {_attr_line(attrs)}' if attrs
-                          else f'{var}: no attributes')})
+                'label': f'{var}: {attrs_change(old.attrs, attrs)}'})
 
         old_edges = [(e, f'{e.role} {doc.nodes_by_id[e.target].var}')
                      for e in old.out
@@ -247,10 +246,6 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject)
         op.setdefault('sentence_id', sentence.id)
         op['graph_of'] = f'{did}:{sentence.index}'
     return GraphDiff(ops, [])
-
-
-def _attr_line(attrs) -> str:
-    return ' '.join(f'{a.get("rel")} {a.get("value")}' for a in attrs) or '(none)'
 
 
 def round_trip(doc: UmrDoc, sentence: Sentence) -> str:
