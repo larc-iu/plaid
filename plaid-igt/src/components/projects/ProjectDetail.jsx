@@ -35,7 +35,8 @@ import { isReviewed } from '@larc-iu/plaid-client';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { useTabParam } from '@/hooks/useTabParam';
-import { contentTabsFor, TAB_ALIASES } from '@/domain/projectTabs';
+import { contentTabsFor, isMaintainerTab, TAB_ALIASES } from '@/domain/projectTabs';
+import { notifyNotAMaintainer } from '@ui/hooks/useManagedProject.js';
 import { useComposeProject } from '@/hooks/useCompose';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
 import { IGT_ASSISTANT } from './assistant/adapter.js';
@@ -180,11 +181,18 @@ export const ProjectDetail = () => {
 
   // A non-maintainer who lands on a settings URL has nothing to manage; bounce
   // them back to the document view rather than show an empty Settings panel.
+  // A maintainers-only `?tab=` falls back to Documents (useTabParam). Either
+  // way the reader is told why, as the shared guard (useManagedProject) does.
+  const tabParam = new URLSearchParams(location.search).get('tab');
   useEffect(() => {
-    if (onSettings && project && !canManage) {
+    if (!project || canManage) return;
+    if (onSettings) {
+      notifyNotAMaintainer();
       navigate(`/projects/${projectId}`, { replace: true });
+    } else if (isMaintainerTab(tabParam)) {
+      notifyNotAMaintainer();
     }
-  }, [onSettings, project, canManage, projectId, navigate]);
+  }, [onSettings, tabParam, project, canManage, projectId, navigate]);
 
   // A project not yet set up for IGT: maintainers go to the setup/adopt wizard;
   // non-maintainers can't create layers, so they get an informational notice

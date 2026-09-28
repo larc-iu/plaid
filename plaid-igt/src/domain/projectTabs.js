@@ -37,3 +37,7 @@ export const TAB_ALIASES = {
   'bulk-edit': 'bulk',
   bulkedit: 'bulk',
 };
+
+// Whether `?tab=` names a maintainers-only tab, by its slug or a spelling of
+// it, so a reader who follows such a link can be told why it opens Documents.
+export const isMaintainerTab = (raw) => MAINTAINER_TABS.has(TAB_ALIASES[raw] ?? raw);

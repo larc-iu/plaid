@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { MemoryRouter, Routes, Route, useNavigate } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 
 // One route component serves every project id, so walking from A to B keeps
@@ -39,7 +39,14 @@ vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => auth }));
 // The shared tab strip asks the package's own hook.
 vi.mock('@ui/contexts/useAuth.js', () => ({ useAuth: () => auth }));
 
+vi.mock('@ui/lib/notify.js', async (original) => ({
+  ...(await original()),
+  notifyError: vi.fn(),
+}));
+
 const { ProjectDetail } = await import('./ProjectDetail.jsx');
+const { notifyError } = await import('@ui/lib/notify.js');
+const { NOT_A_MAINTAINER } = await import('@ui/hooks/useManagedProject.js');
 
 const PROJECTS = {
   A: { id: 'A', name: 'Ayvale', config: { igt: { initialized: true } } },
@@ -240,3 +247,70 @@ describe('the project page header', () => {
 
 // Settles one project read with extra ACL fields.
 const pendingReader = (d, id, acl) => d.settleWith(id, { ...PROJECTS[id], ...acl });
+
+// Ruling umr-collab-validation-writers, as the shared guard words it: a page
+// only maintainers may open, met by URL, says so as it sends the reader on.
+describe('a reader on a maintainers-only page', () => {
+  let where;
+  const Where = () => {
+    where = useLocation();
+    return null;
+  };
+  const at = (path) => (
+    <MemoryRouter initialEntries={[path]}>
+      <Where />
+      <Routes>
+        <Route path="/projects/:projectId" element={<ProjectDetail />} />
+        <Route path="/projects/:projectId/general" element={<ProjectDetail />} />
+      </Routes>
+    </MemoryRouter>
+  );
+  const asReader = async (path, fn) => {
+    const d = deferred();
+    auth.client = d.client;
+    auth.user = { id: 'r', isAdmin: false };
+    notifyError.mockClear();
+    try {
+      const view = await renderComponent(at(path));
+      await view.step(async () =>
+        pendingReader(d, 'A', { maintainers: [], writers: [], readers: ['r'] }),
+      );
+      await fn(view);
+      await view.unmount();
+    } finally {
+      auth.user = { id: 'u', isAdmin: true };
+    }
+  };
+
+  it('is told so on a settings section, and sent to the project', async () => {
+    await asReader('/projects/A/general', async (view) => {
+      expect(notifyError).toHaveBeenCalledTimes(1);
+      expect(notifyError.mock.calls[0][0]).toBe(NOT_A_MAINTAINER);
+      expect(heading(view.container)).toBe('Ayvale');
+      expect(where.pathname).toBe('/projects/A');
+    });
+  });
+
+  it.each(['bulk', 'validate', 'activity', 'validation'])('is told so on ?tab=%s', async (tab) => {
+    await asReader(`/projects/A?tab=${tab}`, async () => {
+      expect(notifyError).toHaveBeenCalledTimes(1);
+      expect(notifyError.mock.calls[0][0]).toBe(NOT_A_MAINTAINER);
+    });
+  });
+
+  it('is told nothing on a page every reader has', async () => {
+    await asReader('/projects/A?tab=search', async () => {
+      expect(notifyError).not.toHaveBeenCalled();
+    });
+  });
+
+  it('tells a maintainer nothing', async () => {
+    const d = deferred();
+    auth.client = d.client;
+    notifyError.mockClear();
+    const view = await renderComponent(at('/projects/A/general'));
+    await view.step(async () => d.settle('A'));
+    expect(notifyError).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+});

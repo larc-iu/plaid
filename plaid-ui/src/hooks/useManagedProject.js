@@ -13,6 +13,12 @@ import { appRoutes } from '../lib/uiConfig.js';
 // into the project list reads as a broken link.
 export const NOT_A_MAINTAINER = "Only a project's maintainers can open this page.";
 
+// The toast itself, for a screen that guards a maintainers-only page of its
+// own (igt's ProjectDetail). One toast however often an effect runs it
+// (StrictMode runs effects twice).
+export const notifyNotAMaintainer = () =>
+  notifyError(NOT_A_MAINTAINER, undefined, { id: 'not-a-maintainer' });
+
 export const useManagedProject = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -66,8 +72,7 @@ export const useManagedProject = () => {
 
   useEffect(() => {
     if (loaded && !canConfigure) {
-      // One toast however often the effect runs (StrictMode runs it twice).
-      notifyError(NOT_A_MAINTAINER, undefined, { id: 'not-a-maintainer' });
+      notifyNotAMaintainer();
       navigate(appRoutes().projects);
     }
   }, [loaded, canConfigure, navigate]);
