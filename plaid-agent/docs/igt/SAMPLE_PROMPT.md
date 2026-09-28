@@ -195,7 +195,7 @@ PLAN: link words or morphemes to a lexicon entry, by the entry's form ("ама",
 
 ### unlink_entry
 
-PLAN: remove the own lexicon link of words or morphemes (not a multi-word expression: unlink_phrase).
+PLAN: remove the own lexicon link of words or morphemes (not a multi-word expression: unlink_phrase). For a word whose analysis this plan changes, sN.wN.mN is a morpheme of the PLANNED analysis, as in link_entry.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `refs` (array of string, required): Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.

@@ -167,7 +167,8 @@ TOOLS = [
          'entry_id': {'type': 'string'}, 'entry_gloss': _GLOSS},
         ['document', 'refs']),
     _fn('unlink_entry', 'PLAN: remove the own lexicon link of words or morphemes (not a multi-word expression: '
-                        'unlink_phrase).',
+                        'unlink_phrase). For a word whose analysis this plan changes, sN.wN.mN is a morpheme of the '
+                        'PLANNED analysis, as in link_entry.',
         {'document': _DOC, 'refs': _REFS}, ['document', 'refs']),
     _fn('link_phrase',
         'PLAN: link two or more words of one sentence to ONE lexicon entry as a multi-word expression (an idiom, a '

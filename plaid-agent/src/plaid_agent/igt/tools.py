@@ -317,11 +317,18 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
     form = target.get('form') if kind == 'existing' else ws.new_entries[target]['form']
     staged: List[Dict[str, Any]] = []
     inside: List[str] = []
+    # Links back to the entry a thing is already linked to: whatever the plan
+    # holds for that link (a link to another entry, an unlink) comes out, and
+    # nothing is written, so a person's link stays theirs.
+    back: List[tuple] = []
     for ref in _refs(refs):
-        planned = _planned_morpheme_link(ws, doc, ref, kind, target, form)
-        if planned is not None:
-            if planned:
-                staged.append(planned)
+        place = _planned_place(ws, doc, ref)
+        if place is not None:
+            op = _planned_link_op(ws, doc, ref, place, kind, target, form)
+            if op.get('existing_link_id') and kind == 'existing' and place.kept.link.item_id == target['id']:
+                back.append((ref, ws.op_target(op)))
+            else:
+                staged.append(op)
             continue
         obj = _resolve_for_link(doc, ref)
         if isinstance(obj, Sentence):
@@ -330,6 +337,7 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
             raise ToolError(f'{ref} is part of a multi-word expression planned in this turn; a word keeps its own '
                             'link inside one, so drop that plan first if you meant to replace it')
         if kind == 'existing' and obj.link and obj.link.item_id == target['id']:
+            back.append((ref, ws.op_target({'kind': 'link', 'token_id': obj.id})))
             continue
         what = obj.surface if isinstance(obj, Word) else obj.form
         if isinstance(obj, Word) and obj.mwes:
@@ -339,27 +347,55 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
                        'new_entry_key': target if kind == 'new' else None,
                        'existing_link_id': obj.link.id if obj.link else None,
                        'label': f'{ws.doc_label(doc.id)} {ref} "{what}": link ' + (f'"{obj.link.form}" → ' if obj.link else '') + f'"{form}"'})
-    ws.add_ops(staged)
+    with ws.staging():
+        taken = _take_out(ws, [key for _, key in back])
+        ws.add_ops(staged)
     note = ws.planned_note(len(staged))
+    if taken:
+        note += (f' {", ".join(ref for ref, key in back if key in taken)} already linked to "{form}": the '
+                 'planned change to that link was taken out of the plan.')
     if inside:
         note += ' (' + '; '.join(inside) + ': a word\'s own link and a multi-word expression are separate; unlink_phrase removes the latter)'
     return note
+
+
+def _take_out(ws: Workspace, targets) -> set:
+    """Take out of the plan every op on one of ``targets``. The targets that
+    had one."""
+    wanted = set(targets) - {None}
+    if not wanted:
+        return set()
+    hit = {ws.op_target(op) for op in ws.ops} & wanted
+    if hit:
+        ws.ops[:] = [op for op in ws.ops if ws.op_target(op) not in hit]
+        ws._gone_at = -1
+    return hit
 
 
 def _planned_analysis_of(ws: Workspace, word_id: str) -> Optional[Dict[str, Any]]:
     return next((op for op in ws.ops if op.get('kind') == 'set_analysis' and op.get('word_id') == word_id), None)
 
 
-def _planned_morpheme_link(ws: Workspace, doc: IgtDoc, ref: str, kind: str, target, form: str):
-    """A link to morpheme N of a word whose analysis this plan writes, or
-    None when ``ref`` names no such morpheme, or {} when the link is already
-    there and the analysis keeps it.
+class _Place:
+    """Morpheme ``index`` of the analysis ``analysis`` this plan writes for
+    ``word``: ``morpheme`` is its planned {form, ...}, and ``kept`` the stored
+    morpheme the analysis keeps in that place (the first, when the word was
+    analysed before), or None for one the analysis creates."""
 
-    Most of those morphemes do not exist until the plan is applied, so the
-    link names the word and the place, and the executor writes it once the
-    analysis has minted them (``plan.planned_morpheme``). ``sN.wN.mN`` of such
-    a word means the PLANNED chain: it is the one the model just wrote, and
-    the chain as stored is on its way out."""
+    def __init__(self, word: Word, analysis: Dict[str, Any], index: int, kept: Optional[Morpheme]):
+        self.word, self.analysis, self.index, self.kept = word, analysis, index, kept
+        self.morpheme = analysis['morphemes'][index - 1]
+
+
+def _planned_place(ws: Workspace, doc: IgtDoc, ref: str) -> Optional[_Place]:
+    """What ``sN.wN.mN`` names in a word whose analysis this plan writes, or
+    None when ``ref`` is not a morpheme of such a word.
+
+    Most of those morphemes do not exist until the plan is applied, so a
+    change to one names the word and the place, and the executor finds the
+    morpheme once the analysis has minted it (``plan.planned_morpheme``).
+    ``sN.wN.mN`` of such a word means the PLANNED chain: it is the one the
+    model just wrote, and the chain as stored is on its way out."""
     si, wi, mi = parse_ref(ref)
     if mi is None or wi is None:
         return None
@@ -372,18 +408,27 @@ def _planned_morpheme_link(ws: Workspace, doc: IgtDoc, ref: str, kind: str, targ
         raise ToolError(f'{ref}: the analysis this plan gives "{w.surface}" has {len(chain)} '
                         f'morpheme{"s" if len(chain) != 1 else ""} (the planned analysis is the one '
                         f'sN.wN.mN names while it is in the plan)')
-    m = chain[mi - 1]
-    # The analysis keeps the stored first morpheme as its first and deletes
-    # the rest, so a link on the first is the one a link at m1 replaces, and
-    # every later place is a new morpheme with no link yet.
+    # The analysis keeps its own first stored morpheme (``existing[0]``) as
+    # its first and deletes the rest, so that one is what m1 names, and
+    # every later place is a new morpheme with no link yet. Found by the id
+    # the analysis names rather than by place in this reading of the word,
+    # which the executor would not agree with if the two orders differed.
     first = (analysis.get('existing') or [None])[0]
-    kept = w.morphemes[0] if first and w.morphemes and w.morphemes[0].id == first['id'] else None
-    old = kept.link if kept is not None and mi == 1 else None
-    if (old is not None and kind == 'existing' and old.item_id == target['id']
-            and ws.replacing({'kind': 'link', 'token_id': kept.id}) is None):
-        return {}  # already linked there, kept through the analysis, and no change to it planned
-    return {'kind': 'link', 'token_id': None, 'analysis_word_id': w.id, 'morpheme_index': mi,
-            'morpheme_form': m['form'], 'reuses_morpheme_id': kept.id if kept is not None and mi == 1 else None,
+    kept = None
+    if mi == 1 and first:
+        kept = next((m for m in w.morphemes if m.id == first['id']), None)
+        if kept is None:
+            raise ToolError(f'{ref}: the analysis planned for "{w.surface}" was made from another reading of the '
+                            'document. Plan the analysis again (set_analysis), then link.')
+    return _Place(w, analysis, mi, kept)
+
+
+def _planned_link_op(ws: Workspace, doc: IgtDoc, ref: str, place: _Place, kind: str, target, form: str):
+    """The link op for a morpheme of a planned analysis (see _planned_place)."""
+    old = place.kept.link if place.kept is not None else None
+    m = place.morpheme
+    return {'kind': 'link', 'token_id': None, 'analysis_word_id': place.word.id, 'morpheme_index': place.index,
+            'morpheme_form': m['form'], 'reuses_morpheme_id': place.kept.id if place.kept is not None else None,
             'doc': doc.id,
             'item_id': target['id'] if kind == 'existing' else None,
             'new_entry_key': target if kind == 'new' else None,
@@ -415,7 +460,22 @@ def t_unlink_entry(ws: Workspace, document: str, refs) -> str:
     doc = ws.doc(document)
     staged: List[Dict[str, Any]] = []
     only_mwe: List[str] = []
+    # A morpheme of a planned analysis that has no stored link: what comes out
+    # is the link the plan holds for it, if any.
+    planned: List[tuple] = []
     for ref in _refs(refs):
+        place = _planned_place(ws, doc, ref)
+        if place is not None:
+            kept = place.kept
+            if kept is not None and kept.link:
+                staged.append({'kind': 'unlink', 'link_id': kept.link.id, 'token_id_hint': kept.id,
+                               'label': f'{ws.doc_label(doc.id)} {ref} "{place.morpheme["form"]}": '
+                                        f'unlink "{kept.link.form}"'})
+            else:
+                planned.append((ref, ws.op_target({'kind': 'link', 'token_id': None, 'analysis_word_id': place.word.id,
+                                                   'morpheme_index': place.index,
+                                                   'reuses_morpheme_id': kept.id if kept is not None else None})))
+            continue
         obj = resolve(doc, ref)
         if isinstance(obj, Sentence):
             continue
@@ -428,10 +488,16 @@ def t_unlink_entry(ws: Workspace, document: str, refs) -> str:
         what = obj.surface if isinstance(obj, Word) else obj.form
         staged.append({'kind': 'unlink', 'link_id': obj.link.id, 'token_id_hint': obj.id,
                        'label': f'{ws.doc_label(doc.id)} {ref} "{what}": unlink "{obj.link.form}"'})
-    if only_mwe and not staged:
+    if only_mwe and not staged and not planned:
         raise ToolError('; '.join(only_mwe))
-    ws.add_ops(staged)
-    return ws.planned_note(len(staged)) + (' ' + '; '.join(only_mwe) if only_mwe else '')
+    with ws.staging():
+        taken = _take_out(ws, [key for _, key in planned])
+        ws.add_ops(staged)
+    note = ws.planned_note(len(staged))
+    if taken:
+        note += (f' The planned link on {", ".join(ref for ref, key in planned if key in taken)} was taken out '
+                 'of the plan.')
+    return note + (' ' + '; '.join(only_mwe) if only_mwe else '')
 
 
 def t_link_phrase(ws: Workspace, document: str, refs, entry_form: Optional[str] = None,

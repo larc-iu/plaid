@@ -298,6 +298,57 @@ def _linked_kept_first():
     return c
 
 
+def test_the_analysis_of_every_occurrence_says_which_planned_links_it_dropped():
+    """set_analysis_for_form stages through set_analysis and throws the inner
+    notes away, so what they reported has to reach the one note it writes."""
+    w = scan_ws(FakeClient())
+    call_tool(w, 'set_analysis', dict(AKUNA))
+    call_tool(w, 'link_entry', _link('s1.w3.m2', 'vi-erg'))
+    out = call_tool(w, 'set_analysis_for_form', {'form': 'akuna', 'morphemes': [{'form': 'aku'}, {'form': 'na'}]})
+    assert [op['kind'] for op in w.ops] == ['set_analysis']
+    assert '1 planned link to a morpheme of a planned analysis was dropped' in out, out
+
+
+def test_unlinking_a_morpheme_of_a_planned_analysis_takes_its_planned_link_out():
+    """sN.wN.mN names the planned chain in unlink_entry as in link_entry."""
+    w = scan_ws(FakeClient())
+    _segment_and_link(w)
+    out = call_tool(w, 'unlink_entry', {'document': 'd1', 'refs': ['s1.w3.m2']})
+    assert [(op['kind'], op.get('morpheme_index')) for op in w.ops] == [('set_analysis', None), ('link', 1)], out
+    assert 'planned link' in out and 's1.w3.m2' in out
+
+
+def test_unlinking_a_morpheme_the_planned_analysis_replaces_never_unlinks_the_stored_one():
+    """s1.w1.m2 of a word whose analysis is planned is the planned chain's
+    second morpheme, not the stored m-1b the analysis deletes. Unlinking m-1b's
+    link (l-2) beside the deletion of m-1b is a delete of a link the server has
+    already cascaded away: a 404 that fails the whole plan at approval."""
+    w = scan_ws(FakeClient())
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1', 'morphemes': [{'form': 'Ali'}, {'form': 'di'}]})
+    call_tool(w, 'link_entry', _link('s1.w1.m2', 'vi-gam'))
+    call_tool(w, 'unlink_entry', {'document': 'd1', 'refs': ['s1.w1.m2']})
+    assert [op['kind'] for op in w.ops] == ['set_analysis']
+    c = FakeClient()
+    execute_plan(c, w.plan_payload()['ops'], source='s', label='l')
+    assert ('vocab_links.delete', 'l-2') not in [e for b in c.batches for e in b]
+
+
+def test_unlinking_the_kept_first_morpheme_unlinks_its_stored_link_in_place_of_a_planned_one():
+    w = scan_ws(_linked_kept_first())
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'Gam'}, {'form': 'ar'}]})
+    call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s2.w1.m1'], 'entry_id': 'vi-ali'})
+    out = call_tool(w, 'unlink_entry', {'document': 'd1', 'refs': ['s2.w1.m1']})
+    assert [(op['kind'], op.get('link_id')) for op in w.ops] == [('set_analysis', None), ('unlink', 'l-3')], out
+
+
+def test_unlinking_past_the_end_of_the_planned_analysis_is_refused():
+    w = scan_ws(FakeClient())
+    call_tool(w, 'set_analysis', dict(AKUNA))
+    out = call_tool(w, 'unlink_entry', {'document': 'd1', 'refs': ['s1.w3.m3']})
+    assert 'the analysis this plan gives "akuna" has 2 morphemes' in out
+    assert len(w.ops) == 1
+
+
 def test_the_link_a_planned_link_replaces_goes_in_the_batch_that_writes_its_replacement():
     """The replacement is written in the second batch, once the analysis has
     run. Deleting the stored link in the first left the morpheme with no link
@@ -323,3 +374,25 @@ def test_a_link_by_place_on_the_kept_first_morpheme_must_name_the_morpheme_the_a
     moved = dict(analysis, existing=list(reversed(analysis['existing'])))
     with pytest.raises(ValueError, match='names morpheme 1 of an analysis this plan does not hold'):
         execute_plan(FakeClient(), [moved, link], source='s', label='l')
+
+
+def test_linking_a_kept_morpheme_back_to_its_stored_entry_takes_the_planned_change_out():
+    """Nothing to write: the stored link stays as it is, a person's, rather
+    than being deleted and written again as the assistant's."""
+    w = scan_ws(_linked_kept_first())
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'Gam'}, {'form': 'ar'}]})
+    call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s2.w1.m1'], 'entry_id': 'vi-ali'})
+    out = call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s2.w1.m1'], 'entry_id': 'vi-gam2'})
+    assert [op['kind'] for op in w.ops] == ['set_analysis'], out
+
+
+def test_linking_a_stored_morpheme_back_to_its_stored_entry_takes_the_planned_change_out():
+    """The same for a word or morpheme with no planned analysis: the planned
+    link to another entry was left in the plan while the model was told
+    nothing was planned."""
+    w = scan_ws(FakeClient())
+    call_tool(w, 'link_entry', _link('s1.w1.m2', 'vi-gam'))
+    call_tool(w, 'link_entry', _link('s1.w1', 'vi-gam'))
+    call_tool(w, 'link_entry', _link('s1.w1.m2', 'vi-erg'))
+    out = call_tool(w, 'link_entry', _link('s1.w1', 'vi-ali'))
+    assert w.ops == [], out

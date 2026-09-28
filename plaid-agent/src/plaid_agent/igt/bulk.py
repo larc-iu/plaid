@@ -421,7 +421,7 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
     # anything is staged) and the plan is put back as it was if one word
     # fails.
     ws.reserve(len(targets))
-    saved_reported = ws.reported_replaced
+    saved_reported = ws.reported_replaced, ws.reported_unlinked
     first_note = ''
     planned = []
     with ws.staging():
@@ -433,8 +433,10 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
     # Each inner call wrote a note of its own, and each said what it
     # superseded. Those notes are thrown away here, so what they reported
     # belongs to the one note this call does write: running the tool twice
-    # over a form said nothing about the first run being replaced.
-    ws.reported_replaced = saved_reported
+    # over a form said nothing about the first run being replaced, nor about
+    # the planned links to morphemes an earlier analysis had and this one
+    # does not.
+    ws.reported_replaced, ws.reported_unlinked = saved_reported
     # By target, not by position: an analysis already planned for one of these
     # words is REPLACED where it stands rather than appended.
     by_target = {op_target(op): op for op in ws.ops}
