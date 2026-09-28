@@ -528,6 +528,7 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
                 raise TurnCancelled()
             name = c['function']['name']
             raw = c['function']['arguments'] or '{}'
+            planned = 0
             try:
                 args = json.loads(raw)
                 if not isinstance(args, dict):
@@ -538,10 +539,11 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
                 on_progress(min(85, 8 + rounds * 5), kit.tracer.progress(name, args))
                 planned_before = len(ws.ops)
                 result = kit.call_tool(ws, name, args)
-                if len(ws.ops) != planned_before:
+                planned = len(ws.ops) - planned_before
+                if planned:
                     on_progress(min(85, 8 + rounds * 5), planned_progress(len(ws.ops)))
             failed = str(result).startswith('Error')
-            trace.append(trace_step(kit.tracer, c['id'], name, args, failed=failed))
+            trace.append(trace_step(kit.tracer, c['id'], name, args, failed=failed, planned=planned))
             new.append({'role': 'tool', 'tool_call_id': c['id'], 'content': result})
             if failed and failing['call'] == (name, raw):
                 failing['times'] += 1

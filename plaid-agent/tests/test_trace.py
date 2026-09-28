@@ -70,11 +70,24 @@ def test_summary_counts_documents_searches_and_changes():
              trace_step(TRACER, 'c', 'read_document', {'document': 'Text 2'}),
              trace_step(TRACER, 'd', 'search', {'pattern': 'di'}),
              trace_step(TRACER, 'e', 'project_overview', {}),
-             trace_step(TRACER, 'f', 'set_field', {'field': 'Gloss', 'value': 'ERG', 'refs': ['s1.w2']})]
+             trace_step(TRACER, 'f', 'set_field', {'field': 'Gloss', 'value': 'ERG', 'refs': ['s1.w2']},
+                        planned=1)]
     assert [s['kind'] for s in steps] == [DOCUMENT, DOCUMENT, DOCUMENT, READ, 'meta', PLAN]
     assert summarize_steps(steps) == 'read 2 documents · 1 search · 1 planned change · 6 steps'
     assert summarize_steps(steps[4:5]) == '1 step'
     assert summarize_steps([]) == '0 steps'
+
+
+def test_the_summary_counts_the_changes_planned_not_the_calls():
+    """The step line said "7 planned changes" (calls) over a card listing 9
+    (changes). One call can stage many changes, a refused call none, and a
+    drop takes some away."""
+    steps = [trace_step(TRACER, 'a', 'set_field', {'field': 'Gloss'}, planned=7),
+             trace_step(TRACER, 'b', 'set_field', {'field': 'Gloss'}),  # refused
+             trace_step(TRACER, 'c', 'set_field', {'field': 'Gloss'}, planned=3),
+             trace_step(TRACER, 'd', 'drop_planned', {'indexes': [1]}, planned=-1)]
+    assert summarize_steps(steps) == '9 planned changes · 4 steps'
+    assert summarize_steps(steps[1:2]) == '1 step'
 
 
 def test_a_step_names_the_call_it_belongs_to():

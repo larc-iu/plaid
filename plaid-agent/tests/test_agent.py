@@ -192,3 +192,36 @@ def test_the_operators_timeout_is_the_model_services_flag_and_reaches_the_model(
     assert svc.cfg.timeout == 45.0
     assert svc.turn_failure_line(agent.litellm.Timeout('slow', model='x', llm_provider='openai')) \
         == 'The model did not answer within 45 seconds.'
+
+
+def test_a_turns_step_line_counts_the_changes_its_plan_holds(monkeypatch):
+    """One call staged three changes and another was refused; the step line
+    said "2 planned changes" (calls) over a card listing three."""
+    import json
+    import sys
+    sys.path.insert(0, 'tests')
+    from fixtures import FakeClient, scan_ws
+    from plaid_agent.core.agent import Toolkit, run_turn
+    from plaid_agent.igt.toolkit import call_tool, tools_for
+    from plaid_agent.igt.trace import TRACER
+
+    def call(i, name, args):
+        return SimpleNamespace(id=f'c{i}', function=SimpleNamespace(name=name, arguments=json.dumps(args)))
+
+    replies = iter([
+        [call(1, 'set_field', {'document': 'Text 1', 'refs': ['s1.w1', 's1.w2', 's1.w3'], 'field': 'Gloss',
+                               'value': 'X'}),
+         call(2, 'set_field', {'document': 'Text 1', 'refs': ['s1.w1'], 'field': 'No such field', 'value': 'X'})],
+        None])
+
+    def fake(**kwargs):
+        calls = next(replies)
+        msg = SimpleNamespace(content=None if calls else 'Done.', tool_calls=calls)
+        return SimpleNamespace(choices=[SimpleNamespace(message=msg, finish_reason='stop')])
+
+    monkeypatch.setattr(agent.litellm, 'completion', fake)
+    ws = scan_ws(FakeClient())
+    kit = Toolkit(tools_for=tools_for, call_tool=call_tool, tracer=TRACER)
+    turn = run_turn(cfg(), kit, ws, 'system', [{'role': 'user', 'content': 'gloss'}])
+    assert len(ws.ops) == 3
+    assert turn.summary == '3 planned changes · 2 steps'

@@ -60,7 +60,7 @@ def test_the_trace_reads_as_past_tense_lines():
 
 def test_the_summary_counts_documents_and_plans_apart():
     steps = [trace_step(TRACER, 'a', 'read_document', {'document': 'Viaje'}),
-             trace_step(TRACER, 'b', 'set_head', {'ref': 's1.w2', 'head': 1, 'deprel': 'det'})]
+             trace_step(TRACER, 'b', 'set_head', {'ref': 's1.w2', 'head': 1, 'deprel': 'det'}, planned=1)]
     assert summarize_steps(steps) == 'read 1 document · 1 planned change · 2 steps'
 
 

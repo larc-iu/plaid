@@ -117,11 +117,14 @@ def failed_label(label: str) -> str:
 
 
 def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
-               failed: bool = False) -> Dict[str, Any]:
+               failed: bool = False, planned: int = 0) -> Dict[str, Any]:
     """One trace item. ``document`` rides along on a document read so the
     summary can count distinct documents without re-reading the arguments.
     ``failed`` marks a call the tool refused: it keeps its kind (the tab
-    still shows it where it happened) but is left out of every count."""
+    still shows it where it happened) but is left out of every count.
+    ``planned`` is how much the call changed the plan's size (negative for a
+    drop), so the summary counts the changes the card shows rather than the
+    calls that asked for them."""
     kind = tracer.kind(name)
     label = tracer.describe(name, args)
     item = {'id': call_id, 'name': name, 'kind': kind,
@@ -130,12 +133,19 @@ def trace_step(tracer: Tracer, call_id: str, name: str, args: Dict[str, Any],
         item['failed'] = True
     elif kind == DOCUMENT and args.get('document'):
         item['document'] = str(args['document'])
+    if planned:
+        item['planned'] = planned
     return item
 
 
 def summarize_steps(steps: List[Dict[str, Any]]) -> str:
     """The one line the trace collapses to."""
     total = plural(len(steps), 'step')
+    # The changes the plan holds, not the calls that staged them: one graph
+    # replacement is seven changes, and a refused call is none. The step line
+    # said "7 planned changes" over a card listing 9. Read off every step,
+    # since what a step did to the plan is what the card shows.
+    planned = sum(s.get('planned') or 0 for s in steps)
     steps = [s for s in steps if not s.get('failed')]
     docs = {s['document'] for s in steps if s.get('document')}
     parts = []
@@ -147,7 +157,6 @@ def summarize_steps(steps: List[Dict[str, Any]]) -> str:
     web = sum(1 for s in steps if s['kind'] == WEB)
     if web:
         parts.append(plural(web, 'web lookup'))
-    planned = sum(1 for s in steps if s['kind'] == PLAN)
-    if planned:
+    if planned > 0:
         parts.append(plural(planned, 'planned change'))
     return ' · '.join(parts + [total]) if parts else total
