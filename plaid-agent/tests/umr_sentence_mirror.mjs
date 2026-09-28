@@ -48,31 +48,51 @@ const toPython = (value) => {
 };
 
 const SEP = "#".repeat(80);
-const block = (n) => `${SEP}
+const block = (n, v = n) => `${SEP}
 # :: snt${n}
 Index: 1 2 3 4
 Words: Ali kitap verdi .
 Gloss: Ali book gave .
 
 # sentence level graph:
-(s${n}v / ver-01
-    :ARG0 (s${n}a / person
-        :name (s${n}n / name :op1 "Ali"))
-    :ARG1 (s${n}k / kitap))
+(s${v}v / ver-01
+    :ARG0 (s${v}a / person
+        :name (s${v}n / name :op1 "Ali"))
+    :ARG1 (s${v}k / kitap))
 
 # alignment:
-s${n}v: 3-3
-s${n}a: 1-1
-s${n}n: 0-0
-s${n}k: 2-2
+s${v}v: 3-3
+s${v}a: 1-1
+s${v}n: 0-0
+s${v}k: 2-2
 
 # document level annotation:
-(s${n}s0 / sentence
+(s${v}s0 / sentence
     :modal ((root :modal author)))
+`;
+// A sentence the file leaves with no graph.
+const bare = (n) => `${SEP}
+# :: snt${n}
+Index: 1 2 3
+Words: Veli uyudu .
+Gloss: Veli slept .
+
+# sentence level graph:
+
+
+# alignment:
+
+
+# document level annotation:
+(s${n}s0 / sentence)
 `;
 
 const fromText = (text) =>
   rawFromPlan(planImport(parseUmrFile(text).sentences, []));
+// A sentence added in IGT and annotated stores nothing on its token.
+const added = (raw, i) => {
+  delete role(raw, "sentence").tokens[i].metadata.umr;
+};
 const role = (raw, r) =>
   raw.textLayers[0].tokenLayers.find((l) => l.config?.plaid?.role === r);
 const nodeLayer = (raw) =>
@@ -135,6 +155,20 @@ const CASES = {
     const end = [...raw.textLayers[0].text.body].length;
     piece.begin = end + 5;
     piece.end = end + 5;
+    return raw;
+  },
+  // A sentence the file left bare, then one added in IGT and annotated,
+  // named by its own position: the record stays (8a1d2d44), in an excerpt
+  // numbered from 2 and after a sentence typed in before the first.
+  bareExcerpt: () => {
+    const raw = fromText(`${bare(2)}\n${block(3, 2)}`);
+    added(raw, 1);
+    return raw;
+  },
+  bareShifted: () => {
+    const raw = fromText(`${block(1)}\n${bare(2)}\n${block(3)}`);
+    added(raw, 2);
+    insertSentenceAtStart(raw);
     return raw;
   },
   gone: () => {

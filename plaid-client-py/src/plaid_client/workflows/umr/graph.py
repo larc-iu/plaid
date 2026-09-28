@@ -23,8 +23,9 @@ this reads, so there is one answer to every question the shape raises:
   sentence's token on the left, which is new text typed in before it);
 * a sentence token's record (the file's ``snt`` number, gloss and metadata
   lines, a graph kept as text) left on such new text is read with the graph it
-  describes, and a triple between two constants names its sentences by the
-  number their variables carry.
+  describes, when the variables there say so without doubt, and a triple
+  between two constants names its sentences by the number their variables
+  carry.
 
 The readers that used to hold a copy of these rules each: this module, the two
 bundled UMR services and the assistant in ``plaid-agent``.
@@ -458,7 +459,15 @@ def _records_follow_their_graphs(sentences: List[Sentence], tokens: Dict[str, di
     with the graph it describes (``recordsFollowTheirGraphs``): a sentence
     that records something and has no nodes, followed, past sentences that
     record nothing and have no nodes, by one that records nothing and whose
-    variables carry its number, as position or as the file's."""
+    variables carry its number.
+
+    The number must say so without doubt, since a sentence the file left with
+    no graph followed by one added in IGT and annotated has the same shape.
+    So the variables must not carry the added sentence's own position, and
+    the number must be the one the record's own sentence went by: its stored
+    ``snt`` in a document numbered by its file, and in any other both its
+    position and its stored ``snt``."""
+    by_file = _numbered_by_file(sentences)
     for i, s in enumerate(sentences):
         if s.record_token != s.id or s.nodes:
             continue
@@ -471,7 +480,10 @@ def _records_follow_their_graphs(sentences: List[Sentence], tokens: Dict[str, di
         if to.record_token or not to.nodes:
             continue
         number = _variable_number(to)
-        if number is None or (number != s.index and str(number) != str(s.snt)):
+        if number is None or number == to.index:
+            continue
+        stored = str(number) == str(s.snt)
+        if not (stored if by_file else stored and number == s.index):
             continue
         for key, value in _record_fields(tokens[s.id], to.begin, to.end, body).items():
             setattr(to, key, value)

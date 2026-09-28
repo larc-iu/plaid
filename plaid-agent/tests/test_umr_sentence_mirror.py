@@ -54,7 +54,8 @@ def _python_side(case):
     return nodes, sentences
 
 
-@pytest.mark.parametrize('name', ['prepend', 'excerpt', 'between', 'later', 'outside', 'gone'])
+@pytest.mark.parametrize('name', ['prepend', 'excerpt', 'between', 'later', 'outside', 'gone',
+                                  'bareExcerpt', 'bareShifted'])
 def test_the_document_reads_as_the_app_reads_it(cases, name):
     case = cases[name]
     nodes, sentences = _python_side(case)
@@ -81,3 +82,8 @@ def test_the_cases_are_the_ones_the_rules_are_for(cases):
     assert cases['outside']['nodes']['s2n'] == 2
     assert cases['gone']['nodes']['s2n'] == 2
     assert [s['snt'] for s in cases['excerpt']['sentences']] == [None, 5, 6]
+    # A bare sentence's record stays on it when the sentence after it was
+    # added in IGT and named by its own position, or by a number the bare
+    # sentence's position and stored number do not both give.
+    assert [s['snt'] for s in cases['bareExcerpt']['sentences']] == [2, None]
+    assert [s['snt'] for s in cases['bareShifted']['sentences']] == [None, 1, 2, None]
