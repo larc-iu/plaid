@@ -30,6 +30,7 @@ import {
   notifyWithAction,
 } from '../../lib/notify.js';
 import { fullTimestamp } from '../../lib/formatTime.js';
+import { statusOf } from '../../lib/errors.js';
 import { useConfirm } from './ConfirmProvider.jsx';
 
 export const RestoreDialog = ({
@@ -52,13 +53,26 @@ export const RestoreDialog = ({
   const onRestoredRef = useRef(onRestored);
   onRestoredRef.current = onRestored;
 
+  // Bumped after a refused restore: that reloads the page, so the list of
+  // changes is read again against what is now live.
+  const [reread, setReread] = useState(0);
+
   useEffect(() => {
     if (!open || !asOf) return undefined;
     let cancelled = false;
     setPreview(null);
     setError('');
-    client.documents
-      .restore(documentId, asOf, { dryRun: true })
+    const dryRun = () => client.documents.restore(documentId, asOf, { dryRun: true });
+    // In strict mode the dry run carries the version this page last read, so
+    // a stale page is refused with a 409, and asking again with the same
+    // version is refused the same way. Reload the document first, once.
+    dryRun()
+      .catch(async (err) => {
+        if (statusOf(err) !== 409 || cancelled) throw err;
+        await onRestoredRef.current?.();
+        if (cancelled) throw err;
+        return dryRun();
+      })
       .then((s) => {
         if (!cancelled) setPreview(s);
       })
@@ -68,7 +82,7 @@ export const RestoreDialog = ({
     return () => {
       cancelled = true;
     };
-  }, [open, asOf, client, documentId]);
+  }, [open, asOf, client, documentId, reread]);
 
   const confirm = useConfirm();
   const layers = indexLayers(raw, readRole, layerWords);
@@ -153,6 +167,7 @@ export const RestoreDialog = ({
       console.error('Restore failed:', err);
       notifyError(restoreError(err, 'The restore was not applied.'), 'Failed to restore');
       await onRestored?.();
+      setReread((n) => n + 1);
     } finally {
       setBusy(false);
     }
