@@ -8,7 +8,12 @@ import { UMR_NAMESPACE, missingUmrLayerLabels, getUmrLayerInfo } from '../utils/
 import { parseUmrFile } from './format/umrFile.js';
 import { nfc } from './format/penman.js';
 import { DOC_CONSTANTS } from './format/inventory.js';
-import { buildDocumentGraph, KEPT_VARIABLE, wordForFile } from './sentenceGraph.js';
+import {
+  buildDocumentGraph,
+  KEPT_VARIABLE,
+  NUMBERED_VARIABLE,
+  wordForFile,
+} from './sentenceGraph.js';
 import { findLostCreate } from '../../../plaid-ui/src/lib/lostCreate.js';
 import { humanizeError } from '../../../plaid-ui/src/lib/errors.js';
 
@@ -366,6 +371,24 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
     return pieces.length - 1;
   };
 
+  // The number a triple between two constants records for each sentence
+  // that writes it, in the numbering the variables go by, which is what the
+  // reader follows (sentenceGraph.js sentenceNumberReader): the file's
+  // number where the sentence's variables carry it, in a document numbered
+  // by position. A file whose numbers skip one (snt1, snt2, snt4) is read by
+  // position, its variables are renumbered to match, and the triples must
+  // follow them rather than slip onto the sentence before.
+  const byFile = String(parsedSentences[0]?.snt ?? 1) !== '1';
+  const tripleNumber = (ps, index) => {
+    if (byFile || ps.snt == null) return index;
+    const carried = new Set();
+    ps.graph?.nodes?.forEach((_, v) => {
+      const m = NUMBERED_VARIABLE.exec(v);
+      if (m) carried.add(Number(m[1]));
+    });
+    return carried.size === 1 && carried.has(Number(ps.snt)) ? Number(ps.snt) : index;
+  };
+
   parsedSentences.forEach((ps, i) => {
     const index = i + 1;
     const line = ps.words.join(' ');
@@ -534,11 +557,12 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
         if (seen) {
           // The same triple in several sentences is one relation; a triple
           // between two constants remembers every sentence that writes it.
-          if (constantOnly && !seen.meta.sentences.includes(index)) seen.meta.sentences.push(index);
+          const n = tripleNumber(parsedSentences[index - 1], index);
+          if (constantOnly && !seen.meta.sentences.includes(n)) seen.meta.sentences.push(n);
           return;
         }
         const meta = { group };
-        if (constantOnly) meta.sentences = [index];
+        if (constantOnly) meta.sentences = [tripleNumber(parsedSentences[index - 1], index)];
         const triple = { source, target, rel, meta };
         tripleBySig.set(sig, triple);
         triples.push(triple);

@@ -106,9 +106,18 @@ export function numberedByFile(sentences) {
 // graph it describes: a sentence that records something and has no nodes,
 // followed (past any sentences that record nothing and have no nodes either,
 // several typed in at once) by one that records nothing and whose nodes'
-// variables carry the first one's number, as position or as the file's
-// number. Reconcile then moves the record there for good.
+// variables carry the first one's number. Reconcile then moves the record
+// there for good.
+//
+// The number must say so without doubt, since a sentence the file left with
+// no graph (or one whose graph was deleted) followed by one added in IGT and
+// annotated has the same shape. So the variables must not carry the added
+// sentence's own position, which is how a new node is named, and the number
+// must be the one the record's own sentence went by: its stored `snt` in a
+// document numbered by its file, and in any other both its position and its
+// stored `snt`, which an insertion before it since the import would part.
 function recordsFollowTheirGraphs(sentences, slice, tokensById) {
+  const byFile = numberedByFile(sentences);
   sentences.forEach((s, i) => {
     if (s.recordToken !== s.tokenId || s.nodes.length) return;
     let j = i + 1;
@@ -116,7 +125,9 @@ function recordsFollowTheirGraphs(sentences, slice, tokensById) {
     const to = sentences[j];
     if (!to || to.recordToken || !to.nodes.length) return;
     const number = variableNumber(to);
-    if (number === null || (number !== s.index && String(number) !== String(s.snt))) return;
+    if (number === null || number === to.index) return;
+    const stored = String(number) === String(s.snt);
+    if (!(byFile ? stored : stored && number === s.index)) return;
     Object.assign(to, recordFields(tokensById.get(s.tokenId), to, slice));
     Object.assign(s, recordFields(null, s, slice));
   });
