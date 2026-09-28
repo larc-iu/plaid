@@ -12,9 +12,22 @@
 // read as a reference, so the caller sees the dangling edge rather than a
 // silent atom.
 
+/**
+ * `text` in Unicode NFC, which the format requires of the whole file
+ * (umr-file-format.md, validate.py `unicode-normalization`). Every string
+ * that enters the model goes through this, so `café` typed as `e` plus a
+ * combining accent is stored, compared and written as the one character.
+ * Anything that is not a string is returned as it is.
+ */
+export const nfc = (text) => (typeof text === 'string' ? text.normalize('NFC') : text);
+
 // Concepts, atoms and variables all stop at whitespace, brackets, a colon or
 // the start of a comment (validate.py:390).
 const TOKEN = /^[^\s():#]+/;
+
+// A time of day, the one value that holds a colon (validate.py:393 reads
+// `23:45` as a number). Only in a value: a concept still stops at the colon.
+const TIME = /^[0-9]+:[0-9]+(?![^\s()#])/;
 
 // What a concept cannot hold, then: what ends TOKEN, and a quote, which
 // starts a string. Written anyway, `10:30` read back as `10` and `C#` as `C`
@@ -67,6 +80,7 @@ export const attrValueProblem = (value) => {
       : `A quoted value needs its closing quote: ${text}`;
   }
   if (text.includes('"')) return `A value holds a quote only around the whole of it: ${text}`;
+  if (TIME.exec(text)?.[0] === text) return null;
   if (NOT_IN_CONCEPT.test(text)) {
     return `A value cannot hold spaces, brackets, colons or #, unless it is quoted: ${text}`;
   }
@@ -171,12 +185,26 @@ function definedVariables(masked) {
   return found;
 }
 
+// What to call a space that does not look like one.
+const SPACE_NAMES = {
+  '\u00a0': 'a no-break space',
+  '\u202f': 'a narrow no-break space',
+  '\u2007': 'a figure space',
+  '\u3000': 'an ideographic space',
+};
+
+const spaceName = (ch) => {
+  const code = `U+${ch.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}`;
+  return `${SPACE_NAMES[ch] ?? 'a special space'} (${code})`;
+};
+
 class Scanner {
   constructor(text) {
     this.text = text;
     this.i = 0;
     this.line = 1;
     this.col = 1;
+    this.oddSpace = null;
   }
 
   get done() {
@@ -201,9 +229,15 @@ class Scanner {
 
   // Whitespace and comments are the same thing to the grammar: a `#` runs to
   // the end of the line, and only outside a string (strings are read whole).
+  // A space nobody can see (a no-break space pasted from a word processor) is
+  // remembered, so a message about what follows it can name it.
   skip() {
+    this.oddSpace = null;
     for (;;) {
-      while (!this.done && /\s/.test(this.peek())) this.advance(1);
+      while (!this.done && /\s/.test(this.peek())) {
+        if (!/[ \t\r\n]/.test(this.peek())) this.oddSpace = this.peek();
+        this.advance(1);
+      }
       if (this.peek() === '#') {
         while (!this.done && this.peek() !== '\n') this.advance(1);
         continue;
@@ -219,6 +253,7 @@ class Scanner {
   take(re) {
     const match = re.exec(this.text.slice(this.i));
     if (!match) return null;
+    this.oddSpace = null;
     const value = match[0];
     this.advance(value.length);
     return value;
@@ -228,6 +263,16 @@ class Scanner {
   rest() {
     const end = this.text.indexOf('\n', this.i);
     return this.text.slice(this.i, end === -1 ? this.text.length : end).trim();
+  }
+
+  /**
+   * The rest of the line quoted, as a message's "found ...", naming the
+   * invisible space just skipped when there was one: `big` and `cat` joined
+   * by a no-break space read as two tokens, and the message showed only `cat`.
+   */
+  found(fallback = '') {
+    const quoted = `'${this.rest() || fallback}'`;
+    return this.oddSpace ? `${quoted}, after ${spaceName(this.oddSpace)}` : quoted;
   }
 }
 
@@ -249,7 +294,9 @@ class Scanner {
 export function parsePenman(text, { several = false } = {}) {
   const errors = [];
   const nodes = new Map();
-  const source = typeof text === 'string' ? text : '';
+  // In NFC, as every string in the model is: typed with a combining accent,
+  // `(s6é / cat)` read as the variable `s6e` and a stray accent.
+  const source = typeof text === 'string' ? nfc(text) : '';
   const defined = definedVariables(maskLiterals(source));
   const scanner = new Scanner(source);
 
@@ -274,9 +321,9 @@ export function parsePenman(text, { several = false } = {}) {
       children.push({ rel, kind: 'string', value: raw });
       return;
     }
-    const token = scanner.take(TOKEN);
+    const token = scanner.take(TIME) ?? scanner.take(TOKEN);
     if (token === null) {
-      fail(`Expected a value after '${rel}', found '${scanner.rest() || 'end of graph'}'.`, at);
+      fail(`Expected a value after '${rel}', found ${scanner.found('end of graph')}.`, at);
       return;
     }
     if (defined.has(token)) {
@@ -297,7 +344,7 @@ export function parsePenman(text, { several = false } = {}) {
     scanner.skip();
     const variable = scanner.take(VARIABLE_PREFIX) ?? scanner.take(TOKEN);
     if (variable === null || variable === undefined) {
-      fail(`Expected a node variable id, found '${scanner.rest()}'.`, scanner.here());
+      fail(`Expected a node variable id, found ${scanner.found()}.`, scanner.here());
       return null;
     }
     scanner.skip();
@@ -333,7 +380,7 @@ export function parsePenman(text, { several = false } = {}) {
         const at = scanner.here();
         const rel = scanner.take(RELATION);
         if (rel === null) {
-          fail(`Expected a relation label, found '${scanner.rest()}'.`, at);
+          fail(`Expected a relation label, found ${scanner.found()}.`, at);
           scanner.advance(1);
           continue;
         }
@@ -342,7 +389,7 @@ export function parsePenman(text, { several = false } = {}) {
       }
       // Anything else here is junk: report it once and step past the whole
       // token so the rest of the graph is still read.
-      fail(`Expected a relation or a closing bracket, found '${scanner.rest()}'.`, scanner.here());
+      fail(`Expected a relation or a closing bracket, found ${scanner.found()}.`, scanner.here());
       if (scanner.take(TOKEN) === null) scanner.advance(1);
     }
   }
@@ -351,7 +398,7 @@ export function parsePenman(text, { several = false } = {}) {
   if (scanner.done) return { root: null, tops: [], nodes, errors };
   if (scanner.peek() !== '(') {
     fail(
-      `Expected the opening bracket of the root node, found '${scanner.rest()}'.`,
+      `Expected the opening bracket of the root node, found ${scanner.found()}.`,
       scanner.here(),
     );
     return { root: null, tops: [], nodes, errors };

@@ -1,6 +1,12 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePenman, serializePenman, treeEdges } from '../src/domain/format/penman.js';
+import {
+  attrValueProblem,
+  nfc,
+  parsePenman,
+  serializePenman,
+  treeEdges,
+} from '../src/domain/format/penman.js';
 
 const child = (graph, variable, index) => graph.nodes.get(variable).children[index];
 
@@ -217,4 +223,85 @@ test('several top-level graphs are read only when asked for', () => {
   assert.deepEqual([...several.nodes.keys()], ['s1a', 's1b', 's1c']);
   // Junk between graphs is still junk.
   assert.ok(parsePenman('(s1a / a) junk (s1b / b)', { several: true }).errors.length);
+});
+
+// validate.py reads `23:45` as a number (validate.py:393), and the guidelines
+// write `:time 15:30`. A concept still stops at the colon.
+describe('a time as a value', () => {
+  test('`:time 15:30` is read as one atom and written back', () => {
+    const graph = parsePenman('(s8a / date-entity :time 15:30)');
+    assert.deepEqual(graph.errors, []);
+    assert.deepEqual(child(graph, 's8a', 0), { rel: ':time', kind: 'atom', value: '15:30' });
+    assert.equal(serializePenman(graph), '(s8a / date-entity\n    :time 15:30)');
+  });
+
+  test('the next relation after a time is still a relation', () => {
+    const graph = parsePenman('(s8a / date-entity :time 15:30 :mod (s8b / thing))');
+    assert.deepEqual(graph.errors, []);
+    assert.deepEqual(
+      graph.nodes.get('s8a').children.map((c) => [c.rel, c.value]),
+      [
+        [':time', '15:30'],
+        [':mod', 's8b'],
+      ],
+    );
+  });
+
+  test('a concept stops at the colon, and so does a value with a second one', () => {
+    assert.equal(parsePenman('(s8a / 10:30)').errors.length, 1);
+    assert.ok(parsePenman('(s8a / date-entity :time 15:30:00)').errors.length);
+  });
+
+  test('the editors take a time as a value and nothing else with a colon', () => {
+    assert.equal(attrValueProblem('15:30'), null);
+    assert.match(attrValueProblem('15:30:00'), /colons/);
+    assert.match(attrValueProblem('a:b'), /colons/);
+    assert.match(attrValueProblem(':30'), /colons/);
+  });
+});
+
+describe('text in NFC', () => {
+  const decomposed = 'cafe\u0301';
+
+  test('nfc composes a letter and its combining accent, and leaves the rest alone', () => {
+    assert.equal(nfc(decomposed), 'caf\u00e9');
+    assert.equal(nfc('caf\u00e9'), 'caf\u00e9');
+    assert.equal(nfc(null), null);
+    assert.equal(nfc(3), 3);
+  });
+
+  test('a graph typed with combining accents is read as NFC', () => {
+    // As typed it read as the variable s6e and a stray accent.
+    const graph = parsePenman(`(s6${'e\u0301'} / ${decomposed} :mod "${decomposed}")`);
+    assert.deepEqual(graph.errors, []);
+    assert.equal(graph.root, 's6\u00e9');
+    assert.equal(graph.nodes.get('s6\u00e9').concept, 'caf\u00e9');
+    assert.equal(child(graph, 's6\u00e9', 0).value, '"caf\u00e9"');
+  });
+});
+
+describe('a space that does not look like one', () => {
+  test('the message names a no-break space before what it found', () => {
+    const graph = parsePenman('(s1x / big\u00a0cat)');
+    assert.deepEqual(
+      graph.errors.map((e) => e.message),
+      ["Expected a relation or a closing bracket, found 'cat)', after a no-break space (U+00A0)."],
+    );
+  });
+
+  test('an ordinary space is not named', () => {
+    const graph = parsePenman('(s1x / big cat)');
+    assert.deepEqual(
+      graph.errors.map((e) => e.message),
+      ["Expected a relation or a closing bracket, found 'cat)'."],
+    );
+  });
+
+  test('only the space right before what was found is named', () => {
+    const graph = parsePenman('(s1x /\u00a0big cat)');
+    assert.deepEqual(
+      graph.errors.map((e) => e.message),
+      ["Expected a relation or a closing bracket, found 'cat)'."],
+    );
+  });
 });
