@@ -1349,3 +1349,119 @@ describe('SentenceBlock node names', () => {
     await r.unmount();
   });
 });
+
+// Words laid out 100px apart, so the block leaves its measuring pass and
+// draws edges and their labels.
+const measureWords = () =>
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function rect() {
+    const id = this.dataset?.wordId;
+    const left = id ? (Number(String(id).slice(1)) - 1) * 100 : 0;
+    const width = id ? 60 : 0;
+    return { left, right: left + width, width, top: 0, bottom: 20, height: 20, x: left, y: 0 };
+  });
+
+// An edge or a document-level relation nobody has reviewed wears the node's
+// mark on its label chip: dashed, violet for a machine's, amber for a
+// contributor's. Settled ones draw plain, and the line never changes.
+describe('SentenceBlock provenance of edges and relations', () => {
+  afterEach(() => vi.restoreAllMocks());
+  const machine = { prov: 'inferred', provSource: 'service:umr-draft-llm' };
+  const contributed = { prov: 'contributed', provSource: 'user:b@x.com' };
+  const confirmed = { ...machine, provConfirmed: true };
+
+  it('marks the relation label of an unverified edge, and not its line', async () => {
+    measureWords();
+    const { sentence, nodesById } = fixture();
+    const [e1, e2, e3] = sentence.edges;
+    const edges = [
+      { ...e1, metadata: machine },
+      { ...e2, metadata: contributed },
+      { ...e3, metadata: confirmed },
+    ];
+    const r = await renderComponent(
+      <SentenceBlock
+        sentence={{ ...sentence, edges }}
+        nodesById={nodesById}
+        dataVersion={1}
+        readOnly={false}
+      />,
+    );
+    const label = (id) => r.container.querySelector(`.umr-edge-label[data-edge-id="${id}"]`);
+    expect(label('e1').className).toMatch(/umr-edge-label--machine/);
+    expect(label('e1').dataset.prov).toBe('machine');
+    expect(label('e1').title).toMatch(/^Machine-made, unverified\. Click to change/);
+    expect(label('e2').className).toMatch(/umr-edge-label--contributed/);
+    expect(label('e3').className).not.toMatch(/umr-edge-label--(machine|contributed)/);
+    expect(label('e3').title).toMatch(/^Machine-made, confirmed\. /);
+    expect(all(r.container, '.umr-edge').map((p) => p.getAttribute('class'))).not.toContain(
+      expect.stringMatching(/machine|contributed/),
+    );
+    await r.unmount();
+  });
+
+  it('marks a document tag, a merged tag with any unverified relation, and a margin chip', async () => {
+    const { sentence, nodesById } = fixture();
+    const author = {
+      id: 'c1',
+      var: 'author',
+      concept: 'author',
+      constant: true,
+      wordIds: [],
+      attrs: [],
+      out: [],
+      in: [],
+    };
+    const root = { ...author, id: 'c2', var: 'root', concept: 'root' };
+    const leave = nodesById.get('n1');
+    const eat = nodesById.get('n3');
+    const t1 = { id: 'tr1', source: 'c1', target: 'n1', rel: ':full-affirmative', group: 'modal' };
+    const t2 = { id: 'tr2', source: 'n3', target: 'n1', rel: ':before', group: 'temporal' };
+    const t3 = { id: 'tr3', source: 'c2', target: 'c1', rel: ':modal', group: 'modal' };
+    const leaveT = {
+      ...leave,
+      docOut: [],
+      docIn: [
+        { ...t1, metadata: machine },
+        { ...t2, metadata: confirmed },
+      ],
+    };
+    const eatT = { ...eat, docOut: [{ ...t2, metadata: confirmed }], docIn: [] };
+    const map = new Map(nodesById);
+    map.set('c1', author);
+    map.set('c2', root);
+    map.set('n1', leaveT);
+    map.set('n3', eatT);
+    const doc = {
+      graph: {},
+      canConfirmSentence: () => false,
+      canDiscardSentence: () => false,
+      constantNode: () => null,
+    };
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={doc}
+        sentence={{
+          ...sentence,
+          nodes: [leaveT, sentence.nodes[1], eatT],
+          triples: [
+            { ...t1, metadata: machine },
+            { ...t2, metadata: confirmed },
+            { ...t3, metadata: contributed },
+          ],
+        }}
+        nodesById={map}
+        dataVersion={1}
+        readOnly={false}
+      />,
+    );
+    const tag = (id) => r.container.querySelector(`.umr-doc-tag[data-triple-id="${id}"]`);
+    expect(tag('tr1').className).toMatch(/umr-doc-tag--machine/);
+    expect(tag('tr1').title).toMatch(/^Machine-made, unverified\. Click to change/);
+    // The same confirmed relation at both of its ends draws plain.
+    expect(all(r.container, '.umr-doc-tag--machine, .umr-doc-tag--contributed')).toHaveLength(1);
+    const chip = r.container.querySelector('.umr-doc-chip');
+    expect(chip.textContent).toBe('root :modal author');
+    expect(chip.className).toMatch(/umr-doc-chip--contributed/);
+    await r.unmount();
+  });
+});

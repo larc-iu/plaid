@@ -127,6 +127,24 @@ describe('UmrNode document tags', () => {
     await r.unmount();
   });
 
+  it('marks a merged tag when any relation in it awaits review', async () => {
+    const tags = [
+      { ...tag('a', ':same-entity', 's3b'), prov: null },
+      {
+        ...tag('b', ':same-entity', 's3m'),
+        prov: 'machine',
+        provTitle: 'Machine-made, unverified',
+      },
+    ];
+    const r = await renderComponent(<UmrNode node={node} position={position} docTags={tags} />);
+    const merged = r.container.querySelector('.umr-doc-tag');
+    expect(merged.className).toMatch(/umr-doc-tag--machine/);
+    const end = r.container.querySelector('.umr-doc-tag-end[data-triple-id="b"]');
+    expect(end.dataset.prov).toBe('machine');
+    expect(end.title).toBe('Machine-made, unverified');
+    await r.unmount();
+  });
+
   it('opens a tag on the first click, the node not yet focused', async () => {
     const onDocTagClick = vi.fn();
     const tags = [tag('a', ':before', 's9p', { group: 'temporal' })];

@@ -1,30 +1,12 @@
 import React from 'react';
-import { PROV, PROV_STATES, provOrigin, provState } from '@larc-iu/plaid-client';
 import { stableKey } from '@ui/domain/pendingIds.js';
+import { provMark, worstMark } from './provMarks.js';
 
-// Provenance, the cross-app convention: a node a machine drafted or a
-// contributor made wears a dashed border in one of the two hues every app
-// uses until somebody settles it. Colour means provenance here, as it does in
-// the igt grid; the mark goes the moment a person edits the node, because the
-// edit carries the writer's stamp (UmrDocument's `writer`). Marking what
-// needs attention rather than what is finished is why a verified node draws
-// plain.
+// A node a machine drafted or a contributor made wears a dashed border
+// until somebody settles it (provMarks.js).
 const PROV_CLASS = {
-  [PROV_STATES.MACHINE]: 'umr-node--machine',
-  [PROV_STATES.CONTRIBUTED]: 'umr-node--contributed',
-};
-const PROV_TITLE = {
-  [PROV_STATES.MACHINE]: 'Machine-made, unverified',
-  [PROV_STATES.CONTRIBUTED]: 'Contributed, unverified',
-};
-// A verified node draws plain, and its tooltip still says where it came
-// from, in igt's words (provTitle there).
-const provTitle = (metadata) => {
-  const state = provState(metadata);
-  if (state !== PROV_STATES.VERIFIED) return PROV_TITLE[state];
-  return provOrigin(metadata) === PROV.CONTRIBUTED
-    ? 'Contributed, confirmed'
-    : 'Machine-made, confirmed';
+  machine: 'umr-node--machine',
+  contributed: 'umr-node--contributed',
 };
 
 // "2 errors, 1 warning", for a node's accessible name.
@@ -107,7 +89,7 @@ export const UmrNode = React.memo(function UmrNode({
   ]
     .filter(Boolean)
     .join(', ');
-  const prov = provState(node.metadata);
+  const prov = provMark(node.metadata);
   // The tags as drawn: one per relation and direction, the other ends listed
   // in it, so four `:full-affirmative` relations are one tag.
   const tagItems = (() => {
@@ -156,7 +138,7 @@ export const UmrNode = React.memo(function UmrNode({
         focused ? 'umr-node--focused' : '',
         dropTarget ? 'umr-node--drop' : '',
         modeTarget ? 'umr-node--target' : '',
-        PROV_CLASS[prov] || '',
+        PROV_CLASS[prov.mark] || '',
       ]
         .filter(Boolean)
         .join(' ')}
@@ -164,9 +146,9 @@ export const UmrNode = React.memo(function UmrNode({
       tabIndex={tabIndex}
       role="button"
       aria-label={label}
-      title={provTitle(node.metadata)}
+      title={prov.title || undefined}
       data-node-id={node.id}
-      data-prov={PROV_CLASS[prov] ? prov : undefined}
+      data-prov={prov.mark || undefined}
       data-node-var={node.var || undefined}
       onFocus={onFocus ? () => onFocus(node.id) : undefined}
       onClick={
@@ -271,6 +253,8 @@ export const UmrNode = React.memo(function UmrNode({
                     className="umr-doc-tag-end"
                     role={clickable ? 'button' : undefined}
                     data-triple-id={one.id}
+                    data-prov={one.prov || undefined}
+                    title={one.provTitle || undefined}
                     onClick={clickTag(one)}
                   >
                     {one.otherVar}
@@ -290,10 +274,13 @@ export const UmrNode = React.memo(function UmrNode({
               ends.map((one) => one.otherVar).join(' ') + (hidden ? ` and ${hidden} more` : ''),
             );
             const dot = <span aria-hidden="true">●</span>;
+            // Marked when any relation it lists awaits review.
+            const mark = worstMark(tags.map((one) => one.prov));
             return (
               <span
                 key={key}
-                className="umr-doc-tag"
+                className={`umr-doc-tag${mark ? ` umr-doc-tag--${mark}` : ''}`}
+                data-prov={mark || undefined}
                 // A tag that is not one button is a group of them, named for
                 // what the whole tag says.
                 role={single && clickable ? 'button' : 'group'}
@@ -303,8 +290,15 @@ export const UmrNode = React.memo(function UmrNode({
                 data-group={t.group}
                 data-default={(single && t.isDefault) || undefined}
                 title={
-                  single && clickable
-                    ? 'Click to change. Shift+Backspace in the editor deletes.'
+                  single
+                    ? [
+                        t.provTitle,
+                        clickable
+                          ? 'Click to change. Shift+Backspace in the editor deletes.'
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join('. ') || undefined
                     : undefined
                 }
                 onClick={single ? clickTag(t) : undefined}

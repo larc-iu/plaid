@@ -1072,3 +1072,31 @@
   border-color: hsl(var(--destructive) / 0.5);
   color: hsl(var(--destructive));
 }
+
+/* An edge or a document-level relation a machine drafted or a contributor
+   made, not yet settled: the node's dashed border and hue, on its label chip
+   and never on the line, where a dash means a re-entrancy (provMarks.js). The
+   hover's and the lit label's border give way to it. */
+.umr-edge-label.umr-edge-label--machine,
+.umr-edge-label.umr-edge-label--machine:hover,
+.umr-doc-chip.umr-doc-chip--machine {
+  border-style: dashed;
+  border-color: var(--plaid-machine);
+}
+.umr-edge-label.umr-edge-label--contributed,
+.umr-edge-label.umr-edge-label--contributed:hover,
+.umr-doc-chip.umr-doc-chip--contributed {
+  border-style: dashed;
+  border-color: var(--plaid-contributed);
+}
+/* A tag has no border of its own, and one would move every node's rows, so
+   the dash is an outline, which takes no room. */
+.umr-doc-tag--machine,
+.umr-doc-tag--contributed {
+  outline: 1px dashed var(--plaid-machine);
+  outline-offset: 1px;
+  border-radius: 3px;
+}
+.umr-doc-tag--contributed {
+  outline-color: var(--plaid-contributed);
+}

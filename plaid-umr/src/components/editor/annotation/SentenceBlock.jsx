@@ -17,6 +17,7 @@ import { TokenRow } from './TokenRow.jsx';
 import { InlineEditor } from './InlineEditor.jsx';
 import { AttributePopover } from './AttributePopover.jsx';
 import { NodeMenu } from './NodeMenu.jsx';
+import { provMark } from './provMarks.js';
 import { linkedEntries } from '../../../domain/vocabLexicon.js';
 import { docTagsOf } from '../../../domain/sentenceGraph.js';
 import { PenmanEditor } from './PenmanEditor.jsx';
@@ -451,14 +452,26 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // own variable left out, `author :full-affirmative`, `:before s3b` on the
   // source and `s3d :before` on the target, whichever sentence the other
   // end is in.
+  // Each tag carries its triple's provenance mark (provMarks.js).
   const docTagsByNode = useMemo(() => {
     const map = new Map();
     sentence.nodes.forEach((n) => {
-      const tags = docTagsOf(n, nodesById);
+      const meta = new Map(
+        [...(n.docOut || []), ...(n.docIn || [])].map((t) => [t.id, t.metadata]),
+      );
+      const tags = docTagsOf(n, nodesById).map((t) => {
+        const prov = provMark(meta.get(t.id));
+        return { ...t, prov: prov.mark, provTitle: prov.title };
+      });
       if (tags.length) map.set(n.id, tags);
     });
     return map;
   }, [sentence, nodesById]);
+  // The provenance of each edge of the sentence, for its relation label.
+  const edgeProv = useMemo(
+    () => new Map(sentence.edges.map((e) => [e.id, provMark(e.metadata)])),
+    [sentence],
+  );
 
   const chainOf = (node) => {
     if (node.chain == null) return null;
@@ -1540,38 +1553,43 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             {/* A triple between two constants (`root :modal author`) belongs
                 to no node, so it is written with the constants, under them.
                 Under the graph it floated wherever the words ended. */}
-            {lane.listed.map((t, i) => (
-              <span
-                key={stableKey(t.id)}
-                className="umr-doc-chip"
-                style={{
-                  position: 'absolute',
-                  top: `${listedTop + i * CONST_STEP}px`,
-                  right: `${CONST_GAP}px`,
-                }}
-                role={readOnly ? undefined : 'button'}
-                tabIndex={-1}
-                data-triple-id={t.id}
-                onClick={
-                  readOnly
-                    ? undefined
-                    : (ev) => {
-                        ev.stopPropagation();
-                        askDocRole(
-                          {
-                            tripleId: t.id,
-                            role: t.rel,
-                            group: t.group,
-                            ends: { source: t.source, target: t.target },
-                          },
-                          { x: 8, y: listedTop + i * CONST_STEP + 24 },
-                        );
-                      }
-                }
-              >
-                {t.a.var} {t.rel} {t.b.var}
-              </span>
-            ))}
+            {lane.listed.map((t, i) => {
+              const prov = provMark(t.metadata);
+              return (
+                <span
+                  key={stableKey(t.id)}
+                  className={`umr-doc-chip${prov.mark ? ` umr-doc-chip--${prov.mark}` : ''}`}
+                  data-prov={prov.mark || undefined}
+                  title={prov.title || undefined}
+                  style={{
+                    position: 'absolute',
+                    top: `${listedTop + i * CONST_STEP}px`,
+                    right: `${CONST_GAP}px`,
+                  }}
+                  role={readOnly ? undefined : 'button'}
+                  tabIndex={-1}
+                  data-triple-id={t.id}
+                  onClick={
+                    readOnly
+                      ? undefined
+                      : (ev) => {
+                          ev.stopPropagation();
+                          askDocRole(
+                            {
+                              tripleId: t.id,
+                              role: t.rel,
+                              group: t.group,
+                              ends: { source: t.source, target: t.target },
+                            },
+                            { x: 8, y: listedTop + i * CONST_STEP + 24 },
+                          );
+                        }
+                  }
+                >
+                  {t.a.var} {t.rel} {t.b.var}
+                </span>
+              );
+            })}
           </div>
           <svg
             className="umr-doc-edges"
@@ -1710,43 +1728,55 @@ export const SentenceBlock = React.memo(function SentenceBlock({
               />
             ))}
             {measured &&
-              layout.edges.map((e) => (
-                <span
-                  key={stableKey(e.id)}
-                  className={[
-                    'umr-edge-label',
-                    e.tree ? '' : 'umr-edge-label--reentrant',
-                    active && (e.source === active || e.target === active)
-                      ? 'umr-edge-label--lit'
-                      : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' ')}
-                  style={{ left: `${e.label.x}px`, top: `${e.label.y}px` }}
-                  role={readOnly ? undefined : 'button'}
-                  tabIndex={-1}
-                  data-edge-id={e.id}
-                  onClick={
-                    readOnly
-                      ? undefined
-                      : (ev) => {
-                          ev.stopPropagation();
-                          askRole({ edgeId: e.id, role: e.role }, positionAtLabel(e.id));
-                        }
-                  }
-                  onPointerDown={
-                    readOnly || !e.tree
-                      ? undefined
-                      : (ev) => {
-                          if (ev.button !== 0) return;
-                          startDrag('move', { edgeId: e.id }, ev);
-                        }
-                  }
-                  title={readOnly ? undefined : 'Click to change, drag to move under another node'}
-                >
-                  {e.role}
-                </span>
-              ))}
+              layout.edges.map((e) => {
+                const prov = edgeProv.get(e.id) || {};
+                return (
+                  <span
+                    key={stableKey(e.id)}
+                    className={[
+                      'umr-edge-label',
+                      e.tree ? '' : 'umr-edge-label--reentrant',
+                      prov.mark ? `umr-edge-label--${prov.mark}` : '',
+                      active && (e.source === active || e.target === active)
+                        ? 'umr-edge-label--lit'
+                        : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                    style={{ left: `${e.label.x}px`, top: `${e.label.y}px` }}
+                    role={readOnly ? undefined : 'button'}
+                    tabIndex={-1}
+                    data-edge-id={e.id}
+                    onClick={
+                      readOnly
+                        ? undefined
+                        : (ev) => {
+                            ev.stopPropagation();
+                            askRole({ edgeId: e.id, role: e.role }, positionAtLabel(e.id));
+                          }
+                    }
+                    onPointerDown={
+                      readOnly || !e.tree
+                        ? undefined
+                        : (ev) => {
+                            if (ev.button !== 0) return;
+                            startDrag('move', { edgeId: e.id }, ev);
+                          }
+                    }
+                    data-prov={prov.mark || undefined}
+                    title={
+                      [
+                        prov.title,
+                        readOnly ? null : 'Click to change, drag to move under another node',
+                      ]
+                        .filter(Boolean)
+                        .join('. ') || undefined
+                    }
+                  >
+                    {e.role}
+                  </span>
+                );
+              })}
             <NodeMenu
               at={menu}
               direction={direction}
