@@ -34,15 +34,21 @@ export function PenmanEditor({ initial, typed = null, onApply, onCancel, plan, a
     setBase(initial);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial]);
-  const { problem, losses, rename } = useMemo(() => {
+  const { problem, losses, rename, concepts } = useMemo(() => {
+    const none = { losses: [], rename: [], concepts: [] };
     const parsed = parsePenman(text, { several: true });
-    if (parsed.errors.length) return { problem: parsed.errors[0], losses: [], rename: [] };
+    if (parsed.errors.length) return { ...none, problem: parsed.errors[0] };
     if (!parsed.root && text.trim()) {
-      return { problem: { message: 'The text has no graph.' }, losses: [], rename: [] };
+      return { ...none, problem: { message: 'The text has no graph.' } };
     }
-    if (!plan || !dirty) return { problem: null, losses: [], rename: [] };
+    if (!plan || !dirty) return { ...none, problem: null };
     const p = plan(text);
-    return { problem: p.errors?.[0] || null, losses: p.losses || [], rename: p.rename || [] };
+    return {
+      problem: p.errors?.[0] || null,
+      losses: p.losses || [],
+      rename: p.rename || [],
+      concepts: p.concept || [],
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, base]);
 
@@ -92,7 +98,7 @@ export function PenmanEditor({ initial, typed = null, onApply, onCancel, plan, a
           {problem
             ? `${problem.message}${problem.line ? ` (line ${problem.line})` : ''}`
             : dirty
-              ? `Changed. Apply saves it.${renameNote(rename)}${lossNote(losses)}`
+              ? `Changed. Apply saves it.${renameNote(rename)}${conceptNote(concepts)}${lossNote(losses)}`
               : 'As stored.'}
         </span>
         <Button type="button" variant="outline" size="sm" onClick={() => onCancel(dirty)}>
@@ -119,6 +125,21 @@ function renameNote(rename) {
   if (!rename.length) return '';
   const one = (r) => `${r.from} is now ${r.to}`;
   return ` ${rename.map(one).join(', ')}.`;
+}
+
+// Every concept the text changes, by variable: " s9x changes from sleep-01
+// to cat, s9y from cat to sleep-01." Nodes are matched by variable, so two
+// names exchanged in the text exchange the concepts, and the node keeps its
+// words and document-level relations. The line says so rather than guessing
+// that two renames were meant.
+function conceptNote(concepts) {
+  if (!concepts.length) return '';
+  const [first, ...rest] = concepts;
+  const parts = [
+    `${first.var} changes from ${first.from} to ${first.concept}`,
+    ...rest.map((c) => `${c.var} from ${c.from} to ${c.concept}`),
+  ];
+  return ` ${parts.join(', ')}.`;
 }
 
 function lossNote(losses) {
