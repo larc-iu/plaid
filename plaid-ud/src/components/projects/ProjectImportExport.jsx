@@ -61,11 +61,17 @@ const prepareImport = async ({ client, project, projectId, user }) => {
       try {
         // One audit-log operation per imported document (text, tokens and
         // annotations), labeled with the document name.
-        const { importWarnings } = await client.withOperation(
+        const { documentId, importWarnings } = await client.withOperation(
           `Import CoNLL-U document "${name}"`,
           () => ConlluDocument.importFromConllu(client, projectId, name, chunk.text, layerInfo),
         );
-        push({ key: `${index}-${c}`, name, status: 'imported', warnings: importWarnings || [] });
+        push({
+          key: `${index}-${c}`,
+          name,
+          status: 'imported',
+          documentId,
+          warnings: importWarnings || [],
+        });
       } catch (err) {
         push({ key: `${index}-${c}`, name, status: 'rejected', reason: humanizeError(err) });
       }

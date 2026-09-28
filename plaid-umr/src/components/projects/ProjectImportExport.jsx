@@ -68,7 +68,14 @@ const prepareImport = async ({ client, project, projectId }) => {
     }
     const { warnings, attached } = result;
     if (before && !attached) before.push(result.document);
-    push({ key: `${index}`, name, status: 'imported', attached, warnings: warnings || [] });
+    push({
+      key: `${index}`,
+      name,
+      status: 'imported',
+      attached,
+      documentId: result.document?.id,
+      warnings: warnings || [],
+    });
   };
 };
 
