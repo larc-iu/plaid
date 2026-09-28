@@ -57,6 +57,37 @@ def test_a_ping_that_times_out_is_told_apart_from_a_misconfigured_one(monkeypatc
         ping_model(cfg())
 
 
+def test_a_rate_limit_or_a_provider_briefly_down_at_startup_is_waited_out(monkeypatch):
+    """The ping sends max_retries=0 like every call, so the retries are the
+    loop's. Without them one 429 or 503 while an assistant starts made it
+    exit."""
+    monkeypatch.setattr(agent.time, 'sleep', lambda s: None)
+    monkeypatch.setattr(agent.random, 'uniform', lambda a, b: 0.0)
+    replies = iter([agent.litellm.RateLimitError('slow down', model='x', llm_provider='openai'),
+                    agent.litellm.ServiceUnavailableError('loading', model='x', llm_provider='openai'),
+                    SimpleNamespace(choices=[SimpleNamespace()])])
+
+    def flaky(**kw):
+        r = next(replies)
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+    monkeypatch.setattr(agent.litellm, 'completion', flaky)
+    ping_model(cfg())
+
+    calls = []
+
+    def down(**kw):
+        calls.append(1)
+        raise agent.litellm.InternalServerError('down', model='x', llm_provider='openai')
+
+    monkeypatch.setattr(agent.litellm, 'completion', down)
+    with pytest.raises(agent.litellm.InternalServerError):
+        ping_model(cfg())
+    assert len(calls) == agent.RETRIES + 1
+
+
 def service_args(**kw):
     base = dict(model='openai/x', api_base=None, api_key=None, max_steps=50, temperature=None,
                 max_tokens=None, timeout=120.0, service_id=None, service_name=None, url='http://localhost:8085',

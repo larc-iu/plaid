@@ -129,13 +129,30 @@ def ping_model(cfg: ModelConfig, timeout: float = PING_TIMEOUT_S) -> None:
     complaint reach the operator. Raises whatever litellm raises, except a
     timeout, which becomes :class:`ModelTooSlow` so the caller can tell a
     provider that is slow from one that is misconfigured.
+
+    A rate limit or a provider briefly down is tried again as a turn's call
+    is (:func:`_complete`), up to :data:`RETRIES` more times after a jittered
+    wait: the call sends ``max_retries=0``, so without this one 429 or 503
+    while the assistant starts would stop it.
     """
-    try:
-        resp = litellm.completion(**{**_provider_kwargs(cfg), 'timeout': timeout},
-                                  max_tokens=PING_MAX_TOKENS,
-                                  messages=[{'role': 'user', 'content': 'ping'}])
-    except litellm.Timeout as e:
-        raise ModelTooSlow(str(e)) from e
+    transient = _transient_errors()
+    attempt = 0
+    while True:
+        try:
+            resp = litellm.completion(**{**_provider_kwargs(cfg), 'timeout': timeout},
+                                      max_tokens=PING_MAX_TOKENS,
+                                      messages=[{'role': 'user', 'content': 'ping'}])
+            break
+        except litellm.Timeout as e:
+            raise ModelTooSlow(str(e)) from e
+        except Exception as e:
+            if not (transient and isinstance(e, transient)) or attempt >= RETRIES:
+                raise
+            delay = random.uniform(0, RETRY_BASE_S * (2 ** attempt))
+            attempt += 1
+            print(f'{cfg.model} failed ({" ".join(str(e).split())[:200]}); '
+                  f'retrying in {delay:.1f}s ({attempt} of {RETRIES})')
+            time.sleep(delay)
     if not getattr(resp, 'choices', None):
         raise RuntimeError('the provider answered without a completion')
 
