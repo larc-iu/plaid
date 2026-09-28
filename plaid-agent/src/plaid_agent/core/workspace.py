@@ -90,6 +90,9 @@ class BaseWorkspace:
         self._requester_admin: Optional[bool] = None
         self._doc_list: Optional[List[dict]] = None
         self._docs: Dict[str, Any] = {}
+        # The version of each document a corpus-wide change reached, as it
+        # stood when the change's query read it (``note_staged_versions``).
+        self._staged_versions: Dict[str, Optional[int]] = {}
         self.ops: List[Dict[str, Any]] = []
         # Ops superseded by a later op on the same target this turn, and how
         # many of them a note has already told the model about. Two counters
@@ -216,6 +219,22 @@ class BaseWorkspace:
             self._doc_list = list(self.client.projects.list_documents(self.project.id) or [])
         return self._doc_list
 
+    def current_versions(self) -> Dict[str, Optional[int]]:
+        """Every document's version as it stands now, read afresh: the list
+        :meth:`documents` keeps is the one the turn first read."""
+        return {d['id']: d.get('version')
+                for d in self.client.projects.list_documents(self.project.id) or []}
+
+    def note_staged_versions(self, versions: Dict[str, Optional[int]]) -> None:
+        """Pin the documents a corpus-wide change reaches to ``versions``,
+        read just before its query, so an edit after the query is refused at
+        approval and one before it is not. The first reading of a document
+        stands. A document the turn loaded keeps the version it was loaded
+        at, which its sentence fingerprints were taken from."""
+        for did, version in versions.items():
+            if did not in self._docs and version is not None:
+                self._staged_versions.setdefault(did, version)
+
     def resolve_document_id(self, document: str) -> str:
         """Accept a document id, an exact name, or an unambiguous prefix."""
         if not document:
@@ -282,10 +301,11 @@ class BaseWorkspace:
                 out.append(self.pinned({'id': did, 'name': doc.name, 'version': doc.version}, doc,
                                        [op for op in self.ops if did in docs_of_op(op)]))
             elif did in listed:
-                # Matched by a corpus-wide op without being read: the list
-                # carries its version, which is all the stale check needs.
-                out.append({'id': did, 'name': listed[did].get('name'),
-                            'version': listed[did].get('version')})
+                # Matched by a corpus-wide op without being read: pinned whole
+                # by the version its query saw, else by the list's.
+                version = (self._staged_versions[did] if did in self._staged_versions
+                           else listed[did].get('version'))
+                out.append({'id': did, 'name': listed[did].get('name'), 'version': version})
         return self.cap_pins(out)
 
     # --- which sentences a plan depends on --------------------------------

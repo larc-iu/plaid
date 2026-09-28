@@ -126,6 +126,9 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
     document_id = ws.resolve_document_id(document) if document else None
     c = ws.corpus
     ws.on_progress(f'Finding every {field} matching "{pattern}"…')
+    # Read before the query, so the plan is pinned to no later state than the
+    # query saw.
+    versions = ws.current_versions()
     rows = matches(c, field, spec, document_id, REPLACE_MAX)
     if len(rows) > REPLACE_MAX:
         raise ToolError(f'More than {REPLACE_MAX} {field} values match "{pattern}", more than one plan '
@@ -143,6 +146,7 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
             _check_value(ws, field, value)
     docs = sorted({ch['document_id'] for ch in found if ch['document_id']})
     _clear_of_reshapes(ws, docs)
+    ws.note_staged_versions({d: versions.get(d) for d in docs})
     names = {d['id']: d.get('name') or d['id'] for d in ws.documents()}
     sample = [f'"{names.get(ch["document_id"], ch["document_id"])}": {field} "{ch["old"]}" → "{ch["new"]}"'
               for ch in found[:SAMPLE_LINES]]

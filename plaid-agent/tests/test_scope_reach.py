@@ -202,3 +202,68 @@ def test_the_check_names_what_was_gained_and_lost():
         check_reach({'documents': ['a', 'b']}, [{'doc': 'a'}, {'doc': 'c'}, {'doc': None}],
                     lambda o: o.get('doc'))
     assert (e.value.gained, e.value.lost) == (['c'], ['b'])
+
+
+# --- UD, the version a stored replacement is pinned to ------------------------------
+#
+# A stored replacement's documents are pinned whole, by version, and the pin
+# must be the version the replacement's query read. The project's document
+# list is read once a turn, so taking the version from it pinned whatever the
+# list said when the turn first read it, before or after the query.
+
+def _ud_ws():
+    from plaid_agent.ud.project import load_project
+    from plaid_agent.ud.tools import Workspace
+    client = ud_fx.FakeClient(documents={'ud1': ud_fx.document_raw()})
+    return client, Workspace(client, load_project(client, ud_fx.PID))
+
+
+def _ud_replace(ws):
+    from plaid_agent.ud.toolkit import call_tool
+    call_tool(ws, 'replace_in_field', {'field': 'lemma', 'pattern': 'mar', 'replacement': 'mare'})
+    assert [op['kind'] for op in ws.ops] == ['replace_scope']
+
+
+def test_ud_an_edit_before_the_query_does_not_refuse_the_replacement():
+    """The turn listed the documents, then a person edited Viaje, then the
+    replacement read it. The query saw the edit, so the plan stands."""
+    client, ws = _ud_ws()
+    ws.documents()
+    client._documents['ud1']['version'] += 1
+    _ud_engine(client, UD1)
+    _ud_replace(ws)
+    plan = _store(ws, client, ud_fx.PID, 'ud')
+    assert plan['documents'] == [{'id': 'ud1', 'name': 'Viaje', 'version': 4}]
+    helper = _approve(APPS['ud'](), client, plan)
+    assert helper.done and helper.done[-1]['kind'] == 'applied', helper.errors
+
+
+def test_ud_an_edit_after_the_query_refuses_the_replacement():
+    """A person edits Viaje just after the replacement's query answered, and
+    before the turn first lists the documents."""
+    client, ws = _ud_ws()
+    _ud_engine(client, UD1)
+    real = client.query
+
+    def query(body):
+        out = real(body)
+        if body.get('return') == 'entities':
+            client._documents['ud1']['version'] += 1
+        return out
+    client.query = query
+    _ud_replace(ws)
+    plan = _store(ws, client, ud_fx.PID, 'ud')
+    assert plan['documents'] == [{'id': 'ud1', 'name': 'Viaje', 'version': 3}]
+    helper = _approve(APPS['ud'](), client, plan)
+    [said] = helper.errors
+    assert 'Document "Viaje" has changed since the plan was made' in said
+
+
+def test_ud_an_edit_after_the_turn_refuses_the_replacement():
+    client, ws = _ud_ws()
+    _ud_engine(client, UD1)
+    _ud_replace(ws)
+    plan = _store(ws, client, ud_fx.PID, 'ud')
+    client._documents['ud1']['version'] += 1
+    helper = _approve(APPS['ud'](), client, plan)
+    assert helper.errors and 'has changed since the plan was made' in helper.errors[0]
