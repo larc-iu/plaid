@@ -92,9 +92,14 @@ test.describe('paging', () => {
     await expect(block.locator('.umr-node--root')).toBeFocused();
     expect(await page.locator('.umr-block').count()).toBe(3);
 
-    // The page is remembered: a bare URL reopens on page 2.
+    // The page is remembered: coming back to the document by a bare URL
+    // reopens on page 2, and writes it into the URL in place. A bare URL in
+    // the same visit is page 1, the way Back to it is.
+    await page.goto(`/#/projects/${projectId}`);
+    await expect(page.locator('.umr-block')).toHaveCount(0);
     await page.goto(`/#/projects/${projectId}/documents/${documentId}/annotate`);
     await expect(block).toBeVisible();
+    await expect(page).toHaveURL(/[?&]page=2(&|$)/);
 
     // The pager goes back to page 1.
     await page.getByRole('button', { name: 'First page' }).first().click();

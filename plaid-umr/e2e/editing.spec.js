@@ -498,9 +498,14 @@ test.describe('editing', () => {
       await expect(one.locator('.umr-doc-chip')).toHaveText(['root :modal author']);
       await expect(two.locator('.umr-doc-chip')).toHaveCount(0);
 
-      // At rest nothing is drawn across. Focus draws the line, and rings the
-      // node at the other end.
+      // Opening the document focuses the first sentence's first node, s1c2
+      // here, and a focused node draws its line. Escape lets it go, and at
+      // rest nothing is drawn across. Focus draws the line again, and rings
+      // the node at the other end.
       const links = page.locator('.umr-cross-link');
+      await expect(byVar('s1c2')).toBeFocused();
+      await expect(links).toHaveCount(1);
+      await page.keyboard.press('Escape');
       await expect(links).toHaveCount(0);
       await byVar('s2c').click();
       await expect(links).toHaveCount(1);
