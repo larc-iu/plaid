@@ -882,6 +882,175 @@ function corefWikiMismatches(sentences) {
   return findings;
 }
 
+// validate.py's temporal graph (build_temporal_graph and class Temporal,
+// validate.py:1895-2100), ported step for step, because which collision is
+// found, and how often, depends on the order relations are added in. Every
+// :same-entity or :same-event cluster first joins its members by identity.
+// Then each stated :temporal relation, in document order, is added with its
+// opposite and with what follows from it over the nodes known at that point.
+// A relation that lands on a pair already holding another one is a
+// `temporal-mismatch`, and the older one stays.
+const OPPOSITE = { ':before': ':after', ':after': ':before' };
+
+const saying = (relation) => (relation === ':identity' ? 'corefers with' : relation);
+
+class TemporalGraph {
+  constructor(report) {
+    this.graph = new Map();
+    this.report = report;
+  }
+
+  nodes() {
+    return [...this.graph.keys()].sort();
+  }
+
+  get(n0, n1) {
+    return this.graph.get(n0)?.get(n1) ?? null;
+  }
+
+  is(n0, n1, relations) {
+    const edge = this.get(n0, n1);
+    return Boolean(edge) && relations.includes(edge.relation);
+  }
+
+  add(n0, relation, n1, reason) {
+    const edge = this.get(n0, n1);
+    if (edge) {
+      if (edge.relation !== relation) this.report(n0, edge, relation, n1, reason);
+      return;
+    }
+    if (!this.graph.has(n0)) this.graph.set(n0, new Map());
+    this.graph.get(n0).set(n1, { relation, reason });
+  }
+
+  // `r` (n0 relation n1) and its opposite, then what follows over every other
+  // node known before it (validate.py:1916-2011).
+  state(n0, relation, n1, reason) {
+    this.add(n0, relation, n1, reason);
+    const also = (other) => [...reason, ...other];
+    if (relation === ':before' || relation === ':after') {
+      const opposite = OPPOSITE[relation];
+      this.add(n1, opposite, n0, reason);
+      for (const n of this.nodes()) {
+        if (n === n0 || n === n1) continue;
+        if (this.is(n, n1, [opposite, ':identity'])) {
+          const why = also(this.get(n, n1).reason);
+          this.add(n0, relation, n, why);
+          this.add(n, opposite, n0, why);
+        }
+        if (this.is(n, n0, [relation, ':identity'])) {
+          const why = also(this.get(n, n0).reason);
+          this.add(n1, opposite, n, why);
+          this.add(n, relation, n1, why);
+        }
+        if (this.is(n, n0, [':contains'])) {
+          const why = also(this.get(n, n0).reason);
+          this.add(n1, opposite, n, why);
+          this.add(n, relation, n1, why);
+        }
+        if (this.is(n, n1, [':contains'])) {
+          const why = also(this.get(n, n1).reason);
+          this.add(n0, relation, n, why);
+          this.add(n, opposite, n0, why);
+        }
+      }
+    } else if (relation === ':contained') {
+      this.add(n1, ':contains', n0, reason);
+      for (const n of this.nodes()) {
+        if (n === n0 || n === n1) continue;
+        if (this.is(n, n1, [':contains', ':identity'])) {
+          const why = also(this.get(n, n1).reason);
+          this.add(n0, ':contained', n, why);
+          this.add(n, ':contains', n0, why);
+        }
+        if (this.is(n, n0, [':contained', ':identity'])) {
+          const why = also(this.get(n, n0).reason);
+          this.add(n1, ':contains', n, why);
+          this.add(n, ':contained', n1, why);
+        }
+        if (this.is(n, n0, [':before', ':after'])) {
+          const why = also(this.get(n, n0).reason);
+          const nToN1 = this.get(n, n0).relation;
+          this.add(n, nToN1, n1, why);
+          this.add(n1, OPPOSITE[nToN1], n, why);
+        }
+      }
+    } else if (relation === ':overlap') {
+      this.add(n1, ':overlap', n0, reason);
+    }
+  }
+}
+
+/**
+ * Temporal relations that contradict each other once what follows from them
+ * is worked out (validate.py's `temporal-mismatch`). Findings come in
+ * validate.py's order, one per collision, on the sentence whose document
+ * graph states the relation that caused it.
+ *
+ * @param {Array<object>} sentences
+ * @returns {Array<{level, code, message, var?, sentence}>}
+ */
+function temporalMismatches(sentences) {
+  const triple = (a, relation, b) => `(${a} ${relation} ${b})`;
+  const indexOf = (sentence, i) => sentence.index ?? i + 1;
+
+  // Coreference clusters over the whole document, each member with the
+  // relations that put it there, in document order.
+  const parent = new Map();
+  const find = (v) => {
+    while (parent.get(v) !== v) v = parent.get(v);
+    return v;
+  };
+  const clusterReason = new Map();
+  sentences.forEach((sentence) => {
+    for (const [a, relation, b] of sentence.docGraph?.coref ?? []) {
+      if (relation !== ':same-entity' && relation !== ':same-event') continue;
+      [a, b].forEach((v) => {
+        if (!parent.has(v)) parent.set(v, v);
+        if (!clusterReason.has(v)) clusterReason.set(v, []);
+        clusterReason.get(v).push(triple(a, relation, b));
+      });
+      const [ra, rb] = [find(a), find(b)];
+      if (ra !== rb) parent.set(ra, rb);
+    }
+  });
+
+  const findings = [];
+  let current = null;
+  const temporal = new TemporalGraph((n0, older, relation, n1, reason) => {
+    const from = (why) => [...new Set(why)].join(', ');
+    findings.push({
+      level: 'error',
+      code: 'temporal-mismatch',
+      message: `The temporal relations contradict each other: they give both '${n0} ${saying(older.relation)} ${n1}' (from ${from(older.reason)}) and '${n0} ${saying(relation)} ${n1}' (from ${from(reason)}).`,
+      ...current,
+    });
+  });
+
+  const members = new Map();
+  for (const v of parent.keys()) {
+    const root = find(v);
+    if (!members.has(root)) members.set(root, []);
+    members.get(root).push(v);
+  }
+  for (const cluster of members.values()) {
+    for (const a of cluster) {
+      for (const b of cluster) {
+        if (a !== b) temporal.add(a, ':identity', b, clusterReason.get(a));
+      }
+    }
+  }
+
+  sentences.forEach((sentence, i) => {
+    for (const [a, relation, b] of sentence.docGraph?.temporal ?? []) {
+      const node = [a, b].find((v) => VARIABLE.test(v));
+      current = { sentence: indexOf(sentence, i), ...(node ? { var: node } : {}) };
+      temporal.state(a, relation, b, [triple(a, relation, b)]);
+    }
+  });
+  return findings;
+}
+
 const DEFAULTS = {
   sets: 'validator',
   previousVars: new Set(),
@@ -927,9 +1096,9 @@ export function validateSentence(sentence, options = {}) {
  *
  * Coreference is checked across the document as well: a node's kind (event or
  * entity) against the coreference relations it is in, and `:wiki` agreement
- * within a cluster. Not checked yet: temporal contradictions
- * (`temporal-mismatch`), which validate.py infers over the whole temporal
- * graph.
+ * within a cluster. Temporal relations are checked for contradictions
+ * (`temporal-mismatch`) over what follows from all of them together, as
+ * validate.py infers it.
  *
  * @param {Array<object>} sentences
  * @param {object} [options] as validateSentence, plus nothing else
@@ -947,5 +1116,6 @@ export function validateDocument(sentences, options = {}) {
     if (sentence.docGraph?.var) previousVars.add(sentence.docGraph.var);
   });
   if ({ ...DEFAULTS, ...options }.checkWiki) findings.push(...corefWikiMismatches(sentences ?? []));
+  findings.push(...temporalMismatches(sentences ?? []));
   return findings;
 }

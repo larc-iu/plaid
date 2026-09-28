@@ -356,6 +356,57 @@ describe('the official validator on each sample exported from the app', () => {
   });
 });
 
+// The temporal-mismatch port (validate.js temporalMismatches) finds what
+// validate.py finds on each sample as the app writes it: the same collisions,
+// in the same order, in the same sentences. Kukama and Sanapaná hold two each.
+describe('temporal contradictions agree with the official validator', () => {
+  fixtures.forEach((name) => {
+    test(name, (t) => {
+      if (!fs.existsSync(VALIDATOR)) {
+        t.skip(`umrtools/validate.py is not at ${VALIDATOR}`);
+        return;
+      }
+      const python = findPython();
+      if (!python) {
+        t.skip("no python3 with the 'regex' module; set UMR_PYTHON to one");
+        return;
+      }
+      const parsed = parseUmrFile(read(name));
+      const doc = new UmrDocument({ raw: rawFromPlan(planImport(parsed.sentences, [])) });
+      const written = doc.toUmr();
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'umr-oracle-temporal-'));
+      const file = path.join(dir, name);
+      fs.writeFileSync(file, written);
+      const run = spawnSync(python, [VALIDATOR, '--max-err', '0', file], { encoding: 'utf8' });
+      const output = `${run.stdout ?? ''}${run.stderr ?? ''}`;
+      // A file line's sentence: the separators up to it.
+      const sentenceAt = [];
+      let index = 0;
+      written.split('\n').forEach((line, i) => {
+        if (/^#{80}$/.test(line)) index++;
+        sentenceAt[i + 1] = index;
+      });
+      const theirs = [
+        ...output.matchAll(
+          /\[Line (\d+)[^\]]*\]: \[L3 Document temporal-mismatch\] Older temporal relation '(\S+) (\S+) (\S+)' collides with newly inferred '(\S+)'/g,
+        ),
+      ].map((m) => [sentenceAt[Number(m[1])], m[2], m[3], m[5], m[4]]);
+      const ours = doc.problems
+        .filter((p) => p.code === 'temporal-mismatch')
+        .map((p) => {
+          const m = /both '(\S+) (.+?) (\S+)' \(from .*?\) and '\S+ (.+?) \S+' \(from/.exec(
+            p.message,
+          );
+          const relation = (r) => (r === 'corefers with' ? ':identity' : r);
+          return [p.sentence, m[1], relation(m[2]), relation(m[4]), m[3]];
+        });
+      assert.deepEqual(ours, theirs);
+      const KNOWN = { 'kukama_umr-0001.umr': 2, 'sanapana_umr-0001.umr': 2 };
+      assert.equal(theirs.length, KNOWN[name] ?? 0);
+    });
+  });
+});
+
 // The check the editors refuse new values with (umr-export-value-grammar)
 // answers as validate.py does: a value it passes, the validator reads, and a
 // value it refuses fails the sentence.

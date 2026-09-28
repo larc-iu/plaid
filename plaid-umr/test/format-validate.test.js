@@ -561,3 +561,229 @@ describe('coreference across the document', () => {
     );
   });
 });
+
+// validate.py's temporal graph (build_temporal_graph): every stated relation,
+// its opposite, what follows from them by :before, :after and :contained, and
+// coreferent nodes as one. A relation that collides with one already known is
+// a `temporal-mismatch`. The expected lists are what validate.py reports on
+// the same documents, in its order, as [sentence, node, old relation, new
+// relation, node].
+describe('temporal contradictions', () => {
+  const SEP = '#'.repeat(80);
+  // Sentence n holds (sNa / and :op1 sNx :op2 sNy), two events.
+  const doc = (specs) => {
+    const text = specs
+      .map(({ temporal = [], coref = [] }, i) => {
+        const n = i + 1;
+        const groups = [
+          ['temporal', temporal],
+          ['coref', coref],
+        ]
+          .filter(([, triples]) => triples.length)
+          .map(([g, triples]) => `    :${g} (${triples.map((t) => `(${t})`).join('\n        ')})`);
+        return [
+          SEP,
+          `# :: snt${n}`,
+          'Index: 1 2 3',
+          'Words: and go come',
+          '',
+          '# sentence level graph:',
+          `(s${n}a / and\n    :op1 (s${n}x / go-01\n        :aspect performance)\n    :op2 (s${n}y / come-01\n        :aspect performance))`,
+          '',
+          '# alignment:',
+          `s${n}a: 1-1\ns${n}x: 2-2\ns${n}y: 3-3`,
+          '',
+          '# document level annotation:',
+          `(s${n}s0 / sentence${groups.length ? `\n${groups.join('\n')}` : ''})`,
+          '',
+          '',
+          '',
+        ].join('\n');
+      })
+      .join('');
+    return parseUmrFile(text).sentences;
+  };
+  const RELATION = /both '(\S+) (.+?) (\S+)' \(from .*?\) and '\S+ (.+?) \S+' \(from/;
+  const mismatches = (sentences) =>
+    validateDocument(sentences)
+      .filter((f) => f.code === 'temporal-mismatch')
+      .map((f) => {
+        const [, a, older, b, newer] = RELATION.exec(f.message);
+        return [f.sentence, a, older, newer, b];
+      });
+
+  test('a relation and its opposite, stated together', () => {
+    assert.deepEqual(
+      mismatches(
+        doc([
+          {
+            temporal: [
+              'document-creation-time :before s1x',
+              'document-creation-time :before s1y',
+              's1x :before s1y',
+              's1x :after s1y',
+            ],
+          },
+        ]),
+      ),
+      [
+        [1, 's1x', ':before', ':after', 's1y'],
+        [1, 's1y', ':after', ':before', 's1x'],
+      ],
+    );
+  });
+
+  test('the message names both relations and where each comes from', () => {
+    const [finding] = validateDocument(
+      doc([{ temporal: ['s1x :before s1y', 's1y :before s1x'] }]),
+    ).filter((f) => f.code === 'temporal-mismatch');
+    assert.equal(finding.level, 'error');
+    assert.equal(finding.var, 's1y');
+    assert.equal(
+      finding.message,
+      "The temporal relations contradict each other: they give both 's1y :after s1x' (from (s1x :before s1y)) and 's1y :before s1x' (from (s1y :before s1x)).",
+    );
+  });
+
+  test('a consistent chain across sentences is fine', () => {
+    assert.deepEqual(
+      mismatches(
+        doc([
+          { temporal: ['document-creation-time :before s1x', 's1x :before s1y'] },
+          { temporal: ['s1y :before s2x', 's2x :after s1x', 's2x :before s2y'] },
+        ]),
+      ),
+      [],
+    );
+  });
+
+  test('a cycle over three sentences', () => {
+    assert.deepEqual(
+      mismatches(
+        doc([
+          { temporal: ['document-creation-time :before s1x', 's1x :before s1y'] },
+          { temporal: ['s1y :before s2x', 's2x :before s2y'] },
+          { temporal: ['s2y :before s3x', 's3x :before s1x', 's3x :before s3y'] },
+        ]),
+      ),
+      [
+        [3, 's3x', ':after', ':before', 's1x'],
+        [3, 's1x', ':before', ':after', 's3x'],
+        [3, 's3x', ':after', ':before', 's1y'],
+        [3, 's1y', ':before', ':after', 's3x'],
+        [3, 's1x', ':before', ':after', 's1y'],
+        [3, 's1y', ':after', ':before', 's1x'],
+        [3, 's3x', ':after', ':before', 's2x'],
+        [3, 's2x', ':before', ':after', 's3x'],
+        [3, 's1x', ':before', ':after', 's2x'],
+        [3, 's2x', ':after', ':before', 's1x'],
+        [3, 's3x', ':after', ':before', 's2y'],
+        [3, 's2y', ':before', ':after', 's3x'],
+        [3, 's1x', ':before', ':after', 's2y'],
+        [3, 's2y', ':after', ':before', 's1x'],
+      ],
+    );
+  });
+
+  test('coreferent events are one point in time', () => {
+    assert.deepEqual(
+      mismatches(
+        doc([
+          { temporal: ['document-creation-time :before s1x', 's1x :before s1y'] },
+          { temporal: ['s1y :before s2x', 's2y :before s2x'], coref: ['s1x :same-event s2x'] },
+        ]),
+      ),
+      [
+        [2, 's1y', ':after', ':before', 's2x'],
+        [2, 's2x', ':before', ':after', 's1y'],
+        [2, 's1y', ':after', ':before', 's1x'],
+        [2, 's1x', ':before', ':after', 's1y'],
+        [2, 's2x', 'corefers with', ':after', 's1x'],
+        [2, 's1x', 'corefers with', ':before', 's2x'],
+      ],
+    );
+  });
+
+  test('containment carries before and after inward', () => {
+    assert.deepEqual(
+      mismatches(
+        doc([
+          { temporal: ['document-creation-time :contains s1x', 's1y :contained s1x'] },
+          { temporal: ['s1x :before s2x', 's2x :before s1y', 's2y :contained s2x'] },
+          {
+            temporal: [
+              's3x :contained s3y',
+              's3y :contained s3x',
+              's3x :overlap s1x',
+              's1x :after s3x',
+            ],
+          },
+        ]),
+      ),
+      [
+        [2, 's1y', ':contained', ':after', 'document-creation-time'],
+        [2, 'document-creation-time', ':contains', ':before', 's1y'],
+        [2, 's2x', ':after', ':before', 'document-creation-time'],
+        [2, 'document-creation-time', ':before', ':after', 's2x'],
+        [2, 's1y', ':contained', ':after', 's1x'],
+        [2, 's1x', ':contains', ':before', 's1y'],
+        [2, 's2x', ':after', ':before', 's1x'],
+        [2, 's1x', ':before', ':after', 's2x'],
+        [3, 's3y', ':contains', ':contained', 's3x'],
+        [3, 's3x', ':contained', ':contains', 's3y'],
+        [3, 's1x', ':overlap', ':after', 's3x'],
+        [3, 's3x', ':overlap', ':before', 's1x'],
+      ],
+    );
+  });
+
+  test('overlap against before and after, each collision reported as validate.py does', () => {
+    assert.deepEqual(
+      mismatches(
+        doc([
+          {
+            temporal: ['document-creation-time :before s1x', 's1x :overlap s1y', 's1y :after s1x'],
+          },
+          {
+            temporal: [
+              's2x :after s2y',
+              's2x :overlap s2y',
+              's2y :overlap s2x',
+              's1x :depends-on s2x',
+            ],
+          },
+        ]),
+      ),
+      [
+        [1, 's1y', ':overlap', ':after', 's1x'],
+        [1, 's1x', ':overlap', ':before', 's1y'],
+        [2, 's2x', ':after', ':overlap', 's2y'],
+        [2, 's2y', ':before', ':overlap', 's2x'],
+        [2, 's2y', ':before', ':overlap', 's2x'],
+        [2, 's2x', ':after', ':overlap', 's2y'],
+      ],
+    );
+  });
+
+  test('a node before itself, and a node never defined', () => {
+    assert.deepEqual(
+      mismatches(
+        doc([
+          {
+            temporal: [
+              's1x :before s1x',
+              's9z :before s1y',
+              's1y :before s9z',
+              'document-creation-time :before s1y',
+            ],
+          },
+        ]),
+      ),
+      [
+        [1, 's1x', ':before', ':after', 's1x'],
+        [1, 's1y', ':after', ':before', 's9z'],
+        [1, 's9z', ':before', ':after', 's1y'],
+      ],
+    );
+  });
+});

@@ -363,8 +363,7 @@ Compare and Comments are not shown at a past state.
 
 = Validation
 
-The **Validation** tab lists what the official UMR checks find in every document of the project: unknown relations, values outside their set, an event without `:aspect`, alignment problems, references a sentence cannot make, values the official validator cannot read (a capital letter, an accented letter or a space in a bare value, a bare value that starts like a variable such as `s1x-b`, an empty string or a quote inside one), a variable, concept or value not in Unicode NFC, coreference between an event and an entity, coreferent nodes with different Wikidata ids, a node whose vocabulary entry now reads another concept, and the rest.
-Temporal contradictions (`temporal-mismatch`) are not checked yet.
+The **Validation** tab lists what the official UMR checks find in every document of the project: unknown relations, values outside their set, an event without `:aspect`, alignment problems, references a sentence cannot make, values the official validator cannot read (a capital letter, an accented letter or a space in a bare value, a bare value that starts like a variable such as `s1x-b`, an empty string or a quote inside one), a variable, concept or value not in Unicode NFC, coreference between an event and an entity, coreferent nodes with different Wikidata ids, temporal relations that contradict each other once what follows from them is counted (`s1x :before s2y` with `s2y :before s1x`), a node whose vocabulary entry now reads another concept, and the rest.
 A graph kept as text is one error, with what the parser found.
 Two nodes of one sentence under the same variable are an error, and the export refuses the document until one is renamed.
 The same checks mark the canvas as you edit.
