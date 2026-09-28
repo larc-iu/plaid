@@ -21,7 +21,7 @@ from ..core.plan import by_document, labelled
 from ..core.tools import ToolError
 
 from .plan import ANALYSIS, KIND, TEXT_SHAPE, WORD_SHAPE, reshaped_subjects
-from .project import (IgtDoc, Sentence, Word, Morpheme, Link, resolve, mwe_ref, REVIEWABLE,
+from .project import (IgtDoc, Sentence, Word, Morpheme, Link, parse_ref, resolve, mwe_ref, REVIEWABLE,
                       segmentation, split_sentences, split_words, word_ref)
 from .lexview import morph_type
 from .reads import t_plan_status
@@ -318,7 +318,12 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
     staged: List[Dict[str, Any]] = []
     inside: List[str] = []
     for ref in _refs(refs):
-        obj = resolve(doc, ref)
+        planned = _planned_morpheme_link(ws, doc, ref, kind, target, form)
+        if planned is not None:
+            if planned:
+                staged.append(planned)
+            continue
+        obj = _resolve_for_link(doc, ref)
         if isinstance(obj, Sentence):
             raise ToolError(f'{ref}: link words (sN.wN) or morphemes (sN.wN.mN), not sentences')
         if _planned_phrase_over(ws, obj.id):
@@ -339,6 +344,63 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
     if inside:
         note += ' (' + '; '.join(inside) + ': a word\'s own link and a multi-word expression are separate; unlink_phrase removes the latter)'
     return note
+
+
+def _planned_analysis_of(ws: Workspace, word_id: str) -> Optional[Dict[str, Any]]:
+    return next((op for op in ws.ops if op.get('kind') == 'set_analysis' and op.get('word_id') == word_id), None)
+
+
+def _planned_morpheme_link(ws: Workspace, doc: IgtDoc, ref: str, kind: str, target, form: str):
+    """A link to morpheme N of a word whose analysis this plan writes, or
+    None when ``ref`` names no such morpheme, or {} when the link is already
+    there and the analysis keeps it.
+
+    Most of those morphemes do not exist until the plan is applied, so the
+    link names the word and the place, and the executor writes it once the
+    analysis has minted them (``plan.planned_morpheme``). ``sN.wN.mN`` of such
+    a word means the PLANNED chain: it is the one the model just wrote, and
+    the chain as stored is on its way out."""
+    si, wi, mi = parse_ref(ref)
+    if mi is None or wi is None:
+        return None
+    w = _need(resolve(doc, f's{si}.w{wi}'), Word, ref)
+    analysis = _planned_analysis_of(ws, w.id)
+    if analysis is None:
+        return None
+    chain = analysis.get('morphemes') or []
+    if not 1 <= mi <= len(chain):
+        raise ToolError(f'{ref}: the analysis this plan gives "{w.surface}" has {len(chain)} '
+                        f'morpheme{"s" if len(chain) != 1 else ""} (the planned analysis is the one '
+                        f'sN.wN.mN names while it is in the plan)')
+    m = chain[mi - 1]
+    # The analysis keeps the stored first morpheme as its first and deletes
+    # the rest, so a link on the first is the one a link at m1 replaces, and
+    # every later place is a new morpheme with no link yet.
+    first = (analysis.get('existing') or [None])[0]
+    kept = w.morphemes[0] if first and w.morphemes and w.morphemes[0].id == first['id'] else None
+    old = kept.link if kept is not None and mi == 1 else None
+    if (old is not None and kind == 'existing' and old.item_id == target['id']
+            and ws.replacing({'kind': 'link', 'token_id': kept.id}) is None):
+        return {}  # already linked there, kept through the analysis, and no change to it planned
+    return {'kind': 'link', 'token_id': None, 'analysis_word_id': w.id, 'morpheme_index': mi,
+            'morpheme_form': m['form'], 'reuses_morpheme_id': kept.id if kept is not None and mi == 1 else None,
+            'doc': doc.id,
+            'item_id': target['id'] if kind == 'existing' else None,
+            'new_entry_key': target if kind == 'new' else None,
+            'existing_link_id': old.id if old else None,
+            **labelled(f'{ws.doc_label(doc.id)} {ref} "{m["form"]}"',
+                       'link ' + (f'"{old.form}" → ' if old else '') + f'"{form}"')}
+
+
+def _resolve_for_link(doc: IgtDoc, ref: str):
+    """``resolve``, saying how to link a morpheme that does not exist yet."""
+    try:
+        return resolve(doc, ref)
+    except ValueError as e:
+        if parse_ref(ref)[2] is None:
+            raise
+        raise ToolError(f'{e}. To link a morpheme the word does not have yet, plan its analysis first '
+                        '(set_analysis), then link sN.wN.mN in the same plan.') from None
 
 
 def _planned_phrase_over(ws: Workspace, token_id: str) -> bool:
@@ -853,6 +915,13 @@ def t_drop_planned(ws: Workspace, indexes) -> str:
     # first batch had landed.
     ws.ops = [op for i, op in enumerate(ws.ops, start=1)
               if i not in wanted and not (op.get('new_entry_key') and op.get('new_entry_key') in keys)]
+    # A dropped analysis takes the links to its morphemes along: they have
+    # nothing to be written on.
+    before = ws.unlinked
+    orphans = ws.unlink_orphans()
+    ws.reported_unlinked += ws.unlinked - before
     return f'Dropped {len(dropped)} planned change{"s" if len(dropped) != 1 else ""}.' + \
-        (' Links to the dropped new entries were dropped with them.' if keys else '') + '\n' + t_plan_status(ws)
+        (' Links to the dropped new entries were dropped with them.' if keys else '') + \
+        (' Links to the morphemes of a dropped analysis were dropped with it.' if orphans else '') + \
+        '\n' + t_plan_status(ws)
 

@@ -148,7 +148,7 @@ PLAN: set a field's value on words, morphemes, or sentences (the references must
 
 ### set_analysis
 
-PLAN: replace a word's morpheme segmentation and morpheme-level fields. Morphemes are given in order; each has a form, an optional type (stem, root, prefix, suffix, infix, enclitic, proclitic, ...), and fields mapping morpheme field names to values, e.g. [{"form":"kitab","type":"stem","fields":{"Gloss":"book"}}, {"form":"lar","type":"suffix","fields":{"Gloss":"PL"}}]. REPLACES the word's whole chain: every existing morpheme field value on it, human-made ones included, is dropped. To change one morpheme's value keep the chain and use set_field with sN.wN.mN; to change one morpheme's form or type, set_morpheme. Several words at once: analyses=[{"ref":"s3.w1","morphemes":[...]}, ...] (one call per sentence, not per word).
+PLAN: replace a word's morpheme segmentation and morpheme-level fields. Morphemes are given in order; each has a form, an optional type (stem, root, prefix, suffix, infix, enclitic, proclitic, ...), and fields mapping morpheme field names to values, e.g. [{"form":"kitab","type":"stem","fields":{"Gloss":"book"}}, {"form":"lar","type":"suffix","fields":{"Gloss":"PL"}}]. REPLACES the word's whole chain: every existing morpheme field value on it, human-made ones included, is dropped. To change one morpheme's value keep the chain and use set_field with sN.wN.mN; to change one morpheme's form or type, set_morpheme. Several words at once: analyses=[{"ref":"s3.w1","morphemes":[...]}, ...] (one call per sentence, not per word). The new morphemes can be linked to lexicon entries in the same plan: link_entry with sN.wN.mN.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `ref` (string): The word, sN.wN.
@@ -184,7 +184,7 @@ PLAN: change the BASELINE spelling of one word (its analysis, glosses, and links
 
 ### link_entry
 
-PLAN: link words or morphemes to a lexicon entry, by the entry's form ("ама", or "ама#2" for homograph 2), or entry_id (also the id returned by create_entry). Replaces the item's own link; a multi-word expression the word belongs to is separate and stays (link_phrase / unlink_phrase for those).
+PLAN: link words or morphemes to a lexicon entry, by the entry's form ("ама", or "ама#2" for homograph 2), or entry_id (also the id returned by create_entry). Replaces the item's own link; a multi-word expression the word belongs to is separate and stays (link_phrase / unlink_phrase for those). For a word whose analysis this plan changes (set_analysis, set_analysis_for_form), sN.wN.mN is a morpheme of the PLANNED analysis, so segmenting a word and linking its new morphemes is one plan. If that analysis changes again, a link to a morpheme it no longer has at that place is dropped.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `refs` (array of string, required): Positional references, e.g. ["s3.w2", "s3.w4"]. Words are sN.wN, morphemes sN.wN.mN, sentences sN.

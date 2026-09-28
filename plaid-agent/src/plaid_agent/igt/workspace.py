@@ -23,7 +23,7 @@ from ..core.plan import change_of, docs_of_op, labelled
 from ..core.tools import ToolError
 from ..core.workspace import BaseWorkspace
 
-from .plan import KIND, TEXT_SHAPE, removed_entries
+from .plan import ANALYSIS, KIND, TEXT_SHAPE, planned_morpheme, removed_entries
 
 # What only a maintainer of the lexicon may do to its entries (a merge deletes
 # the entry it folds away), and what a tool says to anyone else.
@@ -101,6 +101,11 @@ class Workspace(BaseWorkspace):
         # Corpus-wide tools ask the query engine unless told to scan every
         # document instead (tests compare the two).
         self.prefer_scan = False
+        # Links to morphemes of a planned analysis that a later change to that
+        # word's analysis took out of the plan, and how many a note has told
+        # the model about (the same watermark pair as `replaced`).
+        self.unlinked = 0
+        self.reported_unlinked = 0
 
     def make_corpus(self):
         from .corpus import Corpus
@@ -427,13 +432,50 @@ class Workspace(BaseWorkspace):
         sets a field on is one dict, edited in place, so a shallow copy came
         back from a rollback carrying the edit."""
         return {**super().snapshot(), 'new_entries': copy.deepcopy(self.new_entries),
-                'item_patches': copy.deepcopy(self.item_patches)}
+                'item_patches': copy.deepcopy(self.item_patches),
+                'unlinked': self.unlinked, 'reported_unlinked': self.reported_unlinked}
 
     def restore(self, saved: Dict[str, Any]) -> None:
         super().restore(saved)
         self.new_entries = saved['new_entries']
         self.item_patches = saved['item_patches']
+        self.unlinked = saved['unlinked']
+        self.reported_unlinked = saved['reported_unlinked']
         self._patch_version += 1
+
+    def add_op(self, op: Dict[str, Any]) -> None:
+        super().add_op(op)
+        # A new analysis of a word (or a discard of it) replaces the one a
+        # link to one of its morphemes was made against.
+        spec = KIND.get(op.get('kind'))
+        if spec is not None and spec.shape == ANALYSIS:
+            self.unlink_orphans()
+
+    def unlink_orphans(self) -> int:
+        """Take out of the plan every link to a morpheme of a planned analysis
+        that the plan no longer holds as the link read it: the analysis was
+        dropped, discarded, or replaced by one without that morpheme at that
+        place. Every path that changes a word's planned analysis ends here, and
+        approval refuses what is left (``plan.validate_ops``)."""
+        keep = [op for op in self.ops
+                if not (op.get('kind') == 'link' and op.get('analysis_word_id')
+                        and planned_morpheme(self.ops, op) is None)]
+        gone = len(self.ops) - len(keep)
+        if gone:
+            self.ops[:] = keep
+            self._gone_at = -1
+            self.unlinked += gone
+        return gone
+
+    def superseded_note(self) -> str:
+        out = super().superseded_note()
+        new = self.unlinked - self.reported_unlinked
+        if new > 0:
+            self.reported_unlinked = self.unlinked
+            out += (f' {new} planned link{"s" if new != 1 else ""} to a morpheme of a planned analysis '
+                    f'{"were" if new != 1 else "was"} dropped: the analysis now planned for that word has no such '
+                    'morpheme at that place. Link again with link_entry sN.wN.mN if it should be.')
+        return out
 
     def exclusive_message(self, staging_it: bool) -> str:
         """A restore rewrites a document wholesale, so nothing else can be

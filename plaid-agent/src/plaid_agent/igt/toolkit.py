@@ -132,7 +132,8 @@ TOOLS = [
         '{"form":"lar","type":"suffix","fields":{"Gloss":"PL"}}]. REPLACES the word\'s whole chain: every existing '
         'morpheme field value on it, human-made ones included, is dropped. To change one morpheme\'s value keep the '
         'chain and use set_field with sN.wN.mN; to change one morpheme\'s form or type, set_morpheme. Several words '
-        'at once: analyses=[{"ref":"s3.w1","morphemes":[...]}, ...] (one call per sentence, not per word).',
+        'at once: analyses=[{"ref":"s3.w1","morphemes":[...]}, ...] (one call per sentence, not per word). The new '
+        'morphemes can be linked to lexicon entries in the same plan: link_entry with sN.wN.mN.',
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'The word, sN.wN.'},
          'morphemes': _MORPHEMES,
          'analyses': {'type': 'array', 'description': 'Several words at once: [{ref, morphemes}, ...].',
@@ -158,7 +159,10 @@ TOOLS = [
     _fn('link_entry',
         'PLAN: link words or morphemes to a lexicon entry, by the entry\'s form ("ама", or "ама#2" for homograph 2), '
         'or entry_id (also the id returned by create_entry). Replaces the item\'s own link; a multi-word expression '
-        'the word belongs to is separate and stays (link_phrase / unlink_phrase for those).',
+        'the word belongs to is separate and stays (link_phrase / unlink_phrase for those). For a word whose '
+        'analysis this plan changes (set_analysis, set_analysis_for_form), sN.wN.mN is a morpheme of the PLANNED '
+        'analysis, so segmenting a word and linking its new morphemes is one plan. If that analysis changes again, '
+        'a link to a morpheme it no longer has at that place is dropped.',
         {'document': _DOC, 'refs': _REFS, 'entry_form': {'type': 'string'}, 'lexicon': {'type': 'string'},
          'entry_id': {'type': 'string'}, 'entry_gloss': _GLOSS},
         ['document', 'refs']),

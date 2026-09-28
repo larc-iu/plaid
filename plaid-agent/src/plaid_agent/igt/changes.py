@@ -99,6 +99,14 @@ def locate(ws, op: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         found = _find_word_at(ws, op.get('text_id'), op.get('begin'), op.get('doc'))
         if found:
             return _token_where(ws, *found)
+    if kind == 'link' and op.get('analysis_word_id'):
+        # A morpheme of an analysis the same plan writes: it has no token yet,
+        # so the row is placed at its word and names it by its place and form
+        # in that analysis, as the analysis's own row spells it.
+        found = _find(ws, op['analysis_word_id'], op.get('doc'))
+        if found:
+            where = _token_where(ws, *found)
+            return {**where, 'morpheme': op.get('morpheme_index'), 'surface': op.get('morpheme_form')}
     for key in _TOKEN_KINDS.get(kind, ()):
         found = _find(ws, _first(op, (key,)), op.get('doc') or op.get('document_id'))
         if found:

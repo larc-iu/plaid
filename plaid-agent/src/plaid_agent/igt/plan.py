@@ -34,6 +34,10 @@ wire's key recasing):
   set_orthography {word_id, key, value}
   respell         {text_id, begin, end, value}
   link            {token_id, item_id|null, new_entry_key|null, existing_link_id|null}
+                  or, for a morpheme of an analysis a set_analysis in the same plan writes, token_id null and
+                  {analysis_word_id, morpheme_index (from 1), morpheme_form, reuses_morpheme_id|null}: written
+                  when the plan is applied, once that analysis has minted its morphemes (see `planned_morpheme`).
+                  reuses_morpheme_id is the stored first morpheme an analysis keeps as its first, at index 1
   unlink          {link_id}
   create_entry    {vocab_id, form, metadata, key}
   set_entry_field {item_id, field, value}
@@ -122,6 +126,11 @@ class Context:
         self.b = b
         self.pending_spans: List[tuple] = []   # (result idx of the created morpheme, layer_id, value)
         self.pending_links: List[tuple] = []   # ([token_id, ...], new_entry_key)
+        # Each analysed word's new chain, slot by slot: ('id', the reused first
+        # morpheme) or ('idx', the result index of the created one). A link to
+        # a morpheme the plan creates is written from it in the second pass.
+        self.chains: Dict[str, List[tuple]] = {}
+        self.planned_links: List[Dict[str, Any]] = []
         self.entry_idx: Dict[str, int] = {}
         self.respells: Dict[str, List[tuple]] = {}
         self.pending_deletes: List[str] = []   # entries to delete once their links are gone
@@ -171,6 +180,7 @@ def _apply_set_analysis(ctx: Context, op) -> int:
         for sid in m0.get('span_ids') or []:
             ctx.drop('spans', sid)
         first = morphemes[0]
+        slots = [('id', m0['id'])]
         b.add(lambda batch, mid=m0['id'], f=first: batch.tokens.patch_metadata(
             mid, metadata_ops({'form': f['form'], 'morphType': f.get('morph_type'), **ctx.restamp()})))
         # Keep the chain's numbering contiguous from 1 whatever the
@@ -182,6 +192,7 @@ def _apply_set_analysis(ctx: Context, op) -> int:
                     fv['layer_id'], [mid], fv['value'], ctx.stamp()))
         rest = list(enumerate(morphemes))[1:]
     else:
+        slots = []
         rest = list(enumerate(morphemes))
     for j, m in rest:
         meta = {'form': m['form'], **ctx.stamp()}
@@ -189,9 +200,11 @@ def _apply_set_analysis(ctx: Context, op) -> int:
             meta['morphType'] = m['morph_type']
         idx = b.add(lambda batch, j=j, meta=meta: batch.tokens.create(
             layer, text_id, begin, end, precedence=j + 1, metadata=meta))
+        slots.append(('idx', idx))
         for fv in m.get('fields') or []:
             if fv.get('value') not in (None, ''):
                 ctx.pending_spans.append((idx, fv['layer_id'], fv['value']))
+    ctx.chains[op['word_id']] = slots
     return 1
 
 
@@ -216,6 +229,14 @@ def _link(ctx: Context, op, tokens: List[str]) -> int:
 
 
 def _apply_link(ctx: Context, op) -> int:
+    if op.get('analysis_word_id'):
+        # A morpheme the plan's own analysis creates: written in the second
+        # pass, once that morpheme has an id. The link it replaces (the reused
+        # first morpheme's) goes now.
+        if op.get('existing_link_id'):
+            ctx.drop('vocab_links', op['existing_link_id'])
+        ctx.planned_links.append(op)
+        return 1
     return _link(ctx, op, [op['token_id']])
 
 
@@ -488,11 +509,17 @@ KIND = ok.registry([
            apply=_apply_respell, shape=TEXT_SHAPE,
            target=lambda op: ('respell', op.get('text_id'), op.get('begin'), op.get('end')),
            compact_each=('text_id', 'begin', 'end', 'value', 'doc')),
-    OpKind('link', ('lexicon link', 'lexicon links'), required=('token_id',),
-           apply=_apply_link, target=lambda op: ('link', op.get('token_id')),
+    # `token_id`, or a morpheme a planned analysis writes, named by its word
+    # and place (`planned_morpheme`). validate_ops asks for one or the other.
+    # The first morpheme of a word analysed before is the stored one the
+    # analysis keeps, so a link to it by place and a link to it by id are one
+    # target, and the later replaces the earlier.
+    OpKind('link', ('lexicon link', 'lexicon links'),
+           apply=_apply_link, target=lambda op: ('link', op.get('token_id') or op.get('reuses_morpheme_id') or (
+               'planned', op.get('analysis_word_id'), op.get('morpheme_index'))),
            # The entry as well as the word: a link to an entry the plan removes
            # is written and then taken away with it.
-           at=('token_id',), at_kind=TOKEN, token_keys=('token_id', 'item_id'),
+           at=('token_id',), at_kind=TOKEN, token_keys=('token_id', 'analysis_word_id', 'item_id'),
            deletes=lambda op: [op.get('existing_link_id')]),
     OpKind('unlink', ('unlink', 'unlinks'), required=('link_id',), apply=_apply_unlink,
            # A multi-word expression's link is its own target: unlinking it
@@ -662,6 +689,25 @@ def removed_entries(ops: List[Dict[str, Any]]) -> frozenset:
     return frozenset(out)
 
 
+def planned_morpheme(ops: List[Dict[str, Any]], link: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The morpheme a link names by its word and place, in the analysis
+    ``ops`` plan for that word, or None when they plan none, or none with a
+    morpheme there spelt as the link read it. The spelling is the check that
+    the analysis is still the one the link was made against: a later analysis
+    of the same word replaces the first, and its second morpheme may be
+    another morpheme altogether."""
+    k = link.get('morpheme_index')
+    if not isinstance(k, int) or isinstance(k, bool) or k < 1:
+        return None
+    for op in ops:
+        if op.get('kind') == 'set_analysis' and op.get('word_id') == link.get('analysis_word_id'):
+            chain = op.get('morphemes') or []
+            if k <= len(chain) and chain[k - 1].get('form') == link.get('morpheme_form'):
+                return chain[k - 1]
+            return None
+    return None
+
+
 def validate_ops(ops: List[Dict[str, Any]]) -> None:
     """Reject a malformed plan BEFORE anything is written."""
     reach = {d for op in ops if op.get('kind') in SCOPES for d in (op.get('documents') or [])}
@@ -683,6 +729,12 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
         if kind == 'set_analysis' and (not isinstance(op['morphemes'], list) or not op['morphemes']
                                        or any(not (m.get('form') or '').strip() for m in op['morphemes'])):
             raise ValueError(f'op {i + 1} (set_analysis): morphemes must be a non-empty list with non-empty forms')
+        if kind == 'link' and not op.get('token_id'):
+            if not op.get('analysis_word_id'):
+                raise ValueError(f'op {i + 1} (link): missing token_id')
+            if planned_morpheme(ops, op) is None:
+                raise ValueError(f'op {i + 1} (link): names morpheme {op.get("morpheme_index")} of an analysis '
+                                 'this plan does not hold')
         if kind in ('link', 'link_phrase') and not (op.get('item_id') or op.get('new_entry_key')):
             raise ValueError(f'op {i + 1} ({kind}): needs item_id or new_entry_key')
         if kind in ('link', 'link_phrase') and not op.get('item_id') and op.get('new_entry_key') not in new_keys:
@@ -825,7 +877,16 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
                 continue
             respell_at[key] = len(out)
         out.append(op)
-    return out, notes
+    # A link to a morpheme of an analysis dropped above has nothing to be
+    # written on. Dropped with it, since the second pass would fail with the
+    # first batch already written.
+    kept = []
+    for op in out:
+        if op.get('kind') == 'link' and op.get('analysis_word_id') and planned_morpheme(out, op) is None:
+            notes.append(f'dropped: {op.get("label") or "a link"} (the analysis it links a morpheme of was dropped)')
+            continue
+        kept.append(op)
+    return kept, notes
 
 
 def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, project=None,
@@ -914,6 +975,24 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
             if not iid:
                 raise RuntimeError('a created lexicon entry came back without an id; a link to it was not written')
             b.add(lambda batch, i=iid, t=tokens: batch.vocab_links.create(i, t, stamps.stamp()))
+        # Links to the morphemes an analysis above created, by the ids those
+        # came back with (the reused first morpheme's is known already).
+        for op in ctx.planned_links:
+            slots = ctx.chains.get(op['analysis_word_id']) or []
+            k = op['morpheme_index']
+            if not 1 <= k <= len(slots):
+                raise RuntimeError('a link names a morpheme its analysis did not create, so it was not written')
+            how, at = slots[k - 1]
+            mid = at if how == 'id' else created_id(b.results[at] if at < len(b.results) else None)
+            if not mid:
+                raise RuntimeError('a created morpheme came back without an id, so its link was not written')
+            iid = op.get('item_id')
+            if not iid:
+                i = ctx.entry_idx.get(op.get('new_entry_key'))
+                iid = created_id(b.results[i]) if i is not None and i < len(b.results) else None
+            if not iid:
+                raise RuntimeError('a created lexicon entry came back without an id, so a link to it was not written')
+            b.add(lambda batch, i=iid, m=mid: batch.vocab_links.create(i, [m], stamps.stamp()))
         for iid in ctx.pending_deletes:
             ctx.drop('vocab_items', iid)
         b.flush()
