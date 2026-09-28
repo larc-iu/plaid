@@ -129,3 +129,50 @@ test('the bundled Arabic file offers قال-01 for وقالت and اعلن-01 fo
   assert.ok(sensesFor(file, 'أعلنت').some((s) => s.id === 'اعلن-01'));
   assert.ok(rolesetsStartingWith(file, 'قال').some((s) => s.id === 'قال-01'));
 });
+
+// Follow-ups of 2026-09-28: no future proclitic, the word's own lemma first,
+// and the tatweel dropped.
+test('the future proclitic is not stripped, so سخرت is سخر and never خرت', () => {
+  const file = { 'سخر-01': {}, 'خرت-01': {}, 'قال-01': {} };
+  assert.deepEqual(
+    sensesFor(file, 'سخرت').map((s) => s.id),
+    ['سخر-01'],
+  );
+  assert.ok(!lemmaCandidates('سيقول').includes('يقول'));
+});
+
+test('a sense whose lemma is the word itself comes before a stripped one', () => {
+  // بدعت is a lemma of its own here, and also ب + دعت and بدع + ت.
+  const file = { 'بدع-01': {}, 'دعت-01': {}, 'بدعت-01': {}, 'دع-01': {} };
+  const rows = sensesFor(file, 'بدعت').map((s) => s.id);
+  assert.equal(rows[0], 'بدعت-01');
+  // Then what one strip leaves, then what two leave (ب + دع + ت).
+  assert.deepEqual(rows.slice(1, 3).sort(), ['بدع-01', 'دعت-01'].sort());
+  assert.equal(rows[3], 'دع-01');
+  // With the hamza folded, the word itself still counts as itself.
+  assert.equal(sensesFor({ 'اعلن-01': {}, 'علن-01': {} }, 'أعلن')[0].id, 'اعلن-01');
+});
+
+test('the tatweel is dropped, in a word and in what is typed', () => {
+  assert.deepEqual(
+    sensesFor(arabic, 'قـال').map((s) => s.id),
+    ['قال-01'],
+  );
+  assert.deepEqual(
+    sensesFor(arabic, 'وقـالـت').map((s) => s.id),
+    ['قال-01'],
+  );
+  assert.deepEqual(
+    rolesetsStartingWith(arabic, 'قـا').map((s) => s.id),
+    ['قال-01'],
+  );
+});
+
+test('on the bundled Arabic file, سخرت lists سخر-01 first and قـال finds قال-01', () => {
+  const file = JSON.parse(
+    fs.readFileSync(new URL('../src/data/frames/arabic.json', import.meta.url), 'utf8'),
+  );
+  assert.equal(sensesFor(file, 'سخرت')[0].id, 'سخر-01');
+  assert.ok(!sensesFor(file, 'سخرت').some((s) => s.id === 'خرت-01'));
+  assert.equal(sensesFor(file, 'قـال')[0].id, 'قال-01');
+});

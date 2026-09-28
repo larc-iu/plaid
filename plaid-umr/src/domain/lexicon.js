@@ -63,24 +63,24 @@ const lemmaOf = (roleset) => String(roleset).replace(/-\d+$/, '');
 // The forms of alif an Arabic text writes with a hamza (and the wasla), all
 // read as plain alif: the bundled Arabic file keys `اعلن-01` without the
 // hamza a text writes in أعلنت, and `ٱنكشف-01` with a wasla nobody types.
-// Folded on both sides, the typed or written form and the file's keys.
+// The tatweel (ـ), a stretch between letters that spells nothing, goes too,
+// so قـال reads as قال. Folded on both sides, the typed or written form and
+// the file's keys.
 const ALIF_FORMS = /[\u0622\u0623\u0625\u0671]/g;
-export const foldAlif = (text) => String(text ?? '').replace(ALIF_FORMS, '\u0627');
+const TATWEEL = /\u0640/g;
+export const foldAlif = (text) =>
+  String(text ?? '')
+    .replace(TATWEEL, '')
+    .replace(ALIF_FORMS, '\u0627');
 
 const ARABIC = /\p{Script=Arabic}/u;
 
-// One proclitic at most (and, but, with, for, like, will, the), then common
+// One proclitic at most (and, but, with, for, like, the), then common
 // suffixes of person, number and gender and the object pronouns: وقالت is
-// و + قال + ت. Longest first, so ها is tried before ا.
-const ARABIC_PROCLITICS = [
-  '\u0627\u0644',
-  '\u0648',
-  '\u0641',
-  '\u0628',
-  '\u0644',
-  '\u0643',
-  '\u0633',
-];
+// و + قال + ت. Longest first, so ها is tried before ا. Not the future's س:
+// it goes on an imperfect verb (سيقول), and the file's lemmas are perfect
+// forms, so its stem never matched and it only offered خرت-01 for سخرت.
+const ARABIC_PROCLITICS = ['\u0627\u0644', '\u0648', '\u0641', '\u0628', '\u0644', '\u0643'];
 const ARABIC_SUFFIXES = [
   '\u0647\u0645\u0627', // هما
   '\u0648\u0627', // وا
@@ -127,11 +127,13 @@ function arabicCandidates(form) {
   return [...out];
 }
 
-// What a surface form might be the lemma of: the form itself, lowercased,
-// and the form less the common inflections, English's, or for a word in
-// Arabic script its alif folded, less one proclitic and a suffix (ruled
-// 2026-09-28). Other languages find their lemma by typing it. A wrong guess
-// costs nothing but a listing; a missing one costs the annotator a search.
+// What a surface form might be the lemma of, best first: the form itself,
+// lowercased, and the form less the common inflections, English's, or for a
+// word in Arabic script its alif folded and tatweel dropped, less one
+// proclitic and a suffix (ruled 2026-09-28). The word itself comes first,
+// then what one strip leaves, then two. Other languages find their lemma by
+// typing it. A wrong guess costs nothing but a listing, a missing one costs
+// the annotator a search.
 export function lemmaCandidates(form) {
   const f = String(form || '')
     .toLowerCase()
