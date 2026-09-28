@@ -18,11 +18,17 @@ project whose layers carry the standard roles:
   UMR layers, read a document as sentence graphs, read and write PENMAN, and
   write drafted graphs in three batched passes.
 
+- ``plaid_client.workflows.requester``: who asked for a run, named in its
+  History label and in what it stores (``requester_of``). Every service in
+  every app names its requester through it.
+
 Official service files (``igt_tokenize_punkt.py``, ``igt_transcribe_whisper.py``,
 ...) are single standalone scripts that import these frameworks — use them as
 templates for your own services.
 """
 
-from . import asr, igt, tokenization, umr
+from . import asr, igt, requester, tokenization, umr
+from .requester import REQUESTED_BY, Requester, requester_of
 
-__all__ = ['asr', 'igt', 'tokenization', 'umr']
+__all__ = ['asr', 'igt', 'requester', 'tokenization', 'umr',
+           'REQUESTED_BY', 'Requester', 'requester_of']

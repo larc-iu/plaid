@@ -48,6 +48,7 @@ from typing import Any, Dict, List, Optional
 
 from plaid_client import BaseService, Param, TASKS
 from plaid_client.service import check_unchanged
+from plaid_client.workflows.requester import REQUESTED_BY, requester_of
 from plaid_client.workflows.umr import (UMR_NAMESPACE, Graph, group_of, penman_nodes,
                                         read_document, resolve_layers, sentence_penman,
                                         serialize_penman, tree_edges)
@@ -498,9 +499,12 @@ def ancast_version() -> str:
         return 'ancast'
 
 
-def build_report(scores, sentences, against, scope: str, at: Optional[str] = None):
-    """The whole report, before `split_report` divides it for storage."""
-    return {
+def build_report(scores, sentences, against, scope: str, at: Optional[str] = None,
+                 requested_by: Optional[Dict[str, str]] = None):
+    """The whole report, before `split_report` divides it for storage.
+    `requested_by` is who asked for the run, `{id, name}` (see
+    `plaid_client.workflows.requester`), left out when nobody did."""
+    report = {
         'version': REPORT_VERSION,
         'tool': ancast_version(),
         'against': {'id': against['id'], 'name': against['name']},
@@ -509,6 +513,9 @@ def build_report(scores, sentences, against, scope: str, at: Optional[str] = Non
         'scores': scores,
         'sentences': sentences,
     }
+    if requested_by:
+        report[REQUESTED_BY] = requested_by
+    return report
 
 
 def split_report(report, sentence_ids):
@@ -693,6 +700,7 @@ class UmrAncastService(BaseService):
             return
         project_id = request_data.get('project_id')
         scope = 'snt' if (request_data.get('scope') or 'doc').strip() == 'snt' else 'doc'
+        requester = requester_of(self.client, request_data)
 
         progress = ScoreProgress(response_helper)
         progress.report(ScoreProgress.READ, 0.0, 'Reading the document…')
@@ -720,7 +728,8 @@ class UmrAncastService(BaseService):
         skipped = len([s for s in sentences if s['skipped']])
         scored = len(sentences) - skipped
 
-        report = build_report(scores, sentences, {'id': against_id, 'name': other_name}, scope)
+        report = build_report(scores, sentences, {'id': against_id, 'name': other_name}, scope,
+                              requested_by=requester.record())
         notice = build_notice(report, scored, skipped)
 
         # Everything from here must finish once begun. The final report is inside
@@ -728,7 +737,7 @@ class UmrAncastService(BaseService):
         # run away and call it stopped.
         progress.report(ScoreProgress.WRITE, 0.0, 'Writing the report…')
         with response_helper.critical():
-            with self.client.operation(f'AnCast adjudication against {other_name}'):
+            with self.client.operation(requester.label(f'AnCast adjudication against {other_name}')):
                 with self.client.documents.locked(document_id):
                     # The scores describe the document as it was read. If it has
                     # moved since, the report would be a claim about a state

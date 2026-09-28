@@ -12,6 +12,7 @@ from typing import List, Dict, Any
 from plaid_client.workflows.asr import ASRModel, Alignment, AlignmentProcessor
 from plaid_client import BaseService, TASKS, Param, service_source, PROV_DETAIL_KEY
 from plaid_client.service import progress_heartbeat
+from plaid_client.workflows.requester import requester_of
 
 
 WHISPER_MODEL_SIZES = [
@@ -188,6 +189,7 @@ class WhisperASRService(BaseService):
         model_size = request_data.get('model_size') or None
         language = request_data.get('language') or None
         overwrite = bool(request_data.get('overwrite', False))
+        requester = requester_of(self.client, request_data)
         
         # Validate required parameters
         if not document_id:
@@ -261,7 +263,11 @@ class WhisperASRService(BaseService):
             # `critical` because the writes reset the sentence partition before
             # rebuilding it: stopping part-way would leave the document worse
             # than either finishing or never starting.
-            audit_msg = f"Whisper ASR transcription ({language})" if language else "Whisper ASR transcription"
+            audit_msg = requester.label(f"Whisper ASR transcription ({language})" if language
+                                        else "Whisper ASR transcription")
+            for alignment in alignments:
+                alignment.metadata = {**(alignment.metadata or {}), PROV_DETAIL_KEY:
+                                      requester.detail((alignment.metadata or {}).get(PROV_DETAIL_KEY))}
             # The report of the work is inside `critical()` with the work itself:
             # a stop that arrives once the writing is done has nothing left to
             # prevent, and a checkpoint out here would throw the result away and

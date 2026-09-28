@@ -33,6 +33,7 @@ from typing import Dict, Optional
 
 from plaid_client import BaseService, TASKS, Param, service_source
 from plaid_client.service import check_unchanged, requester_message
+from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.llm import (NOT_ASKED, ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
 from plaid_client.provenance import stamp_inferred, prov_state, MACHINE
@@ -198,6 +199,7 @@ class LLMTranslateService(BaseService):
     # -- request --
     def process_request(self, request_data: dict, response_helper) -> None:
         document_id = request_data.get('document_id')
+        requester = requester_of(self.client, request_data)
         word_layer_id = request_data.get('word_token_layer_id')
         morph_layer_id = request_data.get('morpheme_token_layer_id')
         sent_layer_id = request_data.get('sentence_token_layer_id')
@@ -274,7 +276,8 @@ class LLMTranslateService(BaseService):
         # One model call per sentence, in document order so earlier drafts can
         # serve as context for later sentences.
         source = service_source(self.service_id)
-        base_detail = {**self.model.describe(), 'language': language, 'metalanguage': metalanguage}
+        base_detail = requester.detail({**self.model.describe(), 'language': language,
+                                        'metalanguage': metalanguage})
         drafts: Dict[str, str] = {}
         plans = []  # (sentence, existing span or None, text)
         failed = []
@@ -332,7 +335,7 @@ class LLMTranslateService(BaseService):
         # and a checkpoint out here would throw the result away and call a
         # finished run stopped.
         with response_helper.critical():
-            with self.client.operation(f'LLM translation ({len(plans)} sentences)'):
+            with self.client.operation(requester.label(f'LLM translation ({len(plans)} sentences)')):
                 with self.client.documents.locked(document_id):
                     # The plans were made from a read taken before the model
                     # ran. If someone has edited the document since, both the

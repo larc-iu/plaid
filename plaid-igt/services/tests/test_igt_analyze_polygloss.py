@@ -9,6 +9,7 @@ Run: pytest plaid-igt/services/tests
 """
 
 import pathlib
+import types
 
 from plaid_client import apply_metadata_ops
 from plaid_client import testing as servicetest
@@ -167,6 +168,19 @@ def test_an_analysis_lands_stamped_machine_made_and_never_confirmed():
         assert meta['provDetail']['value'] == value
 
     assert service.client.operations == ['PolyGloss analysis (2 words)']
+
+
+def test_the_analysis_names_who_asked_in_history_and_on_what_it_writes():
+    service = _service()
+    service.client.users = types.SimpleNamespace(
+        get=lambda uid: {'id': uid, 'display_name': 'second'})
+    servicetest.run(service, {**REQUEST, 'requester_id': 'second@x.com'})
+
+    assert service.client.operations == ['PolyGloss analysis (2 words), requested by second']
+    glosses = [call['args'][3] for kind, call in service.client.calls if kind == 'spans.create']
+    assert glosses
+    for meta in glosses:
+        assert meta['provDetail']['requestedBy'] == 'second@x.com'
 
 
 def test_a_word_a_person_analyzed_is_left_alone_and_counted():

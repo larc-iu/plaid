@@ -18,6 +18,7 @@ Run: pytest -q services/tests, from plaid-umr. Runs from the base env, where
 import contextlib
 import json
 import pathlib
+import types
 
 import pytest
 from plaid_client import apply_metadata_ops
@@ -486,6 +487,22 @@ def test_a_run_writes_the_report_on_the_scored_document_and_reports_the_scores()
         assert 0.0 <= sentence[key] <= 1.0, key
 
     assert service.client.operations == ['AnCast adjudication against Bo']
+
+
+def test_the_run_names_who_asked_in_history_and_in_the_report():
+    """The service writes with its operator's token, so History would name
+    the operator alone. The requester core sent is named in the label and
+    stored on the report (umr-collab-service-requester)."""
+    service = _service()
+    service.client.users = types.SimpleNamespace(
+        get=lambda uid: {'id': uid, 'display_name': 'second'})
+    servicetest.run(service, {**REQUEST, 'requester_id': 'second@x.com'})
+
+    assert service.client.operations == ['AnCast adjudication against Bo, requested by second']
+    report = _report(service.client)
+    assert report['requestedBy'] == {'id': 'second@x.com', 'name': 'second'}
+    _, body = _patch(service.client)
+    assert body['umr']['adjudication']['requestedBy'] == {'id': 'second@x.com', 'name': 'second'}
 
 
 def test_a_row_records_every_part_of_a_graph_as_the_tab_prints_it():

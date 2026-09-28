@@ -9,6 +9,7 @@ import nltk
 from typing import List, Dict, Any, Tuple
 from plaid_client import BaseService, TASKS, Param, service_source
 from plaid_client.workflows.messages import setup_incomplete
+from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.tokenization import TokenizerModel, TokenSpan, TokenProcessor, helpers
 
 
@@ -124,6 +125,7 @@ class NLTKTokenizerService(BaseService):
         # User-controlled arguments (declared in the service's parameter schema).
         language = request_data.get('language', 'english')
         overwrite = bool(request_data.get('overwrite', False))
+        requester = requester_of(self.client, request_data)
         
         # Validate required parameters
         if not document_id:
@@ -177,13 +179,14 @@ class NLTKTokenizerService(BaseService):
         # left to prevent, and a checkpoint out here would throw the result
         # away and call a finished run stopped.
         with response_helper.critical():
-            with self.client.operation(f"NLTK Punkt tokenization ({language})"):
+            with self.client.operation(requester.label(f"NLTK Punkt tokenization ({language})")):
                 results = self.token_processor.process_tokens(
                     self.client, document_id, sentences, words,
                     primary_token_layer_id, sentence_layer_id, response_helper,
                     text_layer_id=text_layer_id,
                     expect_version=full_document.get('version'),
                     prov_source=service_source(self.service_id),
+                    prov_detail=requester.detail(),
                     overwrite=overwrite,
                 )
             response_helper.progress(100, "Done")

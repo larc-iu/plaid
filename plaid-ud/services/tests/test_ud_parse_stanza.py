@@ -221,6 +221,23 @@ def test_a_parse_lands_stamped_machine_made_and_never_confirmed():
     assert service.pipeline_provider.inputs == [BODY]
 
 
+def test_the_parse_names_who_asked_in_history_and_on_what_it_writes():
+    """umr-collab-service-requester, in every app: the service writes with
+    its operator's token, so the requester core sent is named in the History
+    label and in each stamp's provDetail."""
+    service = _service()
+    service.client.users = types.SimpleNamespace(
+        get=lambda uid: {'id': uid, 'display_name': 'second'})
+    servicetest.run(service, {**REQUEST, 'requester_id': 'second@x.com'})
+
+    assert service.client.operations == ['Stanza UD parse (en), requested by second']
+    written = [op for payload in service.client.payloads('relations.bulk_create')
+               for op in payload]
+    assert written
+    for op in written:
+        assert op['metadata']['provDetail']['requestedBy'] == 'second@x.com'
+
+
 def test_an_already_tokenized_document_keeps_its_substrate():
     """The shared-project path: sentences and words already exist, so only the
     syntactic-word subtree is replaced and Stanza runs pretokenized."""

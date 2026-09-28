@@ -131,8 +131,11 @@ export const CompareEditor = () => {
               >
                 {report.against?.name || report.against?.id}
               </Link>
-              , {formatWhen(report.at)}, {report.tool}.
-              {report.scope === 'snt' ? ' Sentence graphs only.' : ''}
+              , {formatWhen(report.at)}
+              {report.requestedBy
+                ? `, requested by ${report.requestedBy.name || report.requestedBy.id}`
+                : ''}
+              , {report.tool}.{report.scope === 'snt' ? ' Sentence graphs only.' : ''}
             </p>
             <dl className="mt-3 flex flex-wrap gap-x-8 gap-y-2">
               {rows.map((row) => (

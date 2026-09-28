@@ -177,6 +177,22 @@ def test_a_transcription_lands_stamped_machine_made_and_never_confirmed(monkeypa
     assert service.client.operations == ['Whisper ASR transcription (tr)']
 
 
+def test_the_transcription_names_who_asked_in_history_and_on_what_it_writes(monkeypatch):
+    _media(monkeypatch)
+    module, _ = load_whisper()
+    service = _service(module)
+    service.client.users = types.SimpleNamespace(
+        get=lambda uid: {'id': uid, 'display_name': 'second'})
+    servicetest.run(service, {**REQUEST, 'requester_id': 'second@x.com'})
+
+    assert service.client.operations == ['Whisper ASR transcription (tr), requested by second']
+    [ops] = [ops for ops in service.client.payloads('tokens.bulk_create')
+             if ops[0]['token_layer_id'] == ALIGN_LAYER]
+    for op in ops:
+        assert op['metadata']['provDetail']['requestedBy'] == 'second@x.com'
+        assert op['metadata']['provDetail']['model'] == 'whisper-small'
+
+
 def test_the_token_and_the_sentence_partition_go_in_one_batch(monkeypatch):
     _media(monkeypatch)
     module, _ = load_whisper()

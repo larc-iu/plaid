@@ -108,6 +108,17 @@ def test_a_sense_takes_its_headword():
 
 # --- the run ------------------------------------------------------------------------
 
+def test_the_skeleton_names_who_asked_in_history_and_on_what_it_writes():
+    service = _service()
+    draft_tests._asked_by_second(service.client)
+    servicetest.run(service, {**REQUEST, 'requester_id': 'second@x.com'})
+
+    assert service.client.operations == [
+        'UMR skeleton from glosses of sentence 1, requested by second']
+    for op in _ops(service.client, 'spans.bulk_create'):
+        assert op['metadata']['provDetail']['requestedBy'] == 'second@x.com'
+
+
 def test_the_skeleton_is_one_anchored_node_per_glossed_or_linked_word():
     service = _service()
     helper = servicetest.run(service, REQUEST)

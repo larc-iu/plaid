@@ -5,19 +5,22 @@ from plaid_client import (BaseService, TASKS, Param, ROLES, find_by_role,
                           stamp_inferred, is_protected, service_source)
 from plaid_client.service import progress_heartbeat
 from plaid_client.workflows.messages import setup_incomplete
+from plaid_client.workflows.requester import Requester, requester_of
 
 
-def prov_fragment(language):
+def prov_fragment(language, requester=Requester()):
     """Provenance fragment merged into everything this service creates
     (tokens, spans, relations): marks it machine-made + unverified until a
     human edits or confirms it, and records the producing model + language in
     provDetail. (Stanza's pipeline output carries no per-prediction
     probabilities, so there is no provProb; a producer that has real
     probabilities would add `prob=` here and put its top-k distribution in
-    the detail map.) See the manual, "Provenance"."""
+    the detail map.) See the manual, "Provenance". The detail also names who
+    asked for the run (``requester``, see plaid_client.workflows.requester)."""
     return stamp_inferred(
         service_source('stanza-parser'),
-        detail={'model': f'stanza=={stanza.__version__}', 'language': language},
+        detail=requester.detail({'model': f'stanza=={stanza.__version__}',
+                                 'language': language}),
     )
 
 
@@ -362,7 +365,7 @@ SENTENCE_GROUP = 25
 
 
 def parse_document(pipeline_provider, client, document_id, language='en', overwrite=False,
-                   helper=None):
+                   helper=None, requester=Requester()):
     """Parse a document with Stanza and write UD annotations into Plaid.
 
     Two modes, chosen by what already exists:
@@ -387,7 +390,7 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
     that carry any (unless `overwrite`); a from-scratch re-tokenize refuses
     outright if such annotations would be lost (unless `overwrite`). Returns a
     summary dict {mode, parsed_sentences, skipped_sentences}."""
-    frag = prov_fragment(language)
+    frag = prov_fragment(language, requester)
     progress = ParseProgress(helper)
 
     def log(msg):
@@ -909,6 +912,7 @@ class StanzaParserService(BaseService):
         # client delivers request keys to Python as snake_case).
         language = request_data.get('language', 'en')
         overwrite = bool(request_data.get('overwrite', False))
+        requester = requester_of(self.client, request_data)
 
         # The parse deletes + recreates tokens / spans / relations, so a human
         # editing the same document — or another service — would race the
@@ -922,11 +926,11 @@ class StanzaParserService(BaseService):
         # `parse_document` reports the rest of the way and is a cancellation
         # checkpoint at every group of sentences, so a stop lands before the
         # writes begin and leaves the document untouched.
-        with self.client.operation(f"Stanza UD parse ({language})"):
+        with self.client.operation(requester.label(f"Stanza UD parse ({language})")):
             with self.client.documents.locked(document_id):
                 summary = parse_document(self.pipeline_provider, self.client, document_id,
                                          language=language, overwrite=overwrite,
-                                         helper=response_helper)
+                                         helper=response_helper, requester=requester)
 
         # parse_document returns a summary dict; author the user-facing notice
         # here (the service owns ALL the wording — the editor only maps `level`

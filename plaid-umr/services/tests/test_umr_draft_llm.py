@@ -11,6 +11,7 @@ Run: pytest -q services/tests, from plaid-umr. Runs from the base env.
 """
 
 import pathlib
+import types
 
 import pytest
 from plaid_client import testing as servicetest
@@ -665,6 +666,27 @@ def test_a_variable_the_reply_never_defines_is_named_as_that(reply):
     service = _service(model=_Model([reply]))
     [result] = servicetest.run(service, REQUEST).results
     assert result['sentences_failed'][0]['reason'] == 'v1 :actor names p, which no node defines.'
+
+
+def _asked_by_second(client):
+    """The client reads the requester's display name, as a service does."""
+    client.users = types.SimpleNamespace(get=lambda uid: {'id': uid, 'display_name': 'second'})
+    return client
+
+
+def test_the_run_names_who_asked_in_history_and_on_what_it_drafts():
+    """umr-collab-service-requester: the service writes with its operator's
+    token, so the requester core sent is named in the History label and in
+    every stamp's provDetail."""
+    service = _service()
+    _asked_by_second(service.client)
+    servicetest.run(service, {**REQUEST, 'requester_id': 'second@x.com'})
+
+    assert service.client.operations == ['UMR draft of sentence 1, requested by second']
+    nodes = _ops(service.client, 'spans.bulk_create')
+    [relations] = service.client.payloads('relations.bulk_create')
+    for op in nodes + relations:
+        assert op['metadata']['provDetail']['requestedBy'] == 'second@x.com'
 
 
 def test_a_reply_written_one_block_per_node_is_joined_and_drafted():

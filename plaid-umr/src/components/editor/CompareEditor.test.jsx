@@ -33,7 +33,7 @@ const { CompareEditor } = await import('./CompareEditor.jsx');
 
 const AT = '2026-09-28T05:22:03Z';
 
-const documentWith = (thisGraph, otherGraph, live) => ({
+const documentWith = (thisGraph, otherGraph, live, summary = {}) => ({
   name: 'Lunch',
   raw: {
     metadata: {
@@ -46,6 +46,7 @@ const documentWith = (thisGraph, otherGraph, live) => ({
           scope: 'doc',
           sentenceCount: 1,
           scores: { sentence: 1, modal: null, temporal: null, coref: null, comprehensive: 1 },
+          ...summary,
         },
       },
     },
@@ -120,6 +121,27 @@ describe('CompareEditor', () => {
       '(s1s / college)',
     );
     expect(r.container.querySelector('[data-changed-since]')).toBeNull();
+  });
+
+  it('names who asked for the comparison', async () => {
+    const r = await mount(
+      documentWith('(s1s / school)', '(s1s / college)', '(s1s / school)', {
+        requestedBy: { id: 'second@x.com', name: 'second' },
+      }),
+      '(s1s / college)',
+    );
+    const header = r.container.querySelector('[data-testid="compare-report"] p').textContent;
+    expect(header).toMatch(/^Against lunch, .+, requested by second, ancast 1\.0\.$/);
+  });
+
+  it('names no one when the report has no requester', async () => {
+    const r = await mount(
+      documentWith('(s1s / school)', '(s1s / college)', '(s1s / school)'),
+      '(s1s / college)',
+    );
+    const header = r.container.querySelector('[data-testid="compare-report"] p').textContent;
+    expect(header).not.toMatch(/requested by/);
+    expect(header).toMatch(/^Against lunch, .+, ancast 1\.0\.$/);
   });
 
   it('links the sentence number and each marked variable to Annotate on that node', async () => {

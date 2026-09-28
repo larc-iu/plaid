@@ -48,6 +48,7 @@ from typing import List, Optional
 
 from plaid_client import BaseService, TASKS, Param, service_source
 from plaid_client.service import check_unchanged, requester_message
+from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.llm import (NOT_ASKED, ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
 from plaid_client.workflows.igt import (
@@ -400,6 +401,7 @@ class LLMAnalyzeService(BaseService):
     def process_request(self, request_data: dict, response_helper) -> None:
         document_id = request_data.get('document_id')
         project_id = request_data.get('project_id')
+        requester = requester_of(self.client, request_data)
         word_layer_id = request_data.get('word_token_layer_id')
         morph_layer_id = request_data.get('morpheme_token_layer_id')
         sent_layer_id = request_data.get('sentence_token_layer_id')
@@ -466,7 +468,8 @@ class LLMAnalyzeService(BaseService):
         ) if n_examples else []
 
         # One model call per sentence.
-        stamp_detail = {**self.model.describe(), 'language': language, 'metalanguage': metalanguage}
+        stamp_detail = requester.detail({**self.model.describe(), 'language': language,
+                                         'metalanguage': metalanguage})
         plans = []
         failed = []
         replaced = 0
@@ -530,7 +533,7 @@ class LLMAnalyzeService(BaseService):
         # and a checkpoint out here would throw the result away and call a
         # finished run stopped.
         with response_helper.critical():
-            with self.client.operation(f'LLM glossing ({len(plans)} words)'):
+            with self.client.operation(requester.label(f'LLM glossing ({len(plans)} words)')):
                 with self.client.documents.locked(document_id):
                     # The plans were made from a read taken before the model
                     # ran. If someone has edited the document since, both the

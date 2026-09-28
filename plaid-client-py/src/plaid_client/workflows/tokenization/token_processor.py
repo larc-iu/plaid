@@ -37,7 +37,8 @@ class TokenProcessor:
     def process_tokens(self, client, document_id: str, sentences: List[TokenSpan], words: List[TokenSpan],
                       primary_token_layer_id: str, sentence_layer_id: Optional[str], response_helper,
                       *, text_layer_id: str, expect_version=None,
-                      prov_source: Optional[str] = None, overwrite: bool = False) -> Dict[str, int]:
+                      prov_source: Optional[str] = None, prov_detail: Optional[dict] = None,
+                      overwrite: bool = False) -> Dict[str, int]:
         """Hold the document lock for the whole tokenization rewrite, then
         delegate to :meth:`_process_tokens_locked`.
 
@@ -57,12 +58,13 @@ class TokenProcessor:
                 client, document_id, sentences, words,
                 primary_token_layer_id, sentence_layer_id, response_helper,
                 text_layer_id=text_layer_id, expect_version=expect_version,
-                prov_source=prov_source, overwrite=overwrite)
+                prov_source=prov_source, prov_detail=prov_detail, overwrite=overwrite)
 
     def _process_tokens_locked(self, client, document_id: str, sentences: List[TokenSpan], words: List[TokenSpan],
                       primary_token_layer_id: str, sentence_layer_id: Optional[str], response_helper,
                       *, text_layer_id: str, expect_version=None,
-                      prov_source: Optional[str] = None, overwrite: bool = False) -> Dict[str, int]:
+                      prov_source: Optional[str] = None, prov_detail: Optional[dict] = None,
+                      overwrite: bool = False) -> Dict[str, int]:
         """
         Process tokenization results and update the Plaid document.
 
@@ -85,6 +87,8 @@ class TokenProcessor:
             prov_source: Optional provenance producer id (e.g.
                 ``service_source('<service-id>')``). When set, created tokens
                 are stamped machine-made per the provenance convention.
+            prov_detail: Optional ``provDetail`` for that stamp (who asked for
+                the run, see :func:`plaid_client.workflows.requester_of`).
             overwrite: Provenance write contract — resetting the sentence
                 partition cascade-deletes sentence-level annotations. When any
                 of those are human-made or human-verified, the run refuses
@@ -294,7 +298,8 @@ class TokenProcessor:
                     b.tokens.bulk_delete(tokens_to_delete)
 
                 # Provenance: stamp everything this (machine) run creates.
-                prov_fragment = stamp_inferred(prov_source) if prov_source else None
+                prov_fragment = (stamp_inferred(prov_source, detail=prov_detail)
+                                 if prov_source else None)
 
                 # Create new sentence tokens (establishes the new partition)
                 if sentences_to_create:

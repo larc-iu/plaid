@@ -106,6 +106,26 @@ export class ServiceCancelled extends Error {
   constructor(message?: string);
 }
 
+/** The key a run's stored record names its requester under. */
+export const REQUESTED_BY: "requestedBy";
+
+/** The person who asked for one service run. Both fields are null when nobody asked. */
+export interface Requester {
+  id: string | null;
+  name: string | null;
+  /** `"<text>, requested by <name>"`, or `text` when nobody asked. */
+  label(text: string): string;
+  /** `{ id, name }` for a stored report, or null when nobody asked. */
+  record(): { id: string; name: string | null } | null;
+  /** A machine stamp's `provDetail` with `requestedBy: <id>` added. */
+  detail(detail?: Record<string, any>): Record<string, any>;
+}
+
+export function makeRequester(id?: string | null, name?: string | null): Requester;
+
+/** The requester of one request, from the `requesterId` in a `serve` handler's data, named by display name. */
+export function requesterOf(client: { users: { get(id: string): Promise<any> } }, data: any): Promise<Requester>;
+
 /** The cancellation half of a responseHelper, on its own. */
 export function createCancelScope(isCancelled: () => boolean): {
   readonly cancelled: boolean;

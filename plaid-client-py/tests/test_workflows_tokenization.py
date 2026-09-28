@@ -264,6 +264,23 @@ def test_the_same_document_is_tokenized():
     assert counts['sentences_created'] == 1
 
 
+def test_a_run_stamps_what_it_creates_with_the_detail_it_is_given():
+    """A service passes who asked (``requester.detail()``) as ``prov_detail``,
+    and every token the run creates carries it (umr-collab-service-requester)."""
+    doc = _document('Hello there.', sentences=[(0, 12)], words=[])
+    client = _FakeClient(doc)
+    TokenProcessor().process_tokens(
+        client, 'd1', _spans('Hello there.'),
+        [TokenSpan(text='Hello', start=0, end=5)],
+        'word-layer', 'sentence-layer', _Helper(), text_layer_id='text-layer',
+        prov_source='service:punkt', prov_detail={'requestedBy': 'second@x.com'})
+    created = [op for call in client.calls if call[0] == 'bulk_create' for op in call[1]]
+    assert created
+    for op in created:
+        assert op['metadata'] == {'prov': 'inferred', 'provSource': 'service:punkt',
+                                  'provDetail': {'requestedBy': 'second@x.com'}}
+
+
 # --- the converters a service author builds on -------------------------------
 # helpers is in the package's __all__, so these are public surface. Nothing in
 # this repo calls four of them, which is exactly why they need a test: a break

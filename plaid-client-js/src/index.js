@@ -3659,6 +3659,9 @@ export {
 // request, and `critical()` holds that off around writes. See ./services.js
 // and the manual, "Stopping a request".
 export { ServiceCancelled, createCancelScope } from "./services.js";
+// Who asked for a service run, named in its History label and in what it
+// stores. See ./requester.js.
+export { REQUESTED_BY, makeRequester, requesterOf } from "./requester.js";
 // Document locks: `client.documents.locked()` holds one for a block of work and
 // renews it while the block runs. DocumentLockLost is what a write throws once
 // a renewal has failed. See ./documentLock.js.

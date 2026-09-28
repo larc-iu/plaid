@@ -29,6 +29,7 @@ from plaid_client.provenance import PROV_DETAIL_KEY, PROV_KEY
 from plaid_client.service import check_unchanged, progress_heartbeat
 from plaid_client.service_schema import Param
 
+from ..requester import Requester, requester_of
 from .graph import Sentence, UmrDocument, read_document
 from .layers import UMR_NAMESPACE, UmrLayers, gloss_values, resolve_layers
 
@@ -300,7 +301,10 @@ class DraftRun:
 
     ``taken`` is every variable a new node may not take. With ``overwrite`` on
     the graphs about to be replaced free theirs, so a redraft of sentence 1
-    writes s1b again rather than s1b2."""
+    writes s1b again rather than s1b2.
+
+    ``requester`` is who asked, named in the History label and in each
+    stamp's ``provDetail`` (see :mod:`plaid_client.workflows.requester`)."""
     document_id: str
     project_id: Optional[str]
     read_version: Any
@@ -312,6 +316,7 @@ class DraftRun:
     kept: int
     linked: int
     taken: set
+    requester: Requester = Requester()
 
 
 def begin_draft(client, request_data: Dict[str, Any], response_helper) -> Optional[DraftRun]:
@@ -362,7 +367,7 @@ def begin_draft(client, request_data: Dict[str, Any], response_helper) -> Option
         skipped=0 if overwrite else len([s for s in with_graph if s.redraftable]),
         kept=len([s for s in with_graph if s.person_made]),
         linked=len([s for s in with_graph if not s.redraftable and not s.person_made]),
-        taken=taken)
+        taken=taken, requester=requester_of(client, request_data))
 
 
 def finish_draft(client, response_helper, run: DraftRun, plans: Sequence[dict],
@@ -373,7 +378,8 @@ def finish_draft(client, response_helper, run: DraftRun, plans: Sequence[dict],
 
     ``failures`` are ``{'sentence': n, 'reason': str}`` for the sentences the
     service could not plan, each also printed to the operator's log here.
-    ``operation`` names the write in the history (see :func:`run_label`) and
+    ``operation`` names the write in the history (see :func:`run_label`), with
+    the requester added here, as it is to ``frag``'s ``provDetail``.
     ``writing`` is the progress line while it runs. The write, and the report
     after it, cannot be stopped once begun: a stop while the document is half
     written would leave anchors with no nodes, and one after the last write
@@ -405,8 +411,10 @@ def finish_draft(client, response_helper, run: DraftRun, plans: Sequence[dict],
         complete()
         return
     run.progress.report(DraftProgress.WRITE, 0.0, writing)
+    if frag.get(PROV_KEY):
+        frag = {**frag, PROV_DETAIL_KEY: run.requester.detail(frag.get(PROV_DETAIL_KEY))}
     with response_helper.critical():
-        with client.operation(operation):
+        with client.operation(run.requester.label(operation)):
             with client.documents.locked(run.document_id):
                 check_unchanged(client, run.document_id, run.read_version)
                 write_graphs(client, run.layers, plans, frag, run.progress)

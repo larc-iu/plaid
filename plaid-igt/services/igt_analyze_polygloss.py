@@ -43,6 +43,7 @@ from typing import Dict, List, Optional, Tuple
 
 from plaid_client import BaseService, TASKS, Param, service_source
 from plaid_client.service import check_unchanged
+from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.igt import (
     ParsedWord, derive, field_layer_id, select_targets, parse_interleaved, align_words, analysis_for,
     write_analyses,
@@ -197,6 +198,7 @@ class PolyGlossService(BaseService):
     # -- request --
     def process_request(self, request_data: dict, response_helper) -> None:
         document_id = request_data.get('document_id')
+        requester = requester_of(self.client, request_data)
         word_layer_id = request_data.get('word_token_layer_id')
         morph_layer_id = request_data.get('morpheme_token_layer_id')
         sent_layer_id = request_data.get('sentence_token_layer_id')
@@ -243,7 +245,8 @@ class PolyGlossService(BaseService):
             return
 
         # Generate, with continuation passes for truncated tails.
-        stamp_detail = {**self.model.describe(), 'language': language, 'metalanguage': metalanguage}
+        stamp_detail = requester.detail({**self.model.describe(), 'language': language,
+                                         'metalanguage': metalanguage})
         aligned: Dict[str, List[Optional[ParsedWord]]] = {}  # sentence id -> per input word
         pending = [(s, 0) for s, _ in targets]  # (sentence, first word index still to transcribe)
         for s, _ in targets:
@@ -302,7 +305,7 @@ class PolyGlossService(BaseService):
         # and a checkpoint out here would throw the result away and call a
         # finished run stopped.
         with response_helper.critical():
-            with self.client.operation(f'PolyGloss analysis ({len(plans)} words)'):
+            with self.client.operation(requester.label(f'PolyGloss analysis ({len(plans)} words)')):
                 with self.client.documents.locked(document_id):
                     # The plans were made from a read taken before the model
                     # ran. If someone has edited the document since, both the

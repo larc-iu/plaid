@@ -6,11 +6,16 @@
 // the document:
 //
 //   document: { version, tool, against: {id, name}, at, scope, sentenceCount,
-//               scores: { sentence, modal, temporal, coref, comprehensive } }
+//               scores: { sentence, modal, temporal, coref, comprehensive },
+//               requestedBy?: {id, name} }
 //   sentence: { index, at, concept, labeled, unlabeled, weighted, smatch,
 //               matches: [[this, other, thisConcept, otherConcept, leftover]],
 //               unmatched: [var], unmatchedOther: [var], skipped,
 //               thisGraph, otherGraph }
+//
+// `requestedBy` is who asked for the run (the service writes with its own
+// token, so History alone would name the operator). It is absent when the run
+// had no requester.
 //
 // `thisGraph` and `otherGraph` are the two graphs the row scored, as
 // `UmrDocument.penmanOf` prints them, so the tab can mark a sentence edited
