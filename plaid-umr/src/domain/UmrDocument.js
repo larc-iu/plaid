@@ -469,7 +469,10 @@ export class UmrDocument extends DocumentModel {
     const renumber = planRenumber(graph, removed, keptNames);
     // Only on a complete read of the vocabularies: an entry missing from a
     // read that skipped one may only be unread.
-    const read = await this.loadLexicon().catch(() => null);
+    // And only when a node names an entry, so an open waits on no read it
+    // does not need.
+    const picked = [...graph.nodesById.values()].some((n) => umrOf(n).entry);
+    const read = picked ? await this.loadLexicon().catch(() => null) : null;
     const unlink = read?.complete
       ? planEntryUnlink(graph, UMR_NAMESPACE, read.lexicon).filter((id) => !removed.has(id))
       : [];
@@ -1994,8 +1997,16 @@ export class UmrDocument extends DocumentModel {
     // value the file cannot hold, a relation UMR does not have, and a new
     // edge closing a cycle through anything but a quote.
     const errors = [];
+    // A graph kept as text is mended under its own names, whatever sentence
+    // number they carry: IGT may have added or removed a sentence before it
+    // since the import, and the relations held for it wait for those names.
+    // The next open renumbers them with the rest (planRenumber).
+    const keptNames = new Set();
+    if (!sentence.nodes.length && typeof sentence.rawGraph === 'string') {
+      for (const m of sentence.rawGraph.matchAll(KEPT_VARIABLE)) keptNames.add(m[1]);
+    }
     [...plan.create.map((c) => c.var), ...plan.rename.map((r) => r.to)].forEach((v) => {
-      const why = this._newVariableProblem(v, sentenceIndex);
+      const why = this._newVariableProblem(v, keptNames.has(v) ? null : sentenceIndex);
       if (why) errors.push({ message: why });
     });
     // A relation is judged where it is written, as the canvas judges it: one

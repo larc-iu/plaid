@@ -13,6 +13,7 @@ import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
 import { rawFromPlan } from './rawFromPlan.js';
 import { recordingClient } from './recordingClient.js';
+import { insertSentenceAtStart } from './igtInsertSentence.js';
 
 const FILE = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -102,39 +103,24 @@ test('mending the graph in Text mode makes every held relation real, in the same
   assert.equal(all.filter((t) => t === 'author :full-affirmative s37e').length, 1);
 });
 
-test('when IGT removes a sentence before them, held relations follow the renumbered nodes and no node takes a kept name', async () => {
+test('when IGT adds a sentence before them, held relations follow the renumbered nodes and no node takes a kept name', async () => {
   const { doc, calls } = load();
-  // IGT deleted sentence 1: its token, its words and, by the cascade, its
-  // nodes. Every later sentence moves up by one.
+  // IGT added a sentence at the start: every sentence moves down by one. (An
+  // imported file whose first sentence IGT deleted keeps its names, since
+  // its stored numbers no longer run 1, 2, 3: see reconcileNarrowings.)
   const raw = doc._raw;
-  const text = raw.textLayers[0];
-  const role = (r) => text.tokenLayers.find((l) => l.config?.plaid?.role === r);
-  const sentences = role('sentence');
-  const first = [...sentences.tokens].sort((a, b) => a.begin - b.begin)[0];
-  sentences.tokens = sentences.tokens.filter((t) => t.id !== first.id);
-  role('word').tokens = role('word').tokens.filter((t) => t.begin >= first.end);
-  const nodes = text.tokenLayers.find((l) => l.config?.umr?.nodes);
-  const gone = new Set(
-    nodes.tokens.filter((t) => t.end <= first.end && t.end > 0).map((t) => t.id),
-  );
-  nodes.tokens = nodes.tokens.filter((t) => !gone.has(t.id));
-  const concepts = nodes.spanLayers[0];
-  const dead = new Set(
-    concepts.spans
-      .filter((s) => s.tokens.length && s.tokens.every((t) => gone.has(t)))
-      .map((s) => s.id),
-  );
-  concepts.spans = concepts.spans.filter((s) => !dead.has(s.id));
-  concepts.relationLayers.forEach((rl) => {
-    rl.relations = rl.relations.filter((r) => !dead.has(r.source) && !dead.has(r.target));
-  });
+  insertSentenceAtStart(raw);
   const moved = new UmrDocument({ raw, client: doc._client });
   moved._reload = async () => {};
-  // What was sentence 38 is 37 now, and holds relations to s38i2 and the rest.
-  assert.ok(names(moved.sentence(37).held).some((t) => t.includes('s38i2')));
+  // What was sentence 38 is 39 now, and holds relations to s38i2 and the rest.
+  assert.ok(names(moved.sentence(39).held).some((t) => t.includes('s38i2')));
+  const kept = new Set(
+    [...moved.sentence(38).rawGraph.matchAll(/\(\s*([^\s/()"]+)\s*\//g)].map((m) => m[1]),
+  );
+  assert.ok(kept.has('s37i2'));
   await moved._reconcile();
   const patch = calls.find(
-    (c) => c.name === 'tokens.patchMetadata' && c.args[0] === moved.sentence(37).tokenId,
+    (c) => c.name === 'tokens.patchMetadata' && c.args[0] === moved.sentence(39).tokenId,
   );
   assert.ok(patch, 'the sentence that holds them is patched');
   const held = patch.args[1][0].value;
@@ -147,8 +133,12 @@ test('when IGT removes a sentence before them, held relations follow the renumbe
   );
   const newName = (v) =>
     renamed.get([...moved.graph.nodesById.values()].find((n) => n.var === v).id);
-  // s38i2 is not given s37i2, which the kept graph (now sentence 36) defines.
-  assert.notEqual(newName('s38i2'), 's37i2');
-  assert.ok(held.some((h) => h.source === newName('s38i2') || h.target === newName('s38i2')));
+  assert.equal(newName('s38i2'), 's39i2');
+  // Sentence 36's nodes, now in sentence 37, take no name the kept graph
+  // (now sentence 38) defines.
+  const clashes = [...moved.sentence(37).nodes].filter((n) => kept.has(`s37${n.var.slice(3)}`));
+  assert.ok(clashes.length, 'the kept graph and sentence 36 share a name after the number');
+  assert.ok(![...renamed.values()].some((v) => kept.has(v)), 'no renamed node takes a kept name');
+  assert.ok(held.some((h) => h.source === 's39i2' || h.target === 's39i2'));
   assert.ok(!held.some((h) => h.source === 's38i2' || h.target === 's38i2'));
 });

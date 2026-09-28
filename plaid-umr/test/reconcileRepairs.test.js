@@ -75,6 +75,14 @@ function load(edit = null) {
   return { doc, calls, raw };
 }
 
+// A document annotated in Plaid stores no sentence numbers. An imported one
+// whose first sentence IGT deleted stores numbers that start at 2, and is not
+// renumbered (reconcileNarrowings.test.js).
+const madeInPlaid = (L) =>
+  L.sentences.tokens.forEach((t) => {
+    delete t.metadata.umr.snt;
+  });
+
 const byVar = (doc, v) => [...doc.graph.nodesById.values()].find((n) => n.var === v);
 
 // What the server holds after the pass, from the calls: enough of it to
@@ -175,6 +183,7 @@ test('a node-layer token with no node on it, left by an add cut off, is removed'
 
 test('variables renumbered when a sentence before them went, as one repair', async () => {
   const loaded = load((raw, L) => {
+    madeInPlaid(L);
     // IGT deleted the first sentence: its token, its words and, by the
     // cascade, the nodes over them. What was sentence 2 is sentence 1.
     const first = L.sentences.tokens[0];
@@ -261,6 +270,7 @@ test('an add whose concept failed removes the anchor it made, in the same operat
 test('a node that lost its word in a sentence that moved is named by its new variable', async () => {
   const loaded = withUpdate(
     load((raw, L) => {
+      madeInPlaid(L);
       // Sentence 1 goes (as in the renumber test) and "yemek" loses its word.
       const first = L.sentences.tokens[0];
       L.sentences.tokens = L.sentences.tokens.slice(1);

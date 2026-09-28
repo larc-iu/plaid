@@ -84,7 +84,10 @@ export function planUnalignedHeal(graph, namespace) {
       if (node.aligned || node.sentence == null) return;
       if (!node.pieces.some((p) => p.end > p.begin)) return;
       const home = sentences[node.sentence - 1];
-      if (!home) return;
+      // A sentence with no words at all is waiting to be tokenized again
+      // (IGT's "Clear tokens"), not a deletion: its nodes are left where they
+      // stand, and the words that come back align them as before.
+      if (!home || !home.words.length) return;
       unanchor.push({ nodeId: node.id, var: node.var, sentenceTokenId: home.tokenId });
       standOver(node, home);
       return;
@@ -120,6 +123,21 @@ export function planStrayTokens(layerInfo) {
 // `s<number><rest>`: the sentence number, then a letter and whatever follows.
 const NUMBERED = /^s([0-9]+)(\p{L}.*)$/u;
 
+// Whether the sentence numbers a file stored (`# :: snt<n>`, kept by the
+// import) run 1, 2, 3 in order. A sentence IGT added stores none and is passed
+// over. A document whose numbers start elsewhere, a released excerpt starting
+// at snt5, is numbered by its file, and its names are left as they came. So is
+// one whose numbers skip, which is also what a sentence deleted in IGT leaves.
+function numbersRunFromOne(sentences) {
+  let next = 1;
+  for (const s of sentences) {
+    if (s.snt == null) continue;
+    if (Number(s.snt) !== next) return false;
+    next += 1;
+  }
+  return true;
+}
+
 /**
  * The variables whose sentence number is not their node's sentence, after
  * another app added or removed sentences before them: each renamed to its
@@ -128,11 +146,13 @@ const NUMBERED = /^s([0-9]+)(\p{L}.*)$/u;
  * after it, as a new variable does (`s1v2`). Constants and names not of this
  * shape are left alone. Relations point at nodes, so only the names change.
  * `reserved` holds names taken by something that is not a node, the
- * variables a graph kept as text defines.
+ * variables a graph kept as text defines. Nothing is renamed in a document
+ * whose stored sentence numbers do not run 1, 2, 3 (`numbersRunFromOne`).
  *
  * @returns {{ nodeId: string, from: string, to: string }[]}
  */
 export function planRenumber(graph, skip = new Set(), reserved = new Set()) {
+  if (!numbersRunFromOne(graph.sentences || [])) return [];
   const moves = [];
   const fixed = new Set(reserved);
   graph.nodesById.forEach((node) => {
