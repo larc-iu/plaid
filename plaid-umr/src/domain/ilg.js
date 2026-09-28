@@ -108,6 +108,28 @@ export function resolveIlg(config, layerInfo) {
   );
 }
 
+// ISO 639-1 codes by their ISO 639-3 equivalent, for the languages glosses are
+// most often written in, so a stored line compares with a layer's.
+const ISO_639_3 = {
+  en: 'eng',
+  es: 'spa',
+  pt: 'por',
+  fr: 'fra',
+  de: 'deu',
+  zh: 'zho',
+  ru: 'rus',
+  ar: 'ara',
+  id: 'ind',
+  it: 'ita',
+  ja: 'jpn',
+  nl: 'nld',
+};
+const sameLanguage = (lang) => {
+  if (!lang) return '';
+  const code = languageCode(lang);
+  return ISO_639_3[code] ?? code;
+};
+
 // The stored key of a line an import kept, as umrFile.js normalizes headers.
 const STORED_KEYS = new Set(HEADERS.map((h) => h.key));
 
@@ -132,7 +154,9 @@ export function ilgLinesFor(sentence, layerInfo, mapping) {
   const produced = new Set();
   const lines = [];
   const stored = sentence.storedIlg || [];
-  const slot = (key, lang) => `${key}|${lang || ''}`;
+  // One language under either code: IGT tags its fields "eng", a .umr file's
+  // "Morphemes(English)" reads as "en", and both lines are the same line.
+  const slot = (key, lang) => `${key}|${sameLanguage(lang)}`;
   // A line is a line only with something in it: an empty layer (a document
   // imported into a glossed project, not yet glossed) must not push out the
   // stored line and must not be written as `_ _ _`.

@@ -146,6 +146,22 @@ test('a stored line the layers also produce is not written twice', () => {
   assert.equal(lines.find((l) => l.key === 'morphemes').items.join(' '), 'dog -s bark');
 });
 
+test('a stored line in a two-letter code is the layer line in its three-letter code', () => {
+  const info = layerInfo();
+  info.glossLayers[0].lang = 'eng';
+  const s = sentence();
+  s.storedIlg.push({
+    header: 'Morphemes(English)',
+    key: 'morpheme-gloss',
+    lang: 'en',
+    items: ['old', 'PL', 'lines'],
+  });
+  const lines = ilgLinesFor(s, info, resolveIlg(null, info));
+  const glosses = lines.filter((l) => l.key === 'morpheme-gloss');
+  assert.equal(glosses.length, 1);
+  assert.equal(glosses[0].items.join(' '), 'dog PL bark');
+});
+
 test('an empty layer neither pushes out a stored line nor writes placeholders', () => {
   const info = layerInfo();
   info.glossLayers.forEach((g) => (g.layer.spans = []));
