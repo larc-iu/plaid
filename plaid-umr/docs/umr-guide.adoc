@@ -109,7 +109,7 @@ Otherwise the file becomes a new document of that name.
 When it is the words that differ, the report says so: `Imported as a new document: ...`.
 A file whose name two documents of the project already share is refused.
 
-The report lists what each file needed, a line per problem with its sentence number.
+The report lists each note under its file, with its sentence number.
 A note that recurs across sentences is one line with the count (`5 sentences: No sentence id line. ...`).
 
 A sentence whose graph the parser cannot read is kept as text and written back unchanged on export, and the sentence's header says so. **Text** opens on the kept text, to mend it and apply it. Once the sentence has a node, made there or on the canvas, the graph you see is the one exported and the kept text is not written.
