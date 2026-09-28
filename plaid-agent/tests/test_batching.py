@@ -77,8 +77,11 @@ def test_set_morpheme_changes_form_or_type_in_place():
                'morphemes': [{'form': 'Gamar', 'fields': []}], 'label': ''}
     with pytest.raises(ValueError, match='deleted or merged away'):
         normalize_ops(w.ops + [rewrite])
-    assert 'writes to something this plan deletes' in call_tool(
-        w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'Gamar'}]})
+    # Staged after them, the rewrite supersedes both: it replaces the chain
+    # and every form and type on it.
+    out = call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's2.w1', 'morphemes': [{'form': 'Gamar'}]})
+    assert '2 earlier planned changes on the same targets superseded' in out, out
+    assert [o['kind'] for o in w.ops] == ['set_analysis']
     # The first morpheme of the chain is kept and reused, so a form change on
     # it is superseded rather than refused.
     out, notes = normalize_ops([{'kind': 'set_morpheme_form', 'morpheme_id': 'm-4a', 'form': 'G', 'label': 'f1'},

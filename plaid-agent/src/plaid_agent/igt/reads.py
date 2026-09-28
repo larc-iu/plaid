@@ -578,8 +578,10 @@ def _consistency_lines(ws, f, values, by_form, unlinked_n, unlinked, linked_empt
 def t_plan_status(ws: Workspace) -> str:
     if not ws.ops:
         return 'The plan is empty.'
+    from .plan import settle_merges
     lines = [f'{len(ws.ops)} planned change{"s" if len(ws.ops) != 1 else ""} (nothing written yet):']
-    lines.extend(f'  {i + 1}. {op["label"]}' for i, op in enumerate(ws.ops[:200]))
+    # Each merge as the card shows it: less the links another change takes.
+    lines.extend(f'  {i + 1}. {op["label"]}' for i, op in enumerate(settle_merges(ws.ops)[0][:200]))
     if len(ws.ops) > 200:
         lines.append(f'  ... {len(ws.ops) - 200} more')
     return '\n'.join(lines)

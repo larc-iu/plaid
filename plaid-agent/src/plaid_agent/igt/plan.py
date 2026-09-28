@@ -33,11 +33,12 @@ wire's key recasing):
                    existing: [{id, span_ids: [..]}], morphemes: [{form, morph_type, fields: [{layer_id, value}]}]}
   set_orthography {word_id, key, value}
   respell         {text_id, begin, end, value}
-  link            {token_id, item_id|null, new_entry_key|null, existing_link_id|null}
+  link            {token_id, item_id|null, new_entry_key|null, existing_link_id|null, entry_form}
                   or, for a morpheme of an analysis a set_analysis in the same plan writes, token_id null and
                   {analysis_word_id, morpheme_index (from 1), morpheme_form, reuses_morpheme_id|null}: written
                   when the plan is applied, once that analysis has minted its morphemes (see `planned_morpheme`).
-                  reuses_morpheme_id is the stored first morpheme an analysis keeps as its first, at index 1
+                  reuses_morpheme_id is the stored first morpheme an analysis keeps as its first, at index 1.
+                  entry_form is the entry's headword as the plan read it, for a refusal naming an entry gone
   unlink          {link_id}
   create_entry    {vocab_id, form, metadata, key}
   set_entry_field {item_id, field, value}
@@ -84,7 +85,9 @@ from ..core import opkind as ok
 from ..core.opkind import OpKind
 from plaid_client import metadata_ops
 
-from ..core.plan import (CLEAR_PROV, CONFIRM, PlanError, Stamps,  # noqa: F401 - PlanError is re-exported
+from plaid_client.service import requester_message
+
+from ..core.plan import (CLEAR_PROV, CONFIRM, PlanError, PlanOutOfDate, Stamps,  # noqa: F401 - PlanError is re-exported
                          TrackingBatcher, apply_add_comment, apply_restore_document, applying,
                          check_reach, created_id, expand_ops)
 from .vocab import parent_of
@@ -519,7 +522,7 @@ KIND = ok.registry([
            # The entry as well as the word: a link to an entry the plan removes
            # is written and then taken away with it.
            at=('token_id',), at_kind=TOKEN, token_keys=('token_id', 'analysis_word_id', 'item_id'),
-           deletes=lambda op: [op.get('existing_link_id')]),
+           deletes=lambda op: [op.get('existing_link_id')], extra={'names_entry': ('item_id',)}),
     OpKind('unlink', ('unlink', 'unlinks'), required=('link_id',), apply=_apply_unlink,
            # A multi-word expression's link is its own target: unlinking it
            # never displaces a member word's own link.
@@ -529,15 +532,16 @@ KIND = ok.registry([
     OpKind('link_phrase', ('multi-word expression', 'multi-word expressions'), required=('token_ids',),
            apply=_apply_link_phrase, target=lambda op: ('mwe', tuple(op.get('token_ids') or [])),
            at=('token_ids',), at_kind=TOKEN, token_keys=('token_ids', 'item_id'),
-           deletes=lambda op: [op.get('existing_link_id')]),
+           deletes=lambda op: [op.get('existing_link_id')], extra={'names_entry': ('item_id',)}),
     OpKind('create_entry', ('new lexicon entry', 'new lexicon entries'), required=('vocab_id', 'form', 'key'),
            apply=_apply_create_entry, writes=_create_entry_writes),
     OpKind('set_entry_field', ('entry field', 'entry fields'), required=('item_id', 'field'),
            apply=_apply_set_entry_field, at=('item_id',), at_kind=ENTRY, token_keys=('item_id',),
-           target=lambda op: ('entry_field', op.get('item_id'), op.get('field'))),
+           target=lambda op: ('entry_field', op.get('item_id'), op.get('field')),
+           extra={'names_entry': ('item_id',)}),
     OpKind('set_entry_metadata', ('entry structure change', 'entry structure changes'),
            required=('item_id', 'patch'), apply=_apply_set_entry_metadata, at=('item_id',), at_kind=ENTRY,
-           token_keys=('item_id',),
+           token_keys=('item_id',), extra={'names_entry': ('item_id',)},
            # Keyed by the keys it writes, so renumbering a sense and promoting
            # an example on one entry are two changes rather than one replacing
            # the other.
@@ -550,16 +554,16 @@ KIND = ok.registry([
     OpKind('merge_entries', ('merged entry', 'merged entries'), required=('keep_id', 'remove_id'),
            apply=_apply_merge_entries, at=('keep_id',), at_kind=ENTRY,
            deletes=lambda op: [op['remove_id']] + [l['link_id'] for l in op.get('links') or []],
-           extra={'removes_entry': ('remove_id',)}),
+           extra={'removes_entry': ('remove_id',), 'names_entry': ('keep_id', 'remove_id')}),
     OpKind('delete_entry', ('deleted entry', 'deleted entries'), required=('item_id',),
            apply=_apply_delete_entry, at=('item_id',), at_kind=ENTRY,
            target=lambda op: ('delete_entry', op.get('item_id')),
            deletes=lambda op: [op['item_id']] + list(op.get('links') or []),
-           extra={'removes_entry': ('item_id',)}),
+           extra={'removes_entry': ('item_id',), 'names_entry': ('item_id',)}),
     OpKind('rename_entry', ('renamed entry', 'renamed entries'), required=('item_id', 'form'),
            apply=_apply_rename_entry, at=('item_id',), at_kind=ENTRY, token_keys=('item_id',),
            target=lambda op: ('rename_entry', op.get('item_id')),
-           compact_each=('item_id', 'form')),
+           compact_each=('item_id', 'form'), extra={'names_entry': ('item_id',)}),
     OpKind('rename_document', ('renamed document', 'renamed documents'), required=('document_id', 'name'),
            apply=_apply_rename_document, target=lambda op: ('rename_document', op.get('document_id'))),
     # A confirmation the model NAMED (refs) is a write to what it names, and a
@@ -688,6 +692,130 @@ def removed_entries(ops: List[Dict[str, Any]]) -> frozenset:
     return frozenset(out)
 
 
+def named_entries(ops: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """The stored lexicon entries the plan's changes name (a link's entry,
+    both entries of a merge, an entry whose field, structure or headword a
+    change sets, one it deletes), each with the first change naming it. An
+    entry the plan creates is named by its key and is never here. The keys
+    are each kind's own (``extra['names_entry']``)."""
+    out: Dict[str, Dict[str, Any]] = {}
+    for op in ops:
+        spec = KIND.get(op.get('kind'))
+        for key in ((spec.extra.get('names_entry') if spec else None) or ()):
+            if op.get(key):
+                out.setdefault(op[key], op)
+    return out
+
+
+def _entry_named(op: Dict[str, Any]) -> str:
+    """An entry the way a refusal names it: its headword as the plan read it,
+    or, for a change that does not carry one, the change the user saw."""
+    if op.get('entry_form'):
+        return f'the lexicon entry "{op["entry_form"]}"'
+    return f'a lexicon entry this plan names ("{op.get("label") or op.get("kind")}")'
+
+
+def check_entries(client, ops: List[Dict[str, Any]]) -> None:
+    """Refuse the plan, before anything is written, when an entry it names is
+    gone from the server.
+
+    An entry deleted or merged away since the plan was made, where no
+    document the plan pins links it, moved no version the staleness check
+    reads. A link to it failed its batch: the second one, for a link to a
+    morpheme the plan's own analysis creates, after the analysis had been
+    written. The server answers 404 to an administrator and 403 to anyone
+    else for an id it no longer has, so both mean gone."""
+    reasons = []
+    for item_id, op in named_entries(ops).items():
+        try:
+            client.vocab_items.get(item_id)
+        except Exception as e:  # noqa: BLE001 - gone or unreadable: the plan cannot apply
+            if getattr(e, 'status', None) in (403, 404):
+                reasons.append(f'{_entry_named(op)} no longer exists (deleted or merged away since the plan '
+                               'was made)')
+            else:
+                reasons.append(f'{_entry_named(op)} could not be read ({requester_message(e)})')
+    if reasons:
+        raise PlanOutOfDate(reasons)
+
+
+def move_phrase(n: int) -> str:
+    """How a merge's label counts the links it moves."""
+    return f'move {n} link{"s" if n != 1 else ""}'
+
+
+def settle_merges(ops: List[Dict[str, Any]]) -> tuple:
+    """Each merge with the moves another change in the plan takes out of its
+    hands, and what was taken: ``(ops, [(merge, link, taker)])``.
+
+    A merge moves every link of the entry it removes onto the one it keeps,
+    by the ids it read. A link the plan also replaces (a link of the same
+    word or morpheme to another entry), unlinks or deletes belongs to that
+    change: moving it as well wrote a second link on the word or morpheme,
+    or undid the unlink. A link on a token the plan deletes (a morpheme a new
+    analysis replaces) has nothing to be moved onto, and a multi-word
+    expression keeps the members that stay.
+
+    Worked out from the plan as it stands, so dropping the change that took a
+    link gives the merge its move back. The staged op keeps every link it
+    read, and the card and the executor read what this leaves."""
+    out: List[Dict[str, Any]] = []
+    taken_from: List[tuple] = []
+    for i, op in enumerate(ops):
+        if op.get('kind') != 'merge_entries' or not op.get('links'):
+            out.append(op)
+            continue
+        # The other changes, less one removing the same entry (a delete of
+        # it, which `normalize_ops` drops beside the merge).
+        others = [o for j, o in enumerate(ops) if j != i and op.get('remove_id') not in removed_entries([o])]
+        gone = ok.removed_ids(KIND, others, only_certain=True)
+        moves = []
+        for link in op['links']:
+            tokens = list(link.get('token_ids') or [])
+            kept = [t for t in tokens if t not in gone]
+            if link.get('link_id') in gone or (kept != tokens and (len(tokens) == 1 or len(kept) < 2)):
+                taker = next((o for o in others if {link.get('link_id'), *tokens}
+                              & ok.removed_ids(KIND, [o], only_certain=True)), None)
+                taken_from.append((op, link, taker))
+            else:
+                moves.append(link if kept == tokens else {**link, 'token_ids': kept})
+        if len(moves) != len(op['links']):
+            label = op.get('label') or ''
+            at = label.rfind(move_phrase(len(op['links'])))
+            if at >= 0:
+                label = label[:at] + move_phrase(len(moves)) + label[at + len(move_phrase(len(op['links']))):]
+            op = {**op, 'links': moves, 'label': label}
+        out.append(op)
+    return out, taken_from
+
+
+def refuse_two_links(ops: List[Dict[str, Any]]) -> None:
+    """Refuse a plan that would write two own links on one word or morpheme,
+    whichever changes they come from (links, and the links a merge moves). A
+    multi-word expression is a link of its own and never counts."""
+    seen: Dict[Any, Dict[str, Any]] = {}
+    for op in ops:
+        if op.get('kind') == 'link':
+            keys = [KIND['link'].target(op)]
+        elif op.get('kind') == 'merge_entries':
+            keys = [('link', l['token_ids'][0]) for l in op.get('links') or [] if len(l.get('token_ids') or []) == 1]
+        else:
+            continue
+        for key in keys:
+            if key in seen:
+                raise ValueError(f'{op.get("label") or op["kind"]} and {seen[key].get("label") or seen[key]["kind"]} '
+                                 'would write two lexicon links on one word or morpheme')
+            seen[key] = op
+
+
+def analysed_morphemes(ops: List[Dict[str, Any]]) -> set:
+    """The stored morphemes the plan's analyses rewrite: an analysis keeps
+    the first of its word's chain, with the values and type it gives it, and
+    deletes the rest. A change of its own to any of them is moot."""
+    return {m.get('id') for op in ops if op.get('kind') == 'set_analysis'
+            for m in op.get('existing') or []} - {None}
+
+
 def planned_morpheme(ops: List[Dict[str, Any]], link: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """The morpheme a link names by its word and place, in the analysis
     ``ops`` plan for that word, or None when they plan none, or none with a
@@ -807,6 +935,7 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
     respell_at: Dict[tuple, int] = {}
     doomed = _doomed_ids(ops)
     dead = _dead_tokens(ops)
+    analysed = analysed_morphemes(ops)
     certainly_doomed = ok.doomed_writes(KIND, ops)
     maybe_doomed = ok.doomed_writes(KIND, ops, only_certain=False)
     for op, certain, maybe in zip(ops, certainly_doomed, maybe_doomed):
@@ -840,6 +969,13 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
         # rather than a KeyError from three steps further on.
         if k in MORPHEME_WRITERS and op.get(MORPHEME_KEY) in rewritten:
             notes.append(f'dropped: {op.get("label") or "a morpheme change"} (that analysis is rewritten in this plan)')
+            continue
+        # A value on a morpheme an analysis rewrites: the analysis deletes the
+        # spans the value was read from and writes its own. The tools never
+        # stage one (the planned analysis takes the value), so this is a plan
+        # built some other way, and the analysis's value is the one written.
+        if k == 'set_span' and op.get('token_id') in analysed:
+            notes.append(f'dropped: {op.get("label") or "a field value"} (that analysis is rewritten in this plan)')
             continue
         if k == 'confirm' and (doomed or dead):
             # A confirmation over a scope stands for the material awaiting
@@ -889,6 +1025,15 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
             notes.append(f'dropped: {op.get("label") or "a link"} (the analysis it links a morpheme of was dropped)')
             continue
         kept.append(op)
+    # A merge leaves the links the rest of the plan takes (see settle_merges).
+    # The card already shows what it leaves, so this finds nothing more for a
+    # plan the tools built, and one built some other way is settled here.
+    kept, taken = settle_merges(kept)
+    for merge, _link_, taker in taken:
+        notes.append(f'{merge.get("label") or "a merge"}: leaves a link to another change in this plan'
+                     + (f' ({taker["label"]})' if taker and taker.get('label') else '')
+                     + ', which replaces or removes it')
+    refuse_two_links(kept)
     return kept, notes
 
 
@@ -910,6 +1055,7 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     validate_ops(ops)
     ops = resolve_scopes(client, project, ops, requester)
     ops, notes = normalize_ops(ops)
+    check_entries(client, ops)
     counts: Counter = Counter()
     return applying(ops, lambda tracker: _execute(client, ops, label=label, project=project,
                                                   counts=counts, notes=notes, stamps=stamps,

@@ -499,6 +499,19 @@ class DocumentsBusy(Exception):
         self.cause = cause
 
 
+class PlanOutOfDate(ValueError):
+    """Something the plan names outside its documents is gone since it was
+    made (a record the plan links to or changes, deleted or folded into
+    another), so no version the staleness check reads has moved. Raised
+    before anything is written, and settled like a stale document: the card
+    stops offering Approve and the model is told to plan again. ``reasons``
+    are sentences for the user, one per thing gone."""
+
+    def __init__(self, reasons: List[str]):
+        super().__init__('; '.join(reasons))
+        self.reasons = list(reasons)
+
+
 class ScopeMoved(Exception):
     """A change the plan stored as a scope, found again at approval, reaches
     other documents than it did when the plan was made. ``gained`` are the

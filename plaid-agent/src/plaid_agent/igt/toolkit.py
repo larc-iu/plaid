@@ -132,8 +132,9 @@ TOOLS = [
         '{"form":"lar","type":"suffix","fields":{"Gloss":"PL"}}]. REPLACES the word\'s whole chain: every existing '
         'morpheme field value on it, human-made ones included, is dropped. To change one morpheme\'s value keep the '
         'chain and use set_field with sN.wN.mN; to change one morpheme\'s form or type, set_morpheme. Several words '
-        'at once: analyses=[{"ref":"s3.w1","morphemes":[...]}, ...] (one call per sentence, not per word). The new '
-        'morphemes can be linked to lexicon entries in the same plan: link_entry with sN.wN.mN.',
+        'at once: analyses=[{"ref":"s3.w1","morphemes":[...]}, ...] (one call per sentence, not per word). Once '
+        'it is planned, sN.wN.mN of that word names a morpheme of the PLANNED analysis in set_field, set_morpheme, '
+        'link_entry and unlink_entry, so its new morphemes can be glossed, retyped or linked in the same plan.',
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'The word, sN.wN.'},
          'morphemes': _MORPHEMES,
          'analyses': {'type': 'array', 'description': 'Several words at once: [{ref, morphemes}, ...].',

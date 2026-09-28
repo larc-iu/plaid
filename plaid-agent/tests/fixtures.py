@@ -136,6 +136,17 @@ class FakeClient(AgentFakeClient):
     def vocab_layers(self):
         return FakeClient._VocabLayers(self)
 
+    # What the client's fake reads an entry by id out of (`vocab_items.get`):
+    # this fixture's own lexicons, as a test has left them.
+    @property
+    def vocabularies(self):
+        by_id = getattr(self, '_lexicons_by_id', None)
+        return by_id or {self._lexicon.get('id'): self._lexicon}
+
+    @vocabularies.setter
+    def vocabularies(self, _given):
+        pass
+
 
 # --- an unconventionally shaped project -------------------------------------------
 # No morpheme layer, fields not called Gloss (and the gloss-like one is NOT first),

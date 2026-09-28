@@ -72,7 +72,7 @@ from .files import Attachments
 from .guidelines import in_context as guidelines_in_context
 from .conversation import (ConversationStore, MissingConversation, assistant_item, build_meta, error_item,
                            find_plan, prune, record_budget, settle_plan)
-from .plan import DocumentsBusy, PlanError, ScopeMoved, documents_to_lock, holding
+from .plan import DocumentsBusy, PlanError, PlanOutOfDate, ScopeMoved, documents_to_lock, holding
 from .web import BACKENDS, WebConfig, session_for, ping as ping_search
 
 
@@ -640,6 +640,10 @@ class BaseAssistantService(BaseService):
             # A corpus-wide change found again reaches documents the plan was
             # not made over: never checked, never locked, not on the card.
             return out_of_date(_reach_moved(client, documents, e))
+        except PlanOutOfDate as e:
+            # Something the plan names outside its documents is gone, which no
+            # document version says. Asked before the first write.
+            return out_of_date(e.reasons)
         except PlanError as e:
             if e.applied:
                 self._remember_applied(plan_id)

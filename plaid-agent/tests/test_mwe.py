@@ -38,7 +38,7 @@ def test_own_link_tools_leave_the_expression_alone():
     out = call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w2'], 'entry_id': 'vi-gam'})
     assert 'Planned 1 change' in out and 's1.w2 stays inside "gam akuna"' in out
     assert w.ops[-1] == {'kind': 'link', 'token_id': 'w-2', 'item_id': 'vi-gam', 'new_entry_key': None,
-                         'existing_link_id': None, 'label': 'Text 1 s1.w2 "gam": link "gam"'}
+                         'existing_link_id': None, 'entry_form': 'gam', 'label': 'Text 1 s1.w2 "gam": link "gam"'}
     # Unlinking a member that has no link of its own is refused, pointing at unlink_phrase.
     out = call_tool(w, 'unlink_entry', {'document': 'd1', 'refs': ['s1.w3']})
     assert out.startswith('Error:') and 'member of the multi-word expression "gam akuna" (w2+w3)' in out and 'unlink_phrase' in out
@@ -63,7 +63,7 @@ def test_unlink_phrase_and_link_phrase():
     assert 'Planned 1 change' in out and '1 earlier planned change on the same target superseded' in out
     assert [o['kind'] for o in w.ops] == ['link', 'link_phrase']
     assert w.ops[-1] == {'kind': 'link_phrase', 'token_ids': ['w-2', 'w-3'], 'item_id': 'vi-ali', 'new_entry_key': None,
-                         'existing_link_id': MWE_LINK,
+                         'existing_link_id': MWE_LINK, 'entry_form': 'Ali',
                          'label': 'Text 1 s1 w2+w3 "gam akuna": link phrase "gam akuna" → "Ali"'}
     # The same entry over the same words plans nothing; one word is not an expression.
     w2 = ws()

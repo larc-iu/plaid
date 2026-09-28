@@ -10,12 +10,13 @@ from ..core import work
 from ..core.limits import SAMPLE_LINES
 from ..core.plan import PLAN_MAX_OPS, by_document, labelled
 from ..core.replace import replacer as core_replacer
-from .plan import SCOPES
+from .plan import SCOPES, analysed_morphemes, move_phrase, settle_merges
 from .project import word_ref
 from ..core.tools import ToolError
 from .lexicon import _meta_patch, _refuse_doomed_entry, _refuse_removing_survivor
 from .tools import (t_set_analysis, check_respell_overlap, span_op, has_own_form, morpheme_form_op,
-                    parse_analysis, analysis_op, no_scope_reaches, refuse_shape_and_analysis)
+                    parse_analysis, analysis_op, no_scope_reaches, refuse_shape_and_analysis,
+                    edit_planned_morpheme, left_for_analysis, _planned_place)
 from .lexview import entry_line
 from .workspace import Workspace, op_target
 from .vocab import plan_delete_refs, plan_merge_refs, ref_ids
@@ -77,6 +78,8 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
         f = ws.project.field(field)
         return _stage(ws, 'replace_in_field', args, _scoped_replace(ws, args, CANDIDATE_MAX), 'set_span',
                       f'{f.name} values')
+    analysed = analysed_morphemes(ws.ops)
+    left = 0
     if _names_morpheme_forms(ws, field):
         for doc in _docs(ws, document):
             for s in doc.sentences:
@@ -87,12 +90,15 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
                         new = rep(m.form)
                         if new == m.form:
                             continue
+                        if m.id in analysed:
+                            left += 1
+                            continue
                         if not new.strip():
                             raise ToolError(f'{ws.doc_label(doc.id)} {word_ref(s, w)}.m{m.index}: "{m.form}" would become empty')
                         staged.append(morpheme_form_op(ws, doc, word_ref(s, w), w, m, new))
         _check_cap(len(staged))
         ws.add_ops(staged)
-        return _bulk_note(ws, staged, 'morpheme forms')
+        return _bulk_note(ws, staged, 'morpheme forms') + left_for_analysis(left)
     f = ws.project.field(field)
     for doc in _docs(ws, document):
         for s in doc.sentences:
@@ -110,13 +116,16 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
                 new = rep(cur)
                 if new == cur:
                     continue
+                if u.id in analysed:
+                    left += 1
+                    continue
                 staged.append({'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': u.id,
                                'span_id': sp.id if sp else None, 'value': new,
                                **labelled(f'{ws.doc_label(doc.id)} {ref} "{what[:30]}"',
                                           f'{f.name} "{cur}" → "{new}"' + (' (cleared)' if new == '' else ''))})
     _check_cap(len(staged))
     ws.add_ops(staged)
-    return _bulk_note(ws, staged, f'{f.name} values')
+    return _bulk_note(ws, staged, f'{f.name} values') + left_for_analysis(left)
 
 
 # --- corpus-wide changes as ONE op ----------------------------------------------
@@ -228,8 +237,13 @@ def _stage(ws: Workspace, tool: str, args: Dict[str, Any], staged: List[Dict[str
     docs = sorted({op['doc'] for op in staged if op.get('doc')})
     ws.note_versions(docs)
     if len(staged) <= PLAN_MAX_OPS:
-        ws.add_ops(staged)
-        return _bulk_note(ws, staged, what)
+        # A stored morpheme a planned analysis rewrites is left as that
+        # analysis has it, as the scan path leaves it (the funnel would refuse
+        # the whole call over it).
+        analysed = analysed_morphemes(ws.ops)
+        kept = [op for op in staged if not ws.moot_under(op, analysed)]
+        ws.add_ops(kept)
+        return _bulk_note(ws, kept, what) + left_for_analysis(len(staged) - len(kept))
     _clear_of_reshapes(ws, docs)
     counts: Dict[str, int] = {}
     for op in staged:
@@ -296,6 +310,8 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
             out += (f'\n({kinds.count("respell")} words, {kinds.count("set_morpheme_form")} morpheme forms, '
                     f'{kinds.count("rename_entry")} lexicon headwords.)')
         return out + (_kept_lexicons(ws, rep) if lexicon else '')
+    analysed = analysed_morphemes(ws.ops)
+    left = 0
     for doc in _docs(ws, document):
         for s in doc.sentences:
             for w in s.words:
@@ -317,6 +333,9 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
                     nm = rep(m.form)
                     if nm == m.form or not nm.strip():
                         continue
+                    if m.id in analysed:
+                        left += 1
+                        continue
                     staged.append(morpheme_form_op(ws, doc, word_ref(s, w), w, m, nm))
                     n_morphs += 1
     if lexicon:
@@ -328,6 +347,7 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
     out = _bulk_note(ws, staged, 'words')
     if staged:
         out += (f'\n({n_words} words, {n_morphs} morpheme forms, {n_entries} lexicon headwords.)')
+    out += left_for_analysis(left)
     return out + (_kept_lexicons(ws, rep) if lexicon else '')
 
 
@@ -374,9 +394,20 @@ def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_
         args = {'form': form, 'field': field, 'value': value, 'only_empty': bool(only_empty)}
         return _stage(ws, 'set_field_for_form', args, _scoped_set_for_form(ws, args, CANDIDATE_MAX), 'set_span',
                       f'occurrences of "{form}"' + (' without a value' if only_empty else ''))
+    # A word whose analysis the plan writes is read as that analysis, and a
+    # value on one of its morphemes goes into it (as set_field does).
+    planned = {op.get('word_id'): op for op in ws.ops if op.get('kind') == 'set_analysis'}
+    edits: List[tuple] = []
     for doc in _docs(ws, document):
         for s in doc.sentences:
             for w in s.words:
+                if f.scope != 'Word' and w.id in planned:
+                    for k, pm in enumerate(planned[w.id].get('morphemes') or [], start=1):
+                        cur = next((fv.get('value') or '' for fv in pm.get('fields') or []
+                                    if fv.get('layer_id') == f.layer_id), '')
+                        if (pm.get('form') or '').casefold() == key and cur != value and not (only_empty and cur):
+                            edits.append((doc, f'{word_ref(s, w)}.m{k}'))
+                    continue
                 if f.scope == 'Word':
                     units = [(w, word_ref(s, w), w.surface)] if w.surface.casefold() == key else []
                 else:
@@ -387,9 +418,16 @@ def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_
                     if cur == value or (only_empty and cur != ''):
                         continue
                     staged.append(span_op(ws, doc, ref, what, f, u.id, old, value))
-    _check_cap(len(staged))
-    ws.add_ops(staged)
-    return _bulk_note(ws, staged, f'occurrences of "{form}"' + (' without a value' if only_empty else ''))
+    _check_cap(len(staged) + len(edits))
+    with ws.staging():
+        for doc, ref in edits:
+            edit_planned_morpheme(ws, doc, ref, _planned_place(ws, doc, ref), field=f, value=value)
+        ws.add_ops(staged)
+    what = f'occurrences of "{form}"' + (' without a value' if only_empty else '')
+    if not staged:
+        return ws.planned_note(len(edits)) if edits else _bulk_note(ws, staged, what)
+    return _bulk_note(ws, staged, what) + (
+        f' {len(edits)} more in analyses this plan already holds, changed there.' if edits else '')
 
 
 def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document: Optional[str] = None,
@@ -593,10 +631,14 @@ def t_merge_entries(ws: Workspace, keep_form: Optional[str] = None, remove_form:
     with ws.staging():
         ws.add_op({'kind': 'merge_entries', 'keep_id': keep['id'], 'remove_id': remove['id'], 'links': links,
                    'label': f'Merge entry {_name(view, remove)} into {_name(view, keep)}: '
-                            f'move {len(links)} link{"s" if len(links) != 1 else ""}, delete the former'})
+                            f'{move_phrase(len(links))}, delete the former'})
         refs = _ref_repair_ops(ws, view, plan_merge_refs, keep['id'], [remove['id']])
         ws.add_ops(refs)
-    note = ws.planned_note(1 + len(refs)) + f' {len(links)} link(s) will move.'
+    # Less any link another change in the plan takes (plan.settle_merges),
+    # which the note beside this one names.
+    moving = next((len(op['links']) for op in settle_merges(ws.ops)[0] if op.get('kind') == 'merge_entries'
+                   and (op['keep_id'], op['remove_id']) == (keep['id'], remove['id'])), len(links))
+    note = ws.planned_note(1 + len(refs)) + f' {moving} link(s) will move.'
     return note + (f' {len(refs)} entr{"y" if len(refs) == 1 else "ies"} repointed at the survivor.' if refs else '')
 
 

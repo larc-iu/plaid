@@ -112,7 +112,7 @@ def test_orthography_respell_links_entries():
     assert 'id=vi-gam2 form=gam#2 gam | gloss=net' in out
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w2'], 'entry_id': 'vi-gam'})
     assert w.ops[-1] == {'kind': 'link', 'token_id': 'w-2', 'item_id': 'vi-gam', 'new_entry_key': None,
-                         'existing_link_id': None, 'label': 'Text 1 s1.w2 "gam": link "gam"'}
+                         'existing_link_id': None, 'entry_form': 'gam', 'label': 'Text 1 s1.w2 "gam": link "gam"'}
     # relinking replaces the existing link; linking to the same entry is a no-op
     assert call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w1'], 'entry_form': 'Ali'}).startswith('Planned 0')
     call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w1'], 'entry_form': '-di'})

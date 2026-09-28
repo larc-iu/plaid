@@ -9,6 +9,7 @@ about interlinear text (a word cannot be reshaped and re-analysed at once, a
 respelling cannot overlap another) live here.
 """
 
+import copy
 import re
 from typing import Any, Dict, List, Optional
 
@@ -17,10 +18,10 @@ from plaid_client.provenance import prov_state, MACHINE
 from ..core import opkind
 from ..core.args import whole
 from ..core.limits import MAX_SCOPE_DOCS
-from ..core.plan import by_document, labelled
+from ..core.plan import by_document, change_of, labelled
 from ..core.tools import ToolError
 
-from .plan import ANALYSIS, KIND, TEXT_SHAPE, WORD_SHAPE, reshaped_subjects
+from .plan import ANALYSIS, KIND, TEXT_SHAPE, WORD_SHAPE, analysed_morphemes, reshaped_subjects
 from .project import (IgtDoc, Sentence, Word, Morpheme, Link, parse_ref, resolve, mwe_ref, REVIEWABLE,
                       segmentation, split_sentences, split_words, word_ref)
 from .lexview import morph_type
@@ -36,15 +37,23 @@ def t_set_field(ws: Workspace, document: str, refs, field: str, value: str) -> s
     value = '' if value is None else str(value)
     kind = {'Word': Word, 'Morpheme': Morpheme, 'Sentence': Sentence}[f.scope]
     staged: List[Dict[str, Any]] = []
-    for ref in _refs(refs):
-        obj = _need(resolve(doc, ref), kind, ref)
-        old = obj.fields.get(f.name)
-        if (old.value if old else '') == value:
-            continue
-        what = obj.text if isinstance(obj, Sentence) else (obj.surface if isinstance(obj, Word) else obj.form)
-        staged.append(span_op(ws, doc, ref, what, f, obj.id, old, value))
-    ws.add_ops(staged)
-    return ws.planned_note(len(staged))
+    edits = 0
+    with ws.staging():
+        for ref in _refs(refs):
+            # A morpheme of a word whose analysis the plan writes is one of
+            # the PLANNED chain, and its value goes into that analysis.
+            place = _planned_place(ws, doc, ref) if f.scope == 'Morpheme' else None
+            if place is not None:
+                edits += edit_planned_morpheme(ws, doc, ref, place, field=f, value=value)
+                continue
+            obj = _need(resolve(doc, ref), kind, ref)
+            old = obj.fields.get(f.name)
+            if (old.value if old else '') == value:
+                continue
+            what = obj.text if isinstance(obj, Sentence) else (obj.surface if isinstance(obj, Word) else obj.form)
+            staged.append(span_op(ws, doc, ref, what, f, obj.id, old, value))
+        ws.add_ops(staged)
+    return ws.planned_note(len(staged) + edits)
 
 
 def span_op(ws: Workspace, doc, ref: str, what: str, f, token_id: str, old, value: str) -> Dict[str, Any]:
@@ -256,8 +265,10 @@ def t_respell(ws: Workspace, document: str, ref: str, new_text: str, morpheme_fo
     # A single-morpheme own form spelt like the word follows it. A longer
     # chain cannot be re-derived from a whole-word replacement.
     kept = []
+    analysed = analysed_morphemes(ws.ops)
     for m in w.morphemes:
-        if not has_own_form(m):
+        # A morpheme the planned analysis rewrites takes the form it gives.
+        if not has_own_form(m) or m.id in analysed:
             continue
         if morpheme_forms and m.form == w.surface:
             staged.append(morpheme_form_op(ws, doc, ref, w, m, new_text))
@@ -345,7 +356,7 @@ def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] =
         staged.append({'kind': 'link', 'token_id': obj.id,
                        'item_id': target['id'] if kind == 'existing' else None,
                        'new_entry_key': target if kind == 'new' else None,
-                       'existing_link_id': obj.link.id if obj.link else None,
+                       'existing_link_id': obj.link.id if obj.link else None, 'entry_form': form,
                        'label': f'{ws.doc_label(doc.id)} {ref} "{what}": link ' + (f'"{obj.link.form}" → ' if obj.link else '') + f'"{form}"'})
     with ws.staging():
         taken = _take_out(ws, [key for _, key in back])
@@ -432,9 +443,73 @@ def _planned_link_op(ws: Workspace, doc: IgtDoc, ref: str, place: _Place, kind: 
             'doc': doc.id,
             'item_id': target['id'] if kind == 'existing' else None,
             'new_entry_key': target if kind == 'new' else None,
-            'existing_link_id': old.id if old else None,
+            'existing_link_id': old.id if old else None, 'entry_form': form,
             **labelled(f'{ws.doc_label(doc.id)} {ref} "{m["form"]}"',
                        'link ' + (f'"{old.form}" → ' if old else '') + f'"{form}"')}
+
+
+_UNSET = object()
+
+
+def edit_planned_morpheme(ws: Workspace, doc: IgtDoc, ref: str, place: _Place, *, field=None,
+                          value: Optional[str] = None, form: Optional[str] = None, morph_type=_UNSET) -> int:
+    """Change morpheme ``place.index`` of the analysis the plan holds for its
+    word, in that analysis: a value of ``field``, its ``form`` or its
+    ``morph_type`` (None clears it). 1 when something changed, else 0.
+
+    The analysis is staged again through the funnel with its label written
+    afresh, as the same change rather than a second one, and a planned link
+    to that morpheme follows a new form (``plan.planned_morpheme`` checks
+    the form it read)."""
+    k = place.index - 1
+    morphemes = copy.deepcopy(place.analysis['morphemes'])
+    m = morphemes[k]
+    if field is not None:
+        value = value or ''
+        cur = next((fv.get('value') or '' for fv in m.get('fields') or [] if fv.get('layer_id') == field.layer_id), '')
+        if cur == value:
+            return 0
+        m['fields'] = [fv for fv in m.get('fields') or [] if fv.get('layer_id') != field.layer_id] + (
+            [{'layer_id': field.layer_id, 'value': value}] if value != '' else [])
+    elif form is not None:
+        if form == m['form']:
+            return 0
+        m['form'] = form
+    elif morph_type is not _UNSET:
+        if (morph_type or None) == (m.get('morph_type') or None):
+            return 0
+        m['morph_type'] = morph_type or None
+    else:
+        return 0
+    w = place.word
+    si, wi, _mi = parse_ref(ref)
+    head = f'{ws.doc_label(doc.id)} s{si}.w{wi} "{w.surface}"'
+    had_values = sum(1 for sm in w.morphemes for sp in sm.fields.values() if sp.value != '')
+    rebuilt, _note = analysis_op(ws, head, w.surface, w.id, w.text_id, w.begin, w.end,
+                                 place.analysis.get('existing') or [], segmentation(w) if w.morphemes else '',
+                                 had_values, morphemes)
+    if form is not None:
+        for i, op in enumerate(ws.ops):
+            if (op.get('kind') == 'link' and op.get('analysis_word_id') == w.id
+                    and op.get('morpheme_index') == place.index):
+                change = change_of(op)
+                ws.ops[i] = {**op, 'morpheme_form': form,
+                             **(labelled(f'{ws.doc_label(doc.id)} s{si}.w{wi}.m{place.index} "{form}"', change)
+                                if change is not None else {})}
+    replaced = ws.replaced
+    ws.add_op({**place.analysis, 'morphemes': morphemes, 'label': rebuilt['label']})
+    ws.replaced = replaced
+    return 1
+
+
+def left_for_analysis(n: int) -> str:
+    """What a tool over stored morphemes says about the ones it left alone
+    because a planned analysis rewrites them."""
+    if not n:
+        return ''
+    return (f'\n{n} morpheme{"s" if n != 1 else ""} of words whose analysis this plan rewrites '
+            f'{"were" if n != 1 else "was"} left as planned: set_field or set_morpheme with sN.wN.mN change the '
+            'planned analysis.')
 
 
 def _resolve_for_link(doc: IgtDoc, ref: str):
@@ -537,7 +612,7 @@ def t_link_phrase(ws: Workspace, document: str, refs, entry_form: Optional[str] 
         ws.add_op({'kind': 'link_phrase', 'token_ids': token_ids,
                    'item_id': target['id'] if kind == 'existing' else None,
                    'new_entry_key': target if kind == 'new' else None,
-                   'existing_link_id': existing.id if existing is not None else None,
+                   'existing_link_id': existing.id if existing is not None else None, 'entry_form': form,
                    'label': f'{ws.doc_label(doc.id)} s{s.index} {where} "{surfaces}": link phrase '
                             + (f'"{existing.form}" → ' if existing is not None else '') + f'"{form}"'})
     return ws.planned_note(1)
@@ -825,21 +900,33 @@ def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] =
     chain and every value on it (set_analysis replaces the whole chain)."""
     doc = ws.doc(document)
     ref = (ref or '').strip()
-    m = _need(resolve(doc, ref), Morpheme, ref)
-    word_ref_ = ref.rsplit('.', 1)[0]
-    w = resolve(doc, word_ref_)
     if form is None and type is None:
         raise ToolError('Give form and/or type.')
-    refuse_shape_and_analysis(ws, w.id, word_ref_, analysing=True)
-    staged: List[Dict[str, Any]] = []
+    new = None
     if form is not None:
         new = str(form).strip()
         if not new:
             raise ToolError('form must not be empty (set_analysis to remove a morpheme from the chain)')
-        if new != m.form:
-            staged.append(morpheme_form_op(ws, doc, word_ref_, w, m, new))
+    t = (morph_type(type) if str(type).strip() else None) if type is not None else None
+    if _planned_place(ws, doc, ref) is not None:
+        # A morpheme of the analysis this plan writes for the word: the
+        # change goes into that analysis (the stored morpheme is on its way
+        # out, or is the first one the analysis keeps and rewrites).
+        n = 0
+        with ws.staging():
+            if new is not None:
+                n += edit_planned_morpheme(ws, doc, ref, _planned_place(ws, doc, ref), form=new)
+            if type is not None:
+                n += edit_planned_morpheme(ws, doc, ref, _planned_place(ws, doc, ref), morph_type=t)
+        return ws.planned_note(n)
+    m = _need(resolve(doc, ref), Morpheme, ref)
+    word_ref_ = ref.rsplit('.', 1)[0]
+    w = resolve(doc, word_ref_)
+    refuse_shape_and_analysis(ws, w.id, word_ref_, analysing=True)
+    staged: List[Dict[str, Any]] = []
+    if new is not None and new != m.form:
+        staged.append(morpheme_form_op(ws, doc, word_ref_, w, m, new))
     if type is not None:
-        t = morph_type(type) if str(type).strip() else None
         if t != (m.morph_type or None):
             staged.append({'kind': 'set_morph_type', 'morpheme_id': m.id, 'morph_type': t,
                            'label': f'{ws.doc_label(doc.id)} {ref} (in "{w.surface}"): morpheme type '

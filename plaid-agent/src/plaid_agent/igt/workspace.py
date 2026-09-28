@@ -16,6 +16,7 @@ text the way the editor does.
 import copy
 import re
 import uuid
+from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
 from ..core import docload, opkind
@@ -23,7 +24,8 @@ from ..core.plan import change_of, docs_of_op, labelled
 from ..core.tools import ToolError
 from ..core.workspace import BaseWorkspace
 
-from .plan import ANALYSIS, KIND, TEXT_SHAPE, planned_morpheme, removed_entries
+from .plan import (ANALYSIS, KIND, MORPHEME_KEY, MORPHEME_WRITERS, TEXT_SHAPE, analysed_morphemes,
+                   planned_morpheme, removed_entries, settle_merges)
 
 # What only a maintainer of the lexicon may do to its entries (a merge deletes
 # the entry it folds away), and what a tool says to anyone else.
@@ -106,6 +108,11 @@ class Workspace(BaseWorkspace):
         # the model about (the same watermark pair as `replaced`).
         self.unlinked = 0
         self.reported_unlinked = 0
+        # How many links a planned merge leaves to another change (see
+        # plan.settle_merges) a note has told the model about. Worked out from
+        # the plan whenever a note is written, so it follows the plan down as
+        # well as up.
+        self.reported_left = 0
 
     def make_corpus(self):
         from .corpus import Corpus
@@ -414,6 +421,7 @@ class Workspace(BaseWorkspace):
 
     def guard_op(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
         super().guard_op(op, replacing=replacing)
+        self.guard_morpheme_change(op, replacing=replacing)
         item = op.get('remove_id') if op.get('kind') == 'merge_entries' else (
             op.get('item_id') if op.get('kind') in ENTRY_REMOVALS else None)
         v = self.vocab_of_item(item) if item else None
@@ -433,7 +441,8 @@ class Workspace(BaseWorkspace):
         back from a rollback carrying the edit."""
         return {**super().snapshot(), 'new_entries': copy.deepcopy(self.new_entries),
                 'item_patches': copy.deepcopy(self.item_patches),
-                'unlinked': self.unlinked, 'reported_unlinked': self.reported_unlinked}
+                'unlinked': self.unlinked, 'reported_unlinked': self.reported_unlinked,
+                'reported_left': self.reported_left}
 
     def restore(self, saved: Dict[str, Any]) -> None:
         super().restore(saved)
@@ -441,15 +450,63 @@ class Workspace(BaseWorkspace):
         self.item_patches = saved['item_patches']
         self.unlinked = saved['unlinked']
         self.reported_unlinked = saved['reported_unlinked']
+        self.reported_left = saved['reported_left']
         self._patch_version += 1
 
     def add_op(self, op: Dict[str, Any]) -> None:
-        super().add_op(op)
-        # A new analysis of a word (or a discard of it) replaces the one a
-        # link to one of its morphemes was made against.
-        spec = KIND.get(op.get('kind'))
-        if spec is not None and spec.shape == ANALYSIS:
-            self.unlink_orphans()
+        with self.superseding([op]):
+            super().add_op(op)
+            # A new analysis of a word (or a discard of it) replaces the one a
+            # link to one of its morphemes was made against.
+            spec = KIND.get(op.get('kind'))
+            if spec is not None and spec.shape == ANALYSIS:
+                self.unlink_orphans()
+
+    def add_ops(self, ops: List[Dict[str, Any]]) -> None:
+        # Before the funnel asks whether any of them clashes with the plan: a
+        # value planned on a morpheme the analysis deletes is superseded by
+        # it, not a reason to refuse it.
+        with self.superseding(ops):
+            super().add_ops(ops)
+
+    @staticmethod
+    def moot_under(op: Dict[str, Any], rewritten: set) -> bool:
+        """Whether ``op`` changes one of the stored morphemes ``rewritten``
+        on its own (a value, a form, a type), which an analysis of its word
+        replaces along with the rest of the chain."""
+        kind = op.get('kind')
+        return ((kind == 'set_span' and op.get('token_id') in rewritten)
+                or (kind in MORPHEME_WRITERS and op.get(MORPHEME_KEY) in rewritten))
+
+    @contextmanager
+    def superseding(self, ops: List[Dict[str, Any]]):
+        """Take out of the plan what the analyses among ``ops`` make moot
+        (a value, form or type planned on a morpheme of the word they
+        re-analyse), then stage them, and put the plan back if staging them is
+        refused. Counted as superseded, so the note says so, rather than left
+        on the card for approval to drop (a type or a form) or to fail on (a
+        value on a span the analysis deletes)."""
+        rewritten = analysed_morphemes(ops)
+        keep = [o for o in self.ops if not self.moot_under(o, rewritten)] if rewritten else self.ops
+        if len(keep) == len(self.ops):
+            yield
+            return
+        with self.staging():
+            self.replaced += len(self.ops) - len(keep)
+            self.ops[:] = keep
+            self._gone_at = -1
+            yield
+
+    def guard_morpheme_change(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
+        """A value, form or type for a stored morpheme a planned analysis
+        rewrites: the analysis replaces that morpheme and every value on it,
+        whichever runs first in the batch. The tools that read sN.wN.mN change
+        the planned analysis instead, so this is any other way in."""
+        planned = [o for i, o in enumerate(self.ops) if i != replacing]
+        if self.moot_under(op, analysed_morphemes(planned)):
+            raise ToolError(f'{op.get("label") or "That change"}: the analysis planned for this word replaces this '
+                            'morpheme and every value on it. Change the planned analysis instead: set_field and '
+                            'set_morpheme with sN.wN.mN name the morphemes it plans.')
 
     def unlink_orphans(self) -> int:
         """Take out of the plan every link to a morpheme of a planned analysis
@@ -475,6 +532,15 @@ class Workspace(BaseWorkspace):
             out += (f' {new} planned link{"s" if new != 1 else ""} to a morpheme of a planned analysis '
                     f'{"were" if new != 1 else "was"} dropped: the analysis now planned for that word has no such '
                     'morpheme at that place. Link again with link_entry sN.wN.mN if it should be.')
+        _ops, left = settle_merges(self.ops)
+        if len(left) > self.reported_left:
+            takers = sorted({t['label'] for _m, _l, t in left if t and t.get('label')})
+            out += (f' A planned merge leaves {len(left)} link{"s" if len(left) != 1 else ""} to another change in '
+                    'this plan' + (f' ({"; ".join(takers)})' if takers else '')
+                    + f', which replaces or removes {"them" if len(left) != 1 else "it"}, rather than moving '
+                    f'{"them" if len(left) != 1 else "it"} too: a word or morpheme keeps one link. Drop that change '
+                    'if the merge should move it.')
+        self.reported_left = len(left)
         return out
 
     def exclusive_message(self, staging_it: bool) -> str:
@@ -500,7 +566,8 @@ class Workspace(BaseWorkspace):
         # clears it) since it is what the user approves later. Large groups
         # of like ops are stored as one op: a bulk respell cost over a
         # kilobyte per word stored, and the record could not hold one.
-        ops = self.mark_replaced_work(copy.deepcopy(self.ops))
+        # Each merge as it will run: less the links another change takes.
+        ops = self.mark_replaced_work(copy.deepcopy(settle_merges(self.ops)[0]))
         spec = compact_spec(self)
         # An op the scan path staged names no document; the group it joins
         # must, so the card can place it and the label can head it.
