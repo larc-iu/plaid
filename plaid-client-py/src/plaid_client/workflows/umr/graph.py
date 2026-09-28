@@ -510,6 +510,19 @@ def _sentence_number_reader(sentences: List[Sentence]):
     return now
 
 
+def triple_sentence_number(sentences: List[Sentence], sentence: Sentence) -> int:
+    """The number a triple between two constants records for ``sentence``,
+    the one whose block writes it: the number the reader
+    (``sentenceNumberReader``) takes back to that sentence. A document whose
+    file skipped a number keeps its variables until it is opened, and the
+    reader then goes by the number they carry rather than by position."""
+    read = _sentence_number_reader(sentences)
+    for n in (_variable_number(sentence), sentence.index):
+        if n is not None and read(n) == sentence.index:
+            return n
+    return sentence.index
+
+
 def read_document(raw: dict, layers: UmrLayers,
                   gloss: Optional[Dict[str, Dict[str, str]]] = None) -> UmrDocument:
     """A document response (read with its body) as a graph.

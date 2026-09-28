@@ -1,5 +1,5 @@
 """A triple between two constants records the sentences whose blocks write
-it by NUMBER, and the reader (graph.py `_sentence_number_reader`, the app's
+it by NUMBER, and the reader (graph.py's, and the app's
 `sentenceNumberReader`) takes a number to the one sentence whose variables
 carry it. A file whose snt numbers skip one (snt1, snt3, snt4) keeps its
 variables until someone opens it, so the assistant must record the number
@@ -8,7 +8,7 @@ the sentence's variables carry, or its triple is read on another sentence.
 
 import copy
 
-from plaid_client.workflows.umr import graph
+from plaid_client.workflows.umr import triple_sentence_number
 
 from umr_fixtures import CONCEPT_LAYER, NODE_LAYER, SENT_LAYER, WORD_LAYER, document_raw, umr_client, umr_ws
 
@@ -54,8 +54,7 @@ def test_a_triple_between_constants_on_a_gapped_document_is_read_on_its_own_sent
     # The sentence at position 3 goes by snt4 (its variables are s4...), and
     # position 3 is what the sentence before it carries.
     assert op['sentences'] == [4], op
-    read = graph._sentence_number_reader(doc.sentences)
-    assert [read(n) for n in op['sentences']] == [3]
+    assert triple_sentence_number(doc.sentences, doc.sentences[2]) == 4
     # What the card and the pins go by stays the position.
     assert op['sentence'] == 3 and op['ref'] == 's3'
 

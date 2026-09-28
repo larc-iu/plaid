@@ -15,10 +15,10 @@ from typing import Any, Dict, List, Optional
 
 from ..core import docload, fingerprint as fp, opkind
 from ..core.args import sentence_number
-from plaid_client.workflows.umr import graph as umr_graph
 from plaid_client.workflows.umr import (attr_value_problem, concept_problem,
                                         new_variable_problem, parse_attribute_line,
-                                        relation_form_problem, unknown_doc_relation_problem,
+                                        relation_form_problem, triple_sentence_number,
+                                        unknown_doc_relation_problem,
                                         unknown_relation_problem, variable_form_problem)
 
 from ..core.limits import OVERVIEW_DOCS, SAMPLE_LINES
@@ -490,19 +490,6 @@ def _later_end(a: Optional[GNode], b: Optional[GNode]) -> Optional[GNode]:
     return max(ends, key=lambda n: n.sentence or 0) if ends else None
 
 
-def _recorded_number(doc: UmrDoc, s: Sentence) -> int:
-    """The number a triple between two constants records for the sentence
-    whose block writes it: the one the reader takes back to that sentence
-    (``sentenceNumberReader``). A document whose file skipped a number keeps
-    its variables until it is opened, and the reader then goes by the number
-    they carry, not by position."""
-    read = umr_graph._sentence_number_reader(doc.sentences)
-    for n in (umr_graph._variable_number(s), s.index):
-        if n is not None and read(n) == s.index:
-            return n
-    return s.index
-
-
 def t_add_triple(ws: Workspace, document: str = None, a: str = None, rel: str = None,
                  b: str = None, group: str = None, sentence=None) -> str:
     doc = ws.doc(document)
@@ -556,7 +543,7 @@ def t_add_triple(ws: Workspace, document: str = None, a: str = None, rel: str = 
     # one whose block writes it is named.
     if source.get('constant') and target.get('constant'):
         s = _sentence(ws, doc, sentence) if sentence is not None else doc.sentences[0]
-        op['sentences'] = [_recorded_number(doc, s)]
+        op['sentences'] = [triple_sentence_number(doc.sentences, s)]
         op['sentence'] = s.index
         op['sentence_id'] = s.id
         op['ref'] = f's{s.index}'

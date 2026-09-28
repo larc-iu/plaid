@@ -39,7 +39,7 @@ from .graph import (COREF_RELATIONS, CYCLE_ROLES, DOC_CONSTANTS, Edge, GROUPS, M
                     Morpheme, Node, Piece, Sentence, Triple, UmrDocument, Word,
                     alignment_of, file_numbers, group_of, next_order, penman_nodes, penman_of,
                     place_attributes, read_document, reachable_from_root, roots_of,
-                    sentence_penman, with_attribute)
+                    sentence_penman, triple_sentence_number, with_attribute)
 from .flat import join_flat_graph
 from .inventory import DOC_RELATIONS, unknown_doc_relation_problem, unknown_relation_problem
 from .layers import (GlossLayer, UMR_NAMESPACE, UmrLayers, gloss_values, project_language,
@@ -63,6 +63,7 @@ __all__ = [
     # graph
     'Piece', 'Word', 'Morpheme', 'Edge', 'Triple', 'Node', 'Sentence', 'UmrDocument',
     'read_document', 'roots_of', 'alignment_of', 'group_of', 'file_numbers',
+    'triple_sentence_number',
     'DOC_CONSTANTS', 'GROUPS', 'COREF_RELATIONS', 'CYCLE_ROLES', 'MISSING',
     'penman_nodes', 'penman_of', 'sentence_penman', 'reachable_from_root',
     'next_order', 'place_attributes', 'with_attribute',
