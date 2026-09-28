@@ -16,6 +16,7 @@
 // check walks either the nodes or the words.
 import { UmrDocument } from './UmrDocument.js';
 import { writtenIds } from './sentenceGraph.js';
+import { parsePenman } from './format/penman.js';
 
 // How many document reads are in flight at once. Enough to cover the round
 // trip on a remote server, few enough that a scan does not monopolise the
@@ -71,9 +72,26 @@ async function mapLimit(items, limit, work) {
  * - a word that IS aligned, to a node the root does not reach, gets none. The
  *   export leaves that node out, which is why the validator sees the word
  *   bare, and the node's `unreached-by-root` row already says so.
+ *
+ * A sentence whose graph was kept as text (the import could not read it) gets
+ * one ERROR row with the parser's first message, and none for its words: the
+ * export writes that text back, and the official validator fails on it.
  */
 export function reportOf(doc) {
   const graphless = new Set();
+  const unreadable = new Set();
+  const rows = [];
+  (doc.sentences || []).forEach((s) => {
+    if (s.nodes?.length || typeof s.rawGraph !== 'string' || !s.rawGraph.trim()) return;
+    unreadable.add(s.index);
+    const first = parsePenman(s.rawGraph).errors[0]?.message;
+    rows.push({
+      level: 'error',
+      code: 'unreadable-graph',
+      message: first ? `Unreadable graph: ${first}` : 'Unreadable graph.',
+      sentence: s.index,
+    });
+  });
   // 1-based word numbers with a node the export leaves out on them, by
   // sentence. Only those: a word the export does write a node for and the
   // validator still calls bare is a real fault, and keeps its row.
@@ -91,12 +109,12 @@ export function reportOf(doc) {
   });
   // The one row of each graphless sentence, and how many words it stands for.
   const collapsed = new Map();
-  const rows = [];
   doc.problems.forEach((p) => {
     if (p.code !== 'unaligned-token') {
       rows.push(p);
       return;
     }
+    if (unreadable.has(p.sentence)) return;
     if (alignedWords.get(p.sentence)?.has(p.word)) return;
     if (!graphless.has(p.sentence)) {
       rows.push(p);

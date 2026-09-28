@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { parseUmrFile } from '../src/domain/format/umrFile.js';
 import { planImport } from '../src/domain/umrImport.js';
 import { rawFromPlan } from './rawFromPlan.js';
+import { UmrDocument } from '../src/domain/UmrDocument.js';
 import {
   validateProject,
   documentsWithNodes,
@@ -211,4 +212,42 @@ test('with no layers to ask about, every document is read', async () => {
   await validateProject(f.client, 'p1', {});
   assert.deepEqual(f.reads, ['d0', 'd1', 'd2']);
   assert.equal(f.queries.length, 0);
+});
+
+// A graph the import kept as text is written back as it was, and the
+// official validator fails on it. Its words are not the thing to fix, so
+// they get no row.
+test('a graph kept as text is one error row with what the parser found, and no word rows', () => {
+  const S = '#'.repeat(80);
+  const text = [
+    S,
+    '# :: snt1',
+    'Index: 1 2 3',
+    'Words: the cat sleeps',
+    '',
+    '# sentence level graph:',
+    '(s1s / sleep-01 / nap)',
+    '',
+    '# alignment:',
+    's1s: 3-3',
+    '',
+    '# document level annotation:',
+    '',
+    '',
+  ].join('\n');
+  const doc = new UmrDocument({
+    raw: rawFromPlan(planImport(parseUmrFile(text).sentences, [])),
+  });
+  assert.equal(doc.sentences[0].nodes.length, 0);
+  assert.deepEqual(
+    reportOf(doc).map((p) => [p.sentence, p.level, p.code, p.message]),
+    [
+      [
+        1,
+        'error',
+        'unreadable-graph',
+        "Unreadable graph: Expected a relation or a closing bracket, found '/ nap)'.",
+      ],
+    ],
+  );
 });
