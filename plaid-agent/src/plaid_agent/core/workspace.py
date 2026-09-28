@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
 from . import docload, fingerprint as fp, opkind, work
-from .limits import PIN_SENTENCES_MAX
+from .limits import PIN_SENTENCES_MAX, PIN_SENTENCES_PLAN_MAX
 from .plan import PLAN_MAX_OPS, PlanFull, docs_of_op, reserve as core_reserve
 from .tools import ToolError
 
@@ -119,8 +119,14 @@ class BaseWorkspace:
         self._reader = None
         # Per document read: which sentence each id in it belongs to.
         self._sentence_indexes: Dict[tuple, Dict[str, set]] = {}
-        # Per document read: the provenance of everything in it, by id.
-        self._entity_indexes: Dict[int, Dict[str, Any]] = {}
+        # Per document read: the provenance of everything in it, by id. Keyed
+        # by the object's address and holding the object, so an address a
+        # dropped read leaves behind is never mistaken for a new read's.
+        self._entity_indexes: Dict[int, tuple] = {}
+        # The provenance of things a query returned from a document the turn
+        # never loaded, by id, noted where a change is staged from the row
+        # (``note_metadata``), so the card can say whose work it replaces.
+        self._queried_metadata: Dict[str, Any] = {}
         # The other projects this turn may read (a core.reach.Reach), or None
         # when it reads this project alone. ``home`` is False on the workspace
         # of another project, and ``writable`` False wherever nothing may be
@@ -280,7 +286,7 @@ class BaseWorkspace:
                 # carries its version, which is all the stale check needs.
                 out.append({'id': did, 'name': listed[did].get('name'),
                             'version': listed[did].get('version')})
-        return out
+        return self.cap_pins(out)
 
     # --- which sentences a plan depends on --------------------------------
 
@@ -321,6 +327,24 @@ class BaseWorkspace:
         return {**entry, 'sentences': [{'id': s.id, 'print': self.sentence_print(doc, s)}
                                        for s in doc.sentences if s.id in wanted]}
 
+    @staticmethod
+    def cap_pins(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """The plan's document records with at most
+        :data:`PIN_SENTENCES_PLAN_MAX` sentences pinned between them. Every
+        pinned sentence is stored in the conversation beside the plan, so past
+        the cap the documents pinning the most are pinned by their version
+        instead, most first, until the rest fit."""
+        total = sum(len(e.get('sentences') or ()) for e in entries)
+        if total <= PIN_SENTENCES_PLAN_MAX:
+            return entries
+        out = list(entries)
+        for i in sorted(range(len(out)), key=lambda i: -len(out[i].get('sentences') or ())):
+            if total <= PIN_SENTENCES_PLAN_MAX:
+                break
+            total -= len(out[i].get('sentences') or ())
+            out[i] = {k: v for k, v in out[i].items() if k != 'sentences'}
+        return out
+
     def current_prints(self, doc_id: str) -> Dict[str, tuple]:
         """sentence id -> (its number, its fingerprint) in the document as it
         is now, read afresh, for an approval to compare against the plan's."""
@@ -331,40 +355,62 @@ class BaseWorkspace:
 
     def entity_index(self, doc) -> Dict[str, Any]:
         """id -> metadata for everything in ``doc`` that carries provenance."""
-        key = id(doc)
-        if key not in self._entity_indexes:
-            self._entity_indexes[key] = work.entity_index(doc)
-        return self._entity_indexes[key]
+        held = self._entity_indexes.get(id(doc))
+        if held is None or held[0] is not doc:
+            held = (doc, work.entity_index(doc))
+            self._entity_indexes[id(doc)] = held
+        return held[1]
+
+    def note_metadata(self, entity_id: Optional[str], metadata: Any) -> None:
+        """Keep the provenance a query returned for ``entity_id``, a thing in
+        a document this turn may never load, for :meth:`metadata_of`."""
+        if entity_id:
+            self._queried_metadata[entity_id] = metadata if isinstance(metadata, dict) else {}
 
     def metadata_of(self, entity_id: str):
-        """(found, metadata) for a thing in any document this turn read."""
+        """(found, metadata) for a thing in any document this turn read, or
+        one a query returned (:meth:`note_metadata`)."""
         for doc in self._docs.values():
             index = self.entity_index(doc)
             if entity_id in index:
                 return True, index[entity_id]
+        if entity_id in self._queried_metadata:
+            return True, self._queried_metadata[entity_id]
         return False, None
 
-    def replaces_work(self, op: Dict[str, Any]) -> bool:
-        """Whether a planned change rewrites or removes something a person
-        made or accepted, by the app's ``REPLACES`` answer for its kind."""
+    def replaces_work(self, op: Dict[str, Any]) -> int:
+        """How many things a person made or accepted a planned change rewrites
+        or removes, as a count of changes: 1 or 0 for a change of one thing,
+        by the app's ``REPLACES`` answer for its kind, and for a corpus-wide
+        change the count it was staged with (``work.COUNTED``), since what it
+        replaces is found again only when it is approved."""
+        if work.COUNTED in op:
+            return int(op.get(work.COUNTED) or 0)
         fn = self.REPLACES.get(op.get('kind'))
         if fn is None:
-            return False
+            return 0
         for entity_id in fn(self, op) or ():
             if not entity_id:
                 continue
             found, metadata = self.metadata_of(entity_id)
             if found and work.protected(metadata):
-                return True
-        return False
+                return 1
+        return 0
+
+    def count_replaced_work(self, ops: List[Dict[str, Any]]) -> int:
+        """How many of ``ops`` replace a person's work, for a corpus-wide
+        change to carry as :data:`work.COUNTED` when it is stored as one."""
+        return sum(self.replaces_work(op) for op in ops)
 
     def mark_replaced_work(self, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Flag, on the card's copy of the plan, each change that replaces a
-        person's work. Asked before like changes are folded into groups,
-        which leaves a flagged change out (``core.plan.compact_ops``)."""
+        person's work, with how many changes of a person's it stands for.
+        Asked before like changes are folded into groups, which leaves a
+        flagged change out (``core.plan.compact_ops``)."""
         for op in ops:
-            if self.replaces_work(op):
-                op[work.FLAG] = True
+            n = self.replaces_work(op)
+            if n:
+                op[work.FLAG] = n
         return ops
 
     def op_target(self, op: Dict[str, Any]):

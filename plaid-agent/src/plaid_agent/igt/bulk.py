@@ -6,6 +6,7 @@ is applied only after approval."""
 
 from typing import Any, Dict, List, Optional
 
+from ..core import work
 from ..core.limits import SAMPLE_LINES
 from ..core.plan import PLAN_MAX_OPS
 from ..core.replace import replacer as core_replacer
@@ -201,21 +202,30 @@ SCOPED = {'replace_in_field': _scoped_replace, 'respell_all': _scoped_respell,
 def _stage(ws: Workspace, tool: str, args: Dict[str, Any], staged: List[Dict[str, Any]], unit: str,
            what: str) -> str:
     """Stage what a corpus-wide tool computed: op by op under the cap, as one
-    bulk_scope op past it."""
+    bulk_scope op past it. Either way the plan is pinned to the documents as
+    the query saw them (``note_versions``), and a bulk_scope op carries how
+    many of its changes replace a person's work, counted now from the
+    provenance the query returned, since it is resolved again only when
+    approved."""
+    docs = sorted({op['doc'] for op in staged if op.get('doc')})
+    ws.note_versions(docs)
     if len(staged) <= PLAN_MAX_OPS:
         ws.add_ops(staged)
         return _bulk_note(ws, len(staged), [op['label'] for op in staged], what)
-    docs = sorted({op['doc'] for op in staged if op.get('doc')})
     _clear_of_reshapes(ws, docs)
     counts: Dict[str, int] = {}
     for op in staged:
         counts[op['kind']] = counts.get(op['kind'], 0) + 1
+    accepted = ws.count_replaced_work(staged)
     ws.add_op({'kind': 'bulk_scope', 'tool': tool, 'args': args, 'counts': counts, 'count': len(staged),
-               'documents': docs,
+               'documents': docs, work.COUNTED: accepted,
                'label': f'{tool}: {len(staged)} changes in {len(docs)} documents ('
-                        + ', '.join(f'{k}={v}' for k, v in args.items() if v not in (None, '', False)) + ')'})
+                        + ', '.join(f'{k}={v}' for k, v in args.items() if v not in (None, '', False)) + ')'
+                        + work.counted_phrase(accepted)})
     return (ws.planned_note(1) + f'\n  One change covering {len(staged)} changes to {what} in {len(docs)} documents. '
-            f'For example:\n  ' + '\n  '.join(op['label'] for op in staged[:SAMPLE_LINES])
+            + (f'{accepted} of them replace work a person made or accepted, and the card says so. '
+               if accepted else '')
+            + f'For example:\n  ' + '\n  '.join(op['label'] for op in staged[:SAMPLE_LINES])
             + f'\n  … {len(staged) - SAMPLE_LINES} more')
 
 
@@ -432,6 +442,7 @@ def _set_analysis_for_form_q(ws: Workspace, form: str, morphemes: list, skip_ana
     out = parse_analysis(ws, morphemes)
     words, chains, spans = q_analysis_targets(ws, form, skip_analyzed, PLAN_MAX_OPS)
     _check_cap(len(words))
+    ws.note_versions(w['document'] for w in words)
     budget = _docs_of([[w] for w in words])
     staged = []
     first_note = ''

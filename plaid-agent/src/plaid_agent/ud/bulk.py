@@ -14,7 +14,7 @@ may make, which is what the user has to be able to approve.
 
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from ..core import opkind
+from ..core import opkind, work
 from ..core.limits import SAMPLE_LINES
 from ..core.replace import replacer as core_replacer
 from .corpus import Corpus, rx
@@ -65,7 +65,8 @@ def changes(rows: List[list], field: str, rep: Callable[[str], str]) -> List[Dic
         new = rep(cur)
         if new == cur:
             continue
-        entry = {'id': ent['id'], 'document_id': ent.get('document'), 'old': cur, 'new': new}
+        entry = {'id': ent['id'], 'document_id': ent.get('document'), 'old': cur, 'new': new,
+                 'metadata': ent.get('metadata')}
         if field != 'deprel':
             tok = row[1] if len(row) > 1 and isinstance(row[1], dict) else {}
             entry['token_id'] = tok.get('id')
@@ -146,11 +147,19 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
     sample = [f'"{names.get(ch["document_id"], ch["document_id"])}": {field} "{ch["old"]}" → "{ch["new"]}"'
               for ch in found[:SAMPLE_LINES]]
     where = f' in "{names.get(document_id)}"' if document_id else f' in {len(docs)} document(s)'
+    # What it replaces is found again only when it is approved, so the values
+    # a person made or accepted are counted now, from what the query returned.
+    accepted = sum(1 for ch in found if work.protected(ch.get('metadata')))
     ws.add_op({'kind': 'replace_scope', 'field': field, 'pattern': pattern, 'replacement': replacement,
                'regex': bool(regex), 'whole': bool(whole), 'case_sensitive': bool(case_sensitive),
                'document_id': document_id, 'documents': docs, 'count': len(found), 'ref': None,
-               'label': f'{field}: replace "{pattern}" with "{replacement}" on {len(found)} value(s){where}'})
-    return (f'Planned {len(found)} {field} change(s){where}, as one planned change. For example:\n  '
+               work.COUNTED: accepted,
+               'label': f'{field}: replace "{pattern}" with "{replacement}" on {len(found)} value(s){where}'
+                        + work.counted_phrase(accepted)})
+    return (f'Planned {len(found)} {field} change(s){where}, as one planned change. '
+            + (f'{accepted} of them replace work a person made or accepted, and the card says so. '
+               if accepted else '')
+            + 'For example:\n  '
             + '\n  '.join(sample) + (f'\n  … {len(found) - SAMPLE_LINES} more' if len(found) > SAMPLE_LINES else '')
             + '\nsearch shows every match with its reference.')
 

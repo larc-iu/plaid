@@ -111,3 +111,10 @@ OTHER_PROJECT_CHARS = 3000
 # pinned to the whole document by its version instead, as every plan was
 # before sentences were pinned. An edit anywhere in it then refuses the plan.
 PIN_SENTENCES_MAX = 200
+
+# Sentences one plan may pin by fingerprint across all its documents, about
+# seventy kilobytes of the record. A plan of a few thousand per-word changes
+# over many documents would otherwise store a pin per sentence beside a
+# thousand-odd changes, and a record past its budget is refused whole. Past
+# it, the documents pinning the most are pinned by their version instead.
+PIN_SENTENCES_PLAN_MAX = 1000

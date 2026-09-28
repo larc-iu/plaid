@@ -845,6 +845,7 @@ def q_replace_changes(ws: Workspace, f, rep, rows: List[list]) -> List[Dict[str,
         what = (tok.get('metadata') or {}).get('form') if f.scope == 'Morpheme' else None
         what = what or (tok.get('value') or '').strip()
         head = c.label_ref(tok['document'], tok['id'], budget)
+        ws.note_metadata(sp['id'], sp.get('metadata'))
         staged.append({'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': tok['id'], 'span_id': sp['id'],
                        'value': new, 'doc': tok['document'],
                        'label': f'{head} "{what[:30]}": {f.name} "{cur}" → "{new}"' + (' (cleared)' if new == '' else '')})
@@ -893,6 +894,7 @@ def q_respell_all(ws: Workspace, rep, spec: Dict[str, Any], morpheme_forms: bool
             if new == old or not new.strip():
                 continue
             head = c.label_ref(m['document'], m['id'], budget)
+            ws.note_metadata(m['id'], m.get('metadata'))
             morphs.append({'kind': 'set_morpheme_form', 'morpheme_id': m['id'], 'form': new, 'doc': m['document'],
                            'label': f'{head} (in "{w.get("value")}"): morpheme form "{old}" → "{new}"',
                            '_pos': (m['document'], m['begin'], 1, m.get('precedence') or 0)})
@@ -922,6 +924,7 @@ def q_copy_to_orthography(ws: Workspace, target: str, src: Optional[str], overwr
         if not value or value == cur:
             continue
         head = c.label_ref(tok['document'], tok['id'], budget)
+        ws.note_metadata(tok['id'], meta)
         staged.append({'kind': 'set_orthography', 'word_id': tok['id'], 'key': f'orthog:{target}', 'value': value,
                        'doc': tok['document'], 'label': f'{head} "{tok.get("value") or ""}": {target} = "{value}"'})
     return staged
@@ -960,6 +963,8 @@ def q_set_field_for_form(ws: Workspace, form: str, f, value: str, only_empty: bo
         if cur == value or (only_empty and cur != ''):
             continue
         head = c.label_ref(tok['document'], tok['id'], budget)
+        if old is not None:
+            ws.note_metadata(old.id, old.metadata)
         op = {'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': tok['id'], 'span_id': old.id if old else None,
               'value': value, 'doc': tok['document'],
               'label': f'{head} "{what[:40]}": {f.name} '
@@ -990,7 +995,9 @@ def q_analysis_targets(ws: Workspace, form: str, skip_analyzed: bool, cap: int):
         for m, w in c.entities(base, ['?m', '?w'], ROW_LIMIT, [['?w.doc'], ['?w.begin'], ['?m.precedence']]):
             if isinstance(m, dict) and isinstance(w, dict):
                 chains[w['id']].append(m)
+                ws.note_metadata(m['id'], m.get('metadata'))
         for sp, m in c.entities(base + [['span', '?s', {'layer': '?sl'}], ['covers', '?s', '?m']], ['?s', '?m'], ROW_LIMIT):
             if isinstance(sp, dict) and isinstance(m, dict):
                 spans[m['id']].append(sp['id'])
+                ws.note_metadata(sp['id'], sp.get('metadata'))
     return words, chains, spans

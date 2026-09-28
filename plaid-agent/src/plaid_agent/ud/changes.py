@@ -27,7 +27,7 @@ def describe_changes(ws, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def describe_change(ws, op: Dict[str, Any]) -> Dict[str, Any]:
     return {'label': op.get('label') or '', 'where': locate(ws, op),
             'writes_text': op.get('kind') in _PROSE_KINDS,
-            'replaces_work': bool(op.get(work.FLAG))}
+            'replaces_work': int(op.get(work.FLAG) or 0)}
 
 
 def locate(ws, op: Dict[str, Any]) -> Optional[Dict[str, Any]]:

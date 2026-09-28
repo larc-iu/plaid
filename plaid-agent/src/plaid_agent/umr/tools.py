@@ -13,7 +13,7 @@ import copy
 import uuid
 from typing import Any, Dict, List, Optional
 
-from ..core import docload, opkind
+from ..core import docload, fingerprint as fp, opkind
 from ..core.args import sentence_number
 from plaid_client.workflows.umr import (attr_value_problem, concept_problem,
                                         new_variable_problem, parse_attribute_line,
@@ -56,6 +56,16 @@ class Workspace(BaseWorkspace):
 
     def render(self, doc, **kw) -> str:
         return render_document(doc, self.project, doc.gloss, **kw)
+
+    def sentence_print(self, doc, sentence) -> str:
+        """The sentence's graph and words, and the gloss lines on its
+        sentence, words and morphemes, which the model reads its graph from
+        and another app writes. The document keeps those apart from the
+        sentence, so they are added here."""
+        ids = {sentence.id} | {w.id for w in sentence.words} | {m.id for m in sentence.morphemes}
+        gloss = {layer: {t: v for t, v in values.items() if t in ids}
+                 for layer, values in (doc.gloss or {}).items()}
+        return fp.fingerprint({'sentence': sentence, 'gloss': gloss})
 
     def comment_anchor(self, doc: 'UmrDoc', ref: str) -> str:
         # A sentence's comments hang off its token, as in the other apps.

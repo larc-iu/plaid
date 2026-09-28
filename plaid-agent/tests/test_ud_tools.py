@@ -1113,7 +1113,10 @@ def test_a_field_wide_replacement_is_one_planned_change_resolved_at_approval():
     assert '"Viaje": lemma "mar" → "mare"' in out
     op = ws.ops[0]
     assert op['kind'] == 'replace_scope' and op['count'] == 2 and op['documents'] == ['other', 'ud1']
-    assert op['label'] == 'lemma: replace "mar" with "mare" on 2 value(s) in 2 document(s)'
+    # Rows with no provenance are a person's values, counted as the change is
+    # staged since the scope is found again only at approval.
+    assert op['label'] == ('lemma: replace "mar" with "mare" on 2 value(s) in 2 document(s), '
+                           '2 of them replace accepted work')
     assert summarize(ws.ops) == '2 field values'
     # The document the preview matched without reading is pinned by version too.
     payload = ws.plan_payload()

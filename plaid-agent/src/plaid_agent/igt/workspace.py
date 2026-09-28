@@ -49,6 +49,27 @@ _DOC_CACHE = docload.DocCache()
 # The kinds that rewrite the text itself.
 TEXT_KINDS = frozenset(opkind.shaped(KIND, TEXT_SHAPE))
 
+# Documents a plan reaches only through query results that are read when the
+# plan is made, to pin them by sentence. Past it the rest are pinned whole, by
+# the version the query saw: reading every document of a corpus-wide change to
+# spare its approval an edit elsewhere is not worth the wait.
+PIN_LOAD_MAX = 50
+
+# The keys of a change that name the entry it writes a link to: a link's
+# entry, and the entry a merge moves every link onto.
+ENTRY_TARGET_KEYS = ('item_id', 'keep_id')
+
+
+def _sentence_linking(doc, entry_id: str) -> Optional[str]:
+    """The id of the first sentence of ``doc`` holding a link to the entry
+    ``entry_id`` (a word's own, a multi-word expression, a morpheme's)."""
+    for s in doc.sentences:
+        for w in s.words:
+            for link in [w.link, *w.mwes, *(m.link for m in w.morphemes)]:
+                if link is not None and link.item_id == entry_id:
+                    return s.id
+    return None
+
 
 class Workspace(BaseWorkspace):
     """One turn's view of an interlinear project: what it has loaded, the
@@ -73,6 +94,10 @@ class Workspace(BaseWorkspace):
         self._patch_version = 0
         self.new_entries: Dict[str, dict] = {}  # key -> {form, vocab_id, metadata}
         self._doc_ids: Dict[str, set] = {}  # document id -> every id the document contains
+        # The version of each document a change was staged in from a query
+        # without the turn loading it, read as the change was staged
+        # (``note_versions``), so the plan is pinned to what the query saw.
+        self._query_versions: Dict[str, Optional[int]] = {}
         # Corpus-wide tools ask the query engine unless told to scan every
         # document instead (tests compare the two).
         self.prefer_scan = False
@@ -84,10 +109,25 @@ class Workspace(BaseWorkspace):
     def op_sentences(self, op: Dict[str, Any], doc) -> Optional[set]:
         """A change to the text itself is placed by offsets into the whole
         text, which may run past the sentence it names, so it stays pinned
-        to the whole document."""
+        to the whole document.
+
+        A link names the entry it points at, which lives outside every
+        document. Deleting that entry, merging it away or renaming it
+        rewrites each link to it and moves the version of each document that
+        holds one, so a sentence here that already holds a link to the entry
+        is pinned beside the linked word's: one is enough to tell the entry
+        is gone. Where no sentence of the document holds one, the entry's
+        fate never moved this document's version either."""
         if op.get('kind') in TEXT_KINDS:
             return None
-        return super().op_sentences(op, doc)
+        found = super().op_sentences(op, doc)
+        if found is None:
+            return None
+        for entry_id in {op.get(k) for k in ENTRY_TARGET_KEYS} - {None, ''}:
+            holder = _sentence_linking(doc, entry_id)
+            if holder is not None:
+                found.add(holder)
+        return found
 
     def doc_tag(self, doc, show: bool = True) -> str:
         """The ``"<document>" `` prefix on a printed reference: the document's
@@ -449,8 +489,7 @@ class Workspace(BaseWorkspace):
         unloaded = {op['doc'] for op in self.ops if op.get('doc') and op['doc'] not in self._docs}
         unloaded |= {d for op in self.ops for d in (op.get('documents') or []) if d not in self._docs}
         if unloaded:
-            for did, version in self.corpus.versions(unloaded).items():
-                out.append({'id': did, 'name': self.corpus.doc_name(did), 'version': version})
+            out += self._pin_unloaded(unloaded)
         for did, doc in self._docs.items():
             ids = self._doc_ids.get(did)
             if ids is None:
@@ -476,6 +515,52 @@ class Workspace(BaseWorkspace):
             if any(_op_mentions(op, ids) for op in mine):
                 out.append(self.pinned({'id': doc.id, 'name': doc.name, 'version': doc.version},
                                        doc, mine))
+        return self.cap_pins(out)
+
+    def note_versions(self, doc_ids) -> None:
+        """Read, as changes are staged from a query, the version of each
+        document they land in that the turn has not loaded. The first reading
+        stands, so a plan is pinned to the document the query saw, not to
+        whatever it has become by the end of the turn."""
+        wanted = [d for d in dict.fromkeys(doc_ids)
+                  if d and d not in self._docs and d not in self._query_versions]
+        if wanted:
+            got = self.corpus.versions(wanted)
+            for d in wanted:
+                self._query_versions[d] = got.get(d)
+
+    def _pin_unloaded(self, doc_ids: set) -> List[Dict[str, Any]]:
+        """The records of the documents the plan reaches only through query
+        results. Each is pinned by sentence like a loaded one: it is read now
+        (up to :data:`PIN_LOAD_MAX` of them), and when it is still the version
+        the query saw, the sentences its changes depend on are fingerprinted
+        from it. A document read at another version, or past the budget, is
+        pinned whole by the version the query saw."""
+        missing = [d for d in sorted(doc_ids) if d not in self._query_versions]
+        versions = dict(self.corpus.versions(missing)) if missing else {}
+        versions.update({d: self._query_versions[d] for d in doc_ids if d in self._query_versions})
+        order = [d for d in sorted(doc_ids) if d in versions]
+        ops = {d: [op for op in self.ops if op.get('doc') == d or d in (op.get('documents') or [])
+                   or d in docs_of_op(op)] for d in order}
+        # A corpus-wide change stored as one is found again when approved, so
+        # its documents stay pinned whole and are not read for it.
+        readable = [d for d in order if versions[d] is not None
+                    and not any(opkind.resolver(self.KIND, op) for op in ops[d])][:PIN_LOAD_MAX]
+        # Cached by the version the query saw, so a document already read at
+        # that version is not read again.
+        key = {d: self._version_of({'version': versions[d]}) for d in readable}
+        self.reader.read_ahead([(d, key[d]) for d in readable])
+        out = []
+        for did in order:
+            entry = {'id': did, 'name': self.corpus.doc_name(did), 'version': versions[did]}
+            if did in readable:
+                try:
+                    doc = self.reader.get(did, key[did], entry['name'] or '')
+                except Exception:  # noqa: BLE001 - unreadable now: the version alone decides
+                    doc = None
+                if doc is not None and doc.version == versions[did]:
+                    entry = self.pinned(entry, doc, ops[did])
+            out.append(entry)
         return out
 
 def _op_mentions(value, ids: set) -> bool:
@@ -642,16 +727,25 @@ def _replaced_orthography(ws: Workspace, op: Dict[str, Any]) -> List[str]:
     already has, with something else, replaces what someone wrote there."""
     hit = _found(ws, op.get('word_id'))
     w = hit[1] if hit else None
-    if w is None:
-        return []
-    old = (w.metadata or {}).get(op.get('key'))
-    return [w.id] if old and old != (op.get('value') or '') else []
+    if w is not None:
+        metadata = w.metadata
+    else:
+        # A word a query returned, in a document the turn never loaded.
+        _found_it, metadata = ws.metadata_of(op.get('word_id'))
+    old = (metadata or {}).get(op.get('key'))
+    return [op.get('word_id')] if old and old != (op.get('value') or '') else []
 
 
 def _replaced_analysis(ws: Workspace, op: Dict[str, Any]) -> List[str]:
     existing = [m.get('id') for m in op.get('existing') or []]
-    return _analysis(_morphemes(ws, existing)) + [sid for m in op.get('existing') or []
-                                                  for sid in m.get('span_ids') or []]
+    found = _morphemes(ws, existing)
+    out = _analysis(found)
+    # Morphemes a query returned from a document the turn never loaded: a
+    # segmentation is theirs where there is more than one, as above.
+    known = {m.id for m in found}
+    if len(existing) > 1:
+        out += [i for i in existing if i and i not in known]
+    return out + [sid for m in op.get('existing') or [] for sid in m.get('span_ids') or []]
 
 
 _NONE = None
@@ -679,7 +773,10 @@ REPLACES = {
     'rename_document': _NONE, 'set_doc_metadata': _NONE,
     # The lexicon: an entry is not a document's annotation.
     'create_entry': _NONE, 'set_entry_field': _NONE, 'set_entry_metadata': _NONE,
-    'rename_entry': _NONE, 'merge_entries': _NONE, 'delete_entry': _NONE,
+    'rename_entry': _NONE, 'merge_entries': _NONE,
+    # Deleting an entry takes every link to it, and a link is a person's
+    # judgment that this word is that entry. A merge keeps each link, moved.
+    'delete_entry': lambda ws, op: list(op.get('links') or []),
     # The text itself and prose: the card's Rewrite line says so already.
     'edit_text': _NONE, 'respell': _NONE,
     'add_guideline': _NONE, 'revise_guideline': _NONE, 'rewrite_guideline': _NONE,

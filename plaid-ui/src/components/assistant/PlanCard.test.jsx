@@ -101,9 +101,34 @@ describe('changes that replace accepted work', () => {
     expect(hidden).toBe(18);
   });
 
-  it('reads the flag off the service row and defaults it off', () => {
-    const rows = planRows(plan([{ label: 'a', replacesWork: true }, { label: 'b' }]));
-    expect(rows.map((r) => r.replacesWork)).toEqual([true, false]);
-    expect(planRows({ labels: ['x'] })[0].replacesWork).toBe(false);
+  it('reads the count off the service row and defaults it to none', () => {
+    const rows = planRows(
+      plan([{ label: 'a', replacesWork: 1 }, { label: 'b' }, { label: 'c', replacesWork: 38 }]),
+    );
+    expect(rows.map((r) => r.replacesWork)).toEqual([1, 0, 38]);
+    expect(planRows({ labels: ['x'] })[0].replacesWork).toBe(0);
+  });
+
+  it('counts a corpus-wide replace by the accepted values it replaces', async () => {
+    const view = await mount(
+      plan([
+        {
+          label: 'replace_in_field: 400 changes in 40 documents, 38 of them replace accepted work',
+          replacesWork: 38,
+        },
+        { label: 's1d: dog becomes cat', replacesWork: 1 },
+        { label: 'add (s1x / thing)', replacesWork: 0 },
+      ]),
+    );
+    expect(byText(view.container, 'p', 'replace accepted work').textContent).toBe(
+      '39 changes replace accepted work.',
+    );
+    expect(
+      all(view.container, 'tr').filter((tr) => tr.textContent.includes('Accepted')),
+    ).toHaveLength(2);
+    // A count of none is not written out on its row.
+    const last = all(view.container, 'tr').at(-1);
+    expect(last.textContent.trim()).toBe('add (s1x / thing)');
+    await view.unmount();
   });
 });

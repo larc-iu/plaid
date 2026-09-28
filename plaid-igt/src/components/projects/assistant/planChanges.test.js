@@ -68,9 +68,9 @@ describe('planRows', () => {
         change: 'Gloss = "x"',
         label: 'a',
         writesText: false,
-        replacesWork: false,
+        replacesWork: 0,
       },
-      { index: 1, where: null, change: null, label: 'b', writesText: false, replacesWork: false },
+      { index: 1, where: null, change: null, label: 'b', writesText: false, replacesWork: 0 },
     ]);
   });
 
@@ -82,7 +82,7 @@ describe('planRows', () => {
         change: null,
         label: 'only a label',
         writesText: false,
-        replacesWork: false,
+        replacesWork: 0,
       },
     ]);
     expect(planRows(null)).toEqual([]);

@@ -247,7 +247,7 @@ const ChangeRow = ({ row, projectId, adapter }) => {
             Rewrite
           </Badge>
         )}
-        {row.replacesWork && (
+        {row.replacesWork > 0 && (
           <Badge
             variant="outline"
             className="mr-1.5 border-warning/40 px-1 py-0 align-[1px] text-[10px] font-medium text-warning-foreground"

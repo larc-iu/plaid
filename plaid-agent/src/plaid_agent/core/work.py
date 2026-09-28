@@ -18,9 +18,24 @@ from typing import Any, Dict, Iterable, Tuple
 
 from plaid_client.provenance import is_protected
 
-#: The key a plan op carries once it is known to replace a person's work. Set
-#: on the copy the card is built from, never on the turn's own plan.
+#: The key a plan op carries once it is known to replace a person's work,
+#: holding how many changes of a person's it replaces (1 for a change of one
+#: thing). Set on the copy the card is built from, never on the turn's own plan.
 FLAG = 'replaces_work'
+
+#: The key a corpus-wide change stored as one op carries from the moment it
+#: is staged: how many of the changes it stands for replace a person's work,
+#: counted from the provenance its query returned. What it replaces is found
+#: again only when it is approved, so this is the only time it can be counted.
+COUNTED = 'replaces_accepted'
+
+
+def counted_phrase(n: int) -> str:
+    """The end of a corpus-wide change's row that says how many of its
+    changes replace a person's work, or ''."""
+    if not n:
+        return ''
+    return f', {n} of them {"replaces" if n == 1 else "replace"} accepted work'
 
 
 def entities(obj: Any, path: tuple = ()) -> Iterable[Tuple[str, Any]]:
