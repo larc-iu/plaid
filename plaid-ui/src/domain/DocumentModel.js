@@ -29,6 +29,9 @@ const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
 // The audit label every heal write of a reconcile pass folds under, until the
 // pass names what it changed (see `describeReconcile`).
 const RECONCILE_LABEL = 'Repair on open';
+// The label a pass that failed partway ends with: what it wrote is only part
+// of any repair a fuller label would name.
+const RECONCILE_INTERRUPTED_LABEL = 'Repair on open (interrupted)';
 
 // What an edit planned on an out-of-date document is refused with, unsent: the
 // conflict the edit before it met, so every screen words it the same way.
@@ -623,13 +626,16 @@ export class DocumentModel {
   // Heal what another app may have left in the shared substrate, once, when
   // the document opens (useReconcileOnOpen holds the editor behind a gate while
   // it runs). The repair is the subclass's `_reconcile`, which resolves to a
-  // tally carrying `findings` (what it could not heal) and `error` (a repair
-  // that failed partway). Every heal write folds under ONE audit entry,
-  // relabelled by `describeReconcile` to name the repair that ran, and never
-  // after a failure, since the pass may have written half of what the label
-  // would claim. A pass that wrote nothing creates no group. Deliberately not
-  // a queued write: a failed heal must not reload and revert the freshly
-  // loaded document.
+  // tally carrying `findings` (what it could not heal), and `error` or
+  // `interrupted` for a repair that failed partway. Every heal write folds
+  // under ONE audit entry, relabelled by `describeReconcile` to name the
+  // repair that ran. A subclass may put that label on before its first write
+  // (UMR does, so a batch sent as several requests carries it from the
+  // first). A pass that failed partway ends as RECONCILE_INTERRUPTED_LABEL
+  // whatever it started with, since it may have written only part of what a
+  // fuller label would claim. A pass that wrote nothing creates no group.
+  // Deliberately not a queued write: a failed heal must not reload and revert
+  // the freshly loaded document.
   //
   // Concurrent callers (StrictMode's double invoke, a quick tab switch) share
   // ONE in-flight pass and its result, so the second caller reports the same
@@ -639,7 +645,9 @@ export class DocumentModel {
     this._reconcilePromise = this._client
       .withOperation(RECONCILE_LABEL, async (setMessage) => {
         const result = await this._reconcile();
-        if (!result.error) {
+        if (result.error || result.interrupted) {
+          setMessage(RECONCILE_INTERRUPTED_LABEL);
+        } else {
           const refined = this.describeReconcile(result);
           if (refined) setMessage(refined);
         }

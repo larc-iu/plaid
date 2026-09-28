@@ -8,6 +8,7 @@ import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
 import { rawFromPlan } from './rawFromPlan.js';
 import { recordingClient } from './recordingClient.js';
+import { PlaidClient } from '@larc-iu/plaid-client';
 
 const TEXT = `${'#'.repeat(80)}
 # :: snt1
@@ -59,7 +60,7 @@ test('a lock taken after the check is a deferral too, not a failure', async () =
   doc._client.batched = async () => {
     throw Object.assign(new Error('Document is locked by another user'), { status: 423 });
   };
-  assert.deepEqual(await doc._reconcile(), { findings: [], deferred: true });
+  assert.deepEqual(await doc._reconcile(), { findings: [], deferred: true, interrupted: true });
 });
 
 // ----- an add under way, seen by someone opening the document -----
@@ -167,6 +168,50 @@ test('a repair a lock cuts off part way leaves what it wrote under its own label
       committed: 1000,
     });
   };
-  assert.deepEqual(await doc._reconcile(), { findings: [], deferred: true });
+  assert.deepEqual(await doc._reconcile(), { findings: [], deferred: true, interrupted: true });
   assert.deepEqual(stamped, ['Repaired: removed 1 empty node an interrupted add left']);
+});
+
+// The client's own operation grouping, on the recording client: the label the
+// History entry ends with is the group's first message, or the relabel sent
+// when the operation ends.
+function grouped(client) {
+  const relabels = [];
+  for (const m of ['beginOperation', 'endOperation', 'withOperation']) {
+    client[m] = PlaidClient.prototype[m].bind(client);
+  }
+  client.operationGroup = null;
+  client.operationGroups = { update: async (id, message) => relabels.push(message) };
+  return relabels;
+}
+
+for (const [name, failure] of [
+  ['a lock', { status: 423 }],
+  ['any other error', { status: 500 }],
+]) {
+  test(`a repair ${name} cuts off after writing part of it is labeled as interrupted`, async () => {
+    const { doc } = open(() => null);
+    const relabels = grouped(doc._client);
+    const firstLabel = [];
+    doc._client.batched = async () => {
+      doc._client.operationGroup.written = true;
+      firstLabel.push(doc._client.operationGroup.message);
+      throw Object.assign(new Error('refused'), { ...failure, committed: 1000 });
+    };
+    await doc.reconcileOnOpen();
+    assert.deepEqual(firstLabel, ['Repaired: removed 1 empty node an interrupted add left']);
+    assert.deepEqual(relabels, ['Repair on open (interrupted)']);
+  });
+}
+
+test('a repair that finishes keeps the label naming it', async () => {
+  const { doc } = open(() => null);
+  const relabels = grouped(doc._client);
+  const run = doc._client.batched;
+  doc._client.batched = async (fn) => {
+    doc._client.operationGroup.written = true;
+    return run(fn);
+  };
+  await doc.reconcileOnOpen();
+  assert.deepEqual(relabels, ['Repaired: removed 1 empty node an interrupted add left']);
 });

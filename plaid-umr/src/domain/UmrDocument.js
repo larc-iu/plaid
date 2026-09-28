@@ -586,8 +586,9 @@ export class UmrDocument extends DocumentModel {
       await this._reload();
       return tally;
     } catch (error) {
-      // A service took the lock after the check above.
-      if (error?.status === 423) return { findings: [], deferred: true };
+      // A service took the lock after the check above. The requests before
+      // the refused one may have landed, so the pass counts as interrupted.
+      if (error?.status === 423) return { findings: [], deferred: true, interrupted: true };
       return { findings: [], error };
     }
   }
