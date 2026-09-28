@@ -110,6 +110,7 @@ jobs:
       # cannot quietly become a skip.
       - name: Install the fidelity validators
         run: |
+          sudo apt-get update
           sudo apt-get install -y --no-install-recommends libxml2-utils
           pip install pycldf
       - name: Run the fidelity round trips
