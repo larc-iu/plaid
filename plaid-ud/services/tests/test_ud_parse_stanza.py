@@ -378,8 +378,7 @@ def test_a_failed_token_batch_leaves_the_old_words_in_place():
 
 def test_a_document_someone_else_holds_is_refused_without_writing():
     service = _service()
-    said = ("Document d1 is locked by ann@x.com (likely being edited); "
-            "try again once they're done.")
+    said = "This document is being edited by ann@x.com. Try again once they're done."
 
     def locked(document_id):
         raise PlaidAPIError(said, status=423, url='http://plaid.internal:8085/api/v1/lock')

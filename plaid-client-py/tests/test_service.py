@@ -1073,7 +1073,7 @@ def test_a_read_that_got_no_answer_saved_nothing_either_way():
 def test_the_locks_own_wording_survives_the_scrub():
     # documents.locked() already authors a 423 for the person who asked; it
     # carries no URL, so nothing may rewrite it.
-    said = "Document d1 is locked by a@b.com (likely being edited); try again once they're done."
+    said = "This document is being edited by a@b.com. Try again once they're done."
     assert requester_message(PlaidAPIError(said, status=423, url='http://x:8085/lock')) == said
 
 

@@ -98,3 +98,15 @@ def test_a_write_outside_a_batch_always_carries_the_stamp():
     client.spans.update('s2', 'VERB')
 
     assert [_version_of(req['url']) for req in sent] == ['7', '7']
+
+
+def test_an_out_of_band_signal_carries_no_stamp():
+    """A service in strict mode reports progress, renews its lock and runs
+    queries while it writes. None of those is a write of the document, and a
+    stamp on one is a claim nothing checks (conc-2026-09-29)."""
+    client = _strict_client()
+    sent = _stub_session(client)
+    client.query({'find': ['?t'], 'where': []})
+    client.documents.renew_lock('d1', 'L1')
+    client.spans.update('s0', 'ADJ')
+    assert [_version_of(r['url']) for r in sent] == [None, None, '7']

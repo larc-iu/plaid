@@ -128,7 +128,7 @@ test("the lock's own wording survives the scrub", () => {
   // documents.locked() already authors a 423 for the person who asked; it
   // carries no URL, so nothing may rewrite it.
   const said =
-    "Document d1 is locked by a@b.com (likely being edited); try again once they're done.";
+    "This document is being edited by a@b.com. Try again once they're done.";
   const err = new Error(said);
   err.status = 423;
   err.url = "http://x:8085/api/v1/documents/d1/lock";

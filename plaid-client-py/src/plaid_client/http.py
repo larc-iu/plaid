@@ -472,9 +472,11 @@ def prepare_request(client, method, path, *, body=None, raw_body=None, form_data
     # whenever that write was one the route ignores, such as a vocabulary
     # entry's metadata. ``stamped_document`` names the document the stamp is
     # for, so a batch split into several requests can restamp its later ones
-    # (see ``PlaidClient._post_batch``).
+    # (see ``PlaidClient._post_batch``). An out-of-band signal (a lock, a
+    # service's progress, a query) is no write of the document and carries
+    # none.
     stamped_document = None
-    if client.strict_mode_document_id and method != 'GET':
+    if client.strict_mode_document_id and method != 'GET' and not out_of_band:
         doc_id = client.strict_mode_document_id
         doc_version = client.document_versions.get(doc_id)
         if doc_version:
