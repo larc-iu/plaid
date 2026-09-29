@@ -219,17 +219,16 @@
       (is (some #(and (string? %) (re-find #"^event: error" %)) @sent)))))
 
 (deftest an-admin-opening-a-channel-on-a-missing-project-is-refused
-  ;; The privilege check lets an admin in on any project id, so the route
-  ;; itself has to refuse a project that does not exist, before the SSE
-  ;; headers go out. A 200 followed by a silent close reads to a client as a
-  ;; blip, and it reconnects forever.
+  ;; A project that does not exist is refused before the SSE headers go
+  ;; out, with the 404 an unknown id answers an admin. A 200 followed by a
+  ;; silent close reads to a client as a blip, and it reconnects forever.
   (events/reset-state!)
   (let [opened (atom false)
         missing (str (java.util.UUID/randomUUID))]
     (with-redefs [http-kit/as-channel (fn [_ _] (reset! opened true) {:status 200 :body ""})]
       (let [resp (fix/rest-handler (admin-request :get (str "/api/v1/projects/" missing
                                                             "/services/svc/requests?service-name=svc")))]
-        (is (= 403 (:status resp)))
+        (is (= 404 (:status resp)))
         (is (not @opened))))
     (is (not (live? missing "svc")))))
 

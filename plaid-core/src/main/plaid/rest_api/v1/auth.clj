@@ -653,6 +653,27 @@
     (throw (ex-info "Bad key" {:key key})))
   (holds-privilege? request key (resolve-project-id request get-project-id)))
 
+(defn- named-in-path?
+  "Is `id` the value of one of the request's path parameters? An id the path
+  names is the resource the request is about, and one that names nothing is
+  a 404 to an admin. An id a resolver found in the body (a create's parent)
+  is not: a missing parent is the handler's 400."
+  [request id]
+  (let [id (str id)]
+    (boolean (some #(= id (str %)) (vals (-> request :parameters :path))))))
+
+(defn- unknown-project-for-admin
+  "The 404 when an admin's request names, in its path, a project id no
+  project has, or nil. Everyone else is left to the gate, which answers a
+  non-member 403 whether or not the id is real (the core ruling on unknown
+  ids), and so is an id resolved from the body."
+  [{db :db :as request} id]
+  (when (and (some? id)
+             (user/admin? (:user/record request))
+             (named-in-path? request id)
+             (not (psc/q1 db {:select [:id] :from [:projects] :where [:= :id id]})))
+    {:status 404 :body {:error "Project not found"}}))
+
 (defn wrap-project-privileges-required
   "Refuse the request unless its user holds `key` on the project
   `get-project-id` resolves.
@@ -668,8 +689,12 @@
     (throw (ex-info "Bad key" {:key key})))
   (fn [request]
     (let [id (resolve-project-id request get-project-id)
-          scope (:auth/token-scope request)]
+          scope (:auth/token-scope request)
+          unknown (unknown-project-for-admin request id)]
       (cond
+        unknown
+        unknown
+
         (holds-privilege? request key id)
         (handler request)
 
@@ -688,6 +713,45 @@
                             (if id
                               (str "project " id)
                               "the project this entity belongs to"))}}))))
+
+(defn- known?
+  "Is there a row `id` in `table` now, or, with `history?`, one the audit log
+  has ever written (a document or vocabulary deleted since, whose history
+  stays readable)?"
+  [db table id history?]
+  (boolean
+   (or (psc/q1 db {:select [:id] :from [table] :where [:= :id id]})
+       (and history?
+            (psc/q1 db {:select [:op_id]
+                        :from [:audit_writes]
+                        :where [:and
+                                [:= :target_table (name table)]
+                                [:= :target_id (str id)]]
+                        :limit 1})))))
+
+(defn wrap-entity-required
+  "Answer 404 unless `(get-id request)` names a row of `table` (or, with
+  `:history? true`, one the audit log has written). Goes AFTER a route's
+  privilege gate, for a route whose gate resolves an unknown id to nil and
+  whose handler would otherwise answer with an empty result. Only an admin
+  gets here with such an id: the gate answers anyone else 403, so a
+  non-member still learns nothing (the core ruling on unknown ids)."
+  [handler {:keys [table get-id label history?]}]
+  (fn [{db :db :as request}]
+    (let [id (get-id request)]
+      (if (and (some? id) (not (known? db table id history?)))
+        {:status 404 :body {:error (str label " not found")}}
+        (handler request)))))
+
+(defn- unknown-vocab-layer
+  "The 404 for a vocab gate whose path names no vocabulary, now or in its
+  history, or nil. Only an admin passes a vocab gate with such an id. An id
+  from the body (an entry's vocabulary on a create) is the handler's 400."
+  [{db :db :as request} vocab-id]
+  (when (and (some? vocab-id)
+             (named-in-path? request vocab-id)
+             (not (known? db :vocab_layers vocab-id true)))
+    {:status 404 :body {:error "Vocab layer not found"}}))
 
 (defn wrap-reader-required [handler get-project-id]
   (wrap-project-privileges-required handler :project/readers get-project-id))
@@ -788,7 +852,7 @@
          {:status 403
           :body {:error (or refusal
                             (str "User " user-id " lacks maintainer privileges for vocab layer " vocab-id))}}
-         (handler request))))))
+         (or (unknown-vocab-layer request vocab-id) (handler request)))))))
 
 (defn wrap-vocab-reader-required
   "Requires that the user has read access to the vocab layer through a project or is a maintainer/admin."
@@ -800,7 +864,7 @@
       (if-not (vocab-reader? db vocab-id user-id (:user/record request))
         {:status 403
          :body {:error (str "User " user-id " lacks read access to vocab layer " vocab-id)}}
-        (handler request)))))
+        (or (unknown-vocab-layer request vocab-id) (handler request))))))
 
 (defn wrap-vocab-writer-required
   "Requires that the user has write access to vocab items through a project or is a maintainer/admin."
@@ -812,5 +876,5 @@
       (if-not (vocab-writer? db vocab-id user-id (:user/record request))
         {:status 403
          :body {:error (str "User " user-id " lacks write access to vocab layer " vocab-id)}}
-        (handler request)))))
+        (or (unknown-vocab-layer request vocab-id) (handler request))))))
 

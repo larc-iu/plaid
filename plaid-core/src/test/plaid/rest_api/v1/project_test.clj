@@ -279,10 +279,10 @@
       (let [response (add-reader admin-request project-id "nonexistent@example.com")]
         (assert-status 400 response)))
 
-    (testing "Access management fails with invalid project ID"
+    (testing "Access management on an unknown project ID is a 404 to an admin"
       (let [fake-id (str (java.util.UUID/randomUUID))
             response (add-reader admin-request fake-id "user1@example.com")]
-        (assert-status 400 response)))))
+        (assert-status 404 response)))))
 
 (deftest cross-user-access-tests
   (testing "User access permissions"

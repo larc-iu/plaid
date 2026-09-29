@@ -48,6 +48,13 @@
     (handler (cond-> request
                as-of-ts (assoc :as-of-ts (hread/resolve-time db as-of-ts))))))
 
+(def ^:private document-required
+  "After the gate on a route whose handler would answer for any id (the lock
+  routes, which keep no row of their own): an admin naming a document that
+  does not exist gets a 404, not an empty answer or a lock on nothing."
+  [pra/wrap-entity-required {:table :documents :label "Document"
+                             :get-id #(-> % :parameters :path :document-id)}])
+
 (defn get-document-id [{params :parameters}]
   (-> params :path :document-id))
 
@@ -279,7 +286,7 @@
 
     ["/lock"
      {:get {:summary "Get information about a document lock"
-            :middleware [[pra/wrap-reader-required get-project-id]]
+            :middleware [[pra/wrap-reader-required get-project-id] document-required]
             :handler (fn [{{{:keys [document-id]} :path} :parameters}]
                        (if-let [lock-info (locks/get-lock-info document-id)]
                          {:status 200
@@ -294,7 +301,7 @@
                            "answers 423 once it has expired or been dropped, even when nobody holds the "
                            "document now. Writes carry no lock id: they pass for the user who holds the "
                            "lock.")
-             :middleware [[pra/wrap-writer-required get-project-id]]
+             :middleware [[pra/wrap-writer-required get-project-id] document-required]
              :parameters {:query [:map [:lock-id {:optional true} [:string {:min 1}]]]}
              :handler (fn [{{{:keys [document-id]} :path {:keys [lock-id]} :query} :parameters
                             user-id :user/id}]
@@ -326,7 +333,7 @@
       :delete {:summary (str "Release a document lock. <body>lock-id</body> is the id the acquire "
                              "answered with, and only that holder's lock is released. Answers 204 "
                              "either way.")
-               :middleware [[pra/wrap-writer-required get-project-id]]
+               :middleware [[pra/wrap-writer-required get-project-id] document-required]
                :parameters {:query [:map [:lock-id [:string {:min 1}]]]}
                :handler (fn [{{{:keys [document-id]} :path {:keys [lock-id]} :query} :parameters
                               user-id :user/id}]

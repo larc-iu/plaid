@@ -127,10 +127,10 @@
       (assert-not-found (get-vocab-layer admin-request fake-id))
       (assert-not-found (update-vocab-layer admin-request fake-id {:name "Test"}))
       (assert-not-found (delete-vocab-layer admin-request fake-id))
-      ;; assert-user-and-vocab! treats both missing user and missing
-      ;; vocab as 400 (symmetric with v2's project-counterpart check).
-      (assert-bad-request (add-vocab-maintainer admin-request fake-id "user1@example.com"))
-      (assert-bad-request (remove-vocab-maintainer admin-request fake-id "user1@example.com")))))
+      ;; A vocabulary the path names that does not exist is a 404 to an
+      ;; admin, as an unknown id is everywhere (a missing USER stays 400).
+      (assert-not-found (add-vocab-maintainer admin-request fake-id "user1@example.com"))
+      (assert-not-found (remove-vocab-maintainer admin-request fake-id "user1@example.com")))))
 
 (deftest vocab-item-functionality
   (let [vocab-res (create-vocab-layer admin-request "Test Vocab for Items")

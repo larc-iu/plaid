@@ -145,7 +145,9 @@
    ["/documents/:document-id/audit"
     {:parameters {:path [:map [:document-id :uuid]]}
      :get {:summary    (str "Get audit log for a document. " op-types-doc order-doc)
-           :middleware [[pra/wrap-reader-required get-project-id-from-document]]
+           :middleware [[pra/wrap-reader-required get-project-id-from-document]
+                        [pra/wrap-entity-required {:table :documents :label "Document" :history? true
+                                                   :get-id #(-> % :parameters :path :document-id)}]]
            :parameters {:query pagination-query}
            :handler    (fn [{{{:keys [document-id]} :path query :query} :parameters db :db}]
                          (audit-response
