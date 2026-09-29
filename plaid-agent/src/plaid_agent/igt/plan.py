@@ -1327,7 +1327,9 @@ def create_document(client, project, name: str, text: str, metadata: Dict[str, A
     """Document + baseline text + sentence and word tokens, tokenized as the
     editor would (one sentence per line, words split on whitespace and
     punctuation). Returns the new document id."""
-    doc = client.documents.create(project.id, name, metadata or None)
+    # No metadata is none sent: a null is refused as a metadata map.
+    doc = (client.documents.create(project.id, name, metadata) if metadata
+           else client.documents.create(project.id, name))
     doc_id = doc['id']
     try:
         _seed_text(client, project, doc_id, text)
@@ -1342,17 +1344,30 @@ def create_document(client, project, name: str, text: str, metadata: Dict[str, A
 
 
 def _seed_text(client, project, doc_id: str, text: str) -> str:
-    """A document's first text, with sentence and word tokens. Returns the text id."""
+    """A document's first text, with sentence and word tokens. Returns the text id.
+
+    The sentence layer is a partition, which the server takes only whole: the
+    first sentence starts at 0, each runs to the start of the next, so the
+    newline and the whitespace after it stay with the sentence before (as
+    ``_line_starts`` says), and the last runs to the end of the text. A bulk
+    create is one layer, so the sentences and the words are two, in one
+    batch."""
     from .project import split_sentences, split_words
     t = client.texts.create(project.text_layer_id, doc_id, text)
     text_id = t['id']
-    sents = split_sentences(text)
-    body = [{'token_layer_id': project.sentence_layer_id, 'text': text_id, 'begin': b, 'end': e} for b, e in sents]
-    for b, e in sents:
-        body.extend({'token_layer_id': project.word_layer_id, 'text': text_id, 'begin': wb, 'end': we}
-                    for wb, we in split_words(text, b, e, project.ignored_cfg))
-    if body:
-        client.tokens.bulk_create(body)
+    lines = split_sentences(text)
+    if not lines:
+        return text_id
+    starts = [0] + [b for b, _ in lines[1:]]
+    ends = starts[1:] + [len(text)]
+    sentences = [{'token_layer_id': project.sentence_layer_id, 'text': text_id, 'begin': b, 'end': e}
+                 for b, e in zip(starts, ends)]
+    words = [{'token_layer_id': project.word_layer_id, 'text': text_id, 'begin': wb, 'end': we}
+             for b, e in lines for wb, we in split_words(text, b, e, project.ignored_cfg)]
+    with client.batched() as batch:
+        batch.tokens.bulk_create(sentences)
+        if words:
+            batch.tokens.bulk_create(words)
     return text_id
 
 

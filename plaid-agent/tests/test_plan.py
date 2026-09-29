@@ -569,14 +569,21 @@ def test_execute_creates_documents_tokenized_like_the_editor():
     assert c.payloads('documents.create') == [{'args': ('p1', 'Text 2', {'Date': '2022'}), 'kwargs': {}}]
     # The fake answers the document create with its first id, the text create with its second.
     assert c.payloads('texts.create')[0]['args'] == ('tl', 'documents-1', 'Ali-di gam, akuna!\n  Gam-ar.\n')
-    [bulk] = c.payloads('tokens.bulk_create')
-    sents = [(t['begin'], t['end']) for t in bulk if t['token_layer_id'] == 'tk-sent']
-    words = [(t['begin'], t['end']) for t in bulk if t['token_layer_id'] == 'tk-word']
+    # One batch, two bulk creates: the server takes one layer per bulk create,
+    # and the sentence layer only as a whole partition of the text, which the
+    # fake refuses otherwise (conc-2026-09-29 REV-F-PY R3).
+    [batch] = [b for b in c.batches if b[0][0] == 'tokens.bulk_create']
+    assert [kind for kind, _ in batch] == ['tokens.bulk_create', 'tokens.bulk_create']
+    (_, sentences), (_, words) = batch
+    assert {t['token_layer_id'] for t in sentences} == {'tk-sent'}
+    assert {t['token_layer_id'] for t in words} == {'tk-word'}
     text = 'Ali-di gam, akuna!\n  Gam-ar.\n'
-    assert [text[b:e] for b, e in sents] == ['Ali-di gam, akuna!', 'Gam-ar.']
+    # The newline and the indent after it stay with the sentence before, and
+    # the last sentence runs to the end of the text.
+    assert [text[t['begin']:t['end']] for t in sentences] == ['Ali-di gam, akuna!\n  ', 'Gam-ar.\n']
     # '-' is punctuation, so it splits words (no whitelist in the fixture); ',' and '!' stay in gaps
-    assert [text[b:e] for b, e in words] == ['Ali', 'di', 'gam', 'akuna', 'Gam', 'ar']
-    assert all(t['text'] == 'texts-2' for t in bulk)
+    assert [text[t['begin']:t['end']] for t in words] == ['Ali', 'di', 'gam', 'akuna', 'Gam', 'ar']
+    assert all(t['text'] == 'texts-2' for t in sentences + words)
 
 
 def test_execute_lexicon_and_document_ops():
@@ -751,3 +758,13 @@ def test_updates_fold_into_bulk_sub_ops_by_resource_and_chunk():
     assert b.applied == BULK_CHUNK + 5 + 1 + 1
     assert c.batches[0][0][0] == 'spans.create'
     assert len(c.batches) == 1
+
+
+def test_a_new_document_with_no_metadata_sends_none():
+    """A null metadata map is refused by the server (400), which took every
+    plan creating a document with no metadata down, and deleted the half
+    document it had made."""
+    c = FakeClient()
+    ops = [{'kind': 'create_document', 'name': 'Text 2', 'text': 'Gam-ar.\n', 'metadata': {}, 'label': ''}]
+    execute_plan(c, ops, source='s', label='l', project=load_project(c, 'p1'))
+    assert c.payloads('documents.create') == [('p1', 'Text 2')]

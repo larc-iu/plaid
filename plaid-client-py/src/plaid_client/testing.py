@@ -492,12 +492,15 @@ class Resource:
         what it answers made on the client."""
         if method == 'create':
             new = writer.new_id(self._name)
+            if self._name == 'texts':
+                _root(self._client).text_bodies[new] = arguments.get('body') or ''
             return {'args': args, 'kwargs': kwargs}, {'body': {'id': new}}, {'id': new}
         if method == 'bulk_create':
             ops = list(arguments['body'])
             if not ops:
                 raise _refusal(_root(self._client), 400, f'A {self._name} bulk create needs '
                                'at least one entry', sent.method, sent.path)
+            self._check_bulk_create(ops, sent)
             ids = [writer.new_id(self._name) for _ in ops]
             return ops, {'body': {'ids': ids}}, {'ids': ids}
         if method == 'bulk_update':
@@ -520,6 +523,39 @@ class Resource:
             new = writer.new_id(self._name)
             return _payload(args, kwargs), {'body': {'id': new}}, {'id': new}
         return _payload(args, kwargs), {'body': {}}, {}
+
+    #: the key naming the one layer every entry of a bulk create must share
+    _BULK_LAYER_KEY = {'tokens': 'token_layer_id', 'spans': 'span_layer_id',
+                       'relations': 'relation_layer_id'}
+
+    def _check_bulk_create(self, ops, sent):
+        """The server's two rules on a bulk create: every entry in one layer,
+        and on a partitioning layer (the sentence layer, by its role) the
+        whole of the text, in tokens with no gap and no overlap."""
+        root = _root(self._client)
+        key = self._BULK_LAYER_KEY.get(self._name)
+        if not key:
+            return
+        layers = {op.get(key) for op in ops}
+        if len(layers) > 1:
+            noun = self._name[:-1].capitalize()
+            raise _refusal(root, 400, f'{noun}s must all belong to the same layer',
+                           sent.method, sent.path)
+        if self._name != 'tokens' or layers.pop() not in root.partitioning_layers():
+            return
+        length = root.text_length(ops[0].get('text'))
+        if length is None:
+            return
+        spans = sorted((op['begin'], op['end']) for op in ops)
+        if spans[0][0] != 0:
+            raise _refusal(root, 400, "Partition must start at the extent's begin",
+                           sent.method, sent.path)
+        if spans[-1][1] != length:
+            raise _refusal(root, 400, "Partition must end at the extent's end",
+                           sent.method, sent.path)
+        if any(a[1] != b[0] for a, b in zip(spans, spans[1:])):
+            raise _refusal(root, 400, 'Partition requires contiguous tokens (no gaps or overlaps)',
+                           sent.method, sent.path)
 
     def _check_bulk_update(self, items, sent):
         allowed, required = _BULK_UPDATE_KEYS[self._name]
@@ -782,6 +818,8 @@ class FakeClient:
         self.limits = dict(limits or {})
         #: each body ``query`` was asked, in order
         self.queries = []
+        #: the body of each text made by ``texts.create``, by its id
+        self.text_bodies = {}
         self.server = types.SimpleNamespace(limits=lambda: dict(self.limits),
                                             info=lambda: {'limits': dict(self.limits)})
 
@@ -849,6 +887,28 @@ class FakeClient:
 
     def document(self, index=-1):
         return self._documents[index]
+
+    def _fixture_token_layers(self):
+        docs = self._documents.values() if isinstance(self._documents, dict) else self._documents
+        for holder in [self.project or {}, *docs]:
+            for text_layer in (holder or {}).get('text_layers') or []:
+                yield text_layer, text_layer.get('token_layers') or []
+
+    def partitioning_layers(self):
+        """The token layers the server keeps as a partition of the text: the
+        sentence layer, known by its role."""
+        return {layer['id'] for _, layers in self._fixture_token_layers() for layer in layers
+                if ((layer.get('config') or {}).get('plaid') or {}).get('role') == 'sentence'}
+
+    def text_length(self, text_id):
+        """The length of a text a document holds or a create made, or None."""
+        if text_id in self.text_bodies:
+            return len(self.text_bodies[text_id])
+        for text_layer, _ in self._fixture_token_layers():
+            text = text_layer.get('text') or {}
+            if text.get('id') == text_id and text.get('body') is not None:
+                return len(text['body'])
+        return None
 
     def query(self, body):
         """The one query the fake runs: the ids of a lexicon entry's links
