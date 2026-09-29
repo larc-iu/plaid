@@ -488,3 +488,57 @@
     (is (clojure.string/includes? error "names no document"))
     (is (not (clojure.string/includes? error "with the provided version"))
         "that phrasing belongs to the 409, where a document was found")))
+
+(deftest a-versioned-write-naming-what-was-deleted-is-a-conflict
+  ;; A first gloss on a word another user just deleted used to answer 400
+  ;; "document-version was provided but this request names no document": the
+  ;; resolver found no document for a token that is gone. For a client that
+  ;; sent a version, that is the document changing under it, and a 409 is
+  ;; what makes it refetch and say so.
+  (let [proj (create-test-project admin-request "GoneTargetVersionProj")
+        doc (create-test-document admin-request proj "Doc")
+        _ (assert-no-content (add-project-writer admin-request proj "user1@example.com"))
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        tokl (-> (create-token-layer admin-request tl "Tokens") :body :id)
+        sl (-> (create-span-layer admin-request tokl "Gloss") :body :id)
+        rl (-> (create-relation-layer admin-request sl "Deps") :body :id)
+        text (-> (create-text admin-request tl doc "ab cd ef") :body :id)
+        [t1 t2 t3] (mapv #(-> (create-token admin-request tokl text (first %) (second %)) :body :id)
+                         [[0 2] [3 5] [6 8]])
+        s1 (-> (create-span admin-request sl [t1] "A") :body :id)
+        s3 (-> (create-span admin-request sl [t3] "C") :body :id)
+        vocab (-> (create-vocab-layer admin-request "GoneTargetVocab") :body :id)
+        _ (assert-no-content (link-vocab-to-project admin-request proj vocab))
+        item (-> (create-vocab-item admin-request vocab "ab") :body :id)
+        _ (assert-no-content (delete-span admin-request s1))
+        _ (assert-no-content (delete-token admin-request t2))
+        v (psc/document-version fix/db doc)
+        versioned (fn [path body]
+                    (fix/api-call fix/user1-request {:method :post
+                                                     :path (str path "?document-version=" v)
+                                                     :body body}))]
+
+    (testing "a gloss on a deleted word"
+      (let [r (versioned "/api/v1/spans" {:span-layer-id sl :tokens [t2] :value "B"})]
+        (is (= 409 (:status r)))
+        (is (clojure.string/includes? (-> r :body :error) "no longer in the document"))))
+
+    (testing "a bulk create whose words are all deleted"
+      (is (= 409 (:status (versioned "/api/v1/spans/bulk" [{:span-layer-id sl :tokens [t2] :value "B"}])))))
+
+    (testing "a relation from a deleted span"
+      (is (= 409 (:status (versioned "/api/v1/relations" {:layer-id rl :source-id s1 :target-id s3
+                                                          :value "dep"})))))
+
+    (testing "a link on a deleted word is refused at the writer gate, which cannot tell a gone id from another project's"
+      (is (= 403 (:status (versioned "/api/v1/vocab-links" {:vocab-item item :tokens [t2]})))))
+
+    (testing "nothing was written, and the document is where it was"
+      (is (= v (psc/document-version fix/db doc))))
+
+    (testing "a versioned request naming nothing is still a 400"
+      (let [r (fix/api-call admin-request {:method :post
+                                           :path (str "/api/v1/spans/bulk?document-version=" v)
+                                           :body []})]
+        (is (= 400 (:status r)))
+        (is (clojure.string/includes? (-> r :body :error) "names no document"))))))

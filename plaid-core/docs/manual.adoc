@@ -1335,6 +1335,9 @@ client1.exitStrictMode()
 
 This failure gives client 1 the opportunity to reload the document only when it is necessary, allowing them to reconsider the current state of the document before making changes.
 
+The same 409 answers a versioned write whose target is gone: a gloss on a word, or a relation from a span, that another user deleted after client 1 read the document.
+A versioned write that names nothing at all, such as an empty bulk create, is a 400.
+
 == Locking
 
 Sometimes a more heavyweight solution is needed.

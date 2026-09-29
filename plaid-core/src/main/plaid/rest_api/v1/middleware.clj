@@ -548,6 +548,14 @@
                             "v2 UUIDs are no longer supported)")}}
         (handler request)))))
 
+(defn- names-ids?
+  "Does the request name any entity by id, in its path or anywhere in its
+  body? A versioned write whose ids resolve to no document names things that
+  were deleted, where one naming none (an empty bulk body) names nothing."
+  [request]
+  (let [{:keys [path body]} (:parameters request)]
+    (boolean (some uuid? (tree-seq coll? seq [(vals path) body])))))
+
 (defn wrap-document-version
   "Optimistic-concurrency middleware. For non-GET requests carrying
   `document-version=<int>` in the query, BINDS the parsed integer to
@@ -621,9 +629,17 @@
                   (swap! validated-versions assoc doc-id parsed-version))
                 (binding [psaw/*expected-document-version* parsed-version]
                   (handler request)))))
-          ;; The resolver found no document at all, which is a different thing
-          ;; from finding one at another version (that is the 409 above).
-          {:status 400 :body {:error "document-version was provided but this request names no document."}})
+          ;; The resolver found no document at all. When the request names
+          ;; ids, they are gone: another user deleted the token or span this
+          ;; write hangs on after the client read the document. That is the
+          ;; document changing under the client, the 409 above, and a client
+          ;; that refetches on a 409 shows it. A request that names nothing
+          ;; is a malformed one.
+          (if (names-ids? request)
+            {:status 409
+             :body {:error (str "Document version mismatch. What this request names is no longer "
+                                "in the document.")}}
+            {:status 400 :body {:error "document-version was provided but this request names no document."}}))
 
         :else
         (handler request)))))
