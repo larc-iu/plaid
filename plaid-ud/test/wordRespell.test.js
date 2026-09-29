@@ -127,11 +127,45 @@ test('changing how many words a token has still replaces them', async () => {
 test("what replacing a token's words deletes: annotations but not a lemma that repeats the form, and relations", () => {
   const { doc, word } = open();
   // she: lemma "she" repeats the form, UPOS PRON, head nsubj.
-  assert.deepEqual(doc.annotationLossForWord(word('she')), { annotations: 1, relations: 1 });
+  assert.deepEqual(doc.annotationLossForWord(word('she')), {
+    annotations: 1,
+    relations: 1,
+    forms: 0,
+  });
   // left: lemma "leave", UPOS VERB, its head conj and two dependents.
-  assert.deepEqual(doc.annotationLossForWord(word('left')), { annotations: 2, relations: 3 });
+  assert.deepEqual(doc.annotationLossForWord(word('left')), {
+    annotations: 2,
+    relations: 3,
+    forms: 0,
+  });
   // ".": nothing on it.
-  assert.deepEqual(doc.annotationLossForWord(word('.')), { annotations: 0, relations: 0 });
+  assert.deepEqual(doc.annotationLossForWord(word('.')), {
+    annotations: 0,
+    relations: 0,
+    forms: 0,
+  });
+});
+
+test("a token's forms: every one on a multiword token, and a respelled one", async () => {
+  // del = de + el with nothing else on the words: the split is all there is.
+  const bare = open(
+    [
+      '# text = del perro',
+      '1-2\tdel\t_\t_\t_\t_\t_\t_\t_\t_',
+      '1\tde\t_\t_\t_\t_\t_\t_\t_\t_',
+      '2\tel\t_\t_\t_\t_\t_\t_\t_\t_',
+      '3\tperro\t_\t_\t_\t_\t_\t_\t_\t_',
+    ].join('\n'),
+  );
+  assert.deepEqual(bare.doc.annotationLossForWord(bare.word('del')), {
+    annotations: 0,
+    relations: 0,
+    forms: 2,
+  });
+  assert.equal(bare.doc.annotationLossForWord(bare.word('perro')).forms, 0);
+  const { doc, word } = open();
+  await doc.setWordMorphemes(word('home'), ['house']);
+  assert.equal(doc.annotationLossForWord(word('home')).forms, 1);
 });
 
 test('the lemmas Tokenize, a new word and a new set of words start with are stamped machine', async () => {

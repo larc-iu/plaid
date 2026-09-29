@@ -182,9 +182,12 @@ export const TextEditor = () => {
   };
 
   // What goes with a token's words, as the question before it goes names it.
-  // Null when nothing does.
-  const lossOf = (word) => {
-    const { annotations, relations } = doc.annotationLossForWord(word);
+  // Null when nothing does. Deleting the token also loses its words' forms
+  // (a multiword token's split, a respelled word).
+  const lossOf = (word, { withForms = false } = {}) => {
+    const loss = doc.annotationLossForWord(word);
+    const annotations = loss.annotations + (withForms ? loss.forms : 0);
+    const { relations } = loss;
     const parts = [
       annotations > 0 && `${annotations} ${plural(annotations, 'annotation')}`,
       relations > 0 && `${relations} ${plural(relations, 'relation')}`,
@@ -199,7 +202,7 @@ export const TextEditor = () => {
   const handleWordDelete = async (wordId) => {
     if (!doc) return;
     const word = doc.layerInfo.wordTokenLayer?.tokens?.find((t) => t.id === wordId);
-    const loss = word ? lossOf(word) : null;
+    const loss = word ? lossOf(word, { withForms: true }) : null;
     if (loss) {
       const ok = await confirm({
         title: 'Delete token?',

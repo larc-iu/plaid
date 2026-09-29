@@ -69,7 +69,7 @@ const press = async (label) => {
 
 describe('the Text Editor asking before words go', () => {
   it('respells as many words as before without asking', async () => {
-    const doc = setup({ annotations: 2, relations: 1 });
+    const doc = setup({ annotations: 2, relations: 1, forms: 0 });
     const view = await mount();
     await act(async () => visualized.props.onSetWordMorphemes(home, ['house']));
     expect(dialog()).toBeNull();
@@ -78,7 +78,7 @@ describe('the Text Editor asking before words go', () => {
   });
 
   it('asks before another number of words replaces annotated ones, naming what goes', async () => {
-    const doc = setup({ annotations: 2, relations: 1 });
+    const doc = setup({ annotations: 2, relations: 1, forms: 0 });
     const view = await mount();
     let done;
     await act(async () => {
@@ -93,14 +93,14 @@ describe('the Text Editor asking before words go', () => {
   });
 
   it('deletes a token with nothing on it at once, and asks for one with annotations', async () => {
-    const bare = setup({ annotations: 0, relations: 0 });
+    const bare = setup({ annotations: 0, relations: 0, forms: 0 });
     let view = await mount();
     await act(async () => visualized.props.onWordDelete('w1'));
     expect(dialog()).toBeNull();
     expect(bare.deleteWord).toHaveBeenCalledWith('w1');
     await view.unmount();
 
-    const doc = setup({ annotations: 1, relations: 0 });
+    const doc = setup({ annotations: 1, relations: 0, forms: 0 });
     view = await mount();
     let done;
     await act(async () => {
@@ -110,6 +110,29 @@ describe('the Text Editor asking before words go', () => {
     await press('Delete');
     await act(async () => done);
     expect(doc.deleteWord).toHaveBeenCalledWith('w1');
+    await view.unmount();
+  });
+
+  it("asks before deleting a token whose only annotation is its words' forms", async () => {
+    const doc = setup({ annotations: 0, relations: 0, forms: 2 });
+    const view = await mount();
+    let done;
+    await act(async () => {
+      done = visualized.props.onWordDelete('w1');
+    });
+    expect(dialog().textContent).toContain('Deletes 2 annotations on “home”.');
+    await press('Cancel');
+    await act(async () => done);
+    expect(doc.deleteWord).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  it('retypes words in another number without asking about the forms it replaces', async () => {
+    const doc = setup({ annotations: 0, relations: 0, forms: 2 });
+    const view = await mount();
+    await act(async () => visualized.props.onSetWordMorphemes(home, ['ho', 'me']));
+    expect(dialog()).toBeNull();
+    expect(doc.setWordMorphemes).toHaveBeenCalledWith(home, ['ho', 'me']);
     await view.unmount();
   });
 });

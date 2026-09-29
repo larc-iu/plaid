@@ -905,7 +905,10 @@ export class ConlluDocument extends DocumentModel {
   // What replacing a token's words deletes with them, as the Text Editor
   // asks before it does: the annotations on the words (a lemma that only
   // repeats the word's form is not counted) and the dependency relations
-  // attached to them. `{ annotations, relations }`.
+  // attached to them. `forms` counts the words' Form spans: every one on a
+  // token of several words, and one that differs from the text on a token of
+  // one word. Deleting the token loses them, while retyping its words writes
+  // the new forms. `{ annotations, relations, forms }`.
   annotationLossForWord(word) {
     const info = this.layerInfo;
     const morphemes = (info.morphemeTokenLayer?.tokens || []).filter((m) => containsToken(word, m));
@@ -914,7 +917,8 @@ export class ConlluDocument extends DocumentModel {
       (layer?.spans || []).filter(
         (s) => Array.isArray(s.tokens) && s.tokens.some((t) => ids.has(t)),
       );
-    const forms = new Map(on(info.formLayer).map((s) => [s.tokens[0], s.value]));
+    const formSpans = on(info.formLayer);
+    const forms = new Map(formSpans.map((s) => [s.tokens[0], s.value]));
     const surface = cpSlice(this.body, word.begin, word.end);
     const lemmas = on(info.lemmaLayer);
     const annotations =
@@ -927,7 +931,14 @@ export class ConlluDocument extends DocumentModel {
     const relations = dependencyRelationLayers(info)
       .flatMap((layer) => layer.relations || [])
       .filter((r) => !isSuppressor(r) && (lemmaIds.has(r.source) || lemmaIds.has(r.target))).length;
-    return { annotations, relations };
+    return {
+      annotations,
+      relations,
+      forms:
+        morphemes.length > 1
+          ? formSpans.length
+          : formSpans.filter((s) => s.value != null && s.value !== surface).length,
+    };
   }
 
   // Delete a word token (cascades its morphemes and their spans + relations
