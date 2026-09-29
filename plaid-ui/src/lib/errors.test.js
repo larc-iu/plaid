@@ -240,6 +240,18 @@ describe('a write to something that is gone', () => {
     expect(humanizeError(real)).toBe("You don't have permission to do that.");
   });
 
+  it("reads the server's unresolved field before the wording (D23)", () => {
+    const said = 'Any wording at all, naming vocab layer 0199aaaa-0000';
+    const gone = Object.assign(httpError(403, said), {
+      method: 'DELETE',
+      responseData: { error: said, unresolved: true },
+    });
+    expect(isGone(gone)).toBe(true);
+    expect(humanizeError(gone)).toBe(GONE);
+    expect(isGone(refused(403, said, 'DELETE'))).toBe(false);
+    expect(isGone({ ...gone, method: 'GET' })).toBe(false);
+  });
+
   it('reads the message off the error when the body is not there', () => {
     const e = Object.assign(
       new Error(

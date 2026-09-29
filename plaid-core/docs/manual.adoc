@@ -61,6 +61,8 @@ Additionally, a global **admin** role exists, which allows the user to see and e
 
 A request for a project, document, vocabulary or user that does not exist answers 404 to an admin.
 Anyone else gets the 403 they would get for one that exists but is not theirs, so the status does not tell them whether it exists.
+When the id a request names (in its path, its body, or an op of a `/batch`) resolves to nothing, the 403's body also carries `"unresolved": true` beside its `error`.
+A client reads that as "changed or removed by someone else" rather than as a missing permission.
 A user's record and profile picture are readable by every signed-in user, so an unknown user there is a 404 to everyone.
 Adding or removing a project member or vocabulary maintainer who has no account is a 400.
 

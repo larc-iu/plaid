@@ -688,6 +688,16 @@
              (not (psc/q1 db {:select [:id] :from [:projects] :where [:= :id id]})))
     {:status 404 :body {:error "Project not found"}}))
 
+(defn- unresolved-if
+  "A 403 `body` with `:unresolved true` added when `unresolved?`: the id the
+  request named resolved to nothing (deleted since the caller read it, or
+  never there). The status stays 403 (the core ruling on unknown ids), and
+  the field tells a client no more than the wording already does, so a
+  client can read the refusal as changed or removed without matching the
+  message's text."
+  [unresolved? body]
+  (cond-> body unresolved? (assoc :unresolved true)))
+
 (defn wrap-project-privileges-required
   "Refuse the request unless its user holds `key` on the project
   `get-project-id` resolves.
@@ -722,11 +732,12 @@
 
         :else
         {:status 403
-         :body {:error (str "User " (->user-id request)
-                            " lacks sufficient privileges to " (key verb) " "
-                            (if id
-                              (str "project " id)
-                              "the project this entity belongs to"))}}))))
+         :body (unresolved-if (nil? id)
+                              {:error (str "User " (->user-id request)
+                                           " lacks sufficient privileges to " (key verb) " "
+                                           (if id
+                                             (str "project " id)
+                                             "the project this entity belongs to"))})}))))
 
 (defn- known?
   "Is there a row `id` in `table` now, or, with `history?`, one the audit log
@@ -870,10 +881,11 @@
                                (vocab/maintainer? db vocab-id user-id))))]
        (if-not allowed?
          {:status 403
-          :body {:error (cond
-                          (nil? vocab-id) (str "User " user-id " lacks maintainer access to vocab layer")
-                          refusal refusal
-                          :else (str "User " user-id " lacks maintainer privileges for vocab layer " vocab-id))}}
+          :body (unresolved-if (nil? vocab-id)
+                               {:error (cond
+                                         (nil? vocab-id) (str "User " user-id " lacks maintainer access to vocab layer")
+                                         refusal refusal
+                                         :else (str "User " user-id " lacks maintainer privileges for vocab layer " vocab-id))})}
          (or (unknown-vocab-layer request vocab-id) (handler request)))))))
 
 (defn wrap-vocab-reader-required
@@ -885,7 +897,8 @@
                                   :db db})]
       (if-not (vocab-reader? db vocab-id user-id (:user/record request))
         {:status 403
-         :body {:error (str "User " user-id " lacks read access to vocab layer " vocab-id)}}
+         :body (unresolved-if (nil? vocab-id)
+                              {:error (str "User " user-id " lacks read access to vocab layer " vocab-id)})}
         (or (unknown-vocab-layer request vocab-id) (handler request))))))
 
 (defn wrap-vocab-writer-required
@@ -897,6 +910,7 @@
                                   :db db})]
       (if-not (vocab-writer? db vocab-id user-id (:user/record request))
         {:status 403
-         :body {:error (str "User " user-id " lacks write access to vocab layer " vocab-id)}}
+         :body (unresolved-if (nil? vocab-id)
+                              {:error (str "User " user-id " lacks write access to vocab layer " vocab-id)})}
         (or (unknown-vocab-layer request vocab-id) (handler request))))))
 

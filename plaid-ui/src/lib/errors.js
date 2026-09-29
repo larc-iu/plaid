@@ -64,9 +64,10 @@ export const isUnknownOutcome = (error) => {
 // A write refused because what it names is gone: another user deleted the
 // word, the annotation or the entry since this screen read it. The server
 // answers a writer 403 for an id it cannot place in a project (the core's
-// unknown-id ruling), and then its message names no project, where a real
-// refusal names the one it refused. An admin, and a route that looks the id
-// up itself, answers 404.
+// unknown-id ruling) with `unresolved: true` in its body. An admin, and a
+// route that looks the id up itself, answers 404. The message test is for an
+// error that lost its body: then the message names no project, where a real
+// refusal names the one it refused.
 const GONE_403 =
   /\bthe project this entity belongs to\b|\baccess to vocab layer(?:\(s\))?\s*(?:\[\s*\])?$/i;
 
@@ -76,6 +77,7 @@ export const isGone = (error) => {
   const s = statusOf(error);
   if (s === 404) return true;
   if (s !== 403) return false;
+  if (error?.responseData?.unresolved === true) return true;
   const said = String(error?.responseData?.error ?? '').trim();
   const msg = said || String(error?.message || '').replace(/\s+at\s+https?:\/\/\S+$/i, '');
   return GONE_403.test(msg.trim());
