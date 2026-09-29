@@ -127,6 +127,91 @@ describe('mergeText', () => {
     expect(mergeText('a b', 'a b b', 'a X')).toEqual({ conflict: true });
   });
 
+  it('is a conflict when a deleted line reads like the line the other side edited', () => {
+    // One word-level reading of the deletion keeps the start of the edited
+    // line and the end of the next, which would put "of" into the "away" line.
+    const base = [
+      'the dog ran home',
+      'and the cat sat',
+      'and the cat sat',
+      'the dog ran home',
+      'the dog ran home',
+      'the dog ran away',
+    ].join('\n');
+    const mine = base.replace('the dog ran home\nthe dog ran home\n', 'the dog ran home\n');
+    const theirs = base.replace(
+      'the dog ran home\nthe dog ran home\nthe dog ran away',
+      'the dog ran home\nthe of ran home\nthe dog ran away',
+    );
+    expect(mergeText(base, mine, theirs)).toEqual({ conflict: true });
+    expect(mergeText(base, theirs, mine)).toEqual({ conflict: true });
+  });
+
+  it('is a conflict when a side made of repeated words has more than one shortest diff', () => {
+    // The shortest diff of `theirs` scatters over lines 2 to 5, and `mine`'s
+    // insertion in line 4 fits between its pieces.
+    const base = 'la la la ta ta ta\nna ta ta na\nla\nna na la\nla la na na la la';
+    const mine = 'la la la ta ta ta\nna ta ta na\nla\nna la na la\nla la na na la la';
+    const theirs = 'la la la ta ta ta\nna ta ta la na\nla\nna na la';
+    expect(mergeText(base, mine, theirs)).toEqual({ conflict: true });
+  });
+
+  it('keeps a deleted line and an edit to a line that reads differently', () => {
+    const base = 'the dog ran home\nthe cat sat\nthe dog ran away';
+    expect(
+      mergeText(
+        base,
+        'the dog ran home\nthe dog ran away',
+        'the dog ran home\nthe cat sat\nthe dog ran far away',
+      ),
+    ).toEqual({ text: 'the dog ran home\nthe dog ran far away' });
+  });
+
+  // Lines of words drawn from a few repeated lines (a refrain), and two users'
+  // edits to distinct words or whole lines. The merge never builds a line out
+  // of the pieces of two: every line it gives is a line of the model result,
+  // or a line one of the two sides wrote, or it refuses.
+  it('never joins two refrain lines into one', () => {
+    const r = rng(53);
+    const POOL = [
+      ['the', 'dog', 'ran', 'home'],
+      ['and', 'the', 'cat', 'sat'],
+      ['the', 'dog', 'ran', 'away'],
+    ];
+    const FRESH = ['of', 'will', 'did', 'them'];
+    const pick = (xs) => xs[Math.floor(r() * xs.length)];
+    const ser = (lines) => lines.map((l) => l.join(' ')).join('\n');
+    const edit = (lines, lineAt, kind) => {
+      const out = lines.map((l) => [...l]);
+      if (kind === 'dline') out.splice(lineAt, 1);
+      else out[lineAt][Math.floor(r() * 4)] = pick(FRESH);
+      return out;
+    };
+    let merged = 0;
+    for (let t = 0; t < 600; t += 1) {
+      const lines = Array.from({ length: 3 + Math.floor(r() * 5) }, () => pick(POOL));
+      const a = Math.floor(r() * lines.length);
+      let b = Math.floor(r() * lines.length);
+      if (b === a) b = (a + 1) % lines.length;
+      const mineLines = edit(lines, a, r() < 0.5 ? 'dline' : 'word');
+      const theirLines = edit(lines, b, 'word');
+      const mine = ser(mineLines);
+      const theirs = ser(theirLines);
+      const result = mergeText(ser(lines), mine, theirs);
+      if (result.conflict) continue;
+      merged += 1;
+      const allowed = new Set([...mineLines, ...theirLines].map((l) => l.join(' ')));
+      const both = lines.map((l, i) => (i === b ? theirLines[b] : l));
+      const model =
+        mineLines.length < lines.length
+          ? both.filter((_, i) => i !== a)
+          : both.map((l, i) => (i === a ? mineLines[a] : l));
+      model.forEach((l) => allowed.add(l.join(' ')));
+      for (const line of result.text.split('\n')) expect(allowed).toContain(line);
+    }
+    expect(merged).toBeGreaterThan(200);
+  });
+
   // Words with ids, lines of them, and two users' edits to distinct words:
   // replace, delete, or put a new word before or after. The merge is what
   // both did, or a refusal, and never another text.
