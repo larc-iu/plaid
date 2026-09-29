@@ -1,4 +1,7 @@
-// Who stored the value an edit lost to, and the toast that says so.
+import { statusOf } from '@ui/lib/errors.js';
+
+// A cell's write, who stored the value an edit lost to, and the toast that
+// says so.
 //
 // A cell edit refused because someone else changed the cell first shows the
 // stored value, with the refused one under it (unsentValues.js). The toast
@@ -20,3 +23,17 @@ export async function whoChanged(client, documentId, spanId, me) {
 /** "b changed this to NOUN." */
 export const changedTo = (who, stored) =>
   stored ? `${who || 'Someone'} changed this to ${stored}.` : `${who || 'Someone'} cleared this.`;
+
+/**
+ * Write a cell's value. Answers what `updateAnnotation` does, or for a
+ * refusal `{ refused: true, status, error }`, so the cell can tell one that
+ * sending again could mend from one it cannot (see EditableCell). The cell
+ * reports a conflict itself, so the document raises no toast of its own for
+ * one.
+ */
+export async function writeCell(doc, tokenId, field, value) {
+  const ok = await doc.handlesConflicts(() => doc.updateAnnotation(tokenId, field, value));
+  if (ok !== false) return ok;
+  const error = doc.errorCause;
+  return { refused: true, status: statusOf(error), error };
+}

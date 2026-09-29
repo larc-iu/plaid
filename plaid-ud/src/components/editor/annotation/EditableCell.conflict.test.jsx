@@ -5,6 +5,7 @@ import { EditableCell } from './EditableCell.jsx';
 import { EditorSessionContext } from './editorSession.js';
 import { UnsentValues } from './unsentValues.js';
 import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
+import { writeCell } from './conflictNotice.js';
 
 // An edit refused because someone else changed the same cell first (a 409 on
 // a stale document, V3 H3-1, V1-S2, H6-5). The refetch that follows the
@@ -20,7 +21,8 @@ import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 // answer comes, the word gone (replaced by a parse), and the grid letting
 // go of the value on its next save while the cell still shows it (V3-a).
 
-vi.mock('../../../utils/feedback.jsx', () => ({ notifyWarning: vi.fn() }));
+const feedback = vi.hoisted(() => ({ notifyWarning: vi.fn(), notifyError: vi.fn() }));
+vi.mock('../../../utils/feedback.jsx', () => feedback);
 
 const VOCAB = { upos: ['NOUN', 'VERB', 'ADV', 'PROPN'], xpos: ['NNB', 'NNC', 'NN'] };
 
@@ -35,6 +37,7 @@ const made = (unsent) => {
 };
 afterEach(() => {
   for (const unsent of stores.splice(0)) unsent.clear();
+  feedback.notifyError.mockReset();
 });
 
 const makeSession = (onAnnotationUpdate, stored) => ({
@@ -363,5 +366,71 @@ describe('UnsentValues and the value stored now', () => {
     // The cell heard the put, and then that it was let go.
     expect(heard.length).toBe(2);
     unsent.clear();
+  });
+});
+
+// The document leaves a conflict (409) on a cell write to the cell, so there
+// is one toast, not the document's "Redo your edit" beside the cell's own.
+describe('the toast for a refused cell edit', () => {
+  const conflict409 = { refused: true, status: 409, error: { status: 409 } };
+
+  it("is the cell's alone when the cell lost to another user", async () => {
+    const run = await lostTo({ ...CASES[0], refusal: conflict409 });
+    showsTheirs(run, CASES[0]);
+    expect(feedback.notifyError).not.toHaveBeenCalled();
+    await run.view.unmount();
+  });
+
+  it('is the refusal itself when the conflict was elsewhere in the document', async () => {
+    const run = await lostTo({
+      field: 'lemma',
+      before: 'sit',
+      typed: 'sitC',
+      winner: 'sit',
+      refusal: conflict409,
+    });
+    expect(run.input.value).toBe('sitC');
+    expect(feedback.notifyError).toHaveBeenCalledTimes(1);
+    expect(feedback.notifyError).toHaveBeenCalledWith(conflict409.error, 'Failed to update lemma');
+    await run.view.unmount();
+  });
+});
+
+describe('writeCell', () => {
+  const fakeDoc = (answer, cause) => {
+    const doc = {
+      scoped: false,
+      errorCause: cause,
+      handlesConflicts(fn) {
+        this.scoped = true;
+        try {
+          return fn();
+        } finally {
+          this.scoped = false;
+        }
+      },
+      updateAnnotation: vi.fn(function () {
+        // The write is queued inside the scope.
+        expect(doc.scoped).toBe(true);
+        return Promise.resolve(answer);
+      }),
+    };
+    return doc;
+  };
+
+  it('writes inside handlesConflicts and answers what the write did', async () => {
+    const doc = fakeDoc(true);
+    expect(await writeCell(doc, 't1', 'lemma', 'wolf')).toBe(true);
+    expect(doc.updateAnnotation).toHaveBeenCalledWith('t1', 'lemma', 'wolf');
+  });
+
+  it('answers a refusal with its status and error', async () => {
+    const err = new Error('HTTP 409 Document version mismatch');
+    const doc = fakeDoc(false, err);
+    expect(await writeCell(doc, 't1', 'lemma', 'wolf')).toEqual({
+      refused: true,
+      status: 409,
+      error: err,
+    });
   });
 });

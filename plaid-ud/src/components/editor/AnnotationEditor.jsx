@@ -5,9 +5,8 @@ import { ParseDialog } from './services/ParseDialog.jsx';
 import { SentenceRow } from './annotation/SentenceRow.jsx';
 import { EditorSessionContext } from './annotation/editorSession.js';
 import { UnsentValues } from './annotation/unsentValues.js';
-import { whoChanged, changedTo } from './annotation/conflictNotice.js';
+import { whoChanged, changedTo, writeCell } from './annotation/conflictNotice.js';
 import { notifyWarning } from '../../utils/feedback.jsx';
-import { statusOf } from '@ui/lib/errors.js';
 import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
@@ -231,14 +230,8 @@ export const AnnotationEditor = () => {
   // useCallback keeps their identity stable across the transient saving
   // re-renders (isSaving/error emits), so the memoized sentence/cell subtree
   // isn't re-rendered mid-edit — otherwise focus jitters during the save.
-  // A refusal answers `{ refused: true, status }`, so a cell can tell one
-  // that sending again could mend from one it cannot (see EditableCell).
   const handleAnnotationUpdate = useCallback(
-    async (tokenId, field, value) => {
-      if (!doc) return undefined;
-      const ok = await doc.updateAnnotation(tokenId, field, value);
-      return ok === false ? { refused: true, status: statusOf(doc.errorCause) } : ok;
-    },
+    (tokenId, field, value) => (doc ? writeCell(doc, tokenId, field, value) : undefined),
     [doc],
   );
   const handleFeatureDelete = useCallback((spanId) => doc?.deleteFeature(spanId), [doc]);

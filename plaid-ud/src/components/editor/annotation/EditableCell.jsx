@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Combobox } from '@ui/components/shared/combobox';
-import { notifyWarning } from '../../../utils/feedback.jsx';
+import { notifyWarning, notifyError } from '../../../utils/feedback.jsx';
 import {
   readFieldProbs,
   groupSuggestions,
@@ -315,8 +315,11 @@ export const EditableCell = React.memo(
         // instead, and after a refusal that sending again cannot mend it is
         // not put back at all. The cell may be paged away by then, so it goes
         // to the grid's `unsent`, which hands it to the cell if one is drawn.
-        // `onUpdate` answers false, or `{ refused: true, status }`, for a
-        // refusal.
+        // `onUpdate` answers false, or `{ refused: true, status, error }`, for
+        // a refusal. A conflict (409) is reported here, since the document
+        // leaves it to the cell: the note and its toast, or for one that is
+        // not this cell's (another change came first elsewhere, the word is
+        // gone), the refusal as it is.
         // A refused edit of a cell edited again since is not put back: the
         // later edit is the annotator's value (`UnsentValues.settled`).
         const ticket = unsent.sending(tokenId, field, value || '');
@@ -328,6 +331,9 @@ export const EditableCell = React.memo(
             const outcome = unsent.put(tokenId, field, newValue, saved, {
               resend: !FINAL_REFUSALS.has(refusal.status),
             });
+            if (refusal.status === 409 && outcome !== 'conflict') {
+              notifyError(refusal.error ?? 'Changed elsewhere.', `Failed to update ${field}`);
+            }
             // Not put back, and the refetch may not have come (a project
             // gone refuses it too): the cell shows what it was typed over.
             if (outcome === 'dropped' && !isEditingRef.current) setValue(saved);
