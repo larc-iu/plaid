@@ -17,7 +17,7 @@ import { getIgtLayerInfo } from './layerInfo.js';
 import { readSpeakers, IGT_NAMESPACE } from './igtConfig.js';
 import { readVocabulary } from './vocabCache.js';
 import { statusOf } from '@ui/lib/errors.js';
-import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
+import { expectStored, isConfigConflict, sameConfig } from '@ui/domain/configCells.js';
 import {
   planMorphemeReconcile,
   planSpanDedup,
@@ -388,10 +388,12 @@ export class IgtDocument extends DocumentModel {
    */
   async refreshProject() {
     const project = await this._readProject();
-    if (!project) return false;
+    if (!project || sameConfig(project, this._project)) return false;
     this._project = project;
-    // `document` derives its metadata fields from the project.
-    this._derivedCache.delete('document');
+    // A new data version: the grid draws its cells, each with the tagset it
+    // checks against, again only when that changes, and `document` derives
+    // its metadata fields from the project.
+    this._dataVersion++;
     this._emit();
     return true;
   }

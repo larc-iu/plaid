@@ -69,6 +69,18 @@ describe('the project copy an open document holds', () => {
     expect(mode(doc)).toBe('suggest');
   });
 
+  // The grid draws its cells again only on a new data version, and each cell
+  // holds the tagset it checks against: without one, a tagset closed since
+  // was still let through after the project was read again.
+  it('gives the grid a new data version when the project changed, and not otherwise', async () => {
+    const { doc } = setup();
+    const v0 = doc.dataVersion;
+    expect(await doc.refreshProject()).toBe(true);
+    expect(doc.dataVersion).toBe(v0 + 1);
+    expect(await doc.refreshProject()).toBe(false);
+    expect(doc.dataVersion).toBe(v0 + 1);
+  });
+
   it('re-derives the document metadata fields from the new copy', async () => {
     const { doc, server } = setup();
     doc.raw.metadata = { Place: 'Bloomington' };
