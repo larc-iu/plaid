@@ -114,8 +114,8 @@ test('Ctrl+drag gives a word a second head without touching its tree', async ({ 
   // subject wants.
   await expect(label(page, 'nsubj')).toHaveCount(2);
 
-  const rows = await enhancedRows();
-  expect(rows.map((r) => r.value)).toEqual(['nsubj']);
+  // The arc is drawn before its write lands, so wait for the server to have it.
+  await expect.poll(async () => (await enhancedRows()).map((r) => r.value)).toEqual(['nsubj']);
   const doc = await S.client.documents.get(S.documentId, true);
   expect(getUdLayerInfo(doc).relationLayer.relations).toHaveLength(4);
 });
@@ -188,9 +188,14 @@ test('an abandoned relabel does not capture the next plain edit', async ({ page 
   await expect(label(page, 'cc:preconj')).toHaveCount(1);
   await expect(label(page, 'cc:preconj')).not.toHaveClass(/tree-deprel-text--suppressed/);
   await expect(page.locator('.enhanced-arc-path')).toHaveCount(2);
-  const doc = await S.client.documents.get(S.documentId, true);
-  const info = getUdLayerInfo(doc);
-  expect(info.relationLayer.relations.map((r) => r.value)).toContain('cc:preconj');
+  // The label changes before its write lands, so wait for the server to have it.
+  let info;
+  await expect
+    .poll(async () => {
+      info = getUdLayerInfo(await S.client.documents.get(S.documentId, true));
+      return info.relationLayer.relations.map((r) => r.value);
+    })
+    .toContain('cc:preconj');
   expect(info.enhancedRelationLayer.relations).toHaveLength(3);
 });
 
