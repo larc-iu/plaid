@@ -385,3 +385,51 @@ describe('an edit that removes a row', () => {
     expect(untouched(removeDog, base, now)).toBe(true);
   });
 });
+
+describe('an edit that joins two rows placed in a nested layer', () => {
+  // A relation between two spans on morphemes, the morpheme layer nested in
+  // the word layer, as ud's words nest in its sentences.
+  const joined = (over = {}) => {
+    const d = doc(over);
+    d.textLayers[0].tokenLayers.push({
+      id: 'morphs',
+      parentTokenLayer: 'words',
+      tokens: [
+        { id: 'm1', begin: 0, end: 3 },
+        { id: 'm2', begin: 4, end: 7 },
+      ],
+      spanLayers: [
+        {
+          id: 'lemmas',
+          spans: [
+            { id: 'l1', tokens: ['m1'], value: 'the' },
+            { id: 'l2', tokens: ['m2'], value: 'dog' },
+          ],
+          relationLayers: [{ id: 'deps', relations: [] }],
+        },
+      ],
+    });
+    return d;
+  };
+  const deps = (d) => d.textLayers[0].tokenLayers[2].spanLayers[0].relationLayers[0].relations;
+  const base = joined();
+  const headOfThe = edit(base, (d) =>
+    deps(d).push({ id: pendingId(), source: 'l2', target: 'l1', value: 'det' }),
+  );
+
+  it('is refused when a token of a parent layer under one of its ends was re-cut', () => {
+    // The stretch the two ends sat in was cut up differently (a sentence
+    // split between them): the relation may now join two of them.
+    const split = joined({ version: 2 });
+    words(split)[1] = { id: 't2', begin: 4, end: 5 };
+    words(split).push({ id: 't9', begin: 6, end: 7 });
+    expect(untouched(headOfThe, base, split)).toBe(false);
+  });
+
+  it('goes again when the parent layer was re-cut elsewhere', () => {
+    const elsewhere = joined({ version: 2 });
+    words(elsewhere)[2] = { id: 't3', begin: 8, end: 10 };
+    words(elsewhere).push({ id: 't9', begin: 10, end: 12 });
+    expect(untouched(headOfThe, base, elsewhere)).toBe(true);
+  });
+});

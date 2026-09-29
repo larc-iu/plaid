@@ -27,6 +27,8 @@
 //   differently since (a word split or joined), and what the edit placed
 //   inside the old cut may not sit inside the new one. A token only added
 //   there is no such change, nor is one in a layer that is not a parent.
+//   The same holds for the tokens a span or relation the edit writes sits
+//   on (a relation's two ends, split into two sentences since).
 // So a second value on the same word is a conflict, and so is any change to
 // the word itself, while a value on another word, or anything in a layer the
 // edit does not write, is not.
@@ -131,6 +133,25 @@ export function footprintOf(before, after) {
     }
     names.add(id);
   }
+  // Where the rows it writes that are not placed themselves sit in the text:
+  // the tokens they name, directly (a span's) or through what they name (a
+  // relation's ends). A re-cut of a parent layer over them (a sentence
+  // split between a relation's two ends) is judged as for a placed row.
+  const anchors = [];
+  const tokenOf = (id) => {
+    const e = b.get(id) ?? a.get(id);
+    return e && e.begin !== null && e.end !== null ? e : null;
+  };
+  for (const id of changed) {
+    const e = b.get(id);
+    if (!e || (e.begin !== null && e.end !== null)) continue;
+    for (const s of e.strings) {
+      const named = b.get(s) ?? a.get(s);
+      for (const t of [tokenOf(s), ...(named?.strings ?? []).map(tokenOf)]) {
+        if (t) anchors.push({ layer: t.layer, begin: t.begin, end: t.end });
+      }
+    }
+  }
   // Only ids count, and not a holder's. What names only this edit's own new
   // rows is not on the server to clash with.
   for (const id of [...names]) {
@@ -144,7 +165,7 @@ export function footprintOf(before, after) {
     const holder = (a.get(s.layer) ?? b.get(s.layer))?.layer;
     if (holder) texts.add(holder);
   }
-  return { layers, names, spans, texts, removed };
+  return { layers, names, spans, anchors, texts, removed };
 }
 
 // The pending ids an edit made (`created`: rows it added under an id the
@@ -214,7 +235,9 @@ export function untouched(footprint, before, now) {
     const was = a.get(id);
     if (
       recut(was, b.get(id)) &&
-      footprint.spans.some((s) => shares(was, s) && nestsIn(s.layer, was.layer, a, b))
+      [...footprint.spans, ...footprint.anchors].some(
+        (s) => shares(was, s) && nestsIn(s.layer, was.layer, a, b),
+      )
     ) {
       return false;
     }
