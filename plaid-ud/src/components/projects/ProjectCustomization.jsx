@@ -17,6 +17,7 @@ import {
 } from '../../utils/udMetadata.js';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { useManagedProject } from '@ui/hooks/useManagedProject.js';
+import { expectStored, isConfigConflict, sameConfig } from '@ui/domain/configCells.js';
 import { RotateCcw, Trash2 } from 'lucide-react';
 import { TagList } from '../common/TagList.jsx';
 import { MetadataFieldList } from '../common/MetadataFieldList.jsx';
@@ -76,6 +77,67 @@ const snapshot = (state) =>
       Object.entries(state.descriptions).map(([k, v]) => [k, cleanDescriptions(v || {})]),
     ),
   });
+
+// Every config cell this tab writes, with the value the tab's state stores
+// there. Mode and descriptions are SIBLING keys beside `vocab`, never a new
+// shape for it: see utils/udVocabMode.js. Descriptions are stored only where
+// they differ from what ships, so a project that never edited them stores
+// nothing and follows the app's copy.
+const configCells = (state, info, project) => {
+  const storedDescriptions = (map, shipped) =>
+    cleanDescriptions(
+      Object.fromEntries(
+        Object.entries(map || {}).filter(([value, text]) => text !== (shipped?.[value] ?? '')),
+      ),
+    );
+  const cells = [];
+  const add = (bundle, entity, key, value) =>
+    entity && cells.push({ id: `${entity.id}/${key}`, bundle, entity, key, value });
+  const { modes, descriptions } = state;
+
+  add('spanLayers', info.xposLayer, 'vocab', state.xposVocab);
+  add('spanLayers', info.xposLayer, 'vocabMode', modes.xpos || MODES.OPEN);
+  add('spanLayers', info.xposLayer, 'vocabDescriptions', storedDescriptions(descriptions.xpos));
+
+  add('relationLayers', info.relationLayer, 'vocab', state.deprelVocab);
+  add('relationLayers', info.relationLayer, 'colors', cleanColorMap(state.deprelColors));
+  add('relationLayers', info.relationLayer, 'vocabMode', modes.deprel || MODES.OPEN);
+  add(
+    'relationLayers',
+    info.relationLayer,
+    'vocabDescriptions',
+    storedDescriptions(descriptions.deprel, DEPREL_DESCRIPTIONS),
+  );
+
+  add('spanLayers', info.uposLayer, 'vocab', state.uposVocab);
+  add('spanLayers', info.uposLayer, 'colors', cleanColorMap(state.uposColors));
+  add('spanLayers', info.uposLayer, 'vocabMode', modes.upos || MODES.OPEN);
+  add(
+    'spanLayers',
+    info.uposLayer,
+    'vocabDescriptions',
+    storedDescriptions(descriptions.upos, UPOS_DESCRIPTIONS),
+  );
+
+  const inventory = state.featureInventory
+    .filter((e) => e.key.trim())
+    .map((e) => ({
+      key: e.key.trim(),
+      values: (e.values || []).map((v) => v.trim()).filter(Boolean),
+    }));
+  add('spanLayers', info.featuresLayer, 'inventory', inventory);
+  add('spanLayers', info.featuresLayer, 'vocabMode', modes.feats || MODES.OPEN);
+  add(
+    'spanLayers',
+    info.featuresLayer,
+    'vocabDescriptions',
+    storedDescriptions(descriptions.feats),
+  );
+
+  add('projects', project, DOCUMENT_METADATA_KEY, toMetadataConfig(state.documentFields));
+  add('projects', project, SENTENCE_METADATA_KEY, toMetadataConfig(state.sentenceFields));
+  return cells;
+};
 
 // "UD settings" section: project-specific controlled vocabularies, colors, and
 // the feature inventory. Everything here is local state until you press Save —
@@ -161,133 +223,50 @@ export const ProjectCustomization = () => {
     });
   };
 
-  // Persist everything on this tab in one go. Each setConfig is a PUT (full
-  // replace), so this is idempotent and safe to re-run.
+  // Save writes only the settings changed on this tab, in one batch, each
+  // expecting the value the tab was loaded with. A save by someone else since
+  // then refuses the batch (409), and the tab reads the project again.
   const handleSave = async () => {
     setSaving(true);
     try {
       const client = getClient();
       if (!client) throw new Error('Not authenticated');
       const info = getUdLayerInfo(project);
-
-      // Mode and descriptions are SIBLING keys beside `vocab`, never a new
-      // shape for it: see utils/udVocabMode.js. Descriptions are stored only
-      // where they differ from what ships, so a project that never edited them
-      // stores nothing and follows the app's copy.
-      const storedDescriptions = (map, shipped) =>
-        cleanDescriptions(
-          Object.fromEntries(
-            Object.entries(map || {}).filter(([value, text]) => text !== (shipped?.[value] ?? '')),
-          ),
-        );
-
-      if (info.xposLayer) {
-        await client.spanLayers.setConfig(info.xposLayer.id, UD_NAMESPACE, 'vocab', xposVocab);
-        await client.spanLayers.setConfig(
-          info.xposLayer.id,
-          UD_NAMESPACE,
-          'vocabMode',
-          modes.xpos || MODES.OPEN,
-        );
-        await client.spanLayers.setConfig(
-          info.xposLayer.id,
-          UD_NAMESPACE,
-          'vocabDescriptions',
-          storedDescriptions(descriptions.xpos),
-        );
-      }
-      if (info.relationLayer) {
-        await client.relationLayers.setConfig(
-          info.relationLayer.id,
-          UD_NAMESPACE,
-          'vocab',
-          deprelVocab,
-        );
-        await client.relationLayers.setConfig(
-          info.relationLayer.id,
-          UD_NAMESPACE,
-          'colors',
-          cleanColorMap(deprelColors),
-        );
-        await client.relationLayers.setConfig(
-          info.relationLayer.id,
-          UD_NAMESPACE,
-          'vocabMode',
-          modes.deprel || MODES.OPEN,
-        );
-        await client.relationLayers.setConfig(
-          info.relationLayer.id,
-          UD_NAMESPACE,
-          'vocabDescriptions',
-          storedDescriptions(descriptions.deprel, DEPREL_DESCRIPTIONS),
-        );
-      }
-      if (info.uposLayer) {
-        await client.spanLayers.setConfig(info.uposLayer.id, UD_NAMESPACE, 'vocab', uposVocab);
-        await client.spanLayers.setConfig(
-          info.uposLayer.id,
-          UD_NAMESPACE,
-          'colors',
-          cleanColorMap(uposColors),
-        );
-        await client.spanLayers.setConfig(
-          info.uposLayer.id,
-          UD_NAMESPACE,
-          'vocabMode',
-          modes.upos || MODES.OPEN,
-        );
-        await client.spanLayers.setConfig(
-          info.uposLayer.id,
-          UD_NAMESPACE,
-          'vocabDescriptions',
-          storedDescriptions(descriptions.upos, UPOS_DESCRIPTIONS),
-        );
-      }
-      if (info.featuresLayer) {
-        const inventory = featureInventory
-          .filter((e) => e.key.trim())
-          .map((e) => ({
-            key: e.key.trim(),
-            values: (e.values || []).map((v) => v.trim()).filter(Boolean),
-          }));
-        await client.spanLayers.setConfig(
-          info.featuresLayer.id,
-          UD_NAMESPACE,
-          'inventory',
-          inventory,
-        );
-        await client.spanLayers.setConfig(
-          info.featuresLayer.id,
-          UD_NAMESPACE,
-          'vocabMode',
-          modes.feats || MODES.OPEN,
-        );
-        await client.spanLayers.setConfig(
-          info.featuresLayer.id,
-          UD_NAMESPACE,
-          'vocabDescriptions',
-          storedDescriptions(descriptions.feats),
-        );
-      }
-
-      await client.projects.setConfig(
-        project.id,
-        UD_NAMESPACE,
-        DOCUMENT_METADATA_KEY,
-        toMetadataConfig(documentFields),
+      const current = {
+        uposVocab,
+        xposVocab,
+        deprelVocab,
+        deprelColors,
+        uposColors,
+        featureInventory,
+        documentFields,
+        sentenceFields,
+        modes,
+        descriptions,
+      };
+      const loaded = new Map(configCells(seedFrom(project), info, project).map((c) => [c.id, c]));
+      const changed = configCells(current, info, project).filter(
+        (c) => !sameConfig(c.value, loaded.get(c.id)?.value),
       );
-      await client.projects.setConfig(
-        project.id,
-        UD_NAMESPACE,
-        SENTENCE_METADATA_KEY,
-        toMetadataConfig(sentenceFields),
-      );
+      await client.batched((b) => {
+        for (const c of changed) {
+          b[c.bundle].setConfig(
+            c.entity.id,
+            UD_NAMESPACE,
+            c.key,
+            c.value,
+            undefined,
+            expectStored(c.entity, UD_NAMESPACE, c.key),
+          );
+        }
+      });
 
       await fetchProject();
       notifySuccess('UD settings saved');
     } catch (err) {
       console.error('Failed to save customization:', err);
       notifyError(err, 'Failed to save the UD settings');
+      if (isConfigConflict(err)) await fetchProject();
     } finally {
       setSaving(false);
     }

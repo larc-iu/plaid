@@ -13,6 +13,7 @@ import { ProjectTabs } from '../projects/ProjectTabs.jsx';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { notifyError, notifySuccess } from '../../utils/feedback.jsx';
 import { getUdLayerInfo, UD_NAMESPACE } from '../../utils/udLayerUtils.js';
+import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
 import { baseRel } from '../../utils/udVocab.js';
 import { MODES } from '../../utils/udVocabMode.js';
 import {
@@ -183,13 +184,17 @@ export const ProjectValidation = () => {
   );
 
   // Adopt every off-list value into the vocabulary. Offered, never imposed: a
-  // project may well want the list to stay as it is and the values gone.
+  // project may well want the list to stay as it is and the values gone. The
+  // values are added to the list as stored: a write refused because someone
+  // saved the list since is made again to what they saved.
   const adopt = useCallback(
     async (field) => {
       setAdding(field.key);
-      try {
+      const attempt = async (proj) => {
+        const info = getUdLayerInfo(proj);
+        const layer = info[field.layer];
         if (field.kind === 'feats') {
-          const inventory = layerInfo.vocab.featureInventory.list.map((e) => ({
+          const inventory = info.vocab.featureInventory.list.map((e) => ({
             key: e.key,
             values: [...(e.values || [])],
           }));
@@ -203,11 +208,33 @@ export const ProjectValidation = () => {
               inventory.push({ key: entry.key, values: add });
             }
           }
-          await client.spanLayers.setConfig(field.layerId, UD_NAMESPACE, 'inventory', inventory);
+          await client.spanLayers.setConfig(
+            field.layerId,
+            UD_NAMESPACE,
+            'inventory',
+            inventory,
+            undefined,
+            expectStored(layer, UD_NAMESPACE, 'inventory'),
+          );
         } else {
-          const next = [...(layerInfo.vocab[field.key] || []), ...field.values.map((v) => v.value)];
+          const next = [...(info.vocab[field.key] || []), ...field.values.map((v) => v.value)];
           const layers = field.kind === 'relation' ? client.relationLayers : client.spanLayers;
-          await layers.setConfig(field.layerId, UD_NAMESPACE, 'vocab', [...new Set(next)]);
+          await layers.setConfig(
+            field.layerId,
+            UD_NAMESPACE,
+            'vocab',
+            [...new Set(next)],
+            undefined,
+            expectStored(layer, UD_NAMESPACE, 'vocab'),
+          );
+        }
+      };
+      try {
+        try {
+          await attempt(project);
+        } catch (err) {
+          if (!isConfigConflict(err)) throw err;
+          await attempt(await client.projects.get(projectId));
         }
         notifySuccess(`${field.label} updated`);
         window.location.reload();
@@ -218,7 +245,7 @@ export const ProjectValidation = () => {
         setAdding(null);
       }
     },
-    [client, layerInfo],
+    [client, project, projectId],
   );
 
   if (loading) return <Loading />;

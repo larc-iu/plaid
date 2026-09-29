@@ -4,6 +4,7 @@ import { UD_NAMESPACE, getUdLayerInfo, readProjectLanguage } from '../../utils/u
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { NOT_SET_UP } from '@ui/domain/setupGuard.js';
 import { useManagedProject } from '@ui/hooks/useManagedProject.js';
+import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
 import { ProjectGeneralPage } from '@ui/components/shared/ProjectGeneralPage.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { Button } from '@ui/components/ui/button';
@@ -33,8 +34,18 @@ export const ProjectGeneral = ({ onProjectUpdate }) => {
   // The tag is on the PROJECT, in this app's half of its config.
   const saveLanguage = async (tag) => {
     const client = getClient();
-    if (tag) await client.projects.setConfig(project.id, UD_NAMESPACE, 'language', tag);
-    else await client.projects.deleteConfig(project.id, UD_NAMESPACE, 'language');
+    const expected = expectStored(project, UD_NAMESPACE, 'language');
+    if (tag)
+      await client.projects.setConfig(
+        project.id,
+        UD_NAMESPACE,
+        'language',
+        tag,
+        undefined,
+        expected,
+      );
+    else
+      await client.projects.deleteConfig(project.id, UD_NAMESPACE, 'language', undefined, expected);
   };
 
   return (
@@ -82,14 +93,31 @@ const TokenizerLocaleCard = ({ project, onSaved }) => {
       if (!client) throw new Error('Not authenticated');
       if (!info.textLayer) throw new Error(NOT_SET_UP);
       const loc = locale.trim();
+      const expected = expectStored(info.textLayer, UD_NAMESPACE, 'tokenizerLocale');
       if (loc)
-        await client.textLayers.setConfig(info.textLayer.id, UD_NAMESPACE, 'tokenizerLocale', loc);
-      else await client.textLayers.deleteConfig(info.textLayer.id, UD_NAMESPACE, 'tokenizerLocale');
+        await client.textLayers.setConfig(
+          info.textLayer.id,
+          UD_NAMESPACE,
+          'tokenizerLocale',
+          loc,
+          undefined,
+          expected,
+        );
+      else
+        await client.textLayers.deleteConfig(
+          info.textLayer.id,
+          UD_NAMESPACE,
+          'tokenizerLocale',
+          undefined,
+          expected,
+        );
       await onSaved();
       notifySuccess('Tokenizer locale saved');
     } catch (err) {
       console.error('Failed to save tokenizer locale:', err);
       notifyError(err, 'Failed to save the tokenizer locale');
+      // Someone else saved since: show what is stored now.
+      if (isConfigConflict(err)) onSaved();
     } finally {
       setSaving(false);
     }
