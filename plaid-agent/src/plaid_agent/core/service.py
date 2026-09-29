@@ -270,6 +270,15 @@ class BaseAssistantService(BaseService):
         """A plan in one phrase, for the audit label and the applied message."""
         raise NotImplementedError
 
+    def partial_label(self, ops: List[Dict[str, Any]], written: List[int], summary: str) -> str:
+        """The History label of a plan that stopped partway: the changes
+        written in full (card rows ``written``), or, when none was, the plan
+        it was part of."""
+        done = [ops[i] for i in written if 0 <= i < len(ops)]
+        if done:
+            return f'Assistant, partly applied: {self.summarize(done)}'
+        return f'Assistant, partly applied: part of {summary}'
+
     def documents_to_lock(self, ops: List[Dict[str, Any]], documents: List[Dict[str, Any]]) -> List[str]:
         """The documents an approval holds locked from its staleness check to
         its last write: every one the plan writes. An app whose plan hands a
@@ -773,14 +782,20 @@ class BaseAssistantService(BaseService):
         source = service_source(proposer)
         ref = f'conv:{conv_id}/plan:{plan_id}/{source}'
         try:
-            with client.operation(label, kind='assistant-plan', ref=ref):
+            with client.operation(label, kind='assistant-plan', ref=ref) as operation:
                 # Each op names its row on the card, so a plan that stops
                 # partway can say which changes were written.
-                counts = self.execute_plan(client, [{**op, ROW: i} for i, op in enumerate(ops)],
-                                           source=source,
-                                           label=label, project=project,
-                                           stamp_mode=stamp_mode, contributor=contributor,
-                                           requester=store.user_id, detail=detail)
+                try:
+                    counts = self.execute_plan(client, [{**op, ROW: i} for i, op in enumerate(ops)],
+                                               source=source,
+                                               label=label, project=project,
+                                               stamp_mode=stamp_mode, contributor=contributor,
+                                               requester=store.user_id, detail=detail)
+                except PlanError as e:
+                    # History names what was written, not the whole plan.
+                    if e.applied or e.unknown:
+                        operation.set_message(self.partial_label(ops, e.written or [], summary))
+                    raise
         except ScopeMoved as e:
             # A corpus-wide change found again reaches documents the plan was
             # not made over: never checked, never locked, not on the card.

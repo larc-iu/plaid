@@ -317,3 +317,44 @@ def test_a_ud_head_needs_its_second_batch(monkeypatch):
     with pytest.raises(core_plan.PlanError) as caught:
         execute_plan(client, ops, source='s', label='l', project=ws.project)
     assert caught.value.written == [i for i, k in enumerate(kinds) if k != 'set_head']
+
+
+def _plan_operation(client):
+    [at] = [i for i, tag in enumerate(client.operation_tags) if tag['kind'] == 'assistant-plan']
+    return at
+
+
+def test_the_history_label_of_a_partly_applied_plan_names_what_was_written(monkeypatch):
+    """The audit group was labelled with the whole plan when only part of it
+    was written (conc-2026-09-29 REV-F-PY). It now names the changes written
+    in full."""
+    spec = APPS['ud']()
+    client = spec['client']()
+    plan = _plan_of(spec, client,
+                    ('set_field', {'document': 'Viaje', 'refs': ['s1.w1'], 'field': 'lemma', 'value': 'ir'}),
+                    ('set_head', {'document': 'Viaje', 'ref': 's2.w1', 'head': 0, 'deprel': 'root'}))
+    _second_send_fails(monkeypatch)
+    svc = spec['service']()
+    spec = {**spec, 'service': lambda: svc}
+    helper = sbs._approve(spec, client, plan)
+    [done] = helper.done
+    assert done['partial'] is True
+    written = [plan['ops'][i] for i in _stored(spec, client)['written']]
+    assert written and len(written) < len(plan['ops'])
+    at = _plan_operation(client)
+    assert client.operation_labels[at] == f'Assistant, partly applied: {svc.summarize(written)}'
+    assert client.operations[at] == f'Assistant: {svc.summarize(plan["ops"])}'
+
+
+def test_a_plan_with_no_change_written_in_full_says_it_is_part_of_the_plan(monkeypatch):
+    spec = APPS['ud']()
+    client = spec['client']()
+    plan = _plan_of(spec, client,
+                    ('set_head', {'document': 'Viaje', 'ref': 's2.w1', 'head': 0, 'deprel': 'root'}))
+    _second_send_fails(monkeypatch)
+    svc = spec['service']()
+    spec = {**spec, 'service': lambda: svc}
+    sbs._approve(spec, client, plan)
+    assert _stored(spec, client)['written'] == []
+    assert client.operation_labels[_plan_operation(client)] == \
+        f'Assistant, partly applied: part of {svc.summarize(plan["ops"])}'
