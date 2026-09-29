@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { TASKS } from '@larc-iu/plaid-client';
 import { ServiceDefaultsSettings } from '@ui/components/shared/ServiceDefaultsSettings.jsx';
 import { IGT_NAMESPACE, resolveAutoAnalysis } from '@/domain/igtConfig';
-import { storedConfig } from '@ui/domain/configCells.js';
+import { sameConfig, storedConfig } from '@ui/domain/configCells.js';
 import { fieldNamesOf } from '@/import/elan/fieldTargets';
 import {
   BUILTIN_TOKENIZE_RULE_BASED,
@@ -133,6 +133,11 @@ export const ServicesSettings = ({ projectId, client }) => {
   const [autoDraft, setAutoDraft] = useState(resolveAutoAnalysis(null));
   const [autoDirty, setAutoDirty] = useState(false);
   const [autoStored, setAutoStored] = useState(undefined);
+  // The options as they are now, and as the Save on the wire sent them. A
+  // change made while that Save is out stays unsaved when it lands.
+  const autoNow = useRef(autoDraft);
+  autoNow.current = autoDraft;
+  const autoSent = useRef(null);
 
   const setAutoAnalysis = (next) => {
     setAutoDraft(next);
@@ -154,13 +159,14 @@ export const ServicesSettings = ({ projectId, client }) => {
       // Written only when changed, expecting what the page read, in the same
       // batch as the defaults.
       saveExtra={(b) => {
+        autoSent.current = autoDraft;
         b.projects.setConfig(projectId, IGT_NAMESPACE, 'autoAnalysis', autoDraft, undefined, {
           expected: autoStored,
         });
       }}
       onExtraSaved={() => {
-        setAutoStored(autoDraft);
-        setAutoDirty(false);
+        setAutoStored(autoSent.current);
+        setAutoDirty(!sameConfig(autoNow.current, autoSent.current));
       }}
       builtinOptions={(spotKey, name) =>
         spotKey === TASKS.LINK_VOCAB && name === BUILTIN_LINK_PRECEDENT ? (
