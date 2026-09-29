@@ -38,6 +38,25 @@ vi.mock('@/contexts/AuthContext', () => {
       },
     },
   };
+  // One batch is one transaction: a refused op writes nothing of the others.
+  client.batched = async (fn) => {
+    const queued = [];
+    const queue =
+      (name) =>
+      (...args) =>
+        queued.push([name, args]);
+    await fn({
+      vocabLayers: { setConfig: queue('setConfig'), deleteConfig: queue('deleteConfig') },
+    });
+    const before = { dict: server.dict, writes: [...server.writes] };
+    try {
+      for (const [name, args] of queued) await client.vocabLayers[name](...args);
+    } catch (err) {
+      server.dict = before.dict;
+      server.writes = before.writes;
+      throw err;
+    }
+  };
   return { useAuth: () => ({ client, user: { id: 'a@b.com', isAdmin: true } }) };
 });
 
@@ -95,6 +114,33 @@ describe('dictionary Setup against another maintainer', () => {
     // A second Save puts nothing of the old page back.
     await view.step(() => saveButton(view.container)?.click());
     expect(server.dict).toEqual({ title: 'Sena (Malawi)', slug: 'sena-mw' });
+    await view.unmount();
+  });
+
+  // Written key by key, a Save refused on a later key had already stored the
+  // earlier ones, though it said the Save failed.
+  it('stores none of a Save that is refused on one of its keys', async () => {
+    server.dict = { title: 'Sena', slug: 'sena', about: 'Old' };
+    server.writes = [];
+    const view = await renderComponent(
+      <MemoryRouter initialEntries={['/setup/v1']}>
+        <Routes>
+          <Route path="/setup/:vocabularyId" element={<Setup />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    // The other maintainer rewrites About.
+    server.dict = { ...server.dict, about: 'Theirs' };
+    await view.step(() => type(view.container.querySelector('#title'), 'Chisena'));
+    const about = view.container.querySelector('#about');
+    await view.step(() => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+      setter.call(about, 'Mine');
+      about.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await view.step(() => saveButton(view.container).click());
+    expect(server.writes).toEqual([]);
+    expect(server.dict).toEqual({ title: 'Sena', slug: 'sena', about: 'Theirs' });
     await view.unmount();
   });
 });

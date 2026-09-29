@@ -121,8 +121,9 @@ export const validateSetup = (draft, taken = []) => {
 };
 
 /**
- * Write the record onto a vocabulary, one config key per call, all under one
- * operation so the audit log shows a single setup. A key whose value is empty
+ * Write the record onto a vocabulary, one config key per op, in one batch
+ * under one operation, so the save lands whole or not at all and the audit log
+ * shows a single setup. A key whose value is empty
  * is removed rather than stored blank. `loaded` is the vocabulary's config as
  * the page read it: only the keys the draft changed are written, each
  * expecting what was read, so a save by someone else since is refused (409)
@@ -148,32 +149,21 @@ export const saveDictRecord = async (client, vocabularyId, draft, { label, loade
   };
   const before = readDictRecord(loaded);
   const isEmpty = (value) => value === null || value === undefined || value === '';
-  await client.withOperation(label || `Set up dictionary "${record.title}"`, async () => {
-    for (const key of DICT_KEYS) {
-      const value = record[key];
-      const was = before ? before[key] : undefined;
-      if (isEmpty(value) ? isEmpty(was) : JSON.stringify(value) === JSON.stringify(was)) continue;
-      const expected = { expected: readDict(loaded)?.[key] };
-      if (isEmpty(value)) {
-        await client.vocabLayers.deleteConfig(
-          vocabularyId,
-          DICT_NAMESPACE,
-          key,
-          undefined,
-          expected,
-        );
-      } else {
-        await client.vocabLayers.setConfig(
-          vocabularyId,
-          DICT_NAMESPACE,
-          key,
-          value,
-          undefined,
-          expected,
-        );
+  await client.withOperation(label || `Set up dictionary "${record.title}"`, () =>
+    client.batched((b) => {
+      for (const key of DICT_KEYS) {
+        const value = record[key];
+        const was = before ? before[key] : undefined;
+        if (isEmpty(value) ? isEmpty(was) : JSON.stringify(value) === JSON.stringify(was)) continue;
+        const expected = { expected: readDict(loaded)?.[key] };
+        if (isEmpty(value)) {
+          b.vocabLayers.deleteConfig(vocabularyId, DICT_NAMESPACE, key, undefined, expected);
+        } else {
+          b.vocabLayers.setConfig(vocabularyId, DICT_NAMESPACE, key, value, undefined, expected);
+        }
       }
-    }
-  });
+    }),
+  );
   return record;
 };
 

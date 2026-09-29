@@ -98,6 +98,8 @@ describe('validateSetup', () => {
 });
 
 describe('saveDictRecord', () => {
+  // Writes are recorded only when made on a batch, and each batch is
+  // recorded when it is sent.
   const fakeClient = () => {
     const calls = [];
     return {
@@ -106,11 +108,16 @@ describe('saveDictRecord', () => {
         calls.push(['operation', message]);
         return fn();
       },
-      vocabLayers: {
-        setConfig: (id, ns, key, value, _audit, options) =>
-          calls.push(['set', id, ns, key, value, options]),
-        deleteConfig: (id, ns, key, _audit, options) =>
-          calls.push(['delete', id, ns, key, options]),
+      batched: async (fn) => {
+        await fn({
+          vocabLayers: {
+            setConfig: (id, ns, key, value, _audit, options) =>
+              calls.push(['set', id, ns, key, value, options]),
+            deleteConfig: (id, ns, key, _audit, options) =>
+              calls.push(['delete', id, ns, key, options]),
+          },
+        });
+        calls.push(['batch sent']);
       },
     };
   };
@@ -126,7 +133,14 @@ describe('saveDictRecord', () => {
     // them. A blank key has nothing stored to remove.
     expect(written).toEqual(['title', 'slug', 'languages', 'alphabet']);
     expect(removed).toEqual([]);
-    expect(client.calls.every((c) => c[0] === 'operation' || c[2] === DICT_NAMESPACE)).toBe(true);
+    expect(
+      client.calls.every(
+        (c) => ['operation', 'batch sent'].includes(c[0]) || c[2] === DICT_NAMESPACE,
+      ),
+    ).toBe(true);
+    // One request, sent last.
+    expect(client.calls.filter(([kind]) => kind === 'batch sent')).toHaveLength(1);
+    expect(client.calls.at(-1)).toEqual(['batch sent']);
   });
 
   // A page opened before someone else saved the record wrote every key from
@@ -143,6 +157,7 @@ describe('saveDictRecord', () => {
     expect(touched).toEqual([
       ['set', 'v1', DICT_NAMESPACE, 'credits', 'Me', { expected: undefined }],
       ['delete', 'v1', DICT_NAMESPACE, 'about', { expected: 'Old' }],
+      ['batch sent'],
     ]);
   });
 
