@@ -1423,6 +1423,20 @@ export interface PlaidBatch extends PlaidClient {
   submit(): Promise<any[]>;
   /** Drop the queued operations without sending them. */
   abort(): void;
+  /**
+   * A stand-in for the id a queued operation will create, to put in a later
+   * operation's body, so a create and the write that uses it go in one
+   * transaction: `{ $ref: n }` for op n's `id`, or `{ $ref: n, index: k }`
+   * for the k-th of the `ids` a bulk create answers. `opIndex` counts from 0,
+   * or from the end when negative (-1, the default, is the op queued last).
+   */
+  ref(opIndex?: number, index?: number): BatchRef;
+}
+
+/** See `PlaidBatch.ref`. */
+export interface BatchRef {
+  $ref: number;
+  index?: number;
 }
 
 export declare class PlaidClient {

@@ -92,6 +92,21 @@
 ;; vocab_layers (matches v2 behavior).
 ;; ============================================================
 
+(defn- assert-document-version!
+  "The version check of an entry made for a link in a document the caller
+  holds at a version (`?document-id=` beside `?document-version=`, bound by
+  `wrap-document-version`). An entry belongs to no document, so the check
+  `submit-operation*` makes for a document's own writes never fires here.
+  Read inside the write transaction, like that one."
+  [tx doc-id]
+  (when-let [expected psaw/*expected-document-version*]
+    (when doc-id
+      (when-let [cur (psc/fetch-by-id tx :documents doc-id)]
+        (when (not= expected (:version cur))
+          (throw (ex-info "Document version conflict"
+                          {:code 409 :document-id doc-id
+                           :expected-version expected :actual-version (:version cur)})))))))
+
 (defn create
   "Create a new vocab item.
 
@@ -102,6 +117,8 @@
   ([db attrs user-id]
    (create db attrs user-id nil))
   ([db attrs user-id metadata-map]
+   (create db attrs user-id metadata-map nil))
+  ([db attrs user-id metadata-map doc-id]
    (let [{:vocab-item/keys [layer form]} attrs
          new-id (psc/new-uuid)
          row {:id new-id
@@ -112,6 +129,7 @@
                                 :document nil
                                 :description (str "Create vocab item '" form "'")
                                 :user user-id}]
+                        (assert-document-version! tx doc-id)
                         (storable/assert-storable! "Form" form)
                         (when (nil? (psc/fetch-by-id tx :vocab_layers layer))
                           (throw (ex-info (psc/err-msg-not-found "Vocab layer" layer)
@@ -259,55 +277,58 @@
   whose post_image folds :metadata when present, so history replay
   reconstructs each item from one record (task #59). Returns
   {:success true :extra [ids]} with ids in input order."
-  [db attrs-vec user-id]
-  (submit-operation! [tx db {:type :vocab-item/bulk-create
-                             :project nil
-                             :document nil
-                             :description (str "Bulk create " (count attrs-vec) " vocab items")
-                             :user user-id}]
+  ([db attrs-vec user-id]
+   (bulk-create db attrs-vec user-id nil))
+  ([db attrs-vec user-id doc-id]
+   (submit-operation! [tx db {:type :vocab-item/bulk-create
+                              :project nil
+                              :document nil
+                              :description (str "Bulk create " (count attrs-vec) " vocab items")
+                              :user user-id}]
                      ;; Validation runs inside the tx so submit-operation* projects
                      ;; ExceptionInfo to a structured 4xx response.
-                     (when (empty? attrs-vec)
-                       (throw (ex-info "Bulk create requires at least one vocab item" {:code 400})))
-                     (doseq [a attrs-vec] (storable/assert-storable! "Form" (:vocab-item/form a)))
-                     (let [layer-ids (->> attrs-vec (map :vocab-item/layer) distinct vec)
-                           existing-layers (set (->> (psc/fetch-ids tx :vocab_layers layer-ids)
-                                                     (map :id)))]
-                       (doseq [lid layer-ids]
-                         (when-not (contains? existing-layers lid)
-                           (throw (ex-info (psc/err-msg-not-found "Vocab layer" lid)
-                                           {:code 400 :id lid}))))
-                       (let [records (mapv (fn [a]
-                                             {:id (psc/new-uuid)
-                                              :layer (:vocab-item/layer a)
-                                              :form (:vocab-item/form a)
-                                              :metadata (:metadata a)})
-                                           attrs-vec)]
+                      (assert-document-version! tx doc-id)
+                      (when (empty? attrs-vec)
+                        (throw (ex-info "Bulk create requires at least one vocab item" {:code 400})))
+                      (doseq [a attrs-vec] (storable/assert-storable! "Form" (:vocab-item/form a)))
+                      (let [layer-ids (->> attrs-vec (map :vocab-item/layer) distinct vec)
+                            existing-layers (set (->> (psc/fetch-ids tx :vocab_layers layer-ids)
+                                                      (map :id)))]
+                        (doseq [lid layer-ids]
+                          (when-not (contains? existing-layers lid)
+                            (throw (ex-info (psc/err-msg-not-found "Vocab layer" lid)
+                                            {:code 400 :id lid}))))
+                        (let [records (mapv (fn [a]
+                                              {:id (psc/new-uuid)
+                                               :layer (:vocab-item/layer a)
+                                               :form (:vocab-item/form a)
+                                               :metadata (:metadata a)})
+                                            attrs-vec)]
                          ;; Parent rows in one (chunked) multi-row INSERT — unaudited;
                          ;; the synthetic :insert per item below carries the real audit
                          ;; image. Chunked because a lexicon import can exceed SQLite's
                          ;; statement parameter ceiling (SQLITE_MAX_VARIABLE_NUMBER).
-                         (doseq [chunk (partition-all 4000 records)]
-                           (psc/execute! tx {:insert-into :vocab_items
-                                             :values (mapv (fn [r]
-                                                             {:id (:id r)
-                                                              :form (:form r)
-                                                              :vocab_layer_id (:layer r)})
-                                                           chunk)}))
+                          (doseq [chunk (partition-all 4000 records)]
+                            (psc/execute! tx {:insert-into :vocab_items
+                                              :values (mapv (fn [r]
+                                                              {:id (:id r)
+                                                               :form (:form r)
+                                                               :vocab_layer_id (:layer r)})
+                                                            chunk)}))
                          ;; Metadata with skip-parent-audit? so no separate :update row
                          ;; fires; it is folded into the synthetic :insert below.
-                         (doseq [r records]
-                           (when (seq (:metadata r))
-                             (metadata/insert-metadata! tx "vocab-item" (:id r) (:metadata r)
-                                                        {:skip-parent-audit? true})))
+                          (doseq [r records]
+                            (when (seq (:metadata r))
+                              (metadata/insert-metadata! tx "vocab-item" (:id r) (:metadata r)
+                                                         {:skip-parent-audit? true})))
                          ;; One synthetic :insert per item with the full image.
-                         (let [row-by-id (psc/fetch-ids-as-map tx :vocab_items (mapv :id records))]
-                           (doseq [r records]
-                             (let [post-image (cond-> (clojure.core/get row-by-id (:id r))
-                                                (seq (:metadata r)) (assoc :metadata (:metadata r)))]
-                               (psaw/record-audit-write! tx :vocab_items (:id r) :insert nil post-image))))
-                         (op/touch-vocab-layers! tx layer-ids)
-                         (mapv :id records)))))
+                          (let [row-by-id (psc/fetch-ids-as-map tx :vocab_items (mapv :id records))]
+                            (doseq [r records]
+                              (let [post-image (cond-> (clojure.core/get row-by-id (:id r))
+                                                 (seq (:metadata r)) (assoc :metadata (:metadata r)))]
+                                (psaw/record-audit-write! tx :vocab_items (:id r) :insert nil post-image))))
+                          (op/touch-vocab-layers! tx layer-ids)
+                          (mapv :id records))))))
 
 (defn bulk-merge
   "Update many vocab items in ONE operation: set forms and/or patch metadata.

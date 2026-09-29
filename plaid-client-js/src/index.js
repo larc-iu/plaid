@@ -144,6 +144,9 @@ function openBatch(client) {
     throw new Error("A batch is not nestable: queue on the batch you have");
   };
   batch.batched = batch.batch;
+  // `{ $ref: n }` in a later op's body stands for the id op n created (see
+  // `ref`). The server resolves it inside the batch's transaction.
+  batch.ref = (opIndex = -1, index) => batchRef(batch, opIndex, index);
   batch.submit = () => submitBatch(batch);
   batch.abort = () => {
     batch.operations = [];
@@ -152,6 +155,55 @@ function openBatch(client) {
   };
   batch._installResources();
   return batch;
+}
+
+/**
+ * A stand-in for the id an operation queued on `batch` will create, to put in
+ * a later operation's body: `{ $ref: n }` for op n's `id`, or
+ * `{ $ref: n, index: k }` for the k-th of the `ids` a bulk create answers.
+ * `opIndex` counts from 0, or from the end when negative (-1, the default, is
+ * the op queued last), and is fixed when `ref` is called.
+ */
+function batchRef(batch, opIndex, index) {
+  const n = opIndex < 0 ? batch.operations.length + opIndex : opIndex;
+  if (!Number.isInteger(n) || n < 0 || n >= batch.operations.length) {
+    throw new Error(`No operation ${opIndex} has been queued on this batch`);
+  }
+  return index === undefined ? { $ref: n } : { $ref: n, index };
+}
+
+function isBatchRef(v) {
+  return (
+    v !== null &&
+    typeof v === "object" &&
+    !Array.isArray(v) &&
+    Object.hasOwn(v, "$ref") &&
+    Object.keys(v).every((k) => k === "$ref" || k === "index")
+  );
+}
+
+/**
+ * `body` with every batch ref moved to count from `start`, for a batch sent
+ * in several requests. A ref to an op of an earlier request cannot resolve
+ * (the server counts within one request), so it throws before anything goes.
+ */
+function rebaseRefs(body, start) {
+  if (isBatchRef(body)) {
+    if (body.$ref < start) {
+      throw new Error(
+        `Operation ${start} and later are sent in a request of their own, ` +
+          `so an operation among them cannot use the id operation ${body.$ref} creates`,
+      );
+    }
+    return { ...body, $ref: body.$ref - start };
+  }
+  if (Array.isArray(body)) return body.map((v) => rebaseRefs(v, start));
+  if (body !== null && typeof body === "object") {
+    return Object.fromEntries(
+      Object.entries(body).map(([k, v]) => [k, rebaseRefs(v, start)]),
+    );
+  }
+  return body;
 }
 
 async function submitBatch(batch) {
@@ -194,8 +246,19 @@ async function submitBatch(batch) {
 }
 
 async function sendChunks(client, url, ops, stamps, results) {
+  // Every chunk's refs are checked before the first request goes, so a batch
+  // whose refs cannot resolve writes nothing.
+  const chunks = [];
   for (let i = 0; i < ops.length; i += MAX_BATCH_OPS) {
-    let chunk = ops.slice(i, i + MAX_BATCH_OPS);
+    chunks.push(
+      ops.slice(i, i + MAX_BATCH_OPS).map((op) =>
+        i > 0 && op.body !== undefined ? { ...op, body: rebaseRefs(op.body, i) } : op,
+      ),
+    );
+  }
+  for (let c = 0; c < chunks.length; c++) {
+    const i = c * MAX_BATCH_OPS;
+    let chunk = chunks[c];
     if (i > 0) {
       chunk = chunk.map((op, j) => {
         const docId = stamps[i + j];

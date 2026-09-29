@@ -63,6 +63,27 @@ def _config_request(audit_message, value, expected):
     return opts
 
 
+def _is_batch_ref(v) -> bool:
+    return isinstance(v, dict) and '$ref' in v and all(k in ('$ref', 'index') for k in v)
+
+
+def _rebase_refs(body, start: int):
+    """``body`` with every batch ref (see ``PlaidBatch.ref``) moved to count
+    from ``start``, for a batch sent in several requests. A ref to an op of an
+    earlier request cannot resolve, so it raises."""
+    if _is_batch_ref(body):
+        if body['$ref'] < start:
+            raise PlaidAPIError(
+                f"Operation {start} and later are sent in a request of their own, so an operation "
+                f"among them cannot use the id operation {body['$ref']} creates")
+        return {**body, '$ref': body['$ref'] - start}
+    if isinstance(body, list):
+        return [_rebase_refs(v, start) for v in body]
+    if isinstance(body, dict):
+        return {k: _rebase_refs(v, start) for k, v in body.items()}
+    return body
+
+
 _UNSET_MESSAGE = object()
 
 
@@ -3767,8 +3788,14 @@ class PlaidClient:
             # the one the document had when the op was queued, which the first
             # request has already moved on.
             stamps = stamped_documents or [None] * len(ops)
-            for start in range(0, len(ops), MAX_BATCH_OPS):
-                body = ops[start:start + MAX_BATCH_OPS]
+            # A ref counts ops within one request, so each later request's
+            # refs count from its own first op. Every chunk is checked before
+            # the first request goes, so refs that cannot resolve write nothing.
+            chunks = [[{**op, 'body': _rebase_refs(op['body'], start)}
+                       if start > 0 and 'body' in op else op
+                       for op in ops[start:start + MAX_BATCH_OPS]]
+                      for start in range(0, len(ops), MAX_BATCH_OPS)]
+            for start, body in zip(range(0, len(ops), MAX_BATCH_OPS), chunks):
                 if start > 0:
                     body = [
                         {**op, 'path': restamp_document_version(
@@ -4082,3 +4109,21 @@ class PlaidBatch:
         self.operations = []
         self.stamped_documents = []
         self.open = False
+
+    def ref(self, op_index: int = -1, index: int | None = None) -> dict:
+        """A stand-in for the id a queued operation will create, to put in a
+        later operation's body, so a create and the write that uses it go in
+        one transaction: ``{'$ref': n}`` for op n's ``id``, or
+        ``{'$ref': n, 'index': k}`` for the k-th of the ``ids`` a bulk create
+        answers. ``op_index`` counts from 0, or from the end when negative
+        (-1, the default, is the op queued last), and is fixed when ``ref`` is
+        called::
+
+            with client.batched() as b:
+                b.vocab_items.create(vocab_id, 'dog')
+                b.vocab_links.create(b.ref(), [token_id])
+        """
+        n = len(self.operations) + op_index if op_index < 0 else op_index
+        if not isinstance(n, int) or n < 0 or n >= len(self.operations):
+            raise PlaidAPIError(f'No operation {op_index} has been queued on this batch')
+        return {'$ref': n} if index is None else {'$ref': n, 'index': index}

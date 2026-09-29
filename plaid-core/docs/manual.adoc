@@ -1456,6 +1456,25 @@ results = b.submit()
 ----
 
 Either way you get one result per queued write, in the order the writes were queued.
+
+A write in a batch can use the id an earlier write in the same batch creates, so a create and the write that depends on it (an entry and the link to it, say) succeed or fail together.
+`b.ref()` stands for the id the write queued last will get, `b.ref(n)` for that of the nth write queued (counting from 0, or from the end when negative), and `b.ref(n, k)` for the kth of the ids a bulk create answers with:
+
+[,python]
+----
+with client.batched() as b:
+    b.vocab_items.create(vocab_id, "dog")
+    b.vocab_links.create(b.ref(), [token_id])
+----
+
+On the wire a reference is `{"$ref": n}` or `{"$ref": n, "index": k}` in place of the id in the body of a later operation, and the server puts the id in when it runs that operation.
+Only bodies are read, not paths, and any map of exactly that shape in a body counts as a reference.
+A reference to an operation that is not before it, or to one that answered no such id, refuses the whole batch with a 400.
+When a batch is sent as several requests, a write cannot refer to one in an earlier request, and the client refuses such a batch before sending any of it.
+
+A vocab item belongs to no document, so the `document-version` a strict-mode client stamps on its create has nothing to be checked against on its own.
+Created alone, the entry is refused with a 400 unless `document-id` names the document the version is for.
+In a batch the stamp is left to the batch's other writes, such as the link the entry is made for.
 A read made on a batch—any GET, and `query`—is answered from the server there and then rather than queued, so a read may be made on the batch or on the client as you please.
 The server runs a batch as one transaction holding its single write lock for the whole of it, and no other write can proceed meanwhile, so keep a batch to the work that has to be atomic.
 

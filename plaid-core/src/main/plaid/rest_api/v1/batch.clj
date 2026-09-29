@@ -1,6 +1,7 @@
 (ns plaid.rest-api.v1.batch
   (:require [clojure.string :as str]
             [clojure.edn :as edn]
+            [clojure.walk :as walk]
             [clojure.data.json :as json]
             [muuntaja.core :as m]
             [next.jdbc :as jdbc]
@@ -86,6 +87,55 @@
       (log/error e "Sub-op threw")
       {:status 500 :headers {} :body {:error "Internal error"}})))
 
+;; ============================================================
+;; References to an earlier operation's new id
+;;
+;; A create and the write that uses what it created (an entry and the link
+;; to it, a word and its gloss) belong in one transaction, so a refusal of
+;; the second cannot leave the first behind. The second cannot know the id
+;; the first will get, so a body may stand in for it with
+;; `{"$ref": n}`: the id in the response of operation n of this batch
+;; (counted from 0), or `{"$ref": n, "index": k}` for the k-th of the `ids`
+;; a bulk create answers. Only bodies are read, and only a map of exactly
+;; that shape is a reference.
+;; ============================================================
+
+(defn- ref-map?
+  "A body value that stands for an earlier operation's id."
+  [v]
+  (and (map? v)
+       (contains? v :$ref)
+       (every? #{:$ref :index} (keys v))))
+
+(defn- refusal
+  "Throw out of the batch loop with a 400, which rolls the batch back."
+  [msg]
+  (throw (ex-info "batch-failed" {:plaid.batch/failure {:status 400 :body {:error msg}}})))
+
+(defn- resolve-ref
+  "The id `{:$ref n :index k}` stands for, given the responses of the
+  operations before this one, `responses`."
+  [{n :$ref k :index} responses]
+  (when-not (and (int? n) (<= 0 n) (< n (count responses)))
+    (refusal (str "{\"$ref\": " (pr-str n) "} must name an operation before this one, counted from 0")))
+  (when-not (or (nil? k) (and (int? k) (<= 0 k)))
+    (refusal (str "\"index\" in a $ref must be a whole number, not " (pr-str k))))
+  (let [body (:body (nth responses n))
+        field (fn [key] (or (get body key) (get body (name key))))]
+    (if (nil? k)
+      (or (when (map? body) (field :id))
+          (refusal (str "Operation " n " answered no id for {\"$ref\": " n "} to stand for")))
+      (let [ids (when (map? body) (field :ids))]
+        (if (and (sequential? ids) (< k (count ids)))
+          (nth ids k)
+          (refusal (str "Operation " n " answered no id at index " k)))))))
+
+(defn resolve-refs
+  "`body` with every `{\"$ref\": ...}` replaced by the id it stands for."
+  [body responses]
+  (walk/prewalk (fn [v] (if (ref-map? v) (str (resolve-ref v responses)) v))
+                body))
+
 (defn- merge-document-versions
   "Merge X-Document-Versions headers across a sequence of sub-responses.
    Each header is a JSON object `{doc-id integer}`; produce a single map
@@ -152,7 +202,9 @@
                               (if (seq merged)
                                 (assoc outer :headers {"X-Document-Versions" (json/write-str merged)})
                                 outer)))
-                        (let [op-spec (first remaining)
+                        (let [op-spec (cond-> (first remaining)
+                                        (contains? (first remaining) :body)
+                                        (update :body resolve-refs responses))
                               response (process-batch-operation rest-handler request op-spec tx)
                               status (:status response)]
                           (if (>= status 300)
@@ -205,7 +257,10 @@
                          "If any operation fails (status >= 300), all changes are rolled back. "
                          "Atomicity is guaranteed. "
                          "On success, returns an array of each response associated with each submitted request in the batch. "
-                         "On failure, returns a single response map with the first failing response in the batch. ")
+                         "On failure, returns a single response map with the first failing response in the batch. "
+                         "In an operation's body, {\"$ref\": n} stands for the id operation n of the batch (counted from 0) "
+                         "answered with, and {\"$ref\": n, \"index\": k} for the k-th of the ids a bulk create answered with, "
+                         "so a write can use what an earlier write in the same batch created.")
            :parameters {:body [:sequential
                                [:map
                                 [:path string?]

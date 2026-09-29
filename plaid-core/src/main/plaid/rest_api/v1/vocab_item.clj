@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.vocab-item
   (:require [plaid.rest-api.v1.auth :as pra]
+            [plaid.sql.audit-write :as psaw]
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
@@ -61,23 +62,52 @@
   span and relation bulk updates resolve theirs."
   (pra/bulk-update-resolver (fn [db id] (:vocab-item/layer (vocab-item/get db id)))))
 
+;; A strict-mode client stamps `?document-version=` on every write. An entry
+;; belongs to no document, so the stamp alone names nothing to check, and a
+;; create that ignored it let "+ Create" make an entry for a document that
+;; had already moved on (V1 H1-6). So a stamp is checked when `?document-id=`
+;; says which document it is for, and refused when it does not, except inside
+;; a batch, where the batch's other writes (the link the entry is made for)
+;; carry the check, as they do for every other write that names no document.
+(def ^:private document-query
+  [:map
+   [:document-version {:optional true} :int]
+   [:document-id {:optional true} :uuid]])
+
+(def ^:private unplaced-version
+  (str "document-version names no document on an entry create. Send document-id with it, "
+       "or create the entry in a batch with the link it is for."))
+
+(defn- wrap-entry-document-version [handler]
+  (let [versioned (prm/wrap-document-version handler #(get-in % [:parameters :query :document-id]))]
+    (fn [request]
+      (let [{:keys [document-version document-id]} (get-in request [:parameters :query])]
+        (cond
+          (nil? document-version) (handler request)
+          document-id (versioned request)
+          psaw/*batch-validated-document-versions* (handler request)
+          :else {:status 400 :body {:error unplaced-version}})))))
+
 (def vocab-item-routes
   ["/vocab-items"
 
    [""
-    {:post {:summary "Create a new vocab item"
+    {:post {:summary (str "Create a new vocab item. An entry belongs to no document: <query>document-version</query> "
+                          "is checked against <query>document-id</query>, and refused without it outside a batch.")
             :middleware [[pra/wrap-vocab-writer-required get-vocab-id-from-layer]
-                         metadata/wrap-inline-metadata-shape-guard]
-            :parameters {:body [:map
+                         metadata/wrap-inline-metadata-shape-guard
+                         wrap-entry-document-version]
+            :parameters {:query document-query
+                         :body [:map
                                 [:vocab-layer-id :uuid]
                                 [:form string?]
                                 [:metadata {:optional true} [:map-of string? any?]]]}
-            :handler (fn [{{{:keys [vocab-layer-id form metadata]} :body} :parameters
+            :handler (fn [{{{:keys [vocab-layer-id form metadata]} :body {:keys [document-id]} :query} :parameters
                            db :db
                            user-id :user/id :as req}]
                        (let [attrs {:vocab-item/layer vocab-layer-id
                                     :vocab-item/form form}
-                             result (vocab-item/create db attrs user-id metadata)]
+                             result (vocab-item/create db attrs user-id metadata document-id)]
                          (if (:success result)
                            {:status 201
                             :body {:id (:extra result)}}
@@ -89,25 +119,28 @@
                                   "<body>vocab-layer-id</body>, the vocab layer to create the item in\n"
                                   "<body>form</body>, the item's form\n"
                                   "<body>metadata</body>, an optional map of metadata\n"
-                                  "Entries may target different vocab layers; the user must have write access to each.")
+                                  "Entries may target different vocab layers; the user must have write access to each. "
+                                  "<query>document-version</query> is checked against <query>document-id</query>, as on a single create.")
                     ;; vocab-WRITER on the first entry's layer is the coarse
                     ;; gate; the handler then checks write access on EVERY
                     ;; distinct layer, which the single-id middleware can't.
                     :middleware [[pra/wrap-vocab-writer-required bulk-get-layer-id]
-                                 metadata/wrap-inline-metadata-shape-guard]
-                    :parameters {:body [:sequential
+                                 metadata/wrap-inline-metadata-shape-guard
+                                 wrap-entry-document-version]
+                    :parameters {:query document-query
+                                 :body [:sequential
                                         [:map
                                          [:vocab-layer-id :uuid]
                                          [:form string?]
                                          [:metadata {:optional true} [:map-of string? any?]]]]}
-                    :handler (fn [{{items :body} :parameters db :db user-id :user/id}]
+                    :handler (fn [{{items :body {:keys [document-id]} :query} :parameters db :db user-id :user/id}]
                                (or (pra/vocab-layers-refusal db (map :vocab-layer-id items) user-id)
                                    (let [attrs-vec (mapv (fn [{:keys [vocab-layer-id form metadata]}]
                                                            (cond-> {:vocab-item/layer vocab-layer-id
                                                                     :vocab-item/form form}
                                                              metadata (assoc :metadata metadata)))
                                                          items)
-                                         result (vocab-item/bulk-create db attrs-vec user-id)]
+                                         result (vocab-item/bulk-create db attrs-vec user-id document-id)]
                                      (if (:success result)
                                        {:status 201 :body {:ids (:extra result)}}
                                        {:status (or (:code result) 500)
