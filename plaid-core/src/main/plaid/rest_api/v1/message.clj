@@ -309,12 +309,6 @@
       (:auth/token-scope req)
       {:status 403 :body {:error "A delegated token cannot open a service channel."}}
 
-      ;; The privilege check lets an admin in on any project id, so a project
-      ;; that does not exist is refused here, while a status can still be
-      ;; sent. The same 403 a non-admin gets.
-      (nil? (prj/get db id))
-      {:status 403 :body {:error (str "User " user-id " lacks sufficient privileges to open a service channel on project " id)}}
-
       (events/channel-alive? (events/get-service-channel id service-id))
       {:status 409 :body {:error (str "Service '" service-id "' is already connected to this project")}}
 
