@@ -2,6 +2,7 @@ import { html, nothing } from 'lit-html';
 import { settledId } from '@ui/domain/pendingIds.js';
 import { cellByKey } from './shared.js';
 import { notifyWarning } from '@/utils/feedback';
+import { changedTo, whoChanged } from '@ui/lib/cellConflict.js';
 
 // A cell edit refused because another user changed the cell first (Luke's
 // ruling Q1, 2026-09-29, the same in plaid-ud). The cell shows the stored
@@ -14,8 +15,6 @@ import { notifyWarning } from '@/utils/feedback';
 //
 // Kept by cell key, with any pending id in it as the server knows it, in
 // `this._conflicts`: `{ typed, stored }`.
-
-const RECENT = 50;
 
 // A cell key with its pending ids settled, so a conflict follows its row
 // across the swap.
@@ -32,10 +31,6 @@ export const rowOfKey = (key) => {
   const rest = (key ?? '').slice(key.indexOf(':') + 1);
   return /^(virtual:[^:]+|pending:\d+|[^:]+)/.exec(rest)?.[1] ?? '';
 };
-
-// "b changed this to DOG." Words as plaid-ud's conflictNotice.js has them.
-const changedTo = (who, stored) =>
-  stored ? `${who || 'Someone'} changed this to ${stored}.` : `${who || 'Someone'} cleared this.`;
 
 export const conflicts = {
   _conflictOf(key) {
@@ -80,19 +75,9 @@ export const conflicts = {
   // by another user that wrote this cell's span or token, else the newest
   // change by another user at all.
   _sayWhoChanged(cell, stored) {
-    const client = this.doc.client;
-    const me = this.doc._user?.id;
     const ids = (cell.igtEntityIds ?? []).filter(Boolean).map(settledId);
-    const who = async () => {
-      const page = await client.documents.auditPage(this.doc.id, { order: 'desc', limit: RECENT });
-      const others = (page?.entries ?? []).filter((e) => e.user?.id && e.user.id !== me);
-      const wrote = (e) =>
-        (e.ops ?? []).some((op) => ids.some((id) => op.description?.includes(id)));
-      const entry = others.find(wrote) ?? others[0];
-      return entry ? entry.user.displayName || entry.user.id : null;
-    };
     Promise.resolve()
-      .then(who)
+      .then(() => whoChanged(this.doc.client, this.doc.id, ids, this.doc._user?.id))
       .catch(() => null)
       .then((name) => notifyWarning(changedTo(name, stored)));
   },

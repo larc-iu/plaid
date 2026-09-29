@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Combobox } from '@ui/components/shared/combobox';
 import { notifyWarning, notifyError } from '../../../utils/feedback.jsx';
+import { KEPT_IN_CELL } from '@ui/lib/cellConflict.js';
 import {
   readFieldProbs,
   groupSuggestions,
@@ -330,8 +331,11 @@ export const EditableCell = React.memo(
             if (!refusal || superseded) return;
             const outcome = unsent.put(tokenId, field, newValue, saved, {
               resend: !FINAL_REFUSALS.has(refusal.status),
+              readBack: refusal.readBack === true,
             });
-            if (refusal.status === 409 && outcome !== 'conflict') {
+            if (refusal.status === 409 && outcome === 'put') {
+              notifyError(KEPT_IN_CELL, `Failed to update ${field}`);
+            } else if (refusal.status === 409 && outcome === 'dropped') {
               notifyError(refusal.error ?? 'Changed elsewhere.', `Failed to update ${field}`);
             }
             // Not put back, and the refetch may not have come (a project

@@ -86,10 +86,13 @@ export class UnsentValues {
    * stored since, it is a conflict instead. For a token that is gone, and
    * with `resend: false` (a refusal that sending again cannot mend), nothing
    * is put back. The cell showing it, if one is drawn, is told first. A
-   * focused cell takes it up and it goes no further. Answers what became
-   * of it: 'put', 'conflict' or 'dropped'.
+   * focused cell takes it up and it goes no further. With `readBack` (the
+   * refetch after the refusal landed), a stored value that is the typed one
+   * means the edit is on the server (its answer was lost on the way back),
+   * or someone stored the same: nothing is put back. Answers what became of
+   * it: 'put', 'conflict', 'landed' or 'dropped'.
    */
-  put(tokenId, field, typed, saved, { resend = true } = {}) {
+  put(tokenId, field, typed, saved, { resend = true, readBack = false } = {}) {
     const key = keyOf(tokenId, field);
     const prior = this._entries.get(key);
     const typedOver = prior ? prior.saved : saved;
@@ -98,6 +101,11 @@ export class UnsentValues {
       this.take(tokenId, field);
       this.resolve(tokenId, field);
       return 'dropped';
+    }
+    if (readBack && now === typed) {
+      this.take(tokenId, field);
+      this.resolve(tokenId, field);
+      return 'landed';
     }
     // Still showing the edit itself: the refetch has not come yet, and the
     // cell hears what it brings when it comes.

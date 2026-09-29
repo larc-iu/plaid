@@ -14,6 +14,7 @@ import { arrowStep, caretAtArrowEdge } from '@ui/lib/bidi.js';
 import { keys } from '@/lib/keymap.js';
 import { settledId } from '@ui/domain/pendingIds.js';
 import { statusOf } from '@ui/lib/errors.js';
+import { KEPT_IN_CELL } from '@ui/lib/cellConflict.js';
 import { cellByKey, morphFormOf, sameCell } from './shared.js';
 
 // An annotation cell's life: focus, typing, commit, the keyboard chords that
@@ -562,6 +563,14 @@ export const cells = {
       // cell still drawn with the typed value was not redrawn (a refetch that
       // gave up), and says nothing.
       const drawn = cell.igtUnsent ? cell.igtUnsent.saved : (cell.igtRendered ?? cell.value);
+      // The refetch landed and holds the typed value: the edit is stored (its
+      // answer was lost on the way back), or someone stored the same. Nothing
+      // is put back, so nothing is asked about on leaving, and a later edit
+      // of the cell is measured against it.
+      if (drawn === typed && !cell.igtUnsent && !this.doc.outOfStep) {
+        if (active === cell && cell.value === typed) cell.dataset.orig = typed;
+        return;
+      }
       const stored = drawn === typed ? base.value : drawn;
       // Someone else changed the cell first: theirs shows, with this one under
       // it (Luke's ruling Q1).
@@ -576,7 +585,7 @@ export const cells = {
       // again.
       if (status === 409) {
         const field = (cell.dataset.tier ?? '').split(':').slice(1).join(':') || 'morpheme form';
-        notifyError(this.doc.errorCause ?? 'Changed elsewhere.', `Failed to update ${field}`);
+        notifyError(KEPT_IN_CELL, `Failed to update ${field}`);
       }
       if (REFUSED_FOR_GOOD.has(status)) {
         cell.igtUnsent = null;

@@ -381,7 +381,7 @@ describe('the toast for a refused cell edit', () => {
     await run.view.unmount();
   });
 
-  it('is the refusal itself when the conflict was elsewhere in the document', async () => {
+  it('says the value is kept when the conflict was elsewhere in the document', async () => {
     const run = await lostTo({
       field: 'lemma',
       before: 'sit',
@@ -391,7 +391,10 @@ describe('the toast for a refused cell edit', () => {
     });
     expect(run.input.value).toBe('sitC');
     expect(feedback.notifyError).toHaveBeenCalledTimes(1);
-    expect(feedback.notifyError).toHaveBeenCalledWith(conflict409.error, 'Failed to update lemma');
+    expect(feedback.notifyError).toHaveBeenCalledWith(
+      'Changed elsewhere. Your value is kept in its cell, and leaving the cell sends it again.',
+      'Failed to update lemma',
+    );
     await run.view.unmount();
   });
 });
@@ -431,6 +434,14 @@ describe('writeCell', () => {
       refused: true,
       status: 409,
       error: err,
+      readBack: true,
     });
+  });
+
+  it('says when the refetch after a refusal was given up', async () => {
+    const err = new Error('HTTP 500');
+    const doc = fakeDoc(false, err);
+    doc.outOfStep = true;
+    expect((await writeCell(doc, 't1', 'lemma', 'wolf')).readBack).toBe(false);
   });
 });

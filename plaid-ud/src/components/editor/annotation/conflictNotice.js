@@ -1,39 +1,31 @@
 import { statusOf } from '@ui/lib/errors.js';
+import { changedTo, whoChanged as whoChangedAny } from '@ui/lib/cellConflict.js';
 
 // A cell's write, who stored the value an edit lost to, and the toast that
 // says so.
 //
 // A cell edit refused because someone else changed the cell first shows the
 // stored value, with the refused one under it (unsentValues.js). The toast
-// names the change: "b changed this to NOUN." The name comes from the
-// document's audit log: the newest change by another user that wrote this
-// span, else the newest change by another user at all.
-
-const RECENT = 50;
+// names the change: "b changed this to NOUN." The words and the audit lookup
+// are plaid-ui's (cellConflict.js), shared with plaid-igt.
 
 /** The display name of whoever last changed `spanId`, or null. */
-export async function whoChanged(client, documentId, spanId, me) {
-  const page = await client.documents.auditPage(documentId, { order: 'desc', limit: RECENT });
-  const others = (page?.entries ?? []).filter((e) => e.user?.id && e.user.id !== me);
-  const wrote = (e) => (e.ops ?? []).some((op) => spanId && op.description?.includes(spanId));
-  const entry = others.find(wrote) ?? others[0];
-  return entry ? entry.user.displayName || entry.user.id : null;
-}
+export const whoChanged = (client, documentId, spanId, me) =>
+  whoChangedAny(client, documentId, [spanId], me);
 
-/** "b changed this to NOUN." */
-export const changedTo = (who, stored) =>
-  stored ? `${who || 'Someone'} changed this to ${stored}.` : `${who || 'Someone'} cleared this.`;
+export { changedTo };
 
 /**
  * Write a cell's value. Answers what `updateAnnotation` does, or for a
- * refusal `{ refused: true, status, error }`, so the cell can tell one that
- * sending again could mend from one it cannot (see EditableCell). The cell
- * reports a conflict itself, so the document raises no toast of its own for
- * one.
+ * refusal `{ refused: true, status, error, readBack }`, so the cell can tell
+ * one that sending again could mend from one it cannot (see EditableCell).
+ * `readBack` is true when the refetch after the refusal landed, so what the
+ * document holds is what the server holds. The cell reports a conflict
+ * itself, so the document raises no toast of its own for one.
  */
 export async function writeCell(doc, tokenId, field, value) {
   const ok = await doc.handlesConflicts(() => doc.updateAnnotation(tokenId, field, value));
   if (ok !== false) return ok;
   const error = doc.errorCause;
-  return { refused: true, status: statusOf(error), error };
+  return { refused: true, status: statusOf(error), error, readBack: !doc.outOfStep };
 }

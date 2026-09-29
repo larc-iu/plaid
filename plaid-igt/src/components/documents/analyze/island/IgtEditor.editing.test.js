@@ -736,6 +736,9 @@ describe('a failed save', () => {
     const { doc, client } = mount();
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', null);
     await settle();
+    // The server holds PL: the refetch after the refusal reads that.
+    const before = JSON.parse(JSON.stringify(doc.raw));
+    client.documents.get = async () => JSON.parse(JSON.stringify(before));
     const update = client.spans.update;
     client.spans.update = () => {
       throw new Error('boom');
@@ -756,7 +759,10 @@ describe('a failed save', () => {
 
 describe('a save refused after the user moved on to the next cell', () => {
   it('leaves focus there, so what is typed next goes into that cell and not after the refused value', async () => {
-    const { client } = mount();
+    const { doc, client } = mount();
+    // The server holds no gloss: the refetch after the refusal reads that.
+    const before = JSON.parse(JSON.stringify(doc.raw));
+    client.documents.get = async () => JSON.parse(JSON.stringify(before));
     const create = client.spans.create;
     let hold;
     client.spans.create = async () => {

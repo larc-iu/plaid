@@ -189,3 +189,71 @@ describe('the conflict note', () => {
     expect(c.hasAttribute('aria-describedby')).toBe(false);
   });
 });
+
+// A save whose answer was lost, but which landed: the refetch shows the typed
+// value, which is stored. It is not put back as unsent, and a later edit of
+// the cell refused for another reason is not taken for another user's change
+// (REV-F-IGT D2, the igt side of plaid-ud's R4).
+describe('an edit that landed with its answer lost', () => {
+  const editOnce = async (value) => {
+    const c = cell('ma:m-1:Gloss');
+    c.focus();
+    type(c, value);
+    cell('ma:m-2:Gloss').focus();
+    await settle(5);
+    return c;
+  };
+
+  it('is shown as stored, not put back unsent', async () => {
+    const { server, release } = mount(['lost']);
+    const c = await editOnce('A');
+    await release();
+    await settle();
+
+    expect(server.value).toBe('A');
+    expect(c.value).toBe('A');
+    expect(c.igtUnsent ?? null).toBeNull();
+    expect(c.classList.contains('igt-field--unsent')).toBe(false);
+    expect(note('ma:m-1:Gloss')).toBeNull();
+  });
+
+  it('then a later edit refused for another reason is no conflict', async () => {
+    const { server, release } = mount(['lost', 500]);
+    const c = await editOnce('A');
+    await release();
+    await settle();
+    const c2 = cell('ma:m-1:Gloss');
+    c2.focus();
+    type(c2, 'B');
+    cell('ma:m-2:Gloss').focus();
+    await settle(5);
+    await release();
+    await settle();
+
+    expect(server.value).toBe('A');
+    expect(note('ma:m-1:Gloss')).toBeNull();
+    expect(notifyWarning).not.toHaveBeenCalled();
+    expect(cell('ma:m-1:Gloss').value).toBe('B');
+    expect(cell('ma:m-1:Gloss').igtUnsent?.saved).toBe('A');
+    void c;
+  });
+});
+
+describe('a conflict that is not the cell’s own', () => {
+  it('says the value is kept in its cell, not to redo the edit', async () => {
+    const { release } = mount([409]);
+    const c = cell('ma:m-1:Gloss');
+    c.focus();
+    type(c, 'hound');
+    cell('ma:m-2:Gloss').focus();
+    await release();
+    await settle();
+
+    expect(note('ma:m-1:Gloss')).toBeNull();
+    expect(c.value).toBe('hound');
+    expect(notifyError).toHaveBeenCalledWith(
+      'Changed elsewhere. Your value is kept in its cell, and leaving the cell sends it again.',
+      'Failed to update Gloss',
+    );
+  });
+});
