@@ -129,8 +129,14 @@ const sameHunk = (p, q) =>
   p.insert.length === q.insert.length &&
   p.insert.every((u, i) => u === q.insert[i]);
 
-// Two changes touch when one begins where the other ends, or they overlap.
-const touch = (p, q) => p.start <= q.end && q.start <= p.end;
+// Two changes touch when they overlap, or when one puts text in where the
+// other begins or ends: which goes first is not known. Two changes that only
+// meet (a word deleted with the space after it, and the next word changed)
+// both apply.
+const touch = (p, q) =>
+  p.start === p.end || q.start === q.end
+    ? p.start <= q.end && q.start <= p.end
+    : p.start < q.end && q.start < p.end;
 
 /**
  * Put the changes that turn `base` into `mine` onto `theirs`, which is `base`
