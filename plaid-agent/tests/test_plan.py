@@ -767,4 +767,4 @@ def test_a_new_document_with_no_metadata_sends_none():
     c = FakeClient()
     ops = [{'kind': 'create_document', 'name': 'Text 2', 'text': 'Gam-ar.\n', 'metadata': {}, 'label': ''}]
     execute_plan(c, ops, source='s', label='l', project=load_project(c, 'p1'))
-    assert c.payloads('documents.create') == [('p1', 'Text 2')]
+    assert c.payloads('documents.create') == [{'args': ('p1', 'Text 2'), 'kwargs': {}}]
