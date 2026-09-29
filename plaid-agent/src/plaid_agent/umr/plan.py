@@ -5,20 +5,18 @@ cap, counting what was committed so a failure part-way can say how far it got,
 and the provenance an approval writes. What is here is the ops themselves,
 each declared once in :data:`KIND` (see :mod:`plaid_agent.core.opkind`).
 
-**Three batches, not one.** A batch op cannot refer to an id an earlier op in
-the SAME batch produced, and a node is three entities: an anchor token, the
-concept span over it, and the relations between spans. So the anchor tokens go
-in one batch, the spans in the next, and the edges and triples in the third.
-That is the order ``umrImport.js`` writes a document in, and the order
-``UmrDocument.applyPenman`` writes one sentence in.
+**Two batches.** A node is its anchor token and the concept span over it,
+written in one batch, the span naming the anchor by a ref to the id its create
+answers (``batch.ref``), so a node is written whole or not at all. The edges
+and triples between spans go in the next batch, by the span ids the first
+answered.
 """
 
-import logging
 import re
 from collections import Counter
 from typing import Any, Dict, List, Optional, Tuple
 
-from plaid_client import created_id, created_ids, metadata_ops
+from plaid_client import created_id, metadata_ops
 
 from ..core import guidelines as _guidelines
 from ..core import opkind as ok
@@ -29,11 +27,8 @@ from .project import load_document, node_ref, with_attribute
 
 UMR = 'umr'
 
-# The pass past the first. A span needs the anchor token the first batch mints,
-# and it is made by the executor itself rather than by a kind of its own; an
-# edge or a triple needs those spans, which is this pass.
-logger = logging.getLogger(__name__)
-
+# The pass past the first: an edge or a triple needs the spans of the nodes
+# the first batch makes.
 LINKS = 'links'
 
 #: Every pass ``_execute`` runs, which is the whole list a kind may be staged
@@ -59,9 +54,8 @@ class Context:
         self.counts = counts
         self.notes = notes
         self.b = b
-        # (document, variable) -> the anchor token's result index, then the
-        # span's result index, then the span id once the batch has landed.
-        self.token_at: Dict[tuple, Any] = {}
+        # (document, variable) -> the new node's concept span: its result
+        # index, then its id once the batch has landed.
         self.span_at: Dict[tuple, Any] = {}
 
     def _resolved(self, table: Dict[tuple, Any], key: tuple, what: str, read):
@@ -73,11 +67,6 @@ class Context:
             table[key] = made
             return made
         return at
-
-    def token_id(self, document_id: str, var: str):
-        # The anchor is one token made by a bulk create, which answers `ids`.
-        return self._resolved(self.token_at, (document_id, var), 'anchor for',
-                              lambda r: next(iter(created_ids(r)), None))
 
     def span_id(self, document_id: str, var: str):
         return self._resolved(self.span_at, (document_id, var), 'node', created_id)
@@ -138,18 +127,41 @@ def _apply_set_edge_order(ctx: Context, op) -> int:
 
 
 def _apply_create_node(ctx: Context, op) -> int:
-    """The anchor token. A node made here is aligned to no word, so it stands
-    over the WHOLE of its sentence, exactly as the editor makes one before a
-    person anchors it to words (``UmrDocument.piecesFor``). It stood on a point
-    at the sentence's start until ``c6313696``: core deletes a zero-width token
+    """The anchor token and the concept span over it, in one batch: the span
+    names the anchor by a ref to the id its create answers. Written in two
+    batches, a failure or a lost answer between them left anchors with no
+    node, which the editor's repair deleted on someone's next open, under
+    their name.
+
+    A node made here is aligned to no word, so its anchor stands over the
+    WHOLE of its sentence, exactly as the editor makes one before a person
+    anchors it to words (``UmrDocument.piecesFor``). It stood on a point at
+    the sentence's start until ``c6313696``: core deletes a zero-width token
     a deletion spans, so an edit in another app that joined two sentences took
     the node with it. A constant belongs to no sentence and keeps its point at
     the text's start, which is what the editor gives one."""
-    key = (op['document_id'], op['var'])
     begin = op.get('begin') or 0
     end = op.get('end') or begin
-    ctx.token_at[key] = ctx.b.add(lambda batch, o=op, a=begin, z=end: batch.tokens.bulk_create([{
-        'token_layer_id': o['node_layer_id'], 'text': o['text_id'], 'begin': a, 'end': z}]))
+    meta: Dict[str, Any] = {'var': op['var'], 'attrs': list(op.get('attrs') or [])}
+    if op.get('constant'):
+        meta['constant'] = True
+    if op.get('root'):
+        meta['root'] = True
+    # A node aligned to no word records its sentence, as the editor does: the
+    # record is what says so, and the anchor stands over the whole sentence,
+    # so an edit to the text around it resizes the anchor rather than taking
+    # the node with it.
+    if op.get('sentence_id') and not op.get('constant'):
+        meta['sentence'] = op['sentence_id']
+
+    def queue(batch, o=op, a=begin, z=end, m=meta):
+        batch.tokens.bulk_create([{'token_layer_id': o['node_layer_id'], 'text': o['text_id'],
+                                   'begin': a, 'end': z}])
+        batch.spans.create(o['concept_layer_id'], [batch.ref(-1, 0)], o.get('concept') or '',
+                           {**ctx.stamp(), UMR: m})
+
+    at = ctx.b.add(queue, weight=2, count=2)
+    ctx.span_at[(op['document_id'], op['var'])] = at + 1
     return 1
 
 
@@ -558,20 +570,12 @@ def _execute(client, project, ops, *, label, counts, notes, stamps: Stamps,
                 if which(op):
                     b.finish(op)
 
-        # --- pass 1: deletes, values, metadata, and every anchor token ------
+        # --- pass 1: deletes, values, metadata, and every new node ---------
         ok.run_stage(KIND, ctx, ops, ok.BATCH)
         b.flush()
-        finish(lambda op: KIND[op['kind']].stage == ok.BATCH and op['kind'] != 'create_node')
+        finish(lambda op: KIND[op['kind']].stage == ok.BATCH)
 
-        # --- pass 2: the concept spans over the tokens pass 1 minted --------
-        try:
-            _write_concepts(ctx, ops)
-        except Exception:
-            _clear_anchors(ctx, ops)
-            raise
-        finish(lambda op: op['kind'] == 'create_node')
-
-        # --- pass 3: the relations between those spans ----------------------
+        # --- pass 2: the relations between the spans pass 1 made -----------
         ok.run_stage(KIND, ctx, ops, LINKS)
         b.flush()
         finish(lambda op: KIND[op['kind']].stage == LINKS)
@@ -580,62 +584,6 @@ def _execute(client, project, ops, *, label, counts, notes, stamps: Stamps,
     if notes:
         result['notes'] = notes
     return result
-
-
-def _clear_anchors(ctx, ops) -> None:
-    """Delete the anchor tokens pass 1 made for nodes whose concept spans did
-    not land, when pass 2 failed. Left, they were anchors with no node, which
-    the editor's repair deleted on someone's next open, under their name. A
-    span whose answer was lost goes with its anchor, and so does one that
-    lands later. Best effort: the failure is what is reported."""
-    client = ctx.client
-    by_doc: Dict[str, List[str]] = {}
-    for op in ops:
-        if op.get('kind') != 'create_node':
-            continue
-        try:
-            token = ctx.token_id(op['document_id'], op['var'])
-        except Exception:  # noqa: BLE001 - an anchor that never came back has nothing to delete
-            continue
-        if token:
-            by_doc.setdefault(op['document_id'], []).append(token)
-    for document_id, tokens in by_doc.items():
-        try:
-            # The version a lost answer moved on, for a strict-mode client.
-            client.documents.get(document_id)
-            client.tokens.bulk_delete(tokens)
-        except Exception as e:  # noqa: BLE001
-            logger.warning('Could not remove the anchors of nodes that were not written: %s', e)
-
-
-def _write_concepts(ctx, ops) -> int:
-    """Pass 2: the concept span of each new node, over the anchor pass 1
-    made. How many were written."""
-    b = ctx.b
-    made = 0
-    for op in ops:
-        if op.get('kind') != 'create_node':
-            continue
-        token = ctx.token_id(op['document_id'], op['var'])
-        meta: Dict[str, Any] = {'var': op['var'], 'attrs': list(op.get('attrs') or [])}
-        if op.get('constant'):
-            meta['constant'] = True
-        if op.get('root'):
-            meta['root'] = True
-        # A node aligned to no word records its sentence, as the editor
-        # does: the record is what says so, and the anchor stands over the
-        # whole sentence, so an edit to the text around it resizes the
-        # anchor rather than taking the node with it.
-        if op.get('sentence_id') and not op.get('constant'):
-            meta['sentence'] = op['sentence_id']
-        ctx.span_at[(op['document_id'], op['var'])] = b.add(
-            lambda batch, o=op, t=token, m=meta: batch.spans.create(
-                o['concept_layer_id'], [t], o.get('concept') or '',
-                {**ctx.stamp(), UMR: m}))
-        made += 1
-    if made:
-        b.flush()
-    return made
 
 
 def summarize(ops: List[Dict[str, Any]]) -> str:

@@ -140,14 +140,15 @@ def test_a_text_that_does_not_parse_plans_nothing_and_says_why(ws):
 
 # --- the same five, as writes ----------------------------------------------------
 
-def test_a_created_node_is_written_as_a_token_then_a_span_then_its_relation(client, ws):
+def test_a_created_node_is_written_as_a_token_and_its_span_then_its_relation(client, ws):
     text = SENTENCE_1_PENMAN.replace('    :aspect performance)',
                                      '    :place (s1y / yard)\n    :aspect performance)')
     call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1, 'text': text})
     log = applied(client, ws)
     assert [kind for kind, _ in log] == ['tokens.bulk_create', 'spans.create', 'relations.create']
-    # Three batches, because a span cannot name a token its own batch minted.
-    assert [len(b) for b in client.batches] == [1, 1, 1]
+    # The anchor and its span in one batch, so a node is written whole or not
+    # at all, and the relation in the next, by the span id the first answered.
+    assert [len(b) for b in client.batches] == [2, 1]
     # The anchor covers the whole sentence, not a point at its start: core
     # deletes a zero-width token a text edit spans, and the node would go
     # with it (c6313696).
@@ -156,7 +157,7 @@ def test_a_created_node_is_written_as_a_token_then_a_span_then_its_relation(clie
     assert (token['begin'], token['end']) == (s1.begin, s1.end)
     [span] = [p['args'] for p in client.payloads('spans.create')]
     assert span[0] == 'm-concept' and span[2] == 'yard'
-    assert span[1] == ['tokens-1']          # the token the first batch made
+    assert span[1] == [{'$ref': 0, 'index': 0}]   # the token made beside it
     # Unaligned, so it records its sentence.
     assert span[3]['umr'] == {
         'var': 's1y', 'attrs': [], 'sentence': ws.doc('Story').sentences[0].id}
@@ -214,10 +215,10 @@ def test_a_re_root_takes_the_mark_off_before_the_new_root_wears_one(client, ws):
     assert 'root' not in landed(client, ws, 'mc-b')['umr']
     [on] = client.payloads('spans.create')
     assert on['args'][3]['umr']['root'] is True
-    # The mark comes off in an EARLIER batch than the one that puts it on, so
-    # no two nodes wear it, whichever way a failure falls.
-    assert client.batches[0][-1][0] == 'spans.bulk_update'
-    assert client.batches[1][0][0] == 'spans.create'
+    # The mark comes off in the same batch that puts it on, so no two nodes
+    # wear it, whichever way a failure falls.
+    kinds = [kind for kind, _ in client.batches[0]]
+    assert 'spans.create' in kinds and kinds[-1] == 'spans.bulk_update'
 
 
 def test_a_node_re_rooted_and_re_attributed_at_once_keeps_both(client, ws):

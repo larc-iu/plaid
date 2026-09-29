@@ -98,12 +98,14 @@ class Batcher:
         self._batch = None  # the open batch, or None between flushes
         self._bulk: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
-    def add(self, fn, weight: int = 1) -> int:
+    def add(self, fn, weight: int = 1, count: int = 1) -> int:
+        """Queue what ``fn(batch)`` writes: ``count`` sub-ops, which land in
+        one batch together. Returns the result index of the first."""
         if self._batch is None:
             self._batch = self.client.batch()
         fn(self._batch)
         idx = len(self.results) + self._pending
-        self._pending += 1
+        self._pending += count
         self._weight += weight
         if self._weight >= self.budget:
             self.flush()

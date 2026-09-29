@@ -240,10 +240,13 @@ def _plan_of(spec, client, *tools):
     return plan
 
 
-def test_a_umr_plan_that_stops_after_its_anchors_wrote_no_node(monkeypatch):
-    """A node is its anchor token (pass 1) and its concept span (pass 2). The
-    anchors committed and the spans did not, so no change is written in
-    full, though a batch was."""
+def test_a_umr_plan_whose_first_batch_answer_was_lost_leaves_no_anchor_alone(monkeypatch):
+    """A node is its anchor token and its concept span, now one batch. With
+    the anchors in a batch of their own, a lost answer on it left anchors
+    whose ids never came back, so nothing could take them out, and the
+    editor's repair deleted them on someone's next open, under their name
+    (conc-2026-09-29 F-PY leftover). A failure in the edges' batch after it
+    leaves whole nodes."""
     from umr_fixtures import SENTENCE_1_PENMAN
     spec = APPS['umr']()
     client = spec['client']()
@@ -254,32 +257,23 @@ def test_a_umr_plan_that_stops_after_its_anchors_wrote_no_node(monkeypatch):
     kinds = [op['kind'] for op in plan['ops']]
     assert 'create_node' in kinds and 'create_node' != kinds[0], kinds
     real = core_plan.Batcher.flush
-    sent = []
 
-    def second_fails(self):
-        if self._batch is not None or any(self._bulk.values()):
-            sent.append(1)
-            if len(sent) == 2:
-                raise PlaidAPIError('HTTP 500 boom at http://h:8085/api/v1/batch', status=500,
-                                    url='http://h:8085/api/v1/batch', method='POST')
+    def lost(self):
         real(self)
+        raise _lost()
 
-    monkeypatch.setattr(core_plan.Batcher, 'flush', second_fails)
+    monkeypatch.setattr(core_plan.Batcher, 'flush', lost)
     svc = spec['service']()
     spec = {**spec, 'service': lambda: svc}
     helper = sbs._approve(spec, client, plan)
     [done] = helper.done
-    rows = len(plan['ops'])
-    written = _stored(spec, client)['written']
-    assert [kinds[i] for i in written] == [k for k in kinds if k not in ('create_node', 'create_edge')]
-    assert done['message'] == (f'Partly applied: {len(written)} of {rows} changes written. '
-                               'HTTP 500 boom.')
-    # The new node's anchor, written in the first batch, is taken back out:
-    # left, it was an anchor with no node, which the editor's repair deleted
-    # on someone's next open, under their name (conc-2026-09-29 H8-2).
-    [anchors] = [p for p in client.payloads('tokens.bulk_create')]
-    [cleared] = client.payloads('tokens.bulk_delete')
-    assert len(cleared) == len(anchors) == 1
+    assert done['message'] == (f'Partly applied: 0 of {len(kinds)} changes written. '
+                               'The server did not answer for the rest.')
+    [first] = client.batches
+    anchors = [i for i, (kind, _) in enumerate(first) if kind == 'tokens.bulk_create']
+    spans = [p for kind, p in first if kind == 'spans.create']
+    assert anchors and sorted(ref.op for p in spans for ref in p['args'][1]) == anchors
+    assert client.payloads('tokens.bulk_delete') == []
 
 
 def _second_send_fails(monkeypatch):

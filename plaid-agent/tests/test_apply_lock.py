@@ -168,25 +168,26 @@ def test_an_open_between_the_batches_leaves_the_plans_new_node_alone(monkeypatch
     helper = sbs._approve(spec, client, plan)
     assert helper.done and helper.done[-1]['kind'] == 'applied', helper.errors
     assert state['refused'] == 1 and state['deleted'] == []
-    # The concept span the second batch made stands on the anchor the first made.
-    assert [p['args'][1] for p in client.payloads('spans.create')] == [['tokens-1']]
+    # The concept span stands on the anchor made beside it in the same batch.
+    assert [p['args'][1] for p in client.payloads('spans.create')] == [[{'$ref': 0, 'index': 0}]]
 
 
-def test_without_the_lock_the_same_open_takes_the_anchor_the_plan_then_writes_on(monkeypatch):
-    """The failure the lock prevents, shown on the same fake: take the lock
-    away and the repair deletes the anchor the second batch hangs the
-    concept on."""
+def test_no_batch_leaves_an_anchor_without_its_node_for_an_open_to_take(monkeypatch):
+    """What the lock guards against here cannot arise from the anchors any
+    more: a new node's anchor and its concept span go in one batch, the span
+    naming the anchor by a ref, so between two batches there is no anchor
+    without a node for a repair on open to take. Without it, a lost answer
+    or a failure after the anchors' batch left them for the next person's
+    open to delete under their name (conc-2026-09-29 F-PY leftover)."""
     spec = APPS['umr']()
     client = spec['client']()
     spec, plan = _umr_node_plan(client)
-    monkeypatch.setattr(core_plan, 'documents_to_lock', lambda *a, **k: [], raising=False)
-    from plaid_agent.core import service as core_service
-    monkeypatch.setattr(core_service, 'documents_to_lock', lambda *a, **k: [], raising=False)
-    state = _open_between_batches(monkeypatch, client, spec['did'], 'second@x.com')
-    sbs._approve(spec, client, plan)
-    assert state['deleted'], 'the repair found the fresh anchor'
-    written_on = {t for p in client.payloads('spans.create') for t in p['args'][1]}
-    assert written_on & set(state['deleted']), 'and the concept went onto the deleted token'
+    helper = sbs._approve(spec, client, plan)
+    assert helper.done and helper.done[-1]['kind'] == 'applied', helper.errors
+    for batch in client.batches:
+        anchors = [i for i, (kind, _) in enumerate(batch) if kind == 'tokens.bulk_create']
+        spans = [p for kind, p in batch if kind == 'spans.create']
+        assert sorted(ref.op for p in spans for ref in p['args'][1]) == anchors
 
 
 def test_a_document_that_cannot_be_found_is_left_to_the_staleness_check(spec):
