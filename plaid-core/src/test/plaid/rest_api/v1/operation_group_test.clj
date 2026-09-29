@@ -459,3 +459,38 @@
       (is (= 400 (:status r)))
       (is (re-find #"kind" (-> r :body :error)))
       (is (re-find #"assistant-plan" (-> r :body :error)) "the error names the vocabulary"))))
+
+(deftest kinds-filter-on-the-vocabulary-read-and-with-a-time-window
+  ;; The vocabulary read goes through its own source subquery, and a time
+  ;; window narrows the walk and the members together with the kinds.
+  (let [v (-> (api-call admin-request {:method :post :path "/api/v1/vocab-layers" :body {:name "V"}})
+              :body :id)
+        create! (fn [q form]
+                  (let [r (api-call admin-request {:method :post
+                                                   :path (str "/api/v1/vocab-items" (when q (str "?" q)))
+                                                   :body {:vocab-layer-id v :form form}})]
+                    (assert-status 201 r)
+                    r))
+        early (random-uuid)
+        late (random-uuid)
+        read (fn [query]
+               (let [r (api-call admin-request {:method :get
+                                                :path (str "/api/v1/vocab-layers/" v "/audit?kinds="
+                                                           (clojure.string/join "," (:kinds query))
+                                                           (when-let [t (:start-time query)] (str "&start-time=" t))
+                                                           (when-let [t (:end-time query)] (str "&end-time=" t)))})]
+                 (assert-ok r)
+                 (set (map :audit/id (-> r :body :entries)))))]
+    (create! (kind-query early "Accept early" "review" nil) "a")
+    (create! (group-query (random-uuid) "Plain") "b")
+    (create! nil "c")
+    (Thread/sleep 5)
+    (let [between (str (java.time.Instant/now))]
+      (Thread/sleep 5)
+      (create! (kind-query late "Accept late" "review" nil) "d")
+      (create! (kind-query (random-uuid) "Import" "import" nil) "e")
+      (is (= #{early late} (read {:kinds ["review"]})))
+      (is (= #{late} (read {:kinds ["review"] :start-time between})))
+      (is (= #{early} (read {:kinds ["review"] :end-time between})))
+      (is (= 400 (:status (api-call admin-request {:method :get
+                                                   :path (str "/api/v1/vocab-layers/" v "/audit?kinds=nope")})))))))
