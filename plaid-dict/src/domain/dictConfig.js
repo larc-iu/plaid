@@ -123,9 +123,12 @@ export const validateSetup = (draft, taken = []) => {
 /**
  * Write the record onto a vocabulary, one config key per call, all under one
  * operation so the audit log shows a single setup. A key whose value is empty
- * is removed rather than stored blank.
+ * is removed rather than stored blank. `loaded` is the vocabulary's config as
+ * the page read it: only the keys the draft changed are written, each
+ * expecting what was read, so a save by someone else since is refused (409)
+ * rather than written over.
  */
-export const saveDictRecord = async (client, vocabularyId, draft, { label } = {}) => {
+export const saveDictRecord = async (client, vocabularyId, draft, { label, loaded } = {}) => {
   const record = {
     title: str(draft.title),
     slug: str(draft.slug),
@@ -143,12 +146,32 @@ export const saveDictRecord = async (client, vocabularyId, draft, { label } = {}
       : null,
     alphabet: Array.isArray(draft.alphabet) ? draft.alphabet.map(str).filter(Boolean) : [],
   };
+  const before = readDictRecord(loaded);
+  const isEmpty = (value) => value === null || value === undefined || value === '';
   await client.withOperation(label || `Set up dictionary "${record.title}"`, async () => {
     for (const key of DICT_KEYS) {
       const value = record[key];
-      const empty = value === null || (typeof value === 'string' && value === '');
-      if (empty) await client.vocabLayers.deleteConfig(vocabularyId, DICT_NAMESPACE, key);
-      else await client.vocabLayers.setConfig(vocabularyId, DICT_NAMESPACE, key, value);
+      const was = before ? before[key] : undefined;
+      if (isEmpty(value) ? isEmpty(was) : JSON.stringify(value) === JSON.stringify(was)) continue;
+      const expected = { expected: readDict(loaded)?.[key] };
+      if (isEmpty(value)) {
+        await client.vocabLayers.deleteConfig(
+          vocabularyId,
+          DICT_NAMESPACE,
+          key,
+          undefined,
+          expected,
+        );
+      } else {
+        await client.vocabLayers.setConfig(
+          vocabularyId,
+          DICT_NAMESPACE,
+          key,
+          value,
+          undefined,
+          expected,
+        );
+      }
     }
   });
   return record;

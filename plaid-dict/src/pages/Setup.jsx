@@ -29,6 +29,7 @@ import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Textarea } from '@ui/components/ui/textarea';
 import { notifyError, notifySuccess } from '@/utils/feedback';
+import { statusOf } from '@ui/lib/errors.js';
 
 // Advisory only: a wrong-looking code still saves, since a dictionary may
 // document something Glottolog has no entry for.
@@ -263,6 +264,7 @@ export const Setup = () => {
     try {
       const record = await saveDictRecord(client, vocabularyId, draft, {
         label: saved ? `Update dictionary "${draft.title}"` : `Set up dictionary "${draft.title}"`,
+        loaded: vocab?.config,
       });
       await reload();
       notifySuccess(saved ? 'Saved.' : 'Dictionary set up.');
@@ -270,6 +272,8 @@ export const Setup = () => {
     } catch (err) {
       console.error('Failed to save the dictionary record:', err);
       notifyError(err, 'Failed to save the dictionary');
+      // Someone else saved since: show what is stored now.
+      if (statusOf(err) === 409) reload();
     } finally {
       setSaving(false);
     }

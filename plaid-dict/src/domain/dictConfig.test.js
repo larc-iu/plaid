@@ -107,25 +107,43 @@ describe('saveDictRecord', () => {
         return fn();
       },
       vocabLayers: {
-        setConfig: (id, ns, key, value) => calls.push(['set', id, ns, key, value]),
-        deleteConfig: (id, ns, key) => calls.push(['delete', id, ns, key]),
+        setConfig: (id, ns, key, value, _audit, options) =>
+          calls.push(['set', id, ns, key, value, options]),
+        deleteConfig: (id, ns, key, _audit, options) =>
+          calls.push(['delete', id, ns, key, options]),
       },
     };
   };
 
-  it('writes every key under one operation, removing the empty ones', async () => {
+  it('writes a new record under one operation, leaving out the empty keys', async () => {
     const client = fakeClient();
     await saveDictRecord(client, 'v1', { title: 'Sena Dictionary', slug: 'sena', about: '' });
 
     expect(client.calls[0]).toEqual(['operation', 'Set up dictionary "Sena Dictionary"']);
     const written = client.calls.filter(([kind]) => kind === 'set').map(([, , , key]) => key);
     const removed = client.calls.filter(([kind]) => kind === 'delete').map(([, , , key]) => key);
-    // `languages` and `alphabet` are never strings, so they are always
-    // written; the blank strings are removed, and so is an exampleLayers no
-    // choice was made about, which reads back as null (show every layer).
+    // `languages` and `alphabet` are never strings, so a new record writes
+    // them. A blank key has nothing stored to remove.
     expect(written).toEqual(['title', 'slug', 'languages', 'alphabet']);
-    expect(removed).toEqual(['credits', 'citation', 'about', 'exampleLayers']);
+    expect(removed).toEqual([]);
     expect(client.calls.every((c) => c[0] === 'operation' || c[2] === DICT_NAMESPACE)).toBe(true);
+  });
+
+  // A page opened before someone else saved the record wrote every key from
+  // its copy, putting their changes back (V6). Only the keys the draft changed
+  // are written, each expecting what the page read.
+  it('writes only the changed keys, expecting what the page read', async () => {
+    const loaded = {
+      [DICT_NAMESPACE]: { title: 'Sena', slug: 'sena', about: 'Old', alphabet: ['a'] },
+    };
+    const draft = { title: 'Sena', slug: 'sena', about: '', credits: 'Me', alphabet: ['a'] };
+    const client = fakeClient();
+    await saveDictRecord(client, 'v1', draft, { loaded });
+    const touched = client.calls.filter(([kind]) => kind !== 'operation');
+    expect(touched).toEqual([
+      ['set', 'v1', DICT_NAMESPACE, 'credits', 'Me', { expected: undefined }],
+      ['delete', 'v1', DICT_NAMESPACE, 'about', { expected: 'Old' }],
+    ]);
   });
 
   // An empty exampleLayers is a choice (show no layer) and must not read back
@@ -138,7 +156,12 @@ describe('saveDictRecord', () => {
     ]);
     expect(client.calls.find(([, , , key]) => key === 'exampleLayers')[4]).toEqual([]);
     const none = fakeClient();
-    await saveDictRecord(none, 'v1', { title: 'T', slug: 't', exampleLayers: null });
+    await saveDictRecord(
+      none,
+      'v1',
+      { title: 'T', slug: 't', exampleLayers: null },
+      { loaded: { [DICT_NAMESPACE]: { title: 'T', slug: 't', exampleLayers: ['x'] } } },
+    );
     expect(none.calls.find(([, , , key]) => key === 'exampleLayers')[0]).toBe('delete');
   });
 
