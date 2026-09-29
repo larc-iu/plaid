@@ -151,9 +151,13 @@ export const assistantProjectsTests = ({
     await expect(page).toHaveURL(/conversation=/);
     const id = new URL(page.url().replace('#', '')).searchParams.get('conversation');
     seeded.push(id);
+    // The conversation is on screen before its write lands, and a read before
+    // then is a 404, which would end the poll at once.
     await expect
       .poll(async () => {
-        const got = await client().userData.get(userId(), key('conv', id));
+        const got = await client()
+          .userData.get(userId(), key('conv', id))
+          .catch(() => null);
         return got?.value?.display?.find((d) => d.kind === 'user')?.projects ?? null;
       })
       .toEqual([{ id: B.id, name: B.name }]);

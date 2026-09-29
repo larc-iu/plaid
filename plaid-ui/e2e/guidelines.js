@@ -18,6 +18,11 @@ const EDITOR_TIMEOUT = 45000;
 const rowFor = (page, title) =>
   page.locator('button', { has: page.locator(`text="${title}"`) }).first();
 
+// The saved guideline as the reader sees it. The editor's own page carries
+// `.md-body` too, so the bare class also matches the draft before the save has
+// reached the server. The read view comes back only once the server answered.
+const rendered = (page) => page.locator('.md-body:not(.guideline-editor__doc)');
+
 export const guidelinesTests = ({
   test,
   expect,
@@ -106,7 +111,7 @@ export const guidelinesTests = ({
     await page.keyboard.type('here.');
 
     await page.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect(page.locator('.md-body')).toContainText('Ergative subjects are marked here.');
+    await expect(rendered(page)).toContainText('Ergative subjects are marked here.');
 
     // Remembered for cleanup: it was made through the UI, not through seed().
     const rows = await client().guidelines.list(projectId());
@@ -126,7 +131,7 @@ export const guidelinesTests = ({
     await page.getByRole('button', { name: 'Edit', exact: true }).click();
     await expect(page.locator('.guideline-editor__doc')).toBeVisible({ timeout: EDITOR_TIMEOUT });
     await page.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect(page.locator('.md-body')).toBeVisible();
+    await expect(rendered(page)).toBeVisible();
 
     const after = await client().guidelines.get(id);
     expect(after.body).toBe(body);
@@ -171,7 +176,7 @@ export const guidelinesTests = ({
 
     // The second save is the overwrite the message offered.
     await page.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect(page.locator('.md-body')).toContainText('And my own sentence.');
+    await expect(rendered(page)).toContainText('And my own sentence.');
     expect((await client().guidelines.get(id)).body).toContain('And my own sentence.');
   });
 
