@@ -468,6 +468,8 @@ export class IgtDocument extends DocumentModel {
     // re-open) must not double-create morphemes.
     if (this._reconciling) return ZERO;
     this._reconciling = true;
+    let tally = null;
+    let landed = false;
     try {
       const info = this.layerInfo;
       // Back-fill, the reconcile contract's second step: a project made before
@@ -483,8 +485,16 @@ export class IgtDocument extends DocumentModel {
 
       const morphemeLayer = info.morphemeTokenLayer;
       const morphemeWork = Boolean(morphemeLayer?.id && orphanMorphemeIds.length);
+      tally = {
+        deleted: morphemeWork ? orphanMorphemeIds.length : 0,
+        deletedAnnotatedOrphans,
+        dedupedSpans: dedupPlans.reduce((n, p) => n + p.deleteSpanIds.length, 0),
+        dedupedLinks: linkPlans.reduce((n, p) => n + p.deleteLinks.length, 0),
+        syncedMorphTypes: typePlans.length,
+      };
+      const heals = morphemeWork || dedupPlans.length || linkPlans.length || typePlans.length;
 
-      if (morphemeWork || dedupPlans.length || linkPlans.length || typePlans.length) {
+      if (heals) {
         await this._client.batched(async (b) => {
           if (morphemeWork) b.tokens.bulkDelete(orphanMorphemeIds);
           dedupPlans.forEach((p) => {
@@ -501,6 +511,11 @@ export class IgtDocument extends DocumentModel {
             ]);
           });
         });
+      }
+      // Every write has landed: the repair is whole, and a failure from here
+      // on leaves only the screen behind it.
+      landed = true;
+      if (heals) {
         const removed = new Set(orphanMorphemeIds);
 
         this._applyRawPatch((next, infoNext, vocabs) => {
@@ -546,16 +561,12 @@ export class IgtDocument extends DocumentModel {
         vocabularies: this._vocabularies,
       });
 
-      return {
-        deleted: morphemeWork ? orphanMorphemeIds.length : 0,
-        deletedAnnotatedOrphans,
-        dedupedSpans: dedupPlans.reduce((n, p) => n + p.deleteSpanIds.length, 0),
-        dedupedLinks: linkPlans.reduce((n, p) => n + p.deleteLinks.length, 0),
-        syncedMorphTypes: typePlans.length,
-        findings,
-      };
+      return { ...tally, findings };
     } catch (err) {
       console.error('reconcileOnOpen failed:', err);
+      // Findings read off a screen the repair did not reach would describe
+      // the document as it was before it, so there are none.
+      if (landed) return { ...ZERO, ...tally, refreshError: err };
       return { ...ZERO, error: err };
     } finally {
       this._reconciling = false;

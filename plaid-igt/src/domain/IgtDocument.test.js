@@ -351,6 +351,40 @@ describe('morph type from the linked lexicon entry', () => {
     expect(doc.client.calls.filter((c) => c.kind === 'tokens.patchMetadata')).toHaveLength(0);
   });
 
+  // Every write has landed, and bringing the screen up to date after them
+  // fails: the repair is whole, so History names it, and the screen is what
+  // is out of date.
+  it('a repair that lands and then fails to update the screen keeps the label naming it', async () => {
+    const doc = linkedDoc('enclitic');
+    const lost = new Error('the screen could not take it');
+    doc._applyRawPatch = () => {
+      throw lost;
+    };
+    const res = await doc.reconcileOnOpen();
+    expect(doc.client.calls.some((c) => c.kind === 'tokens.patchMetadata')).toBe(true);
+    expect(res.syncedMorphTypes).toBe(1);
+    expect(res.refreshError).toBe(lost);
+    expect(res.error).toBeUndefined();
+    expect(res.findings).toEqual([]);
+    const relabel = doc.client.calls.find((c) => c.kind === 'operationGroups.update');
+    expect(relabel.args[1]).toBe(doc.describeReconcile(res));
+    expect(relabel.args[1]).not.toBe('Repair on open (interrupted)');
+  });
+
+  it('a repair whose write fails is still labeled as interrupted', async () => {
+    const doc = linkedDoc('enclitic');
+    const run = doc.client.batched.bind(doc.client);
+    doc.client.batched = async (fn) => {
+      await run(fn);
+      throw Object.assign(new Error('refused'), { status: 500 });
+    };
+    const res = await doc.reconcileOnOpen();
+    expect(res.error).toBeTruthy();
+    expect(res.refreshError).toBeUndefined();
+    const relabel = doc.client.calls.find((c) => c.kind === 'operationGroups.update');
+    expect(relabel.args[1]).toBe('Repair on open (interrupted)');
+  });
+
   it('setVocabItemMorphType patches the entry AND the linked morphemes in one batch', async () => {
     const doc = linkedDoc('enclitic');
     const ok = await doc.setVocabItemMorphType('v1', 'i1', 'proclitic');

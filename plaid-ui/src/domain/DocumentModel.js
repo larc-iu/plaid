@@ -640,7 +640,10 @@ export class DocumentModel {
   // the document opens (useReconcileOnOpen holds the editor behind a gate while
   // it runs). The repair is the subclass's `_reconcile`, which resolves to a
   // tally carrying `findings` (what it could not heal), and `error` or
-  // `interrupted` for a repair that failed partway. Every heal write folds
+  // `interrupted` for a repair that failed partway. A repair whose writes all
+  // landed and whose refetch (or check) after them failed carries
+  // `refreshError` in their place: it is whole, so it keeps the label that
+  // names it, and only the screen is behind. Every heal write folds
   // under ONE audit entry, relabelled by `describeReconcile` to name the
   // repair that ran. A subclass may put that label on before its first write
   // (UMR does, so a batch sent as several requests carries it from the

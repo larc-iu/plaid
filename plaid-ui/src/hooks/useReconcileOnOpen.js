@@ -64,6 +64,15 @@ export function useReconcileOnOpen({ doc, asOf, canWrite, onRepaired }) {
         }
         const line = doc.describeReconcile(result);
         if (line) console.info(line);
+        // The repair is saved, and the screen still shows the document as it
+        // was before it.
+        if (result.refreshError) {
+          notifyError(
+            `${humanizeError(result.refreshError)} Try reloading.`,
+            'Failed to reload the repaired document',
+          );
+          return;
+        }
         // What the repair could NOT heal, which is why it interrupts.
         reportIntegrityFindings(result.findings || [], { documentId: doc.id });
       } catch (e) {

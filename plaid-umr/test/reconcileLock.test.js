@@ -215,3 +215,22 @@ test('a repair that finishes keeps the label naming it', async () => {
   await doc.reconcileOnOpen();
   assert.deepEqual(relabels, ['Repaired: removed 1 empty node an interrupted add left']);
 });
+
+test('a repair that finishes and then fails to re-read keeps the label naming it', async () => {
+  const { doc } = open(() => null);
+  const relabels = grouped(doc._client);
+  const run = doc._client.batched;
+  doc._client.batched = async (fn) => {
+    doc._client.operationGroup.written = true;
+    return run(fn);
+  };
+  const lost = Object.assign(new Error('Failed to fetch'), { status: 0 });
+  doc._reload = async () => {
+    throw lost;
+  };
+  const result = await doc.reconcileOnOpen();
+  assert.deepEqual(relabels, ['Repaired: removed 1 empty node an interrupted add left']);
+  assert.equal(result.strays, 1);
+  assert.equal(result.refreshError, lost);
+  assert.equal(result.error, undefined);
+});

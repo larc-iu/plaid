@@ -594,17 +594,24 @@ export class ConlluDocument extends DocumentModel {
       const healed =
         addedEnhancedLayer ||
         createdSyntacticWords + deletedOrphans + dedupedSpans + relIds.length > 0;
-      if (healed) await this._reload();
-      // Validate the true server state — even when nothing healed.
-      const findings = validateConlluDocument(this.layerInfo);
-      return {
+      const tally = {
         deletedRelations,
         createdSyntacticWords,
         deletedOrphans,
         deletedAnnotatedOrphans: orphans.annotatedCount,
         dedupedSpans,
-        findings,
       };
+      // Every write has landed: the repair is whole, and a failure from here
+      // on leaves only the screen behind it. Its findings would describe the
+      // document as it was before the repair, so there are none.
+      try {
+        if (healed) await this._reload();
+        // Validate the true server state — even when nothing healed.
+        return { ...tally, findings: validateConlluDocument(this.layerInfo) };
+      } catch (refreshError) {
+        console.error('reconcileOnOpen could not re-read the repaired document:', refreshError);
+        return { ...tally, findings: [], refreshError };
+      }
     } catch (err) {
       console.error('reconcileOnOpen failed:', err);
       return { ...ZERO, error: err };

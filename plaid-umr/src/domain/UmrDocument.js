@@ -585,14 +585,20 @@ export class UmrDocument extends DocumentModel {
           }
         });
       });
-      await this._reload();
-      return tally;
     } catch (error) {
       // A service took the lock after the check above. The requests before
       // the refused one may have landed, so the pass counts as interrupted.
       if (error?.status === 423) return { findings: [], deferred: true, interrupted: true };
       return { findings: [], error };
     }
+    // Every write has landed: the repair is whole, and only the screen is
+    // behind it when the refetch fails.
+    try {
+      await this._reload();
+    } catch (refreshError) {
+      return { ...tally, refreshError };
+    }
+    return tally;
   }
 
   // The anchor tokens no node stands on that an interrupted add LEFT, rather

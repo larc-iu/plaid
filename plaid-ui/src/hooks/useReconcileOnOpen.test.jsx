@@ -157,6 +157,25 @@ describe('the reconcile gate', () => {
     await view.unmount();
   });
 
+  it('says the repaired document could not be read again, not that the repair failed', async () => {
+    const doc = makeDoc({
+      deleted: 3,
+      findings: [],
+      refreshError: Object.assign(new Error('Failed to fetch'), { status: 0 }),
+    });
+    view = await renderComponent(<Probe {...base} doc={doc} />);
+    await settle();
+    expect(notifyError).toHaveBeenCalledTimes(1);
+    expect(notifyError).toHaveBeenCalledWith(
+      expect.stringContaining('Try reloading.'),
+      'Failed to reload the repaired document',
+    );
+    expect(console.info).toHaveBeenCalledWith(expect.stringContaining('removed 3'));
+    expect(reportIntegrityFindings).not.toHaveBeenCalled();
+    expect(api.reconciling).toBe(false);
+    await view.unmount();
+  });
+
   it('says nothing about a repair that succeeded', async () => {
     const doc = makeDoc({ deleted: 3, dedupedSpans: 1 });
     view = await renderComponent(<Probe {...base} doc={doc} />);
