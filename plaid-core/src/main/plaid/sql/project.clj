@@ -949,17 +949,21 @@
 
 (defn- assert-config-unchanged!
   "Compare-and-set for a config write. `check` is nil (no check) or
-  `{:expected v}`, the value the writer read for this one cell (nil when
-  the cell was absent, which is the same as a stored null). The expected
-  value arrives decoded from a request body, with keyword keys, so it is
-  put through JSON once to compare in the stored shape (string keys).
-  A 409 when the cell holds anything else, so a page that read the
-  settings before another maintainer saved them cannot write over that
-  save."
+  `{:expected v :value w}`: `v` the value the writer read for this one cell
+  (nil when the cell was absent, which is the same as a stored null), `w`
+  the value it writes (nil for a delete). Both arrive decoded from a
+  request body, with keyword keys, so they are put through JSON once to
+  compare in the stored shape (string keys). A 409 when the cell holds
+  anything else, so a page that read the settings before another
+  maintainer saved them cannot write over that save. A cell that already
+  holds `w` passes: that is this very save sent again after its answer
+  was lost, and writing it again changes nothing."
   [current cell check]
   (when check
-    (let [expected (json/read-str (json/write-str (:expected check)))]
-      (when-not (same-json? expected (get-in current cell))
+    (let [as-stored #(json/read-str (json/write-str %))
+          stored (get-in current cell)]
+      (when-not (or (same-json? (as-stored (:expected check)) stored)
+                    (same-json? (as-stored (:value check)) stored))
         (throw (ex-info "This setting was changed by someone else since it was read"
                         {:code 409 :cell cell}))))))
 
@@ -983,7 +987,7 @@
                       (let [row (config-row! tx table layer-id)
                             current (psc/parse-config (:config row))
                             cell (config-cell-keys editor-name config-key)
-                            _ (assert-config-unchanged! current cell check)
+                            _ (assert-config-unchanged! current cell (some-> check (assoc :value config-value)))
                             new-config (assoc-in current cell config-value)]
                         (crud/update-by-id! tx table layer-id
                                             (config-update-attrs table new-config))))))
@@ -1005,7 +1009,7 @@
                       (let [row (config-row! tx table layer-id)
                             current (psc/parse-config (:config row))
                             [ed-key cfg-key :as cell] (config-cell-keys editor-name config-key)
-                            _ (assert-config-unchanged! current cell check)
+                            _ (assert-config-unchanged! current cell (some-> check (assoc :value nil)))
                             new-config (update current ed-key dissoc cfg-key)]
                         (crud/update-by-id! tx table layer-id
                                             (config-update-attrs table new-config))))))

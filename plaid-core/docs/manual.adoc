@@ -1120,6 +1120,7 @@ A key that was absent is expected as `None` / `null` (in JavaScript `expected: u
 On the wire this is `?if-unchanged=true` with the body `{"expected": ..., "value": ...}` (a DELETE sends `{"expected": ...}`).
 The check compares one key's whole value, so it holds inside an atomic batch too, where a 409 rolls back the batch.
 Values are compared as JSON, so `1` and `1.0` are the same number and the order of keys does not matter.
+A cell that already holds the value being written passes too, so a save sent again after its answer was lost succeeds.
 
 NOTE: Config and metadata values are schema-less, meaning that keys and values are unconstrained. If you'd like to see schema support for either of these, please feel free to https://github.com/larc-iu/plaid/issues[open an issue].
 

@@ -37,3 +37,19 @@
       (assert-status 204 (put-config pid "m" nil {"a" 1}))
       (assert-status 409 (put-config pid "m" {"a" 1 "b" nil} 0))
       (assert-status 409 (put-config pid "m" {"b" 1} 0)))))
+
+(deftest a-retry-of-a-save-that-landed-goes-through
+  (let [pid (create-test-project admin-request "CAS retry")
+        del (fn [k expected]
+              (api-call admin-request {:method :delete
+                                       :path (str "/api/v1/projects/" pid "/config/t/" k "?if-unchanged=true")
+                                       :body {:expected expected}}))]
+    (assert-status 204 (put-config pid "k" {"a" 1}))
+    (testing "a save whose answer was lost, sent again, finds its own value and succeeds"
+      (assert-status 204 (put-config pid "k" {"a" 1} {"a" 2.0}))
+      (assert-status 204 (put-config pid "k" {"a" 1} {"a" 2})))
+    (testing "a value that is neither the one read nor the one sent is refused"
+      (assert-status 409 (put-config pid "k" {"a" 1} {"a" 3})))
+    (testing "a delete sent again over a cell already gone succeeds"
+      (assert-status 204 (del "k" {"a" 2}))
+      (assert-status 204 (del "k" {"a" 2})))))
