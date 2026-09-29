@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { footprintOf, untouched } from './rebase.js';
+import { footprintOf, landed, pendingIdsOf, untouched } from './rebase.js';
 import { pendingId } from './pendingIds.js';
 
 // Luke's ruling Q2 (2026-09-29): a refused edit goes again by itself when what
@@ -204,5 +204,148 @@ describe('an edit refused because the document moved on', () => {
     expect(untouched(footprintOf(base, structuredClone(base)), base, doc({ version: 2 }))).toBe(
       false,
     );
+  });
+});
+
+// REV-F-IGT O5(b): the first gloss on a word makes a morpheme over it. Sent
+// again after another user split that word, it made a morpheme across two
+// words.
+describe('an edit that places something inside a token of a parent layer', () => {
+  // A morpheme layer nested in the word layer, and a layer another app
+  // writes that is not.
+  const nested = (over = {}) => {
+    const d = doc(over);
+    d.textLayers[0].tokenLayers.push({
+      id: 'morphs',
+      parentTokenLayer: 'words',
+      tokens: over.morphs ?? [],
+      spanLayers: [],
+    });
+    return d;
+  };
+  const morphs = (d) => d.textLayers[0].tokenLayers[2].tokens;
+  const base = nested();
+  const morphOnDog = edit(base, (d) => morphs(d).push({ id: pendingId(), begin: 4, end: 7 }));
+
+  it('is refused when that token was split, resized or removed since', () => {
+    const split = nested({ version: 2 });
+    words(split)[1] = { id: 't2', begin: 4, end: 5 };
+    words(split).push({ id: 't9', begin: 6, end: 7 });
+    expect(untouched(morphOnDog, base, split)).toBe(false);
+    const gone = nested({ version: 2 });
+    words(gone).splice(1, 1);
+    expect(untouched(morphOnDog, base, gone)).toBe(false);
+  });
+
+  it('goes again when the parent token elsewhere changed, or a token was only added there', () => {
+    const elsewhere = nested({ version: 2 });
+    words(elsewhere)[2] = { id: 't3', begin: 8, end: 10 };
+    words(elsewhere).push({ id: 't9', begin: 10, end: 12 });
+    expect(untouched(morphOnDog, base, elsewhere)).toBe(true);
+  });
+
+  it('goes again when a layer that is not its parent was cut up over the same text', () => {
+    // A UMR node placed on "dog" and igt's morphemes of "dog" re-cut: the
+    // node layer does not nest in the morpheme layer.
+    const withMorphs = nested({ morphs: [{ id: 'm1', begin: 4, end: 7 }] });
+    const nodeOnDog = edit(withMorphs, (d) =>
+      d.textLayers[0].tokenLayers[1].tokens.push({ id: pendingId(), begin: 4, end: 7 }),
+    );
+    const recut = nested({ version: 2, morphs: [{ id: 'm1', begin: 4, end: 5 }] });
+    morphs(recut).push({ id: 'm2', begin: 5, end: 7 });
+    expect(untouched(nodeOnDog, withMorphs, recut)).toBe(true);
+  });
+});
+
+// REV-F-NET D-6: a resend of a write whose first answer was lost is refused,
+// and the read after it shows whether the write is there already.
+describe('whether an edit is on the server already', () => {
+  const base = doc({ glosses: [gloss('s1', 't1', 'DEF')] });
+  const made = (change) => {
+    const d = structuredClone(base);
+    change(d);
+    return d;
+  };
+
+  it('finds a row it added by its fields, and names its server id', () => {
+    const id = pendingId();
+    const mine = made((d) => glossLayer(d).spans.push(gloss(id, 't2', 'CANINE')));
+    const now = doc({
+      version: 2,
+      glosses: [gloss('s1', 't1', 'DEF'), gloss('s7', 't2', 'CANINE')],
+    });
+    expect(landed(base, mine, now)).toEqual(new Map([[id, 's7']]));
+    const other = doc({
+      version: 2,
+      glosses: [gloss('s1', 't1', 'DEF'), gloss('s7', 't2', 'HOUND')],
+    });
+    expect(landed(base, mine, other)).toBe(null);
+    expect(landed(base, mine, base)).toBe(null);
+  });
+
+  it('ties the rows it added to each other by the ids they name', () => {
+    const tok = pendingId();
+    const span = pendingId();
+    const mine = made((d) => {
+      d.textLayers[0].tokenLayers[1].tokens.push({ id: tok, begin: 4, end: 7 });
+      d.textLayers[0].tokenLayers[1].spanLayers[0].spans.push({
+        id: span,
+        tokens: [tok],
+        value: 'dog',
+      });
+    });
+    const now = doc({
+      version: 2,
+      glosses: [gloss('s1', 't1', 'DEF')],
+      other: [
+        { id: 'n1', begin: 0, end: 3 },
+        { id: 'n2', begin: 4, end: 7 },
+      ],
+      otherSpans: [
+        { id: 'c1', tokens: ['n1'], value: 'dog' },
+        { id: 'c2', tokens: ['n2'], value: 'dog' },
+      ],
+    });
+    expect(landed(base, mine, now)).toEqual(
+      new Map([
+        [tok, 'n2'],
+        [span, 'c2'],
+      ]),
+    );
+  });
+
+  it('reads a changed field and a removed row', () => {
+    const mine = made((d) => {
+      glossLayer(d).spans[0].value = 'ART';
+    });
+    expect(landed(base, mine, doc({ version: 2, glosses: [gloss('s1', 't1', 'ART')] }))).toEqual(
+      new Map(),
+    );
+    expect(landed(base, mine, doc({ version: 2, glosses: [gloss('s1', 't1', 'THE')] }))).toBe(null);
+    const removed = made((d) => glossLayer(d).spans.splice(0, 1));
+    expect(landed(base, removed, doc({ version: 2 }))).toEqual(new Map());
+    expect(landed(base, removed, base)).toBe(null);
+  });
+
+  it('knows nothing of an edit that changed no row', () => {
+    expect(landed(base, structuredClone(base), base)).toBe(null);
+  });
+});
+
+describe('the pending ids an edit makes and names', () => {
+  it('tells the rows it made from the ones it only points at', () => {
+    const tok = pendingId();
+    const before = doc();
+    before.textLayers[0].tokenLayers[1].tokens.push({ id: tok, begin: 4, end: 7 });
+    const span = pendingId();
+    const after = structuredClone(before);
+    after.textLayers[0].tokenLayers[1].spanLayers[0].spans.push({
+      id: span,
+      tokens: [tok],
+      value: 'x',
+    });
+    const { created, named } = pendingIdsOf(before, after);
+    expect([...created]).toEqual([span]);
+    expect([...named].sort()).toEqual([span, tok].sort());
   });
 });

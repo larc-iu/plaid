@@ -101,18 +101,37 @@ describe('a write made offline', () => {
     expect(doc.isOffline).toBe(false);
   });
 
-  it('is refused, not sent twice, when it did land after all', async () => {
+  // REV-F-NET D-6: the resend was refused as a conflict with the edit's own
+  // write, and the page said "Changed elsewhere. Redo your edit." about an
+  // edit that was saved.
+  it('is not sent twice when it did land after all, and counts as saved', async () => {
     const { server, doc, errors } = open();
     doc._writes._retryDelay = () => 0;
     server.fail.push({ error: offline, landed: true });
     const saved = doc.set('gloss', 'DOG');
-    // The version moved, so the resend is not allowed: nothing is written
-    // twice, and the refetch shows what landed.
-    expect(await saved).toBe(false);
+    // The server refuses the resend, since the version moved: the read after
+    // it holds the edit, so it has landed.
+    expect(await saved).toBe(true);
     await flush();
     expect(server.version).toBe(2);
-    expect(errors).toHaveLength(1);
+    expect(errors).toEqual([]);
     expect(doc.raw.values).toEqual({ gloss: 'DOG' });
+  });
+
+  it('is still refused when the read after the refusal holds something else there', async () => {
+    const { server, doc, errors } = open();
+    doc._writes._retryDelay = () => 60000;
+    server.fail.push({ error: offline });
+    const saved = doc.set('gloss', 'DOG');
+    await flush();
+    // Another user's value lands while this browser is offline.
+    server.values.gloss = 'CAT';
+    server.version += 1;
+    window.dispatchEvent(new Event('online'));
+    expect(await saved).toBe(false);
+    await flush();
+    expect(errors.map((e) => e.err.status)).toEqual([409]);
+    expect(doc.raw.values).toEqual({ gloss: 'CAT' });
   });
 
   it('is refused as before outside strict mode, where the server cannot check a resend', async () => {

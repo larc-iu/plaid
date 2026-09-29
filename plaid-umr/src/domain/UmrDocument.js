@@ -910,6 +910,28 @@ export class UmrDocument extends DocumentModel {
     }
   }
 
+  // Whether `sentence`, as an edit saw it, and its words `wordIds` stand in
+  // `fresh` (a later read, see DocumentModel's `recheck`) as they stood: the
+  // same sentence at the same place, and each word over the same text. The
+  // edit measured the pieces it places from them.
+  _sameWords(fresh, sentence, wordIds) {
+    const now = fresh.sentence(sentence.index);
+    if (
+      !now ||
+      settledId(now.tokenId) !== settledId(sentence.tokenId) ||
+      now.begin !== sentence.begin ||
+      now.end !== sentence.end
+    ) {
+      return false;
+    }
+    const at = (s, id) => s.words.find((w) => settledId(w.id) === settledId(id));
+    return wordIds.every((id) => {
+      const was = at(sentence, id);
+      const is = at(now, id);
+      return !!was && !!is && was.begin === is.begin && was.end === is.end;
+    });
+  }
+
   /**
    * A new node in a sentence: anchored to `wordIds` (none for an abstract
    * concept), under `parentId` with `role` when given. `entry` is the
@@ -1015,6 +1037,17 @@ export class UmrDocument extends DocumentModel {
         this._settle(ids);
       },
       parent ? `Add ${role} ${concept} under ${parent.concept}` : `Add ${concept}`,
+      {
+        // Sent again on a later version, it must still stand where it was
+        // put: the same words, a variable nobody took meanwhile, the root
+        // only of a sentence still without nodes, and its parent there.
+        recheck: (fresh) => {
+          if (!this._sameWords(fresh, sentence, wordIds)) return false;
+          if (fresh.takenVariables().has(variable)) return false;
+          if (meta.root && fresh.sentence(sentenceIndex).nodes.length) return false;
+          return !parent || fresh.node(parent.id)?.sentence === sentenceIndex;
+        },
+      },
     );
     return ok ? { nodeId: settledId(spanId), edgeId: edgeId ? settledId(edgeId) : null } : false;
   }
@@ -1296,6 +1329,19 @@ export class UmrDocument extends DocumentModel {
         this._settle(ids);
       },
       words.length ? `Anchor ${node.var} to ${words.join(' ')}` : `Unanchor ${node.var}`,
+      {
+        // The node still stands on the pieces it had, and the words are
+        // still the words it was anchored to.
+        recheck: (fresh) => {
+          const now = fresh.node(node.id);
+          if (!now || now.sentence !== node.sentence) return false;
+          const pieces = new Set(now.pieces.map((p) => settledId(p.id)));
+          return (
+            oldIds.every((id) => pieces.has(settledId(id))) &&
+            this._sameWords(fresh, sentence, wordIds)
+          );
+        },
+      },
     );
   }
 
@@ -1346,6 +1392,20 @@ export class UmrDocument extends DocumentModel {
         this._settle(new Map([[edgeId, createdId(rel)]]));
       },
       `Add ${role} from ${source.var} to ${target.var}`,
+      {
+        // Sent again on a later version: both ends still there, in one
+        // sentence, and no cycle through what others added meanwhile.
+        recheck: (fresh) => {
+          const from = fresh.node(source.id);
+          const to = fresh.node(target.id);
+          return (
+            !!from &&
+            !!to &&
+            from.sentence === to.sentence &&
+            !fresh.wouldCycle(from.id, to.id, role)
+          );
+        },
+      },
     );
     return ok ? settledId(edgeId) : false;
   }
@@ -1537,6 +1597,22 @@ export class UmrDocument extends DocumentModel {
         this._settle(new Map([[newId, createdId(results.at(-1))]]));
       },
       `Move ${edge.role} ${target.var} under ${source.var}`,
+      {
+        // The edge still hangs where it was, and under the new source it
+        // closes no cycle through what others added meanwhile.
+        recheck: (fresh) => {
+          const now = fresh.edge(edge.id);
+          const from = fresh.node(source.id);
+          const to = now && fresh.node(now.target);
+          return (
+            !!from &&
+            !!to &&
+            settledId(now.source) === settledId(edge.source) &&
+            from.sentence === to.sentence &&
+            !fresh.wouldCycle(from.id, to.id, edge.role)
+          );
+        },
+      },
     );
   }
 
@@ -1593,6 +1669,17 @@ export class UmrDocument extends DocumentModel {
           patches.forEach(([id, patch]) => b.spans.patchMetadata(settledId(id), patch));
         }),
       `Make ${node.var} the root`,
+      {
+        // The roots it takes the mark from are still the sentence's roots.
+        recheck: (fresh) => {
+          const now = fresh.node(node.id);
+          const sentence = now && fresh.sentence(now.sentence);
+          if (!sentence) return false;
+          const roots = sentence.nodes.filter((n) => n.root).map((n) => settledId(n.id));
+          const was = old.map((o) => settledId(o.id));
+          return roots.length === was.length && was.every((id) => roots.includes(id));
+        },
+      },
     );
   }
 

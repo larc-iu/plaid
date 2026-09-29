@@ -17,10 +17,20 @@
 //   names, or covers text a changed token of the edit covers,
 // - or, when the edit places something in the text (a token's begin and
 //   end), is that text itself: the positions it sends were measured in the
-//   text as it was.
+//   text as it was,
+// - or, again for an edit that places something, is a token over the same
+//   stretch in a layer the edit's layer nests in (its parent token layer, or
+//   that one's), moved, resized or removed: the stretch was cut up
+//   differently since (a word split or joined), and what the edit placed
+//   inside the old cut may not sit inside the new one. A token only added
+//   there is no such change, nor is one in a layer that is not a parent.
 // So a second value on the same word is a conflict, and so is any change to
 // the word itself, while a value on another word, or anything in a layer the
 // edit does not write, is not.
+//
+// `landed` answers the other question a refusal can raise: whether the edit
+// is on the server already (a resend of a write whose first answer was lost),
+// by what the rows it wrote now hold.
 //
 // Imports nothing but a sibling with no imports (plaid-ud's node suite reaches
 // DocumentModel by relative path).
@@ -44,10 +54,10 @@ function canonical(key, value) {
   return out;
 }
 
-// Every entity in `raw` by id: `{ layer, content, strings, begin, end }`.
-// `layer` is the id of the entity it sits in, `content` its own fields (not
-// the entities under it) as text, `strings` every string among them, from
-// which the ids it names are read. Pending ids the server has since answered
+// Every entity in `raw` by id: `{ layer, own, content, strings, begin, end }`.
+// `layer` is the id of the entity it sits in, `own` its own fields (not the
+// entities under it), `content` those as text, `strings` every string among
+// them, from which the ids it names are read. Pending ids the server has since answered
 // for are read as the server's, so an edit made before an earlier create
 // settled compares with what the server holds.
 function indexEntities(raw) {
@@ -72,7 +82,7 @@ function indexEntities(raw) {
     }
     const content = JSON.stringify(own, canonical);
     const at = (k) => (typeof node[k] === 'number' ? node[k] : null);
-    index.set(id, { layer, content, strings, begin: at('begin'), end: at('end') });
+    index.set(id, { layer, own, content, strings, begin: at('begin'), end: at('end') });
   };
   if (isEntity(raw)) visit(raw, null);
   return index;
@@ -131,6 +141,28 @@ export function footprintOf(before, after) {
   return { layers, names, spans, texts };
 }
 
+// The pending ids an edit made (`created`: rows it added under an id the
+// server has not given yet) and the ones it names (`named`: its own rows and
+// every id its rows point at, still pending), from the document before its
+// patch and after it. An edit that names a pending id another edit made, and
+// that edit was refused, points at a row the server will never have.
+export function pendingIdsOf(before, after) {
+  const a = indexEntities(before);
+  const b = indexEntities(after);
+  const created = new Set();
+  const named = new Set();
+  for (const id of changedIds(a, b)) {
+    if (isPendingId(id)) {
+      named.add(id);
+      if (!a.has(id)) created.add(id);
+    }
+    for (const e of [a.get(id), b.get(id)]) {
+      for (const s of e?.strings ?? []) if (isPendingId(s)) named.add(s);
+    }
+  }
+  return { created, named };
+}
+
 function holdersOf(...indexes) {
   const holders = new Set();
   for (const index of indexes) for (const e of index.values()) if (e.layer) holders.add(e.layer);
@@ -140,7 +172,29 @@ function holdersOf(...indexes) {
 // Two stretches of the same layer share text. An empty one is read as the
 // character after it, so it clashes with what covers that point.
 const stop = (r) => (r.end > r.begin ? r.end : r.begin + 1);
-const overlaps = (e, s) => e.layer === s.layer && e.begin < stop(s) && s.begin < stop(e);
+const shares = (e, s) => e.begin < stop(s) && s.begin < stop(e);
+const overlaps = (e, s) => e.layer === s.layer && shares(e, s);
+
+// Whether token layer `layer` nests in `outer`: `outer` is its parent token
+// layer, or that one's, and so on (read off each layer's `parentTokenLayer`).
+function nestsIn(layer, outer, ...indexes) {
+  const seen = new Set();
+  let at = layer;
+  while (at && !seen.has(at)) {
+    seen.add(at);
+    const own = indexes.map((index) => index.get(at)?.own).find(Boolean);
+    const parent =
+      typeof own?.parentTokenLayer === 'string' ? settledId(own.parentTokenLayer) : null;
+    if (parent === outer) return true;
+    at = parent;
+  }
+  return false;
+}
+
+// A token that was there before and has since been moved, resized or
+// removed: the text under it was cut up differently.
+const recut = (was, is) =>
+  was && was.begin !== null && (!is || is.begin !== was.begin || is.end !== was.end);
 
 // True when nothing that changed between `before` (what the edit was made on)
 // and `now` (the document read after the refusal) touches `footprint`.
@@ -151,6 +205,13 @@ export function untouched(footprint, before, now) {
   const holders = holdersOf(a, b);
   for (const id of changedIds(a, b)) {
     if (footprint.names.has(id)) return false;
+    const was = a.get(id);
+    if (
+      recut(was, b.get(id)) &&
+      footprint.spans.some((s) => shares(was, s) && nestsIn(s.layer, was.layer, a, b))
+    ) {
+      return false;
+    }
     for (const e of [a.get(id), b.get(id)]) {
       // The text the edit's positions were measured in.
       if (e && !holders.has(id) && footprint.texts.has(e.layer)) return false;
@@ -162,4 +223,85 @@ export function untouched(footprint, before, now) {
     }
   }
   return true;
+}
+
+// Whether `x`, a value the edit showed, is `y`, the value read from the
+// server. A pending id the server never answered for stands for whichever id
+// is in its place, the same one wherever it appears (`ids`, pending id to
+// server id, grows as they are met). A null field is the same as none.
+function same(x, y, ids, claimed) {
+  if (typeof x === 'string') {
+    const id = settledId(x);
+    if (!isPendingId(id)) return id === y;
+    if (ids.has(id)) return ids.get(id) === y;
+    if (typeof y !== 'string' || claimed.has(y)) return false;
+    ids.set(id, y);
+    claimed.add(y);
+    return true;
+  }
+  if (x == null || y == null) return x == null && y == null;
+  if (typeof x !== 'object' || typeof y !== 'object') return x === y;
+  if (Array.isArray(x) !== Array.isArray(y)) return false;
+  if (Array.isArray(x)) {
+    return x.length === y.length && x.every((v, i) => same(v, y[i], ids, claimed));
+  }
+  const keys = new Set([...Object.keys(x), ...Object.keys(y)]);
+  for (const k of keys) if (!same(x[k], y[k], ids, claimed)) return false;
+  return true;
+}
+
+// `same` without leaving anything in `ids` when it answers false.
+function sameTrying(x, y, ids, claimed) {
+  const tryIds = new Map(ids);
+  const tryClaimed = new Set(claimed);
+  if (!same(x, y, tryIds, tryClaimed)) return false;
+  tryIds.forEach((v, k) => ids.set(k, v));
+  tryClaimed.forEach((v) => claimed.add(v));
+  return true;
+}
+
+// Whether the edit that turned `before` into `made` is in `now`, as read
+// from the server: every row it removed is gone, every field it changed holds
+// what it showed, and every row it added is there, a new row of the same
+// layer holding the same fields. Answers the server's ids for the rows it
+// added, as a map of pending id to server id, or null when it is not there
+// or nothing is known of what it writes.
+export function landed(before, made, now) {
+  const a = indexEntities(before);
+  const m = indexEntities(made);
+  const n = indexEntities(now);
+  const changed = changedIds(a, m);
+  if (changed.size === 0) return null;
+  const ids = new Map();
+  const claimed = new Set();
+  const added = [];
+  for (const id of changed) {
+    const was = a.get(id);
+    const is = m.get(id);
+    if (!is) {
+      if (n.has(id)) return null;
+    } else if (!was) {
+      added.push(is);
+    } else {
+      const stored = n.get(id);
+      if (!stored) return null;
+      for (const k of new Set([...Object.keys(was.own), ...Object.keys(is.own)])) {
+        if (same(was.own[k], is.own[k], new Map(), new Set())) continue;
+        if (!same(is.own[k], stored.own[k], ids, claimed)) return null;
+      }
+    }
+  }
+  for (const is of added) {
+    let found = false;
+    for (const [id, e] of n) {
+      if (a.has(id) || claimed.has(id) || e.layer !== settledId(is.layer)) continue;
+      if (sameTrying(is.own, e.own, ids, claimed)) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) return null;
+  }
+  for (const id of [...ids.keys()]) if (!isPendingId(id)) ids.delete(id);
+  return ids;
 }

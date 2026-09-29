@@ -72,6 +72,13 @@ const keepUnchangedLists = (next, prev) => {
   return next;
 };
 
+// Whether a patch left an entry list as it was: the same entry objects in the
+// same places (a patch puts a new object in place of an entry it changes).
+const sameItems = (before, after) =>
+  Array.isArray(before) &&
+  before.length === after.length &&
+  after.every((it, i) => it === before[i]);
+
 // Single source of truth for a loaded plaid-igt document. Wraps a raw
 // plaid-client document, knows the IGT layer model (sentences > words >
 // morphemes, plus alignment + span layers), owns the optimistic-update
@@ -352,6 +359,22 @@ export class IgtDocument extends DocumentModel {
   }
   _afterPatch(next, [, nextVocabs]) {
     this._vocabularies = keepUnchangedLists(nextVocabs, this._vocabularies);
+  }
+  // A link, an entry or a vocabulary's settings: kept beside the document, so
+  // an edit that changed one is never sent again by itself after a refusal.
+  // Another user's link on the same morpheme is not in the document read,
+  // and a link sent again over it left the morpheme with two.
+  _changesBeside([, nextVocabs]) {
+    const was = this._vocabularies || {};
+    const now = nextVocabs || {};
+    for (const id of new Set([...Object.keys(was), ...Object.keys(now)])) {
+      const { items: before, ...restBefore } = was[id] || {};
+      const { items: after, ...restAfter } = now[id] || {};
+      if (JSON.stringify(restBefore) !== JSON.stringify(restAfter)) return true;
+      if (Array.isArray(before) !== Array.isArray(after)) return true;
+      if (Array.isArray(after) && !sameItems(before, after)) return true;
+    }
+    return false;
   }
 
   /**

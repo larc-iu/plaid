@@ -23,7 +23,7 @@ import {
 } from './textDirection.js';
 import { WriteQueue } from './WriteQueue.js';
 import { recordSettled, settleIds } from './pendingIds.js';
-import { footprintOf, untouched } from './rebase.js';
+import { footprintOf, landed, pendingIdsOf, untouched } from './rebase.js';
 
 const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
 
@@ -40,6 +40,17 @@ const conflictError = () =>
   Object.assign(new Error('HTTP 409 The document has changed since this edit was made.'), {
     status: 409,
   });
+
+// What an edit that names a row made by a refused edit is refused with,
+// unsent: the server would refuse the id it names, which it never made, and
+// every screen words it as it words that refusal.
+const dependencyError = () =>
+  Object.assign(
+    new Error(
+      'HTTP 400 The edit this one depends on was not saved: an id it names should be a uuid.',
+    ),
+    { status: 400 },
+  );
 
 // When the document is read again after a write whose answer was lost: the
 // write may still land after the read that followed the failure (a request
@@ -115,8 +126,13 @@ export class DocumentModel {
     this._conflictHandled = false;
     this._lateReads = new Set();
     // The document before the first patch of the edit being made, until its
-    // write is queued (`_queueWrite`).
+    // write is queued (`_queueWrite`), and whether any of its patches changed
+    // what the subclass keeps beside the document (`_changesBeside`).
     this._patchBase = null;
+    this._patchesBeside = false;
+    // The pending ids of rows made by edits that were refused: the server
+    // never made them, and an edit that names one is refused unsent.
+    this._refusedIds = new Set();
     // The screen's error channel, `(message, err, label)`: the label is what
     // was being done and `err` the client's error, for the screen to word.
     // Null until the screen wires it. The domain layer shows nothing itself.
@@ -454,6 +470,15 @@ export class DocumentModel {
   // beginOperation), for a write that is a kind of operation a reader of the
   // audit log counts, such as igt's guess adoption.
   //
+  // `recheck(fresh)` is for an edit the screen checked against the rest of
+  // the document before making it (no cycle, both ends there). When the edit
+  // is to go on a newer version than it was made on (a refusal and a read
+  // since, see `_afterConflict`), it is asked again, on that version before
+  // the edit: `fresh` is a document of the subclass's own kind (`_snapshot`)
+  // over what was read, with the edits ahead of it shown. False refuses the
+  // edit like a conflict. Without one, only what the edit's own rows touch is
+  // looked at (rebase.js).
+  //
   // Every write goes through here, one at a time, so nothing is ever sent
   // beside a send or a refetch: a rename made while an edit is saving is sent
   // after it, and a copy holds the edits made before it.
@@ -461,7 +486,7 @@ export class DocumentModel {
     label,
     send,
     named = operationLabel(label),
-    { reload = false, shown = true, kind, ref } = {},
+    { reload = false, shown = true, kind, ref, recheck = null } = {},
   ) {
     const operation = this._operation || named;
     const conflictHandled = this._conflictHandled;
@@ -472,13 +497,23 @@ export class DocumentModel {
       patches: this._patches,
       stale: false,
       // The document the edit was made on and the one it made, for what it
-      // touches (`_untouched`).
+      // touches (`_untouched`), whether it did so on the server already
+      // (`_afterConflict`), and the pending ids it makes and names
+      // (`_summary`).
       base: this._patches.length && kept < KEEP_BASES ? this._patchBase : null,
-      made: this._raw,
+      made: null,
+      origin: null,
       footprint: undefined,
+      ids: undefined,
+      // It changed what the subclass keeps beside the document (igt's
+      // links), which no read of the document shows: never sent again.
+      beside: this._patchesBeside,
+      recheck,
     };
+    if (unsent.base) unsent.made = this._raw;
     this._patches = [];
     this._patchBase = null;
+    this._patchesBeside = false;
     if (!this._canWrite(label)) return Promise.resolve(false);
     this._unsent.push(unsent);
     let conflict = false;
@@ -490,6 +525,8 @@ export class DocumentModel {
         // (`_reloadAfterFailure`): refused like the edit that found it out,
         // without being sent, and already off the screen.
         if (unsent.stale) throw conflictError();
+        // It names a row an edit before it made, and that edit was refused.
+        if (this._namesRefused(unsent)) throw dependencyError();
         const before = this._checkedVersion();
         try {
           await this._client.withOperation(operation, send, { kind, ref });
@@ -501,11 +538,14 @@ export class DocumentModel {
           const nothingLanded = before != null && this._checkedVersion() === before;
           resend = err?.offline === true && nothingLanded;
           // Refused because the document moved on, with none of it written:
-          // when what changed does not touch it, it goes again, once, on the
-          // new version.
-          if (statusOf(err) === 409 && nothingLanded && (await this._rebase(unsent))) {
+          // when it is there already (a resend of a write whose first answer
+          // was lost), it has landed. When what changed does not touch it, it
+          // goes again, once, on the new version.
+          const next =
+            statusOf(err) === 409 && nothingLanded ? await this._afterConflict(unsent) : null;
+          if (next === 'resend') {
             await this._client.withOperation(operation, send, { kind, ref });
-          } else throw err;
+          } else if (next !== 'landed') throw err;
         }
         if (reload) this._writes.reloadWhenDrained = true;
       },
@@ -516,6 +556,8 @@ export class DocumentModel {
           // A conflict, or what the edit names was deleted meanwhile: either
           // way someone else changed the document.
           conflict = isChangedElsewhere(err);
+          // The rows it made are not on the server, whatever the refusal.
+          for (const id of this._summary(unsent)?.created ?? []) this._refusedIds.add(id);
           this._writeFailed(label, err, conflictHandled && statusOf(err) === 409);
           if (isUnknownOutcome(err)) this._readLater();
         },
@@ -524,45 +566,93 @@ export class DocumentModel {
     );
   }
 
-  // After a refusal for a changed document: read it, and when nothing that
-  // changed touches `unsent` (rebase.js), show it again on top of what was
-  // read, with the edits waiting behind it, and answer true so it is sent
-  // again. False leaves everything as it was, for the refusal to take its
-  // course.
-  async _rebase(unsent) {
-    if (!unsent.base) return false;
+  // After a refusal for a changed document: read it.
+  // - When what `unsent` writes is on the server already (its first send
+  //   landed and the answer was lost, and this was the send again), show
+  //   what was read with the edits waiting behind it, put the server's ids
+  //   in place of the rows it made, and answer 'landed'.
+  // - When nothing that changed touches it (rebase.js) and its `recheck`
+  //   holds, show it again on top of what was read, with the edits waiting
+  //   behind it, and answer 'resend' so it is sent again.
+  // - Otherwise null, leaving everything as it was, for the refusal to take
+  //   its course.
+  async _afterConflict(unsent) {
+    if (!unsent.base || unsent.beside) return null;
+    const summary = this._summary(unsent);
     let updated;
     try {
       updated = await this._fetch();
     } catch (err) {
       console.error('Reading the document after a refusal failed:', err);
-      return false;
+      return null;
     }
-    if (!this._untouched(unsent, updated)) return false;
+    const ids = landed(unsent.origin ?? unsent.base, summary.made, updated);
+    if (ids) {
+      await this._adoptReload(updated);
+      this._showUnsent(updated);
+      this._settle(ids);
+      return 'landed';
+    }
+    if (!this._untouched(unsent, updated)) return null;
     // What the subclass keeps beside the document is read again first, so
     // the edit is shown again on top of it, as `_showUnsent` does.
     await this._adoptReload(updated);
+    if (!this._recheck(unsent, updated)) return null;
     let shown = updated;
     try {
       for (const producer of unsent.patches) shown = this._patched(shown, producer);
     } catch (err) {
       console.error('A refused edit could not be shown again:', err);
-      return false;
+      return null;
     }
     this._showUnsent(shown);
-    return true;
+    return 'resend';
+  }
+
+  // Whether `unsent`'s own `recheck` holds on `raw` (the document it would
+  // now go on, before it). True for an edit without one.
+  _recheck(unsent, raw) {
+    if (!unsent.recheck) return true;
+    try {
+      return !!unsent.recheck(this._snapshot(raw, this._asOf));
+    } catch (err) {
+      console.error('An edit could not be checked again on the latest version:', err);
+      return false;
+    }
+  }
+
+  // What `unsent` writes, worked out once from the document it was made on
+  // and the one it made: its footprint (rebase.js) and the pending ids it
+  // makes and names. Null when it was not kept (no patch, or past
+  // KEEP_BASES).
+  _summary(unsent) {
+    if (unsent.ids === undefined) {
+      if (!unsent.base || !unsent.made) return null;
+      unsent.footprint = footprintOf(unsent.base, unsent.made);
+      unsent.ids = pendingIdsOf(unsent.base, unsent.made);
+    }
+    return { footprint: unsent.footprint, made: unsent.made, ...unsent.ids };
+  }
+
+  // Whether `unsent` names a row an edit refused before it made.
+  _namesRefused(unsent) {
+    if (this._refusedIds.size === 0) return false;
+    const summary = this._summary(unsent);
+    if (!summary) return false;
+    for (const id of summary.named) {
+      if (!summary.created.has(id) && this._refusedIds.has(id)) return true;
+    }
+    return false;
   }
 
   // Whether nothing that changed between the document `unsent` was last
   // checked against and `now` touches what it writes. From then on it is
   // checked against `now`.
   _untouched(unsent, now) {
-    if (!unsent.base) return false;
-    if (unsent.footprint === undefined) {
-      unsent.footprint = footprintOf(unsent.base, unsent.made);
-      unsent.made = null;
-    }
-    if (!untouched(unsent.footprint, unsent.base, now)) return false;
+    if (!unsent.base || unsent.beside) return false;
+    const { footprint } = this._summary(unsent);
+    if (!untouched(footprint, unsent.base, now)) return false;
+    unsent.origin ??= unsent.base;
     unsent.base = now;
     return true;
   }
@@ -603,6 +693,15 @@ export class DocumentModel {
     void next;
     void context;
   }
+  // Whether a patch changed what the subclass keeps beside the document,
+  // handed the context `_patchContext` made for it, before `_afterPatch`
+  // takes it in. An edit that did is never sent again by itself after a
+  // refusal: no read of the document shows what it changed, so nothing can
+  // tell whether someone else changed the same.
+  _changesBeside(context) {
+    void context;
+    return false;
+  }
 
   // Apply an optimistic local-state patch. The producer receives a deep clone
   // of `_raw` plus the subclass's context for that clone, mutates in place, and
@@ -611,7 +710,8 @@ export class DocumentModel {
   // value relies on.
   _applyRawPatch(producer) {
     const base = this._raw;
-    this._raw = this._patched(this._raw, producer);
+    const seen = { beside: false };
+    this._raw = this._patched(this._raw, producer, seen);
     this._dataVersion++;
     this._emit();
     if (this._patches.length === 0) {
@@ -619,16 +719,20 @@ export class DocumentModel {
       queueMicrotask(() => {
         this._patches = [];
         this._patchBase = null;
+        this._patchesBeside = false;
       });
     }
     this._patches.push(producer);
+    if (seen.beside) this._patchesBeside = true;
   }
 
-  // `raw` with `producer` applied to a clone of it.
-  _patched(raw, producer) {
+  // `raw` with `producer` applied to a clone of it. `seen.beside` says
+  // whether it changed what the subclass keeps beside the document.
+  _patched(raw, producer, seen = null) {
     const next = cloneRaw(raw);
     const context = this._patchContext(next);
     producer(next, ...context);
+    if (seen) seen.beside = this._changesBeside(context);
     this._afterPatch(next, context);
     return next;
   }
@@ -638,10 +742,18 @@ export class DocumentModel {
   // made. A patch that no longer applies (it named something the refetch
   // does not hold) is left out: its send is refused in turn, or the refetch
   // once the queue has drained shows what landed.
-  _showUnsent(updated) {
+  //
+  // With `recheck`, each edit that carries a `recheck` is asked it first, on
+  // what was read with the edits ahead of it shown, and one that fails it is
+  // refused unsent, like a conflict, and not shown.
+  _showUnsent(updated, { recheck = false } = {}) {
     let raw = updated;
-    for (const { patches } of this._unsent) {
-      for (const producer of patches) {
+    for (const u of this._unsent) {
+      if (recheck && !this._recheck(u, raw)) {
+        u.stale = true;
+        continue;
+      }
+      for (const producer of u.patches) {
         try {
           raw = this._patched(raw, producer);
         } catch (err) {
@@ -649,6 +761,7 @@ export class DocumentModel {
         }
       }
     }
+    if (recheck) this._unsent = this._unsent.filter((u) => !u.stale);
     this._swapRaw(raw);
   }
 
@@ -763,7 +876,7 @@ export class DocumentModel {
         if (this._untouched(u, updated)) this._unsent.push(u);
         else u.stale = true;
       }
-      this._showUnsent(updated);
+      this._showUnsent(updated, { recheck: true });
       return;
     }
     this._showUnsent(updated);
