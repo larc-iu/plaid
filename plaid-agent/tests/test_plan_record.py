@@ -221,7 +221,7 @@ def _check_record(item, plan):
             for x in (v if isinstance(v, list) else [v]):
                 if isinstance(x, str):
                     ids.add(x)
-    assert all(t is None or t in ids for _, t, _ in kept['proposed']), kept['proposed']
+    assert all(p[1] is None or p[1] in ids for p in kept['proposed']), kept['proposed']
 
 
 def test_an_applied_plan_keeps_what_it_proposed(spec, monkeypatch):
