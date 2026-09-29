@@ -116,6 +116,9 @@
    ;; comments: FK-cascades off projects/documents, but listed explicitly and
    ;; EARLY so a deftest's comments are gone even when its project isn't.
    "comments"
+   ;; client_events: FK-cascades off projects, listed explicitly for the
+   ;; same reason as comments.
+   "client_events"
    ;; guidelines: FK-cascades off projects, listed explicitly for the same
    ;; reason as comments — a deftest's guidelines are gone even when its
    ;; project is not, and a stale title would collide with the next one's.

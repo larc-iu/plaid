@@ -491,6 +491,65 @@ interface Comment {
   edited: boolean;
 }
 
+/** A research-telemetry event type (core manual, "Research telemetry"). */
+type ClientEventType =
+  | "suggestion.shown"
+  | "suggestion.adopted"
+  | "suggestion.dismissed"
+  | "plan.opened";
+
+interface ClientEventFields {
+  projectId: string;
+  documentId?: string;
+  targetId?: string;
+  /** Keyed by single lowercase words: value, source, field, written, conversation. */
+  data?: Record<string, any>;
+}
+
+interface ClientEvent {
+  id: number;
+  projectId: string;
+  documentId: string | null;
+  userId: string;
+  type: ClientEventType;
+  targetId: string | null;
+  data: Record<string, any> | null;
+  clientTs: string | null;
+  ts: string;
+}
+
+interface ClientEventFilters {
+  types?: ClientEventType | ClientEventType[] | string;
+  startTime?: string;
+  endTime?: string;
+}
+
+interface EventsBundle {
+  /** Buffer one event; never throws. False when not recorded (switch off, a repeat shown). */
+  record(type: ClientEventType, fields: ClientEventFields): boolean;
+  flush(): void;
+  setEnabled(projectId: string, on: boolean): void;
+  create(
+    projectId: string,
+    events: Array<{
+      type: ClientEventType;
+      documentId?: string;
+      targetId?: string;
+      data?: Record<string, any>;
+      clientTs?: string;
+    }>,
+  ): Promise<{ count: number }>;
+  list(projectId: string, filters?: ClientEventFilters): Promise<ClientEvent[]>;
+  listPage(
+    projectId: string,
+    opts?: ClientEventFilters & { limit?: number; cursor?: string },
+  ): Promise<Page<ClientEvent>>;
+  iterPages(
+    projectId: string,
+    opts?: ClientEventFilters & { pageSize?: number },
+  ): AsyncGenerator<ClientEvent[]>;
+}
+
 interface CommentsBundle {
   create(
     entityType: CommentableType,
@@ -1441,6 +1500,7 @@ export declare class PlaidClient {
   admin: AdminBundle;
   audit: AuditBundle;
   comments: CommentsBundle;
+  events: EventsBundle;
   guidelines: GuidelinesBundle;
   tokenLayers: TokenLayersBundle;
   documents: DocumentsBundle;

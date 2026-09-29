@@ -94,6 +94,45 @@ A PATCH may be made CONDITIONAL by passing `updated-at` (the `updated-at` the ca
 Writes ARE audited, so a change appears in the project's audit feed with the row as it now stands and announces on its event stream — but guidelines are project-scoped rather than document-scoped, so they are not time-travelable: `?as-of=` on these routes is a 400, not an answer.
 They are deleted with the project.
 
+=== Research telemetry
+
+A project may record how the people working in it respond to machine suggestions, for research on how linguists work with agents.
+It is off unless a maintainer switches it on, which sets `config.plaid.research.telemetry` to `true` on the project (the Research box in the igt and ud project settings, or `projects.set_config(id, "plaid", "research", {"telemetry": True})`).
+While it is off the apps send nothing and the server refuses every event with a 403, so off means off whatever a client does.
+
+What is recorded is a closed set of four event types.
+The server refuses any other.
+
+[cols="1,3"]
+|===
+|Type |Recorded when
+
+|`suggestion.shown`
+|A machine suggestion becomes visible, today a guess in an igt cell. `target-id` is the word or morpheme, `data` holds `value` (the suggested value), `source` (the producer's name or model) and `field`. Recorded once per target, field and value in each page session.
+
+|`suggestion.adopted`
+|The suggestion is taken as it is, in one cell or across a word.
+
+|`suggestion.dismissed`
+|The suggestion is rejected, or a different value is written where it showed. `data.written` holds what was written instead.
+
+|`plan.opened`
+|An assistant plan card is expanded to show all of its changes. `target-id` is the plan, `data.conversation` the conversation.
+|===
+
+Nothing else is recorded: no keystrokes, clicks, focus, time spent or idle time.
+
+`POST /api/v1/projects/{id}/events` takes an array of at most 500 events, each `{type, document-id?, target-id?, data?, client-ts?}`, and needs write access.
+The server stamps the user and its own time `ts`; `client-ts` is the browser's time when the event happened.
+One bad event refuses the whole request with a 400 that names it.
+`GET /api/v1/projects/{id}/events` lists them in arrival order for a maintainer or an admin, paginated like every other collection (see <<Pagination>>), and narrows with `types` (comma-separated) and `start-time` / `end-time` on `ts`.
+Both clients read them with `events.list` / `list_page` / `iter_pages` (`listPage` / `iterPages` in JavaScript); the JavaScript client also has `events.record(type, {projectId, documentId, targetId, data})`, which buffers events and sends them every ten seconds or fifty events, and when the page is hidden, dropping a batch that fails.
+It reads the project's switch itself and sends nothing while it is off.
+
+Events sit outside the audit log: they have no audit rows, change no document version and are not time-travelable.
+They are deleted with the project.
+An event about a document keeps that document's id after the document is deleted, since the deletion itself stays in the audit log.
+
 == Clients
 Plaid's functionality is exposed for development as a REST API.
 This allows you to use Plaid from any programming language with an HTTP client library.

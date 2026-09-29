@@ -17,6 +17,7 @@ import {
   DEFAULT_BATCH_TIMEOUT_MS,
 } from "./http.js";
 import { listAll, listPage, iterPages } from "./pagination.js";
+import { recorderFor } from "./events.js";
 import { withDocumentLock } from "./documentLock.js";
 import { createSSEConnection } from "./sse.js";
 import {
@@ -204,6 +205,15 @@ async function sendChunks(client, url, ops, stamps, results) {
     }
     results.push(...(await client._postBatch(url, chunk)));
   }
+}
+
+/** The query of an events read: `types` as the wire's comma-separated list. */
+function eventQuery(types, startTime, endTime) {
+  return {
+    types: Array.isArray(types) ? types.join(",") || undefined : types,
+    "start-time": startTime,
+    "end-time": endTime,
+  };
 }
 
 class PlaidClient {
@@ -3160,6 +3170,100 @@ class PlaidClient {
             skipResponseTransform: true,
           },
         ),
+    };
+
+    this.events = {
+      /**
+       * Record one research-telemetry event (core manual, "Research
+       * telemetry"). Fire and forget: the event is buffered and sent with
+       * others every ten seconds, at fifty events, and when the page is
+       * hidden. A batch that fails is dropped, nothing is retried, and
+       * nothing is ever thrown. Sends nothing for a project whose switch
+       * (`config.plaid.research.telemetry`) is off, which it reads from the
+       * project itself. `suggestion.shown` is recorded once per target,
+       * field and value in a page session.
+       * @param {'suggestion.shown'|'suggestion.adopted'|'suggestion.dismissed'|'plan.opened'} type - The event type
+       * @param {object} fields
+       * @param {string} fields.projectId - The project it happened in
+       * @param {string} [fields.documentId] - The document it happened in
+       * @param {string} [fields.targetId] - What it is about: a token, a plan
+       * @param {object} [fields.data] - Its details, keyed by single lowercase words (`value`, `source`, `field`, `written`, `conversation`)
+       * @returns {boolean} Whether the event was buffered
+       */
+      record: (type, fields) => recorderFor(this).record(this, type, fields),
+      /**
+       * Send what the recorder holds now, rather than at its next interval.
+       */
+      flush: () => recorderFor(this).flush(),
+      /**
+       * Tell the recorder a project's switch at once, e.g. right after a
+       * maintainer changed it. Turning it off drops what is buffered.
+       * @param {string} projectId - The project
+       * @param {boolean} on - Whether telemetry is on
+       */
+      setEnabled: (projectId, on) => recorderFor(this).setEnabled(projectId, on),
+      /**
+       * Record events directly, with no buffering. Requires write access, and
+       * the server refuses with a 403 while the project's switch is off. All
+       * or nothing: one bad event refuses the request with a 400 naming it.
+       * @param {string} projectId - The project the events happened in
+       * @param {Array<{type: string, documentId?: string, targetId?: string, data?: object, clientTs?: string}>} events - At most 500 events
+       * @returns {Promise<{count: number}>}
+       */
+      create: (projectId, events) =>
+        this._request("POST", `/api/v1/projects/${projectId}/events`, {
+          body: events,
+          outOfBand: true,
+        }),
+      /**
+       * A project's events in arrival order. Maintainer or admin only.
+       * Transparently follows pagination cursors and returns the full flat
+       * array.
+       * @param {string} projectId - The project to read
+       * @param {object} [filters]
+       * @param {string|string[]} [filters.types] - Only these types
+       * @param {string} [filters.startTime] - Only events the server stamped at or after this instant
+       * @param {string} [filters.endTime] - Only events the server stamped at or before this instant
+       */
+      list: (projectId, { types, startTime, endTime } = {}) =>
+        listAll(this, `/api/v1/projects/${projectId}/events`, {
+          query: eventQuery(types, startTime, endTime),
+        }),
+      /**
+       * One page of a project's events. Maintainer or admin only.
+       * @param {string} projectId - The project to read
+       * @param {object} [opts]
+       * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+       * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @param {string|string[]} [opts.types] - Only these types
+       * @param {string} [opts.startTime] - Only events at or after this instant
+       * @param {string} [opts.endTime] - Only events at or before this instant
+       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       */
+      listPage: (
+        projectId,
+        { limit, cursor, types, startTime, endTime } = {},
+      ) =>
+        listPage(this, `/api/v1/projects/${projectId}/events`, {
+          limit,
+          cursor,
+          query: eventQuery(types, startTime, endTime),
+        }),
+      /**
+       * Async-iterate a project's events page by page; yields each page's entries array.
+       * @param {string} projectId - The project to read
+       * @param {object} [opts]
+       * @param {number} [opts.pageSize] - Per-request page size
+       * @param {string|string[]} [opts.types] - Only these types
+       * @param {string} [opts.startTime] - Only events at or after this instant
+       * @param {string} [opts.endTime] - Only events at or before this instant
+       * @returns {AsyncGenerator<Array>}
+       */
+      iterPages: (projectId, { pageSize, types, startTime, endTime } = {}) =>
+        iterPages(this, `/api/v1/projects/${projectId}/events`, {
+          pageSize,
+          query: eventQuery(types, startTime, endTime),
+        }),
     };
 
     this.guidelines = {

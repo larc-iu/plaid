@@ -3229,6 +3229,91 @@ class AuditResource(_Resource):
         return result['entries']
 
 
+class EventsResource(_Resource):
+    """Client events, the opt-in research telemetry of a project.
+
+    A project records them only while its config holds
+    ``plaid.research.telemetry = True`` (``projects.set_config(id, 'plaid',
+    'research', {'telemetry': True})``); otherwise the server refuses every
+    event with a 403. The types are a closed set: ``suggestion.shown``,
+    ``suggestion.adopted``, ``suggestion.dismissed`` and ``plan.opened``.
+    Events are not audited and change no document version.
+
+    The browser's buffered recorder (``events.record`` in the JavaScript
+    client) has no counterpart here: a script that wants to record events
+    sends them with :meth:`create`.
+    """
+
+    def create(self, project_id: str, events: list) -> Any:
+        """Record events in a project. Requires write access.
+
+        The server stamps the user and its own time. All or nothing: one bad
+        event refuses the request with a 400 naming it.
+
+        Args:
+            project_id: The project the events happened in
+            events: At most 500 dicts, each with ``type`` and optional
+                ``document_id``, ``target_id``, ``data`` (an object) and
+                ``client_ts`` (an ISO-8601 instant)
+
+        Returns:
+            ``{'count': n}``, the number stored
+        """
+        return self._request('POST', f'/api/v1/projects/{project_id}/events',
+                             body=list(events), out_of_band=True)
+
+    def list(self, project_id: str, *, types: Any = None, start_time: str | None = None,
+             end_time: str | None = None) -> Any:
+        """A project's events in arrival order. Maintainer or admin only.
+
+        Transparently follows server-side pagination cursors and returns the
+        full flat list.
+
+        Args:
+            project_id: The project to read
+            types: Only these types, as a list or comma-separated string
+            start_time: Only events the server stamped at or after this instant
+            end_time: Only events the server stamped at or before this instant
+        """
+        return list_all(self._client, f'/api/v1/projects/{project_id}/events',
+                        query={'types': _op_types_param(types), 'start-time': start_time,
+                               'end-time': end_time})
+
+    def list_page(self, project_id: str, *, types: Any = None, start_time: str | None = None,
+                  end_time: str | None = None, limit: int | None = None,
+                  cursor: str | None = None) -> Any:
+        """One page of a project's events. Maintainer or admin only.
+
+        Args:
+            project_id: The project to read
+            types: Only these types, as a list or comma-separated string
+            start_time: Only events the server stamped at or after this instant
+            end_time: Only events the server stamped at or before this instant
+            limit: Page size (1..1000)
+            cursor: Opaque cursor from a previous page's ``next_cursor``
+        """
+        return list_page(self._client, f'/api/v1/projects/{project_id}/events',
+                         limit=limit, cursor=cursor,
+                         query={'types': _op_types_param(types), 'start-time': start_time,
+                                'end-time': end_time})
+
+    def iter_pages(self, project_id: str, *, types: Any = None, start_time: str | None = None,
+                   end_time: str | None = None, page_size: int = 1000):
+        """Iterate a project's events page by page, yielding each page's entries.
+
+        Args:
+            project_id: The project to read
+            types: Only these types, as a list or comma-separated string
+            start_time: Only events the server stamped at or after this instant
+            end_time: Only events the server stamped at or before this instant
+            page_size: Page size (1..1000)
+        """
+        return iter_pages(self._client, f'/api/v1/projects/{project_id}/events',
+                          page_size=page_size,
+                          query={'types': _op_types_param(types), 'start-time': start_time,
+                                 'end-time': end_time})
+
+
 class OperationGroupsResource(_Resource):
     """Logical-operation groups (audit-log grouping). There is no create: a
     group row is made lazily by the first write carrying ``?group-id=`` (see
@@ -3267,6 +3352,7 @@ def _install_resources(target):
     target.user_data = UserDataResource(target)
     target.invites = InvitesResource(target)
     target.comments = CommentsResource(target)
+    target.events = EventsResource(target)
     target.guidelines = GuidelinesResource(target)
     target.token_layers = TokenLayersResource(target)
     target.documents = DocumentsResource(target)

@@ -36,6 +36,7 @@
             [plaid.rest-api.v1.vocab-item :refer [vocab-item-routes]]
             [plaid.rest-api.v1.vocab-link :refer [vocab-link-routes]]
             [plaid.rest-api.v1.comment :refer [comment-routes]]
+            [plaid.rest-api.v1.client-event :refer [client-event-routes]]
             [plaid.rest-api.v1.guideline :refer [guideline-routes]]
             [plaid.rest-api.v1.query :refer [query-routes]]
             [plaid.rest-api.v1.health :refer [health-routes]]
@@ -149,6 +150,7 @@
              vocab-item-routes
              vocab-link-routes
              comment-routes
+             client-event-routes
              guideline-routes
              ["" {:plaid/token-scope pra/query-token-scope} query-routes]]
 
