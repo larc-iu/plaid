@@ -87,6 +87,12 @@ class Batcher:
     are appended after everything ``add`` queued in the batch, which is the
     order the executors need: what a pass creates or deletes comes first,
     what it rewrites on entities that already exist comes last.
+
+    A plan over several documents holds each at its own version
+    (:func:`holding`), and a write carries the version of the document it is
+    for, which the executor names with :meth:`writing_for` around each op.
+    A write made outside one carries none. Updates are kept per document, so
+    one bulk update never reaches two of them.
     """
 
     def __init__(self, client, budget: int = BATCH_OP_BUDGET):
@@ -96,14 +102,54 @@ class Batcher:
         self._pending = 0   # sub-ops in the open batch (result indexes)
         self._weight = 0    # what the open batch stands for, against the budget
         self._batch = None  # the open batch, or None between flushes
-        self._bulk: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        # (document, resource) -> entity id -> the update queued on it
+        self._bulk: Dict[tuple, Dict[str, Dict[str, Any]]] = {}
+        #: the document the writes queued now are for (see ``writing_for``)
+        self.document: Optional[str] = None
+
+    @contextmanager
+    def writing_for(self, op_or_document):
+        """Queue the block's writes for one document: an op's, when it
+        reaches exactly one (``docs_of_op``), or a document id. Under a hold
+        of several documents each write then carries that document's
+        version, and a batch of the plan's that lands after the apply gave up
+        on it is refused over an edit made since, as a one-document plan's
+        is."""
+        if isinstance(op_or_document, dict):
+            docs = docs_of_op(op_or_document)
+            document = next(iter(docs)) if len(docs) == 1 else None
+        else:
+            document = op_or_document
+        previous, self.document = self.document, document
+        try:
+            yield
+        finally:
+            self.document = previous
+
+    @contextmanager
+    def _stamping(self):
+        """Under a hold of several documents, point strict mode at the one
+        the writes queued in the block are for (a queued write takes its
+        stamp when it is queued), and at none again after, so a write the
+        executor makes on the client itself carries no other document's
+        version."""
+        held = getattr(self.client, HELD_DOCUMENTS, None)
+        if not held:
+            yield
+            return
+        self.client.strict_mode_document_id = self.document if self.document in held else None
+        try:
+            yield
+        finally:
+            self.client.strict_mode_document_id = None
 
     def add(self, fn, weight: int = 1, count: int = 1) -> int:
         """Queue what ``fn(batch)`` writes: ``count`` sub-ops, which land in
         one batch together. Returns the result index of the first."""
         if self._batch is None:
             self._batch = self.client.batch()
-        fn(self._batch)
+        with self._stamping():
+            fn(self._batch)
         idx = len(self.results) + self._pending
         self._pending += count
         self._weight += weight
@@ -117,7 +163,7 @@ class Batcher:
         on ``entity_id`` of ``resource`` ('spans', 'relations' or 'tokens').
         An earlier update of the same entity in this flush is joined: its ops
         run first, then these."""
-        item = self._bulk.setdefault(resource, {}).setdefault(entity_id, {'id': entity_id})
+        item = self._bulk.setdefault((self.document, resource), {}).setdefault(entity_id, {'id': entity_id})
         if value is not _UNSET:
             item['value'] = value
         if metadata:
@@ -128,11 +174,13 @@ class Batcher:
     def _drain(self) -> None:
         """Turn the queued updates into bulk sub-ops of the open batch."""
         pending, self._bulk = self._bulk, {}
-        for resource, items in pending.items():
+        for (document, resource), items in pending.items():
             entries = list(items.values())
-            for i in range(0, len(entries), BULK_CHUNK):
-                chunk = entries[i:i + BULK_CHUNK]
-                self.add(lambda batch, r=resource, c=chunk: getattr(batch, r).bulk_update(c), weight=len(chunk))
+            with self.writing_for(document):
+                for i in range(0, len(entries), BULK_CHUNK):
+                    chunk = entries[i:i + BULK_CHUNK]
+                    self.add(lambda batch, r=resource, c=chunk: getattr(batch, r).bulk_update(c),
+                             weight=len(chunk))
 
     def flush(self) -> None:
         self._drain()
@@ -564,6 +612,10 @@ def docs_of_op(op: Dict[str, Any]) -> set:
 
 logger = logging.getLogger(__name__)
 
+#: The attribute a client carries while a plan holds several documents: which
+#: ones, each at its own version (see :func:`holding`).
+HELD_DOCUMENTS = 'plan_held_documents'
+
 
 class DocumentsBusy(Exception):
     """A document the plan writes could not be locked, so nothing was
@@ -652,23 +704,34 @@ def holding(client, document_ids: Iterable[str]):
     found only on the way out is logged rather than raised over a plan that
     was applied.
 
-    A plan that writes one document writes in strict mode for it, at the
-    version it has once held, so a batch of the plan's that lands after the
-    apply gave up on it is refused over an edit made since. Strict mode names
-    one document, so a plan over several has the locks alone."""
+    Each document is held at the version it has once locked, and the plan's
+    writes carry it, so a batch of the plan's that lands after the apply gave
+    up on it is refused over an edit made since. One document is the client's
+    strict mode. Over several, strict mode names one document at a time: the
+    executor's :class:`Batcher` points it at the document each write is for
+    (``Batcher.writing_for``), which the client keeps in ``HELD_DOCUMENTS``
+    for the block."""
     document_ids = list(document_ids)
     finished = False
     try:
         with ExitStack() as stack:
+            held = []
             for did in document_ids:
                 try:
-                    stack.enter_context(locked_for_writes(client, did) if len(document_ids) == 1
-                                        else client.documents.locked(did))
+                    stack.enter_context(locked_for_writes(client, did))
+                    held.append(did)
                 except PlaidAPIError as e:
                     status = getattr(e, 'status', 0)
                     if status in (403, 404):
                         continue
                     raise DocumentsBusy(did, None if status == 423 else e) from e
+            if len(held) > 1:
+                # Each `locked_for_writes` put strict mode on its own document
+                # and puts back what it found on the way out. In between, no
+                # write is stamped until the batcher names its document.
+                client.strict_mode_document_id = None
+                setattr(client, HELD_DOCUMENTS, frozenset(held))
+                stack.callback(setattr, client, HELD_DOCUMENTS, None)
             yield
             finished = True
     except DocumentLockLost as e:

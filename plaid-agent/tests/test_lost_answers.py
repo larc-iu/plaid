@@ -358,3 +358,61 @@ def test_a_plan_with_no_change_written_in_full_says_it_is_part_of_the_plan(monke
     assert _stored(spec, client)['written'] == []
     assert client.operation_labels[_plan_operation(client)] == \
         f'Assistant, partly applied: part of {svc.summarize(plan["ops"])}'
+
+
+# --- a plan over several documents holds each at its own version ------------
+
+def _two_documents():
+    import copy
+    from fixtures import FakeClient as IgtClient, document_raw
+    d2 = copy.deepcopy(document_raw())
+    d2.update(id='d2', name='Text 2', version=11)
+    for text_layer in d2['text_layers']:
+        for token_layer in text_layer['token_layers']:
+            for span_layer in token_layer.get('span_layers') or []:
+                for span in span_layer.get('spans') or []:
+                    span['id'] = 'd2-' + span['id']
+    return IgtClient(documents={'d1': document_raw(), 'd2': d2})
+
+
+def test_a_plan_over_two_documents_stamps_each_write_with_its_own_documents_version():
+    """F-PY left a plan over several documents with the locks alone, so a
+    batch of it that landed late was not refused (conc-2026-09-29). Each
+    write now carries the version of the document it is for, and one bulk
+    update never reaches two documents, which the server refuses stamped."""
+    from plaid_agent.igt.plan import execute_plan
+    from plaid_agent.igt.project import load_project
+    c = _two_documents()
+    project = load_project(c, 'p1')
+    ops = [{'kind': 'set_doc_metadata', 'document_id': 'd1', 'field': 'Date', 'value': '', 'label': ''},
+           {'kind': 'set_span', 'document_id': 'd1', 'layer_id': 'sl-mgloss', 'token_id': 'm-1a',
+            'span_id': 'sp-m1a', 'value': 'X', 'label': ''},
+           {'kind': 'set_doc_metadata', 'document_id': 'd2', 'field': 'Date', 'value': '', 'label': ''},
+           {'kind': 'set_span', 'document_id': 'd2', 'layer_id': 'sl-mgloss', 'token_id': 'm-1a',
+            'span_id': 'd2-sp-m1a', 'value': 'Y', 'label': ''},
+           {'kind': 'rename_entry', 'item_id': 'vi-gam2', 'form': 'net', 'label': ''}]
+    with core_plan.holding(c, ['d1', 'd2']):
+        execute_plan(c, ops, source='s', label='l', project=project)
+    assert sorted((kind, doc, version) for kind, doc, version in c.stamps) == [
+        ('documents.patch_metadata', 'd1', 7), ('documents.patch_metadata', 'd2', 11),
+        ('spans.bulk_update', 'd1', 7), ('spans.bulk_update', 'd2', 11)]
+    # The entry rename is no document's, and carries no stamp.
+    assert ('vocab_items.update', ('vi-gam2', 'net')) in c.writes
+    updates = [p for kind, p in c.writes if kind == 'spans.bulk_update']
+    assert sorted([item['id'] for item in p] for p in updates) == [['d2-sp-m1a'], ['sp-m1a']]
+    # Strict mode is put back as it was.
+    assert c.strict_mode_document_id is None
+    assert getattr(c, core_plan.HELD_DOCUMENTS, None) is None
+
+
+def test_a_write_made_on_the_client_under_two_held_documents_carries_no_stamp():
+    """A write the executor makes itself (a text edit) is never stamped with
+    the version of the document the batcher last queued for."""
+    c = _two_documents()
+    with core_plan.holding(c, ['d1', 'd2']):
+        b = core_plan.Batcher(c)
+        with b.writing_for('d1'):
+            b.add(lambda batch: batch.spans.update('sp-m1a', 'X'))
+        c.texts.update('t-1', [])
+        b.flush()
+    assert [(kind, doc) for kind, doc, _ in c.stamps] == [('spans.update', 'd1')]

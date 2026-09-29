@@ -691,9 +691,10 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
                     # a second one seeded from the form.
                     ctx.lemma_at[wid] = planned
                     continue
-                ctx.lemma_at[wid] = b.add(
-                    lambda batch, o=op, w=wid, f=form: batch.spans.create(
-                        o['lemma_layer_id'], [w], f, dict(LEMMA_FROM_FORM)))
+                with b.writing_for(op):
+                    ctx.lemma_at[wid] = b.add(
+                        lambda batch, o=op, w=wid, f=form: batch.spans.create(
+                            o['lemma_layer_id'], [w], f, dict(LEMMA_FROM_FORM)))
 
         # The relations need those spans to exist, so the batch has to land first.
         b.flush()
@@ -711,7 +712,8 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
         from .shape import finish_set_words
         for op in ops:
             if op.get('kind') == 'set_words':
-                finish_set_words(op, b, b.results, ctx.stamp)
+                with b.writing_for(op):
+                    finish_set_words(op, b, b.results, ctx.stamp)
         ok.run_stage(KIND, ctx, ops, IDS)
         b.flush()
         finish(lambda op: op['kind'] == 'set_words' or KIND[op['kind']].stage == IDS)

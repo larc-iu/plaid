@@ -465,7 +465,10 @@ def run_stage(kinds: Dict[str, 'OpKind'], ctx, ops, stage: str) -> None:
         spec = kinds[op['kind']]
         if spec.stage != stage:
             continue
-        n = spec.apply(ctx, op)
+        # Its writes carry the version of the document it is for (see
+        # plan.Batcher.writing_for).
+        with ctx.b.writing_for(op):
+            n = spec.apply(ctx, op)
         n = 1 if n is None else n
         if n:
             ctx.counts[spec.noun[1]] += n
