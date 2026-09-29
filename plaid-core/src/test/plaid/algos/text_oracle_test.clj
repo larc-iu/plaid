@@ -27,9 +27,11 @@
   its letters (`cat mat` to `Xڤat`): the case passes when one of those
   readings passes whole, and is not skipped.
 
-  Classes still open are skipped by name in `open-classes`, one predicate
-  each over the generated case. A fix for one deletes its entry, and the
-  test then holds it."
+  Classes still open are named in `open-classes`, one predicate each over
+  the generated case. Their cases are run too, and the test fails when more
+  of them fail than `open-class-ceilings` allows, so a regression among the
+  ones that pass still shows. A fix for one deletes its entry, and the test
+  then holds each case."
   (:require [clojure.test :refer [deftest is testing]]
             [plaid.algos.text :as ta]
             [plaid.util.codepoint :as cp]))
@@ -416,6 +418,14 @@
    (fn [{{{:keys [mode near? shared? edge-in-deleted?]} :shape} :info opts :opts}]
      (and (= [""] (:seps opts)) shared? edge-in-deleted? (not near?) (not= mode :whole)))})
 
+(def ^:private open-class-ceilings
+  "How many cases of each open class may fail, at the sizes below. The
+  class holds 49 cases, of which 2 fail and are undecidable: `كتابsattat`
+  to `كتابtX` reads as `sat` deleted and `tat` respelled or as `sat` cut to
+  `t` and `tat` replaced by `X`, and without a space nothing says whether
+  `tX` is one word (REV-U-CORE-TEXT, 2026-09-29)."
+  {:kept-edge-letter-also-in-a-deleted-word-without-spaces 2})
+
 (defn- open-class [c]
   (some (fn [[k pred]] (when (pred c) k)) open-classes))
 
@@ -442,16 +452,24 @@
 (def ^:private cases-per-config 400)
 
 (deftest a-whole-body-update-leaves-every-token-where-the-user-meant
-  (doseq [[k opts] (sort configs)]
-    (testing (name k)
-      (let [n (:cases opts cases-per-config)
-            cases (map #(gen-case % opts) (range n))
-            judged (remove open-class cases)]
-        ;; the open classes must not grow to swallow the test
-        (is (< (* 0.2 n) (count judged))
-            (str (count judged) " of " n " cases judged"))
-        (doseq [c judged
-                :let [ps (run-case c)]
-                :when (seq ps)]
-          (is (empty? ps)
-              (str "seed " (:seed c) ": " (pr-str (:old c)) " -> " (pr-str (:new c)) " " (pr-str (:info c)))))))))
+  (let [open-failures (atom {})]
+    (doseq [[k opts] (sort configs)]
+      (testing (name k)
+        (let [n (:cases opts cases-per-config)
+              cases (map #(gen-case % opts) (range n))
+              judged (remove open-class cases)]
+          ;; the open classes must not grow to swallow the test
+          (is (< (* 0.2 n) (count judged))
+              (str (count judged) " of " n " cases judged"))
+          (doseq [c cases
+                  :let [cls (open-class c)
+                        ps (run-case c)]
+                  :when (seq ps)]
+            (if cls
+              (swap! open-failures update cls (fnil conj []) [k (:seed c)])
+              (is (empty? ps)
+                  (str "seed " (:seed c) ": " (pr-str (:old c)) " -> " (pr-str (:new c)) " " (pr-str (:info c)))))))))
+    (doseq [[cls ceiling] open-class-ceilings
+            :let [failed (get @open-failures cls [])]]
+      (is (<= (count failed) ceiling)
+          (str cls ": " (count failed) " cases fail, at most " ceiling " may: " (pr-str failed))))))
