@@ -172,6 +172,26 @@ describe('writing to a virtual morpheme', () => {
   });
 });
 
+describe('accepting a guess on a word nobody has analyzed', () => {
+  it('makes the morpheme and its gloss in one batch', async () => {
+    const client = makeFakeClient();
+    const doc = makeDoc(buildRawDoc({ morphemes: [] }), client);
+
+    expect(
+      await doc.confirmWordAnalysis('w-1', [
+        { targetId: morphOf(doc).id, field: 'Gloss', value: 'DEF' },
+      ]),
+    ).toBe(true);
+
+    expect(callsOf(client, 'batch.submit')).toHaveLength(1);
+    expect(callsOf(client, 'tokens.create')).toHaveLength(1);
+    const [span] = callsOf(client, 'spans.create');
+    expect(span.args[1]).toEqual([{ $ref: 0 }]);
+    expect(morphOf(doc).annotations.Gloss?.value).toBe('DEF');
+    expect(morphOf(doc).id.startsWith('tok')).toBe(true);
+  });
+});
+
 describe('a gesture with nothing to act on', () => {
   it('deleteMorpheme refuses, the way it refuses a word’s last morpheme', async () => {
     const client = makeFakeClient();

@@ -893,10 +893,12 @@ export const analysisCopyMutations = {
     return this._queueWrite(
       label,
       async () => {
+        // One batch: the morphemes an adopted guess needs, and the spans on
+        // them, which name them by the batch's reference to their ids.
         const ids = new Map();
-        const serverId = (id) => ids.get(id) || settledId(id);
-        await this._sendMorphemes(creates, ids);
+        let morphemes;
         const results = await this._client.batched(async (b) => {
+          morphemes = this._queueMorphemes(b, creates);
           tokenIds.forEach((id) => b.tokens.patchMetadata(settledId(id), confirmOps));
           linkIds.forEach((id) => b.vocabLinks.patchMetadata(settledId(id), confirmOps));
           spanIds.forEach((id) => b.spans.patchMetadata(settledId(id), confirmOps));
@@ -905,10 +907,16 @@ export const analysisCopyMutations = {
             if (w.metadata) b.spans.patchMetadata(settledId(w.spanId), metadataOps(w.metadata));
           });
           fresh.forEach((w) =>
-            b.spans.create(w.layerId, [serverId(w.targetId)], w.value, w.metadata || undefined),
+            b.spans.create(
+              w.layerId,
+              [morphemes.tokenRef(w.targetId)],
+              w.value,
+              w.metadata || undefined,
+            ),
           );
         });
-        // The creates are the batch's last ops, in the order they were queued.
+        morphemes.read(results, ids);
+        // The span creates are the batch's last ops, in the order queued.
         const offset = results.length - fresh.length;
         fresh.forEach((w, i) => ids.set(w.id, createdId(results[offset + i])));
         this._settle(ids);
