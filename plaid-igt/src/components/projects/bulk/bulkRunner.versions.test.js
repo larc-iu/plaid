@@ -36,7 +36,7 @@ function serverAndClient(versions, vocabs = {}) {
       const doc = client.strictModeDocumentId;
       const version = doc ? client.documentVersions[doc] : undefined;
       server.batches.push({ doc, version, ops });
-      if (server.fail) throw server.fail;
+      if (server.fail && (!server.failOn || server.failOn === doc)) throw server.fail;
       if (doc == null || version == null) throw new Error('A write went out with no version');
       if (version !== server.versions[doc]) {
         throw Object.assign(new Error('HTTP 409'), { status: 409, method: 'POST' });
@@ -166,6 +166,23 @@ describe('Replace in a field checks the version the preview read', () => {
         { label: 'Replace' },
       ),
     ).rejects.toThrow('HTTP 500');
+  });
+
+  it('Apply again after a stop sends only the documents that did not land', async () => {
+    const { server, client } = serverAndClient({ a: 1, b: 1 });
+    server.fail = Object.assign(new Error('HTTP 500'), { status: 500 });
+    server.failOn = 'b';
+    const plan = {
+      rows: [spanRow('a', 's1', 'CAT', 'FELINE'), spanRow('b', 's2', 'CAT', 'FELINE')],
+      versions: { a: 1, b: 1 },
+      replan: async (doc) => ({ version: server.versions[doc], rows: [] }),
+    };
+    await expect(applyField(client, plan, { label: 'Replace' })).rejects.toThrow('HTTP 500');
+    server.fail = null;
+    const out = await applyField(client, plan, { label: 'Replace' });
+    // The value in a landed first time, and is not counted as changed since.
+    expect(out).toEqual({ changed: 1, skipped: 0 });
+    expect(server.batches.map((b) => b.doc)).toEqual(['a', 'b', 'b']);
   });
 });
 

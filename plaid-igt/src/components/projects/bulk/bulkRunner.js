@@ -286,6 +286,10 @@ const sameValue = (a, b) => a.old === b.old && a.new === b.new;
 // one batch carrying the version the preview read. A document changed since
 // then is read again, and only the values that still read as the preview
 // showed them are replaced (see sendDocument). Returns { changed, skipped }.
+//
+// A row that landed or was skipped is marked `applied` and left out of a
+// later apply of the same plan, as Respell's are, so Apply again after a
+// stop partway sends only the documents that did not land.
 export async function applyField(client, { rows, versions, replan }, { label }) {
   let changed = 0;
   let skipped = 0;
@@ -303,7 +307,7 @@ export async function applyField(client, { rows, versions, replan }, { label }) 
       }
     });
   await writeAcrossDocuments(client, label, 'replace', async () => {
-    for (const [docId, docRows] of rowsByDoc(rows)) {
+    for (const [docId, docRows] of rowsByDoc(rows.filter((r) => !r.applied))) {
       const out = await sendDocument(client, {
         docId,
         version: versions?.[docId],
@@ -312,6 +316,7 @@ export async function applyField(client, { rows, versions, replan }, { label }) 
         same: sameValue,
         send,
       });
+      docRows.forEach((r) => (r.applied = true));
       changed += out.sent.length;
       skipped += out.skipped.length;
     }
