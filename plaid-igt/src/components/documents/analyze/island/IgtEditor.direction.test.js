@@ -11,6 +11,7 @@ import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js'
 // read left to right in a column standing under an Arabic word.
 
 vi.mock('@/utils/feedback', () => ({
+  notifyWarning: vi.fn(),
   humanizeError: (e) => String(e),
   notifyInfo: vi.fn(),
   notifyError: vi.fn(),

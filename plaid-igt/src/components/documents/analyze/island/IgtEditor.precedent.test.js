@@ -13,6 +13,7 @@ import { precedentCounts } from '@/domain/precedent.js';
 // in a reload while the person moves on.
 
 vi.mock('@/utils/feedback', () => ({
+  notifyWarning: vi.fn(),
   humanizeError: (e) => String(e),
   notifyInfo: vi.fn(),
   notifyError: vi.fn(),

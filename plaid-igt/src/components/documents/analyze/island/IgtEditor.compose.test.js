@@ -9,6 +9,7 @@ import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js'
 // inserts a literal.
 
 vi.mock('@/utils/feedback', () => ({
+  notifyWarning: vi.fn(),
   humanizeError: (e) => String(e),
   notifyInfo: vi.fn(),
   notifyError: vi.fn(),

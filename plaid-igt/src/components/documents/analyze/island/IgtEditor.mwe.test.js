@@ -9,6 +9,7 @@ import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js'
 // against the real IgtDocument and the in-memory fake client.
 
 vi.mock('@/utils/feedback', () => ({
+  notifyWarning: vi.fn(),
   humanizeError: (e) => String(e),
   notifyInfo: vi.fn(),
   notifyError: vi.fn(),

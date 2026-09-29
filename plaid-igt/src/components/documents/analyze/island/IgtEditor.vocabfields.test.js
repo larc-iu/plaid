@@ -8,6 +8,7 @@ import { buildRawDoc, makeFakeClient } from '@/domain/test-helpers.js';
 // has to read as the entries it names.
 
 vi.mock('@/utils/feedback', () => ({
+  notifyWarning: vi.fn(),
   humanizeError: (e) => String(e),
   notifyInfo: vi.fn(),
   notifyError: vi.fn(),

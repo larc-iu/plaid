@@ -10,6 +10,7 @@ import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 // way the entry panel asks, and a mount that cannot ask does not delete.
 
 vi.mock('@/utils/feedback', () => ({
+  notifyWarning: vi.fn(),
   humanizeError: (e) => String(e),
   notifyInfo: vi.fn(),
   notifyError: vi.fn(),

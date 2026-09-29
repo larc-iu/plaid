@@ -7,6 +7,7 @@ import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js'
 // the sentence and the value, rather than "Update Gloss" for every one.
 
 vi.mock('@/utils/feedback', () => ({
+  notifyWarning: vi.fn(),
   humanizeError: (e) => String(e),
   notifyInfo: vi.fn(),
   notifyError: vi.fn(),

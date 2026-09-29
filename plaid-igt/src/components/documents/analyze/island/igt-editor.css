@@ -1773,6 +1773,39 @@
   align-items: center;
 }
 
+/* An edit of yours that is not saved: a value put back after its save was
+   refused (cells.js _restoreUnsent), or one that lost to another user's edit
+   of the same cell, which then shows theirs with yours noted under it
+   (conflicts.js). The amber of plaid-ud's conflicted cell. */
+.igt-field.igt-field--unsent,
+.igt-field.igt-field--conflict {
+  box-shadow: inset 0 0 0 1px #f59e0b;
+}
+.igt-field-conflict {
+  position: absolute;
+  top: calc(100% - 2px);
+  inset-inline-start: 0;
+  z-index: 5;
+  padding: 1px 4px;
+  font-size: 10px;
+  line-height: 1.3;
+  white-space: nowrap;
+  color: #92400e;
+  background-color: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 2px;
+  pointer-events: none;
+}
+/* A sentence field is a flex item of its row, and its wrapper stays out of
+   the way until there is a note to hang under it. */
+.igt-cell__face--noted {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 320px;
+  max-width: 680px;
+}
+
 .igt-cmt-badge {
   position: absolute;
   /* Tangent: the badge meets the form's far edge, whatever the column or the

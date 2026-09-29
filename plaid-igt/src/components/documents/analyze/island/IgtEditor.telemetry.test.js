@@ -12,6 +12,7 @@ import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js'
 // what reaches the wire is read off a stubbed fetch.
 
 vi.mock('@/utils/feedback', () => ({
+  notifyWarning: vi.fn(),
   humanizeError: (e) => String(e),
   notifyInfo: vi.fn(),
   notifyError: vi.fn(),

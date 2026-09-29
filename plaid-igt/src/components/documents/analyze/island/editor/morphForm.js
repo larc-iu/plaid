@@ -54,6 +54,7 @@ export const morphForm = {
         return;
       }
       if (this._composing(e)) return;
+      this._conflictKeys(e);
       if (this._mweKeydown(e)) return;
       if (this._maybeConfirmWord(e)) return;
       if (this._maybeDiscardWord(e)) return;

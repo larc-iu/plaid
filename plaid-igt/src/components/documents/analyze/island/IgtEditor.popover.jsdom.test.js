@@ -11,6 +11,7 @@ import { buildRawDoc, makeFakeClient } from '@/domain/test-helpers.js';
 // value here, where only a spec parser rejects the declaration.
 
 vi.mock('@/utils/feedback', () => ({
+  notifyWarning: vi.fn(),
   humanizeError: (e) => String(e),
   notifyInfo: vi.fn(),
   notifyError: vi.fn(),

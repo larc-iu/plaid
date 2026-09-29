@@ -9,6 +9,7 @@ import { notifyError } from '@/utils/feedback';
 // into to a different morpheme. What was typed is never written to that one.
 
 vi.mock('@/utils/feedback', () => ({
+  notifyWarning: vi.fn(),
   humanizeError: (e) => String(e),
   notifyInfo: vi.fn(),
   notifyError: vi.fn(),

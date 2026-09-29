@@ -13,10 +13,15 @@ import { notifyError, notifyInfo } from '@/utils/feedback';
 import { arrowStep, caretAtArrowEdge } from '@ui/lib/bidi.js';
 import { keys } from '@/lib/keymap.js';
 import { settledId } from '@ui/domain/pendingIds.js';
+import { statusOf } from '@ui/lib/errors.js';
 import { morphFormOf, sameCell } from './shared.js';
 
 // An annotation cell's life: focus, typing, commit, the keyboard chords that
 // move between cells, and the sentence fields' own handlers.
+
+// Refusals that sending the same edit again cannot mend: no longer a writer,
+// or what it names is gone.
+const REFUSED_FOR_GOOD = new Set([403, 404]);
 export const cells = {
   _onFieldFocus(e) {
     this._rememberForTokenize(e.target);
@@ -47,6 +52,7 @@ export const cells = {
   _stampOrig(el) {
     el.dataset.orig = el.igtUnsent ? el.igtUnsent.saved : el.value;
     el.igtUnsent = null;
+    el.classList.remove('igt-field--unsent');
     // Which cell the edit is made in. A commit goes to whatever the input is
     // bound to when it leaves, so a render that reuses the input for another
     // row's cell has to know (uncontrolledValue in shared.js).
@@ -112,6 +118,8 @@ export const cells = {
     const key = e.target.dataset.cellKey;
     const synthetic = this._syntheticInput;
     this._syntheticInput = false;
+    // Typing another value lets a lost conflict's value go (conflicts.js).
+    if (!synthetic) this._dropConflict(e.target);
     const open = !!this._alts && this._alts.cellKey === key;
     if (!synthetic && !open && e.target.dataset.hasTagset) this._openAlts(e.target);
     if (this._alts && this._alts.cellKey === key) {
@@ -149,6 +157,7 @@ export const cells = {
 
   _basicKeydown(e) {
     if (this._composing(e)) return;
+    this._conflictKeys(e);
     if (this._mweKeydown(e)) return;
     if (this._altsKeydown(e)) return;
     if (this._maybeConfirmWord(e)) return;
@@ -440,13 +449,23 @@ export const cells = {
   // `subject` is null for a sentence's own field, and `index` the sentence's
   // place in the document, counted from 0.
   _editLabel(field, subject, index, value) {
-    const sentence = index == null ? '' : `sentence ${index + 1}`;
-    const where = subject
-      ? `${field} of ${subject}${sentence ? ` in ${sentence}` : ''}`
-      : `${field}${sentence ? ` of ${sentence}` : ''}`;
+    return this._labelFor(this._cellWhat(field, subject, index), value);
+  },
+
+  // The label of an edit of the cell `what` names that writes `value`.
+  _labelFor(what, value) {
     const chars = [...(value ?? '')];
     const shown = chars.length > 40 ? `${chars.slice(0, 40).join('')}…` : chars.join('');
-    return shown ? `${where}: ${shown}` : `${where} cleared`;
+    return shown ? `${what}: ${shown}` : `${what} cleared`;
+  },
+
+  // The cell itself, as History and the leave question name it: "Gloss of
+  // "dogs" in sentence 3".
+  _cellWhat(field, subject, index) {
+    const sentence = index == null ? '' : `sentence ${index + 1}`;
+    return subject
+      ? `${field} of ${subject}${sentence ? ` in ${sentence}` : ''}`
+      : `${field}${sentence ? ` of ${sentence}` : ''}`;
   },
 
   // A morpheme as History names it: by its form, within its word when the
@@ -469,6 +488,9 @@ export const cells = {
     const filled = value !== '';
     el.classList.toggle('igt-field--filled', filled);
     el.classList.toggle('igt-field--empty', !filled);
+    // A value put back unsent looks it (H1-8): uncontrolledValue and the
+    // focus handler take the class off with `igtUnsent`.
+    el.classList.toggle('igt-field--unsent', !!el.igtUnsent);
     if (tagset) el.classList.toggle('igt-field--invalid', validateValue(value, tagset).length > 0);
   },
 
@@ -492,12 +514,27 @@ export const cells = {
     // a retry is measured against. Read now rather than after the failure,
     // when the cell may have been refocused (and restamped) in the meantime.
     const saved = el.dataset.orig ?? '';
+    const what = el.igtWhat ?? null;
+    // What the server held under the cell before this page's edits of it
+    // that have not landed: two edits made one over the other behind a
+    // refusal are both over it. An edit that lands moves it on.
+    let base = this._editBases.get(key);
+    if (!base) this._editBases.set(key, (base = { value: saved, pending: 0 }));
+    base.pending += 1;
     Promise.resolve(fn()).then((ok) => {
-      if (ok !== false || !key) return;
+      base.pending -= 1;
+      if (base.pending === 0) this._editBases.delete(key);
+      if (ok !== false) {
+        base.value = typed;
+        return;
+      }
+      if (!key) return;
+      const status = statusOf(this.doc.errorCause);
       const cell = this.container.querySelector(`[data-cell-key="${key}"]`);
-      // Not drawn (the reader paged away): kept until its page is drawn again.
+      // Not drawn (the reader paged away): kept until its page is drawn again,
+      // which tells a conflict from a value to send again (_syncUnsentDrafts).
       if (!cell) {
-        this._keepUnsent(key, typed, saved);
+        if (!REFUSED_FOR_GOOD.has(status)) this._keepUnsent(key, typed, base.value, what);
         return;
       }
       const active = document.activeElement;
@@ -512,15 +549,26 @@ export const cells = {
       ) {
         return;
       }
-      // What the server holds under the cell now. The refetch has drawn it
-      // into a cell without focus, unless a value put back earlier is still
-      // standing there. `saved` alone is not it when the cell was edited twice
-      // behind the refusal: the second edit was made over the first, which
-      // the server never got. A cell still showing the typed value was not
-      // redrawn (a refetch that gave up), and `saved` stands.
-      let stored = saved;
-      if (cell.igtUnsent) stored = cell.igtUnsent.saved;
-      else if (active !== cell && cell.value !== typed) stored = cell.value;
+      // What the server holds under the cell now, as the refetch drew it. A
+      // cell still drawn with the typed value was not redrawn (a refetch that
+      // gave up), and says nothing.
+      const drawn = cell.igtUnsent ? cell.igtUnsent.saved : (cell.igtRendered ?? cell.value);
+      const stored = drawn === typed ? base.value : drawn;
+      // Someone else changed the cell first: theirs shows, with this one under
+      // it (Luke's ruling Q1).
+      if (stored !== base.value) {
+        this._enterConflict(cell, typed, stored);
+        return;
+      }
+      // Refused where sending again cannot mend it (no longer a writer, the
+      // project or the row gone): the cell shows what is stored.
+      if (REFUSED_FOR_GOOD.has(status)) {
+        cell.igtUnsent = null;
+        cell.value = stored;
+        if (active === cell) cell.dataset.orig = stored;
+        this._syncCellClasses(cell, stored, cell.igtTagset ?? null);
+        return;
+      }
       if (active && active !== document.body && active !== cell) {
         this._restoreUnsent(cell, typed, stored);
         return;
@@ -561,7 +609,8 @@ export const cells = {
     const key = d.key.replace(/pending:\d+/g, (p) => settledId(p));
     const home = this.container.querySelector(`[data-cell-key="${key}"]`);
     if (home && home !== el) {
-      this._restoreUnsent(home, d.typed, d.saved);
+      if ((home.igtRendered ?? home.value) === d.saved) this._restoreUnsent(home, d.typed, d.saved);
+      else this._enterConflict(home, d.typed, home.igtRendered ?? home.value);
       return;
     }
     if (/pending:\d+/.test(key)) return;
@@ -638,6 +687,7 @@ export const cells = {
   // Escape reverts.
   _sentenceKeydown(e) {
     if (this._composing(e)) return;
+    this._conflictKeys(e);
     // The review sweep's chords belong to the container listener: leave them
     // alone so the hop wins over cell navigation.
     if (this._isSweepChord(e)) return;

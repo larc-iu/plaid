@@ -9,6 +9,7 @@ import { notifyError } from '@/utils/feedback';
 // the ✓ that follows a copy must not appear when nothing was copied.
 
 vi.mock('@/utils/feedback', () => ({
+  notifyWarning: vi.fn(),
   humanizeError: (e) => String(e),
   notifyInfo: vi.fn(),
   notifyError: vi.fn(),

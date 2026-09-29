@@ -140,6 +140,8 @@ export const grid = {
             <div class="igt-cell${this._rowCls(`orth:${name}`)}" data-row=${`orth:${name}`}>
               ${this._field({
                 key: `or:${token.id}:${name}`,
+                what: this._cellWhat(name, `"${token.content}"`, sctx.index),
+                entityIds: [token.id],
                 value: token.orthographies?.[name] ?? '',
                 apply: (v) =>
                   this.doc.labelled(
@@ -162,6 +164,8 @@ export const grid = {
             html`<div class="igt-cell${this._rowCls(`word:${name}`)}" data-row=${`word:${name}`}>
               ${this._field({
                 key: `wa:${token.id}:${name}`,
+                what: this._cellWhat(name, `"${token.content}"`, sctx.index),
+                entityIds: [token.annotations?.[name]?.id],
                 badge: token.annotations?.[name]?.id
                   ? this._commentBadge(
                       'span',
@@ -285,6 +289,15 @@ export const grid = {
   _morphCol(morph, word, siblings, ctx, index) {
     const value = morphFormOf(morph);
     const filled = value !== '';
+    const formKey = `mf:${morph.id}`;
+    const formWhat =
+      siblings.length <= 1
+        ? this._cellWhat('Morpheme form', `"${word.content}"`, index)
+        : this._cellWhat(
+            'Form',
+            `morpheme ${morph.precedence ?? siblings.indexOf(morph) + 1} of "${word.content}"`,
+            index,
+          );
     // Chips linked to a stem/root lexicon entry keep the lavender accent —
     // a coverage cue for lexical identification; everything else stays quiet.
     // Machine-made segmentation (copied analyses) marks the morpheme TOKEN's
@@ -297,8 +310,10 @@ export const grid = {
             html`<input
               class="igt-field igt-morph-field ${filled
                 ? 'igt-field--filled'
-                : 'igt-field--empty'} ${provClass('igt-field', prov)}"
-              data-cell-key=${`mf:${morph.id}`}
+                : 'igt-field--empty'} ${provClass('igt-field', prov)} ${this._conflictOf(formKey)
+                ? 'igt-field--conflict'
+                : ''}"
+              data-cell-key=${formKey}
               data-tier=${cellTier('mf', null)}
               data-word=${word.id}
               data-prec=${morph.precedence ?? 1}
@@ -313,6 +328,8 @@ export const grid = {
               spellcheck="false"
               dir="auto"
               ?disabled=${this.readOnly}
+              .igtWhat=${formWhat}
+              .igtEntityIds=${[morph.id]}
               ${uncontrolledValue(value)}
               @focus=${this._onMorphFormFocus}
               @mousedown=${this._onCellMouseDown}
@@ -320,24 +337,17 @@ export const grid = {
               @input=${this._onFieldInput}
               @keydown=${this._morphFormKeydown(morph, word, siblings)}
               @paste=${this._onMorphPaste(morph, word)}
-              @blur=${(e) =>
-                this._commitMorphForm(e, morph.id, (v) =>
-                  siblings.length <= 1
-                    ? this._editLabel('Morpheme form', `"${word.content}"`, index, v)
-                    : this._editLabel(
-                        'Form',
-                        `morpheme ${morph.precedence ?? siblings.indexOf(morph) + 1} of "${word.content}"`,
-                        index,
-                        v,
-                      ),
-                )}
+              @blur=${(e) => this._commitMorphForm(e, morph.id, (v) => this._labelFor(formWhat, v))}
             />`,
             {
               id: morph.id,
               vocabItem: morph.vocabItem,
               formText: value,
               kind: 'morpheme',
-              badge: this._commentBadge('token', morph.id, value || 'morpheme'),
+              badge: [
+                this._commentBadge('token', morph.id, value || 'morpheme'),
+                this._conflictNote(formKey),
+              ],
             },
           )}
         </div>
@@ -359,6 +369,8 @@ export const grid = {
             <div class="igt-morph-cell${this._rowCls(`morph:${name}`)}" data-row=${`morph:${name}`}>
               ${this._field({
                 key: `ma:${morph.id}:${name}`,
+                what: this._cellWhat(name, this._morphemeSubject(morph, word, siblings), index),
+                entityIds: [morph.annotations?.[name]?.id],
                 badge: morph.annotations?.[name]?.id
                   ? this._commentBadge(
                       'span',
@@ -444,6 +456,8 @@ export const grid = {
                 : html`
                     ${this._field({
                       key: `sa:${sentence.id}:${name}`,
+                      what: this._cellWhat(name, null, index),
+                      entityIds: [sentence.annotations?.[name]?.id],
                       value: sentence.annotations?.[name]?.value ?? '',
                       apply: (v) =>
                         this.doc.labelled(this._editLabel(name, null, index, v), () =>

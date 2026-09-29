@@ -41,6 +41,7 @@ import { assistant } from './editor/assistant.js';
 import { rows } from './editor/rows.js';
 import { grid } from './editor/grid.js';
 import { vocabPopover } from './editor/vocabPopover.js';
+import { conflicts, conflictKey, rowOfKey } from './editor/conflicts.js';
 import { keys } from '@/lib/keymap.js';
 
 export class IgtEditor {
@@ -200,6 +201,11 @@ export class IgtEditor {
     // The values put back unsent, by cell key, each registered with the leave
     // question (_syncUnsentDrafts). Focusing one takes it up again.
     this._unsent = new Map();
+    // Cell edits that lost to another user's, by cell key (conflicts.js),
+    // and per cell key what the server held before this page's edits of it
+    // that have not landed (cells.js _runKeepingFocus).
+    this._conflicts = new Map();
+    this._editBases = new Map();
     this._onFocusIn = () => queueMicrotask(() => this._syncUnsentDrafts());
     this.container.addEventListener('focusin', this._onFocusIn);
     this._onAssistantFocus = this._onAssistantFocus.bind(this);
@@ -436,6 +442,7 @@ export class IgtEditor {
   // the cell sends it), when the stored value moves on (uncontrolledValue), and
   // with the island.
   _syncUnsentDrafts() {
+    const conflicted = [];
     if (!this._destroyed) {
       for (const cell of this.container.querySelectorAll('.igt-field')) {
         if (cell.igtUnsent) this._noteUnsent(cell.dataset.cellKey, cell.igtUnsent, cell);
@@ -452,25 +459,35 @@ export class IgtEditor {
         // split takes its new morphemes with it), and then there is no cell
         // to take it back and nothing to ask about.
         ids ??= this._shownIds();
-        keep = ids.has(key.slice(key.indexOf(':') + 1, key.lastIndexOf(':')));
+        keep = ids.has(rowOfKey(key));
       }
       if (keep && cell && !cell.igtUnsent) {
-        // The cell it was put into let it go (focused, or the stored value
-        // moved on). A cell drawn afresh takes it back while the stored value
-        // is still the one it was typed over.
-        keep =
-          cell !== entry.cell &&
-          document.activeElement !== cell &&
-          (cell.value ?? '') === entry.saved;
-        if (keep) {
-          this._putBackInto(cell, entry.typed, entry.saved);
-          entry.cell = cell;
+        // The cell it was put into let it go: focused (leaving it sends the
+        // value), or the stored value moved on, which is someone else's
+        // change and a conflict (conflicts.js). A cell drawn afresh takes it
+        // back while the stored value is still the one it was typed over,
+        // and meets a conflict otherwise.
+        const stored = cell.igtRendered ?? cell.value ?? '';
+        const lost = cell.igtLostTo;
+        cell.igtLostTo = null;
+        keep = false;
+        if (lost) {
+          conflicted.push([cell, entry.typed, lost.stored]);
+        } else if (cell !== entry.cell && document.activeElement !== cell) {
+          if (stored === entry.saved) {
+            keep = true;
+            this._putBackInto(cell, entry.typed, entry.saved);
+            entry.cell = cell;
+          } else if (stored !== entry.typed) {
+            conflicted.push([cell, entry.typed, stored]);
+          }
         }
       }
       if (keep) continue;
       this._unsent.delete(key);
       setUnsavedDraft(entry, null);
     }
+    for (const [cell, typed, stored] of conflicted) this._enterConflict(cell, typed, stored);
   }
 
   // Every sentence, word and morpheme id in the document, on any page: what a
@@ -488,19 +505,27 @@ export class IgtEditor {
   }
 
   // Remember a value put back unsent, for a cell not drawn right now.
-  _keepUnsent(key, typed, saved) {
-    this._noteUnsent(key, { typed, saved: this._unsent.get(key)?.saved ?? saved }, null);
+  // `what` names the cell for the leave question ("Gloss of "dogs" in
+  // sentence 3"), as the cell had it when the edit was made.
+  _keepUnsent(key, typed, saved, what = null) {
+    const entry = this._unsent.get(key);
+    this._noteUnsent(key, { typed, saved: entry?.saved ?? saved }, null, what ?? entry?.what);
     this._syncUnsentDrafts();
   }
 
-  _noteUnsent(key, { typed, saved }, cell) {
+  _noteUnsent(key, { typed, saved }, cell, what = cell?.igtWhat ?? null) {
     let entry = this._unsent.get(key);
     if (!entry) {
       entry = {};
       this._unsent.set(key, entry);
-      setUnsavedDraft(entry, 'An annotation you have typed', 'annotations you have typed');
     }
-    Object.assign(entry, { typed, saved, cell });
+    // Registered again when the name changes, so the question names the cell.
+    const name = what ?? entry.what ?? null;
+    if (!entry.registered || name !== entry.what) {
+      setUnsavedDraft(entry, name ?? 'An annotation you have typed', 'annotations you have typed');
+      entry.registered = true;
+    }
+    Object.assign(entry, { typed, saved, cell, what: name });
   }
 
   _scheduleRender() {
@@ -574,6 +599,7 @@ export class IgtEditor {
     );
     render(this._template(), this.container);
     this._rehomeDisplaced();
+    this._syncConflicts();
     this._syncUnsentDrafts();
     // The pill lives in a nested root the template above does not write, so a
     // fresh toolbar comes back empty until this puts it back.
@@ -683,6 +709,8 @@ export class IgtEditor {
     key,
     value,
     apply,
+    what = null,
+    entityIds = null,
     extraClass = '',
     sentence = false,
     ariaLabel,
@@ -699,6 +727,8 @@ export class IgtEditor {
   }) {
     const v = value ?? '';
     const filled = v !== '';
+    // Lost to another user's edit (conflicts.js): theirs shows, ours is noted.
+    const conflict = !this.readOnly && !!this._conflictOf(key);
     // The kind is the first segment of the key and is always one of a fixed
     // few literals; everything after it may hold a colon (see cellTier).
     const tier = cellTier(key.split(':', 1)[0], fieldName);
@@ -724,38 +754,43 @@ export class IgtEditor {
       // A sentence-scoped field can carry a tagset too (a Genre or Speech-act
       // field is as controllable as a POS). Same picker, same flagging: only
       // the control differs, because a Translation still has to wrap.
-      return html`<textarea
-        class="igt-field igt-field--sentence ${filled
-          ? 'igt-field--filled'
-          : 'igt-field--empty'} ${violations.length ? 'igt-field--invalid' : ''} ${provClass(
-          'igt-field',
-          ps,
-        )} ${extraClass}"
-        data-cell-key=${key}
-        data-tier=${tier}
-        data-has-tagset=${tagset ? '1' : nothing}
-        data-tagset-delims=${tagset?.delimiters || nothing}
-        data-tagset-enforces=${tagsetEnforces(tagset) ? '1' : nothing}
-        data-confirm-sentence=${confirmSentence ?? nothing}
-        data-field-name=${fieldName ?? nothing}
-        aria-label=${ariaLabel ?? nothing}
-        title=${violations.length
-          ? this._violationText(violations, tagset)
-          : ps
-            ? `${this._cellTitle(v, ps, origin)}. ${keys.words('analyze.accept')} accepts it as is`
-            : nothing}
-        rows="1"
-        spellcheck="false"
-        dir="auto"
-        ?disabled=${this.readOnly}
-        .igtAlts=${alternatives || null}
-        .igtTagset=${tagset}
-        ${uncontrolledValue(v)}
-        @focus=${this._onFieldFocus}
-        @input=${this._onSentenceInput}
-        @keydown=${this._sentenceKeydown}
-        @blur=${(e) => this._commitField(e, apply, tagset)}
-      ></textarea>`;
+      return html`<span class="igt-cell__face${conflict ? ' igt-cell__face--noted' : ''}">
+        <textarea
+          class="igt-field igt-field--sentence ${filled
+            ? 'igt-field--filled'
+            : 'igt-field--empty'} ${violations.length ? 'igt-field--invalid' : ''} ${provClass(
+            'igt-field',
+            ps,
+          )} ${conflict ? 'igt-field--conflict' : ''} ${extraClass}"
+          data-cell-key=${key}
+          data-tier=${tier}
+          data-has-tagset=${tagset ? '1' : nothing}
+          data-tagset-delims=${tagset?.delimiters || nothing}
+          data-tagset-enforces=${tagsetEnforces(tagset) ? '1' : nothing}
+          data-confirm-sentence=${confirmSentence ?? nothing}
+          data-field-name=${fieldName ?? nothing}
+          aria-label=${ariaLabel ?? nothing}
+          title=${violations.length
+            ? this._violationText(violations, tagset)
+            : ps
+              ? `${this._cellTitle(v, ps, origin)}. ${keys.words('analyze.accept')} accepts it as is`
+              : nothing}
+          rows="1"
+          spellcheck="false"
+          dir="auto"
+          ?disabled=${this.readOnly}
+          .igtAlts=${alternatives || null}
+          .igtTagset=${tagset}
+          .igtWhat=${what}
+          .igtEntityIds=${entityIds}
+          ${uncontrolledValue(v)}
+          @focus=${this._onFieldFocus}
+          @input=${this._onSentenceInput}
+          @keydown=${this._sentenceKeydown}
+          @blur=${(e) => this._commitField(e, apply, tagset)}
+        ></textarea
+        >${this._conflictNote(key)}</span
+      >`;
     }
     const p = filled ? prov : null;
     // Alternatives (Alt+↓): computed per render so the list and the caret
@@ -801,7 +836,7 @@ export class IgtEditor {
         : ''} ${violations.length ? 'igt-field--invalid' : ''} ${provClass(
         'igt-field',
         p,
-      )} ${extraClass}"
+      )} ${conflict ? 'igt-field--conflict' : ''} ${extraClass}"
       data-cell-key=${key}
       data-tier=${tier}
       data-has-tagset=${tagset ? '1' : nothing}
@@ -816,6 +851,8 @@ export class IgtEditor {
       title=${title}
       .igtAlts=${alternatives || null}
       .igtTagset=${tagset}
+      .igtWhat=${what}
+      .igtEntityIds=${entityIds}
       placeholder=${g ? g.value : nothing}
       size=${this._fieldSize(g ? g.value : v)}
       spellcheck="false"
@@ -839,8 +876,8 @@ export class IgtEditor {
     // can be commented on), and a wrapper that appeared only then swapped
     // lit templates and recreated the input under the person's cursor: a
     // pick or an accept left the cell unfocused.
-    return html`<span class="igt-cell__face${badge ? ' igt-cell__face--badged' : ''}"
-      >${badge ?? nothing}${input}</span
+    return html`<span class="igt-cell__face${badge || conflict ? ' igt-cell__face--badged' : ''}"
+      >${badge ?? nothing}${input}${this._conflictNote(key)}</span
     >`;
   }
 
@@ -866,6 +903,7 @@ Object.assign(
   grid,
   vocabPopover,
   telemetry,
+  conflicts,
 );
 
 // ---------------------------------------------------------------------------

@@ -8,6 +8,7 @@ import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 // on screen, and what counts them as unsaved.
 
 vi.mock('@/utils/feedback', () => ({
+  notifyWarning: vi.fn(),
   humanizeError: (e) => String(e),
   notifyInfo: vi.fn(),
   notifyError: vi.fn(),
@@ -139,11 +140,11 @@ describe('an in-app way out asks', () => {
     });
     type(c, c.dataset.orig ?? '');
     expect(b.value).toBe('BBB');
-    expect(hasUnsavedDraft()).toBe('An annotation you have typed');
+    expect(hasUnsavedDraft()).toMatch(/^Gloss of morpheme "\w+" in sentence 1$/);
     // A later render with the stored value unchanged keeps the question.
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', null);
     await settle();
-    expect(hasUnsavedDraft()).toBe('An annotation you have typed');
+    expect(hasUnsavedDraft()).toMatch(/^Gloss of morpheme "\w+" in sentence 1$/);
     // Taken up again, leaving the cell sends it, so there is nothing to ask.
     focus(b);
     await settle();
@@ -158,7 +159,7 @@ describe('an in-app way out asks', () => {
       type(b, 'BBB');
     });
     type(c, c.dataset.orig ?? '');
-    expect(hasUnsavedDraft()).toBe('An annotation you have typed');
+    expect(hasUnsavedDraft()).toMatch(/^Gloss of morpheme "\w+" in sentence 1$/);
     editor.destroy();
     editor = null;
     expect(hasUnsavedDraft()).toBe(null);
@@ -307,12 +308,12 @@ describe('a value put back unsaved, on a page the reader leaves', () => {
     editor._setPage(1);
     await settle();
     expect(cell('ma:m-1:Gloss')).toBe(null);
-    expect(hasUnsavedDraft()).toBe('An annotation you have typed');
+    expect(hasUnsavedDraft()).toMatch(/^Gloss of morpheme "\w+" in sentence 1$/);
     editor._setPage(0);
     await settle();
     const back = cell('ma:m-1:Gloss');
     expect(back.value).toBe('AAA');
-    expect(hasUnsavedDraft()).toBe('An annotation you have typed');
+    expect(hasUnsavedDraft()).toMatch(/^Gloss of morpheme "\w+" in sentence 1$/);
     // Taken up again, it is measured against what the server holds.
     focus(back);
     await settle();
@@ -330,7 +331,7 @@ describe('a value put back unsaved, on a page the reader leaves', () => {
     await settle();
     await refuse();
     await settle(30);
-    expect(hasUnsavedDraft()).toBe('An annotation you have typed');
+    expect(hasUnsavedDraft()).toMatch(/^Gloss of morpheme "\w+" in sentence 1$/);
     const e = new Event('beforeunload', { cancelable: true });
     window.dispatchEvent(e);
     expect(e.defaultPrevented).toBe(true);

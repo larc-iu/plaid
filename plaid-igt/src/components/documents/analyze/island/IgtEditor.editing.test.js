@@ -11,6 +11,7 @@ import { notifyInfo } from '@/utils/feedback';
 // same render/commit interleavings the browser does.
 
 vi.mock('@/utils/feedback', () => ({
+  notifyWarning: vi.fn(),
   humanizeError: (e) => String(e),
   notifyInfo: vi.fn(),
   notifyError: vi.fn(),
