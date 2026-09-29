@@ -79,3 +79,32 @@ describe('a settled plan', () => {
     expect(out.display[1].plan.ops).toHaveLength(2);
   });
 });
+
+// A discarded plan writes nothing, so the audit log never sees it: what it
+// proposed, which the service wrote on the plan when it staged it, stays on
+// the card (planRecord.js, mirrored by the service's compact_plan and checked
+// against it in plaid-agent's test_plan_record_mirror.py).
+describe('what a settled plan proposed', () => {
+  const T1 = '019a0000-0000-7000-8000-000000000001';
+  const plan = {
+    id: 'p1',
+    summary: 's',
+    labels: ['a'],
+    changes: [{ label: 'a' }],
+    ops: [{ kind: 'set_span', tokenId: T1, value: 'fish' }],
+    documents: [{ id: 'd1', version: 3 }],
+    proposed: [['set_span', T1, 'fish']],
+    proposedCount: 1,
+  };
+
+  it('is kept when the plan is discarded here, with when', () => {
+    const conv = { messages: [], display: [{ kind: 'assistant', plan, status: null }] };
+    const out = settle(conv, 0, 'discarded', null);
+    const d = out.display[0];
+    expect(d.plan).not.toHaveProperty('ops');
+    expect(d.plan.proposed).toEqual([['set_span', T1, 'fish']]);
+    expect(d.plan.proposedCount).toBe(1);
+    expect(d.settledAt).toMatch(/^\d{4}-\d\d-\d\dT.*Z$/);
+    expect(new Date(d.settledAt).getTime()).toBeLessThanOrEqual(Date.now());
+  });
+});

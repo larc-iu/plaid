@@ -27,9 +27,11 @@ them on the wire, so both sides read one record.
 
 import json
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from plaid_client.http import PlaidAPIError
+
+from .plan import expand_ops
 
 # What one stored record may weigh, when the server does not say. A turn's
 # tool results are almost all of a conversation's weight and the part it can
@@ -208,6 +210,58 @@ def find_plan(conv: Dict[str, Any], plan_id: str) -> Tuple[int, Optional[Dict[st
     return -1, None
 
 
+# What a plan keeps of each change it proposed (`proposed_changes`), for a
+# record that outlives its ops. At most this many changes are kept, and `proposed_count` says how many there
+# were. A bulk change across a corpus is one decision, and 500 of its changes
+# are about 40KB of a record whose budget is megabytes.
+PROPOSED_MAX = 500
+# The most characters of a proposed value kept, in code points.
+PROPOSED_VALUE_MAX = 24
+
+
+def _proposed_target(op: Dict[str, Any], keys: Sequence[str]) -> Optional[str]:
+    for key in keys:
+        v = op.get(key)
+        if isinstance(v, list):
+            v = v[0] if v else None
+        if isinstance(v, str) and v:
+            return v
+    return None
+
+
+def _proposed_value(op: Dict[str, Any], keys: Sequence[str]):
+    for key in keys:
+        v = op.get(key)
+        if isinstance(v, str):
+            return v if len(v) <= PROPOSED_VALUE_MAX else v[:PROPOSED_VALUE_MAX - 1] + '…'
+        if isinstance(v, int) and not isinstance(v, bool):
+            return v
+    return None
+
+
+def proposed_changes(ops: List[Dict[str, Any]], target_keys: Sequence[str],
+                     value_keys: Sequence[str]) -> Tuple[List[list], int]:
+    """``([kind, target id, short value], ...)`` for the changes a plan
+    proposes, the first :data:`PROPOSED_MAX` of them, and how many there are.
+
+    A plan that is discarded or refused writes nothing, so the audit log never
+    sees what it proposed. This is what the record keeps of it, a few dozen
+    bytes a change, once ``ops`` are gone (`compact_plan`). The target is the
+    first of ``target_keys`` an op names (a list read at its first entry), the
+    value the first of ``value_keys`` holding a string or a whole number,
+    clipped to :data:`PROPOSED_VALUE_MAX` code points. The keys are the app's
+    (``BaseAssistantService.proposed_keys``). Each change's outcome is the
+    plan's: approval is of the whole plan.
+    """
+    out: List[list] = []
+    total = 0
+    for op in expand_ops([op for op in ops if isinstance(op, dict)]):
+        total += 1
+        if len(out) < PROPOSED_MAX:
+            out.append([op.get('kind'), _proposed_target(op, target_keys), _proposed_value(op, value_keys)])
+    return out, total
+
+
 def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
     """A settled plan's card without what only approving it needed.
 
@@ -217,7 +271,11 @@ def compact_plan(item: Dict[str, Any]) -> Dict[str, Any]:
     them again: the card is drawn from ``changes`` and ``labels``, and the
     audit log is the record of what was written. ``op_count`` keeps the card's
     rows lined up with the ops they stood for (`planRows` in plaid-ui).
+    What each change targeted and proposed stays, small, as ``proposed``
+    (`proposed_changes`, written when the plan was staged), since a plan that
+    wrote nothing is in no log.
     An undecided plan is never compacted: it can still be approved.
+    Mirrored by ``compactPlan`` in plaid-ui.
     """
     plan = item.get('plan')
     if not plan or item.get('status') is None or 'ops' not in plan:
@@ -235,11 +293,20 @@ def settle_plan(conv: Dict[str, Any], index: int, status: Optional[str], note: O
                 **fields) -> Dict[str, Any]:
     """A plan's outcome: the status on its card, plus a note in the model
     transcript (user role) so the next turn knows whether its proposal happened.
-    A settled plan is compacted at once (`compact_plan`)."""
-    display = [(compact_plan({**d, 'status': status, **fields}) if i == index else d)
+    A settled plan is compacted at once (`compact_plan`), and says when it was
+    settled (``settled_at``)."""
+    display = [(compact_plan({**d, 'status': status, 'settled_at': now_iso(), **fields}) if i == index else d)
                for i, d in enumerate(conv['display'])]
     messages = conv['messages'] + ([{'role': 'user', 'content': note}] if note else [])
     return {'messages': messages, 'display': display}
+
+
+def partly_applied(conv: Dict[str, Any], index: int) -> Dict[str, Any]:
+    """The plan at ``index`` failed after some of it was written. It stays
+    undecided (the card still offers Approve and Discard), and the item says
+    so, since a discard afterwards would otherwise read as nothing written."""
+    display = [({**d, 'partly_applied': True} if i == index else d) for i, d in enumerate(conv['display'])]
+    return {**conv, 'display': display}
 
 
 # --- size ---------------------------------------------------------------------

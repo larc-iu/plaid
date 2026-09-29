@@ -41,6 +41,11 @@ class AssistantService(BaseAssistantService):
     SUMMARY = SUMMARY
     PING_QUERY = 'uniform meaning representation'
     reference_shape = 'a bare reference like s3 or s3.s3e'
+    # What a proposed change is kept as once its plan is settled: the node or
+    # relation it lands on (an edge at its source), and its new value.
+    proposed_keys = (('span_id', 'relation_id', 'token_ids', 'source_span_id', 'guideline_id', 'entity_id',
+                      'document_id', 'text_id'),
+                     ('value', 'concept', 'role', 'rel', 'order', 'title', 'body', 'as_of'))
 
     def toolkit(self) -> Toolkit:
         return Toolkit(tools_for=tools_for, call_tool=call_tool, tracer=TRACER)

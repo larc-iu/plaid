@@ -2,6 +2,7 @@ import { notifySuccess, notifyError, notifyWarning } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
 import { deleteConversationFiles } from './attachments.js';
 import { lastProjects } from './projectReach.js';
+import { compactPlan } from './planRecord.js';
 
 // The assistant's conversations and the runs behind them: what is stored
 // where, the page-independent job registry, and starting, watching,
@@ -234,24 +235,20 @@ export const deleteConversation = async (store, meta) => {
   ]);
 };
 
-// A settled plan's card without what only approving it needed: the ops and
-// the documents they were checked against. The card is drawn from `changes`
-// and `labels`, and the audit log records what was written. The service does
-// the same to every settled plan (plaid_agent/core/conversation.py
-// `compact_plan`).
-export const compactPlan = (item) => {
-  const plan = item?.plan;
-  if (!plan || item.status === null || item.status === undefined || !('ops' in plan)) return item;
-  const { ops, documents: _documents, ...kept } = plan;
-  return { ...item, plan: { ...kept, opCount: (ops || []).length } };
-};
+// A settled plan's card without what only approving it needed, keeping what
+// it proposed (planRecord.js). The service does the same to every settled
+// plan (plaid_agent/core/conversation.py `compact_plan`).
+export { compactPlan };
 
-// A plan's outcome decided here (a discard): the status on its card, plus a
-// note in the model transcript (user role) so the next turn knows.
+// A plan's outcome decided here (a discard): the status on its card and when
+// it was settled, plus a note in the model transcript (user role) so the next
+// turn knows.
 export const settle = (conv, index, status, note) => ({
   ...conv,
   messages: note ? [...conv.messages, { role: 'user', content: note }] : conv.messages,
-  display: conv.display.map((d, i) => (i === index ? compactPlan({ ...d, status }) : d)),
+  display: conv.display.map((d, i) =>
+    i === index ? compactPlan({ ...d, status, settledAt: new Date().toISOString() }) : d,
+  ),
 });
 
 // The user's message leaves the model transcript when its turn ends without

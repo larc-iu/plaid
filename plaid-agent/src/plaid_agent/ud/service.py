@@ -42,6 +42,12 @@ class AssistantService(BaseAssistantService):
     SUMMARY = SUMMARY
     PING_QUERY = 'universal dependencies treebank'
     reference_shape = 'a bare reference like s3 or s3.w2'
+    # What a proposed change is kept as once its plan is settled: the word,
+    # relation or sentence it lands on, and its new value (a head's is its
+    # relation label).
+    proposed_keys = (('word_id', 'token_id', 'span_id', 'relation_id', 'sentence_id', 'entity_id', 'guideline_id',
+                      'document_id', 'document_ids', 'text_id'),
+                     ('value', 'deprel', 'replacement', 'title', 'body', 'as_of'))
 
     def toolkit(self) -> Toolkit:
         return Toolkit(tools_for=tools_for, call_tool=call_tool, tracer=TRACER)

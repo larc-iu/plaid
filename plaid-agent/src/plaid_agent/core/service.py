@@ -54,7 +54,7 @@ import os
 import re
 import time
 import traceback
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlsplit
 
 from plaid_client import BaseService, DocumentLockLost, TASKS, service_source
@@ -71,7 +71,8 @@ from .agent import (ModelConfig, ModelTooSlow, PING_TIMEOUT_S, Toolkit, TurnCanc
 from .files import Attachments
 from .guidelines import in_context as guidelines_in_context
 from .conversation import (ConversationStore, MissingConversation, assistant_item, build_meta, error_item,
-                           find_plan, prune, record_budget, settle_plan)
+                           find_plan, partly_applied, proposed_changes, prune, record_budget,
+                           settle_plan)
 from .plan import DocumentsBusy, PlanError, PlanOutOfDate, ScopeMoved, documents_to_lock, holding
 from .web import BACKENDS, WebConfig, session_for, ping as ping_search
 
@@ -136,6 +137,13 @@ class BaseAssistantService(BaseService):
     #: How this app writes a reference to a place in a document, for the focus
     #: note. The app's own grammar, so the app states it.
     reference_shape = 'a bare reference'
+
+    #: ``(target keys, value keys)``: the keys of this app's plan ops that name
+    #: what a change lands on, most specific first, and those that carry the
+    #: value it proposes. What a plan proposed is kept by them
+    #: (``core.conversation.proposed_changes``), since a plan that is discarded
+    #: or refused writes nothing the audit log could show.
+    proposed_keys: Tuple[Tuple[str, ...], Tuple[str, ...]] = ((), ())
 
     def place(self, ws, where: Optional[dict]) -> Optional[tuple]:
         """``(noun, name, note)`` for what the user has open, or None.
@@ -479,7 +487,11 @@ class BaseAssistantService(BaseService):
             window = context_window(model, self.cfg.context_window)
             if window:
                 usage['window'] = window
-        item = assistant_item(turn.text, ws.plan_payload(), self.citations(ws, turn.text),
+        plan = ws.plan_payload()
+        if plan:
+            plan['proposed'], plan['proposed_count'] = proposed_changes(plan.get('ops') or [],
+                                                                        *self.proposed_keys)
+        item = assistant_item(turn.text, plan, self.citations(ws, turn.text),
                               turn.steps, turn.summary, model, usage,
                               guidelines_in_context(getattr(project, 'guidelines', None) or []))
         if reach is not None and reach.unavailable:
@@ -610,7 +622,12 @@ class BaseAssistantService(BaseService):
         # apply is `_applied_plans`, which lives in this process, so a restart
         # in between left a card still offering Approve over work already done.
         # Say so rather than leave it looking undecided.
-        if not settled(settle_plan(conv, index, 'applied', note, as_human=as_human)):
+        # What the record keeps of the outcome: how the approval was recorded,
+        # and what applying dropped (a change a later one superseded, say),
+        # since each change's outcome is otherwise the plan's.
+        outcome = {'as_human': as_human, **({'contributed': True} if contributor else {}),
+                   **({'apply_notes': notes} if notes else {})}
+        if not settled(settle_plan(conv, index, 'applied', note, **outcome)):
             response_helper.error(
                 'The changes were applied, but this conversation was changed elsewhere and does not '
                 'show it. Do not approve this plan again.')
@@ -663,7 +680,9 @@ class BaseAssistantService(BaseService):
                 self._remember_applied(plan_id)
 
             def failed(e=e):
-                settled()
+                # Left undecided, as before, but a later discard must not read
+                # as nothing written, so the item says some of it was.
+                settled(partly_applied(conv, index) if e.applied else None)
                 # No fraction: `applied` counts batch calls and `total` counts
                 # plan ops, and one op can be several calls, so the two together
                 # read as "failed after 10 of 3 changes were applied".
