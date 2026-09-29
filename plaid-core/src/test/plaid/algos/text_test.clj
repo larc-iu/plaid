@@ -2228,6 +2228,96 @@
                         (assoc (tok [layer b e] b e) :token/layer layer)))]
       (is (= new (:text/body (:text (body-edit old new tokens #{:s} #{:w :m})))) (pr-str old)))))
 
+(deftest the-fold-judges-every-edit-without-falling-back
+  ;; Words with and without spaces between them, each with two morphemes,
+  ;; some deleted and some respelled with letters the text already has, so
+  ;; the diff often replaces across the edge of two words and deletes
+  ;; letters beside it. The fold must judge those edits itself: when a join
+  ;; took letters the edit beside it took too, it threw or made another
+  ;; text, and the fold was dropped for the whole text.
+  (let [vocab ["tatu" "kai" "Yarın" "köye" "cat" "tat" "kaki" "ab" "é" "كتاب"]
+        letters ["a" "t" "e" "k" "ا"]
+        r (java.util.Random. 11)
+        failed (atom [])]
+    (dotimes [case-n 3000]
+      (let [n (+ 3 (.nextInt r 8))
+            sep (nth ["" "" " " "\n"] (.nextInt r 4))
+            words (vec (repeatedly n #(nth vocab (.nextInt r (count vocab)))))
+            old (str/join sep words)
+            spans (loop [i 0 b 0 out []]
+                    (if (= i n)
+                      out
+                      (let [e (+ b (cp/cp-count (words i)))]
+                        (recur (inc i) (+ e (cp/cp-count sep)) (conj out [b e])))))
+            tokens (into [(assoc (tok :s 0 (cp/cp-count old)) :token/layer :s)]
+                         (mapcat (fn [[b e]]
+                                   (let [k (+ b 1 (.nextInt r (max 1 (- e b 1))))]
+                                     (cond-> [(assoc (tok [:w b] b e) :token/layer :w)]
+                                       (< k e) (conj (assoc (tok [:m b] b k) :token/layer :m)
+                                                     (assoc (tok [:m k] k e) :token/layer :m))))))
+                         spans)
+            new (str/join sep (keep (fn [w]
+                                      (case (.nextInt r 4)
+                                        0 nil
+                                        1 (apply str (repeatedly (inc (.nextInt r 3))
+                                                                 #(nth letters (.nextInt r (count letters)))))
+                                        w))
+                                    words))
+            ops (-> (ta/diff old new)
+                    (ta/slide-to-tokens old tokens #{:s})
+                    (ta/normalize-deletes old tokens)
+                    (ta/align-to-words old tokens #{:w :m})
+                    (ta/pair-replacements old tokens))
+            folded (try (#'ta/fold-whole-words* ops old tokens #(#{:w :m} (:token/layer %)))
+                        (catch Throwable e e))]
+        (when-not (and (sequential? folded)
+                       (= new (#'ta/ops-body folded old)))
+          (swap! failed conj [case-n old new]))))
+    (is (= [] (take 5 @failed)))))
+
+(defn- extents-of [tokens layer]
+  (sort (keep #(when (= layer (:token/layer %)) [(:token/begin %) (:token/end %)]) tokens)))
+
+(deftest a-join-takes-in-the-edits-beside-it-in-the-letters-it-types-back
+  ;; `kai tatu שלום` to `ket` is `ai ta` replaced by `e` and `u שלום`
+  ;; deleted. The replace joins `kai` and `tatu`, and keeping `tatu` it
+  ;; typed back `ka` in front of it while the delete took its `u`: the join
+  ;; judged `tatu` by letters that were gone, and put `ket` on `tatu` and
+  ;; its morphemes. Taking the delete's `u` into the join, `kai` shares
+  ;; more with `ket` and takes it, and `tatu` goes with `שלום`.
+  (let [old "kaki dog kai tatu שלום\n"
+        new "kaki dog ket\n"
+        extents {:s [[0 23]]
+                 :w [[0 4] [5 8] [9 12] [13 17] [18 22]]
+                 :m [[13 16] [16 17] [18 19] [19 21] [21 22]]}
+        tokens (vec (for [[layer es] extents [b e] es]
+                      (assoc (tok [layer b e] b e) :token/layer layer)))
+        {:keys [text tokens]} (body-edit old new tokens #{:s} #{:w :m})
+        by-id (into {} (map (juxt :token/id identity)) tokens)]
+    (is (= new (:text/body text)))
+    (is (= [[0 4] [5 8] [9 12]] (extents-of tokens :w)))
+    (is (= [9 12] ((juxt :token/begin :token/end) (by-id [:w 9 12]))))
+    (is (= [] (extents-of tokens :m)))))
+
+(deftest a-join-beside-another-edit-leaves-the-other-words-to-fold
+  ;; A join overlapping the edit beside it could not be judged, and the
+  ;; fold then left every edit in the text as it came: `cow`, analyzed
+  ;; `co` + `w` and replaced by `abc` two lines on, kept the word and `co`
+  ;; on the `c` of `abc`. Now the join takes that edit in, and `cow` folds.
+  (let [old "tatukaiYarın\nthe dog\ncow dog\n"
+        new "tatuata\nthe dog\nabc dog\n"
+        extents {:s [[0 13] [13 21] [21 29]]
+                 :w [[0 4] [4 7] [7 12] [13 16] [17 20] [21 24] [25 28]]
+                 :m [[4 6] [6 7] [7 8] [8 9] [9 12] [21 23] [23 24]]}
+        tokens (vec (for [[layer es] extents [b e] es]
+                      (assoc (tok [layer b e] b e) :token/layer layer)))
+        {:keys [text tokens]} (body-edit old new tokens #{:s} #{:w :m})
+        by-id (into {} (map (juxt :token/id identity)) tokens)]
+    (is (= new (:text/body text)))
+    (is (= [16 19] ((juxt :token/begin :token/end) (by-id [:w 21 24]))))
+    (is (nil? (by-id [:m 21 23])))
+    (is (nil? (by-id [:m 23 24])))))
+
 ;; ---------------------------------------------------------------------------
 ;; The fold finds the places between two morphemes of a word, and the tokens
 ;; holding an edit inside a run without whitespace, from an index built once

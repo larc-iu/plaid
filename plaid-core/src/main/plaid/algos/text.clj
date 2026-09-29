@@ -1937,8 +1937,22 @@
           (let [ps (or (.get memo B) (let [ps (places B E)] (.put memo B ps) ps))]
             (contains? ps p)))))))
 
+(defn- edit-start [e] (or (:start e) (:at e)))
+(defn- edit-reach [e] (or (:end e) (:at e)))
+
+(defn- edits-text
+  "[p q) of `o` with `edits`, which lie within it in order, made on it."
+  [^ints o edits p q]
+  (loop [edits edits p p sb (StringBuilder.)]
+    (if-let [x (first edits)]
+      (do (.append sb (String. o (int p) (int (- (edit-start x) p))))
+          (when (:value x) (.append sb ^String (:value x)))
+          (recur (rest edits) (edit-reach x) sb))
+      (str (.append sb (String. o (int p) (int (- q p))))))))
+
 (defn- split-at-token-edges
-  "The edits for `r`, a replace of [s, t) in `o`, cut where it reaches into
+  "`out`, the edits before `r` as cut so far, with those for `r`, a replace
+  of [s, t) in `o`, cut where it reaches into
   tokens it does not hold. When tokens begin inside [s, t) and end past it,
   and none begins before it and ends inside it, the part from the last such
   beginning to t is replaced by the new text after its last space, and the
@@ -1949,7 +1963,12 @@
   word sharing more letters with it takes whole (the first on a tie), and
   the other is deleted: `cat dog` to `cQog` keeps `dog` on `cQog`, where
   the replace as it was left `c` and `og` a token each. With a space typed
-  it stays as it is.
+  it stays as it is. The edits in the letters of the two words that the
+  join types back become part of it: those of the word it deletes, taken
+  from the end of `out` or the start of `later` (the edits after `r`), and
+  one reaching out of the word is cut at its edge. So no edit takes a
+  letter another one takes. Gives the new `out` and how many of `later` it
+  took.
 
   Only a word's edge in `o` is a place to cut: a space or the text's edge
   beside it, or a token beginning or ending there, unless two tokens meet
@@ -1967,7 +1986,7 @@
   or `mat` would lose its `t`. `near` gives the tokens that
   begin or end in a stretch (see `tokens-near`), and `inside-word?` is
   `inside-word-fn`'s for `o`, `near` and `word?`."
-  [^ints o near word? inside-word? r]
+  [^ints o near word? inside-word? out r later]
   (let [{s :start t :end ^String value :value} r
         o-space? (fn [i] (space? (aget o (int i))))
         no-space? (fn [p q] (not-any? o-space? (range p q)))
@@ -2013,12 +2032,12 @@
       (and (seq into-next) (empty? into-prev))
       (let [b (reduce max (map :token/begin into-next))
             k (loop [k n] (if (and (pos? k) (not (ws? (dec k)))) (recur (dec k)) k))]
-        (into (piece s b (sub 0 k) s) (piece b t (sub k n) t)))
+        [(-> out (into (piece s b (sub 0 k) s)) (into (piece b t (sub k n) t))) 0])
 
       (and (seq into-prev) (empty? into-next))
       (let [a (reduce min (map :token/end into-prev))
             k (loop [k 0] (if (and (< k n) (not (ws? k))) (recur (inc k)) k))]
-        (into (piece s a (sub 0 k) s) (piece a t (sub k n) t)))
+        [(-> out (into (piece s a (sub 0 k) s)) (into (piece a t (sub k n) t))) 0])
 
       ;; Reaching into a word at each end with no space typed, the replace
       ;; makes the two words one, and one of them takes it whole: the one
@@ -2026,21 +2045,68 @@
       ;; deleted, with the words between, and the letters the kept one
       ;; loses by that are typed back. `tat the` to `tZe` keeps `the` on
       ;; `tZe`, where the replace alone left `tat` on `t` and `the` on `e`.
+      ;;
+      ;; The letters of the two words beyond the replace, [pb s) and [t ne),
+      ;; are typed back, so edits beside it in them are made on what is typed
+      ;; back instead, and are part of the join. Left beside it they would
+      ;; take letters the join takes too, and the fold could not judge the
+      ;; edits (a 500) or would make another text of them.
       (and (seq prev-in) (seq next-in) (pos? n) (not-any? ws? (range n)))
-      (let [o-sub (fn [p q] (String. o (int p) (int (- q p))))
-            pb (loop [p s] (if (edge? p) p (recur (dec p))))
+      (let [pb (loop [p s] (if (edge? p) p (recur (dec p))))
             a (loop [p s] (if (edge? p) p (recur (inc p))))
             b (loop [p t] (if (edge? p) p (recur (dec p))))
             ne (loop [p t] (if (edge? p) p (recur (inc p))))
-            word (.toArray (.codePoints (str (o-sub pb s) value (o-sub t ne))))
+            ;; the edits made before and after the replace within the two
+            ;; words, and those reaching out of them
+            [kept before] (loop [out out before ()]
+                            (let [x (peek out)]
+                              (if (and x (> (edit-reach x) pb))
+                                (recur (pop out) (cons x before))
+                                [out before])))
+            after (vec (take-while #(< (edit-start %) ne) later))
+            ;; An edit reaching out of the word is cut at its edge: what it
+            ;; types and takes inside the word is part of the join, and the
+            ;; letters it takes beyond the word are deleted.
+            [outside-before before] (let [x (first before)]
+                                      (if (and x (< (edit-start x) pb))
+                                        [[{:kind :delete :start (edit-start x) :end pb}]
+                                         (cons (assoc x :start pb) (rest before))]
+                                        [[] before]))
+            [after outside-after] (let [x (peek after)]
+                                    (if (and x (> (edit-reach x) ne))
+                                      [(conj (pop after) (assoc x :end ne))
+                                       [{:kind :delete :start ne :end (edit-reach x)}]]
+                                      [after []]))
+            head (edits-text o before pb s)
+            tail (edits-text o after t ne)
+            word (.toArray (.codePoints (str head value tail)))
             shares (fn [p q] (lcs-length (java.util.Arrays/copyOfRange o (int p) (int q)) word))]
         (if (>= (shares pb a) (shares b ne))
-          [{:kind :replace :start s :end a :value (str value (o-sub t ne))}
-           {:kind :delete :start a :end ne}]
-          [{:kind :delete :start pb :end b}
-           {:kind :replace :start b :end t :value (str (o-sub pb s) value)}]))
+          [(-> out
+               (conj {:kind :replace :start s :end a :value (str value tail)}
+                     {:kind :delete :start a :end ne})
+               (into outside-after))
+           (count after)]
+          [(-> kept
+               (into outside-before)
+               (conj {:kind :delete :start pb :end b}
+                     {:kind :replace :start b :end t :value (str head value)}))
+           0]))
 
-      :else [r])))
+      :else [(conj out r) 0])))
+
+(defn- split-all-at-token-edges
+  "`edits` with each replace cut by `split-at-token-edges`, in order."
+  [^ints o near word? inside-word? edits]
+  (let [edits (vec edits)]
+    (loop [i 0 out []]
+      (if (< i (count edits))
+        (let [e (edits i)]
+          (if (= :replace (:kind e))
+            (let [[out k] (split-at-token-edges o near word? inside-word? out e (subvec edits (inc i)))]
+              (recur (+ i 1 k) out))
+            (recur (inc i) (conj out e))))
+        out))))
 
 (declare apply-text-edits fold-whole-words*)
 
@@ -2124,11 +2190,12 @@
      ;; The fold must leave the text as it was. On a line retyped almost
      ;; whole, a replace joining two words took letters the next edit also
      ;; took, and the fold gave `forUnveistbr` for `for banister`: the save
-     ;; stored a body the user never typed. Where the folded ops do not give
-     ;; the same text, the ops stay as they came. So they do where the fold
-     ;; cannot judge such edits at all: whether a word is broken applies
-     ;; them, and two taking the same letters are out of bounds there
-     ;; (`tatukaiYarın` to `tatuata` answered 500).
+     ;; stored a body the user never typed, or answered 500 (`tatukaiYarın`
+     ;; to `tatuata`). A join now takes the edits beside it into itself
+     ;; (see `split-at-token-edges`), and a word whose edits the fold cannot
+     ;; judge is left as it came while the others fold. Should the folded
+     ;; ops still not give the same text, or the fold throw elsewhere, all
+     ;; the ops stay as they came, as a last guard.
      (let [folded (try (fold-whole-words* ops old tokens word?)
                        (catch clojure.lang.ExceptionInfo _ ops)
                        (catch IndexOutOfBoundsException _ ops))
@@ -2152,7 +2219,7 @@
         ;; there first, so the part inside the word is judged below as any
         ;; edit of that word is: `dog cow` to `cab` folds `cow` as `cow` to
         ;; `cab` does.
-        edits (into [] (mapcat #(if (= :replace (:kind %)) (split-at-token-edges o @near word? @inside-word? %) [%])) edits0)
+        edits (split-all-at-token-edges o @near word? @inside-word? edits0)
         cut? (not= edits edits0)
         whole (alength o)
         old-text (fn [p q] (String. o (int p) (int (- q p))))
@@ -2183,20 +2250,10 @@
         ;; its morphemes and not the words under a sentence or a UMR node.
         word-at? (fn [b e] (some #(and (= b (:token/begin %)) (= e (:token/end %)) (word? %)) (@near b e)))
         ;; [b e) of `old` with the edits of `g` applied.
-        ;; A replace that joins two words takes letters beyond its own ends
-        ;; (see `split-at-token-edges`), and the edit beside it may take some
-        ;; of them too, so an edit can start before the last one's reach. Its
-        ;; letters are not read twice: in a line retyped almost whole, `s v`
-        ;; replaced by `bat` in `caddies venomous` took `veno` while the next
-        ;; edit replaced `nomous`, and reading the letters between them
-        ;; backwards threw (a 500).
-        new-text (fn [g b e]
-                   (loop [g g p b sb (StringBuilder.)]
-                     (if-let [x (first g)]
-                       (do (.append sb (old-text p (max p (start-of x))))
-                           (when (:value x) (.append sb ^String (:value x)))
-                           (recur (rest g) (reach-of x) sb))
-                       (str (.append sb (old-text p (max p e)))))))
+        new-text (fn [g b e] (edits-text o g b e))
+        ;; No edit of `g` takes a letter one before it takes: only then do
+        ;; its edits make one text of [b e) (see `split-at-token-edges`).
+        apart? (fn [g] (every? (fn [[x y]] (<= (reach-of x) (start-of y))) (partition 2 1 g)))
         ws? (fn [c] (Character/isWhitespace (int c)))
         has-ws? (fn [^String v] (and v (.anyMatch (.codePoints v) (reify java.util.function.IntPredicate
                                                                     (test [_ c] (Character/isWhitespace c))))))
@@ -2272,6 +2329,7 @@
                       g (subvec edits i j)
                       kinds (set (map :kind g))]
                   (when (and (seq g)
+                             (apart? g)
                              (clear-after? j e)
                              ;; spaces alone are no word to fold onto: a word
                              ;; they take the place of is deleted
@@ -2348,6 +2406,7 @@
                                     j))
                               g (subvec edits i j)]
                           (when (and (seq g)
+                                     (apart? g)
                                      (clear-after? j e)
                                      (some #(and (:end %) (< (:start %) (:end %))) g)
                                      (not-any? #(ws? (aget o %)) (range b e))
@@ -2378,15 +2437,20 @@
               b (start-of e0)
               prev (peek out)
               lo (if prev (inc (reach-of prev)) 0)
+              ;; Edits the fold cannot judge stay as they came, and only
+              ;; they: the other words of the text still fold.
               g-e (when (clear-before? prev b)
-                    (or (some (fn [e] (when-let [g (group i b e)] [g b e])) (ends-at b))
-                        (some (fn [{tb :token/begin te :token/end}]
-                                (when-let [g (group i tb te)] [g tb te]))
-                              (around lo e0))
-                        (some (fn [{tb :token/begin te :token/end}]
-                                (when (clear-before? prev tb)
-                                  (when-let [g (partial-group i tb te)] [g tb te])))
-                              (holding e0))))]
+                    (try
+                      (or (some (fn [e] (when-let [g (group i b e)] [g b e])) (ends-at b))
+                          (some (fn [{tb :token/begin te :token/end}]
+                                  (when-let [g (group i tb te)] [g tb te]))
+                                (around lo e0))
+                          (some (fn [{tb :token/begin te :token/end}]
+                                  (when (clear-before? prev tb)
+                                    (when-let [g (partial-group i tb te)] [g tb te])))
+                                (holding e0)))
+                      (catch clojure.lang.ExceptionInfo _ nil)
+                      (catch IndexOutOfBoundsException _ nil)))]
           (if-let [[g b e] g-e]
             (recur (+ i (count g))
                    (conj out (as-replace g b e))
@@ -2396,10 +2460,8 @@
         ;; here and in the replaces `pair-replacements` made, and a replace
         ;; reaching into the edge of a token it does not hold is cut there.
         (let [replace? #(= :replace (:kind %))
-              out' (into []
-                         (comp (mapcat #(if (replace? %) (split-off-new-words o @near @covering %) [%]))
-                               (mapcat #(if (replace? %) (split-at-token-edges o @near word? @inside-word? %) [%])))
-                         out)]
+              out' (split-all-at-token-edges o @near word? @inside-word?
+                                             (into [] (mapcat #(if (replace? %) (split-off-new-words o @near @covering %) [%])) out))]
           (if (or folded? cut? (not= out out')) (edits->ops out') ops))))))
 
 (defn pair-replacements
