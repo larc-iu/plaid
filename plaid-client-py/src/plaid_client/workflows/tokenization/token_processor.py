@@ -6,11 +6,12 @@ collision detection, boundary management, cross-sentence splitting, and
 batch operations.
 """
 
+import json
 import logging
 from typing import List, Dict, Optional
 
 from plaid_client.provenance import stamp_inferred, is_protected
-from plaid_client.service import check_unchanged, locked_for_writes
+from plaid_client.service import batch_body_budget, check_unchanged, locked_for_writes
 from plaid_client.workflows.messages import setup_incomplete
 
 from .tokenizer_model import TokenSpan
@@ -250,7 +251,51 @@ class TokenProcessor:
         sentences_created = 0
         tokens_deleted = len(tokens_to_delete)
 
+        # Provenance: stamp everything this (machine) run creates.
+        prov_fragment = (stamp_inferred(prov_source, detail=prov_detail)
+                         if prov_source else None)
+        sent_operations = []
+        for sent in sentences_to_create or []:
+            op = {
+                "token_layer_id": sentence_layer_id,
+                "text": text_id,
+                "begin": sent['begin'],
+                "end": sent['end']
+            }
+            if prov_fragment:
+                op["metadata"] = dict(prov_fragment)
+            sent_operations.append(op)
+        token_operations = []
+        for token in words_to_create or []:
+            op = {
+                "token_layer_id": primary_token_layer_id,
+                "text": text_id,
+                "begin": token['begin'],
+                "end": token['end']
+            }
+            if prov_fragment:
+                op["metadata"] = dict(prov_fragment)
+            token_operations.append(op)
+
         if words_to_create or sentences_to_create or sentence_ids_to_delete or tokens_to_delete:
+            # The words go in the first batch, beside the delete and the new
+            # sentence partition, as far as the server's body cap allows, and
+            # the rest in batches of their own: one batch of every word of a
+            # long document was refused whole (413). A failure after the
+            # first leaves words missing, which a second run fills in.
+            budget = batch_body_budget(client)
+            used = len(json.dumps([sentence_ids_to_delete or [], tokens_to_delete or [],
+                                   sent_operations]))
+            word_chunks, chunk, size = [], [], used
+            for op in token_operations:
+                weight = len(json.dumps(op)) + 2
+                if chunk and size + weight > budget:
+                    word_chunks.append(chunk)
+                    chunk, size = [], 0
+                chunk.append(op)
+                size += weight
+            if chunk:
+                word_chunks.append(chunk)
             with client.batched() as b:
 
                 # TODO(annotation-preservation): when the new sentence partition is a strict
@@ -297,45 +342,20 @@ class TokenProcessor:
                     # whole batch down with it.
                     b.tokens.bulk_delete(tokens_to_delete)
 
-                # Provenance: stamp everything this (machine) run creates.
-                prov_fragment = (stamp_inferred(prov_source, detail=prov_detail)
-                                 if prov_source else None)
-
                 # Create new sentence tokens (establishes the new partition)
-                if sentences_to_create:
-                    sent_operations = []
-                    for sent in sentences_to_create:
-                        op = {
-                            "token_layer_id": sentence_layer_id,
-                            "text": text_id,
-                            "begin": sent['begin'],
-                            "end": sent['end']
-                        }
-                        if prov_fragment:
-                            op["metadata"] = dict(prov_fragment)
-                        sent_operations.append(op)
-
+                if sent_operations:
                     b.tokens.bulk_create(sent_operations)
                     sentences_created = len(sent_operations)
 
                 # Create word tokens
-                if words_to_create:
-                    token_operations = []
-                    for token in words_to_create:
-                        op = {
-                            "token_layer_id": primary_token_layer_id,
-                            "text": text_id,
-                            "begin": token['begin'],
-                            "end": token['end']
-                        }
-                        if prov_fragment:
-                            op["metadata"] = dict(prov_fragment)
-                        token_operations.append(op)
-
-                    b.tokens.bulk_create(token_operations)
-                    response_helper.progress(90, f"Created {len(token_operations)} tokens…")
-            
-                response_helper.progress(95, "Saving…")
+                if word_chunks:
+                    b.tokens.bulk_create(word_chunks[0])
+            for chunk in word_chunks[1:]:
+                with client.batched() as b:
+                    b.tokens.bulk_create(chunk)
+            if token_operations:
+                response_helper.progress(90, f"Created {len(token_operations)} tokens…")
+            response_helper.progress(95, "Saving…")
         
         return {
             "tokens_created": len(words_to_create) if words_to_create else 0,

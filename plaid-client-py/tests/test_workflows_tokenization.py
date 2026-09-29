@@ -6,6 +6,7 @@ The 500 lines that every tokenize service runs had no test of their own. Run::
 """
 
 import contextlib
+import json
 import os
 import sys
 
@@ -435,3 +436,31 @@ def test_text_punkt_finds_no_sentence_in_is_one_sentence():
     sentences, words = helpers.spans_from_nltk_punkt(text, _FakePunkt([]))
     assert [(s.start, s.end) for s in sentences] == [(0, len(text))]
     assert [w.text for w in words] == ['no', 'boundaries', 'here']
+
+
+def test_the_words_of_a_long_document_go_in_batches_the_server_takes():
+    """One batch of every word of a long document passed the server's JSON
+    body cap and was refused whole with a 413 (conc-2026-09-29 W-PY2, the
+    Stanza parse's R1 in the tokenizer). The words ride beside the new
+    sentence partition as far as the cap allows, and the rest follow."""
+    import types
+    words = [(i * 5, i * 5 + 4) for i in range(200)]
+    body = ' '.join(['word'] * 200)
+    doc = _document(body, sentences=[(0, len(body))], words=[])
+    client = _FakeClient(doc)
+    client.server = types.SimpleNamespace(limits=lambda: {'json_body_bytes': 8000})
+    TokenProcessor().process_tokens(
+        client, 'd1', [TokenSpan(text=body[:499], start=0, end=499),
+                       TokenSpan(text=body[500:], start=500, end=len(body))],
+        [TokenSpan(text='word', start=b, end=e) for b, e in words],
+        'word-layer', 'sentence-layer', _Helper(), text_layer_id='text-layer',
+        prov_source='service:punkt')
+    assert len(client.batches) > 2
+    first = client.batches[0]
+    assert [call[0] for call in first] == ['bulk_delete', 'bulk_create', 'bulk_create']
+    assert all([call[0] for call in b] == ['bulk_create'] for b in client.batches[1:])
+    for b in client.batches:
+        assert len(json.dumps([call[1] for call in b])) <= 8000 * 0.5 + 200
+    made = [(op['begin'], op['end']) for b in client.batches for call in b if call[0] == 'bulk_create'
+            for op in call[1] if op['token_layer_id'] == 'word-layer']
+    assert made == words
