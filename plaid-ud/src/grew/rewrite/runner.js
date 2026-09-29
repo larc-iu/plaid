@@ -229,30 +229,34 @@ export async function applyRewrite(client, { rows, docs, label }, onProgress) {
   }
   const out = { docsChanged: 0, sentencesChanged: 0, failed: null };
   let done = 0;
-  await client.withOperation(label, async () => {
-    for (const [docId, docRows] of byDoc) {
-      onProgress?.(`Applying to document ${done + 1} of ${byDoc.size}…`);
-      client.enterStrictMode(docId);
-      try {
-        await applyToDocument(client, docId, docs.get(docId), docRows);
-      } catch (e) {
-        out.failed = {
-          docId,
-          docName: docRows[0].docName,
-          status: e?.status ?? null,
-          message: e?.message || String(e),
-          partial: Boolean(e?.partial),
-          unsure: Boolean(e?.unsure),
-        };
-        break;
-      } finally {
-        client.exitStrictMode();
+  await client.withOperation(
+    label,
+    async () => {
+      for (const [docId, docRows] of byDoc) {
+        onProgress?.(`Applying to document ${done + 1} of ${byDoc.size}…`);
+        client.enterStrictMode(docId);
+        try {
+          await applyToDocument(client, docId, docs.get(docId), docRows);
+        } catch (e) {
+          out.failed = {
+            docId,
+            docName: docRows[0].docName,
+            status: e?.status ?? null,
+            message: e?.message || String(e),
+            partial: Boolean(e?.partial),
+            unsure: Boolean(e?.unsure),
+          };
+          break;
+        } finally {
+          client.exitStrictMode();
+        }
+        done += 1;
+        out.docsChanged += 1;
+        out.sentencesChanged += docRows.length;
       }
-      done += 1;
-      out.docsChanged += 1;
-      out.sentencesChanged += docRows.length;
-    }
-  });
+    },
+    { kind: 'bulk-edit', ref: 'action:grew-rewrite' },
+  );
   onProgress?.('');
   return out;
 }

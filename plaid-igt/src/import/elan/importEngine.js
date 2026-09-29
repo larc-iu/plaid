@@ -272,7 +272,10 @@ async function addRecordingToExisting({ client, existing, doc, results, onProgre
  * operation in the audit log; each write keeps its own description underneath.
  */
 export async function runElanImport(args) {
-  return args.client.withOperation('Import ELAN corpus', () => runElanImportImpl(args));
+  return args.client.withOperation('Import ELAN corpus', () => runElanImportImpl(args), {
+    kind: 'import',
+    ref: 'format:elan',
+  });
 }
 
 async function runElanImportImpl({

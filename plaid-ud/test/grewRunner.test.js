@@ -167,6 +167,18 @@ test('apply: updates carry the verifier stamp, all under one operation', async (
   assert.deepEqual(client.calls[2].args[1], [{ op: 'set', path: ['provConfirmed'], value: true }]);
 });
 
+// A study reads the audit log: a rewrite is one bulk edit, named as a Grew
+// rewrite.
+test('apply: the operation is a bulk edit naming the Grew rewrite', async () => {
+  const { client, project, layerInfo } = setup();
+  const grs = parseGrs('pattern { X [upos=DET] } commands { X.upos = PRON }');
+  const plan = await planRewrite(client, { project, user: null, layerInfo, grs });
+  await applyRewrite(client, { rows: plan.rows, docs: plan.docs, label: 'Rewrite' });
+  assert.deepEqual(client.operations, [
+    { message: 'Rewrite', kind: 'bulk-edit', ref: 'action:grew-rewrite' },
+  ]);
+});
+
 test('apply: lemma spans first, then token deletes and relations in one batch, under the lock', async () => {
   const { client, project, layerInfo } = setup();
   // "loudly" has no lemma and no place in the tree, so it has no Lemma span

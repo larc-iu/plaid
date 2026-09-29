@@ -240,13 +240,17 @@ export function makeFakeClient(opts = {}) {
     // a test can assert a mutation ran as one labeled operation; nesting
     // flattens exactly like the real client.
     operationGroup: null,
-    beginOperation(message) {
+    // A kind or ref (the structured side of an operation) is recorded as a
+    // second argument, and only when given, so a test of a plain operation
+    // reads as it always did.
+    beginOperation(message, { kind, ref } = {}) {
       if (this.operationGroup) {
         this.operationGroup.depth += 1;
         return this.operationGroup.id;
       }
-      record('beginOperation', [message]);
-      this.operationGroup = { id: `op-${calls.length}`, message, depth: 1 };
+      const tags = { ...(kind ? { kind } : {}), ...(ref ? { ref } : {}) };
+      record('beginOperation', Object.keys(tags).length ? [message, tags] : [message]);
+      this.operationGroup = { id: `op-${calls.length}`, message, depth: 1, ...tags };
       return this.operationGroup.id;
     },
     async endOperation() {
@@ -263,8 +267,8 @@ export function makeFakeClient(opts = {}) {
     // operationGroups.update, and skips it when no group materialized). Recorded
     // as `operationGroups.update` so a test can assert the label a mutation
     // settled on.
-    async withOperation(message, fn) {
-      this.beginOperation(message);
+    async withOperation(message, fn, { kind, ref } = {}) {
+      this.beginOperation(message, { kind, ref });
       const group = this.operationGroup;
       const startedAt = calls.length;
       const setMessage = (msg) => {

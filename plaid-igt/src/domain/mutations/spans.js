@@ -99,8 +99,11 @@ const sendSpan = async (doc, layerId, plan, ids) => {
   }
 };
 
+// `adopted` says the value was taken from a suggestion (a guess adopted with
+// Enter, a row picked from the alternatives) rather than typed, which the
+// write's operation records as its kind for a reader of the audit log.
 const makeSpanUpdater = (scope) =>
-  async function (targetId, fieldName, value, metadata = null) {
+  async function (targetId, fieldName, value, metadata = null, { adopted = false } = {}) {
     const layer = findSpanLayer(this, scope, fieldName);
     if (!layer) {
       this.setError(notSetUp(`Annotation layer "${fieldName}" not found`));
@@ -125,12 +128,17 @@ const makeSpanUpdater = (scope) =>
       this._showMorphemes(infoNext, creates);
       showSpan(infoNext, scope, layer.id, plan);
     });
-    return this._queueWrite(label, async () => {
-      const ids = new Map();
-      await this._sendMorphemes(creates, ids);
-      await sendSpan(this, layer.id, plan, ids);
-      this._settle(ids);
-    });
+    return this._queueWrite(
+      label,
+      async () => {
+        const ids = new Map();
+        await this._sendMorphemes(creates, ids);
+        await sendSpan(this, layer.id, plan, ids);
+        this._settle(ids);
+      },
+      undefined,
+      adopted ? { kind: 'guess-adoption' } : {},
+    );
   };
 
 export const spanMutations = {

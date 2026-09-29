@@ -292,6 +292,22 @@ describe('importDocument', () => {
 });
 
 describe('runElanImport', () => {
+  // A study reads the audit log: the import is one operation of kind import,
+  // naming the format it read.
+  it('is one import operation naming its format', async () => {
+    const opts = [];
+    const tagged = (client) => {
+      const run = client.withOperation;
+      client.withOperation = (message, fn, o) => {
+        opts.push(o);
+        return run(message, fn);
+      };
+      return client;
+    };
+    await runElanImport({ client: tagged(stubClient()), projectId: 'p1', build: BUILD });
+    expect(opts).toEqual([{ kind: 'import', ref: 'format:elan' }]);
+  });
+
   it('imports every document and reports the tally', async () => {
     const client = stubClient();
     const result = await runElanImport({ client, projectId: 'p1', build: BUILD });

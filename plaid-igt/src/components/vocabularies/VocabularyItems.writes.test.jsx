@@ -419,6 +419,25 @@ describe('Bulk Add and Replace', () => {
     return { ...stubbed, held, view };
   };
 
+  // A study reads the audit log: a Bulk Add is an import of a table, and a
+  // Replace a bulk edit.
+  it('records a Bulk Add as an import and a Replace as a bulk edit', async () => {
+    const stubbed = stub([{ id: 'a', form: 'uno-EDIT' }]);
+    const opts = [];
+    stubbed.client.withOperation = (_label, fn, o) => {
+      opts.push(o);
+      return fn(() => {});
+    };
+    const view = await mount(stubbed.client, '/vocabularies/v1');
+    mounted = view;
+    await replaceEdit(view);
+    await bulkAdd(view);
+    expect(opts).toEqual([
+      { kind: 'bulk-edit', ref: 'action:vocab-replace' },
+      { kind: 'import', ref: 'format:table' },
+    ]);
+  });
+
   it('sends a Replace behind a save still on its way', async () => {
     const { calls, held, view } = await saving();
     await replaceEdit(view);

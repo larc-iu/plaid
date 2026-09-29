@@ -807,22 +807,29 @@ export const analysisCopyMutations = {
       });
     });
 
-    return this._queueWrite(label, async () => {
-      const ids = new Map();
-      const serverId = (id) => ids.get(id) || settledId(id);
-      await this._sendMorphemes(creates, ids);
-      const results = await this._client.batched(async (b) => {
-        tokenIds.forEach((id) => b.tokens.patchMetadata(settledId(id), confirmOps));
-        linkIds.forEach((id) => b.vocabLinks.patchMetadata(settledId(id), confirmOps));
-        spanIds.forEach((id) => b.spans.patchMetadata(settledId(id), confirmOps));
-        live.forEach((w) =>
-          b.spans.create(w.layerId, [serverId(w.targetId)], w.value, w.metadata || undefined),
-        );
-      });
-      // The creates are the batch's last ops, in the order they were queued.
-      const offset = results.length - live.length;
-      live.forEach((w, i) => ids.set(w.id, createdId(results[offset + i])));
-      this._settle(ids);
-    });
+    // An accept that adopts a guess is a guess adoption in the audit log. One
+    // that only confirms what is stored is a review, which has no kind.
+    return this._queueWrite(
+      label,
+      async () => {
+        const ids = new Map();
+        const serverId = (id) => ids.get(id) || settledId(id);
+        await this._sendMorphemes(creates, ids);
+        const results = await this._client.batched(async (b) => {
+          tokenIds.forEach((id) => b.tokens.patchMetadata(settledId(id), confirmOps));
+          linkIds.forEach((id) => b.vocabLinks.patchMetadata(settledId(id), confirmOps));
+          spanIds.forEach((id) => b.spans.patchMetadata(settledId(id), confirmOps));
+          live.forEach((w) =>
+            b.spans.create(w.layerId, [serverId(w.targetId)], w.value, w.metadata || undefined),
+          );
+        });
+        // The creates are the batch's last ops, in the order they were queued.
+        const offset = results.length - live.length;
+        live.forEach((w, i) => ids.set(w.id, createdId(results[offset + i])));
+        this._settle(ids);
+      },
+      undefined,
+      live.length ? { kind: 'guess-adoption' } : {},
+    );
   },
 };

@@ -576,10 +576,11 @@ export const VocabularyItems = ({
   // Bulk Add and Replace: a run of writes planned against the entries as
   // shown, which can hold a save still on its way. The run takes its turn
   // behind that save. Resolves `{ landed, error }`. A refusal re-reads the
-  // entries here, the dialog reports it.
-  const sendPlanned = async (label, write) => {
+  // entries here, the dialog reports it. `tags` is the operation's kind and
+  // ref (see the client's beginOperation).
+  const sendPlanned = async (label, write, tags) => {
     let error = null;
-    const landed = await writes.push(() => client.withOperation(label, write), {
+    const landed = await writes.push(() => client.withOperation(label, write, tags), {
       refused: (err) => {
         error = err;
         unseedUnlessTyped();

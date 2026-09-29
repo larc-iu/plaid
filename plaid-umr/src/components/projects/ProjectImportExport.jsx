@@ -7,6 +7,9 @@ import { getUmrLayerInfo } from '../../utils/umrLayerUtils.js';
 import { ProjectImportExportPage } from '@ui/components/shared/ProjectImportExportPage.jsx';
 import { ProjectTabs } from './ProjectTabs.jsx';
 
+// What an import is in the audit log, for a reader counting operations by kind.
+const IMPORT_KIND = { kind: 'import', ref: 'format:umr' };
+
 const prepareImport = async ({ client, project, projectId }) => {
   // Layer config is the same for every document, so it is read once here and
   // passed in: otherwise the importer re-reads the project per document.
@@ -49,8 +52,10 @@ const prepareImport = async ({ client, project, projectId }) => {
     };
     let result;
     try {
-      result = await client.withOperation(`Import UMR document "${name}"`, () =>
-        importUmrDocument(client, projectId, name, text, layerInfo, { into, before }),
+      result = await client.withOperation(
+        `Import UMR document "${name}"`,
+        () => importUmrDocument(client, projectId, name, text, layerInfo, { into, before }),
+        IMPORT_KIND,
       );
       if (target.note) result = asNew(target.note)(result);
     } catch (err) {
@@ -58,8 +63,10 @@ const prepareImport = async ({ client, project, projectId }) => {
       // document of its own, and the row says why.
       if (!into || !/differs|sentences and the document/.test(err?.message || '')) throw err;
       result = asNew(err.message)(
-        await client.withOperation(`Import UMR document "${name}"`, () =>
-          importUmrDocument(client, projectId, name, text, layerInfo, { before }),
+        await client.withOperation(
+          `Import UMR document "${name}"`,
+          () => importUmrDocument(client, projectId, name, text, layerInfo, { before }),
+          IMPORT_KIND,
         ),
       );
     }

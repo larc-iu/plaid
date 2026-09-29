@@ -594,6 +594,26 @@ describe('importVocabulary — entry comments', () => {
 });
 
 describe('runNativeImport — comments', () => {
+  // A study reads the audit log: the import is one operation of kind import,
+  // naming the format it read.
+  it('is one import operation naming its format', async () => {
+    const opts = [];
+    const tagged = (client) => {
+      const run = client.withOperation;
+      client.withOperation = (message, fn, o) => {
+        opts.push(o);
+        return run(message, fn);
+      };
+      return client;
+    };
+    await runNativeImport({
+      client: tagged(stubClient()),
+      projectId: 'newp',
+      archive: buildArchive(),
+    });
+    expect(opts).toEqual([{ kind: 'import', ref: 'format:native' }]);
+  });
+
   const comment = (over = {}) => ({
     id: 'c1',
     entityType: 'token',

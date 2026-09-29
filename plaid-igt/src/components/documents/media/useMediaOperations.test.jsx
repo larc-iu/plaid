@@ -350,6 +350,32 @@ describe('useMediaOperations: transcribing', () => {
   });
 });
 
+// A study reads the audit log: a transcription, the clearing of the old
+// transcript and every write the service makes, is one service run naming
+// the service.
+describe('useMediaOperations: transcribing in the audit log', () => {
+  it('is one service-run operation naming the service', async () => {
+    const opts = [];
+    const client = fakeClient({
+      withOperation: async (_label, fn, o) => {
+        opts.push(o);
+        return fn();
+      },
+      messages: { discoverServices: vi.fn(async () => SERVICES) },
+    });
+    const doc = withMedia('/api/v1/documents/doc-1/media?v=a', { body: '' });
+    const h = await mountMedia({ doc, client });
+    expect(h.api.transcribeSpot.service?.serviceId).toBe('asr-1');
+    await h.step(async () => {
+      await h.api.handleTranscribe();
+      await settle();
+    });
+    expect(client.messages.requestService).toHaveBeenCalledTimes(1);
+    expect(opts).toEqual([{ kind: 'service-run', ref: 'service:asr-1' }]);
+    await h.unmount();
+  });
+});
+
 describe('useMediaOperations: detecting speech', () => {
   it('refuses a second run rather than opening a progress row for one that never starts', async () => {
     const client = fakeClient({

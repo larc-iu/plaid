@@ -237,6 +237,22 @@ describe('resolveTargets', () => {
 });
 
 describe('runCldfImport', () => {
+  // A study reads the audit log: the import is one operation of kind import,
+  // naming the format it read.
+  it('is one import operation naming its format', async () => {
+    const opts = [];
+    const tagged = (client) => {
+      const run = client.withOperation;
+      client.withOperation = (message, fn, o) => {
+        opts.push(o);
+        return run(message, fn);
+      };
+      return client;
+    };
+    await runCldfImport({ client: tagged(stubClient()), projectId: 'p1', build: fixtureBuild() });
+    expect(opts).toEqual([{ kind: 'import', ref: 'format:cldf' }]);
+  });
+
   it('writes the text, the sentence partition, words and morphemes', async () => {
     const client = stubClient();
     const build = fixtureBuild();

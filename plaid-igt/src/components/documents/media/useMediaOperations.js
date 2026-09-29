@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
-import { TASKS } from '@larc-iu/plaid-client';
+import { TASKS, serviceSource } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
@@ -594,46 +594,52 @@ export const useMediaOperations = () => {
       // The whole re-transcribe (our wipe of the previous transcript + every
       // write the ASR service makes) is ONE logical operation in the audit
       // log: the open operation propagates to the service via the request.
+      // It is a service run naming the service, which the service's writes
+      // keep when they join it.
       const label = `Transcribe audio (${service.serviceName || serviceId})`;
       transcribeRun.start(['Transcribe']);
-      await doc.client.withOperation(label, async () => {
-        // Start from a clean slate: setting the body to '' cascade-deletes its
-        // tokens, sentences, alignments, and every annotation on them, so ASR
-        // builds a fresh document instead of appending a second transcript.
-        if (hasExistingTranscript) {
-          transcribeRun.report({ message: 'Clearing the previous transcript…' });
-          await doc.saveBaselineText('');
-        }
-        transcribeRun.report({ message: 'Starting the service…' });
+      await doc.client.withOperation(
+        label,
+        async () => {
+          // Start from a clean slate: setting the body to '' cascade-deletes its
+          // tokens, sentences, alignments, and every annotation on them, so ASR
+          // builds a fresh document instead of appending a second transcript.
+          if (hasExistingTranscript) {
+            transcribeRun.report({ message: 'Clearing the previous transcript…' });
+            await doc.saveBaselineText('');
+          }
+          transcribeRun.report({ message: 'Starting the service…' });
 
-        await requestService(
-          project.id,
-          documentId,
-          serviceId,
-          {
-            // User-controlled arguments declared by the service, spread FIRST so
-            // the fixed layer/doc params below always win over any same-named arg.
-            ...transcribeSpot.params.coerced(),
-            documentId: documentId,
-            textLayerId: primaryTextLayer.id,
-            alignmentTokenLayerId: alignmentTokenLayer.id,
-            sentenceTokenLayerId: sentenceTokenLayer.id,
-          },
-          {
-            successMessage: 'Transcription complete',
-            errorTitle: 'Failed to transcribe',
-            stoppedTitle: 'Transcribe',
-            // Written down before submitting, so a reload can still find it.
-            onRequestId: (requestId) =>
-              writeRunRecord(documentId, {
-                requestId,
-                projectId: project.id,
-                label: 'Transcribe',
-              }),
-            timeout: TRANSCRIBE_TIMEOUT_MS,
-          },
-        );
-      });
+          await requestService(
+            project.id,
+            documentId,
+            serviceId,
+            {
+              // User-controlled arguments declared by the service, spread FIRST so
+              // the fixed layer/doc params below always win over any same-named arg.
+              ...transcribeSpot.params.coerced(),
+              documentId: documentId,
+              textLayerId: primaryTextLayer.id,
+              alignmentTokenLayerId: alignmentTokenLayer.id,
+              sentenceTokenLayerId: sentenceTokenLayer.id,
+            },
+            {
+              successMessage: 'Transcription complete',
+              errorTitle: 'Failed to transcribe',
+              stoppedTitle: 'Transcribe',
+              // Written down before submitting, so a reload can still find it.
+              onRequestId: (requestId) =>
+                writeRunRecord(documentId, {
+                  requestId,
+                  projectId: project.id,
+                  label: 'Transcribe',
+                }),
+              timeout: TRANSCRIBE_TIMEOUT_MS,
+            },
+          );
+        },
+        { kind: 'service-run', ref: serviceSource(serviceId) },
+      );
 
       // A full reload of a freshly transcribed document is seconds of work
       // with nothing else on screen to show for it, so it is named like any

@@ -916,7 +916,10 @@ async function importNativeDocument({
 // every document); each write keeps its own description underneath. Resumable
 // retries start a fresh operation, which is the honest reading of the log.
 export async function runNativeImport(args) {
-  return args.client.withOperation('Import Plaid IGT archive', () => runNativeImportImpl(args));
+  return args.client.withOperation('Import Plaid IGT archive', () => runNativeImportImpl(args), {
+    kind: 'import',
+    ref: 'format:native',
+  });
 }
 
 async function runNativeImportImpl({ client, projectId, archive, onProgress, shouldStop }) {

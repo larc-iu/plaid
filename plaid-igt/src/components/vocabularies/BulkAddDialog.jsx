@@ -313,7 +313,7 @@ export const BulkAddDialog = ({
   tagsetFor = NO_TAGSETS,
   existingItems,
   client,
-  // `send(label, write)` runs the import's writes in their turn behind the
+  // `send(label, write, tags)` runs the import's writes in their turn behind the
   // entry saves (see VocabularyItems' sendPlanned).
   send,
   onImported,
@@ -491,6 +491,7 @@ export const BulkAddDialog = ({
           `Bulk add: ${created} entr${created === 1 ? 'y' : 'ies'} added, ${updated} updated`,
         );
       },
+      { kind: 'import', ref: 'format:table' },
     );
     if (landed) {
       await onImported();

@@ -349,6 +349,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
         const totalDocs = filteredBuild.documents.length;
         return runImport({
           operation: fmt.operation,
+          format,
           client,
           projectId,
           build: filteredBuild,

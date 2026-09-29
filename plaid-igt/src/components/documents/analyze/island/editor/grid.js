@@ -166,7 +166,8 @@ export const grid = {
                     )
                   : null,
                 value: token.annotations?.[name]?.value ?? '',
-                apply: (v, meta) => this.doc.updateTokenSpan(token.id, name, v, meta),
+                apply: (v, meta) =>
+                  this.doc.updateTokenSpan(token.id, name, v, meta, { adopted: meta != null }),
                 ariaLabel: `${name} for ${token.content}`,
                 fieldName: name,
                 tagset: this._tagsetFor('word', name),
@@ -348,7 +349,8 @@ export const grid = {
                     )
                   : null,
                 value: morph.annotations?.[name]?.value ?? '',
-                apply: (v, meta) => this.doc.updateMorphemeSpan(morph.id, name, v, meta),
+                apply: (v, meta) =>
+                  this.doc.updateMorphemeSpan(morph.id, name, v, meta, { adopted: meta != null }),
                 extraClass: 'igt-morph-field',
                 ariaLabel: `${name} for morpheme${value ? ` ${value}` : ''}`,
                 fieldName: name,

@@ -75,7 +75,7 @@ export const ReplaceDialog = ({
   items,
   numbers,
   client,
-  // `send(label, write)` runs the writes in their turn behind the entry
+  // `send(label, write, tags)` runs the writes in their turn behind the entry
   // saves (see VocabularyItems' sendPlanned).
   send,
   onApplied,
@@ -150,20 +150,24 @@ export const ReplaceDialog = ({
       ? `Set ${target.label} to “${repl}” where empty in ${vocabularyName || 'vocabulary'}`
       : `Replace “${find}” → “${repl}” in ${target.label} of ${vocabularyName || 'vocabulary'}`;
     try {
-      const { landed, error } = await send(label, async () => {
-        for (let i = 0; i < writes.length; i += CHUNK) {
-          // An entry still being made when this was planned is named by the
-          // server's id now that its create has landed.
-          const chunk = writes.slice(i, i + CHUNK).map((w) => ({
-            ...w,
-            id: settledId(w.id),
-            ...(w.metadata ? { metadata: followIds(w.metadata) } : {}),
-          }));
-          await client.vocabItems.bulkUpdate(chunk);
-          done += chunk.length;
-          setProgress(`${done.toLocaleString()} of ${writes.length.toLocaleString()}`);
-        }
-      });
+      const { landed, error } = await send(
+        label,
+        async () => {
+          for (let i = 0; i < writes.length; i += CHUNK) {
+            // An entry still being made when this was planned is named by the
+            // server's id now that its create has landed.
+            const chunk = writes.slice(i, i + CHUNK).map((w) => ({
+              ...w,
+              id: settledId(w.id),
+              ...(w.metadata ? { metadata: followIds(w.metadata) } : {}),
+            }));
+            await client.vocabItems.bulkUpdate(chunk);
+            done += chunk.length;
+            setProgress(`${done.toLocaleString()} of ${writes.length.toLocaleString()}`);
+          }
+        },
+        { kind: 'bulk-edit', ref: 'action:vocab-replace' },
+      );
       if (landed) {
         await onApplied();
         notifySuccess(

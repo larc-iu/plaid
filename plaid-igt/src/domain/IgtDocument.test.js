@@ -87,6 +87,27 @@ describe('span (annotation) mutations', () => {
     expect(create2.args[3]).toBeUndefined();
   });
 
+  // A study reads the audit log: taking a suggested value is an operation of
+  // kind guess-adoption, and typing one is not.
+  it('a span write that adopts a suggestion is a guess-adoption operation', async () => {
+    const doc = makeDoc();
+    const prov = { prov: 'inferred', provSource: 'gloss:precedent', provConfirmed: true };
+    await doc.updateTokenSpan('w-1', 'POS', 'DET', prov, { adopted: true });
+    await doc.updateMorphemeSpan('m-1', 'Gloss', 'DEF');
+    const begun = doc.client.calls.filter((c) => c.kind === 'beginOperation').map((c) => c.args);
+    expect(begun).toEqual([['Update POS', { kind: 'guess-adoption' }], ['Update Gloss']]);
+  });
+
+  it('a whole-word accept that adopts a guess is a guess-adoption operation', async () => {
+    const doc = makeDoc({ raw: buildRawDoc({ morphemes: [] }) });
+    const target = doc.sentences[0].tokens[0].morphemes[0].id;
+    await doc.confirmWordAnalysis('w-1', [
+      { targetId: target, field: 'Gloss', value: 'DEF', metadata: null },
+    ]);
+    const begun = doc.client.calls.filter((c) => c.kind === 'beginOperation').map((c) => c.args);
+    expect(begun).toEqual([['Accept word analysis', { kind: 'guess-adoption' }]]);
+  });
+
   it('updateTokenSpan updates an existing span instead of creating', async () => {
     const raw = buildRawDoc();
     raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [

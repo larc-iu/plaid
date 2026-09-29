@@ -798,17 +798,30 @@ describe('runImport', () => {
     ).toBe(false);
   });
 
+  it('is one import operation, a .fwbackup unless it says otherwise', async () => {
+    client = makeFakeClient();
+    const opts = [];
+    const run = client.withOperation;
+    client.withOperation = (message, fn, o) => {
+      opts.push([message, o]);
+      return run(message, fn);
+    };
+    await runImport({ client, projectId: 'p1', build, lexicon, config, vocabId: 'v1' });
+    expect(opts).toEqual([['Import FLEx project', { kind: 'import', ref: 'format:fwbackup' }]]);
+  });
+
   // A .flextext has no lexicon: the texts come in and no vocabulary is touched.
   it('imports the texts alone when there is no lexicon', async () => {
     client = makeFakeClient();
     const operations = [];
     const run = client.withOperation;
-    client.withOperation = (message, fn) => {
-      operations.push(message);
+    client.withOperation = (message, fn, opts) => {
+      operations.push([message, opts]);
       return run(message, fn);
     };
     const results = await runImport({
       operation: 'Import FLEx texts',
+      format: 'flextext',
       client,
       projectId: 'p1',
       build,
@@ -817,7 +830,7 @@ describe('runImport', () => {
       vocabId: null,
     });
     expect(results).toMatchObject({ imported: 1 });
-    expect(operations).toEqual(['Import FLEx texts']);
+    expect(operations).toEqual([['Import FLEx texts', { kind: 'import', ref: 'format:flextext' }]]);
     expect(client.calls.filter((c) => c.kind.startsWith('vocab'))).toEqual([]);
     expect(client.calls.filter((c) => c.kind === 'tokens.bulkCreate')).toHaveLength(3);
   });

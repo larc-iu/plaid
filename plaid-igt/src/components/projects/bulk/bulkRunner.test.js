@@ -95,6 +95,24 @@ describe('Bulk Edit and the project precedent read', () => {
   }
 });
 
+// The audit log is a study's record: every apply is one operation of kind
+// bulk-edit, whose ref names which of the four changes it was.
+describe('Bulk Edit in the audit log', () => {
+  const actions = { respell: 'respell', field: 'replace', reanalyze: 'reanalyze', merge: 'merge' };
+  for (const [name, apply] of Object.entries(applies)) {
+    it(`${name} is one bulk-edit operation`, async () => {
+      const client = precedentClient();
+      const opts = [];
+      client.withOperation = async (_label, fn, o) => {
+        opts.push(o);
+        return fn();
+      };
+      await apply(client);
+      expect(opts).toEqual([{ kind: 'bulk-edit', ref: `action:${actions[name]}` }]);
+    });
+  }
+});
+
 // A merge is link creates, reference updates and the losers' delete. Sent as
 // separate requests, a refused delete left each word linked to both entries,
 // and a retry of the plan still on screen linked it to the survivor twice.

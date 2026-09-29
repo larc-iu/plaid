@@ -60,12 +60,16 @@ export function withOps(client) {
     };
   }
   c.operationGroup = null;
-  c.beginOperation = (message) => {
+  // Every operation begun, outermost only, with its kind and ref, so a test
+  // can assert what an action recorded itself as.
+  c.operations = [];
+  c.beginOperation = (message, { kind, ref } = {}) => {
     if (c.operationGroup) {
       c.operationGroup.depth += 1;
       return c.operationGroup.id;
     }
-    c.operationGroup = { id: `op-${message}`, message, depth: 1 };
+    c.operationGroup = { id: `op-${message}`, message, depth: 1, kind, ref };
+    c.operations.push({ message, kind, ref });
     return c.operationGroup.id;
   };
   c.endOperation = async () => {
@@ -76,8 +80,8 @@ export function withOps(client) {
     }
     c.operationGroup = null;
   };
-  c.withOperation = async (message, fn) => {
-    c.beginOperation(message);
+  c.withOperation = async (message, fn, { kind, ref } = {}) => {
+    c.beginOperation(message, { kind, ref });
     try {
       return await fn(() => {});
     } finally {

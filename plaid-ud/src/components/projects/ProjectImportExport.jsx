@@ -60,10 +60,11 @@ const prepareImport = async ({ client, project, projectId, user }) => {
       const name = chunk.id || (chunks.length > 1 ? `${base} (${c + 1})` : base);
       try {
         // One audit-log operation per imported document (text, tokens and
-        // annotations), labeled with the document name.
+        // annotations), labeled with the document name, of kind import.
         const { documentId, importWarnings } = await client.withOperation(
           `Import CoNLL-U document "${name}"`,
           () => ConlluDocument.importFromConllu(client, projectId, name, chunk.text, layerInfo),
+          { kind: 'import', ref: 'format:conllu' },
         );
         push({
           key: `${index}-${c}`,

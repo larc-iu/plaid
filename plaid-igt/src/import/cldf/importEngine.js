@@ -384,7 +384,10 @@ async function importDocument({
  * operation in the audit log; each write keeps its own description underneath.
  */
 export async function runCldfImport(args) {
-  return args.client.withOperation('Import CLDF dataset', () => runCldfImportImpl(args));
+  return args.client.withOperation('Import CLDF dataset', () => runCldfImportImpl(args), {
+    kind: 'import',
+    ref: 'format:cldf',
+  });
 }
 
 async function runCldfImportImpl({ client, projectId, build, onProgress, shouldStop }) {

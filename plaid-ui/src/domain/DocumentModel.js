@@ -370,6 +370,10 @@ export class DocumentModel {
   //
   // `shown: false` is for a write that put nothing on screen (a copy).
   //
+  // `kind` and `ref` go to the write's operation (see the client's
+  // beginOperation), for a write that is a kind of operation a reader of the
+  // audit log counts, such as igt's guess adoption.
+  //
   // Every write goes through here, one at a time, so nothing is ever sent
   // beside a send or a refetch: a rename made while an edit is saving is sent
   // after it, and a copy holds the edits made before it.
@@ -377,7 +381,7 @@ export class DocumentModel {
     label,
     send,
     operation = operationLabel(label),
-    { reload = false, shown = true } = {},
+    { reload = false, shown = true, kind, ref } = {},
   ) {
     // A caller that patches first has asked `_canWrite` already. One whose
     // send does all its work is refused here instead.
@@ -393,7 +397,7 @@ export class DocumentModel {
         // (`_reloadAfterFailure`): refused like the edit that found it out,
         // without being sent, and already off the screen.
         if (unsent.stale) throw conflictError();
-        await this._client.withOperation(operation, send);
+        await this._client.withOperation(operation, send, { kind, ref });
         if (reload) this._writes.reloadWhenDrained = true;
       },
       {
@@ -635,7 +639,8 @@ export class DocumentModel {
   // whatever it started with, since it may have written only part of what a
   // fuller label would claim. A pass that wrote nothing creates no group.
   // Deliberately not a queued write: a failed heal must not reload and revert
-  // the freshly loaded document.
+  // the freshly loaded document. The operation is of kind `repair`, so a
+  // reader of the audit log can tell these writes from a person's.
   //
   // Concurrent callers (StrictMode's double invoke, a quick tab switch) share
   // ONE in-flight pass and its result, so the second caller reports the same
@@ -643,16 +648,20 @@ export class DocumentModel {
   async reconcileOnOpen() {
     if (this._reconcilePromise) return this._reconcilePromise;
     this._reconcilePromise = this._client
-      .withOperation(RECONCILE_LABEL, async (setMessage) => {
-        const result = await this._reconcile();
-        if (result.error || result.interrupted) {
-          setMessage(RECONCILE_INTERRUPTED_LABEL);
-        } else {
-          const refined = this.describeReconcile(result);
-          if (refined) setMessage(refined);
-        }
-        return result;
-      })
+      .withOperation(
+        RECONCILE_LABEL,
+        async (setMessage) => {
+          const result = await this._reconcile();
+          if (result.error || result.interrupted) {
+            setMessage(RECONCILE_INTERRUPTED_LABEL);
+          } else {
+            const refined = this.describeReconcile(result);
+            if (refined) setMessage(refined);
+          }
+          return result;
+        },
+        { kind: 'repair' },
+      )
       .finally(() => {
         this._reconcilePromise = null;
       });

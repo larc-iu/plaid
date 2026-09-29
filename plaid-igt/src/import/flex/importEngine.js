@@ -839,10 +839,19 @@ async function importDocument({
 // The whole import is ONE logical operation in the audit log (vocabulary +
 // every document); each write keeps its own description underneath. Resumable
 // retries start a fresh operation, which is the honest reading of the log.
-// `operation` names it in the log. A null `vocabId` imports the texts alone
-// (a .flextext has no lexicon), and then `lexicon` is not read.
-export async function runImport({ operation = 'Import FLEx project', ...args }) {
-  return args.client.withOperation(operation, () => runImportImpl(args));
+// `operation` names it in the log, and `format` ('fwbackup' or 'flextext')
+// is the file it came from, which the operation records as its ref. A null
+// `vocabId` imports the texts alone (a .flextext has no lexicon), and then
+// `lexicon` is not read.
+export async function runImport({
+  operation = 'Import FLEx project',
+  format = 'fwbackup',
+  ...args
+}) {
+  return args.client.withOperation(operation, () => runImportImpl(args), {
+    kind: 'import',
+    ref: `format:${format}`,
+  });
 }
 
 async function runImportImpl({
