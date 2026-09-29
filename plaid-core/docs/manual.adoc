@@ -1025,6 +1025,16 @@ We can create links between them and the above vocab items with vocab links like
 
 Notice that multiple tokens may be specified, allowing for multi-word and non-contiguous lexical items.
 
+Deleting a vocab item deletes every link to it.
+A screen that shows how many links an entry has before deleting it can pass that count (`expected_link_count` / `{ expectedLinkCount }`), and the delete is then refused with a 409 when the entry has any other number of links by the time it runs.
+
+To merge entries into one, `vocab_items.merge(survivor_id, loser_ids)` / `vocabItems.merge(survivorId, loserIds)` (`POST /api/v1/vocab-items/{id}/merge` with `{"losers": [...]}`) moves every link of the losers to the survivor and deletes the losers, in one operation.
+A moved link keeps its id and metadata. A link on words the survivor is already linked to is deleted instead, since it would say the same thing twice.
+The links are read when the merge runs, so a link someone made to a loser after the caller looked moves with the rest.
+Every loser must be in the survivor's vocabulary, and a loser that no longer exists is skipped, so repeating a merge changes nothing.
+It needs maintainer rights on the vocabulary, and answers `{"moved": n, "duplicates": n, "removed": [...]}`.
+Plaid does not know what an entry's metadata means, so a reference to a loser inside another entry's metadata is left for the caller to rewrite, in the same batch as the merge.
+
 == Metadata and Config
 
 It is often desirable to enrich an entity with additional information—for instance, you might want to record some information about the annotator's confidence in whether a certain span value is correct.

@@ -2547,9 +2547,35 @@ class PlaidClient {
        * of those links has its version bumped, and a strict-mode client picks
        * up their new versions from the response.
        * @param {string} id - The resource ID
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {{expectedLinkCount?: number}} [options] - `expectedLinkCount`: the
+       *   number of links the caller showed. The delete is refused with a 409 when
+       *   the entry has any other number of links by then.
        */
-      delete: (id, auditMessage) =>
-        this._request("DELETE", `/api/v1/vocab-items/${id}`, { auditMessage }),
+      delete: (id, auditMessage, { expectedLinkCount } = {}) =>
+        this._request("DELETE", `/api/v1/vocab-items/${id}`, {
+          auditMessage,
+          queryParams: { "expected-link-count": expectedLinkCount },
+        }),
+      /**
+       * Merge entries into this one, in one operation. Every link to a loser
+       * moves to the survivor (keeping its id and metadata), except a link on
+       * words the survivor is already linked to, which is deleted, and then the
+       * losers are deleted. Links are read when the merge runs, so one made
+       * after the caller looked moves too. Every loser must be in the
+       * survivor's vocabulary, and a loser that is already gone is skipped, so
+       * a repeated merge changes nothing. References to a loser in other
+       * entries' metadata are the caller's to rewrite, in the same batch.
+       * Needs maintainer rights on the vocabulary.
+       * @param {string} survivorId - The entry that stays
+       * @param {string[]} loserIds - The entries merged into it
+       * @returns {Promise<{moved: number, duplicates: number, removed: string[]}>}
+       */
+      merge: (survivorId, loserIds, auditMessage) =>
+        this._request("POST", `/api/v1/vocab-items/${survivorId}/merge`, {
+          auditMessage,
+          body: { losers: loserIds },
+        }),
       /**
        * Update a vocab item's form. A document read carries the entry's form on
        * every link to it, so a rename restates those documents: each has its

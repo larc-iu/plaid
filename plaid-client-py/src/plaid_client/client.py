@@ -2698,7 +2698,7 @@ class VocabItemsResource(_Resource):
         """
         return self._request('GET', f'/api/v1/vocab-items/{id}')
 
-    def delete(self, id: str, audit_message=None) -> Any:
+    def delete(self, id: str, audit_message=None, expected_link_count: int = None) -> Any:
         """Delete a vocab item, and every link to it.
 
         Every document holding one of those links has its version bumped, and a
@@ -2706,8 +2706,35 @@ class VocabItemsResource(_Resource):
 
         Args:
             id: The resource ID
+            expected_link_count: The number of links the caller showed. The
+                delete is refused with a 409 when the entry has any other
+                number of links by then.
         """
-        return self._request('DELETE', f'/api/v1/vocab-items/{id}', audit_message=audit_message)
+        return self._request('DELETE', f'/api/v1/vocab-items/{id}',
+                             query_params={'expected-link-count': expected_link_count},
+                             audit_message=audit_message)
+
+    def merge(self, survivor_id: str, loser_ids: list, audit_message=None) -> Any:
+        """Merge entries into this one, in one operation.
+
+        Every link to a loser moves to the survivor (keeping its id and
+        metadata), except a link on words the survivor is already linked to,
+        which is deleted, and then the losers are deleted. Links are read when
+        the merge runs, so one made after the caller looked moves too. Every
+        loser must be in the survivor's vocabulary, and a loser that is already
+        gone is skipped, so a repeated merge changes nothing. References to a
+        loser in other entries' metadata are the caller's to rewrite, in the
+        same batch. Needs maintainer rights on the vocabulary.
+
+        Args:
+            survivor_id: The entry that stays
+            loser_ids: The entries merged into it
+
+        Returns:
+            ``{'moved': n, 'duplicates': n, 'removed': [ids]}``
+        """
+        return self._request('POST', f'/api/v1/vocab-items/{survivor_id}/merge',
+                             body={'losers': list(loser_ids)}, audit_message=audit_message)
 
     def update(self, id: str, form: str, audit_message=None) -> Any:
         """Update a vocab item's form.

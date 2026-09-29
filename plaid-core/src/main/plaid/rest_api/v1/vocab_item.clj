@@ -194,17 +194,43 @@
                                  :body {:error (:error result)}}))))}
 
      :delete {:summary (str "Delete a vocab item, and every link to it. Every document holding a link to the entry has its version bumped, and their new versions are returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted). "
-                            "Needs maintainer rights on the vocabulary.")
+                            "Needs maintainer rights on the vocabulary. With <query>expected-link-count</query> the delete is refused with a 409 "
+                            "when the entry no longer has that many links, so a delete confirmed over a count does not take a link made since.")
               :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id-from-item maintainers-only]]
-              :handler (fn [{{{:keys [id]} :path} :parameters
+              :parameters {:query [:map [:expected-link-count {:optional true} [:int {:min 0}]]]}
+              :handler (fn [{{{:keys [id]} :path {:keys [expected-link-count]} :query} :parameters
                              db :db
                              user-id :user/id :as req}]
-                         (let [{:keys [success code error documents]} (vocab-item/delete db id user-id)]
+                         (let [{:keys [success code error documents]}
+                               (vocab-item/delete db id user-id expected-link-count)]
                            (if success
                              (prm/assoc-document-versions-in-header
                               {:status 204} db documents)
                              {:status (or code 500)
                               :body {:error (or error "Internal server error")}})))}}]
+
+   ["/:id/merge"
+    {:conflicting true
+     :parameters {:path [:map [:id :uuid]]}
+     :post {:summary (str "Merge entries into this one, in one operation. The body is <body>losers</body>, the ids of the entries to merge. "
+                          "Every link to a loser is moved to this entry, keeping its id and metadata, except a link on words this entry is already linked to, which is deleted. "
+                          "The losers are then deleted. Links are read when the merge runs, so a link made after the caller looked is moved too. "
+                          "Every loser must be in this entry's vocabulary. A loser that no longer exists is skipped, so repeating a merge changes nothing. "
+                          "References to a loser inside other entries' metadata are the caller's to rewrite, in the same batch. "
+                          "Needs maintainer rights on the vocabulary. Answers {moved, duplicates, removed}: the links moved, the links deleted as duplicates, and the ids of the entries deleted. "
+                          "Every document holding a moved or deleted link has its version bumped, and their new versions are returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted).")
+            :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id-from-item maintainers-only]]
+            :parameters {:body [:map [:losers [:sequential :uuid]]]}
+            :handler (fn [{{{:keys [id]} :path {:keys [losers]} :body} :parameters
+                           db :db
+                           user-id :user/id}]
+                       (let [{:keys [success code error extra documents]}
+                             (vocab-item/merge-into db id losers user-id)]
+                         (if success
+                           (prm/assoc-document-versions-in-header
+                            {:status 200 :body extra} db documents)
+                           {:status (or code 500)
+                            :body {:error (or error "Internal server error")}})))}}]
 
    ;; Metadata operations. A vocab item has no document, so no
    ;; ?document-version, and its gate is vocab write access.

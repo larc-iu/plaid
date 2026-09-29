@@ -1279,7 +1279,16 @@ interface VocabItemsBundle {
   bulkDelete(body: any[], auditMessage?: string): Promise<void>;
   bulkUpdate(body: any[], auditMessage?: string): Promise<{ count: number }>;
   get(id: string): Promise<any>;
-  delete(id: string, auditMessage?: string): Promise<any>;
+  delete(
+    id: string,
+    auditMessage?: string,
+    options?: { expectedLinkCount?: number },
+  ): Promise<any>;
+  merge(
+    survivorId: string,
+    loserIds: string[],
+    auditMessage?: string,
+  ): Promise<{ moved: number; duplicates: number; removed: string[] }>;
   update(id: string, form: string, auditMessage?: string): Promise<any>;
 }
 

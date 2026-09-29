@@ -172,38 +172,47 @@
   audited helpers so audit_writes captures every change — FK ON DELETE
   CASCADE would otherwise silently sweep them. Vocab_link metadata is
   cleaned up alongside each link; this item's own entity_metadata is
-  swept here too (no FK on entity_metadata)."
-  [db eid user-id]
-  (submit-operation! [tx db {:type :vocab-item/delete
-                             :project nil
-                             :document nil
-                             :description (str "Delete vocab item " eid)
-                             :user user-id}]
-                     (let [existing (psc/fetch-by-id tx :vocab_items eid)]
-                       (when (nil? existing)
-                         (throw (ex-info (psc/err-msg-not-found "Vocab item" eid)
-                                         {:code 404 :id eid})))
-                       (let [vl-rows (psc/q tx {:select [:id :document_id]
-                                                :from :vocab_links
-                                                :where [:= :vocab_item_id eid]})
-                             vl-ids (mapv :id vl-rows)]
-                         (doseq [vlid vl-ids]
-                           (crud/delete-by-id! tx :vocab_links vlid))
-                         (when (seq vl-ids)
-                           (psc/execute! tx
-                                         {:delete-from :entity_metadata
-                                          :where [:and
-                                                  [:= :entity_type "vocab-link"]
-                                                  [:in :entity_id vl-ids]]}))
-                         (op/bump-document-versions! tx (mapv :document_id vl-rows)))
-                       (psc/execute! tx
-                                     {:delete-from :entity_metadata
-                                      :where [:and
-                                              [:= :entity_type "vocab-item"]
-                                              [:= :entity_id eid]]})
-                       (crud/delete-by-id! tx :vocab_items eid)
-                       (op/touch-vocab-layer! tx (:vocab_layer_id existing))
-                       eid)))
+  swept here too (no FK on entity_metadata). With `expected-link-count`
+  the delete is refused (409) when the entry has any other number of
+  links, read inside the transaction."
+  ([db eid user-id]
+   (delete db eid user-id nil))
+  ([db eid user-id expected-link-count]
+   (submit-operation! [tx db {:type :vocab-item/delete
+                              :project nil
+                              :document nil
+                              :description (str "Delete vocab item " eid)
+                              :user user-id}]
+                      (let [existing (psc/fetch-by-id tx :vocab_items eid)]
+                        (when (nil? existing)
+                          (throw (ex-info (psc/err-msg-not-found "Vocab item" eid)
+                                          {:code 404 :id eid})))
+                        (let [vl-rows (psc/q tx {:select [:id :document_id]
+                                                 :from :vocab_links
+                                                 :where [:= :vocab_item_id eid]})
+                              vl-ids (mapv :id vl-rows)]
+                          (when (and (some? expected-link-count)
+                                     (not= expected-link-count (count vl-rows)))
+                            (throw (ex-info (str "This entry has " (count vl-rows) " links now, not "
+                                                 expected-link-count)
+                                            {:code 409 :id eid :links (count vl-rows)})))
+                          (doseq [vlid vl-ids]
+                            (crud/delete-by-id! tx :vocab_links vlid))
+                          (when (seq vl-ids)
+                            (psc/execute! tx
+                                          {:delete-from :entity_metadata
+                                           :where [:and
+                                                   [:= :entity_type "vocab-link"]
+                                                   [:in :entity_id vl-ids]]}))
+                          (op/bump-document-versions! tx (mapv :document_id vl-rows)))
+                        (psc/execute! tx
+                                      {:delete-from :entity_metadata
+                                       :where [:and
+                                               [:= :entity_type "vocab-item"]
+                                               [:= :entity_id eid]]})
+                        (crud/delete-by-id! tx :vocab_items eid)
+                        (op/touch-vocab-layer! tx (:vocab_layer_id existing))
+                        eid))))
 
 ;; ============================================================
 ;; Bulk create / delete
@@ -398,6 +407,113 @@
                            (crud/delete-where! tx :vocab_items [:in :id existing-ids])
                            (op/touch-vocab-layers! tx layer-ids))
                          existing-ids))))
+
+;; ============================================================
+;; Merge
+;; ============================================================
+
+(defn- link-token-keys
+  "Link id -> the set of token ids it covers, for `link-ids`. Two links on
+  the same words are the same link, whatever order their tokens were given
+  in."
+  [tx link-ids]
+  (reduce (fn [acc chunk]
+            (reduce (fn [acc {:keys [vocab_link_id token_id]}]
+                      (update acc vocab_link_id (fnil conj #{}) token_id))
+                    acc
+                    (psc/q tx {:select [:vocab_link_id :token_id]
+                               :from :vocab_link_tokens
+                               :where [:in :vocab_link_id (vec chunk)]})))
+          {}
+          (partition-all 4000 link-ids)))
+
+(defn- delete-links!
+  "Delete vocab links by id, audited per row, and sweep their metadata."
+  [tx link-ids]
+  (when (seq link-ids)
+    (doseq [chunk (partition-all 4000 link-ids)]
+      (crud/delete-where! tx :vocab_links [:in :id (vec chunk)])
+      (psc/execute! tx {:delete-from :entity_metadata
+                        :where [:and
+                                [:= :entity_type "vocab-link"]
+                                [:in :entity_id (vec chunk)]]}))))
+
+(defn merge-into
+  "Merge the entries `loser-ids` into the entry `survivor-id`, in ONE
+  operation: every link to a loser is re-pointed to the survivor (the link
+  keeps its id, its words and its metadata), a link on words the survivor
+  is already linked to is deleted instead, and then the losers are deleted.
+
+  Links are read inside the transaction, so a link someone made to a loser
+  after the caller planned the merge moves with the rest. That is the point
+  of doing it here: a client that re-links the links it saw and then
+  deletes the losers loses every link made in between.
+
+  The survivor must exist (404) and every loser must be in its vocabulary
+  (400). A loser that no longer exists is skipped, as in `bulk-delete`, so
+  a retry of a merge that already landed changes nothing. Metadata that
+  refers to a loser (a sense's parent, a reference field) is the caller's:
+  it rewrites that in the same batch.
+
+  Every document holding a moved or deleted link has its version bumped.
+  Returns {:moved n :duplicates n :removed [loser ids deleted]}."
+  [db survivor-id loser-ids user-id]
+  (let [loser-ids (vec (distinct loser-ids))]
+    (submit-operation! [tx db {:type :vocab-item/merge-into
+                               :project nil
+                               :document nil
+                               :description (str "Merge " (count loser-ids) " vocab items into " survivor-id)
+                               :user user-id}]
+                       (let [survivor (psc/fetch-by-id tx :vocab_items survivor-id)]
+                         (when (nil? survivor)
+                           (throw (ex-info (psc/err-msg-not-found "Vocab item" survivor-id)
+                                           {:code 404 :id survivor-id})))
+                         (when (empty? loser-ids)
+                           (throw (ex-info "A merge needs at least one entry to merge" {:code 400})))
+                         (when (some #{survivor-id} loser-ids)
+                           (throw (ex-info "An entry cannot be merged into itself" {:code 400})))
+                         (let [losers (psc/fetch-ids tx :vocab_items loser-ids)
+                               layer (:vocab_layer_id survivor)]
+                           (when-let [other (first (remove #(= layer (:vocab_layer_id %)) losers))]
+                             (throw (ex-info (str "Vocab item " (:id other) " is in another vocabulary")
+                                             {:code 400 :id (:id other)})))
+                           (let [existing-ids (mapv :id losers)
+                                 survivor-links (psc/q tx {:select [:id]
+                                                           :from :vocab_links
+                                                           :where [:= :vocab_item_id survivor-id]})
+                                 loser-links (if (seq existing-ids)
+                                               (psc/q tx {:select [:id :document_id]
+                                                          :from :vocab_links
+                                                          :where [:in :vocab_item_id existing-ids]
+                                                          :order-by [:rowid]})
+                                               [])
+                                 words (link-token-keys tx (into (mapv :id survivor-links)
+                                                                 (map :id) loser-links))
+                                 [moved dups] (loop [[l & more] loser-links
+                                                     seen (into #{} (map (comp words :id)) survivor-links)
+                                                     moved []
+                                                     dups []]
+                                                (if (nil? l)
+                                                  [moved dups]
+                                                  (let [k (words (:id l))]
+                                                    (if (contains? seen k)
+                                                      (recur more seen moved (conj dups (:id l)))
+                                                      (recur more (conj seen k) (conj moved (:id l)) dups)))))]
+                             (when (seq moved)
+                               (crud/bulk-update-by-id! tx :vocab_links
+                                                        (mapv (fn [id] [id {:vocab_item_id survivor-id}]) moved)))
+                             (delete-links! tx dups)
+                             (when (seq existing-ids)
+                               (psc/execute! tx {:delete-from :entity_metadata
+                                                 :where [:and
+                                                         [:= :entity_type "vocab-item"]
+                                                         [:in :entity_id existing-ids]]})
+                               (crud/delete-where! tx :vocab_items [:in :id existing-ids]))
+                             (op/touch-vocab-layer! tx layer)
+                             (op/bump-document-versions! tx (mapv :document_id loser-links))
+                             {:moved (count moved)
+                              :duplicates (count dups)
+                              :removed existing-ids}))))))
 
 ;; ============================================================
 ;; Metadata
