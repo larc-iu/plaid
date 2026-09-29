@@ -127,7 +127,12 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
         undefined,
         expectStored(project, IGT_NAMESPACE, 'languages'),
       );
-      onProjectUpdate?.();
+      // Save stays held until the project is read again, so a next save
+      // expects what this one stored. The save has landed by now, so a read
+      // that fails is not a failed save.
+      await Promise.resolve(onProjectUpdate?.()).catch((err) =>
+        console.error('Failed to reload the project:', err),
+      );
     } catch (err) {
       console.error('Failed to save project languages:', err);
       notifyError(err, 'Failed to save the languages');
