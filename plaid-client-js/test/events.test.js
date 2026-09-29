@@ -229,6 +229,33 @@ test("a stale switch is read again", async () => {
   assert.equal(r.record(client, "plan.opened", { projectId: "p1", targetId: "d" }), true);
 });
 
+// V7 H7-7: turned on by another maintainer, the switch reached an open page
+// only five minutes later, and the answers given meanwhile were lost.
+test("a switch turned on elsewhere reaches an open page by the next flush, with the event that found it", async () => {
+  let t = 0;
+  const r = new EventRecorder({ window: new EventTarget(), now: () => t });
+  const client = fakeClient(false);
+  assert.equal(r.record(client, "suggestion.adopted", shown("t1", "dog")), true);
+  await settle();
+  assert.equal(r.record(client, "suggestion.adopted", shown("t1", "dog")), false);
+  // Another maintainer turns it on. One flush interval later the next answer
+  // is recorded, not dropped while the switch is read again.
+  client.projects.get = async (id) => ({
+    id,
+    config: { plaid: { research: { telemetry: true } } },
+  });
+  t += FLUSH_INTERVAL_MS;
+  assert.equal(r.record(client, "suggestion.adopted", shown("t2", "cat")), true);
+  await settle();
+  mock.timers.tick(FLUSH_INTERVAL_MS);
+  await settle();
+  assert.equal(sent.length, 1);
+  assert.deepEqual(
+    sent[0].body.map((e) => e["target-id"] ?? e.targetId),
+    ["t2"],
+  );
+});
+
 test("shown is recorded once per target, field and value in a page session", async () => {
   const r = new EventRecorder({ window: new EventTarget() });
   const client = fakeClient(true);

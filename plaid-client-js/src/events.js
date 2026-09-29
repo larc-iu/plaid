@@ -11,11 +11,14 @@ import { transformRequest } from "./transforms.js";
 // error for the caller. Nothing it does can block or break the screen that
 // called it.
 //
-// It sends nothing for a project whose switch is off. The switch is read once
+// It sends nothing for a project whose switch is off. The switch is read
 // from the project (`config.plaid.research.telemetry`) and kept for
-// FLAG_TTL_MS; `events.setEnabled` tells it at once, which is what the
-// settings checkbox does. A server refusal (the switch was turned off since)
-// turns it off here too.
+// FLAG_TTL_MS, one flush interval, so a switch another maintainer turns on
+// reaches an open page by its next flush. An event recorded while an old
+// "off" is being read again waits for the answer rather than being dropped.
+// `events.setEnabled` tells it at once, which is what the settings checkbox
+// does. A server refusal (the switch was turned off since) turns it off here
+// too.
 //
 // ONE recorder per server per page, whatever client records into it: an app
 // makes a client per editor, and a suggestion's "shown" is deduplicated for
@@ -33,7 +36,7 @@ export const EVENT_TYPES = Object.freeze([
 
 export const FLUSH_INTERVAL_MS = 10000;
 export const FLUSH_AT = 50;
-export const FLAG_TTL_MS = 5 * 60 * 1000;
+export const FLAG_TTL_MS = FLUSH_INTERVAL_MS;
 // Events per request. A browser refuses a `keepalive` request whose body,
 // with every other keepalive request still in flight, passes 64 KiB, and a
 // refused request is lost. So the pagehide send goes out in small pieces, and
@@ -185,14 +188,17 @@ export class EventRecorder {
   }
 
   // The switch as known now: 'on', 'off' or 'pending'. An unknown one sets
-  // off a read of the project, and a stale one a fresh read while the old
-  // answer stands. The answer flushes or drops what is buffered.
+  // off a read of the project, and a stale one a fresh read. While it is
+  // read, an old "on" stands and an old "off" is 'pending', so what is
+  // recorded meanwhile waits for the answer. The answer flushes or drops what
+  // is buffered.
   _flag(projectId) {
     const known = this.flags.get(projectId);
     const fresh = known && this.now() - known.at < FLAG_TTL_MS;
     if (known && (fresh || known.checking)) return known.state;
+    const state = known?.state === "on" ? "on" : "pending";
     this.flags.set(projectId, {
-      state: known ? known.state : "pending",
+      state,
       at: known ? known.at : 0,
       checking: true,
     });
@@ -209,7 +215,7 @@ export class EventRecorder {
         else if (this.buffer.length >= FLUSH_AT) this.flush();
         else if (this.buffer.length) this._schedule();
       });
-    return known ? known.state : "pending";
+    return state;
   }
 
   _send(projectId, events, keepalive) {
