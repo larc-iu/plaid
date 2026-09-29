@@ -132,7 +132,7 @@
       (assert-status 400 (post-events user1-request project [(assoc (shown "t" "v") :document-id other-doc)])))
     (testing "data that is not an object"
       (assert-status 400 (post-events user1-request project [(assoc (shown "t" "v") :data ["a"])])))
-    (testing "data past the ceiling"
+    (testing "a data value past the ceiling"
       (assert-status 400 (post-events user1-request project
                                       [(assoc (shown "t" "v") :data {:value (apply str (repeat 5000 "a"))})])))
     (testing "a target id past the ceiling"
@@ -283,3 +283,45 @@
     (assert-status 403 (post-events user1-request unknown [(shown "t" "v")]))
     (assert-status 403 (list-events user1-request unknown))
     (is (= 0 (row-count)))))
+
+(deftest each-type-takes-only-its-own-data-keys
+  ;; "Nothing else is recorded" is kept by the server, not only by the apps:
+  ;; each type has a fixed set of `data` keys, each a string or a number of
+  ;; bounded length.
+  (let [{:keys [project]} (setup "Keys")
+        adopted {:type "suggestion.adopted" :target-id "t1"
+                 :data {:value "dog" :source "precedent" :field "Gloss"}}
+        dismissed {:type "suggestion.dismissed" :target-id "t1"
+                   :data {:value "dog" :source "precedent" :field "Gloss" :written "cat"}}
+        opened {:type "plan.opened" :target-id "plan-7" :data {:conversation "c1"}}
+        refused (fn [event key]
+                  (let [resp (post-events user1-request project [(shown "t0" "v") event])]
+                    (assert-status 400 resp)
+                    (is (re-find #"Event 1" (-> resp :body :error)) "the refusal names the event")
+                    (is (clojure.string/includes? (-> resp :body :error) (str "'" key "'"))
+                        "the refusal names the key")))]
+    (set-telemetry! project true)
+    (testing "every documented key of every type is taken"
+      (assert-status 201 (post-events user1-request project
+                                      [(shown "t1" "dog") adopted dismissed opened
+                                       (assoc (shown "t2" 7) :data {:value 7})
+                                       (dissoc opened :data)]))
+      (is (= 6 (row-count))))
+    (testing "a key outside the type's set"
+      (refused (assoc-in (shown "t1" "dog") [:data :written] "cat") "written")
+      (refused (assoc-in adopted [:data :written] "cat") "written")
+      (refused (assoc-in dismissed [:data :conversation] "c1") "conversation")
+      (refused (assoc-in opened [:data :value] "dog") "value")
+      (refused (assoc-in (shown "t1" "dog") [:data :keys] "abc") "keys")
+      (refused (assoc-in opened [:data :dwell-ms] 1200) "dwell-ms"))
+    (testing "a value that is not a string or a number"
+      (refused (assoc-in (shown "t1" "dog") [:data :value] {:nested "x"}) "value")
+      (refused (assoc-in (shown "t1" "dog") [:data :value] ["x"]) "value")
+      (refused (assoc-in (shown "t1" "dog") [:data :value] true) "value")
+      (refused (assoc-in opened [:data :conversation] nil) "conversation"))
+    (testing "a value past 200 characters"
+      (refused (assoc-in (shown "t1" "dog") [:data :value] (apply str (repeat 201 "a"))) "value")
+      (assert-status 201 (post-events user1-request project
+                                      [(assoc-in (shown "t3" "dog") [:data :value]
+                                                 (apply str (repeat 200 "𐐷")))])))
+    (is (= 7 (row-count)) "all or nothing: nothing from a refused request is stored")))

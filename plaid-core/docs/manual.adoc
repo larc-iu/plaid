@@ -111,16 +111,20 @@ The server refuses any other.
 |A machine suggestion becomes visible, today a guess in an igt cell. `target-id` is the word or morpheme, `data` holds `value` (the suggested value), `source` (the producer's name or model) and `field`. Recorded once per target, field and value in each page session.
 
 |`suggestion.adopted`
-|The suggestion is taken as it is, in one cell or across a word.
+|The suggestion is taken as it is, in one cell or across a word. `target-id` and `data` as for `suggestion.shown`: `value`, `source` and `field`.
 
 |`suggestion.dismissed`
-|The suggestion is rejected, or a different value is written where it showed. `data.written` holds what was written instead.
+|The suggestion is rejected, or a different value is written where it showed. `target-id` and `data` as for `suggestion.shown`, plus `written`, the value written instead.
 
 |`plan.opened`
-|An assistant plan card is expanded to show all of its changes. `target-id` is the plan, `data.conversation` the conversation.
+|An assistant plan card is expanded to show all of its changes. `target-id` is the plan, `data` holds `conversation`, the conversation's id.
 |===
 
 Nothing else is recorded: no keystrokes, clicks, focus, time spent or idle time.
+The server holds to this as it does to the types.
+`data` may hold only the keys its type names above, each a string of at most 200 characters or a number, and may leave any of them out.
+An event with any other key, or with a value that is `null`, `true` or `false`, a list, an object or a longer string, refuses the request with a 400 that names the event and the key.
+The JavaScript recorder leaves out a key with no value and cuts a longer string to 200 characters.
 
 `POST /api/v1/projects/{id}/events` takes an array of at most 500 events, each `{type, document-id?, target-id?, data?, client-ts?}`, and needs write access.
 The server stamps the user and its own time `ts`; `client-ts` is the browser's time when the event happened.

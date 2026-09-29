@@ -286,6 +286,29 @@ test("a long value is cut", async () => {
   assert.equal(sent[0].body[0].data.value.length, 200);
 });
 
+test("a long value is cut by code points, never inside a character", async () => {
+  const r = new EventRecorder({ window: new EventTarget() });
+  r.setEnabled("p1", true);
+  // U+10437 is two UTF-16 units: a cut at 200 units would split one.
+  r.record(fakeClient(true), "suggestion.shown", shown("t1", "a" + "\u{10437}".repeat(300)));
+  r.flush();
+  await settle();
+  const value = sent[0].body[0].data.value;
+  assert.equal([...value].length, 200, "200 code points, the server's ceiling");
+  assert.ok(!/[\uD800-\uDBFF]$/.test(value), "no lone high surrogate at the end");
+});
+
+test("a data key with no value is left out rather than sent as null", async () => {
+  const r = new EventRecorder({ window: new EventTarget() });
+  r.setEnabled("p1", true);
+  r.record(fakeClient(true), "plan.opened", { projectId: "p1", targetId: "plan-7", data: { conversation: null } });
+  r.record(fakeClient(true), "suggestion.shown", shown("t1", "dog", { source: undefined }));
+  r.flush();
+  await settle();
+  assert.deepEqual(sent[0].body[0].data, {});
+  assert.deepEqual(sent[0].body[1].data, { value: "dog", field: "Gloss" });
+});
+
 test("every client of a server shares one recorder, on a batch too", async () => {
   const a = new PlaidClient("http://x", "tok");
   const b = new PlaidClient("http://x", "tok");

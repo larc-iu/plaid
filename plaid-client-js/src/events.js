@@ -42,13 +42,19 @@ export const FLAG_TTL_MS = 5 * 60 * 1000;
 // hundreds of guesses) would otherwise lose everything past the quota. The
 // server takes up to 500 in one request.
 const PER_REQUEST = FLUSH_AT;
-// A suggested or written value is a gloss, not prose; a long one is cut.
+// A suggested or written value is a gloss, not prose. A long one is cut, in
+// code points as the server counts them, so no character is split in two.
+// The server refuses a value past this length, and a key its type does not
+// take (core manual, "Research telemetry").
 const MAX_VALUE_CHARS = 200;
 
-const clip = (v) =>
-  typeof v === "string" && v.length > MAX_VALUE_CHARS
-    ? v.slice(0, MAX_VALUE_CHARS)
+const clip = (v) => {
+  if (typeof v !== "string" || v.length <= MAX_VALUE_CHARS) return v;
+  const cps = Array.from(v);
+  return cps.length > MAX_VALUE_CHARS
+    ? cps.slice(0, MAX_VALUE_CHARS).join("")
     : v;
+};
 
 export class EventRecorder {
   /**
@@ -87,9 +93,13 @@ export class EventRecorder {
       this.client = client;
       const flag = this._flag(projectId);
       if (flag === "off") return false;
+      // A key with no value is left out: the server takes only a string or
+      // a number.
       const clipped = data
         ? Object.fromEntries(
-            Object.entries(data).map(([k, v]) => [k, clip(v)]),
+            Object.entries(data)
+              .filter(([, v]) => v != null)
+              .map(([k, v]) => [k, clip(v)]),
           )
         : undefined;
       let key = null;

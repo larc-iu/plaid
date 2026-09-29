@@ -10,7 +10,8 @@
       is refused (`enabled?`), so an app that still sends is not recorded.
     * A CLOSED SET. `types` is every event there is. Anything else is
       refused, so the table cannot grow into a log of keystrokes, clicks or
-      focus that nobody agreed to.
+      focus that nobody agreed to. The same holds for `data`: each type
+      takes only its own keys (`data-keys`), each a short string or a number.
     * OUTSIDE THE RECORD. Like comments and user data, writes are raw
       inserts, not operations: no audit rows, no document version bump,
       nothing time-travelable. See the migration
@@ -35,6 +36,25 @@
     plan.opened          an assistant plan card was expanded"
   #{"suggestion.shown" "suggestion.adopted" "suggestion.dismissed" "plan.opened"})
 
+(def data-keys
+  "The `data` keys each type may carry, and nothing else: this is what keeps
+  \"nothing else is recorded\" on the server rather than only in the apps.
+
+    value        the suggested value
+    source       the producer of the suggestion (a rule's or a model's name)
+    field        the field it was suggested for
+    written      the value written instead (`suggestion.dismissed` only)
+    conversation the assistant conversation (`plan.opened` only)"
+  {"suggestion.shown"     #{"value" "source" "field"}
+   "suggestion.adopted"   #{"value" "source" "field"}
+   "suggestion.dismissed" #{"value" "source" "field" "written"}
+   "plan.opened"          #{"conversation"}})
+
+(def ^:const max-data-value-length
+  "Ceiling on one `data` value, in code points: a gloss, a name or an id,
+  never prose. The browser recorder cuts values to this length."
+  200)
+
 (def ^:const max-events-per-request
   "Ceiling on one POST. The browser recorder flushes at 50, so this is room
   for a backlog, not a bulk-load path."
@@ -47,11 +67,6 @@
 (def ^:const max-client-ts-length
   "Ceiling on `client_ts`, an ISO-8601 instant as the browser wrote it."
   64)
-
-(def ^:const max-data-length
-  "Ceiling on one event's `data`, as JSON text in code points. A suggestion's
-  value and its producer's name fit many times over."
-  4000)
 
 ;; ============================================================
 ;; The switch
@@ -121,6 +136,21 @@
     (> (cp/cp-count v) max-len) (bad i (str field " exceeds " max-len " characters"))
     :else (do (storable/assert-storable! field v) v)))
 
+(defn- check-data!
+  "Refuse any `data` key outside `type`'s set, and any value that is not a
+  string or a number, or is a string past `max-data-value-length`."
+  [i type data]
+  (let [allowed (data-keys type)]
+    (doseq [[k v] data
+            :let [k (if (keyword? k) (subs (str k) 1) (str k))]]
+      (when-not (allowed k)
+        (bad i (str "data key '" k "' is not recorded for " type ". Keys: "
+                    (clojure.string/join ", " (sort allowed)))))
+      (when-not (or (string? v) (number? v))
+        (bad i (str "data key '" k "' must be a string or a number")))
+      (when (and (string? v) (> (cp/cp-count v) max-data-value-length))
+        (bad i (str "data key '" k "' exceeds " max-data-value-length " characters"))))))
+
 (defn- event->row
   "Check one event and turn it into a row, or throw a 400 naming its index."
   [i {:keys [type document-id target-id data client-ts]} project-id user-id documents ts]
@@ -129,12 +159,11 @@
     (bad i (str "unknown type '" type "'. Types: " (clojure.string/join ", " (sort types)))))
   (when (and (some? data) (not (map? data)))
     (bad i "data must be an object"))
+  (check-data! i type data)
   (let [doc-id (some-> document-id str)
         data-json (when (seq data) (json/write-str data))]
     (when (and doc-id (not (contains? documents doc-id)))
       (bad i (str "document " doc-id " is not in this project")))
-    (when (and data-json (> (cp/cp-count data-json) max-data-length))
-      (bad i (str "data exceeds " max-data-length " characters")))
     (when data-json (storable/assert-storable! "Event data" data-json))
     {:project_id  project-id
      :document_id doc-id
