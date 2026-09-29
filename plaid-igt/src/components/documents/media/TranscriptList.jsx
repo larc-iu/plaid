@@ -104,6 +104,7 @@ const SegmentRow = memo(function SegmentRow({
   text,
   active,
   playing,
+  canPlay,
   readOnly,
   duration,
   onFocusRow,
@@ -341,6 +342,7 @@ const SegmentRow = memo(function SegmentRow({
           className="h-8 w-8"
           aria-label={playing ? 'Pause segment' : 'Play segment'}
           onClick={playToggle}
+          disabled={!canPlay}
         >
           {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
         </Button>
@@ -410,6 +412,7 @@ const ProposalRow = memo(function ProposalRow({
   proposal,
   active,
   playing,
+  canPlay,
   onFocusRow,
   onAccept,
   onAdvance,
@@ -545,6 +548,7 @@ const ProposalRow = memo(function ProposalRow({
           className="h-8 w-8"
           aria-label={playing ? 'Pause segment' : 'Play segment'}
           onClick={() => onPlayToggle(proposal)}
+          disabled={!canPlay}
         >
           {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
         </Button>
@@ -717,6 +721,9 @@ export function TranscriptList({
     selection,
     duration = 0,
     segmentFocusRequest,
+    // The rows draw before the recording has loaded, and their play waits for
+    // it, as the player's transport does.
+    mediaReady: canPlay = false,
   } = mediaOps;
   // The new-segment row's running clock redraws a few times a second while the
   // recording plays, and is exact the moment it pauses.
@@ -1053,6 +1060,7 @@ export function TranscriptList({
               text={cpSlice(body, row.token.begin, row.token.end)}
               active={row.token.id === activeId}
               playing={row.token.id === playingId}
+              canPlay={canPlay}
               readOnly={readOnly}
               duration={duration}
               onFocusRow={handleFocusRow}
@@ -1071,6 +1079,7 @@ export function TranscriptList({
               proposal={row.proposal}
               active={row.proposal.id === activeId}
               playing={row.proposal.id === playingId}
+              canPlay={canPlay}
               onFocusRow={handleFocusProposal}
               onAccept={handleCreate}
               onAdvance={handleAdvance}

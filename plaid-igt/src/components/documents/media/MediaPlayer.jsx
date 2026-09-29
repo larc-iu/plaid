@@ -42,6 +42,8 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
     handleSkipToBeginning: onSkipToBeginning,
     handleSkipToEnd: onSkipToEnd,
     setMediaElement: onMediaElementReady,
+    mediaReady: ready,
+    handleMediaLoaded: onMediaLoaded,
     handleSeek: onSeek,
     handleDeleteMedia: onDeleteMedia,
     playbackRate,
@@ -61,9 +63,9 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
   // The file arrives whole after the tab opens (see useMediaOperations), and a
   // skip or a seek made before the element has it is lost: the element is at 0
   // with no duration, and stays there once the file lands. So the transport
-  // waits until this URL's metadata has loaded, and again for a new file.
-  const [loadedUrl, setLoadedUrl] = useState(null);
-  const ready = !!mediaUrl && loadedUrl === mediaUrl;
+  // waits until this URL's metadata has loaded (`ready`, kept by the hook, which
+  // gates the keys and the transcript rows the same way), and again for a new
+  // file.
   const animationFrameRef = useRef(null);
   // The clock's digits redraw a few times a second while playing; the slider
   // keeps every frame.
@@ -226,7 +228,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
             }}
             onLoadedMetadata={(e) => {
               onDurationChange && onDurationChange(e.target.duration);
-              setLoadedUrl(mediaUrl);
+              onMediaLoaded?.(mediaUrl);
 
               // Detect if this is actually a video or just audio
               const video = e.target;

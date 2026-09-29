@@ -28,6 +28,7 @@ function makeDoc({ body, tokens }) {
 }
 
 const makeOps = (over = {}) => ({
+  mediaReady: true,
   currentTime: 0,
   duration: 10,
   getCurrentTime: () => null,
@@ -93,6 +94,20 @@ describe('TranscriptList', () => {
     expect(times).toEqual(['0:00.000', '0:01.500', '0:01.500', '0:03.000']);
     expect(all(r.container, 'input[aria-label="Segment 1 speaker"]')[0].value).toBe('Ana');
     expect(r.container.textContent).toContain('2 segments');
+    await r.unmount();
+  });
+
+  // The rows draw from the document before the recording has arrived, and a
+  // play made on an element with no file is lost. The row's play waits, as
+  // the player's transport does.
+  it("a row's play is off until the recording has loaded", async () => {
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    const plays = (root) =>
+      all(root, 'button[aria-label="Play segment"]').map((b) => (b.disabled ? 'off' : 'on'));
+    const r = await renderComponent(element(doc, makeOps({ mediaReady: false })));
+    expect(plays(r.container)).toEqual(['off', 'off']);
+    await r.rerender(element(doc, makeOps({ mediaReady: true })));
+    expect(plays(r.container)).toEqual(['on', 'on']);
     await r.unmount();
   });
 

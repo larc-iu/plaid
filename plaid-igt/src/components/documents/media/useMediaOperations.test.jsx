@@ -214,6 +214,17 @@ const refusedPlay = (refusals) =>
     };
   });
 
+// The recording downloaded, and read by the element the tab plays through.
+const loadRecording = async (h, el) => {
+  await h.step(async () => {
+    fetches[0].resolve(recording('a'));
+    await settle();
+    await settle();
+  });
+  await h.step(() => h.api.setMediaElement(el));
+  await h.step(() => h.api.handleMediaLoaded('blob:a'));
+};
+
 // The element the tab plays through.
 const fakeMediaElement = (refusals, over = {}) => ({
   volume: 0,
@@ -236,7 +247,7 @@ describe('useMediaOperations: the playback keys', () => {
     const h = await mountMedia();
     const refusals = [];
     const el = fakeMediaElement(refusals);
-    await h.step(() => h.api.setMediaElement(el));
+    await loadRecording(h, el);
 
     // Space plays from the playhead.
     await h.step(async () => {
@@ -258,7 +269,7 @@ describe('useMediaOperations: the playback keys', () => {
 
 describe('useMediaOperations: playing one stretch', () => {
   const playing = async (h, el) => {
-    await h.step(() => h.api.setMediaElement(el));
+    await loadRecording(h, el);
     await h.step(() => h.api.handlePlayingChange(true));
     await h.step(() => h.api.playRange({ start: 1, end: 2 }));
   };
@@ -450,6 +461,93 @@ describe('useMediaOperations: detecting speech', () => {
     expect(client.messages.requestService).toHaveBeenCalledTimes(1);
     expect(h.api.detectRun.running).toBe(true);
     expect(h.api.vad.status).toBe('running');
+    await h.unmount();
+  });
+});
+
+// The recording is fetched whole and handed to the element after the tab
+// opens, and the transcript rows draw before it arrives. A seek or a play made
+// on an element with no file yet is lost: the playhead is put back to 0 when
+// the file lands, and a pending play is aborted. The transport buttons wait
+// for the file (MediaPlayer). The keys, a row's play and a row's play on entry
+// go through here, and wait the same way.
+describe('useMediaOperations: playing before the recording has loaded', () => {
+  const arrive = async (h, name) => {
+    await h.step(async () => {
+      fetches[fetches.length - 1].resolve(recording(name));
+      await settle();
+      await settle();
+    });
+  };
+
+  const tryEverything = async (h) => {
+    await h.step(() => h.api.playRange({ start: 1, end: 2 }));
+    await h.step(() => h.api.playRangeFromHere({ start: 3, end: 4 }));
+    await h.step(() => h.api.togglePlayback());
+    await h.step(() => h.api.seekBy(1));
+    await h.step(() => h.api.setSelection({ start: 5, end: 6 }));
+    await h.step(async () => {
+      press({ code: 'Space', key: ' ' });
+      press({ code: 'Space', key: ' ', shiftKey: true });
+      press({ code: 'ArrowRight', key: 'ArrowRight', shiftKey: true });
+      await settle();
+    });
+  };
+
+  const untouched = (h, el) => ({
+    ready: h.api.mediaReady,
+    at: el.currentTime,
+    plays: el.play.mock.calls.length,
+    shown: h.api.currentTime,
+    range: h.api.playingSelection,
+  });
+  const UNTOUCHED = { ready: false, at: 0, plays: 0, shown: 0, range: null };
+
+  it('moves and plays nothing until the element has the file, then plays', async () => {
+    const h = await mountMedia();
+    const el = fakeMediaElement([]);
+    await h.step(() => h.api.setMediaElement(el));
+
+    // Still downloading.
+    await tryEverything(h);
+    expect(untouched(h, el)).toEqual(UNTOUCHED);
+
+    // Downloaded and handed to the element, which has not read it yet.
+    await arrive(h, 'a');
+    expect(h.api.authenticatedMediaUrl).toBe('blob:a');
+    await tryEverything(h);
+    expect(untouched(h, el)).toEqual(UNTOUCHED);
+
+    // The element has read it.
+    await h.step(() => h.api.handleMediaLoaded('blob:a'));
+    expect(h.api.mediaReady).toBe(true);
+    await h.step(() => h.api.playRange({ start: 1, end: 2 }));
+    expect(el.currentTime).toBe(1);
+    expect(el.play).toHaveBeenCalledTimes(1);
+    expect(h.api.playingSelection).toEqual({ start: 1, end: 2 });
+    await h.step(() => h.api.seekBy(1));
+    expect(el.currentTime).toBe(2);
+    await h.unmount();
+  });
+
+  it('waits again while a new recording loads in place of the old one', async () => {
+    const h = await mountMedia();
+    const el = fakeMediaElement([]);
+    await h.step(() => h.api.setMediaElement(el));
+    await arrive(h, 'a');
+    await h.step(() => h.api.handleMediaLoaded('blob:a'));
+    expect(h.api.mediaReady).toBe(true);
+
+    await h.setInputs({ doc: withMedia('/api/v1/documents/doc-1/media?v=b') });
+    expect(h.api.mediaReady).toBe(false);
+    await arrive(h, 'b');
+    // The old file's metadata, reported late, is not the new file's.
+    await h.step(() => h.api.handleMediaLoaded('blob:a'));
+    await tryEverything(h);
+    expect(untouched(h, el)).toEqual(UNTOUCHED);
+
+    await h.step(() => h.api.handleMediaLoaded('blob:b'));
+    expect(h.api.mediaReady).toBe(true);
     await h.unmount();
   });
 });

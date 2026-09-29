@@ -182,9 +182,13 @@ export const useTimelineOperations = (mediaOps) => {
       if (mediaElement) {
         // A seek moves playback and leaves it running or paused as it was;
         // a transcriber scrubbing back to re-hear a stretch wants it to keep going.
-        mediaElement.currentTime = time;
-        mediaOps.setCurrentTime(time); // Update state immediately
-        mediaOps.setPlayingSelection(null);
+        // Not before the element has read the file: the load would put the
+        // playhead back to 0, with the needle left where the click put it.
+        if (mediaOps.mediaReady) {
+          mediaElement.currentTime = time;
+          mediaOps.setCurrentTime(time); // Update state immediately
+          mediaOps.setPlayingSelection(null);
+        }
 
         // A click inside a dragged stretch reopens its popover. A selection that
         // is an existing segment (a row was entered) belongs to the transcript,

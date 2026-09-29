@@ -12,8 +12,10 @@ vi.mock('./MediaHelp.jsx', () => ({ MediaHelp: () => null, MediaHelpButton: () =
 
 const { MediaPlayer } = await import('./MediaPlayer.jsx');
 
-const mediaOps = () => ({
+const mediaOps = (over = {}) => ({
   authenticatedMediaUrl: 'blob:rec',
+  mediaReady: true,
+  handleMediaLoaded: vi.fn(),
   isLoadingMedia: false,
   mediaLoadError: null,
   mediaBlob: {},
@@ -34,6 +36,7 @@ const mediaOps = () => ({
   handleSeek: vi.fn(),
   handleDeleteMedia: vi.fn(),
   handlePlaybackRateChange: vi.fn(),
+  ...over,
 });
 
 const named = (error, name) => Object.assign(error, { name });
@@ -107,25 +110,25 @@ describe('the transport before the recording has loaded', () => {
     container.querySelectorAll('[role="slider"]')[0].hasAttribute('data-disabled');
 
   it('is off until the element has the file, then on', async () => {
-    const view = await renderComponent(<MediaPlayer mediaOps={mediaOps()} canWrite />);
+    const view = await renderComponent(
+      <MediaPlayer mediaOps={mediaOps({ mediaReady: false })} canWrite />,
+    );
     expect(states(view.container)).toEqual(TRANSPORT.map((l) => `${l}: off`));
     expect(seekOff(view.container)).toBe(true);
-    const element = view.container.querySelector('video');
-    await view.step(() => element.dispatchEvent(new Event('loadedmetadata')));
+    await view.rerender(<MediaPlayer mediaOps={mediaOps({ mediaReady: true })} canWrite />);
     expect(states(view.container)).toEqual(TRANSPORT.map((l) => `${l}: on`));
     expect(seekOff(view.container)).toBe(false);
     await view.unmount();
   });
 
-  it('is off again while a new file loads in its place', async () => {
-    const ops = mediaOps();
+  // Which file has loaded is the hook's to keep (it gates the keys and the
+  // transcript rows too). The player tells it, naming the file.
+  it('tells the tab which file the element has read', async () => {
+    const ops = mediaOps({ mediaReady: false });
     const view = await renderComponent(<MediaPlayer mediaOps={ops} canWrite />);
     const element = view.container.querySelector('video');
     await view.step(() => element.dispatchEvent(new Event('loadedmetadata')));
-    await view.rerender(
-      <MediaPlayer mediaOps={{ ...ops, authenticatedMediaUrl: 'blob:new' }} canWrite />,
-    );
-    expect(states(view.container)).toEqual(TRANSPORT.map((l) => `${l}: off`));
+    expect(ops.handleMediaLoaded.mock.calls).toEqual([['blob:rec']]);
     await view.unmount();
   });
 });

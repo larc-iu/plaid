@@ -254,6 +254,30 @@ export const useMediaOperations = () => {
   const authenticatedMediaUrl = media.url;
   const mediaBlob = media.blob;
 
+  // Whether the element has read the file it was handed. The file arrives
+  // whole after the tab opens, and the transcript rows and the keys are live
+  // before it does. A seek or a play made on an element with no file yet is
+  // lost: the load puts the playhead back to 0 and aborts the play. So every
+  // path that moves or plays the element waits for this, keyed to the URL so
+  // that a new file loading in place of the old one waits again. The player
+  // reports it from `loadedmetadata`. The ref is for the callbacks below, which
+  // keep their identity across renders.
+  const [loadedUrl, setLoadedUrl] = useState(null);
+  const mediaReady = !!media.url && loadedUrl === media.url;
+  const mediaUrlRef = useRef(media.url);
+  mediaUrlRef.current = media.url;
+  const loadedUrlRef = useRef(null);
+  const handleMediaLoaded = useCallback((url) => {
+    loadedUrlRef.current = url;
+    setLoadedUrl(url);
+  }, []);
+  // The element, only once it has its file.
+  const playableElement = useCallback(() => {
+    const el = mediaElementRef.current;
+    const url = mediaUrlRef.current;
+    return el && url && loadedUrlRef.current === url ? el : null;
+  }, []);
+
   // Get alignment token layer and tokens
   const alignmentTokenLayer = doc.layerInfo.alignmentTokenLayer;
   const alignmentTokens = doc.alignmentTokens || [];
@@ -345,7 +369,7 @@ export const useMediaOperations = () => {
   }, []);
 
   const handleSkipToBeginning = useCallback(() => {
-    if (mediaElementRef.current) {
+    if (playableElement()) {
       mediaElementRef.current.pause();
       mediaElementRef.current.currentTime = 0;
       setCurrentTime(0);
@@ -355,10 +379,10 @@ export const useMediaOperations = () => {
         autoScrollToTimeRef.current(0);
       }
     }
-  }, []);
+  }, [playableElement]);
 
   const handleSkipToEnd = useCallback(() => {
-    if (mediaElementRef.current && duration) {
+    if (playableElement() && duration) {
       mediaElementRef.current.pause();
       mediaElementRef.current.currentTime = duration;
       setCurrentTime(duration);
@@ -368,39 +392,45 @@ export const useMediaOperations = () => {
         autoScrollToTimeRef.current(duration);
       }
     }
-  }, [duration]);
+  }, [duration, playableElement]);
 
   // Play one stretch of the recording and stop (or loop) at its end. Setting
   // currentTime moves the official playback position at once, so play() picks
   // up from the new position without waiting for `seeked`. The returned
   // promise is ignored: a rejection here is the browser's autoplay policy, and
   // every caller runs from a user gesture.
-  const playRange = useCallback((range) => {
-    const el = mediaElementRef.current;
-    if (!range || !el) return;
-    el.currentTime = range.start;
-    setCurrentTime(range.start);
-    setPlayingSelection({ start: range.start, end: range.end });
-    el.play().catch(() => {});
-  }, []);
+  const playRange = useCallback(
+    (range) => {
+      const el = playableElement();
+      if (!range || !el) return;
+      el.currentTime = range.start;
+      setCurrentTime(range.start);
+      setPlayingSelection({ start: range.start, end: range.end });
+      el.play().catch(() => {});
+    },
+    [playableElement],
+  );
 
   // Play a stretch the way a transcriber expects of a segment they paused in:
   // on from where playback stopped when that is inside the stretch (pausing
   // to type must not throw the listener back to the start), from the start
   // when playback is elsewhere or already at the end. Stops at the end
   // either way.
-  const playRangeFromHere = useCallback((range) => {
-    const el = mediaElementRef.current;
-    if (!range || !el) return;
-    const at = el.currentTime;
-    const inside = Number.isFinite(at) && at >= range.start && at < range.end - 0.05;
-    if (!inside) {
-      el.currentTime = range.start;
-      setCurrentTime(range.start);
-    }
-    setPlayingSelection({ start: range.start, end: range.end });
-    el.play().catch(() => {});
-  }, []);
+  const playRangeFromHere = useCallback(
+    (range) => {
+      const el = playableElement();
+      if (!range || !el) return;
+      const at = el.currentTime;
+      const inside = Number.isFinite(at) && at >= range.start && at < range.end - 0.05;
+      if (!inside) {
+        el.currentTime = range.start;
+        setCurrentTime(range.start);
+      }
+      setPlayingSelection({ start: range.start, end: range.end });
+      el.play().catch(() => {});
+    },
+    [playableElement],
+  );
 
   const handlePlaySelection = useCallback(() => {
     if (selection) playRange(selection);
@@ -412,7 +442,7 @@ export const useMediaOperations = () => {
 
   // Play from the playhead, or pause. Free playback (no range) never auto-stops.
   const togglePlayback = useCallback(() => {
-    const el = mediaElementRef.current;
+    const el = playableElement();
     if (!el) return;
     if (isPlaying) {
       el.pause();
@@ -420,13 +450,13 @@ export const useMediaOperations = () => {
       setPlayingSelection(null);
       el.play().catch(() => {});
     }
-  }, [isPlaying]);
+  }, [isPlaying, playableElement]);
 
   // Move playback by `delta` seconds, keeping it in the recording. Any range
   // being played is dropped: after a seek the user is listening freely.
   const seekBy = useCallback(
     (delta) => {
-      const el = mediaElementRef.current;
+      const el = playableElement();
       if (!el) return;
       const max = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : duration;
       const t = Math.max(0, Math.min(max || 0, el.currentTime + delta));
@@ -435,7 +465,7 @@ export const useMediaOperations = () => {
       setPlayingSelection(null);
       if (autoScrollToTimeRef.current) autoScrollToTimeRef.current(t);
     },
-    [duration],
+    [duration, playableElement],
   );
 
   const handlePlaybackRateChange = useCallback((rate) => {
@@ -806,7 +836,7 @@ export const useMediaOperations = () => {
       // Cmd+Space belong to macOS, Alt+Space to Windows and GNOME.
       if (keys.is('media.playSegment', e) && !isTextTarget(e.target) && !isActivatable(e.target)) {
         e.preventDefault();
-        const el = mediaElementRef.current;
+        const el = playableElement();
         if (!el) return;
         if (isPlaying) el.pause();
         else if (selection) playRangeFromHere(selection);
@@ -826,20 +856,21 @@ export const useMediaOperations = () => {
       } else if (keys.is('media.playPause', e)) {
         // Space key to toggle playback
         e.preventDefault();
-        if (mediaElementRef.current) {
+        const el = playableElement();
+        if (el) {
           if (isPlaying) {
-            mediaElementRef.current.pause();
+            el.pause();
           } else {
             // Swallowed like every other play() here: a rejection is the
             // browser's autoplay policy, and this one runs from a keystroke.
-            mediaElementRef.current.play().catch(() => {});
+            el.play().catch(() => {});
           }
         }
       }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [selection, isPlaying, playRangeFromHere, seekBy]);
+  }, [selection, isPlaying, playRangeFromHere, seekBy, playableElement]);
 
   // Monitor range playback: at the end of the range, loop back to its start
   // when looping is on, otherwise snap to the end and pause.
@@ -904,6 +935,7 @@ export const useMediaOperations = () => {
 
     // Media state
     mediaElement,
+    mediaReady,
     currentTime,
     setCurrentTime,
     duration,
@@ -933,6 +965,7 @@ export const useMediaOperations = () => {
 
     // Media operations
     setMediaElement,
+    handleMediaLoaded,
     setAutoScrollToTime,
     handleTimeUpdate,
     handleDurationChange,
