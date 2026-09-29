@@ -41,6 +41,7 @@ const named = (error, name) => Object.assign(error, { name });
 const mountWith = async (rejection) => {
   const view = await renderComponent(<MediaPlayer mediaOps={mediaOps()} canWrite />);
   const element = view.container.querySelector('video');
+  await view.step(() => element.dispatchEvent(new Event('loadedmetadata')));
   element.play = vi.fn(() => Promise.reject(rejection));
   element.pause = vi.fn();
   const play = all(view.container, 'button').find((b) => b.getAttribute('aria-label') === 'Play');
@@ -82,6 +83,49 @@ describe('a play() the browser refuses', () => {
     const view = await mountWith(named(new Error('no supported source'), 'NotSupportedError'));
     expect(banner(view.container)).toBe('shown');
     expect(view.container.textContent).toContain('This browser cannot play this format.');
+    await view.unmount();
+  });
+});
+
+// The recording arrives as a whole file after the tab opens, and a skip or a
+// seek made before the element has it moved nothing: the playhead stayed at
+// 0:00.000 once the file had loaded. The transport waits for the file.
+describe('the transport before the recording has loaded', () => {
+  const TRANSPORT = [
+    'Skip to beginning',
+    'Skip back 5 seconds',
+    'Play',
+    'Skip forward 5 seconds',
+    'Skip to end',
+  ];
+  const states = (container) =>
+    TRANSPORT.map((label) => {
+      const b = all(container, 'button').find((x) => x.getAttribute('aria-label') === label);
+      return `${label}: ${b.disabled ? 'off' : 'on'}`;
+    });
+  const seekOff = (container) =>
+    container.querySelectorAll('[role="slider"]')[0].hasAttribute('data-disabled');
+
+  it('is off until the element has the file, then on', async () => {
+    const view = await renderComponent(<MediaPlayer mediaOps={mediaOps()} canWrite />);
+    expect(states(view.container)).toEqual(TRANSPORT.map((l) => `${l}: off`));
+    expect(seekOff(view.container)).toBe(true);
+    const element = view.container.querySelector('video');
+    await view.step(() => element.dispatchEvent(new Event('loadedmetadata')));
+    expect(states(view.container)).toEqual(TRANSPORT.map((l) => `${l}: on`));
+    expect(seekOff(view.container)).toBe(false);
+    await view.unmount();
+  });
+
+  it('is off again while a new file loads in its place', async () => {
+    const ops = mediaOps();
+    const view = await renderComponent(<MediaPlayer mediaOps={ops} canWrite />);
+    const element = view.container.querySelector('video');
+    await view.step(() => element.dispatchEvent(new Event('loadedmetadata')));
+    await view.rerender(
+      <MediaPlayer mediaOps={{ ...ops, authenticatedMediaUrl: 'blob:new' }} canWrite />,
+    );
+    expect(states(view.container)).toEqual(TRANSPORT.map((l) => `${l}: off`));
     await view.unmount();
   });
 });

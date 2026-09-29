@@ -58,6 +58,12 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
   // otherwise — and stayed if the file never loaded).
   const [mediaType, setMediaType] = useState('unknown');
   const [helpOpen, setHelpOpen] = useState(false);
+  // The file arrives whole after the tab opens (see useMediaOperations), and a
+  // skip or a seek made before the element has it is lost: the element is at 0
+  // with no duration, and stays there once the file lands. So the transport
+  // waits until this URL's metadata has loaded, and again for a new file.
+  const [loadedUrl, setLoadedUrl] = useState(null);
+  const ready = !!mediaUrl && loadedUrl === mediaUrl;
   const animationFrameRef = useRef(null);
   // The clock's digits redraw a few times a second while playing; the slider
   // keeps every frame.
@@ -220,6 +226,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
             }}
             onLoadedMetadata={(e) => {
               onDurationChange && onDurationChange(e.target.duration);
+              setLoadedUrl(mediaUrl);
 
               // Detect if this is actually a video or just audio
               const video = e.target;
@@ -250,6 +257,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
                   size="icon"
                   className="h-10 w-10"
                   onClick={onSkipToBeginning}
+                  disabled={!ready}
                   aria-label="Skip to beginning"
                 >
                   <SkipBack className="h-5 w-5" />
@@ -265,6 +273,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
                   size="icon"
                   className="h-10 w-10"
                   onClick={() => skipTime(-5)}
+                  disabled={!ready}
                   aria-label="Skip back 5 seconds"
                 >
                   <Rewind className="h-5 w-5" />
@@ -279,6 +288,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
                   size="icon"
                   className="h-12 w-12"
                   onClick={togglePlayback}
+                  disabled={!ready}
                   aria-label={isPlaying ? 'Pause' : 'Play'}
                 >
                   {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
@@ -294,6 +304,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
                   size="icon"
                   className="h-10 w-10"
                   onClick={() => skipTime(5)}
+                  disabled={!ready}
                   aria-label="Skip forward 5 seconds"
                 >
                   <FastForward className="h-5 w-5" />
@@ -309,6 +320,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
                   size="icon"
                   className="h-10 w-10"
                   onClick={onSkipToEnd}
+                  disabled={!ready}
                   aria-label="Skip to end"
                 >
                   <SkipForward className="h-5 w-5" />
@@ -345,6 +357,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
               value={[currentTime || 0]}
               max={duration || 100}
               onValueChange={([v]) => seekTo(v)}
+              disabled={!ready}
               className="flex-1"
             />
           </div>
