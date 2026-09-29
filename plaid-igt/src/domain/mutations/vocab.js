@@ -204,8 +204,11 @@ export const vocabMutations = {
       const l = (vocabs[vocabId]?.vocabLinks || []).find((x) => x.id === link.id);
       if (l) l.metadata = mergeMetadata(l.metadata, confirm);
     });
-    return this._queueWrite(label, () =>
-      this._client.vocabLinks.patchMetadata(settledId(link.id), metadataOps(confirm)),
+    return this._queueWrite(
+      label,
+      () => this._client.vocabLinks.patchMetadata(settledId(link.id), metadataOps(confirm)),
+      undefined,
+      { kind: 'review' },
     );
   },
 
@@ -740,8 +743,11 @@ export const vocabMutations = {
       const l = (vocabs[vocabId]?.vocabLinks || []).find((x) => x.id === link.id);
       if (l) l.metadata = mergeMetadata(l.metadata, confirm);
     });
-    return this._queueWrite(label, () =>
-      this._client.vocabLinks.patchMetadata(settledId(link.id), metadataOps(confirm)),
+    return this._queueWrite(
+      label,
+      () => this._client.vocabLinks.patchMetadata(settledId(link.id), metadataOps(confirm)),
+      undefined,
+      { kind: 'review' },
     );
   },
 

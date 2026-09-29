@@ -1605,6 +1605,7 @@ export class ConlluDocument extends DocumentModel {
           }
         }),
       'Accept predicted annotations',
+      { kind: 'review' },
     );
   }
 

@@ -1925,6 +1925,24 @@ describe('confirmWordAnalysis', () => {
     expect(w.annotations.POS.metadata.provConfirmed).toBe(true);
   });
 
+  // An accept with nothing guessed in it reviews stored work: its operation
+  // is of kind review, as a reader of the audit log counts it.
+  it('an accept that adopts nothing is a review operation', async () => {
+    const raw = buildRawDoc();
+    raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [
+      {
+        id: 'sp-1',
+        tokens: ['w-1'],
+        value: 'DET',
+        metadata: { prov: 'inferred', provSource: 's' },
+      },
+    ];
+    const doc = makeDoc({ raw });
+    expect(await doc.confirmWordAnalysis('w-1')).toBe(true);
+    const begun = doc.client.calls.filter((c) => c.kind === 'beginOperation').map((c) => c.args);
+    expect(begun).toEqual([['Accept word analysis', { kind: 'review' }]]);
+  });
+
   it('is a no-op when nothing on the word is machine-unverified and nothing is adopted', async () => {
     const doc = makeDoc();
     const ok = await doc.confirmWordAnalysis('w-1');
@@ -2207,6 +2225,14 @@ describe('confirmSentenceSpan', () => {
     expect(span.metadata).toMatchObject({ ...machine, provConfirmed: true });
   });
 
+  it('is a review operation', async () => {
+    const { raw, sid } = withTranslation({ ...machine });
+    const doc = makeDoc({ raw });
+    await doc.confirmSentenceSpan(sid, 'Translation');
+    const begun = doc.client.calls.filter((c) => c.kind === 'beginOperation').map((c) => c.args);
+    expect(begun).toEqual([['Accept Translation', { kind: 'review' }]]);
+  });
+
   it('is a no-op for human, verified, or absent translations', async () => {
     for (const meta of [null, { ...machine, provConfirmed: true }]) {
       const { raw, sid } = withTranslation(meta);
@@ -2483,6 +2509,28 @@ describe('multi-word expressions', () => {
     expect(await doc.confirmMweLink('lk-1')).toBe(true);
     expect(doc.sentences[0].mwes.find((e) => e.linkId === 'lk-1').prov).toBe('verified');
     expect(await doc.confirmMweLink('lk-2')).toBe(false);
+    const begun = client.calls.filter((c) => c.kind === 'beginOperation').map((c) => c.args);
+    expect(begun).toEqual([['Accept multi-word expression', { kind: 'review' }]]);
+  });
+
+  it('accepting a machine-made link to an entry is a review operation', async () => {
+    const client = makeFakeClient();
+    const doc = makeDoc({
+      raw: raw(),
+      project,
+      client,
+      vocabularies: vocabs([
+        {
+          id: 'lk-1',
+          tokens: ['w-1'],
+          vocabItem: { id: 'i-the', form: 'the' },
+          metadata: { prov: 'inferred', provSource: 'rule' },
+        },
+      ]),
+    });
+    expect(await doc.confirmVocabLink('w-1')).not.toBe(false);
+    const begun = client.calls.filter((c) => c.kind === 'beginOperation').map((c) => c.args);
+    expect(begun).toEqual([['Accept link', { kind: 'review' }]]);
   });
 });
 

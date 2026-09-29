@@ -195,8 +195,11 @@ export const spanMutations = {
       const s = layerDoc?.spans?.find((x) => x.id === span.id);
       if (s) s.metadata = mergeMetadata(s.metadata, confirm);
     });
-    return this._queueWrite(label, () =>
-      this._client.spans.patchMetadata(settledId(span.id), metadataOps(confirm)),
+    return this._queueWrite(
+      label,
+      () => this._client.spans.patchMetadata(settledId(span.id), metadataOps(confirm)),
+      undefined,
+      { kind: 'review' },
     );
   },
 };

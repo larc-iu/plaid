@@ -358,8 +358,8 @@ test('confirmTokens: a contributor takes machine proposals as contributions and 
   const raw = rawDocFromConllu(INPUT, 'mut-doc');
   const client = provClient();
   const operations = [];
-  client.withOperation = async (label, fn) => {
-    operations.push(label);
+  client.withOperation = async (label, fn, opts) => {
+    operations.push([label, opts?.kind]);
     return fn();
   };
   const doc = asAnn(raw, client);
@@ -369,8 +369,9 @@ test('confirmTokens: a contributor takes machine proposals as contributions and 
   det.metadata = { ...CONTRIBUTED };
 
   assert.equal(await doc.confirmTokens([...noun.tokens, ...det.tokens]), true);
-  // The history names the gesture as the button does (idiom ruling 05).
-  assert.deepEqual(operations, ['Accept predicted annotations']);
+  // The history names the gesture as the button does (idiom ruling 05), and
+  // the operation is a review for a reader of the audit log.
+  assert.deepEqual(operations, [['Accept predicted annotations', 'review']]);
   const patches = client.calls.filter((c) => c[0] === 'spans.patchMetadata');
   assert.deepEqual(
     patches.map((c) => c[1]),

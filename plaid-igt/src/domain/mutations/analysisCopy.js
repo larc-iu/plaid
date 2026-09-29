@@ -815,7 +815,7 @@ export const analysisCopyMutations = {
     });
 
     // An accept that adopts a guess is a guess adoption in the audit log. One
-    // that only confirms what is stored is a review, which has no kind.
+    // that only confirms what is stored is a review.
     return this._queueWrite(
       label,
       async () => {
@@ -836,7 +836,7 @@ export const analysisCopyMutations = {
         this._settle(ids);
       },
       undefined,
-      live.length ? { kind: 'guess-adoption' } : {},
+      { kind: live.length ? 'guess-adoption' : 'review' },
     );
   },
 };

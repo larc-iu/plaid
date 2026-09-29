@@ -85,9 +85,10 @@ export function recordingClient() {
     },
     // The server's clock, which reconcile judges an audit entry's age by.
     serverNow: () => new Date(),
-    // Not a round trip of its own: it only labels the ones inside it.
-    withOperation: async (label, fn) => {
-      calls.push({ name: 'operation', args: [label] });
+    // Not a round trip of its own: it only labels the ones inside it. Its
+    // kind, when it has one, rides beside the label.
+    withOperation: async (label, fn, { kind } = {}) => {
+      calls.push({ name: 'operation', args: [label], ...(kind ? { kind } : {}) });
       return fn(() => {});
     },
     batched: async (fn) => {

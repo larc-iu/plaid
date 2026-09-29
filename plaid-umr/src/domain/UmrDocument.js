@@ -1630,6 +1630,7 @@ export class UmrDocument extends DocumentModel {
           });
         }),
       operation,
+      { kind: 'review' },
     );
   }
 
