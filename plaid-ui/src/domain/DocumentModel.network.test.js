@@ -356,3 +356,39 @@ describe('an edit refused because someone else wrote elsewhere in the document',
     expect(server.writes).toBe(0);
   });
 });
+
+// A cell that shows a lost conflict itself ("Yours: X · Enter to keep
+// yours") must not get a second toast saying "Redo your edit".
+describe('a write whose screen shows its conflict itself', () => {
+  // Someone else stored a value on the same key first.
+  const conflictOn = (server) => {
+    server.values.gloss = 'HOUND';
+    server.version += 1;
+  };
+
+  it('tells the screen nothing on a conflict, and keeps the refusal readable', async () => {
+    const { server, doc, errors } = open();
+    conflictOn(server);
+    expect(await doc.handlesConflicts(() => doc.set('gloss', 'DOG'))).toBe(false);
+    expect(errors).toEqual([]);
+    expect(doc.error).toBe('');
+    expect(doc.errorCause?.status).toBe(409);
+  });
+
+  it('still reports any other refusal', async () => {
+    const { server, doc, errors } = open();
+    server.fail.push({
+      error: () => Object.assign(new Error('HTTP 500 boom'), { status: 500, method: 'PATCH' }),
+    });
+    expect(await doc.handlesConflicts(() => doc.set('gloss', 'DOG'))).toBe(false);
+    expect(errors.map((e) => e.err.status)).toEqual([500]);
+  });
+
+  it('is only for the writes made inside it', async () => {
+    const { server, doc, errors } = open();
+    conflictOn(server);
+    expect(await doc.set('gloss', 'DOG')).toBe(false);
+    expect(errors.map((e) => e.err.status)).toEqual([409]);
+    expect(doc.error).not.toBe('');
+  });
+});

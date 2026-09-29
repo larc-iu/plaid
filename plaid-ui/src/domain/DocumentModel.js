@@ -84,10 +84,16 @@ export class DocumentModel {
     this._derivedCache = new Map();
     this._error = '';
     this._errorCause = null;
+    // A refusal whose conflict the screen reports itself (`handlesConflicts`):
+    // `errorCause` still gives it, `error` says nothing.
+    this._handledCause = null;
     // The queue behind `_queueWrite`. A write starting clears the last error.
     this._writes = new WriteQueue({
       onSavingChange: (saving) => {
-        if (saving) this._error = '';
+        if (saving) {
+          this._error = '';
+          this._handledCause = null;
+        }
         this._emit();
       },
       reloadDrained: () => this._reloadDrained(),
@@ -106,6 +112,7 @@ export class DocumentModel {
     // The History label a screen gave the writes it is making (`labelled`),
     // and the timers of the reads after a lost answer (`_readLater`).
     this._operation = null;
+    this._conflictHandled = false;
     this._lateReads = new Set();
     // The document before the first patch of the edit being made, until its
     // write is queued (`_queueWrite`).
@@ -158,7 +165,7 @@ export class DocumentModel {
   // words it: a lost answer to a write reads differently from a server that
   // could not be reached, and only the error object says which.
   get errorCause() {
-    return this._error ? this._errorCause : null;
+    return this._error ? this._errorCause : this._handledCause;
   }
 
   /**
@@ -310,6 +317,24 @@ export class DocumentModel {
     }
   }
 
+  /**
+   * Run `fn`, whose writes are made by a screen that shows a conflict itself
+   * (a cell that keeps the other user's value with the typed one under it).
+   * When one of them is refused for a conflict (409), `onError` is not called
+   * and `error` stays empty, so no second toast or banner contradicts it.
+   * `errorCause` still gives the refusal. The same scope as `labelled`.
+   * Returns what `fn` returns.
+   */
+  handlesConflicts(fn) {
+    const outer = this._conflictHandled;
+    this._conflictHandled = true;
+    try {
+      return fn();
+    } finally {
+      this._conflictHandled = outer;
+    }
+  }
+
   // ----- subscription bridge (useSyncExternalStore-compatible) -----
   // Arrow-field properties so identities stay stable across renders of the
   // same instance.
@@ -373,8 +398,16 @@ export class DocumentModel {
 
   // Report a failed write. The queue then refetches the document, which takes
   // back whatever the write had shown (`_reloadAfterFailure`).
-  _writeFailed(label, err) {
+  //
+  // `handled` is a conflict the screen reports itself (`handlesConflicts`).
+  _writeFailed(label, err, handled = false) {
     console.error(`${label}:`, err);
+    if (handled) {
+      this._error = '';
+      this._handledCause = err;
+      return;
+    }
+    this._handledCause = null;
     this._error = `${label}: ${err.message || 'Unknown error'}`;
     this._errorCause = err;
     // The raw error rides along so the screen can word it (statuses, network
@@ -421,6 +454,7 @@ export class DocumentModel {
     { reload = false, shown = true, kind, ref } = {},
   ) {
     const operation = this._operation || named;
+    const conflictHandled = this._conflictHandled;
     // A caller that patches first has asked `_canWrite` already. One whose
     // send does all its work is refused here instead.
     const kept = this._unsent.filter((u) => u.base).length;
@@ -472,7 +506,7 @@ export class DocumentModel {
           // A conflict, or what the edit names was deleted meanwhile: either
           // way someone else changed the document.
           conflict = isChangedElsewhere(err);
-          this._writeFailed(label, err);
+          this._writeFailed(label, err, conflictHandled && statusOf(err) === 409);
           if (isUnknownOutcome(err)) this._readLater();
         },
         resync: () => (unsent.stale ? undefined : this._reloadAfterFailure(conflict)),
