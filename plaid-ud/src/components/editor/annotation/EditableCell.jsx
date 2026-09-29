@@ -317,11 +317,14 @@ export const EditableCell = React.memo(
         // to the grid's `unsent`, which hands it to the cell if one is drawn.
         // `onUpdate` answers false, or `{ refused: true, status }`, for a
         // refusal.
-        const saved = value || '';
+        // A refused edit of a cell edited again since is not put back: the
+        // later edit is the annotator's value (`UnsentValues.settled`).
+        const ticket = unsent.sending(tokenId, field, value || '');
         onUpdate(tokenId, field, newValue || null).then(
           (ok) => {
             const refusal = ok === false ? {} : ok?.refused ? ok : null;
-            if (!refusal) return;
+            const { superseded, saved } = unsent.settled(ticket, !refusal, newValue);
+            if (!refusal || superseded) return;
             const outcome = unsent.put(tokenId, field, newValue, saved, {
               resend: !FINAL_REFUSALS.has(refusal.status),
             });
@@ -471,13 +474,20 @@ export const EditableCell = React.memo(
       `editable-field ${hasContent ? 'editable-field--filled' : 'editable-field--empty'}` +
       (mark && hasContent ? ` editable-field--${mark}` : '') +
       (conflict && !isReadOnly ? ' editable-field--conflict' : '');
-    // The refused value, under the cell showing the stored one.
+    // The refused value, under the cell showing the stored one. The note
+    // describes the cell, so arriving there reads it. It has no `dir` of its
+    // own, so it hangs from the cell's start in the sentence's direction. Its
+    // words are chrome and read left to right, the value its own way.
+    const conflictId = `${tokenId}-${field}-conflict`;
+    const describedBy = conflict ? conflictId : undefined;
     const withConflict = (cell) =>
       conflict ? (
         <>
           {cell}
-          <span className="editable-field-conflict" role="status" dir="auto">
-            Yours: {conflict.typed || '(none)'} · Enter to keep yours
+          <span id={conflictId} className="editable-field-conflict" role="status">
+            <span dir="ltr">
+              Yours: <bdi>{conflict.typed || '(none)'}</bdi> · Enter to keep yours
+            </span>
           </span>
         </>
       ) : (
@@ -551,6 +561,7 @@ export const EditableCell = React.memo(
         <Combobox
           ref={inputRef}
           id={`${tokenId}-${field}`}
+          aria-describedby={describedBy}
           spellCheck={false}
           // The cell's saved value, so the document-level Ctrl/Cmd+Backspace
           // can tell an untouched cell from one with unsaved typing in it and
@@ -712,6 +723,7 @@ export const EditableCell = React.memo(
       <input
         ref={inputRef}
         id={`${tokenId}-${field}`}
+        aria-describedby={describedBy}
         type="text"
         spellCheck={false}
         dir="auto"

@@ -51,6 +51,9 @@ export class UnsentValues {
     this._conflicts = new Map();
     // key -> the one mounted cell's listener.
     this._cells = new Map();
+    // key -> the edits of this cell still on their way, `{ base, latest,
+    // open }`. See `sending`.
+    this._flights = new Map();
   }
 
   get size() {
@@ -138,6 +141,41 @@ export class UnsentValues {
     this._conflicts.delete(keyOf(tokenId, field));
   }
 
+  /**
+   * An edit of this cell going out, typed over `saved`. Answers a ticket for
+   * `settled`. Edits of one cell answer in the order they were sent.
+   */
+  sending(tokenId, field, saved) {
+    const key = keyOf(tokenId, field);
+    let flight = this._flights.get(key);
+    if (!flight) {
+      flight = { base: saved, latest: 0, open: 0 };
+      this._flights.set(key, flight);
+    }
+    flight.open++;
+    flight.latest++;
+    return { key, flight, n: flight.latest };
+  }
+
+  /**
+   * The answer to the edit `ticket` stands for came, `landed` or not, with the
+   * value it sent. Answers `superseded`, true when a later edit of the same
+   * cell went out after it, and `saved`, what the server held under it: the
+   * value the first edit still on its way was typed over, or the last one that
+   * landed since. A refused edit with a later one behind it is not put back:
+   * the later one is the annotator's value, and the refetch shows it again on
+   * top of what is stored, which is not someone else's change. The later one,
+   * refused in its turn, is measured against `saved`.
+   */
+  settled(ticket, landed, typed) {
+    const { key, flight, n } = ticket;
+    flight.open--;
+    const answer = { superseded: n !== flight.latest, saved: flight.base };
+    if (landed) flight.base = typed;
+    if (!flight.open && this._flights.get(key) === flight) this._flights.delete(key);
+    return answer;
+  }
+
   /** Remove and return what was waiting for this cell, or null. */
   take(tokenId, field) {
     const key = keyOf(tokenId, field);
@@ -185,5 +223,6 @@ export class UnsentValues {
   clear() {
     for (const entry of [...this._entries.values()]) this.take(entry.tokenId, entry.field);
     this._conflicts.clear();
+    this._flights.clear();
   }
 }
