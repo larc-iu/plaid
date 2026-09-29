@@ -504,13 +504,14 @@ export const VocabularyItems = ({
   // the call, which is not always the list in state: the load-time repair runs
   // against what it has just fetched. Ids the server has answered for since
   // go out as the server's.
-  const bulkRepoint = async (patches, metaById) => {
+  // `to` is the client, or a batch the repoints ride in.
+  const bulkRepoint = async (patches, metaById, to = client) => {
     const updates = metadataUpdates(patches, metaById).map(({ id, metadata }) => ({
       id: settledId(id),
       metadata: followIds(metadata),
     }));
     for (let i = 0; i < updates.length; i += CHUNK) {
-      await client.vocabItems.bulkUpdate(updates.slice(i, i + CHUNK));
+      await to.vocabItems.bulkUpdate(updates.slice(i, i + CHUNK));
     }
   };
   const metadataNow = (list) => new Map((list || []).map((it) => [it.id, it.metadata]));
@@ -984,9 +985,13 @@ export const VocabularyItems = ({
     sendInTurn(
       `Delete entry "${selectedItem.form}"`,
       async () => {
-        if (patches.length) await bulkRepoint(patches, before);
         try {
-          await client.vocabItems.delete(settledId(deletedId), undefined, { expectedLinkCount });
+          // The repoints and the delete are one batch, so a delete refused
+          // for its count leaves the senses and references where they were.
+          await client.batched(async (b) => {
+            if (patches.length) await bulkRepoint(patches, before, b);
+            await b.vocabItems.delete(settledId(deletedId), undefined, { expectedLinkCount });
+          });
           refusedDeleteRef.current.delete(deletedId);
         } catch (err) {
           if (statusOf(err) === 409 && expectedLinkCount != null) {

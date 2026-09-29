@@ -74,6 +74,10 @@ const stub = (initial) => {
     holds,
     client: {
       withOperation: (_label, fn) => fn(() => {}),
+      // A batch's writes go out as the client's own here.
+      batched(fn) {
+        return fn(this);
+      },
       query: async () => ({ results: [] }),
       vocabLayers: {
         get: async () => ({ id: 'v1', name: 'Lexicon', config: {}, items: structuredClone(items) }),

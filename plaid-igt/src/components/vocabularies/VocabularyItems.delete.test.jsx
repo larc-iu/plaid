@@ -60,23 +60,38 @@ const ITEMS = [
 
 const stub = () => {
   const calls = { bulkUpdate: [], setMetadata: [], deleteMetadata: [], deleted: [] };
-  return {
-    calls,
-    client: {
-      withOperation: (_label, fn) => fn(),
-      query: async () => ({ results: [] }),
-      vocabLayers: {
-        get: async () => ({ id: 'v1', name: 'Lexicon', config: {}, items: ITEMS }),
-      },
-      projects: { list: async () => [] },
-      vocabItems: {
-        bulkUpdate: async (updates) => calls.bulkUpdate.push(updates),
-        setMetadata: async (id, m) => calls.setMetadata.push([id, m]),
-        deleteMetadata: async (id) => calls.deleteMetadata.push(id),
-        delete: async (id) => calls.deleted.push(id),
-      },
+  const client = {
+    withOperation: (_label, fn) => fn(),
+    query: async () => ({ results: [] }),
+    vocabLayers: {
+      get: async () => ({ id: 'v1', name: 'Lexicon', config: {}, items: ITEMS }),
+    },
+    projects: { list: async () => [] },
+    vocabItems: {
+      bulkUpdate: async (updates) => calls.bulkUpdate.push(updates),
+      setMetadata: async (id, m) => calls.setMetadata.push([id, m]),
+      deleteMetadata: async (id) => calls.deleteMetadata.push(id),
+      delete: async (id) => calls.deleted.push(id),
+    },
+    // One transaction: the queued writes land together or not at all.
+    batched: async (fn) => {
+      const queued = [];
+      await fn({
+        vocabItems: {
+          bulkUpdate: async (u) => queued.push(() => client.vocabItems.bulkUpdate(u)),
+          delete: async (...args) => queued.push(() => client.vocabItems.delete(...args)),
+        },
+      });
+      const updates = calls.bulkUpdate.length;
+      try {
+        for (const run of queued) await run();
+      } catch (e) {
+        calls.bulkUpdate.length = updates;
+        throw e;
+      }
     },
   };
+  return { calls, client };
 };
 
 // The dialog lands in a Radix portal, so the search is over the document.
@@ -246,6 +261,34 @@ describe('deleting an entry whose links change', () => {
       ['deriv1', 2],
       ['deriv1', 2],
     ]);
+    await view.unmount();
+  });
+
+  it('a refused delete leaves the senses and references it would have cleared', async () => {
+    const refusal = Object.assign(new Error('HTTP 409'), {
+      status: 409,
+      method: 'POST',
+      responseData: { error: 'This entry has 5 links now, not 2', links: 5 },
+    });
+    const { client, calls, sent } = linked([2], { refuse: refusal });
+    auth.client = client;
+    const view = await renderComponent(
+      <MemoryRouter initialEntries={['/vocabularies/v1?item=head']}>
+        <VocabularyItems
+          vocabularyId="v1"
+          vocabulary={{ id: 'v1' }}
+          client={client}
+          fields={FIELDS}
+          writes={new WriteQueue()}
+        />
+      </MemoryRouter>,
+    );
+    for (let i = 0; i < 4; i++) await view.step(async () => {});
+    calls.bulkUpdate.length = 0;
+    await askAndConfirm(view);
+    expect(sent).toEqual([['head', 2]]);
+    expect(calls.deleted).toEqual([]);
+    expect(calls.bulkUpdate).toEqual([]);
     await view.unmount();
   });
 });
