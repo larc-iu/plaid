@@ -77,7 +77,8 @@ from .guidelines import in_context as guidelines_in_context
 from .conversation import (ConversationStore, MissingConversation, assistant_item, build_meta, error_item,
                            find_plan, partly_applied, proposed_changes, prune, record_budget,
                            settle_plan)
-from .plan import DocumentsBusy, PlanError, PlanOutOfDate, ScopeMoved, documents_to_lock, holding
+from .plan import (DocumentsBusy, PlanError, PlanOutOfDate, ScopeMoved, documents_to_lock, holding,
+                   outcome_unknown)
 from .web import BACKENDS, WebConfig, session_for, ping as ping_search
 
 
@@ -586,10 +587,14 @@ class BaseAssistantService(BaseService):
             # the card undecidable. The answer is already computed, so hand it
             # over and say the record did not take it.
             traceback.print_exc()
-            response_helper.error(
-                f'The answer is ready but the conversation could not be saved: '
-                f'{requester_message(e, secrets=self.REQUEST_SECRETS)}. '
-                f'It is below, and this turn is not in the record.')
+            if outcome_unknown(e):
+                said = ('The answer is ready, but saving the conversation got no answer. '
+                        'It is below, and this turn may not be in the record.')
+            else:
+                said = (f'The answer is ready but the conversation could not be saved: '
+                        f'{requester_message(e, secrets=self.REQUEST_SECRETS).rstrip(".")}. '
+                        f'It is below, and this turn is not in the record.')
+            response_helper.error(said)
             response_helper.complete({'kind': 'turn', 'message': turn.text, 'plan': None,
                                       'citations': item['citations'], 'steps': turn.steps,
                                       'steps_summary': turn.summary})
@@ -776,20 +781,26 @@ class BaseAssistantService(BaseService):
             # document version says. Asked before the first write.
             return out_of_date(e.reasons)
         except PlanError as e:
-            if e.applied:
+            # A write whose answer was lost may have landed, so it counts as
+            # written: "Nothing was written" was false, and approving again
+            # wrote the plan a second time over the first attempt's leftovers.
+            written = e.applied or e.unknown
+            if written:
                 self._remember_applied(plan_id)
 
             def failed(e=e):
                 # Left undecided, as before, but a later discard must not read
                 # as nothing written, so the item says some of it was.
-                settled(partly_applied(conv, index) if e.applied else None)
+                settled(partly_applied(conv, index) if written else None)
+                why = 'the server did not answer' if e.unknown else _failure(client, documents, e)
                 # No fraction: `applied` counts batch calls and `total` counts
                 # plan ops, and one op can be several calls, so the two together
                 # read as "failed after 10 of 3 changes were applied".
                 response_helper.error(
-                    f'Failed to apply the plan: {_failure(client, documents, e)}. '
+                    f'Failed to apply the plan: {why}. '
                     + ('Stopped partway. What was written before the failure is in the documents.'
-                       if e.applied else 'Nothing was written.'))
+                       if e.applied else 'Part of the plan may have been written.'
+                       if e.unknown else 'Nothing was written.'))
             return failed
         except ValueError as e:
             def rejected(e=e):

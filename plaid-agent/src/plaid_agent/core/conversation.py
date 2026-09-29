@@ -107,9 +107,22 @@ class ConversationStore:
     def save(self, conv_id: str, conv: Dict[str, Any], meta: Dict[str, Any]) -> None:
         """The transcript first, then the sidebar entry: a reader takes the
         entry as the signal that the transcript is complete."""
-        self.client.user_data.put(self.user_id, conv_key(self.app, self.project_id, conv_id),
-                                  {'messages': conv['messages'], 'display': conv['display']})
-        self.client.user_data.put(self.user_id, meta_key(self.app, self.project_id, conv_id), meta)
+        self._put(conv_key(self.app, self.project_id, conv_id),
+                  {'messages': conv['messages'], 'display': conv['display']})
+        self._put(meta_key(self.app, self.project_id, conv_id), meta)
+
+    def _put(self, key: str, value: Any) -> None:
+        """One value, sent again once when its answer was lost. A put replaces
+        the whole value, so sending it twice stores what sending it once
+        does. Without this a lost answer to the transcript's put left the
+        sidebar entry unwritten, and the turn read as unfinished although it
+        was stored, so Retry asked the model the same question twice."""
+        try:
+            self.client.user_data.put(self.user_id, key, value)
+        except PlaidAPIError as e:
+            if e.status:
+                raise
+            self.client.user_data.put(self.user_id, key, value)
 
     def read(self, key: str) -> Any:
         """One value under this user's keys, whatever JSON it is, or None when

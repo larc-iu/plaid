@@ -23,6 +23,8 @@ from typing import Any, Dict, Iterable, List, Optional
 
 # created_id is plaid_client's reader of a create response, which the plans take from here.
 from plaid_client import DocumentLockLost, PlaidAPIError, created_id, metadata_ops  # noqa: F401
+from plaid_client.service import locked_for_writes
+from plaid_client.services import UNKNOWN_OUTCOME, requester_message
 from plaid_client.provenance import (confirmed_inferred, stamp_contributed, PROV_KEY, PROV_SOURCE_KEY,
                                      PROV_CONFIRMED_KEY, PROV_PROB_KEY, PROV_DETAIL_KEY)
 
@@ -181,8 +183,18 @@ class TrackingBatcher(Batcher):
             super().flush()
         except Exception as e:
             e._applied = self.applied
+            # A batch whose answer was lost may have been saved all the same,
+            # which counting it as not applied told the user was nothing.
+            e._unknown = outcome_unknown(e)
             raise
         self.applied += n
+
+
+def outcome_unknown(error) -> bool:
+    """Whether ``error`` is a write whose answer never came back (a reset, a
+    timeout), so it may have been saved. A refused connection sent nothing."""
+    return (isinstance(error, PlaidAPIError) and not error.status
+            and requester_message(error) == UNKNOWN_OUTCOME)
 
 
 class PlanError(Exception):
@@ -193,13 +205,17 @@ class PlanError(Exception):
     operation label is only an audit grouping. One plan op can be several
     calls, so this is NOT a count of the plan's changes and must never be
     shown as a fraction of ``total`` (which is ops). What it is good for is
-    the only question that matters here: did anything land.
+    the only question that matters here: did anything land. The write it
+    failed on is not counted, and ``unknown`` says it may have landed too,
+    when its answer was lost.
     """
 
-    def __init__(self, message: str, applied: int, total: int):
+    def __init__(self, message: str, applied: int, total: int, unknown: bool = False):
         super().__init__(message)
         self.applied = applied
         self.total = total
+        #: The write it failed on got no answer, so it may have landed too.
+        self.unknown = unknown
 
 
 def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
@@ -217,6 +233,12 @@ def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
         raise
     except Exception as e:  # noqa: BLE001 - every failure becomes one the user can read
         applied = getattr(e, '_applied', None)
+        unknown = bool(getattr(e, '_unknown', False)) or outcome_unknown(e)
+        # A client error is told the way every service tells one, without its
+        # class or the server's address.
+        if isinstance(e, PlaidAPIError):
+            raise PlanError(requester_message(e), applied if applied is not None else tracker.applied,
+                            len(ops), unknown) from e
         # The one message in the package that keeps a Python class name. This
         # one reaches the USER, after batches have already committed, and an
         # exception carrying no message of its own would otherwise leave them
@@ -224,7 +246,7 @@ def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
         # act on; the class name is for the operator reading the same line in
         # the log.
         raise PlanError(f'{type(e).__name__}: {e}',
-                        applied if applied is not None else tracker.applied, len(ops)) from e
+                        applied if applied is not None else tracker.applied, len(ops), unknown) from e
 
 
 class Stamps:
@@ -584,13 +606,20 @@ def holding(client, document_ids: Iterable[str]):
     runs, and a write after a lock lapsed is refused (``DocumentLockLost``).
     A block that ran to its end made every write before any lapse, so a lapse
     found only on the way out is logged rather than raised over a plan that
-    was applied."""
+    was applied.
+
+    A plan that writes one document writes in strict mode for it, at the
+    version it has once held, so a batch of the plan's that lands after the
+    apply gave up on it is refused over an edit made since. Strict mode names
+    one document, so a plan over several has the locks alone."""
+    document_ids = list(document_ids)
     finished = False
     try:
         with ExitStack() as stack:
             for did in document_ids:
                 try:
-                    stack.enter_context(client.documents.locked(did))
+                    stack.enter_context(locked_for_writes(client, did) if len(document_ids) == 1
+                                        else client.documents.locked(did))
                 except PlaidAPIError as e:
                     status = getattr(e, 'status', 0)
                     if status in (403, 404):
