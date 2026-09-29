@@ -504,15 +504,21 @@ export async function applyReanalyze(client, { rows, docs }, { analysis, label, 
 // ---- merge ------------------------------------------------------------------
 
 // How many links the losing entries have, and in how many documents, for the
-// preview's summary: { links, docs }. A link over several words (a
-// multi-word expression) is one link, as the server counts the links it
+// preview's summary: { links, docs, duplicates }. A link over several words
+// (a multi-word expression) is one link, as the server counts the links it
 // moves. Only documents this person can read are counted, and the merge
 // moves the links in the others too. The merge itself reads the links when
 // it runs, so this is a count, not a plan.
-export async function planMerge(client, vocabId, loserIds) {
-  const links = new Set();
-  const docs = new Set();
-  for (const itemId of loserIds) {
+//
+// `duplicates` is how many of those links the merge drops instead of moving,
+// by the server's rule: a link on words the survivor, or another link moved
+// before it, is already linked to. Links on the same words are in the same
+// document, so every duplicate among the links counted here is counted
+// here. Zero without a `survivorId`.
+export async function planMerge(client, vocabId, loserIds, survivorId = null) {
+  // Each link of `itemId` this person can read: link id to its document and
+  // the key of the words it is on.
+  const linksOf = async (itemId) => {
     const r = await client.query({
       where: [
         ['vocab', '?v', { layer: vocabId }],
@@ -521,14 +527,34 @@ export async function planMerge(client, vocabId, loserIds) {
         ['link-token', '?l', '?t'],
         ['token', '?t', { doc: { var: '?d' } }],
       ],
-      return: { group: ['?d', '?l'], aggregates: [['count']] },
+      return: { group: ['?d', '?l', '?t'], aggregates: [['count']] },
     });
-    for (const [docId, linkId] of r?.results || []) {
-      docs.add(String(docId));
-      links.add(String(linkId));
+    const byLink = new Map();
+    for (const [docId, linkId, tokenId] of r?.results || []) {
+      const id = String(linkId);
+      if (!byLink.has(id)) byLink.set(id, { doc: String(docId), tokens: [] });
+      byLink.get(id).tokens.push(String(tokenId));
+    }
+    return [...byLink].map(([id, { doc, tokens }]) => ({
+      id,
+      doc,
+      key: `${doc}\u0000${tokens.sort().join('\u0000')}`,
+    }));
+  };
+  const links = new Map();
+  for (const itemId of loserIds) {
+    for (const l of await linksOf(itemId)) links.set(l.id, l);
+  }
+  let duplicates = 0;
+  if (survivorId != null && links.size) {
+    const seen = new Set((await linksOf(survivorId)).map((l) => l.key));
+    for (const { key } of links.values()) {
+      if (seen.has(key)) duplicates += 1;
+      else seen.add(key);
     }
   }
-  return { links: links.size, docs: docs.size };
+  const docs = new Set([...links.values()].map((l) => l.doc));
+  return { links: links.size, docs: docs.size, duplicates };
 }
 
 // Repoint every entry that referred to a loser (a dictionary's senses and

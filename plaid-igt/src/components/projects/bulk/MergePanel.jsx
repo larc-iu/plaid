@@ -167,7 +167,7 @@ export const MergePanel = ({ project, client }) => {
 
   const preview = async () => {
     if (!canMerge || !survivor || losers.length === 0) return;
-    const plan = await r.run('Preview', () => planMerge(client, vocabId, losers), {
+    const plan = await r.run('Preview', () => planMerge(client, vocabId, losers, survivor), {
       reset: true,
     });
     if (plan) r.setPlan(plan);
@@ -222,7 +222,7 @@ export const MergePanel = ({ project, client }) => {
       // The links this person can see, counted again now: the merge moves
       // the ones in projects they cannot open as well, and the toast says
       // how many of those there were.
-      const seen = await planMerge(client, vocabId, losers);
+      const seen = await planMerge(client, vocabId, losers, survivor);
       try {
         const out = await applyMerge(
           client,
@@ -233,7 +233,7 @@ export const MergePanel = ({ project, client }) => {
             label: `Merge ${plural(losers.length, 'lexicon entry', 'lexicon entries')} into “${survivorName}”`,
           },
         );
-        return { ...out, refPlans, seen: seen.links };
+        return { ...out, refPlans, seen };
       } catch (err) {
         refused = isChangedElsewhere(err);
         throw err;
@@ -243,10 +243,10 @@ export const MergePanel = ({ project, client }) => {
       if (refused) await reloadAfterRefusal();
       return;
     }
-    const hidden = Math.min(
-      res.linksMoved,
-      Math.max(0, res.linksMoved + res.duplicatesRemoved - res.seen),
-    );
+    // The links moved that this person could not count: every link moved,
+    // less the ones counted that were moved rather than dropped as
+    // duplicates.
+    const hidden = Math.max(0, res.linksMoved - (res.seen.links - res.seen.duplicates));
     notifySuccess(
       `${plural(res.entriesRemoved, 'entry', 'entries')} merged. ${plural(res.linksMoved, 'link')} moved to “${survivorName}”` +
         (hidden ? `, ${hidden} of them in projects you cannot open.` : '.') +

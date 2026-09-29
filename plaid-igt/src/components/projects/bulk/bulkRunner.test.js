@@ -328,18 +328,51 @@ describe('the previews read what they need', () => {
 
   it('a merge counts the links, as the server counts the ones it moves, and reads no document', async () => {
     const client = readClient();
-    // One row per document and link, with the words each link covers: l1 is
-    // a multi-word expression over two words, and counts once.
+    // One row per document, link and word: l1 is a multi-word expression
+    // over two words, and counts once.
     const answers = {
       k1: [
-        ['d1', 'l1', 2],
-        ['d2', 'l2', 1],
+        ['d1', 'l1', 't1', 1],
+        ['d1', 'l1', 't2', 1],
+        ['d2', 'l2', 't9', 1],
       ],
-      k2: [['d1', 'l3', 1]],
+      k2: [['d1', 'l3', 't3', 1]],
     };
     client.query = async (q) => ({ results: answers[q.where[1][2]] });
-    expect(await planMerge(client, 'v1', ['k1', 'k2'])).toEqual({ links: 3, docs: 2 });
+    expect(await planMerge(client, 'v1', ['k1', 'k2'])).toEqual({
+      links: 3,
+      docs: 2,
+      duplicates: 0,
+    });
     expect(client.reads).toEqual([]);
+  });
+
+  it("a merge counts the links it drops as duplicates, by the server's rule", async () => {
+    const client = readClient();
+    // The survivor s is on t1+t2 in d1. k1's l1 is on the same two words, so
+    // it is dropped. k1's l2 and k2's l3 are both on t3: the first moves and
+    // the second is dropped. l4 is on t1 alone, a different set of words.
+    const answers = {
+      s: [
+        ['d1', 'l0', 't2', 1],
+        ['d1', 'l0', 't1', 1],
+      ],
+      k1: [
+        ['d1', 'l1', 't1', 1],
+        ['d1', 'l1', 't2', 1],
+        ['d1', 'l2', 't3', 1],
+      ],
+      k2: [
+        ['d1', 'l3', 't3', 1],
+        ['d1', 'l4', 't1', 1],
+      ],
+    };
+    client.query = async (q) => ({ results: answers[q.where[1][2]] });
+    expect(await planMerge(client, 'v1', ['k1', 'k2'], 's')).toEqual({
+      links: 4,
+      docs: 1,
+      duplicates: 2,
+    });
   });
 
   it('a re-analyze reads every field, over one shared entry list', async () => {

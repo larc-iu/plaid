@@ -26,7 +26,11 @@ const ITEMS = [
   { id: 'c1', form: 'cat' },
 ];
 
-const makeClient = ({ merged, refuse = null } = {}) => {
+// The links each entry has that this person can see, as the query's rows:
+// [document, link, word]. By default one link on dog₂, in one document.
+const LINKS = { d2: [['doc1', 'l1', 't1']] };
+
+const makeClient = ({ merged, refuse = null, links = LINKS } = {}) => {
   const client = {
     items: ITEMS,
     reads: 0,
@@ -43,8 +47,10 @@ const makeClient = ({ merged, refuse = null } = {}) => {
         };
       },
     },
-    // One link on dog₂ this person can see, in one document.
-    query: async () => ({ results: [['doc1', 'l1', 1]] }),
+    query: async (q) => {
+      const id = q.where.find((c) => c[0] === '=' && c[1] === '?v.id')[2];
+      return { results: (links[id] || []).map((row) => [...row, 1]) };
+    },
     withOperation: async (_label, fn) => fn(),
     batched: async (fn) => {
       const ops = [];
@@ -128,6 +134,39 @@ describe('Merge', () => {
     await apply(view);
     expect(feedback.notifySuccess).toHaveBeenCalledWith(
       '1 entry merged. 1 link moved to “dog 1”.',
+      'Merged',
+    );
+    await view.unmount();
+  });
+
+  it('does not count a duplicate dropped out of sight as a link moved out of sight', async () => {
+    // In a project this person cannot open, one word carries both dogs, so
+    // that dog₂ link is dropped. The one link moved is the one they see.
+    feedback.notifySuccess.mockClear();
+    const client = makeClient({ merged: { moved: 1, duplicates: 1, removed: ['d2'] } });
+    const view = await mount(client);
+    await previewDogs(view);
+    await apply(view);
+    expect(feedback.notifySuccess).toHaveBeenCalledWith(
+      '1 entry merged. 1 link moved to “dog 1”. 1 duplicate link removed.',
+      'Merged',
+    );
+    await view.unmount();
+  });
+
+  it('counts a duplicate this person can see as not moved', async () => {
+    // Seen: dog₂ on t1, where dog₁ already is, so it is dropped. Out of
+    // sight: two dog₂ links, both moved.
+    feedback.notifySuccess.mockClear();
+    const client = makeClient({
+      merged: { moved: 2, duplicates: 1, removed: ['d2'] },
+      links: { d2: [['doc1', 'l1', 't1']], d1: [['doc1', 'l0', 't1']] },
+    });
+    const view = await mount(client);
+    await previewDogs(view);
+    await apply(view);
+    expect(feedback.notifySuccess).toHaveBeenCalledWith(
+      '1 entry merged. 2 links moved to “dog 1”, 2 of them in projects you cannot open. 1 duplicate link removed.',
       'Merged',
     );
     await view.unmount();
