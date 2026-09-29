@@ -134,7 +134,12 @@
    [:delete (str "/api/v1/users/" u "/data/k")]
    [:get (str "/api/v1/users/" u "/tokens")]
    [:post (str "/api/v1/users/" u "/tokens") {:name "t"}]
-   [:delete (str "/api/v1/users/" u "/tokens/x")]])
+   [:delete (str "/api/v1/users/" u "/tokens/x")]
+   [:patch (str "/api/v1/users/" u) {:display-name "n"}]
+   [:delete (str "/api/v1/users/" u)]
+   [:post (str "/api/v1/users/" u "/activate")]
+   [:put (str "/api/v1/users/" u "/avatar")]
+   [:delete (str "/api/v1/users/" u "/avatar")]])
 
 (deftest an-unknown-user-answers-an-admin-404-and-anyone-else-403
   ;; Before, an admin got a 200 with an empty page for a user's audit, data
@@ -154,3 +159,15 @@
       (assert-status 200 (call req [method path body]))))
   (assert-status 200 (call admin-request [:get "/api/v1/users/user1@example.com/audit"]))
   (assert-status 403 (call user1-request [:get "/api/v1/users/user2@example.com/data"])))
+
+(deftest an-unknown-user-is-a-404-to-anyone-where-any-user-may-read
+  ;; A user's record and picture are readable by every logged-in user, so an
+  ;; id that names nobody is a 404 whoever asks, and says so, where the
+  ;; picture said the user had none.
+  (doseq [req [admin-request user1-request]
+          path ["/api/v1/users/nobody@example.com"
+                "/api/v1/users/nobody@example.com/avatar"]]
+    (testing path
+      (let [resp (call req [:get path])]
+        (assert-status 404 resp)
+        (is (= "User not found" (-> resp :body :error)))))))

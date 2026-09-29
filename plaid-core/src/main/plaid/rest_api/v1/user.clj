@@ -157,7 +157,9 @@
                                  (response/header "Content-Length" (str (alength ^bytes bytes)))
                                  (response/header "ETag" etag)
                                  (update :headers merge cache))))
-                         {:status 404 :body {:error "User has no profile picture"}}))}
+                         (if (user/get db id)
+                           {:status 404 :body {:error "User has no profile picture"}}
+                           {:status 404 :body {:error "User not found"}})))}
 
       :put {:summary (str "Upload a profile picture for a user. Your own, or anyone's if you are an "
                           "admin. The image is decoded, center-cropped to a square, scaled to the "
@@ -178,6 +180,11 @@
                          (cond
                            (not (self-or-admin? db request id))
                            {:status 403 :body {:error "You can only change your own profile picture"}}
+
+                           ;; Before the file: the path names the resource, so
+                           ;; an admin naming nobody gets a 404 with or without one.
+                           (nil? (user/get db id))
+                           {:status 404 :body {:error "User not found"}}
 
                            (nil? temp-file)
                            {:status 400 :body {:error "No file provided in multipart upload"}}
