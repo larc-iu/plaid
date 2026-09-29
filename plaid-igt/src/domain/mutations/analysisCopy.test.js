@@ -62,7 +62,7 @@ const targetAnalysis = {
 describe('bulkReplaceAnalyses', () => {
   beforeEach(() => resetIds());
 
-  it('strips the current analysis, resyncs, then applies the target as human work', async () => {
+  it('strips the current analysis and applies the target as human work, in one batch', async () => {
     const client = clientFor({ reloadDoc: strippedRaw() });
     const doc = docFor(analyzedRaw(), client);
 
@@ -74,10 +74,12 @@ describe('bulkReplaceAnalyses', () => {
     expect(client.calls[0]).toEqual({ kind: 'beginOperation', args: ['Re-analyze words'] });
     expect(kinds.filter((k) => k === 'beginOperation')).toHaveLength(1);
 
-    // Strip phase: the word's span, the first morpheme's link + span, the
-    // second morpheme deleted outright (its span cascades), first reset — all
-    // through the bulk endpoints, one op per kind however many words.
-    const strip = client.calls.slice(0, kinds.indexOf('batch.submit'));
+    // One batch, so the word is never left stripped and not re-analyzed.
+    expect(kinds.filter((k) => k === 'batch.submit')).toHaveLength(1);
+    // Strip: the word's span, the first morpheme's link + span, the second
+    // morpheme deleted outright (its span cascades), first reset, all through
+    // the bulk endpoints, one op per kind however many words.
+    const strip = client.calls.slice(0, 5);
     expect(strip.map((c) => c.kind)).toEqual([
       'beginOperation',
       'vocabLinks.bulkDelete',
@@ -100,10 +102,10 @@ describe('bulkReplaceAnalyses', () => {
     // g-3 (on the deleted morpheme) is NOT sent: a double delete fails the batch.
     expect(strip[2].args[0]).not.toContain('g-3');
 
-    // Apply phase (after the reload): the link, the gloss and the POS, with
-    // NO provenance stamp. Spans go one bulk create per LAYER.
-    const apply = client.calls.slice(kinds.indexOf('batch.submit') + 1);
-    const applyKinds = apply.map((c) => c.kind).filter((k) => k !== 'batch.submit');
+    // Then, in the same batch, the link, the gloss and the POS, with NO
+    // provenance stamp. Spans go one bulk create per LAYER.
+    const apply = client.calls.slice(5, kinds.indexOf('batch.submit'));
+    const applyKinds = apply.map((c) => c.kind);
     expect(applyKinds).toEqual(['vocabLinks.bulkCreate', 'spans.bulkCreate', 'spans.bulkCreate']);
     expect(apply.find((c) => c.kind === 'vocabLinks.bulkCreate').args[0]).toEqual([
       { vocabItem: 'i-kat', tokens: ['m-2'], metadata: {} },
@@ -117,6 +119,32 @@ describe('bulkReplaceAnalyses', () => {
     // and the analysis has one slot, so no morpheme is created.
     expect(applyKinds).not.toContain('tokens.bulkUpdate');
     expect(applyKinds).not.toContain('tokens.bulkCreate');
+  });
+
+  it('never leaves a word stripped and not re-analyzed: a refusal takes neither', async () => {
+    // The server takes the first `accept` batches and refuses the rest as a
+    // conflict. What it took must hold a word's strip and its new analysis
+    // together.
+    for (const accept of [0, 1]) {
+      resetIds();
+      const client = clientFor({ reloadDoc: analyzedRaw() });
+      const batched = client.batched.bind(client);
+      const taken = [];
+      let n = 0;
+      client.batched = async (fn) => {
+        const start = client.calls.length;
+        const results = await batched(fn);
+        if (n++ >= accept) throw Object.assign(new Error('HTTP 409 changed'), { status: 409 });
+        taken.push(...client.calls.slice(start).map((c) => c.kind));
+        return results;
+      };
+      const doc = docFor(analyzedRaw(), client);
+      const out = await doc.bulkReplaceAnalyses([{ wordTokenId: 'w-2', analysis: targetAnalysis }]);
+      const stripped = taken.includes('tokens.bulkDelete');
+      const reanalyzed = taken.includes('spans.bulkCreate');
+      expect(stripped).toBe(reanalyzed);
+      expect(out).toBe(accept ? 1 : false);
+    }
   });
 
   it('skips words that already carry exactly the target analysis', async () => {

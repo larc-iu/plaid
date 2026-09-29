@@ -4,7 +4,6 @@
     "plaid-igt/src/domain/affixMarkers.js",
     "plaid-igt/src/domain/analysisMemory.js",
     "plaid-igt/src/domain/autoPass.js",
-    "plaid-igt/src/domain/bulk.js",
     "plaid-igt/src/domain/fieldNames.js",
     "plaid-igt/src/domain/igtConfig.js",
     "plaid-igt/src/domain/mutations/analysisCopy.js",

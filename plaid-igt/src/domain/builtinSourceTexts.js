@@ -8,7 +8,6 @@ import s1 from './affixMarkers.js?raw';
 import s2 from './analysisMemory.js?raw';
 import s3 from './autoLink.js?raw';
 import s4 from './autoPass.js?raw';
-import s5 from './bulk.js?raw';
 import s6 from './fieldNames.js?raw';
 import s7 from './igtConfig.js?raw';
 import s9 from './mutations/analysisCopy.js?raw';
@@ -32,7 +31,6 @@ export const SOURCE_TEXTS = {
   'plaid-igt/src/domain/analysisMemory.js': s2,
   'plaid-igt/src/domain/autoLink.js': s3,
   'plaid-igt/src/domain/autoPass.js': s4,
-  'plaid-igt/src/domain/bulk.js': s5,
   'plaid-igt/src/domain/fieldNames.js': s6,
   'plaid-igt/src/domain/igtConfig.js': s7,
   'plaid-igt/src/domain/mutations/analysisCopy.js': s9,

@@ -4,13 +4,11 @@
 // vocab links + annotation spans are written for every slot — all stamped
 // { prov: 'inferred', provSource } so they render as unverified.
 //
-// Two batches, because created morphemes' ids are needed before their links
-// and spans can be written: batch 1 does all structure (morpheme patches +
-// creates) plus everything addressable now (word-level links/spans, first-slot
-// links/spans); batch 2 does links/spans for the newly created morphemes.
-// A batch-2 failure can therefore leave a word with copied segmentation but
-// missing links/glosses — _queueWrite surfaces it loudly and the word, no
-// longer unanalyzed, won't be silently re-targeted.
+// One batch per chunk of words: the morphemes a copy makes, the patches, and
+// the links and fields, the links and fields naming a morpheme made in the
+// same batch by the batch's reference to its id. A chunk lands whole or not
+// at all, so a refusal never leaves a word with its segmentation and without
+// its glosses.
 //
 // Ends with one _reload() instead of optimistic patches: a copy touches up to
 // four entity families per word, and the auto-pass that drives this runs
@@ -27,7 +25,6 @@ import {
   createdIds,
 } from '@larc-iu/plaid-client';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
-import { CHUNK } from '../bulk.js';
 import { isUnanalyzedWord, extractAnalysis, analysisSignature } from '../analysisMemory.js';
 import { isVirtualMorphemeId } from '../virtualMorpheme.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
@@ -79,6 +76,64 @@ const findVocabHome = (vocabularies, vocabItemId) => {
       return { vocabId: vocab.id, snapshot: { id: item.id, layer: vocab.id, form: item.form } };
   }
   return null;
+};
+
+// What stripping a word's analysis deletes and resets, by kind. Deleting a
+// morpheme cascades its own spans and links server-side, so only the word's
+// and the surviving first morpheme's are collected (a double delete fails the
+// batch). An unanalyzed word's morpheme is derived, with nothing stored to
+// strip and an id the server has never seen, which sent refused the batch.
+const stripOf = (token) => {
+  const strip = { links: [], spans: [], morphs: [], patches: [], renumber: [], size: 0 };
+  const collectAttached = (t) => {
+    if (t.vocabItem?.linkId) strip.links.push(t.vocabItem.linkId);
+    for (const span of Object.values(t.annotations || {})) {
+      if (span?.id) strip.spans.push(span.id);
+    }
+  };
+  collectAttached(token);
+  const morphs = [...(token.morphemes || [])].sort(
+    (a, b) => (a.precedence ?? 0) - (b.precedence ?? 0),
+  );
+  morphs.forEach((m, i) => {
+    if (i > 0) {
+      strip.morphs.push(m.id);
+      return;
+    }
+    if (isVirtualMorphemeId(m.id)) return;
+    collectAttached(m);
+    strip.patches.push({ id: m.id, metadata: RESET_MORPHEME_OPS });
+    // The apply path numbers created morphemes from 2, so the survivor must
+    // sit at 1.
+    if ((m.precedence ?? 1) !== 1) strip.renumber.push(m.id);
+  });
+  strip.size =
+    strip.links.length +
+    strip.spans.length +
+    strip.morphs.length +
+    strip.patches.length +
+    strip.renumber.length;
+  return strip;
+};
+
+// Queue `strips` on batch `b`: one bulk delete per kind and one bulk
+// metadata update, however many words. Order does not matter: what is
+// collected hangs off the word and its surviving morpheme, never off a
+// morpheme being deleted, so nothing is deleted twice.
+const queueStrip = (b, strips) => {
+  const all = (k) => strips.flatMap((w) => w[k]).map(settledId);
+  const links = all('links');
+  const spans = all('spans');
+  const morphs = all('morphs');
+  const patches = strips.flatMap((w) => w.patches).map((p) => ({ ...p, id: settledId(p.id) }));
+  if (links.length) b.vocabLinks.bulkDelete(links);
+  if (spans.length) b.spans.bulkDelete(spans);
+  if (morphs.length) b.tokens.bulkDelete(morphs);
+  if (patches.length) b.tokens.bulkUpdate(patches);
+  // Precedence is a column, not metadata, and the bulk token update carries
+  // metadata only, so the rare survivor that is not already first gets an op
+  // of its own.
+  all('renumber').forEach((id) => b.tokens.update(id, undefined, undefined, 1));
 };
 
 export const analysisCopyMutations = {
@@ -161,98 +216,45 @@ export const analysisCopyMutations = {
     }
     if (!targets.length) return 0;
 
-    return (await this._queueWrite('Failed to re-analyze words', async () => {
-      // ---- phase 1: strip. Deleting a morpheme cascades its own spans and
-      // links server-side, so only the word's and the surviving first
-      // morpheme's are collected explicitly (a double delete fails the batch).
-      // Collected by KIND, per word: a chunk goes out as one bulk delete per
-      // kind plus one bulk metadata update, so stripping a thousand words
-      // costs a handful of server dispatches rather than thousands. Grouped by
-      // word so a chunk boundary never falls inside one, which would leave
-      // that word half stripped if a later chunk failed.
-      const byWord = [];
-      for (const { token } of targets) {
-        const strip = { links: [], spans: [], morphs: [], patches: [], renumber: [], size: 0 };
-        byWord.push(strip);
-        const collectAttached = (t) => {
-          if (t.vocabItem?.linkId) strip.links.push(t.vocabItem.linkId);
-          for (const span of Object.values(t.annotations || {})) {
-            if (span?.id) strip.spans.push(span.id);
-          }
-        };
-        collectAttached(token);
-        const morphs = [...(token.morphemes || [])].sort(
-          (a, b) => (a.precedence ?? 0) - (b.precedence ?? 0),
-        );
-        morphs.forEach((m, i) => {
-          if (i > 0) {
-            strip.morphs.push(m.id);
-            return;
-          }
-          // An unanalyzed word's morpheme is derived, with nothing stored to
-          // strip and an id the server has never seen. Sent, it refused the
-          // whole batch, and the batches already sent had taken the analyses
-          // off every word before it.
-          if (isVirtualMorphemeId(m.id)) return;
-          collectAttached(m);
-          strip.patches.push({ id: m.id, metadata: RESET_MORPHEME_OPS });
-          // The apply path numbers created morphemes from 2, so the survivor
-          // must sit at 1.
-          if ((m.precedence ?? 1) !== 1) strip.renumber.push(m.id);
-        });
-        strip.size =
-          strip.links.length +
-          strip.spans.length +
-          strip.morphs.length +
-          strip.patches.length +
-          strip.renumber.length;
+    // Chunks of words, each ONE batch holding their strip and their new
+    // analysis, so a word is never left stripped and not re-analyzed. A
+    // refusal stops the run where it is: the chunks before it landed whole,
+    // and the caller re-plans the rest from a fresh read (bulkRunner.js).
+    const chunks = [];
+    let cur = [];
+    let curSize = 0;
+    for (const t of targets) {
+      const size = stripOf(t.token).size + opsForWord(t);
+      if (cur.length && curSize + size > ANALYSIS_BATCH_BUDGET) {
+        chunks.push(cur);
+        cur = [];
+        curSize = 0;
       }
-      // Order within a chunk does not matter: the spans and links collected
-      // hang off the word and its surviving morpheme, never off a morpheme
-      // being deleted, so nothing here can delete the same row twice.
-      const sendStrip = async (words) => {
-        const links = words.flatMap((w) => w.links);
-        const spans = words.flatMap((w) => w.spans);
-        const morphs = words.flatMap((w) => w.morphs);
-        const patches = words.flatMap((w) => w.patches);
-        const renumber = words.flatMap((w) => w.renumber);
-        await this._client.batched(async (b) => {
-          if (links.length) b.vocabLinks.bulkDelete(links);
-          if (spans.length) b.spans.bulkDelete(spans);
-          if (morphs.length) b.tokens.bulkDelete(morphs);
-          if (patches.length) b.tokens.bulkUpdate(patches);
-          // Precedence is a column, not metadata, and the bulk token update
-          // carries metadata only, so the rare survivor that is not already
-          // first gets an op of its own.
-          renumber.forEach((id) => b.tokens.update(id, undefined, undefined, 1));
-        });
-      };
-      let part = [];
-      let partSize = 0;
-      for (const word of [...byWord, null]) {
-        if ((word === null || partSize + word.size > CHUNK) && part.length) {
-          const words = part;
-          part = [];
-          partSize = 0;
-          await sendStrip(words);
-        }
-        // A word with nothing stored to strip (an unanalyzed one, whose only
-        // morpheme is derived) contributes no ops, and must not make an empty
-        // batch look like work.
-        if (word?.size) {
-          part.push(word);
-          partSize += word.size;
-        }
-      }
-      await this._reloadInSend();
+      cur.push(t);
+      curSize += size;
+    }
+    if (cur.length) chunks.push(cur);
 
-      // ---- phase 2: apply, exactly as a copy would (the words are now
-      // unanalyzed single-morpheme words). No provenance stamp: human work.
-      const todo = this._planAnalysisApply(
-        targets.map(({ wordTokenId, analysis }) => ({ wordTokenId, analysis })),
-      );
-      if (todo === false) throw new Error(notSetUp('Morpheme layer not configured'));
-      await this._applyAnalysesImpl(todo, this.createStamp || {});
+    return (await this._queueWrite('Failed to re-analyze words', async () => {
+      for (const chunk of chunks) {
+        // Planned on the document as it stands now, after the chunks before.
+        const strips = chunk
+          .map(({ wordTokenId }) => this.tokenLookup.get(wordTokenId))
+          .filter(Boolean)
+          .map(stripOf);
+        this._showStrip(strips);
+        // The words are now unanalyzed single-morpheme words, and take the
+        // target as a copy would. No provenance stamp: human work.
+        const todo = this._planAnalysisApply(
+          chunk.map(({ wordTokenId, analysis }) => ({ wordTokenId, analysis })),
+        );
+        if (todo === false) throw new Error(notSetUp('Morpheme layer not configured'));
+        const plan = this._planAnalysesApply(todo, this.createStamp || {});
+        this._showAnalysesApply(plan);
+        const ids = new Map();
+        await this._sendAnalysesChunk(plan.words, ids, (b) => queueStrip(b, strips));
+        this._settle(ids);
+      }
       // The occurrences that already carried this analysis are what the
       // person chose it from: they are confirmed with the rest.
       if (already.length) {
@@ -441,6 +443,40 @@ export const analysisCopyMutations = {
     });
   },
 
+  // Show `strips` (stripOf) taken off the document: what the server does
+  // with them, its cascades included.
+  _showStrip(strips) {
+    const gone = (k) => new Set(strips.flatMap((w) => w[k]));
+    const links = gone('links');
+    const spans = gone('spans');
+    const morphs = gone('morphs');
+    const reset = gone('patches').size
+      ? new Set(strips.flatMap((w) => w.patches.map((p) => p.id)))
+      : new Set();
+    const renumber = gone('renumber');
+    this._applyRawPatch((next, info, vocabs) => {
+      const hangsOff = (tokens) => (tokens || []).some((t) => morphs.has(t));
+      Object.values(vocabs || {}).forEach((v) => {
+        if (!Array.isArray(v.vocabLinks)) return;
+        v.vocabLinks = v.vocabLinks.filter((l) => !links.has(l.id) && !hangsOff(l.tokens));
+      });
+      for (const layer of [
+        ...(info.spanLayers?.word || []),
+        ...(info.spanLayers?.morpheme || []),
+      ]) {
+        if (!Array.isArray(layer.spans)) continue;
+        layer.spans = layer.spans.filter((sp) => !spans.has(sp.id) && !hangsOff(sp.tokens));
+      }
+      const layer = info.morphemeTokenLayer;
+      if (!layer || !Array.isArray(layer.tokens)) return;
+      layer.tokens = layer.tokens.filter((m) => !morphs.has(m.id));
+      layer.tokens.forEach((m) => {
+        if (reset.has(m.id)) m.metadata = applyMetadataOps(m.metadata || {}, RESET_MORPHEME_OPS);
+        if (renumber.has(m.id)) m.precedence = 1;
+      });
+    });
+  },
+
   // A large unanalyzed document can emit far more than one batch's worth of
   // ops (this runs unattended from the auto-analysis pass). Words are packed
   // into chunks under the server cap; each chunk runs its own writes
@@ -448,11 +484,7 @@ export const analysisCopyMutations = {
   // longer unanalyzed, so it won't be silently re-targeted, and it keeps a
   // too-big copy from failing forever and re-triggering the pass on reload.
   async _sendAnalysesApply({ words }) {
-    const info = this.layerInfo;
-    const morphemeLayer = info.morphemeTokenLayer;
-    const textId = info.primaryTextLayer?.text?.id;
     const ids = new Map();
-    const serverId = (id) => ids.get(id) || settledId(id);
     const chunks = [];
     let cur = [];
     let curOps = 0;
@@ -467,88 +499,95 @@ export const analysisCopyMutations = {
     }
     if (cur.length) chunks.push(cur);
 
-    // A batch is one op per KIND, not per entity: the ops below are collected
-    // across the whole chunk and sent as bulk creates, updates and deletes,
-    // so a chunk of a hundred words costs the same handful of server
-    // dispatches as a chunk of one. Spans group by layer as well, since a
-    // bulk span create takes one layer.
-    const sendLinksAndSpans = async (owners) => {
-      const links = owners.flatMap((o) => o.links);
-      const spans = owners.flatMap((o) => o.spans);
-      if (!links.length && !spans.length) return;
-      const byLayer = new Map();
-      spans.forEach((s) => {
-        if (!byLayer.has(s.layerId)) byLayer.set(s.layerId, []);
-        byLayer.get(s.layerId).push(s);
-      });
-      const out = await this._client.batched(async (b) => {
-        if (links.length) {
-          b.vocabLinks.bulkCreate(
-            links.map((l) => ({
-              vocabItem: serverId(l.snapshot.id),
-              tokens: [serverId(l.tokenId)],
-              metadata: l.metadata,
-            })),
-          );
-        }
-        for (const [layerId, specs] of byLayer) {
-          b.spans.bulkCreate(
-            specs.map((s) => ({
-              spanLayerId: layerId,
-              tokens: [serverId(s.tokenId)],
-              value: s.value,
-              metadata: s.metadata,
-            })),
-          );
-        }
-      });
-      let at = 0;
-      if (links.length) {
-        const linkIds = createdIds(out[at++]);
-        links.forEach((l, i) => ids.set(l.id, linkIds[i]));
-      }
-      for (const specs of byLayer.values()) {
-        const spanIds = createdIds(out[at++]);
-        specs.forEach((s, i) => ids.set(s.id, spanIds[i]));
-      }
-    };
-
-    for (const chunk of chunks) {
-      // The default morphemes nobody had stored: one bulk create, before
-      // anything addresses them.
-      await this._sendMorphemes(chunk.map((w) => w.create).filter(Boolean), ids);
-      // ---- batch 1: the new morphemes, the first morphemes' patches, and
-      // the links and fields of the first morphemes and the words. The
-      // morpheme create goes FIRST so its ids are always results[0].
-      const extra = chunk.flatMap((w) => w.extra);
-      const patches = chunk.filter((w) => w.patch);
-      const results = await this._client.batched(async (b) => {
-        if (extra.length) {
-          b.tokens.bulkCreate(
-            extra.map((m) => ({
-              tokenLayerId: morphemeLayer.id,
-              text: textId,
-              begin: m.begin,
-              end: m.end,
-              precedence: m.precedence,
-              metadata: m.metadata,
-            })),
-          );
-        }
-        if (patches.length) {
-          b.tokens.bulkUpdate(
-            patches.map((w) => ({ id: serverId(w.m0Id), metadata: metadataOps(w.patch) })),
-          );
-        }
-      });
-      if (extra.length) {
-        const newIds = createdIds(results[0]);
-        extra.forEach((m, i) => ids.set(m.id, newIds[i]));
-      }
-      // ---- batch 2: every link and field, now that each token has an id.
-      await sendLinksAndSpans([...chunk, ...extra]);
-    }
+    for (const chunk of chunks) await this._sendAnalysesChunk(chunk, ids);
     this._settle(ids);
+  },
+
+  // One chunk of a copy (`_planAnalysesApply`'s words) in one batch, after
+  // whatever `before(b)` queues first: the default morphemes nobody had
+  // stored, the new morphemes, the first morphemes' patches, then every link
+  // and field, which name a morpheme made here by the batch's reference to
+  // its id. A batch is one op per KIND, not per entity (spans one per layer,
+  // since a bulk span create takes one layer), so a chunk of a hundred words
+  // costs the same handful of server dispatches as a chunk of one. Records
+  // the new ids in `ids`.
+  async _sendAnalysesChunk(chunk, ids, before = null) {
+    const info = this.layerInfo;
+    const morphemeLayer = info.morphemeTokenLayer;
+    const textId = info.primaryTextLayer?.text?.id;
+    const extra = chunk.flatMap((w) => w.extra);
+    const patches = chunk.filter((w) => w.patch);
+    const owners = [...chunk, ...extra];
+    const links = owners.flatMap((o) => o.links);
+    const spans = owners.flatMap((o) => o.spans);
+    const byLayer = new Map();
+    spans.forEach((s) => {
+      if (!byLayer.has(s.layerId)) byLayer.set(s.layerId, []);
+      byLayer.get(s.layerId).push(s);
+    });
+    let first;
+    let extraAt = null;
+    let linksAt = null;
+    const spansAt = [];
+    const results = await this._client.batched(async (b) => {
+      before?.(b);
+      first = this._queueMorphemes(b, chunk.map((w) => w.create).filter(Boolean));
+      const extraRefs = new Map();
+      if (extra.length) {
+        b.tokens.bulkCreate(
+          extra.map((m) => ({
+            tokenLayerId: morphemeLayer.id,
+            text: textId,
+            begin: m.begin,
+            end: m.end,
+            precedence: m.precedence,
+            metadata: m.metadata,
+          })),
+        );
+        extraAt = b.ref().$ref;
+        extra.forEach((m, k) => extraRefs.set(m.id, b.ref(extraAt, k)));
+      }
+      const tokenRef = (id) => extraRefs.get(id) ?? first.tokenRef(id);
+      if (patches.length) {
+        b.tokens.bulkUpdate(
+          patches.map((w) => ({ id: settledId(w.m0Id), metadata: metadataOps(w.patch) })),
+        );
+      }
+      if (links.length) {
+        b.vocabLinks.bulkCreate(
+          links.map((l) => ({
+            vocabItem: settledId(l.snapshot.id),
+            tokens: [tokenRef(l.tokenId)],
+            metadata: l.metadata,
+          })),
+        );
+        linksAt = b.ref().$ref;
+      }
+      for (const [layerId, specs] of byLayer) {
+        b.spans.bulkCreate(
+          specs.map((s) => ({
+            spanLayerId: layerId,
+            tokens: [tokenRef(s.tokenId)],
+            value: s.value,
+            metadata: s.metadata,
+          })),
+        );
+        spansAt.push(b.ref().$ref);
+      }
+    });
+    first.read(results, ids);
+    if (extraAt != null) {
+      const newIds = createdIds(results[extraAt]);
+      extra.forEach((m, i) => ids.set(m.id, newIds[i]));
+    }
+    if (linksAt != null) {
+      const linkIds = createdIds(results[linksAt]);
+      links.forEach((l, i) => ids.set(l.id, linkIds[i]));
+    }
+    [...byLayer.values()].forEach((specs, j) => {
+      const spanIds = createdIds(results[spansAt[j]]);
+      specs.forEach((s, i) => ids.set(s.id, spanIds[i]));
+    });
   },
 
   // Discard every machine-unverified piece of one word's analysis at once —
