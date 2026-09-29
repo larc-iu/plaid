@@ -1506,6 +1506,7 @@ Naming a document takes read access to it, a 403 otherwise. A document that no l
 In a batch the stamp is left to the batch's other writes, such as the link the entry is made for.
 A read made on a batch—any GET, and `query`—is answered from the server there and then rather than queued, so a read may be made on the batch or on the client as you please.
 The server runs a batch as one transaction holding its single write lock for the whole of it, and no other write can proceed meanwhile, so keep a batch to the work that has to be atomic.
+A document lock is taken and released on its own, never in a batch: a rollback could not give back a lock, so the server refuses a batch that takes, renews or releases one with a 400 before running any of it.
 
 === Bulk updates
 

@@ -155,6 +155,26 @@
             body
             refs)))
 
+;; A document lock lives in memory, outside the database, so a rollback
+;; cannot take back a lock a batch took or gave up: a batch that took one and
+;; then failed would keep it with no work behind it. So the lock routes are
+;; refused inside a batch, before it runs. Reading a lock is fine.
+(def ^:private lock-path
+  #"^/api/v1/(?:documents/[^/]+/lock|admin/locks(?:/[^/]+)?)$")
+
+(defn lock-operation-refusal
+  "The 400 for a batch with an operation that takes, renews or releases a
+  document lock, or nil. Checked before the batch runs, so nothing is
+  written."
+  [operations]
+  (some (fn [[n {:keys [path method]}]]
+          (when (and (re-find lock-path (:uri (parse-path-and-query path)))
+                     (not= "get" (str/lower-case method)))
+            {:status 400
+             :body {:error (str "Operation " n " takes or releases a document lock, "
+                                "which a batch cannot do. Send it on its own.")}}))
+        (map-indexed vector operations)))
+
 (defn- merge-document-versions
   "Merge X-Document-Versions headers across a sequence of sub-responses.
    Each header is a JSON object `{doc-id integer}`; produce a single map
@@ -181,10 +201,12 @@
   [{:keys [rest-handler parameters db] :as request}]
   (let [batch-id (random-uuid)
         raw-ops (:body parameters)]
-    (if (> (count raw-ops) max-batch-ops)
-      {:status 400
-       :body {:error (str "Batch exceeds max of " max-batch-ops
-                          " operations (received " (count raw-ops) ")")}}
+    (if-let [refused (if (> (count raw-ops) max-batch-ops)
+                       {:status 400
+                        :body {:error (str "Batch exceeds max of " max-batch-ops
+                                           " operations (received " (count raw-ops) ")")}}
+                       (lock-operation-refusal raw-ops))]
+      refused
       (let [operations raw-ops
             ;; Sub-ops' audit events buffer here instead of publishing —
             ;; while the outer tx is open, an event would announce a
@@ -281,7 +303,8 @@
                          "An operation's refs, [{\"at\": [key or index, ...], \"op\": n}], put the id operation n of the batch "
                          "(counted from 0) answered with at each path of its body, where the body holds null, and "
                          "{\"at\": [...], \"op\": n, \"index\": k} the k-th of the ids a bulk create answered with, "
-                         "so a write can use what an earlier write in the same batch created. The body is never searched.")
+                         "so a write can use what an earlier write in the same batch created. The body is never searched. "
+                         "Taking, renewing or releasing a document lock is not an operation a batch can hold, and refuses the batch with a 400.")
            :parameters {:body [:sequential
                                [:map
                                 [:path string?]
