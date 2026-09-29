@@ -92,6 +92,7 @@ import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { readVocabulary } from '@/domain/vocabCache';
 import { EntryRestoreDialog } from './EntryRestoreDialog';
+import { plural } from '@/utils/plural';
 
 // A past state read with no entry list: one empty list, so the memos over it
 // keep their identity.
@@ -562,14 +563,15 @@ export const VocabularyItems = ({
   };
   const resync = () => fetchItems({ quiet: true, inTurn: true });
   // A save says nothing when it lands, the way every screen that shows an
-  // edit at once does. A refusal is toasted. `resync` stands in for the
-  // entries' refetch, for a save that needs to see what it brought back.
-  const sendInTurn = (label, write, failure, { refused, resync: reread = resync } = {}) =>
+  // edit at once does. A refusal is toasted, unless `answered(err)` says the
+  // write's own `refused` shows it. `resync` stands in for the entries'
+  // refetch, for a save that needs to see what it brought back.
+  const sendInTurn = (label, write, failure, { refused, answered, resync: reread = resync } = {}) =>
     writes.push(() => client.withOperation(label, write), {
-      refused: (err) => {
+      refused: async (err) => {
         console.error(`${label}:`, err);
-        notifyError(err, failure);
-        (refused || unseedUnlessTyped)(err);
+        if (!answered?.(err)) notifyError(err, failure);
+        await (refused || unseedUnlessTyped)(err);
       },
       resync: reread,
     });
@@ -930,12 +932,18 @@ export const VocabularyItems = ({
   // open on the new count. Null when it cannot be told (the count failed),
   // and then the delete goes unchecked, as before there was a count.
   // A refused delete leaves the number the server gave in `refusedDeleteRef`
-  // for that entry: links in projects this person cannot open are counted
-  // there and not here, so the next Delete of it, while the count here is
-  // the one refused, names the server's.
+  // for that entry, with the count read here just after the refusal: links
+  // in projects this person cannot open are counted there and not here, so
+  // the next Delete of it, while the count here is still that one, names the
+  // server's. The refusal opens the question again on the server's count
+  // (`deleteHidden`: the total, and how many of those this person cannot
+  // see), unless another entry or dialog is open by then.
   const deleteCountRef = useRef(null);
   const refusedDeleteRef = useRef(new Map());
   const [deleteLinksChanged, setDeleteLinksChanged] = useState(false);
+  const [deleteHidden, setDeleteHidden] = useState(null); // { id, total, hidden } | null
+  const dialogRef = useRef(dialog);
+  dialogRef.current = dialog;
   const countLinks = async (id) => {
     try {
       if (!(await vocabLinked())) return 0;
@@ -953,6 +961,7 @@ export const VocabularyItems = ({
     const id = selectedItem?.id;
     deleteCountRef.current = null;
     setDeleteLinksChanged(false);
+    if (deleteHidden?.id !== id) setDeleteHidden(null);
     dispatch({ type: 'dialog/open', kind: 'delete' });
     if (!id) return;
     const counting = countLinks(id).then((n) => ({ id, n }));
@@ -972,12 +981,15 @@ export const VocabularyItems = ({
     }
     const refused = refusedDeleteRef.current.get(deletedId);
     const expectedLinkCount =
-      seen == null ? undefined : refused && refused.sent === seen ? refused.server : seen;
+      seen == null ? undefined : refused && refused.seen === seen ? refused.server : seen;
     // A headword with many senses, or a root with many variants, is one
     // repoint per referring entry: the same walk the load-time repair does,
     // so the same bulk write.
     const patches = deleteRefPatches;
     const before = metadataNow(items);
+    const deletedItem = selectedItem;
+    // The count the server found, when it refused the delete for its count.
+    let serverCount = null;
     dispatch({ type: 'dialog/close' });
     goItem(null, { replace: true });
     if (patches.length) foldPatches(patches);
@@ -997,9 +1009,7 @@ export const VocabularyItems = ({
           if (statusOf(err) === 409 && expectedLinkCount != null) {
             // The refusal's body carries the count the server found.
             const server = err?.responseData?.links;
-            if (Number.isInteger(server)) {
-              refusedDeleteRef.current.set(deletedId, { sent: expectedLinkCount, server });
-            }
+            if (Number.isInteger(server)) serverCount = server;
           }
           throw err;
         } finally {
@@ -1008,6 +1018,39 @@ export const VocabularyItems = ({
         }
       },
       'Failed to delete the entry',
+      {
+        answered: () => serverCount != null,
+        refused: async () => {
+          unseedUnlessTyped();
+          if (serverCount == null) return;
+          const now = await countLinks(deletedId);
+          const visible = now ?? expectedLinkCount;
+          refusedDeleteRef.current.set(deletedId, { seen: visible, server: serverCount });
+          const hidden = Math.max(0, serverCount - visible);
+          const linked = `It is linked to ${plural(serverCount, 'word/morpheme', 'words/morphemes')}${
+            hidden ? `, ${hidden} of them in projects you cannot open` : ''
+          }.`;
+          // Someone moved on meanwhile (another entry or dialog open): the
+          // count is said, not asked again. A refusal can come back before
+          // the delete's own close and navigation have rendered.
+          const openId = selectedIdRef.current && settledId(selectedIdRef.current);
+          const movedOn =
+            (openId && openId !== deletedId) ||
+            (dialogRef.current && dialogRef.current.kind !== 'delete');
+          if (movedOn) {
+            notifyError(linked, 'Entry not deleted');
+            return;
+          }
+          setItems((prev) =>
+            prev.some((i) => i.id === deletedId) ? prev : [...prev, deletedItem],
+          );
+          deleteCountRef.current = Promise.resolve({ id: deletedId, n: now });
+          setDeleteLinksChanged(visible !== expectedLinkCount);
+          setDeleteHidden({ id: deletedId, total: serverCount, hidden });
+          goItem(deletedId, { replace: true });
+          dispatch({ type: 'dialog/open', kind: 'delete' });
+        },
+      },
     );
   };
 
@@ -1474,6 +1517,7 @@ export const VocabularyItems = ({
         deleteRefPatches={deleteRefPatches}
         deleteFreesSenses={deleteFreesSenses}
         deleteLinksChanged={deleteLinksChanged}
+        deleteHidden={deleteHidden?.id === selectedItem?.id ? deleteHidden : null}
         onConfirmDelete={handleConfirmDelete}
       />
     </div>

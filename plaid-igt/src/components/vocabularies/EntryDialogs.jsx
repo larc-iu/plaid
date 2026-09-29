@@ -21,10 +21,14 @@ export const EntryDialogs = ({
   // The entry's links changed while the dialog was open. Delete then keeps
   // it open, on the new count.
   deleteLinksChanged = false,
+  // The count the server gave when it refused the delete for its count:
+  // { total, hidden }, `hidden` the links in projects this person cannot
+  // open. Null until then, when the count is the one this screen reads.
+  deleteHidden = null,
   onConfirmDelete,
 }) => {
   const close = () => dispatch({ type: 'dialog/close' });
-  const uses = usageCounts?.[selectedItem?.id] ?? 0;
+  const uses = deleteHidden ? deleteHidden.total : (usageCounts?.[selectedItem?.id] ?? 0);
   return (
     <>
       <AlertDialog
@@ -52,12 +56,15 @@ export const EntryDialogs = ({
                   <strong>"{selectedItem?.form}"</strong>.
                 </p>
                 <p className="mt-1 text-muted-foreground">
-                  {usageCounts && uses > 0 ? (
+                  {(usageCounts || deleteHidden) && uses > 0 ? (
                     <>
                       It is linked to{' '}
                       <strong>
                         {uses} word{uses === 1 ? '' : 's'}/morpheme{uses === 1 ? '' : 's'}
                       </strong>
+                      {deleteHidden?.hidden
+                        ? `, ${deleteHidden.hidden} of them in projects you cannot open`
+                        : ''}
                       . Those links will be removed.{' '}
                     </>
                   ) : null}
