@@ -164,7 +164,7 @@ export const tokenMutations = {
     const info = this.layerInfo;
     const target = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
     if (!target) {
-      this.setError(`Token ${tokenId} not found`);
+      this.setError('Word not found');
       return false;
     }
     const label = 'Failed to delete token';

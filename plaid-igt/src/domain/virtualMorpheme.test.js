@@ -142,6 +142,32 @@ describe('writing to a virtual morpheme', () => {
     expect(forms).toEqual(['th', 'e']);
     expect(doc.sentences[0].tokens[0].morphemes.every((m) => !m.virtual)).toBe(true);
   });
+
+  it('splitMorpheme makes both pieces in one batch, so a refusal leaves neither', async () => {
+    const client = makeFakeClient();
+    const doc = makeDoc(buildRawDoc({ morphemes: [] }), client);
+
+    expect(await doc.splitMorpheme(morphOf(doc).id, 'th', 'e')).toBe(true);
+    // Every create went into the one batch, the morpheme being split first.
+    const creates = callsOf(client, 'tokens.create');
+    expect(creates.map((c) => c.args[5]?.form)).toEqual(['th', 'e']);
+    expect(callsOf(client, 'batch.submit')).toHaveLength(1);
+    const order = client.calls.map((c) => c.kind);
+    expect(order.lastIndexOf('tokens.create')).toBeLessThan(order.indexOf('batch.submit'));
+    // Both pieces carry the server's ids, so a later write names them.
+    const ids = doc.sentences[0].tokens[0].morphemes.map((m) => m.id);
+    expect(ids.every((id) => id.startsWith('tok'))).toBe(true);
+
+    // Refused: nothing was made on its own ahead of the batch.
+    const refusing = makeFakeClient();
+    refusing.batched = async () => {
+      throw Object.assign(new Error('HTTP 403 refused'), { status: 403 });
+    };
+    const doc2 = makeDoc(buildRawDoc({ morphemes: [] }), refusing);
+    expect(await doc2.splitMorpheme(morphOf(doc2).id, 'th', 'e')).toBe(false);
+    expect(callsOf(refusing, 'tokens.create')).toHaveLength(0);
+    expect(callsOf(refusing, 'tokens.bulkCreate')).toHaveLength(0);
+  });
 });
 
 describe('a gesture with nothing to act on', () => {

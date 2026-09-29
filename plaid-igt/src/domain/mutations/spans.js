@@ -118,7 +118,7 @@ const makeSpanUpdater = (scope) =>
       creates,
     } = this._planMorphemes([targetId]);
     if (!id) {
-      this.setError(`Morpheme ${targetId} not found`);
+      this.setError('Morpheme not found');
       return false;
     }
     const plan = planSpan(this, layer, id, value, metadata);

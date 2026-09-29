@@ -567,7 +567,7 @@ export const analysisCopyMutations = {
   async discardWordAnalysis(wordTokenId) {
     const token = this.tokenLookup.get(wordTokenId);
     if (!token) {
-      this.setError(`Word ${wordTokenId} not found`);
+      this.setError('Word not found');
       return false;
     }
     const linkIds = [];
@@ -779,7 +779,7 @@ export const analysisCopyMutations = {
   async confirmWordAnalysis(wordTokenId, adoptions = []) {
     const token = this.tokenLookup.get(wordTokenId);
     if (!token) {
-      this.setError(`Word ${wordTokenId} not found`);
+      this.setError('Word not found');
       return false;
     }
     // One writer, one stamp: what it merges does not depend on the entity.

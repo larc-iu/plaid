@@ -108,7 +108,7 @@ export const morphemeMutations = {
     }
     const word = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === wordTokenId);
     if (!word) {
-      this.setError(`Word ${wordTokenId} not found`);
+      this.setError('Word not found');
       return false;
     }
     const label = forms.length === 1 ? 'Failed to create morpheme' : 'Failed to create morphemes';
@@ -176,7 +176,7 @@ export const morphemeMutations = {
     }
     const resolved = resolveMorpheme(this, morphemeId);
     if (!resolved) {
-      this.setError(`Morpheme ${morphemeId} not found`);
+      this.setError('Morpheme not found');
       return false;
     }
     const label = 'Failed to split morpheme';
@@ -251,15 +251,24 @@ export const morphemeMutations = {
       rest.forEach((r) => layer.tokens.push({ ...r, text: textId }));
     });
 
+    // One batch, so the split lands whole or not at all. For a word nobody had
+    // analyzed, the morpheme being split is made in it too: nothing else in
+    // the batch points at it.
     return this._queueWrite(label, async () => {
       const ids = new Map();
-      if (resolved.virtual) {
-        await this._sendMorphemes([{ ...target, metadata: firstMeta }], ids);
-      }
       const results = await this._client.batched(async (b) => {
-        // patch, not set: form edits must not clobber other metadata keys
-        // (morphType from the FLEx import, in particular)
-        if (!resolved.virtual) {
+        if (resolved.virtual) {
+          b.tokens.create(
+            morphemeLayer.id,
+            textId,
+            target.begin,
+            target.end,
+            target.precedence,
+            Object.keys(firstMeta || {}).length ? firstMeta : undefined,
+          );
+        } else {
+          // patch, not set: form edits must not clobber other metadata keys
+          // (morphType from the FLEx import, in particular)
           b.tokens.patchMetadata(settledId(target.id), metadataOps(firstMeta));
         }
         shifted.forEach((m) => {
@@ -274,8 +283,9 @@ export const morphemeMutations = {
           b.tokens.create(morphemeLayer.id, textId, r.begin, r.end, r.precedence, r.metadata);
         });
       });
-      // The target's patch (a real one only), the shifts, then the creates.
-      const offset = (resolved.virtual ? 0 : 1) + shifted.length;
+      // The target's patch or create, the shifts, then the creates.
+      if (resolved.virtual) ids.set(target.id, createdId(results[0]));
+      const offset = 1 + shifted.length;
       rest.forEach((r, i) => ids.set(r.id, createdId(results[offset + i])));
       this._settle(ids);
     });
@@ -292,7 +302,7 @@ export const morphemeMutations = {
     if (isVirtualMorphemeId(morphemeId)) return false;
     const target = (morphemeLayer?.tokens || []).find((m) => m.id === morphemeId);
     if (!target) {
-      this.setError(`Morpheme ${morphemeId} not found`);
+      this.setError('Morpheme not found');
       return false;
     }
     const siblings = sortByPrecedence(morphemesInWord(morphemeLayer.tokens, target));
@@ -360,7 +370,7 @@ export const morphemeMutations = {
     }
     const target = (morphemeLayer?.tokens || []).find((m) => m.id === morphemeId);
     if (!target) {
-      this.setError(`Morpheme ${morphemeId} not found`);
+      this.setError('Morpheme not found');
       return false;
     }
     const siblings = sortByPrecedence(morphemesInWord(morphemeLayer.tokens, target));
@@ -410,7 +420,7 @@ export const morphemeMutations = {
   async updateMorphemeForm(morphemeId, form) {
     const resolved = resolveMorpheme(this, morphemeId);
     if (!resolved) {
-      this.setError(`Morpheme ${morphemeId} not found`);
+      this.setError('Morpheme not found');
       return false;
     }
     return this._writeMorphemeMeta(resolved, 'Failed to update morpheme form', (target) => ({
@@ -430,7 +440,7 @@ export const morphemeMutations = {
     }
     const resolved = resolveMorpheme(this, morphemeId);
     if (!resolved) {
-      this.setError(`Morpheme ${morphemeId} not found`);
+      this.setError('Morpheme not found');
       return false;
     }
     // Clearing the type of a morpheme that has none asks for nothing, so it

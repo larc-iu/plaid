@@ -223,7 +223,7 @@ export const vocabMutations = {
       vocabItemId,
     );
     if (!targetVocab || !vocabItem) {
-      this.setError(`Vocab item ${vocabItemId} not found`);
+      this.setError('Entry not found');
       return false;
     }
     const label = 'Failed to link the entry';
@@ -235,7 +235,7 @@ export const vocabMutations = {
       creates,
     } = this._planMorphemes([tokenId]);
     if (!targetTokenId) {
-      this.setError(`Token ${tokenId} not found`);
+      this.setError('Word or morpheme not found');
       return false;
     }
     const targetVocabId = targetVocab.id;
@@ -317,7 +317,7 @@ export const vocabMutations = {
       vocabItemId,
     );
     if (!targetVocab || !vocabItem) {
-      this.setError(`Vocab item ${vocabItemId} not found`);
+      this.setError('Entry not found');
       return false;
     }
     const label = 'Failed to link entries';
@@ -450,7 +450,7 @@ export const vocabMutations = {
     }
     const vocab = this._vocabularies[vocabId];
     if (!vocab) {
-      this.setError(`Vocabulary ${vocabId} not found`);
+      this.setError('Vocabulary not found');
       return false;
     }
     const label = 'Failed to set entry type';
@@ -527,7 +527,7 @@ export const vocabMutations = {
   async linkMwe(tokenIds, vocabItemId, metadata = null) {
     const { vocab, item } = findVocabForItem(this._vocabularies, vocabItemId);
     if (!vocab || !item) {
-      this.setError(`Vocab item ${vocabItemId} not found`);
+      this.setError('Entry not found');
       return false;
     }
     const tokens = this._mweMembers(tokenIds);
@@ -568,7 +568,7 @@ export const vocabMutations = {
   // link links the entry the first try made (leftoverEntries.js).
   async createAndLinkMwe(tokenIds, vocabId, form, metadata = {}, replaceLinkId = null) {
     if (!this._vocabularies[vocabId]) {
-      this.setError(`Vocabulary ${vocabId} not found`);
+      this.setError('Vocabulary not found');
       return false;
     }
     const tokens = this._mweMembers(tokenIds);
@@ -639,7 +639,7 @@ export const vocabMutations = {
     if (!prior) return false;
     const { vocab, item } = findVocabForItem(this._vocabularies, vocabItemId);
     if (!vocab || !item) {
-      this.setError(`Vocab item ${vocabItemId} not found`);
+      this.setError('Entry not found');
       return false;
     }
     const label = 'Failed to change multi-word expression';
@@ -793,7 +793,7 @@ export const vocabMutations = {
 
   async createAndLinkVocabItem(tokenId, vocabId, form, metadata = {}, { alsoLink = [] } = {}) {
     if (!this._vocabularies[vocabId]) {
-      this.setError(`Vocabulary ${vocabId} not found`);
+      this.setError('Vocabulary not found');
       return false;
     }
     const label = 'Failed to create and link the entry';
@@ -805,7 +805,7 @@ export const vocabMutations = {
       creates,
     } = this._planMorphemes([tokenId]);
     if (!targetTokenId) {
-      this.setError(`Token ${tokenId} not found`);
+      this.setError('Word or morpheme not found');
       return false;
     }
     const { link: priorLink, vocabId: priorVocabId } = findPriorLink(
