@@ -733,7 +733,7 @@ export class IgtDocument extends DocumentModel {
     const info = this.layerInfo;
     const token = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
     if (!token) {
-      this.setError(`Token ${tokenId} not found`);
+      this.setError('Word not found');
       return false;
     }
     const label = `Failed to update ${orthographyName}`;
@@ -758,7 +758,7 @@ export class IgtDocument extends DocumentModel {
     const info = this.layerInfo;
     const token = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
     if (!token) {
-      this.setError(`Token ${tokenId} not found`);
+      this.setError('Word not found');
       return false;
     }
     const label = 'Failed to split token';
