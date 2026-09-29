@@ -223,7 +223,7 @@ class VocabLayersResource(_Resource):
 
     def audit(self, id: str, *, start_time: str | None = None,
               end_time: str | None = None,
-              op_types=None, item_id: str | None = None) -> Any:
+              op_types=None, item_id: str | None = None, kinds=None) -> Any:
         """Get the audit log of a vocabulary.
 
         Every change to the vocabulary or to its entries, folded into entries
@@ -240,15 +240,18 @@ class VocabLayersResource(_Resource):
                 ``['vocab-item/delete', 'vocab-item/restore']``)
             item_id: Only the changes that wrote this one entry, each with
                 only its operations that did
+            kinds: Only the entries of operations of these kinds, as a list or
+                comma-separated string (e.g. ``['review']``), each whole
         """
         return list_all(self._client, f'/api/v1/vocab-layers/{id}/audit',
                         query={'start-time': start_time, 'end-time': end_time,
                                'op-types': _op_types_param(op_types),
+                               'kinds': _op_types_param(kinds),
                                'item-id': item_id})
 
     def audit_page(self, id: str, *, start_time: str | None = None,
                    end_time: str | None = None,
-                   op_types: Any = None, order: str | None = None,
+                   op_types: Any = None, kinds: Any = None, order: str | None = None,
                    limit: int | None = None, cursor: str | None = None,
                    item_id: str | None = None) -> Any:
         """One page of the same log, newest-first with ``order='desc'``.
@@ -266,6 +269,7 @@ class VocabLayersResource(_Resource):
         return list_page(self._client, f'/api/v1/vocab-layers/{id}/audit', limit=limit, cursor=cursor,
                          query={'start-time': start_time, 'end-time': end_time,
                                 'op-types': _op_types_param(op_types),
+                                'kinds': _op_types_param(kinds),
                                 'order': order, 'item-id': item_id})
 
     def restore_item(self, id: str, item_id: str, as_of: str, *, dry_run: bool = False,
@@ -937,7 +941,7 @@ class UsersResource(_Resource):
 
     def audit(self, user_id: str, *, start_time: str | None = None,
               end_time: str | None = None,
-              op_types=None) -> Any:
+              op_types=None, kinds=None) -> Any:
         """Get audit log for a user's actions.
 
         Transparently follows server-side pagination cursors and returns the
@@ -952,14 +956,17 @@ class UsersResource(_Resource):
                 ``['span-layer/create', 'span-layer/delete']``). An entry
                 appears when one of its operations matches, carrying only the
                 ones that did.
+            kinds: Only the entries of operations of these kinds, as a list or
+                comma-separated string (e.g. ``['review']``), each whole
         """
         return list_all(self._client, f'/api/v1/users/{user_id}/audit',
                         query={'start-time': start_time, 'end-time': end_time,
-                               'op-types': _op_types_param(op_types)})
+                               'op-types': _op_types_param(op_types),
+                               'kinds': _op_types_param(kinds)})
 
     def audit_page(self, user_id: str, *, start_time: str | None = None,
                    end_time: str | None = None,
-                   op_types: Any = None, order: str | None = None,
+                   op_types: Any = None, kinds: Any = None, order: str | None = None,
                    limit: int | None = None, cursor: str | None = None) -> Any:
         """One page of the same log, newest-first with ``order='desc'``.
 
@@ -975,6 +982,7 @@ class UsersResource(_Resource):
         return list_page(self._client, f'/api/v1/users/{user_id}/audit', limit=limit, cursor=cursor,
                          query={'start-time': start_time, 'end-time': end_time,
                                 'op-types': _op_types_param(op_types),
+                                'kinds': _op_types_param(kinds),
                                 'order': order})
 
     def get_avatar(self, id: str) -> bytes:
@@ -1966,7 +1974,7 @@ class DocumentsResource(_Resource):
 
     def audit(self, document_id: str, *, start_time: str | None = None,
               end_time: str | None = None,
-              op_types=None) -> Any:
+              op_types=None, kinds=None) -> Any:
         """Get audit log for a document.
 
         Transparently follows server-side pagination cursors and returns the
@@ -1981,14 +1989,17 @@ class DocumentsResource(_Resource):
                 ``['span-layer/create', 'span-layer/delete']``). An entry
                 appears when one of its operations matches, carrying only the
                 ones that did.
+            kinds: Only the entries of operations of these kinds, as a list or
+                comma-separated string (e.g. ``['review']``), each whole
         """
         return list_all(self._client, f'/api/v1/documents/{document_id}/audit',
                         query={'start-time': start_time, 'end-time': end_time,
-                               'op-types': _op_types_param(op_types)})
+                               'op-types': _op_types_param(op_types),
+                               'kinds': _op_types_param(kinds)})
 
     def audit_page(self, document_id: str, *, start_time: str | None = None,
                    end_time: str | None = None,
-                   op_types: Any = None, order: str | None = None,
+                   op_types: Any = None, kinds: Any = None, order: str | None = None,
                    limit: int | None = None, cursor: str | None = None) -> Any:
         """One page of the same log, newest-first with ``order='desc'``.
 
@@ -2004,6 +2015,7 @@ class DocumentsResource(_Resource):
         return list_page(self._client, f'/api/v1/documents/{document_id}/audit', limit=limit, cursor=cursor,
                          query={'start-time': start_time, 'end-time': end_time,
                                 'op-types': _op_types_param(op_types),
+                                'kinds': _op_types_param(kinds),
                                 'order': order})
 
     def restore(self, document_id: str, as_of: str, *, dry_run: bool = False,
@@ -2421,7 +2433,7 @@ class ProjectsResource(_Resource):
 
     def audit(self, project_id: str, *, start_time: str | None = None,
               end_time: str | None = None,
-              op_types=None) -> Any:
+              op_types=None, kinds=None) -> Any:
         """Get audit log for a project.
 
         Transparently follows server-side pagination cursors and returns the
@@ -2436,14 +2448,17 @@ class ProjectsResource(_Resource):
                 ``['span-layer/create', 'span-layer/delete']``). An entry
                 appears when one of its operations matches, carrying only the
                 ones that did.
+            kinds: Only the entries of operations of these kinds, as a list or
+                comma-separated string (e.g. ``['review']``), each whole
         """
         return list_all(self._client, f'/api/v1/projects/{project_id}/audit',
                         query={'start-time': start_time, 'end-time': end_time,
-                               'op-types': _op_types_param(op_types)})
+                               'op-types': _op_types_param(op_types),
+                               'kinds': _op_types_param(kinds)})
 
     def audit_page(self, project_id: str, *, start_time: str | None = None,
                    end_time: str | None = None,
-                   op_types: Any = None, order: str | None = None,
+                   op_types: Any = None, kinds: Any = None, order: str | None = None,
                    limit: int | None = None, cursor: str | None = None) -> Any:
         """One page of the same log, newest-first with ``order='desc'``.
 
@@ -2459,6 +2474,7 @@ class ProjectsResource(_Resource):
         return list_page(self._client, f'/api/v1/projects/{project_id}/audit', limit=limit, cursor=cursor,
                          query={'start-time': start_time, 'end-time': end_time,
                                 'op-types': _op_types_param(op_types),
+                                'kinds': _op_types_param(kinds),
                                 'order': order})
 
     def my_last_edits(self, project_id: str) -> Any:
@@ -3158,7 +3174,7 @@ class AuditResource(_Resource):
     """
 
     def list(self, *, start_time: str | None = None, end_time: str | None = None,
-             op_types: Any = None) -> Any:
+             op_types: Any = None, kinds: Any = None) -> Any:
         """The audit log across every project, oldest first. Admin only.
 
         Same fold, window and op-type filter as the per-project read, with the
@@ -3171,13 +3187,16 @@ class AuditResource(_Resource):
             op_types: Only these op types, as a list or comma-separated string
                 (e.g. ``['span-layer/create']``). An entry appears when one of
                 its operations matches, carrying only the ones that did.
+            kinds: Only the entries of operations of these kinds, as a list or
+                comma-separated string (e.g. ``['review']``), each whole
         """
         return list_all(self._client, '/api/v1/audit',
                         query={'start-time': start_time, 'end-time': end_time,
-                               'op-types': _op_types_param(op_types)})
+                               'op-types': _op_types_param(op_types),
+                               'kinds': _op_types_param(kinds)})
 
     def list_page(self, *, start_time: str | None = None, end_time: str | None = None,
-                  op_types: Any = None, order: str | None = None,
+                  op_types: Any = None, kinds: Any = None, order: str | None = None,
                   limit: int | None = None, cursor: str | None = None) -> Any:
         """One page of the instance-wide audit log. Admin only.
 
@@ -3190,16 +3209,18 @@ class AuditResource(_Resource):
         return list_page(self._client, '/api/v1/audit', limit=limit, cursor=cursor,
                          query={'start-time': start_time, 'end-time': end_time,
                                 'op-types': _op_types_param(op_types),
+                                'kinds': _op_types_param(kinds),
                                 'order': order})
 
     def iter_pages(self, *, start_time: str | None = None, end_time: str | None = None,
-                   op_types: Any = None, page_size: int = 1000):
+                   op_types: Any = None, kinds: Any = None, page_size: int = 1000):
         """Iterate the instance-wide audit log page by page. Admin only.
 
         """
         return iter_pages(self._client, '/api/v1/audit', page_size=page_size,
                           query={'start-time': start_time, 'end-time': end_time,
-                                 'op-types': _op_types_param(op_types)})
+                                 'op-types': _op_types_param(op_types),
+                                 'kinds': _op_types_param(kinds)})
 
     def tally(self, *, project_id: str | None = None, start_time: str | None = None,
               end_time: str | None = None, daily: bool | None = None) -> Any:
@@ -3514,8 +3535,8 @@ class PlaidClient:
 
         ``kind`` says what kind of operation this is, for a program reading
         the log: one of ``assistant-plan``, ``service-run``, ``import``,
-        ``bulk-edit``, ``guess-adoption`` or ``repair`` (the server refuses any
-        other). ``ref`` is a short string naming what the operation came from,
+        ``bulk-edit``, ``guess-adoption``, ``repair`` or ``review`` (the server
+        refuses any other). ``ref`` is a short string naming what the operation came from,
         in the shape its kind documents (the core manual, "Kinds of
         operation"). Both are recorded from the first write like the label,
         and a nested operation keeps the outer one's.

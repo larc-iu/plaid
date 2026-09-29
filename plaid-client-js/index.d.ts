@@ -184,6 +184,7 @@ interface VocabLayersBundle {
     endTime?: string,
     opTypes?: string[] | string,
     itemId?: string,
+    kinds?: OperationKind[] | string,
   ): Promise<any[]>;
   auditPage(id: string, opts?: AuditPageOptions & { itemId?: string }): Promise<Page>;
   /** Put one entry back as it was at `asOf`. Maintainers of the vocabulary only. */
@@ -349,6 +350,7 @@ interface UsersBundle {
     startTime?: string,
     endTime?: string,
     opTypes?: string[] | string,
+    kinds?: OperationKind[] | string,
   ): Promise<any[]>;
   auditPage(userId: string, opts?: AuditPageOptions): Promise<Page>;
   get(id: string): Promise<any>;
@@ -866,6 +868,8 @@ interface AuditPageOptions {
   startTime?: string;
   endTime?: string;
   opTypes?: string[] | string;
+  /** Only the entries of operations of these kinds, each whole. */
+  kinds?: OperationKind[] | string;
   /** "desc" pages newest-first; a cursor belongs to the direction that made it. */
   order?: "asc" | "desc";
   limit?: number;
@@ -890,6 +894,7 @@ interface AuditBundle {
     startTime?: string;
     endTime?: string;
     opTypes?: string[] | string;
+    kinds?: OperationKind[] | string;
   }): Promise<any[]>;
   /** Admin only. */
   listPage(opts?: AuditPageOptions): Promise<Page>;
@@ -898,6 +903,7 @@ interface AuditBundle {
     startTime?: string;
     endTime?: string;
     opTypes?: string[] | string;
+    kinds?: OperationKind[] | string;
     pageSize?: number;
   }): AsyncGenerator<any[]>;
   /** With projectId, open to that project's maintainers; without one, admin only. */
@@ -1038,6 +1044,7 @@ interface DocumentsBundle {
     startTime?: string,
     endTime?: string,
     opTypes?: string[] | string,
+    kinds?: OperationKind[] | string,
   ): Promise<any[]>;
   auditPage(documentId: string, opts?: AuditPageOptions): Promise<Page>;
   /**
@@ -1176,6 +1183,7 @@ interface ProjectsBundle {
     startTime?: string,
     endTime?: string,
     opTypes?: string[] | string,
+    kinds?: OperationKind[] | string,
   ): Promise<any[]>;
   auditPage(projectId: string, opts?: AuditPageOptions): Promise<Page>;
   /**
@@ -1357,7 +1365,8 @@ export type OperationKind =
   | 'import'
   | 'bulk-edit'
   | 'guess-adoption'
-  | 'repair';
+  | 'repair'
+  | 'review';
 
 export interface OperationGroupsBundle {
   get(id: string): Promise<any>;

@@ -24,8 +24,10 @@
     import          a file or archive read into a project
     bulk-edit       one change made across many places at once
     guess-adoption  a person taking a suggested value as their own
-    repair          a repair an app makes by itself when a document opens"
-  #{"assistant-plan" "service-run" "import" "bulk-edit" "guess-adoption" "repair"})
+    repair          a repair an app makes by itself when a document opens
+    review          a person accepting machine or contributed work already
+                    stored, as it stands"
+  #{"assistant-plan" "service-run" "import" "bulk-edit" "guess-adoption" "repair" "review"})
 
 (def ref-max-length
   "The longest `?group-ref=` accepted. A ref is a key a reader joins on, so

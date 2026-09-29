@@ -359,7 +359,7 @@
                               :path (str "/api/v1/documents/" document-id "/lock?lock-id=" lock-id)})))
 
 ;; Audit helpers
-(defn- audit-query-string [{:keys [start-time end-time limit cursor op-types order]}]
+(defn- audit-query-string [{:keys [start-time end-time limit cursor op-types kinds order]}]
   (let [params (cond-> []
                  start-time (conj (str "start-time=" start-time))
                  end-time   (conj (str "end-time=" end-time))
@@ -371,6 +371,12 @@
                                         (if (string? op-types)
                                           op-types
                                           (clojure.string/join "," op-types))
+                                        "UTF-8")))
+                 kinds      (conj (str "kinds="
+                                       (java.net.URLEncoder/encode
+                                        (if (string? kinds)
+                                          kinds
+                                          (clojure.string/join "," kinds))
                                         "UTF-8"))))]
     (when (seq params) (str "?" (clojure.string/join "&" params)))))
 

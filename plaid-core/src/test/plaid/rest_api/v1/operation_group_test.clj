@@ -372,7 +372,7 @@
 
 (deftest every-documented-kind-is-accepted
   (let [{:keys [span]} (setup-span admin-request "GrpKinds")]
-    (doseq [kind ["assistant-plan" "service-run" "import" "bulk-edit" "guess-adoption" "repair"]]
+    (doseq [kind ["assistant-plan" "service-run" "import" "bulk-edit" "guess-adoption" "repair" "review"]]
       (let [gid (random-uuid)]
         (assert-ok (patch-meta admin-request span (kind-query gid nil kind nil)
                                [{:op "set" :path [kind] :value 1}]))
@@ -398,3 +398,64 @@
       (assert-status 400 (patch-meta admin-request span "group-kind=import" [{:op "set" :path ["a"] :value 1}]))
       (assert-status 400 (patch-meta admin-request span "group-ref=x" [{:op "set" :path ["a"] :value 1}])))
     (is (empty? (ops-of-type "span/patch-metadata")) "no refused write did anything")))
+
+;; ---------------------------------------------------------------------------
+;; ?kinds= on the audit reads
+;; ---------------------------------------------------------------------------
+
+(deftest kinds-filter-keeps-only-operations-of-those-kinds
+  (let [{:keys [proj span doc]} (setup-span admin-request "GrpKindsFilter")
+        review (random-uuid)
+        review2 (random-uuid)
+        imported (random-uuid)
+        plain (random-uuid)
+        write! (fn [q k] (assert-ok (patch-meta admin-request span q [{:op "set" :path [k] :value 1}])))]
+    (write! (kind-query review "Accept word" "review" nil) "r1")
+    (write! (kind-query review nil "review" nil) "r2")
+    (write! (kind-query imported "Import" "import" "format:elan") "i1")
+    (write! (group-query plain "Plain") "p1")
+    (write! nil "s1")
+    (write! (kind-query review2 "Accept sentence" "review" nil) "r3")
+    (let [ids (fn [entries] (set (map :audit/id entries)))
+          reads (fn [query]
+                  [["document" (doc-audit-entries admin-request doc query)]
+                   ["project" (let [r (get-project-audit admin-request proj query)] (assert-ok r) (:entries (:body r)))]
+                   ["user" (let [r (get-user-audit admin-request "admin@example.com" query)] (assert-ok r) (:entries (:body r)))]
+                   ["server" (let [r (get-audit admin-request query)] (assert-ok r) (:entries (:body r)))]])]
+      (testing "one kind: only its operations, each with all its members"
+        (doseq [[what entries] (reads {:kinds ["review"]})]
+          (is (= #{review review2} (ids entries)) what)
+          (is (= 2 (count (:audit/ops (entry-for entries review)))) what)
+          (is (every? #(= "review" (:audit/kind %)) entries) what)))
+      (testing "several kinds, in the comma-separated form"
+        (doseq [[what entries] (reads {:kinds "review,import"})]
+          (is (= #{review review2 imported} (ids entries)) what)))
+      (testing "with no kinds, everything, untagged operations and lone writes included"
+        (let [all (doc-audit-entries admin-request doc {})]
+          (is (contains? (ids all) plain))
+          (is (<= 6 (count all)))))
+      (testing "an empty value is no filter"
+        (is (= (ids (doc-audit-entries admin-request doc {}))
+               (ids (doc-audit-entries admin-request doc {:kinds ""})))))
+      (testing "combined with the op-type filter and the time window"
+        (is (= #{review review2}
+               (ids (doc-audit-entries admin-request doc {:kinds ["review"] :op-types ["span/patch-metadata"]}))))
+        (is (empty? (doc-audit-entries admin-request doc {:kinds ["review"] :op-types ["span/delete"]}))))
+      (testing "paging a filtered read a unit at a time finds the same units"
+        (let [walk (loop [cursor nil acc [] guard 0]
+                     (let [r (get-document-audit admin-request doc (cond-> {:limit 1 :kinds ["review"] :order :desc}
+                                                                     cursor (assoc :cursor cursor)))
+                           _ (assert-ok r)
+                           {:keys [entries next-cursor]} (:body r)
+                           acc (into acc entries)]
+                       (if (and next-cursor (< guard 10)) (recur next-cursor acc (inc guard)) acc)))]
+          (is (= [review2 review] (map :audit/id walk))))))))
+
+(deftest kinds-filter-refuses-a-kind-outside-the-vocabulary
+  (let [{:keys [proj doc]} (setup-span admin-request "GrpKindsBad")]
+    (doseq [r [(get-document-audit admin-request doc {:kinds ["review" "assistant_plan"]})
+               (get-project-audit admin-request proj {:kinds "Review"})
+               (get-audit admin-request {:kinds ["nope"]})]]
+      (is (= 400 (:status r)))
+      (is (re-find #"kind" (-> r :body :error)))
+      (is (re-find #"assistant-plan" (-> r :body :error)) "the error names the vocabulary"))))

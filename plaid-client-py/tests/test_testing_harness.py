@@ -729,6 +729,24 @@ def test_an_op_types_read_ends_each_entry_at_the_last_op_it_kept():
     assert c.documents.audit('d')[0]['end_time'] == 'T2'
 
 
+def test_a_kinds_read_keeps_whole_entries_of_those_kinds():
+    """As the server's ``?kinds=``: an entry is kept whole when its operation
+    has one of the kinds, and one with no kind never is."""
+    c = _project_client(audit=[
+        {'id': 'a', 'time': 'T1', 'documents': [{'id': 'd'}], 'kind': 'review',
+         'ops': [{'type': 'span/patch-metadata', 'time': 'T1'},
+                 {'type': 'relation/patch-metadata', 'time': 'T2'}]},
+        {'id': 'b', 'time': 'T3', 'documents': [{'id': 'd'}], 'kind': 'import',
+         'ops': [{'type': 'span/create', 'time': 'T3'}]},
+        {'id': 'c', 'time': 'T4', 'documents': [{'id': 'd'}],
+         'ops': [{'type': 'span/create', 'time': 'T4'}]}])
+    [entry] = c.documents.audit('d', kinds=['review'])
+    assert entry['id'] == 'a' and len(entry['ops']) == 2
+    assert [e['id'] for e in c.projects.audit('p', kinds='review,import')] == ['a', 'b']
+    assert [e['id'] for e in c.documents.audit_page('d', kinds=['import'])['entries']] == ['b']
+    assert len(c.documents.audit('d')) == 3
+
+
 def _two_projects(**kw):
     other = {'project': {'id': 'q', 'name': 'Q', 'text_layers': [{'id': 'qtl'}]},
              'documents': {'qd': {'id': 'qd', 'name': 'QD', 'text_layers': [{'id': 'qtl'}]}},

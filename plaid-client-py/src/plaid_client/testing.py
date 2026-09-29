@@ -624,13 +624,16 @@ def _with_entry_end_time(entry, given):
     return {**entry, 'end_time': ops[-1]['end_time'] if ops else entry.get('time')}
 
 
-def _audit_filter(entries, start_time, end_time, op_types):
+def _audit_filter(entries, start_time, end_time, op_types, kinds=None):
     """An audit read's filters, as the server applies them: the time range is
-    inclusive at both ends, and ``op_types`` keeps an entry one of whose
-    operations matches, carrying only the ones that do."""
+    inclusive at both ends, ``op_types`` keeps an entry one of whose
+    operations matches, carrying only the ones that do, and ``kinds`` keeps
+    whole the entries whose operation has one of those kinds."""
+    wanted = set(kinds.split(',') if isinstance(kinds, str) else kinds or [])
     out = [(_with_end_times(e), e) for e in entries
            if (not start_time or (e.get('time') or '') >= start_time)
-           and (not end_time or (e.get('time') or '') <= end_time)]
+           and (not end_time or (e.get('time') or '') <= end_time)
+           and (not wanted or e.get('kind') in wanted)]
     if op_types:
         types = set(op_types.split(',') if isinstance(op_types, str) else op_types)
         out = [({**e, 'ops': [o for o in e.get('ops') or [] if o.get('type') in types]}, given)
@@ -925,15 +928,16 @@ class FakeClient:
             finally:
                 self._root.calls.append(('unlock', document_id))
 
-        def audit(self, document_id, *, start_time=None, end_time=None, op_types=None):
+        def audit(self, document_id, *, start_time=None, end_time=None, op_types=None,
+                  kinds=None):
             entries = [e for e in self._root._holder(document_id)['audit']
                        if any(d['id'] == document_id for d in e.get('documents', []))]
-            return _audit_filter(entries, start_time, end_time, op_types)
+            return _audit_filter(entries, start_time, end_time, op_types, kinds)
 
         def audit_page(self, document_id, *, start_time=None, end_time=None,
-                       op_types=None, order=None, limit=None, cursor=None):
+                       op_types=None, kinds=None, order=None, limit=None, cursor=None):
             entries = self.audit(document_id, start_time=start_time, end_time=end_time,
-                                 op_types=op_types)
+                                 op_types=op_types, kinds=kinds)
             return self._root._audit_page(entries, order, limit, cursor, start_time)
 
         def restore(self, document_id, as_of, *, dry_run=False, audit_message=None):
@@ -966,14 +970,15 @@ class FakeClient:
             home = [c.project] if c.project else []
             return home + [spec['project'] for spec in (c.other_projects or {}).values()]
 
-        def audit(self, project_id, *, start_time=None, end_time=None, op_types=None):
+        def audit(self, project_id, *, start_time=None, end_time=None, op_types=None,
+                  kinds=None):
             spec = self._client._project(project_id, f'/api/v1/projects/{project_id}/audit')
-            return _audit_filter(spec['audit'], start_time, end_time, op_types)
+            return _audit_filter(spec['audit'], start_time, end_time, op_types, kinds)
 
         def audit_page(self, project_id, *, start_time=None, end_time=None,
-                       op_types=None, order=None, limit=None, cursor=None):
+                       op_types=None, kinds=None, order=None, limit=None, cursor=None):
             entries = self.audit(project_id, start_time=start_time, end_time=end_time,
-                                 op_types=op_types)
+                                 op_types=op_types, kinds=kinds)
             return self._client._audit_page(entries, order, limit, cursor, start_time)
 
         def list_documents(self, id):
@@ -1012,16 +1017,18 @@ class FakeClient:
                     return copy.deepcopy(item)
             raise _refusal(self._root, 404, 'The entry did not exist at that time.', 'GET', path)
 
-        def audit(self, id, *, start_time=None, end_time=None, op_types=None, item_id=None):
+        def audit(self, id, *, start_time=None, end_time=None, op_types=None, item_id=None,
+                  kinds=None):
             self._vocabulary(id, f'/api/v1/vocab-layers/{id}/audit')
             key = (id, item_id) if item_id else id
             return _audit_filter(self._root.vocab_audit.get(key, []), start_time, end_time,
-                                 op_types)
+                                 op_types, kinds)
 
         def audit_page(self, id, *, start_time=None, end_time=None,
-                       op_types=None, order=None, limit=None, cursor=None, item_id=None):
+                       op_types=None, kinds=None, order=None, limit=None, cursor=None,
+                       item_id=None):
             entries = self.audit(id, start_time=start_time, end_time=end_time, op_types=op_types,
-                                 item_id=item_id)
+                                 item_id=item_id, kinds=kinds)
             return self._root._audit_page(entries, order, limit, cursor, start_time)
 
         def restore_item(self, id, item_id, as_of, *, dry_run=False, audit_message=None):

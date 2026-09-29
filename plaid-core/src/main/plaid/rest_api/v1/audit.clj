@@ -3,7 +3,8 @@
             [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.pagination :as pagination]
             [plaid.sql.audit :as audit]
-            [plaid.sql.document :as doc])
+            [plaid.sql.document :as doc]
+            [plaid.sql.operation-group :as og])
   (:import (java.time Instant)
            (java.time.format DateTimeParseException)))
 
@@ -53,6 +54,32 @@
         {:op-types (not-empty tokens)}))
     {:op-types nil}))
 
+;; `?kinds=` takes a comma-separated list of operation kinds, the same closed
+;; list a write's `?group-kind=` is checked against, and a kind outside it is
+;; a 400 for the same reason: `assistant_plan` would match nothing and read as
+;; "no such activity".
+(def kinds-doc
+  (str " Pass ?kinds= with a comma-separated list of operation kinds (e.g. "
+       "review,guess-adoption) to return only the entries of operations of those "
+       "kinds, each whole. An entry with no kind never matches."))
+
+(defn- sorted-kinds [] (clojure.string/join ", " (sort og/kinds)))
+
+(defn- parse-kinds
+  "Split the comma-separated `?kinds=` value. Returns `{:kinds [...]}` (nil
+  meaning no filter) or `{:invalid \"bad-kind\"}`."
+  [raw]
+  (if-let [raw (not-empty (some-> raw clojure.string/trim))]
+    (let [tokens (->> (clojure.string/split raw #",")
+                      (map clojure.string/trim)
+                      (remove empty?)
+                      distinct
+                      vec)]
+      (if-let [bad (first (remove og/kinds tokens))]
+        {:invalid bad}
+        {:kinds (not-empty tokens)}))
+    {:kinds nil}))
+
 ;; A time-window bound, parsed to an Instant with every digit it was given.
 ;; `inst?` coerced to a Date, which keeps milliseconds only, so a start at an
 ;; entry's own time also took the entries earlier in that millisecond and an
@@ -77,6 +104,7 @@
          [:start-time {:optional true} instant-param]
          [:end-time {:optional true} instant-param]
          [:op-types {:optional true} string?]
+         [:kinds {:optional true} string?]
          [:order {:optional true} [:enum "asc" "desc"]]]
         pagination/query-params))
 
@@ -86,19 +114,30 @@
        "produced it and must not be replayed against the other one."))
 
 (defn audit-response
-  "Shared handler body: parse `?op-types=`, then page. A malformed op type is
-  a 400 — silently returning nothing would look like 'no such activity'."
-  [{:keys [start-time end-time op-types order] :as query} fetch]
-  (let [{:keys [invalid] parsed :op-types} (parse-op-types op-types)]
-    (if invalid
+  "Shared handler body: parse `?op-types=` and `?kinds=`, then page. A
+  malformed op type or an unknown kind is a 400 — silently returning nothing
+  would look like 'no such activity'."
+  [{:keys [start-time end-time op-types kinds order] :as query} fetch]
+  (let [{invalid :invalid parsed :op-types} (parse-op-types op-types)
+        {bad-kind :invalid parsed-kinds :kinds} (parse-kinds kinds)]
+    (cond
+      invalid
       {:status 400
        :body {:error (str "Invalid op type " (pr-str invalid)
                           ". Op types are spelled entity/verb, e.g. span-layer/create"
                           " — exactly as they appear in an entry's op/type.")}}
+
+      bad-kind
+      {:status 400
+       :body {:error (str "Invalid kind " (pr-str bad-kind)
+                          ". kinds must be one of " (sorted-kinds) ".")}}
+
+      :else
       (pagination/list-response
        query
        (fn [opts] (fetch (assoc opts
                                 :op-types parsed
+                                :kinds parsed-kinds
                                 :order (if (= order "desc") :desc :asc))
                          start-time end-time))))))
 
@@ -123,7 +162,7 @@
 (def audit-routes
   [["/projects/:project-id/audit"
     {:parameters {:path [:map [:project-id :uuid]]}
-     :get {:summary    (str "Get audit log for a project. " op-types-doc order-doc)
+     :get {:summary    (str "Get audit log for a project. " op-types-doc kinds-doc order-doc)
            :middleware [[pra/wrap-reader-required get-project-id-from-audit-path]]
            :parameters {:query pagination-query}
            :handler    (fn [{{{:keys [project-id]} :path query :query} :parameters db :db}]
@@ -144,7 +183,7 @@
 
    ["/documents/:document-id/audit"
     {:parameters {:path [:map [:document-id :uuid]]}
-     :get {:summary    (str "Get audit log for a document. " op-types-doc order-doc)
+     :get {:summary    (str "Get audit log for a document. " op-types-doc kinds-doc order-doc)
            :middleware [[pra/wrap-reader-required get-project-id-from-document]
                         [pra/wrap-entity-required {:table :documents :label "Document" :history? true
                                                    :get-id #(-> % :parameters :path :document-id)}]]
@@ -156,7 +195,7 @@
 
    ["/users/:user-id/audit"
     {:parameters {:path [:map [:user-id string?]]}
-     :get        {:summary    (str "Get audit log for a user's actions. " op-types-doc order-doc)
+     :get        {:summary    (str "Get audit log for a user's actions. " op-types-doc kinds-doc order-doc)
                   :middleware [[pra/wrap-admin-required]]  ; Only admins can view other users' audit logs
                   :parameters {:query pagination-query}
                   :handler    (fn [{{{:keys [user-id]} :path query :query} :parameters db :db}]
@@ -177,7 +216,7 @@
                                                                       :daily?      daily})}})}}]
 
    ["/audit"
-    {:get {:summary    (str "Get the audit log across every project. Admin only. " op-types-doc order-doc)
+    {:get {:summary    (str "Get the audit log across every project. Admin only. " op-types-doc kinds-doc order-doc)
            :middleware [[pra/wrap-admin-required]]
            :parameters {:query pagination-query}
            :handler    (fn [{{query :query} :parameters db :db}]

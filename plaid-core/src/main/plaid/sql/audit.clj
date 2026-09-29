@@ -32,7 +32,12 @@
   survives all three, and carries only the members that did. So a batch
   that created a span layer and fifty spans, read with
   `:op-types` of just `span-layer/create`, comes back as that batch holding its
-  one layer-create op."
+  one layer-create op.
+
+  The optional `:kinds` filter is a fourth, and the one that scopes UNITS: it
+  keeps the operations whose group has one of those kinds, and every member
+  of such a group has the group's id, so a unit is kept or dropped whole. A
+  batch or a lone write has no group and so no kind, and never passes it."
   (:require [plaid.sql.common :as psc]
             [plaid.sql.pagination :as pagination]))
 
@@ -199,6 +204,15 @@
   [op-types]
   [:in :op_type (vec op-types)])
 
+(defn- kind-where
+  "Restrict to operations in a group whose kind is one of `kinds` (see
+  `plaid.sql.operation-group/kinds`). The groups are a list built once per
+  query, not a probe per row."
+  [kinds]
+  [:in :group_id {:select [:id]
+                  :from [:operation_groups]
+                  :where [:in :kind (vec kinds)]}])
+
 (defn- conj-where [clauses]
   (case (count clauses)
     0 nil
@@ -248,17 +262,18 @@
 
 (defn- unit-members
   "Every operation of `units` in the scope that passes the time window and
-  `op-types`, oldest first. A unit is found through the column its key came
-  from (group, batch, or the op itself), each indexed, and a row counts only
-  when its own unit is one of `units`: an op in both a group and a batch
-  belongs to the group."
-  [db {:keys [member?]} [start-time end-time] op-types units]
+  `op-types` and `kinds`, oldest first. A unit is found through the column
+  its key came from (group, batch, or the op itself), each indexed, and a row
+  counts only when its own unit is one of `units`: an op in both a group and
+  a batch belongs to the group."
+  [db {:keys [member?]} [start-time end-time] op-types kinds units]
   (if (empty? units)
     []
     (let [wanted (set units)
           ids (mapv str units)
           filters (cond-> (ts-where start-time end-time (no-index :ts))
                     (seq op-types) (conj (op-type-where op-types))
+                    (seq kinds) (conj (kind-where kinds))
                     member? (conj member?))
           branch (fn [col]
                    {:select [:*]
@@ -274,7 +289,7 @@
 (defn- audit-page
   "One page of units in the uniform envelope `{:entries [...] :next-cursor
   [position unit]-or-nil}`. `opts` carries `{:limit n :cursor-vals
-  [position unit] :op-types [...] :order :asc|:desc}`; the audit log is
+  [position unit] :op-types [...] :kinds [...] :order :asc|:desc}`; the audit log is
   always paginated (default page 100 units, max 1000).
 
   The page walks the scope's operations from its edge (the previous page's
@@ -289,11 +304,12 @@
   Every operation has a ts of its own (stamped under the write lock,
   strictly increasing), so the position alone orders units. The cursor
   keeps the unit beside it all the same."
-  [db scope time-range {:keys [limit cursor-vals op-types order]}]
+  [db scope time-range {:keys [limit cursor-vals op-types kinds order]}]
   (let [eff (pagination/clamp-limit limit)
         desc? (= order :desc)
         filters (cond-> (ts-where (first time-range) (second time-range))
-                  (seq op-types) (conj (op-type-where op-types)))
+                  (seq op-types) (conj (op-type-where op-types))
+                  (seq kinds) (conj (kind-where kinds)))
         page-edge (first cursor-vals)
         beyond-page-edge? (fn [ts] (and page-edge
                                         (if desc?
@@ -307,7 +323,7 @@
       (let [chunk (when (< (count picked) eff)
                     (walk-ops db scope filters edge desc? walk-chunk))
             fresh (->> chunk (map row-unit) (remove seen) distinct vec)
-            by-unit (group-by row-unit (unit-members db scope time-range op-types fresh))
+            by-unit (group-by row-unit (unit-members db scope time-range op-types kinds fresh))
             placed (for [u fresh
                          :let [p (position (by-unit u))]
                          :when (not (beyond-page-edge? p))]

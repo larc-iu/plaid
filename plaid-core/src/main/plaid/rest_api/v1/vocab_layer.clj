@@ -158,7 +158,7 @@
                          "folded into entries the way the document log is. Links are not listed here, "
                          "they are part of the document they annotate. With <query>item-id</query>, only "
                          "the changes that wrote that one entry, each with only its operations that did. "
-                         audit-routes/op-types-doc audit-routes/order-doc)
+                         audit-routes/op-types-doc audit-routes/kinds-doc audit-routes/order-doc)
            :middleware [[pra/wrap-vocab-reader-required get-vocab-id]]
            :parameters {:query (conj audit-routes/pagination-query [:item-id {:optional true} :uuid])}
            :handler (fn [{{{:keys [id]} :path {:keys [item-id] :as query} :query} :parameters db :db}]

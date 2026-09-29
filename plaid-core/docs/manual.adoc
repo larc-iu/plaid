@@ -286,11 +286,15 @@ The kind is one of this list. The server refuses any other value with a 400, so 
 |`action:<name>`: igt writes `respell`, `replace`, `reanalyze` and `merge` (Bulk Edit) and `vocab-replace` (a vocabulary's Replace), UD writes `grew-rewrite`
 
 |`guess-adoption`
-|A person taking a suggested value as their own: in igt, a guess or a value from a cell's alternatives put into an empty cell, or a word accepted together with its guesses. Accepting what is already stored, with no guess in it, is not one.
+|A person taking a suggested value as their own: in igt, a guess or a value from a cell's alternatives put into an empty cell, or a word accepted together with its guesses. Accepting what is already stored, with no guess in it, is a `review`.
 |none
 
 |`repair`
 |A repair an app makes by itself when a document opens.
+|none
+
+|`review`
+|A person accepting machine or contributed work already stored, as it stands. In igt that is a word's analysis accepted with nothing guessed in it, a sentence field accepted, or a vocabulary link or multi-word expression accepted. In UD it is a word's or a sentence's predictions accepted, and in UMR a node or a sentence's graph accepted. An accept that also takes a guess is a `guess-adoption` instead.
 |none
 |===
 
@@ -343,6 +347,27 @@ An op type that is not spelled that way is rejected with a 400 rather than silen
 WARNING: The SSE stream spells the same operation differently — `span_layer:create`, snake_cased and colon-separated. See <<Event Reference>>. Use the `entity/verb` form here.
 
 Filtering applies to individual **operations**, exactly the way the time window and the endpoint's own scope do. An entry appears when one of its operations matches, and carries only the operations that matched. So a batch that created a span layer and fifty spans comes back, under a `span-layer/create` filter, as that batch holding its one layer-create.
+
+=== Filtering by kind
+
+Every audit endpoint also accepts `kinds`, which keeps only the entries of operations of the kinds you name (see <<Kinds of operation>>), as a list or a comma-separated string:
+
+[,python]
+----
+# Every accept in a document, and every guess taken
+reviewed = c.documents.audit(document_id, kinds=["review", "guess-adoption"])
+----
+
+[,javascript]
+----
+const page = await c.projects.auditPage(projectId, {
+  kinds: ["review", "guess-adoption"], order: "desc",
+});
+----
+
+On the wire it is `?kinds=review,guess-adoption`. A kind outside the list is refused with a 400, for the same reason a misspelled op type is.
+Unlike the op-type filter, this one keeps or drops an entry whole, since the kind belongs to the operation and not to its individual writes. An entry that is not an operation with a kind (an untagged operation, a batch, a single write) never matches.
+The two filters combine: with both, an entry must be of one of the kinds and still carries only the writes of the op types named.
 
 === When you last touched each document
 

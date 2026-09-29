@@ -47,6 +47,10 @@ function opTypesParam(opTypes) {
   return joined.length > 0 ? joined : undefined;
 }
 
+// The same for an audit `kinds` filter (`?kinds=`): operation kinds, such as
+// "review", in a list or a ready-made string.
+const kindsParam = opTypesParam;
+
 // Helper: build body object, filtering out undefined values
 function bodyOf(obj) {
   const result = {};
@@ -396,14 +400,17 @@ class PlaidClient {
        *   `['vocab-item/delete', 'vocab-item/restore']`)
        * @param {string} [itemId] - Only the changes that wrote this one entry,
        *   each with only its operations that did
+       * @param {string[]|string} [kinds] - Only the entries of operations of
+       *   these kinds (e.g. `['review', 'guess-adoption']`), each whole
        */
-      audit: (id, startTime, endTime, opTypes, itemId) =>
+      audit: (id, startTime, endTime, opTypes, itemId, kinds) =>
         listAll(this, `/api/v1/vocab-layers/${id}/audit`, {
           query: {
             "start-time": startTime,
             "end-time": endTime,
             "op-types": opTypesParam(opTypes),
             "item-id": itemId,
+            kinds: kindsParam(kinds),
           },
         }),
       /**
@@ -421,7 +428,7 @@ class PlaidClient {
        */
       auditPage: (
         id,
-        { startTime, endTime, opTypes, order, limit, cursor, itemId } = {},
+        { startTime, endTime, opTypes, kinds, order, limit, cursor, itemId } = {},
       ) =>
         listPage(this, `/api/v1/vocab-layers/${id}/audit`, {
           limit,
@@ -430,6 +437,7 @@ class PlaidClient {
             "start-time": startTime,
             "end-time": endTime,
             "op-types": opTypesParam(opTypes),
+            kinds: kindsParam(kinds),
             order,
             "item-id": itemId,
           },
@@ -1065,13 +1073,16 @@ class PlaidClient {
        *   types, spelled as in an entry's `op/type` (e.g.
        *   `['span-layer/create', 'span-layer/delete']`). An entry appears when
        *   one of its operations matches, carrying only the ones that did.
+       * @param {string[]|string} [kinds] - Only the entries of operations of
+       *   these kinds (e.g. `['review', 'guess-adoption']`), each whole
        */
-      audit: (userId, startTime, endTime, opTypes) =>
+      audit: (userId, startTime, endTime, opTypes, kinds) =>
         listAll(this, `/api/v1/users/${userId}/audit`, {
           query: {
             "start-time": startTime,
             "end-time": endTime,
             "op-types": opTypesParam(opTypes),
+            kinds: kindsParam(kinds),
           },
         }),
       /**
@@ -1087,7 +1098,7 @@ class PlaidClient {
        */
       auditPage: (
         userId,
-        { startTime, endTime, opTypes, order, limit, cursor } = {},
+        { startTime, endTime, opTypes, kinds, order, limit, cursor } = {},
       ) =>
         listPage(this, `/api/v1/users/${userId}/audit`, {
           limit,
@@ -1096,6 +1107,7 @@ class PlaidClient {
             "start-time": startTime,
             "end-time": endTime,
             "op-types": opTypesParam(opTypes),
+            kinds: kindsParam(kinds),
             order,
           },
         }),
@@ -1623,13 +1635,16 @@ class PlaidClient {
        * @param {string[]|string} [opts.opTypes] - Only these op types (e.g.
        *   `['span-layer/create']`). An entry appears when one of its operations
        *   matches, carrying only the ones that did.
+       * @param {string[]|string} [opts.kinds] - Only the entries of operations
+       *   of these kinds (e.g. `['review']`), each whole
        */
-      list: ({ startTime, endTime, opTypes } = {}) =>
+      list: ({ startTime, endTime, opTypes, kinds } = {}) =>
         listAll(this, "/api/v1/audit", {
           query: {
             "start-time": startTime,
             "end-time": endTime,
             "op-types": opTypesParam(opTypes),
+            kinds: kindsParam(kinds),
           },
         }),
       /**
@@ -1641,7 +1656,7 @@ class PlaidClient {
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
        * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
        */
-      listPage: ({ startTime, endTime, opTypes, order, limit, cursor } = {}) =>
+      listPage: ({ startTime, endTime, opTypes, kinds, order, limit, cursor } = {}) =>
         listPage(this, "/api/v1/audit", {
           limit,
           cursor,
@@ -1649,6 +1664,7 @@ class PlaidClient {
             "start-time": startTime,
             "end-time": endTime,
             "op-types": opTypesParam(opTypes),
+            kinds: kindsParam(kinds),
             order,
           },
         }),
@@ -1656,13 +1672,14 @@ class PlaidClient {
        * Async-iterate the instance-wide audit log page by page. Admin only.
        * @returns {AsyncGenerator<Array>}
        */
-      iterPages: ({ startTime, endTime, opTypes, pageSize } = {}) =>
+      iterPages: ({ startTime, endTime, opTypes, kinds, pageSize } = {}) =>
         iterPages(this, "/api/v1/audit", {
           pageSize,
           query: {
             "start-time": startTime,
             "end-time": endTime,
             "op-types": opTypesParam(opTypes),
+            kinds: kindsParam(kinds),
           },
         }),
       /**
@@ -1961,13 +1978,16 @@ class PlaidClient {
        *   types, spelled as in an entry's `op/type` (e.g.
        *   `['span-layer/create', 'span-layer/delete']`). An entry appears when
        *   one of its operations matches, carrying only the ones that did.
+       * @param {string[]|string} [kinds] - Only the entries of operations of
+       *   these kinds (e.g. `['review', 'guess-adoption']`), each whole
        */
-      audit: (documentId, startTime, endTime, opTypes) =>
+      audit: (documentId, startTime, endTime, opTypes, kinds) =>
         listAll(this, `/api/v1/documents/${documentId}/audit`, {
           query: {
             "start-time": startTime,
             "end-time": endTime,
             "op-types": opTypesParam(opTypes),
+            kinds: kindsParam(kinds),
           },
         }),
       /**
@@ -1983,7 +2003,7 @@ class PlaidClient {
        */
       auditPage: (
         documentId,
-        { startTime, endTime, opTypes, order, limit, cursor } = {},
+        { startTime, endTime, opTypes, kinds, order, limit, cursor } = {},
       ) =>
         listPage(this, `/api/v1/documents/${documentId}/audit`, {
           limit,
@@ -1992,6 +2012,7 @@ class PlaidClient {
             "start-time": startTime,
             "end-time": endTime,
             "op-types": opTypesParam(opTypes),
+            kinds: kindsParam(kinds),
             order,
           },
         }),
@@ -2182,13 +2203,16 @@ class PlaidClient {
        *   types, spelled as in an entry's `op/type` (e.g.
        *   `['span-layer/create', 'span-layer/delete']`). An entry appears when
        *   one of its operations matches, carrying only the ones that did.
+       * @param {string[]|string} [kinds] - Only the entries of operations of
+       *   these kinds (e.g. `['review', 'guess-adoption']`), each whole
        */
-      audit: (projectId, startTime, endTime, opTypes) =>
+      audit: (projectId, startTime, endTime, opTypes, kinds) =>
         listAll(this, `/api/v1/projects/${projectId}/audit`, {
           query: {
             "start-time": startTime,
             "end-time": endTime,
             "op-types": opTypesParam(opTypes),
+            kinds: kindsParam(kinds),
           },
         }),
       /**
@@ -2204,7 +2228,7 @@ class PlaidClient {
        */
       auditPage: (
         projectId,
-        { startTime, endTime, opTypes, order, limit, cursor } = {},
+        { startTime, endTime, opTypes, kinds, order, limit, cursor } = {},
       ) =>
         listPage(this, `/api/v1/projects/${projectId}/audit`, {
           limit,
@@ -2213,6 +2237,7 @@ class PlaidClient {
             "start-time": startTime,
             "end-time": endTime,
             "op-types": opTypesParam(opTypes),
+            kinds: kindsParam(kinds),
             order,
           },
         }),
@@ -3414,11 +3439,11 @@ class PlaidClient {
    *
    * `kind` says what kind of operation this is, for a program reading the
    * log: one of `assistant-plan`, `service-run`, `import`, `bulk-edit`,
-   * `guess-adoption` or `repair` (the server refuses any other). `ref` is a
-   * short string naming what the operation came from, in the shape its kind
-   * documents (the core manual, "Kinds of operation"). Both are recorded from
-   * the first write like the label, and a nested operation keeps the outer
-   * one's.
+   * `guess-adoption`, `repair` or `review` (the server refuses any other).
+   * `ref` is a short string naming what the operation came from, in the
+   * shape its kind documents (the core manual, "Kinds of operation"). Both
+   * are recorded from the first write like the label, and a nested operation
+   * keeps the outer one's.
    *
    * @param {string} message - Human label for the operation.
    * @param {object} [opts] - Optional `{ id, kind, ref }`. `id` adopts an existing group id instead of minting one (a service joining the requester's operation; `requestService` propagates an open operation to the service automatically). `kind` and `ref` are described above.
