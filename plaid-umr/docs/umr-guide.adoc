@@ -297,6 +297,7 @@ The list of **m** and **r** closes on Escape, and ends the wait with it.
 Typing searches the bundled frame file too, on any node, so `buy` finds `buy-01` for bought.
 In Arabic a word also finds its roleset with one proclitic (و ف ب ل ك ال) and a suffix taken off, so وقالت offers `قال-01`, and the word's own roleset comes first.
 A hamza on the alif and a tatweel make no difference: اعلن finds `أعلن-01`, and قـال finds `قال-01`.
+A verb that drops its last letter before a suffix finds its roleset too, after the word's other senses: نمت lists `نما-01`, and رموا lists `رمى-01`.
 A roleset whose lemma is written as the word writes it comes first: الأم lists `أم-01` before `ألام-01`, and أعلن lists `أعلن-01` before `اعلن-01`.
 A second verb of a root that the Arabic file keys with a doubled hyphen (`أثر--01`) is listed after the lemma's other senses.
 * **:** (colon) edits the relation to the parent. The picker lists the parent roleset's own arguments first, with what each means.
