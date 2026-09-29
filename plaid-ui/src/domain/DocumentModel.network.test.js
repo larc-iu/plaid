@@ -145,6 +145,20 @@ describe('a write whose answer was lost', () => {
     release();
   });
 
+  it('calls the later reads off once no screen shows the document', async () => {
+    vi.useFakeTimers();
+    const { server, doc } = open();
+    const release = doc.hold();
+    server.fail.push({ error: lost });
+    await doc.set('gloss', 'DOG');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(doc._lateReads.size).toBe(2);
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(doc._lateReads.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('does not read again once no screen shows the document', async () => {
     vi.useFakeTimers();
     const { server, doc } = open();

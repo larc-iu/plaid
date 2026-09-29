@@ -287,7 +287,8 @@ export class DocumentModel {
    *
    * The release takes effect a moment later, so a screen that lets go and
    * holds again at once (StrictMode, a remount) is not let go at all. Held
-   * again after a refetch was left undone, the document refetches.
+   * again after a refetch was left undone, the document refetches. The reads
+   * after a lost answer (`_readLater`) are called off with it.
    */
   hold() {
     this._holds += 1;
@@ -300,7 +301,10 @@ export class DocumentModel {
       released = true;
       this._holds -= 1;
       setTimeout(() => {
-        if (this._holds === 0) this._writes.letGo();
+        if (this._holds !== 0) return;
+        this._writes.letGo();
+        this._lateReads.forEach(clearTimeout);
+        this._lateReads.clear();
       }, 0);
     };
   }

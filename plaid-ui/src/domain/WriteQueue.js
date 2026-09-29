@@ -47,7 +47,9 @@
 // `resendWhenBack(err)` says so, instead of being refused. Meanwhile
 // `isOffline` is true. Only a caller whose sends the server can check
 // (a document version) asks for it: a resend that did land after all is then
-// refused as a conflict rather than written twice.
+// refused as a conflict rather than written twice. Once the queue is let go,
+// the wait ends at once: the send is tried one more time, and refused if it
+// fails again, so nothing waits on a network no screen is watching for.
 //
 // Once the page is being unloaded (`pagehide`), no send starts. Leaving the
 // page aborts the send in flight, and the one behind it would otherwise go
@@ -84,18 +86,6 @@ globalThis.addEventListener?.('pageshow', () => {
 });
 const untilShown = () =>
   unloading ? new Promise((resolve) => whenShown.add(resolve)) : Promise.resolve();
-
-// Resolves after `ms`, or as soon as the browser says the network is back.
-const untilOnline = (ms) =>
-  new Promise((resolve) => {
-    const done = () => {
-      clearTimeout(timer);
-      globalThis.removeEventListener?.('online', done);
-      resolve();
-    };
-    const timer = setTimeout(done, ms);
-    globalThis.addEventListener?.('online', done);
-  });
 
 export class WriteQueue {
   /**
@@ -141,8 +131,9 @@ export class WriteQueue {
     // whether a refetch was left undone since.
     this._letGo = false;
     this._missed = false;
-    // Ends the wait before a retry early.
+    // End the wait before a retry, and the wait for the network, early.
     this._wake = null;
+    this._wakeOnline = null;
   }
 
   /**
@@ -152,6 +143,7 @@ export class WriteQueue {
   letGo() {
     this._letGo = true;
     if (this._wake) this._wake();
+    if (this._wakeOnline) this._wakeOnline();
   }
 
   /**
@@ -268,16 +260,33 @@ export class WriteQueue {
         if (attempt) this._setOffline(false);
         return;
       } catch (err) {
-        if (!resendWhenBack?.(err)) {
+        if (!resendWhenBack?.(err) || (attempt && this._letGo)) {
           if (attempt) this._setOffline(false);
           throw err;
         }
         console.error('A write could not be sent, and goes again once back online:', err);
         this._setOffline(true);
-        await untilOnline(this._retryDelay(attempt));
+        await this._untilOnline(this._retryDelay(attempt));
         await untilShown();
       }
     }
+  }
+
+  // Resolves after `ms`, as soon as the browser says the network is back, or
+  // as soon as the queue is let go.
+  _untilOnline(ms) {
+    if (this._letGo) return Promise.resolve();
+    return new Promise((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        globalThis.removeEventListener?.('online', done);
+        this._wakeOnline = null;
+        resolve();
+      };
+      const timer = setTimeout(done, ms);
+      globalThis.addEventListener?.('online', done);
+      this._wakeOnline = done;
+    });
   }
 
   // What becomes of the sends queued behind a refusal once its refetch has
