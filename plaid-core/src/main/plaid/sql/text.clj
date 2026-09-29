@@ -21,6 +21,10 @@
        schedule duplicate updates; the compensator runs LAST and writes
        what it needs)
 
+  The one exception is a body save's diff, which `update-body` works out
+  before the transaction and writes only when no operation of its project
+  has committed in between (see `update-body`).
+
   Cross-namespace dependencies: this file calls into
   `plaid.sql.token/multi-delete!` and `plaid.sql.token/compensate-partition-layers!`
   for cascade-deletion and partition gap-fill. plaid.sql.token doesn't
@@ -28,6 +32,7 @@
   ever needs to reach back, we resolve those two fns at call-site via
   `requiring-resolve`."
   (:require [plaid.algos.text :as ta]
+            [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.metadata :as metadata]
@@ -194,6 +199,126 @@
 ;; code-point-indexed ops (it diffs at code-point granularity) and
 ;; `apply-text-edits` shifts code-point token offsets, so no unit conversion is
 ;; needed here.
+(defn- save-plan
+  "Work out what a body save writes, from what `db` holds now: the new body,
+  the tokens to delete, the new extents of the others, and the tokens that
+  survive. Reads only the text row, its tokens and their layers' rows, and
+  writes nothing, so `update-body` can run it before it takes the write lock.
+  Nil when the text does not exist. Throws what the save should answer when
+  the ops or the new body are refused."
+  [db eid new-body-or-ops]
+  (when-let [text-row (psc/fetch-by-id db :texts eid)]
+    (let [old-body (:body text-row)
+          text-map (row->text text-row)
+          token-rows (psc/q db {:select [:*]
+                                :from [:tokens]
+                                :where [:= :text_id eid]})
+          tokens (mapv row->token token-rows)            ; code-point offsets
+          ;; A diffed body gets each edit moved to where it cuts the
+          ;; fewest tokens when it could stand in several places for the
+          ;; same result (see ta/slide-to-tokens), its deletes snapped to
+          ;; token boundaries where the edit script left an equivalent
+          ;; choice open (see ta/normalize-deletes), each changed stretch
+          ;; aligned word by word where the diff kept a letter of a
+          ;; deleted word in place of the respelled word's own (see
+          ;; ta/align-to-words), and then each delete with an insert
+          ;; beside it becomes one replace op, so a token covering the
+          ;; changed letters keeps the new ones (see ta/pair-replacements), and the
+          ;; pieces of a word replaced outright become one replace of it, so its
+          ;; tokens move onto the new word (see ta/fold-whole-words).
+          ;; The pairing comes second because normalize-deletes reads only
+          ;; deletes and inserts, and it must see where the deletes end up.
+          ;; Explicit client ops are applied as sent. The slide is told
+          ;; which layers are partitions, where an insert at a boundary
+          ;; goes into the token that ends there, and the fold which
+          ;; layers hold words: those that forbid overlap, are no
+          ;; partition and nest under another layer. In a script without
+          ;; spaces a sentence, a UMR node or a time-alignment segment (no
+          ;; parent) over several words looks like a word.
+          layer-rows (when (and (string? new-body-or-ops) (seq tokens))
+                       (psc/q db {:select [:id :overlap_mode :parent_token_layer_id]
+                                  :from [:token_layers]
+                                  :where [:and
+                                          [:in :id (vec (distinct (map :token/layer tokens)))]
+                                          [:in :overlap_mode ["partitioning" "non-overlapping"]]]}))
+          partitioning (into #{} (comp (filter #(= "partitioning" (:overlap_mode %))) (map :id)) layer-rows)
+          word-layers (into #{}
+                            (comp (filter #(and (= "non-overlapping" (:overlap_mode %))
+                                                (some? (:parent_token_layer_id %))))
+                                  (map :id))
+                            layer-rows)
+          ops (if (string? new-body-or-ops)
+                (-> (ta/diff old-body new-body-or-ops)
+                    (ta/slide-to-tokens old-body tokens partitioning)
+                    (ta/normalize-deletes old-body tokens)
+                    (ta/align-to-words old-body tokens word-layers)
+                    (ta/pair-replacements old-body tokens)
+                    (ta/fold-whole-words old-body tokens word-layers))
+                (vec new-body-or-ops))
+          indexed-old (reduce (fn [m t] (assoc m (:token/id t) t)) {} tokens)
+          ;; A diffed body's tokens are then moved off a space a delete
+          ;; left them on (see ta/keep-edges-off-spaces): no place for
+          ;; one delete keeps two UMR nodes pulling opposite ways off it.
+          {new-text :text new-tokens :tokens deleted-ids :deleted}
+          (cond-> (ta/apply-text-edits ops text-map tokens)
+            (string? new-body-or-ops) (as-> r (ta/keep-edges-off-spaces old-body tokens r partitioning)))
+          new-body (:text/body new-text)
+          ;; The steps above only move edits between equivalent places, so
+          ;; a diffed body comes out as sent. Should one of them ever get
+          ;; that wrong, the save fails rather than store a body nobody
+          ;; typed.
+          _ (when (and (string? new-body-or-ops) (not= new-body new-body-or-ops))
+              (throw (ex-info "The new body could not be applied." {:code 500 :id eid})))
+          ;; Checked on the result, so explicit ops' inserted text is
+          ;; covered as well as a whole new body.
+          _ (storable/assert-storable! "Text body" new-body)
+          deleted-set (set deleted-ids)]
+      {:new-body new-body
+       ;; Code-point length: feeds compensate-partition-layers! /
+       ;; validate-partition!, which compare it against (code-point)
+       ;; token offsets, so the unit must match.
+       :new-text-length (cp/cp-count new-body)
+       :deleted-ids deleted-ids
+       ;; Surviving tokens whose extent changed, as [id attrs] in source
+       ;; order, so the audit_writes rows follow the document.
+       :survivor-updates (->> new-tokens
+                              (keep (fn [{:token/keys [id begin end]}]
+                                      (when-not (deleted-set id)
+                                        (let [orig (clojure.core/get indexed-old id)]
+                                          (when (or (not= begin (:token/begin orig))
+                                                    (not= end (:token/end orig)))
+                                            [id {:begin begin :end_ end}])))))
+                              (sort-by (fn [[_ {:keys [begin]}]] begin))
+                              vec)
+       :survivors (into [] (remove #(contains? deleted-set (:token/id %))) new-tokens)})))
+
+(defn- last-op-ts
+  "The time of the newest operation on the server, or \"\" when there is none.
+  Every operation's `ts` is stamped under the write lock and is strictly
+  greater than every earlier one, so an operation that commits after this
+  read has a greater `ts`."
+  [db]
+  (or (:ts (psc/q1 db {:select [[[:max :ts] :ts]] :from [:operations]})) ""))
+
+(defn- written-since?
+  "True when an operation other than `op-id` has committed since `ts` in
+  project `project-id`, or in no project. Every write to a text, a token or a
+  token layer records an operation naming its project (the writers are listed
+  in the V-LOCK report of the 2026-09-28 UMR round), so an answer of false
+  means a save's inputs are as they were at `ts`. The operations naming no
+  project are vocabulary, user and token writes, none of which reach a
+  project's texts or tokens today. They are counted anyway, so a writer that
+  one day leaves its project out makes a save recompute rather than write
+  stale rows. Two seeks on `idx_operations_project_ts`."
+  [tx project-id ts op-id]
+  (let [newer? (fn [scope]
+                 (some? (psc/q1 tx {:select [:id]
+                                    :from [:operations]
+                                    :where [:and scope [:> :ts ts] [:<> :id op-id]]
+                                    :limit 1})))]
+    (or (newer? [:= :project_id project-id])
+        (newer? [:= :project_id nil]))))
+
 (defn update-body
   "Change the textual content of `eid`, reindexing tokens to match.
 
@@ -201,144 +326,75 @@
   against the current body) or a vector of edit-ops in the shape that
   `plaid.algos.text/apply-text-edits` accepts.
 
-  Cascades:
+  The diff and the token arithmetic (`save-plan`) run BEFORE the write lock,
+  on what the database holds then, which at 50,000 words takes seconds.
+  Inside `BEGIN IMMEDIATE` the save checks that no operation has committed
+  since in its project (`written-since?`). If none has, it writes what it
+  worked out. If one has, it works the save out again under the lock, as
+  every save did before. Inside an atomic batch the lock is already held,
+  so the save works it out there once.
+
+  Writes, all inside the transaction:
     1. Tokens whose extent falls entirely inside a deletion range are
        deleted via plaid.sql.token/multi-delete! (audited cascade
        through spans/relations/vocab_links).
-    2. Tokens whose extent shifts get a per-row UPDATE.
+    2. Tokens whose extent shifts get their new extent.
     3. The texts row's body is updated.
     4. Partitioning-mode token layers get gap-filled by
        plaid.sql.token/compensate-partition-layers! — the LAST step so
        it sees the final post-edit token positions.
-
-  v2's TOCTOU guards (match*/ASSERT, oob-assert, partition-asserts,
-  compensated-ids filtering) are not ported — the SQL tx makes them
-  redundant.
+  The audit rows and the document version bump come with them.
 
   Returns {:success true :extra <text-id>}."
   [db eid new-body-or-ops user-id]
-  (let [pre (psc/fetch-by-id db :texts eid)]
+  (let [pre (psc/fetch-by-id db :texts eid)
+        project (when pre (project-id db eid))
+        valid? (or (string? new-body-or-ops) (sequential? new-body-or-ops))
+        ;; Read the newest operation first: whatever commits after it, while
+        ;; the plan below reads, has a later ts and makes the save recompute.
+        ahead (when (and pre project valid? (not (instance? java.sql.Connection db)))
+                (let [ts (last-op-ts db)]
+                  ;; A save the plan refuses is refused again under the lock,
+                  ;; where the error becomes the answer.
+                  (when-let [plan (try (save-plan db eid new-body-or-ops)
+                                       (catch Exception _ nil))]
+                    {:ts ts :plan plan})))]
     (submit-operation!
      [tx db {:type :text/update-body
-             :project (when pre (project-id db eid))
+             :project project
              :document (:document_id pre)
              :description (str "Update body of text " eid)
              :user user-id}]
      ;; Validation inside the body (task #47).
-     (when-not (or (string? new-body-or-ops) (sequential? new-body-or-ops))
+     (when-not valid?
        (throw (ex-info "Text body must be a string." {:body new-body-or-ops :code 400})))
      (when (nil? pre)
        (throw (ex-info (psc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
-     (let [text-row (psc/fetch-by-id tx :texts eid)]
-       (when (nil? text-row)
-         (throw (ex-info (psc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
-       (let [old-body (:body text-row)
-             text-map (row->text text-row)
-             token-rows (psc/q tx {:select [:*]
-                                   :from [:tokens]
-                                   :where [:= :text_id eid]})
-             tokens (mapv row->token token-rows)            ; code-point offsets
-             ;; A diffed body gets each edit moved to where it cuts the
-             ;; fewest tokens when it could stand in several places for the
-             ;; same result (see ta/slide-to-tokens), its deletes snapped to
-             ;; token boundaries where the edit script left an equivalent
-             ;; choice open (see ta/normalize-deletes), each changed stretch
-             ;; aligned word by word where the diff kept a letter of a
-             ;; deleted word in place of the respelled word's own (see
-             ;; ta/align-to-words), and then each delete with an insert
-             ;; beside it becomes one replace op, so a token covering the
-             ;; changed letters keeps the new ones (see ta/pair-replacements), and the
-             ;; pieces of a word replaced outright become one replace of it, so its
-             ;; tokens move onto the new word (see ta/fold-whole-words).
-             ;; The pairing comes second because normalize-deletes reads only
-             ;; deletes and inserts, and it must see where the deletes end up.
-             ;; Explicit client ops are applied as sent. The slide is told
-             ;; which layers are partitions, where an insert at a boundary
-             ;; goes into the token that ends there, and the fold which
-             ;; layers hold words: those that forbid overlap, are no
-             ;; partition and nest under another layer. In a script without
-             ;; spaces a sentence, a UMR node or a time-alignment segment (no
-             ;; parent) over several words looks like a word.
-             layer-rows (when (and (string? new-body-or-ops) (seq tokens))
-                          (psc/q tx {:select [:id :overlap_mode :parent_token_layer_id]
-                                     :from [:token_layers]
-                                     :where [:and
-                                             [:in :id (vec (distinct (map :token/layer tokens)))]
-                                             [:in :overlap_mode ["partitioning" "non-overlapping"]]]}))
-             partitioning (into #{} (comp (filter #(= "partitioning" (:overlap_mode %))) (map :id)) layer-rows)
-             word-layers (into #{}
-                               (comp (filter #(and (= "non-overlapping" (:overlap_mode %))
-                                                   (some? (:parent_token_layer_id %))))
-                                     (map :id))
-                               layer-rows)
-             ops (if (string? new-body-or-ops)
-                   (-> (ta/diff old-body new-body-or-ops)
-                       (ta/slide-to-tokens old-body tokens partitioning)
-                       (ta/normalize-deletes old-body tokens)
-                       (ta/align-to-words old-body tokens word-layers)
-                       (ta/pair-replacements old-body tokens)
-                       (ta/fold-whole-words old-body tokens word-layers))
-                   (vec new-body-or-ops))
-             indexed-old (reduce (fn [m t] (assoc m (:token/id t) t)) {} tokens)
-             ;; A diffed body's tokens are then moved off a space a delete
-             ;; left them on (see ta/keep-edges-off-spaces): no place for
-             ;; one delete keeps two UMR nodes pulling opposite ways off it.
-             {new-text :text new-tokens :tokens deleted-ids :deleted}
-             (cond-> (ta/apply-text-edits ops text-map tokens)
-               (string? new-body-or-ops) (as-> r (ta/keep-edges-off-spaces old-body tokens r partitioning)))
-             new-body (:text/body new-text)
-             ;; The steps above only move edits between equivalent places, so
-             ;; a diffed body comes out as sent. Should one of them ever get
-             ;; that wrong, the save fails rather than store a body nobody
-             ;; typed.
-             _ (when (and (string? new-body-or-ops) (not= new-body new-body-or-ops))
-                 (throw (ex-info "The new body could not be applied." {:code 500 :id eid})))
-             ;; Checked on the result, so explicit ops' inserted text is
-             ;; covered as well as a whole new body.
-             _ (storable/assert-storable! "Text body" new-body)
-             ;; Code-point length: feeds compensate-partition-layers! /
-             ;; validate-partition!, which compare it against (code-point)
-             ;; token offsets, so the unit must match.
-             new-text-length (cp/cp-count new-body)
-             ;; Use requiring-resolve to keep this file decoupled from
-             ;; plaid.sql.token at load time. (token.clj does not require
-             ;; text.clj today, but if it ever did, deferring resolution
-             ;; here keeps the cycle from biting.)
-             multi-delete! (requiring-resolve 'plaid.sql.token/multi-delete!)
-             compensate-partition-layers!
-             (requiring-resolve 'plaid.sql.token/compensate-partition-layers!)]
-         (let [deleted-set (set deleted-ids)]
-           ;; 1. Cascade-delete tokens that collapsed into a deletion range.
-           (when (seq deleted-ids)
-             (multi-delete! tx deleted-ids))
-           ;; 2. Bulk UPDATE via CASE for surviving tokens whose extent
-           ;;    changed — collapses N UPDATEs + N SELECTs into one of
-           ;;    each, regardless of survivor count. The audit-skip
-           ;;    semantics inside bulk-update-by-id! (pre == post)
-           ;;    match the per-row helper's behavior.
-           ;; Build a [id attrs] seq sorted by source position so the
-           ;; resulting audit_writes rows reflect document order — handy
-           ;; for ETL consumers reconstructing the per-token timeline.
-           (let [survivor-updates
-                 (->> new-tokens
-                      (keep (fn [{:token/keys [id begin end]}]
-                              (when-not (deleted-set id)
-                                (let [orig (clojure.core/get indexed-old id)]
-                                  (when (or (not= begin (:token/begin orig))
-                                            (not= end (:token/end orig)))
-                                    [id {:begin begin :end_ end}])))))
-                      (sort-by (fn [[_ {:keys [begin]}]] begin))
-                      vec)]
-             (when (seq survivor-updates)
-               (crud/bulk-update-by-id! tx :tokens survivor-updates)))
-           ;; 3. Update the text body.
-           (crud/update-by-id! tx :texts eid {:body new-body})
-           ;; 4. Partitioning-mode gap-fill on the surviving tokens.
-           (let [survivors (->> new-tokens
-                                (remove #(contains? deleted-set (:token/id %)))
-                                vec)]
-             (compensate-partition-layers! tx survivors new-text-length))
-           eid))))))
+     (let [{:keys [new-body new-text-length deleted-ids survivor-updates survivors]}
+           (or (when (and ahead (not (written-since? tx project (:ts ahead) (:id psaw/*op*))))
+                 (:plan ahead))
+               (save-plan tx eid new-body-or-ops)
+               (throw (ex-info (psc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
+           ;; Use requiring-resolve to keep this file decoupled from
+           ;; plaid.sql.token at load time. (token.clj does not require
+           ;; text.clj today, but if it ever did, deferring resolution
+           ;; here keeps the cycle from biting.)
+           multi-delete! (requiring-resolve 'plaid.sql.token/multi-delete!)
+           compensate-partition-layers!
+           (requiring-resolve 'plaid.sql.token/compensate-partition-layers!)]
+       ;; 1. Cascade-delete tokens that collapsed into a deletion range.
+       (when (seq deleted-ids)
+         (multi-delete! tx deleted-ids))
+       ;; 2. One bulk UPDATE for the surviving tokens whose extent changed.
+       ;;    The audit-skip semantics inside bulk-update-by-id! (pre ==
+       ;;    post) match the per-row helper's behavior.
+       (when (seq survivor-updates)
+         (crud/bulk-update-by-id! tx :tokens survivor-updates))
+       ;; 3. Update the text body.
+       (crud/update-by-id! tx :texts eid {:body new-body})
+       ;; 4. Partitioning-mode gap-fill on the surviving tokens.
+       (compensate-partition-layers! tx survivors new-text-length)
+       eid))))
 
 ;; ============================================================
 ;; Delete
