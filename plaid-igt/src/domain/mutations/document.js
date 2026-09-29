@@ -69,9 +69,17 @@ export const documentMutations = {
         sent = await this._sendBaselineUpdate(textId, newBody, base);
       } else {
         // No existing text — texts.create, then seed the sentence partition
-        // in a follow-up call (it needs the new text's id).
-        const newTextObj = await this._client.texts.create(primaryTextLayer.id, this.id, newBody);
-        if (cpLength(newBody) > 0) {
+        // in a follow-up call (it needs the new text's id). A create whose
+        // answer was lost is looked up, and when it landed the seed below
+        // the reload makes its sentences.
+        const newTextObj = await this._client.texts
+          .create(primaryTextLayer.id, this.id, newBody)
+          .catch(async (err) => {
+            if (!isUnknownOutcome(err)) throw err;
+            if (await this._landedAs(newBody)) return null;
+            throw err;
+          });
+        if (newTextObj && cpLength(newBody) > 0) {
           try {
             await this._client.tokens.bulkCreate(
               sentenceSeed(sentenceTokenLayer.id, newTextObj.id, newBody),
@@ -143,18 +151,21 @@ export const documentMutations = {
           await this._reloadInSend();
           continue;
         }
-        if (isUnknownOutcome(err)) {
-          let landed = false;
-          try {
-            await this._reloadInSend();
-            landed = this.body === body;
-          } catch (readError) {
-            console.error('Could not read the text back after a lost answer:', readError);
-          }
-          if (landed) return body;
-        }
+        if (isUnknownOutcome(err) && (await this._landedAs(body))) return body;
         throw err;
       }
+    }
+  },
+
+  // After a save whose answer was lost, from inside its send: whether the
+  // stored text is now `body`, read back from the server.
+  async _landedAs(body) {
+    try {
+      await this._reloadInSend();
+      return Boolean(this.layerInfo.primaryTextLayer?.text?.id) && this.body === body;
+    } catch (readError) {
+      console.error('Could not read the text back after a lost answer:', readError);
+      return false;
     }
   },
 

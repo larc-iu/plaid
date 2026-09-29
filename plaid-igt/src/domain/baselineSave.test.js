@@ -148,3 +148,23 @@ describe('saveBaselineText and the sentence partition', () => {
     expect(client.calls.some((c) => c.kind === 'tokens.bulkCreate')).toBe(false);
   });
 });
+
+describe('saveBaselineText on a document with no text yet', () => {
+  it('a create whose answer was lost and that landed seeds the sentences', async () => {
+    const raw = buildRawDoc({ body: '', sentences: [], words: [], morphemes: [] });
+    raw.textLayers[0].text = null;
+    const landed = buildRawDoc({ body: 'a\nb', sentences: [], words: [], morphemes: [] });
+    const client = makeFakeClient();
+    client.documents.get = async () => landed;
+    client.texts.create = async () => {
+      throw httpError(0, 'POST');
+    };
+    const doc = makeDoc({ raw, client });
+    expect(await doc.saveBaselineText('a\nb')).toBe(true);
+    const seed = client.calls.find((c) => c.kind === 'tokens.bulkCreate');
+    expect(seed.args[0]).toEqual([
+      { tokenLayerId: 'sentL', text: 'text-1', begin: 0, end: 2 },
+      { tokenLayerId: 'sentL', text: 'text-1', begin: 2, end: 3 },
+    ]);
+  });
+});
