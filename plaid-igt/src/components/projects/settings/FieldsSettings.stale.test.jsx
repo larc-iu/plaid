@@ -158,6 +158,39 @@ describe('Settings > Fields when the same value changed elsewhere', () => {
     expect(onProjectUpdate).toHaveBeenCalled();
     await view.unmount();
   });
+
+  // The change went nowhere and the row vanished on the next read, with no
+  // word of why.
+  it('refuses a language change on a field another maintainer removed', async () => {
+    const client = fakeClient();
+    const onProjectUpdate = vi.fn(async () => {});
+    client.projects.get = async () => {
+      const p = server();
+      p.textLayers[0].tokenLayers[1].spanLayers.shift();
+      return p;
+    };
+    const view = await renderComponent(
+      <FieldsSettings
+        project={loaded()}
+        projectId="p1"
+        client={client}
+        onProjectUpdate={onProjectUpdate}
+      />,
+    );
+    await view.step(async () => {});
+    const box = document.querySelector('input[aria-label="Language of Gloss"]');
+    await view.step(() => typeInto(box, 'fr'));
+    await view.step(async () => {
+      box.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+      box.dispatchEvent(new FocusEvent('blur'));
+      await settle();
+    });
+    expect(client.writes).toEqual([]);
+    expect(notifyError).toHaveBeenCalledTimes(1);
+    expect(String(notifyError.mock.calls[0][0])).toContain('Changed elsewhere');
+    expect(onProjectUpdate).toHaveBeenCalled();
+    await view.unmount();
+  });
 });
 
 // The delete dialog counted a field's annotations when it opened, and the

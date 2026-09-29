@@ -205,7 +205,8 @@ export const FieldsSettings = ({
       for (const field of fields) {
         const key = fieldKey(field);
         const layerId = layerIds.get(key);
-        if (!layerId) continue;
+        // A field this page showed and someone else removed since.
+        if (!layerId) throw changedElsewhere();
         const next = valueOf(field);
         // A layer created a moment ago has nothing stored yet.
         const layer = layerOf.get(key);
