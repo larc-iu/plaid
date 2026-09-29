@@ -152,6 +152,48 @@ const checkBulkUpdate = (body) => {
   return { count: (body || []).length };
 };
 
+// The stand-in for an id an earlier op of the same batch creates, shaped as
+// plaid-client's BatchRef: a frozen marker with `$ref` (and `index`) public,
+// which cannot be sent anywhere but a later write on its own batch. Turned
+// into JSON or a string (a path, a query, a call on the client itself) it
+// throws, as the real one does, so a write that reads inside a ref fails the
+// test that makes it.
+const MISPLACED_REF =
+  'b.ref() stands for an id only in the body of a later write on the same batch';
+class FakeBatchRef {
+  #queue;
+  constructor(queue, op, index) {
+    this.#queue = queue;
+    this.$ref = op;
+    if (index !== undefined) this.index = index;
+    Object.freeze(this);
+  }
+  belongsTo(queue) {
+    return this.#queue === queue;
+  }
+  toJSON() {
+    throw new Error(MISPLACED_REF);
+  }
+  [Symbol.toPrimitive]() {
+    throw new Error(MISPLACED_REF);
+  }
+}
+// Every ref in `args` must belong to `queue` (null: a call on the client
+// itself, where no ref belongs).
+const checkRefs = (args, queue) => {
+  const walk = (v) => {
+    if (v instanceof FakeBatchRef) {
+      if (!queue || !v.belongsTo(queue)) throw new Error(MISPLACED_REF);
+      return;
+    }
+    if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype) {
+      Object.values(v).forEach(walk);
+    }
+  };
+  walk(args);
+};
+
 export function makeFakeClient(opts = {}) {
   const calls = [];
   const record = (kind, args) => calls.push({ kind, args });
@@ -162,6 +204,7 @@ export function makeFakeClient(opts = {}) {
     const op =
       (kind, makeBody) =>
       (...args) => {
+        checkRefs(args, queue);
         record(kind, args);
         const body = makeBody(...args);
         if (!queue) return body;
@@ -298,7 +341,7 @@ export function makeFakeClient(opts = {}) {
       b.ref = (n = -1, index) => {
         const at = n < 0 ? queue.length + n : n;
         if (!(at >= 0 && at < queue.length)) throw new Error(`No operation ${n} queued`);
-        return index === undefined ? { $ref: at } : { $ref: at, index };
+        return new FakeBatchRef(queue, at, index);
       };
       b.submit = async () => {
         b.open = false;
