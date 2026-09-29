@@ -42,6 +42,18 @@
 // the save-status pills watch, so closing the tab asks while anything is
 // still on its way.
 //
+// A send that failed before anything of it reached the server (the browser
+// was offline) goes again once the network is back, when the caller's
+// `resendWhenBack(err)` says so, instead of being refused. Meanwhile
+// `isOffline` is true. Only a caller whose sends the server can check
+// (a document version) asks for it: a resend that did land after all is then
+// refused as a conflict rather than written twice.
+//
+// Once the page is being unloaded (`pagehide`), no send starts. Leaving the
+// page aborts the send in flight, and the one behind it would otherwise go
+// out after the person agreed to leave. A page brought back from the
+// back-forward cache (`pageshow`) sends on.
+//
 // One import, lib/errors.js, which imports nothing: plaid-ud's node suite
 // reaches DocumentModel, and through it this file, by relative path.
 
@@ -56,6 +68,34 @@ const backoff = (attempt) => Math.min(1000 * 2 ** attempt, 15000);
 // How many tries a refetch gets when it fails for a reason other than the
 // network.
 const TRIES = 4;
+
+// Whether the page is being unloaded, and the sends waiting for it to be
+// shown again. Page-wide, since unloading is.
+let unloading = false;
+const whenShown = new Set();
+globalThis.addEventListener?.('pagehide', () => {
+  unloading = true;
+});
+globalThis.addEventListener?.('pageshow', () => {
+  unloading = false;
+  const waiting = [...whenShown];
+  whenShown.clear();
+  waiting.forEach((go) => go());
+});
+const untilShown = () =>
+  unloading ? new Promise((resolve) => whenShown.add(resolve)) : Promise.resolve();
+
+// Resolves after `ms`, or as soon as the browser says the network is back.
+const untilOnline = (ms) =>
+  new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      globalThis.removeEventListener?.('online', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    globalThis.addEventListener?.('online', done);
+  });
 
 export class WriteQueue {
   /**
@@ -169,9 +209,11 @@ export class WriteQueue {
   /**
    * Queue `send`. Resolves true when it landed, false when it was refused.
    * `refused(err)` reports a refusal. For a write that showed something,
-   * `resync()` refetches what it showed.
+   * `resync()` refetches what it showed. `resendWhenBack(err)` says whether a
+   * failed send may go again once the network is back: true only when none
+   * of it reached the server.
    */
-  push(send, { refused = null, resync = null, shown = true } = {}) {
+  push(send, { refused = null, resync = null, shown = true, resendWhenBack = null } = {}) {
     const entry = { shown };
     this._waiting.add(entry);
     this._count += 1;
@@ -179,8 +221,9 @@ export class WriteQueue {
     if (this._count === 1) this._savingChanged(true);
     const run = async () => {
       this._waiting.delete(entry);
+      await untilShown();
       try {
-        await send();
+        await this._sendUntilBack(send, resendWhenBack);
         return true;
       } catch (err) {
         // Its own refetch below stands in for one asked for earlier.
@@ -204,6 +247,27 @@ export class WriteQueue {
     const result = this._tail.then(run);
     this._tail = result.catch(() => {});
     return result;
+  }
+
+  // Run `send`, and again each time it fails in a way `resendWhenBack` allows,
+  // once the network is back. `isOffline` holds while it waits.
+  async _sendUntilBack(send, resendWhenBack) {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await send();
+        if (attempt) this._setOffline(false);
+        return;
+      } catch (err) {
+        if (!resendWhenBack?.(err)) {
+          if (attempt) this._setOffline(false);
+          throw err;
+        }
+        console.error('A write could not be sent, and goes again once back online:', err);
+        this._setOffline(true);
+        await untilOnline(this._retryDelay(attempt));
+        await untilShown();
+      }
+    }
   }
 
   // What becomes of the sends queued behind a refusal once its refetch has

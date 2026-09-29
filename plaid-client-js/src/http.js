@@ -171,6 +171,9 @@ export function makeNetworkError(originalError, url, method) {
   error.url = url;
   error.method = method;
   error.originalError = originalError;
+  // The browser says it has no network, so the request most likely never
+  // left this machine. A timeout is not that: the request went, and may land.
+  if (!timedOut && globalThis.navigator?.onLine === false) error.offline = true;
   return error;
 }
 

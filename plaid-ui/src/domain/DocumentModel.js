@@ -11,7 +11,7 @@
 // relative path, where no alias and no package resolves. Errors leave through
 // `onError`.
 
-import { statusOf } from '../lib/errors.js';
+import { isChangedElsewhere, isUnknownOutcome } from '../lib/errors.js';
 import {
   AUTO,
   LTR,
@@ -40,8 +40,13 @@ const conflictError = () =>
     status: 409,
   });
 
+// When the document is read again after a write whose answer was lost: the
+// write may still land after the read that followed the failure (a request
+// the client gave up on is not stopped), and nothing else would show it.
+const LATE_READS_MS = [30000, 90000];
+
 // "Failed to create relation" is the error label; "Create relation" is the
-// operation the audit log shows for it.
+// operation the audit log shows for it, unless the screen named it (`labelled`).
 function operationLabel(errorLabel) {
   const s = String(errorLabel).replace(/^Failed to\s+/i, '');
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -91,6 +96,10 @@ export class DocumentModel {
     this._unsent = [];
     // How many screens show this document right now (`hold`).
     this._holds = 0;
+    // The History label a screen gave the writes it is making (`labelled`),
+    // and the timers of the reads after a lost answer (`_readLater`).
+    this._operation = null;
+    this._lateReads = new Set();
     // The screen's error channel, `(message, err, label)`: the label is what
     // was being done and `err` the client's error, for the screen to word.
     // Null until the screen wires it. The domain layer shows nothing itself.
@@ -273,6 +282,24 @@ export class DocumentModel {
     };
   }
 
+  /**
+   * Run `fn`, and give every write it queues `operation` as its History
+   * label, in place of the one the mutation names itself. For a screen that
+   * knows what the edit means to the person making it ("Gloss of dogs in
+   * sentence 3: DOG") where the mutation knows only its field ("Update
+   * Gloss"). Only the writes queued before `fn` first awaits are labelled,
+   * which is every mutation's own write. Returns what `fn` returns.
+   */
+  labelled(operation, fn) {
+    const outer = this._operation;
+    this._operation = operation || outer;
+    try {
+      return fn();
+    } finally {
+      this._operation = outer;
+    }
+  }
+
   // ----- subscription bridge (useSyncExternalStore-compatible) -----
   // Arrow-field properties so identities stay stable across renders of the
   // same instance.
@@ -380,9 +407,10 @@ export class DocumentModel {
   _queueWrite(
     label,
     send,
-    operation = operationLabel(label),
+    named = operationLabel(label),
     { reload = false, shown = true, kind, ref } = {},
   ) {
+    const operation = this._operation || named;
     // A caller that patches first has asked `_canWrite` already. One whose
     // send does all its work is refused here instead.
     const unsent = { patches: this._patches, stale: false };
@@ -390,6 +418,7 @@ export class DocumentModel {
     if (!this._canWrite(label)) return Promise.resolve(false);
     this._unsent.push(unsent);
     let conflict = false;
+    let resend = false;
     return this._writes.push(
       async () => {
         this._unsent = this._unsent.filter((u) => u !== unsent);
@@ -397,18 +426,56 @@ export class DocumentModel {
         // (`_reloadAfterFailure`): refused like the edit that found it out,
         // without being sent, and already off the screen.
         if (unsent.stale) throw conflictError();
-        await this._client.withOperation(operation, send, { kind, ref });
+        const before = this._checkedVersion();
+        try {
+          await this._client.withOperation(operation, send, { kind, ref });
+        } catch (err) {
+          // Offline before any of it reached the server: the version it
+          // claims has not moved, so going again once back online is safe. If
+          // it did land after all, the server refuses the second as a
+          // conflict.
+          resend = err?.offline === true && before != null && this._checkedVersion() === before;
+          throw err;
+        }
         if (reload) this._writes.reloadWhenDrained = true;
       },
       {
         shown,
+        resendWhenBack: () => resend,
         refused: (err) => {
-          conflict = statusOf(err) === 409;
+          // A conflict, or what the edit names was deleted meanwhile: either
+          // way someone else changed the document.
+          conflict = isChangedElsewhere(err);
           this._writeFailed(label, err);
+          if (isUnknownOutcome(err)) this._readLater();
         },
         resync: () => (unsent.stale ? undefined : this._reloadAfterFailure(conflict)),
       },
     );
+  }
+
+  // The version the server checks this document's writes against, or null
+  // when its writes go unchecked (not in strict mode, or no version known).
+  _checkedVersion() {
+    const client = this._client;
+    if (!client || client.strictModeDocumentId !== this.id) return null;
+    return client.documentVersions?.[this.id] ?? null;
+  }
+
+  // A write's answer was lost, and the write may land after the refetch that
+  // followed. Read the document again later, while a screen still shows it,
+  // so what landed shows. A later loss starts the count again.
+  _readLater() {
+    this._lateReads.forEach(clearTimeout);
+    this._lateReads.clear();
+    for (const ms of LATE_READS_MS) {
+      const timer = setTimeout(() => {
+        this._lateReads.delete(timer);
+        if (this._holds === 0) return;
+        this._reload().catch((err) => console.error('Reading the document again failed:', err));
+      }, ms);
+      this._lateReads.add(timer);
+    }
   }
 
   // What a patch producer is handed beside the clone of `_raw` (a fresh layer
