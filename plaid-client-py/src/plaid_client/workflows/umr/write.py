@@ -28,6 +28,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from plaid_client.provenance import PROV_DETAIL_KEY, PROV_KEY, service_source
 from plaid_client.service import locked_for_writes, progress_heartbeat
+from plaid_client.services import UNKNOWN_OUTCOME, requester_message
 from plaid_client.service_schema import Param
 
 from ..requester import Requester, requester_of
@@ -451,14 +452,24 @@ def finish_draft(client, response_helper, run: DraftRun, plans: Sequence[dict],
                     write_graphs(client, run.layers, plans, frag, run.progress)
                 except ValueError:
                     raise  # refused before anything was written
-                except Exception:
+                except Exception as failure:
                     # A run that failed partway leaves no half graph behind:
                     # anchors with no node were cleaned up only when someone
                     # next opened the document in the app, under their name.
                     try:
-                        clear_new_anchors(client, run.document_id, run.layers)
+                        cleared = clear_new_anchors(client, run.document_id, run.layers)
                     except Exception:  # noqa: BLE001 - the write's own failure is the one to report
                         logging.getLogger(__name__).exception(
                             'Could not remove the anchors a failed draft left')
+                        raise failure
+                    # Read back and cleared, so what the requester would be
+                    # told of a lost answer ("may or may not have been
+                    # saved") is known now. Only when something was cleared:
+                    # that moved the version on, so a write of this run still
+                    # on its way is refused. With nothing to clear, the lost
+                    # write may yet land.
+                    if cleared and requester_message(failure) == UNKNOWN_OUTCOME:
+                        raise ValueError('The Plaid server did not answer. '
+                                         'The document is as it was.') from failure
                     raise
         complete()

@@ -505,12 +505,31 @@ def test_a_draft_that_fails_partway_removes_the_anchors_it_made():
     doc = _read(raw)
     plans = [{'sentence': doc.sentences[0], 'pieces': [(4, 7)],
               'nodes': [{'concept': 'dog', 'meta': {}, 'piece_indexes': [0]}], 'edges': []}]
-    with pytest.raises(PlaidAPIError):
+    # The lost answer is settled by the read-back, so the requester is not
+    # told the change may or may not have been saved.
+    with pytest.raises(ValueError, match='^The Plaid server did not answer. The document is as it was.$'):
         _finish(client, raw, plans)
     assert client.payloads('tokens.bulk_delete')[-1] == ['new-anchor']
     # Still under the lock, and stamped with the version it read.
     assert client.kinds.index('unlock') > client.kinds.index('tokens.bulk_delete')
     assert all(doc_id == 'd1' for _, doc_id, _ in client.stamps)
+
+
+def test_a_lost_answer_with_nothing_to_clear_may_still_land():
+    """The lost write had not landed when it was read back, so it may yet:
+    the requester is told so, not that the document is as it was."""
+    from plaid_client.http import PlaidAPIError
+    from plaid_client.testing import FakeClient
+    raw = _without_triples(_document())
+    _machine_drafted(raw)
+    lost = PlaidAPIError('Request timed out', status=0, method='POST')
+    client = FakeClient([raw], fails={'tokens.bulk_create': lost})
+    doc = _read(raw)
+    plans = [{'sentence': doc.sentences[0], 'pieces': [(4, 7)],
+              'nodes': [{'concept': 'dog', 'meta': {}, 'piece_indexes': [0]}], 'edges': []}]
+    with pytest.raises(PlaidAPIError):
+        _finish(client, raw, plans)
+    assert client.payloads('tokens.bulk_delete') == []
 
 
 def test_a_draft_refused_before_writing_reads_nothing_back():
