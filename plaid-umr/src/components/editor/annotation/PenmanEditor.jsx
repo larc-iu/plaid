@@ -15,8 +15,17 @@ import { parsePenman } from '../../../domain/format/penman.js';
 // shown like a parse error, and its `losses` what Apply would delete that the
 // text cannot show, a node's anchor and document-level relations. `typed` is
 // a text to open with in place of the stored graph, one typed before and not
-// applied.
-export function PenmanEditor({ initial, typed = null, onApply, onCancel, plan, applying = false }) {
+// applied. `dirtyRef.current` says whether the text differs from the stored
+// graph, for a control outside the editor that closes it.
+export function PenmanEditor({
+  initial,
+  typed = null,
+  onApply,
+  onCancel,
+  plan,
+  applying = false,
+  dirtyRef = null,
+}) {
   const [text, setText] = useState(typed ?? initial);
   // What the text is compared against. When the stored graph changes under an
   // untouched editor (another writer, a failed apply's reload), the text
@@ -28,6 +37,13 @@ export function PenmanEditor({ initial, typed = null, onApply, onCancel, plan, a
   // strip, a link, the browser's Back, a reload. One editor per sentence, so
   // several can be typed in at once and the question counts them.
   useUnsavedDraft(dirty ? 'The graph you have typed' : null, 'graphs');
+  useEffect(() => {
+    if (!dirtyRef) return undefined;
+    dirtyRef.current = dirty;
+    return () => {
+      dirtyRef.current = false;
+    };
+  }, [dirty, dirtyRef]);
   useEffect(() => {
     if (initial === base) return;
     if (!dirty) setText(initial);

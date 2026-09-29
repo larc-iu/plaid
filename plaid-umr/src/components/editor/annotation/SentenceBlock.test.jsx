@@ -1924,3 +1924,72 @@ describe('SentenceBlock with no words', () => {
     await r.unmount();
   });
 });
+
+// V4: the Text toggle closed text mode and dropped a typed graph without
+// asking, where Cancel asks.
+describe('SentenceBlock text mode, closed by the Text toggle', () => {
+  const type = (el, value) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    setter.call(el, value);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const button = (root, name) => all(root, 'button').find((b) => b.textContent.trim() === name);
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const dialog = () => document.querySelector('[role="alertdialog"]');
+  const stub = () => ({
+    graph: {},
+    canConfirmSentence: () => false,
+    canDiscardSentence: () => false,
+    penmanOf: () => '',
+    planPenman: () => ({ changes: 1 }),
+    applyPenman: () => new Promise(() => {}),
+    sentence: () => null,
+    node: () => null,
+  });
+  const mount = async () => {
+    const { sentence } = fixture();
+    const blank = { ...sentence, nodes: [], edges: [], roots: [] };
+    return renderComponent(
+      <ConfirmProvider>
+        <SentenceBlock
+          doc={stub()}
+          readOnly={false}
+          dataVersion={1}
+          sentence={blank}
+          nodesById={new Map()}
+        />
+      </ConfirmProvider>,
+    );
+  };
+
+  it('asks before dropping a typed graph, and keeps it on Cancel', async () => {
+    const r = await mount();
+    await r.step(() => button(r.container, 'Text').click());
+    await r.step(() => type(r.container.querySelector('textarea'), '(s1p / person)'));
+    await r.step(() => button(r.container, 'Text').click());
+    await r.step(() => wait(50));
+    expect(dialog()).not.toBeNull();
+    expect(dialog().textContent).toContain('Leave the text unapplied?');
+    await r.step(() => button(dialog(), 'Cancel').click());
+    await r.step(() => wait(50));
+    expect(r.container.querySelector('textarea')?.value).toBe('(s1p / person)');
+
+    await r.step(() => button(r.container, 'Text').click());
+    await r.step(() => wait(50));
+    await r.step(() => button(dialog(), 'Leave').click());
+    await r.step(() => wait(50));
+    expect(r.container.querySelector('textarea')).toBeNull();
+    await r.unmount();
+  });
+
+  it('closes at once when nothing was typed', async () => {
+    const r = await mount();
+    await r.step(() => button(r.container, 'Text').click());
+    expect(r.container.querySelector('textarea')).not.toBeNull();
+    await r.step(() => button(r.container, 'Text').click());
+    await r.step(() => wait(50));
+    expect(dialog()).toBeNull();
+    expect(r.container.querySelector('textarea')).toBeNull();
+    await r.unmount();
+  });
+});

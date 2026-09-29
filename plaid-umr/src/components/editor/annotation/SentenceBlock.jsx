@@ -197,6 +197,24 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     const kept = focusedId && doc?.node?.(focusedId) ? focusedId : null;
     refocusRef.current = { id: kept || doc?.sentence?.(sentence.index)?.roots[0]?.id || null };
   };
+  // Whether the text in text mode differs from the stored graph. Cancel and the
+  // Text toggle both ask before a typed graph is dropped.
+  const penmanDirtyRef = useRef(false);
+  const askLeaveTextMode = async (dirty) => {
+    if (dirty) {
+      const ok = await confirm({
+        title: 'Leave the text unapplied?',
+        description: 'What was typed is not stored.',
+        confirmLabel: 'Leave',
+        destructive: true,
+      });
+      if (!ok) {
+        requestAnimationFrame(() => sectionRef.current?.querySelector('.umr-penman-text')?.focus());
+        return;
+      }
+    }
+    leaveTextMode();
+  };
   // Text mode is an editor, so a read-only view has none: the History drawer's
   // past state kept one open, and its Apply wrote the past's plan into the
   // current document.
@@ -1557,8 +1575,12 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             className={`umr-text-toggle${textMode ? ' umr-text-toggle--on' : ''}`}
             aria-pressed={textMode}
             onClick={() => {
+              if (textMode) {
+                askLeaveTextMode(penmanDirtyRef.current);
+                return;
+              }
               setUnapplied(null);
-              setTextMode((v) => !v);
+              setTextMode(true);
             }}
           >
             Text
@@ -1628,23 +1650,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             });
             leaveTextMode();
           }}
-          onCancel={async (dirty) => {
-            if (dirty) {
-              const ok = await confirm({
-                title: 'Leave the text unapplied?',
-                description: 'What was typed is not stored.',
-                confirmLabel: 'Leave',
-                destructive: true,
-              });
-              if (!ok) {
-                requestAnimationFrame(() =>
-                  sectionRef.current?.querySelector('.umr-penman-text')?.focus(),
-                );
-                return;
-              }
-            }
-            leaveTextMode();
-          }}
+          onCancel={askLeaveTextMode}
+          dirtyRef={penmanDirtyRef}
         />
       )}
       <div
