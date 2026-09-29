@@ -469,9 +469,12 @@ export const grid = {
                       what: this._cellWhat(name, null, index),
                       entityIds: [sentence.annotations?.[name]?.id],
                       value: sentence.annotations?.[name]?.value ?? '',
+                      // As a word's gloss (DocumentModel.resendsByEntity).
                       apply: (v) =>
-                        this.doc.labelled(this._editLabel(name, null, index, v), () =>
-                          this.doc.updateSentenceSpan(sentence.id, name, v),
+                        this.doc.resendsByEntity(() =>
+                          this.doc.labelled(this._editLabel(name, null, index, v), () =>
+                            this.doc.updateSentenceSpan(sentence.id, name, v),
+                          ),
                         ),
                       sentence: true,
                       ariaLabel: `${name} for sentence ${index + 1}`,
