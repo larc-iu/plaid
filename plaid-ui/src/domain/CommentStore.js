@@ -443,10 +443,13 @@ export class CommentStore {
     }
   }
 
-  // Read the thread again later, so a post that lands late shows.
+  // Read the thread again later, so a post that lands late shows. Only while
+  // a screen still shows this store (subscribes to it): once the document is
+  // closed, nobody would see what the read finds.
   _readThreadLater(entityType, entityId) {
     for (const ms of LATE_READS_MS) {
       setTimeout(() => {
+        if (this._listeners.size === 0) return;
         this._readThread(entityType, entityId).then(
           (thread) => this._replaceThread(entityId, thread),
           (err) => console.error('Failed to read the thread again:', err),

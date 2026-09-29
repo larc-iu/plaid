@@ -96,6 +96,7 @@ describe('a post whose answer was lost', () => {
     vi.useFakeTimers();
     const client = fakeClient();
     const { store, errors } = open(client);
+    store.subscribe(() => {});
     await store.load();
     client.state.loseNext = { error: lost(0), stored: false };
     expect(await store.post('token', 't1', 'Late')).toBe(null);
@@ -104,6 +105,22 @@ describe('a post whose answer was lost', () => {
     client.state.rows.push(row({ body: 'Late' }));
     await vi.advanceTimersByTimeAsync(30000);
     expect(store.threadFor('t1').map((c) => c.body)).toEqual(['Late']);
+  });
+
+  // REV-F-NET D-8: the reads at 30 s and 90 s went out after the document
+  // was closed, for a store nobody showed.
+  it('is not read again once no screen shows the store', async () => {
+    vi.useFakeTimers();
+    const client = fakeClient();
+    const { store } = open(client);
+    const unsubscribe = store.subscribe(() => {});
+    await store.load();
+    client.state.loseNext = { error: lost(0), stored: false };
+    expect(await store.post('token', 't1', 'Late')).toBe(null);
+    const reads = client.comments.list.mock.calls.length;
+    unsubscribe();
+    await vi.advanceTimersByTimeAsync(90000);
+    expect(client.comments.list.mock.calls.length).toBe(reads);
   });
 
   it('is not looked for after a refusal, whose outcome is known', async () => {
