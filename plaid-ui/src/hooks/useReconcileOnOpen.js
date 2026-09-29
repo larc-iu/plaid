@@ -9,6 +9,25 @@ import { notifyError } from '../lib/notify.js';
 // repair was planned from, so it is refused when anything changed since.
 export const REPAIR_TIMEOUT_MS = 30000;
 
+// More time per token the document holds. A repair can write in one request
+// something for every word (a first open seeding a token under each), and
+// the server's time for that grows faster than the word count: about 47 s
+// for 40,000 words, where the base alone gave up at 30 s and the write
+// landed after the page had said it failed.
+export const REPAIR_MS_PER_TOKEN = 2;
+
+const tokenCount = (raw) => {
+  let n = 0;
+  for (const textLayer of raw?.textLayers || []) {
+    for (const tokenLayer of textLayer?.tokenLayers || []) n += tokenLayer?.tokens?.length || 0;
+  }
+  return n;
+};
+
+/** How long each request of `doc`'s repair may wait for its answer. */
+export const repairTimeout = (doc) =>
+  REPAIR_TIMEOUT_MS + REPAIR_MS_PER_TOKEN * tokenCount(doc?.raw);
+
 const REPAIR_FAILED = 'Failed to repair the document';
 const withStop = (text) => (/[.!?]$/.test(text) ? text : `${text}.`);
 
@@ -17,27 +36,34 @@ const withStop = (text) => (/[.!?]$/.test(text) ? text : `${text}.`);
 // over, since the first one is re-read and re-planned. A repair that timed out
 // is no change of the user's, so the general "may or may not have been saved"
 // does not fit it.
+const timedOut = (error) =>
+  statusOf(error) === 504 ||
+  ['TimeoutError', 'AbortError'].includes(error?.originalError?.name) ||
+  /\btimed out\b|\btimeout\b/i.test(String(error?.message || ''));
+
 export const repairFailure = (error) => {
   if (statusOf(error) === 409) {
     return 'The document changed while it was being checked. Reload to check it again.';
   }
   if (isUnknownOutcome(error)) {
-    return 'The server did not answer in time. Reload to check the document again.';
+    return timedOut(error)
+      ? 'The server did not answer in time. Reload to check the document again.'
+      : "The server's answer was lost. Reload to check the document again.";
   }
   return `${withStop(humanizeError(error))} Reload to check the document again.`;
 };
 
-// The client's batch timeout, lowered while a repair runs on it. Counted per
-// client, since StrictMode's double invoke shares one pass between two runs
-// and the first to end must not restore the timeout under the second.
+// The client's batch timeout, set to the repair's while a repair runs on it.
+// Counted per client, since StrictMode's double invoke shares one pass between
+// two runs and the first to end must not restore the timeout under the second.
 const lowered = new WeakMap();
-async function withRepairTimeout(client, run) {
+async function withRepairTimeout(client, timeout, run) {
   if (!client) return run();
   const held = lowered.get(client);
   if (held) held.count += 1;
   else {
     lowered.set(client, { count: 1, saved: client.batchTimeout });
-    client.batchTimeout = REPAIR_TIMEOUT_MS;
+    client.batchTimeout = timeout;
   }
   try {
     return await run();
@@ -78,8 +104,8 @@ async function withRepairTimeout(client, run) {
 // version the document was read at, which is the version the repair was planned
 // from: an edit someone saved in between refuses the repair (409) instead of the
 // repair writing offsets that edit moved. On a 409 the document is re-read and
-// the repair planned again, once. igt's editor client is strict from the start,
-// so it passes none.
+// the repair planned again, once. An app whose editor client is strict from the
+// start passes none.
 //
 // `onFailed` hears the error of a repair that failed, for a screen whose empty
 // state would otherwise misread what is missing.
@@ -102,7 +128,8 @@ export function useReconcileOnOpen({ doc, asOf, canWrite, enterStrictMode, onFai
     reconciledDocRef.current = doc;
     let cancelled = false;
     setReconciling(true);
-    const repair = () => withRepairTimeout(doc.client, () => doc.reconcileOnOpen());
+    const repair = () =>
+      withRepairTimeout(doc.client, repairTimeout(doc), () => doc.reconcileOnOpen());
     (async () => {
       try {
         let result = await repair();

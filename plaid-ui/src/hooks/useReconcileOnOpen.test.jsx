@@ -13,7 +13,9 @@ vi.mock('../lib/integrityToast.js', () => ({ reportIntegrityFindings: vi.fn() })
 
 const { notifyError } = await import('../lib/notify.js');
 const { reportIntegrityFindings } = await import('../lib/integrityToast.js');
-const { useReconcileOnOpen, REPAIR_TIMEOUT_MS } = await import('./useReconcileOnOpen.js');
+const { useReconcileOnOpen, REPAIR_TIMEOUT_MS, REPAIR_MS_PER_TOKEN } = await import(
+  './useReconcileOnOpen.js'
+);
 
 let view;
 let api;
@@ -340,6 +342,48 @@ describe('the reconcile gate', () => {
       'The server did not answer in time. Reload to check the document again.',
       'Failed to repair the document',
     );
+    await view.unmount();
+  });
+
+  it('says a repair whose answer was lost on a dropped connection that it was lost', async () => {
+    const dropped = Object.assign(
+      new Error('Network error: Failed to fetch at http://host/api/v1/batch'),
+      {
+        status: 0,
+        method: 'POST',
+        url: 'http://host/api/v1/batch',
+      },
+    );
+    const doc = makeDoc({ findings: [], error: dropped });
+    view = await renderComponent(<Probe {...base} doc={doc} />);
+    await settle();
+    expect(notifyError).toHaveBeenCalledWith(
+      "The server's answer was lost. Reload to check the document again.",
+      'Failed to repair the document',
+    );
+    await view.unmount();
+  });
+
+  it('gives a big document more time, by the tokens it holds', async () => {
+    const client = { batchTimeout: 180000 };
+    let during;
+    const tokens = (n) => Array.from({ length: n }, (_, i) => ({ id: `t${i}` }));
+    const doc = makeDoc({});
+    doc.client = client;
+    doc.raw = {
+      textLayers: [{ tokenLayers: [{ tokens: tokens(40000) }, { tokens: tokens(2000) }] }],
+    };
+    const inner = doc.reconcileOnOpen;
+    doc.reconcileOnOpen = vi.fn(() => {
+      during = client.batchTimeout;
+      return inner();
+    });
+    view = await renderComponent(<Probe {...base} doc={doc} />);
+    await settle();
+    expect(during).toBe(REPAIR_TIMEOUT_MS + 42000 * REPAIR_MS_PER_TOKEN);
+    // A 40,000-word first open took the server about 47 s.
+    expect(during).toBeGreaterThan(60000);
+    expect(client.batchTimeout).toBe(180000);
     await view.unmount();
   });
 
