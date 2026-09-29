@@ -362,8 +362,11 @@ def partial_note(labels: Sequence[str], written: Sequence[int], unknown: bool, w
     out = f'(note) Applying stopped partway ({why}): {len(yes)} of {len(labels)} changes were written.'
     if yes:
         out += f' Written: {listed(yes)}.'
+    # A change of several batches can be partly in the document (its first
+    # batch committed, a later one did not), and one whose batch lost its
+    # answer may be in it whole: neither is "not written".
     if no:
-        out += (f' Not written{", or not known to be" if unknown else ""}: {listed(no)}. '
+        out += (f' {"Not known to be written" if unknown else "Not written"} in full: {listed(no)}. '
                 'Read the document before planning them again.')
     return out
 
