@@ -29,7 +29,7 @@ from plaid_client import metadata_ops
 from .project import LEMMA_FROM_FORM
 
 from ..core.plan import (CONFIRM, PlanError, Resolution, Stamps, TrackingBatcher, check_reach,
-                         apply_add_comment, apply_restore_document, applying, created_id,
+                         apply_add_comment, apply_restore_document, applying,
                          docs_of_op, expand_ops)
 from .project import load_document, word_ref
 from .review import all_words, confirm_targets, discard_targets
@@ -91,14 +91,27 @@ class Context:
         # and the value the user approved becomes invisible to every tool.
         # Keyed in the first pass and consulted in the second.
         self.creating: Dict[tuple, int] = {}
+        # How many of the plan's ops certainly remove each id, for
+        # `removed_by_others`.
+        self._removals: Counter = Counter()
+        for op in ops:
+            self._removals.update(ok.removed_ids(KIND, [op], only_certain=True))
 
-    def lemma_span(self, word_id):
+    def removed_by_others(self, op, entity_id) -> bool:
+        """Whether another op of the plan certainly removes ``entity_id``: a
+        reshape's delete of its words takes the relations on them, and a
+        delete of one of those by id is then a 404 that fails the batch."""
+        mine = entity_id in ok.removed_ids(KIND, [op], only_certain=True)
+        return self._removals[entity_id] > mine
+
+    def lemma_span(self, word_id, batch):
+        """A word's lemma span for a write queued on ``batch``: its id, or a
+        ref to the one this plan creates in the same batch."""
         at = self.lemma_at.get(word_id)
         if isinstance(at, int):
-            sid = created_id(self.b.results[at] if at < len(self.b.results) else None)
+            sid = self.b.refer(batch, at)
             if not sid:
                 raise ValueError(f'could not create the lemma a dependency needs on {word_id}')
-            self.lemma_at[word_id] = sid
             return sid
         return at
 
@@ -171,27 +184,31 @@ def _suppressors(ctx: Context, op) -> None:
     ``createRelation`` and ``deleteRelation``); reconcile-on-open is what
     catches whatever anyone else leaves, and it only runs on an OPEN.
     """
+    if op.get('relation_id') and ctx.removed_by_others(op, op['relation_id']):
+        return  # its relation goes with another op's delete, and they with it
     for sid in op.get('suppressor_ids') or ():
         ctx.b.add(lambda batch, i=sid: batch.relations.delete(i))
 
 
 def _apply_del_relation(ctx: Context, op) -> int:
-    ctx.b.add(lambda batch, i=op['relation_id']: batch.relations.delete(i))
+    if not ctx.removed_by_others(op, op['relation_id']):
+        ctx.b.add(lambda batch, i=op['relation_id']: batch.relations.delete(i))
     _suppressors(ctx, op)
     return 1
 
 
 def _apply_set_head(ctx: Context, op) -> int:
-    target = ctx.lemma_span(op['word_id'])
-    src = ctx.lemma_span(op['head_id'])
     # One head per word: the old relation goes in the same batch as the new
     # one, so the word is never headless and never twice headed, whichever way
-    # a failure falls.
-    if op.get('relation_id'):
+    # a failure falls. Its ends are the words' lemma spans, by a ref to one
+    # this plan creates in the same batch. An old relation another op of the
+    # plan takes away (a reshape of its head's token) is not deleted again.
+    if op.get('relation_id') and not ctx.removed_by_others(op, op['relation_id']):
         ctx.b.add(lambda batch, i=op['relation_id']: batch.relations.delete(i))
     _suppressors(ctx, op)
-    ctx.b.add(lambda batch, o=op, s=src, t=target: batch.relations.create(
-        o['relation_layer_id'], s, t, o['deprel'], ctx.stamp() or None))
+    ctx.b.add(lambda batch, o=op: batch.relations.create(
+        o['relation_layer_id'], ctx.lemma_span(o['head_id'], batch),
+        ctx.lemma_span(o['word_id'], batch), o['deprel'], ctx.stamp() or None))
     return 1
 
 
@@ -370,7 +387,8 @@ KIND = ok.registry([
            shape=DOCUMENT_SHAPE, summary=_run_parse_summary),
     OpKind('set_words', ('reshaped token', 'reshaped tokens'), apply=_apply_set_words, shape=WORD_SHAPE,
            required=('token_id', 'text_id', 'forms', 'word_layer_id', 'form_layer_id', 'lemma_layer_id'),
-           deletes_tokens=lambda op: list(op.get('existing_word_ids') or [])),
+           deletes_tokens=lambda op: list(op.get('existing_word_ids') or []),
+           deletes=lambda op: list(op.get('relation_ids') or [])),
     OpKind('split_sentence', ('sentence split', 'sentence splits'), apply=_apply_split_sentence,
            required=('document_id', 'sentence_id', 'char_pos', 'relation_layer_ids'), shape=SENTENCE_SHAPE,
            deletes=lambda op: (list(op.get('relation_ids') or [])
@@ -696,27 +714,24 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
                         lambda batch, o=op, w=wid, f=form: batch.spans.create(
                             o['lemma_layer_id'], [w], f, dict(LEMMA_FROM_FORM)))
 
-        # The relations need those spans to exist, so the batch has to land first.
-        b.flush()
-        finish(lambda op: (KIND[op['kind']].stage == ok.BATCH and op['kind'] != 'set_words'
-                           and id(op) not in restores))
-
-        # The server's own restore, after the batches and never with them: it
-        # is one operation of its own and a plan holds at most one.
-        for op in ctx.restores:
-            client.documents.restore(op['document_id'], op['as_of'])
-            b.applied += 1
-            b.finish(op)
-
-        # --- pass 2: what needed the first batch's ids ---
+        # --- pass 2: what names an id pass 1 creates, by a ref to it, in the
+        # same batch, so a plan under the batch's budget is written whole or
+        # not at all ---
         from .shape import finish_set_words
         for op in ops:
             if op.get('kind') == 'set_words':
                 with b.writing_for(op):
-                    finish_set_words(op, b, b.results, ctx.stamp)
+                    finish_set_words(op, b, ctx.stamp)
         ok.run_stage(KIND, ctx, ops, IDS)
         b.flush()
-        finish(lambda op: op['kind'] == 'set_words' or KIND[op['kind']].stage == IDS)
+        finish(lambda op: KIND[op['kind']].stage in (ok.BATCH, IDS) and id(op) not in restores)
+
+        # The server's own restore, after the batch and never with it: it is
+        # one operation of its own and a plan holding one holds nothing else.
+        for op in ctx.restores:
+            client.documents.restore(op['document_id'], op['as_of'])
+            b.applied += 1
+            b.finish(op)
 
         # --- pass 3: the parser ---
         # Last, and outside the batches, because it is not a write of ours at

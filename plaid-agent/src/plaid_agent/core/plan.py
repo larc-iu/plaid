@@ -22,7 +22,7 @@ from contextlib import ExitStack, contextmanager
 from typing import Any, Dict, Iterable, List, Optional
 
 # created_id is plaid_client's reader of a create response, which the plans take from here.
-from plaid_client import DocumentLockLost, PlaidAPIError, created_id, metadata_ops  # noqa: F401
+from plaid_client import DocumentLockLost, PlaidAPIError, created_id, created_ids, metadata_ops  # noqa: F401
 from plaid_client.service import locked_for_writes
 
 from .opkind import ROW
@@ -157,14 +157,17 @@ class Batcher:
             self.flush()
         return idx
 
-    def refer(self, batch, idx: int, read=created_id):
-        """The id the op at result index ``idx`` creates, for a write queued
-        on ``batch`` (inside ``add``): a ref when that op is in the open batch,
-        so the two go in one transaction, else what its result carries
-        (``read``), or None."""
+    def refer(self, batch, idx: int, index: Optional[int] = None):
+        """The id the op at result index ``idx`` creates (with ``index``, the
+        k-th id of a bulk create), for a write queued on ``batch`` inside
+        ``add``: a ref when that op is in the open batch, so the two go in one
+        transaction, else what its result carries, or None."""
         if idx >= len(self.results):
-            return batch.ref(idx - len(self.results))
-        return read(self.results[idx])
+            return batch.ref(idx - len(self.results), index)
+        if index is None:
+            return created_id(self.results[idx])
+        ids = created_ids(self.results[idx])
+        return ids[index] if index < len(ids) else None
 
     def update(self, resource: str, entity_id: str, value: Any = _UNSET,
                metadata: Optional[List[Dict[str, Any]]] = None) -> None:

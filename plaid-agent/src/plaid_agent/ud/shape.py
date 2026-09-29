@@ -19,7 +19,6 @@ multi-word token that a later read cannot tell apart.
 
 from typing import Any, Dict
 
-from plaid_client import created_ids
 
 from .project import LEMMA_FROM_FORM, Token, UdDoc, Word, resolve
 from .tools import ToolError, Workspace
@@ -54,8 +53,9 @@ def t_set_words(ws: Workspace, document: str = None, ref: str = None, forms=None
     # whose dependent is. Counting only `relation_id` (the dependent's end)
     # promised one loss and took three.
     indexes = {w.index for w in token.words}
-    heads = sum(1 for w in sentence.words
-                if w.relation_id and (w.index in indexes or w.head in indexes))
+    arcs = [w.relation_id for w in sentence.words
+            if w.relation_id and (w.index in indexes or w.head in indexes)]
+    heads = len(arcs)
     lost = []
     if annotated:
         lost.append(f'{annotated} annotation value(s)')
@@ -66,6 +66,9 @@ def t_set_words(ws: Workspace, document: str = None, ref: str = None, forms=None
         'kind': 'set_words', 'token_id': token.id, 'text_id': doc.text_id,
         'begin': token.begin, 'end': token.end, 'surface': token.surface,
         'forms': clean, 'existing_word_ids': [w.id for w in token.words],
+        # The arcs the words' delete takes with it, so a change to one of them
+        # in the same plan is refused as it is staged, not by the server.
+        'relation_ids': arcs,
         'word_layer_id': ws.project.word_layer_id,
         'form_layer_id': ws.project.layer('form'), 'lemma_layer_id': ws.project.layer('lemma'),
         'document_id': doc.id,
@@ -107,21 +110,26 @@ def apply_set_words(op: Dict[str, Any], b, stamp) -> None:
     op['_created_at'] = idx
 
 
-def finish_set_words(op: Dict[str, Any], b, results, stamp) -> None:
-    """Batch 2: the Form and Lemma spans on the words batch 1 created."""
+def finish_set_words(op: Dict[str, Any], b, stamp) -> None:
+    """The Form and Lemma spans on the words ``set_words`` creates, each
+    naming its word by a ref to the bulk create, in the same batch."""
     at = op.get('_created_at')
-    ids = created_ids(results[at] if at is not None and at < len(results) else None)
-    if len(ids) != len(op['forms']):
-        raise ValueError(f'the words of {op.get("surface")!r} were not all created')
     forms, surface = op['forms'], op.get('surface') or ''
-    for token_id, form in zip(ids, forms):
+
+    def word(batch, k):
+        token_id = b.refer(batch, at, k)
+        if not token_id:
+            raise ValueError(f'the words of {op.get("surface")!r} were not all created')
+        return token_id
+
+    for k, form in enumerate(forms):
         # A Form span exists only where the form is not the token's own text:
         # one word spelled like its token needs none, and reads fall back to
         # the text. Every word gets a lemma, seeded from its form.
         if len(forms) > 1 or form != surface:
-            b.add(lambda batch, o=op, t=token_id, v=form: batch.spans.bulk_create(
-                [{'span_layer_id': o['form_layer_id'], 'tokens': [t], 'value': v,
+            b.add(lambda batch, o=op, k=k, v=form: batch.spans.bulk_create(
+                [{'span_layer_id': o['form_layer_id'], 'tokens': [word(batch, k)], 'value': v,
                   'metadata': stamp() or None}]))
-        b.add(lambda batch, o=op, t=token_id, v=form: batch.spans.bulk_create(
-            [{'span_layer_id': o['lemma_layer_id'], 'tokens': [t], 'value': v,
+        b.add(lambda batch, o=op, k=k, v=form: batch.spans.bulk_create(
+            [{'span_layer_id': o['lemma_layer_id'], 'tokens': [word(batch, k)], 'value': v,
               'metadata': dict(LEMMA_FROM_FORM)}]))

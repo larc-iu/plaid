@@ -221,12 +221,16 @@ def test_a_change_is_written_once_every_batch_holding_it_committed():
     assert b.written_rows() == [0, 1, 2]
 
 
-def _plan_of(spec, client, *tools):
-    """sbs._plan with several changes staged in one workspace."""
+def _plan_of(spec, client, *tools, scan=False):
+    """sbs._plan with several changes staged in one workspace. ``scan`` has
+    an igt workspace read the documents rather than ask the query engine,
+    which the fake does not run."""
     from importlib import import_module
     from plaid_agent.core.conversation import assistant_item, build_meta, user_item
     call_tool = import_module(f'plaid_agent.{spec["app"]}.toolkit').call_tool
     ws = spec['workspace'](client, spec['load'](client, spec['pid']))
+    if scan:
+        ws.prefer_scan = True
     for name, args in tools:
         out = call_tool(ws, name, dict(args))
         assert ws.ops, out
@@ -302,7 +306,10 @@ def test_an_igt_change_finished_in_the_second_batch_is_not_written_when_it_fails
     assert caught.value.written == [0, 2], 'the merge is in the second batch'
 
 
-def test_a_ud_head_needs_its_second_batch(monkeypatch):
+def test_a_ud_head_and_the_lemma_it_hangs_on_go_in_one_batch():
+    """A head on a word with no lemma needs a lemma span first. The relation
+    names it by a ref in the same batch, so a failure never leaves the lemma
+    without the head, which took a second batch before."""
     from plaid_agent.ud.plan import execute_plan
     spec = APPS['ud']()
     client = spec['client']()
@@ -310,13 +317,8 @@ def test_a_ud_head_needs_its_second_batch(monkeypatch):
     from plaid_agent.ud.toolkit import call_tool
     call_tool(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w1'], 'field': 'lemma', 'value': 'ir'})
     call_tool(ws, 'set_head', {'document': 'Viaje', 'ref': 's2.w1', 'head': 0, 'deprel': 'root'})
-    ops = [{**op, '_row': i} for i, op in enumerate(ws.ops)]
-    kinds = [op['kind'] for op in ops]
-    assert kinds[-1] == 'set_head', kinds
-    _second_send_fails(monkeypatch)
-    with pytest.raises(core_plan.PlanError) as caught:
-        execute_plan(client, ops, source='s', label='l', project=ws.project)
-    assert caught.value.written == [i for i, k in enumerate(kinds) if k != 'set_head']
+    execute_plan(client, ws.ops, source='s', label='l', project=ws.project)
+    assert len(client.batches) == 1
 
 
 def _plan_operation(client):
@@ -328,11 +330,12 @@ def test_the_history_label_of_a_partly_applied_plan_names_what_was_written(monke
     """The audit group was labelled with the whole plan when only part of it
     was written (conc-2026-09-29 REV-F-PY). It now names the changes written
     in full."""
-    spec = APPS['ud']()
+    spec = APPS['igt']()
     client = spec['client']()
+    # The entry merge is in the igt executor's second batch.
     plan = _plan_of(spec, client,
-                    ('set_field', {'document': 'Viaje', 'refs': ['s1.w1'], 'field': 'lemma', 'value': 'ir'}),
-                    ('set_head', {'document': 'Viaje', 'ref': 's2.w1', 'head': 0, 'deprel': 'root'}))
+                    ('set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'fish'}),
+                    ('merge_entries', {'keep_id': 'vi-gam', 'remove_id': 'vi-gam2'}), scan=True)
     _second_send_fails(monkeypatch)
     svc = spec['service']()
     spec = {**spec, 'service': lambda: svc}
@@ -347,10 +350,15 @@ def test_the_history_label_of_a_partly_applied_plan_names_what_was_written(monke
 
 
 def test_a_plan_with_no_change_written_in_full_says_it_is_part_of_the_plan(monkeypatch):
-    spec = APPS['ud']()
+    spec = APPS['igt']()
     client = spec['client']()
+    # An analysis whose new morphemes go in the first batch and their gloss in
+    # the second: the first stood, and no change was written in full.
     plan = _plan_of(spec, client,
-                    ('set_head', {'document': 'Viaje', 'ref': 's2.w1', 'head': 0, 'deprel': 'root'}))
+                    ('set_analysis', {'document': 'd1', 'ref': 's1.w2',
+                                      'morphemes': [{'form': 'ga', 'fields': {'Morph Gloss': 'fish'}},
+                                                    {'form': 'm', 'fields': {'Morph Gloss': 'PL'}}]}),
+                    scan=True)
     _second_send_fails(monkeypatch)
     svc = spec['service']()
     spec = {**spec, 'service': lambda: svc}

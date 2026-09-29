@@ -481,13 +481,14 @@ def test_a_head_on_an_unannotated_word_makes_its_lemma_first(ws):
     counts = execute_plan(ws.client, ws.ops, source='service:ud:assist', label='Assistant: test',
                           stamp_mode='verified')
     assert counts == {'dependencies': 1}
-    # Two batches: the lemma spans first, because a relation cannot point at an
-    # id made in the same batch.
-    assert len(ws.client.batches) == 2
-    made = [p for kind, p in ws.client.batches[0] if kind == 'spans.create']
+    # One batch: the lemma spans first, and the relation between them names
+    # them by refs to their creates.
+    [batch] = ws.client.batches
+    made = [p for kind, p in batch if kind == 'spans.create']
     assert [p['args'][2] for p in made] == ['.', 'Corre']     # valued with the FORM
-    kind, rel = ws.client.batches[1][-1]
+    kind, rel = batch[-1]
     assert kind == 'relations.create' and rel['args'][3] == 'punct'
+    assert (rel['args'][1], rel['args'][2]) == ({'$ref': 1}, {'$ref': 0})
 
 
 def test_replacing_a_head_deletes_the_old_relation_in_the_same_batch(ws):
@@ -886,14 +887,16 @@ def test_applying_a_reshape_remakes_the_words_then_their_spans(ws):
     call_tool(ws, 'set_words', {'document': 'Viaje', 'ref': 's2.w1', 'forms': ['co', 'rre']})
     counts = execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
     assert counts == {'reshaped tokens': 1}
-    first, second = ws.client.batches
-    kinds = [kind for kind, _ in first]
-    assert kinds == ['tokens.bulk_delete', 'tokens.bulk_create', 'tokens.patch_metadata']
+    [batch] = ws.client.batches
+    kinds = [kind for kind, _ in batch]
+    assert kinds[:3] == ['tokens.bulk_delete', 'tokens.bulk_create', 'tokens.patch_metadata']
     # The multi-word token records its own surface, the way the editor does.
-    assert first[2][1][1] == [{'op': 'set', 'path': ['form'], 'value': 'Corre'}]
-    # Then a Form and a Lemma span per word, which could not be in the first
-    # batch: they name ids that batch made.
-    assert [kind for kind, _ in second] == ['spans.bulk_create'] * 4
+    assert batch[2][1][1] == [{'op': 'set', 'path': ['form'], 'value': 'Corre'}]
+    # Then a Form and a Lemma span per word, in the same batch, each naming its
+    # word by a ref to the bulk create.
+    assert kinds[3:] == ['spans.bulk_create'] * 4
+    assert [p[0]['tokens'] for _, p in batch[3:]] == [[{'$ref': 1, 'index': k}]
+                                                      for k in (0, 0, 1, 1)]
 
 
 def test_collapsing_to_one_word_drops_the_tokens_form(ws):
@@ -902,7 +905,8 @@ def test_collapsing_to_one_word_drops_the_tokens_form(ws):
     patch = ws.client.patches('tokens')[0][1]
     assert patch == [{'op': 'delete', 'path': ['form']}]
     # One word spelled like its token needs no Form span, only a lemma.
-    assert len(ws.client.batches[1]) == 1
+    [batch] = ws.client.batches
+    assert [kind for kind, _ in batch].count('spans.bulk_create') == 1
 
 
 def test_a_read_can_name_the_sentences_it_wants(ws):
@@ -1379,3 +1383,19 @@ def test_a_review_counts_two_documents_of_one_name_apart():
     w = Workspace(client, load_project(client, PID))
     out = run(w, 'confirm', documents=['ud1', 'ud2'])
     assert 'In 2 documents: "Viaje (ud1)" 1, "Viaje (ud2)" 1.' in out, out
+
+
+def test_a_head_on_a_word_whose_old_head_a_reshape_takes_is_not_deleted_twice(ws):
+    """Reshaping a token deletes its words, and the relations on them go with
+    them. A new head in the same plan for a word whose old relation pointed
+    at the reshaped token deleted that relation by id as well, a 404 that took
+    the plan down (seen live, conc-2026-09-29 W-PY2)."""
+    call_tool(ws, 'set_words', {'document': 'Viaje', 'ref': 's1.w4', 'forms': ['a', 'b']})
+    reshape = ws.ops[-1]
+    # "a" (s1.w2) hangs off "mar" (s1.w4) by r-2a, which the reshape takes.
+    run(ws, 'set_head', document='Viaje', ref='s1.w2', head=1, deprel='case')
+    head = ws.ops[-1]
+    assert head['relation_id'] == 'r-2a' and 'r-2a' in reshape['relation_ids']
+    execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
+    deleted = [p for kind, p in ws.client.writes if kind == 'relations.delete']
+    assert head['relation_id'] not in deleted
