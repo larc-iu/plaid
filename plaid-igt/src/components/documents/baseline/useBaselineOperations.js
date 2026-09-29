@@ -18,14 +18,20 @@ export const useBaselineOperations = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editedText, setEditedText] = useState('');
+  // The body the draft was typed over. A save merges the draft's changes onto
+  // the body stored by then (see saveBaselineText), so a passage someone else
+  // saved meanwhile is not put back as it was here.
+  const [base, setBase] = useState('');
 
   const handleEdit = () => {
     setEditedText(body);
+    setBase(body);
     setIsEditing(true);
   };
 
   const handleCancel = () => {
     setEditedText('');
+    setBase('');
     setIsEditing(false);
   };
 
@@ -35,7 +41,7 @@ export const useBaselineOperations = () => {
     // the server re-diffs the text. A pure append (new text starts with the
     // current body) leaves existing tokens untouched, so only confirm otherwise.
     const tokenized = (doc.layerInfo?.primaryTokenLayer?.tokens || []).length > 0;
-    const risky = tokenized && editedText !== body && !editedText.startsWith(body);
+    const risky = tokenized && editedText !== base && !editedText.startsWith(base);
     if (
       risky &&
       !(await confirm({
@@ -51,7 +57,7 @@ export const useBaselineOperations = () => {
       return;
     }
     setSaving(true);
-    const ok = await doc.saveBaselineText(editedText);
+    const ok = await doc.saveBaselineText(editedText, base);
     setSaving(false);
     if (ok) {
       notifySuccess('Baseline text saved');
@@ -60,8 +66,11 @@ export const useBaselineOperations = () => {
   };
 
   // Leaving the tab with text typed and not saved asks first: this tab holds
-  // a whole document's baseline, and it used to go without a word.
-  useUnsavedDraft(isEditing && editedText !== body ? 'The baseline text you have typed' : null);
+  // a whole document's baseline, and it used to go without a word. Not while
+  // the save is on its way: it lands whether or not the tab is left.
+  useUnsavedDraft(
+    isEditing && !saving && editedText !== base ? 'The baseline text you have typed' : null,
+  );
 
   const updateEditedText = (text) => setEditedText(text);
 

@@ -14,11 +14,16 @@ import {
 } from '@larc-iu/plaid-client';
 import { lineSentenceRanges } from '../../utils/tokenizationUtils.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
+import { isUnknownOutcome, statusOf } from '@ui/lib/errors.js';
+import { mergeText } from '@ui/lib/textMerge.js';
 
 // One sentence per line of a freshly saved text. The server keeps the
 // partition in step with later edits; the Tokenize tab moves the breaks.
 const sentenceSeed = (tokenLayerId, text, body) =>
   lineSentenceRanges(body).map(({ begin, end }) => ({ tokenLayerId, text, begin, end }));
+
+// What a save whose draft cannot be put onto the stored text is refused with.
+const BASELINE_CONFLICT = 'The same passage was changed elsewhere. Cancel and redo the edit.';
 
 export const documentMutations = {
   // Baseline-text edit. The server's text update does all the heavy lifting
@@ -31,10 +36,18 @@ export const documentMutations = {
   // replacement that deleted every old sentence, or a previously emptied
   // layer) so the Analyze tab has something to show.
   //
+  // `base` is the body the draft was typed over (the Baseline tab's Edit).
+  // The draft is sent whole, so a draft typed on a copy someone else has
+  // since saved over would put their passages back as they were. When the
+  // stored body is no longer `base`, the draft's changes are merged onto it
+  // (`mergeText`) and the merged text is sent, and a save refused as
+  // out of date (409) is merged again onto what the refetch read. Changes to
+  // the same passage are refused, with the draft left in the tab.
+  //
   // The one write here that reloads instead of patching: what a whole-body
   // update does to the tokens is the server's diff (plaid.algos.text), which
   // this does not replay. The Baseline tab's textarea already shows the text.
-  async saveBaselineText(newBody) {
+  async saveBaselineText(newBody, base = this.body) {
     const info = this.layerInfo;
     const primaryTextLayer = info.primaryTextLayer;
     const sentenceTokenLayer = info.sentenceTokenLayer;
@@ -50,15 +63,15 @@ export const documentMutations = {
 
     return this._queueWrite('Failed to save baseline text', async () => {
       const textId = primaryTextLayer.text?.id;
-      const newLen = cpLength(newBody);
 
+      let sent = newBody;
       if (textId) {
-        await this._client.texts.update(textId, newBody);
+        sent = await this._sendBaselineUpdate(textId, newBody, base);
       } else {
         // No existing text — texts.create, then seed the sentence partition
         // in a follow-up call (it needs the new text's id).
         const newTextObj = await this._client.texts.create(primaryTextLayer.id, this.id, newBody);
-        if (newLen > 0) {
+        if (cpLength(newBody) > 0) {
           try {
             await this._client.tokens.bulkCreate(
               sentenceSeed(sentenceTokenLayer.id, newTextObj.id, newBody),
@@ -87,18 +100,62 @@ export const documentMutations = {
       // sentence tokens outright (an empty partition is server-valid), which
       // would leave the Analyze tab blank. Seed the partition again, one
       // sentence per line, whenever the edit leaves a non-empty body with none.
-      if (newLen > 0) {
+      if (cpLength(sent) > 0) {
         const freshInfo = this.layerInfo;
         const freshTextId = freshInfo.primaryTextLayer?.text?.id;
         const sentencesAfter = freshInfo.sentenceTokenLayer?.tokens || [];
         if (freshTextId && sentencesAfter.length === 0) {
           await this._client.tokens.bulkCreate(
-            sentenceSeed(sentenceTokenLayer.id, freshTextId, newBody),
+            sentenceSeed(sentenceTokenLayer.id, freshTextId, this.body),
           );
           await this._reloadInSend();
         }
       }
     });
+  },
+
+  // The update half of `saveBaselineText`, from inside its send. Answers the
+  // body it stored.
+  //
+  // A text with no sentences gets its partition in the same batch as the
+  // update, so a lost answer cannot leave the text saved and unsegmented. A
+  // save whose answer was lost is looked up: when the stored body is the one
+  // sent, it landed, and the save goes on as if it had been answered.
+  async _sendBaselineUpdate(textId, newBody, base) {
+    for (let attempt = 0; ; attempt += 1) {
+      const merged = this.body === base ? { text: newBody } : mergeText(base, newBody, this.body);
+      if (merged.conflict) throw new Error(BASELINE_CONFLICT);
+      const body = merged.text;
+      const sentenceLayer = this.layerInfo.sentenceTokenLayer;
+      const seed = cpLength(body) > 0 && (sentenceLayer?.tokens || []).length === 0;
+      try {
+        if (seed) {
+          await this._client.batched(async (b) => {
+            b.texts.update(textId, body);
+            b.tokens.bulkCreate(sentenceSeed(sentenceLayer.id, textId, body));
+          });
+        } else {
+          await this._client.texts.update(textId, body);
+        }
+        return body;
+      } catch (err) {
+        if (statusOf(err) === 409 && attempt < 2) {
+          await this._reloadInSend();
+          continue;
+        }
+        if (isUnknownOutcome(err)) {
+          let landed = false;
+          try {
+            await this._reloadInSend();
+            landed = this.body === body;
+          } catch (readError) {
+            console.error('Could not read the text back after a lost answer:', readError);
+          }
+          if (landed) return body;
+        }
+        throw err;
+      }
+    }
   },
 
   // Edit the document's metadata with path ops that name only the keys being

@@ -1,0 +1,172 @@
+// Three-way merge of a whole text, for the editors that save a document's
+// body whole (igt's Baseline tab, ud's Text Editor). A draft typed on a copy
+// that someone else has since saved over is put onto the stored text: the
+// passages the draft changed are changed there, and the rest keeps what the
+// other save made. Two changes to the same passage, or to passages that touch,
+// are a conflict, and nothing is merged.
+//
+// The unit is a word, a run of whitespace, or one other character, so two
+// edits to different words of one line merge, and two edits to one word do
+// not. Offsets never matter here: the result is a whole string.
+
+// Letters with their combining marks, and digits, make a word.
+const UNIT = /\s+|[\p{L}\p{M}\p{N}]+|[^\s\p{L}\p{M}\p{N}]/gu;
+
+export const textUnits = (text) => String(text ?? '').match(UNIT) || [];
+
+// Past this many differing units, the middle between the common start and end
+// is taken as one change. That is always safe: a coarser change can only
+// conflict where a finer one would have merged.
+const MAX_EDITS = 2000;
+
+// The changes that turn `a` into `b`, as `{ start, end, insert }`: the units
+// a[start..end) give way to `insert`. In order, and never touching one another.
+export function unitHunks(a, b) {
+  let pre = 0;
+  while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre += 1;
+  let suf = 0;
+  while (
+    suf < a.length - pre &&
+    suf < b.length - pre &&
+    a[a.length - 1 - suf] === b[b.length - 1 - suf]
+  ) {
+    suf += 1;
+  }
+  const am = a.slice(pre, a.length - suf);
+  const bm = b.slice(pre, b.length - suf);
+  if (am.length === 0 && bm.length === 0) return [];
+  const script = editScript(am, bm);
+  if (!script) return [{ start: pre, end: pre + am.length, insert: bm }];
+  const hunks = [];
+  let open = null;
+  let x = 0;
+  for (const op of script) {
+    if (op === '=') {
+      if (open) hunks.push(open);
+      open = null;
+      x += 1;
+      continue;
+    }
+    if (!open) open = { start: pre + x, end: pre + x, insert: [] };
+    if (op === '-') {
+      open.end += 1;
+      x += 1;
+    } else {
+      open.insert.push(op.unit);
+    }
+  }
+  if (open) hunks.push(open);
+  return hunks;
+}
+
+// Myers' shortest edit script: '=' (keep a unit), '-' (drop a unit of a) and
+// `{ unit }` (take a unit of b), in order. Null past MAX_EDITS.
+function editScript(a, b) {
+  const n = a.length;
+  const m = b.length;
+  const limit = Math.min(n + m, MAX_EDITS);
+  const size = 2 * limit + 3;
+  const off = limit + 1;
+  const v = new Int32Array(size);
+  const trace = [];
+  for (let d = 0; d <= limit; d += 1) {
+    trace.push(v.slice(off - d - 1, off + d + 2));
+    for (let k = -d; k <= d; k += 2) {
+      let x =
+        k === -d || (k !== d && v[off + k - 1] < v[off + k + 1])
+          ? v[off + k + 1]
+          : v[off + k - 1] + 1;
+      let y = x - k;
+      while (x < n && y < m && a[x] === b[y]) {
+        x += 1;
+        y += 1;
+      }
+      v[off + k] = x;
+      if (x >= n && y >= m) return backtrack(trace, a, b, d, k);
+    }
+  }
+  return null;
+}
+
+function backtrack(trace, a, b, dEnd, kEnd) {
+  const ops = [];
+  let x = a.length;
+  let y = b.length;
+  let k = kEnd;
+  for (let d = dEnd; d > 0; d -= 1) {
+    // trace[d] holds v as it stood before round d, over k in [-d-1, d+1].
+    const row = trace[d];
+    const at = (kk) => row[kk + d + 1];
+    const down = k === -d || (k !== d && at(k - 1) < at(k + 1));
+    const prevK = down ? k + 1 : k - 1;
+    const prevX = at(prevK);
+    const prevY = prevX - prevK;
+    while (x > prevX + (down ? 0 : 1) && y > prevY + (down ? 1 : 0)) {
+      ops.push('=');
+      x -= 1;
+      y -= 1;
+    }
+    if (down) {
+      ops.push({ unit: b[prevY] });
+      y -= 1;
+    } else {
+      ops.push('-');
+      x -= 1;
+    }
+    k = prevK;
+  }
+  while (x > 0 && y > 0) {
+    ops.push('=');
+    x -= 1;
+    y -= 1;
+  }
+  return ops.reverse();
+}
+
+const sameHunk = (p, q) =>
+  p.start === q.start &&
+  p.end === q.end &&
+  p.insert.length === q.insert.length &&
+  p.insert.every((u, i) => u === q.insert[i]);
+
+// Two changes touch when one begins where the other ends, or they overlap.
+const touch = (p, q) => p.start <= q.end && q.start <= p.end;
+
+/**
+ * Put the changes that turn `base` into `mine` onto `theirs`, which is `base`
+ * as someone else changed it. Returns `{ text }`, or `{ conflict: true }` when
+ * both changed the same passage (or two passages that touch) differently.
+ */
+export function mergeText(base, mine, theirs) {
+  if (mine === theirs || theirs === base) return { text: mine };
+  if (mine === base) return { text: theirs };
+  const units = textUnits(base);
+  const ours = unitHunks(units, textUnits(mine));
+  const other = unitHunks(units, textUnits(theirs));
+  const all = [];
+  let i = 0;
+  let j = 0;
+  while (i < ours.length || j < other.length) {
+    const p = ours[i];
+    const q = other[j];
+    if (p && q && touch(p, q)) {
+      if (!sameHunk(p, q)) return { conflict: true };
+      all.push(p);
+      i += 1;
+      j += 1;
+    } else if (!q || (p && p.start < q.start)) {
+      all.push(p);
+      i += 1;
+    } else {
+      all.push(q);
+      j += 1;
+    }
+  }
+  let out = '';
+  let pos = 0;
+  for (const h of all) {
+    out += units.slice(pos, h.start).join('') + h.insert.join('');
+    pos = h.end;
+  }
+  return { text: out + units.slice(pos).join('') };
+}
