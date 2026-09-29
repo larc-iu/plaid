@@ -1242,6 +1242,9 @@
                (conj ws [a b [e]]))))
          []
          edits)
+        ;; the alignment's tables, shared by the windows (see `realign`)
+        tables (atom nil)
+        window (volatile! 0)
         realign
         (fn [[a b es]]
           (let [eg (edges (max 0 (dec a)) (min n (inc b)))
@@ -1366,30 +1369,116 @@
             ;; business (text typed at a word's edge stays outside it).
             (when (and (<= m align-limit) (<= k align-limit) (some :end es))
               (let [inf Long/MAX_VALUE
-                    idx (fn [i j s] (+ (* (+ (* i (inc k)) j) S) s))
-                    dp (long-array (* (inc m) (inc k) S) inf)
-                    back (int-array (* (inc m) (inc k) S) -1)
-                    relax! (fn [i j s v op ps]
-                             (let [x (idx i j s)]
-                               (when (< v (aget dp x))
-                                 (aset dp x (long v))
-                                 (aset back x (int (+ (* ps 4) op))))))]
-                (aset dp (idx 0 0 s0) (long 0))
+                    ^ints N N
+                    a (long a)
+                    m (long m)
+                    k (long k)
+                    k1 (inc k)
+                    idx (fn ^long [^long i ^long j ^long s] (+ (* (+ (* i k1) j) S) s))
+                    ;; The tables are kept for the next window, and an entry
+                    ;; counts only when stamped with this window's number, so
+                    ;; no window allocates or fills its own. Each cell lists
+                    ;; the states reached in it, so a cell costs what it
+                    ;; holds and not all `S` states.
+                    cells (* (inc m) k1)
+                    size (* cells S)
+                    [^longs dp ^ints back ^ints stamp ^ints reached ^ints cell-stamp ^ints cell-count]
+                    (let [[_ _ st _ cs :as ts] @tables]
+                      (if (and st (<= size (alength ^ints st)) (<= cells (alength ^ints cs)))
+                        ts
+                        (reset! tables [(long-array size) (int-array size) (int-array size)
+                                        (int-array size) (int-array cells) (int-array cells)])))
+                    g (int (vswap! window inc))
+                    ;; Each step's outcome depends on the state and on the
+                    ;; letter it reads alone (an old one for :m and :d, a
+                    ;; new one for :i), so it is worked out once for each and
+                    ;; kept as one long: the cost to add, shifted past the
+                    ;; state after it. A vector built for every step of every
+                    ;; cell, and a scan of all `S` states in each, took
+                    ;; 2 to 3 s on a find-and-replace over 10,000 words.
+                    m-kept (long-array (* (max m 1) S) -1)
+                    d-kept (long-array (* (max m 1) S) -1)
+                    i-kept (long-array (* (max k 1) S) -1)
+                    keep! (fn [^longs kept kind p s]
+                            (let [[s' dx dy] (if (= kind :i) (step s kind 0 p) (step s kind p 0))
+                                  t (+ (bit-shift-left (long (pack (if (= kind :m) 0 1) dx dy)) 9) (long s'))]
+                              (aset kept (+ (* (long p) S) (long s)) t)
+                              t))]
+                (let [c (idx 0 0 0)
+                      x (+ c s0)]
+                  (aset cell-stamp c g)
+                  (aset cell-count c 1)
+                  (aset reached c (int s0))
+                  (aset stamp x g)
+                  (aset dp x 0)
+                  (aset back x -1))
                 (dotimes [i (inc m)]
-                  (dotimes [j (inc k)]
-                    (dotimes [s S]
-                      (let [v (aget dp (idx i j s))]
-                        (when (< v inf)
-                          (when (and (< i m) (< j k) (= (aget o (+ a i)) (aget N j)))
-                            (let [[s' x y] (step s :m i j)]
-                              (relax! (inc i) (inc j) s' (+ v (pack 0 x y)) 2 s)))
-                          (when (< i m)
-                            (let [[s' x y] (step s :d i j)]
-                              (relax! (inc i) j s' (+ v (pack 1 x y)) 0 s)))
-                          (when (< j k)
-                            (let [[s' x y] (step s :i i j)]
-                              (relax! i (inc j) s' (+ v (pack 1 x y)) 1 s))))))))
-                (let [total (fn [s] (let [v (aget dp (idx m k s))]
+                  (let [oi (if (< i m) (long (aget o (+ a i))) -1)]
+                    (dotimes [j k1]
+                      (let [cell (+ (* i k1) j)
+                            base (* cell S)
+                            n (if (== (aget cell-stamp cell) g) (long (aget cell-count cell)) 0)]
+                        ;; in the order of the states, as a scan of all of
+                        ;; them would take them, so ties go as they did
+                        (java.util.Arrays/sort reached (int base) (int (+ base n)))
+                        (dotimes [r n]
+                          (let [s (long (aget reached (+ base r)))
+                                v (aget dp (+ base s))]
+                            (when (and (< i m) (< j k) (== oi (aget N j)))
+                              (let [t (aget m-kept (+ (* i S) s))
+                                    t (if (neg? t) (long (keep! m-kept :m i s)) t)
+                                    c (+ (* (inc i) k1) (inc j))
+                                    s' (bit-and t 511)
+                                    x (+ (* c S) s')
+                                    w (+ v (bit-shift-right t 9))]
+                                (if (== (aget stamp x) g)
+                                  (when (< w (aget dp x))
+                                    (aset dp x w)
+                                    (aset back x (int (+ (* s 4) 2))))
+                                  (let [n (if (== (aget cell-stamp c) g) (long (aget cell-count c)) 0)]
+                                    (aset cell-stamp c g)
+                                    (aset cell-count c (inc n))
+                                    (aset reached (+ (* c S) n) (int s'))
+                                    (aset stamp x g)
+                                    (aset dp x w)
+                                    (aset back x (int (+ (* s 4) 2)))))))
+                            (when (< i m)
+                              (let [t (aget d-kept (+ (* i S) s))
+                                    t (if (neg? t) (long (keep! d-kept :d i s)) t)
+                                    c (+ (* (inc i) k1) j)
+                                    s' (bit-and t 511)
+                                    x (+ (* c S) s')
+                                    w (+ v (bit-shift-right t 9))]
+                                (if (== (aget stamp x) g)
+                                  (when (< w (aget dp x))
+                                    (aset dp x w)
+                                    (aset back x (int (* s 4))))
+                                  (let [n (if (== (aget cell-stamp c) g) (long (aget cell-count c)) 0)]
+                                    (aset cell-stamp c g)
+                                    (aset cell-count c (inc n))
+                                    (aset reached (+ (* c S) n) (int s'))
+                                    (aset stamp x g)
+                                    (aset dp x w)
+                                    (aset back x (int (* s 4)))))))
+                            (when (< j k)
+                              (let [t (aget i-kept (+ (* j S) s))
+                                    t (if (neg? t) (long (keep! i-kept :i j s)) t)
+                                    c (+ (* i k1) (inc j))
+                                    s' (bit-and t 511)
+                                    x (+ (* c S) s')
+                                    w (+ v (bit-shift-right t 9))]
+                                (if (== (aget stamp x) g)
+                                  (when (< w (aget dp x))
+                                    (aset dp x w)
+                                    (aset back x (int (+ (* s 4) 1))))
+                                  (let [n (if (== (aget cell-stamp c) g) (long (aget cell-count c)) 0)]
+                                    (aset cell-stamp c g)
+                                    (aset cell-count c (inc n))
+                                    (aset reached (+ (* c S) n) (int s'))
+                                    (aset stamp x g)
+                                    (aset dp x w)
+                                    (aset back x (int (+ (* s 4) 1)))))))))))))
+                (let [total (fn [s] (let [x (idx m k s) v (if (== (aget stamp x) g) (aget dp x) inf)]
                                       (if (< v inf) (+ v (let [[x y] (end-at s)] (pack 0 x y))) inf)))
                       best (reduce (fn [b s] (if (< (total s) (total b)) s b)) 0 (range S))
                       steps (loop [i m j k s best out ()]
