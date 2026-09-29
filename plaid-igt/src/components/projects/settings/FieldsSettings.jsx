@@ -16,6 +16,7 @@ import {
 import { readTagsetName } from '@/domain/tagsets';
 import { readFieldLang, readLanguages } from '@/domain/igtConfig';
 import { notSetUp } from '@ui/domain/setupGuard.js';
+import { fieldChange } from './fieldChange.js';
 
 const PREDEFINED = ['Gloss', 'POS', 'Translation', 'Literal Translation', 'Note'];
 const isPredefinedField = (fieldName) => PREDEFINED.includes(fieldName);
@@ -117,13 +118,17 @@ export const FieldsSettings = ({
     }
     const { primary, sentence, morpheme, managed } = layers;
 
-    const currentFields = data.fields || [];
+    // What this save changes is the difference between the table before and
+    // after the user's edit, never between the table and the server. A page
+    // opened before another maintainer added a field does not list it, and
+    // diffing against the server deleted that field with its annotations.
+    const change = fieldChange(data);
     // (scope, name) -> span layer id, kept current through the creates and
     // deletes below so the tagset sync at the end can find every field.
     const layerIds = new Map(managed.map((l) => [layerKey(l), l.id]));
 
-    // Create new span layers for new fields (identity = scope + name)
-    for (const field of currentFields) {
+    // Create a span layer for each field added here that has none yet.
+    for (const field of change.added) {
       if (layerIds.has(fieldKey(field))) continue;
       // Choose parent layer based on field scope (Morpheme fields used to
       // be wrongly parented under the word layer, breaking annotation).
@@ -143,7 +148,7 @@ export const FieldsSettings = ({
       layerIds.set(fieldKey(field), spanLayer.id);
     }
 
-    await client.batched((b) => queueRest(b, data, layers, layerIds));
+    await client.batched((b) => queueRest(b, data, change, layers, layerIds));
     // The Tagsets section above reads which fields point at which tagset off
     // the project, and that is what gates its "Add values used in this
     // project" button. Without this, pointing a field at a tagset here left
@@ -155,10 +160,10 @@ export const FieldsSettings = ({
   };
 
   // Everything a save writes once each field has its layer: the ignored
-  // tokens, the removed fields' layers, and each field's tagset and language.
-  const queueRest = (b, data, { primary, managed }, layerIds) => {
-    const currentFields = data.fields || [];
-    if (data.ignoredTokens) {
+  // tokens, the removed fields' layers, and each field's tagset and language,
+  // each only when the user changed it on this page.
+  const queueRest = (b, data, change, { primary, managed }, layerIds) => {
+    if (data.ignoredTokens && change.ignoredTokens) {
       b.tokenLayers.setConfig(
         primary.id,
         IGT_NAMESPACE,
@@ -167,23 +172,23 @@ export const FieldsSettings = ({
       );
     }
 
-    // Delete span layers for removed fields
-    for (const existingLayer of managed) {
-      const stillExists = currentFields.find(
-        (field) => fieldKey(field) === layerKey(existingLayer),
-      );
-      if (!stillExists) {
-        b.spanLayers.delete(existingLayer.id);
-        layerIds.delete(layerKey(existingLayer));
-      }
+    // Delete the span layers of the fields removed here. A layer this page
+    // never listed is someone else's and stays.
+    for (const field of change.removed) {
+      const key = fieldKey(field);
+      const layerId = layerIds.get(key);
+      if (!layerId) continue;
+      b.spanLayers.delete(layerId);
+      layerIds.delete(key);
     }
 
     // Sync each field's tagset reference. A field stores the tagset's NAME,
     // never a copy of the list, so pointing two fields at one tagset is what
-    // makes them share it. Only write when it actually changed: this runs on
-    // every save of the section, including ones that only touched a name.
+    // makes them share it. Written only for a field whose tagset the user
+    // changed here, and only when the server holds something else, so a
+    // stale page never writes back a value another maintainer replaced.
     const storedTagset = new Map(managed.map((l) => [layerKey(l), readTagsetName(l.config)]));
-    for (const field of currentFields) {
+    for (const field of change.tagset) {
       const key = fieldKey(field);
       const layerId = layerIds.get(key);
       if (!layerId) continue;
@@ -196,7 +201,7 @@ export const FieldsSettings = ({
     // And each field's language, the same way: the record the exporters
     // read, written only when it changed.
     const storedLang = new Map(managed.map((l) => [layerKey(l), readFieldLang(l.config)]));
-    for (const field of currentFields) {
+    for (const field of change.lang) {
       const key = fieldKey(field);
       const layerId = layerIds.get(key);
       if (!layerId) continue;

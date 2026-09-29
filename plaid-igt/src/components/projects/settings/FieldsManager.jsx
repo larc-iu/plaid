@@ -170,9 +170,12 @@ export const FieldsManager = ({
     setIgnoredTokens(newIgnoredTokens);
     try {
       if (onSaveChanges) {
+        // `previous` is what the table showed before this change, so a save
+        // can write only what the user changed here.
         await onSaveChanges({
           fields: newFields,
           ignoredTokens: newIgnoredTokens,
+          previous: before,
         });
       }
       return true;
