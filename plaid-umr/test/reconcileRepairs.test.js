@@ -241,11 +241,26 @@ test('a renumbered name already taken takes a counter, and constants are left al
   ]);
 });
 
-test('an add whose concept failed removes the anchor it made, in the same operation', async () => {
+test('an add that failed leaves no anchor to take back, in one request of its own operation', async () => {
   const { doc, calls } = load();
   doc.onError = () => {};
-  doc._client.spans.create = async (...args) => {
-    calls.push({ name: 'spans.create', args });
+  const batched = doc._client.batched;
+  let sent = null;
+  // The batch reaches the server and is refused whole, as a batch is.
+  doc._client.batched = async (fn) => {
+    const queued = [];
+    await fn(
+      new Proxy(
+        {},
+        {
+          get: (_, group) =>
+            group === 'ref'
+              ? () => ({ $ref: queued.length - 1 })
+              : new Proxy({}, { get: (_, method) => () => queued.push(`${group}.${method}`) }),
+        },
+      ),
+    );
+    sent = queued;
     throw new Error('Network error');
   };
   const parent = byVar(doc, 's2y');
@@ -256,13 +271,10 @@ test('an add whose concept failed removes the anchor it made, in the same operat
     role: ':ARG2',
   });
   await doc._writes?.drained?.();
+  doc._client.batched = batched;
   assert.equal(done, false);
-  const made = calls.find((c) => c.name === 'tokens.bulkCreate');
-  assert.ok(made, 'the anchor was made');
-  const deleted = calls.filter((c) => c.name === 'tokens.bulkDelete').map((c) => c.args[0]);
-  assert.equal(deleted.length, 1, 'and removed again');
-  assert.equal(deleted[0].length, 1);
-  // Inside the add's own operation: nothing else was named between.
+  assert.deepEqual(sent, ['tokens.bulkCreate', 'spans.create', 'relations.create']);
+  assert.equal(calls.filter((c) => c.name === 'tokens.bulkDelete').length, 0);
   const ops = calls.filter((c) => c.name === 'operation').map((c) => c.args[0]);
   assert.deepEqual(ops, ['Add :ARG2 person under ye-01']);
 });

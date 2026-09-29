@@ -16,6 +16,14 @@ const checkOps = (ops) => {
   applyMetadataOps({}, ops);
 };
 
+class BatchRef {
+  constructor(op, index) {
+    this.op = op;
+    this.$ref = op;
+    if (index !== undefined) this.index = index;
+  }
+}
+
 export function recordingClient() {
   let n = 0;
   const id = () => `new${++n}`;
@@ -91,8 +99,20 @@ export function recordingClient() {
       calls.push({ name: 'operation', args: [label], ...(kind ? { kind } : {}) });
       return fn(() => {});
     },
+    // `b.ref(n, index)` stands for the id op n of the batch makes (the ids[index]
+    // of a bulk create), as the real batch's does, and is filled in when the
+    // op that names it runs.
     batched: async (fn) => {
       const queue = [];
+      const out = [];
+      const fill = (v) => {
+        if (v instanceof BatchRef) {
+          const body = out[v.op]?.body;
+          return v.index === undefined ? body?.id : body?.ids?.[v.index];
+        }
+        if (Array.isArray(v)) return v.map(fill);
+        return v;
+      };
       const proxy = (group) =>
         new Proxy(
           {},
@@ -100,14 +120,19 @@ export function recordingClient() {
             get:
               (_, method) =>
               (...args) =>
-                queue.push(() => api[group][method](...args)),
+                queue.push(() => api[group][method](...args.map(fill))),
           },
         );
-      await fn({ tokens: proxy('tokens'), spans: proxy('spans'), relations: proxy('relations') });
+      const ref = (n = -1, index) => new BatchRef(n < 0 ? queue.length + n : n, index);
+      await fn({
+        tokens: proxy('tokens'),
+        spans: proxy('spans'),
+        relations: proxy('relations'),
+        ref,
+      });
       requests.push({ name: 'batch', args: [queue.length] });
       inBatch = true;
       try {
-        const out = [];
         for (const op of queue) out.push({ body: await op() });
         return out;
       } finally {

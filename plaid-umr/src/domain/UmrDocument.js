@@ -850,12 +850,14 @@ export class UmrDocument extends DocumentModel {
     return pieces.map((p) => ({ id: pendingId(), begin: p.begin, end: p.end }));
   }
 
-  // Create `tokens` (from `_pendingPieces`) on the server, recording each
-  // one's id in `ids`.
-  async _createPieces(tokens, ids) {
-    if (!tokens.length) return;
+  // Queue the creation of `tokens` (from `_pendingPieces`) on batch `b`, so a
+  // later write of the same batch stands a node on them by ref. Answers the
+  // refs, in the order of `tokens`, and `read(results, ids)`, which records
+  // each piece's server id in `ids` from the batch's results.
+  _queuePieces(b, tokens) {
+    if (!tokens.length) return { refs: [], read: () => {} };
     const info = this.layerInfo;
-    const created = await this._client.tokens.bulkCreate(
+    b.tokens.bulkCreate(
       tokens.map((t) => ({
         tokenLayerId: info.nodeTokenLayer.id,
         text: info.textLayer.text.id,
@@ -863,38 +865,41 @@ export class UmrDocument extends DocumentModel {
         end: t.end,
       })),
     );
-    tokens.forEach((t, i) => ids.set(t.id, createdIds(created)[i]));
+    const op = b.ref().$ref;
+    return {
+      refs: tokens.map((_, k) => b.ref(op, k)),
+      read: (results, ids) => {
+        const made = createdIds(results[op]);
+        tokens.forEach((t, k) => ids.set(t.id, made[k]));
+      },
+    };
   }
 
-  // A send that makes anchor pieces and then needs more requests to stand a
-  // node on them (core cannot name an id made earlier in its own batch). When
-  // a later step fails, the pieces it made are deleted again, and a node
-  // already on them with them (the server's cascade), inside the same
-  // operation, so no token nobody can see is left and History holds no add
-  // that half happened. Best effort: a connection that is gone takes this
-  // request too, and reconcile on the next open removes what is left
-  // (planStrayTokens). `ids` is where `_createPieces` records the pieces.
+  // A send that makes anchor pieces and then needs more requests to stand
+  // nodes on them (Text mode, whose batches can be too many ops for one
+  // request, so it cannot name its pieces by ref). When a later step fails,
+  // the pieces it made are deleted again, and a node already on them with
+  // them (the server's cascade), inside the same operation, so no token
+  // nobody can see is left and History holds no add that half happened. Best
+  // effort: a connection that is gone takes this request too, and reconcile
+  // on the next open removes what is left (planStrayTokens). `ids` holds the
+  // pieces' server ids.
   //
   // The delete carries no document version. It names only tokens this edit
   // made, so no one else's edit can be overwritten by it, and the version the
   // client holds is the one before the failed step, whose answer may have been
   // lost after the server stored it: stamped, the delete would be refused and
   // leave the node the user was told had failed. Tokens already gone (404)
-  // leave nothing to undo.
-  //
-  // `versioned` keeps the claim, for an edit whose failed step moves an
-  // existing node onto the pieces (a re-anchor). Stored with its answer lost,
-  // that step leaves the pieces carrying a node someone else may have made,
-  // and an unclaimed delete would take it and its edges. Claimed, the delete
-  // is refused once anything has landed, and the node stays where it went.
-  async _undoPiecesOnFailure(tokens, ids, work, { versioned = false } = {}) {
+  // leave nothing to undo. Only for an edit whose later steps put its own new
+  // entities on the pieces: a node add and a re-anchor are one batch each,
+  // and have nothing to undo.
+  async _undoPiecesOnFailure(tokens, ids, work) {
     try {
       return await work();
     } catch (error) {
       const made = tokens.map((t) => ids.get(t.id)).filter(Boolean);
       if (made.length) {
-        const remove = () => this._client.tokens.bulkDelete(made);
-        await (versioned ? remove() : this._unversioned(remove)).catch((err) => {
+        await this._unversioned(() => this._client.tokens.bulkDelete(made)).catch((err) => {
           if (err?.status === 404) return;
           console.warn('Could not remove the anchors of an edit that failed:', err);
         });
@@ -1021,26 +1026,29 @@ export class UmrDocument extends DocumentModel {
       label,
       async () => {
         const info = this.layerInfo;
-        await this._undoPiecesOnFailure(pieces, ids, async () => {
-          await this._createPieces(pieces, ids);
-          const span = await this._client.spans.create(
-            info.conceptLayer.id,
-            pieces.map((p) => ids.get(p.id)),
-            concept,
-            { ...stamp, [UMR_NAMESPACE]: meta },
-          );
-          ids.set(spanId, createdId(span));
+        // The anchor pieces, the node on them and its edge, in one batch that
+        // names what it makes by ref: it lands whole or not at all, so a
+        // failure or a lost answer leaves nothing to take back.
+        let read = () => {};
+        let spanAt = null;
+        const results = await this._client.batched((b) => {
+          const queued = this._queuePieces(b, pieces);
+          read = queued.read;
+          b.spans.create(info.conceptLayer.id, queued.refs, concept, {
+            ...stamp,
+            [UMR_NAMESPACE]: meta,
+          });
+          spanAt = b.ref().$ref;
           if (parent) {
-            const rel = await this._client.relations.create(
-              info.relationLayer.id,
-              settledId(parent.id),
-              ids.get(spanId),
-              role,
-              { ...stamp, [UMR_NAMESPACE]: { order } },
-            );
-            ids.set(edgeId, createdId(rel));
+            b.relations.create(info.relationLayer.id, settledId(parent.id), b.ref(), role, {
+              ...stamp,
+              [UMR_NAMESPACE]: { order },
+            });
           }
         });
+        read(results, ids);
+        ids.set(spanId, createdId(results[spanAt]));
+        if (parent) ids.set(edgeId, createdId(results[spanAt + 1]));
         this._settle(ids);
       },
       parent ? `Add ${role} ${concept} under ${parent.concept}` : `Add ${concept}`,
@@ -1288,8 +1296,7 @@ export class UmrDocument extends DocumentModel {
   }
 
   // Re-anchor a node to a set of its sentence's words (none for unaligned).
-  // New pieces first, then the span takes them and the old ones go: an op
-  // cannot use an id made in its own batch.
+  // New pieces, the span taking them and the old ones going, in one batch.
   async setAnchor(nodeId, wordIds) {
     const info = this.layerInfo;
     const node = this.node(nodeId);
@@ -1328,29 +1335,23 @@ export class UmrDocument extends DocumentModel {
         if (patchMeta) s.metadata = applyMetadataOps(s.metadata, metaOps);
       }
     });
-    // New pieces first, then the span takes them and the old ones go: an op
-    // cannot use an id made in its own batch.
+    // One batch that names the new pieces by ref: it lands whole or not at
+    // all, so a failure or a lost answer leaves no piece to take back, and
+    // nothing another user may have put on them is ever deleted with them.
     return this._queueWrite(
       label,
       async () => {
         const ids = new Map();
         const id = settledId(node.id);
-        await this._undoPiecesOnFailure(
-          pieces,
-          ids,
-          async () => {
-            await this._createPieces(pieces, ids);
-            await this._client.batched(async (b) => {
-              b.spans.setTokens(
-                id,
-                pieces.map((p) => ids.get(p.id)),
-              );
-              if (patchMeta) b.spans.patchMetadata(id, metaOps);
-              b.tokens.bulkDelete(oldIds.map(settledId));
-            });
-          },
-          { versioned: true },
-        );
+        let read = () => {};
+        const results = await this._client.batched((b) => {
+          const queued = this._queuePieces(b, pieces);
+          read = queued.read;
+          b.spans.setTokens(id, queued.refs);
+          if (patchMeta) b.spans.patchMetadata(id, metaOps);
+          b.tokens.bulkDelete(oldIds.map(settledId));
+        });
+        read(results, ids);
         this._settle(ids);
       },
       words.length ? `Anchor ${node.var} to ${words.join(' ')}` : `Unanchor ${node.var}`,
@@ -1923,7 +1924,7 @@ export class UmrDocument extends DocumentModel {
   // A constant's node (`author`, `document-creation-time`, ...) for a triple
   // to hang on, the way the importer makes one: a zero-width token at the
   // text's start and a span marked constant. Shown at once under pending
-  // ids; `_createConstant` makes it on the server inside the send.
+  // ids; `_queueConstant` makes it on the server inside the send.
   _pendingConstant(name) {
     const stamp = this.writer.createStamp;
     return {
@@ -1943,15 +1944,21 @@ export class UmrDocument extends DocumentModel {
     L.spans.push({ ...c.span, tokens: [c.token.id] });
   }
 
-  async _createConstant(c, ids) {
-    await this._createPieces([c.token], ids);
-    const span = await this._client.spans.create(
-      this.layerInfo.conceptLayer.id,
-      [ids.get(c.token.id)],
-      c.name,
-      c.span.metadata,
-    );
-    ids.set(c.span.id, createdId(span));
+  // Queue the constant `c` (from `_pendingConstant`) on batch `b`: its token,
+  // then its span on that token by ref. Answers the ref a later write names
+  // the constant by, and `read(results, ids)`, which records its ids.
+  _queueConstant(b, c) {
+    const info = this.layerInfo;
+    const pieces = this._queuePieces(b, [c.token]);
+    b.spans.create(info.conceptLayer.id, pieces.refs, c.name, c.span.metadata);
+    const ref = b.ref();
+    return {
+      ref,
+      read: (results, ids) => {
+        pieces.read(results, ids);
+        ids.set(c.span.id, createdId(results[ref.$ref]));
+      },
+    };
   }
 
   /**
@@ -2012,20 +2019,27 @@ export class UmrDocument extends DocumentModel {
     const ok = await this._queueWrite(
       failed,
       async () => {
-        const made = [newSource, newTarget].filter(Boolean).map((c) => c.token);
-        await this._undoPiecesOnFailure(made, ids, async () => {
-          if (newSource) await this._createConstant(newSource, ids);
-          if (newTarget) await this._createConstant(newTarget, ids);
-          const serverId = (id) => ids.get(id) || settledId(id);
-          const created = await this._client.relations.create(
-            this.layerInfo.documentGraphLayer.id,
-            serverId(sourceId),
-            serverId(targetId),
-            rel,
-            { ...stamp, [UMR_NAMESPACE]: meta },
-          );
-          ids.set(tripleId, createdId(created));
+        // A new constant and the triple on it, in one batch that names the
+        // constant by ref: it lands whole or not at all.
+        const reads = [];
+        let tripleAt = null;
+        const results = await this._client.batched((b) => {
+          const end = (c, id) => {
+            if (!c) return settledId(id);
+            const queued = this._queueConstant(b, c);
+            reads.push(queued.read);
+            return queued.ref;
+          };
+          const from = end(newSource, sourceId);
+          const to = end(newTarget, targetId);
+          b.relations.create(this.layerInfo.documentGraphLayer.id, from, to, rel, {
+            ...stamp,
+            [UMR_NAMESPACE]: meta,
+          });
+          tripleAt = b.ref().$ref;
         });
+        reads.forEach((read) => read(results, ids));
+        ids.set(tripleId, createdId(results[tripleAt]));
         this._settle(ids);
       },
       `Add ${rel} from ${s?.var || source} to ${t?.var || target}`,
