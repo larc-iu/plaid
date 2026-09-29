@@ -89,13 +89,17 @@ export const AnnotationEditor = () => {
   const { getClient, user } = useAuth();
 
   // The initial repair, and the gate the grid holds behind a spinner while it
-  // runs. Strict mode OCC-guards annotation edits and is entered only AFTER the
-  // repair's own writes have landed, before the grid opens.
+  // runs. Strict mode OCC-guards annotation edits and is entered BEFORE the
+  // repair, whose writes then carry the version it was planned from. A repair
+  // that failed can leave the grid without the words it was to seed.
+  const [repairFailed, setRepairFailed] = useState(false);
+  useEffect(() => setRepairFailed(false), [doc]);
   const reconciling = useReconcileOnOpen({
     doc,
     asOf,
     canWrite: canEditProject(project, user),
-    onRepaired: () => getClient()?.enterStrictMode(documentId),
+    enterStrictMode: () => getClient()?.enterStrictMode(documentId),
+    onFailed: () => setRepairFailed(true),
   });
   // Strict mode is client-GLOBAL, so it is exited on the way out of this tab,
   // or it leaks onto unrelated writes (tokenizing in the Text Editor),
@@ -496,7 +500,9 @@ export const AnnotationEditor = () => {
             <p className="py-10 text-center text-muted-foreground">
               {isViewingHistorical
                 ? 'This state has no tokens.'
-                : 'No sentences. Tokenize the document in the Text Editor.'}
+                : repairFailed
+                  ? 'The document could not be repaired. Reload the page to try again.'
+                  : 'No sentences. Tokenize the document in the Text Editor.'}
             </p>
           ) : (
             // The review gestures listen here, above every sentence, because

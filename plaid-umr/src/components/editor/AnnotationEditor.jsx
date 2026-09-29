@@ -56,12 +56,12 @@ export const AnnotationEditor = () => {
   // carries the document's version, so an edit made over another person's
   // newer one is refused with a 409 and the page resyncs, where it silently
   // overwrote theirs (or minted a variable they had just taken). It is entered
-  // only AFTER the repair's own writes have landed, before the canvas opens.
+  // BEFORE the repair, whose writes then carry the version it was planned from.
   const reconciling = useReconcileOnOpen({
     doc,
     asOf,
     canWrite: canEditProject(project, user),
-    onRepaired: () => getClient()?.enterStrictMode(documentId),
+    enterStrictMode: () => getClient()?.enterStrictMode(documentId),
   });
   // The project's vocabularies, which the entry check compares a node picked
   // from an entry with: a warning on the node, its sentence's badge and the

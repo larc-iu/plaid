@@ -13,7 +13,7 @@ vi.mock('../lib/integrityToast.js', () => ({ reportIntegrityFindings: vi.fn() })
 
 const { notifyError } = await import('../lib/notify.js');
 const { reportIntegrityFindings } = await import('../lib/integrityToast.js');
-const { useReconcileOnOpen } = await import('./useReconcileOnOpen.js');
+const { useReconcileOnOpen, REPAIR_TIMEOUT_MS } = await import('./useReconcileOnOpen.js');
 
 let view;
 let api;
@@ -245,28 +245,129 @@ describe('the reconcile gate', () => {
     await view.unmount();
   });
 
-  it('calls onRepaired once the pass has ended and before the gate comes down', async () => {
+  it('enters strict mode before the repair writes, so its writes carry the version it was planned from', async () => {
     const seen = [];
     const { doc, finish } = pendingDoc('doc-1');
-    const onRepaired = () => seen.push(api.reconciling);
-    view = await renderComponent(<Probe {...base} doc={doc} onRepaired={onRepaired} />);
-    expect(seen).toEqual([]);
+    const enterStrictMode = vi.fn(() => seen.push(doc.reconcileOnOpen.mock.calls.length));
+    view = await renderComponent(<Probe {...base} doc={doc} enterStrictMode={enterStrictMode} />);
+    // Entered before the pass started, not after it landed.
+    expect(seen[0]).toBe(0);
+    expect(doc.reconcileOnOpen).toHaveBeenCalledTimes(1);
 
     await view.step(() => finish({}));
     await settle();
-    // Called while the gate was still up: strict mode is on before any edit.
-    expect(seen).toEqual([true]);
     expect(api.reconciling).toBe(false);
     await view.unmount();
   });
 
-  it('calls onRepaired on a path with nothing to repair', async () => {
-    const onRepaired = vi.fn();
+  it('enters strict mode on a path with nothing to repair', async () => {
+    const enterStrictMode = vi.fn();
     view = await renderComponent(
-      <Probe {...base} doc={makeDoc()} canWrite={false} onRepaired={onRepaired} />,
+      <Probe {...base} doc={makeDoc()} canWrite={false} enterStrictMode={enterStrictMode} />,
     );
     await settle();
-    expect(onRepaired).toHaveBeenCalledTimes(1);
+    expect(enterStrictMode).toHaveBeenCalled();
+    expect(api.reconciling).toBe(false);
+    await view.unmount();
+  });
+
+  it('re-reads and plans the repair again once after a conflict, and says nothing when that lands', async () => {
+    const conflict = Object.assign(new Error('HTTP 409 Document version mismatch'), {
+      status: 409,
+    });
+    const doc = makeDoc();
+    doc.reload = vi.fn(() => Promise.resolve());
+    doc.reconcileOnOpen = vi
+      .fn()
+      .mockResolvedValueOnce({ findings: [], error: conflict })
+      .mockResolvedValueOnce({ findings: [], deleted: 1 });
+    view = await renderComponent(<Probe {...base} doc={doc} />);
+    await settle();
+    await settle();
+    expect(doc.reload).toHaveBeenCalledTimes(1);
+    expect(doc.reconcileOnOpen).toHaveBeenCalledTimes(2);
+    expect(notifyError).not.toHaveBeenCalled();
+    expect(api.reconciling).toBe(false);
+    await view.unmount();
+  });
+
+  it('says the document changed while it was checked when the second plan is refused too', async () => {
+    const conflict = Object.assign(new Error('HTTP 409 Document version mismatch'), {
+      status: 409,
+    });
+    const doc = makeDoc({ findings: [], error: conflict });
+    doc.reload = vi.fn(() => Promise.resolve());
+    const onFailed = vi.fn();
+    view = await renderComponent(<Probe {...base} doc={doc} onFailed={onFailed} />);
+    await settle();
+    await settle();
+    expect(doc.reconcileOnOpen).toHaveBeenCalledTimes(2);
+    expect(notifyError).toHaveBeenCalledTimes(1);
+    expect(notifyError).toHaveBeenCalledWith(
+      'The document changed while it was being checked. Reload to check it again.',
+      'Failed to repair the document',
+    );
+    expect(onFailed).toHaveBeenCalledWith(conflict);
+    expect(api.reconciling).toBe(false);
+    await view.unmount();
+  });
+
+  it('does not re-plan a repair that failed for another reason', async () => {
+    const doc = makeDoc({ findings: [], error: new Error('HTTP 400 Token is not contained') });
+    doc.reload = vi.fn(() => Promise.resolve());
+    view = await renderComponent(<Probe {...base} doc={doc} />);
+    await settle();
+    expect(doc.reload).not.toHaveBeenCalled();
+    expect(doc.reconcileOnOpen).toHaveBeenCalledTimes(1);
+    // A raw server message ends its sentence before the instruction.
+    expect(notifyError).toHaveBeenCalledWith(
+      'Token is not contained. Reload to check the document again.',
+      'Failed to repair the document',
+    );
+    await view.unmount();
+  });
+
+  it('says a repair that timed out is to be checked again, not a change that may be lost', async () => {
+    const timedOut = Object.assign(new Error('The operation was aborted due to timeout'), {
+      status: 0,
+      method: 'POST',
+      url: 'http://host/api/v1/batch',
+    });
+    const doc = makeDoc({ findings: [], error: timedOut });
+    view = await renderComponent(<Probe {...base} doc={doc} />);
+    await settle();
+    expect(notifyError).toHaveBeenCalledWith(
+      'The server did not answer in time. Reload to check the document again.',
+      'Failed to repair the document',
+    );
+    await view.unmount();
+  });
+
+  it('gives each request of the repair a short timeout, and puts the client back after', async () => {
+    const client = { batchTimeout: 180000 };
+    let during;
+    const { doc, finish } = pendingDoc('doc-1');
+    doc.client = client;
+    // Concurrent callers share one pass, as DocumentModel's do.
+    let pass = null;
+    const inner = doc.reconcileOnOpen;
+    doc.reconcileOnOpen = vi.fn(() => {
+      during = client.batchTimeout;
+      pass ??= inner();
+      return pass;
+    });
+    view = await renderComponent(
+      <StrictMode>
+        <Probe {...base} doc={doc} />
+      </StrictMode>,
+    );
+    expect(during).toBe(REPAIR_TIMEOUT_MS);
+    expect(REPAIR_TIMEOUT_MS).toBeLessThanOrEqual(30000);
+
+    await view.step(() => finish({}));
+    await settle();
+    // Both runs of StrictMode's double invoke have ended.
+    expect(client.batchTimeout).toBe(180000);
     expect(api.reconciling).toBe(false);
     await view.unmount();
   });
