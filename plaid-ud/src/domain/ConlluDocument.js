@@ -30,6 +30,7 @@ import { SUPPRESS_KEY, isSuppressor, suppressorFor } from './enhancedGraph.js';
 import { notSetUp } from '../../../plaid-ui/src/domain/setupGuard.js';
 import { pendingId, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
 import { statusOf } from '../../../plaid-ui/src/lib/errors.js';
+import { expectStored, isConfigConflict } from '../../../plaid-ui/src/domain/configCells.js';
 import { mergeText } from '../../../plaid-ui/src/lib/textMerge.js';
 import {
   interSententialRelationIds,
@@ -505,16 +506,31 @@ export class ConlluDocument extends DocumentModel {
   }
 
   // Maintainers only, since it is layer config; a failure is not worth
-  // interrupting anyone over, because nothing is worse than it was.
+  // interrupting anyone over, because nothing is worse than it was. The write
+  // adds only the missing keys to what the layer declared, and names that
+  // declaration as `expected`, so a key another app declared after this page
+  // loaded is not written over: that write is refused and the next open plans
+  // again.
   async _backfillPreserveOnSplit(info) {
     if (!canManageProject(this._project, this._user)) return;
     const ids = planPreserveOnSplit(info, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, PROVENANCE_KEYS);
+    const layers = [info?.sentenceTokenLayer, info?.wordTokenLayer, info?.morphemeTokenLayer];
     for (const id of ids) {
+      const layer = layers.find((l) => l?.id === id);
+      const options = expectStored(layer, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY);
+      const declared = Array.isArray(options.expected) ? options.expected : [];
+      const value = [...declared, ...PROVENANCE_KEYS.filter((k) => !declared.includes(k))];
       try {
-        await this._client.tokenLayers.setConfig(id, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, [
-          ...PROVENANCE_KEYS,
-        ]);
+        await this._client.tokenLayers.setConfig(
+          id,
+          PLAID_NAMESPACE,
+          PRESERVE_ON_SPLIT_KEY,
+          value,
+          undefined,
+          options,
+        );
       } catch (err) {
+        if (isConfigConflict(err)) continue;
         console.error('Could not declare preserveOnSplit on a layer:', err);
         return;
       }
