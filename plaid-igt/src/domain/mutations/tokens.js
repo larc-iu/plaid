@@ -15,6 +15,8 @@ import { planSpanDedup, planVocabLinkDedup, applyVocabLinkDedup } from '../igtRe
 import { removeTokensLocally } from '../textEdits.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
+import { builtinRun } from '../builtinVersion.js';
+import { BUILTIN_TOKENIZE_RULE_BASED } from '../serviceDefaults.js';
 
 const findCoincidentMorphemeIds = (morphemeTokens, targets) => {
   if (!Array.isArray(morphemeTokens) || morphemeTokens.length === 0) return [];
@@ -236,7 +238,7 @@ export const tokenMutations = {
     if (newTokens.length === 0) return 0;
     const words = newTokens.map((t) => ({ id: pendingId(), begin: t.begin, end: t.end }));
     this._applyRawPatch((next, infoNext) => pushWords(infoNext, text.id, words));
-    const ok = await this._queueWrite(label, async () => {
+    const send = async () => {
       const result = await this._client.tokens.bulkCreate(
         words.map((w) => ({
           tokenLayerId: primaryTokenLayer.id,
@@ -247,7 +249,15 @@ export const tokenMutations = {
       );
       const newIds = createdIds(result);
       this._settle(new Map(words.map((w, i) => [w.id, newIds[i]])));
-    });
+    };
+    // A service run in the audit log, naming the rule. The words carry no
+    // provenance: tokens are substrate, which the convention leaves unstamped.
+    const ok = await this._queueWrite(
+      label,
+      send,
+      undefined,
+      builtinRun(BUILTIN_TOKENIZE_RULE_BASED),
+    );
     return ok ? words.length : null;
   },
 

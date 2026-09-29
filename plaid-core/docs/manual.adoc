@@ -232,7 +232,7 @@ The kind is one of this list. The server refuses any other value with a 400, so 
 
 |`service-run`
 |One run of a service, with every write the service made for it.
-|`service:<service id>`
+|`service:<service id>`, or `builtin:<name>` for a rule an app runs in the browser: IGT writes `rule-based-punctuation` (its tokenizer), `analysis-copy` and `precedent` (Auto-analyze's copy and linking steps)
 
 |`import`
 |A file or archive read into a project.
@@ -1535,6 +1535,8 @@ The Python client computes it as `BaseService.version`, and `machine_detail(vers
 For an assistant the hash is of its system prompt template and every tool schema (see the plaid-agent README, "Model and prompt version").
 An approved assistant plan's writes carry the model and version of the turn that proposed the plan. When a contributor approves, the writes are the contributor's, and the model and version stay beside them with the assistant's source as `provDetail.guess`, as for any guess a contributor adopts.
 The AnCast scorer writes a report rather than an annotation, and names the same two things as `tool` and `serviceVersion`.
+A rule an app runs in the browser is a writer too. Its `model` is `builtin:<name>` (IGT's `builtin:analysis-copy` and `builtin:precedent`), and its `version` is the app's package version, then the first 8 hex digits of a SHA-256 of the file that holds the rule (`plaid-igt/src/domain/analysisMemory.js`, `plaid-igt/src/domain/autoLink.js`), hashed in the browser from the file as the app bundles it.
+A release does not stamp the apps' package versions, which read `0.0.0` in every build, so for these the hash is what names the code.
 Keep the rest of `provDetail` small: these two strings, what was predicted, and the handful of scores a reviewer would use.
 
 The convention is made operational by a **write contract** that every machine writer (service, built-in algorithm, importer) is expected to follow:

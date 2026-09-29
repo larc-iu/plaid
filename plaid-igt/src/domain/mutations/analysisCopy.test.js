@@ -192,6 +192,35 @@ describe('bulkReplaceAnalyses', () => {
   });
 });
 
+// A study reads the audit log and the provenance: a copy made by the built-in
+// rule is one service run naming it, and every piece it writes names the rule
+// and its version beside what it predicted.
+describe('a copy by a built-in rule', () => {
+  it('is one service run, and each piece names the rule and its version', async () => {
+    const client = clientFor({ reloadDoc: strippedRaw() });
+    const doc = docFor(strippedRaw(), client);
+    const detail = { model: 'builtin:analysis-copy', version: '0.0.0+0123abcd' };
+    const n = await doc.bulkApplyAnalyses(
+      [{ wordTokenId: 'w-2', analysis: targetAnalysis }],
+      'rule:test',
+      { detail, kind: 'service-run', ref: 'builtin:analysis-copy' },
+    );
+    expect(n).toBe(1);
+    expect(client.calls[0]).toEqual({
+      kind: 'beginOperation',
+      args: ['Copy previous analyses', { kind: 'service-run', ref: 'builtin:analysis-copy' }],
+    });
+    const spans = client.calls
+      .filter((c) => c.kind === 'spans.bulkCreate')
+      .flatMap((c) => c.args[0]);
+    expect(spans.length).toBeGreaterThan(0);
+    for (const s of spans) expect(s.metadata.provDetail).toEqual({ ...detail, value: s.value });
+    const link = client.calls.find((c) => c.kind === 'vocabLinks.bulkCreate').args[0][0];
+    expect(link.metadata).toMatchObject({ prov: 'inferred', provSource: 'rule:test' });
+    expect(link.metadata.provDetail).toEqual(detail);
+  });
+});
+
 // Prediction extras: a machine copy records what it wrote (provDetail.value on
 // spans, provDetail.form on morphemes) so a later consumer can tell an
 // accepted-as-is copy from a corrected one; a human replace records nothing.

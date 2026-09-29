@@ -107,8 +107,10 @@ export const vocabMutations = {
   // confirms by touching it). Creates go through the uncapped bulk endpoint
   // (so an arbitrarily large first run is one tx); the rarer replacements run
   // as chunked atomic delete+create batches. Ends with one _reload(). Returns
-  // the number of links written (false on failure).
-  async bulkLinkVocab(proposals, provSource) {
+  // the number of links written (false on failure). `detail` is the producer's
+  // own provDetail (a built-in rule's model and version), `kind` and `ref` the
+  // write's operation.
+  async bulkLinkVocab(proposals, provSource, { detail, kind, ref } = {}) {
     let creates = []; // { tokenId, item }
     let replaces = []; // { tokenId, item, priorLinkId }
     for (const p of proposals || []) {
@@ -125,9 +127,9 @@ export const vocabMutations = {
       replaces.push({ tokenId: p.tokenId, item, vocabId: vocab.id, priorLinkId: link.id });
     }
     if (!creates.length && !replaces.length) return 0;
-    const metadata = stampInferred(provSource);
+    const metadata = stampInferred(provSource, { detail });
 
-    const ok = await this._queueWrite('Failed to auto-link', async () => {
+    const send = async () => {
       // Proposals can name an unanalyzed word's morpheme, which auto-link reads
       // by the form the word gives it. One bulk create turns those into tokens
       // before anything links to them, and before the batches below. A proposal
@@ -182,7 +184,8 @@ export const vocabMutations = {
         );
       }
       await this._reloadInSend();
-    });
+    };
+    const ok = await this._queueWrite('Failed to auto-link', send, undefined, { kind, ref });
     return ok ? creates.length + replaces.length : false;
   },
 
@@ -747,8 +750,8 @@ export const vocabMutations = {
   // written, each stamped { prov: 'inferred', provSource } for a person to
   // confirm; a run that already carries an MWE over exactly those words is
   // skipped. One bulk create, then one reload. Returns the number of links
-  // written (false on failure).
-  async bulkLinkMwes(proposals, provSource) {
+  // written (false on failure). `detail`, `kind` and `ref` as bulkLinkVocab's.
+  async bulkLinkMwes(proposals, provSource, { detail, kind, ref } = {}) {
     const existing = new Set();
     Object.values(this._vocabularies || {}).forEach((v) =>
       (v.vocabLinks || []).forEach((l) => {
@@ -768,11 +771,17 @@ export const vocabMutations = {
       creates.push({ vocabItem: item.id, tokens: ids });
     }
     if (!creates.length) return 0;
-    const metadata = stampInferred(provSource);
-    const ok = await this._queueWrite('Failed to auto-link multi-word expressions', async () => {
+    const metadata = stampInferred(provSource, { detail });
+    const send = async () => {
       await this._client.vocabLinks.bulkCreate(creates.map((c) => ({ ...c, metadata })));
       await this._reloadInSend();
-    });
+    };
+    const ok = await this._queueWrite(
+      'Failed to auto-link multi-word expressions',
+      send,
+      undefined,
+      { kind, ref },
+    );
     return ok ? creates.length : false;
   },
 

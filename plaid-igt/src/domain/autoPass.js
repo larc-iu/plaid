@@ -43,6 +43,8 @@ import {
 } from './autoLink.js';
 import { linkPrecedentQueries, createTally, foldLinkRows } from './precedent.js';
 import { plural } from '../utils/plural.js';
+import { builtinDetail, builtinRun } from './builtinVersion.js';
+import { BUILTIN_ANALYSIS_COPY, BUILTIN_LINK_PRECEDENT } from './serviceDefaults.js';
 
 const MAX_SOURCE_DOCS = 25;
 const SOURCE_FETCHES_IN_FLIGHT = 4;
@@ -135,7 +137,12 @@ async function runCopyPhase(doc, copyContents, onProgress, shouldStop = () => fa
   // Last chance: the write below is one operation and is not interrupted.
   checkpoint(shouldStop);
   onProgress({ percent: null, message: `Copying onto ${plural(proposals.length, 'word')}…` });
-  return doc.bulkApplyAnalyses(proposals, ANALYSIS_COPY_SOURCE);
+  // A service run naming the rule, whose pieces name the rule and its version.
+  const detail = await builtinDetail(BUILTIN_ANALYSIS_COPY);
+  return doc.bulkApplyAnalyses(proposals, ANALYSIS_COPY_SOURCE, {
+    detail,
+    ...builtinRun(BUILTIN_ANALYSIS_COPY),
+  });
 }
 
 // Tallies of identical whole-word analyses from the project's other documents:
@@ -208,10 +215,24 @@ async function linkPrecedentFor(doc, vocabIds, ignoredCfg) {
   return foldLinkRows(createTally(), results, ignoredCfg);
 }
 
+// The link phase's writes are one service run naming the rule, and each link
+// names the rule and its version. The run's operation is opened once the edits
+// made before it have landed: the client holds one open operation, and an
+// edit still saving holds one, which this run's would otherwise join.
+async function runLinkPhase(doc, onProgress, shouldStop) {
+  await doc.whenSaved();
+  const run = builtinRun(BUILTIN_LINK_PRECEDENT);
+  return doc.client.withOperation(
+    'Link to the lexicon',
+    () => linkPhase(doc, onProgress, shouldStop, run),
+    run,
+  );
+}
+
 // Number of links written, or false on mutation failure. Throws Stopped as the
 // copy phase does. The two writes below are each preceded by a checkpoint, so a
 // stop lands between them rather than inside one.
-async function runLinkPhase(doc, onProgress = () => {}, shouldStop = () => false) {
+async function linkPhase(doc, onProgress = () => {}, shouldStop = () => false, run = {}) {
   const vocabIds = Object.keys(doc.vocabularies || {});
   if (!vocabIds.length) return 0;
   onProgress({ percent: null, message: 'Reading the lexicon…' });
@@ -223,11 +244,12 @@ async function runLinkPhase(doc, onProgress = () => {}, shouldStop = () => false
     precedent,
     ignoredCfg,
   });
+  const stamp = { detail: await builtinDetail(BUILTIN_LINK_PRECEDENT), ...run };
   let linked = 0;
   if (proposals.length) {
     checkpoint(shouldStop);
     onProgress({ percent: null, message: `Linking ${plural(proposals.length, 'word')}…` });
-    const n = await doc.bulkLinkVocab(proposals, AUTO_LINK_SOURCE);
+    const n = await doc.bulkLinkVocab(proposals, AUTO_LINK_SOURCE, stamp);
     if (n === false) return false;
     linked += n;
   }
@@ -241,7 +263,7 @@ async function runLinkPhase(doc, onProgress = () => {}, shouldStop = () => false
   if (mweProposals.length) {
     checkpoint(shouldStop);
     onProgress({ percent: null, message: 'Linking multi-word expressions…' });
-    const n = await doc.bulkLinkMwes(mweProposals, MWE_LINK_SOURCE);
+    const n = await doc.bulkLinkMwes(mweProposals, MWE_LINK_SOURCE, stamp);
     if (n === false) return false;
     linked += n;
   }

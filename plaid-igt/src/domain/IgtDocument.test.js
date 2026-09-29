@@ -2080,6 +2080,77 @@ describe('an entry may be linked from words and morphemes alike', () => {
   });
 });
 
+// A study reads the audit log and the provenance: what a built-in rule links
+// is a service run naming the rule, and each link names the rule and its
+// version.
+describe('links by a built-in rule', () => {
+  const detail = { model: 'builtin:precedent', version: '0.0.0+0123abcd' };
+  const tags = { kind: 'service-run', ref: 'builtin:precedent' };
+
+  it('bulkLinkVocab stamps the rule and its version, under the operation it is given', async () => {
+    const doc = makeDoc({
+      vocabularies: { v1: { id: 'v1', items: [{ id: 'i-1', form: 'foo' }], vocabLinks: [] } },
+    });
+    const n = await doc.bulkLinkVocab([{ tokenId: 'w-1', vocabItemId: 'i-1' }], 'rule:test', {
+      detail,
+      ...tags,
+    });
+    expect(n).toBe(1);
+    expect(doc.client.calls[0]).toEqual({ kind: 'beginOperation', args: ['Auto-link', tags] });
+    const bulk = doc.client.calls.find((c) => c.kind === 'vocabLinks.bulkCreate');
+    expect(bulk.args[0][0].metadata).toEqual({
+      prov: 'inferred',
+      provSource: 'rule:test',
+      provDetail: detail,
+    });
+  });
+
+  it('bulkLinkMwes stamps the rule and its version, under the operation it is given', async () => {
+    const raw = buildRawDoc({ body: 'sit down now' });
+    const client = makeFakeClient();
+    client.documents.get = async () => raw;
+    const doc = makeDoc({
+      raw,
+      client,
+      vocabularies: {
+        v1: { id: 'v1', items: [{ id: 'i-sit', form: 'sit down' }], vocabLinks: [] },
+      },
+    });
+    const n = await doc.bulkLinkMwes(
+      [{ tokenIds: ['w-1', 'w-2'], vocabItemId: 'i-sit' }],
+      'rule:mwe',
+      {
+        detail,
+        ...tags,
+      },
+    );
+    expect(n).toBe(1);
+    expect(client.calls[0]).toEqual({
+      kind: 'beginOperation',
+      args: ['Auto-link multi-word expressions', tags],
+    });
+    const bulk = client.calls.find((c) => c.kind === 'vocabLinks.bulkCreate');
+    expect(bulk.args[0][0].metadata.provDetail).toEqual(detail);
+  });
+});
+
+// The rule-based tokenizer is a built-in service: its words are one service
+// run naming it. Words are substrate, which the provenance convention leaves
+// unstamped, so they carry nothing else.
+describe('the built-in tokenizer', () => {
+  it('is one service run naming the rule, and stamps no provenance on the words', async () => {
+    const doc = makeDoc({ raw: buildRawDoc({ body: 'the cat', words: [], morphemes: [] }) });
+    expect(await doc.tokenize()).toBe(2);
+    expect(doc.client.calls[0]).toEqual({
+      kind: 'beginOperation',
+      args: ['Tokenize', { kind: 'service-run', ref: 'builtin:rule-based-punctuation' }],
+    });
+    const bulk = doc.client.calls.find((c) => c.kind === 'tokens.bulkCreate');
+    expect(bulk.args[0]).toHaveLength(2);
+    for (const t of bulk.args[0]) expect(t.metadata).toBeUndefined();
+  });
+});
+
 describe('confirmSentenceSpan', () => {
   const machine = { prov: 'inferred', provSource: 'service:llm-translator' };
   const withTranslation = (metadata) => {

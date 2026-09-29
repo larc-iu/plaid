@@ -199,7 +199,9 @@ describe('runBuiltinAnalysis: link precedent', () => {
     },
     vocabularies: { v1: { id: 'v1', items } },
     dataVersion: 0,
+    whenSaved: async () => {},
     client: {
+      withOperation: async (_label, fn) => fn(),
       baseUrl: 'http://core',
       token: 'autopass-link',
       projects: {

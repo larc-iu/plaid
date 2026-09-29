@@ -83,15 +83,21 @@ const findVocabHome = (vocabularies, vocabItemId) => {
 
 export const analysisCopyMutations = {
   // Returns the number of words a copy was applied to (false on failure).
-  async bulkApplyAnalyses(proposals, provSource) {
+  // `detail` is the producer's own provDetail (a built-in rule's model and
+  // version), kept beside what each piece predicted. `kind` and `ref` are the
+  // write's operation (a built-in rule's is a service run naming it).
+  async bulkApplyAnalyses(proposals, provSource, { detail, kind, ref } = {}) {
     const todo = this._planAnalysisApply(proposals);
     if (todo === false) return false;
     if (!todo.length) return 0;
     const label = 'Failed to copy previous analyses';
     if (!this._canWrite(label)) return false;
-    const plan = this._planAnalysesApply(todo, stampInferred(provSource));
+    const plan = this._planAnalysesApply(todo, stampInferred(provSource, { detail }));
     this._showAnalysesApply(plan);
-    const ok = await this._queueWrite(label, () => this._sendAnalysesApply(plan));
+    const ok = await this._queueWrite(label, () => this._sendAnalysesApply(plan), undefined, {
+      kind,
+      ref,
+    });
     return ok ? todo.length : false;
   },
 
@@ -304,7 +310,8 @@ export const analysisCopyMutations = {
     // it is verified. A verifier's replace (empty stamp) records nothing.
     // Links need nothing: the item id is the guess.
     const machine = !!stamp?.[PROV.key];
-    const withDetail = (detail) => (machine ? { ...stamp, [PROV.detailKey]: detail } : stamp);
+    const withDetail = (detail) =>
+      machine ? { ...stamp, [PROV.detailKey]: { ...stamp[PROV.detailKey], ...detail } } : stamp;
     const stampValue = (value) => withDetail({ value });
     const stampForm = (form) => (form == null ? stamp : withDetail({ form }));
 
