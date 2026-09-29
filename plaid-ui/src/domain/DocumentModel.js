@@ -158,6 +158,12 @@ export class DocumentModel {
   get isOffline() {
     return this._writes.isOffline;
   }
+  // True once a refetch after a refused edit was given up (the server failed
+  // it time after time), until a later one lands: what the screen shows may
+  // not be what the server has. WriteQueue's `outOfStep`.
+  get outOfStep() {
+    return this._writes.outOfStep;
+  }
   get error() {
     return this._error;
   }

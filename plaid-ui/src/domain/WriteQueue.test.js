@@ -392,6 +392,24 @@ describe('WriteQueue', () => {
     expect(outOfStep).toHaveBeenCalledTimes(1);
     expect(outOfStep).toHaveBeenCalledWith(boom);
     expect(q.isSaving).toBe(false);
+    expect(q.outOfStep).toBe(true);
+  });
+
+  it('is out of step only from a refetch given up until one lands', async () => {
+    const q = new WriteQueue({ retryDelay: () => 0 });
+    let fail = true;
+    const resync = async () => {
+      if (fail) throw Object.assign(new Error('HTTP 500 boom'), { status: 500 });
+    };
+    const refused = async () => {
+      throw new Error('refused');
+    };
+    expect(q.outOfStep).toBe(false);
+    await q.push(refused, { resync });
+    expect(q.outOfStep).toBe(true);
+    fail = false;
+    await q.push(refused, { resync });
+    expect(q.outOfStep).toBe(false);
   });
 
   // The queue waits out exactly what every error toast calls "Could not reach

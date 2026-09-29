@@ -364,6 +364,7 @@ describe('a refetch and the edits around it', () => {
     expect(server.values).toEqual({ b: 'LATER' });
     // Said once, though the refetch after b failed the same way.
     expect(errors.map((e) => e.label)).toEqual(['Failed to set a', 'Out of date']);
+    expect(doc.outOfStep).toBe(true);
     expect(errors[1].msg).toBe('Reload the page to see what is saved.');
   });
 

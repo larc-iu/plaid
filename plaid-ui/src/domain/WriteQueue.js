@@ -177,6 +177,16 @@ export class WriteQueue {
     return this._offline;
   }
 
+  /**
+   * True once a refetch was given up for a reason other than the network
+   * (`onOutOfStep`), until a later refetch lands: the screen may still show
+   * an edit the server does not have. False while a refetch is still being
+   * tried, and after one that landed.
+   */
+  get outOfStep() {
+    return this._outOfStep;
+  }
+
   _setOffline(offline) {
     if (this._offline === offline) return;
     this._offline = offline;
