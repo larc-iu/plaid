@@ -10,7 +10,8 @@
   (:require [clojure.string]
             [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.pagination :as pagination]
-            [plaid.sql.client-event :as ce])
+            [plaid.sql.client-event :as ce]
+            [plaid.sql.common :as psc])
   (:import (java.time Instant)
            (java.time.format DateTimeParseException)))
 
@@ -58,6 +59,16 @@
   {:status (or (:code (ex-data e)) 500)
    :body {:error (ex-message e)}})
 
+(defn- when-project
+  "Answer `(respond)` if project `id` exists, else a 404. Only an admin gets
+  this far with an id no project has (the middleware lets an admin in on any
+  id and answers everyone else 403), and an unknown id answers an admin 404,
+  not the switch's 403 or an empty page."
+  [db id respond]
+  (if (psc/q1 db {:select [:id] :from [:projects] :where [:= :id id]})
+    (respond)
+    {:status 404 :body {:error "Project not found"}}))
+
 (def client-event-routes
   [["/projects/:id/events"
     {:openapi {:security [{:auth []}]}
@@ -74,10 +85,12 @@
             :middleware [[pra/wrap-writer-required project-id]]
             :parameters {:body [:sequential any?]}
             :handler (fn [{{{:keys [id]} :path body :body} :parameters db :db user-id :user/id}]
-                       (try
-                         {:status 201 :body {:count (ce/record! db id user-id body)}}
-                         (catch clojure.lang.ExceptionInfo e
-                           (error-response e))))}
+                       (when-project
+                        db id
+                        #(try
+                           {:status 201 :body {:count (ce/record! db id user-id body)}}
+                           (catch clojure.lang.ExceptionInfo e
+                             (error-response e)))))}
      :get {:summary (str "List a project's client events in arrival order; keyset-paginated. "
                          "Narrow with <query>types</query> (comma-separated, from " types-doc
                          ") and with <query>start-time</query> / <query>end-time</query> "
@@ -86,14 +99,16 @@
            :middleware [[pra/wrap-maintainer-required project-id]]
            :parameters {:query list-query-params}
            :handler (fn [{{{:keys [id]} :path query :query} :parameters db :db}]
-                      (let [{:keys [invalid types]} (parse-types (:types query))]
-                        (if invalid
-                          {:status 400
-                           :body {:error (str "Unknown event type " (pr-str invalid) ". Types: " types-doc)}}
-                          (pagination/list-response
-                           query
-                           (fn [opts]
-                             (ce/list db id (assoc opts
-                                                   :types types
-                                                   :start-time (:start-time query)
-                                                   :end-time (:end-time query))))))))}}]])
+                      (when-project
+                       db id
+                       #(let [{:keys [invalid types]} (parse-types (:types query))]
+                          (if invalid
+                            {:status 400
+                             :body {:error (str "Unknown event type " (pr-str invalid) ". Types: " types-doc)}}
+                            (pagination/list-response
+                             query
+                             (fn [opts]
+                               (ce/list db id (assoc opts
+                                                     :types types
+                                                     :start-time (:start-time query)
+                                                     :end-time (:end-time query)))))))))}}]])

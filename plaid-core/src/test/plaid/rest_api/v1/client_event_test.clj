@@ -272,3 +272,14 @@
                                  (mock/header "accept" "application/json")
                                  (mock/json-body [(shown "t" "v")])))]
       (is (= 201 (:status resp))))))
+
+(deftest an-unknown-project-answers-an-admin-404-and-anyone-else-403
+  ;; The core ruling on unknown ids: a non-member must not learn whether the
+  ;; id is real, and an admin is told it is not. Before, an admin's POST got
+  ;; the switch's 403 ("telemetry is off") and a GET an empty page.
+  (let [unknown (str (random-uuid))]
+    (assert-status 404 (post-events admin-request unknown [(shown "t" "v")]))
+    (assert-status 404 (list-events admin-request unknown))
+    (assert-status 403 (post-events user1-request unknown [(shown "t" "v")]))
+    (assert-status 403 (list-events user1-request unknown))
+    (is (= 0 (row-count)))))
