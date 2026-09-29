@@ -6,6 +6,7 @@ import {
   collectClientErrors,
   reportDiagnostics,
 } from '../../plaid-ui/e2e/appFixtures.js';
+import { writeDelayFixtures } from '../../plaid-ui/e2e/writeDelay.js';
 
 // Playwright helpers. Everything app-agnostic lives in plaid-ui/e2e, shared
 // with plaid-igt, and what stays here is what this app supplies: Playwright
@@ -22,5 +23,6 @@ const TOKEN_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..',
 export const { readToken, seedAuth } = tokenFixtures(TOKEN_PATH);
 
 export { collectClientErrors, reportDiagnostics };
-export const test = base.extend({});
+// PLAID_E2E_WRITE_DELAY_MS holds the page's writes (see plaid-ui/e2e/writeDelay.js).
+export const test = base.extend(writeDelayFixtures);
 export { expect };

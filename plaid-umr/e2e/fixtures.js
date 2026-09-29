@@ -6,6 +6,7 @@ import {
   collectClientErrors,
   reportDiagnostics,
 } from '../../plaid-ui/e2e/appFixtures.js';
+import { writeDelayFixtures } from '../../plaid-ui/e2e/writeDelay.js';
 
 // Playwright helpers. Everything app-agnostic lives in plaid-ui/e2e, shared
 // with the other apps, and what stays here is what this app supplies:
@@ -32,5 +33,6 @@ export const cleanDiagnostics = (diag) => {
   );
   return { failures, errors };
 };
-export const test = base.extend({});
+// PLAID_E2E_WRITE_DELAY_MS holds the page's writes (see plaid-ui/e2e/writeDelay.js).
+export const test = base.extend(writeDelayFixtures);
 export { expect };
