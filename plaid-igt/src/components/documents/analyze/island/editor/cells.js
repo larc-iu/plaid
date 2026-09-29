@@ -410,7 +410,9 @@ export const cells = {
           : null;
     delete el.dataset.guessConfirmed;
     if (next === (el.dataset.orig ?? '')) return;
-    this._guessAnswered(el, next);
+    // What this write says about a guess the cell showed, recorded once the
+    // write lands (a refused save is no answer).
+    const answer = this._guessAnswer(el, next);
     // Born-verified provenance is for a NEW span made from a suggestion. Over
     // a stored value a pick is a correction of that value, and the span keeps
     // its own history: the domain layer verifies a machine span on any human
@@ -421,7 +423,9 @@ export const cells = {
       adopted && (el.dataset.orig ?? '') === ''
         ? this.doc.adoptStamp(adopted.source, { value: next })
         : null;
-    this._runKeepingFocus(el, next, () => apply(next, fragment));
+    this._runKeepingFocus(el, next, () =>
+      this._recordWhenSaved(apply(next, fragment), answer ? [answer] : []),
+    );
   },
 
   // Keep the classes this file toggles by hand in step with the cell's text.

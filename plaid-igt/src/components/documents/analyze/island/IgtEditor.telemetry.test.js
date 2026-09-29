@@ -27,7 +27,7 @@ let serial = 0;
 
 // "the cat the": w-2 is linked to the entry (a POS guess of N from the
 // entry), and w-3 has precedent from w-1 (a POS guess of DET).
-function mount({ telemetry = true, readOnly = false } = {}) {
+function mount({ telemetry = true, readOnly = false, tagset = null } = {}) {
   const raw = buildRawDoc({
     body: 'the cat the',
     words: [
@@ -39,6 +39,14 @@ function mount({ telemetry = true, readOnly = false } = {}) {
   raw.textLayers[0].tokenLayers
     .flatMap((tl) => tl.spanLayers || [])
     .find((sl) => sl.id === 'wsl-0').spans = [{ id: 's-1', tokens: ['w-1'], value: 'DET' }];
+  if (tagset) {
+    raw.textLayers[0].tokenLayers
+      .flatMap((tl) => tl.spanLayers || [])
+      .find((sl) => sl.id === 'wsl-0').config.igt.tagset = 'POS';
+  }
+  // What the server holds: the document as it was before any edit, which is
+  // what a refetch after a refused save reads.
+  const stored = structuredClone(raw);
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
   // A server of its own per test, so each test has a fresh recorder.
@@ -48,7 +56,11 @@ function mount({ telemetry = true, readOnly = false } = {}) {
   vi.spyOn(client.events, 'record');
   const doc = new IgtDocument({
     raw,
-    project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+    project: {
+      id: 'proj-1',
+      vocabs: [{ id: 'v1' }],
+      config: { plaid: {}, ...(tagset ? { igt: { tagsets: { POS: tagset } } } : {}) },
+    },
     vocabularies: {
       v1: {
         id: 'v1',
@@ -60,7 +72,7 @@ function mount({ telemetry = true, readOnly = false } = {}) {
     client,
     projectId: 'proj-1',
   });
-  client.documents.get = async () => doc.raw;
+  client.documents.get = async () => structuredClone(stored);
   host = document.createElement('div');
   document.body.appendChild(host);
   editor = new IgtEditor(host, doc, { readOnly });
@@ -249,5 +261,156 @@ describe('suggestion.adopted and suggestion.dismissed', () => {
     await settle();
     const events = await sent(client);
     expect(events.filter((e) => e.type !== 'suggestion.shown')).toEqual([]);
+  });
+});
+
+// The value is on screen before the server answers, like every edit, but an
+// answer is only recorded once its write has landed: a save the server refuses
+// put nothing in the record, and the retry that lands records it once.
+describe('an answer waits for its save', () => {
+  // The next span write fails the way a server error does, and the one after
+  // it lands. `release` lets a held write answer.
+  const failNextCreate = (client) => {
+    const create = client.spans.create;
+    const failing = vi.fn(async () => {
+      client.spans.create = create;
+      throw Object.assign(new Error('Internal Server Error'), { status: 500 });
+    });
+    client.spans.create = failing;
+    return failing;
+  };
+  const holdCreates = (client) => {
+    const create = client.spans.create;
+    let release;
+    const gate = new Promise((r) => (release = r));
+    client.spans.create = vi.fn(async (...args) => {
+      await gate;
+      return create(...args);
+    });
+    return () => release();
+  };
+  const answers = (events) => events.filter((e) => e.type !== 'suggestion.shown');
+
+  it('records nothing while the save is on its way, and the adoption once it lands', async () => {
+    const { client } = mount();
+    const release = holdCreates(client);
+    const c = cell('wa:w-2:POS');
+    c.focus();
+    key(c, 'Enter');
+    await settle();
+    // On screen already.
+    expect(cell('wa:w-2:POS').value).toBe('N');
+    expect(answers(await sent(client))).toEqual([]);
+    release();
+    await settle(20);
+    expect(answers(await sent(client))).toEqual([
+      expect.objectContaining({ type: 'suggestion.adopted', 'target-id': 'w-2' }),
+    ]);
+  });
+
+  it('a failed save records nothing', async () => {
+    const { client } = mount();
+    const failing = failNextCreate(client);
+    const c = cell('wa:w-2:POS');
+    c.focus();
+    key(c, 'Enter');
+    await settle(30);
+    expect(failing).toHaveBeenCalledTimes(1);
+    expect(answers(await sent(client))).toEqual([]);
+  });
+
+  it('a failed dismissal records nothing either', async () => {
+    const { client } = mount();
+    failNextCreate(client);
+    const c = cell('wa:w-3:POS');
+    c.focus();
+    typeInto(c, 'PRON');
+    c.blur();
+    await settle(30);
+    expect(answers(await sent(client))).toEqual([]);
+  });
+
+  it('a save retried after a failure records the answer once', async () => {
+    const { client } = mount();
+    failNextCreate(client);
+    const c = cell('wa:w-3:POS');
+    c.focus();
+    key(c, 'Enter');
+    await settle(30);
+    // The refused value is put back in the cell, focused, and Enter sends it again.
+    const again = cell('wa:w-3:POS');
+    expect(again.value).toBe('DET');
+    expect(document.activeElement).toBe(again);
+    key(again, 'Enter');
+    await settle(30);
+    expect(answers(await sent(client))).toEqual([
+      expect.objectContaining({
+        type: 'suggestion.adopted',
+        'target-id': 'w-3',
+        data: expect.objectContaining({ value: 'DET', field: 'POS' }),
+      }),
+    ]);
+  });
+
+  it('a failed Ctrl+Enter records nothing, and one that lands records each guess once', async () => {
+    const { client } = mount();
+    const submit = client.batch;
+    let fail = true;
+    client.batch = function (...args) {
+      const b = submit.apply(this, args);
+      const real = b.submit;
+      b.submit = async () => {
+        if (fail) {
+          fail = false;
+          throw Object.assign(new Error('Internal Server Error'), { status: 500 });
+        }
+        return real();
+      };
+      return b;
+    };
+    let c = cell('wa:w-3:POS');
+    c.focus();
+    key(c, 'Enter', { ctrlKey: true });
+    await settle(40);
+    expect(answers(await sent(client))).toEqual([]);
+    c = cell('wa:w-3:POS');
+    expect(c.value).toBe('');
+    c.focus();
+    key(c, 'Enter', { ctrlKey: true });
+    await settle(40);
+    const adopted = answers(await sent(client));
+    expect(adopted.length).toBeGreaterThanOrEqual(1);
+    expect(adopted.every((e) => e.type === 'suggestion.adopted' && e['target-id'] === 'w-3')).toBe(
+      true,
+    );
+    const pos = adopted.filter((e) => e.data.field === 'POS');
+    expect(pos).toHaveLength(1);
+  });
+
+  it('a value a closed list refuses records nothing, and the value that lands records once', async () => {
+    const { client } = mount({
+      tagset: { delimiters: '', mode: 'closed', values: [{ value: 'N' }, { value: 'DET' }] },
+    });
+    const c = cell('wa:w-3:POS');
+    c.focus();
+    typeInto(c, 'PRON');
+    c.blur();
+    await settle(20);
+    expect(client.calls.filter((x) => x.kind === 'spans.create')).toEqual([]);
+    expect(answers(await sent(client))).toEqual([]);
+    // Put back in the cell with focus. Correcting it to a listed value saves.
+    const again = cell('wa:w-3:POS');
+    expect(again.value).toBe('PRON');
+    again.focus();
+    typeInto(again, 'N');
+    again.blur();
+    await settle(20);
+    expect(answers(await sent(client))).toEqual([
+      expect.objectContaining({
+        type: 'suggestion.dismissed',
+        'target-id': 'w-3',
+        data: expect.objectContaining({ value: 'DET', written: 'N' }),
+      }),
+    ]);
   });
 });

@@ -95,8 +95,11 @@ export const review = {
       );
       return true;
     }
-    this.doc.confirmWordAnalysis(wordId, adoptions);
-    for (const a of adoptions) this._recordSuggestion('suggestion.adopted', a);
+    // Each guess taken is recorded once the write lands.
+    this._recordWhenSaved(
+      this.doc.confirmWordAnalysis(wordId, adoptions),
+      adoptions.map((a) => this._suggestionEvent('suggestion.adopted', a)).filter(Boolean),
+    );
     this._pulseWord(wordId);
     const from = e.target;
     this._afterABeat(() => {
