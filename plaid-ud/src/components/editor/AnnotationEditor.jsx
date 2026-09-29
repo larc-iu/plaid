@@ -5,7 +5,7 @@ import { ParseDialog } from './services/ParseDialog.jsx';
 import { SentenceRow } from './annotation/SentenceRow.jsx';
 import { EditorSessionContext } from './annotation/editorSession.js';
 import { UnsentValues } from './annotation/unsentValues.js';
-import { whoChanged, changedTo } from '@ui/lib/cellConflict.js';
+import { whoChanged, changedTo, recutTo } from '@ui/lib/cellConflict.js';
 import { writeCell } from './annotation/conflictNotice.js';
 import { notifyWarning } from '../../utils/feedback.jsx';
 import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
@@ -321,12 +321,22 @@ export const AnnotationEditor = () => {
         return data ? data[field]?.value || '' : undefined;
       },
       {
-        onConflict: (tokenId, field, stored) => {
+        onConflict: (tokenId, field, stored, _typed, recut) => {
           const { client, documentId: id, me } = conflictContext.current;
           const spanId = tokenData(tokenId)?.[field]?.id;
           whoChanged(client, id, [spanId], me)
             .catch(() => null)
-            .then((who) => notifyWarning(changedTo(who, stored)));
+            .then((who) =>
+              notifyWarning(recut != null ? recutTo(who, recut) : changedTo(who, stored)),
+            );
+        },
+        // A word split or joined since a value was typed for it: its text, or
+        // how much of it the token covers, changed.
+        tokenShape: (tokenId) => {
+          const data = tokenData(tokenId);
+          if (!data) return undefined;
+          const { begin, end } = data.token;
+          return { key: `${data.wordForm}\u0000${end - begin}`, text: data.wordForm };
         },
       },
     );

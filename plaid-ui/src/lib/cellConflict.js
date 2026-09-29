@@ -22,6 +22,10 @@ export async function whoChanged(client, documentId, entityIds, me) {
   return entry ? entry.user.displayName || entry.user.id : null;
 }
 
+/** "b changed this word to si.": the word under a refused cell edit was
+ * split or joined meanwhile, so the value was typed for another word. */
+export const recutTo = (who, text) => `${who || 'Someone'} changed this word to ${text}.`;
+
 /** "b changed this to NOUN.", or "b cleared this." */
 export const changedTo = (who, stored) =>
   stored ? `${who || 'Someone'} changed this to ${stored}.` : `${who || 'Someone'} cleared this.`;

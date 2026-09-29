@@ -327,11 +327,12 @@ export const EditableCell = React.memo(
         onUpdate(tokenId, field, newValue || null).then(
           (ok) => {
             const refusal = ok === false ? {} : ok?.refused ? ok : null;
-            const { superseded, saved } = unsent.settled(ticket, !refusal, newValue);
+            const { superseded, saved, shape } = unsent.settled(ticket, !refusal, newValue);
             if (!refusal || superseded) return;
             const outcome = unsent.put(tokenId, field, newValue, saved, {
               resend: !FINAL_REFUSALS.has(refusal.status),
               readBack: refusal.readBack === true,
+              shape,
             });
             if (refusal.status === 409 && outcome === 'put') {
               notifyError(KEPT_IN_CELL, `Failed to update ${field}`);

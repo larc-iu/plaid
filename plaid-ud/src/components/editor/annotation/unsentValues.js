@@ -29,7 +29,14 @@ import { setUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 //
 // `storedValue(tokenId, field)` answers the value stored now, '' for none, or
 // undefined for a token no longer in the document. `onConflict(tokenId, field,
-// stored, typed)` hears each new conflict.
+// stored, typed, recut)` hears each new conflict.
+//
+// A token re-cut since the value was typed (its word split or joined by
+// someone else, which can keep the token's id) makes a conflict too, whatever
+// is stored: the value was typed for a word that is not there any more, and
+// sending it again on leaving would store it on another. `tokenShape(tokenId)`
+// answers `{ key, text }`, `key` changing when the token is re-cut and `text`
+// the word as it reads now, which `onConflict` hears as `recut`.
 //
 // A drawn cell hears `{ type: 'put', typed, saved }` (a value put back: it
 // answers true when it takes it up itself, having focus), `{ type: 'conflict',
@@ -41,9 +48,10 @@ const SEVERAL = 'annotations you have typed';
 const keyOf = (tokenId, field) => `${tokenId}:${field}`;
 
 export class UnsentValues {
-  constructor(storedValue = null, { onConflict = null } = {}) {
+  constructor(storedValue = null, { onConflict = null, tokenShape = null } = {}) {
     this._storedValue = storedValue;
     this._onConflict = onConflict;
+    this._tokenShape = tokenShape;
     // key -> { tokenId, field, typed, saved, token }. `token` is the entry's
     // own registration with the leave question.
     this._entries = new Map();
@@ -62,6 +70,18 @@ export class UnsentValues {
 
   _stored(tokenId, field, fallback) {
     return this._storedValue ? this._storedValue(tokenId, field) : fallback;
+  }
+
+  _shapeKey(tokenId) {
+    return this._tokenShape?.(tokenId)?.key;
+  }
+
+  // The word as it reads now, when the token was re-cut since `shape` was
+  // read, else null.
+  _recut(tokenId, shape) {
+    if (shape == null) return null;
+    const now = this._tokenShape?.(tokenId);
+    return now && now.key !== shape ? now.text : null;
   }
 
   _tell(tokenId, field, message) {
@@ -89,10 +109,12 @@ export class UnsentValues {
    * focused cell takes it up and it goes no further. With `readBack` (the
    * refetch after the refusal landed), a stored value that is the typed one
    * means the edit is on the server (its answer was lost on the way back),
-   * or someone stored the same: nothing is put back. Answers what became of
-   * it: 'put', 'conflict', 'landed' or 'dropped'.
+   * or someone stored the same: nothing is put back. `shape` is the token's
+   * shape key when the value was typed (`settled` answers it): re-cut since,
+   * it is a conflict. Answers what became of it: 'put', 'conflict', 'landed'
+   * or 'dropped'.
    */
-  put(tokenId, field, typed, saved, { resend = true, readBack = false } = {}) {
+  put(tokenId, field, typed, saved, { resend = true, readBack = false, shape = null } = {}) {
     const key = keyOf(tokenId, field);
     const prior = this._entries.get(key);
     const typedOver = prior ? prior.saved : saved;
@@ -113,6 +135,11 @@ export class UnsentValues {
       this.conflict(tokenId, field, typed, now);
       return 'conflict';
     }
+    const recut = resend ? this._recut(tokenId, prior ? prior.shape : shape) : null;
+    if (recut != null) {
+      this.conflict(tokenId, field, typed, now, recut);
+      return 'conflict';
+    }
     if (!resend) {
       this.take(tokenId, field);
       return 'dropped';
@@ -124,7 +151,8 @@ export class UnsentValues {
       return 'put';
     }
     const token = prior?.token ?? {};
-    this._entries.set(key, { tokenId, field, ...value, token });
+    const shapeKey = prior ? prior.shape : (shape ?? this._shapeKey(tokenId));
+    this._entries.set(key, { tokenId, field, ...value, token, shape: shapeKey });
     setUnsavedDraft(token, WHAT, SEVERAL);
     return 'put';
   }
@@ -133,7 +161,7 @@ export class UnsentValues {
    * `typed` was refused over `stored`, which someone else wrote. Nothing is
    * held when the two agree.
    */
-  conflict(tokenId, field, typed, stored) {
+  conflict(tokenId, field, typed, stored, recut = null) {
     this.take(tokenId, field);
     if (typed === stored) {
       this.resolve(tokenId, field);
@@ -141,7 +169,7 @@ export class UnsentValues {
     }
     this._conflicts.set(keyOf(tokenId, field), { tokenId, field, typed, stored });
     this._tell(tokenId, field, { type: 'conflict', typed, stored });
-    this._onConflict?.(tokenId, field, stored, typed);
+    this._onConflict?.(tokenId, field, stored, typed, recut);
   }
 
   /** Let go of the conflict on this cell: the annotator has acted on it. */
@@ -157,7 +185,7 @@ export class UnsentValues {
     const key = keyOf(tokenId, field);
     let flight = this._flights.get(key);
     if (!flight) {
-      flight = { base: saved, latest: 0, open: 0 };
+      flight = { base: saved, latest: 0, open: 0, shape: this._shapeKey(tokenId) };
       this._flights.set(key, flight);
     }
     flight.open++;
@@ -178,7 +206,7 @@ export class UnsentValues {
   settled(ticket, landed, typed) {
     const { key, flight, n } = ticket;
     flight.open--;
-    const answer = { superseded: n !== flight.latest, saved: flight.base };
+    const answer = { superseded: n !== flight.latest, saved: flight.base, shape: flight.shape };
     if (landed) flight.base = typed;
     if (!flight.open && this._flights.get(key) === flight) this._flights.delete(key);
     return answer;
@@ -214,6 +242,11 @@ export class UnsentValues {
     if (!storedValue) return;
     for (const entry of [...this._entries.values()]) {
       const now = storedValue(entry.tokenId, entry.field);
+      const recut = now === undefined ? null : this._recut(entry.tokenId, entry.shape);
+      if (recut != null) {
+        this.conflict(entry.tokenId, entry.field, entry.typed, now, recut);
+        continue;
+      }
       if (now === entry.saved) continue;
       if (now === undefined || now === entry.typed) {
         this.take(entry.tokenId, entry.field);

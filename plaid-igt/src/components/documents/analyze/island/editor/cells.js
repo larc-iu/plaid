@@ -517,6 +517,9 @@ export const cells = {
     // when the cell may have been refocused (and restamped) in the meantime.
     const saved = el.dataset.orig ?? '';
     const what = el.igtWhat ?? null;
+    // The word the value was typed for, as it reads now: a refusal that
+    // finds it split or joined meanwhile does not send the value again.
+    const shape = this._cellShape(el);
     // What the server held under the cell before this page's edits of it
     // that have not landed: two edits made one over the other behind a
     // refusal are both over it. An edit that lands moves it on. `mine` is
@@ -549,7 +552,10 @@ export const cells = {
         // Gone from the document (another user deleted or merged the word):
         // there is no cell to put it back into, and this cell took the
         // conflict from the document, so it says so.
-        if (status === 409 && !this._shownIds().has(rowOfKey(key))) {
+        if (
+          (status === 409 && !this._shownIds().has(rowOfKey(key))) ||
+          this._recutSince(shape) != null
+        ) {
           notifyError(`Not saved: ${typed}`, 'Changed elsewhere');
           return;
         }
@@ -587,6 +593,15 @@ export const cells = {
         this._enterConflict(cell, typed, stored);
         return;
       }
+      // Someone else split or joined the word: the cell is still there (the
+      // word keeps its id on its left half, or on the joined word), but the
+      // value was typed for a word that is gone. It is shown the same way,
+      // and leaving the cell sends nothing.
+      const recut = REFUSED_FOR_GOOD.has(status) ? null : this._recutSince(shape);
+      if (recut != null) {
+        this._enterConflict(cell, typed, stored, recut);
+        return;
+      }
       // Refused where sending again cannot mend it (no longer a writer, the
       // project or the row gone): the cell shows what is stored.
       // Refused as a conflict that is not this cell's: another change came
@@ -615,6 +630,38 @@ export const cells = {
       cell.dataset.orig = stored;
       this._syncCellClasses(cell, typed, cell.igtTagset ?? null);
     });
+  },
+
+  // The word a cell is on and the text of it, and of the cell's morpheme for
+  // a morpheme's cell, or null for a cell on no word (a sentence's).
+  _cellShape(el) {
+    const wordId = el?.closest?.('[data-word-col]')?.dataset.wordCol;
+    if (!wordId) return null;
+    const rowId = rowOfKey(el.dataset.cellKey);
+    const now = this._shapeNow(wordId, rowId);
+    return now && { wordId, rowId, ...now };
+  },
+
+  _shapeNow(wordId, rowId) {
+    const word = this.doc.tokenLookup?.get(settledId(wordId));
+    if (!word) return null;
+    const morpheme =
+      rowId && rowId !== wordId
+        ? (word.morphemes || []).find((m) => settledId(m.id) === settledId(rowId))
+        : null;
+    return { word: word.content, morpheme: morpheme?.content ?? null };
+  },
+
+  // The word's text now, when the word under `shape` was split or joined
+  // since (its text, or its morpheme's, changed), else null.
+  _recutSince(shape) {
+    if (!shape) return null;
+    const now = this._shapeNow(shape.wordId, shape.rowId);
+    if (!now) return null;
+    const recut =
+      now.word !== shape.word ||
+      (shape.morpheme != null && now.morpheme != null && now.morpheme !== shape.morpheme);
+    return recut ? now.word : null;
   },
 
   // Put a value that was not saved back into a cell that does not have focus.

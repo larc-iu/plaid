@@ -2,7 +2,7 @@ import { html, nothing } from 'lit-html';
 import { settledId } from '@ui/domain/pendingIds.js';
 import { cellByKey } from './shared.js';
 import { notifyWarning } from '@/utils/feedback';
-import { changedTo, whoChanged } from '@ui/lib/cellConflict.js';
+import { changedTo, recutTo, whoChanged } from '@ui/lib/cellConflict.js';
 
 // A cell edit refused because another user changed the cell first (Luke's
 // ruling Q1, 2026-09-29, the same in plaid-ud). The cell shows the stored
@@ -58,7 +58,9 @@ export const conflicts = {
   // A refused edit of `cell` lost to `stored`, another user's value: the cell
   // shows theirs, with `typed` under it, and focus stays where it is unless it
   // was in this cell or nowhere.
-  _enterConflict(cell, typed, stored) {
+  // `recut`: the text of the word the cell is on, when the conflict is that
+  // the word was split or joined since the edit was typed.
+  _enterConflict(cell, typed, stored, recut = null) {
     const key = cell.dataset.cellKey;
     this._conflicts.set(conflictKey(key), { typed, stored });
     cell.igtUnsent = null;
@@ -68,18 +70,20 @@ export const conflicts = {
     const active = document.activeElement;
     if (!active || active === document.body || active === cell) cell.focus();
     this._render(true);
-    this._sayWhoChanged(cell, stored);
+    this._sayWhoChanged(cell, stored, recut);
   },
 
   // The toast, once the document's audit log has said who: the newest change
   // by another user that wrote this cell's span or token, else the newest
   // change by another user at all.
-  _sayWhoChanged(cell, stored) {
+  _sayWhoChanged(cell, stored, recut = null) {
     const ids = (cell.igtEntityIds ?? []).filter(Boolean).map(settledId);
     Promise.resolve()
       .then(() => whoChanged(this.doc.client, this.doc.id, ids, this.doc._user?.id))
       .catch(() => null)
-      .then((name) => notifyWarning(changedTo(name, stored)));
+      .then((name) =>
+        notifyWarning(recut != null ? recutTo(name, recut) : changedTo(name, stored)),
+      );
   },
 
   // Keys a cell that lost a conflict answers before anything else does. Plain

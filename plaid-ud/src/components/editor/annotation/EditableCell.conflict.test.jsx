@@ -235,7 +235,7 @@ describe('an edit refused because someone else changed the cell first', () => {
       new UnsentValues(() => 'sitB', { onConflict: (...args) => heard.push(args) }),
     );
     unsent.put('t1', 'lemma', 'sitC', 'sit');
-    expect(heard).toEqual([['t1', 'lemma', 'sitB', 'sitC']]);
+    expect(heard).toEqual([['t1', 'lemma', 'sitB', 'sitC', null]]);
   });
 
   it('does not leave a question about leaving for a word that is gone', async () => {
