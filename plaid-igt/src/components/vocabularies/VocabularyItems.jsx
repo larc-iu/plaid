@@ -944,6 +944,18 @@ export const VocabularyItems = ({
   const [deleteHidden, setDeleteHidden] = useState(null); // { id, total, hidden } | null
   const dialogRef = useRef(dialog);
   dialogRef.current = dialog;
+  // Whether these entries are still on screen: a refusal can come back after
+  // this person has gone to another page or another vocabulary, and the
+  // queue outlives this screen.
+  const shownRef = useRef({ mounted: true, vocabularyId });
+  shownRef.current.vocabularyId = vocabularyId;
+  useEffect(() => {
+    const shown = shownRef.current;
+    shown.mounted = true;
+    return () => {
+      shown.mounted = false;
+    };
+  }, []);
   const countLinks = async (id) => {
     try {
       if (!(await vocabLinked())) return 0;
@@ -988,6 +1000,7 @@ export const VocabularyItems = ({
     const patches = deleteRefPatches;
     const before = metadataNow(items);
     const deletedItem = selectedItem;
+    const deletedFrom = vocabularyId;
     // The count the server found, when it refused the delete for its count.
     let serverCount = null;
     dispatch({ type: 'dialog/close' });
@@ -1030,11 +1043,13 @@ export const VocabularyItems = ({
           const linked = `It is linked to ${plural(serverCount, 'word/morpheme', 'words/morphemes')}${
             hidden ? `, ${hidden} of them in projects you cannot open` : ''
           }.`;
-          // Someone moved on meanwhile (another entry or dialog open): the
-          // count is said, not asked again. A refusal can come back before
+          // Someone moved on meanwhile (another entry or dialog open, or
+          // this screen left): the count is said, not asked again. A refusal can come back before
           // the delete's own close and navigation have rendered.
           const openId = selectedIdRef.current && settledId(selectedIdRef.current);
           const movedOn =
+            !shownRef.current.mounted ||
+            shownRef.current.vocabularyId !== deletedFrom ||
             (openId && openId !== deletedId) ||
             (dialogRef.current && dialogRef.current.kind !== 'delete');
           if (movedOn) {

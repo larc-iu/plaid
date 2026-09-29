@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 
 // An entry linked in a project this person cannot open: the screen counts
@@ -201,6 +201,65 @@ describe('deleting an entry with links in projects this person cannot open', () 
     await settle(view);
     expect(sent).toEqual([['deriv1', 2]]);
     expect(byText('button', 'Delete entry')).toBeNull();
+    expect(feedback.notifyError).toHaveBeenCalledWith(
+      'It is linked to 5 words/morphemes, 3 of them in projects you cannot open.',
+      'Entry not deleted',
+    );
+    await view.unmount();
+  });
+
+  // The refusal comes back after this person has left the entries (another
+  // page, another vocabulary): it says the count in a toast and leaves them
+  // where they are, where it pulled them back to the entry with no word.
+  it('leaves the person where they went when the refusal comes after they left', async () => {
+    feedback.notifyError.mockClear();
+    const { client, sent } = linked(2);
+    auth.client = client;
+    const deleteNow = client.vocabItems.delete;
+    let release;
+    client.vocabItems.delete = (...args) =>
+      new Promise((resolve, reject) => {
+        release = () => deleteNow(...args).then(resolve, reject);
+      });
+    const nav = {};
+    const Probe = () => {
+      nav.go = useNavigate();
+      nav.where = useLocation();
+      return null;
+    };
+    const writes = new WriteQueue();
+    const view = await renderComponent(
+      <MemoryRouter initialEntries={['/vocabularies/v1?item=deriv1']}>
+        <Probe />
+        <Routes>
+          <Route
+            path="/vocabularies/:id"
+            element={
+              <VocabularyItems
+                vocabularyId="v1"
+                vocabulary={{ id: 'v1' }}
+                client={client}
+                fields={FIELDS}
+                writes={writes}
+              />
+            }
+          />
+          <Route path="/projects" element={<p>projects</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    for (let i = 0; i < 4; i++) await view.step(async () => {});
+    await view.step(() => byText('button', 'Delete').click());
+    await settle(view);
+    await view.step(() => byText('button', 'Delete entry').click());
+    await settle(view);
+    await view.step(() => nav.go('/projects'));
+    await settle(view);
+    await view.step(async () => release());
+    await settle(view);
+    expect(sent).toEqual([['deriv1', 2]]);
+    expect(nav.where.pathname).toBe('/projects');
+    expect(nav.where.search).toBe('');
     expect(feedback.notifyError).toHaveBeenCalledWith(
       'It is linked to 5 words/morphemes, 3 of them in projects you cannot open.',
       'Entry not deleted',
