@@ -989,6 +989,18 @@ An entry made of several changes has an arrow you can expand to see, and select,
 Actions performed by a service, such as a transcription, show up the same way, under the service's name and naming the person who ran it: `LLM translation (12 sentences), requested by Ana`.
 A change made through an API token names the token too, so a script's work is told apart from yours.
 
+An entry that is one of these kinds is marked with it:
+
+* **Import**: a file brought in.
+* **Automatic**: a run of a service or of a built-in step, such as Auto-analyze's.
+* **Assistant**: an approved Assistant plan.
+* **Bulk edit**: a change made in Bulk Edit.
+* **Guess taken**: a faint guess accepted.
+* **Review**: a proposal accepted as it stands.
+* **Repair**: a repair made when the document was opened.
+
+The Activity tab marks its entries the same way.
+
 Viewing history changes nothing.
 To bring a document back to an earlier state, select that entry and click **Restore**.
 Everything in the document goes back to how it was at that moment: the name, the text, the sentences, words and morphemes, the time alignment, the annotations, the vocabulary links, the metadata, and any layers another app keeps in the same project.
@@ -1004,6 +1016,7 @@ A vocabulary has a history of its own.
 Open it with **History** beside the vocabulary's name, on any of its tabs.
 It lists every change to the vocabulary and to its entries: an entry added, edited, moved or deleted, a field or tagset changed, a maintainer added.
 Links are not in it: linking a word is annotation, and shows in the document's history.
+Its entries are marked by kind as a document's are, and a **Replace** is marked **Bulk edit**.
 
 Selecting a history entry shows the vocabulary's entries as they were right after that change, read-only on the **Entries** tab, entries deleted since included.
 **History** on an open entry lists only the changes to that entry, and keeps it open, so each state you select shows that entry as it was then.
