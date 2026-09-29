@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { IgtEditor } from './IgtEditor.js';
 import { IgtDocument } from '@/domain/IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
-import { notifyWarning } from '@/utils/feedback';
+import { notifyError, notifyWarning } from '@/utils/feedback';
 import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 
 // A cell edit refused because another user changed the cell first (Luke's
@@ -90,6 +90,7 @@ const writes = (client) =>
 beforeEach(() => {
   resetIds();
   vi.mocked(notifyWarning).mockClear();
+  vi.mocked(notifyError).mockClear();
 });
 afterEach(() => {
   editor?.destroy();
@@ -215,6 +216,41 @@ describe('a cell edit that lost to another user', () => {
     await settle();
     restore();
     expect(notifyWarning).toHaveBeenCalledWith('Someone changed this to dog.PL.');
+  });
+});
+
+describe('who reports a conflict', () => {
+  it('the cell alone, when the conflict is over this cell: the document raises nothing', async () => {
+    const { client, doc } = mount();
+    const errors = [];
+    doc.onError = (msg) => errors.push(msg);
+    const restore = refuseWith(client, theirs('dog.PL'));
+    const c = cell('ma:m-1:Gloss');
+    c.focus();
+    type(c, 'hound');
+    c.blur();
+    await settle();
+    restore();
+    expect(errors).toEqual([]);
+    expect(doc.error).toBe('');
+    expect(notifyWarning).toHaveBeenCalledTimes(1);
+  });
+
+  it('the cell, as a failed update, when another change came first elsewhere', async () => {
+    const { client } = mount();
+    // Nothing changed under this cell: the value goes back to be sent again.
+    const restore = refuseWith(client, theirs(null));
+    const c = cell('ma:m-1:Gloss');
+    const other = cell('ma:m-2:Gloss');
+    c.focus();
+    type(c, 'hound');
+    other.focus();
+    await settle();
+    restore();
+    expect(notifyWarning).not.toHaveBeenCalled();
+    expect(notifyError).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(notifyError).mock.calls[0][1]).toBe('Failed to update Gloss');
+    expect(c.igtUnsent).toBeTruthy();
   });
 });
 

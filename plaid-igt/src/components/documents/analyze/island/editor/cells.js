@@ -521,7 +521,9 @@ export const cells = {
     let base = this._editBases.get(key);
     if (!base) this._editBases.set(key, (base = { value: saved, pending: 0 }));
     base.pending += 1;
-    Promise.resolve(fn()).then((ok) => {
+    // A conflict is this cell's to report (conflicts.js), so the document
+    // raises no toast of its own for one.
+    Promise.resolve(this.doc.handlesConflicts(fn)).then((ok) => {
       base.pending -= 1;
       if (base.pending === 0) this._editBases.delete(key);
       if (ok !== false) {
@@ -562,6 +564,13 @@ export const cells = {
       }
       // Refused where sending again cannot mend it (no longer a writer, the
       // project or the row gone): the cell shows what is stored.
+      // Refused as a conflict that is not this cell's: another change came
+      // first elsewhere. Said as it is, and the value goes back to be sent
+      // again.
+      if (status === 409) {
+        const field = (cell.dataset.tier ?? '').split(':').slice(1).join(':') || 'morpheme form';
+        notifyError(this.doc.errorCause ?? 'Changed elsewhere.', `Failed to update ${field}`);
+      }
       if (REFUSED_FOR_GOOD.has(status)) {
         cell.igtUnsent = null;
         cell.value = stored;

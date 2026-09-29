@@ -41,7 +41,7 @@ import { assistant } from './editor/assistant.js';
 import { rows } from './editor/rows.js';
 import { grid } from './editor/grid.js';
 import { vocabPopover } from './editor/vocabPopover.js';
-import { conflicts, conflictKey, rowOfKey } from './editor/conflicts.js';
+import { conflicts, rowOfKey } from './editor/conflicts.js';
 import { keys } from '@/lib/keymap.js';
 
 export class IgtEditor {
