@@ -18,7 +18,7 @@ const RECENT = 50;
 
 // A cell key with its pending ids settled, so a conflict follows its row
 // across the swap.
-export const conflictKey = (key) => (key ?? '').replace(/pending:\d+/g, (p) => settledId(p));
+const conflictKey = (key) => (key ?? '').replace(/pending:\d+/g, (p) => settledId(p));
 
 // The row a cell key names: `<kind>:<id>` for a morpheme form,
 // `<kind>:<id>:<field>` for the rest, where the id may itself hold a colon
