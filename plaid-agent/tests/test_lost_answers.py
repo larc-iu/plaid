@@ -27,8 +27,10 @@ APPS = sbs.APPS
 
 
 def _lost(method='POST', path='/api/v1/batch'):
+    # As the real client raises one: the network's own error under it.
     return PlaidAPIError(f'Network error: Remote end closed connection at http://h:8085{path}',
-                         status=0, url=f'http://h:8085{path}', method=method)
+                         status=0, url=f'http://h:8085{path}', method=method,
+                         original_error=ConnectionError('Remote end closed connection'))
 
 
 @pytest.fixture(params=sorted(APPS))

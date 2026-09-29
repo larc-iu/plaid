@@ -50,13 +50,17 @@ def requester_message(error, secrets=()) -> str:
     and says so (:data:`UNKNOWN_OUTCOME`).
     """
     if isinstance(error, PlaidAPIError):
-        if not error.status:
+        # Status 0 is also a refusal the client makes itself, before anything
+        # is sent (a misplaced batch ref, a batch submitted twice). Only one
+        # with the network's own error under it is a network failure.
+        if not error.status and getattr(error, 'original_error', None) is not None:
             return _network_failure(error)
         text = str(error)
         if error.url:
             text = text.replace(f' at {error.url}', '').replace(error.url, '')
         text = text.strip().rstrip(' ,:;')
-        return _redact(text, secrets) or f'HTTP {error.status}'
+        return _redact(text, secrets) or (f'HTTP {error.status}' if error.status
+                                          else UNKNOWN_FAILURE)
     text = _URL_IN_TEXT.sub('', str(error) or '').strip().rstrip(' ,:;')
     return _redact(text, secrets) or UNKNOWN_FAILURE
 

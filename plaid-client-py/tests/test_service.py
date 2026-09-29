@@ -1070,6 +1070,18 @@ def test_a_read_that_got_no_answer_saved_nothing_either_way():
         'The Plaid server did not answer.'
 
 
+def test_a_refusal_the_client_makes_itself_is_not_called_a_network_failure():
+    """The client raises a status-0 PlaidAPIError for its own refusals too,
+    before anything is sent (conc-2026-09-29 REV-F-PY R4). Only one with the
+    network's error under it is a network failure."""
+    from plaid_client.http import _MISPLACED_REF
+    misplaced = PlaidAPIError(_MISPLACED_REF, status=0)
+    assert requester_message(misplaced) == _MISPLACED_REF
+    twice = PlaidAPIError('This batch was already submitted or aborted', status=0)
+    assert requester_message(twice) == 'This batch was already submitted or aborted'
+    assert requester_message(PlaidAPIError('', status=0)) == UNKNOWN_FAILURE
+
+
 def test_the_locks_own_wording_survives_the_scrub():
     # documents.locked() already authors a 423 for the person who asked; it
     # carries no URL, so nothing may rewrite it.
