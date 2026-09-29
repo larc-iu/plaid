@@ -1746,6 +1746,59 @@
           (recur (inc i) cur))
         (aget prev n)))))
 
+(defn- run-bounds
+  "For each place i of `o` (0 to its length), where the run of code points
+  that are not `sep?` around i begins and where it ends, as two arrays: the
+  same walks `holding` and `split-off-new-words` made from each edit, made
+  once. In a script without spaces a run is a whole line, and walking it for
+  every edit took most of a minute on a line of 30,000 letters."
+  [^ints o sep?]
+  (let [n (alength o)
+        starts (int-array (inc n))
+        ends (int-array (inc n))]
+    (dotimes [i (inc n)]
+      (aset starts i (int (if (or (zero? i) (sep? (aget o (dec i)))) i (aget starts (dec i))))))
+    (loop [i n]
+      (when (>= i 0)
+        (aset ends i (int (if (or (= i n) (sep? (aget o i))) i (aget ends (inc i)))))
+        (recur (dec i))))
+    [starts ends]))
+
+(defn- holders-fn
+  "A function of p and q giving the tokens of `near` (see `tokens-near`)
+  that hold [p q] inside the run without whitespace from before p to past
+  q, that is [B E) of `bounds` (see `run-bounds`): (< begin end), B <= begin
+  <= p and q <= end <= E, and `keep?`. In the order of a stable sort by
+  begin of `near`'s. The tokens of a run are gathered once, and a short one
+  (at most 64 code points) is looked for only among those beginning no
+  further than its length before q."
+  [near [^ints starts ^ints ends] keep?]
+  (let [memo (java.util.HashMap.)
+        short-max 64
+        index (fn [B E]
+                (let [v (vec (sort-by :token/begin
+                                      (filter (fn [{tb :token/begin te :token/end :as t}]
+                                                (and (< tb te) (<= B tb) (<= te E) (keep? t)))
+                                              (near B E))))]
+                  {:v v
+                   :begins (long-array (map :token/begin v))
+                   :longer (vec (keep-indexed (fn [i {tb :token/begin te :token/end}]
+                                                (when (< short-max (- te tb)) i))
+                                              v))}))]
+    (fn [p q]
+      (let [B (aget starts (int p))
+            E (aget ends (int q))
+            k [B E]
+            {:keys [v ^longs begins longer]} (or (.get memo k) (let [x (index B E)] (.put memo k x) x))
+            lower (fn [x] (loop [a 0 b (alength begins)]
+                            (if (< a b)
+                              (let [m (quot (+ a b) 2)]
+                                (if (< (aget begins m) (long x)) (recur (inc m) b) (recur a m)))
+                              a)))
+            holds? (fn [i] (let [{tb :token/begin te :token/end} (v i)] (and (<= tb p) (<= q te))))]
+        (mapv v (sort (distinct (concat (filter holds? (range (lower (- q short-max)) (lower (inc p))))
+                                        (filter holds? longer)))))))))
+
 (defn- split-off-new-words
   "The edits for `r`, a replace of [s, t) in `o`, with any whole word its
   new text adds beside the replaced letters put outside them, when tokens
@@ -1756,8 +1809,9 @@
   would move text into the token before or away from a zero-width token.
   When no word can take them so, the replace stays as it is.
   `near` gives the tokens that begin or end in a stretch (see
-  `tokens-near`)."
-  [^ints o near r]
+  `tokens-near`), and `holders` those that hold one inside a run without
+  whitespace (see `holders-fn`)."
+  [^ints o near holders r]
   (let [n (alength o)
         {s :start t :end ^String value :value} r
         v (.toArray (.codePoints value))
@@ -1767,14 +1821,10 @@
                 (let [b (loop [i i] (if (and (< i (alength v)) (ws? (aget v i))) (recur (inc i)) i))
                       e (loop [i b] (if (and (< i (alength v)) (not (ws? (aget v i)))) (recur (inc i)) i))]
                   (if (< b e) (recur e (conj out [b e])) out)))
-        ;; the run of old text without whitespace around [s, t)
-        B (loop [i s] (if (and (pos? i) (not (ws? (aget o (dec i))))) (recur (dec i)) i))
-        E (loop [i t] (if (and (< i n) (not (ws? (aget o i)))) (recur (inc i)) i))
         covering (when (and (some ws? v)
                             (not-any? #(ws? (aget o %)) (range s t)))
-                   (filter (fn [{:token/keys [begin end]}]
-                             (and (< begin end) (<= B begin s) (<= t end E)))
-                           (near B E)))
+                   ;; within the run of old text without whitespace around [s, t)
+                   (holders s t))
         sub (fn [p q] (String. v (int p) (int (- q p))))
         edits (fn [[p q]]
                 (cond-> []
@@ -1841,6 +1891,52 @@
 ;; it is `Yarın ` deleted and `k` replaced by `K`, and the word keeps its
 ;; first letter.
 
+(defn- inside-word-fn
+  "A function of p telling whether two tokens meet at p inside a word
+  without a space that runs across it: p is between two morphemes of the
+  word. Where a punctuation mark is left between two words, nothing meets.
+  In a script without spaces a sentence, a UMR node or a time-alignment
+  segment over several words is such a token too, and only its layer
+  (`word?`) tells it from a word. `near` gives the tokens that begin or end
+  in a stretch (see `tokens-near`).
+
+  The places are worked out once for each run of `o` without a space, when
+  the run is first asked about. In a script without spaces a run is a whole
+  line, and walking it and its tokens for every place asked about took 80 s
+  on a line of 30,000 letters retyped, under the write lock."
+  [^ints o near word?]
+  (let [width? (fn [{:token/keys [begin end]}] (< begin end))
+        ;; the run of `o` without a space around i
+        [^ints starts ^ints ends] (run-bounds o space?)
+        run (fn [i] [(aget starts (int i)) (aget ends (int i))])
+        ;; the places inside a word of the run [B E): for each word there,
+        ;; those strictly inside it where a token within it ends and one
+        ;; within it begins
+        places (fn [B E]
+                 (let [ts (filterv width? (near B E))
+                       by-begin (vec (sort-by :token/begin ts))
+                       begins (long-array (map :token/begin by-begin))
+                       from (fn [x] (loop [a 0 b (alength begins)]
+                                      (if (< a b)
+                                        (let [m (quot (+ a b) 2)]
+                                          (if (< (aget begins m) (long x)) (recur (inc m) b) (recur a m)))
+                                        a)))]
+                   (into #{}
+                         (mapcat (fn [{sb :token/begin se :token/end :as S}]
+                                   (when (and (word? S) (<= B sb) (<= se E))
+                                     (let [in (filter (fn [{:token/keys [begin end]}]
+                                                        (and (<= end se) (not= [begin end] [sb se])))
+                                                      (subvec by-begin (from sb) (from se)))
+                                           ends (into #{} (comp (map :token/end) (filter #(< sb % se))) in)]
+                                       (filter ends (map :token/begin in))))))
+                         ts)))
+        memo (java.util.HashMap.)]
+    (fn [p]
+      (let [[B E] (run p)]
+        (when (< B E)
+          (let [ps (or (.get memo B) (let [ps (places B E)] (.put memo B ps) ps))]
+            (contains? ps p)))))))
+
 (defn- split-at-token-edges
   "The edits for `r`, a replace of [s, t) in `o`, cut where it reaches into
   tokens it does not hold. When tokens begin inside [s, t) and end past it,
@@ -1869,33 +1965,13 @@
   sentence, a UMR node over `köye cat` when `t köye` becomes `Ж`). It marks
   where to cut only when the replace starts inside no word at the other end,
   or `mat` would lose its `t`. `near` gives the tokens that
-  begin or end in a stretch (see `tokens-near`)."
-  [^ints o near word? r]
+  begin or end in a stretch (see `tokens-near`), and `inside-word?` is
+  `inside-word-fn`'s for `o`, `near` and `word?`."
+  [^ints o near word? inside-word? r]
   (let [{s :start t :end ^String value :value} r
         o-space? (fn [i] (space? (aget o (int i))))
         no-space? (fn [p q] (not-any? o-space? (range p q)))
-        ;; the run of `o` without a space around i
-        run (fn [i] [(loop [k i] (if (and (pos? k) (not (o-space? (dec k)))) (recur (dec k)) k))
-                     (loop [k i] (if (and (< k (alength o)) (not (o-space? k))) (recur (inc k)) k))])
         width? (fn [{:token/keys [begin end]}] (< begin end))
-        ;; Two tokens meet at p inside a word without a space that runs
-        ;; across it: p is between two morphemes of the word. Where a
-        ;; punctuation mark is left between two words, nothing meets. In a
-        ;; script without spaces a sentence, a UMR node or a time-alignment
-        ;; segment over several words is such a token too, and only its
-        ;; layer tells it from a word.
-        inside-word? (fn [p]
-                       (let [[B E] (run p)
-                             ts (filter width? (near B E))
-                             in (fn [S] (filter (fn [{:token/keys [begin end]}]
-                                                  (and (<= (:token/begin S) begin) (<= end (:token/end S))
-                                                       (not= [begin end] [(:token/begin S) (:token/end S)])))
-                                                ts))]
-                         (some (fn [{:token/keys [begin end] :as S}]
-                                 (and (word? S) (<= B begin) (< begin p end) (<= end E)
-                                      (some #(= p (:token/end %)) (in S))
-                                      (some #(= p (:token/begin %)) (in S))))
-                               ts)))
         ;; p is at a word's edge: a space or the text's edge beside it, or a
         ;; token beginning or ending there that is not a morpheme's edge
         edge? (fn [p]
@@ -2067,11 +2143,16 @@
   (let [edits0 (vec (ops->edits ops))
         ^ints o (.toArray (.codePoints ^String old))
         near (delay (tokens-near tokens (count edits0)))
+        inside-word? (delay (inside-word-fn o @near word?))
+        ws-runs (delay (run-bounds o #(Character/isWhitespace (int %))))
+        ;; the tokens holding a stretch inside a run without whitespace, for
+        ;; `split-off-new-words`
+        covering (delay (holders-fn @near @ws-runs (constantly true)))
         ;; A replace reaching into the edge of a word it does not hold is cut
         ;; there first, so the part inside the word is judged below as any
         ;; edit of that word is: `dog cow` to `cab` folds `cow` as `cow` to
         ;; `cab` does.
-        edits (into [] (mapcat #(if (= :replace (:kind %)) (split-at-token-edges o @near word? %) [%])) edits0)
+        edits (into [] (mapcat #(if (= :replace (:kind %)) (split-at-token-edges o @near word? @inside-word? %) [%])) edits0)
         cut? (not= edits edits0)
         whole (alength o)
         old-text (fn [p q] (String. o (int p) (int (- q p))))
@@ -2213,7 +2294,7 @@
                                       (not-any? #(ws? (aget o %)) (range b e))
                                       (broken? g b e)
                                       (not-any? #(and (= :replace (:kind %)) (has-ws? (:value %)))
-                                                (split-off-new-words o @near (as-replace g b e))))))
+                                                (split-off-new-words o @near @covering (as-replace g b e))))))
                     g)))
         ;; Whether every letter of [b e) lies in one of `ts`.
         covered? (fn [ts b e]
@@ -2272,20 +2353,13 @@
                                      (not-any? #(ws? (aget o %)) (range b e))
                                      (analysis-lost? g b e)
                                      (not-any? #(and (= :replace (:kind %)) (has-ws? (:value %)))
-                                               (split-off-new-words o @near (as-replace g b e))))
+                                               (split-off-new-words o @near @covering (as-replace g b e))))
                             g)))
         ;; The tokens without whitespace that hold the whole of `e0`.
-        holding (fn [e0]
-                  (let [p (start-of e0)
-                        q (reach-of e0)
-                        B (loop [k p] (if (and (pos? k) (not (ws? (aget o (dec k))))) (recur (dec k)) k))
-                        E (loop [k q] (if (and (< k whole) (not (ws? (aget o k)))) (recur (inc k)) k))]
-                    (->> (@near B E)
-                         (filter (fn [{tb :token/begin te :token/end :as t}]
-                                   (and (< tb te) (<= B tb p) (<= q te E)
-                                        (not (and (zero? tb) (= te whole)))
-                                        (word? t))))
-                         (sort-by :token/begin))))
+        holding (let [f (delay (holders-fn @near @ws-runs
+                                           (fn [{tb :token/begin te :token/end :as t}]
+                                             (and (not (and (zero? tb) (= te whole))) (word? t)))))]
+                  (fn [e0] (@f (start-of e0) (reach-of e0))))
         ;; Tokens without whitespace that an edit giving one a space falls
         ;; strictly inside: `NY` to `New York` is `ew ` typed inside it and
         ;; `ork` after it.
@@ -2323,8 +2397,8 @@
         ;; reaching into the edge of a token it does not hold is cut there.
         (let [replace? #(= :replace (:kind %))
               out' (into []
-                         (comp (mapcat #(if (replace? %) (split-off-new-words o @near %) [%]))
-                               (mapcat #(if (replace? %) (split-at-token-edges o @near word? %) [%])))
+                         (comp (mapcat #(if (replace? %) (split-off-new-words o @near @covering %) [%]))
+                               (mapcat #(if (replace? %) (split-at-token-edges o @near word? @inside-word? %) [%])))
                          out)]
           (if (or folded? cut? (not= out out')) (edits->ops out') ops))))))
 

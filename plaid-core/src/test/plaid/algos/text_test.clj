@@ -2227,3 +2227,93 @@
     (let [tokens (vec (for [[layer es] extents [b e] es]
                         (assoc (tok [layer b e] b e) :token/layer layer)))]
       (is (= new (:text/body (:text (body-edit old new tokens #{:s} #{:w :m})))) (pr-str old)))))
+
+;; ---------------------------------------------------------------------------
+;; The fold finds the places between two morphemes of a word, and the tokens
+;; holding an edit inside a run without whitespace, from an index built once
+;; per run. It walked the run and its tokens for every edit, and in a script
+;; without spaces a run is a whole line: a line of 30,000 letters retyped
+;; held the write lock for 80 s. These are the walks, to pin that the index
+;; finds the same.
+
+(defn- run-around [^ints o sep? p q]
+  [(loop [k p] (if (and (pos? k) (not (sep? (aget o (dec k))))) (recur (dec k)) k))
+   (loop [k q] (if (and (< k (alength o)) (not (sep? (aget o k)))) (recur (inc k)) k))])
+
+(defn- inside-word-walking [^ints o near word? p]
+  (let [width? (fn [{:token/keys [begin end]}] (< begin end))
+        [B E] (run-around o #'ta/space? p p)
+        ts (filter width? (near B E))
+        in (fn [S] (filter (fn [{:token/keys [begin end]}]
+                             (and (<= (:token/begin S) begin) (<= end (:token/end S))
+                                  (not= [begin end] [(:token/begin S) (:token/end S)])))
+                           ts))]
+    (boolean (some (fn [{:token/keys [begin end] :as S}]
+                     (and (word? S) (<= B begin) (< begin p end) (<= end E)
+                          (some #(= p (:token/end %)) (in S))
+                          (some #(= p (:token/begin %)) (in S))))
+                   ts))))
+
+(defn- holders-walking [^ints o near keep? p q]
+  (let [[B E] (run-around o #(Character/isWhitespace (int %)) p q)]
+    (->> (near B E)
+         (filter (fn [{tb :token/begin te :token/end :as t}]
+                   (and (< tb te) (<= B tb p) (<= q te E) (keep? t))))
+         (sort-by :token/begin))))
+
+(deftest the-fold-finds-word-edges-and-holders-as-walking-the-run-does
+  (let [r (java.util.Random. 29)
+        words ["a" "t" "at" "tat" "é" "𐍂a" "你好" "كتاب"]
+        seps ["" "" "" " " "\n" "\u00a0"]]
+    (dotimes [case-n 400]
+      (let [n (+ 2 (.nextInt r 60))
+            body (apply str (repeatedly n #(str (nth words (.nextInt r (count words)))
+                                                (nth seps (.nextInt r (count seps))))))
+            o (.toArray (.codePoints ^String body))
+            len (alength o)
+            tokens (vec (for [i (range (.nextInt r 120))]
+                          (let [b (.nextInt r (inc len))
+                                e (min len (+ b (case (.nextInt r 4) 0 0 1 (.nextInt r 3) 2 (.nextInt r 8) (.nextInt r 90))))]
+                            (assoc (tok i b e) :token/layer (nth [:w :m :s] (.nextInt r 3))))))
+            near (#'ta/tokens-near tokens (if (even? case-n) 1 100))
+            word? #(#{:w :m} (:token/layer %))
+            keep? #(and (word? %) (not= [0 len] [(:token/begin %) (:token/end %)]))
+            inside? (#'ta/inside-word-fn o near word?)
+            holders (#'ta/holders-fn near (#'ta/run-bounds o #(Character/isWhitespace (int %))) keep?)]
+        (doseq [p (range (inc len))]
+          (is (= (inside-word-walking o near word? p) (boolean (inside? p)))
+              (str case-n " " (pr-str body) " at " p)))
+        (dotimes [_ 30]
+          (let [p (.nextInt r (inc len))
+                q (min len (+ p (.nextInt r 4)))]
+            (is (= (holders-walking o near keep? p q) (holders p q))
+                (str case-n " " (pr-str body) " [" p " " q "]"))))))))
+
+(deftest a-long-line-without-spaces-folds-quickly
+  ;; 10,000 words of a script without spaces on one line, each a word token
+  ;; with two morphemes, and one word in ten retyped. The fold walked the
+  ;; whole line and its tokens for every edit: 26 s under the write lock.
+  (let [vocab ["你好" "世界" "我们" "中国" "文字" "今日は" "東京" "ありがとう"]
+        r (java.util.Random. 3)
+        words (vec (repeatedly 10000 #(nth vocab (.nextInt r (count vocab)))))
+        old (apply str words)
+        new (apply str (map-indexed (fn [i w] (if (zero? (mod i 10)) (nth vocab (mod (inc i) (count vocab))) w)) words))
+        tokens (into []
+                     (mapcat (fn [[i b e]]
+                               [(assoc (tok [:w i] b e) :token/layer :w)
+                                (assoc (tok [:m i 0] b (inc b)) :token/layer :m)
+                                (assoc (tok [:m i 1] (inc b) e) :token/layer :m)]))
+                     (loop [i 0 b 0 out []]
+                       (if (= i (count words))
+                         out
+                         (let [e (+ b (cp/cp-count (words i)))] (recur (inc i) e (conj out [i b e]))))))
+        ops (-> (ta/diff old new)
+                (ta/slide-to-tokens old tokens #{})
+                (ta/normalize-deletes old tokens)
+                (ta/align-to-words old tokens #{:w :m})
+                (ta/pair-replacements old tokens))
+        t0 (System/nanoTime)
+        folded (ta/fold-whole-words ops old tokens #{:w :m})
+        ms (/ (- (System/nanoTime) t0) 1e6)]
+    (is (= new (:text/body (:text (apply-all folded old tokens)))))
+    (is (< ms 1500) (str ms " ms"))))
