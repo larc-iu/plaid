@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AlertTriangle, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
@@ -61,6 +61,10 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
   const [nameTouched, setNameTouched] = useState(false);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  // The id of the preset this open dialog creates. A Create pressed again after
+  // an answer that never came replaces the preset the first may have stored,
+  // rather than adding a second one.
+  const creatingId = useRef(null);
 
   const begin = useLatestCall();
   const load = useCallback(async () => {
@@ -99,6 +103,7 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
   // Opening the dialog seeds the name from the format it opens on, so the
   // common case (first preset of a format) needs no typing at all.
   const openCreate = () => {
+    creatingId.current = null;
     setNewFormat('plaintext');
     setNewName(suggestPresetName('plaintext', presets));
     setNameTouched(false);
@@ -110,13 +115,16 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
     if (!name || !project) return;
     setCreating(true);
     try {
-      const preset = newPreset(
+      const made = newPreset(
         newFormat,
         discoverExportLayers(project),
         name,
         readLanguages(project.config),
       );
-      await persist((list) => [...list, preset]);
+      creatingId.current ??= made.id;
+      const preset = { ...made, id: creatingId.current };
+      await persist((list) => [...list.filter((p) => p.id !== preset.id), preset]);
+      creatingId.current = null;
       setCreateOpen(false);
       setNewName('');
       setNameTouched(false);
