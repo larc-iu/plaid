@@ -4,6 +4,7 @@
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.sql.operation :as op]
+            [plaid.sql.operation-group :as og]
             [taoensso.timbre :as log]
             [clojure.string :as str]
             [clojure.data.json :as json])
@@ -739,12 +740,29 @@
         (handler request))
       (handler request))))
 
+(defn- group-structure-error
+  "Why `?group-kind=` / `?group-ref=` on a request cannot be taken, or nil.
+  Both describe a group, so either one without `?group-id=` is refused
+  rather than dropped: a study reads these, and a silently lost kind reads
+  as an operation that had none."
+  [gid kind ref]
+  (cond
+    (and (nil? gid) (or kind ref))
+    "group-kind and group-ref need a group-id"
+
+    (and kind (not (contains? og/kinds kind)))
+    (str "group-kind must be one of " (str/join ", " (sort og/kinds)))
+
+    (and ref (> (count ref) og/ref-max-length))
+    (str "group-ref must be at most " og/ref-max-length " characters")))
+
 (defn wrap-operation-group
   "When a write request carries `?group-id=<uuid>` (plus an optional
-  `?group-message=<text>`), bind `plaid.sql.operation/*current-group-id*` /
-  `*current-group-message*` so the operation row is stamped with the
-  logical-operation group and the group row is lazily created on first
-  sight (see `plaid.sql.operation/ensure-group-row!`).
+  `?group-message=<text>`, `?group-kind=<kind>` and `?group-ref=<text>`),
+  bind `plaid.sql.operation/*current-group-id*` and its message, kind and
+  ref so the operation row is stamped with the logical-operation group and
+  the group row is lazily created on first sight (see
+  `plaid.sql.operation/ensure-group-row!`).
 
   Registered as GLOBAL middleware (`core.clj`) so it also runs for every
   batch sub-operation re-routed through `rest-handler` — the client stamps
@@ -754,16 +772,35 @@
   however many requests make up the logical operation); it must parse as a
   UUID, otherwise the request is rejected with 400 rather than silently
   dropping the grouping. The message is NOT templated (it labels the whole
-  operation, not one request) and is capped like `?audit-message=`."
+  operation, not one request) and is capped like `?audit-message=`. The
+  kind must be one of `plaid.sql.operation-group/kinds` and the ref at most
+  `ref-max-length` characters, or the request is refused (400): unlike the
+  message, both are read by programs, so a cut ref or an unknown kind would
+  be a wrong record rather than an untidy one."
   [handler]
   (fn [request]
-    (if-let [raw (raw-query-param request "group-id")]
-      (if-let [gid (try (java.util.UUID/fromString raw)
-                        (catch IllegalArgumentException _ nil))]
+    (let [raw (raw-query-param request "group-id")
+          kind (raw-query-param request "group-kind")
+          ref (raw-query-param request "group-ref")
+          gid (when raw
+                (try (java.util.UUID/fromString raw)
+                     (catch IllegalArgumentException _ nil)))]
+      (cond
+        (and raw (nil? gid))
+        {:status 400
+         :body {:error "group-id must be a UUID"}}
+
+        (group-structure-error gid kind ref)
+        {:status 400
+         :body {:error (group-structure-error gid kind ref)}}
+
+        gid
         (binding [op/*current-group-id* gid
                   op/*current-group-message* (some-> (raw-query-param request "group-message")
-                                                     truncate-audit-message)]
+                                                     truncate-audit-message)
+                  op/*current-group-kind* kind
+                  op/*current-group-ref* ref]
           (handler request))
-        {:status 400
-         :body {:error "group-id must be a UUID"}})
-      (handler request))))
+
+        :else
+        (handler request)))))

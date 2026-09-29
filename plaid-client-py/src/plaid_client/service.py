@@ -318,7 +318,8 @@ class BaseService(ABC):
         # Transcribe on a document with no transcript yet) that entry would
         # otherwise read "by <operator>" and name the person who asked
         # nowhere. When the requester wrote first, the entry already has its
-        # label and this one is not used.
+        # label and this one is not used. The kind and reference come along
+        # for the same reason.
         group = request_data.pop('operation_group', None) if isinstance(request_data, dict) else None
         joined = bool(group and isinstance(group, dict) and group.get('id'))
         op_client = requester or self.client
@@ -327,7 +328,8 @@ class BaseService(ABC):
             message = group.get('message')
             if message:
                 message = requester_of(self.client, request_data).label(message)
-            op_client.begin_operation(message, group_id=group['id'])
+            op_client.begin_operation(message, group_id=group['id'],
+                                      kind=group.get('kind'), ref=group.get('ref'))
         try:
             self.process_request(request_data, response_helper)
         except ServiceCancelled:

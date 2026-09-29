@@ -105,6 +105,9 @@
                      batch's last op when it ran in one
     :audit/group-id + :audit/message   when the unit is a logical group
                      (message absent if the client never labeled it)
+    :audit/kind + :audit/ref  the group's kind (one of
+                     `plaid.sql.operation-group/kinds`) and what it refers
+                     to, each present only when the client gave one
     :audit/batch-id  when the unit is an unlabeled atomic batch
     :audit/api-token present iff the head op ran under a named API token
                      (server-authoritative; absence marks session activity)"
@@ -156,6 +159,8 @@
                        :audit/ops (mapv op-summary ops)}
                 (:group_id head) (assoc :audit/group-id unit)
                 (:message group) (assoc :audit/message (:message group))
+                (:kind group) (assoc :audit/kind (:kind group))
+                (:ref group) (assoc :audit/ref (:ref group))
                 (and (not (:group_id head)) (:batch_id head)) (assoc :audit/batch-id unit)
                 token (assoc :audit/api-token token))))
           units)))

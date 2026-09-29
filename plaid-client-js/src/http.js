@@ -424,6 +424,8 @@ export function prepareRequest(client, method, path, options = {}) {
     url += `${separator}group-id=${encodeURIComponent(group.id)}`;
     if (group.message)
       url += `&group-message=${encodeURIComponent(group.message)}`;
+    if (group.kind) url += `&group-kind=${encodeURIComponent(group.kind)}`;
+    if (group.ref) url += `&group-ref=${encodeURIComponent(group.ref)}`;
     group.written = true;
   }
 

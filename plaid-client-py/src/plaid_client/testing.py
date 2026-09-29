@@ -713,6 +713,9 @@ class FakeClient:
         #: ``operations``: the one it was begun with, or what the outermost
         #: operation's ``set_message`` refined it to
         self.operation_labels = []
+        #: {'kind', 'ref'} each operation was begun with, index for index
+        #: with ``operations``
+        self.operation_tags = []
         #: {'tokens.bulk_create': <exception>} -- raised when that call is made.
         self.fails = dict(fails or {})
         self.project = project
@@ -850,8 +853,9 @@ class FakeClient:
         batch.submit()
 
     @contextlib.contextmanager
-    def operation(self, message):
+    def operation(self, message, *, kind=None, ref=None):
         self.operations.append(message)
+        self.operation_tags.append({'kind': kind, 'ref': ref})
         self.operation_labels.append(message)
         self.record('operation', message)
         op = _Operation(f'op-{len(self.operations)}', self.operation_labels,

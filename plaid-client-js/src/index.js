@@ -3308,11 +3308,19 @@ class PlaidClient {
    * control), and neither does a broadcast message (`messages.sendMessage`):
    * none of them is audited, so there would be nothing under the label.
    *
+   * `kind` says what kind of operation this is, for a program reading the
+   * log: one of `assistant-plan`, `service-run`, `import`, `bulk-edit`,
+   * `guess-adoption` or `repair` (the server refuses any other). `ref` is a
+   * short string naming what the operation came from, in the shape its kind
+   * documents (the core manual, "Kinds of operation"). Both are recorded from
+   * the first write like the label, and a nested operation keeps the outer
+   * one's.
+   *
    * @param {string} message - Human label for the operation.
-   * @param {object} [opts] - Optional `{ id }`: adopt an existing group id instead of minting one (a service joining the requester's operation; `requestService` propagates an open operation to the service automatically).
+   * @param {object} [opts] - Optional `{ id, kind, ref }`. `id` adopts an existing group id instead of minting one (a service joining the requester's operation; `requestService` propagates an open operation to the service automatically). `kind` and `ref` are described above.
    * @returns {string} The operation's group id.
    */
-  beginOperation(message, { id } = {}) {
+  beginOperation(message, { id, kind, ref } = {}) {
     if (this.operationGroup) {
       this.operationGroup.depth += 1;
       return this.operationGroup.id;
@@ -3320,6 +3328,8 @@ class PlaidClient {
     this.operationGroup = {
       id: id || crypto.randomUUID(),
       message: message == null ? null : String(message),
+      kind: kind == null ? null : String(kind),
+      ref: ref == null ? null : String(ref),
       depth: 1,
       written: false,
       refined: undefined,
@@ -3366,12 +3376,17 @@ class PlaidClient {
    *     setMessage(`Merged ${n} morphemes`);
    *   });
    *
+   * The kind and reference (see beginOperation) come after `fn`:
+   *
+   *   await client.withOperation('Import ELAN corpus', run, { kind: 'import', ref: 'format:elan' });
+   *
    * @param {string} message - Human label for the operation.
    * @param {function} fn - The work to run; receives `setMessage(msg)` to refine the label once the outcome is known.
+   * @param {object} [opts] - Optional `{ kind, ref }`, as for beginOperation.
    * @returns {Promise<any>} Whatever `fn` resolves to.
    */
-  async withOperation(message, fn) {
-    this.beginOperation(message);
+  async withOperation(message, fn, { kind, ref } = {}) {
+    this.beginOperation(message, { kind, ref });
     const group = this.operationGroup;
     const setMessage = (msg) => {
       if (group.depth === 1) group.refined = msg;

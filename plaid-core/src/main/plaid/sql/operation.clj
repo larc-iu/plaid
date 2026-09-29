@@ -68,6 +68,18 @@
   lazily creates the `operation_groups` row (see `ensure-group-row!`)."
   nil)
 
+(def ^:dynamic *current-group-kind*
+  "What kind of operation `*current-group-id*` is (from `?group-kind=`, one
+  of `plaid.sql.operation-group/kinds`), stored like the message: only by
+  the group's first tagged write."
+  nil)
+
+(def ^:dynamic *current-group-ref*
+  "What `*current-group-id*` refers to (from `?group-ref=`), client text in
+  a shape its kind documents. Stored like the message: only by the group's
+  first tagged write."
+  nil)
+
 (defn- insert-operation-row!
   [tx {:keys [id type project document description user token-id batch-id group-id ts]}]
   (psc/execute!
@@ -96,6 +108,8 @@
     (psc/execute! tx {:insert-into :operation_groups
                       :values [{:id group-id
                                 :message *current-group-message*
+                                :kind *current-group-kind*
+                                :ref *current-group-ref*
                                 :user_id user
                                 :created_at ts}]
                       :on-conflict [:id]

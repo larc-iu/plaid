@@ -1289,6 +1289,15 @@ interface PlaidClientOptions {
   onAuthError?: ((error: Error) => void) | null;
 }
 
+/** What kind of operation a logical-operation group is (`?group-kind=`). */
+export type OperationKind =
+  | 'assistant-plan'
+  | 'service-run'
+  | 'import'
+  | 'bulk-edit'
+  | 'guess-adoption'
+  | 'repair';
+
 export interface OperationGroupsBundle {
   get(id: string): Promise<any>;
   update(id: string, message: string | null): Promise<any>;
@@ -1392,12 +1401,23 @@ export declare class PlaidClient {
   // Logical operations (audit-log grouping). While one is open every write is
   // stamped with its group id so the audit log folds them into one entry.
   // Not atomic; nesting flattens into the outer operation.
-  operationGroup: { id: string; message: string | null } | null;
-  beginOperation(message: string, opts?: { id?: string }): string;
+  // `kind` is one of OperationKind (the server refuses any other) and `ref`
+  // names what the operation came from; nesting keeps the outer ones.
+  operationGroup: {
+    id: string;
+    message: string | null;
+    kind: OperationKind | null;
+    ref: string | null;
+  } | null;
+  beginOperation(
+    message: string,
+    opts?: { id?: string; kind?: OperationKind; ref?: string },
+  ): string;
   endOperation(message?: string): Promise<void>;
   withOperation<T>(
     message: string,
     fn: (setMessage: (msg: string) => void) => Promise<T> | T,
+    opts?: { kind?: OperationKind; ref?: string },
   ): Promise<T>;
   operationGroups: OperationGroupsBundle;
 

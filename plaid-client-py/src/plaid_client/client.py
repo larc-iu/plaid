@@ -3316,7 +3316,7 @@ class PlaidClient:
         # The open logical operation (audit-log group), or None. While set, every
         # write is stamped with ``?group-id=`` (+ ``group-message``) so the audit
         # log folds them into ONE expandable entry. See begin_operation /
-        # operation(). Shape: {'id', 'message', 'depth', 'written', 'refined'}.
+        # operation(). Shape: {'id', 'message', 'kind', 'ref', 'depth', 'written', 'refined'}.
         self._operation_group: dict | None = None
         self.session = req_lib.Session()
 
@@ -3393,7 +3393,8 @@ class PlaidClient:
         """Exit strict mode and stop tracking document versions for writes."""
         self.strict_mode_document_id = None
 
-    def begin_operation(self, message: str | None, *, group_id: str | None = None) -> str:
+    def begin_operation(self, message: str | None, *, group_id: str | None = None,
+                        kind: str | None = None, ref: str | None = None) -> str:
         """Begin a LOGICAL OPERATION: a user-meaningful action ("Merge
         morphemes", "Re-transcribe") implemented as many low-level writes,
         possibly across several batches and even a service round-trip. Until
@@ -3421,6 +3422,14 @@ class PlaidClient:
         (``messages.send_message``): none of them is audited, so there would
         be nothing under the label.
 
+        ``kind`` says what kind of operation this is, for a program reading
+        the log: one of ``assistant-plan``, ``service-run``, ``import``,
+        ``bulk-edit``, ``guess-adoption`` or ``repair`` (the server refuses any
+        other). ``ref`` is a short string naming what the operation came from,
+        in the shape its kind documents (the core manual, "Kinds of
+        operation"). Both are recorded from the first write like the label,
+        and a nested operation keeps the outer one's.
+
         Prefer the ``operation()`` context manager; this is the manual form.
 
         Args:
@@ -3428,6 +3437,8 @@ class PlaidClient:
             group_id: Optional. Adopt an existing group id instead of minting one
                 (a service joining the requester's operation; ``BaseService`` does
                 this automatically from the propagated ``operation_group`` field).
+            kind: Optional. What kind of operation this is (see above).
+            ref: Optional. What the operation refers to (see above).
 
         Returns:
             The operation's group id.
@@ -3438,6 +3449,8 @@ class PlaidClient:
         self._operation_group = {
             'id': str(group_id) if group_id else str(uuid.uuid4()),
             'message': None if message is None else str(message),
+            'kind': None if kind is None else str(kind),
+            'ref': None if ref is None else str(ref),
             'depth': 1,
             'written': False,
             'refined': _UNSET_MESSAGE,
@@ -3473,7 +3486,7 @@ class PlaidClient:
                     raise
 
     @contextmanager
-    def operation(self, message: str):
+    def operation(self, message: str, *, kind: str | None = None, ref: str | None = None):
         """Run the block as one logical operation (see ``begin_operation``),
         ending it when the block exits — including on exception. The yielded
         object's ``set_message(msg)`` refines the label once the outcome is
@@ -3489,10 +3502,18 @@ class PlaidClient:
         block carries the operation to the service, whose writes then fold
         under this entry.
 
+        ``kind`` and ``ref`` say what kind of operation this is and what it
+        refers to (see ``begin_operation``)::
+
+            with client.operation('Import ELAN corpus', kind='import', ref='format:elan'):
+                ...
+
         Args:
             message: Human label for the operation (shown as the audit-log entry).
+            kind: Optional. What kind of operation this is.
+            ref: Optional. What the operation refers to.
         """
-        self.begin_operation(message)
+        self.begin_operation(message, kind=kind, ref=ref)
         group = self._operation_group
         ctx = _OperationContext(group)
         try:

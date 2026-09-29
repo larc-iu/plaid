@@ -501,6 +501,10 @@ def prepare_request(client, method, path, *, body=None, raw_body=None, form_data
         url += f'{separator}group-id={quote(group["id"], safe="")}'
         if group.get('message'):
             url += f'&group-message={quote(str(group["message"]), safe="")}'
+        if group.get('kind'):
+            url += f'&group-kind={quote(str(group["kind"]), safe="")}'
+        if group.get('ref'):
+            url += f'&group-ref={quote(str(group["ref"]), safe="")}'
         group['written'] = True
 
     return url, request_body, stamped_document

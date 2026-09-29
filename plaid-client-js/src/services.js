@@ -410,10 +410,20 @@ export function requestService(client, projectId, serviceId, data, timeout = 100
   // (the Python BaseService adopts the id around process_request). Only for a
   // plain-object payload — that's the only shape the service param schema
   // delivers anyway.
+  // Its kind and reference go too, so a service that writes before the
+  // requester does still records them.
   const group = client.operationGroup;
   const payload =
     group && data && typeof data === 'object' && !Array.isArray(data)
-      ? { ...data, operationGroup: { id: group.id, message: group.message } }
+      ? {
+          ...data,
+          operationGroup: {
+            id: group.id,
+            message: group.message,
+            ...(group.kind ? { kind: group.kind } : {}),
+            ...(group.ref ? { ref: group.ref } : {}),
+          },
+        }
       : data;
   const query = new URLSearchParams();
   if (opts.requestId) query.set('request-id', opts.requestId);

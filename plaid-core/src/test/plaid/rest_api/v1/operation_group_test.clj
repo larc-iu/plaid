@@ -306,3 +306,95 @@
       (is (pos? operation-groups))
       (is (nil? (group-row gid)))
       (is (some? (group-row keep-gid)) "a group still referenced by live ops survives"))))
+
+;; ---------------------------------------------------------------------------
+;; Kind and ref: the structured side of a group
+;; ---------------------------------------------------------------------------
+
+(defn- kind-query [gid message kind ref]
+  (cond-> (group-query gid message)
+    kind (str "&group-kind=" kind)
+    ref (str "&group-ref=" (java.net.URLEncoder/encode (str ref) "UTF-8"))))
+
+(deftest kind-and-ref-are-stored-and-read-back
+  (let [{:keys [proj span doc]} (setup-span admin-request "GrpKind")
+        gid (random-uuid)
+        ref "conv:c1/plan:p1/service:igt:assist:m"]
+    (testing "the first tagged write stores kind and ref on the group row"
+      (assert-ok (patch-meta admin-request span (kind-query gid "Assistant: gloss" "assistant-plan" ref)
+                             [{:op "set" :path ["a"] :value 1}]))
+      (let [g (group-row gid)]
+        (is (= "assistant-plan" (:kind g)))
+        (is (= ref (:ref g)))))
+
+    (testing "a later member cannot change them"
+      (assert-ok (patch-meta admin-request span (kind-query gid nil "import" "format:flex")
+                             [{:op "set" :path ["b"] :value 2}]))
+      (is (= "assistant-plan" (:kind (group-row gid))))
+      (is (= ref (:ref (group-row gid)))))
+
+    (testing "every audit read that returns group info carries them"
+      (doseq [[what entries] [["document" (doc-audit-entries admin-request doc)]
+                              ["project" (:entries (:body (get-project-audit admin-request proj)))]
+                              ["user" (:entries (:body (get-user-audit admin-request "admin@example.com")))]]]
+        (let [e (entry-for entries gid)]
+          (is (= "assistant-plan" (:audit/kind e)) what)
+          (is (= ref (:audit/ref e)) what)))
+      (let [r (api-call admin-request {:method :get :path (str "/api/v1/operation-groups/" gid)})]
+        (assert-ok r)
+        (is (= "assistant-plan" (-> r :body :operation-group/kind)))
+        (is (= ref (-> r :body :operation-group/ref)))))
+
+    (testing "a group with neither has no key for them"
+      (let [plain (random-uuid)]
+        (assert-ok (patch-meta admin-request span (group-query plain "Plain") [{:op "set" :path ["c"] :value 3}]))
+        (let [e (entry-for (doc-audit-entries admin-request doc) plain)]
+          (is (not (contains? e :audit/kind)))
+          (is (not (contains? e :audit/ref))))))
+
+    (testing "a ref may come without a kind, and a kind without a ref"
+      (let [a (random-uuid) b (random-uuid)]
+        (assert-ok (patch-meta admin-request span (kind-query a nil nil "x:1") [{:op "set" :path ["d"] :value 4}]))
+        (assert-ok (patch-meta admin-request span (kind-query b nil "repair" nil) [{:op "set" :path ["e"] :value 5}]))
+        (is (= [nil "x:1"] ((juxt :kind :ref) (group-row a))))
+        (is (= ["repair" nil] ((juxt :kind :ref) (group-row b))))))))
+
+(deftest kind-and-ref-in-a-batch
+  (let [{:keys [span doc]} (setup-span admin-request "GrpKindBatch")
+        gid (random-uuid)
+        q (kind-query gid "Bulk" "bulk-edit" "action:respell")]
+    (assert-ok (submit-batch admin-request
+                             [{:path (str "/api/v1/spans/" span "/metadata?" q)
+                               :method "PATCH" :body [{:op "set" :path ["a"] :value 1}]}]))
+    (let [e (entry-for (doc-audit-entries admin-request doc) gid)]
+      (is (= "bulk-edit" (:audit/kind e)))
+      (is (= "action:respell" (:audit/ref e))))))
+
+(deftest every-documented-kind-is-accepted
+  (let [{:keys [span]} (setup-span admin-request "GrpKinds")]
+    (doseq [kind ["assistant-plan" "service-run" "import" "bulk-edit" "guess-adoption" "repair"]]
+      (let [gid (random-uuid)]
+        (assert-ok (patch-meta admin-request span (kind-query gid nil kind nil)
+                               [{:op "set" :path [kind] :value 1}]))
+        (is (= kind (:kind (group-row gid))))))))
+
+(deftest bad-kind-or-ref-is-refused-and-writes-nothing
+  (let [{:keys [span]} (setup-span admin-request "GrpKindBad")]
+    (testing "a kind outside the vocabulary"
+      (let [r (patch-meta admin-request span (kind-query (random-uuid) nil "assistant_plan" nil)
+                          [{:op "set" :path ["a"] :value 1}])]
+        (is (= 400 (:status r)))
+        (is (re-find #"group-kind" (-> r :body :error)))
+        (is (re-find #"assistant-plan" (-> r :body :error)) "the error names the vocabulary")))
+    (testing "an empty kind"
+      (assert-status 400 (patch-meta admin-request span (str (group-query (random-uuid)) "&group-kind=")
+                                     [{:op "set" :path ["a"] :value 1}])))
+    (testing "a ref longer than the cap"
+      (let [r (patch-meta admin-request span (kind-query (random-uuid) nil "import" (apply str (repeat 1025 "x")))
+                          [{:op "set" :path ["a"] :value 1}])]
+        (is (= 400 (:status r)))
+        (is (re-find #"group-ref" (-> r :body :error)))))
+    (testing "kind or ref with no group"
+      (assert-status 400 (patch-meta admin-request span "group-kind=import" [{:op "set" :path ["a"] :value 1}]))
+      (assert-status 400 (patch-meta admin-request span "group-ref=x" [{:op "set" :path ["a"] :value 1}])))
+    (is (empty? (ops-of-type "span/patch-metadata")) "no refused write did anything")))

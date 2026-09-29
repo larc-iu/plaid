@@ -425,3 +425,81 @@ def test_an_operation_that_only_sends_messages_asks_for_no_relabel():
         ('POST', '/api/v1/projects/P1/message'),
         ('POST', '/api/v1/projects/P1/message'),
     ]
+
+
+# Kind and ref: what a study of the log counts by and joins on. Stamped on
+# every write beside the id, like the message, and carried to a service.
+
+def test_begin_operation_stamps_group_kind_and_ref():
+    client = _client()
+    client.begin_operation('Assistant: gloss', kind='assistant-plan', ref='conv:c/plan:p')
+    for p in _queue(client):
+        params = _params(p)
+        assert params['group-kind'] == 'assistant-plan'
+        assert params['group-ref'] == 'conv:c/plan:p'
+    client.end_operation()
+    assert all('group-kind' not in p and 'group-ref' not in p for p in _queue(client))
+
+
+def test_an_operation_with_no_kind_or_ref_sends_neither():
+    client = _client()
+    client.begin_operation('Plain')
+    assert all('group-kind' not in p and 'group-ref' not in p for p in _queue(client))
+
+
+def test_operation_context_manager_takes_kind_and_ref():
+    client = _client()
+    with client.operation('Import ELAN corpus', kind='import', ref='format:elan'):
+        paths = _queue(client)
+    assert all(_params(p)['group-kind'] == 'import' for p in paths)
+    assert all(_params(p)['group-ref'] == 'format:elan' for p in paths)
+
+
+def test_a_nested_operation_keeps_the_outer_kind_and_ref():
+    client = _client()
+    with client.operation('outer', kind='assistant-plan', ref='plan:1'):
+        with client.operation('inner', kind='service-run', ref='service:x'):
+            paths = _queue(client)
+    assert all(_params(p)['group-kind'] == 'assistant-plan' for p in paths)
+    assert all(_params(p)['group-ref'] == 'plan:1' for p in paths)
+
+
+def test_request_service_carries_the_kind_and_ref(monkeypatch):
+    from plaid_client import services
+    client = _client()
+    sent = {}
+
+    class _Refused:
+        status_code = 500
+        ok = False
+        text = 'nope'
+        reason = 'nope'
+        headers = {}
+
+        def close(self):
+            pass
+
+    def post(url, headers=None, json=None, stream=None, timeout=None):
+        sent['body'] = json
+        return _Refused()
+
+    monkeypatch.setattr(services.requests, 'post', post)
+    gid = client.begin_operation('Transcribe', kind='service-run', ref='service:asr')
+    with pytest.raises(Exception):
+        services.request_service(client, 'P', 'svc', {'document_id': 'D'}, timeout=1)
+    assert sent['body']['operation-group'] == {'id': gid, 'message': 'Transcribe',
+                                               'kind': 'service-run', 'ref': 'service:asr'}
+
+
+def test_base_service_joins_the_requesters_kind_and_ref():
+    # The service may write before the requester does, and then its write
+    # creates the group, so it must carry the kind and ref too.
+    gid = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+    svc, helper, seen = _joining_service(lambda uid: {'id': uid, 'display_name': 'Ana'})
+    svc.handle_service_request(
+        {'document_id': 'D', 'operation_group': {'id': gid, 'message': 'Parse', 'kind': 'assistant-plan',
+                                                 'ref': 'conv:c/plan:p'}},
+        helper).join(5)
+    assert 'error' not in seen
+    assert seen['first']['group-kind'] == 'assistant-plan'
+    assert seen['first']['group-ref'] == 'conv:c/plan:p'

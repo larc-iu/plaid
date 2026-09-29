@@ -327,3 +327,59 @@ test('an operation that only sends messages asks for no relabel', async () => {
     { method: 'POST', path: '/api/v1/projects/P1/message', batch: null },
   ]);
 });
+
+// Kind and ref: what a study of the log counts by and joins on. Stamped on
+// every write beside the id, like the message, and carried to a service.
+const paramOf = (path, name) => new URL('http://x' + path).searchParams.get(name);
+
+test('beginOperation stamps group-kind and group-ref on every write', async () => {
+  const client = makeClient();
+  client.beginOperation('Assistant: gloss', { kind: 'assistant-plan', ref: 'conv:c/plan:p' });
+  const paths = queue(client);
+  assert.ok(paths.every((p) => paramOf(p, 'group-kind') === 'assistant-plan'));
+  assert.ok(paths.every((p) => paramOf(p, 'group-ref') === 'conv:c/plan:p'));
+  await client.endOperation();
+  assert.ok(queue(client).every((p) => !p.includes('group-kind') && !p.includes('group-ref')));
+});
+
+test('an operation with no kind or ref sends neither', () => {
+  const client = makeClient();
+  client.beginOperation('Plain');
+  assert.ok(queue(client).every((p) => !p.includes('group-kind') && !p.includes('group-ref')));
+});
+
+test('withOperation takes kind and ref after the function', async () => {
+  const client = makeClient();
+  let paths;
+  await client.withOperation('Import ELAN corpus', async () => { paths = queue(client); }, {
+    kind: 'import',
+    ref: 'format:elan',
+  });
+  assert.ok(paths.every((p) => paramOf(p, 'group-kind') === 'import'));
+  assert.ok(paths.every((p) => paramOf(p, 'group-ref') === 'format:elan'));
+});
+
+test('a nested operation keeps the outer kind and ref', async () => {
+  const client = makeClient();
+  client.beginOperation('outer', { kind: 'assistant-plan', ref: 'plan:1' });
+  let paths;
+  await client.withOperation('inner', async () => { paths = queue(client); }, { kind: 'service-run', ref: 'service:x' });
+  assert.ok(paths.every((p) => paramOf(p, 'group-kind') === 'assistant-plan' && paramOf(p, 'group-ref') === 'plan:1'));
+  await client.endOperation();
+});
+
+test('requestService carries the kind and ref to the service', async () => {
+  const client = makeClient();
+  let sent = null;
+  globalThis.fetch = async (url, opts) => {
+    sent = JSON.parse(opts.body);
+    return { ok: false, status: 500, statusText: 'nope' };
+  };
+  const id = client.beginOperation('Transcribe', { kind: 'service-run', ref: 'service:asr' });
+  await assert.rejects(client.messages.requestService('P', 'svc', { documentId: 'D' }, 1000));
+  assert.deepStrictEqual(sent, {
+    'document-id': 'D',
+    'operation-group': { id, message: 'Transcribe', kind: 'service-run', ref: 'service:asr' },
+  });
+  await client.endOperation();
+});

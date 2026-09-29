@@ -200,6 +200,59 @@ Things to know:
 * **Time travel targets.** Each entry carries `time` (its first write) and `end_time`, the time to read at to see the whole operation done. To view the document as it was after the operation, pass `end_time` as `as_of`. Each op in `ops` carries an `end_time` of its own as well: its `time` when it was written alone, or the time of its batch's last write when it ran in a batch, because a read at a time inside a batch shows the document as it was before the whole batch. To view the state after one op, pass `ops[i].end_time`, not `ops[i].time`.
 * The label is client-supplied free text for readability only. The structured forensic record (the operation type and the per-row images) is unchanged.
 
+==== Kinds of operation
+
+An operation may also say what kind of operation it is and what it refers to. The label is for a person to read. The kind and the reference are for a program: a study of how a project was annotated can count its operations by kind without reading labels.
+
+[,python]
+----
+with c.operation("Assistant: gloss 12 words", kind="assistant-plan",
+                 ref="conv:4f2a/plan:9c1e/service:igt:assist:glm-5.2"):
+    ...
+----
+
+[,javascript]
+----
+await c.withOperation("Import ELAN corpus", async () => {
+  ...
+}, { kind: "import", ref: "format:elan" });
+----
+
+The manual forms take them too: `c.begin_operation(msg, kind=..., ref=...)` and `c.beginOperation(msg, { kind, ref })`. On the wire they are `?group-kind=` and `?group-ref=` beside `?group-id=`. The audit endpoints return them as `kind` and `ref` on the entry, and `GET /operation-groups/:id` returns them too, each only when the operation has one.
+
+The kind is one of this list. The server refuses any other value with a 400, so a misspelled kind never reaches the log.
+
+[cols="1,3,2"]
+|===
+|Kind |What it is |`ref`
+
+|`assistant-plan`
+|An assistant plan the user approved, being applied.
+|`conv:<conversation id>/plan:<plan id>/service:<service id>`. The service id comes last and may itself hold a `/`.
+
+|`service-run`
+|One run of a service, with every write the service made for it.
+|`service:<service id>`
+
+|`import`
+|A file or archive read into a project.
+|`format:<format>`: the apps write `native`, `fwbackup`, `flextext`, `elan`, `cldf` and `table` (a vocabulary's Bulk Add) in igt, `conllu` in UD and `umr` in UMR
+
+|`bulk-edit`
+|One change made across many places at once, such as igt's Bulk Edit or UD's Grew rewrite.
+|`action:<name>`: igt writes `respell`, `replace`, `reanalyze` and `merge` (Bulk Edit) and `vocab-replace` (a vocabulary's Replace), UD writes `grew-rewrite`
+
+|`guess-adoption`
+|A person taking a suggested value as their own: in igt, a guess or a value from a cell's alternatives put into an empty cell, or a word accepted together with its guesses. Accepting what is already stored, with no guess in it, is not one.
+|none
+
+|`repair`
+|A repair an app makes by itself when a document opens.
+|none
+|===
+
+The reference is free text of at most 1024 characters, and a longer one is refused rather than cut. Both are recorded from the operation's first write, like the label, and never change afterwards: relabelling an operation changes only its label. Nesting flattens here too, so a service joining your operation, or an operation opened inside yours, records your kind and reference, not its own. Both are optional.
+
 === Custom messages for single writes
 
 For a single write, you can replace its auto-generated `description` by passing a message as the `audit_message` / `auditMessage` argument of a write method that has one.

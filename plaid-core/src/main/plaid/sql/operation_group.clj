@@ -12,12 +12,34 @@
   (:refer-clojure :exclude [get])
   (:require [plaid.sql.common :as psc]))
 
+(def kinds
+  "What a group may say it is (`?group-kind=`), the whole vocabulary. A
+  closed list rather than any string because readers count operations by
+  kind: `assistant_plan` next to `assistant-plan` would split one count in
+  two, and nothing would say so. A new kind is a new entry here and in the
+  manual's list (\"Kinds of operation\").
+
+    assistant-plan  an approved assistant plan being applied
+    service-run     one run of a service, the service's writes included
+    import          a file or archive read into a project
+    bulk-edit       one change made across many places at once
+    guess-adoption  a person taking a suggested value as their own
+    repair          a repair an app makes by itself when a document opens"
+  #{"assistant-plan" "service-run" "import" "bulk-edit" "guess-adoption" "repair"})
+
+(def ref-max-length
+  "The longest `?group-ref=` accepted. A ref is a key a reader joins on, so
+  a longer one is refused rather than cut."
+  1024)
+
 (defn- row->group [row]
   (when row
-    {:operation-group/id (:id row)
-     :operation-group/message (:message row)
-     :operation-group/user (:user_id row)
-     :operation-group/created-at (:created_at row)}))
+    (cond-> {:operation-group/id (:id row)
+             :operation-group/message (:message row)
+             :operation-group/user (:user_id row)
+             :operation-group/created-at (:created_at row)}
+      (:kind row) (assoc :operation-group/kind (:kind row))
+      (:ref row) (assoc :operation-group/ref (:ref row)))))
 
 (defn get [db id]
   (row->group (psc/fetch-by-id db :operation_groups id)))

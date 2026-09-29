@@ -640,10 +640,14 @@ def request_service(client, project_id, service_id, data, timeout=10.0, on_progr
         url += '?' + urllib.parse.urlencode(query)
     # Propagate an open logical operation (client.begin_operation) to the
     # service: its writes then fold under the requester's audit-log entry
-    # (BaseService adopts the id around process_request).
+    # (BaseService adopts the id around process_request). Its kind and
+    # reference go too, so a service that writes before the requester does
+    # still records them.
     group = getattr(client, '_operation_group', None)
     if group is not None and isinstance(data, dict):
-        data = {**data, 'operation_group': {'id': group['id'], 'message': group['message']}}
+        carried = {'id': group['id'], 'message': group['message']}
+        carried.update({k: group[k] for k in ('kind', 'ref') if group.get(k)})
+        data = {**data, 'operation_group': carried}
     body = transform_request(data) if data is not None else None
     try:
         resp = requests.post(url, headers=_stream_headers(client), json=body, stream=True, timeout=(10, None))
