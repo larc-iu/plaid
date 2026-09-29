@@ -678,13 +678,15 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
             if del_ids:
                 log(f"  Deleting {del_label}…")
                 progress.report(ParseProgress.WRITE, 0.0, "Clearing the previous annotations…")
-            # The delete and the creations go in ONE atomic batch, the delete
-            # first: a delete sent alone and a batch that then failed left the
-            # document with its words gone and nothing in their place. The
-            # server runs a batch's ops in order, so child layers see the
-            # parents from earlier ops in the same batch (those creates don't
-            # reference the *ids* produced earlier in the batch, only the
-            # pre-existing layer ids). Order is top-down (sentences → words →
+            # The whole write is ONE atomic batch: the delete, the tokens, the
+            # spans on them and the relations between those, in that order. A
+            # delete sent alone and a batch that then failed left the document
+            # with its words gone and nothing in their place, and spans in a
+            # batch of their own left words with no annotation when it failed.
+            # A span names its morpheme, and a relation its lemma span, by a
+            # ref to the id an earlier op of the batch creates (`batch.ref`).
+            # The server runs a batch's ops in order, so child layers see their
+            # parents from earlier ops. Order is top-down (sentences → words →
             # morphemes): a child without its parent on the server is a 400. In
             # substrate-preserving mode the sentence/word op lists are empty and
             # only syntactic words land.
@@ -693,180 +695,139 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
             progress.report(ParseProgress.WRITE, 0.15,
                             f"Writing {len(sentence_ops) + len(word_ops) + len(morpheme_ops)} "
                             f"tokens…")
-            order = []  # which kind sits at each index in the batch results
-            with client.batched() as token_batch:
+            with client.batched() as batch:
                 if del_ids:
-                    token_batch.tokens.bulk_delete(del_ids)
-                    order.append("deleted")
+                    batch.tokens.bulk_delete(del_ids)
                 if sentence_ops:
-                    token_batch.tokens.bulk_create(sentence_ops)
-                    order.append("sentences")
+                    batch.tokens.bulk_create(sentence_ops)
                 if word_ops:
-                    token_batch.tokens.bulk_create(word_ops)
-                    order.append("words")
+                    batch.tokens.bulk_create(word_ops)
+                # Each morpheme's id, as a ref to the k-th id the op creates.
+                morpheme_ids = []
                 if morpheme_ops:
-                    token_batch.tokens.bulk_create(morpheme_ops)
-                    order.append("morphemes")
-                log(f"  Submitting token batch ({len(order)} ops)…")
-            token_results = token_batch.results
-            log("  …token batch returned")
-            morpheme_ids = []
-            if "sentences" in order:
-                log(f"Created {len(sentence_ops)} sentence tokens")
-            if "words" in order:
-                log(f"Created {len(word_ops)} word tokens")
-            if "morphemes" in order:
-                idx = order.index("morphemes")
-                morpheme_ids = token_results[idx]["body"]["ids"]
-                log(f"Created {len(morpheme_ids)} morpheme tokens")
+                    batch.tokens.bulk_create(morpheme_ops)
+                    morpheme_ids = [batch.ref(-1, k) for k in range(len(morpheme_ops))]
 
-            # 4. Annotation spans on morphemes.
-            lemma_span_ids = []
-            for sentence_data in sentences_data:
-                row_count = sum(1 for td in sentence_data if not isinstance(td["id"], tuple))
-                lemma_span_ids.append([None] * row_count)
+                # 4. Annotation spans on morphemes.
+                lemma_span_ids = []
+                for sentence_data in sentences_data:
+                    row_count = sum(1 for td in sentence_data if not isinstance(td["id"], tuple))
+                    lemma_span_ids.append([None] * row_count)
 
-            # Rows a dependency relation will touch: its target (the row
-            # carrying the DEPREL) and its source (the row that one names as
-            # HEAD). Each needs a Lemma span for the relation to hang off, even
-            # where the parse produced no lemma at all. Stanza drops a processor
-            # whose model the language lacks and says so in a warning only, so a
-            # pipeline can return DEPREL with the lemma column empty throughout,
-            # and every tree in the document was then dropped in silence. The
-            # null-valued span is the one the editor leaves behind when a lemma
-            # is cleared, and it exports as `_` again. This mirrors
-            # ConlluDocument.importFromConllu, which carries the same rule.
-            needs_lemma = []
-            for sentence_data in sentences_data:
-                rows = set()
-                for td in sentence_data:
-                    if isinstance(td["id"], tuple) or not td.get("deprel"):
-                        continue
-                    rows.add(td["id"])
-                    head = td.get("head")
-                    if head and head > 0:
-                        rows.add(head)
-                needs_lemma.append(rows)
-
-            form_spans, lemma_spans, lemma_targets = [], [], []
-            upos_spans, xpos_spans, feature_spans = [], [], []
-            for i, meta in enumerate(morpheme_meta):
-                mid = morpheme_ids[i] if i < len(morpheme_ids) else None
-                if not mid:
-                    continue
-                row = meta["row"]
-                sent_idx = meta["sent_idx"]
-                row_index = row["id"] - 1
-
-                form = row.get("text")
-                # A Form span is only needed when the surface form differs from the
-                # morpheme's substring (i.e. real MWT components).
-                if form_layer and form and form != meta["word_substring"]:
-                    form_spans.append(make_span_token(form_layer["id"], [mid], form, frag))
-                lemma = row.get("lemma")
-                if lemma_layer and (lemma or row["id"] in needs_lemma[sent_idx]):
-                    lemma_spans.append(
-                        make_span_token(lemma_layer["id"], [mid], lemma or None, frag))
-                    lemma_targets.append((sent_idx, row_index))
-                upos = row.get("upos")
-                if upos_layer and upos:
-                    upos_spans.append(make_span_token(upos_layer["id"], [mid], upos, frag))
-                xpos = row.get("xpos")
-                if xpos_layer and xpos:
-                    xpos_spans.append(make_span_token(xpos_layer["id"], [mid], xpos, frag))
-                feats = row.get("feats")
-                if features_layer and feats:
-                    for value in feats.split("|"):
-                        if value:
-                            feature_spans.append(make_span_token(features_layer["id"], [mid], value, frag))
-
-            # Bundle all five span bulk_creates into ONE atomic batch so a partial
-            # failure rolls the spans back together. Track the batch index of
-            # lemma so we can recover the new span ids for the follow-up relation
-            # batch.
-            #
-            # Note: unlike the JS importer (which creates a new document and
-            # deletes it on any failure), the parser operates on an EXISTING user
-            # document. We don't delete on failure: the user re-runs the parse;
-            # the cascade-delete at the top of `parse_document` clears any
-            # partial-state tokens before re-creating.
-            log(f"Building span ops: form={len(form_spans)}, lemma={len(lemma_spans)}, "
-                f"upos={len(upos_spans)}, xpos={len(xpos_spans)}, features={len(feature_spans)}")
-            progress.report(ParseProgress.WRITE, 0.5,
-                            f"Writing {len(form_spans) + len(lemma_spans) + len(upos_spans) + len(xpos_spans) + len(feature_spans)} "
-                            f"annotations…")
-            span_order = []
-            with client.batched() as span_batch:
-                if form_spans:
-                    span_batch.spans.bulk_create(form_spans)
-                    span_order.append("form")
-                if lemma_spans:
-                    span_batch.spans.bulk_create(lemma_spans)
-                    span_order.append("lemma")
-                if upos_spans:
-                    span_batch.spans.bulk_create(upos_spans)
-                    span_order.append("upos")
-                if xpos_spans:
-                    span_batch.spans.bulk_create(xpos_spans)
-                    span_order.append("xpos")
-                if feature_spans:
-                    span_batch.spans.bulk_create(feature_spans)
-                    span_order.append("features")
-                log(f"  Submitting span batch ({len(span_order)} ops)…")
-            span_results = span_batch.results
-            log("  …span batch returned")
-            if "lemma" in span_order:
-                lemma_idx = span_order.index("lemma")
-                created = span_results[lemma_idx]["body"]["ids"]
-                for k, (sent_idx, row_index) in enumerate(lemma_targets):
-                    lemma_span_ids[sent_idx][row_index] = created[k]
-            for kind in span_order:
-                count = {"form": len(form_spans), "lemma": len(lemma_spans),
-                         "upos": len(upos_spans), "xpos": len(xpos_spans),
-                         "features": len(feature_spans)}[kind]
-                label = {"form": "form", "lemma": "lemma", "upos": "UPOS",
-                         "xpos": "XPOS", "features": "feature"}[kind]
-                log(f"Created {count} {label} spans")
-
-            # 5. Dependency relations on lemma spans.
-            relation_layer = relation_layer_by_ud_config(lemma_layer, "dependency")
-            if relation_layer and lemma_layer:
-                relation_ops = []
-                for sent_idx, sentence_data in enumerate(sentences_data):
-                    sentence_lemma_ids = lemma_span_ids[sent_idx]
+                # Rows a dependency relation will touch: its target (the row
+                # carrying the DEPREL) and its source (the row that one names as
+                # HEAD). Each needs a Lemma span for the relation to hang off, even
+                # where the parse produced no lemma at all. Stanza drops a processor
+                # whose model the language lacks and says so in a warning only, so a
+                # pipeline can return DEPREL with the lemma column empty throughout,
+                # and every tree in the document was then dropped in silence. The
+                # null-valued span is the one the editor leaves behind when a lemma
+                # is cleared, and it exports as `_` again. This mirrors
+                # ConlluDocument.importFromConllu, which carries the same rule.
+                needs_lemma = []
+                for sentence_data in sentences_data:
+                    rows = set()
                     for td in sentence_data:
-                        if isinstance(td["id"], tuple):
+                        if isinstance(td["id"], tuple) or not td.get("deprel"):
                             continue
-                        row_index = td["id"] - 1
-                        target = sentence_lemma_ids[row_index]
-                        deprel = td.get("deprel")
+                        rows.add(td["id"])
                         head = td.get("head")
-                        if not deprel or target is None:
-                            continue
-                        if head == 0:
-                            relation_ops.append({
-                                "relation_layer_id": relation_layer["id"],
-                                "source": target,
-                                "target": target,
-                                "value": deprel,
-                                "metadata": dict(frag),
-                            })
-                        elif head and head > 0 and head - 1 < len(sentence_lemma_ids):
-                            source = sentence_lemma_ids[head - 1]
-                            if source is not None:
+                        if head and head > 0:
+                            rows.add(head)
+                    needs_lemma.append(rows)
+
+                form_spans, lemma_spans, lemma_targets = [], [], []
+                upos_spans, xpos_spans, feature_spans = [], [], []
+                for i, meta in enumerate(morpheme_meta):
+                    mid = morpheme_ids[i] if i < len(morpheme_ids) else None
+                    if not mid:
+                        continue
+                    row = meta["row"]
+                    sent_idx = meta["sent_idx"]
+                    row_index = row["id"] - 1
+
+                    form = row.get("text")
+                    # A Form span is only needed when the surface form differs from the
+                    # morpheme's substring (i.e. real MWT components).
+                    if form_layer and form and form != meta["word_substring"]:
+                        form_spans.append(make_span_token(form_layer["id"], [mid], form, frag))
+                    lemma = row.get("lemma")
+                    if lemma_layer and (lemma or row["id"] in needs_lemma[sent_idx]):
+                        lemma_spans.append(
+                            make_span_token(lemma_layer["id"], [mid], lemma or None, frag))
+                        lemma_targets.append((sent_idx, row_index))
+                    upos = row.get("upos")
+                    if upos_layer and upos:
+                        upos_spans.append(make_span_token(upos_layer["id"], [mid], upos, frag))
+                    xpos = row.get("xpos")
+                    if xpos_layer and xpos:
+                        xpos_spans.append(make_span_token(xpos_layer["id"], [mid], xpos, frag))
+                    feats = row.get("feats")
+                    if features_layer and feats:
+                        for value in feats.split("|"):
+                            if value:
+                                feature_spans.append(make_span_token(features_layer["id"], [mid], value, frag))
+
+                # The five span bulk creates, in the same batch. Each lemma span's
+                # id is a ref too, for the relations that hang off it.
+                log(f"Building span ops: form={len(form_spans)}, lemma={len(lemma_spans)}, "
+                    f"upos={len(upos_spans)}, xpos={len(xpos_spans)}, features={len(feature_spans)}")
+                progress.report(ParseProgress.WRITE, 0.5,
+                                f"Writing {len(form_spans) + len(lemma_spans) + len(upos_spans) + len(xpos_spans) + len(feature_spans)} "
+                                f"annotations…")
+                if form_spans:
+                    batch.spans.bulk_create(form_spans)
+                if lemma_spans:
+                    batch.spans.bulk_create(lemma_spans)
+                    for k, (sent_idx, row_index) in enumerate(lemma_targets):
+                        lemma_span_ids[sent_idx][row_index] = batch.ref(-1, k)
+                if upos_spans:
+                    batch.spans.bulk_create(upos_spans)
+                if xpos_spans:
+                    batch.spans.bulk_create(xpos_spans)
+                if feature_spans:
+                    batch.spans.bulk_create(feature_spans)
+
+                # 5. Dependency relations on lemma spans.
+                relation_layer = relation_layer_by_ud_config(lemma_layer, "dependency")
+                if relation_layer and lemma_layer:
+                    relation_ops = []
+                    for sent_idx, sentence_data in enumerate(sentences_data):
+                        sentence_lemma_ids = lemma_span_ids[sent_idx]
+                        for td in sentence_data:
+                            if isinstance(td["id"], tuple):
+                                continue
+                            row_index = td["id"] - 1
+                            target = sentence_lemma_ids[row_index]
+                            deprel = td.get("deprel")
+                            head = td.get("head")
+                            if not deprel or target is None:
+                                continue
+                            if head == 0:
                                 relation_ops.append({
                                     "relation_layer_id": relation_layer["id"],
-                                    "source": source,
+                                    "source": target,
                                     "target": target,
                                     "value": deprel,
                                     "metadata": dict(frag),
                                 })
-                if relation_ops:
-                    log(f"  Creating {len(relation_ops)} dependency relations…")
-                    progress.report(ParseProgress.WRITE, 0.8,
-                                    f"Writing {len(relation_ops)} dependency relations…")
-                    client.relations.bulk_create(relation_ops)
-                    log("  …relations created")
+                            elif head and head > 0 and head - 1 < len(sentence_lemma_ids):
+                                source = sentence_lemma_ids[head - 1]
+                                if source is not None:
+                                    relation_ops.append({
+                                        "relation_layer_id": relation_layer["id"],
+                                        "source": source,
+                                        "target": target,
+                                        "value": deprel,
+                                        "metadata": dict(frag),
+                                    })
+                    if relation_ops:
+                        log(f"  Creating {len(relation_ops)} dependency relations…")
+                        progress.report(ParseProgress.WRITE, 0.8,
+                                        f"Writing {len(relation_ops)} dependency relations…")
+                        batch.relations.bulk_create(relation_ops)
+                log("  Submitting the batch…")
+            log("  …the batch returned")
 
             log(f"Successfully parsed document {document_id}")
         return parse_summary

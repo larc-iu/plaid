@@ -296,10 +296,16 @@ def test_an_already_tokenized_document_keeps_its_substrate():
 
     # The old syntactic words go, the substrate stays.
     assert service.client.payloads('tokens.bulk_delete') == [['m0', 'm1', 'm2']]
-    # In the same atomic batch as the new ones (conc-2026-09-29 V8-S2): a
-    # delete sent alone, then a failed batch, left the document with no words.
-    [first, *_] = service.client.batches
-    assert [kind for kind, _ in first] == ['tokens.bulk_delete', 'tokens.bulk_create']
+    # The whole write is one atomic batch (conc-2026-09-29 V8-S2): a delete
+    # sent alone, then a failed batch, left the document with no words, and
+    # spans in a batch of their own left words with no annotation.
+    [batch] = service.client.batches
+    kinds = [kind for kind, _ in batch]
+    assert kinds[:2] == ['tokens.bulk_delete', 'tokens.bulk_create']
+    assert set(kinds[2:]) <= {'spans.bulk_create', 'relations.bulk_create'} and len(kinds) > 2
+    # A span names its morpheme by a ref to the id the create makes.
+    spans = [e for kind, p in batch if kind == 'spans.bulk_create' for e in p]
+    assert spans[0]['tokens'] == [{'$ref': 1, 'index': 0}]
     assert _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'sentL') == []
     assert _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'wordL') == []
     morphemes = _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'morphL')
@@ -357,10 +363,9 @@ def test_the_lock_is_released_when_a_write_fails():
 
     assert service.client.kinds[-1] == 'unlock'
     assert len(helper.errors) == 1
-    # The span batch aborted, so no span reached the server; the tokens that
-    # went in an earlier batch did.
-    assert service.client.payloads('spans.bulk_create') == []
-    assert service.client.payloads('relations.bulk_create') == []
+    # The one batch aborted, so nothing reached the server, the tokens it
+    # would have replaced included.
+    assert service.client.writes == []
 
 
 def test_a_failed_token_batch_leaves_the_old_words_in_place():
