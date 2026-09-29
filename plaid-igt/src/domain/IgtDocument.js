@@ -429,6 +429,7 @@ export class IgtDocument extends DocumentModel {
     const project = await this._readProject();
     if (!project || sameConfig(project, this._project)) return false;
     this._project = project;
+    this._adoptLayerConfigs(project);
     // A new data version: the grid draws its cells, each with the tagset it
     // checks against, again only when that changes, and `document` derives
     // its metadata fields from the project. `_dataVersion` itself is left
@@ -438,6 +439,31 @@ export class IgtDocument extends DocumentModel {
     this._derivedCache.clear();
     this._emit();
     return true;
+  }
+
+  // Each layer's config (which tagset a field checks against, its scope, its
+  // language) comes with the document, and a maintainer can change it while
+  // the document is open. The project read carries every layer with its
+  // config, so the document's copy of each layer takes the config read there.
+  _adoptLayerConfigs(project) {
+    const configs = new Map();
+    const walk = (layers, visit) => {
+      for (const layer of Array.isArray(layers) ? layers : []) {
+        if (!layer || typeof layer !== 'object') continue;
+        visit(layer);
+        for (const [key, value] of Object.entries(layer)) {
+          if (key.endsWith('Layers')) walk(value, visit);
+        }
+      }
+    };
+    walk(project?.textLayers, (layer) => {
+      if (layer.id && 'config' in layer) configs.set(layer.id, layer.config);
+    });
+    walk(this._raw?.textLayers, (layer) => {
+      if (!configs.has(layer.id)) return;
+      const config = configs.get(layer.id);
+      if (!sameConfig(config, layer.config)) layer.config = structuredClone(config);
+    });
   }
 
   /** The document's data version, which a new copy of the project also moves. */
