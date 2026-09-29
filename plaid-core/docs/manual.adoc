@@ -1574,7 +1574,19 @@ The Python client computes it as `BaseService.version`, and `machine_detail(vers
 For an assistant the hash is of its system prompt template, every tool schema and the code of its harness and its app, which writes the rest of what the model reads (see the plaid-agent README, "Model and prompt version").
 An approved assistant plan's writes carry the model and version of the turn that proposed the plan, and their `provSource` names the service that turn answered as, so a plan approved after the assistant was restarted on another model still names one producer. When a contributor approves, the writes are the contributor's, and the model and version stay beside them with the assistant's source as `provDetail.guess`, as for any guess a contributor adopts.
 The AnCast scorer writes a report rather than an annotation, and names the same two things as `tool` and `serviceVersion`.
-A rule an app runs in the browser is a writer too. Its `model` is `builtin:<name>` (IGT's `builtin:analysis-copy` and `builtin:precedent`), and its `version` is the app's package version, then the first 8 hex digits of a SHA-256 of the file that holds the rule (`plaid-igt/src/domain/analysisMemory.js`, `plaid-igt/src/domain/autoLink.js`), hashed in the browser from the file as the app bundles it.
+A rule an app runs in the browser is a writer too. Its `model` is `builtin:<name>` (IGT's `builtin:analysis-copy` and `builtin:precedent`), and its `version` is the app's package version, then the first 8 hex digits of a SHA-256 over every file whose change changes what the rule writes, hashed in the browser from the files as the app bundles them.
+Those files are the rule's own (`analysisMemory.js`, `autoLink.js`), `autoPass.js`, which runs both, the mutation that writes the output, every file of IGT and plaid-ui they import (`precedent.js`, which holds the linking policy, among them) and the client's `provenance.js`.
+`plaid-igt/src/domain/builtinSources.json` lists them for each rule, and a unit test keeps the list equal to the imports.
+What is hashed is one `sha256sum` line per file, in the list's order, so at a given commit this gives the same 8 hex digits:
+
+[source,sh]
+----
+C=<commit> NAME=precedent  # or analysis-copy
+git show "$C:plaid-igt/src/domain/builtinSources.json" | jq -r --arg n "$NAME" '.[$n][]' |
+  while read -r p; do echo "$(git show "$C:$p" | sha256sum | cut -c1-64)  $p"; done |
+  sha256sum | cut -c1-8
+----
+
 A release does not stamp the apps' package versions, which read `0.0.0` in every build, so for these the hash is what names the code.
 Keep the rest of `provDetail` small: these two strings, what was predicted, and the handful of scores a reviewer would use.
 

@@ -1,5 +1,10 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { runBuiltinAnalysis } from './autoPass.js';
+
+// A phase that writes stamps its rule's version, whose source texts are a
+// module loaded on first use. Loaded here, outside any test's timeout: in a
+// busy full run its first transform can take longer than one.
+beforeAll(() => import('./builtinSourceTexts.js'), 60000);
 
 // The stop contract of the built-in phases. These are the two Auto-analyze
 // steps with no service behind them, so nothing else can report a stop for

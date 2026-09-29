@@ -1,7 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { builtinHash } from '../test/builtinHash.js';
 
 // A study reads the audit log and the provenance. Auto-analyze's built-in
 // steps used to write under no kind and stamp only a rule's name, so their
@@ -22,12 +20,10 @@ vi.mock('./autoLink.js', async (importOriginal) => ({
 
 const { runBuiltinAnalysis } = await import('./autoPass.js');
 
-// The hash the stamp promises: of the rule's own file, as git stores it.
-const hashOf = (file) =>
-  createHash('sha256')
-    .update(readFileSync(fileURLToPath(new URL(file, import.meta.url))))
-    .digest('hex')
-    .slice(0, 8);
+// The rules' source texts are a module loaded on first use. Loaded here,
+// outside any test's timeout: in a busy full run its first transform can take
+// longer than one.
+beforeAll(() => import('./builtinSourceTexts.js'), 60000);
 
 const makeDoc = () => {
   const order = [];
@@ -79,7 +75,7 @@ describe('runBuiltinAnalysis in the audit log and the provenance', () => {
     expect(opts).toEqual({
       detail: {
         model: 'builtin:analysis-copy',
-        version: `0.0.0+${hashOf('./analysisMemory.js')}`,
+        version: `0.0.0+${builtinHash('analysis-copy')}`,
       },
       kind: 'service-run',
       ref: 'builtin:analysis-copy',
@@ -92,7 +88,7 @@ describe('runBuiltinAnalysis in the audit log and the provenance', () => {
     expect(res.linked).toBe(2);
     const run = { kind: 'service-run', ref: 'builtin:precedent' };
     expect(doc.order).toEqual([['saved'], ['operation', run], ['links'], ['phrases']]);
-    const detail = { model: 'builtin:precedent', version: `0.0.0+${hashOf('./autoLink.js')}` };
+    const detail = { model: 'builtin:precedent', version: `0.0.0+${builtinHash('precedent')}` };
     expect(doc.bulkLinkVocab.mock.calls[0][2]).toEqual({ detail, ...run });
     expect(doc.bulkLinkMwes.mock.calls[0][2]).toEqual({ detail, ...run });
   });
