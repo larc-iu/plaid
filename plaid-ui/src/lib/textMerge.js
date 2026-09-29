@@ -34,7 +34,7 @@ export function unitHunks(a, b) {
 }
 
 // The same changes, each as late as it can stand.
-export function unitHunksFromEnd(a, b) {
+function unitHunksFromEnd(a, b) {
   const n = a.length;
   return unitHunks([...a].reverse(), [...b].reverse())
     .map((h) => ({ start: n - h.end, end: n - h.start, insert: [...h.insert].reverse() }))
@@ -45,7 +45,7 @@ export function unitHunksFromEnd(a, b) {
 // lines that changed, so a deleted line is a whole line. The word-level
 // readings can take it as the end of one line and the start of the next when
 // the two read alike.
-export function lineHunks(a, b) {
+function lineHunks(a, b) {
   const la = lineSpans(a);
   const lb = lineSpans(b);
   const keysA = la.map(([s, e]) => a.slice(s, e).join(''));
