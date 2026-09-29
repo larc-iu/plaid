@@ -296,7 +296,7 @@ After it is linked, its popover still offers to link the rest.
 Nothing is linked this way unless you ask.
 * **Reuse an analysis**. Once you have analyzed a word, its popover (and the popover of any of its morphemes) offers **Analyze every "…" in this text like this** when other words spelled the same have not been analyzed at all. It gives each of them the same morphemes, links and field values, as your own work. A word with any analysis of its own is left alone. For the whole document at once, or to draw on the rest of the project, use Auto-analyze's copy step (see <<_copying_previous_analyses>>).
 * **Auto-analyze**. Let the machine make a first pass over the whole document: translations, analyses copied onto words you have analyzed before, a model's segmentation and glosses, and lexicon links. Everything it produces shows in violet until you confirm it, and words you analyzed yourself are never touched (see <<_auto_analyze>>).
-* **Review machine work**. **Ctrl/Cmd+Enter** accepts everything proposed on a word and moves to the next. **Ctrl/Cmd+Backspace** discards a word's (or a translation's) unverified proposal. **Ctrl/Cmd+Shift+↑/↓** jumps between the words and translations that still have one.
+* **Review machine work**. **Ctrl/Cmd+Enter** accepts everything proposed on a word, the faint guesses in its cells included, and moves to the next. **Ctrl/Cmd+Backspace** discards a word's (or a translation's) unverified proposal. **Ctrl/Cmd+Shift+↑/↓** jumps between the words and translations that still have one.
 * **Fill sentence fields**. Record the free translation, the speaker, and other sentence-scope values on each sentence's row.
 * **Show only the rows you need**. Click a row's label to choose which rows show. A minimized row stays as a thin stripe you can click back open.
 * **Copy as IGT**. Copy one sentence to the clipboard for a paper or a message, as aligned plain text, tab-separated text for a spreadsheet, LaTeX (gb4e or ExPex), or leipzig.js HTML. The LaTeX formats carry characters like ə and ∅ as they are, so typeset them with XeLaTeX or LuaLaTeX and a font that has the glyphs. This keeps the characters searchable and copyable in the finished PDF, which a `tipa` transcription does not. On the LaTeX gloss line, each part written in capitals, such as NOM or 1SG, is set in small caps as `\textsc{nom}`. The rule goes by case alone, so a capital I glossing a pronoun is set in small caps too.
@@ -839,6 +839,7 @@ Close the tab or reload it and the service carries on. Reopen the document and t
 A run that has been finished and collected, or that is more than fifteen minutes past, is gone, and the document simply opens with whatever it wrote.
 **Stop**, on the banner or in the dialog, ends a run.
 It takes effect at the next point the work reports progress, so how promptly depends on how finely it reports: a service working sentence by sentence stops within a sentence, while one whose model runs in a single pass (transcription, for instance) stops when that pass ends, before it writes anything.
+A transcription stopped before the service has started ends at once, and the message that follows says whether the previous transcript was already cleared.
 Auto-analyze's built-in steps stop the same way, between the documents they read.
 A run part-way through writing always finishes writing, so a stop never leaves half a document.
 Whatever it wrote stays.
@@ -1147,7 +1148,7 @@ A shortcut is also refused when the browser already uses it, when it would type 
 |===
 | Shortcut | Action
 
-| **Enter** | Move to the next cell in the row, accepting the faint guess if the cell shows one. Enter is the only key that accepts a guess.
+| **Enter** | Move to the next cell in the row, accepting the faint guess if the cell shows one. Of the keys that move one cell, only Enter accepts a guess.
 | **Tab** / **Shift+Tab** | Move to the next or previous cell in the row, leaving a guess as it is. **Shift+Enter** moves back the same way.
 | **↑** / **↓** | Move between rows. **←** / **→** move along the row from the ends of a value, following the words: in a right-to-left sentence **←** moves forward. See <<_details>>.
 | **Esc** | Cancel the edit and leave the cell. With a value list open, close the list first.
@@ -1159,7 +1160,7 @@ A shortcut is also refused when the browser already uses it, when it would type 
 | **Alt+-** / **Alt+=** | Type a literal hyphen or equals sign in a morpheme form.
 | **Alt+0** | In a morpheme form, type the zero morph ∅.
 | **\** + a two-letter code | Type a character the keyboard lacks, anywhere language data is typed: `\sw` gives ə. See <<_typing_special_characters>>.
-| **Ctrl/Cmd+Enter** | Accept the current word's whole analysis and jump to the next word. On a sentence field, accept its proposed value and jump to the next sentence.
+| **Ctrl/Cmd+Enter** | Accept the current word's whole analysis, every faint guess in its cells included, and jump to the next word. On a sentence field, accept its proposed value and jump to the next sentence.
 | **Ctrl/Cmd+Backspace** | Discard the current word's unverified proposal (its machine-made morphemes, glosses, and links) and jump to the next. Anything a person made or confirmed stays. On a sentence field, discard its proposed value. **Delete** does the same as Backspace.
 | **Ctrl/Cmd+Shift+↑** / **↓** | Jump to the previous or next word or sentence field that still has unverified proposals.
 | **Ctrl/Cmd+↑** / **↓** | Move between vocabulary links awaiting your review. On one, **Enter** accepts it and **Backspace** removes it.
