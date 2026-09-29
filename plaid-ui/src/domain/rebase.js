@@ -15,6 +15,9 @@
 // - is something the footprint names,
 // - or lives in one of the edit's layers and names something the footprint
 //   names, or covers text a changed token of the edit covers,
+// - or, in any layer, names a row the edit removes: the server takes it with
+//   that row, so the removal sent again would undo it unseen (an edge added
+//   to a node the edit deletes),
 // - or, when the edit places something in the text (a token's begin and
 //   end), is that text itself: the positions it sends were measured in the
 //   text as it was,
@@ -115,7 +118,10 @@ export function footprintOf(before, after) {
   const layers = new Set();
   const names = new Set();
   const spans = [];
+  // The rows it removes: the server takes every row that names one with it.
+  const removed = new Set();
   for (const id of changed) {
+    if (a.has(id) && !b.has(id) && !isPendingId(id)) removed.add(id);
     for (const e of [a.get(id), b.get(id)]) {
       if (!e) continue;
       if (e.layer) layers.add(e.layer);
@@ -138,7 +144,7 @@ export function footprintOf(before, after) {
     const holder = (a.get(s.layer) ?? b.get(s.layer))?.layer;
     if (holder) texts.add(holder);
   }
-  return { layers, names, spans, texts };
+  return { layers, names, spans, texts, removed };
 }
 
 // The pending ids an edit made (`created`: rows it added under an id the
@@ -213,6 +219,9 @@ export function untouched(footprint, before, now) {
       return false;
     }
     for (const e of [a.get(id), b.get(id)]) {
+      // A row, in any layer, that names a row the edit removes: sent again,
+      // the removal would take it with it unseen.
+      if (e && e.strings.some((s) => footprint.removed.has(s))) return false;
       // The text the edit's positions were measured in.
       if (e && !holders.has(id) && footprint.texts.has(e.layer)) return false;
       if (!e || !footprint.layers.has(e.layer)) continue;

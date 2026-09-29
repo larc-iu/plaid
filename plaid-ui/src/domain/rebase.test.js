@@ -349,3 +349,39 @@ describe('the pending ids an edit makes and names', () => {
     expect([...named].sort()).toEqual([span, tok].sort());
   });
 });
+
+describe('an edit that removes a row', () => {
+  // A node (token n1 and its concept c1) with a relation layer beside it, as
+  // an app keeps edges apart from the nodes they join.
+  const withEdges = (relations) => {
+    const d = doc({
+      other: [
+        { id: 'n1', begin: 4, end: 7 },
+        { id: 'n2', begin: 8, end: 12 },
+      ],
+      otherSpans: [
+        { id: 'c1', tokens: ['n1'], value: 'dog' },
+        { id: 'c2', tokens: ['n2'], value: 'run-01' },
+      ],
+    });
+    d.textLayers[0].tokenLayers[1].spanLayers[0].relationLayers = [{ id: 'edges', relations }];
+    return d;
+  };
+  const base = withEdges([]);
+  const removeDog = edit(base, (d) => {
+    const nodes = d.textLayers[0].tokenLayers[1];
+    nodes.tokens = nodes.tokens.filter((t) => t.id !== 'n1');
+    nodes.spanLayers[0].spans = nodes.spanLayers[0].spans.filter((s) => s.id !== 'c1');
+  });
+
+  it('is refused when someone made a row in another layer that names it', () => {
+    // The server takes that row with it: sent again, the removal would undo it unseen.
+    const now = withEdges([{ id: 'e1', source: 'c2', target: 'c1', value: ':ARG0' }]);
+    expect(untouched(removeDog, base, now)).toBe(false);
+  });
+
+  it('goes again when the row made elsewhere names something else', () => {
+    const now = withEdges([{ id: 'e1', source: 'c2', target: 'c2', value: ':ARG0' }]);
+    expect(untouched(removeDog, base, now)).toBe(true);
+  });
+});
