@@ -586,14 +586,13 @@ def test_execute_lexicon_and_document_ops():
     counts = execute_plan(c, ops, source='s', label='l')
     assert counts == {'merged entries': 1, 'deleted entries': 1, 'renamed entries': 1, 'renamed documents': 1}
     first = c.batches[0]
-    assert first[0] == ('vocab_links.delete', 'l-2')
-    assert first[1][0] == 'vocab_links.create' and first[1][1]['args'][:2] == ('vi-ali', ['m-1b'])
     # A deleted entry's links go with it (l-9 is not deleted by id).
-    assert first[2] == ('vocab_items.update', ('vi-gam2', 'net'))
-    assert first[3] == ('documents.update', ('d1', 'Text One'))
-    assert len(first) == 4
-    # entries are deleted last, in the second batch
-    assert c.batches[1] == [('vocab_items.delete', 'vi-erg'), ('vocab_items.delete', 'vi-gam')]
+    assert first == [('vocab_items.update', ('vi-gam2', 'net')), ('documents.update', ('d1', 'Text One'))]
+    # Entries are merged and deleted last, in the second batch. The merge is
+    # the core's, which moves every link the entry has when it runs, one made
+    # since the plan was read included (conc-2026-09-29 D7).
+    assert c.batches[1] == [('vocab_items.merge', ('vi-ali', ['vi-erg'])),
+                            ('vocab_items.delete', 'vi-gam')]
 
 
 def test_an_entity_is_deleted_once_however_many_ops_ask_for_it():
@@ -627,8 +626,7 @@ def test_an_entry_is_deleted_once_however_many_ops_ask_for_it():
     execute_plan(c, [{'kind': 'merge_entries', 'keep_id': 'vi-ali', 'remove_id': 'vi-erg', 'links': [], 'label': ''},
                      {'kind': 'merge_entries', 'keep_id': 'vi-gam', 'remove_id': 'vi-erg', 'links': [], 'label': ''}],
                  source='s', label='l')
-    deletes = [p for kind, p in c.batches[0] if kind == 'vocab_items.delete']
-    assert deletes == ['vi-erg']
+    assert c.batches[0] == [('vocab_items.merge', ('vi-ali', ['vi-erg']))]
 
 
 def test_op_keys_survive_the_wire_unchanged():

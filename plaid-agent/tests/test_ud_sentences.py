@@ -128,7 +128,8 @@ def test_a_plan_moves_at_most_one_boundary(ws):
 
 def test_validate_refuses_a_mixed_plan_even_if_the_tools_did_not():
     ops = [
-        {'kind': 'split_sentence', 'document_id': 'd1', 'sentence_id': 's1', 'char_pos': 6},
+        {'kind': 'split_sentence', 'document_id': 'd1', 'sentence_id': 's1', 'char_pos': 6,
+         'relation_layer_ids': ['R']},
         {'kind': 'set_span', 'document_id': 'd1', 'layer_id': 'L', 'token_id': 'w1', 'value': 'x'},
     ]
     with pytest.raises(ValueError, match='renumbers'):
@@ -137,8 +138,10 @@ def test_validate_refuses_a_mixed_plan_even_if_the_tools_did_not():
 
 def test_validate_refuses_two_boundaries():
     ops = [
-        {'kind': 'split_sentence', 'document_id': 'd1', 'sentence_id': 's1', 'char_pos': 6},
-        {'kind': 'split_sentence', 'document_id': 'd1', 'sentence_id': 's1', 'char_pos': 9},
+        {'kind': 'split_sentence', 'document_id': 'd1', 'sentence_id': 's1', 'char_pos': 6,
+         'relation_layer_ids': ['R']},
+        {'kind': 'split_sentence', 'document_id': 'd1', 'sentence_id': 's1', 'char_pos': 9,
+         'relation_layer_ids': ['R']},
     ]
     with pytest.raises(ValueError, match='at most one sentence boundary per document'):
         validate_ops(ops)
@@ -148,10 +151,22 @@ def test_a_boundary_in_ANOTHER_document_is_fine():
     """The renumbering is per document, so a plan may move one boundary and
     edit a different document."""
     ops = [
-        {'kind': 'split_sentence', 'document_id': 'd1', 'sentence_id': 's1', 'char_pos': 6},
+        {'kind': 'split_sentence', 'document_id': 'd1', 'sentence_id': 's1', 'char_pos': 6,
+         'relation_layer_ids': ['R']},
         {'kind': 'set_span', 'document_id': 'd2', 'layer_id': 'L', 'token_id': 'w1', 'value': 'x'},
     ]
     validate_ops(ops)
+
+
+def _split_drops_both_layers(client, ws):
+    """The split names both dependency layers, and the core drops what
+    crosses it in the split's own transaction (conc-2026-09-29 D5), from what
+    is stored then: a relation drawn after the plan was made goes too. Nothing
+    is deleted by the ids the plan read."""
+    [split] = client.payloads('tokens.split')
+    assert split['kwargs']['drop_crossing_relations'] == [ws.project.relation_layer_id,
+                                                          ws.project.enhanced_relation_layer_id]
+    assert client.payloads('relations.delete') == []
 
 
 def test_a_split_takes_the_suppressors_over_the_relations_it_drops():
@@ -171,9 +186,7 @@ def test_a_split_takes_the_suppressors_over_the_relations_it_drops():
     assert op['suppressor_ids'] == ['e-1']
     assert 'dropping 1 dependency relation(s)' in out, 'a suppressor is no arc and is not counted'
     execute_plan(client, ws.ops, source='s', label='l', project=ws.project)
-    deleted = client.payloads('relations.delete')
-    assert deleted == ['r-4', 'e-1']
-    assert len(client.batches) == 1, 'in the same batch as the split itself'
+    _split_drops_both_layers(client, ws)
 
 
 def test_a_split_takes_the_enhanced_extra_edges_that_would_cross_it():
@@ -197,9 +210,7 @@ def test_a_split_takes_the_enhanced_extra_edges_that_would_cross_it():
     assert 'dropping 2 dependency relation(s)' in out, 'the extra counts, the suppressor does not'
     assert summarize(ws.ops) == '2 removed dependencies, 1 sentence split'
     execute_plan(client, ws.ops, source='s', label='l', project=ws.project)
-    deleted = client.payloads('relations.delete')
-    assert deleted == ['r-4', 'e-x', 'e-1']
-    assert len(client.batches) == 1, 'in the same batch as the split itself'
+    _split_drops_both_layers(client, ws)
 
 
 def test_an_extra_edge_on_one_side_of_the_cut_is_left_alone():
@@ -247,9 +258,7 @@ def test_a_split_sweeps_a_dangling_suppressor_that_crosses_it():
     assert op['relation_ids'] == ['r-4'], 'no extra edge here, so the tree alone'
     assert 'dropping 1 dependency relation(s)' in out, 'a suppressor is no arc and is not counted'
     execute_plan(client, ws.ops, source='s', label='l', project=ws.project)
-    deleted = client.payloads('relations.delete')
-    assert deleted == ['r-4', 'e-d']
-    assert len(client.batches) == 1, 'in the same batch as the split itself'
+    _split_drops_both_layers(client, ws)
 
 
 def test_a_split_in_a_treebank_with_no_enhanced_rows_stages_none(ws):

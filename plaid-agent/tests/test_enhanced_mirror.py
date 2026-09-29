@@ -189,7 +189,9 @@ def _sent(client):
     """What a plan sent, in the runner's terms."""
     out = []
     for kind, payload in client.writes:
-        if kind in ('tokens.split', 'tokens.merge'):
+        if kind == 'tokens.split':
+            out.append(['split', *payload['args'][:2], payload['kwargs'].get('drop_crossing_relations')])
+        elif kind == 'tokens.merge':
             out.append([kind.split('.')[1], *payload])
         elif kind == 'relations.delete':
             out.append(['delete', payload])
@@ -254,7 +256,7 @@ def _python_side(raw: dict) -> dict:
         for w in s.words:
             if w.suppressor_id:
                 suppressor_of[w.fields['lemma'].id] = w.suppressor_id
-    splits, merges = {}, {}
+    splits, merges, crossing = {}, {}, {}
     for s in doc.sentences:
         # The first word starts its sentence, so a toggle there is a merge.
         for i, t in enumerate(s.tokens):
@@ -263,6 +265,7 @@ def _python_side(raw: dict) -> dict:
             ref = f's{s.index}.w{t.words[0].index}'
             client, ws = _workspace(raw)
             t_split_sentence(ws, document=NAME, ref=ref)
+            crossing[str(t.begin)] = [*ws.ops[-1]['relation_ids'], *ws.ops[-1]['suppressor_ids']]
             execute_plan(client, ws.ops, source='s', label='l', project=ws.project)
             splits[str(t.begin)] = _sent(client)
         if s.index > 1:
@@ -271,7 +274,8 @@ def _python_side(raw: dict) -> dict:
             execute_plan(client, ws.ops, source='s', label='l', project=ws.project)
             merges[str(s.tokens[0].begin)] = _sent(client)
     return {'deps': deps, 'hasEnhanced': has_enhanced, 'suppressorOf': suppressor_of,
-            'splits': splits, 'merges': merges, 'heads': heads, 'actions': actions}
+            'splits': splits, 'merges': merges, 'heads': heads, 'actions': actions,
+            'crossing': crossing}
 
 
 @pytest.fixture(scope='module')
@@ -300,14 +304,14 @@ def test_the_cases_reach_every_shape_they_are_for(compared):
     raws, js, py = compared
     assert sum(any(p['hasEnhanced']) for p in py) > CASES // 3
     assert sum(bool(p['suppressorOf']) for p in py) > CASES // 10
-    assert sum(any(op[0] == 'delete' for ops in p['splits'].values() for op in ops)
-               for p in py) > CASES // 3
+    # A split with relations across it, which the core drops (D5).
+    assert sum(any(p['crossing'].values()) for p in py) > CASES // 3
     assert sum(bool(p['merges']) for p in py) > CASES // 3
     rows = [_suppressor_rows(raw) for raw in raws]
     # Two suppressors over one pair, and a split that sends both.
     assert sum(len(set(pairs.values())) < len(pairs) for pairs in rows) > CASES // 10
-    assert sum(any(sum(op[0] == 'delete' and pairs.get(op[1]) == pair for op in ops) > 1
-                   for ops in p['splits'].values() for pair in set(pairs.values()))
+    assert sum(any(sum(pairs.get(i) == pair for i in ids) > 1
+                   for ids in p['crossing'].values() for pair in set(pairs.values()))
                for p, pairs in zip(py, rows)) > CASES // 20
     # A head write that sweeps a suppressor, and one onto a dangling pair.
     assert sum(any(i in pairs for ids in p['heads'].values() for i in ids)
@@ -372,9 +376,9 @@ def test_the_suppressor_over_each_basic_relation(compared):
 
 @pytest.mark.parametrize('key', ['splits', 'merges'])
 def test_a_sentence_boundary_sends_what_the_editor_sends(compared, key):
-    """The cut, then every relation of either layer that it would leave
-    spanning two sentences, suppressors included. Order within the deletes is
-    each side's own, so they are compared as a set."""
+    """The cut with the relation layers it may leave nothing across (the core
+    drops those in the split, D5), and a merge. Any delete sent beside them
+    is compared as a set, since order within the deletes is each side's own."""
     raws, js, py = compared
 
     def norm(ops):
@@ -385,6 +389,18 @@ def test_a_sentence_boundary_sends_what_the_editor_sends(compared, key):
         port = {k: norm(v) for k, v in b[key].items()}
         if app != port:
             _differ(key, i, app, port, raws)
+
+
+def test_a_split_drops_what_the_editor_takes_off_the_screen(compared):
+    """What the card counts as a split's dropped relations, suppressors
+    included, against the editor's ``relationsCrossing``. The core does the
+    dropping (D5), so this is what the user approves."""
+    raws, js, py = compared
+    for i, (a, b) in enumerate(zip(js, py)):
+        app = {k: sorted(v) for k, v in a['crossing'].items()}
+        port = {k: sorted(v) for k, v in b['crossing'].items()}
+        if app != port:
+            _differ('crossing', i, app, port, raws)
 
 
 def test_a_head_write_sweeps_the_suppressors_the_editor_sweeps(compared):

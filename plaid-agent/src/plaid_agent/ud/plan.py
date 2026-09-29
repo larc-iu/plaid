@@ -370,7 +370,7 @@ KIND = ok.registry([
            required=('token_id', 'text_id', 'forms', 'word_layer_id', 'form_layer_id', 'lemma_layer_id'),
            deletes_tokens=lambda op: list(op.get('existing_word_ids') or [])),
     OpKind('split_sentence', ('sentence split', 'sentence splits'), apply=_apply_split_sentence,
-           required=('document_id', 'sentence_id', 'char_pos'), shape=SENTENCE_SHAPE,
+           required=('document_id', 'sentence_id', 'char_pos', 'relation_layer_ids'), shape=SENTENCE_SHAPE,
            deletes=lambda op: (list(op.get('relation_ids') or [])
                                + list(op.get('suppressor_ids') or [])),
            summary=_split_sentence_summary),

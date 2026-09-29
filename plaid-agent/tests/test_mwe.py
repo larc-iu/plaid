@@ -114,9 +114,8 @@ def test_entry_tools_move_and_delete_the_whole_expression_once():
     assert w2.ops[-1]['links'] == [MWE_LINK]
     c = w.client
     execute_plan(c, [w.ops[0]], source='s', label='l')
-    first = c.batches[0]
-    assert first[0] == ('vocab_links.delete', MWE_LINK)
-    assert first[1][0] == 'vocab_links.create' and first[1][1]['args'][:2] == ('vi-gam', ['w-2', 'w-3'])
+    # The core's merge moves the expression whole, members and all.
+    assert c.batches[0] == [('vocab_items.merge', ('vi-gam', [PHRASE_ITEM]))]
     # A phrase entry is not a stale link on its members, and each member counts as a use.
     out = call_tool(w, 'check_lexicon', {'section': 'stale'})
     assert '0 links whose form no longer contains the entry form' in out

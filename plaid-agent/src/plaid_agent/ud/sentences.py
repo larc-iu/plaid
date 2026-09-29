@@ -183,6 +183,11 @@ def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> st
         # A suppressor is no arc of its own, so it is not counted: it stands
         # over one of `losing` and goes with it.
         'suppressor_ids': crossing_suppressors(doc, sentence, thing.token.begin),
+        # The layers the split must leave no relation across. The core drops
+        # what crosses in the split's own transaction, read from what is
+        # stored then, so one drawn after the plan was made goes too.
+        'relation_layer_ids': [i for i in (ws.project.relation_layer_id,
+                                           ws.project.enhanced_relation_layer_id) if i],
         'label': f'split s{sentence.index} before "{thing.form}" ({ref})',
     })
     lost = f', dropping {len(losing)} dependency relation(s) that would cross it' if losing else ''
@@ -215,17 +220,15 @@ def t_merge_sentences(ws: Workspace, document: str = None, ref: str = None) -> s
 
 
 def apply_split_sentence(op: Dict[str, Any], b, stamp) -> None:
-    """The split, the relations it orphans and the suppressors over those, in
-    ONE batch.
-
-    Together, because between the two the document holds a relation spanning
-    two sentences, and reconcile-on-open would delete it on the next read
-    whether or not this plan finished. Neither op refers to an id the other
-    makes, which is what lets them share a batch at all.
+    """The split, which drops the relations it would leave across the new
+    boundary (and so the suppressors over them) in its own transaction, as
+    the editor's does. The core reads them from what is stored when the split
+    runs: deleted by the ids the plan read, one drawn since stayed across two
+    sentences. ``relation_ids`` and ``suppressor_ids`` are what the card
+    counts.
     """
-    b.add(lambda batch, o=op: batch.tokens.split(o['sentence_id'], o['char_pos']))
-    for rel_id in list(op.get('relation_ids') or []) + list(op.get('suppressor_ids') or []):
-        b.add(lambda batch, i=rel_id: batch.relations.delete(i))
+    b.add(lambda batch, o=op: batch.tokens.split(
+        o['sentence_id'], o['char_pos'], drop_crossing_relations=list(o['relation_layer_ids'])))
 
 
 def apply_merge_sentences(op: Dict[str, Any], b, stamp) -> None:

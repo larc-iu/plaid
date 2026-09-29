@@ -17,6 +17,7 @@ const UD = resolve(dirname(fileURLToPath(import.meta.url)), '../../plaid-ud');
 const { ConlluDocument } = await import(`${UD}/src/domain/ConlluDocument.js`);
 const { suppressorFor } = await import(`${UD}/src/domain/enhancedGraph.js`);
 const { withOps } = await import(`${UD}/test/helpers/stubClient.js`);
+const { relationsCrossing } = await import(`${UD}/src/utils/udReconcile.js`);
 
 // The DEPS column of every word row, per sentence. A range line (`1-2`) is a
 // surface token, not a word, and carries no DEPS.
@@ -40,8 +41,9 @@ const toggle = async (raw, charPos) => {
   const sent = [];
   const client = withOps({
     tokens: {
-      split: async (id, pos) => {
-        sent.push(['split', id, pos]);
+      // The relation layers the core is to leave nothing across (D5).
+      split: async (id, pos, _audit, opts) => {
+        sent.push(['split', id, pos, opts?.dropCrossingRelations ?? null]);
         return { id: 'new-sentence' };
       },
       merge: async (a, b) => {
@@ -100,6 +102,9 @@ for (const c of cases) {
   }
   const splits = {};
   for (const pos of c.splitAt) splits[pos] = await toggle(c.raw, pos);
+  // What a split at each place takes off the screen, both layers' rows.
+  const crossing = {};
+  for (const pos of c.splitAt) crossing[pos] = relationsCrossing(info, pos);
   const merges = {};
   for (const pos of c.mergeAt) merges[pos] = await toggle(c.raw, pos);
   const heads = {};
@@ -111,6 +116,7 @@ for (const c of cases) {
     splits,
     merges,
     heads,
+    crossing,
   });
 }
 process.stdout.write(JSON.stringify(out));

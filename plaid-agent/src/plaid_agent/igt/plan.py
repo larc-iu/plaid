@@ -73,6 +73,8 @@ wire's key recasing):
   restore_document {document_id, as_of}   (the server's own restore, always a plan of its own)
   delete_word may carry link_ids: multi-word expressions the deletion would leave with one member.
   merge_entries links are [{link_id, token_ids}] so a moved multi-word expression keeps every member.
+  They are what the card shows. The write is the core's merge, which moves every link the removed entry
+  has when it runs.
 
 Each also carries a human ``label`` for the approval UI.
 """
@@ -137,6 +139,7 @@ class Context:
         self.entry_idx: Dict[str, int] = {}
         self.respells: Dict[str, List[tuple]] = {}
         self.pending_deletes: List[str] = []   # entries to delete once their links are gone
+        self.pending_merges: List[tuple] = []  # (kept entry, entry merged into it), after the links
         self.dead_tokens: set = set()          # tokens the plan certainly deletes
         self.text_edits: List[Dict[str, Any]] = []
         self.restores: List[Dict[str, Any]] = []
@@ -295,10 +298,12 @@ def _apply_create_document(ctx: Context, op) -> int:
 
 
 def _apply_merge_entries(ctx: Context, op) -> int:
-    for l in op.get('links') or []:
-        ctx.drop('vocab_links', l['link_id'])
-        ctx.b.add(lambda batch, o=op, t=list(l['token_ids']): batch.vocab_links.create(o['keep_id'], t, ctx.stamp()))
-    ctx.pending_deletes.append(op['remove_id'])
+    # The core's merge, once the plan's own link changes are made: it moves
+    # every link the removed entry has by then, one made since the plan was
+    # read included, and deletes it. Moved one by one from the links the plan
+    # read, a link made in between was deleted with the entry. The op's
+    # `links` are what the card shows.
+    ctx.pending_merges.append((op['keep_id'], op['remove_id']))
     return 1
 
 
@@ -1216,6 +1221,11 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
                 raise RuntimeError('a created lexicon entry came back without an id, so a link to it was not written')
             ctx.drop('vocab_links', op.get('existing_link_id'))
             b.add(lambda batch, i=iid, m=mid: batch.vocab_links.create(i, [m], stamps.stamp()))
+        for keep, remove in ctx.pending_merges:
+            if ('vocab_items', remove) in ctx.gone:
+                continue
+            ctx.gone.add(('vocab_items', remove))
+            b.add(lambda batch, k=keep, r=remove: batch.vocab_items.merge(k, [r]))
         for iid in ctx.pending_deletes:
             ctx.drop('vocab_items', iid)
         b.flush()
