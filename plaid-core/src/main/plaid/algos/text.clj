@@ -1209,7 +1209,8 @@
                                           (near lo hi)))
                       begins (long-array (map :token/begin ws))
                       ;; the furthest end among the first i+1 tokens
-                      reach (long-array (reductions max (map :token/end ws)))
+                      ;; (none when no word token is near)
+                      reach (long-array (rest (reductions max Long/MIN_VALUE (map :token/end ws))))
                       inside? (fn [p]
                                 (let [c (loop [x 0 y (alength begins)]
                                           (if (< x y)

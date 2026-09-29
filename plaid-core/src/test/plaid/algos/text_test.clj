@@ -2091,3 +2091,16 @@
                     (ta/normalize-deletes ops old tokens))
           (swap! diverged conj [case-n old new]))))
     (is (= [] (take 5 @diverged)))))
+
+(deftest word-alignment-of-an-edit-with-no-word-token-near
+  ;; A text whose word tokens stop before a later line, or a layer of words
+  ;; over none of the letters edited: finding the edges between words threw
+  ;; when no word token was within reach of the edit, and the save answered
+  ;; 500.
+  (doseq [[old new tokens]
+          [["the cat sat on the mat and then some more words here to be far away"
+            "the cat sat on the mat and then some more words here to be far awXy"
+            [(assoc (tok 1 0 3) :token/layer :w)]]
+           ["the cat sat" "the cXt sat" [(assoc (tok 1 0 11) :token/layer :s)]]]]
+    (let [ops (ta/align-to-words (ta/diff old new) old tokens #{:w})]
+      (is (= new (:text/body (:text (apply-all ops old []))))))))
