@@ -990,10 +990,8 @@ export const VocabularyItems = ({
           refusedDeleteRef.current.delete(deletedId);
         } catch (err) {
           if (statusOf(err) === 409 && expectedLinkCount != null) {
-            const said = String(err?.responseData?.error ?? '');
-            const server = Number(
-              err?.responseData?.links ?? /has (\d+) links? now/.exec(said)?.[1],
-            );
+            // The refusal's body carries the count the server found.
+            const server = err?.responseData?.links;
             if (Number.isInteger(server)) {
               refusedDeleteRef.current.set(deletedId, { sent: expectedLinkCount, server });
             }

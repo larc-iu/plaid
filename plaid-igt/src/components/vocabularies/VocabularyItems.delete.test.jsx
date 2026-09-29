@@ -204,7 +204,7 @@ describe('deleting an entry whose links change', () => {
     const refusal = Object.assign(new Error('HTTP 409'), {
       status: 409,
       method: 'DELETE',
-      responseData: { error: 'This entry has 5 links now, not 2' },
+      responseData: { error: 'This entry has 5 links now, not 2', links: 5 },
     });
     const { client, sent, calls } = linked([2], { refuse: refusal });
     const view = await open(client);
@@ -223,6 +223,29 @@ describe('deleting an entry whose links change', () => {
       ['deriv1', 5],
     ]);
     expect(calls.deleted).toEqual(['deriv1']);
+    await view.unmount();
+  });
+
+  it('reads the server count from the refusal body links, not its message', async () => {
+    const refusal = Object.assign(new Error('HTTP 409'), {
+      status: 409,
+      method: 'DELETE',
+      responseData: { error: 'This entry has 5 links now, not 2' },
+    });
+    const { client, sent } = linked([2], { refuse: refusal });
+    const view = await open(client);
+    await askAndConfirm(view);
+    const row = all(document.body, 'a').find((a) =>
+      [...a.querySelectorAll('*')].some((n) => n.textContent.trim() === 'kai-1'),
+    );
+    await view.step(() => row.click());
+    await settle(view);
+    await askAndConfirm(view);
+    // No count in the body: the next Delete names the count read at Delete.
+    expect(sent).toEqual([
+      ['deriv1', 2],
+      ['deriv1', 2],
+    ]);
     await view.unmount();
   });
 });
