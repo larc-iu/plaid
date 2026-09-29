@@ -129,28 +129,49 @@ export const vocabMutations = {
 
     const send = async () => {
       // Proposals can name an unanalyzed word's morpheme, which auto-link reads
-      // by the form the word gives it. One bulk create turns those into tokens
-      // before anything links to them, and before the batches below. A proposal
-      // whose word is gone drops out rather than linking to nothing.
-      const resolved = await this.materializeMorphemeIds([
+      // by the form the word gives it. Those morphemes are made in the same
+      // batch as the links to them, so a refused link leaves no bare morpheme
+      // behind. A proposal whose word is gone drops out rather than linking to
+      // nothing.
+      const { ids: tokenIds, creates: morphemeCreates } = this._planMorphemes([
         ...creates.map((c) => c.tokenId),
         ...replaces.map((r) => r.tokenId),
       ]);
       creates.forEach((c, i) => {
-        c.tokenId = resolved[i];
+        c.tokenId = tokenIds[i];
       });
       replaces.forEach((r, i) => {
-        r.tokenId = resolved[creates.length + i];
+        r.tokenId = tokenIds[creates.length + i];
       });
       const live = (x) => Boolean(x.tokenId);
       creates = creates.filter(live);
       replaces = replaces.filter(live);
+      // The morph-type caches these links make stale. A morpheme made here is
+      // made with its type. One already there is patched below. A link whose
+      // token is a word, or whose entry chain has no type, contributes nothing.
+      const typeFor = morphTypeCache(this, morphemeCreates);
+      const planned = new Map(morphemeCreates.map((c) => [c.id, c]));
+      const cachePatches = [];
+      for (const x of [...creates, ...replaces]) {
+        const type = typeFor(x.tokenId, x.vocabId, x.item.id);
+        if (!type) continue;
+        const c = planned.get(x.tokenId);
+        if (c) c.metadata = { ...(c.metadata || {}), morphType: type };
+        else cachePatches.push({ tokenId: settledId(x.tokenId), type });
+      }
       if (creates.length) {
         // The dedicated endpoint has no per-batch op cap, so even a document
         // with thousands of unlinked tokens links in a single tx.
-        await this._client.vocabLinks.bulkCreate(
-          creates.map((c) => ({ vocabItem: c.item.id, tokens: [c.tokenId], metadata })),
-        );
+        await this._client.batched(async (b) => {
+          const morphemes = this._queueMorphemes(b, morphemeCreates);
+          b.vocabLinks.bulkCreate(
+            creates.map((c) => ({
+              vocabItem: c.item.id,
+              tokens: [morphemes.tokenRef(c.tokenId)],
+              metadata,
+            })),
+          );
+        });
       }
       // Replacements: the stale links go in one bulk delete and the new ones in
       // one bulk create, both in the same batch so a token is never left with
@@ -160,18 +181,13 @@ export const vocabMutations = {
         await this._client.batched(async (b) => {
           b.vocabLinks.bulkDelete(chunk.map((r) => r.priorLinkId));
           b.vocabLinks.bulkCreate(
-            chunk.map((r) => ({ vocabItem: r.item.id, tokens: [r.tokenId], metadata })),
+            chunk.map((r) => ({
+              vocabItem: r.item.id,
+              tokens: [settledId(r.tokenId)],
+              metadata,
+            })),
           );
         });
-      }
-      // The morph-type caches those links just made stale, chunked like the
-      // replacements above. A link whose token is a word, or whose entry chain
-      // has no type, contributes nothing.
-      const typeFor = morphTypeCache(this);
-      const cachePatches = [];
-      for (const x of [...creates, ...replaces]) {
-        const type = typeFor(x.tokenId, x.vocabId, x.item.id);
-        if (type) cachePatches.push({ tokenId: x.tokenId, type });
       }
       for (let i = 0; i < cachePatches.length; i += REPLACE_CHUNK) {
         await this._client.tokens.bulkUpdate(

@@ -211,52 +211,93 @@ describe('a gesture with nothing to act on', () => {
   });
 });
 
-describe('materializeMorphemeIds', () => {
-  it('writes every virtual id in one bulk create and answers positionally', async () => {
+// Auto-link can name an unanalyzed word's morpheme. That morpheme is made in
+// the same batch as the link to it, so a refused link leaves no bare morpheme
+// behind (REV-F-IGT O3).
+describe('bulkLinkVocab over unanalyzed words', () => {
+  const vocabularies = () => ({
+    v1: { id: 'v1', items: [{ id: 'i-1', form: 'the' }], vocabLinks: [] },
+  });
+  const linkDoc = (client) =>
+    new IgtDocument({
+      raw: buildRawDoc({ morphemes: [] }),
+      project: { id: 'proj-1', vocabs: [], config: {} },
+      vocabularies: vocabularies(),
+      client,
+      projectId: 'proj-1',
+    });
+  const kindsOf = (client) =>
+    client.calls.map((c) => c.kind).filter((k) => !/Operation|operationGroups/.test(k));
+
+  it('makes the morphemes and their links in one batch, the links naming them by ref', async () => {
     const client = makeFakeClient();
-    const doc = makeDoc(buildRawDoc({ morphemes: [] }), client);
-
-    const out = await doc.materializeMorphemeIds(['virtual:w-1', 'w-real', 'virtual:w-2']);
-
-    const bulk = callsOf(client, 'tokens.bulkCreate');
-    expect(bulk).toHaveLength(1);
-    expect(bulk[0].args[0]).toMatchObject([
+    const doc = linkDoc(client);
+    const n = await doc.bulkLinkVocab(
+      [
+        { tokenId: 'virtual:w-1', vocabItemId: 'i-1' },
+        { tokenId: 'virtual:w-2', vocabItemId: 'i-1' },
+      ],
+      'rule:test',
+    );
+    expect(n).toBe(2);
+    expect(kindsOf(client).slice(0, 3)).toEqual([
+      'tokens.bulkCreate',
+      'vocabLinks.bulkCreate',
+      'batch.submit',
+    ]);
+    const bulk = callsOf(client, 'tokens.bulkCreate')[0].args[0];
+    expect(bulk).toMatchObject([
       { begin: 0, end: 3, precedence: 1 },
       { begin: 4, end: 7, precedence: 1 },
     ]);
-    expect(out[1]).toBe('w-real');
-    expect(out[0]).not.toBe('virtual:w-1');
-    expect(out[2]).not.toBe('virtual:w-2');
-    expect(doc.sentences[0].tokens[0].morphemes[0].virtual).toBeUndefined();
+    const links = callsOf(client, 'vocabLinks.bulkCreate')[0].args[0];
+    expect(links.map((l) => l.tokens[0])).toEqual([
+      { $ref: 0, index: 0 },
+      { $ref: 0, index: 1 },
+    ]);
   });
 
-  it('writes one morpheme for a word named twice, not two', async () => {
+  it('makes one morpheme for a word named twice, not two', async () => {
     const client = makeFakeClient();
-    const doc = makeDoc(buildRawDoc({ morphemes: [] }), client);
-
-    const out = await doc.materializeMorphemeIds(['virtual:w-1', 'virtual:w-1']);
-
-    // One morpheme, in one request (a lone create goes by the single endpoint).
+    const doc = linkDoc(client);
+    await doc.bulkLinkVocab(
+      [
+        { tokenId: 'virtual:w-1', vocabItemId: 'i-1' },
+        { tokenId: 'virtual:w-1', vocabItemId: 'i-1' },
+      ],
+      'rule:test',
+    );
     expect(callsOf(client, 'tokens.bulkCreate')).toHaveLength(0);
     expect(callsOf(client, 'tokens.create')).toHaveLength(1);
-    expect(out[0]).toBe(out[1]);
-    expect(doc.layerInfo.morphemeTokenLayer.tokens).toHaveLength(1);
+    const links = callsOf(client, 'vocabLinks.bulkCreate')[0].args[0];
+    expect(links[0].tokens[0]).toEqual(links[1].tokens[0]);
   });
 
-  it('writes nothing when no id is virtual', async () => {
+  it('drops a proposal whose word is gone rather than writing against it', async () => {
     const client = makeFakeClient();
-    const doc = makeDoc(buildRawDoc(), client);
-
-    expect(await doc.materializeMorphemeIds(['m-1', 'm-2'])).toEqual(['m-1', 'm-2']);
+    const doc = linkDoc(client);
+    expect(
+      await doc.bulkLinkVocab([{ tokenId: 'virtual:w-gone', vocabItemId: 'i-1' }], 'rule:test'),
+    ).toBe(0);
     expect(callsOf(client, 'tokens.bulkCreate')).toHaveLength(0);
+    expect(callsOf(client, 'tokens.create')).toHaveLength(0);
+    expect(callsOf(client, 'vocabLinks.bulkCreate')).toHaveLength(0);
   });
 
-  it('drops an id whose word is gone rather than writing against it', async () => {
+  it('makes no morpheme on its own when the links are refused', async () => {
     const client = makeFakeClient();
-    const doc = makeDoc(buildRawDoc({ morphemes: [] }), client);
-
-    const out = await doc.materializeMorphemeIds(['virtual:w-gone']);
-    expect(out).toEqual([null]);
-    expect(callsOf(client, 'tokens.bulkCreate')).toHaveLength(0);
+    const made = [];
+    const create = client.tokens.create;
+    client.tokens.create = (...args) => (made.push(args), create(...args));
+    client.tokens.bulkCreate = (...args) => (made.push(args), { ids: [] });
+    client.batched = async () => {
+      throw Object.assign(new Error('Conflict'), { status: 409 });
+    };
+    client.documents.get = async () => buildRawDoc({ morphemes: [] });
+    const doc = linkDoc(client);
+    expect(
+      await doc.bulkLinkVocab([{ tokenId: 'virtual:w-1', vocabItemId: 'i-1' }], 'rule:test'),
+    ).toBe(false);
+    expect(made).toEqual([]);
   });
 });

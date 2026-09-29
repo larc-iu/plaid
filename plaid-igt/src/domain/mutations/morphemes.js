@@ -70,25 +70,6 @@ const formOf = (morpheme, body) => {
 };
 
 export const morphemeMutations = {
-  // Turn virtual morpheme ids into real tokens on the server, in one bulk
-  // create, and answer the ids positionally (null where one resolved to
-  // nothing). For the bulk analysis copy, which runs entirely inside its send
-  // and reloads at the end; every interactive edit plans its morpheme with
-  // `_planMorphemes` instead, so it shows before the server answers.
-  async materializeMorphemeIds(morphemeIds) {
-    const { ids, creates } = this._planMorphemes(morphemeIds);
-    if (!creates.length) return ids;
-    const made = new Map();
-    await this._sendMorphemes(creates, made);
-    this._applyRawPatch((next, infoNext) => {
-      this._showMorphemes(
-        infoNext,
-        creates.filter((c) => made.get(c.id)).map((c) => ({ ...c, id: made.get(c.id) })),
-      );
-    });
-    return ids.map((id) => (made.has(id) ? made.get(id) : id));
-  },
-
   // Append a new morpheme to a word; precedence = (existing count) + 1.
   async createMorpheme(wordTokenId, form) {
     return this.createMorphemes(wordTokenId, [form]);
