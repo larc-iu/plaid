@@ -48,7 +48,11 @@ test('a project with a substrate is set up from the door, on a click', async ({ 
     expect(untouched.textLayers[0].tokenLayers).toHaveLength(2);
 
     await page.getByRole('button', { name: 'Set up for UMR' }).click();
-    await expect(page.getByRole('heading', { name: 'Documents', exact: true })).toBeVisible();
+    // Setup is a settings form: "Saving…" holds until the server has every
+    // layer, a run of writes one after another, and only then the list opens.
+    await expect(page.getByRole('heading', { name: 'Documents', exact: true })).toBeVisible({
+      timeout: 15000,
+    });
     const configured = await client.projects.get(project.id);
     const nodes = configured.textLayers[0].tokenLayers.find((t) => t.config?.umr?.nodes === true);
     expect(nodes).toBeTruthy();
