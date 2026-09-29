@@ -242,7 +242,10 @@
              ;; fewest tokens when it could stand in several places for the
              ;; same result (see ta/slide-to-tokens), its deletes snapped to
              ;; token boundaries where the edit script left an equivalent
-             ;; choice open (see ta/normalize-deletes), and then each delete with an insert
+             ;; choice open (see ta/normalize-deletes), each changed stretch
+             ;; aligned word by word where the diff kept a letter of a
+             ;; deleted word in place of the respelled word's own (see
+             ;; ta/align-to-words), and then each delete with an insert
              ;; beside it becomes one replace op, so a token covering the
              ;; changed letters keeps the new ones (see ta/pair-replacements), and the
              ;; pieces of a word replaced outright become one replace of it, so its
@@ -272,6 +275,7 @@
                    (-> (ta/diff old-body new-body-or-ops)
                        (ta/slide-to-tokens old-body tokens partitioning)
                        (ta/normalize-deletes old-body tokens)
+                       (ta/align-to-words old-body tokens word-layers)
                        (ta/pair-replacements old-body tokens)
                        (ta/fold-whole-words old-body tokens word-layers))
                    (vec new-body-or-ops))

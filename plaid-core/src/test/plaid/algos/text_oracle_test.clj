@@ -6,8 +6,8 @@
   words or a whole sentence. Each edit is made to the words (respell one,
   delete a run, delete a run beside a respelled word, insert a new word,
   join two sentences), and the new body goes through the chain
-  `update-body` runs (diff, slide, snap, pair, fold, apply, and edges off
-  spaces).
+  `update-body` runs (diff, slide, snap, align by words, pair, fold, apply,
+  and edges off spaces).
 
   The oracle knows which word each token was made for, so it judges the
   places the text alone leaves open too, where an oracle that trusts the
@@ -387,6 +387,7 @@
   (let [result (-> (ta/diff old new)
                    (ta/slide-to-tokens old tokens #{:s})
                    (ta/normalize-deletes old tokens)
+                   (ta/align-to-words old tokens #{:w :p})
                    (ta/pair-replacements old tokens)
                    ;; the words and the punctuation tokens are the word
                    ;; layers (overlap forbidden, no partition, a parent)
@@ -404,17 +405,16 @@
   "Classes of case the chain still gets wrong, all older than the fixes of
   2026-09-28 this test was written to hold. Each is a predicate over the
   generated case, so a fix for one deletes its entry."
-  {;; A respelled word keeps its letters beside the deleted words, and the
-   ;; one kept there is also in a deleted word, so the diff may take it and
-   ;; the letters around it from the deleted word in more than one run of
-   ;; edits (`sat tat` to `tX` keeps the `t` of `sat` and deletes ` ta`,
-   ;; `a ab` to `aX` keeps `a` and replaces ` ab`, `kai ab` to `aXQ` keeps
-   ;; the `a` of `kai`). The replace reaching into both words, letters typed
-   ;; in front of a word with some of its own deleted, and a kept run that
-   ;; is the last of the respelled word's letters are no longer open.
-   :kept-edge-letter-also-in-a-deleted-word
-   (fn [{{{:keys [mode near? shared? edge-in-deleted?]} :shape} :info}]
-     (and shared? edge-in-deleted? (not near?) (not= mode :whole)))})
+  {;; In a script without spaces, a respelled word keeps its letters
+   ;; beside the deleted words, and the one kept there is also in a deleted
+   ;; word, so the diff may keep it from the deleted word (`sattat` to `tX`
+   ;; keeps the `t` of `sat`, which is left on `t` and `tat` on `X`).
+   ;; Deleting `sat` and respelling `tat` gives the same text at the same
+   ;; cost, and without a space the text does not say that `tX` is one
+   ;; word. With spaces the class is closed (`align-to-words`).
+   :kept-edge-letter-also-in-a-deleted-word-without-spaces
+   (fn [{{{:keys [mode near? shared? edge-in-deleted?]} :shape} :info opts :opts}]
+     (and (= [""] (:seps opts)) shared? edge-in-deleted? (not near?) (not= mode :whole)))})
 
 (defn- open-class [c]
   (some (fn [[k pred]] (when (pred c) k)) open-classes))

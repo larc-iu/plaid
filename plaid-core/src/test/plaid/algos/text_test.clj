@@ -361,14 +361,16 @@
 
 (defn- body-edit
   "Apply a whole-body edit the way update-body does: diff, slide, snap the
-  deletes, pair them with their inserts, fold a word replaced outright,
-  apply, and move token edges off spaces they did not stand on.
+  deletes, align each changed stretch by words, pair the deletes with their
+  inserts, fold a word replaced outright, apply, and move token edges off
+  spaces they did not stand on.
   `partitioning` is the set of layers that are partitions."
   ([old new tokens] (body-edit old new tokens #{}))
   ([old new tokens partitioning]
    (-> (ta/diff old new)
        (ta/slide-to-tokens old tokens partitioning)
        (ta/normalize-deletes old tokens)
+       (ta/align-to-words old tokens)
        (ta/pair-replacements old tokens)
        (ta/fold-whole-words old tokens)
        (apply-all old tokens)
@@ -378,6 +380,7 @@
    (-> (ta/diff old new)
        (ta/slide-to-tokens old tokens partitioning)
        (ta/normalize-deletes old tokens)
+       (ta/align-to-words old tokens word-layers)
        (ta/pair-replacements old tokens)
        (ta/fold-whole-words old tokens word-layers)
        (apply-all old tokens)
@@ -1373,6 +1376,61 @@
         (is (not-any? gone (keys read)) (str (pr-str old) " -> " (pr-str new) " " (pr-str read)))
         (when either
           (is (= ["你好"] (vals (select-keys read either))) (pr-str read)))))))
+
+(deftest a-word-respelled-beside-a-deleted-word-keeps-its-edge-letter-from-itself
+  ;; The respelled word's letter beside the deleted words is also in a
+  ;; deleted word, and the diff kept it from there: `sat tat` to `tX` kept
+  ;; the `t` of `sat`, which left `sat` on `t` and `X` in no word. Each
+  ;; changed stretch is aligned word by word instead.
+  (let [on (fn [layer t] (assoc t :token/layer layer))
+        w (fn [id b e] (on :w (tok id b e)))]
+    (doseq [[old new tokens want gone at]
+            [["كتاب sat tat\n" "كتاب tX\n"
+              [(on :s (tok :s 0 13)) (w :kitab 0 4) (w :sat 5 8) (w :tat 9 12)]
+              {:kitab "كتاب" :tat "tX"} #{:sat}]
+             ["the a ab" "the aX"
+              [(w :the 0 3) (w :a 4 5) (w :ab 6 8)]
+              {:the "the" :ab "aX"} #{:a}]
+             ;; the marker at the start of `ab` stays at the start of `aXQ`
+             ["שלום kai ab tat\n" "שלום aXQ tat\n"
+              [(on :s (tok :s 0 16)) (w :shalom 0 4) (w :kai 5 8) (w :ab 9 11) (on :z (tok :z 9 9))
+               (w :tat 12 15)]
+              {:ab "aXQ" :tat "tat"} #{:kai} {:z 5}]
+             ;; the new word is one, so `é` goes and `café` takes it
+             ["café é köye on" "caЖé köye on"
+              [(w :café 0 4) (w :é 5 6) (w :köye 7 11) (w :on 12 14)]
+              {:café "caЖé" :köye "köye"} #{:é}]
+             ;; without spaces: no word is kept by the middle of its letters
+             ["thesattatutheYarın" "taЖtheYarın"
+              [(w :the 0 3) (w :sat 3 6) (w :tatu 6 10) (w :the2 10 13) (w :yarin 13 18)]
+              {:tatu "taЖ" :the2 "the" :yarin "Yarın"} #{:the :sat}]
+             ["atheYarıntatu\n" "atatЖ\n"
+              [(on :s (tok :s 0 14)) (w :a 0 1) (w :the 1 4) (w :yarin 4 9) (w :tatu 9 13)]
+              {:a "a" :tatu "tatЖ"} #{:the :yarin}]]]
+      (let [{:keys [text tokens]} (body-edit old new tokens #{:s} #{:w})
+            body (:text/body text)
+            read (into {} (map (fn [{:token/keys [id begin end]}] [id (cp/cp-subs body begin end)])) tokens)
+            begins (into {} (map (juxt :token/id :token/begin)) tokens)]
+        (is (= new body))
+        (is (= want (select-keys read (keys want))) (str (pr-str old) " -> " (pr-str new) " " (pr-str read)))
+        (is (not-any? gone (keys read)) (str (pr-str old) " -> " (pr-str new) " " (pr-str read)))
+        (when at
+          (is (= at (select-keys begins (keys at))) (pr-str begins)))))))
+
+(deftest word-alignment-leaves-the-diff-where-it-is-as-good
+  ;; A respelling inside a word, a word typed, and a word deleted are left as
+  ;; the diff gave them, and so is a stretch the text leaves open: `ab` twice
+  ;; in a script without spaces, one of them deleted.
+  (let [w (fn [id b e] (assoc (tok id b e) :token/layer :w))]
+    (doseq [[old new tokens]
+            [["cat dog" "cat dXg" [(w :cat 0 3) (w :dog 4 7)]]
+             ["cat dog" "cat new dog" [(w :cat 0 3) (w :dog 4 7)]]
+             ["the cat cow" "the cow" [(w :the 0 3) (w :cat 4 7) (w :cow 8 11)]]
+             ["ababacafé" "abaڤڤ" [(w :ab 0 2) (w :ab2 2 4) (w :a 4 5) (w :café 5 9)]]]]
+      (let [ops (-> (ta/diff old new)
+                    (ta/slide-to-tokens old tokens)
+                    (ta/normalize-deletes old tokens))]
+        (is (identical? ops (ta/align-to-words ops old tokens #{:w})) (str (pr-str old) " -> " (pr-str new)))))))
 
 (deftest two-edits-sliding-towards-each-other-do-not-meet
   ;; Each delete cuts a token where it stands and could slide into the run of

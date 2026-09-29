@@ -408,6 +408,34 @@
       (is (= [0 4 "mat\t"] (extent n1)))
       (is (= [4 7 "cat"] (extent n2))))))
 
+(deftest text-body-edit-keeps-a-respelled-words-letter-from-itself
+  ;; `a` deleted and `ab` respelled `aX`: the diff kept the `a` of `a` and
+  ;; left `X` in no word. The body update aligns the stretch word by word,
+  ;; with the words layer read from the project.
+  (let [proj (create-test-project admin-request "TextAlignWordsProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        sentences (-> (create-token-layer-opts admin-request tl "Sentences"
+                                               {:overlap-mode "partitioning"})
+                      :body :id)
+        words (-> (create-token-layer-opts admin-request tl "Words"
+                                           {:overlap-mode "non-overlapping"
+                                            :parent-token-layer-id sentences})
+                  :body :id)
+        text-id (-> (create-text admin-request tl doc "the a ab\n") :body :id)
+        _ (assert-created (bulk-create-tokens admin-request [{:token-layer-id sentences :text text-id
+                                                              :begin 0 :end 9}]))
+        [the a ab] (mapv (fn [[b e]] (-> (create-token admin-request words text-id b e) :body :id))
+                         [[0 3] [4 5] [6 8]])
+        extent (fn [id]
+                 (let [t (get-token admin-request id)]
+                   (assert-ok t)
+                   ((juxt :token/begin :token/end :token/value) (:body t))))]
+    (assert-ok (update-text admin-request text-id "the aX\n"))
+    (is (= [0 3 "the"] (extent the)))
+    (is (= [4 6 "aX"] (extent ab)))
+    (is (= 404 (:status (get-token admin-request a))))))
+
 (deftest text-combining-mark-typed-at-a-words-end-joins-the-word
   ;; An accent typed as a separate mark after `cafe` makes the word `café`,
   ;; through a whole body and through an explicit insert (ruled 2026-09-27).
