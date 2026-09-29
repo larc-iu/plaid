@@ -1,19 +1,9 @@
 import { statusOf } from '@ui/lib/errors.js';
-import { changedTo, whoChanged as whoChangedAny } from '@ui/lib/cellConflict.js';
 
-// A cell's write, who stored the value an edit lost to, and the toast that
-// says so.
-//
-// A cell edit refused because someone else changed the cell first shows the
-// stored value, with the refused one under it (unsentValues.js). The toast
-// names the change: "b changed this to NOUN." The words and the audit lookup
-// are plaid-ui's (cellConflict.js), shared with plaid-igt.
-
-/** The display name of whoever last changed `spanId`, or null. */
-export const whoChanged = (client, documentId, spanId, me) =>
-  whoChangedAny(client, documentId, [spanId], me);
-
-export { changedTo };
+// A cell's write. A cell edit refused because someone else changed the cell
+// first shows the stored value, with the refused one under it
+// (unsentValues.js), and the toast that names the change ("b changed this to
+// NOUN.") is plaid-ui's (cellConflict.js), shared with plaid-igt.
 
 /**
  * Write a cell's value. Answers what `updateAnnotation` does, or for a

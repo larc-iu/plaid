@@ -5,7 +5,8 @@ import { ParseDialog } from './services/ParseDialog.jsx';
 import { SentenceRow } from './annotation/SentenceRow.jsx';
 import { EditorSessionContext } from './annotation/editorSession.js';
 import { UnsentValues } from './annotation/unsentValues.js';
-import { whoChanged, changedTo, writeCell } from './annotation/conflictNotice.js';
+import { whoChanged, changedTo } from '@ui/lib/cellConflict.js';
+import { writeCell } from './annotation/conflictNotice.js';
 import { notifyWarning } from '../../utils/feedback.jsx';
 import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
 import { Notice } from '@ui/components/shared/Notice.jsx';
@@ -323,7 +324,7 @@ export const AnnotationEditor = () => {
         onConflict: (tokenId, field, stored) => {
           const { client, documentId: id, me } = conflictContext.current;
           const spanId = tokenData(tokenId)?.[field]?.id;
-          whoChanged(client, id, spanId, me)
+          whoChanged(client, id, [spanId], me)
             .catch(() => null)
             .then((who) => notifyWarning(changedTo(who, stored)));
         },
