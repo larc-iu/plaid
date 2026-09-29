@@ -1605,7 +1605,8 @@ A service running on behalf of a contributor (the IGT assistant applying a plan 
 
 [NOTE]
 ====
-Tokens MAY carry provenance (the bundled parser and tokenizer services stamp the tokens they create), but interactive substrate-filling—a person clicking "tokenize" to run a deterministic segmenter over untouched text—need not bother: it creates nothing destructive and nothing annotation-bearing.
+Word and sentence tokens are substrate and are not stamped: IGT's built-in tokenizer and the Punkt tokenizer service write them with no provenance keys, and the run's operation in the audit log (`service-run`, with `builtin:<name>` or `service:<id>` as its ref) names what made them.
+Other tokens MAY carry provenance where a service writes them as part of its analysis (the bundled UD parser stamps the tokens it creates).
 The write contract protects annotation _content_; substrate segmentation is guarded by the structural rules in <<Token Layer Constraints>>.
 
 One migration wrinkle: machine output written _before_ a producer adopted this convention carries no provenance keys and therefore reads as human-made. The first guarded re-run over such a document will refuse; one run with `overwrite` enabled replaces and re-stamps it.

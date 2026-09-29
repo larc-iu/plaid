@@ -8,7 +8,6 @@ This demonstrates how easy it is to create new tokenization services.
 import nltk
 from typing import List, Dict, Any, Tuple
 from plaid_client import BaseService, TASKS, Param, service_source
-from plaid_client.service import machine_detail
 from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.tokenization import TokenizerModel, TokenSpan, TokenProcessor, helpers
@@ -38,8 +37,6 @@ splits each sentence into **words** with the Treebank word tokenizer.
   sentence-level annotations. Machine-made, unverified ones are always fair
   game; if any are human-made or human-verified, the run refuses unless this
   is enabled.
-
-Tokens this service creates carry provenance metadata (`prov`/`provSource`).
 """
 
 
@@ -170,9 +167,11 @@ class NLTKTokenizerService(BaseService):
         
         response_helper.progress(30, f"Found {len(sentences)} sentences and {len(words)} words…")
         
-        # Process tokens using the token processor. Created tokens are
-        # stamped machine-made (provenance convention); the processor
-        # refuses to destroy protected annotations unless `overwrite`.
+        # Process tokens using the token processor. Word and sentence tokens
+        # are substrate and carry no provenance stamp (provenance convention,
+        # as the built-in tokenizer): the operation below names this service
+        # in the audit log. The processor refuses to destroy protected
+        # annotations unless `overwrite`.
         # Group every write into ONE labeled audit-log entry (the processor acquires the
         # document lock and does the batched token writes inside this scope).
         # The report of the work is inside `critical()` with the work
@@ -187,9 +186,6 @@ class NLTKTokenizerService(BaseService):
                     primary_token_layer_id, sentence_layer_id, response_helper,
                     text_layer_id=text_layer_id,
                     expect_version=full_document.get('version'),
-                    prov_source=service_source(self.service_id),
-                    prov_detail=requester.detail(machine_detail(
-                        self.version, model=f'nltk=={nltk.__version__}', language=language)),
                     overwrite=overwrite,
                 )
             response_helper.progress(100, "Done")

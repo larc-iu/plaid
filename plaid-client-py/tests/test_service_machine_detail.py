@@ -30,6 +30,9 @@ NO_MODEL = {'umr_bootstrap_igt.py'}
 WRAPPED_LATER = {('igt_transcribe_whisper.py', 'transcribe_with_alignments')}
 # A service whose output is a report in metadata, not a stamped annotation.
 REPORTS = {'umr_ancast.py'}
+# A service that writes only word and sentence tokens, which are substrate and
+# not stamped (the convention). Its run's operation names it in the audit log.
+SUBSTRATE = {'igt_tokenize_punkt.py'}
 
 
 def _called(node):
@@ -111,7 +114,7 @@ def test_every_stamp_a_service_writes_is_built_by_machine_detail():
 def test_every_service_that_writes_machine_output_names_its_model():
     missing = []
     for path in SERVICES:
-        if path.name in REPORTS:
+        if path.name in REPORTS or path.name in SUBSTRATE:
             continue
         tree = ast.parse(path.read_text(), str(path))
         calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and _called(n) == 'machine_detail']
@@ -124,6 +127,15 @@ def test_every_service_that_writes_machine_output_names_its_model():
             if not said and path.name not in NO_MODEL:
                 missing.append(f'{path.name}:{call.lineno}')
     assert not missing, missing
+
+
+def test_a_service_that_writes_only_substrate_stamps_nothing():
+    for name in SUBSTRATE:
+        tree = ast.parse((ROOT / 'plaid-igt' / 'services' / name).read_text())
+        calls = {_called(n) for n in ast.walk(tree) if isinstance(n, ast.Call)}
+        assert not calls & {'machine_detail', 'stamp_inferred', 'confirmed_inferred'}, name
+        assert not any(isinstance(n, ast.keyword) and n.arg in ('prov_source', 'prov_detail')
+                       for n in ast.walk(tree)), name
 
 
 def test_a_report_names_the_service_version():

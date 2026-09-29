@@ -54,18 +54,29 @@ def test_an_empty_document_is_refused_once():
     assert service.client.writes == []
 
 
-def test_the_tokens_are_stamped_with_the_punkt_release_and_this_files_version():
-    service = _service(_document())
-    service.tokenizer_model.tokenize_text = lambda text, language: (['s'], ['w'])
-    handed = {}
-
-    def process_tokens(*args, **kwargs):
-        handed.update(kwargs)
-        return {'tokens_created': 1}
-    service.token_processor.process_tokens = process_tokens
+def test_the_tokens_are_substrate_and_carry_no_provenance():
+    # The provenance convention: word and sentence tokens are substrate and are
+    # not stamped, as the built-in tokenizer does not stamp them. That the
+    # tokens came from this service is the run's operation (service-run,
+    # service:<id>) in the audit log.
+    from plaid_client.workflows.tokenization import TokenSpan
+    doc = _document()
+    doc['text_layers'][0]['token_layers'] = [
+        {'id': 'sentL', 'name': 'Sentences', 'config': {}, 'tokens': [
+            {'id': 's0', 'begin': 0, 'end': 13, 'text': 'text-1', 'metadata': {}}]},
+        {'id': 'wordL', 'name': 'Words', 'config': {}, 'tokens': []},
+    ]
+    service = _service(doc)
+    service.tokenizer_model.tokenize_text = lambda text, language: (
+        [TokenSpan('the dog barks', 0, 13)],
+        [TokenSpan('the', 0, 3), TokenSpan('dog', 4, 7), TokenSpan('barks', 8, 13)])
     helper = servicetest.run(service, {**REQUEST, 'language': 'german'})
 
     assert helper.errors == []
-    assert handed['prov_source'] == 'service:tok:nltk-punkt-tokenizer'
-    assert handed['prov_detail'] == {'model': 'nltk==3.9.1', 'language': 'german',
-                                     'version': service_version(punkt.__file__)}
+    created = [op for kind, payload in service.client.writes if kind == 'tokens.bulk_create'
+               for op in payload]
+    assert sorted((op['token_layer_id'], op['begin'], op['end']) for op in created) == [
+        ('sentL', 0, 13), ('wordL', 0, 3), ('wordL', 4, 7), ('wordL', 8, 13)]
+    assert all(not (op.get('metadata') or {}) for op in created), created
+    assert service.client.operation_tags == [
+        {'kind': 'service-run', 'ref': 'service:tok:nltk-punkt-tokenizer'}]
