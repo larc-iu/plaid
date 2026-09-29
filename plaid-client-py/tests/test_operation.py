@@ -600,3 +600,46 @@ def test_an_operation_whose_batch_was_taken_is_relabelled():
     client.end_operation('Parsed 40 sentences')
     assert [c['method'] for c in calls] == ['POST', 'PATCH']
     assert calls[1]['url'].endswith(f'/api/v1/operation-groups/{gid}')
+
+
+def test_a_refused_relabel_does_not_replace_the_error_the_block_raised():
+    # A delegated token is scoped to projects, and a group names none, so the
+    # core refuses its relabel with 403. An assistant plan that stopped
+    # partway relabels its group as it raises: the 403 took the place of the
+    # plan's own error, and the card said "Applying did not finish" with an
+    # Apply again, where it should have said Partly applied.
+    client = _client()
+    calls = []
+
+    class _Sess:
+        def request(self, **kw):
+            calls.append(kw)
+            if kw['method'] == 'PATCH':
+                return _Resp(403, {'error': 'This token reaches only the projects it was issued for.'})
+            return _Resp(200, {})
+
+        def close(self):
+            pass
+
+    client.session = _Sess()
+    with pytest.raises(RuntimeError, match='plan failed'):
+        with client.operation('Assistant: 3 changes') as op:
+            client.spans.set_metadata('S1', {'a': 1})
+            op.set_message('Assistant, partly applied: 1 change')
+            raise RuntimeError('plan failed')
+    assert [c['method'] for c in calls] == ['PUT', 'PATCH']
+    assert client._operation_group is None
+
+
+def test_a_refused_relabel_after_a_block_that_ended_well_still_raises():
+    client = _client()
+    _stub_session(client, status=200)
+
+    def patch_refused(**kw):
+        return _Resp(403 if kw['method'] == 'PATCH' else 200, {'error': 'no'})
+
+    client.session.request = patch_refused
+    with pytest.raises(PlaidAPIError):
+        with client.operation('Merge') as op:
+            client.spans.set_metadata('S1', {'a': 1})
+            op.set_message('Merged 2')

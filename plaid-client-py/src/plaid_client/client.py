@@ -3759,8 +3759,16 @@ class PlaidClient:
         ctx = _OperationContext(group)
         try:
             yield ctx
-        finally:
-            self.end_operation()
+        except BaseException:
+            # A relabel the server refuses (a token scoped to projects may not
+            # relabel a group, which names none) must not take the place of
+            # the error the block raised: the caller answers for that one.
+            try:
+                self.end_operation()
+            except PlaidAPIError as e:
+                logging.getLogger(__name__).warning('The operation was not relabelled: %s', e)
+            raise
+        self.end_operation()
 
     def batch(self) -> 'PlaidBatch':
         """Open a batch: a view of this client with the same resources, on

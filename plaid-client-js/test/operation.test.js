@@ -446,3 +446,28 @@ test('requestService with noOperation carries no open operation', async () => {
   assert.deepStrictEqual(sent, { approve: { 'plan-id': 'p1' } });
   await client.endOperation();
 });
+
+// A delegated token is scoped to projects, and a group names none, so the
+// core refuses its relabel with 403. A relabel made as the operation ends on
+// a throw must not take the place of the error `fn` threw.
+test('withOperation: a refused relabel does not replace the error fn threw', async () => {
+  const client = makeClient();
+  const calls = [];
+  globalThis.fetch = async (url, opts) => {
+    calls.push(opts.method);
+    const refused = opts.method === 'PATCH';
+    return {
+      ok: !refused, status: refused ? 403 : 200, statusText: refused ? 'Forbidden' : 'OK',
+      headers: { get: (n) => (String(n).toLowerCase() === 'content-type' ? 'application/json' : null) },
+      json: async () => (refused ? { error: 'This token reaches only the projects it was issued for.' } : {}),
+      text: async () => '',
+    };
+  };
+  await assert.rejects(client.withOperation('Assistant: 3 changes', async (setMessage) => {
+    await client.spans.setMetadata('S1', { a: 1 });
+    setMessage('Assistant, partly applied: 1 change');
+    throw new Error('plan failed');
+  }), /plan failed/);
+  assert.deepStrictEqual(calls, ['PUT', 'PATCH']);
+  assert.strictEqual(client.operationGroup, null);
+});

@@ -3598,11 +3598,22 @@ class PlaidClient {
     const setMessage = (msg) => {
       if (group.depth === 1) group.refined = msg;
     };
+    let result;
     try {
-      return await fn(setMessage);
-    } finally {
-      await this.endOperation();
+      result = await fn(setMessage);
+    } catch (e) {
+      // A relabel the server refuses (a token scoped to projects may not
+      // relabel a group, which names none) must not take the place of the
+      // error `fn` threw: the caller answers for that one.
+      try {
+        await this.endOperation();
+      } catch (relabel) {
+        console.warn('The operation was not relabelled:', relabel);
+      }
+      throw e;
     }
+    await this.endOperation();
+    return result;
   }
 
   /**
