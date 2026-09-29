@@ -341,6 +341,46 @@ describe('an edit refused because someone else wrote elsewhere in the document',
     expect(valuesOn(server.raw())).toEqual({ t2: 'HOUND', t3: 'RUN' });
   });
 
+  it('shows again what the edit put beside the document once it goes again', async () => {
+    // What a subclass keeps beside the raw document (igt's vocabularies) is
+    // replaced by the read after the refusal, so the edit is shown again on
+    // top of that read, not under it.
+    class BesideDoc extends GlossDoc {
+      constructor(args) {
+        super(args);
+        this.beside = [];
+      }
+      _patchContext() {
+        return [[...this.beside]];
+      }
+      _afterPatch(next, [beside]) {
+        this.beside = beside;
+      }
+      async _adoptReload() {
+        this.beside = [];
+      }
+      note(token, value) {
+        this._applyRawPatch((raw, beside) => {
+          raw.textLayers[0].tokenLayers[0].spanLayers[0].spans.push({
+            id: `pending:${token}`,
+            tokens: [token],
+            value,
+          });
+          beside.push(value);
+        });
+        return this._queueWrite('Failed to update Gloss', () =>
+          this._client.addGloss(token, value),
+        );
+      }
+    }
+    const { server, client } = docServer();
+    const doc = new BesideDoc({ raw: server.raw(), client });
+    server.elsewhere('t1', 'DEF');
+    expect(await doc.note('t2', 'CANINE')).toBe(true);
+    expect(valuesOn(server.raw())).toEqual({ t1: 'DEF', t2: 'CANINE' });
+    expect(doc.beside).toEqual(['CANINE']);
+  });
+
   it('goes again only once', async () => {
     const { server, client, doc, errors } = await openGlossDoc();
     server.elsewhere('t1', 'DEF');

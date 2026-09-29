@@ -529,6 +529,9 @@ export class DocumentModel {
       return false;
     }
     if (!this._untouched(unsent, updated)) return false;
+    // What the subclass keeps beside the document is read again first, so
+    // the edit is shown again on top of it, as `_showUnsent` does.
+    await this._adoptReload(updated);
     let shown = updated;
     try {
       for (const producer of unsent.patches) shown = this._patched(shown, producer);
@@ -536,7 +539,6 @@ export class DocumentModel {
       console.error('A refused edit could not be shown again:', err);
       return false;
     }
-    await this._adoptReload(updated);
     this._showUnsent(shown);
     return true;
   }
