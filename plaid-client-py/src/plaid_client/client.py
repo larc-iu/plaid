@@ -3072,7 +3072,8 @@ class TokensResource(_Resource):
         """
         return self._request('PATCH', '/api/v1/tokens/bulk', body=body, audit_message=audit_message)
 
-    def split(self, token_id: str, position: int, audit_message=None) -> Any:
+    def split(self, token_id: str, position: int, audit_message=None,
+              drop_crossing_relations: Any = _UNSET) -> Any:
         """Split a token at a Unicode code-point offset.
 
         The original token becomes the left half (keeping its ID, spans, and
@@ -3082,9 +3083,15 @@ class TokensResource(_Resource):
         Args:
             token_id: The token ID
             position: Code-point offset to split at (strictly between begin and end)
+            drop_crossing_relations: Relation layer ids whose relations must not
+                cross the new boundary (a sentence split, for a dependency
+                tree). Every relation of those layers that had both ends inside
+                the token and now has one on each side is deleted in the same
+                operation, read from what is stored.
         """
         return self._request('POST', f'/api/v1/tokens/{token_id}/split',
-                             body=_body_of(position=position), audit_message=audit_message)
+                             body=_body_of(position=position, drop_crossing_relations=drop_crossing_relations),
+                             audit_message=audit_message)
 
     def merge(self, token_id: str, other_token_id: str, audit_message=None) -> Any:
         """Merge two tokens.

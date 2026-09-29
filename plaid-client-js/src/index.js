@@ -2841,11 +2841,17 @@ class PlaidClient {
        * left half (keeps its ID, spans, vocab-links); the new right token's ID is returned.
        * @param {string} tokenId - The token ID
        * @param {number} position - Code-point offset to split at (strictly between begin and end)
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {{dropCrossingRelations?: string[]}} [options] - `dropCrossingRelations`:
+       *   relation layer ids whose relations must not cross the new boundary (a
+       *   sentence split, for a dependency tree). Every relation of those layers
+       *   that had both ends inside the token and now has one on each side is
+       *   deleted in the same operation, read from what is stored.
        */
-      split: (tokenId, position, auditMessage) =>
+      split: (tokenId, position, auditMessage, { dropCrossingRelations } = {}) =>
         this._request("POST", `/api/v1/tokens/${tokenId}/split`, {
           auditMessage,
-          body: bodyOf({ position }),
+          body: bodyOf({ position, dropCrossingRelations }),
         }),
       /**
        * Merge two tokens. The left token (smaller begin) survives with the combined

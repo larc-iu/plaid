@@ -969,31 +969,93 @@
       (when t-row
         (split-one! tx t-row position)))))
 
+(defn- endpoint-begins
+  "Span id -> the begin of its first token in the text `text-id`, for
+  `span-ids`. A span with no token in that text is left out."
+  [tx span-ids text-id]
+  (into {}
+        (mapcat (fn [chunk]
+                  (map (juxt :span_id :b)
+                       (psc/q tx {:select [:st.span_id [[:min :t.begin] :b]]
+                                  :from [[:span_tokens :st]]
+                                  :join [[:tokens :t] [:= :t.id :st.token_id]]
+                                  :where [:and [:in :st.span_id (vec chunk)]
+                                          [:= :t.text_id text-id]]
+                                  :group-by [:st.span_id]}))))
+        (partition-all 4000 span-ids)))
+
+(defn- delete-crossing-relations!
+  "Delete, in the relation layers `layer-ids`, every relation of document
+  `doc-id` whose two ends lay inside the token just split (extent
+  `begin`..`end` of `text-id`) and now lie on opposite sides of `position`.
+  An end's place is the begin of its span's first token. A relation already
+  reaching outside the token is not this split's to judge. The layers must
+  be relation layers of `project-id` (400)."
+  [tx project-id layer-ids doc-id text-id begin end position]
+  (let [layer-ids (vec (distinct layer-ids))
+        found (psc/fetch-ids tx :relation_layers layer-ids)]
+    (when (or (not= (count found) (count layer-ids))
+              (some #(not= project-id (:project_id %)) found))
+      (throw (ex-info "drop-crossing-relations names a relation layer that is not in this project"
+                      {:code 400 :layers layer-ids})))
+    (let [rels (psc/q tx {:select [:id :source_span_id :target_span_id]
+                          :from :relations
+                          :where [:and [:in :relation_layer_id layer-ids]
+                                  [:= :document_id doc-id]]})
+          begins (endpoint-begins tx (distinct (mapcat (juxt :source_span_id :target_span_id) rels)) text-id)
+          inside? (fn [b] (and b (<= begin b) (< b end)))
+          crossing (->> rels
+                        (filter (fn [{:keys [source_span_id target_span_id]}]
+                                  (let [s (begins source_span_id) t (begins target_span_id)]
+                                    (and (inside? s) (inside? t)
+                                         (not= (< s position) (< t position))))))
+                        (mapv :id))]
+      (doseq [rid crossing]
+        (crud/delete-by-id! tx :relations rid))
+      (when (seq crossing)
+        (psc/execute! tx {:delete-from :entity_metadata
+                          :where [:and [:= :entity_type "relation"]
+                                  [:in :entity_id crossing]]}))
+      crossing)))
+
 (defn split
   "Split `eid` at `position`. Cascades to descendant tokens that
-  straddle position. Returns {:success true :extra <new-right-id>}."
-  [db eid position user-id]
-  (let [pre (psc/fetch-by-id db :tokens eid)]
-    (submit-operation!
-     [tx db {:type :token/split
-             :project (project-id db eid)
-             :document (:document_id pre)
-             :description (str "Split token " eid " at position " position)
-             :user user-id}]
-     (let [t-row (psc/fetch-by-id tx :tokens eid)
-           _ (when (nil? t-row)
-               (throw (ex-info (psc/err-msg-not-found "Token" eid) {:id eid :code 404})))
-           {layer :token_layer_id doc-id :document_id begin :begin end :end_} t-row
-           dlids (tc/descendant-layer-ids tx layer)
-           straddlers (tc/straddling-descendant-tokens-in tx dlids doc-id begin end position)
-           new-right-id (split-one! tx t-row position)]
-       (split-straddlers! tx straddlers position)
-       (tc/enforce! tx :split
-                    {:layer layer :doc-id doc-id
-                     :begin begin :end end
-                     :position position
-                     :dlids dlids})
-       new-right-id))))
+  straddle position. Returns {:success true :extra <new-right-id>}.
+
+  `:drop-crossing-relations` in `opts` names relation layers whose
+  relations must not cross the new boundary (a sentence split, where a
+  dependency tree ends at the sentence): their relations that the split
+  leaves with one end on each side are deleted in the same transaction,
+  read from what is stored rather than from the caller's copy. Plaid does
+  not decide this for any layer by itself, since some relations (a
+  document-level coreference) cross sentences by design."
+  ([db eid position user-id]
+   (split db eid position user-id nil))
+  ([db eid position user-id {:keys [drop-crossing-relations]}]
+   (let [pre (psc/fetch-by-id db :tokens eid)]
+     (submit-operation!
+      [tx db {:type :token/split
+              :project (project-id db eid)
+              :document (:document_id pre)
+              :description (str "Split token " eid " at position " position)
+              :user user-id}]
+      (let [t-row (psc/fetch-by-id tx :tokens eid)
+            _ (when (nil? t-row)
+                (throw (ex-info (psc/err-msg-not-found "Token" eid) {:id eid :code 404})))
+            {layer :token_layer_id doc-id :document_id begin :begin end :end_ text-id :text_id} t-row
+            dlids (tc/descendant-layer-ids tx layer)
+            straddlers (tc/straddling-descendant-tokens-in tx dlids doc-id begin end position)
+            new-right-id (split-one! tx t-row position)]
+        (split-straddlers! tx straddlers position)
+        (tc/enforce! tx :split
+                     {:layer layer :doc-id doc-id
+                      :begin begin :end end
+                      :position position
+                      :dlids dlids})
+        (when (seq drop-crossing-relations)
+          (delete-crossing-relations! tx (project-id tx eid) drop-crossing-relations
+                                      doc-id text-id begin end position))
+        new-right-id)))))
 
 ;; ============================================================
 ;; Merge-tokens (combine two adjacent/overlapping tokens into one)

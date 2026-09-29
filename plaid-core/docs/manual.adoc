@@ -1203,6 +1203,12 @@ new_id = client.tokens.split(dogs_id, 3)["id"]
 client.tokens.merge(dogs_id, new_id)
 ----
 
+Some relations must stay inside one token, such as a dependency tree inside its sentence, while others cross such tokens by design, such as a coreference chain across sentences.
+Plaid cannot tell them apart, so a split can name the relation layers of the first kind: `split(token_id, position, drop_crossing_relations=[layer_id, ...])`, or `split(tokenId, position, auditMessage, { dropCrossingRelations })` in JavaScript.
+Every relation of those layers that had both ends inside the token, and has one end on each side of the split once it is made, is then deleted in the same operation.
+An end's place is the first token of its span.
+The relations are read from what is stored when the split runs, so a relation drawn after the caller read the document is caught too.
+
 === Token Layer Hierarchy
 
 Although all token layers must depend on a text layer, a token layer may also declare another token layer as its **parent** token layer.
