@@ -1254,7 +1254,14 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
         for op in ctx.new_docs:
             if project is None:
                 raise ValueError('create_document needs the project')
-            create_document(client, project, op['name'], op['text'], op.get('metadata') or {})
+            # A new document is no document the plan holds, so its writes do
+            # not carry the version of the one it does (core/plan.py
+            # `holding`): claimed for the new one they would all be refused.
+            held, client.strict_mode_document_id = client.strict_mode_document_id, None
+            try:
+                create_document(client, project, op['name'], op['text'], op.get('metadata') or {})
+            finally:
+                client.strict_mode_document_id = held
     result = dict(counts)
     if notes:
         result['notes'] = notes

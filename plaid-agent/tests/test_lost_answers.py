@@ -159,3 +159,19 @@ def test_a_plan_over_one_document_writes_at_the_version_it_had_once_held(spec):
     writes = [kind for kind, _ in client.writes]
     assert writes and client.stamps == [(kind, spec['did'], version) for kind in writes]
     assert client.strict_mode_document_id is None
+
+
+def test_a_new_document_is_written_without_the_held_documents_version():
+    """A plan that edits one document and creates another holds the one, in
+    strict mode. The new document's writes claimed the held one's version
+    and would all have been refused."""
+    from fixtures import FakeClient as IgtClient
+    from plaid_agent.igt.plan import execute_plan
+    from plaid_agent.igt.project import load_project
+    c = IgtClient()
+    project = load_project(c, 'p1')
+    ops = [{'kind': 'set_doc_metadata', 'document_id': 'd1', 'field': 'Date', 'value': '', 'label': ''},
+           {'kind': 'create_document', 'name': 'Text 2', 'text': 'Gam-ar.\n', 'metadata': {}, 'label': ''}]
+    with core_plan.holding(c, ['d1']):
+        execute_plan(c, ops, source='s', label='l', project=project)
+    assert [kind for kind, _, _ in c.stamps] == ['documents.patch_metadata']
