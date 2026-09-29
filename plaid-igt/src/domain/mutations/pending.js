@@ -84,6 +84,57 @@ export const pendingMutations = {
     creates.forEach((c) => layer.tokens.push({ ...c, text: textId }));
   },
 
+  /**
+   * Queue the planned morphemes on batch `b`, for the writes after them in
+   * the same batch that point at them, so the morphemes and what hangs off
+   * them land together or not at all. Answers `tokenRef(id)`, what a later
+   * write names a token by (the batch's stand-in for a planned morpheme's id,
+   * else the id as the server knows it, `serverId`), and `read(results, ids)`,
+   * which records the server's ids for the planned ones from the batch's
+   * results.
+   */
+  _queueMorphemes(b, creates, serverId = settledId) {
+    const refs = new Map();
+    const at = new Map();
+    if (creates.length) {
+      const info = this.layerInfo;
+      const layerId = info.morphemeTokenLayer.id;
+      const textId = info.primaryTextLayer.text.id;
+      const metadataOf = (c) => (Object.keys(c.metadata || {}).length ? c.metadata : undefined);
+      if (creates.length === 1) {
+        const [c] = creates;
+        b.tokens.create(layerId, textId, c.begin, c.end, c.precedence, metadataOf(c));
+        const ref = b.ref();
+        refs.set(c.id, ref);
+        at.set(c.id, [ref.$ref, null]);
+      } else {
+        b.tokens.bulkCreate(
+          creates.map((c) => ({
+            tokenLayerId: layerId,
+            text: textId,
+            begin: c.begin,
+            end: c.end,
+            precedence: c.precedence,
+            ...(metadataOf(c) ? { metadata: c.metadata } : {}),
+          })),
+        );
+        creates.forEach((c, k) => {
+          const ref = b.ref(-1, k);
+          refs.set(c.id, ref);
+          at.set(c.id, [ref.$ref, k]);
+        });
+      }
+    }
+    return {
+      tokenRef: (id) => refs.get(id) ?? serverId(id),
+      read: (results, ids) => {
+        for (const [id, [n, k]] of at) {
+          ids.set(id, k == null ? createdId(results[n]) : createdIds(results[n])[k]);
+        }
+      },
+    };
+  },
+
   // Make the planned morphemes on the server in one request (a bulk create
   // for several), recording each one's id in `ids`. Must run before any batch
   // that points at them: a create's id is only readable outside one.

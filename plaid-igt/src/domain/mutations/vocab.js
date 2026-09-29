@@ -17,8 +17,6 @@ import {
 import { isValidMorphType } from '../affixMarkers.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { lexiconView } from '../vocabDictionary.js';
-import { forgetLeftover, leftoverFor, rememberLeftover } from '../leftoverEntries.js';
-import { canManageVocabulary } from '@ui/domain/permissions.js';
 
 // Not the shared CHUNK (domain/bulk.js): this writes through an ATOMIC BATCH
 // rather than a bulk endpoint, and a link replacement emits 2 ops apiece
@@ -276,32 +274,29 @@ export const vocabMutations = {
       }
     });
 
+    // One batch: the morpheme an unanalyzed word needs, the link that
+    // replaces its old one, and the type cache land together or not at all.
     return this._queueWrite(label, async () => {
       const ids = new Map();
-      const serverId = (id) => ids.get(id) || settledId(id);
-      await this._sendMorphemes(creates, ids);
-      const token = serverId(targetTokenId);
-      if (priorLink || patchType) {
-        // Indexed, not `results.at(-1)`: the cache patch rides at the end, so
-        // the create is not the last op.
-        const createAt = priorLink ? 1 : 0;
-        const results = await this._client.batched(async (b) => {
-          if (priorLink) b.vocabLinks.delete(settledId(priorLink.id));
-          b.vocabLinks.create(settledId(vocabItemId), [token], stamp || undefined);
-          if (patchType) {
-            b.tokens.patchMetadata(token, [{ op: 'set', path: ['morphType'], value: cachedType }]);
-          }
-        });
-        ids.set(linkId, createdId(results[createAt]));
-      } else {
-        const result = await this._client.vocabLinks.create(
+      let morphemes;
+      let linkAt;
+      const results = await this._client.batched(async (b) => {
+        morphemes = this._queueMorphemes(b, creates);
+        if (priorLink) b.vocabLinks.delete(settledId(priorLink.id));
+        b.vocabLinks.create(
           settledId(vocabItemId),
-          [token],
+          [morphemes.tokenRef(targetTokenId)],
           stamp || undefined,
         );
-        ids.set(linkId, createdId(result));
-      }
-      forgetLeftover(settledId(vocabItemId));
+        linkAt = b.ref().$ref;
+        if (patchType) {
+          b.tokens.patchMetadata(settledId(targetTokenId), [
+            { op: 'set', path: ['morphType'], value: cachedType },
+          ]);
+        }
+      });
+      morphemes.read(results, ids);
+      ids.set(linkId, createdId(results[linkAt]));
       this._settle(ids);
     });
   },
@@ -327,8 +322,14 @@ export const vocabMutations = {
     this._applyRawPatch((next, info, vocabs) => this._showLinkMany(info, vocabs, plan));
     return this._queueWrite(label, async () => {
       const ids = new Map();
-      await this._sendMorphemes(plan.creates, ids);
-      await this._sendLinkMany(plan, ids);
+      let morphemes;
+      let readLinks;
+      const results = await this._client.batched(async (b) => {
+        morphemes = this._queueMorphemes(b, plan.creates);
+        readLinks = this._queueLinkMany(b, plan, settledId(plan.item.id), morphemes.tokenRef);
+      });
+      morphemes.read(results, ids);
+      readLinks(results, ids);
       this._settle(ids);
     });
   },
@@ -390,33 +391,34 @@ export const vocabMutations = {
     }
   },
 
-  // One bulk create for the links and one bulk update for the caches: two ops
-  // however many tokens were selected. The create goes FIRST so its ids are
-  // always results[0], and they come back in the order they were sent.
-  async _sendLinkMany(plan, ids) {
-    if (!plan.links.length) return;
-    const serverId = (id) => ids.get(id) || settledId(id);
-    const itemId = serverId(plan.item.id);
-    const results = await this._client.batched(async (b) => {
-      b.vocabLinks.bulkCreate(
-        plan.links.map((l) => ({
-          vocabItem: itemId,
-          tokens: [serverId(l.token)],
-          ...(plan.stamp ? { metadata: plan.stamp } : {}),
+  // Queue the links on batch `b`: one bulk create for the links and one bulk
+  // update for the caches, two ops however many tokens were selected.
+  // `itemRef` and `tokenRef(id)` are what the ops name the entry and a token
+  // by, an id or the batch's stand-in for one an earlier op in it makes.
+  // Answers `read(results, ids)`, which records the links' new ids; the
+  // links come back in the order they were sent.
+  _queueLinkMany(b, plan, itemRef, tokenRef) {
+    if (!plan.links.length) return () => {};
+    b.vocabLinks.bulkCreate(
+      plan.links.map((l) => ({
+        vocabItem: itemRef,
+        tokens: [tokenRef(l.token)],
+        ...(plan.stamp ? { metadata: plan.stamp } : {}),
+      })),
+    );
+    const at = b.ref().$ref;
+    if (plan.cacheIds.length) {
+      b.tokens.bulkUpdate(
+        plan.cacheIds.map((id) => ({
+          id: tokenRef(id),
+          metadata: [{ op: 'set', path: ['morphType'], value: plan.cachedType }],
         })),
       );
-      if (plan.cacheIds.length) {
-        b.tokens.bulkUpdate(
-          plan.cacheIds.map((id) => ({
-            id: serverId(id),
-            metadata: [{ op: 'set', path: ['morphType'], value: plan.cachedType }],
-          })),
-        );
-      }
-    });
-    const newIds = createdIds(results[0]);
-    plan.links.forEach((l, i) => ids.set(l.id, newIds[i]));
-    forgetLeftover(itemId);
+    }
+    return (results, ids) => {
+      const newIds = createdIds(results[at]);
+      plan.links.forEach((l, i) => ids.set(l.id, newIds[i]));
+    };
   },
 
   // Remove the single-token vocab link for `tokenId`, if any.
@@ -555,17 +557,16 @@ export const vocabMutations = {
         tokens.map(settledId),
         stamp || undefined,
       );
-      forgetLeftover(settledId(vocabItemId));
       this._settle(new Map([[linkId, createdId(result)]]));
     });
   },
 
   // Create a new entry (its morph type in `metadata`, phrase or discontiguous
-  // phrase) and link it to the words. The item is created outside the link
-  // call so the link can reference its id. `replaceLinkId` names an existing
-  // MWE link over these words to retire in the same batch (the popover's
-  // "+ Create" on an already-linked expression). A retry after a refused
-  // link links the entry the first try made (leftoverEntries.js).
+  // phrase) and link it to the words, in one batch: the link names the entry
+  // by the batch's stand-in for its id, so a refused link leaves no entry
+  // behind. `replaceLinkId` names an existing MWE link over these words to
+  // retire in the same batch (the popover's "+ Create" on an already-linked
+  // expression).
   async createAndLinkMwe(tokenIds, vocabId, form, metadata = {}, replaceLinkId = null) {
     if (!this._vocabularies[vocabId]) {
       this.setError('Vocabulary not found');
@@ -577,10 +578,7 @@ export const vocabMutations = {
     if (!this._canWrite(label)) return false;
     const metadataArg = Object.keys(metadata || {}).length > 0 ? metadata : undefined;
     const stamp = this.createStamp || undefined;
-    const leftover = leftoverFor(this._vocabularies, vocabId, form, metadata);
-    const newItem = leftover
-      ? { id: leftover.id, form: leftover.form, metadata: leftover.metadata || {} }
-      : { id: pendingId(), form, metadata: metadata || {} };
+    const newItem = { id: pendingId(), form, metadata: metadata || {} };
     const linkId = pendingId();
     this._applyRawPatch((next, info, vocabs) => {
       if (replaceLinkId) {
@@ -592,7 +590,7 @@ export const vocabMutations = {
       const tv = vocabs[vocabId];
       if (!tv) return;
       if (!Array.isArray(tv.items)) tv.items = [];
-      if (!leftover) tv.items.push({ ...newItem });
+      tv.items.push({ ...newItem });
       if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
       tv.vocabLinks.push({
         id: linkId,
@@ -602,31 +600,20 @@ export const vocabMutations = {
       });
     });
     return this._queueWrite(label, async () => {
-      const ids = new Map();
-      let itemId = leftover?.id;
-      if (!leftover) {
-        itemId = createdId(await this._client.vocabItems.create(vocabId, form, metadataArg));
-        ids.set(newItem.id, itemId);
-        rememberLeftover(vocabId, form, metadata, itemId);
-      }
-      const members = tokens.map(settledId);
-      try {
-        if (replaceLinkId) {
-          const results = await this._client.batched(async (b) => {
-            b.vocabLinks.delete(settledId(replaceLinkId));
-            b.vocabLinks.create(itemId, members, stamp);
-          });
-          ids.set(linkId, createdId(results[results.length - 1]));
-        } else {
-          const linkResult = await this._client.vocabLinks.create(itemId, members, stamp);
-          ids.set(linkId, createdId(linkResult));
-        }
-      } catch (err) {
-        if (!leftover) await this._takeBackLeftover(vocabId, itemId);
-        throw err;
-      }
-      forgetLeftover(itemId);
-      this._settle(ids);
+      let itemAt;
+      const results = await this._client.batched(async (b) => {
+        b.vocabItems.create(vocabId, form, metadataArg);
+        const itemRef = b.ref();
+        itemAt = itemRef.$ref;
+        if (replaceLinkId) b.vocabLinks.delete(settledId(replaceLinkId));
+        b.vocabLinks.create(itemRef, tokens.map(settledId), stamp);
+      });
+      this._settle(
+        new Map([
+          [newItem.id, createdId(results[itemAt])],
+          [linkId, createdId(results[results.length - 1])],
+        ]),
+      );
     });
   },
 
@@ -670,7 +657,6 @@ export const vocabMutations = {
         b.vocabLinks.delete(settledId(prior.id));
         b.vocabLinks.create(settledId(vocabItemId), tokens.map(settledId), stamp);
       });
-      forgetLeftover(settledId(vocabItemId));
       this._settle(new Map([[newLinkId, createdId(results[results.length - 1])]]));
     });
   },
@@ -828,12 +814,7 @@ export const vocabMutations = {
     const cachedType = isMorpheme ? newType : null;
     if (cachedType) creates.forEach((c) => (c.metadata = { ...c.metadata, morphType: cachedType }));
     const patchType = cachedType && !creates.length;
-    // A retry after a refused link links the entry the first try made,
-    // rather than a second one spelled the same (leftoverEntries.js).
-    const leftover = leftoverFor(this._vocabularies, vocabId, form, metadata);
-    const newItem = leftover
-      ? { id: leftover.id, form: leftover.form, metadata: leftover.metadata || {} }
-      : { id: pendingId(), form, metadata: metadata || {} };
+    const newItem = { id: pendingId(), form, metadata: metadata || {} };
     const linkId = pendingId();
     // "Create and link every ‹roa› in this text": the others that read the
     // same and have no link, in the same operation as the create.
@@ -854,7 +835,7 @@ export const vocabMutations = {
       const tv = vocabs[vocabId];
       if (tv) {
         if (!Array.isArray(tv.items)) tv.items = [];
-        if (!leftover) tv.items.push({ ...newItem });
+        tv.items.push({ ...newItem });
         if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
         tv.vocabLinks.push({
           id: linkId,
@@ -870,56 +851,35 @@ export const vocabMutations = {
       this._showLinkMany(info, vocabs, others);
     });
 
+    // One batch: the morphemes unanalyzed words need, the entry, and every
+    // link to it name one another by the batch's stand-ins for their ids, so
+    // a refused link leaves no entry behind.
     return this._queueWrite(label, async () => {
       const ids = new Map();
-      const serverId = (id) => ids.get(id) || settledId(id);
-      await this._sendMorphemes([...creates, ...others.creates], ids);
-      let newItemId = leftover?.id;
-      if (!leftover) {
-        newItemId = createdId(await this._client.vocabItems.create(vocabId, form, metadataArg));
-        ids.set(newItem.id, newItemId);
-        rememberLeftover(vocabId, form, metadata, newItemId);
-      }
-      try {
-        const token = serverId(targetTokenId);
-        if (priorLink || patchType) {
-          const createAt = priorLink ? 1 : 0;
-          const results = await this._client.batched(async (b) => {
-            if (priorLink) b.vocabLinks.delete(settledId(priorLink.id));
-            b.vocabLinks.create(newItemId, [token], stamp);
-            if (patchType) {
-              b.tokens.patchMetadata(token, [
-                { op: 'set', path: ['morphType'], value: cachedType },
-              ]);
-            }
-          });
-          ids.set(linkId, createdId(results[createAt]));
-        } else {
-          const linkResult = await this._client.vocabLinks.create(newItemId, [token], stamp);
-          ids.set(linkId, createdId(linkResult));
+      let morphemes;
+      let readOthers;
+      let itemAt;
+      let linkAt;
+      const results = await this._client.batched(async (b) => {
+        morphemes = this._queueMorphemes(b, [...creates, ...others.creates]);
+        b.vocabItems.create(vocabId, form, metadataArg);
+        const itemRef = b.ref();
+        itemAt = itemRef.$ref;
+        if (priorLink) b.vocabLinks.delete(settledId(priorLink.id));
+        b.vocabLinks.create(itemRef, [morphemes.tokenRef(targetTokenId)], stamp);
+        linkAt = b.ref().$ref;
+        if (patchType) {
+          b.tokens.patchMetadata(settledId(targetTokenId), [
+            { op: 'set', path: ['morphType'], value: cachedType },
+          ]);
         }
-        await this._sendLinkMany(others, ids);
-      } catch (err) {
-        if (!leftover) await this._takeBackLeftover(vocabId, newItemId);
-        throw err;
-      }
-      forgetLeftover(newItemId);
+        readOthers = this._queueLinkMany(b, others, itemRef, morphemes.tokenRef);
+      });
+      morphemes.read(results, ids);
+      ids.set(newItem.id, createdId(results[itemAt]));
+      ids.set(linkId, createdId(results[linkAt]));
+      readOthers(results, ids);
       this._settle(ids);
     });
-  },
-
-  // A "+ Create" whose link was refused has left its new entry behind.
-  // Nothing but this edit can have reached it yet, so one who may delete
-  // entries (a maintainer of the vocabulary, or an admin) takes it back out.
-  // For anyone else, or when the delete fails too, it stays remembered and
-  // the retry links it (leftoverEntries.js).
-  async _takeBackLeftover(vocabId, itemId) {
-    if (!canManageVocabulary(this._vocabularies[vocabId], this._user)) return;
-    try {
-      await this._client.vocabItems.delete(itemId);
-      forgetLeftover(itemId);
-    } catch (e) {
-      console.error('Could not remove the entry a failed link left behind:', e);
-    }
   },
 };

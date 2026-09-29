@@ -1,59 +1,49 @@
-// "+ Create" makes an entry, then links the words to it. When the link is
-// refused, a maintainer's new entry is deleted again. A project writer who
-// does not maintain the vocabulary may not delete it, and a delete can fail
-// too: then the entry stays, and the retry links to it instead of making a
-// second one spelled the same.
+// "+ Create" makes an entry and links the words to it in one batch: the link
+// names the entry by the batch's stand-in for its id ({ $ref }), so a refused
+// link leaves no entry behind, and pressing "+ Create" again makes exactly one.
+// The same holds for the morpheme an unanalyzed word needs before anything can
+// point at it.
 import { describe, it, expect, beforeEach } from 'vitest';
 import { IgtDocument } from './IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
-import { forgetAllLeftovers, leftoverFor, rememberLeftover } from './leftoverEntries.js';
 
 const WRITER = { id: 'wren@example.com' };
-const MAINTAINER = { id: 'mara@example.com' };
-const MAINTAINERS = [MAINTAINER.id];
 
-// A fake core that keeps the entries it made, so the reload after a refused
-// link reads them back. It refuses the next `failNext` link writes, an entry
-// delete by `user` when they do not maintain the vocabulary, as core does,
-// and any delete when `deleteFails` is set.
-const server = (user = WRITER) => {
+// A fake core that applies a batch whole or not at all: it refuses the next
+// `failNext` batches with a 409, and keeps the entries a batch that lands made,
+// so the reload after a refusal reads back exactly what was stored.
+const server = () => {
   const client = makeFakeClient();
   const items = [{ id: 'vi-1', form: 'CAT', metadata: {} }];
-  const state = { failNext: 0, deleteFails: false };
-  const create = client.vocabItems.create;
-  client.vocabItems.create = (vocabId, form, metadata) => {
-    const res = create(vocabId, form, metadata);
-    items.push({ id: res.id, form, metadata: metadata || {} });
-    return res;
-  };
-  client.vocabItems.delete = (id) => {
-    client.calls.push({ kind: 'vocabItems.delete', args: [id] });
-    if (!MAINTAINERS.includes(user.id))
-      throw Object.assign(new Error('Forbidden'), { status: 403 });
-    if (state.deleteFails) throw new TypeError('Failed to fetch');
-    items.splice(
-      items.findIndex((i) => i.id === id),
-      1,
-    );
-    return {};
-  };
-  const refuse = (fn) => {
+  const state = { failNext: 0 };
+  const batched = client.batched.bind(client);
+  client.batched = async (fn) => {
+    const made = [];
+    const results = await batched(async (b) => {
+      const create = b.vocabItems.create;
+      b.vocabItems = {
+        ...b.vocabItems,
+        create: (vocabId, form, metadata) => {
+          made.push({ at: b.operations.length, form, metadata });
+          return create(vocabId, form, metadata);
+        },
+      };
+      await fn(b);
+    });
     if (state.failNext > 0) {
       state.failNext -= 1;
       throw Object.assign(new Error('Conflict'), { status: 409 });
     }
-    return fn();
+    made.forEach((m) =>
+      items.push({ id: results[m.at].body.id, form: m.form, metadata: m.metadata || {} }),
+    );
+    return results;
   };
-  const linkCreate = client.vocabLinks.create;
-  client.vocabLinks.create = (...args) => refuse(() => linkCreate(...args));
-  const batched = client.batched.bind(client);
-  client.batched = (fn) => refuse(() => batched(fn));
-  // The project the document was opened with, as a refetch reads it again.
   client.projects.get = async () => PROJECT();
   client.vocabLayers.get = async (id) => ({
     id,
     name: 'Lexicon',
-    maintainers: MAINTAINERS,
+    maintainers: [],
     items: items.map((i) => ({ ...i })),
   });
   return { client, items, state };
@@ -61,273 +51,127 @@ const server = (user = WRITER) => {
 
 const PROJECT = () => ({ id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } });
 
-const makeDoc = (client, user = WRITER) =>
+const makeDoc = (client, raw = buildRawDoc()) =>
   new IgtDocument({
-    raw: buildRawDoc(),
+    raw,
     project: PROJECT(),
     vocabularies: {
       v1: {
         id: 'v1',
         name: 'Lexicon',
-        maintainers: MAINTAINERS,
+        maintainers: [],
         items: [{ id: 'vi-1', form: 'CAT', metadata: {} }],
         vocabLinks: [],
       },
     },
     client,
     projectId: 'proj-1',
-    user,
+    user: WRITER,
   });
 
-const count = (client, kind) => client.calls.filter((c) => c.kind === kind).length;
+const calls = (client, kind) => client.calls.filter((c) => c.kind === kind);
 const forms = (doc, form) => doc.vocabularies.v1.items.filter((i) => i.form === form);
 const word = (doc, i) => doc.sentences[0].tokens[i];
 
-beforeEach(() => {
-  resetIds();
-  forgetAllLeftovers();
-});
+beforeEach(() => resetIds());
 
-describe('a retried "+ Create" after a refused link', () => {
-  it('links the word to the entry the first try made', async () => {
+describe('"+ Create"', () => {
+  it('sends the entry and its link in one batch, the link naming the entry by reference', async () => {
+    const { client } = server();
+    const doc = makeDoc(client);
+    expect(await doc.createAndLinkVocabItem('m-1', 'v1', 'kai')).toBe(true);
+
+    expect(calls(client, 'batch.submit')).toHaveLength(1);
+    const [link] = calls(client, 'vocabLinks.create');
+    expect(link.args[0]).toEqual({ $ref: 0 });
+    expect(link.args[1]).toEqual(['m-1']);
+    // Both carry the server's ids once it answers.
+    const kai = forms(doc, 'kai')[0];
+    expect(kai.id.startsWith('vitem')).toBe(true);
+    expect(word(doc, 0).morphemes[0].vocabItem?.id).toBe(kai.id);
+  });
+
+  it('refused, leaves no entry behind, and pressed again makes exactly one', async () => {
     const { client, items, state } = server();
     const doc = makeDoc(client);
     state.failNext = 1;
-    expect(await doc.createAndLinkVocabItem('w-1', 'v1', 'kai')).toBe(false);
-    expect(items.filter((i) => i.form === 'kai')).toHaveLength(1);
-    expect(forms(doc, 'kai')).toHaveLength(1);
-    expect(word(doc, 0).vocabItem).toBeFalsy();
-
-    expect(await doc.createAndLinkVocabItem('w-1', 'v1', 'kai')).toBe(true);
-    expect(count(client, 'vocabItems.create')).toBe(1);
-    expect(count(client, 'vocabItems.delete')).toBe(0);
-    expect(items.filter((i) => i.form === 'kai')).toHaveLength(1);
-    const kai = items.find((i) => i.form === 'kai').id;
-    expect(forms(doc, 'kai').map((i) => i.id)).toEqual([kai]);
-    expect(word(doc, 0).vocabItem?.id).toBe(kai);
-    const link = client.calls.filter((c) => c.kind === 'vocabLinks.create').at(-1);
-    expect(link.args[0]).toBe(kai);
-  });
-
-  it('shows the retry on the entry at once, with no second entry', async () => {
-    const { client, state } = server();
-    const doc = makeDoc(client);
-    state.failNext = 1;
-    await doc.createAndLinkVocabItem('w-1', 'v1', 'kai');
-    const kai = forms(doc, 'kai')[0].id;
-    const retry = doc.createAndLinkVocabItem('w-1', 'v1', 'kai');
-    expect(forms(doc, 'kai').map((i) => i.id)).toEqual([kai]);
-    expect(word(doc, 0).vocabItem?.id).toBe(kai);
-    expect(await retry).toBe(true);
-  });
-
-  it('links the other words read the same to that entry too', async () => {
-    const { client, items, state } = server();
-    const doc = makeDoc(client);
-    state.failNext = 1;
-    await doc.createAndLinkVocabItem('w-1', 'v1', 'the', {}, { alsoLink: ['w-2'] });
-    expect(await doc.createAndLinkVocabItem('w-1', 'v1', 'the', {}, { alsoLink: ['w-2'] })).toBe(
-      true,
-    );
-    expect(items.filter((i) => i.form === 'the')).toHaveLength(1);
-    const the = items.find((i) => i.form === 'the').id;
-    expect(word(doc, 0).vocabItem?.id).toBe(the);
-    expect(word(doc, 1).vocabItem?.id).toBe(the);
-  });
-
-  it('keeps the entry for a second retry when the first retry fails too', async () => {
-    const { client, items, state } = server();
-    const doc = makeDoc(client);
-    state.failNext = 2;
-    expect(await doc.createAndLinkVocabItem('w-1', 'v1', 'kai')).toBe(false);
-    expect(await doc.createAndLinkVocabItem('w-1', 'v1', 'kai')).toBe(false);
-    expect(await doc.createAndLinkVocabItem('w-1', 'v1', 'kai')).toBe(true);
-    expect(items.filter((i) => i.form === 'kai')).toHaveLength(1);
-  });
-
-  it('makes a new entry for another form', async () => {
-    const { client, items, state } = server();
-    const doc = makeDoc(client);
-    state.failNext = 1;
-    await doc.createAndLinkVocabItem('w-1', 'v1', 'kai');
-    expect(await doc.createAndLinkVocabItem('w-1', 'v1', 'kaa')).toBe(true);
-    expect(items.map((i) => i.form)).toEqual(['CAT', 'kai', 'kaa']);
-  });
-
-  it('makes a new entry once the first one has been linked by picking it', async () => {
-    const { client, items, state } = server();
-    const doc = makeDoc(client);
-    state.failNext = 1;
-    await doc.createAndLinkVocabItem('w-1', 'v1', 'kai');
-    const kai = forms(doc, 'kai')[0].id;
-    expect(await doc.linkVocab('w-1', kai)).toBe(true);
-    expect(await doc.createAndLinkVocabItem('w-2', 'v1', 'kai')).toBe(true);
-    expect(items.filter((i) => i.form === 'kai')).toHaveLength(2);
-  });
-
-  it('makes a new entry once the retry has landed', async () => {
-    const { client, items, state } = server();
-    const doc = makeDoc(client);
-    state.failNext = 1;
-    await doc.createAndLinkVocabItem('w-1', 'v1', 'kai');
-    await doc.createAndLinkVocabItem('w-1', 'v1', 'kai');
-    expect(await doc.createAndLinkVocabItem('w-2', 'v1', 'kai')).toBe(true);
-    expect(items.filter((i) => i.form === 'kai')).toHaveLength(2);
-  });
-
-  it('makes a new entry when the first one was renamed since', async () => {
-    const { client, items, state } = server();
-    const doc = makeDoc(client);
-    state.failNext = 1;
-    await doc.createAndLinkVocabItem('w-1', 'v1', 'kai');
-    items.find((i) => i.form === 'kai').form = 'kaj';
-    await doc.reload();
-    expect(await doc.createAndLinkVocabItem('w-1', 'v1', 'kai')).toBe(true);
-    expect(items.map((i) => i.form)).toEqual(['CAT', 'kaj', 'kai']);
-  });
-});
-
-describe('a retried "+ Create" of a multi-word expression', () => {
-  it('links the words to the entry the first try made', async () => {
-    const { client, items, state } = server();
-    const doc = makeDoc(client);
-    state.failNext = 1;
-    const meta = { morphType: 'phrase' };
-    expect(await doc.createAndLinkMwe(['w-1', 'w-2'], 'v1', 'the cat', meta)).toBe(false);
-    expect(await doc.createAndLinkMwe(['w-1', 'w-2'], 'v1', 'the cat', meta)).toBe(true);
-    expect(count(client, 'vocabItems.create')).toBe(1);
-    const phrase = items.filter((i) => i.form === 'the cat');
-    expect(phrase).toHaveLength(1);
-    expect(forms(doc, 'the cat').map((i) => i.id)).toEqual([phrase[0].id]);
-    expect(doc.sentences[0].mwes.map((m) => m.item.id)).toEqual([phrase[0].id]);
-  });
-
-  it('makes a new entry for a word that asks for the same form', async () => {
-    const { client, items, state } = server();
-    const doc = makeDoc(client);
-    state.failNext = 1;
-    await doc.createAndLinkMwe(['w-1', 'w-2'], 'v1', 'the cat', { morphType: 'phrase' });
-    expect(await doc.createAndLinkVocabItem('w-1', 'v1', 'the cat')).toBe(true);
-    expect(items.filter((i) => i.form === 'the cat')).toHaveLength(2);
-  });
-});
-
-describe('a refused "+ Create" by a maintainer of the vocabulary', () => {
-  it('deletes the new entry, and the retry makes it again', async () => {
-    const { client, items, state } = server(MAINTAINER);
-    const doc = makeDoc(client, MAINTAINER);
-    state.failNext = 1;
-    expect(await doc.createAndLinkVocabItem('w-1', 'v1', 'kai')).toBe(false);
-    expect(count(client, 'vocabItems.delete')).toBe(1);
+    expect(await doc.createAndLinkVocabItem('m-1', 'v1', 'kai')).toBe(false);
     expect(items.filter((i) => i.form === 'kai')).toHaveLength(0);
     expect(forms(doc, 'kai')).toHaveLength(0);
-    expect(await doc.createAndLinkVocabItem('w-1', 'v1', 'kai')).toBe(true);
-    const kai = items.filter((i) => i.form === 'kai');
-    expect(kai).toHaveLength(1);
-    expect(word(doc, 0).vocabItem?.id).toBe(kai[0].id);
-  });
+    expect(calls(client, 'vocabItems.delete')).toHaveLength(0);
 
-  it('links the retry to the entry when the delete failed too', async () => {
-    const { client, items, state } = server(MAINTAINER);
-    const doc = makeDoc(client, MAINTAINER);
-    state.failNext = 1;
-    state.deleteFails = true;
-    expect(await doc.createAndLinkVocabItem('w-1', 'v1', 'kai')).toBe(false);
-    expect(await doc.createAndLinkVocabItem('w-1', 'v1', 'kai')).toBe(true);
-    const kai = items.filter((i) => i.form === 'kai');
-    expect(kai).toHaveLength(1);
-    expect(word(doc, 0).vocabItem?.id).toBe(kai[0].id);
-    expect(count(client, 'vocabItems.delete')).toBe(1);
-  });
-
-  it('deletes a new multi-word expression entry too', async () => {
-    const { client, items, state } = server(MAINTAINER);
-    const doc = makeDoc(client, MAINTAINER);
-    state.failNext = 1;
-    const meta = { morphType: 'phrase' };
-    expect(await doc.createAndLinkMwe(['w-1', 'w-2'], 'v1', 'the cat', meta)).toBe(false);
-    expect(items.filter((i) => i.form === 'the cat')).toHaveLength(0);
-    expect(await doc.createAndLinkMwe(['w-1', 'w-2'], 'v1', 'the cat', meta)).toBe(true);
-    expect(items.filter((i) => i.form === 'the cat')).toHaveLength(1);
-  });
-
-  it('never deletes an entry the retry reused', async () => {
-    const { client, items, state } = server(MAINTAINER);
-    const doc = makeDoc(client, MAINTAINER);
-    state.failNext = 2;
-    state.deleteFails = true;
-    await doc.createAndLinkVocabItem('w-1', 'v1', 'kai');
-    state.deleteFails = false;
-    expect(await doc.createAndLinkVocabItem('w-1', 'v1', 'kai')).toBe(false);
-    expect(count(client, 'vocabItems.delete')).toBe(1);
+    expect(await doc.createAndLinkVocabItem('m-1', 'v1', 'kai')).toBe(true);
     expect(items.filter((i) => i.form === 'kai')).toHaveLength(1);
+    expect(forms(doc, 'kai')).toHaveLength(1);
+  });
+
+  it('on a word nobody has analyzed makes its morpheme in the same batch', async () => {
+    const { client } = server();
+    const doc = makeDoc(client, buildRawDoc({ morphemes: [] }));
+    expect(await doc.createAndLinkVocabItem('virtual:w-1', 'v1', 'kai')).toBe(true);
+
+    expect(calls(client, 'batch.submit')).toHaveLength(1);
+    const order = client.calls.map((c) => c.kind).filter((k) => k !== 'beginOperation');
+    expect(order.slice(0, 4)).toEqual([
+      'tokens.create',
+      'vocabItems.create',
+      'vocabLinks.create',
+      'batch.submit',
+    ]);
+    const [link] = calls(client, 'vocabLinks.create');
+    expect(link.args[0]).toEqual({ $ref: 1 });
+    expect(link.args[1]).toEqual([{ $ref: 0 }]);
+    const m = word(doc, 0).morphemes[0];
+    expect(m.virtual).toBeUndefined();
+    expect(m.id.startsWith('tok')).toBe(true);
+    expect(m.vocabItem?.form).toBe('kai');
+  });
+
+  it('for a multi-word expression sends the entry and its link in one batch', async () => {
+    const { client } = server();
+    const doc = makeDoc(client);
+    expect(
+      await doc.createAndLinkMwe(['w-1', 'w-2'], 'v1', 'the cat', { morphType: 'phrase' }),
+    ).toBe(true);
+    expect(calls(client, 'batch.submit')).toHaveLength(1);
+    const [link] = calls(client, 'vocabLinks.create');
+    expect(link.args[0]).toEqual({ $ref: 0 });
+    expect(link.args[1]).toEqual(['w-1', 'w-2']);
   });
 });
 
-// A word of the document linked to the leftover, however the link got there,
-// makes it an entry in use: "+ Create" then makes a new one, as the popover's
-// Create row says ("already exists. This adds a separate entry").
-describe('a leftover entry that a word has been linked to since', () => {
-  // The fake core keeps the links that landed, and a refetch reads them back.
-  const keepLinks = (client, items) => {
-    const links = [];
-    const create = client.vocabLinks.create;
-    client.vocabLinks.create = (itemId, tokens, ...rest) => {
-      const res = create(itemId, tokens, ...rest);
-      const item = items.find((i) => i.id === itemId);
-      links.push({ id: res.id, tokens, vocabItem: { id: itemId, form: item?.form } });
-      return res;
-    };
-    client.documents.get = async () =>
-      buildRawDoc({ wordVocabs: [{ id: 'v1', vocabLinks: links }] });
-    return links;
-  };
-
-  it("makes a new entry once a colleague's link to it is read back", async () => {
-    const { client, items, state } = server();
-    const links = keepLinks(client, items);
-    const doc = makeDoc(client);
-    state.failNext = 1;
-    expect(await doc.createAndLinkVocabItem('w-1', 'v1', 'kai')).toBe(false);
-    const first = items.find((i) => i.form === 'kai').id;
-    links.push({ id: 'lk-colleague', tokens: ['w-2'], vocabItem: { id: first, form: 'kai' } });
-    await doc.reload();
-    expect(word(doc, 1).vocabItem?.id).toBe(first);
-
-    expect(await doc.createAndLinkVocabItem('w-1', 'v1', 'kai')).toBe(true);
-    const kai = items.filter((i) => i.form === 'kai');
-    expect(kai).toHaveLength(2);
-    expect(word(doc, 0).vocabItem?.id).toBe(kai[1].id);
-    expect(word(doc, 1).vocabItem?.id).toBe(first);
+describe('linking an existing entry to a word nobody has analyzed', () => {
+  it('makes the morpheme and the link in one batch', async () => {
+    const { client } = server();
+    const doc = makeDoc(client, buildRawDoc({ morphemes: [] }));
+    expect(await doc.linkVocab('virtual:w-1', 'vi-1')).toBe(true);
+    expect(calls(client, 'batch.submit')).toHaveLength(1);
+    const [link] = calls(client, 'vocabLinks.create');
+    expect(link.args).toEqual(['vi-1', [{ $ref: 0 }], undefined]);
+    expect(word(doc, 0).morphemes[0].vocabItem?.id).toBe('vi-1');
   });
 
-  it('makes a new entry once a link whose answer was lost turns out to have landed', async () => {
-    const { client, items } = server();
-    keepLinks(client, items);
-    const landed = client.vocabLinks.create;
-    let lose = 1;
-    client.vocabLinks.create = (...args) => {
-      const res = landed(...args);
-      if (lose-- > 0) throw new TypeError('Failed to fetch');
-      return res;
-    };
-    const doc = makeDoc(client);
-    expect(await doc.createAndLinkVocabItem('w-1', 'v1', 'kai')).toBe(false);
-    const first = items.find((i) => i.form === 'kai').id;
-    expect(word(doc, 0).vocabItem?.id).toBe(first);
-
-    expect(await doc.createAndLinkVocabItem('w-2', 'v1', 'kai')).toBe(true);
-    expect(items.filter((i) => i.form === 'kai')).toHaveLength(2);
-    expect(word(doc, 1).vocabItem?.id).not.toBe(first);
-  });
-
-  it('is not offered as the leftover while any link names it', () => {
-    rememberLeftover('v1', 'kai', {}, 'vi-kai');
-    const vocabs = (vocabLinks) => ({
-      v1: { id: 'v1', items: [{ id: 'vi-kai', form: 'kai', metadata: {} }], vocabLinks },
-    });
-    expect(leftoverFor(vocabs([]), 'v1', 'kai', {})?.id).toBe('vi-kai');
-    const mwe = { id: 'lk-1', tokens: ['w-1', 'w-2'], vocabItem: { id: 'vi-kai' } };
-    expect(leftoverFor(vocabs([mwe]), 'v1', 'kai', {})).toBeNull();
+  it('together with the others that read the same, in one batch', async () => {
+    const { client } = server();
+    const doc = makeDoc(
+      client,
+      buildRawDoc({
+        body: 'cat cat',
+        morphemes: [],
+        words: [
+          { id: 'w-1', begin: 0, end: 3 },
+          { id: 'w-2', begin: 4, end: 7 },
+        ],
+      }),
+    );
+    expect(await doc.linkVocabMany(['virtual:w-1', 'virtual:w-2'], 'vi-1')).toBe(true);
+    expect(calls(client, 'batch.submit')).toHaveLength(1);
+    const [bulk] = calls(client, 'vocabLinks.bulkCreate');
+    expect(bulk.args[0].map((l) => l.tokens)).toEqual([
+      [{ $ref: 0, index: 0 }],
+      [{ $ref: 0, index: 1 }],
+    ]);
+    expect(word(doc, 0).morphemes[0].vocabItem?.id).toBe('vi-1');
+    expect(word(doc, 1).morphemes[0].vocabItem?.id).toBe('vi-1');
   });
 });

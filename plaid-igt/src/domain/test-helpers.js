@@ -292,6 +292,14 @@ export function makeFakeClient(opts = {}) {
       b.client = client;
       b.operations = queue;
       b.open = true;
+      // The stand-in for the id an op queued earlier will create, as the
+      // real batch's `ref` builds it (op n counted from 0, or from the end
+      // when negative).
+      b.ref = (n = -1, index) => {
+        const at = n < 0 ? queue.length + n : n;
+        if (!(at >= 0 && at < queue.length)) throw new Error(`No operation ${n} queued`);
+        return index === undefined ? { $ref: at } : { $ref: at, index };
+      };
       b.submit = async () => {
         b.open = false;
         record('batch.submit', []);
