@@ -43,7 +43,12 @@ class FakeClock {
   };
 }
 
-const keeperOn = (clock, refresh, ttlMs = DOCUMENT_LOCK_TTL_MS, onLost = null) =>
+const keeperOn = (
+  clock,
+  refresh,
+  ttlMs = DOCUMENT_LOCK_TTL_MS,
+  onLost = null,
+) =>
   new LockKeeper(refresh, "d1", ttlMs, {
     clock: clock.now,
     sleep: clock.sleep,
@@ -351,20 +356,24 @@ test("the block renews and releases with the holder id the acquire named", async
       assert.equal(lock.lockId, "L1");
       await advance(30000);
     });
-    assert.deepEqual(
-      sent.filter((r) => isLock(r.url)).map((r) => [r.method, r.url]),
-      [
-        ["POST", "http://plaid.internal:8085/api/v1/documents/d1/lock"],
-        [
-          "POST",
-          "http://plaid.internal:8085/api/v1/documents/d1/lock?lock-id=L1",
-        ],
-        [
-          "DELETE",
-          "http://plaid.internal:8085/api/v1/documents/d1/lock?lock-id=L1",
-        ],
-      ],
+    const locks = sent
+      .filter((r) => isLock(r.url))
+      .map((r) => [r.method, r.url]);
+    assert.equal(locks[0][0], "POST");
+    assert.match(
+      locks[0][1],
+      /^http:\/\/plaid\.internal:8085\/api\/v1\/documents\/d1\/lock\?new-lock-id=[0-9a-f-]{36}$/,
     );
+    assert.deepEqual(locks.slice(1), [
+      [
+        "POST",
+        "http://plaid.internal:8085/api/v1/documents/d1/lock?lock-id=L1",
+      ],
+      [
+        "DELETE",
+        "http://plaid.internal:8085/api/v1/documents/d1/lock?lock-id=L1",
+      ],
+    ]);
   });
 });
 
@@ -390,7 +399,8 @@ test("a second block of the same user is refused and cannot release the first", 
     });
     globalThis.fetch = async (url, opts = {}) => {
       const method = opts.method || "GET";
-      const lockId = new URL(url).searchParams.get("lock-id");
+      const params = new URL(url).searchParams;
+      const lockId = params.get("lock-id") ?? params.get("new-lock-id");
       if (method === "POST") {
         if (holder !== null && holder !== lockId)
           return reply(423, { error: "Document is locked", "user-id": "me" });
@@ -423,4 +433,117 @@ test("a second block of the same user is refused and cannot release the first", 
     });
     assert.equal(holder, null);
   });
+});
+
+// An acquire whose answer was lost. plaid-core's per-holder rule behind a
+// network that loses the answers to the first `lose` acquires: the core took
+// the lock each time.
+function lostAnswerCore(lose) {
+  const core = { holder: null, acquires: [] };
+  const reply = (status, body) => ({
+    ok: status < 400,
+    status,
+    statusText: status === 423 ? "Locked" : "OK",
+    headers: {
+      get: (n) =>
+        String(n).toLowerCase() === "content-type" ? "application/json" : null,
+    },
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  });
+  core.fetch = async (url, opts = {}) => {
+    const method = opts.method || "GET";
+    const params = new URL(url).searchParams;
+    const lockId = params.get("lock-id") ?? params.get("new-lock-id");
+    if (method === "POST") {
+      if (core.holder !== null && core.holder !== lockId)
+        return reply(423, { error: "Document is locked", "user-id": "me" });
+      core.holder = lockId;
+      if (params.has("new-lock-id")) {
+        core.acquires.push(url);
+        if (core.acquires.length <= lose) throw new TypeError("fetch failed");
+      }
+      return reply(200, {
+        "lock-id": lockId,
+        "user-id": "me",
+        "expires-at": Date.now() + 60000,
+      });
+    }
+    if (method === "DELETE" && core.holder === lockId) core.holder = null;
+    return reply(200, {});
+  };
+  return core;
+}
+
+test("an acquire whose answer was lost is sent again under the same id", async () => {
+  const realFetch = globalThis.fetch;
+  try {
+    const core = lostAnswerCore(1);
+    globalThis.fetch = core.fetch;
+    const client = new PlaidClient("http://plaid.internal:8085", "tok");
+    await client.documents.locked(
+      "d1",
+      async (lock) => {
+        assert.equal(core.holder, lock.lockId);
+      },
+      { keepAlive: false, acquireRetryMs: 0 },
+    );
+    assert.equal(core.acquires.length, 2);
+    assert.equal(core.acquires[0], core.acquires[1]);
+    assert.equal(core.holder, null, "the block released it on the way out");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("an acquire never answered releases what it may hold", async () => {
+  const realFetch = globalThis.fetch;
+  try {
+    const core = lostAnswerCore(3);
+    globalThis.fetch = core.fetch;
+    const client = new PlaidClient("http://plaid.internal:8085", "tok");
+    let ran = false;
+    await assert.rejects(
+      client.documents.locked(
+        "d1",
+        async () => {
+          ran = true;
+        },
+        { keepAlive: false, acquireRetryMs: 0 },
+      ),
+      (e) => e.status === 0,
+    );
+    assert.equal(ran, false);
+    assert.equal(core.acquires.length, 3);
+    assert.equal(
+      core.holder,
+      null,
+      "the lock it took unseen is released, not left to expire",
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("the refusal names the holder and no document id", async () => {
+  const realFetch = globalThis.fetch;
+  try {
+    const core = lostAnswerCore(0);
+    core.holder = "someone-else";
+    globalThis.fetch = core.fetch;
+    const client = new PlaidClient("http://plaid.internal:8085", "tok");
+    await assert.rejects(
+      client.documents.locked(
+        "01a0ee8b-fe96-7000-9884-d5be54bc5a86",
+        async () => assert.fail("the block ran"),
+        { keepAlive: false },
+      ),
+      (e) =>
+        e.status === 423 &&
+        e.message ===
+          "This document is being edited by me. Try again once they're done.",
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });

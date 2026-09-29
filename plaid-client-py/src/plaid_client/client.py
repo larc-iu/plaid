@@ -1735,6 +1735,17 @@ class TokenLayersResource(_Resource):
                                            parent_token_layer_id=parent_token_layer_id), audit_message=audit_message)
 
 
+#: Tries a :meth:`DocumentsResource.locked` block makes at an acquire whose
+#: outcome is unknown, and the pause before the next, which grows by this much
+#: each time.
+LOCK_ACQUIRE_ATTEMPTS = 3
+LOCK_ACQUIRE_RETRY_S = 0.5
+
+# The HTTP status of a request that may or may not have reached the server: no
+# answer at all (0), or a proxy's 502 or 504.
+_UNKNOWN_OUTCOME_STATUSES = (0, 502, 504)
+
+
 class DocumentsResource(_Resource):
     def check_lock(self, document_id: str) -> Any:
         """Get information about a document lock.
@@ -1744,12 +1755,18 @@ class DocumentsResource(_Resource):
         """
         return self._request('GET', f'/api/v1/documents/{document_id}/lock')
 
-    def acquire_lock(self, document_id: str, audit_message=None) -> Any:
+    def acquire_lock(self, document_id: str, audit_message=None, new_lock_id=None) -> Any:
         """Acquire a document lock as a new holder.
 
         The answer's ``lock_id`` names the holder: :meth:`renew_lock` and
         :meth:`release_lock` take it. While the lock is held, a second acquire
         is refused with HTTP 423, whoever makes it, this user included.
+
+        ``new_lock_id`` names the holder from the client's side (a fresh UUID).
+        An acquire whose answer never arrived can then be sent again, which
+        answers 200 while that holder has the lock, or released. Without it
+        the server mints the id, and a lost answer leaves a lock nobody can
+        release until it expires.
 
         out_of_band: the lock is a signal, not project data (see the note at
         the top of http.py). Queued on a batch it would be taken only at
@@ -1759,8 +1776,11 @@ class DocumentsResource(_Resource):
 
         Args:
             document_id: The document ID
+            new_lock_id: Optional holder id this client minted
         """
         return self._request('POST', f'/api/v1/documents/{document_id}/lock',
+                             query_params=({'new-lock-id': new_lock_id}
+                                           if new_lock_id is not None else None),
                              audit_message=audit_message, out_of_band=True)
 
     def renew_lock(self, document_id: str, lock_id: str, audit_message=None) -> Any:
@@ -1794,6 +1814,40 @@ class DocumentsResource(_Resource):
         return self._request('DELETE', f'/api/v1/documents/{document_id}/lock',
                              query_params={'lock-id': lock_id},
                              audit_message=audit_message, out_of_band=True)
+
+    def _take_lock(self, document_id: str, lock_id: str) -> Any:
+        """The acquire of a :meth:`locked` block, under the holder id it minted.
+
+        An acquire whose outcome is unknown (no answer, a timeout, a 502 or a
+        504) may have taken the lock. It is sent again under the same id, which
+        the server answers 200 while that holder has it. When every attempt is
+        unknown, the lock it may hold is released on the way out, so it does
+        not stand in everyone's way until it expires.
+        """
+        for attempt in range(LOCK_ACQUIRE_ATTEMPTS):
+            try:
+                return self.acquire_lock(document_id, new_lock_id=lock_id)
+            except PlaidAPIError as e:
+                if e.status == 423:
+                    data = e.response_data or {}
+                    holder = data.get('user-id') or data.get('user_id') or 'another user'
+                    raise PlaidAPIError(
+                        f"This document is being edited by {holder}. "
+                        f"Try again once they're done.",
+                        status=423, url=e.url, method=e.method,
+                        response_data=e.response_data, status_text=e.status_text,
+                        original_error=e) from e
+                if e.status not in _UNKNOWN_OUTCOME_STATUSES:
+                    raise
+                if attempt + 1 < LOCK_ACQUIRE_ATTEMPTS:
+                    time.sleep(LOCK_ACQUIRE_RETRY_S * (attempt + 1))
+                    continue
+                try:
+                    self.release_lock(document_id, lock_id)
+                except Exception as release_err:
+                    logging.getLogger(__name__).warning(
+                        "Failed to release lock on document %s: %s", document_id, release_err)
+                raise
 
     @contextmanager
     def locked(self, document_id: str, *, keep_alive: bool = True):
@@ -1838,27 +1892,19 @@ class DocumentsResource(_Resource):
           block is its own holder, named by ``lock.lock_id``, and only that id
           renews or releases it. Writes carry no id: they pass for the user
           who holds the lock, and renew it server-side too.
+        - The block mints its holder id and sends it with the acquire, so an
+          acquire whose answer was lost is sent again (up to three tries) and,
+          if none is answered, released rather than left to expire.
         - NOT re-entrant: a nested ``locked(same_doc)`` block is a second
           holder and gets the 423. Lock at exactly one level per call path.
         - A lost lock is recorded on the CLIENT, like strict mode, so it stops
           every write the client makes (on any batch of it too) and not only
           the ones this block makes.
         """
-        try:
-            info = self.acquire_lock(document_id)
-        except PlaidAPIError as e:
-            if e.status == 423:
-                data = e.response_data or {}
-                holder = data.get('user-id') or data.get('user_id') or 'another user'
-                raise PlaidAPIError(
-                    f"Document {document_id} is locked by {holder} "
-                    f"(likely being edited); try again once they're done.",
-                    status=423, url=e.url, method=e.method,
-                    response_data=e.response_data, status_text=e.status_text,
-                    original_error=e) from e
-            raise
+        minted = str(uuid.uuid4())
+        info = self._take_lock(document_id, minted)
         client = self._client
-        lock_id = (info or {}).get('lock_id')
+        lock_id = (info or {}).get('lock_id') or minted
         keeper = None
         if keep_alive:
             ttl_s = lock_ttl_s((info or {}).get('expires_at'), time.time())

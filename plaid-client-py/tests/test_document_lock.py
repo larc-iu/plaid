@@ -228,8 +228,9 @@ def test_a_block_renews_while_it_runs_and_stops_renewing_on_the_way_out(monkeypa
     keeper = _ManualKeeper.made[0]
     assert keeper.stopped is True
     assert keeper.document_id == 'd1'
-    assert sent == [('POST', 'http://plaid.internal:8085/api/v1/documents/d1/lock'),
-                    ('DELETE', 'http://plaid.internal:8085/api/v1/documents/d1/lock?lock-id=L1')]
+    assert len(sent) == 2
+    assert _is_acquire_with_minted_id(sent[0])
+    assert sent[1] == ('DELETE', 'http://plaid.internal:8085/api/v1/documents/d1/lock?lock-id=L1')
 
 
 def test_the_block_renews_and_releases_with_the_holder_id_the_acquire_named(monkeypatch):
@@ -237,9 +238,19 @@ def test_the_block_renews_and_releases_with_the_holder_id_the_acquire_named(monk
     with client.documents.locked('d1') as lock:
         assert lock.lock_id == 'L1'
         _ManualKeeper.made[0].refresh('d1')
-    assert sent == [('POST', 'http://plaid.internal:8085/api/v1/documents/d1/lock'),
-                    ('POST', 'http://plaid.internal:8085/api/v1/documents/d1/lock?lock-id=L1'),
-                    ('DELETE', 'http://plaid.internal:8085/api/v1/documents/d1/lock?lock-id=L1')]
+    assert len(sent) == 3
+    assert _is_acquire_with_minted_id(sent[0])
+    assert sent[1:] == [('POST', 'http://plaid.internal:8085/api/v1/documents/d1/lock?lock-id=L1'),
+                        ('DELETE', 'http://plaid.internal:8085/api/v1/documents/d1/lock?lock-id=L1')]
+
+
+def _is_acquire_with_minted_id(request):
+    """The block's acquire names a holder id the client minted, a UUID."""
+    import re
+    method, url = request
+    return (method == 'POST'
+            and re.fullmatch(r'http://plaid\.internal:8085/api/v1/documents/d1/lock'
+                             r'\?new-lock-id=[0-9a-f-]{36}', url) is not None)
 
 
 class _PerHolderCore:
@@ -254,7 +265,8 @@ class _PerHolderCore:
     def request(self, **kw):
         from urllib.parse import parse_qs, urlparse
         url = urlparse(kw.get('url', ''))
-        lock_id = parse_qs(url.query).get('lock-id', [None])[0]
+        query = parse_qs(url.query)
+        lock_id = query.get('lock-id', query.get('new-lock-id', [None]))[0]
         method = kw.get('method')
         if method == 'POST':
             if self.holder is not None and self.holder != lock_id:
@@ -421,3 +433,69 @@ def test_another_users_lock_still_refuses_before_the_block_runs(monkeypatch):
     assert caught.value.status == 423
     assert 'someone@else.com' in str(caught.value)
     assert ran == []
+
+
+# --- an acquire whose answer was lost ----------------------------------------
+
+class _LostAnswerCore(_PerHolderCore):
+    """The per-holder core behind a network that loses the answers to the
+    first `lose` acquires. The core took the lock each time."""
+
+    def __init__(self, lose):
+        super().__init__()
+        self.lose = lose
+        self.acquires = []
+
+    def request(self, **kw):
+        resp = super().request(**kw)
+        if kw.get('method') == 'POST' and 'new-lock-id' in kw.get('url', ''):
+            self.acquires.append(kw['url'])
+            if len(self.acquires) <= self.lose:
+                import requests
+                raise requests.exceptions.ReadTimeout('read timed out')
+        return resp
+
+
+def _lost_answer_client(monkeypatch, lose):
+    monkeypatch.setattr('plaid_client.client.LockKeeper', _ManualKeeper)
+    monkeypatch.setattr('plaid_client.client.LOCK_ACQUIRE_RETRY_S', 0)
+    core = _LostAnswerCore(lose)
+    client = PlaidClient('http://plaid.internal:8085', 'tok')
+    client.session = core
+    return client, core
+
+
+def test_an_acquire_whose_answer_was_lost_is_sent_again_under_the_same_id(monkeypatch):
+    # The core took the lock and the answer never came. The retry names the
+    # same holder, so it is that holder's lock and not a 423 against itself.
+    client, core = _lost_answer_client(monkeypatch, lose=1)
+    with client.documents.locked('d1') as lock:
+        assert core.holder == lock.lock_id
+    assert len(core.acquires) == 2
+    assert core.acquires[0] == core.acquires[1]
+    assert core.holder is None, 'the block released it on the way out'
+
+
+def test_an_acquire_never_answered_releases_what_it_may_hold(monkeypatch):
+    client, core = _lost_answer_client(monkeypatch, lose=3)
+    ran = []
+    with pytest.raises(PlaidAPIError) as caught:
+        with client.documents.locked('d1'):
+            ran.append(True)
+    assert caught.value.status == 0
+    assert ran == []
+    assert len(core.acquires) == 3
+    assert core.holder is None, 'the lock it took unseen is released, not left to expire'
+
+
+def test_the_refusal_names_the_holder_and_no_document_id(monkeypatch):
+    monkeypatch.setattr('plaid_client.client.LockKeeper', _ManualKeeper)
+    core = _PerHolderCore()
+    core.holder = 'someone-else'
+    client = PlaidClient('http://plaid.internal:8085', 'tok')
+    client.session = core
+    with pytest.raises(PlaidAPIError) as caught:
+        with client.documents.locked('01a0ee8b-fe96-7000-9884-d5be54bc5a86'):
+            pytest.fail('the block ran')
+    assert caught.value.status == 423
+    assert str(caught.value) == "This document is being edited by me. Try again once they're done."

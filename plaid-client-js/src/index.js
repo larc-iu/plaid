@@ -1886,15 +1886,26 @@ class PlaidClient {
        * take it. While the lock is held, a second acquire is refused with
        * HTTP 423, whoever makes it, this user included.
        *
+       * `newLockId` names the holder from the client's side (a fresh UUID). An
+       * acquire whose answer never arrived can then be sent again, which
+       * answers 200 while that holder has the lock, or released. Without it
+       * the server mints the id, and a lost answer leaves a lock nobody can
+       * release until it expires.
+       *
        * outOfBand: the lock is a signal, not project data (see the note at
        * the top of http.js). Queued on a batch it would be taken only at
        * submit, after every write it was meant to guard, and until then answer
        * success to a caller that does not hold it and cannot see the 423
        * saying somebody else does.
        * @param {string} documentId - The document ID
+       * @param {string} [auditMessage]
+       * @param {string} [newLockId] - A holder id this client minted
        */
-      acquireLock: (documentId, auditMessage) =>
+      acquireLock: (documentId, auditMessage, newLockId) =>
         this._request("POST", `/api/v1/documents/${documentId}/lock`, {
+          ...(newLockId !== undefined && newLockId !== null
+            ? { queryParams: { "new-lock-id": newLockId } }
+            : {}),
           auditMessage,
           outOfBand: true,
         }),
@@ -1955,7 +1966,10 @@ class PlaidClient {
        * The lock is per HOLDER: each block is its own, named by
        * `lock.lockId`, and only that id renews or releases it. NOT
        * re-entrant: a nested `locked()` block on one document is a second
-       * holder and gets the 423. Lock at exactly one level per call path. A
+       * holder and gets the 423. Lock at exactly one level per call path.
+       * The block mints its holder id and sends it with the acquire, so an
+       * acquire whose answer was lost is sent again (up to three tries) and,
+       * if none is answered, released rather than left to expire. A
        * lost lock is recorded on the CLIENT, like strict mode, so it stops
        * every write the client makes (on any batch of it too) and not only the
        * ones this block makes.

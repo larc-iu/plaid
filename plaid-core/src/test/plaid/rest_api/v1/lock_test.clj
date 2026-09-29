@@ -177,9 +177,9 @@
 
 (deftest a-locked-document-refuses-an-ordinary-write
   ;; `plaid.sql.operation/check-locks!` is what makes a document lock mean
-  ;; anything: every operation carrying a :document runs it before the tx
-  ;; opens. Only the bulk path covered it, so deleting check-locks! left the
-  ;; suite green. This drives one single-entity write.
+  ;; anything: every operation carrying a :document runs it inside its tx.
+  ;; Only the bulk path covered it, so deleting check-locks! left the suite
+  ;; green. This drives one single-entity write.
   (let [proj (create-test-project admin-request "LockOrdinaryWriteProj")
         doc (create-test-document admin-request proj "Doc")
         tl (-> (create-text-layer admin-request proj "TL") :body :id)
@@ -228,3 +228,50 @@
       (let [lock-id (-> (acquire-lock user2-request doc) :body :lock-id)]
         (is (string? lock-id))
         (assert-status 204 (release-lock user2-request doc lock-id))))))
+
+(defn- acquire-as [user-request-fn doc new-lock-id]
+  (api-call user-request-fn {:method :post
+                             :path (str "/api/v1/documents/" doc "/lock?new-lock-id=" new-lock-id)}))
+
+(deftest an-acquire-can-name-its-own-holder
+  ;; The client mints the holder id, so an acquire whose answer never arrived
+  ;; can be sent again or released. With a server-minted id a lost answer left
+  ;; a lock nobody could release until it expired.
+  (let [proj (create-test-project admin-request "LockNewIdProj")
+        doc (create-test-document admin-request proj "Doc")
+        _ (assert-no-content (add-project-writer admin-request proj "user1@example.com"))
+        _ (assert-no-content (add-project-writer admin-request proj "user2@example.com"))
+        mine "0b6f7e52-3c1a-4f0e-9d7a-2a8f1c9e4b21"]
+
+    (testing "the acquire takes the lock under the id it names"
+      (let [r (acquire-as user1-request doc mine)]
+        (assert-ok r)
+        (is (= mine (-> r :body :lock-id)))))
+
+    (testing "sent again by the same holder, it answers 200 and keeps the id"
+      (let [r (acquire-as user1-request doc mine)]
+        (assert-ok r)
+        (is (= mine (-> r :body :lock-id)))))
+
+    (testing "another holder is refused, under the same id or a new one"
+      (assert-status 423 (acquire-as user2-request doc mine))
+      (assert-status 423 (acquire-as user1-request doc "another-holder"))
+      (assert-status 423 (acquire-lock user1-request doc)))
+
+    (testing "the id it named releases it"
+      (assert-status 204 (release-lock user1-request doc mine))
+      (assert-status 204 (check-lock user1-request doc)))
+
+    (testing "a renewal and an acquire in one request are refused"
+      (assert-status 400 (api-call user1-request
+                                   {:method :post
+                                    :path (str "/api/v1/documents/" doc "/lock?lock-id=" mine
+                                               "&new-lock-id=" mine)}))
+      (assert-status 204 (check-lock user1-request doc)))
+
+    (testing "after an admin drops it, a renewal under that id is still refused"
+      (assert-ok (acquire-as user1-request doc mine))
+      (assert-ok (api-call admin-request {:method :delete
+                                          :path (str "/api/v1/admin/locks/" doc)}))
+      (assert-status 423 (acquire-lock user1-request doc mine))
+      (assert-status 204 (check-lock user1-request doc)))))

@@ -1365,11 +1365,20 @@ A renewal only extends a live lock: once the lock has expired or an admin has dr
 It is given to the holder alone: `checkLock`, a refused acquire and the admin list of locks name the user who holds the lock, never its id.
 Writes carry no lock id. A write to a locked document passes for the user who holds the lock and renews it. Anyone else's write is refused with HTTP 423.
 
+An acquire may name its holder itself: `acquireLock(documentId, auditMessage, newLockId)` (`new_lock_id=` in Python, `?new-lock-id=` on the wire) takes the lock under an id the client minted, such as a fresh UUID.
+Sent again while that holder has the lock, it answers 200 with the same id, so an acquire whose answer was lost can be retried, and released, instead of standing in everyone's way until it expires.
+
+An acquire waits for a write already under way on the document to finish.
+Every write either lands before the acquire answers, and the holder's first read sees it, or is refused with HTTP 423.
+A holder therefore never plans its work from a read that a write it did not see is about to change.
+The cost is that an acquire can wait behind a long save.
+
 Locks are useful for situations where a concurrent edit by another user could yield an invalid state with respect to data integrity constraints beyond what is enforced in Plaid's core.
 They should be used only where necessary in order to minimize the risk of invariant violations stemming from concurrent modifications.
 
 Both clients wrap these calls in a block that holds the lock for the length of the work and releases it on the way out, including on error.
-The block is one holder, and its handle carries the id as `lock.lockId` (`lock.lock_id` in Python):
+The block is one holder, and its handle carries the id as `lock.lockId` (`lock.lock_id` in Python).
+The block mints that id and sends it with the acquire, so an acquire that got no answer is sent again, up to three times, and released if none is answered:
 
 [,js]
 ----

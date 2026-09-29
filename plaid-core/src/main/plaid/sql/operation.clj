@@ -115,7 +115,18 @@
                       :on-conflict [:id]
                       :do-nothing []})))
 
-(defn- check-locks! [op-attrs]
+(defn- check-locks!
+  "Refuse the op with a 423 when another user holds the lock on its document.
+
+  Runs inside the op's transaction, after `BEGIN IMMEDIATE` has taken the
+  SQLite write lock, and `acquire-document-lock!` takes a lock under that same
+  write lock. So every write either committed before the lock was granted,
+  where the holder's first read sees it, or opens its transaction after, where
+  this check sees the lock. Checked before the transaction, a write could pass
+  here, wait for the write lock or work its body out, and commit after the
+  lock was granted, under a holder who had already read the document without
+  it."
+  [op-attrs]
   (when-let [doc-id (:document op-attrs)]
     (let [result (locks/check-document-locks [doc-id] (:user op-attrs))]
       (when (not= :ok result)
@@ -123,6 +134,29 @@
                         {:code 423
                          :document-id (:document-id result)
                          :locked-by (:user-id result)}))))))
+
+(defn acquire-document-lock!
+  "Take the lock on `document-id` for the holder `lock-id`, acting as
+  `user-id`, while holding the SQLite write lock (`locks/acquire-lock!` gives
+  the result).
+
+  The empty transaction is the point. `BEGIN IMMEDIATE` waits for a write
+  already in its transaction to commit, and no write can open one until the
+  lock is in the table. Together with `check-locks!` running inside the write's
+  transaction, a write either lands before the acquire answers or is refused
+  with a 423, so the holder never reads a document that a write it did not see
+  is about to change. The cost is that an acquire waits behind a long save.
+  Past the busy timeout it answers `:busy`, which the route turns into the same
+  retryable 503 a write gets."
+  [db document-id user-id lock-id]
+  (try
+    (psd/with-tx [_tx db]
+      (locks/acquire-lock! document-id user-id lock-id))
+    (catch Exception e
+      (if (psd/sqlite-busy? e)
+        (do (log/warn e "Lock acquire waited out busy_timeout:" (ex-message e))
+            :busy)
+        (throw e)))))
 
 (defn- ->v2-shape
   "Project the SQL op-record into the v2 audit/op key shape that
@@ -352,8 +386,8 @@
   duplicate audit row (see `bump-document-version!`).
 
   Outer try/catch shape (task #47): a single try wraps the entire
-  function body, starting with `check-locks!` and continuing through
-  the `with-tx`/body invocation and post-body bookkeeping. Any
+  function body: the `with-tx` (whose first step is `check-locks!`), the
+  body invocation and post-body bookkeeping. Any
   `ExceptionInfo` thrown WITHIN those bounds — by `check-locks!`, by
   the body-fn itself, or by `bump-document-version!` — is projected
   to `{:success false :code <ex-data :code or 500> :error <msg>}`.
@@ -371,7 +405,6 @@
   `debug` only (avoids spamming the log on every bad request)."
   [db op-attrs body-fn]
   (try
-    (check-locks! op-attrs)
     (let [op-id (psc/new-uuid)
           ;; `op-record` is built INSIDE the write tx because `ts` must be
           ;; stamped under the BEGIN IMMEDIATE lock (see
@@ -392,6 +425,7 @@
                   ;; concurrent writers; the history tailer's
                   ;; `(ts,id) > cursor` keyset then skipped the lower-ts
                   ;; op forever (silent replica data loss).
+                  (check-locks! op-attrs)
                   (let [ts (psc/next-monotonic-ts! tx)
                         op-record (assoc op-attrs
                                          :id op-id

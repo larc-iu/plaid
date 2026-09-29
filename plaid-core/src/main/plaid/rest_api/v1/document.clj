@@ -7,6 +7,7 @@
             [plaid.history.read :as hread]
             [plaid.history.restore :as restore]
             [plaid.server.locks :as locks]
+            [plaid.sql.operation :as op]
             [reitit.coercion.malli]
             [plaid.sql.document :as doc])
   (:import (java.time Instant)
@@ -299,36 +300,51 @@
                            "included. The answer's <body>lock-id</body> names the holder. Sent back as "
                            "<body>lock-id</body>, it renews that holder's lock while it is live, and "
                            "answers 423 once it has expired or been dropped, even when nobody holds the "
-                           "document now. Writes carry no lock id: they pass for the user who holds the "
-                           "lock.")
+                           "document now. <body>new-lock-id</body> is an acquire that names its own holder "
+                           "id, so a client whose answer was lost can release the lock it may hold. "
+                           "Sent again while that holder has the lock, it answers 200. An acquire "
+                           "waits for a write already under way to commit. Writes carry no lock id: "
+                           "they pass for the user who holds the lock.")
              :middleware [[pra/wrap-writer-required get-project-id] document-required]
-             :parameters {:query [:map [:lock-id {:optional true} [:string {:min 1}]]]}
-             :handler (fn [{{{:keys [document-id]} :path {:keys [lock-id]} :query} :parameters
+             :parameters {:query [:map
+                                  [:lock-id {:optional true} [:string {:min 1}]]
+                                  [:new-lock-id {:optional true} [:string {:min 1}]]]}
+             :handler (fn [{{{:keys [document-id]} :path {:keys [lock-id new-lock-id]} :query} :parameters
+                            db :db
                             user-id :user/id}]
-                        ;; An acquire always names a new holder: a client never
-                        ;; picks the id, and a renewal never takes a free document.
-                        (let [renewal? (some? lock-id)
-                              lock-id (or lock-id (locks/new-lock-id))
-                              result (if renewal?
-                                       (locks/renew-lock! document-id user-id lock-id)
-                                       (locks/acquire-lock! document-id user-id lock-id))
-                              info (locks/get-lock-info document-id)]
-                          ;; Read back only when it is still this holder's, so
-                          ;; a lock force-released and taken again in between
-                          ;; never answers with the new holder's id.
-                          (cond
-                            (and (#{:acquired :refreshed} result) (= lock-id (:lock-id info)))
-                            {:status 200
-                             :body (select-keys info [:lock-id :user-id :expires-at])}
+                        ;; A renewal never takes a free document. An acquire
+                        ;; takes one under a fresh id, or under the id the
+                        ;; client minted, which lets a client that never heard
+                        ;; the answer still release what it may hold.
+                        (if (and lock-id new-lock-id)
+                          {:status 400
+                           :body {:error "Send lock-id to renew or new-lock-id to acquire, not both."}}
+                          (let [renewal? (some? lock-id)
+                                lock-id (or lock-id new-lock-id (locks/new-lock-id))
+                                result (if renewal?
+                                         (locks/renew-lock! document-id user-id lock-id)
+                                         (op/acquire-document-lock! db document-id user-id lock-id))
+                                info (locks/get-lock-info document-id)]
+                            ;; Read back only when it is still this holder's, so
+                            ;; a lock force-released and taken again in between
+                            ;; never answers with the new holder's id.
+                            (cond
+                              (= :busy result)
+                              {:status 503
+                               :body {:error "Database busy, please retry"}}
 
-                            (and (= :lapsed result) (nil? info))
-                            {:status 423
-                             :body {:error "Document lock has lapsed"}}
+                              (and (#{:acquired :refreshed} result) (= lock-id (:lock-id info)))
+                              {:status 200
+                               :body (select-keys info [:lock-id :user-id :expires-at])}
 
-                            :else
-                            {:status 423
-                             :body {:error "Document is locked"
-                                    :user-id (:user-id info)}})))}
+                              (and (= :lapsed result) (nil? info))
+                              {:status 423
+                               :body {:error "Document lock has lapsed"}}
+
+                              :else
+                              {:status 423
+                               :body {:error "Document is locked"
+                                      :user-id (:user-id info)}}))))}
 
       :delete {:summary (str "Release a document lock. <body>lock-id</body> is the id the acquire "
                              "answered with, and only that holder's lock is released. Answers 204 "

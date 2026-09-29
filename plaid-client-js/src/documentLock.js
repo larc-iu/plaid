@@ -73,11 +73,7 @@ export class DocumentLockLost extends Error {
  * @param {number} [fallback]
  * @returns {number}
  */
-export function lockTtlMs(
-  expiresAt,
-  nowMs,
-  fallback = DOCUMENT_LOCK_TTL_MS,
-) {
+export function lockTtlMs(expiresAt, nowMs, fallback = DOCUMENT_LOCK_TTL_MS) {
   if (typeof expiresAt === "number" && Number.isFinite(expiresAt)) {
     const ttl = expiresAt - nowMs;
     if (ttl > 0 && ttl <= MAX_BELIEVABLE_TTL_MS) return ttl;
@@ -223,43 +219,85 @@ export class DocumentLock {
 }
 
 /**
+ * Tries a `locked()` block makes at an acquire whose outcome is unknown, and the
+ * pause before the next, which grows by this much each time.
+ */
+export const LOCK_ACQUIRE_ATTEMPTS = 3;
+export const LOCK_ACQUIRE_RETRY_MS = 500;
+
+// The HTTP status of a request that may or may not have reached the server: no
+// answer at all (0), or a proxy's 502 or 504.
+const UNKNOWN_OUTCOME_STATUSES = new Set([0, 502, 504]);
+
+function mintLockId() {
+  return globalThis.crypto.randomUUID();
+}
+
+/**
+ * The acquire of a `locked()` block, under the holder id it minted.
+ *
+ * An acquire whose outcome is unknown (no answer, a timeout, a 502 or a 504)
+ * may have taken the lock. It is sent again under the same id, which the server
+ * answers 200 while that holder has it. When every attempt is unknown, the lock
+ * it may hold is released on the way out, so it does not stand in everyone's
+ * way until it expires.
+ */
+async function takeLock(client, documentId, lockId, retryMs) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await client.documents.acquireLock(documentId, undefined, lockId);
+    } catch (error) {
+      if (error?.status === 423) {
+        // The error body is raw JSON off the wire, so it is still kebab-cased.
+        const body = error.responseData || {};
+        const holder = body.userId || body["user-id"] || "another user";
+        const readable = new Error(
+          `This document is being edited by ${holder}. Try again once they're done.`,
+        );
+        readable.status = 423;
+        readable.statusText = error.statusText;
+        readable.url = error.url;
+        readable.method = error.method;
+        readable.responseData = error.responseData;
+        readable.cause = error;
+        throw readable;
+      }
+      if (!UNKNOWN_OUTCOME_STATUSES.has(error?.status)) throw error;
+      if (attempt + 1 < LOCK_ACQUIRE_ATTEMPTS) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, retryMs * (attempt + 1)),
+        );
+        continue;
+      }
+      try {
+        await client.documents.releaseLock(documentId, lockId);
+      } catch {
+        /* the lock expires on its own */
+      }
+      throw error;
+    }
+  }
+}
+
+/**
  * Hold `documentId`'s server-enforced lock for the length of `fn`.
  * `client.documents.locked` is the entry point; see its doc comment.
  *
  * @param {object} client
  * @param {string} documentId
  * @param {(lock: DocumentLock) => any} fn
- * @param {{ keepAlive?: boolean }} [options]
+ * @param {{ keepAlive?: boolean, acquireRetryMs?: number }} [options]
  */
 export async function withDocumentLock(
   client,
   documentId,
   fn,
-  { keepAlive = true } = {},
+  { keepAlive = true, acquireRetryMs = LOCK_ACQUIRE_RETRY_MS } = {},
 ) {
-  let info;
-  try {
-    info = await client.documents.acquireLock(documentId);
-  } catch (error) {
-    if (error?.status === 423) {
-      // The error body is raw JSON off the wire, so it is still kebab-cased.
-      const body = error.responseData || {};
-      const holder = body.userId || body["user-id"] || "another user";
-      const readable = new Error(
-        `Document ${documentId} is locked by ${holder} (likely being edited); try again once they're done.`,
-      );
-      readable.status = 423;
-      readable.statusText = error.statusText;
-      readable.url = error.url;
-      readable.method = error.method;
-      readable.responseData = error.responseData;
-      readable.cause = error;
-      throw readable;
-    }
-    throw error;
-  }
+  const minted = mintLockId();
+  const info = await takeLock(client, documentId, minted, acquireRetryMs);
 
-  const lockId = info?.lockId ?? null;
+  const lockId = info?.lockId ?? minted;
   let keeper = null;
   if (keepAlive) {
     const ttlMs = lockTtlMs(info?.expiresAt, Date.now());

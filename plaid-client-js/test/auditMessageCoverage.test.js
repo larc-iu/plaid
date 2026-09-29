@@ -16,6 +16,8 @@ const ARGS_BEFORE_AUDIT_MESSAGE = {
   'documents.restore': 3,
   'documents.copy': 3,
   'vocabLayers.restoreItem': 4,
+  // `acquireLock(documentId, auditMessage, newLockId)`.
+  'documents.acquireLock': 1,
 };
 // `setConfig` and `deleteConfig` take an options object after `auditMessage`.
 for (const b of ['projects', 'textLayers', 'tokenLayers', 'spanLayers', 'relationLayers', 'vocabLayers']) {
