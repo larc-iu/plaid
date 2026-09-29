@@ -97,11 +97,12 @@
   holds at a version (`?document-id=` beside `?document-version=`, bound by
   `wrap-document-version`). An entry belongs to no document, so the check
   `submit-operation*` makes for a document's own writes never fires here.
-  Read inside the write transaction, like that one."
+  Read inside the write transaction, like that one. A document that is gone
+  has moved on from every version, so it answers 409 too."
   [tx doc-id]
   (when-let [expected psaw/*expected-document-version*]
     (when doc-id
-      (when-let [cur (psc/fetch-by-id tx :documents doc-id)]
+      (let [cur (psc/fetch-by-id tx :documents doc-id)]
         (when (not= expected (:version cur))
           (throw (ex-info "Document version conflict"
                           {:code 409 :document-id doc-id

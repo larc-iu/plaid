@@ -1489,13 +1489,20 @@ with client.batched() as b:
     b.vocab_links.create(b.ref(), [token_id])
 ----
 
-On the wire a reference is `{"$ref": n}` or `{"$ref": n, "index": k}` in place of the id in the body of a later operation, and the server puts the id in when it runs that operation.
-Only bodies are read, not paths, and any map of exactly that shape in a body counts as a reference.
-A reference to an operation that is not before it, or to one that answered no such id, refuses the whole batch with a 400.
+A reference goes in the body of a later write on the same batch, at any depth.
+The client refuses one anywhere else: in a path, on another batch, or in a call made on the client.
+
+On the wire an operation lists its references beside its body, as `"refs": [{"at": ["vocab-item"], "op": n}]`, or `{"at": [...], "op": n, "index": k}` for the kth of a bulk create's ids.
+`at` is a path into the body, of object keys and list indexes, and the body holds `null` there.
+The server puts the id at each path when it runs that operation.
+It never searches a body, so a value in your data that looks like a reference is stored as you sent it.
+A reference in a path, rather than a body, is not supported.
+A reference to an operation that is not before it, to one that answered no such id, or to a path that does not lead to a `null`, refuses the whole batch with a 400.
 When a batch is sent as several requests, a write cannot refer to one in an earlier request, and the client refuses such a batch before sending any of it.
 
 A vocab item belongs to no document, so the `document-version` a strict-mode client stamps on its create has nothing to be checked against on its own.
 Created alone, the entry is refused with a 400 unless `document-id` names the document the version is for.
+Naming a document takes read access to it, a 403 otherwise. A document that no longer exists answers an admin 409 and anyone else 403, as an unknown id does.
 In a batch the stamp is left to the batch's other writes, such as the link the entry is made for.
 A read made on a batch—any GET, and `query`—is answered from the server there and then rather than queued, so a read may be made on the batch or on the client as you please.
 The server runs a batch as one transaction holding its single write lock for the whole of it, and no other write can proceed meanwhile, so keep a batch to the work that has to be atomic.

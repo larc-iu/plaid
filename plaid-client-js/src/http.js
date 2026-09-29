@@ -1,4 +1,5 @@
 import { transformRequest, transformResponse } from "./transforms.js";
+import { takeRefs } from "./batchRef.js";
 
 // ---------------------------------------------------------------------------
 // Batches: which calls a batch carries, and which go over the wire anyway.
@@ -527,7 +528,11 @@ export async function queueRequest(batch, method, path, options = {}) {
     method: method.toUpperCase(),
   };
   if (requestBody !== undefined) {
-    operation.body = requestBody;
+    // Each b.ref() in the body goes beside it, as the path to a null the
+    // server fills with the id (batchRef.js).
+    const { body, refs } = takeRefs(batch, requestBody);
+    operation.body = body;
+    if (refs) operation.refs = refs;
   }
   batch.operations.push(operation);
   batch.stampedDocuments.push(stampedDocument);

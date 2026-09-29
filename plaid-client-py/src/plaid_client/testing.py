@@ -61,7 +61,7 @@ from urllib.parse import quote
 
 from plaid_client import client as _client
 from plaid_client.document_lock import DocumentLock
-from plaid_client.http import PlaidAPIError
+from plaid_client.http import BatchRef, PlaidAPIError
 from plaid_client.metadata_ops import apply_metadata_ops
 from plaid_client.services import CancelScope, requester_message
 from plaid_client.transforms import transform_request, transform_response
@@ -320,12 +320,12 @@ class _Batch:
 
     def ref(self, op_index=-1, index=None):
         """The real batch's stand-in for the id a queued op will create
-        (``PlaidBatch.ref``): ``{'$ref': n}``, or ``{'$ref': n, 'index': k}``
-        for the k-th id of a bulk create. The fake records it as given."""
+        (``PlaidBatch.ref``): a BatchRef for op n, or with ``index`` the k-th
+        id of a bulk create. The fake records it as given."""
         n = len(self.queued) + op_index if op_index < 0 else op_index
         if not isinstance(n, int) or n < 0 or n >= len(self.queued):
             raise PlaidAPIError(f'No operation {op_index} has been queued on this batch')
-        return {'$ref': n} if index is None else {'$ref': n, 'index': index}
+        return BatchRef(self, n, index)
 
     def fail_if_asked(self, kind):
         self.client.fail_if_asked(kind)

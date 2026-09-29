@@ -15,7 +15,7 @@ import requests as req_lib
 from plaid_client.document_lock import DocumentLock, LockKeeper, lock_ttl_s
 from plaid_client.http import (
     PlaidAPIError, make_request, queue_request, extract_document_versions,
-    restamp_document_version,
+    restamp_document_version, BatchRef, make_batch_ref, rebase_refs,
     list_all, list_page, iter_pages, build_api_error, retry_while_busy,
     DEFAULT_TIMEOUT_S, DEFAULT_BATCH_TIMEOUT_S,
 )
@@ -61,27 +61,6 @@ def _config_request(audit_message, value, expected):
     opts['raw_body'] = body
     opts['query_params'] = {'if-unchanged': True}
     return opts
-
-
-def _is_batch_ref(v) -> bool:
-    return isinstance(v, dict) and '$ref' in v and all(k in ('$ref', 'index') for k in v)
-
-
-def _rebase_refs(body, start: int):
-    """``body`` with every batch ref (see ``PlaidBatch.ref``) moved to count
-    from ``start``, for a batch sent in several requests. A ref to an op of an
-    earlier request cannot resolve, so it raises."""
-    if _is_batch_ref(body):
-        if body['$ref'] < start:
-            raise PlaidAPIError(
-                f"Operation {start} and later are sent in a request of their own, so an operation "
-                f"among them cannot use the id operation {body['$ref']} creates")
-        return {**body, '$ref': body['$ref'] - start}
-    if isinstance(body, list):
-        return [_rebase_refs(v, start) for v in body]
-    if isinstance(body, dict):
-        return {k: _rebase_refs(v, start) for k, v in body.items()}
-    return body
 
 
 _UNSET_MESSAGE = object()
@@ -3844,8 +3823,8 @@ class PlaidClient:
             # A ref counts ops within one request, so each later request's
             # refs count from its own first op. Every chunk is checked before
             # the first request goes, so refs that cannot resolve write nothing.
-            chunks = [[{**op, 'body': _rebase_refs(op['body'], start)}
-                       if start > 0 and 'body' in op else op
+            chunks = [[{**op, 'refs': rebase_refs(op['refs'], start)}
+                       if start > 0 and 'refs' in op else op
                        for op in ops[start:start + MAX_BATCH_OPS]]
                       for start in range(0, len(ops), MAX_BATCH_OPS)]
             for start, body in zip(range(0, len(ops), MAX_BATCH_OPS), chunks):
@@ -4163,20 +4142,18 @@ class PlaidBatch:
         self.stamped_documents = []
         self.open = False
 
-    def ref(self, op_index: int = -1, index: int | None = None) -> dict:
+    def ref(self, op_index: int = -1, index: int | None = None) -> BatchRef:
         """A stand-in for the id a queued operation will create, to put in a
-        later operation's body, so a create and the write that uses it go in
-        one transaction: ``{'$ref': n}`` for op n's ``id``, or
-        ``{'$ref': n, 'index': k}`` for the k-th of the ``ids`` a bulk create
-        answers. ``op_index`` counts from 0, or from the end when negative
-        (-1, the default, is the op queued last), and is fixed when ``ref`` is
-        called::
+        later operation's body on this batch, so a create and the write that
+        uses it go in one transaction: op n's ``id``, or with ``index`` the
+        k-th of the ``ids`` a bulk create answers. ``op_index`` counts from 0,
+        or from the end when negative (-1, the default, is the op queued
+        last), and is fixed when ``ref`` is called. It goes only in the body
+        of a later write on this batch, at any depth. Anywhere else (a path,
+        another batch, a call made on the client) the client refuses it::
 
             with client.batched() as b:
                 b.vocab_items.create(vocab_id, 'dog')
                 b.vocab_links.create(b.ref(), [token_id])
         """
-        n = len(self.operations) + op_index if op_index < 0 else op_index
-        if not isinstance(n, int) or n < 0 or n >= len(self.operations):
-            raise PlaidAPIError(f'No operation {op_index} has been queued on this batch')
-        return {'$ref': n} if index is None else {'$ref': n, 'index': index}
+        return make_batch_ref(self, op_index, index)

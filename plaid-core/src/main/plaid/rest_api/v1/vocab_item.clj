@@ -4,6 +4,7 @@
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
+            [plaid.sql.document :as doc]
             [plaid.sql.user :as user]
             [plaid.sql.vocab-item :as vocab-item]
             [plaid.sql.vocab-layer :as vocab-layer]))
@@ -78,13 +79,26 @@
   (str "document-version names no document on an entry create. Send document-id with it, "
        "or create the entry in a batch with the link it is for."))
 
-(defn- wrap-entry-document-version [handler]
-  (let [versioned (prm/wrap-document-version handler #(get-in % [:parameters :query :document-id]))]
+(defn- document-project-id
+  "The project of the document `?document-id=` names, nil when there is none."
+  [{db :db params :parameters}]
+  (:document/project (doc/get db (-> params :query :document-id))))
+
+(defn- wrap-entry-document-version
+  "The check of `document-query`. Naming a document takes read access to it,
+  as reading its version does, so a caller without it cannot learn the
+  version (or whether the document exists) from a 201 against a 409. A
+  document that is gone answers an admin 409, as a versioned write naming a
+  gone id does (see `assert-document-version!`), and everyone else 403."
+  [handler]
+  (let [versioned (-> handler
+                      (prm/wrap-document-version #(get-in % [:parameters :query :document-id]))
+                      (pra/wrap-reader-required document-project-id))]
     (fn [request]
       (let [{:keys [document-version document-id]} (get-in request [:parameters :query])]
         (cond
-          (nil? document-version) (handler request)
           document-id (versioned request)
+          (nil? document-version) (handler request)
           psaw/*batch-validated-document-versions* (handler request)
           :else {:status 400 :body {:error unplaced-version}})))))
 

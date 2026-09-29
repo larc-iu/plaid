@@ -525,6 +525,148 @@ def restamp_document_version(path, version):
     return f'{base}?{"&".join(params)}' if params else base
 
 
+# ---------------------------------------------------------------------------
+# Batch refs: a write in a batch that uses the id an earlier write in the same
+# batch creates.
+#
+# ``b.ref()`` returns a BatchRef, which the caller puts in a later write's body
+# where the id goes. When that write is queued, each BatchRef is taken out of
+# the body (None is left in its place) and recorded beside it as
+# ``refs: [{'at': [key or index, ...], 'op': n, 'index'?: k}]``, which the
+# server fills in. The server never searches a body, so user data of any
+# shape, ``{'$ref': 0}`` included, is stored as sent. A BatchRef is an object
+# no JSON value can be, so data can never be taken for one here either.
+# ---------------------------------------------------------------------------
+
+_MISPLACED_REF = 'b.ref() stands for an id only in the body of a later write on the same batch'
+
+
+class BatchRef:
+    """The stand-in :meth:`PlaidBatch.ref` returns: op ``op`` (counted from 0
+    in the batch), or with ``index`` the k-th id of that bulk create."""
+
+    __slots__ = ('_batch', 'op', 'index')
+
+    def __init__(self, batch, op, index=None):
+        self._batch = batch
+        self.op = op
+        self.index = index
+
+    def __repr__(self):
+        return f'BatchRef(op={self.op}, index={self.index})'
+
+    # Read as the plain ``{'$ref': n, 'index': k}`` it once was, so
+    # ``b.ref()['$ref']`` and comparing a recorded payload with that map
+    # keep their meaning. Only the class makes a ref: a map of that shape
+    # in a body is data.
+    def _as_map(self):
+        return {'$ref': self.op} if self.index is None else {'$ref': self.op, 'index': self.index}
+
+    def __getitem__(self, key):
+        return self._as_map()[key]
+
+    def __eq__(self, other):
+        if isinstance(other, BatchRef):
+            return (other._batch, other.op, other.index) == (self._batch, self.op, self.index)
+        if isinstance(other, dict):
+            return other == self._as_map()
+        return NotImplemented
+
+    def __hash__(self):
+        return hash((id(self._batch), self.op, self.index))
+
+    # A ref names one op of one batch, so a copy is the ref itself.
+    def __copy__(self):
+        return self
+
+    def __deepcopy__(self, memo):
+        return self
+
+    # Put in a path or a query, a ref would go out as text the server takes
+    # for an id.
+    def __format__(self, spec):
+        raise PlaidAPIError(_MISPLACED_REF)
+
+    def __str__(self):
+        raise PlaidAPIError(_MISPLACED_REF)
+
+
+def make_batch_ref(batch, op_index, index):
+    """A BatchRef for op ``op_index`` of ``batch`` (negative counts from the
+    end, -1 is the op queued last), fixed when it is called."""
+    n = len(batch.operations) + op_index if op_index < 0 else op_index
+    if not isinstance(n, int) or n < 0 or n >= len(batch.operations):
+        raise PlaidAPIError(f'No operation {op_index} has been queued on this batch')
+    if index is not None and not (isinstance(index, int) and index >= 0):
+        raise PlaidAPIError(f"A ref's index must be a whole number, not {index!r}")
+    return BatchRef(batch, n, index)
+
+
+def _holds_ref(v):
+    if isinstance(v, BatchRef):
+        return True
+    if isinstance(v, list):
+        return any(_holds_ref(x) for x in v)
+    if isinstance(v, dict):
+        return any(_holds_ref(x) for x in v.values())
+    return False
+
+
+def take_refs(batch, body):
+    """``(body, refs)``: ``body`` with each BatchRef in it replaced by None,
+    and the refs that say where they were, or None when it holds none (the
+    body is then returned as it was)."""
+    if not _holds_ref(body):
+        return body, None
+    refs = []
+    at = []
+
+    def take(v):
+        if isinstance(v, BatchRef):
+            if v._batch is not batch:
+                raise PlaidAPIError(_MISPLACED_REF)
+            refs.append({'at': list(at), 'op': v.op} if v.index is None
+                        else {'at': list(at), 'op': v.op, 'index': v.index})
+            return None
+        if not _holds_ref(v):
+            return v
+        items = enumerate(v) if isinstance(v, list) else v.items()
+        out = [] if isinstance(v, list) else {}
+        for k, x in items:
+            at.append(k)
+            taken = take(x)
+            at.pop()
+            if isinstance(out, list):
+                out.append(taken)
+            else:
+                out[k] = taken
+        return out
+
+    return take(body), refs
+
+
+def rebase_refs(refs, start):
+    """``refs`` counted from ``start``, for an op in a batch sent in several
+    requests (the server counts within one request). A ref to an op of an
+    earlier request cannot resolve, so it raises before anything goes."""
+    out = []
+    for r in refs:
+        if r['op'] < start:
+            raise PlaidAPIError(
+                f"Operation {start} and later are sent in a request of their own, so an operation "
+                f"among them cannot use the id operation {r['op']} creates")
+        out.append({**r, 'op': r['op'] - start})
+    return out
+
+
+def _unsendable(v):
+    """``json.dumps``'s ``default``: a BatchRef outside a queued body is a
+    caller's mistake the error should name."""
+    if isinstance(v, BatchRef):
+        raise PlaidAPIError(_MISPLACED_REF)
+    raise TypeError(f'Object of type {type(v).__name__} is not JSON serializable')
+
+
 def queue_request(batch, method, path, *, no_batch=False, out_of_band=False, **kwargs):
     """A call made on a batch (see ``PlaidClient.batch``). A write of project
     data is queued as one operation of the batch and answers
@@ -547,7 +689,11 @@ def queue_request(batch, method, path, *, no_batch=False, out_of_band=False, **k
         'method': method.upper(),
     }
     if request_body is not None:
-        operation['body'] = request_body
+        # Each b.ref() in the body goes beside it, as the path to a None the
+        # server fills with the id (see BatchRef).
+        operation['body'], refs = take_refs(batch, request_body)
+        if refs:
+            operation['refs'] = refs
     batch.operations.append(operation)
     batch.stamped_documents.append(stamped_document)
     return {'batched': True}
@@ -625,7 +771,7 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
             else:
                 kwargs['files'] = request_body
         else:
-            kwargs['data'] = json.dumps(request_body)
+            kwargs['data'] = json.dumps(request_body, default=_unsendable)
 
     def attempt():
         if encoded_upload is not None:

@@ -1,7 +1,6 @@
 (ns plaid.rest-api.v1.batch
   (:require [clojure.string :as str]
             [clojure.edn :as edn]
-            [clojure.walk :as walk]
             [clojure.data.json :as json]
             [muuntaja.core :as m]
             [next.jdbc :as jdbc]
@@ -93,19 +92,14 @@
 ;; A create and the write that uses what it created (an entry and the link
 ;; to it, a word and its gloss) belong in one transaction, so a refusal of
 ;; the second cannot leave the first behind. The second cannot know the id
-;; the first will get, so a body may stand in for it with
-;; `{"$ref": n}`: the id in the response of operation n of this batch
-;; (counted from 0), or `{"$ref": n, "index": k}` for the k-th of the `ids`
-;; a bulk create answers. Only bodies are read, and only a map of exactly
-;; that shape is a reference.
+;; the first will get, so the operation lists, beside its body, where that
+;; id goes: `"refs": [{"at": ["vocab-item"], "op": 0}]` puts the id
+;; operation 0 of this batch answered (counted from 0) at that path of the
+;; body, and `{"at": [...], "op": n, "index": k}` the k-th of the `ids` a
+;; bulk create answered. A path is a list of object keys and list indexes,
+;; and must lead to a null the client left there. The body itself is never
+;; searched, so user data of any shape is stored as it was sent.
 ;; ============================================================
-
-(defn- ref-map?
-  "A body value that stands for an earlier operation's id."
-  [v]
-  (and (map? v)
-       (contains? v :$ref)
-       (every? #{:$ref :index} (keys v))))
 
 (defn- refusal
   "Throw out of the batch loop with a 400, which rolls the batch back."
@@ -113,28 +107,53 @@
   (throw (ex-info "batch-failed" {:plaid.batch/failure {:status 400 :body {:error msg}}})))
 
 (defn- resolve-ref
-  "The id `{:$ref n :index k}` stands for, given the responses of the
+  "The id `{:op n :index k}` stands for, given the responses of the
   operations before this one, `responses`."
-  [{n :$ref k :index} responses]
+  [{n :op k :index} responses]
   (when-not (and (int? n) (<= 0 n) (< n (count responses)))
-    (refusal (str "{\"$ref\": " (pr-str n) "} must name an operation before this one, counted from 0")))
+    (refusal (str "\"op\": " (pr-str n) " in a ref must name an operation before this one, counted from 0")))
   (when-not (or (nil? k) (and (int? k) (<= 0 k)))
-    (refusal (str "\"index\" in a $ref must be a whole number, not " (pr-str k))))
+    (refusal (str "\"index\" in a ref must be a whole number, not " (pr-str k))))
   (let [body (:body (nth responses n))
         field (fn [key] (or (get body key) (get body (name key))))]
     (if (nil? k)
       (or (when (map? body) (field :id))
-          (refusal (str "Operation " n " answered no id for {\"$ref\": " n "} to stand for")))
+          (refusal (str "Operation " n " answered no id for a ref to stand for")))
       (let [ids (when (map? body) (field :ids))]
         (if (and (sequential? ids) (< k (count ids)))
           (nth ids k)
           (refusal (str "Operation " n " answered no id at index " k)))))))
 
+(defn- ref-keys
+  "The `get-in` keys of the path `at` in `body`, or nil unless it leads to a
+  null. A JSON key arrives as a keyword (the API's JSON decoder), an index
+  as a number."
+  [body at]
+  (loop [node body path at ks []]
+    (let [[step & more] path
+          k (cond (and (string? step) (map? node)) (keyword nil step)
+                  (and (int? step) (vector? node) (< -1 step (count node))) step)]
+      (cond
+        (or (nil? k) (and (map? node) (not (contains? node k)))) nil
+        (empty? more) (when (nil? (get node k)) (conj ks k))
+        :else (recur (get node k) more (conj ks k))))))
+
 (defn resolve-refs
-  "`body` with every `{\"$ref\": ...}` replaced by the id it stands for."
-  [body responses]
-  (walk/prewalk (fn [v] (if (ref-map? v) (str (resolve-ref v responses)) v))
-                body))
+  "`op-spec`'s body with the id each of its `refs` stands for put at that
+  ref's path, given the responses of the operations before it."
+  [{:keys [body refs]} responses]
+  (let [n (count responses)]
+    (when-not (sequential? refs)
+      (refusal (str "\"refs\" of operation " n " must be a list")))
+    (reduce (fn [body {:keys [at] :as ref}]
+              (when-not (and (map? ref) (sequential? at) (seq at))
+                (refusal (str "A ref of operation " n " must be {\"at\": [...], \"op\": n}, with a path in \"at\"")))
+              (let [ks (or (ref-keys body at)
+                           (refusal (str "A ref of operation " n " names " (json/write-str at)
+                                         ", which is not a null in its body")))]
+                (assoc-in body ks (str (resolve-ref ref responses)))))
+            body
+            refs)))
 
 (defn- merge-document-versions
   "Merge X-Document-Versions headers across a sequence of sub-responses.
@@ -202,9 +221,10 @@
                               (if (seq merged)
                                 (assoc outer :headers {"X-Document-Versions" (json/write-str merged)})
                                 outer)))
-                        (let [op-spec (cond-> (first remaining)
-                                        (contains? (first remaining) :body)
-                                        (update :body resolve-refs responses))
+                        (let [spec (first remaining)
+                              op-spec (if (contains? spec :refs)
+                                        (assoc spec :body (resolve-refs spec responses))
+                                        spec)
                               response (process-batch-operation rest-handler request op-spec tx)
                               status (:status response)]
                           (if (>= status 300)
@@ -258,12 +278,14 @@
                          "Atomicity is guaranteed. "
                          "On success, returns an array of each response associated with each submitted request in the batch. "
                          "On failure, returns a single response map with the first failing response in the batch. "
-                         "In an operation's body, {\"$ref\": n} stands for the id operation n of the batch (counted from 0) "
-                         "answered with, and {\"$ref\": n, \"index\": k} for the k-th of the ids a bulk create answered with, "
-                         "so a write can use what an earlier write in the same batch created.")
+                         "An operation's refs, [{\"at\": [key or index, ...], \"op\": n}], put the id operation n of the batch "
+                         "(counted from 0) answered with at each path of its body, where the body holds null, and "
+                         "{\"at\": [...], \"op\": n, \"index\": k} the k-th of the ids a bulk create answered with, "
+                         "so a write can use what an earlier write in the same batch created. The body is never searched.")
            :parameters {:body [:sequential
                                [:map
                                 [:path string?]
                                 [:method [:enum "get" "GET" "post" "POST" "put" "PUT" "patch" "PATCH" "delete" "DELETE"]]
-                                [:body {:optional true} any?]]]}
+                                [:body {:optional true} any?]
+                                [:refs {:optional true} any?]]]}
            :handler atomic-batch-handler}}])

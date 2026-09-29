@@ -1,3 +1,5 @@
+import { BatchRef } from "./batchRef.js";
+
 /**
  * Convert kebab-case/namespaced key to camelCase.
  * 'layer-id' -> 'layerId'
@@ -39,6 +41,8 @@ const isOpaque = (key, value) =>
  */
 export function transformRequest(obj) {
   if (obj === null || obj === undefined) return obj;
+  // A batch ref is taken out whole when its write is queued.
+  if (obj instanceof BatchRef) return obj;
   if (Array.isArray(obj)) return obj.map(item => transformRequest(item));
   if (typeof obj !== 'object') return obj;
 

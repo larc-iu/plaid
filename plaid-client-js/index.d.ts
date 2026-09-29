@@ -1438,18 +1438,25 @@ export interface PlaidBatch extends PlaidClient {
   abort(): void;
   /**
    * A stand-in for the id a queued operation will create, to put in a later
-   * operation's body, so a create and the write that uses it go in one
-   * transaction: `{ $ref: n }` for op n's `id`, or `{ $ref: n, index: k }`
-   * for the k-th of the `ids` a bulk create answers. `opIndex` counts from 0,
-   * or from the end when negative (-1, the default, is the op queued last).
+   * operation's body on this batch, so a create and the write that uses it go
+   * in one transaction: op n's `id`, or with `index` the k-th of the `ids` a
+   * bulk create answers. `opIndex` counts from 0, or from the end when
+   * negative (-1, the default, is the op queued last). It goes only in the
+   * body of a later write on this batch, at any depth. Anywhere else (a path,
+   * another batch, a call made on the client) the client refuses it.
    */
   ref(opIndex?: number, index?: number): BatchRef;
 }
 
-/** See `PlaidBatch.ref`. */
+/**
+ * See `PlaidBatch.ref`. A marker object, not data: the client takes it out of
+ * the body when its write is queued and sends where it was beside the body.
+ */
 export interface BatchRef {
-  $ref: number;
-  index?: number;
+  /** The op, counted from 0 in the batch, whose id this stands for. */
+  readonly $ref: number;
+  /** For a bulk create, which of its ids. */
+  readonly index?: number;
 }
 
 export declare class PlaidClient {
