@@ -652,6 +652,16 @@ class BaseAssistantService(BaseService):
             settled()
             response_helper.error('The plan is out of date. Ask the assistant to plan again.')
             return
+        # A plan's writes name the service that proposed it, which its turn
+        # records. A plan staged before turns recorded it cannot say, so it is
+        # settled as out of date, not written under the wrong name. Asked here,
+        # before the locks, or the lookup failed inside them as a KeyError and
+        # the card kept offering an Approve that failed the same way.
+        if not item.get('service'):
+            said = 'This plan was made by an earlier version of the assistant.'
+            settled(settle_plan(conv, index, 'stale', f'(note) The plan was not applied: {said} Nothing was written.'))
+            response_helper.error(f'Nothing was written. {said} Ask the assistant to plan again.')
+            return
         ops = plan.get('ops') or []
         if not ops:
             settled()
