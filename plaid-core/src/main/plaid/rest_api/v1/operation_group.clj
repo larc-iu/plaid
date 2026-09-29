@@ -24,13 +24,18 @@
         {:status 403 :body {:error "You can only relabel your own operation groups."}}
 
         :else
-        (handler (assoc request :operation-group group))))))
+        (handler (cond-> (assoc request :operation-group group)
+                   ;; For a scoped token, `pra/operation-group-token-scope`
+                   ;; asks whether this token created the group.
+                   (:auth/token-scope request)
+                   (assoc :operation-group/token-key (og/scoped-token db id))))))))
 
 (def operation-group-routes
   ["/operation-groups/:id"
    {:openapi {:security [{:auth []}]}
     :parameters {:path [:map [:id :uuid]]}
-    :middleware [pra/wrap-login-required wrap-owner-or-admin]}
+    :middleware [pra/wrap-login-required wrap-owner-or-admin]
+    :plaid/token-scope pra/operation-group-token-scope}
    [""
     {:get {:summary "Get a logical-operation group (its label + creator)."
            :handler (fn [{group :operation-group}]

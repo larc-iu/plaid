@@ -196,3 +196,33 @@
     (is (= [(str p)] (projects (req nil) fix/db p [])))
     (is (= [(str p)] (projects (req [p]) fix/db p [(str q)]))
         "a request made with a scoped token never widens it")))
+
+(deftest a-scoped-token-relabels-only-the-groups-it-created
+  ;; D24: a group names no project, so the scope gate refused every relabel by
+  ;; a delegated token, and an assistant plan that stopped partway kept its
+  ;; whole plan's label in History.
+  (let [{:keys [p]} (world!)
+        token-a (auth/issue-delegated-token! fix/db "fake-secret" "admin@example.com" [p])
+        a (as token-a)
+        b (scoped "admin@example.com" p)
+        group-write (fn [who gid]
+                      (call who :post (str "/api/v1/documents?group-id=" gid "&group-message=Plan")
+                            {:project-id p :name (str "doc " gid)}))
+        relabel (fn [who gid] (call who :patch (str "/api/v1/operation-groups/" gid) {:message "Partly"}))
+        mine (random-uuid)
+        by-session (random-uuid)]
+    (is (= 201 (:status (group-write a mine))))
+    (is (= 201 (:status (group-write admin-request by-session))))
+    (testing "the token that created the group relabels it"
+      (let [r (relabel a mine)]
+        (is (= 200 (:status r)))
+        (is (= "Partly" (-> r :body :operation-group/message)))))
+    (testing "another delegated token of the same user, in the same project, does not"
+      (is (= 403 (:status (relabel b mine)))))
+    (testing "nor may the token relabel a group a session created"
+      (is (= 403 (:status (relabel a by-session)))))
+    (testing "reading the group stays refused to it"
+      (is (= 403 (:status (call a :get (str "/api/v1/operation-groups/" mine))))))
+    (testing "the user's own session still relabels both"
+      (is (= 200 (:status (relabel admin-request mine))))
+      (is (= 200 (:status (relabel admin-request by-session)))))))

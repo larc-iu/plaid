@@ -68,8 +68,11 @@
    (jwt/sign (cond-> {:user/id id
                       :version password-changes
                       :exp (exp-seconds ttl-seconds)}
-               ;; A scoped token: see the Scoped tokens section below.
-               (some? project-ids) (assoc :scope/projects (vec project-ids)))
+               ;; A scoped token: see the Scoped tokens section below. Its
+               ;; `:jti` tells it apart from every other token of its user,
+               ;; so it alone may relabel the operation groups it created.
+               (some? project-ids) (assoc :scope/projects (vec project-ids)
+                                          :jti (str (random-uuid))))
              secret-key)))
 
 (defn- sign-api-token
@@ -303,7 +306,8 @@
 ;; - `token-scope-gate`, the innermost middleware of every login-required
 ;;   route, refuses the request unless one of those gates passed it, or the
 ;;   route names its own check under `:plaid/token-scope` (the query, the
-;;   user's private data, the batch). So a route with no project behind it
+;;   user's private data, the batch, relabelling an operation group the
+;;   token's own writes created). So a route with no project behind it
 ;;   (admin screens, users, tokens, invites, project creation, listings) is
 ;;   refused without having to be listed.
 ;; - A route that acts on a vocabulary as a whole carries
@@ -319,7 +323,7 @@
 
 (def ^:dynamic *token-scope*
   "The scope of the request being served when it came with a scoped token:
-  `{:user-id :projects #{id} :admin? bool :passed (volatile! false)}`, nil
+  `{:user-id :projects #{id} :token-key jti :admin? bool :passed (volatile! false)}`, nil
   otherwise. Bound by `wrap-read-jwt`. The vocab gates read it here because
   their callers pass a db and a user id rather than the request."
   nil)
@@ -384,6 +388,19 @@
   [request scope]
   (let [k (-> request :parameters :path :key)]
     (when-not (and k (some #(in-scope? scope %) (str/split k #":")))
+      scope-refusal)))
+
+(defn operation-group-token-scope
+  "`:plaid/token-scope` for `/operation-groups/:id`: a scoped token may
+  relabel (PATCH) a group that its own writes created, whatever its
+  projects, since a group names none. Nothing else there is open to it.
+  `plaid.rest-api.v1.operation-group` has put the group's creating token on
+  the request as `:operation-group/token-key`."
+  [request scope]
+  (let [created-by (:operation-group/token-key request)]
+    (when-not (and (= :patch (:request-method request))
+                   (some? created-by)
+                   (= created-by (:token-key scope)))
       scope-refusal)))
 
 (defn each-operation-token-scope
@@ -459,6 +476,7 @@
                   scope (when-let [projects (and (map? token-data) (token-projects token-data))]
                           {:user-id (:user/id token-data)
                            :projects projects
+                           :token-key (:jti token-data)
                            :admin? (user/admin? user)
                            :passed (volatile! false)})
                   proceed (fn []

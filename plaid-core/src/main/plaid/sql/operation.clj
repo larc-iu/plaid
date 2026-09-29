@@ -31,6 +31,14 @@
   client-supplied label)."
   nil)
 
+(def ^:dynamic *scoped-token-key*
+  "The `:jti` of the scoped (delegated) token that authenticated the current
+  request, or nil for any other credential. Bound by `wrap-api-token-id`
+  from the VALIDATED claim and stored on an operation group the request
+  creates, so that token may relabel the group later (see
+  `plaid.rest-api.v1.auth/operation-group-token-scope`)."
+  nil)
+
 (def ^:dynamic *current-batch-id*
   "Set by the REST batch handler when several sub-operations should be
   grouped under one logical batch. Just goes onto each operation row;
@@ -111,6 +119,7 @@
                                 :kind *current-group-kind*
                                 :ref *current-group-ref*
                                 :user_id user
+                                :scoped_token *scoped-token-key*
                                 :created_at ts}]
                       :on-conflict [:id]
                       :do-nothing []})))

@@ -647,12 +647,15 @@
 (defn wrap-api-token-id
   "Bind the request's validated API-token id (set by `wrap-read-jwt` from the
   `:token/id` JWT claim, nil for session logins) to
-  `plaid.sql.operation/*token-id*` so it lands on the operations row. Must run
+  `plaid.sql.operation/*token-id*` so it lands on the operations row, and a
+  scoped token's `:jti` to `plaid.sql.operation/*scoped-token-key*` so it
+  lands on an operation group the request creates. Must run
   INSIDE `wrap-read-jwt` — it depends on the `:api-token/id` that middleware
   assoc's onto the request."
   [handler]
   (fn [request]
-    (binding [op/*token-id* (:api-token/id request)]
+    (binding [op/*token-id* (:api-token/id request)
+              op/*scoped-token-key* (-> request :auth/token-scope :token-key)]
       (handler request))))
 
 (def ^:private audit-message-max-length

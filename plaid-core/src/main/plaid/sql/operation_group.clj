@@ -46,6 +46,13 @@
 (defn get [db id]
   (row->group (psc/fetch-by-id db :operation_groups id)))
 
+(defn scoped-token
+  "The `:jti` of the scoped token whose write created the group, nil when a
+  session or a named API token created it (or no such group). Kept off the
+  group map: it is for the relabel check, never for a reader."
+  [db id]
+  (:scoped_token (psc/fetch-by-id db :operation_groups id)))
+
 (defn set-message!
   "Refine the group's label (e.g. `endOperation('Merged 3 morphemes')` once
   the count is known). Returns the updated group, or nil if no such group."
