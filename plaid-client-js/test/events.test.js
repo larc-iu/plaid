@@ -10,6 +10,7 @@ import {
   FLUSH_AT,
   FLUSH_INTERVAL_MS,
   FLAG_TTL_MS,
+  FLAG_OFF_TTL_MS,
   resetEventRecorders,
 } from "../src/events.js";
 
@@ -222,7 +223,7 @@ test("a stale switch is read again", async () => {
   r.record(client, "plan.opened", { projectId: "p1", targetId: "a" });
   await settle();
   assert.equal(r.record(client, "plan.opened", { projectId: "p1", targetId: "b" }), false);
-  t += FLAG_TTL_MS + 1;
+  t += FLAG_OFF_TTL_MS + 1;
   client.projects.get = async () => ({ config: { plaid: { research: { telemetry: true } } } });
   r.record(client, "plan.opened", { projectId: "p1", targetId: "c" });
   await settle();
@@ -231,20 +232,20 @@ test("a stale switch is read again", async () => {
 
 // V7 H7-7: turned on by another maintainer, the switch reached an open page
 // only five minutes later, and the answers given meanwhile were lost.
-test("a switch turned on elsewhere reaches an open page by the next flush, with the event that found it", async () => {
+test("a switch turned on elsewhere reaches an open page within a minute, with the event that found it", async () => {
   let t = 0;
   const r = new EventRecorder({ window: new EventTarget(), now: () => t });
   const client = fakeClient(false);
   assert.equal(r.record(client, "suggestion.adopted", shown("t1", "dog")), true);
   await settle();
   assert.equal(r.record(client, "suggestion.adopted", shown("t1", "dog")), false);
-  // Another maintainer turns it on. One flush interval later the next answer
-  // is recorded, not dropped while the switch is read again.
+  // Another maintainer turns it on. A minute later the next answer is
+  // recorded, not dropped while the switch is read again.
   client.projects.get = async (id) => ({
     id,
     config: { plaid: { research: { telemetry: true } } },
   });
-  t += FLUSH_INTERVAL_MS;
+  t += FLAG_OFF_TTL_MS;
   assert.equal(r.record(client, "suggestion.adopted", shown("t2", "cat")), true);
   await settle();
   mock.timers.tick(FLUSH_INTERVAL_MS);
@@ -254,6 +255,36 @@ test("a switch turned on elsewhere reaches an open page by the next flush, with 
     sent[0].body.map((e) => e["target-id"] ?? e.targetId),
     ["t2"],
   );
+});
+
+// REV-F-NET D-5: with the switch off, the grid records on every render, and
+// each record more than one flush interval after the last read read the
+// project again, about every ten seconds while someone glossed.
+test("a switch that is off is read again once a minute, however often events are recorded", async () => {
+  let t = 0;
+  const r = new EventRecorder({ window: new EventTarget(), now: () => t });
+  const client = fakeClient(false);
+  for (let i = 0; i < 12; i += 1) {
+    r.record(client, "suggestion.shown", shown(`t${i}`, "dog"));
+    await settle();
+    t += 5000;
+  }
+  assert.equal(client.gets, 1, "one read in the first minute");
+  r.record(client, "suggestion.shown", shown("t99", "dog"));
+  await settle();
+  assert.equal(client.gets, 2, "read again after a minute");
+});
+
+test("a switch that is on is still read again after one flush interval", async () => {
+  let t = 0;
+  const r = new EventRecorder({ window: new EventTarget(), now: () => t });
+  const client = fakeClient(true);
+  r.record(client, "plan.opened", { projectId: "p1", targetId: "a" });
+  await settle();
+  t += FLAG_TTL_MS + 1;
+  r.record(client, "plan.opened", { projectId: "p1", targetId: "b" });
+  await settle();
+  assert.equal(client.gets, 2);
 });
 
 test("shown is recorded once per target, field and value in a page session", async () => {

@@ -12,9 +12,11 @@ import { transformRequest } from "./transforms.js";
 // called it.
 //
 // It sends nothing for a project whose switch is off. The switch is read
-// from the project (`config.plaid.research.telemetry`) and kept for
-// FLAG_TTL_MS, one flush interval, so a switch another maintainer turns on
-// reaches an open page by its next flush. An event recorded while an old
+// from the project (`config.plaid.research.telemetry`). An "on" is kept for
+// FLAG_TTL_MS, one flush interval, and an "off" for FLAG_OFF_TTL_MS, so a
+// switch another maintainer turns on reaches an open page within a minute,
+// while a page whose switch is off, which records on every render of a grid,
+// does not read the project every few seconds. An event recorded while an old
 // "off" is being read again waits for the answer rather than being dropped.
 // `events.setEnabled` tells it at once, which is what the settings checkbox
 // does. A server refusal (the switch was turned off since) turns it off here
@@ -37,6 +39,7 @@ export const EVENT_TYPES = Object.freeze([
 export const FLUSH_INTERVAL_MS = 10000;
 export const FLUSH_AT = 50;
 export const FLAG_TTL_MS = FLUSH_INTERVAL_MS;
+export const FLAG_OFF_TTL_MS = 60000;
 // Events per request. A browser refuses a `keepalive` request whose body,
 // with every other keepalive request still in flight, passes 64 KiB, and a
 // refused request is lost. So the pagehide send goes out in small pieces, and
@@ -194,7 +197,8 @@ export class EventRecorder {
   // is buffered.
   _flag(projectId) {
     const known = this.flags.get(projectId);
-    const fresh = known && this.now() - known.at < FLAG_TTL_MS;
+    const ttl = known?.state === "on" ? FLAG_TTL_MS : FLAG_OFF_TTL_MS;
+    const fresh = known && this.now() - known.at < ttl;
     if (known && (fresh || known.checking)) return known.state;
     const state = known?.state === "on" ? "on" : "pending";
     this.flags.set(projectId, {
