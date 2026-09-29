@@ -126,6 +126,9 @@ export class WriteQueue {
     this._offline = false;
     // Whether `onOutOfStep` has been told since a refetch last landed.
     this._outOfStep = false;
+    // Whether a refetch was answered with a status no retry can change
+    // (FINAL_STATUSES) since one last landed.
+    this._refetchRefused = false;
     this._listeners = new Set();
     // Whether the screen showing this queue's work has gone (`letGo`), and
     // whether a refetch was left undone since.
@@ -171,12 +174,12 @@ export class WriteQueue {
 
   /**
    * True once a refetch was given up for a reason other than the network
-   * (`onOutOfStep`), until a later refetch lands: the screen may still show
-   * an edit the server does not have. False while a refetch is still being
-   * tried, and after one that landed.
+   * (`onOutOfStep`), or answered 401, 403 or 404, until a later refetch
+   * lands: the screen may still show an edit the server does not have. False
+   * while a refetch is still being tried, and after one that landed.
    */
   get outOfStep() {
-    return this._outOfStep;
+    return this._outOfStep || this._refetchRefused;
   }
 
   _setOffline(offline) {
@@ -335,6 +338,7 @@ export class WriteQueue {
         await fn();
         this._setOffline(false);
         this._outOfStep = false;
+        this._refetchRefused = false;
         return;
       } catch (err) {
         console.error(`${what} failed:`, err);
@@ -342,7 +346,10 @@ export class WriteQueue {
         // them "Could not reach the server") are waited out.
         const unreachable = isUnreachable(err);
         this._setOffline(unreachable);
-        if (FINAL_STATUSES.has(statusOf(err))) return;
+        if (FINAL_STATUSES.has(statusOf(err))) {
+          this._refetchRefused = true;
+          return;
+        }
         if (!unreachable && ++failed >= TRIES) {
           // Said once: a refetch after it that fails the same way adds nothing.
           if (this._onOutOfStep && !this._outOfStep) this._onOutOfStep(err);

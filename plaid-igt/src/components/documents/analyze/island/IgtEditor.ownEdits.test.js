@@ -237,6 +237,26 @@ describe('an edit that landed with its answer lost', () => {
     expect(cell('ma:m-1:Gloss').igtUnsent?.saved).toBe('A');
     void c;
   });
+
+  // Signed out mid-edit: the save and the refetch after it are both answered
+  // 401. The refetch is not tried again, so the cell still shows the typed
+  // value, which the server does not have. It goes back unsent, so leaving
+  // asks, rather than looking stored (REV-W-IGT2 D1).
+  it('is not assumed when the refetch after the refusal did not land', async () => {
+    const { client, server, release } = mount([401]);
+    client.documents.get = async () => {
+      throw Object.assign(new Error('HTTP 401'), { status: 401 });
+    };
+    const c = await editOnce('A');
+    await release();
+    await settle();
+
+    expect(server.value).toBe('dog');
+    expect(c.value).toBe('A');
+    expect(c.igtUnsent?.saved).toBe('dog');
+    expect(c.classList.contains('igt-field--unsent')).toBe(true);
+    expect(note('ma:m-1:Gloss')).toBeNull();
+  });
 });
 
 describe('a conflict that is not the cell’s own', () => {

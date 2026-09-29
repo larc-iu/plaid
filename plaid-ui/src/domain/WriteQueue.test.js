@@ -412,6 +412,24 @@ describe('WriteQueue', () => {
     expect(q.outOfStep).toBe(false);
   });
 
+  // A refetch answered 401, 403 or 404 is not tried again, and the screen
+  // still shows the refused edit: a cell must not take it for stored.
+  it('is out of step after a refetch refused for good, until one lands', async () => {
+    const q = new WriteQueue({ retryDelay: () => 0 });
+    let status = 401;
+    const resync = async () => {
+      if (status) throw Object.assign(new Error(`HTTP ${status}`), { status });
+    };
+    const refused = async () => {
+      throw new Error('refused');
+    };
+    await q.push(refused, { resync });
+    expect(q.outOfStep).toBe(true);
+    status = 0;
+    await q.push(refused, { resync });
+    expect(q.outOfStep).toBe(false);
+  });
+
   // The queue waits out exactly what every error toast calls "Could not reach
   // the server" (lib/errors.js), so the two can never disagree about which
   // failure is the network's. A status the client left only in the message is
