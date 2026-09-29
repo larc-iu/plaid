@@ -14,8 +14,8 @@
 // same 8 hex digits. The files are read as the bundle holds them (`?raw`),
 // with the line endings the repository stores, and hashed once per page.
 
-import { version } from '../../package.json';
-import BUILTIN_SOURCES from './builtinSources.json';
+import pkg from '../../package.json' with { type: 'json' };
+import BUILTIN_SOURCES from './builtinSources.json' with { type: 'json' };
 
 const hex = async (text) => {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
@@ -40,7 +40,7 @@ export const builtinDetail = (name) => {
       name,
       sourceHash(BUILTIN_SOURCES[name]).then((h) => ({
         model: `builtin:${name}`,
-        version: `${version}+${h}`,
+        version: `${pkg.version}+${h}`,
       })),
     );
   }
