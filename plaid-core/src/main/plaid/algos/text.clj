@@ -2638,7 +2638,8 @@
   only the ops that reach it, after the shift of those before it. Applying
   each op over the whole text and every token cost seconds for a thousand
   edits over a long text, with the write lock held. Other op lists are
-  applied in turn."
+  applied a run of such ops at a time: one op out of that order among the
+  7,000 a long line retyped gave cost a minute applied in turn."
   [ops text tokens]
   (let [ops (vec (take-while some? ops))
         ^String body (:text/body text)
@@ -2646,9 +2647,10 @@
         n (alength o)
         ;; Validate as the ops come, and place each in the old body: an op
         ;; at running index i stands at old position i - shift. `edits` is
-        ;; nil once an op stands before where the previous one left off.
-        {:keys [edits]}
-        (reduce (fn [{:keys [len shift reach edits] :as acc} op]
+        ;; nil once an op stands before where the previous one left off,
+        ;; which is op `break`.
+        {:keys [edits break]}
+        (reduce (fn [{:keys [len shift reach edits break] :as acc} op]
                   (let [type (check-op! op len)
                         {:keys [index value length]} op
                         [del ins] (case type
@@ -2664,11 +2666,33 @@
                            :edits (when (and edits (<= reach s))
                                     (conj edits {:op (assoc op :type type) :start s :end t
                                                  :delta (- ins del)
-                                                 :value (if (= type :delete) "" value)})))))
+                                                 :value (if (= type :delete) "" value)}))
+                           :break (or break (when (and edits (< s reach)) (count edits))))))
                 {:len n :shift 0 :reach 0 :edits []}
                 ops)]
     (if-not edits
-      (apply-text-edits-in-turn ops text tokens)
+      ;; The ops before `break` stand in order, and so do the first run of
+      ;; those from it on: each run in one pass, over what the one before
+      ;; made, is the ops applied in turn.
+      (loop [ops ops j break text text tokens tokens deleted []]
+        (let [{t :text ts :tokens d :deleted} (apply-text-edits (subvec ops 0 j) text tokens)
+              ops (subvec ops j)
+              deleted (into deleted d)]
+          (if (empty? ops)
+            {:text t :tokens ts :deleted deleted}
+            ;; how many of the rest stand in order
+            (recur ops
+                   (loop [i 0 shift 0 reach 0]
+                     (if (< i (count ops))
+                       (let [{:keys [type index value length]} (ops i)
+                             [del ins] (case (op-type type)
+                                         :insert [0 (cp/cp-count value)]
+                                         :delete [value 0]
+                                         :replace [length (cp/cp-count value)])
+                             s (- index shift)]
+                         (if (< s reach) i (recur (inc i) (+ shift (- ins del)) (+ s del))))
+                       i))
+                   t ts deleted))))
       (let [k (count edits)
             new-body (let [sb (StringBuilder.)]
                        (loop [p 0 es edits]

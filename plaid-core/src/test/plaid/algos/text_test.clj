@@ -2289,6 +2289,25 @@
             (is (= (holders-walking o near keep? p q) (holders p q))
                 (str case-n " " (pr-str body) " [" p " " q "]"))))))))
 
+(deftest many-edits-with-one-out-of-order-apply-quickly
+  ;; The same edits with one op standing before where the last left off, as
+  ;; the fold of a line retyped almost whole gave one among 7,000. The whole
+  ;; list was applied op by op over every token then: a minute of the write
+  ;; lock. Now each run of ops in order is applied in one pass.
+  (let [words (vec (take 50000 (cycle ["the" "cat" "sat" "ta" "tat" "at"])))
+        old (str/join " " words)
+        tokens (word-tokens words)
+        ops (ta/diff old (str/join " " (map-indexed (fn [i w] (if (zero? (mod i 50)) (str w "x") w)) words)))
+        ;; an insert back at the start of the text after the 500th op
+        ops (into (conj (subvec ops 0 500) (ta/insert-op 0 "Q")) (map #(update % :index inc) (subvec ops 500)))
+        t0 (System/nanoTime)
+        result (ta/apply-text-edits ops {:text/body old} tokens)
+        ms (/ (- (System/nanoTime) t0) 1e6)]
+    (is (= (edit-outcome #'ta/apply-text-edits-in-turn ops old tokens)
+           (edit-outcome ta/apply-text-edits ops old tokens)))
+    (is (= 50000 (count (:tokens result))))
+    (is (< ms 1000) (str ms " ms"))))
+
 (deftest a-long-line-without-spaces-folds-quickly
   ;; 10,000 words of a script without spaces on one line, each a word token
   ;; with two morphemes, and one word in ten retyped. The fold walked the
