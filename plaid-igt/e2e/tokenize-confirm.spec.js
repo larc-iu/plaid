@@ -96,9 +96,9 @@ test('A2-13: deleting a word counts its machine span and link, then cascades the
   await expect(dialog).toContainText('1 vocabulary link');
   await dialog.getByRole('button', { name: 'Delete' }).click();
   await expect(page.locator('.token', { hasText: 'alpha' })).toHaveCount(0);
-  await page.waitForLoadState('networkidle');
-  const toks = await wordTokens();
-  expect(toks.some((t) => t.id === ids.w[0])).toBe(false);
+  // The screen changes before the write lands (every edit is optimistic), and a
+  // networkidle already reached on load is no barrier, so the server is polled.
+  await expect.poll(async () => (await wordTokens()).some((t) => t.id === ids.w[0])).toBe(false);
 });
 
 test('A8-02 + B10-02: splitting a word counts its machine morpheme gloss and link; word spans survive', async ({
@@ -116,17 +116,23 @@ test('A8-02 + B10-02: splitting a word counts its machine morpheme gloss and lin
   await dialog.getByRole('button', { name: 'Split', exact: true }).click();
   await expect(page.locator('.token', { hasText: /^be$/ })).toHaveCount(1);
   await expect(page.locator('.token', { hasText: /^ta$/ })).toHaveCount(1);
-  await page.waitForLoadState('networkidle');
-  const r = await rawDoc();
+  // The split is on screen before its write lands, so wait for the server to
+  // have it (the one write drops the morpheme, as below) before reading.
+  let r;
+  const layerOf = (doc, role) => doc.textLayers[0].tokenLayers.find((l) => roleOf(l) === role);
+  await expect
+    .poll(
+      async () => {
+        r = await rawDoc();
+        return layerOf(r, ROLES.MORPHEME).tokens.some((m) => m.id === ids.m[1]);
+      },
+      { message: 'morpheme material gone' },
+    )
+    .toBe(false);
   const tl = r.textLayers[0];
-  const wl = tl.tokenLayers.find((l) => roleOf(l) === ROLES.WORD);
-  const ml = tl.tokenLayers.find((l) => roleOf(l) === ROLES.MORPHEME);
+  const wl = layerOf(r, ROLES.WORD);
   const be = wl.tokens.find((t) => t.id === ids.w[1]);
   expect(be, 'left part keeps the token id').toBeTruthy();
-  expect(
-    ml.tokens.some((m) => m.id === ids.m[1]),
-    'morpheme material gone',
-  ).toBe(false);
   const posSpans = wl.spanLayers.find((s) => s.name === 'Part of Speech').spans;
   expect(
     posSpans.some((s) => s.tokens[0] === ids.w[1] && s.value === 'ADJ'),
