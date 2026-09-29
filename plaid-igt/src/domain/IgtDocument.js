@@ -100,6 +100,8 @@ export class IgtDocument extends DocumentModel {
   }) {
     super({ raw, client, projectId, project, user, asOf });
     this._writer = null;
+    // How many times a read of the project changed it (`refreshProject`).
+    this._projectReads = 0;
     // Fold the document-embedded vocab-links (under raw's token layers) into the
     // separately-loaded vocabularies: `vocabLayers.get` returns items but not
     // links, so this is the only way links survive a fresh load. See
@@ -397,10 +399,18 @@ export class IgtDocument extends DocumentModel {
     this._project = project;
     // A new data version: the grid draws its cells, each with the tagset it
     // checks against, again only when that changes, and `document` derives
-    // its metadata fields from the project.
-    this._dataVersion++;
+    // its metadata fields from the project. `_dataVersion` itself is left
+    // alone, since a reload takes a bump of it during its fetch for an edit
+    // and would then not show what it fetched.
+    this._projectReads++;
+    this._derivedCache.clear();
     this._emit();
     return true;
+  }
+
+  /** The document's data version, which a new copy of the project also moves. */
+  get dataVersion() {
+    return this._dataVersion + this._projectReads;
   }
 
   async _readProject() {

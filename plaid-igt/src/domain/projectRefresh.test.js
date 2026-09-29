@@ -116,3 +116,34 @@ describe('remembering a speaker', () => {
     expect(doc.knownSpeakers).toEqual(['Ana', 'Bea', 'Cy']);
   });
 });
+
+// Reading the project again gave the document a new data version, so a
+// drained reload whose fetch was out at the time took the bump for an edit
+// made meanwhile and never showed what it fetched (REV-F-SETTINGS N4).
+describe('a project read while a drained reload is out', () => {
+  it('does not keep the reload from showing what it fetched', async () => {
+    const { doc, client } = setup();
+    const fresh = buildRawDoc();
+    fresh.name = 'Fetched';
+    let answer;
+    client.documents.get = () => new Promise((r) => (answer = () => r(fresh)));
+    const reloading = doc._reloadDrained();
+    // The tab comes back while the fetch is out, and the project changed.
+    expect(await doc.refreshProject()).toBe(true);
+    answer();
+    await reloading;
+    expect(doc.raw).toBe(fresh);
+    expect(doc._writes.reloadWhenDrained).toBe(false);
+  });
+
+  it('still gives the grid a new data version and new derived values', async () => {
+    const { doc, server } = setup();
+    doc.raw.metadata = { Place: 'Bloomington' };
+    expect(doc.document.metadata).toEqual({});
+    const v0 = doc.dataVersion;
+    server.project.config.igt.documentMetadata = [{ name: 'Place' }];
+    await doc.refreshProject();
+    expect(doc.dataVersion).toBeGreaterThan(v0);
+    expect(doc.document.metadata).toEqual({ Place: 'Bloomington' });
+  });
+});
