@@ -44,6 +44,47 @@ describe('rewindForRetry', () => {
     expect(out.conv.display).toEqual(c.display.slice(0, 2));
   });
 
+  it('drops a saved turn whose save went unanswered, the stamped message included', () => {
+    // conc-2026-09-29 H8-6: the service's save of the turn landed and its
+    // answer was lost, so the record holds the question (stamped with where
+    // it was asked) and the answer. A retry sent the question a second time.
+    const c = conv(
+      [
+        { role: 'user', content: 'first' },
+        { role: 'assistant', content: 'ok' },
+        { role: 'user', content: '[Asked from the document "Doc1"]\n\nWhat is s4?' },
+        { role: 'assistant', content: 'play-01' },
+      ],
+      [
+        { kind: 'user', text: 'first' },
+        { kind: 'assistant', text: 'ok' },
+        { kind: 'user', text: 'What is s4?' },
+        { kind: 'assistant', text: 'play-01' },
+        { kind: 'error', text: 'The answer is ready but the conversation could not be saved' },
+      ],
+    );
+    const out = rewindForRetry(c);
+    expect(out.text).toBe('What is s4?');
+    expect(out.conv.messages).toEqual(c.messages.slice(0, 2));
+    expect(out.conv.display).toEqual(c.display.slice(0, 2));
+  });
+
+  it('keeps an earlier answered copy of the same question when the failed turn was dropped', () => {
+    const c = conv(
+      [
+        { role: 'user', content: 'again?' },
+        { role: 'assistant', content: 'ok' },
+      ],
+      [
+        { kind: 'user', text: 'again?' },
+        { kind: 'assistant', text: 'ok' },
+        { kind: 'user', text: 'again?' },
+        { kind: 'error', text: 'the assistant could not answer' },
+      ],
+    );
+    expect(rewindForRetry(c).conv.messages).toEqual(c.messages);
+  });
+
   it('handles a first turn that failed, leaving an empty transcript', () => {
     const c = conv(
       [],

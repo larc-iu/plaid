@@ -49,3 +49,20 @@ describe('applyToasts', () => {
     expect(notifySuccess).not.toHaveBeenCalled();
   });
 });
+
+// conc-2026-09-29 H8-4: after "Out of date" the editor kept showing the old
+// sentence, since only an apply that succeeded reloaded it.
+describe('changesTheView', () => {
+  it('reloads the host after every finished apply but one still running', async () => {
+    const { changesTheView } = await import('./jobs.js');
+    const apply = (extra) => ({ done: true, kind: 'apply', ...extra });
+    expect(changesTheView(apply({ outcome: { message: 'Applied.' } }))).toBe(true);
+    expect(changesTheView(apply({ error: { message: 'Nothing was written. Out of date.' } }))).toBe(
+      true,
+    );
+    expect(changesTheView(apply({ error: { message: 'Stopped partway.' } }))).toBe(true);
+    expect(changesTheView(apply({ error: { message: 'lost', pending: true } }))).toBe(false);
+    expect(changesTheView({ done: true, kind: 'turn' })).toBe(false);
+    expect(changesTheView({ done: false, kind: 'apply' })).toBe(false);
+  });
+});

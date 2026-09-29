@@ -38,6 +38,7 @@ import { useResumeConversation } from './useResumeConversation.js';
 import {
   attachJob,
   buildMeta,
+  changesTheView,
   jobFor,
   newConversation,
   persistConv,
@@ -453,8 +454,8 @@ export const AssistantChat = ({
       }
       if (j.done) applyMeta(j.result.meta);
       // A plan that landed changed the project, so whatever is showing it
-      // (the document beside this panel) is now stale.
-      if (j.done && j.kind === 'apply' && !j.error) onAppliedRef.current?.();
+      // (the document beside this panel) is now stale (see changesTheView).
+      if (changesTheView(j)) onAppliedRef.current?.();
       if (activeRef.current?.id !== j.id) return;
       if (j.done) {
         activeRef.current = j.result.conv;

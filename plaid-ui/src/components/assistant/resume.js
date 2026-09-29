@@ -29,16 +29,32 @@ export const rewindForRetry = (conv) => {
   const projects = conv.display[i].projects || [];
   // A lost turn still has the user's message in the model transcript; a
   // failed or stopped one had it dropped so a retry could not send it twice.
-  const last = conv.messages.at(-1);
+  // A turn whose answer was saved but whose save went unanswered has the
+  // message AND the answer, the message stamped by the service: the
+  // transcript goes back to before that message, or the retry sends it twice.
+  const { messages } = conv;
+  const answered = conv.display.slice(i + 1).some((d) => d.kind === 'assistant');
+  const at = answered
+    ? messages.findLastIndex((m) => isMessage(m, text))
+    : isMessage(messages.at(-1), text)
+      ? messages.length - 1
+      : -1;
   return {
     text,
     files,
     projects,
     conv: {
       ...conv,
-      messages:
-        last?.role === 'user' && last.content === text ? conv.messages.slice(0, -1) : conv.messages,
+      messages: at >= 0 ? messages.slice(0, at) : messages,
       display: conv.display.slice(0, i),
     },
   };
 };
+
+// The model's copy of a user message: the text as sent, or with the notes the
+// service stamps in front of it (the place, the projects, the files), each
+// ending in a blank line.
+const isMessage = (m, text) =>
+  m?.role === 'user' &&
+  typeof m.content === 'string' &&
+  (m.content === text || m.content.endsWith(`\n\n${text}`));

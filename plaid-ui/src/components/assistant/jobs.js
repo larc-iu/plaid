@@ -480,6 +480,12 @@ export const applyToasts = (j, summary, { docked = false } = {}) => {
   }
 };
 
+// Whether a finished job may have changed what the host screen shows, so it
+// reloads. A plan that landed did, and so may one that failed partway or lost
+// its answer. One refused as out of date proves the screen was already old.
+// Only an apply still running on the server has nothing new to show yet.
+export const changesTheView = (j) => !!j.done && j.kind === 'apply' && !j.error?.pending;
+
 // Apply `plan` from `conv`. What a plan writes is recorded as verified (made
 // by the assistant, confirmed by the approver) unless the user asks for it to
 // count as human-made; a contributor's approval records it as their own
