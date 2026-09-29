@@ -318,6 +318,15 @@ class _Batch:
     def new_id(self, prefix):
         return self.client.new_id(prefix)
 
+    def ref(self, op_index=-1, index=None):
+        """The real batch's stand-in for the id a queued op will create
+        (``PlaidBatch.ref``): ``{'$ref': n}``, or ``{'$ref': n, 'index': k}``
+        for the k-th id of a bulk create. The fake records it as given."""
+        n = len(self.queued) + op_index if op_index < 0 else op_index
+        if not isinstance(n, int) or n < 0 or n >= len(self.queued):
+            raise PlaidAPIError(f'No operation {op_index} has been queued on this batch')
+        return {'$ref': n} if index is None else {'$ref': n, 'index': index}
+
     def fail_if_asked(self, kind):
         self.client.fail_if_asked(kind)
 

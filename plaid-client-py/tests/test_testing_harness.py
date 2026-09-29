@@ -825,3 +825,15 @@ def test_a_refused_batch_says_it_saved_nothing_as_the_real_one_does():
         with c.batched() as b:
             b.guidelines.update('g1', title='X', expected_updated_at='stale')
     assert (e.value.committed, e.value.committed_results) == (0, [])
+
+
+def test_a_fake_batch_hands_out_refs_as_the_real_one_does():
+    from plaid_client.testing import FakeClient
+    c = FakeClient([{'id': 'd', 'version': 1}])
+    with c.batched() as b:
+        b.vocab_items.create('v1', 'dog')
+        b.vocab_links.create(b.ref(), ['t1'])
+        assert b.ref(0) == {'$ref': 0} and b.ref(0, 2) == {'$ref': 0, 'index': 2}
+        with pytest.raises(PlaidAPIError):
+            b.ref(5)
+    assert c.payloads('vocab_links.create')[0]['args'][0] == {'$ref': 0}
