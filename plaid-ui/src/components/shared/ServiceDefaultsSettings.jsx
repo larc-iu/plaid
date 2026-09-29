@@ -245,6 +245,10 @@ export const ServiceDefaultsSettings = ({
   // throw it away.
   const unsavedRef = useRef(false);
   unsavedRef.current = dirty || extraDirty;
+  // The draft as it is now, for a Save that lands after a change made while
+  // it was out: that change stays unsaved.
+  const draftNow = useRef(draft);
+  draftNow.current = draft;
 
   const begin = useLatestCall();
   // `servicesOnly` refreshes which services are online and leaves the saved
@@ -339,7 +343,7 @@ export const ServiceDefaultsSettings = ({
         }));
       }
       if (extraDirty) onExtraSaved?.();
-      setDirty(false);
+      setDirty(!sameConfig(draftNow.current, draft));
       notifySuccess('Service defaults saved');
     } catch (error) {
       notifyError(humanizeError(error), 'Failed to save the defaults');
