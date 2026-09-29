@@ -2092,6 +2092,111 @@
           (swap! diverged conj [case-n old new]))))
     (is (= [] (take 5 @diverged)))))
 
+(deftest the-text-ops-make-is-the-text-applying-them-makes
+  ;; `fold-whole-words` checks that its ops make the text the ops it was
+  ;; given make, through a gap buffer rather than applying them in turn.
+  (doseq [seed (range 1 6)]
+    (let [r (java.util.Random. seed)]
+      (dotimes [case-n 1000]
+        (let [[body tokens ops] (random-edit-case r)
+              applied (try (:text/body (:text (ta/apply-text-edits ops {:text/body body} tokens)))
+                           (catch clojure.lang.ExceptionInfo _ nil))]
+          (is (= applied (#'ta/ops-body ops body))
+              (str "seed " seed " case " case-n ": " (pr-str body) " " (pr-str ops))))))))
+
+;; ---------------------------------------------------------------------------
+;; pair-replacements looks tokens up by position, where it scanned every
+;; token for every stretch. This is the version that scanned them, to pin
+;; that the two pair alike.
+
+(defn- pair-replacements-scanning-every-token [ops old tokens]
+  (let [old-width #'ta/old-width
+        new-text #'ta/new-text
+        op-end #'ta/op-end
+        holds-with-room? (fn [s e]
+                           (boolean (some (fn [{:token/keys [begin end]}]
+                                            (and (< begin end) (<= begin s) (<= e end)
+                                                 (or (< begin s) (< e end))))
+                                          tokens)))
+        whole (cp/cp-count old)
+        pinned (into #{}
+                     (comp (filter #(= (:token/begin %) (:token/end %)))
+                           (map :token/begin))
+                     tokens)
+        kind-of (fn [run] (set (map :type run)))
+        flush (fn [out run start]
+                (let [width (reduce + (map old-width run))
+                      kinds (kind-of run)]
+                  (if (and (contains? kinds :delete)
+                           (contains? kinds :insert)
+                           (not (and (zero? start) (= width whole))))
+                    (conj out (ta/replace-op (:index (first run))
+                                             width
+                                             (apply str (keep new-text run))))
+                    (into out (remove #(= :keep (:type %)) run)))))]
+    (loop [ops ops run [] at nil start 0 width 0 shift 0 out []]
+      (if-let [op (first ops)]
+        (let [old-index (- (:index op) shift)
+              shift' (case (:type op)
+                       :insert (+ shift (cp/cp-count (:value op)))
+                       :delete (- shift (:value op))
+                       shift)
+              taken (old-width op)
+              apart? (and (= :delete (:type op))
+                          (some #(= :delete (:type %)) run)
+                          (contains? pinned old-index))
+              touching? (and (seq run) (= (:index op) at) (not apart?))
+              gap-start (+ start width)
+              reach (+ old-index (old-width op))
+              over-kept? (and (seq run)
+                              (not touching?)
+                              (not apart?)
+                              (< gap-start old-index)
+                              (= #{(if (= :delete (:type op)) :insert :delete)}
+                                 (kind-of run))
+                              (holds-with-room? start reach)
+                              (not (#'ta/token-inside? tokens start reach)))]
+          (cond
+            touching?
+            (recur (rest ops) (conj run op) (op-end op) start (+ width taken) shift' out)
+
+            over-kept?
+            (let [kept {:type :keep :value (cp/cp-subs old gap-start old-index)}]
+              (recur (rest ops) (conj run kept op) (op-end op) start
+                     (+ width (old-width kept) taken) shift' out))
+
+            :else
+            (recur (rest ops) [op] (op-end op) old-index taken shift'
+                   (flush out run start))))
+        (flush out run start)))))
+
+(deftest pair-replacements-looking-tokens-up-pairs-as-scanning-them
+  ;; Few letters, so the diff keeps letters between a delete and an insert,
+  ;; with words, morphemes, tokens over several words and zero-width
+  ;; markers, and enough edits that the tokens are looked up by position.
+  (let [r (java.util.Random. 23)
+        words ["a" "t" "at" "ta" "tat" "att" "aa" "é" "𐍂a" "tata"]
+        seps [" " " " "" "\n"]
+        diverged (atom [])]
+    (dotimes [case-n 3000]
+      (let [n (+ 2 (.nextInt r 30))
+            ws (vec (repeatedly n #(nth words (.nextInt r (count words)))))
+            body-of (fn [ws] (apply str (interleave ws (repeatedly #(nth seps (.nextInt r (count seps)))))))
+            old (body-of ws)
+            len (cp/cp-count old)
+            tokens (vec (for [i (range (.nextInt r 40))]
+                          (let [b (.nextInt r (inc len))
+                                e (if (< (.nextDouble r) 0.15) b (min len (+ b (.nextInt r 8))))]
+                            (tok i b e))))
+            new (body-of (vec (keep #(case (.nextInt r 4) 0 nil 1 (nth words (.nextInt r (count words))) %) ws)))
+            ops (-> (ta/diff old new)
+                    (ta/slide-to-tokens old tokens)
+                    (ta/normalize-deletes old tokens))]
+        (when (not= (pair-replacements-scanning-every-token ops old tokens)
+                    (ta/pair-replacements ops old tokens))
+          (swap! diverged conj [case-n old new]))))
+    (is (= [] (take 5 @diverged)))))
+
 (deftest word-alignment-of-an-edit-with-no-word-token-near
   ;; A text whose word tokens stop before a later line, or a layer of words
   ;; over none of the letters edited: finding the edges between words threw

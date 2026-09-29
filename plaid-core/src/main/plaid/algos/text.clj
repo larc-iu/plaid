@@ -155,7 +155,7 @@
 (def ^:private band-cells
   "The most cells of the banded alignment, the last resort for a long stretch
   whose units mostly changed and whose unit counts differ."
-  20000000)
+  4000000)
 
 (defn- sub-cps ^ints [^ints a s e]
   (java.util.Arrays/copyOfRange a (int s) (int e)))
@@ -1582,7 +1582,6 @@
   (let [edits (ops->edits ops)
         near (tokens-near tokens (count edits))
         ^ints o (.toArray (.codePoints ^String old))
-        ranges-of (fn [edits] (vec (keep #(when (= (:kind %) :delete) [(:start %) (:end %)]) edits)))
         ;; whether the code points from s1 to e1 are those from s2 on
         same? (fn [s1 e1 s2]
                 (loop [i 0]
@@ -1612,7 +1611,30 @@
         ;; the comparison is the same as over every token. Counting every
         ;; token for every pair of deletes took 12 s on a find-and-replace
         ;; over 10,000 words, under the write lock.
-        cuts (fn [rs lo hi] (count (filter #(cut? rs %) (near lo hi))))
+        cuts (fn [rs ts] (count (filter #(cut? rs %) ts)))
+        ;; The delete ranges of `v` that can meet the tokens `ts` near the
+        ;; pair at i, with the pair replaced by `c` when one is given: those
+        ;; reaching into [from, to), found by position, since collecting
+        ;; every range for every pair took 20 s on a long text pasted over
+        ;; by another. `cut?` reads only the ranges meeting the token.
+        ranges-near (fn [v i c ts lo hi]
+                      (let [from (reduce min lo (map :token/begin ts))
+                            to (reduce max hi (map :token/end ts))
+                            start-of #(or (:start %) (:at %))
+                            j (loop [x 0 y (count v)]
+                                (if (< x y)
+                                  (let [h (quot (+ x y) 2)]
+                                    (if (< (start-of (v h)) from) (recur (inc h) y) (recur x h)))
+                                  x))
+                            j (if (and (pos? j) (:end (v (dec j))) (> (:end (v (dec j))) from)) (dec j) j)]
+                        (loop [j j out (transient [])]
+                          (if (and (< j (count v)) (< (start-of (v j)) to))
+                            (let [e (v j)]
+                              (cond
+                                (and c (= j i)) (recur (+ j 2) (conj! out [(:start c) (:end c)]))
+                                (= (:kind e) :delete) (recur (inc j) (conj! out [(:start e) (:end e)]))
+                                :else (recur (inc j) out)))
+                            (persistent! out)))))
         step (fn [edits]
                (let [v (vec edits)]
                  (loop [i 0]
@@ -1634,9 +1656,10 @@
                                best (when (seq candidates)
                                       (let [lo (:start a)
                                             hi (:end b)
-                                            before (cuts (ranges-of v) lo hi)]
+                                            ts (near lo hi)
+                                            before (cuts (ranges-near v i nil ts lo hi) ts)]
                                         (->> candidates
-                                             (map (fn [c] [(cuts (ranges-of (assoc v i c (inc i) nil)) lo hi) c]))
+                                             (map (fn [c] [(cuts (ranges-near v i c ts lo hi) ts) c]))
                                              (filter (fn [[n _]] (< n before)))
                                              (sort-by first)
                                              first)))]
@@ -1690,15 +1713,6 @@
 
 (defn- new-text [{:keys [type value]}]
   (case type (:insert :keep) value nil))
-
-(defn- holds-with-room?
-  "A token that holds [s e) and reaches past it on one side at least, so the
-  stretch is a change inside the token and not the whole of it."
-  [tokens s e]
-  (boolean (some (fn [{:token/keys [begin end]}]
-                   (and (< begin end) (<= begin s) (<= e end)
-                        (or (< begin s) (< e end))))
-                 tokens)))
 
 (defn- token-inside?
   "A token the stretch would swallow: inside [s e) without holding it. A
@@ -1954,6 +1968,44 @@
 
 (declare apply-text-edits fold-whole-words*)
 
+(defn- ops-body
+  "The text `ops` make of `old`, or nil when one of them does not fit it.
+  Through a gap buffer, so ops in nearly their order cost the text they
+  move. Applying them in turn copies the whole text for each op out of
+  order, which took seconds on a long text pasted over by another."
+  [ops ^String old]
+  (let [^ints o (.toArray (.codePoints old))
+        n (alength o)
+        typed (reduce + 0 (keep #(when (string? (:value %)) (cp/cp-count (:value %))) ops))
+        cap (+ n typed)
+        buf (int-array cap)]
+    (System/arraycopy o 0 buf (- cap n) n)
+    (loop [ops (seq ops) gs 0 ge (- cap n)]
+      (if-let [{:keys [index value length] :as op} (first ops)]
+        (let [type (op-type (:type op))
+              len (+ gs (- cap ge))
+              cut (case type :delete value :replace length :insert 0 nil)
+              typed (when (#{:insert :replace} type) value)]
+          (when (and (int? index) (<= 0 index len) (int? cut) (<= 0 cut (- len index))
+                     (or (= type :delete) (string? typed)))
+            ;; the gap to index
+            (let [[gs ge] (cond
+                            (< index gs) (let [k (- gs index)]
+                                           (System/arraycopy buf index buf (- ge k) k)
+                                           [index (- ge k)])
+                            (> index gs) (let [k (- index gs)]
+                                           (System/arraycopy buf ge buf gs k)
+                                           [index (+ ge k)])
+                            :else [gs ge])
+                  ge (+ ge cut)
+                  gs (if typed
+                       (let [^ints v (.toArray (.codePoints ^String typed))]
+                         (System/arraycopy v 0 buf gs (alength v))
+                         (+ gs (alength v)))
+                       gs)]
+              (recur (next ops) gs ge))))
+        (str (String. buf 0 (int gs)) (String. buf (int ge) (int (- cap ge))))))))
+
 (defn fold-whole-words
   "Rewrite `ops` (as produced by `pair-replacements` for `old`) so that the
   edits lying within one token's extent, reaching both its ends and holding a
@@ -1999,9 +2051,9 @@
      ;; stored a body the user never typed. Where the folded ops do not give
      ;; the same text, the ops stay as they came.
      (let [folded (fold-whole-words* ops old tokens word?)
-           body (fn [ops] (:text/body (:text (apply-text-edits ops {:text/body old} []))))]
+           body #(ops-body % old)]
        (if (or (= folded ops)
-               (= (body ops) (try (body folded) (catch clojure.lang.ExceptionInfo _ nil))))
+               (let [b (body ops)] (and b (= b (body folded)))))
          folded
          ops)))))
 
@@ -2294,7 +2346,32 @@
   node that way."
   ([ops old] (pair-replacements ops old []))
   ([ops old tokens]
-   (let [whole (cp/cp-count old)
+   (let [^ints o (.toArray (.codePoints ^String old))
+         whole (alength o)
+         ;; Tokens are looked up by position: a long text pasted over by
+         ;; another has thousands of stretches, and scanning every token for
+         ;; each took 20 s on 50,000 words.
+         near (tokens-near tokens (count ops))
+         by-begin (vec (sort-by :token/begin (filter (fn [{:token/keys [begin end]}] (< begin end)) tokens)))
+         begins (long-array (map :token/begin by-begin))
+         ;; the furthest end among the first i+1 tokens by begin
+         reach-by (long-array (rest (reductions max Long/MIN_VALUE (map :token/end by-begin))))
+         below (fn [x] (loop [a 0 b (alength begins)]
+                         (if (< a b)
+                           (let [m (quot (+ a b) 2)]
+                             (if (< (aget begins m) (long x)) (recur (inc m) b) (recur a m)))
+                           a)))
+         ;; A token that holds [s e) and reaches past it on one side at
+         ;; least, so the stretch is a change inside the token and not the
+         ;; whole of it: one beginning before s and reaching e, or one
+         ;; beginning at s and reaching past e.
+         holds-with-room? (fn [s e]
+                            (let [c (below s)]
+                              (or (and (pos? c) (>= (aget reach-by (dec c)) (long e)))
+                                  (loop [i c]
+                                    (and (< i (alength begins)) (= (aget begins i) (long s))
+                                         (or (> (:token/end (by-begin i)) e) (recur (inc i))))))))
+         token-inside? (fn [s e] (token-inside? (near s e) s e))
          pinned (into #{}
                       (comp (filter #(= (:token/begin %) (:token/end %)))
                             (map :token/begin))
@@ -2337,14 +2414,14 @@
                                (< gap-start old-index)
                                (= #{(if (= :delete (:type op)) :insert :delete)}
                                   (kind-of run))
-                               (holds-with-room? tokens start reach)
-                               (not (token-inside? tokens start reach)))]
+                               (holds-with-room? start reach)
+                               (not (token-inside? start reach)))]
            (cond
              touching?
              (recur (rest ops) (conj run op) (op-end op) start (+ width taken) shift' out)
 
              over-kept?
-             (let [kept {:type :keep :value (cp/cp-subs old gap-start old-index)}]
+             (let [kept {:type :keep :value (String. o (int gap-start) (int (- old-index gap-start)))}]
                (recur (rest ops) (conj run kept op) (op-end op) start
                       (+ width (old-width kept) taken) shift' out))
 
