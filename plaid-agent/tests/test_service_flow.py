@@ -97,7 +97,8 @@ def test_a_cancelled_turn_is_settled_as_stopped(monkeypatch):
     _service().process_request(_request(client), helper)
     assert helper.done == [{'kind': 'stopped'}] and not helper.errors
     conv, meta = store.load('c1')
-    assert conv['display'][-1] == {'kind': 'error', 'text': 'Stopped.', 'stopped': True}
+    assert conv['display'][-1] == {'kind': 'error', 'text': 'Stopped.', 'stopped': True,
+                                   'model': 'fake/model', 'version': _service().version}
     assert conv['messages'] == [], 'the unanswered message leaves the transcript so a retry sends it once'
     assert meta['pending'] is None
 

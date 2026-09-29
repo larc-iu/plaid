@@ -15,7 +15,7 @@ That is the order ``umrImport.js`` writes a document in, and the order
 
 import re
 from collections import Counter
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client import created_id, created_ids, metadata_ops
 
@@ -480,11 +480,13 @@ def normalize_ops(ops: List[Dict[str, Any]]):
 
 
 def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, project=None,
-                 stamp_mode: str = 'verified', contributor: str = None) -> Dict[str, int]:
+                 stamp_mode: str = 'verified', contributor: str = None,
+                 detail: Optional[Dict[str, Any]] = None) -> Dict[str, int]:
     """Apply ``ops`` with ``client`` under one operation labelled ``label``.
-    Per-kind counts of what was applied, plus ``notes``. Raises
+    Per-kind counts of what was applied, plus ``notes``. ``detail`` is what
+    the writes' provDetail names (see :class:`Stamps`). Raises
     :class:`PlanError` with the applied count if a later batch fails."""
-    stamps = Stamps(stamp_mode, source, contributor)
+    stamps = Stamps(stamp_mode, source, contributor, detail)
     ops = expand_ops(ops)
     validate_ops(ops)
     ops, notes = resolve_scopes(client, project, ops)

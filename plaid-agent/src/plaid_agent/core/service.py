@@ -50,6 +50,9 @@ working assistant service.
 """
 
 import argparse
+import hashlib
+import importlib.metadata
+import json
 import os
 import re
 import time
@@ -77,6 +80,27 @@ from .plan import DocumentsBusy, PlanError, PlanOutOfDate, ScopeMoved, documents
 from .web import BACKENDS, WebConfig, session_for, ping as ping_search
 
 
+def _agent_release() -> str:
+    try:
+        return importlib.metadata.version('larc-plaid-agent')
+    except importlib.metadata.PackageNotFoundError:
+        return '0.0.0'  # a checkout on the path, not an installed release
+
+
+#: The plaid-agent release this process runs (``0.0.0`` in a checkout).
+AGENT_VERSION = _agent_release()
+
+
+def agent_version(texts: List[str], tools: List[Dict[str, Any]]) -> str:
+    """An assistant's version, as each turn records it and an applied plan
+    stamps it: the release and the first 8 hex digits of the SHA-256 of the
+    system prompt template (before a project fills it) and every tool schema,
+    ``'0.0.0+3fa9c2d1'``. It changes exactly when what the model is told
+    does. See the README, "Model and prompt version"."""
+    text = json.dumps([list(texts), list(tools)], sort_keys=True, ensure_ascii=False)
+    return f'{AGENT_VERSION}+{hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]}'
+
+
 class BaseAssistantService(BaseService):
     """One app's assistant. Fill in the class attributes and the hooks."""
 
@@ -99,6 +123,8 @@ class BaseAssistantService(BaseService):
             f'{self.APP}:assist', self.APP_LABEL,  # both replaced per model in setup()
             self.DESCRIPTION,
             tasks=[TASKS.ASSIST], summary=self.SUMMARY, delegation=True)
+        # What each turn records beside the model, and an applied plan stamps.
+        self.version = agent_version(*self.prompt_template())
         self.cfg: Optional[ModelConfig] = None
         self.web_cfg: Optional[WebConfig] = None
         self.kit: Optional[Toolkit] = None
@@ -126,6 +152,12 @@ class BaseAssistantService(BaseService):
 
     def system_prompt(self, project, web: bool) -> str:
         """What the model is told before the conversation."""
+        raise NotImplementedError
+
+    def prompt_template(self) -> Tuple[List[str], List[Dict[str, Any]]]:
+        """The system prompt's texts before a project fills them in (every
+        section, whether or not a turn includes it), and every tool schema the
+        model can be offered. The assistant's version is a hash of them."""
         raise NotImplementedError
 
     def project_brief(self, project) -> str:
@@ -190,10 +222,13 @@ class BaseAssistantService(BaseService):
 
     def execute_plan(self, client, ops: List[Dict[str, Any]], *, source: str, label: str, project,
                      stamp_mode: str, contributor: Optional[str],
-                     requester: Optional[str] = None) -> Dict[str, int]:
+                     requester: Optional[str] = None,
+                     detail: Optional[Dict[str, Any]] = None) -> Dict[str, int]:
         """Apply an approved plan. Per-kind counts of what was applied, plus
         ``notes`` for anything dropped. ``requester`` is the user the plan
-        acts for, for a change the plan works out again at approval. Raises
+        acts for, for a change the plan works out again at approval.
+        ``detail`` is the provDetail of what the plan writes (the model and
+        version of the turn that proposed it, see ``core.plan.Stamps``). Raises
         :class:`plaid_agent.core.plan.PlanError` if a batch fails part-way."""
         raise NotImplementedError
 
@@ -465,7 +500,9 @@ class BaseAssistantService(BaseService):
             self._release(ws)
             # The user's message leaves the model transcript (a retry must not
             # send it twice) and stays on screen with what happened.
-            stopped = {'messages': transcript[:-1], 'display': conv['display'] + [error_item('Stopped.', stopped=True)]}
+            stopped = {'messages': transcript[:-1],
+                       'display': conv['display'] + [error_item('Stopped.', stopped=True, model=model,
+                                                                version=self.version)]}
             self._write(store, conv_id, stopped, build_meta(meta, conv_id, stopped, self.service_id, model), request_id)
             response_helper.complete({'kind': 'stopped'})
             return
@@ -474,7 +511,7 @@ class BaseAssistantService(BaseService):
             traceback.print_exc()
             line = self.turn_failure_line(e)
             failed = {'messages': transcript[:-1],
-                      'display': conv['display'] + [error_item(line)]}
+                      'display': conv['display'] + [error_item(line, model=model, version=self.version)]}
             self._write(store, conv_id, failed, build_meta(meta, conv_id, failed, self.service_id, model), request_id)
             response_helper.error(line)
             return
@@ -493,7 +530,8 @@ class BaseAssistantService(BaseService):
                                                                         *self.proposed_keys)
         item = assistant_item(turn.text, plan, self.citations(ws, turn.text),
                               turn.steps, turn.summary, model, usage,
-                              guidelines_in_context(getattr(project, 'guidelines', None) or []))
+                              guidelines_in_context(getattr(project, 'guidelines', None) or []),
+                              version=self.version)
         if reach is not None and reach.unavailable:
             item['unavailable_projects'] = [dict(u) for u in reach.unavailable]
         done = prune({'messages': transcript + turn.messages, 'display': conv['display'] + [item]},
@@ -597,7 +635,7 @@ class BaseAssistantService(BaseService):
             with holding(client, self.documents_to_lock(ops, documents)):
                 counts = self._check_and_execute(client, project, ops, documents, plan_id, summary,
                                                  index, conv, settled, stamp_mode, contributor, store,
-                                                 response_helper, conv_id)
+                                                 response_helper, conv_id, proposed_by(item))
         except DocumentsBusy as e:
             settled()
             name = next((d.get('name') for d in documents
@@ -641,7 +679,7 @@ class BaseAssistantService(BaseService):
 
     def _check_and_execute(self, client, project, ops, documents, plan_id, summary, index, conv,
                            settled, stamp_mode, contributor, store,
-                           response_helper, conv_id):
+                           response_helper, conv_id, detail=None):
         """The staleness check and the writes, under the documents' locks.
         The counts of what was applied, or, when the plan was refused or
         failed, the answer to give once the locks are released: it writes the
@@ -672,7 +710,7 @@ class BaseAssistantService(BaseService):
                 counts = self.execute_plan(client, ops, source=service_source(self.service_id),
                                            label=label, project=project,
                                            stamp_mode=stamp_mode, contributor=contributor,
-                                           requester=store.user_id)
+                                           requester=store.user_id, detail=detail)
         except ScopeMoved as e:
             # A corpus-wide change found again reaches documents the plan was
             # not made over: never checked, never locked, not on the card.
@@ -780,6 +818,13 @@ def build_web_config(args) -> 'WebConfig | None':
     host = urlsplit(args.url).hostname
     return WebConfig(backend=backend.name, api_key=key, api_base=base,
                      deny_hosts=tuple(h for h in (host,) if h))
+
+
+def proposed_by(item: Dict[str, Any]) -> Dict[str, Any]:
+    """The provDetail an applied plan's writes carry: the model and the
+    version of the turn that proposed the plan, which may not be the ones
+    running when it is approved."""
+    return {k: item[k] for k in ('model', 'version') if item.get(k)}
 
 
 def _sentence(text: str) -> str:

@@ -91,6 +91,9 @@ def test_the_base_places_a_document_and_nothing_else():
     class _Service(BaseAssistantService):
         APP, APP_LABEL, DESCRIPTION, SUMMARY = 'x', 'X', 'x', 'x'
 
+        def prompt_template(self):
+            return ['x'], []
+
     place, ws = BaseAssistantService.place, _Ws()
     assert place(_Service(), ws, {'kind': 'document', 'id': 'd1'})[:2] == ('document', 'Story')
     # Two documents called "Notes": named by id, which a tool takes back.

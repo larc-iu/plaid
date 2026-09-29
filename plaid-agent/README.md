@@ -168,6 +168,33 @@ does not write with its own credentials: it declares *delegation*, so Plaid
 mints a short-lived token for each requesting user and every read and write
 runs as that user. Readers get a read-only assistant; writers can apply plans.
 
+### Model and prompt version
+
+Every turn in the conversation record names the model that answered
+(`model`, the `--model` string) and the assistant's version (`version`), on
+the reply and on a turn that ended without one (stopped or failed). Both are
+per turn because the operator may restart the service on another model or
+another release in the middle of a conversation.
+
+The version is `<release>+<hash>`, for example `1.4.0+3fa9c2d1`: the
+plaid-agent release (`0.0.0` in a checkout), then the first 8 hex digits of
+the SHA-256 of the app's system prompt template and every tool schema, as
+JSON with sorted keys. The template is the prompt before a project fills in
+its name, shape and guidelines, with the web and code sections included, so
+the hash changes exactly when what every model is told changes, and not with
+the project or with which tools a turn is offered. The service computes it
+at startup (`BaseAssistantService.version`, from each app's
+`prompt_template()`). `docs/*/SAMPLE_PROMPT.md` shows the same prompt and
+tools rendered over the test fixture.
+
+An approved plan's writes carry the model and version of the turn that
+proposed the plan in their `provDetail`, beside `provSource:
+service:<id>`, even when another model is running by the time it is
+approved. A contributor's approval keeps them with the assistant's source
+as `provDetail.guess`, and a plan recorded as human-made carries neither. The
+manual's "Provenance" section has the convention every machine writer
+follows.
+
 ### The project's guidelines (always on)
 
 A project can write down the conventions it follows (the **Guidelines** tab in

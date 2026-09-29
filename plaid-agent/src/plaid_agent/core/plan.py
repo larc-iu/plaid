@@ -235,9 +235,16 @@ class Stamps:
     plan's whatever the entity was before: a contributor's rewrite drops the
     entity's confirmation and machine keys, keeping nothing but the
     contributed stamp.
+
+    ``detail`` is the provDetail of the plan's machine work: the model and
+    the version of the turn that proposed it. A verified write carries it as
+    it is. A contributor's approval is their own work, and keeps it with the
+    assistant as ``guess``, as a contributor adopting a service's guess does
+    (``WriterPolicy.adopt_stamp``). A write recorded as human carries none.
     """
 
-    def __init__(self, mode: str, source: str, contributor: Optional[str] = None):
+    def __init__(self, mode: str, source: str, contributor: Optional[str] = None,
+                 detail: Optional[Dict[str, Any]] = None):
         if mode not in STAMP_MODES:
             raise ValueError(f'stamp_mode must be one of {STAMP_MODES}')
         if mode == 'contributed' and not contributor:
@@ -245,6 +252,7 @@ class Stamps:
         self.mode = mode
         self.source = source
         self.contributor = contributor
+        self.detail = dict(detail) if detail else None
 
     @property
     def human(self) -> bool:
@@ -257,14 +265,17 @@ class Stamps:
     def stamp(self) -> Dict[str, Any]:
         if self.human:
             return {}
-        return stamp_contributed(self.contributor) if self.contributed else confirmed_inferred(self.source)
+        if self.contributed:
+            frag = stamp_contributed(self.contributor)
+            if self.detail:
+                frag[PROV_DETAIL_KEY] = {**self.detail, 'guess': self.source}
+            return frag
+        return confirmed_inferred(self.source, detail=self.detail)
 
     def restamp(self) -> Dict[str, Any]:
-        if self.human:
-            return CLEAR_PROV
-        if self.contributed:
-            return {**CLEAR_PROV, **stamp_contributed(self.contributor)}
-        return confirmed_inferred(self.source)
+        # Every key goes: what an earlier producer recorded (its detail, its
+        # probability) describes a value this write replaces.
+        return {**CLEAR_PROV, **self.stamp()}
 
 
 # --- storing a large plan ---------------------------------------------------------

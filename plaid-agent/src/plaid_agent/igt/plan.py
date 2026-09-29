@@ -1108,7 +1108,7 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
 
 def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, project=None,
                  stamp_mode: str = 'verified', contributor: str = None,
-                 requester: Optional[str] = None) -> Dict[str, int]:
+                 requester: Optional[str] = None, detail: Optional[Dict[str, Any]] = None) -> Dict[str, int]:
     """Apply ``ops`` with ``client`` under one operation labelled ``label``.
     Returns per-kind counts of what was applied (plus ``notes`` for anything
     dropped). ``project`` (an IgtProject) is needed only by document-creating
@@ -1118,8 +1118,9 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     id). ``requester`` is the user the plan acts for: a corpus-wide change
     worked out again here leaves out what that user may not change, as its
     preview did. Raises :class:`PlanError` with the applied count if a later
-    batch fails: batches are atomic individually, the plan as a whole is not."""
-    stamps = Stamps(stamp_mode, source, contributor)
+    batch fails: batches are atomic individually, the plan as a whole is not.
+    ``detail`` is what the writes' provDetail names (see :class:`Stamps`)."""
+    stamps = Stamps(stamp_mode, source, contributor, detail)
     ops = expand_ops(ops)
     validate_ops(ops)
     ops = resolve_scopes(client, project, ops, requester)

@@ -11,8 +11,8 @@ from ..core.service import BaseAssistantService, build_web_config, check_hint, s
 from .citations import resolve_citations
 from .plan import execute_plan, summarize
 from .project import load_project
-from .prompt import build_system_prompt, project_brief
-from .toolkit import call_tool, tools_for
+from .prompt import CODE, SYSTEM, WEB, build_system_prompt, project_brief
+from .toolkit import TOOLS, call_tool, tools_for
 from .tools import Workspace
 from .trace import TRACER
 
@@ -60,6 +60,9 @@ class AssistantService(BaseAssistantService):
     def system_prompt(self, project, web: bool) -> str:
         return build_system_prompt(project, web=web)
 
+    def prompt_template(self):
+        return [SYSTEM, WEB, CODE], TOOLS
+
     def project_brief(self, project) -> str:
         return project_brief(project)
 
@@ -68,9 +71,10 @@ class AssistantService(BaseAssistantService):
 
     def execute_plan(self, client, ops: List[Dict[str, Any]], *, source: str, label: str, project,
                      stamp_mode: str, contributor: Optional[str],
-                     requester: Optional[str] = None) -> Dict[str, int]:
+                     requester: Optional[str] = None,
+                     detail: Optional[Dict[str, Any]] = None) -> Dict[str, int]:
         return execute_plan(client, ops, source=source, label=label, project=project,
-                            stamp_mode=stamp_mode, contributor=contributor)
+                            stamp_mode=stamp_mode, contributor=contributor, detail=detail)
 
     def summarize(self, ops: List[Dict[str, Any]]) -> str:
         return summarize(ops)

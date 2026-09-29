@@ -36,7 +36,9 @@ def test_execute_set_span_variants():
     [[item]] = c.payloads('spans.bulk_update')
     assert item['id'] == 'S' and item['value'] == 'upd'
     # Approval is a human decision: everything a plan writes is machine-made AND confirmed.
-    assert as_fragment(item['metadata']) == {'prov': 'inferred', 'provSource': 'service:igt:assist', 'provConfirmed': True}
+    # A rewrite also takes off what an earlier producer recorded about the value it replaces.
+    assert as_fragment(item['metadata']) == {'prov': 'inferred', 'provSource': 'service:igt:assist', 'provConfirmed': True,
+                                             'provProb': None, 'provDetail': None}
     args = c.payloads('spans.create')[0]['args']
     assert args[:3] == ('L', ['T'], 'new') and args[3] == {'prov': 'inferred', 'provSource': 'service:igt:assist', 'provConfirmed': True}
     assert len(c.batches) == 1 and len(c.batches[0]) == 3
