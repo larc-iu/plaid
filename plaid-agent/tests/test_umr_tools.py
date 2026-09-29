@@ -150,7 +150,9 @@ def test_a_constant_no_triple_has_used_yet_is_made_with_it(client, ws):
     assert span[2] == 'author'
     assert span[3]['umr'] == {'var': 'author', 'attrs': [], 'constant': True}
     relation = client.payloads('relations.create')[0]['args']
-    assert relation[1] == 'spans-2' and relation[2] == 'mc-b'   # the span the node's batch made
+    # The span made beside it in the same batch, named by a ref.
+    assert relation[1] == {'$ref': 1} and relation[2] == 'mc-b'
+    assert len(client.batches) == 1
 
 
 def test_a_triple_between_two_constants_says_whose_block_writes_it(ws):

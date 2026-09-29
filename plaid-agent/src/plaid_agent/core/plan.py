@@ -157,6 +157,15 @@ class Batcher:
             self.flush()
         return idx
 
+    def refer(self, batch, idx: int, read=created_id):
+        """The id the op at result index ``idx`` creates, for a write queued
+        on ``batch`` (inside ``add``): a ref when that op is in the open batch,
+        so the two go in one transaction, else what its result carries
+        (``read``), or None."""
+        if idx >= len(self.results):
+            return batch.ref(idx - len(self.results))
+        return read(self.results[idx])
+
     def update(self, resource: str, entity_id: str, value: Any = _UNSET,
                metadata: Optional[List[Dict[str, Any]]] = None) -> None:
         """Queue a value and/or metadata ops (see ``plaid_client.metadata_ops``)

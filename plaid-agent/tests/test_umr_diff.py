@@ -140,15 +140,15 @@ def test_a_text_that_does_not_parse_plans_nothing_and_says_why(ws):
 
 # --- the same five, as writes ----------------------------------------------------
 
-def test_a_created_node_is_written_as_a_token_and_its_span_then_its_relation(client, ws):
+def test_a_created_node_is_written_with_its_span_and_its_relation_in_one_batch(client, ws):
     text = SENTENCE_1_PENMAN.replace('    :aspect performance)',
                                      '    :place (s1y / yard)\n    :aspect performance)')
     call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1, 'text': text})
     log = applied(client, ws)
     assert [kind for kind, _ in log] == ['tokens.bulk_create', 'spans.create', 'relations.create']
-    # The anchor and its span in one batch, so a node is written whole or not
-    # at all, and the relation in the next, by the span id the first answered.
-    assert [len(b) for b in client.batches] == [2, 1]
+    # The anchor, its span and the relation in one batch, each naming the
+    # one before it by a ref, so the plan is written whole or not at all.
+    assert [len(b) for b in client.batches] == [3]
     # The anchor covers the whole sentence, not a point at its start: core
     # deletes a zero-width token a text edit spans, and the node would go
     # with it (c6313696).
@@ -162,7 +162,7 @@ def test_a_created_node_is_written_as_a_token_and_its_span_then_its_relation(cli
     assert span[3]['umr'] == {
         'var': 's1y', 'attrs': [], 'sentence': ws.doc('Story').sentences[0].id}
     [relation] = [p['args'] for p in client.payloads('relations.create')]
-    assert relation[:4] == ('m-rel', 'mc-b', 'spans-2', ':place')   # the span the second made
+    assert relation[:4] == ('m-rel', 'mc-b', {'$ref': 1}, ':place')   # the span made beside it
 
 
 def test_a_concept_change_is_one_span_update_carrying_the_approval_stamp(client, ws):

@@ -5,18 +5,18 @@ cap, counting what was committed so a failure part-way can say how far it got,
 and the provenance an approval writes. What is here is the ops themselves,
 each declared once in :data:`KIND` (see :mod:`plaid_agent.core.opkind`).
 
-**Two batches.** A node is its anchor token and the concept span over it,
-written in one batch, the span naming the anchor by a ref to the id its create
-answers (``batch.ref``), so a node is written whole or not at all. The edges
-and triples between spans go in the next batch, by the span ids the first
-answered.
+**One batch.** A node is its anchor token and the concept span over it, the
+span naming the anchor by a ref to the id its create answers (``batch.ref``),
+and an edge or a triple names a new node's span the same way, so a plan is
+written whole or not at all. Only a plan past the batch's budget goes in
+several, and a ref to an op an earlier batch holds becomes the id it answered.
 """
 
 import re
 from collections import Counter
 from typing import Any, Dict, List, Optional, Tuple
 
-from plaid_client import created_id, metadata_ops
+from plaid_client import metadata_ops
 
 from ..core import guidelines as _guidelines
 from ..core import opkind as ok
@@ -27,8 +27,8 @@ from .project import load_document, node_ref, with_attribute
 
 UMR = 'umr'
 
-# The pass past the first: an edge or a triple needs the spans of the nodes
-# the first batch makes.
+# The second pass: edges and triples, queued after every new node, whose span
+# they may name.
 LINKS = 'links'
 
 #: Every pass ``_execute`` runs, which is the whole list a kind may be staged
@@ -54,31 +54,20 @@ class Context:
         self.counts = counts
         self.notes = notes
         self.b = b
-        # (document, variable) -> the new node's concept span: its result
-        # index, then its id once the batch has landed.
+        # (document, variable) -> the result index of the new node's concept
+        # span.
         self.span_at: Dict[tuple, Any] = {}
 
-    def _resolved(self, table: Dict[tuple, Any], key: tuple, what: str, read):
-        at = table.get(key)
-        if isinstance(at, int):
-            made = read(self.b.results[at] if at < len(self.b.results) else None)
-            if not made:
-                raise ValueError(f'could not create the {what} {key[1]} this plan needs')
-            table[key] = made
-            return made
-        return at
-
-    def span_id(self, document_id: str, var: str):
-        return self._resolved(self.span_at, (document_id, var), 'node', created_id)
-
-    def end_of(self, op: Dict[str, Any], side: str):
-        """One end of an edge or a triple: the span it already has, or the one
-        this plan is creating for that variable."""
+    def end_of(self, op: Dict[str, Any], side: str, batch):
+        """One end of an edge or a triple, for a write queued on ``batch``:
+        the span it already has, or the one this plan is creating for that
+        variable, by a ref when it is in the same batch."""
         known = op.get(f'{side}_span_id')
         if known:
             return known
         var = op.get(f'{side}_var')
-        found = self.span_id(op['document_id'], var)
+        at = self.span_at.get((op['document_id'], var))
+        found = self.b.refer(batch, at) if isinstance(at, int) else at
         if not found:
             raise ValueError(f'{op.get("label") or "an edge"}: no node {var} to hang it on')
         return found
@@ -166,21 +155,19 @@ def _apply_create_node(ctx: Context, op) -> int:
 
 
 def _apply_create_edge(ctx: Context, op) -> int:
-    source = ctx.end_of(op, 'source')
-    target = ctx.end_of(op, 'target')
-    ctx.b.add(lambda batch, o=op, s=source, t=target: batch.relations.create(
-        o['relation_layer_id'], s, t, o['role'], {**ctx.stamp(), UMR: {'order': o.get('order') or 0}}))
+    ctx.b.add(lambda batch, o=op: batch.relations.create(
+        o['relation_layer_id'], ctx.end_of(o, 'source', batch), ctx.end_of(o, 'target', batch),
+        o['role'], {**ctx.stamp(), UMR: {'order': o.get('order') or 0}}))
     return 1
 
 
 def _apply_create_triple(ctx: Context, op) -> int:
-    source = ctx.end_of(op, 'source')
-    target = ctx.end_of(op, 'target')
     meta: Dict[str, Any] = {'group': op['group']}
     if op.get('sentences'):
         meta['sentences'] = list(op['sentences'])
-    ctx.b.add(lambda batch, o=op, s=source, t=target, m=meta: batch.relations.create(
-        o['document_graph_layer_id'], s, t, o['rel'], {**ctx.stamp(), UMR: m}))
+    ctx.b.add(lambda batch, o=op, m=meta: batch.relations.create(
+        o['document_graph_layer_id'], ctx.end_of(o, 'source', batch),
+        ctx.end_of(o, 'target', batch), o['rel'], {**ctx.stamp(), UMR: m}))
     return 1
 
 
@@ -570,15 +557,13 @@ def _execute(client, project, ops, *, label, counts, notes, stamps: Stamps,
                 if which(op):
                     b.finish(op)
 
-        # --- pass 1: deletes, values, metadata, and every new node ---------
+        # Deletes, values, metadata and every new node, then the relations,
+        # which name a new node's span by a ref to it: one batch, unless the
+        # plan is past the batch's budget.
         ok.run_stage(KIND, ctx, ops, ok.BATCH)
-        b.flush()
-        finish(lambda op: KIND[op['kind']].stage == ok.BATCH)
-
-        # --- pass 2: the relations between the spans pass 1 made -----------
         ok.run_stage(KIND, ctx, ops, LINKS)
         b.flush()
-        finish(lambda op: KIND[op['kind']].stage == LINKS)
+        finish(lambda op: True)
 
     result = dict(counts)
     if notes:

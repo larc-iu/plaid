@@ -416,3 +416,18 @@ def test_a_write_made_on_the_client_under_two_held_documents_carries_no_stamp():
         c.texts.update('t-1', [])
         b.flush()
     assert [(kind, doc) for kind, doc, _ in c.stamps] == [('spans.update', 'd1')]
+
+
+def test_a_ref_to_an_op_an_earlier_batch_holds_is_the_id_it_answered():
+    """A plan past the batch's budget goes in several batches, and a write
+    naming an op the budget flushed away gets the id that op answered."""
+    from fixtures import FakeClient as IgtClient
+    c = IgtClient()
+    b = core_plan.Batcher(c, budget=2)
+    at = b.add(lambda batch: batch.spans.create('L', ['t'], 'x'))
+    got = []
+    b.add(lambda batch: got.append(b.refer(batch, at)))   # same batch: a ref
+    b.add(lambda batch: got.append(b.refer(batch, at)))   # the budget flushed it: the id
+    b.flush()
+    assert got[0] == {'$ref': 0}
+    assert got[1] == 'spans-1'   # what the fake's first create answered
