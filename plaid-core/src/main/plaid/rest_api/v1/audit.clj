@@ -196,7 +196,8 @@
    ["/users/:user-id/audit"
     {:parameters {:path [:map [:user-id string?]]}
      :get        {:summary    (str "Get audit log for a user's actions. " op-types-doc kinds-doc order-doc)
-                  :middleware [[pra/wrap-admin-required]]  ; Only admins can view other users' audit logs
+                  :middleware [[pra/wrap-admin-required]  ; Only admins can view other users' audit logs
+                               [pra/wrap-path-user-required]]
                   :parameters {:query pagination-query}
                   :handler    (fn [{{{:keys [user-id]} :path query :query} :parameters db :db}]
                                 (audit-response

@@ -122,3 +122,35 @@
       (is (seq (-> resp :body :entries))))
     (testing "a deleted document's lock is a 404, as the document is gone"
       (assert-status 404 (api-call admin-request {:method :post :path (str "/api/v1/documents/" d "/lock")})))))
+
+(defn- user-routes
+  "[method path body] for each route that names user `u` and answers only
+  that user or an admin."
+  [u]
+  [[:get (str "/api/v1/users/" u "/audit")]
+   [:get (str "/api/v1/users/" u "/data")]
+   [:get (str "/api/v1/users/" u "/data/k")]
+   [:put (str "/api/v1/users/" u "/data/k") {:a 1}]
+   [:delete (str "/api/v1/users/" u "/data/k")]
+   [:get (str "/api/v1/users/" u "/tokens")]
+   [:post (str "/api/v1/users/" u "/tokens") {:name "t"}]
+   [:delete (str "/api/v1/users/" u "/tokens/x")]])
+
+(deftest an-unknown-user-answers-an-admin-404-and-anyone-else-403
+  ;; Before, an admin got a 200 with an empty page for a user's audit, data
+  ;; and tokens, and a 500 (a foreign-key failure) writing a data entry.
+  (doseq [route (user-routes "nobody@example.com")]
+    (testing (str (name (first route)) " " (second route))
+      (assert-status 404 (call admin-request route))
+      (assert-status 403 (call user1-request route)))))
+
+(deftest a-real-user-still-answers-an-admin-and-themselves
+  (doseq [req [admin-request user1-request]
+          [method path body] [[:put "/api/v1/users/user1@example.com/data/k" {:a 1}]
+                              [:get "/api/v1/users/user1@example.com/data"]
+                              [:get "/api/v1/users/user1@example.com/data/k"]
+                              [:get "/api/v1/users/user1@example.com/tokens"]]]
+    (testing (str (name method) " " path)
+      (assert-status 200 (call req [method path body]))))
+  (assert-status 200 (call admin-request [:get "/api/v1/users/user1@example.com/audit"]))
+  (assert-status 403 (call user1-request [:get "/api/v1/users/user2@example.com/data"])))

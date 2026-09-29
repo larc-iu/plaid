@@ -12,7 +12,8 @@
    {:openapi {:security [{:auth []}]}
     :parameters {:path [:map [:user-id string?]]}
     :middleware [pra/wrap-login-required
-                 (self-or-admin "You can only read or change your own private data.")]}
+                 (self-or-admin "You can only read or change your own private data.")
+                 pra/wrap-path-user-required]}
 
    [""
     {:get {:summary (str "List a user's private data entries ({key, updated-at}), ordered by key "

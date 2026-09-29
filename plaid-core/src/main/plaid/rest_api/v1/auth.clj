@@ -549,6 +549,20 @@
        :body {:error "Admin privileges required for this operation."}}
       (handler request))))
 
+(defn wrap-path-user-required
+  "Answer 404 unless the path's `:user-id` names an account. Goes AFTER the
+  route's self-or-admin or admin gate: the user themselves always exists and
+  anyone else is refused before this, so only an admin learns that an id
+  names nobody (the core ruling on unknown ids). Users are deactivated, never
+  deleted, so there is no history to consult."
+  [handler]
+  (fn [{db :db :as request}]
+    (let [id (-> request :parameters :path :user-id)]
+      (if (and (some? id)
+               (not (psc/q1 db {:select [:id] :from [:users] :where [:= :id id]})))
+        {:status 404 :body {:error "User not found"}}
+        (handler request)))))
+
 (defn wrap-user-directory-access
   "Allows reading the user directory (list/search) to admins OR any user who
   maintains at least one project OR at least one vocab layer — maintainers need

@@ -30,7 +30,7 @@
   ["/users/:user-id/tokens"
    {:openapi {:security [{:auth []}]}
     :parameters {:path [:map [:user-id string?]]}
-    :middleware [pra/wrap-login-required wrap-self-or-admin]}
+    :middleware [pra/wrap-login-required wrap-self-or-admin pra/wrap-path-user-required]}
 
    [""
     {:get {:summary "List a user's named API tokens (never includes the signed token itself); keyset-paginated."
