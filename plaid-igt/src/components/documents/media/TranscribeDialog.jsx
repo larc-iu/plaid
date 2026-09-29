@@ -11,7 +11,7 @@ import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 export function TranscribeDialog({ mediaOps, readOnly = false }) {
   const [open, setOpen] = useState(false);
   const { writeLock } = useDocumentCtx();
-  const { transcribeSpot, transcribeRun, handleTranscribe, isUploading, cancelRequest } = mediaOps;
+  const { transcribeSpot, transcribeRun, handleTranscribe, isUploading, stopTranscribe } = mediaOps;
   const running = transcribeRun.running;
   const busyElsewhere = !!writeLock && !running;
 
@@ -40,7 +40,7 @@ export function TranscribeDialog({ mediaOps, readOnly = false }) {
         notice={busyElsewhere ? `${writeLock.label} is running.` : null}
         runLabel="Transcribe"
         onRun={run}
-        onCancel={cancelRequest}
+        onCancel={stopTranscribe}
         runDisabled={
           !transcribeSpot.service ||
           isUploading ||

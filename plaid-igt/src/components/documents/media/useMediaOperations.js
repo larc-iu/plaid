@@ -2,7 +2,7 @@ import { useEffect, useCallback, useRef, useState } from 'react';
 import { TASKS, serviceSource } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
-import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
+import { notifySuccess, notifyError, notifyInfo, humanizeError } from '@/utils/feedback';
 import { useServiceRequest } from '@ui/hooks/useServiceRequest.js';
 import { useServiceSpot } from '@ui/hooks/useServiceSpot.js';
 import { useRunProgress, useMirroredProgress } from '@ui/hooks/useRunProgress.js';
@@ -560,6 +560,18 @@ export const useMediaOperations = () => {
     }
   }, [doc, confirm]);
 
+  // Stop for a transcription, from the dialog or the banner. The run's first
+  // phases have no request to cancel: the wait for the edits made before it,
+  // and the clearing of the old transcript. A Stop there ends the run before
+  // the service is asked. Once it is asked, Stop asks the service to stop.
+  const transcribeStopRef = useRef(null);
+  const stopTranscribe = useCallback(async () => {
+    const stop = transcribeStopRef.current;
+    if (!stop) return;
+    stop();
+    await cancelRequest();
+  }, [cancelRequest]);
+
   // ASR operations
   const handleTranscribe = useCallback(async () => {
     const service = transcribeSpot.service;
@@ -616,10 +628,23 @@ export const useMediaOperations = () => {
 
     // Held for the whole run: this wipes the baseline and rebuilds the
     // document from what the service returns.
-    const lock = acquireWriteLock('Transcribe', { onCancel: cancelRequest });
+    const lock = acquireWriteLock('Transcribe', { onCancel: stopTranscribe });
     if (!lock) return;
     lockRef.current = lock;
     let stillOut = false; // the request survived our giving up on it
+    let stopped = false;
+    let asked = false; // the service was asked, so its answer ends the run
+    let cleared = false; // the previous transcript is gone
+    let onStop;
+    const stopping = new Promise((resolve) => {
+      onStop = resolve;
+    });
+    transcribeStopRef.current = () => {
+      stopped = true;
+      transcribeRun.report({ percent: null, message: 'Stopping…' });
+      lock.setStatus('Stopping…');
+      onStop();
+    };
     try {
       // The whole re-transcribe (our wipe of the previous transcript + every
       // write the ASR service makes) is ONE logical operation in the audit
@@ -632,7 +657,11 @@ export const useMediaOperations = () => {
       // one: opened now, this run's would join it and be recorded as that
       // edit. The lock keeps new edits out, so the wait is for those already
       // made.
-      await doc.whenSaved();
+      await Promise.race([doc.whenSaved(), stopping]);
+      if (stopped) {
+        notifyInfo('Stopped. The transcript is unchanged.', 'Transcribe');
+        return;
+      }
       await doc.client.withOperation(
         label,
         async () => {
@@ -641,9 +670,11 @@ export const useMediaOperations = () => {
           // builds a fresh document instead of appending a second transcript.
           if (hasExistingTranscript) {
             transcribeRun.report({ message: 'Clearing the previous transcript…' });
-            await doc.saveBaselineText('');
+            cleared = (await doc.saveBaselineText('')) !== false;
           }
+          if (stopped) return;
           transcribeRun.report({ message: 'Starting the service…' });
+          asked = true;
 
           await requestService(
             project.id,
@@ -677,6 +708,15 @@ export const useMediaOperations = () => {
         },
         { kind: 'service-run', ref: serviceSource(serviceId) },
       );
+      if (!asked) {
+        notifyInfo(
+          cleared
+            ? 'Stopped. The previous transcript was cleared and nothing was transcribed.'
+            : 'Stopped. The transcript is unchanged.',
+          'Transcribe',
+        );
+        return;
+      }
 
       // A full reload of a freshly transcribed document is seconds of work
       // with nothing else on screen to show for it, so it is named like any
@@ -692,6 +732,7 @@ export const useMediaOperations = () => {
       stillOut = error?.pending === true;
     } finally {
       if (!stillOut) clearRunRecord(documentId);
+      transcribeStopRef.current = null;
       transcribeRun.finish();
       lock.release();
       lockRef.current = null;
@@ -705,7 +746,7 @@ export const useMediaOperations = () => {
     transcribeRun,
     confirm,
     acquireWriteLock,
-    cancelRequest,
+    stopTranscribe,
   ]);
 
   // Speech detection: the built-in runs in this tab, a service returns regions
@@ -1004,6 +1045,7 @@ export const useMediaOperations = () => {
 
     // ASR + speech detection
     cancelRequest,
+    stopTranscribe,
     handleTranscribe,
     handleDetectSpeech,
 
