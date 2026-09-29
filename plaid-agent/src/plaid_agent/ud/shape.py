@@ -21,7 +21,7 @@ from typing import Any, Dict
 
 from plaid_client import created_ids
 
-from .project import Token, UdDoc, Word, resolve
+from .project import LEMMA_FROM_FORM, Token, UdDoc, Word, resolve
 from .tools import ToolError, Workspace
 
 
@@ -124,4 +124,4 @@ def finish_set_words(op: Dict[str, Any], b, results, stamp) -> None:
                   'metadata': stamp() or None}]))
         b.add(lambda batch, o=op, t=token_id, v=form: batch.spans.bulk_create(
             [{'span_layer_id': o['lemma_layer_id'], 'tokens': [t], 'value': v,
-              'metadata': stamp() or None}]))
+              'metadata': dict(LEMMA_FROM_FORM)}]))

@@ -26,6 +26,8 @@ from ..core import opkind as ok
 from ..core.opkind import OpKind
 from plaid_client import metadata_ops
 
+from .project import LEMMA_FROM_FORM
+
 from ..core.plan import (CONFIRM, PlanError, Resolution, Stamps, TrackingBatcher, check_reach,
                          apply_add_comment, apply_restore_document, applying, created_id,
                          docs_of_op, expand_ops)
@@ -682,7 +684,7 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
                     continue
                 ctx.lemma_at[wid] = b.add(
                     lambda batch, o=op, w=wid, f=form: batch.spans.create(
-                        o['lemma_layer_id'], [w], f, ctx.stamp()))
+                        o['lemma_layer_id'], [w], f, dict(LEMMA_FROM_FORM)))
 
         # The relations need those spans to exist, so the batch has to land first.
         b.flush()

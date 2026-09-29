@@ -31,6 +31,7 @@ from dataclasses import dataclass, field as dc_field
 from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client import ROLES, find_by_role
+from plaid_client.provenance import stamp_inferred
 from plaid_client.workflows.messages import setup_incomplete
 
 from ..core.guidelines import Guideline, load as load_guidelines
@@ -62,6 +63,12 @@ UNIVERSAL_DEPRELS = (
     'parataxis', 'punct', 'reparandum', 'root', 'vocative', 'xcomp')
 
 OPEN, CLOSED = 'open', 'closed'
+
+
+#: A lemma copied from its word's form is a rule's guess, not the approver's
+#: or the assistant's judgment, and the editor stamps it the same way, so a
+#: parse may replace it (plaid-ud's ConlluDocument LEMMA_FROM_FORM).
+LEMMA_FROM_FORM = stamp_inferred('rule:lemma-from-form')
 
 
 def _ud(cfg, key):

@@ -972,6 +972,27 @@ def test_setting_a_lemma_and_a_head_together_makes_ONE_lemma_span(ws):
     assert made[0][2] == 'correr', 'the approved lemma is the one that exists'
 
 
+def test_a_lemma_seeded_from_the_form_is_the_rules_not_the_approvers(ws):
+    """The lemma a head needs, copied from the word's form, is stamped as the
+    editor stamps it (rule:lemma-from-form), so a parse may replace it. With
+    the approval's own stamp it read as verified, and a parse kept it."""
+    run(ws, 'set_head', document='Viaje', ref='s2.w1', head=0, deprel='root')
+    execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
+    [made] = [p['args'] for p in ws.client.payloads('spans.create') if p['args'][0] == LEMMA]
+    assert made[3] == {'prov': 'inferred', 'provSource': 'rule:lemma-from-form'}
+
+
+def test_the_lemmas_of_new_words_are_the_rules_too(ws):
+    run(ws, 'set_words', document='Viaje', ref='s1.w4', forms=['ma', 'r'])
+    execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified',
+                 project=ws.project)
+    lemmas = [e for p in ws.client.payloads('spans.bulk_create') for e in p
+              if e['span_layer_id'] == LEMMA]
+    assert [e['value'] for e in lemmas] == ['ma', 'r']
+    assert all(e['metadata'] == {'prov': 'inferred', 'provSource': 'rule:lemma-from-form'}
+               for e in lemmas)
+
+
 def test_a_failed_parse_does_not_claim_that_nothing_was_written(ws, monkeypatch):
     """A plan may write to one document and parse another, so by the time the
     parser answers, earlier batches stand committed. The count was hardcoded to
