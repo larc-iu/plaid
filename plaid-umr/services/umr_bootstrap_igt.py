@@ -543,6 +543,7 @@ class UmrBootstrapService(BaseService):
 
         frag = stamp_inferred(service_source(self.service_id), detail={'method': 'glosses'})
         finish_draft(self.client, response_helper, run, plans, failures, frag,
+                     service_id=self.service_id,
                      operation=run_label('UMR skeleton from glosses', plans),
                      writing=f"Writing {len(plans)} skeleton{'' if len(plans) == 1 else 's'}…")
 

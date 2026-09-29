@@ -47,7 +47,7 @@ import re
 import unicodedata
 from typing import Any, Dict, List, Optional
 
-from plaid_client import BaseService, Param, TASKS
+from plaid_client import BaseService, Param, TASKS, service_source
 from plaid_client.service import check_unchanged
 from plaid_client.workflows.requester import REQUESTED_BY, requester_of
 from plaid_client.workflows.umr import (UMR_NAMESPACE, Graph, file_numbers, group_of,
@@ -787,7 +787,8 @@ class UmrAncastService(BaseService):
         # run away and call it stopped.
         progress.report(ScoreProgress.WRITE, 0.0, 'Writing the report…')
         with response_helper.critical():
-            with self.client.operation(requester.label(f'AnCast adjudication against {other_name}')):
+            with self.client.operation(requester.label(f'AnCast adjudication against {other_name}'),
+                                       kind='service-run', ref=service_source(self.service_id)):
                 with self.client.documents.locked(document_id):
                     # The scores describe the document as it was read. If it has
                     # moved since, the report would be a claim about a state

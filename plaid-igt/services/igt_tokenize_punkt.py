@@ -179,7 +179,8 @@ class NLTKTokenizerService(BaseService):
         # left to prevent, and a checkpoint out here would throw the result
         # away and call a finished run stopped.
         with response_helper.critical():
-            with self.client.operation(requester.label(f"NLTK Punkt tokenization ({language})")):
+            with self.client.operation(requester.label(f"NLTK Punkt tokenization ({language})"),
+                                       kind='service-run', ref=service_source(self.service_id)):
                 results = self.token_processor.process_tokens(
                     self.client, document_id, sentences, words,
                     primary_token_layer_id, sentence_layer_id, response_helper,

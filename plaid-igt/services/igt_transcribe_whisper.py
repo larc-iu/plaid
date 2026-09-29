@@ -273,7 +273,8 @@ class WhisperASRService(BaseService):
             # prevent, and a checkpoint out here would throw the result away and
             # call a finished run stopped.
             with response_helper.critical():
-                with self.client.operation(audit_msg):
+                with self.client.operation(audit_msg,
+                                           kind='service-run', ref=service_source(self.service_id)):
                     tokens_created = self.alignment_processor.process_alignments(
                         self.client, document_id, alignments, text_layer_id,
                         alignment_token_layer_id, sentence_token_layer_id, response_helper,

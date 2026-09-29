@@ -926,7 +926,8 @@ class StanzaParserService(BaseService):
         # `parse_document` reports the rest of the way and is a cancellation
         # checkpoint at every group of sentences, so a stop lands before the
         # writes begin and leaves the document untouched.
-        with self.client.operation(requester.label(f"Stanza UD parse ({language})")):
+        with self.client.operation(requester.label(f"Stanza UD parse ({language})"),
+                                   kind='service-run', ref=service_source(self.service_id)):
             with self.client.documents.locked(document_id):
                 summary = parse_document(self.pipeline_provider, self.client, document_id,
                                          language=language, overwrite=overwrite,

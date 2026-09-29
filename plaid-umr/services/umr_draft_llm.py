@@ -446,6 +446,7 @@ class UmrDraftService(BaseService):
             print(self.model.usage_line())
 
         finish_draft(self.client, response_helper, run, plans, failures, frag,
+                     service_id=self.service_id,
                      operation=run_label('UMR draft', plans),
                      writing=f"Writing {len(plans)} graph{'' if len(plans) == 1 else 's'}…",
                      not_drafted=not_drafted, ended=ended)

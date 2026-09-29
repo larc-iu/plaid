@@ -597,7 +597,7 @@ class BaseAssistantService(BaseService):
             with holding(client, self.documents_to_lock(ops, documents)):
                 counts = self._check_and_execute(client, project, ops, documents, plan_id, summary,
                                                  index, conv, settled, stamp_mode, contributor, store,
-                                                 response_helper)
+                                                 response_helper, conv_id)
         except DocumentsBusy as e:
             settled()
             name = next((d.get('name') for d in documents
@@ -641,7 +641,7 @@ class BaseAssistantService(BaseService):
 
     def _check_and_execute(self, client, project, ops, documents, plan_id, summary, index, conv,
                            settled, stamp_mode, contributor, store,
-                           response_helper):
+                           response_helper, conv_id):
         """The staleness check and the writes, under the documents' locks.
         The counts of what was applied, or, when the plan was refused or
         failed, the answer to give once the locks are released: it writes the
@@ -662,11 +662,17 @@ class BaseAssistantService(BaseService):
         if stale:
             return out_of_date(stale)
         response_helper.progress(10, 'Applying changes…')
+        # One operation of kind assistant-plan, naming the conversation, the
+        # plan and this assistant, so the audit log says which writes a plan
+        # made. The app's own operation inside flattens into it.
+        label = f'Assistant: {summary}'
+        ref = f'conv:{conv_id}/plan:{plan_id}/{service_source(self.service_id)}'
         try:
-            counts = self.execute_plan(client, ops, source=service_source(self.service_id),
-                                       label=f'Assistant: {summary}', project=project,
-                                       stamp_mode=stamp_mode, contributor=contributor,
-                                       requester=store.user_id)
+            with client.operation(label, kind='assistant-plan', ref=ref):
+                counts = self.execute_plan(client, ops, source=service_source(self.service_id),
+                                           label=label, project=project,
+                                           stamp_mode=stamp_mode, contributor=contributor,
+                                           requester=store.user_id)
         except ScopeMoved as e:
             # A corpus-wide change found again reaches documents the plan was
             # not made over: never checked, never locked, not on the card.

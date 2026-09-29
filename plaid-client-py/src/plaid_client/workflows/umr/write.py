@@ -25,7 +25,7 @@ import contextlib
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from plaid_client.provenance import PROV_DETAIL_KEY, PROV_KEY
+from plaid_client.provenance import PROV_DETAIL_KEY, PROV_KEY, service_source
 from plaid_client.service import check_unchanged, progress_heartbeat
 from plaid_client.service_schema import Param
 
@@ -372,7 +372,7 @@ def begin_draft(client, request_data: Dict[str, Any], response_helper) -> Option
 
 def finish_draft(client, response_helper, run: DraftRun, plans: Sequence[dict],
                  failures: List[dict], frag: dict, operation: str, writing: str,
-                 not_drafted: Sequence[int] = (), ended: str = '') -> None:
+                 not_drafted: Sequence[int] = (), ended: str = '', *, service_id: str) -> None:
     """Write ``plans`` and send the run's report, or send the report alone when
     there is nothing to write.
 
@@ -380,10 +380,11 @@ def finish_draft(client, response_helper, run: DraftRun, plans: Sequence[dict],
     service could not plan, each also printed to the operator's log here.
     ``operation`` names the write in the history (see :func:`run_label`), with
     the requester added here, as it is to ``frag``'s ``provDetail``.
-    ``writing`` is the progress line while it runs. The write, and the report
-    after it, cannot be stopped once begun: a stop while the document is half
-    written would leave anchors with no nodes, and one after the last write
-    would call a finished run stopped. The plans were made from the read in
+    ``writing`` is the progress line while it runs. ``service_id`` is the
+    drafting service's, which the operation names as a service run. The
+    write, and the report after it, cannot be stopped once begun: a stop
+    while the document is half written would leave anchors with no nodes, and
+    one after the last write would call a finished run stopped. The plans were made from the read in
     :func:`begin_draft`, so nothing is written if the document has moved since.
 
     A run that stopped before its last sentence names the sentences it never
@@ -414,7 +415,8 @@ def finish_draft(client, response_helper, run: DraftRun, plans: Sequence[dict],
     if frag.get(PROV_KEY):
         frag = {**frag, PROV_DETAIL_KEY: run.requester.detail(frag.get(PROV_DETAIL_KEY))}
     with response_helper.critical():
-        with client.operation(run.requester.label(operation)):
+        with client.operation(run.requester.label(operation), kind='service-run',
+                              ref=service_source(service_id)):
             with client.documents.locked(run.document_id):
                 check_unchanged(client, run.document_id, run.read_version)
                 write_graphs(client, run.layers, plans, frag, run.progress)

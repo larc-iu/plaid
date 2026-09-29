@@ -305,7 +305,8 @@ class PolyGlossService(BaseService):
         # and a checkpoint out here would throw the result away and call a
         # finished run stopped.
         with response_helper.critical():
-            with self.client.operation(requester.label(f'PolyGloss analysis ({len(plans)} words)')):
+            with self.client.operation(requester.label(f'PolyGloss analysis ({len(plans)} words)'),
+                                       kind='service-run', ref=service_source(self.service_id)):
                 with self.client.documents.locked(document_id):
                     # The plans were made from a read taken before the model
                     # ran. If someone has edited the document since, both the

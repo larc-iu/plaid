@@ -187,6 +187,18 @@ def test_approving_applies_the_plan_from_the_record_and_settles_it():
     assert len(client.payloads('spans.create')) == 1
 
 
+def test_an_applied_plan_is_one_operation_of_kind_assistant_plan():
+    # The audit log is a study's record of what the assistant did: the
+    # operation says it is a plan and names the conversation, the plan and
+    # the assistant that made it.
+    client = FakeClient()
+    _seed_plan(client)
+    _service().process_request(_request(client, approve={'plan_id': 'plan1'}), Helper(request_id='r9'))
+    assert client.operations[0].startswith('Assistant: ')
+    assert client.operation_tags[0] == {'kind': 'assistant-plan',
+                                        'ref': 'conv:c1/plan:plan1/service:igt:assist:fake'}
+
+
 def test_a_stale_plan_is_refused_and_settled_as_out_of_date():
     client = FakeClient()
     store = _seed_plan(client)
