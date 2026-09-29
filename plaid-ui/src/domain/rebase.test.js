@@ -123,6 +123,69 @@ describe('an edit refused because the document moved on', () => {
     expect(untouched(split, base, over)).toBe(false);
   });
 
+  it('is refused when the edit changed the document itself (its name or metadata)', () => {
+    // A document's own fields hold no entity the rule could compare, so
+    // someone else's save to the same field would be written over unseen.
+    const renamed = edit(base, (d) => {
+      d.name = 'Mine';
+    });
+    const theirs = doc({ version: 2, glosses: [gloss('s1', 't1', 'DEF')] });
+    theirs.name = 'Theirs';
+    expect(untouched(renamed, base, theirs)).toBe(false);
+    const meta = edit(base, (d) => {
+      d.metadata = { speaker: 'Bea' };
+    });
+    const theirMeta = doc({ version: 2, glosses: [gloss('s1', 't1', 'DEF')] });
+    theirMeta.metadata = { speaker: 'Ana' };
+    expect(untouched(meta, base, theirMeta)).toBe(false);
+  });
+
+  it('goes again for the first value in an empty layer', () => {
+    const empty = doc();
+    const first = edit(empty, (d) => glossLayer(d).spans.push(gloss(pendingId(), 't2', 'CANINE')));
+    const now = doc({ version: 2, glosses: [gloss('s9', 't3', 'RUN')] });
+    expect(untouched(first, empty, now)).toBe(true);
+  });
+
+  it('is refused when it places something in a text someone else has edited', () => {
+    // Its positions were measured in the text as it was: sent again, a node
+    // for "dog" would land on whatever the new text holds there.
+    const addNode = edit(base, (d) => {
+      d.textLayers[0].tokenLayers[1].tokens.push({ id: pendingId(), begin: 4, end: 7 });
+    });
+    const shifted = doc({
+      version: 2,
+      glosses: [gloss('s1', 't1', 'DEF')],
+      words: [
+        { id: 't1', begin: 3, end: 6 },
+        { id: 't2', begin: 7, end: 10 },
+        { id: 't3', begin: 11, end: 15 },
+        { id: 't4', begin: 16, end: 20 },
+      ],
+    });
+    shifted.textLayers[0].text.body = 'Xx the dog runs home';
+    expect(untouched(addNode, base, shifted)).toBe(false);
+    // A value on a word places nothing: an edit to the text past that word
+    // leaves it alone.
+    const later = doc({
+      version: 2,
+      glosses: [gloss('s1', 't1', 'DEF')],
+      words: [
+        { id: 't1', begin: 0, end: 3 },
+        { id: 't2', begin: 4, end: 7 },
+        { id: 't3', begin: 11, end: 15 },
+        { id: 't4', begin: 16, end: 20 },
+      ],
+    });
+    later.textLayers[0].text.body = 'the dog Xx runs home';
+    expect(untouched(addGlossOnDog, base, later)).toBe(true);
+    const elsewhere = doc({
+      version: 2,
+      glosses: [gloss('s1', 't1', 'DEF'), gloss('s9', 't3', 'X')],
+    });
+    expect(untouched(addNode, base, elsewhere)).toBe(true);
+  });
+
   it('is refused when nothing is known of what the edit writes', () => {
     expect(untouched(footprintOf(base, structuredClone(base)), base, doc({ version: 2 }))).toBe(
       false,

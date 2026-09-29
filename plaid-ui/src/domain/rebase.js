@@ -14,7 +14,10 @@
 // nothing that changed
 // - is something the footprint names,
 // - or lives in one of the edit's layers and names something the footprint
-//   names, or covers text a changed token of the edit covers.
+//   names, or covers text a changed token of the edit covers,
+// - or, when the edit places something in the text (a token's begin and
+//   end), is that text itself: the positions it sends were measured in the
+//   text as it was.
 // So a second value on the same word is a conflict, and so is any change to
 // the word itself, while a value on another word, or anything in a layer the
 // edit does not write, is not.
@@ -43,6 +46,9 @@ function indexEntities(raw) {
     for (const [key, value] of Object.entries(node)) {
       if (isEntity(value)) visit(value, id);
       else if (isEntityList(value)) value.forEach((child) => visit(child, id));
+      // An empty list is a list of entities with none in it yet (a layer's
+      // first span), not a field of the entity that holds it.
+      else if (Array.isArray(value) && value.length === 0) continue;
       else {
         own[key] = value;
         if (typeof value === 'string') strings.push(settledId(value));
@@ -70,12 +76,21 @@ function changedIds(a, b) {
 }
 
 // What an edit touches, from the document before its patch and after it.
-// Null when the patch changed no entity (nothing is known of what it writes).
+// Null when nothing is known of what it writes: the patch changed no entity,
+// or changed the own fields of one that holds others (the document's name or
+// metadata).
 export function footprintOf(before, after) {
   const a = indexEntities(before);
   const b = indexEntities(after);
   const changed = changedIds(a, b);
   if (changed.size === 0) return null;
+  // What holds other entities (a layer, the document): every row of a layer
+  // names it, so its id says nothing of what an edit touches.
+  const holders = holdersOf(a, b);
+  // An edit to a holder's own fields (a document's name or metadata) has
+  // nothing to compare by: another save to the same field would be written
+  // over unseen.
+  for (const id of changed) if (holders.has(id)) return null;
   const layers = new Set();
   const names = new Set();
   const spans = [];
@@ -89,16 +104,26 @@ export function footprintOf(before, after) {
     }
     names.add(id);
   }
-  // Only ids count, and not those of what holds other entities (a layer, the
-  // document): every row of a layer names it. What names only this edit's
-  // own new rows is not on the server to clash with.
-  const holders = new Set();
-  for (const index of [a, b]) for (const e of index.values()) if (e.layer) holders.add(e.layer);
+  // Only ids count, and not a holder's. What names only this edit's own new
+  // rows is not on the server to clash with.
   for (const id of [...names]) {
     const known = a.has(id) || b.has(id);
     if (!known || holders.has(id) || isPendingId(id)) names.delete(id);
   }
-  return { layers, names, spans };
+  // What holds the layers it places things in: the text layer, whose text
+  // those positions are measured in.
+  const texts = new Set();
+  for (const s of spans) {
+    const holder = (a.get(s.layer) ?? b.get(s.layer))?.layer;
+    if (holder) texts.add(holder);
+  }
+  return { layers, names, spans, texts };
+}
+
+function holdersOf(...indexes) {
+  const holders = new Set();
+  for (const index of indexes) for (const e of index.values()) if (e.layer) holders.add(e.layer);
+  return holders;
 }
 
 // Two stretches of the same layer share text. An empty one is read as the
@@ -112,9 +137,12 @@ export function untouched(footprint, before, now) {
   if (!footprint) return false;
   const a = indexEntities(before);
   const b = indexEntities(now);
+  const holders = holdersOf(a, b);
   for (const id of changedIds(a, b)) {
     if (footprint.names.has(id)) return false;
     for (const e of [a.get(id), b.get(id)]) {
+      // The text the edit's positions were measured in.
+      if (e && !holders.has(id) && footprint.texts.has(e.layer)) return false;
       if (!e || !footprint.layers.has(e.layer)) continue;
       if (e.strings.some((s) => footprint.names.has(s))) return false;
       if (e.begin !== null && e.end !== null && footprint.spans.some((s) => overlaps(e, s))) {
