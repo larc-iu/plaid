@@ -1376,6 +1376,7 @@ export const VocabularyItems = ({
         onOpenChange={(o) => {
           if (!o) dispatch({ type: 'dialog/close' });
         }}
+        vocabularyId={vocabularyId}
         vocabularyName={vocabulary?.name}
         fields={fields}
         tagsetFor={tagsetFor}

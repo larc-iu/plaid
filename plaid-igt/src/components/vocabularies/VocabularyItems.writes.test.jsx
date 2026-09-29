@@ -48,11 +48,19 @@ const deferred = () => {
   return { promise, resolve, reject };
 };
 
-// A server holding `items`. `holds` is a list of deferreds the next writes
-// wait on, in order.
-const stub = (items) => {
+// A server holding `items`, which a create or a form change that lands
+// updates. `holds` is a list of deferreds the next writes wait on, in order.
+const stub = (initial) => {
+  const items = structuredClone(initial);
   const calls = [];
   const holds = [];
+  const setForms = (updates) => {
+    for (const u of updates || []) {
+      const it = items.find((i) => i.id === u.id);
+      if (it && 'form' in u) it.form = u.form;
+    }
+    return {};
+  };
   const write =
     (kind, fn) =>
     async (...args) => {
@@ -72,10 +80,13 @@ const stub = (items) => {
       },
       projects: { list: async () => [] },
       vocabItems: {
-        create: write('create', () => ({ id: 'server-1' })),
+        create: write('create', (_layer, form, metadata) => {
+          items.push({ id: 'server-1', form, metadata: metadata ?? {} });
+          return { id: 'server-1' };
+        }),
         update: write('update', () => ({})),
         bulkCreate: write('bulkCreate', (specs) => ({ ids: specs.map((_, i) => `bulk-${i}`) })),
-        bulkUpdate: write('bulkUpdate', () => ({})),
+        bulkUpdate: write('bulkUpdate', setForms),
         patchMetadata: write('patchMetadata', () => ({})),
         setMetadata: write('setMetadata', () => ({})),
         deleteMetadata: write('deleteMetadata', () => ({})),
@@ -377,8 +388,10 @@ describe('the entry form', () => {
 });
 
 // Bulk Add and Replace plan against the entries as shown, which can hold a
-// save still on its way. Their writes take their turn behind it, and a plan
-// made over a save the server then refused is still sent, as planned.
+// save still on its way. Their writes take their turn behind it, and read the
+// entries again then. A Replace of a value the server does not hold (a save
+// it refused, someone else's change) is skipped, and a Bulk Add whose plan
+// would now write something else goes back to its review.
 describe('Bulk Add and Replace', () => {
   const settle = async () => {
     for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
@@ -450,15 +463,71 @@ describe('Bulk Add and Replace', () => {
     expect(calls[1][1]).toEqual([{ id: 'a', form: 'uno-X' }]);
   });
 
-  it('sends a Replace planned over a save that was refused, as planned', async () => {
+  it('skips a Replace of a value whose save was refused, and says so', async () => {
     const { calls, held, view } = await saving();
     await replaceEdit(view);
     await view.step(async () => {
       held.reject(new Error('refused'));
       await settle();
     });
-    expect(kinds(calls)).toEqual(['bulkUpdate', 'bulkUpdate']);
-    expect(calls[1][1]).toEqual([{ id: 'a', form: 'uno-X' }]);
+    expect(kinds(calls)).toEqual(['bulkUpdate']);
+    expect(feedback.notifyWarning).toHaveBeenCalledWith(
+      'Skipped 1 value changed since the preview.',
+      'Nothing replaced',
+    );
+  });
+
+  it('skips a Replace of a value someone else changed since the preview', async () => {
+    const stubbed = stub([
+      { id: 'a', form: 'uno-EDIT' },
+      { id: 'b', form: 'dos-EDIT' },
+    ]);
+    const view = await mount(stubbed.client, '/vocabularies/v1');
+    mounted = view;
+    await view.step(() => button('Replace').click());
+    await view.step(() => setValue(document.getElementById('vocab-replace-find'), 'EDIT'));
+    await view.step(() => setValue(document.getElementById('vocab-replace-with'), 'X'));
+    // Another maintainer renames b after this preview was drawn.
+    const read = stubbed.client.vocabLayers.get;
+    stubbed.client.vocabLayers.get = async (...args) => {
+      const v = await read(...args);
+      return { ...v, items: v.items.map((i) => (i.id === 'b' ? { ...i, form: 'dos-NEW' } : i)) };
+    };
+    await view.step(async () => {
+      button('Replace 2 values').click();
+      await settle();
+    });
+    expect(stubbed.calls).toEqual([['bulkUpdate', [{ id: 'a', form: 'uno-X' }]]]);
+    expect(feedback.notifySuccess).toHaveBeenCalledWith(
+      '1 value replaced in Form. Skipped 1 value changed since the preview.',
+      'Replaced',
+    );
+  });
+
+  it('writes nothing of a Bulk Add whose entries changed since the review, and reviews it again', async () => {
+    const stubbed = stub([{ id: 'a', form: 'uno' }]);
+    const view = await mount(stubbed.client, '/vocabularies/v1');
+    mounted = view;
+    const read = stubbed.client.vocabLayers.get;
+    let added = false;
+    stubbed.client.vocabLayers.get = async (...args) => {
+      const v = await read(...args);
+      return added ? { ...v, items: [...v.items, { id: 'd', form: 'dos', metadata: {} }] } : v;
+    };
+    await view.step(() => button('Bulk Add').click());
+    await view.step(() => setValue(document.querySelector('textarea'), 'dos\ttwo\ntres\tthree'));
+    await view.step(() => button('Next: columns').click());
+    await view.step(() => button('Next: review').click());
+    // Someone else adds "dos" after the review was drawn: the row for it now
+    // fills that entry in rather than adding a second one.
+    added = true;
+    await view.step(async () => {
+      button('Add 2').click();
+      await settle();
+    });
+    expect(kinds(stubbed.calls)).toEqual([]);
+    expect(document.body.textContent).toContain('Entries changed since this review.');
+    expect(button('Add 1 · update 1')).toBeTruthy();
   });
 
   it('sends a Bulk Add behind a save still on its way', async () => {

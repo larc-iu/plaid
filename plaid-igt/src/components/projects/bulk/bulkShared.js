@@ -1,9 +1,19 @@
 import { useState } from 'react';
 import { notifyError, humanizeError } from '@/utils/feedback';
+import { plural } from '@/utils/plural';
 
 // What every Bulk Edit panel shares: the run state machine, the scope
 // badge classes, and the one pluralizer (the app's, re-exported).
-export { plural } from '@/utils/plural';
+export { plural };
+
+// The sentence an apply's toast ends with when some of the preview's changes
+// were skipped because their word, value or entry changed after the preview.
+// `counts` is [[n, word, words?], ...]. The empty string when all are zero.
+export const skippedNote = (counts) => {
+  const parts = counts.filter(([n]) => n > 0).map(([n, word, words]) => plural(n, word, words));
+  if (!parts.length) return '';
+  return ` Skipped ${parts.join(' and ')} changed since the preview.`;
+};
 
 // ---- shared bits ----------------------------------------------------------------
 

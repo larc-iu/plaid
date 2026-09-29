@@ -17,6 +17,9 @@ import { shareVocabularies } from '@/domain/vocabLookup';
 import { readIgnoredTokens } from '@/domain/igtConfig';
 import { chunk, CHUNK } from '@/domain/bulk';
 import { dropPrecedent } from '@/domain/precedentCache';
+import { readVocabulary } from '@/domain/vocabCache';
+import { extractAnalysis, analysisSignature } from '@/domain/analysisMemory';
+import { isChangedElsewhere } from '@ui/lib/errors.js';
 import { buildMatchSpec, hitsByDocQueries } from '../search/searchQueries.js';
 import {
   collectRespellRows,
@@ -75,6 +78,64 @@ async function loadDocs(client, project, docEntries, vocabularies, onProgress, l
   );
 }
 
+// The version each document had when the preview read it: { [docId]: version }.
+const versionsOf = (docs) => Object.fromEntries(docs.map((d) => [d.id, d.raw?.version]));
+
+// Run `send` with every write it makes carrying `version` of document `docId`
+// (the client's strict mode), so the server refuses the whole write when the
+// document changed since that version was read. A document with no version
+// known is never written unchecked.
+async function atVersion(client, docId, version, send) {
+  if (version == null) throw new Error('The document was read with no version.');
+  client.documentVersions = { ...client.documentVersions, [docId]: version };
+  client.enterStrictMode(docId);
+  try {
+    return await send();
+  } finally {
+    client.exitStrictMode();
+  }
+}
+
+// One document's preview rows, sent at the version the preview read. A
+// document changed since then is refused whole: it is read again
+// (`replan(docId)`, resolving to { version, rows }), and the rows that still
+// read as the preview showed them (`same(previewRow, freshRow)`) are sent
+// once more, as re-planned, at the version just read. The rest are skipped,
+// and every row when the document is refused a second time. `send(rows)`
+// makes the writes. Resolves to { sent, skipped }, both lists of the
+// preview's rows.
+async function sendDocument(client, { docId, version, rows, replan, same, send }) {
+  try {
+    await atVersion(client, docId, version, () => send(rows));
+    return { sent: rows, skipped: [] };
+  } catch (e) {
+    if (!isChangedElsewhere(e)) throw e;
+  }
+  const fresh = await replan(docId);
+  const freshById = new Map(fresh.rows.map((r) => [r.id, r]));
+  const kept = rows.filter((r) => freshById.has(r.id) && same(r, freshById.get(r.id)));
+  const keptSet = new Set(kept);
+  const skipped = rows.filter((r) => !keptSet.has(r));
+  if (!kept.length) return { sent: [], skipped };
+  try {
+    await atVersion(client, docId, fresh.version, () => send(kept.map((r) => freshById.get(r.id))));
+    return { sent: kept, skipped };
+  } catch (e) {
+    if (!isChangedElsewhere(e)) throw e;
+    return { sent: [], skipped: rows };
+  }
+}
+
+// Rows grouped by document, in first-seen order: Map docId -> rows.
+const rowsByDoc = (rows) => {
+  const byDoc = new Map();
+  for (const r of rows) {
+    if (!byDoc.has(r.docId)) byDoc.set(r.docId, []);
+    byDoc.get(r.docId).push(r);
+  }
+  return byDoc;
+};
+
 // ---- respell --------------------------------------------------------------
 
 export async function planRespell(
@@ -94,52 +155,107 @@ export async function planRespell(
   const docs = await loadDocs(client, project, docEntries, {}, onProgress, layers);
   const rows = docs.flatMap((doc) => collectRespellRows(doc, apply));
   const lexiconRows = collectLexiconRows(vocabularies, apply, canRespellIn);
-  return { rows, lexiconRows, docs };
+  // One document read again and planned with the same substitution, for a
+  // document that changed between Preview and Apply.
+  const replan = async (docId) => {
+    const [doc] = await loadDocs(client, project, [[docId]], {}, undefined, layers);
+    return { version: doc.raw?.version, rows: collectRespellRows(doc, apply) };
+  };
+  return { rows, lexiconRows, docs, versions: versionsOf(docs), replan };
+}
+
+// A respell row still reads as the preview showed it: the same word and the
+// same new spelling, and, when they are respelled too, the same morpheme
+// forms following it.
+const sameRespell = (includeMorphemes) => (a, b) =>
+  a.old === b.old &&
+  a.new === b.new &&
+  (!includeMorphemes || JSON.stringify(a.morphemes || []) === JSON.stringify(b.morphemes || []));
+
+// The selected lexicon rows whose entry still has the form the preview read,
+// read again from each vocabulary. A renamed or deleted entry is left out.
+async function unchangedEntries(client, lexiconRows) {
+  const byVocab = new Map();
+  for (const r of lexiconRows) {
+    if (!byVocab.has(r.vocabId)) byVocab.set(r.vocabId, []);
+    byVocab.get(r.vocabId).push(r);
+  }
+  const kept = [];
+  for (const [vocabId, vocabRows] of byVocab) {
+    const vocab = await readVocabulary(client, vocabId);
+    const formOf = new Map((vocab?.items || []).map((it) => [it.id, it.form]));
+    kept.push(...vocabRows.filter((r) => formOf.get(r.id) === r.old));
+  }
+  return kept;
 }
 
 // Apply selected respell rows. Per document: one text update carrying every
 // selected whole-token replace, and the morpheme forms it renames, in one
-// atomic batch however many morphemes there are — the text edit
-// and the forms that spell the same words must land together or the document
-// reads as half respelled. Lexicon entries follow in their own requests.
-// Returns { docsChanged, wordsChanged, morphemesChanged, entriesChanged }.
+// atomic batch however many morphemes there are. The text edit and the forms
+// that spell the same words must land together or the document reads as half
+// respelled. Lexicon entries follow in their own requests.
 //
-// A row that landed is marked `applied` and skipped by a later apply of the
-// same plan. A text replace names offsets in the text as the preview read it,
-// so Apply again after a refusal partway would otherwise respell the
-// documents before it a second time, over text that already changed.
+// A text replace names offsets in the text as the preview read it, so each
+// document's batch carries the version the preview read (`versions`), and a
+// document changed since then is refused whole, read again, and respelled
+// where its words still read as they did (`replan`, see sendDocument). A
+// lexicon entry is renamed only while it still has the form the preview
+// read. Returns { docsChanged, wordsChanged, morphemesChanged,
+// entriesChanged, wordsSkipped, entriesSkipped }.
+//
+// A row that landed or was skipped is marked `applied` and left out of a
+// later apply of the same plan, which would otherwise respell a document a
+// second time.
 export async function applyRespell(
   client,
-  { rows, lexiconRows },
+  { rows, lexiconRows, versions, replan },
   { includeMorphemes, includeLexicon, label },
 ) {
-  const byDoc = new Map();
-  for (const r of rows) {
-    if (r.applied) continue;
-    if (!byDoc.has(r.docId)) byDoc.set(r.docId, []);
-    byDoc.get(r.docId).push(r);
-  }
-  const out = { docsChanged: 0, wordsChanged: 0, morphemesChanged: 0, entriesChanged: 0 };
+  const byDoc = rowsByDoc(rows.filter((r) => !r.applied));
+  const out = {
+    docsChanged: 0,
+    wordsChanged: 0,
+    morphemesChanged: 0,
+    entriesChanged: 0,
+    wordsSkipped: 0,
+    entriesSkipped: 0,
+  };
   const formPatches = (part) =>
     part.map((m) => ({ id: m.id, metadata: [{ op: 'set', path: ['form'], value: m.new }] }));
+  const morphemesOf = (docRows) => (includeMorphemes ? docRows.flatMap((r) => r.morphemes) : []);
 
   await writeAcrossDocuments(client, label, 'respell', async () => {
-    for (const docRows of byDoc.values()) {
-      const textId = docRows[0].textId;
-      const morphPatches = includeMorphemes ? docRows.flatMap((r) => r.morphemes) : [];
-      // Every chunk of morpheme forms rides in the same batch as the text
-      // edit, so the document lands whole or not at all.
-      await client.batched(async (b) => {
-        b.texts.update(textId, respellOps(docRows));
-        for (const part of chunk(morphPatches)) b.tokens.bulkUpdate(formPatches(part));
+    for (const [docId, docRows] of byDoc) {
+      const { sent, skipped } = await sendDocument(client, {
+        docId,
+        version: versions?.[docId],
+        rows: docRows,
+        replan,
+        same: sameRespell(includeMorphemes),
+        // Every chunk of morpheme forms rides in the same batch as the text
+        // edit, so the document lands whole or not at all.
+        send: (toSend) =>
+          client.batched(async (b) => {
+            b.texts.update(toSend[0].textId, respellOps(toSend));
+            for (const part of chunk(morphemesOf(toSend))) b.tokens.bulkUpdate(formPatches(part));
+          }),
       });
       docRows.forEach((r) => (r.applied = true));
-      out.docsChanged += 1;
-      out.wordsChanged += docRows.length;
-      out.morphemesChanged += morphPatches.length;
+      if (sent.length) out.docsChanged += 1;
+      out.wordsChanged += sent.length;
+      out.morphemesChanged += morphemesOf(sent).length;
+      out.wordsSkipped += skipped.length;
     }
     if (includeLexicon) {
-      for (const part of chunk(lexiconRows.filter((r) => !r.applied && !r.locked))) {
+      const open = lexiconRows.filter((r) => !r.applied && !r.locked);
+      const kept = await unchangedEntries(client, open);
+      const keptSet = new Set(kept);
+      for (const r of open) {
+        if (keptSet.has(r)) continue;
+        r.applied = true;
+        out.entriesSkipped += 1;
+      }
+      for (const part of chunk(kept)) {
         await client.vocabItems.bulkUpdate(part.map((r) => ({ id: r.id, form: r.new })));
         part.forEach((r) => (r.applied = true));
         out.entriesChanged += part.length;
@@ -157,29 +273,51 @@ export async function planField(client, project, target, { find, matchType, appl
   const layers = readLayerIds(project, { spans: target.kind === 'span' ? [target.layerId] : [] });
   const docs = await loadDocs(client, project, docEntries, {}, onProgress, layers);
   const rows = docs.flatMap((doc) => collectFieldRows(doc, target, apply));
-  return { rows, docs };
+  const replan = async (docId) => {
+    const [doc] = await loadDocs(client, project, [[docId]], {}, undefined, layers);
+    return { version: doc.raw?.version, rows: collectFieldRows(doc, target, apply) };
+  };
+  return { rows, docs, versions: versionsOf(docs), replan };
 }
 
-// Span values, or morpheme forms, in bulk. Both bulk updates reach across
-// documents within the project, so a replace touching a thousand values in
-// fifty documents is a couple of requests rather than a couple of hundred.
-export async function applyField(client, { rows }, { label }) {
+// A value still reads as the preview showed it.
+const sameValue = (a, b) => a.old === b.old && a.new === b.new;
+
+// Span values, or morpheme forms, one document at a time, each document's in
+// one batch carrying the version the preview read. A document changed since
+// then is read again, and only the values that still read as the preview
+// showed them are replaced (see sendDocument). Returns { changed, skipped }.
+export async function applyField(client, { rows, versions, replan }, { label }) {
   let changed = 0;
-  const morphRows = rows.filter((r) => r.kind === 'morphForm');
-  const spanRows = rows.filter((r) => r.kind !== 'morphForm');
+  let skipped = 0;
+  const send = (docRows) =>
+    client.batched(async (b) => {
+      const spanRows = docRows.filter((r) => r.kind !== 'morphForm');
+      const morphRows = docRows.filter((r) => r.kind === 'morphForm');
+      for (const part of chunk(spanRows)) {
+        b.spans.bulkUpdate(part.map((r) => ({ id: r.id, value: r.new })));
+      }
+      for (const part of chunk(morphRows)) {
+        b.tokens.bulkUpdate(
+          part.map((r) => ({ id: r.id, metadata: [{ op: 'set', path: ['form'], value: r.new }] })),
+        );
+      }
+    });
   await writeAcrossDocuments(client, label, 'replace', async () => {
-    for (const part of chunk(spanRows)) {
-      await client.spans.bulkUpdate(part.map((r) => ({ id: r.id, value: r.new })));
-      changed += part.length;
-    }
-    for (const part of chunk(morphRows)) {
-      await client.tokens.bulkUpdate(
-        part.map((r) => ({ id: r.id, metadata: [{ op: 'set', path: ['form'], value: r.new }] })),
-      );
-      changed += part.length;
+    for (const [docId, docRows] of rowsByDoc(rows)) {
+      const out = await sendDocument(client, {
+        docId,
+        version: versions?.[docId],
+        rows: docRows,
+        replan,
+        same: sameValue,
+        send,
+      });
+      changed += out.sent.length;
+      skipped += out.skipped.length;
     }
   });
-  return { changed };
+  return { changed, skipped };
 }
 
 // ---- reanalyze --------------------------------------------------------------
@@ -206,27 +344,70 @@ export async function planReanalyze(client, project, layerInfo, form, onProgress
   return { rows, docs, itemFormById };
 }
 
+// The signature of the analysis a word carries in `doc` now, null when it
+// carries none (or is gone), as collectOccurrenceRows computes it.
+const signatureNow = (doc, wordId) => {
+  const token = doc.tokenLookup?.get(wordId);
+  const analysis = token ? extractAnalysis(token) : null;
+  return analysis ? analysisSignature(analysis) : null;
+};
+
 // Apply one analysis to the selected occurrences, document by document, all
-// under one operation. A document whose mutation fails stops the run (its
-// error has already been surfaced through doc.onError); earlier documents
-// keep their changes, and the count reports how far it got.
+// under one operation, each document's writes carrying the version the
+// preview read (the document's own, `doc.raw.version`, as it stood when the
+// plan was made). A document changed since then is read again (the refusal
+// reads it, and so does a check of its version before the first write, since
+// a run over unanalyzed words has nothing to strip and so no versioned write
+// before it reads the document itself). Its occurrences whose analysis is no
+// longer the one the preview showed are skipped, and the rest re-analyzed at
+// the version just read. A document refused again is skipped whole. A
+// document whose mutation fails otherwise stops the run (its error has
+// already been surfaced through doc.onError). Earlier documents keep their
+// changes, and the count reports how far it got. Returns { changed, skipped,
+// failedDoc }.
 export async function applyReanalyze(client, { rows, docs }, { analysis, label, onError }) {
-  const byDoc = new Map();
-  for (const r of rows) {
-    if (!byDoc.has(r.docId)) byDoc.set(r.docId, []);
-    byDoc.get(r.docId).push(r);
-  }
   const docById = new Map(docs.map((d) => [d.id, d]));
   let changed = 0;
+  let skipped = 0;
   let failedDoc = null;
   await writeAcrossDocuments(client, label, 'reanalyze', async () => {
-    for (const [docId, docRows] of byDoc) {
+    for (const [docId, docRows] of rowsByDoc(rows)) {
       const doc = docById.get(docId);
       if (!doc) continue;
-      doc.onError = onError || null;
-      const n = await doc.bulkReplaceAnalyses(
-        docRows.map((r) => ({ wordTokenId: r.id, analysis })),
-      );
+      // A refusal because the document changed is this run's to handle, and
+      // not an error to show.
+      let refused = false;
+      doc.onError = (msg, err, ...rest) => {
+        if (err && isChangedElsewhere(err)) {
+          refused = true;
+          return;
+        }
+        onError?.(msg, err, ...rest);
+      };
+      const replace = (targets) =>
+        atVersion(client, docId, doc.raw?.version, () =>
+          doc.bulkReplaceAnalyses(targets.map((r) => ({ wordTokenId: r.id, analysis }))),
+        );
+      let targets = docRows;
+      let n;
+      const head = await client.documents.get(docId);
+      if (head?.version !== doc.raw?.version) {
+        await doc.reload();
+        refused = true;
+        n = false;
+      } else {
+        n = await replace(targets);
+      }
+      if (n === false && refused) {
+        targets = docRows.filter((r) => signatureNow(doc, r.id) === r.signature);
+        skipped += docRows.length - targets.length;
+        refused = false;
+        n = targets.length ? await replace(targets) : 0;
+        if (n === false && refused) {
+          skipped += targets.length;
+          continue;
+        }
+      }
       if (n === false) {
         failedDoc = doc.document?.name || docId;
         break;
@@ -234,7 +415,7 @@ export async function applyReanalyze(client, { rows, docs }, { analysis, label, 
       changed += n;
     }
   });
-  return { changed, failedDoc };
+  return { changed, skipped, failedDoc };
 }
 
 // ---- merge ------------------------------------------------------------------

@@ -24,17 +24,34 @@ const layerInfo = {
   spanLayers: { word: [{ id: 'glossL', name: 'Gloss' }], morpheme: [], sentence: [] },
 };
 
+// The client's strict mode, as the real one keeps it: the document every write
+// is stamped for, and the versions it knows.
+const strictMode = () => ({
+  documentVersions: {},
+  strictModeDocumentId: null,
+  enterStrictMode(docId) {
+    this.strictModeDocumentId = docId;
+  },
+  exitStrictMode() {
+    this.strictModeDocumentId = null;
+  },
+});
+
 let logins = 0;
 function precedentClient() {
   return {
+    ...strictMode(),
     baseUrl: 'http://core',
     token: `bulk-${++logins}`,
     projects: { listDocuments: async () => [{ id: 'a', version: 1 }] },
+    documents: { get: async (id) => ({ id, version: 1 }) },
+    vocabLayers: { get: async (id) => ({ id, items: [] }) },
     query: vi.fn(async () => ({ results: [] })),
     withOperation: async (_label, fn) => fn(),
     batched: async (fn) =>
       fn({
         texts: { update: () => {} },
+        spans: { bulkUpdate: () => {} },
         tokens: { bulkUpdate: () => {} },
         vocabItems: { bulkUpdate: () => {}, bulkDelete: () => {} },
         vocabLinks: { bulkCreate: () => {} },
@@ -63,15 +80,22 @@ const applies = {
   respell: (client) =>
     applyRespell(
       client,
-      { rows: [{ docId: 'a', textId: 't', morphemes: [] }], lexiconRows: [] },
+      { rows: [{ docId: 'a', textId: 't', morphemes: [] }], lexiconRows: [], versions: { a: 1 } },
       { label: 'Respell' },
     ),
   field: (client) =>
-    applyField(client, { rows: [{ kind: 'span', id: 's', new: 'x' }] }, { label: 'Replace' }),
+    applyField(
+      client,
+      { rows: [{ kind: 'span', id: 's', docId: 'a', new: 'x' }], versions: { a: 1 } },
+      { label: 'Replace' },
+    ),
   reanalyze: (client) =>
     applyReanalyze(
       client,
-      { rows: [{ docId: 'a', id: 'w' }], docs: [{ id: 'a', bulkReplaceAnalyses: async () => 1 }] },
+      {
+        rows: [{ docId: 'a', id: 'w' }],
+        docs: [{ id: 'a', raw: { version: 1 }, bulkReplaceAnalyses: async () => 1 }],
+      },
       { analysis: {}, label: 'Re-analyze' },
     ),
   merge: (client) =>
@@ -184,8 +208,10 @@ describe('applyRespell', () => {
     morphemes: [],
   });
 
+  const versions = { a: 1, b: 1 };
+
   it('a retry after a refused document sends only what did not land', async () => {
-    const client = makeFakeClient();
+    const client = Object.assign(makeFakeClient(), strictMode());
     let refuse = true;
     client.batched = async (fn) => {
       const b = client.batch();
@@ -198,9 +224,9 @@ describe('applyRespell', () => {
     };
     const rows = [row('a', 0), row('b', 4)];
     const opts = { includeMorphemes: true, includeLexicon: false, label: 'Respell' };
-    await expect(applyRespell(client, { rows, lexiconRows: [] }, opts)).rejects.toThrow();
+    await expect(applyRespell(client, { rows, lexiconRows: [], versions }, opts)).rejects.toThrow();
     refuse = false;
-    const out = await applyRespell(client, { rows, lexiconRows: [] }, opts);
+    const out = await applyRespell(client, { rows, lexiconRows: [], versions }, opts);
     expect(out.docsChanged).toBe(1);
     const texts = client.calls.filter((c) => c.kind === 'texts.update').map((c) => c.args[0]);
     // a once, then b refused, then b again. Never a second time.
@@ -209,9 +235,16 @@ describe('applyRespell', () => {
 
   it('never renames an entry of a vocabulary the person does not maintain', async () => {
     const client = makeFakeClient();
+    client.vocabLayers.get = async (id) => ({
+      id,
+      items: [
+        { id: 'i1', form: 'kat' },
+        { id: 'i2', form: 'kit' },
+      ],
+    });
     const lexiconRows = [
-      { id: 'i1', kind: 'lexicon', old: 'kat', new: 'cat' },
-      { id: 'i2', kind: 'lexicon', old: 'kit', new: 'cit', locked: true },
+      { id: 'i1', kind: 'lexicon', vocabId: 'v1', old: 'kat', new: 'cat' },
+      { id: 'i2', kind: 'lexicon', vocabId: 'v1', old: 'kit', new: 'cit', locked: true },
     ];
     const out = await applyRespell(
       client,

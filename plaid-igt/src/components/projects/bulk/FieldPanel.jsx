@@ -10,7 +10,7 @@ import {
   SelectGroup,
   SelectLabel,
 } from '@ui/components/ui/select';
-import { notifySuccess } from '@/utils/feedback';
+import { notifySuccess, notifyWarning } from '@/utils/feedback';
 import {
   isValueAllowed,
   readingTagset,
@@ -21,7 +21,7 @@ import {
 import { searchDomains } from '../search/searchQueries.js';
 import { buildReplacer } from './bulkPlan.js';
 import { planField, applyField } from './bulkRunner.js';
-import { plural, useRun } from './bulkShared.js';
+import { plural, skippedNote, useRun } from './bulkShared.js';
 import { scopeTextClass } from '@/domain/scopeColors';
 import {
   ApplyBar,
@@ -133,12 +133,18 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
     const res = await r.run('Apply', () =>
       applyField(
         client,
-        { rows: writable },
+        { rows: writable, versions: plan.versions, replan: plan.replan },
         { label: `Replace “${plan.find}” → “${plan.repl}” in ${targetLabel}` },
       ),
     );
     if (!res) return;
-    notifySuccess(`${plural(res.changed, 'value')} replaced in ${targetLabel}.`, 'Replaced');
+    const skipped = skippedNote([[res.skipped, 'value']]);
+    if (!res.changed && skipped) notifyWarning(skipped.trim(), 'Nothing replaced');
+    else
+      notifySuccess(
+        `${plural(res.changed, 'value')} replaced in ${targetLabel}.${skipped}`,
+        'Replaced',
+      );
     r.setPlan(null);
   };
 

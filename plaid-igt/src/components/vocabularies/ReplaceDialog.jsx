@@ -23,14 +23,16 @@ import {
   SelectValue,
 } from '@ui/components/ui/select';
 import { cn } from '@ui/lib/utils';
-import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
+import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
 import { humanizeFieldName, FIELD_TYPES } from '@/domain/vocabFields';
 import { buildReplacer, MATCH_EMPTY } from '@/domain/replacer';
 import { planVocabReplace, replaceWrites } from '@/domain/vocabReplace';
 import { MATCH_TYPES } from '../projects/search/searchQueries.js';
 import { CHUNK } from '@/domain/bulk';
 import { followIds, settledId } from '@ui/domain/pendingIds.js';
+import { readVocabulary } from '@/domain/vocabCache';
 import { Loading } from '@ui/components/shared/Loading.jsx';
+import { skippedNote } from '../projects/bulk/bulkShared.js';
 
 // The search tab's kinds, plus filling a blank. That last one is Replace's
 // alone: the search tab queries the server, which has no way to ask for the
@@ -66,6 +68,7 @@ const Change = ({ from, to }) => (
 export const ReplaceDialog = ({
   open,
   onOpenChange,
+  vocabularyId,
   vocabularyName,
   fields,
   tagsetFor,
@@ -141,11 +144,19 @@ export const ReplaceDialog = ({
     onOpenChange(false);
   };
 
+  // A chosen value as the server holds it now, null for an entry gone.
+  const valueIn = (entries, id) => {
+    const it = entries.get(settledId(id));
+    if (!it) return null;
+    return target.name === 'form' ? (it.form ?? '') : String(it.metadata?.[target.name] ?? '');
+  };
+
   const doApply = async () => {
-    const writes = replaceWrites(chosen, { field: target.name });
-    if (!writes.length) return;
+    if (!replaceWrites(chosen, { field: target.name }).length) return;
     setBusy(true);
     let done = 0;
+    let writes = [];
+    let skipped = 0;
     const label = filling
       ? `Set ${target.label} to “${repl}” where empty in ${vocabularyName || 'vocabulary'}`
       : `Replace “${find}” → “${repl}” in ${target.label} of ${vocabularyName || 'vocabulary'}`;
@@ -153,6 +164,13 @@ export const ReplaceDialog = ({
       const { landed, error } = await send(
         label,
         async () => {
+          // The entries are read again in the write's turn. A value someone
+          // changed since this preview is left as they made it.
+          const fresh = await readVocabulary(client, vocabularyId);
+          const entries = new Map((fresh?.items || []).map((it) => [it.id, it]));
+          const kept = chosen.filter((r) => valueIn(entries, r.id) === r.old);
+          skipped = chosen.length - kept.length;
+          writes = replaceWrites(kept, { field: target.name });
           for (let i = 0; i < writes.length; i += CHUNK) {
             // An entry still being made when this was planned is named by the
             // server's id now that its create has landed.
@@ -170,10 +188,14 @@ export const ReplaceDialog = ({
       );
       if (landed) {
         await onApplied();
-        notifySuccess(
-          `${plural(writes.length, 'value')} ${filling ? 'set' : 'replaced'} in ${target.label}.`,
-          filling ? 'Set' : 'Replaced',
-        );
+        const note = skippedNote([[skipped, 'value']]);
+        if (!writes.length && note)
+          notifyWarning(note.trim(), filling ? 'Nothing set' : 'Nothing replaced');
+        else
+          notifySuccess(
+            `${plural(writes.length, 'value')} ${filling ? 'set' : 'replaced'} in ${target.label}.${note}`,
+            filling ? 'Set' : 'Replaced',
+          );
         setFind('');
         setRepl('');
         onOpenChange(false);

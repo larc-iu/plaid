@@ -8,7 +8,7 @@ import { analysisViolations, governedFields } from '@/domain/tagsets';
 import { tallyCandidates, analysisLabel, cardRowsFor } from './bulkPlan.js';
 import { planReanalyze, applyReanalyze } from './bulkRunner.js';
 import { AnalysisCard } from './AnalysisCard.jsx';
-import { plural, useRun } from './bulkShared.js';
+import { plural, skippedNote, useRun } from './bulkShared.js';
 import { ApplyBar, MatchGroups, Progress, SelectionSummary } from './parts.jsx';
 
 // Re-analyze: replace one analysis of a word form with another everywhere.
@@ -77,14 +77,17 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
       ),
     );
     if (!res) return;
+    const skipped = skippedNote([[res.skipped, 'occurrence']]);
     if (res.failedDoc) {
       notifyWarning(
-        `${plural(res.changed, 'occurrence')} re-analyzed before “${res.failedDoc}” failed. The remaining documents were not changed.`,
+        `${plural(res.changed, 'occurrence')} re-analyzed before “${res.failedDoc}” failed. The remaining documents were not changed.${skipped}`,
         'Stopped early',
       );
+    } else if (!res.changed && skipped) {
+      notifyWarning(skipped.trim(), 'Nothing re-analyzed');
     } else {
       notifySuccess(
-        `${plural(res.changed, 'occurrence')} of “${plan.form}” re-analyzed.`,
+        `${plural(res.changed, 'occurrence')} of “${plan.form}” re-analyzed.${skipped}`,
         'Re-analyzed',
       );
     }

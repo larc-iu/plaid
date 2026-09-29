@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Button } from '@ui/components/ui/button';
 import { cn } from '@ui/lib/utils';
-import { notifySuccess } from '@/utils/feedback';
+import { notifySuccess, notifyWarning } from '@/utils/feedback';
 import { buildReplacer, chainText } from './bulkPlan.js';
 import { planRespell, applyRespell } from './bulkRunner.js';
-import { plural, useRun } from './bulkShared.js';
+import { plural, skippedNote, useRun } from './bulkShared.js';
 import { scopeTextClass } from '@/domain/scopeColors';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
 import { useAuth } from '@/contexts/AuthContext';
@@ -92,7 +92,12 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
     const res = await r.run('Apply', () =>
       applyRespell(
         client,
-        { rows: selectedRows, lexiconRows: selectedLex },
+        {
+          rows: selectedRows,
+          lexiconRows: selectedLex,
+          versions: plan.versions,
+          replan: plan.replan,
+        },
         {
           includeMorphemes,
           includeLexicon,
@@ -101,15 +106,24 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
       ),
     );
     if (!res) return;
-    notifySuccess(
-      `${plural(res.wordsChanged, 'word')} in ${plural(res.docsChanged, 'document')}` +
-        (res.morphemesChanged ? `, ${plural(res.morphemesChanged, 'morpheme form')}` : '') +
-        (res.entriesChanged
-          ? `, ${plural(res.entriesChanged, 'lexicon entry', 'lexicon entries')}`
-          : '') +
-        ' respelled.',
-      'Respelled',
-    );
+    const skipped = skippedNote([
+      [res.wordsSkipped, 'word'],
+      [res.entriesSkipped, 'lexicon entry', 'lexicon entries'],
+    ]);
+    if (!res.wordsChanged && !res.entriesChanged && skipped) {
+      notifyWarning(skipped.trim(), 'Nothing respelled');
+    } else {
+      notifySuccess(
+        `${plural(res.wordsChanged, 'word')} in ${plural(res.docsChanged, 'document')}` +
+          (res.morphemesChanged ? `, ${plural(res.morphemesChanged, 'morpheme form')}` : '') +
+          (res.entriesChanged
+            ? `, ${plural(res.entriesChanged, 'lexicon entry', 'lexicon entries')}`
+            : '') +
+          ' respelled.' +
+          skipped,
+        'Respelled',
+      );
+    }
     r.setPlan(null);
   };
 

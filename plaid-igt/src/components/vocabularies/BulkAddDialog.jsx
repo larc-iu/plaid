@@ -22,6 +22,7 @@ import {
 import { cn } from '@ui/lib/utils';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { CHUNK } from '@/domain/bulk';
+import { readVocabulary } from '@/domain/vocabCache';
 import { followIds, settledId } from '@ui/domain/pendingIds.js';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { humanizeFieldName, fieldDescription, FIELD_TYPES } from '@/domain/vocabFields';
@@ -45,6 +46,21 @@ import {
   makeRefusal,
   serializeImportReport,
 } from '@/import/vocabBulk';
+
+// What a plan writes, as the server gets it: pending ids named by the ids the
+// server gave them. Two plans that write the same are the same import.
+const planWrites = ({ creates, updates }) =>
+  JSON.stringify({
+    creates: creates.map((c) => ({ form: c.form, metadata: followIds(c.metadata) })),
+    updates: updates.map((u) => ({ id: settledId(u.id), patch: followIds(u.patch) })),
+  });
+
+// Import found the vocabulary changed since the review.
+class ChangedSinceReview extends Error {
+  constructor() {
+    super('Entries changed since this review.');
+  }
+}
 
 // A stable "no field is governed", so the default does not remake the
 // normalizer (and with it every entry and the whole plan) on each render.
@@ -342,6 +358,9 @@ export const BulkAddDialog = ({
   const [shownRows, setShownRows] = useState(PREVIEW_ROWS);
   const [progress, setProgress] = useState(null); // { done, total, phase }
   const [failure, setFailure] = useState(null); // { message, created, updated }
+  // Set when Import found the entries changed since the review, which then
+  // shows the plan made against them.
+  const [replanned, setReplanned] = useState(false);
 
   const raw = file ? file.text : pasted;
   const { delimiter, rows } = useMemo(() => parseTable(raw), [raw]);
@@ -410,6 +429,7 @@ export const BulkAddDialog = ({
     setShownRows(PREVIEW_ROWS);
     setProgress(null);
     setFailure(null);
+    setReplanned(false);
   };
 
   const close = () => {
@@ -457,6 +477,7 @@ export const BulkAddDialog = ({
   const runImport = async () => {
     setStep('running');
     setFailure(null);
+    setReplanned(false);
     const { creates, updates } = plan;
     const total = creates.length + updates.length;
     let created = 0;
@@ -465,6 +486,21 @@ export const BulkAddDialog = ({
     const { landed, error } = await send(
       `Bulk add to ${vocabularyName || 'vocabulary'}`,
       async (setMessage) => {
+        // The entries are read again in the import's turn. When they changed
+        // since the review, so that this plan would now write something else,
+        // nothing is written: the refusal re-reads the entries and the review
+        // shows the plan made against them.
+        const fresh = await readVocabulary(client, vocabularyId);
+        const now = planVocabImport({
+          entries,
+          existingItems: fresh?.items || [],
+          fieldNames,
+          caseInsensitive,
+          strategies,
+          overrides,
+          refuses,
+        });
+        if (planWrites(now) !== planWrites(plan)) throw new ChangedSinceReview();
         for (let i = 0; i < creates.length; i += CHUNK) {
           const chunk = creates.slice(i, i + CHUNK);
           await client.vocabItems.bulkCreate(
@@ -505,6 +541,11 @@ export const BulkAddDialog = ({
         'Bulk Add complete',
       );
       close();
+      return;
+    }
+    if (error instanceof ChangedSinceReview) {
+      setReplanned(true);
+      setStep('review');
       return;
     }
     console.error('Bulk add failed:', error);
@@ -713,6 +754,12 @@ export const BulkAddDialog = ({
 
     return (
       <div className="flex flex-col gap-3">
+        {replanned && (
+          <p className="flex items-start gap-1.5 text-sm text-warning-foreground">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            Entries changed since this review. Check the changes again.
+          </p>
+        )}
         <div className="rounded-md border">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b px-2 py-1.5">
             <div className="flex items-center gap-2">
