@@ -1089,6 +1089,26 @@ client.documents.patch_metadata(doc_id, [
 
 Both clients also ship `metadataOps(fragment)` / `metadata_ops(fragment)`, which turns an object of top-level keys into ops (a `null` value becomes a delete), and `applyMetadataOps(metadata, ops)` / `apply_metadata_ops(metadata, ops)`, which applies ops to a local copy the way the server does, for an app that updates its view before the server answers.
 
+=== Editing config
+
+`set_config` / `setConfig` replaces the value of one key under one namespace (`PUT .../config/<namespace>/<key>`), and `delete_config` / `deleteConfig` removes it.
+Other keys, in the same namespace or another, are left alone.
+
+A settings page that wrote back the value it loaded would undo a save another maintainer made after it loaded.
+To prevent that, a write can name the value it read, and it is then refused with a 409 when the stored value is anything else:
+
+[,python]
+----
+tagsets = project["config"]["igt"]["tagsets"]
+client.projects.set_config(project_id, "igt", "tagsets", {**tagsets, "Case": {"mode": "open", "values": []}},
+                           expected=tagsets)
+----
+
+In JavaScript the same is `setConfig(id, namespace, key, value, auditMessage, { expected })`, and `deleteConfig` takes `{ expected }` in the same place.
+A key that was absent is expected as `None` / `null` (in JavaScript `expected: undefined` counts the same, as long as the `expected` key is given).
+On the wire this is `?if-unchanged=true` with the body `{"expected": ..., "value": ...}` (a DELETE sends `{"expected": ...}`).
+The check compares one key's whole value, so it holds inside an atomic batch too, where a 409 rolls back the batch.
+
 NOTE: Config and metadata values are schema-less, meaning that keys and values are unconstrained. If you'd like to see schema support for either of these, please feel free to https://github.com/larc-iu/plaid/issues[open an issue].
 
 = Data Integrity

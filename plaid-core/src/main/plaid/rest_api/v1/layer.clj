@@ -6,27 +6,61 @@
             [plaid.rest-api.v1.auth :as pra]
             [plaid.sql.project :as prj]))
 
+(defn- config-check
+  "The compare-and-set a config write asks for. Without `?if-unchanged=true`
+  the body is the value itself and nothing is checked. With it the body is
+  `{\"expected\": <the value the writer read>, \"value\": <the new value>}`
+  (a DELETE sends `expected` only), and the write answers 409 when the cell
+  no longer holds `expected`. Returns `[value check]`, or nil when the
+  envelope is malformed."
+  [if-unchanged body delete?]
+  (cond
+    (not if-unchanged) [body nil]
+    (not (map? body)) nil
+    (not (contains? body :expected)) nil
+    (and (not delete?) (not (contains? body :value))) nil
+    :else [(:value body) {:expected (:expected body)}]))
+
+(def ^:private bad-envelope
+  {:status 400
+   :body {:error (str "With if-unchanged=true the body is {\"expected\": ..., \"value\": ...} "
+                      "(a DELETE takes {\"expected\": ...}).")}})
+
 (defn- config-handlers [table id-keyword]
   {:put    {:summary    (str "Set a configuration value for a layer in an editor namespace. Intended for storing "
                              "metadata about how the layer is intended to be used, e.g. for morpheme tokenization "
-                             "or sentence boundary marking.")
+                             "or sentence boundary marking. With <query>if-unchanged</query>=true the body is "
+                             "{expected, value} and the write answers 409 when the stored value is no longer "
+                             "expected (null for a value that was absent).")
             :parameters {:path [:map [id-keyword :uuid] [:namespace string?] [:config-key string?]]
+                         :query [:map [:if-unchanged {:optional true} boolean?]]
                          :body any?}
-            :handler    (fn [{{{:keys [namespace config-key] id id-keyword} :path config-value :body} :parameters db :db user-id :user/id}]
-                          (let [{:keys [success code error]} (prj/assoc-editor-config-pair db table id namespace config-key config-value user-id)]
-                            (if success
-                              {:status 204}
-                              {:status (or code 500)
-                               :body   {:error (or error "Internal server error")}})))}
+            :handler    (fn [{{{:keys [namespace config-key] id id-keyword} :path
+                               {:keys [if-unchanged]} :query
+                               body :body} :parameters db :db user-id :user/id}]
+                          (if-let [[config-value check] (config-check if-unchanged body false)]
+                            (let [{:keys [success code error]} (prj/assoc-editor-config-pair db table id namespace config-key config-value user-id check)]
+                              (if success
+                                {:status 204}
+                                {:status (or code 500)
+                                 :body   {:error (or error "Internal server error")}}))
+                            bad-envelope))}
 
-   :delete {:summary    "Remove a configuration value for a layer."
-            :parameters {:path [:map [id-keyword :uuid] [:namespace string?] [:config-key string?]]}
-            :handler    (fn [{{{:keys [namespace config-key] id id-keyword} :path} :parameters db :db user-id :user/id}]
-                          (let [{:keys [success code error]} (prj/dissoc-editor-config-pair db table id namespace config-key user-id)]
-                            (if success
-                              {:status 204}
-                              {:status (or code 500)
-                               :body   {:error (or error "Internal server error")}})))}})
+   :delete {:summary    (str "Remove a configuration value for a layer. With <query>if-unchanged</query>=true "
+                             "the body is {expected}, as on PUT.")
+            :parameters {:path [:map [id-keyword :uuid] [:namespace string?] [:config-key string?]]
+                         :query [:map [:if-unchanged {:optional true} boolean?]]
+                         :body any?}
+            :handler    (fn [{{{:keys [namespace config-key] id id-keyword} :path
+                               {:keys [if-unchanged]} :query
+                               body :body} :parameters db :db user-id :user/id}]
+                          (if-let [[_ check] (config-check if-unchanged body true)]
+                            (let [{:keys [success code error]} (prj/dissoc-editor-config-pair db table id namespace config-key user-id check)]
+                              (if success
+                                {:status 204}
+                                {:status (or code 500)
+                                 :body   {:error (or error "Internal server error")}}))
+                            bad-envelope))}})
 
 (defn- assert-config-table!
   "Reject a table that carries no editor `:config` column, at the moment the

@@ -43,6 +43,26 @@ def _body_of(**kwargs):
     return {k: v for k, v in kwargs.items() if v is not _UNSET}
 
 
+def _config_request(audit_message, value, expected):
+    """The request options of a config write (``value`` is ``_UNSET`` for a
+    delete). With ``expected`` given (``None`` meaning the key was absent) the
+    write is a compare-and-set: ``?if-unchanged=true`` and the body
+    ``{expected, value}``, which the server refuses with a 409 when the stored
+    value is no longer ``expected``. Without it the body is the value itself.
+    Config is opaque, so neither body is re-cased."""
+    opts = {'skip_response_transform': True, 'audit_message': audit_message}
+    if expected is _UNSET:
+        if value is not _UNSET:
+            opts['raw_body'] = value
+        return opts
+    body = {'expected': expected}
+    if value is not _UNSET:
+        body['value'] = value
+    opts['raw_body'] = body
+    opts['query_params'] = {'if-unchanged': True}
+    return opts
+
+
 _UNSET_MESSAGE = object()
 
 
@@ -320,7 +340,8 @@ class VocabLayersResource(_Resource):
         return self._request('PATCH', f'/api/v1/vocab-layers/{id}',
                              body=_body_of(name=name), audit_message=audit_message)
 
-    def set_config(self, id: str, namespace: str, config_key: str, config_value: Any, audit_message=None) -> Any:
+    def set_config(self, id: str, namespace: str, config_key: str, config_value: Any, audit_message=None,
+                   expected: Any = _UNSET) -> Any:
         """Set a configuration value for a vocab layer in an editor namespace.
 
         Args:
@@ -328,20 +349,24 @@ class VocabLayersResource(_Resource):
             namespace: The config namespace
             config_key: The config key
             config_value: Configuration value to set
+            expected: The value read for this key (``None`` when it was absent). When given, the
+                write is refused with a 409 when the stored value is no longer ``expected``.
         """
         return self._request('PUT', f'/api/v1/vocab-layers/{id}/config/{namespace}/{config_key}',
-                             raw_body=config_value, skip_response_transform=True, audit_message=audit_message)
+                             **_config_request(audit_message, config_value, expected))
 
-    def delete_config(self, id: str, namespace: str, config_key: str, audit_message=None) -> Any:
+    def delete_config(self, id: str, namespace: str, config_key: str, audit_message=None,
+                      expected: Any = _UNSET) -> Any:
         """Remove a configuration value for a vocab layer.
 
         Args:
             id: The resource ID
             namespace: The config namespace
             config_key: The config key
+            expected: As on ``set_config``.
         """
         return self._request('DELETE', f'/api/v1/vocab-layers/{id}/config/{namespace}/{config_key}',
-                             skip_response_transform=True, audit_message=audit_message)
+                             **_config_request(audit_message, _UNSET, expected))
 
     def list(self) -> Any:
         """List all vocab layers accessible to the current user.
@@ -570,7 +595,8 @@ class SpanLayersResource(_Resource):
         return self._request('PATCH', f'/api/v1/span-layers/{span_layer_id}',
                              body=_body_of(name=name), audit_message=audit_message)
 
-    def set_config(self, span_layer_id: str, namespace: str, config_key: str, config_value: Any, audit_message=None) -> Any:
+    def set_config(self, span_layer_id: str, namespace: str, config_key: str, config_value: Any, audit_message=None,
+                   expected: Any = _UNSET) -> Any:
         """Set a configuration value for a span layer in an editor namespace.
 
         Args:
@@ -578,20 +604,24 @@ class SpanLayersResource(_Resource):
             namespace: The config namespace
             config_key: The config key
             config_value: Configuration value to set
+            expected: The value read for this key (``None`` when it was absent). When given, the
+                write is refused with a 409 when the stored value is no longer ``expected``.
         """
         return self._request('PUT', f'/api/v1/span-layers/{span_layer_id}/config/{namespace}/{config_key}',
-                             raw_body=config_value, skip_response_transform=True, audit_message=audit_message)
+                             **_config_request(audit_message, config_value, expected))
 
-    def delete_config(self, span_layer_id: str, namespace: str, config_key: str, audit_message=None) -> Any:
+    def delete_config(self, span_layer_id: str, namespace: str, config_key: str, audit_message=None,
+                      expected: Any = _UNSET) -> Any:
         """Remove a configuration value for a span layer.
 
         Args:
             span_layer_id: The span layer ID
             namespace: The config namespace
             config_key: The config key
+            expected: As on ``set_config``.
         """
         return self._request('DELETE', f'/api/v1/span-layers/{span_layer_id}/config/{namespace}/{config_key}',
-                             skip_response_transform=True, audit_message=audit_message)
+                             **_config_request(audit_message, _UNSET, expected))
 
     def shift(self, span_layer_id: str, direction: str, audit_message=None) -> Any:
         """Shift a span layer's display order.
@@ -1612,7 +1642,8 @@ class TokenLayersResource(_Resource):
         return self._request('PATCH', f'/api/v1/token-layers/{token_layer_id}',
                              body=_body_of(name=name), audit_message=audit_message)
 
-    def set_config(self, token_layer_id: str, namespace: str, config_key: str, config_value: Any, audit_message=None) -> Any:
+    def set_config(self, token_layer_id: str, namespace: str, config_key: str, config_value: Any, audit_message=None,
+                   expected: Any = _UNSET) -> Any:
         """Set a configuration value for a token layer in an editor namespace.
 
         Args:
@@ -1620,20 +1651,24 @@ class TokenLayersResource(_Resource):
             namespace: The config namespace
             config_key: The config key
             config_value: Configuration value to set
+            expected: The value read for this key (``None`` when it was absent). When given, the
+                write is refused with a 409 when the stored value is no longer ``expected``.
         """
         return self._request('PUT', f'/api/v1/token-layers/{token_layer_id}/config/{namespace}/{config_key}',
-                             raw_body=config_value, skip_response_transform=True, audit_message=audit_message)
+                             **_config_request(audit_message, config_value, expected))
 
-    def delete_config(self, token_layer_id: str, namespace: str, config_key: str, audit_message=None) -> Any:
+    def delete_config(self, token_layer_id: str, namespace: str, config_key: str, audit_message=None,
+                      expected: Any = _UNSET) -> Any:
         """Remove a configuration value for a token layer.
 
         Args:
             token_layer_id: The token layer ID
             namespace: The config namespace
             config_key: The config key
+            expected: As on ``set_config``.
         """
         return self._request('DELETE', f'/api/v1/token-layers/{token_layer_id}/config/{namespace}/{config_key}',
-                             skip_response_transform=True, audit_message=audit_message)
+                             **_config_request(audit_message, _UNSET, expected))
 
     def shift(self, token_layer_id: str, direction: str, audit_message=None) -> Any:
         """Shift a token layer's display order.
@@ -2408,7 +2443,8 @@ class ProjectsResource(_Resource):
         """
         return self._request('DELETE', f'/api/v1/projects/{id}/maintainers/{user_id}', audit_message=audit_message)
 
-    def set_config(self, id: str, namespace: str, config_key: str, config_value: Any, audit_message=None) -> Any:
+    def set_config(self, id: str, namespace: str, config_key: str, config_value: Any, audit_message=None,
+                   expected: Any = _UNSET) -> Any:
         """Set a configuration value for a project in an editor namespace.
 
         Args:
@@ -2416,20 +2452,24 @@ class ProjectsResource(_Resource):
             namespace: The config namespace
             config_key: The config key
             config_value: Configuration value to set
+            expected: The value read for this key (``None`` when it was absent). When given, the
+                write is refused with a 409 when the stored value is no longer ``expected``.
         """
         return self._request('PUT', f'/api/v1/projects/{id}/config/{namespace}/{config_key}',
-                             raw_body=config_value, skip_response_transform=True, audit_message=audit_message)
+                             **_config_request(audit_message, config_value, expected))
 
-    def delete_config(self, id: str, namespace: str, config_key: str, audit_message=None) -> Any:
+    def delete_config(self, id: str, namespace: str, config_key: str, audit_message=None,
+                      expected: Any = _UNSET) -> Any:
         """Remove a configuration value for a project.
 
         Args:
             id: The resource ID
             namespace: The config namespace
             config_key: The config key
+            expected: As on ``set_config``.
         """
         return self._request('DELETE', f'/api/v1/projects/{id}/config/{namespace}/{config_key}',
-                             skip_response_transform=True, audit_message=audit_message)
+                             **_config_request(audit_message, _UNSET, expected))
 
     def audit(self, project_id: str, *, start_time: str | None = None,
               end_time: str | None = None,
@@ -2539,7 +2579,8 @@ class TextLayersResource(_Resource):
         return self._request('PATCH', f'/api/v1/text-layers/{text_layer_id}',
                              body=_body_of(name=name), audit_message=audit_message)
 
-    def set_config(self, text_layer_id: str, namespace: str, config_key: str, config_value: Any, audit_message=None) -> Any:
+    def set_config(self, text_layer_id: str, namespace: str, config_key: str, config_value: Any, audit_message=None,
+                   expected: Any = _UNSET) -> Any:
         """Set a configuration value for a text layer in an editor namespace.
 
         Args:
@@ -2547,20 +2588,24 @@ class TextLayersResource(_Resource):
             namespace: The config namespace
             config_key: The config key
             config_value: Configuration value to set
+            expected: The value read for this key (``None`` when it was absent). When given, the
+                write is refused with a 409 when the stored value is no longer ``expected``.
         """
         return self._request('PUT', f'/api/v1/text-layers/{text_layer_id}/config/{namespace}/{config_key}',
-                             raw_body=config_value, skip_response_transform=True, audit_message=audit_message)
+                             **_config_request(audit_message, config_value, expected))
 
-    def delete_config(self, text_layer_id: str, namespace: str, config_key: str, audit_message=None) -> Any:
+    def delete_config(self, text_layer_id: str, namespace: str, config_key: str, audit_message=None,
+                      expected: Any = _UNSET) -> Any:
         """Remove a configuration value for a text layer.
 
         Args:
             text_layer_id: The text layer ID
             namespace: The config namespace
             config_key: The config key
+            expected: As on ``set_config``.
         """
         return self._request('DELETE', f'/api/v1/text-layers/{text_layer_id}/config/{namespace}/{config_key}',
-                             skip_response_transform=True, audit_message=audit_message)
+                             **_config_request(audit_message, _UNSET, expected))
 
     def shift(self, text_layer_id: str, direction: str, audit_message=None) -> Any:
         """Shift a text layer's order within the project.
@@ -2742,7 +2787,8 @@ class RelationLayersResource(_Resource):
         return self._request('PATCH', f'/api/v1/relation-layers/{relation_layer_id}',
                              body=_body_of(name=name), audit_message=audit_message)
 
-    def set_config(self, relation_layer_id: str, namespace: str, config_key: str, config_value: Any, audit_message=None) -> Any:
+    def set_config(self, relation_layer_id: str, namespace: str, config_key: str, config_value: Any, audit_message=None,
+                   expected: Any = _UNSET) -> Any:
         """Set a configuration value for a relation layer in an editor namespace.
 
         Args:
@@ -2750,20 +2796,24 @@ class RelationLayersResource(_Resource):
             namespace: The config namespace
             config_key: The config key
             config_value: Configuration value to set
+            expected: The value read for this key (``None`` when it was absent). When given, the
+                write is refused with a 409 when the stored value is no longer ``expected``.
         """
         return self._request('PUT', f'/api/v1/relation-layers/{relation_layer_id}/config/{namespace}/{config_key}',
-                             raw_body=config_value, skip_response_transform=True, audit_message=audit_message)
+                             **_config_request(audit_message, config_value, expected))
 
-    def delete_config(self, relation_layer_id: str, namespace: str, config_key: str, audit_message=None) -> Any:
+    def delete_config(self, relation_layer_id: str, namespace: str, config_key: str, audit_message=None,
+                      expected: Any = _UNSET) -> Any:
         """Remove a configuration value for a relation layer.
 
         Args:
             relation_layer_id: The relation layer ID
             namespace: The config namespace
             config_key: The config key
+            expected: As on ``set_config``.
         """
         return self._request('DELETE', f'/api/v1/relation-layers/{relation_layer_id}/config/{namespace}/{config_key}',
-                             skip_response_transform=True, audit_message=audit_message)
+                             **_config_request(audit_message, _UNSET, expected))
 
     def shift(self, relation_layer_id: str, direction: str, audit_message=None) -> Any:
         """Shift a relation layer's display order.

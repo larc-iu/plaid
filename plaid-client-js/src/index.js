@@ -496,24 +496,29 @@ class PlaidClient {
        * @param {string} namespace - The config namespace
        * @param {string} configKey - The config key
        * @param {any} configValue - Configuration value to set
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {{expected?: any}} [options] - `expected`: the value read for this key (null or undefined when it
+       *   was absent). The write is then refused with a 409 when the stored value differs.
        */
-      setConfig: (id, namespace, configKey, configValue, auditMessage) =>
+      setConfig: (id, namespace, configKey, configValue, auditMessage, options) =>
         this._request(
           "PUT",
           `/api/v1/vocab-layers/${id}/config/${namespace}/${configKey}`,
-          { auditMessage, rawBody: configValue, skipResponseTransform: true },
+          configRequest(auditMessage, configValue, options),
         ),
       /**
        * Remove a configuration value for a layer.
        * @param {string} id - The resource ID
        * @param {string} namespace - The config namespace
        * @param {string} configKey - The config key
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {{expected?: any}} [options] - `expected`, as on setConfig.
        */
-      deleteConfig: (id, namespace, configKey, auditMessage) =>
+      deleteConfig: (id, namespace, configKey, auditMessage, options) =>
         this._request(
           "DELETE",
           `/api/v1/vocab-layers/${id}/config/${namespace}/${configKey}`,
-          { auditMessage, skipResponseTransform: true },
+          configRequest(auditMessage, undefined, options, true),
         ),
       /**
        * List all vocab layers accessible to user. Transparently follows
@@ -704,30 +709,29 @@ class PlaidClient {
        * @param {string} namespace - The config namespace
        * @param {string} configKey - The config key
        * @param {any} configValue - Configuration value to set
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {{expected?: any}} [options] - `expected`: the value read for this key (null or undefined when it
+       *   was absent). The write is then refused with a 409 when the stored value differs.
        */
-      setConfig: (
-        spanLayerId,
-        namespace,
-        configKey,
-        configValue,
-        auditMessage,
-      ) =>
+      setConfig: (spanLayerId, namespace, configKey, configValue, auditMessage, options) =>
         this._request(
           "PUT",
           `/api/v1/span-layers/${spanLayerId}/config/${namespace}/${configKey}`,
-          { auditMessage, rawBody: configValue, skipResponseTransform: true },
+          configRequest(auditMessage, configValue, options),
         ),
       /**
        * Remove a configuration value for a layer.
        * @param {string} spanLayerId - The span layer ID
        * @param {string} namespace - The config namespace
        * @param {string} configKey - The config key
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {{expected?: any}} [options] - `expected`, as on setConfig.
        */
-      deleteConfig: (spanLayerId, namespace, configKey, auditMessage) =>
+      deleteConfig: (spanLayerId, namespace, configKey, auditMessage, options) =>
         this._request(
           "DELETE",
           `/api/v1/span-layers/${spanLayerId}/config/${namespace}/${configKey}`,
-          { auditMessage, skipResponseTransform: true },
+          configRequest(auditMessage, undefined, options, true),
         ),
       /**
        * Get a span layer by ID.
@@ -1755,30 +1759,29 @@ class PlaidClient {
        * @param {string} namespace - The config namespace
        * @param {string} configKey - The config key
        * @param {any} configValue - Configuration value to set
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {{expected?: any}} [options] - `expected`: the value read for this key (null or undefined when it
+       *   was absent). The write is then refused with a 409 when the stored value differs.
        */
-      setConfig: (
-        tokenLayerId,
-        namespace,
-        configKey,
-        configValue,
-        auditMessage,
-      ) =>
+      setConfig: (tokenLayerId, namespace, configKey, configValue, auditMessage, options) =>
         this._request(
           "PUT",
           `/api/v1/token-layers/${tokenLayerId}/config/${namespace}/${configKey}`,
-          { auditMessage, rawBody: configValue, skipResponseTransform: true },
+          configRequest(auditMessage, configValue, options),
         ),
       /**
        * Remove a configuration value for a layer.
        * @param {string} tokenLayerId - The token layer ID
        * @param {string} namespace - The config namespace
        * @param {string} configKey - The config key
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {{expected?: any}} [options] - `expected`, as on setConfig.
        */
-      deleteConfig: (tokenLayerId, namespace, configKey, auditMessage) =>
+      deleteConfig: (tokenLayerId, namespace, configKey, auditMessage, options) =>
         this._request(
           "DELETE",
           `/api/v1/token-layers/${tokenLayerId}/config/${namespace}/${configKey}`,
-          { auditMessage, skipResponseTransform: true },
+          configRequest(auditMessage, undefined, options, true),
         ),
       /**
        * Get a token layer by ID.
@@ -2154,24 +2157,29 @@ class PlaidClient {
        * @param {string} namespace - The config namespace
        * @param {string} configKey - The config key
        * @param {any} configValue - Configuration value to set
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {{expected?: any}} [options] - `expected`: the value read for this key (null or undefined when it
+       *   was absent). The write is then refused with a 409 when the stored value differs.
        */
-      setConfig: (id, namespace, configKey, configValue, auditMessage) =>
+      setConfig: (id, namespace, configKey, configValue, auditMessage, options) =>
         this._request(
           "PUT",
           `/api/v1/projects/${id}/config/${namespace}/${configKey}`,
-          { auditMessage, rawBody: configValue, skipResponseTransform: true },
+          configRequest(auditMessage, configValue, options),
         ),
       /**
        * Remove a configuration value for a project.
        * @param {string} id - The resource ID
        * @param {string} namespace - The config namespace
        * @param {string} configKey - The config key
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {{expected?: any}} [options] - `expected`, as on setConfig.
        */
-      deleteConfig: (id, namespace, configKey, auditMessage) =>
+      deleteConfig: (id, namespace, configKey, auditMessage, options) =>
         this._request(
           "DELETE",
           `/api/v1/projects/${id}/config/${namespace}/${configKey}`,
-          { auditMessage, skipResponseTransform: true },
+          configRequest(auditMessage, undefined, options, true),
         ),
       /**
        * Assign a user as a maintainer for this project.
@@ -2384,30 +2392,29 @@ class PlaidClient {
        * @param {string} namespace - The config namespace
        * @param {string} configKey - The config key
        * @param {any} configValue - Configuration value to set
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {{expected?: any}} [options] - `expected`: the value read for this key (null or undefined when it
+       *   was absent). The write is then refused with a 409 when the stored value differs.
        */
-      setConfig: (
-        textLayerId,
-        namespace,
-        configKey,
-        configValue,
-        auditMessage,
-      ) =>
+      setConfig: (textLayerId, namespace, configKey, configValue, auditMessage, options) =>
         this._request(
           "PUT",
           `/api/v1/text-layers/${textLayerId}/config/${namespace}/${configKey}`,
-          { auditMessage, rawBody: configValue, skipResponseTransform: true },
+          configRequest(auditMessage, configValue, options),
         ),
       /**
        * Remove a configuration value for a layer.
        * @param {string} textLayerId - The text layer ID
        * @param {string} namespace - The config namespace
        * @param {string} configKey - The config key
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {{expected?: any}} [options] - `expected`, as on setConfig.
        */
-      deleteConfig: (textLayerId, namespace, configKey, auditMessage) =>
+      deleteConfig: (textLayerId, namespace, configKey, auditMessage, options) =>
         this._request(
           "DELETE",
           `/api/v1/text-layers/${textLayerId}/config/${namespace}/${configKey}`,
-          { auditMessage, skipResponseTransform: true },
+          configRequest(auditMessage, undefined, options, true),
         ),
       /**
        * Get a text layer by ID.
@@ -2586,30 +2593,29 @@ class PlaidClient {
        * @param {string} namespace - The config namespace
        * @param {string} configKey - The config key
        * @param {any} configValue - Configuration value to set
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {{expected?: any}} [options] - `expected`: the value read for this key (null or undefined when it
+       *   was absent). The write is then refused with a 409 when the stored value differs.
        */
-      setConfig: (
-        relationLayerId,
-        namespace,
-        configKey,
-        configValue,
-        auditMessage,
-      ) =>
+      setConfig: (relationLayerId, namespace, configKey, configValue, auditMessage, options) =>
         this._request(
           "PUT",
           `/api/v1/relation-layers/${relationLayerId}/config/${namespace}/${configKey}`,
-          { auditMessage, rawBody: configValue, skipResponseTransform: true },
+          configRequest(auditMessage, configValue, options),
         ),
       /**
        * Remove a configuration value for a layer.
        * @param {string} relationLayerId - The relation layer ID
        * @param {string} namespace - The config namespace
        * @param {string} configKey - The config key
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {{expected?: any}} [options] - `expected`, as on setConfig.
        */
-      deleteConfig: (relationLayerId, namespace, configKey, auditMessage) =>
+      deleteConfig: (relationLayerId, namespace, configKey, auditMessage, options) =>
         this._request(
           "DELETE",
           `/api/v1/relation-layers/${relationLayerId}/config/${namespace}/${configKey}`,
-          { auditMessage, skipResponseTransform: true },
+          configRequest(auditMessage, undefined, options, true),
         ),
       /**
        * Get a relation layer by ID.
@@ -3800,6 +3806,30 @@ class PlaidClient {
       throw makeNetworkError(error, url, "POST");
     }
   }
+}
+
+
+/**
+ * The request options of a config write. With `options.expected` present
+ * (even as undefined, which means the key was absent) the write is a
+ * compare-and-set: `?if-unchanged=true` and the body `{expected, value}`,
+ * which the server refuses with a 409 when the stored value is no longer
+ * `expected`. Without it the body is the value itself. Config is opaque, so
+ * neither body is re-cased.
+ */
+function configRequest(auditMessage, value, options, isDelete = false) {
+  if (!options || !Object.hasOwn(options, "expected")) {
+    return isDelete
+      ? { auditMessage, skipResponseTransform: true }
+      : { auditMessage, rawBody: value, skipResponseTransform: true };
+  }
+  const expected = options.expected === undefined ? null : options.expected;
+  return {
+    auditMessage,
+    queryParams: { "if-unchanged": true },
+    rawBody: isDelete ? { expected } : { expected, value },
+    skipResponseTransform: true,
+  };
 }
 
 export default PlaidClient;

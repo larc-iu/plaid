@@ -7,7 +7,8 @@
   External API mirrors the xtdb2 version. The first argument is `db`,
   either a HikariCP DataSource (reads) or a JDBC Connection in a tx
   (writes). Write fns open their own tx via `submit-operation!`."
-  (:require [taoensso.timbre :as log]
+  (:require [clojure.data.json :as json]
+            [taoensso.timbre :as log]
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
@@ -925,48 +926,76 @@
   (or (psc/fetch-by-id tx table layer-id)
       (throw (ex-info (str "Not a valid layer ID: " layer-id) {:id layer-id :code 400}))))
 
+(defn- config-cell-keys
+  "The two string keys of one config cell. Config keys must round-trip as
+  strings so user-supplied casing (PascalCase, camelCase) survives JSON
+  storage."
+  [editor-name config-key]
+  [(if (keyword? editor-name) (name editor-name) (str editor-name))
+   (if (keyword? config-key) (name config-key) (str config-key))])
+
+(defn- assert-config-unchanged!
+  "Compare-and-set for a config write. `check` is nil (no check) or
+  `{:expected v}`, the value the writer read for this one cell (nil when
+  the cell was absent, which is the same as a stored null). The expected
+  value arrives decoded from a request body, with keyword keys, so it is
+  put through JSON once to compare in the stored shape (string keys).
+  A 409 when the cell holds anything else, so a page that read the
+  settings before another maintainer saved them cannot write over that
+  save."
+  [current cell check]
+  (when check
+    (let [expected (json/read-str (json/write-str (:expected check)))]
+      (when (not= expected (get-in current cell))
+        (throw (ex-info "This setting was changed by someone else since it was read"
+                        {:code 409 :cell cell}))))))
+
 (defn assoc-editor-config-pair
   "Set <editor-name>/<config-key> = <config-value> in the layer's :config
   JSON. `table` is the row's own table, which the caller's route already
   determined (:projects / :text_layers / :token_layers / :span_layers /
   :relation_layers / :vocab_layers). `acting-user-id` attributes the op
-  (a maintainer-level action)."
-  [db table layer-id editor-name config-key config-value acting-user-id]
-  (submit-operation! [tx db {:type :layer/assoc-editor-config-pair
-                             :project (editor-config-project-id db table layer-id)
-                             :document nil
-                             :description (str "Set editor config " editor-name "/" config-key
-                                               " on layer " layer-id)
-                             :user acting-user-id}]
-                     (let [row (config-row! tx table layer-id)
-                           current (psc/parse-config (:config row))
-                           ;; Config keys must round-trip as strings so user-supplied
-                           ;; casing (PascalCase, camelCase) survives JSON storage.
-                           new-config (assoc-in current
-                                                [(if (keyword? editor-name) (name editor-name) (str editor-name))
-                                                 (if (keyword? config-key) (name config-key) (str config-key))]
-                                                config-value)]
-                       (crud/update-by-id! tx table layer-id
-                                           (config-update-attrs table new-config)))))
+  (a maintainer-level action). `check`, when given, is `{:expected v}`:
+  the write happens only while the cell still holds `v` (see
+  `assert-config-unchanged!`)."
+  ([db table layer-id editor-name config-key config-value acting-user-id]
+   (assoc-editor-config-pair db table layer-id editor-name config-key config-value acting-user-id nil))
+  ([db table layer-id editor-name config-key config-value acting-user-id check]
+   (submit-operation! [tx db {:type :layer/assoc-editor-config-pair
+                              :project (editor-config-project-id db table layer-id)
+                              :document nil
+                              :description (str "Set editor config " editor-name "/" config-key
+                                                " on layer " layer-id)
+                              :user acting-user-id}]
+                      (let [row (config-row! tx table layer-id)
+                            current (psc/parse-config (:config row))
+                            cell (config-cell-keys editor-name config-key)
+                            _ (assert-config-unchanged! current cell check)
+                            new-config (assoc-in current cell config-value)]
+                        (crud/update-by-id! tx table layer-id
+                                            (config-update-attrs table new-config))))))
 
 (defn dissoc-editor-config-pair
   "Remove <editor-name>/<config-key> from the layer's :config JSON. `table`
   is the row's own table, as in `assoc-editor-config-pair`.
-  `acting-user-id` attributes the op (a maintainer-level action)."
-  [db table layer-id editor-name config-key acting-user-id]
-  (submit-operation! [tx db {:type :layer/dissoc-editor-config-pair
-                             :project (editor-config-project-id db table layer-id)
-                             :document nil
-                             :description (str "Unset editor config " editor-name "/" config-key
-                                               " on layer " layer-id)
-                             :user acting-user-id}]
-                     (let [row (config-row! tx table layer-id)
-                           current (psc/parse-config (:config row))
-                           ed-key (if (keyword? editor-name) (name editor-name) (str editor-name))
-                           cfg-key (if (keyword? config-key) (name config-key) (str config-key))
-                           new-config (update current ed-key dissoc cfg-key)]
-                       (crud/update-by-id! tx table layer-id
-                                           (config-update-attrs table new-config)))))
+  `acting-user-id` attributes the op (a maintainer-level action). `check`
+  is the same compare-and-set as on `assoc-editor-config-pair`."
+  ([db table layer-id editor-name config-key acting-user-id]
+   (dissoc-editor-config-pair db table layer-id editor-name config-key acting-user-id nil))
+  ([db table layer-id editor-name config-key acting-user-id check]
+   (submit-operation! [tx db {:type :layer/dissoc-editor-config-pair
+                              :project (editor-config-project-id db table layer-id)
+                              :document nil
+                              :description (str "Unset editor config " editor-name "/" config-key
+                                                " on layer " layer-id)
+                              :user acting-user-id}]
+                      (let [row (config-row! tx table layer-id)
+                            current (psc/parse-config (:config row))
+                            [ed-key cfg-key :as cell] (config-cell-keys editor-name config-key)
+                            _ (assert-config-unchanged! current cell check)
+                            new-config (update current ed-key dissoc cfg-key)]
+                        (crud/update-by-id! tx table layer-id
+                                            (config-update-attrs table new-config))))))
 
 ;; ============================================================
 ;; Vocab management (project_vocabs join + cascade vocab_links)

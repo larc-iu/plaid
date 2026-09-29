@@ -17,6 +17,11 @@ const ARGS_BEFORE_AUDIT_MESSAGE = {
   'documents.copy': 3,
   'vocabLayers.restoreItem': 4,
 };
+// `setConfig` and `deleteConfig` take an options object after `auditMessage`.
+for (const b of ['projects', 'textLayers', 'tokenLayers', 'spanLayers', 'relationLayers', 'vocabLayers']) {
+  ARGS_BEFORE_AUDIT_MESSAGE[`${b}.setConfig`] = 4;
+  ARGS_BEFORE_AUDIT_MESSAGE[`${b}.deleteConfig`] = 3;
+}
 // CRUD bundles whose writes hit document state. `messages`/services are
 // real-time/registry (not audit-logged) and use streaming transports.
 const BUNDLES = [

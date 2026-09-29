@@ -1,3 +1,12 @@
+/**
+ * A config write's compare-and-set. With `expected` present (null or
+ * undefined for a key that was absent) the write is refused with a 409 when
+ * the stored value is no longer `expected`.
+ */
+interface ConfigWriteOptions {
+  expected?: any;
+}
+
 /** A single page of a cursor-paginated collection. */
 interface Page<T = any> {
   entries: T[];
@@ -203,12 +212,14 @@ interface VocabLayersBundle {
     configKey: string,
     configValue: any,
     auditMessage?: string,
+    options?: ConfigWriteOptions,
   ): Promise<any>;
   deleteConfig(
     id: string,
     namespace: string,
     configKey: string,
     auditMessage?: string,
+    options?: ConfigWriteOptions,
   ): Promise<any>;
   list(): Promise<any[]>;
   listPage(opts?: { limit?: number; cursor?: string }): Promise<Page>;
@@ -271,12 +282,14 @@ interface SpanLayersBundle {
     configKey: string,
     configValue: any,
     auditMessage?: string,
+    options?: ConfigWriteOptions,
   ): Promise<any>;
   deleteConfig(
     spanLayerId: string,
     namespace: string,
     configKey: string,
     auditMessage?: string,
+    options?: ConfigWriteOptions,
   ): Promise<any>;
   get(spanLayerId: string): Promise<any>;
   delete(spanLayerId: string, auditMessage?: string): Promise<any>;
@@ -955,12 +968,14 @@ interface TokenLayersBundle {
     configKey: string,
     configValue: any,
     auditMessage?: string,
+    options?: ConfigWriteOptions,
   ): Promise<any>;
   deleteConfig(
     tokenLayerId: string,
     namespace: string,
     configKey: string,
     auditMessage?: string,
+    options?: ConfigWriteOptions,
   ): Promise<any>;
   get(tokenLayerId: string): Promise<any>;
   delete(tokenLayerId: string, auditMessage?: string): Promise<any>;
@@ -1161,12 +1176,14 @@ interface ProjectsBundle {
     configKey: string,
     configValue: any,
     auditMessage?: string,
+    options?: ConfigWriteOptions,
   ): Promise<any>;
   deleteConfig(
     id: string,
     namespace: string,
     configKey: string,
     auditMessage?: string,
+    options?: ConfigWriteOptions,
   ): Promise<any>;
   addMaintainer(
     id: string,
@@ -1224,12 +1241,14 @@ interface TextLayersBundle {
     configKey: string,
     configValue: any,
     auditMessage?: string,
+    options?: ConfigWriteOptions,
   ): Promise<any>;
   deleteConfig(
     textLayerId: string,
     namespace: string,
     configKey: string,
     auditMessage?: string,
+    options?: ConfigWriteOptions,
   ): Promise<any>;
   get(textLayerId: string): Promise<any>;
   delete(textLayerId: string, auditMessage?: string): Promise<any>;
@@ -1281,12 +1300,14 @@ interface RelationLayersBundle {
     configKey: string,
     configValue: any,
     auditMessage?: string,
+    options?: ConfigWriteOptions,
   ): Promise<any>;
   deleteConfig(
     relationLayerId: string,
     namespace: string,
     configKey: string,
     auditMessage?: string,
+    options?: ConfigWriteOptions,
   ): Promise<any>;
   get(relationLayerId: string): Promise<any>;
   delete(relationLayerId: string, auditMessage?: string): Promise<any>;
