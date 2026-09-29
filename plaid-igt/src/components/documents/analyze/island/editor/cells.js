@@ -13,7 +13,7 @@ import { notifyError, notifyInfo } from '@/utils/feedback';
 import { arrowStep, caretAtArrowEdge } from '@ui/lib/bidi.js';
 import { keys } from '@/lib/keymap.js';
 import { settledId } from '@ui/domain/pendingIds.js';
-import { sameCell } from './shared.js';
+import { morphFormOf, sameCell } from './shared.js';
 
 // An annotation cell's life: focus, typing, commit, the keyboard chords that
 // move between cells, and the sentence fields' own handlers.
@@ -433,6 +433,29 @@ export const cells = {
     this._runKeepingFocus(el, next, () =>
       this._recordWhenSaved(apply(next, fragment), answer ? [answer] : []),
     );
+  },
+
+  // What History calls a cell edit: the field, what it belongs to, the
+  // sentence and the value written ("Gloss of "dogs" in sentence 3: DOG").
+  // `subject` is null for a sentence's own field, and `index` the sentence's
+  // place in the document, counted from 0.
+  _editLabel(field, subject, index, value) {
+    const sentence = index == null ? '' : `sentence ${index + 1}`;
+    const where = subject
+      ? `${field} of ${subject}${sentence ? ` in ${sentence}` : ''}`
+      : `${field}${sentence ? ` of ${sentence}` : ''}`;
+    const chars = [...(value ?? '')];
+    const shown = chars.length > 40 ? `${chars.slice(0, 40).join('')}…` : chars.join('');
+    return shown ? `${where}: ${shown}` : `${where} cleared`;
+  },
+
+  // A morpheme as History names it: by its form, within its word when the
+  // word has more than one, and by its place when it has no form yet.
+  _morphemeSubject(morph, word, siblings) {
+    const form = morphFormOf(morph);
+    if (siblings.length <= 1) return `morpheme "${form || word.content}"`;
+    const which = form ? `"${form}"` : String(morph.precedence ?? siblings.indexOf(morph) + 1);
+    return `morpheme ${which} of "${word.content}"`;
   },
 
   // Keep the classes this file toggles by hand in step with the cell's text.

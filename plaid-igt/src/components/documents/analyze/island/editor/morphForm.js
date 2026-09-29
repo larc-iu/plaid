@@ -378,7 +378,8 @@ export const morphForm = {
     };
   },
 
-  _commitMorphForm(e, morphId) {
+  // `label(value)` is the History label of the write (see _editLabel).
+  _commitMorphForm(e, morphId, label = null) {
     if (this.readOnly) return;
     const el = e.target;
     if (el.dataset.suppressCommit) {
@@ -389,7 +390,9 @@ export const morphForm = {
     const next = el.value;
     this._syncCellClasses(el, next);
     if (next === (el.dataset.orig ?? '')) return;
-    this._runKeepingFocus(el, next, () => this.doc.updateMorphemeForm(morphId, next));
+    this._runKeepingFocus(el, next, () =>
+      this.doc.labelled(label?.(next), () => this.doc.updateMorphemeForm(morphId, next)),
+    );
   },
 };
 

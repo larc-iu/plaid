@@ -377,7 +377,7 @@ export const chrome = {
           ? bracketPieces(sentence.tokens.length, pendingIdx)
           : sentence.tokens.map((t, i) => (i === pendingIdx[0] ? 'solo' : null));
     }
-    const sctx = { sentence, posMap, lanes, pending, pendingIdx: sel ? pendingIdx : null };
+    const sctx = { sentence, index, posMap, lanes, pending, pendingIdx: sel ? pendingIdx : null };
     return html`
       <div
         class="igt-sentence"

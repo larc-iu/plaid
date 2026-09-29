@@ -141,7 +141,11 @@ export const grid = {
               ${this._field({
                 key: `or:${token.id}:${name}`,
                 value: token.orthographies?.[name] ?? '',
-                apply: (v) => this.doc.updateOrthography(token.id, name, v),
+                apply: (v) =>
+                  this.doc.labelled(
+                    this._editLabel(name, `"${token.content}"`, sctx.index, v),
+                    () => this.doc.updateOrthography(token.id, name, v),
+                  ),
                 ariaLabel: `${name} for ${token.content}`,
                 fieldName: name,
                 // Ctrl/Cmd+Enter and Ctrl/Cmd+Backspace mean the same thing
@@ -167,7 +171,11 @@ export const grid = {
                   : null,
                 value: token.annotations?.[name]?.value ?? '',
                 apply: (v, meta) =>
-                  this.doc.updateTokenSpan(token.id, name, v, meta, { adopted: meta != null }),
+                  this.doc.labelled(
+                    this._editLabel(name, `"${token.content}"`, sctx.index, v),
+                    () =>
+                      this.doc.updateTokenSpan(token.id, name, v, meta, { adopted: meta != null }),
+                  ),
                 ariaLabel: `${name} for ${token.content}`,
                 fieldName: name,
                 tagset: this._tagsetFor('word', name),
@@ -201,7 +209,7 @@ export const grid = {
               })}
             </div>`,
         )}
-        ${ctx.hasMorphemes ? this._morphemes(token, ctx) : nothing}
+        ${ctx.hasMorphemes ? this._morphemes(token, ctx, sctx.index) : nothing}
       </div>
     `;
   },
@@ -245,7 +253,7 @@ export const grid = {
     return rules;
   },
 
-  _morphemes(token, ctx) {
+  _morphemes(token, ctx, index) {
     const morphemes = token.morphemes || [];
     // The affix joint ("-", or "=" for clitics) belongs to the BOUNDARY, not to
     // either morpheme — it renders between the columns, straddling the gap.
@@ -266,7 +274,7 @@ export const grid = {
               ${joiner
                 ? html`<span class="igt-morph-joiner" aria-hidden="true">${joiner}</span>`
                 : nothing}
-              ${this._morphCol(m, token, morphemes, ctx)}
+              ${this._morphCol(m, token, morphemes, ctx, index)}
             `;
           },
         )}
@@ -274,7 +282,7 @@ export const grid = {
     `;
   },
 
-  _morphCol(morph, word, siblings, ctx) {
+  _morphCol(morph, word, siblings, ctx, index) {
     const value = morphFormOf(morph);
     const filled = value !== '';
     // Chips linked to a stem/root lexicon entry keep the lavender accent —
@@ -312,7 +320,17 @@ export const grid = {
               @input=${this._onFieldInput}
               @keydown=${this._morphFormKeydown(morph, word, siblings)}
               @paste=${this._onMorphPaste(morph, word)}
-              @blur=${(e) => this._commitMorphForm(e, morph.id)}
+              @blur=${(e) =>
+                this._commitMorphForm(e, morph.id, (v) =>
+                  siblings.length <= 1
+                    ? this._editLabel('Morpheme form', `"${word.content}"`, index, v)
+                    : this._editLabel(
+                        'Form',
+                        `morpheme ${morph.precedence ?? siblings.indexOf(morph) + 1} of "${word.content}"`,
+                        index,
+                        v,
+                      ),
+                )}
             />`,
             {
               id: morph.id,
@@ -350,7 +368,13 @@ export const grid = {
                   : null,
                 value: morph.annotations?.[name]?.value ?? '',
                 apply: (v, meta) =>
-                  this.doc.updateMorphemeSpan(morph.id, name, v, meta, { adopted: meta != null }),
+                  this.doc.labelled(
+                    this._editLabel(name, this._morphemeSubject(morph, word, siblings), index, v),
+                    () =>
+                      this.doc.updateMorphemeSpan(morph.id, name, v, meta, {
+                        adopted: meta != null,
+                      }),
+                  ),
                 extraClass: 'igt-morph-field',
                 ariaLabel: `${name} for morpheme${value ? ` ${value}` : ''}`,
                 fieldName: name,
@@ -421,7 +445,10 @@ export const grid = {
                     ${this._field({
                       key: `sa:${sentence.id}:${name}`,
                       value: sentence.annotations?.[name]?.value ?? '',
-                      apply: (v) => this.doc.updateSentenceSpan(sentence.id, name, v),
+                      apply: (v) =>
+                        this.doc.labelled(this._editLabel(name, null, index, v), () =>
+                          this.doc.updateSentenceSpan(sentence.id, name, v),
+                        ),
                       sentence: true,
                       ariaLabel: `${name} for sentence ${index + 1}`,
                       tagset: this._tagsetFor('sentence', name),
