@@ -589,8 +589,10 @@ export class DocumentModel {
     const ids = landed(unsent.origin ?? unsent.base, summary.made, updated);
     if (ids) {
       await this._adoptReload(updated);
-      this._showUnsent(updated);
       this._settle(ids);
+      // The edits waiting behind it go on this version too.
+      this._keepUntouched(updated);
+      this._showUnsent(updated, { recheck: true });
       return 'landed';
     }
     if (!this._untouched(unsent, updated)) return null;
@@ -605,8 +607,23 @@ export class DocumentModel {
       console.error('A refused edit could not be shown again:', err);
       return null;
     }
-    this._showUnsent(shown);
+    // The edits waiting behind it were made on the old version as well, and
+    // go after it on this one: each is checked as it was.
+    this._keepUntouched(shown);
+    this._showUnsent(shown, { recheck: true });
     return 'resend';
+  }
+
+  // Keeps waiting only the edits that nothing changed between the document
+  // each was checked against and `now` touches (rebase.js). The rest are
+  // refused like a conflict when their turn comes, without being sent.
+  _keepUntouched(now) {
+    const waiting = this._unsent;
+    this._unsent = [];
+    for (const u of waiting) {
+      if (this._untouched(u, now)) this._unsent.push(u);
+      else u.stale = true;
+    }
   }
 
   // Whether `unsent`'s own `recheck` holds on `raw` (the document it would
@@ -870,12 +887,7 @@ export class DocumentModel {
     if (conflict && this._client.strictModeDocumentId === this.id) {
       // Only those that what changed elsewhere touches (rebase.js). The rest
       // are shown again and sent in turn, each checked on its own.
-      const waiting = this._unsent;
-      this._unsent = [];
-      for (const u of waiting) {
-        if (this._untouched(u, updated)) this._unsent.push(u);
-        else u.stale = true;
-      }
+      this._keepUntouched(updated);
       this._showUnsent(updated, { recheck: true });
       return;
     }
