@@ -12,6 +12,7 @@
 // document read. Nothing in here goes through `client.withOperation`.
 
 import { clipText } from '../lib/text.js';
+import { isUnknownOutcome } from '../lib/errors.js';
 
 // Comments sort oldest-first by (createdAt, id), matching the server's keyset
 // order so a locally-inserted comment and a re-fetched page agree.
@@ -27,6 +28,10 @@ let tempSeq = 0;
 // server, and the `readyState` a closed one reports.
 const LIVE_CHECK_MS = 5000;
 const CLOSED = 2;
+
+// When a thread is read again after a post whose answer was lost: a request
+// the client gave up on is not stopped, and may land after the first look.
+const LATE_READS_MS = [30000, 90000];
 
 const tempId = () => `pending:${++tempSeq}`;
 export const isPending = (comment) =>
@@ -344,6 +349,9 @@ export class CommentStore {
     // The server's ceiling is 200 code points. A UTF-16 slice could cut an
     // emoji in half, and the server refuses the lone surrogate that leaves.
     const caption = clipText(String(anchorLabel ?? '').trim(), 200).trim() || null;
+    // The thread as it was, so a comment the post made can be told from one
+    // that was there already.
+    const before = new Set(this.threadFor(entityId).map((c) => c.id));
 
     const optimistic = {
       id: tempId(),
@@ -382,9 +390,68 @@ export class CommentStore {
       return created;
     } catch (err) {
       this._forget(optimistic.id);
+      // The answer was lost, so the comment may be stored. Posting it again
+      // would store it twice, so the thread is read first, and the comment
+      // is kept when it is there.
+      if (isUnknownOutcome(err)) {
+        const landed = await this._findPosted(entityType, entityId, text, before);
+        if (landed) {
+          this._insert(landed);
+          this._byEntity.get(landed.entityId)?.sort(byCreated);
+          this._emit();
+          this._authorsPromise = this._resolveAuthors();
+          return landed;
+        }
+        this._readThreadLater(entityType, entityId);
+      }
       this._fail('Failed to post comment', err);
       this._emit();
       return null;
+    }
+  }
+
+  // The thread on `entityId` as the server has it now.
+  async _readThread(entityType, entityId) {
+    if (this._vocabId) {
+      const all = await this._client.comments.listInVocab(this._vocabId);
+      return all.filter((c) => c.entityId === entityId);
+    }
+    return this._client.comments.list(this._projectId, { entityType, entityId });
+  }
+
+  // Put `thread`, just read, in place of what this store holds for `entityId`.
+  _replaceThread(entityId, thread) {
+    for (const c of this.threadFor(entityId).slice()) if (!isPending(c)) this._forget(c.id);
+    for (const c of [...thread].sort(byCreated)) this._insert(c);
+    this._emit();
+    this._authorsPromise = this._resolveAuthors();
+  }
+
+  // A comment by this user with this text that was not in the thread before
+  // the post, or null (also when the thread cannot be read).
+  async _findPosted(entityType, entityId, text, before) {
+    try {
+      const thread = await this._readThread(entityType, entityId);
+      return (
+        thread.find(
+          (c) => !before.has(c.id) && c.authorId === this._currentUserId && c.body === text,
+        ) ?? null
+      );
+    } catch (readErr) {
+      console.error('Could not read the thread again after a lost answer:', readErr);
+      return null;
+    }
+  }
+
+  // Read the thread again later, so a post that lands late shows.
+  _readThreadLater(entityType, entityId) {
+    for (const ms of LATE_READS_MS) {
+      setTimeout(() => {
+        this._readThread(entityType, entityId).then(
+          (thread) => this._replaceThread(entityId, thread),
+          (err) => console.error('Failed to read the thread again:', err),
+        );
+      }, ms);
     }
   }
 
@@ -471,8 +538,12 @@ export class CommentStore {
     if (!this._projectId) return () => {};
     this._liveRefs = (this._liveRefs || 0) + 1;
     // The first claim opens the stream, and so does a later one after the
-    // server closed it (see `_openLive`).
-    if (!this._connection) this._openLive();
+    // server closed it (see `_openLive`). What was said while no stream was
+    // open is read in once.
+    if (!this._connection) {
+      this._openLive();
+      if (this._connection && this._loaded) this._catchUp();
+    }
     let released = false;
     return () => {
       if (released) return;
@@ -506,6 +577,23 @@ export class CommentStore {
       this._connection = null;
       this._emit();
     }, LIVE_CHECK_MS);
+  }
+
+  // Read every comment again, quietly: the threads as last loaded still stand
+  // when it fails. A post or an edit on its way keeps its own row.
+  async _catchUp() {
+    try {
+      const all = this._vocabId
+        ? await this._client.comments.listInVocab(this._vocabId)
+        : await this._client.comments.list(this._projectId, { documentId: this._documentId });
+      const pending = [...this._byId.values()].filter(isPending);
+      if (this._writing > pending.length) return;
+      this._index([...all, ...pending]);
+      this._emit();
+      this._authorsPromise = this._resolveAuthors();
+    } catch (err) {
+      console.error('Failed to read the comments again:', err);
+    }
   }
 
   _stopLiveCheck() {
@@ -545,15 +633,10 @@ export class CommentStore {
     if (evt.authorId && evt.authorId === this._currentUserId) return false;
 
     try {
-      const thread = await this._client.comments.list(this._projectId, {
-        entityType: evt.entityType,
-        entityId: evt.entityId,
-      });
-      for (const c of this.threadFor(evt.entityId).slice()) this._forget(c.id);
-      for (const c of [...thread].sort(byCreated)) this._insert(c);
-      this._emit();
-      // A remote comment can be the first one from this author in this session.
-      this._authorsPromise = this._resolveAuthors();
+      const thread = await this._readThread(evt.entityType, evt.entityId);
+      // A remote comment can be the first one from this author in this
+      // session, whose name `_replaceThread` looks up.
+      this._replaceThread(evt.entityId, thread);
       return true;
     } catch (err) {
       // A dropped live update is not worth a toast: the thread is still correct

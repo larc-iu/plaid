@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
@@ -16,6 +16,10 @@ export const CommentsTab = () => {
   const { doc, comments, canWrite, canManage } = useDocumentCtx();
   const { projectId, documentId } = useParams();
   useDocumentModel(doc);
+
+  // Live while the tab is open, as the shared Comments page is in plaid-ud
+  // and plaid-umr: another user's comment shows without a reload.
+  useEffect(() => comments?.watchLive(), [comments]);
 
   // Anchor labels are derived from the document and only change when its DATA
   // changes, so they are memoized on dataVersion, the same gate the grid uses.
