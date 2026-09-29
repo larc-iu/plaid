@@ -121,10 +121,13 @@ def service_version(path: str) -> str:
     release it ran on and the first 8 hex digits of the SHA-256 of the
     service's own file, ``'1.4.0+3fa9c2d1'``. The file holds the service's
     prompt, rules and defaults, so the hash changes exactly when one of them
-    does, and anyone can match it to a commit with ``sha256sum``. See the
+    does, and anyone can match it to a commit with
+    ``git show <commit>:<path> | sha256sum``. Line endings are read as the
+    repository stores them, so a checkout that writes CRLF (Git on Windows)
+    stamps what every other machine running the same file stamps. See the
     core manual, "Provenance"."""
     with open(path, 'rb') as fh:
-        digest = hashlib.sha256(fh.read()).hexdigest()[:8]
+        digest = hashlib.sha256(fh.read().replace(b'\r\n', b'\n')).hexdigest()[:8]
     return f'{CLIENT_VERSION}+{digest}'
 
 
@@ -144,14 +147,18 @@ def machine_detail(version: str, *, model: Optional[str], **extra) -> Dict[str, 
 def _own_version(cls) -> str:
     """The :func:`service_version` of the file ``cls`` is written in, found
     through its own functions, since a service loaded from a path is not in
-    ``sys.modules``."""
-    for value in vars(cls).values():
-        code = getattr(value, '__code__', None)
-        if code is not None:
-            try:
-                return service_version(code.co_filename)
-            except OSError:
-                break
+    ``sys.modules``. A subclass that defines no function of its own runs its
+    parent's code, and has its parent's version."""
+    for klass in cls.__mro__:
+        if klass is BaseService or klass is object:
+            break
+        for value in vars(klass).values():
+            code = getattr(value, '__code__', None)
+            if code is not None:
+                try:
+                    return service_version(code.co_filename)
+                except OSError:
+                    return CLIENT_VERSION  # no source on disk to hash
     return CLIENT_VERSION  # a class with no file of its own (built in a REPL)
 
 

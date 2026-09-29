@@ -159,3 +159,26 @@ def test_machine_detail_names_the_model_and_version_first():
     from plaid_client.service import machine_detail
     assert machine_detail('1+ab', model='m', language='x') == {'model': 'm', 'version': '1+ab', 'language': 'x'}
     assert machine_detail('1+ab', model=None) == {'version': '1+ab'}
+
+
+def test_a_crlf_checkout_stamps_what_the_repository_file_hashes_to(tmp_path):
+    # Git on Windows writes CRLF. The stamp must still match
+    # `git show <commit>:<path> | sha256sum` and every LF machine.
+    from plaid_client.service import service_version
+    lf, crlf = tmp_path / 'lf.py', tmp_path / 'crlf.py'
+    lf.write_bytes(b'x = 1\nprint(x)\n')
+    crlf.write_bytes(b'x = 1\r\nprint(x)\r\n')
+    assert service_version(str(crlf)) == service_version(str(lf))
+    assert service_version(str(lf)).endswith('+' + hashlib.sha256(b'x = 1\nprint(x)\n').hexdigest()[:8])
+
+
+def test_a_subclass_with_no_code_of_its_own_has_its_parents_version():
+    from plaid_client import BaseService
+    from plaid_client.service import service_version
+
+    class Svc(BaseService):
+        def process_request(self, request_data, response_helper):
+            pass
+
+    Second = type('Second', (Svc,), {'label': 'another name'})
+    assert Second('s', 'S', 'd').version == service_version(__file__)
