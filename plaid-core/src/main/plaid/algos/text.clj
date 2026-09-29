@@ -1481,17 +1481,6 @@
                 edits)]
      (if (= edits moved) ops (edits->ops moved)))))
 
-(defn- cut-count
-  "How many (non-empty) tokens the delete ranges overlap only PARTIALLY."
-  [tokens ranges]
-  (count (filter (fn [{:token/keys [begin end]}]
-                   (and (< begin end)
-                        (some (fn [[s e]]
-                                (and (< s end) (> e begin)
-                                     (not (and (<= s begin) (<= end e)))))
-                              ranges)))
-                 tokens)))
-
 (defn normalize-deletes
   "Rewrite `ops` (as produced by `diff` for `old`) so that two deletes
   separated by a kept run equal to an edge of the adjacent deleted text
@@ -1502,8 +1491,38 @@
   [ops old tokens]
   (let [edits (ops->edits ops)
         near (tokens-near tokens (count edits))
-        ranges-of (fn [edits] (keep #(when (= (:kind %) :delete) [(:start %) (:end %)]) edits))
-        cp-sub (fn [s e] (cp/cp-subs old s e))
+        ^ints o (.toArray (.codePoints ^String old))
+        ranges-of (fn [edits] (vec (keep #(when (= (:kind %) :delete) [(:start %) (:end %)]) edits)))
+        ;; whether the code points from s1 to e1 are those from s2 on
+        same? (fn [s1 e1 s2]
+                (loop [i 0]
+                  (cond (= (+ s1 i) e1) true
+                        (= (aget o (+ s1 i)) (aget o (+ s2 i))) (recur (inc i))
+                        :else false)))
+        ;; Whether the delete ranges `rs` (sorted, apart) overlap token `t`
+        ;; only partly.
+        cut? (fn [rs {:token/keys [begin end]}]
+               (and (< begin end)
+                    (let [n (count rs)
+                          ;; the first range ending after the token begins
+                          k (loop [x 0 y n]
+                              (if (< x y)
+                                (let [h (quot (+ x y) 2)]
+                                  (if (> (second (rs h)) begin) (recur x h) (recur (inc h) y)))
+                                x))]
+                      (loop [k k]
+                        (if (and (< k n) (< (first (rs k)) end))
+                          (let [[s e] (rs k)]
+                            (if (not (and (<= s begin) (<= end e))) true (recur (inc k))))
+                          false)))))
+        ;; How many tokens `rs` cut, counted over the tokens that begin or
+        ;; end in [lo, hi] only. Merging two deletes changes the ranges
+        ;; within that stretch alone, so a token wholly outside it is cut
+        ;; alike before and after, and so is one reaching past both ends:
+        ;; the comparison is the same as over every token. Counting every
+        ;; token for every pair of deletes took 12 s on a find-and-replace
+        ;; over 10,000 words, under the write lock.
+        cuts (fn [rs lo hi] (count (filter #(cut? rs %) (near lo hi))))
         step (fn [edits]
                (let [v (vec edits)]
                  (loop [i 0]
@@ -1512,23 +1531,25 @@
                        (if (and (= (:kind a) :delete) (= (:kind b) :delete)
                                 (< (:end a) (:start b)))
                          (let [m (- (:start b) (:end a))
-                               k (cp-sub (:end a) (:start b))
                                candidates
                                (cond-> []
                                  ;; kept run == tail of the second delete: delete [a.start, b.end-m)
                                  (and (<= m (- (:end b) (:start b)))
-                                      (= k (cp-sub (- (:end b) m) (:end b))))
+                                      (same? (:end a) (:start b) (- (:end b) m)))
                                  (conj {:kind :delete :start (:start a) :end (- (:end b) m)})
                                  ;; kept run == head of the first delete: delete [a.start+m, b.end)
                                  (and (<= m (- (:end a) (:start a)))
-                                      (= k (cp-sub (:start a) (+ (:start a) m))))
+                                      (same? (:end a) (:start b) (:start a)))
                                  (conj {:kind :delete :start (+ (:start a) m) :end (:end b)}))
-                               before (cut-count tokens (ranges-of v))
-                               best (->> candidates
-                                         (map (fn [c] [(cut-count tokens (ranges-of (assoc v i c (inc i) nil))) c]))
-                                         (filter (fn [[n _]] (< n before)))
-                                         (sort-by first)
-                                         first)]
+                               best (when (seq candidates)
+                                      (let [lo (:start a)
+                                            hi (:end b)
+                                            before (cuts (ranges-of v) lo hi)]
+                                        (->> candidates
+                                             (map (fn [c] [(cuts (ranges-of (assoc v i c (inc i) nil)) lo hi) c]))
+                                             (filter (fn [[n _]] (< n before)))
+                                             (sort-by first)
+                                             first)))]
                            (if best
                              (into (subvec v 0 i) (into [(second best)] (subvec v (+ i 2))))
                              (recur (inc i))))
@@ -1538,7 +1559,7 @@
         (recur (vec (remove nil? next)) true)
         ;; Untouched input when nothing merged: the caller's ops are already
         ;; valid, so don't risk a lossy round trip.
-        (let [joined (join-at-token-edges (.toArray (.codePoints ^String old)) near (vec edits))]
+        (let [joined (join-at-token-edges o near (vec edits))]
           (if (or merged? (not= joined edits)) (edits->ops joined) ops))))))
 
 ;; ---------------------------------------------------------------------------

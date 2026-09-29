@@ -2016,3 +2016,78 @@
                         [b e] extents]
                     (assoc (tok [layer b] b e) :token/layer layer)))]]]
     (is (= new (:text/body (:text (body-edit old new tokens #{:s} #{:w :m})))) (pr-str old))))
+
+;; ---------------------------------------------------------------------------
+;; normalize-deletes counts the tokens cut near each pair of deletes, where it
+;; counted every token. This is the version that counted every token, to pin
+;; that the two choose alike.
+
+(defn- normalize-deletes-counting-every-token [ops old tokens]
+  (let [edits (#'ta/ops->edits ops)
+        near (#'ta/tokens-near tokens (count edits))
+        cut-count (fn [ranges]
+                    (count (filter (fn [{:token/keys [begin end]}]
+                                     (and (< begin end)
+                                          (some (fn [[s e]]
+                                                  (and (< s end) (> e begin)
+                                                       (not (and (<= s begin) (<= end e)))))
+                                                ranges)))
+                                   tokens)))
+        ranges-of (fn [edits] (keep #(when (= (:kind %) :delete) [(:start %) (:end %)]) edits))
+        cp-sub (fn [s e] (cp/cp-subs old s e))
+        step (fn [edits]
+               (let [v (vec edits)]
+                 (loop [i 0]
+                   (when (< (inc i) (count v))
+                     (let [a (v i) b (v (inc i))]
+                       (if (and (= (:kind a) :delete) (= (:kind b) :delete) (< (:end a) (:start b)))
+                         (let [m (- (:start b) (:end a))
+                               k (cp-sub (:end a) (:start b))
+                               candidates (cond-> []
+                                            (and (<= m (- (:end b) (:start b)))
+                                                 (= k (cp-sub (- (:end b) m) (:end b))))
+                                            (conj {:kind :delete :start (:start a) :end (- (:end b) m)})
+                                            (and (<= m (- (:end a) (:start a)))
+                                                 (= k (cp-sub (:start a) (+ (:start a) m))))
+                                            (conj {:kind :delete :start (+ (:start a) m) :end (:end b)}))
+                               before (cut-count (ranges-of v))
+                               best (->> candidates
+                                         (map (fn [c] [(cut-count (ranges-of (assoc v i c (inc i) nil))) c]))
+                                         (filter (fn [[n _]] (< n before)))
+                                         (sort-by first)
+                                         first)]
+                           (if best
+                             (into (subvec v 0 i) (into [(second best)] (subvec v (+ i 2))))
+                             (recur (inc i))))
+                         (recur (inc i))))))))]
+    (loop [edits edits merged? false]
+      (if-let [next (step edits)]
+        (recur (vec (remove nil? next)) true)
+        (let [joined (#'ta/join-at-token-edges (.toArray (.codePoints ^String old)) near (vec edits))]
+          (if (or merged? (not= joined edits)) (#'ta/edits->ops joined) ops))))))
+
+(deftest normalize-deletes-counting-near-tokens-chooses-as-counting-all
+  ;; Short words from few letters, so a kept run often repeats the edge of a
+  ;; delete beside it, with words, morphemes, zero-width markers and tokens
+  ;; over several words, and more than 16 edits often enough that the
+  ;; tokens are looked up by position.
+  (let [r (java.util.Random. 17)
+        words ["a" "t" "at" "ta" "tat" "att" "aa" "é" "𐍂a"]
+        seps [" " " " "" "\n"]
+        diverged (atom [])]
+    (dotimes [case-n 3000]
+      (let [n (+ 2 (.nextInt r 30))
+            ws (vec (repeatedly n #(nth words (.nextInt r (count words)))))
+            body-of (fn [ws] (apply str (interleave ws (repeatedly #(nth seps (.nextInt r (count seps)))))))
+            old (body-of ws)
+            len (cp/cp-count old)
+            tokens (vec (for [i (range (.nextInt r 40))]
+                          (let [b (.nextInt r (inc len))
+                                e (if (< (.nextDouble r) 0.15) b (min len (+ b (.nextInt r 6))))]
+                            (tok i b e))))
+            new (body-of (vec (keep #(case (.nextInt r 4) 0 nil 1 (str % (nth words (.nextInt r (count words)))) %) ws)))
+            ops (ta/slide-to-tokens (ta/diff old new) old tokens)]
+        (when (not= (normalize-deletes-counting-every-token ops old tokens)
+                    (ta/normalize-deletes ops old tokens))
+          (swap! diverged conj [case-n old new]))))
+    (is (= [] (take 5 @diverged)))))
