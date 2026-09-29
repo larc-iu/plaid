@@ -59,6 +59,19 @@ export const popover = {
     this._refreshVocabularies({ forPopover: true });
   },
 
+  // The token an open lexicon popover is on can change its id under it: a
+  // word's first gloss makes the word's morpheme, whose id goes from the
+  // virtual one to a pending one to the server's. The popover follows the
+  // morpheme to its new id, where it used to close when the save landed.
+  _followPopover() {
+    const p = this._popover;
+    if (p?.variant !== 'vocab' || typeof p.tokenId !== 'string') return;
+    const now = this.doc._currentMorphemeId?.(p.tokenId);
+    if (!now || now === p.tokenId) return;
+    p.tokenId = now;
+    this._popoverReturnId = `vocab:${now}`;
+  },
+
   // Every lexicon this editor can show, read again in the background: entries
   // somebody else has added, or this person has added in another tab, are not
   // in the copy this page loaded with, and the popover offered to make a
@@ -120,6 +133,7 @@ export const popover = {
     this._repositionRaf = requestAnimationFrame(() => {
       this._repositionRaf = null;
       if (!this._popover) return;
+      this._followPopover();
       const opener = this._openerEl(this._popoverReturnId);
       const pos = opener ? this._computePopoverPos(opener, undefined, this._popWidth()) : null;
       if (!pos) {

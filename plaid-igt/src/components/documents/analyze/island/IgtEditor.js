@@ -596,6 +596,7 @@ export class IgtEditor {
       'igt-island--vocab',
       Object.keys(this.doc.vocabularies || {}).length > 0,
     );
+    this._followPopover();
     render(this._template(), this.container);
     this._rehomeDisplaced();
     this._syncConflicts();
