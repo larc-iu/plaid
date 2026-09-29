@@ -354,8 +354,7 @@ export function DocumentTokenize() {
               ? ` and ${ops.pendingDelete.links} vocabulary link${ops.pendingDelete.links === 1 ? '' : 's'}`
               : ''}
           </strong>{' '}
-          on it, including any from other apps on this project (e.g. UD annotations) that are not
-          visible here.
+          on it.
         </p>
       </ConfirmDeleteDialog>
 
@@ -381,8 +380,7 @@ export function DocumentTokenize() {
               ? ` and ${ops.pendingStructural.links} vocabulary link${ops.pendingStructural.links === 1 ? '' : 's'}`
               : ''}
           </strong>{' '}
-          at the morpheme level, including any from other apps on this project that aren’t visible
-          here. Word-level annotations are unchanged.
+          at the morpheme level. Word-level annotations are unchanged.
         </p>
       </ConfirmDeleteDialog>
 
@@ -407,8 +405,7 @@ export function DocumentTokenize() {
               ? ` and ${ops.pendingTokenize.links} vocabulary link${ops.pendingTokenize.links === 1 ? '' : 's'}`
               : ''}
           </strong>{' '}
-          (word, morpheme, and sentence level), including any from other apps on this project that
-          aren’t visible here.
+          (word, morpheme, and sentence level).
         </p>
       </ConfirmDeleteDialog>
     </TooltipProvider>
