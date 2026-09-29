@@ -617,7 +617,8 @@ There are two integration points, both in the Text Editor (see <<_entering_and_t
 * **Tokenization**: splits the saved text into sentences, tokens and words. The built-in uses the browser's own segmentation and is always available. A service can replace it with segmentation of its own.
 * **Parsing**: fills in lemmas, parts of speech, features and dependency relations. There is no built-in, so this needs a connected service. The bundled example wraps Stanza. Where the service offers a language option, it opens on the project's language, and sentences a person has annotated are left alone unless you say otherwise.
 
-Whatever a service produces is stamped unverified, in the same violet state as any other machine value (see <<_machine_vs_human_annotations>>), so you stay in control of what gets confirmed.
+Every annotation and relation a service produces is stamped unverified, in the same violet state as any other machine value (see <<_machine_vs_human_annotations>>), so you stay in control of what gets confirmed.
+Where a service draws the sentence and token boundaries, those are not marked. History names the run that drew them.
 A service reports what it could not do, and a run that changed nothing says so rather than reporting success.
 
 Writing a service of your own is not hard.

@@ -183,8 +183,17 @@ def test_a_parse_lands_stamped_machine_made_and_never_confirmed():
     morphemes = _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'morphL')
     assert [op['precedence'] for op in morphemes] == [0, 0, 0]
 
-    # Every token, span and relation carries the machine stamp and nothing else.
-    written = (words + morphemes
+    # Sentence and word tokens are substrate and carry no stamp: the sentence
+    # keeps only the text Stanza recovered, and a 1:1 word no metadata at all.
+    [sentence] = _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'sentL')
+    assert sentence['metadata'] == {'text': 'the dog barks'}
+    assert [op.get('metadata') for op in words] == [None, None, None]
+    # What made them is named by the run's operation instead.
+    assert service.client.operation_tags == [{'kind': 'service-run', 'ref': SOURCE}]
+
+    # Every syntactic word, span and relation carries the machine stamp and
+    # nothing else.
+    written = (morphemes
                + [op for kind in ('lemmaL', 'uposL', 'xposL', 'featsL')
                   for op in _ops(service.client, 'spans.bulk_create', 'span_layer_id', kind)]
                + [op for payload in service.client.payloads('relations.bulk_create')
@@ -223,6 +232,37 @@ def test_a_parse_lands_stamped_machine_made_and_never_confirmed():
     assert service.pipeline_provider.inputs == [BODY]
 
 
+def test_a_multiword_token_keeps_its_surface_form_and_no_stamp():
+    """A multi-word token's word carries the round-trip data (its form and
+    misc) but, being substrate, no provenance. Its syntactic words are
+    stamped."""
+    body = 'del perro'
+    rows = [
+        {'id': (1, 2), 'text': 'del', 'misc': 'SpaceAfter=Yes',
+         'start_char': 0, 'end_char': 3},
+        {'id': 1, 'text': 'de', 'lemma': 'de', 'upos': 'ADP', 'head': 3, 'deprel': 'case'},
+        {'id': 2, 'text': 'el', 'lemma': 'el', 'upos': 'DET', 'head': 3, 'deprel': 'det'},
+        {'id': 3, 'text': 'perro', 'lemma': 'perro', 'upos': 'NOUN', 'head': 0,
+         'deprel': 'root', 'start_char': 4, 'end_char': 9},
+    ]
+    service = _service(documents=[_document(body=body)],
+                       provider=_PipelineProvider([rows]))
+    helper = servicetest.run(service, {**REQUEST, 'language': 'es'})
+    assert helper.errors == []
+
+    words = _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'wordL')
+    assert [(op['begin'], op['end']) for op in words] == [(0, 3), (4, 9)]
+    assert words[0]['metadata'] == {'misc': 'SpaceAfter=Yes'}
+    assert 'metadata' not in words[1]
+
+    morphemes = _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'morphL')
+    assert [(op['begin'], op['end'], op['precedence']) for op in morphemes] == \
+        [(0, 3, 0), (0, 3, 1), (4, 9, 0)]
+    for op in morphemes:
+        assert op['metadata']['prov'] == 'inferred'
+        assert op['metadata']['provSource'] == SOURCE
+
+
 def test_the_parse_names_who_asked_in_history_and_on_what_it_writes():
     """umr-collab-service-requester, in every app: the service writes with
     its operator's token, so the requester core sent is named in the History
@@ -258,7 +298,11 @@ def test_an_already_tokenized_document_keeps_its_substrate():
     assert service.client.payloads('tokens.bulk_delete') == [['m0', 'm1', 'm2']]
     assert _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'sentL') == []
     assert _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'wordL') == []
-    assert len(_ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'morphL')) == 3
+    morphemes = _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'morphL')
+    assert len(morphemes) == 3
+    for op in morphemes:
+        assert op['metadata']['prov'] == 'inferred'
+        assert op['metadata']['provSource'] == SOURCE
 
 
 def test_a_sentence_a_person_annotated_is_left_untouched():

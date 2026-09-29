@@ -14,8 +14,9 @@ VERSION = service_version(__file__)
 
 
 def prov_fragment(language, requester=Requester()):
-    """Provenance fragment merged into everything this service creates
-    (tokens, spans, relations): marks it machine-made + unverified until a
+    """Provenance fragment merged into every syntactic word, span and
+    relation this service creates (never sentence or word tokens, which are
+    substrate): marks it machine-made + unverified until a
     human edits or confirms it, and records the producing model, this file's
     version and the language in provDetail. (Stanza's pipeline output carries
     no per-prediction probabilities, so there is no provProb; a producer that has real
@@ -65,9 +66,10 @@ Options:
   also lets the parse clear annotations that may belong to other apps sharing
   the project.)
 
-Everything this service creates carries provenance metadata
-(`prov`/`provSource`), so editors render it distinctly until a human verifies
-it by editing or confirming.
+The syntactic words and the annotations this service creates carry
+provenance metadata (`prov`/`provSource`), so editors render them distinctly
+until a human verifies them by editing or confirming. Sentence and word
+tokens are not marked.
 
 While parsing, the document is locked so a concurrent editor can't race the
 rewrite; if someone else holds the lock, the parse is refused rather than
@@ -389,8 +391,9 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
       pretokenized Stanza does not split multiword tokens, so each word gets
       exactly one syntactic word (annotators can still split by hand).
 
-    Provenance write contract: everything created here is stamped machine-made
-    (prov_fragment). A re-parse replaces machine-made UNVERIFIED material but
+    Provenance write contract: every syntactic word, span and relation created
+    here is stamped machine-made (prov_fragment). Sentence and word tokens are
+    substrate and are not stamped. A re-parse replaces machine-made UNVERIFIED material but
     never human-made/verified work: substrate-preserving mode skips sentences
     that carry any (unless `overwrite`); a from-scratch re-tokenize refuses
     outright if such annotations would be lost (unless `overwrite`). Returns a
@@ -612,9 +615,10 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
                 op = make_bulk_token(sentence_layer["id"], text_id, begin, end)
                 # Preserve the Stanza-recovered sentence text on the sentence token so
                 # the exporter can round-trip it (e.g. when surface forms differ from
-                # the body slice — contractions, normalized punctuation). Provenance
-                # rides alongside the round-trip data.
-                op["metadata"] = {"text": stanza_doc.sentences[i].text, **frag}
+                # the body slice — contractions, normalized punctuation). Sentence
+                # and word tokens are substrate and carry no provenance stamp: the
+                # run's service-run operation names what made them.
+                op["metadata"] = {"text": stanza_doc.sentences[i].text}
                 sentence_ops.append(op)
 
             # 2/3. Word and morpheme tokens. Each surface token is a word; each
@@ -634,7 +638,8 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
                         # Persist the MWT surface form on the word token's
                         # metadata so the exporter can round-trip it. (1:1 words
                         # leave metadata clean; the body substring is canonical.)
-                        word_meta = dict(frag)
+                        # Unstamped, as substrate.
+                        word_meta = {}
                         if td.get("text") and td["text"] != body[wb:we]:
                             word_meta["form"] = td["text"]
                         if td.get("misc"):
@@ -652,8 +657,7 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
                         i += 1 + count
                     else:
                         wb, we = td["start_char"], td["end_char"]
-                        word_ops.append(make_bulk_token(word_layer["id"], text_id, wb, we,
-                                                        metadata=dict(frag)))
+                        word_ops.append(make_bulk_token(word_layer["id"], text_id, wb, we))
                         op = make_bulk_token(morpheme_layer["id"], text_id, wb, we,
                                              metadata=dict(frag))
                         op["precedence"] = 0
