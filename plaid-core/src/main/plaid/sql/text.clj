@@ -287,6 +287,12 @@
              (cond-> (ta/apply-text-edits ops text-map tokens)
                (string? new-body-or-ops) (as-> r (ta/keep-edges-off-spaces old-body tokens r partitioning)))
              new-body (:text/body new-text)
+             ;; The steps above only move edits between equivalent places, so
+             ;; a diffed body comes out as sent. Should one of them ever get
+             ;; that wrong, the save fails rather than store a body nobody
+             ;; typed.
+             _ (when (and (string? new-body-or-ops) (not= new-body new-body-or-ops))
+                 (throw (ex-info "The new body could not be applied." {:code 500 :id eid})))
              ;; Checked on the result, so explicit ops' inserted text is
              ;; covered as well as a whole new body.
              _ (storable/assert-storable! "Text body" new-body)

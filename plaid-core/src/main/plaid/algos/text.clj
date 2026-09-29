@@ -1621,7 +1621,17 @@
    (let [word? (if (nil? word-layers)
                  (constantly true)
                  (fn [{:token/keys [layer]}] (contains? word-layers layer)))]
-     (fold-whole-words* ops old tokens word?))))
+     ;; The fold must leave the text as it was. On a line retyped almost
+     ;; whole, a replace joining two words took letters the next edit also
+     ;; took, and the fold gave `forUnveistbr` for `for banister`: the save
+     ;; stored a body the user never typed. Where the folded ops do not give
+     ;; the same text, the ops stay as they came.
+     (let [folded (fold-whole-words* ops old tokens word?)
+           body (fn [ops] (:text/body (:text (apply-text-edits ops {:text/body old} []))))]
+       (if (or (= folded ops)
+               (= (body ops) (try (body folded) (catch clojure.lang.ExceptionInfo _ nil))))
+         folded
+         ops)))))
 
 (defn- fold-whole-words*
   [ops old tokens word?]
@@ -1663,13 +1673,20 @@
         ;; its morphemes and not the words under a sentence or a UMR node.
         word-at? (fn [b e] (some #(and (= b (:token/begin %)) (= e (:token/end %)) (word? %)) (@near b e)))
         ;; [b e) of `old` with the edits of `g` applied.
+        ;; A replace that joins two words takes letters beyond its own ends
+        ;; (see `split-at-token-edges`), and the edit beside it may take some
+        ;; of them too, so an edit can start before the last one's reach. Its
+        ;; letters are not read twice: in a line retyped almost whole, `s v`
+        ;; replaced by `bat` in `caddies venomous` took `veno` while the next
+        ;; edit replaced `nomous`, and reading the letters between them
+        ;; backwards threw (a 500).
         new-text (fn [g b e]
                    (loop [g g p b sb (StringBuilder.)]
                      (if-let [x (first g)]
-                       (do (.append sb (old-text p (start-of x)))
+                       (do (.append sb (old-text p (max p (start-of x))))
                            (when (:value x) (.append sb ^String (:value x)))
                            (recur (rest g) (reach-of x) sb))
-                       (str (.append sb (old-text p e))))))
+                       (str (.append sb (old-text p (max p e)))))))
         ws? (fn [c] (Character/isWhitespace (int c)))
         has-ws? (fn [^String v] (and v (.anyMatch (.codePoints v) (reify java.util.function.IntPredicate
                                                                     (test [_ c] (Character/isWhitespace c))))))

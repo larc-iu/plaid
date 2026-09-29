@@ -1866,3 +1866,26 @@
     (is (= [] deleted))
     (is (= 52500 (count tokens)))
     (is (< ms 1000) (str ms " ms"))))
+
+(deftest a-line-retyped-almost-whole-keeps-the-text-it-was-given
+  ;; A line retyped almost whole. A replace joining two words took letters
+  ;; the next edit took too, and the fold then threw (the save answered 500)
+  ;; or gave a text nobody typed (`for banister` came out `forUnveistbr`,
+  ;; and the save stored it). The diff of a long text rewritten throughout
+  ;; reaches this now, where it used to give up and replace the whole body.
+  (doseq [[old new tokens]
+          [["Promoter brewers unbranded it she caddies venomous is palliates his he.\n"
+            "Was as footprint wrongfully sage debates by hillbilly, printings of and.\n"
+            [(assoc (tok :addies 35 41) :token/layer :m)
+             (assoc (tok :veno 42 46) :token/layer :m)
+             (assoc (tok :segment 0 71) :token/layer :a)]]
+           ["Unveiling sensitize the gawks at, in he as.\n"
+            "That for banister admire on for her adv guaranty on of mambos statute was.\n"
+            (into [(assoc (tok :s 0 44) :token/layer :s)
+                   (assoc (tok :node 10 19) :token/layer :u)]
+                  (for [[layer extents] {:w [[0 9] [10 19] [20 23] [24 29] [30 32] [34 36] [37 39] [40 42]]
+                                         :m [[0 4] [4 9] [10 15] [15 19] [20 23] [24 26] [26 29]
+                                             [30 32] [34 36] [37 39] [40 42]]}
+                        [b e] extents]
+                    (assoc (tok [layer b] b e) :token/layer layer)))]]]
+    (is (= new (:text/body (:text (body-edit old new tokens #{:s} #{:w :m})))) (pr-str old))))
