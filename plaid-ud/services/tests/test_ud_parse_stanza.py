@@ -10,6 +10,7 @@ Run: pytest services/tests, from plaid-ud. Runs from the base env; stanza
 itself is never imported.
 """
 
+import json
 import pathlib
 import types
 
@@ -148,10 +149,11 @@ def _document(*, body=BODY, sentences=(), words=(), morphemes=(),
     }
 
 
-def _service(*, documents=None, fails=None, provider=None):
+def _service(*, documents=None, fails=None, provider=None, limits=None):
     service = ud.StanzaParserService()
     service.pipeline_provider = provider or _PipelineProvider()
-    service.client = servicetest.FakeClient(documents or [_document()], fails=fails)
+    service.client = servicetest.FakeClient(documents or [_document()], fails=fails,
+                                            limits=limits)
     return service
 
 
@@ -373,7 +375,7 @@ def test_a_failed_token_batch_leaves_the_old_words_in_place():
                     morphemes=[('m0', 0, 3), ('m1', 4, 7), ('m2', 8, 13)])
     service = _service(documents=[doc], fails={'tokens.bulk_create': PlaidAPIError(
         'Network error: reset', status=0, url='http://plaid.internal:8085/api/v1/batch',
-        method='POST')})
+        method='POST', original_error=ConnectionResetError('reset'))})
     helper = servicetest.run(service, REQUEST)
 
     assert service.client.writes == []
@@ -521,9 +523,7 @@ def test_every_phase_of_the_parse_says_what_it_is_doing():
         'Loading the en models…',
         'Parsing 13 characters…',
         'Parsed 1 sentences…',
-        'Writing 7 tokens…',
-        'Writing 14 annotations…',
-        'Writing 3 dependency relations…',
+        'Writing 1 sentence…',
         'Parsed 1 sentence',
     ]
     # The bar only ever moves forward, through the phases' fixed budget.
@@ -605,7 +605,7 @@ def test_a_stop_that_lands_in_the_writes_is_ignored_and_the_run_finishes():
     stop half-way through a rewrite finishes it rather than leaving a document
     whose tokens are gone and whose annotations never arrived."""
     service = _service()
-    helper = servicetest.Helper(stop_when=lambda pct, msg: msg.startswith('Writing 7 tokens'))
+    helper = servicetest.Helper(stop_when=lambda pct, msg: msg.startswith('Writing 1 sentence'))
     servicetest.run(service, REQUEST, helper)
 
     assert helper.cancelled, 'the stop never landed, so this proves nothing'
@@ -637,3 +637,153 @@ def test_a_second_request_is_rejected_rather_than_queued():
     release.set()
     thread.join(10)
     assert len(first.results) == 1
+
+
+# --- a long document: a batch per group of sentences (REV-F-PY R1) -----------
+
+def _rows_at(offset):
+    return [{**row, 'start_char': row['start_char'] + offset,
+             'end_char': row['end_char'] + offset} for row in ROWS]
+
+
+def _long(count):
+    """COUNT copies of BODY, parsed from scratch, one sentence each."""
+    starts = [i * 14 for i in range(count)]
+    doc = _document(body=' '.join([BODY] * count))
+    provider = _PipelineProvider([_rows_at(start) for start in starts], starts)
+    return doc, provider
+
+
+def _wire_bytes(payloads):
+    """What a batch's bodies weigh as the client sends them, each ref a null
+    in the body and an entry beside it."""
+    refs = []
+
+    def default(value):
+        refs.append(value)
+        return None
+
+    return len(json.dumps(payloads, default=default)) + ud.REF_BYTES * len(refs)
+
+
+def _sentence_of(op, starts):
+    return max(i for i, start in enumerate(starts) if start <= op['begin'])
+
+
+CAP = 40_000
+
+
+def test_a_long_parse_goes_in_batches_the_server_takes_each_holding_whole_sentences():
+    """A parse over about 4,000 words passed the server's 10 MB body cap in one
+    batch and was refused whole with a 413. Each batch now holds whole
+    sentences, sized from the cap GET /info publishes."""
+    count = 60
+    doc, provider = _long(count)
+    service = _service(documents=[doc], provider=provider,
+                       limits={'json_body_bytes': CAP})
+    helper = servicetest.run(service, REQUEST)
+
+    assert helper.errors == []
+    [result] = helper.results
+    assert result['parsed_sentences'] == count
+    batches = service.client.batches
+    assert len(batches) > 2
+    for batch in batches:
+        assert _wire_bytes([payload for _, payload in batch]) <= CAP * 0.6
+
+    # The sentence layer is a partition the server takes only whole: every
+    # sentence goes in the first batch, and nowhere else.
+    first = batches[0]
+    sentence_creates = [p for batch in batches for kind, p in batch
+                        if kind == 'tokens.bulk_create' and p[0]['token_layer_id'] == 'sentL']
+    assert len(sentence_creates) == 1 and len(sentence_creates[0]) == count
+    assert ('tokens.bulk_create', sentence_creates[0]) in first
+
+    # A sentence's syntactic words, spans and relations are in one batch, and
+    # every ref in it points at an op of that batch.
+    starts = [i * 14 for i in range(count)]
+    seen = set()
+    for batch in batches:
+        morphs = [op for kind, p in batch if kind == 'tokens.bulk_create'
+                  for op in p if op['token_layer_id'] == 'morphL']
+        here = {_sentence_of(op, starts) for op in morphs}
+        assert not here & seen, 'a sentence was written in two batches'
+        seen |= here
+        rels = [op for kind, p in batch if kind == 'relations.bulk_create' for op in p]
+        assert len(rels) == 3 * len(here)
+        for kind, payload in batch:
+            if kind == 'spans.bulk_create':
+                for op in payload:
+                    [ref] = op['tokens']
+                    assert batch[ref.op][0] == 'tokens.bulk_create'
+            if kind == 'relations.bulk_create':
+                for op in payload:
+                    assert batch[op['source'].op][0] == 'spans.bulk_create'
+    assert seen == set(range(count))
+
+    # The words of every sentence land before any of its parse.
+    word_batch = {}
+    for n, batch in enumerate(batches):
+        for kind, p in batch:
+            for op in p if kind == 'tokens.bulk_create' else []:
+                if op['token_layer_id'] == 'wordL':
+                    word_batch.setdefault(_sentence_of(op, starts), n)
+    for n, batch in enumerate(batches):
+        for kind, p in batch:
+            for op in p if kind == 'tokens.bulk_create' else []:
+                if op['token_layer_id'] == 'morphL':
+                    assert word_batch[_sentence_of(op, starts)] <= n
+
+
+def test_a_long_reparse_deletes_each_sentences_old_words_in_the_batch_that_replaces_them():
+    count = 60
+    sentences = [(i * 14, i * 14 + 13) for i in range(count)]
+    words = [(i * 14 + b, i * 14 + e) for i in range(count) for b, e in ((0, 3), (4, 7), (8, 13))]
+    morphemes = [(f'm{i}', b, e) for i, (b, e) in enumerate(words)]
+    doc = _document(body=' '.join([BODY] * count), sentences=sentences,
+                    words=words, morphemes=morphemes)
+    service = _service(documents=[doc], provider=_PipelineProvider([ROWS] * count),
+                       limits={'json_body_bytes': CAP})
+    helper = servicetest.run(service, REQUEST)
+
+    assert helper.errors == []
+    batches = service.client.batches
+    assert len(batches) > 2
+    deleted = []
+    for batch in batches:
+        [(kind, gone)] = [(k, p) for k, p in batch if k == 'tokens.bulk_delete']
+        made = [op for k, p in batch if k == 'tokens.bulk_create' for op in p]
+        # The words it deletes are the ones it writes anew.
+        assert sorted((b, e) for mid, b, e in morphemes if mid in gone) == \
+            sorted((op['begin'], op['end']) for op in made)
+        deleted += gone
+    assert sorted(deleted) == sorted(mid for mid, _, _ in morphemes)
+
+
+def test_a_failed_later_batch_says_how_many_sentences_were_parsed_in_full():
+    count = 60
+    doc, provider = _long(count)
+    service = _service(documents=[doc], provider=provider,
+                       limits={'json_body_bytes': CAP})
+    real_batched = service.client.batched
+    opened = []
+
+    def batched():
+        opened.append(1)
+        if len(opened) == 3:
+            service.client.fails['relations.bulk_create'] = PlaidAPIError(
+                'Network error: reset', status=0, method='POST',
+                url='http://plaid.internal:8085/api/v1/batch',
+                original_error=ConnectionResetError('reset'))
+        return real_batched()
+
+    service.client.batched = batched
+    helper = servicetest.run(service, REQUEST)
+
+    assert len(service.client.batches) == 2
+    written = {op['begin'] // 14 for batch in service.client.batches for kind, p in batch
+               if kind == 'tokens.bulk_create' for op in p if op['token_layer_id'] == 'morphL'}
+    assert helper.errors == [f'Stanza parser: {len(written)} of {count} sentences were parsed, '
+                             f'each in full. The Plaid server did not answer. '
+                             f'This change may or may not have been saved.']
+    assert service.client.kinds[-1] == 'unlock'

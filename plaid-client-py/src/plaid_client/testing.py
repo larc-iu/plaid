@@ -55,6 +55,7 @@ import inspect
 import itertools
 import json
 import pathlib
+import types
 import sys
 from datetime import datetime, timezone
 from urllib.parse import quote
@@ -706,7 +707,8 @@ class FakeClient:
 
     def __init__(self, documents, fails=None, *, project=None, audit=None, guidelines=None,
                  comments=None, restore_summary=None, projects=None, services=None,
-                 vocabularies=None, vocab_audit=None, vocab_restore_summary=None):
+                 vocabularies=None, vocab_audit=None, vocab_restore_summary=None,
+                 limits=None):
         self._documents = documents if isinstance(documents, dict) else list(documents)
         self.base_url = 'http://plaid.internal:8085'
         self.token = 'tok'
@@ -775,6 +777,11 @@ class FakeClient:
         for name in self.RESOURCES:
             setattr(self, name, Resource(self, name))
         self.vocab_items = FakeClient._VocabItems(self)
+        #: what ``server.limits()`` answers, GET /info's limits (none given:
+        #: the fake reports none, as an older server would)
+        self.limits = dict(limits or {})
+        self.server = types.SimpleNamespace(limits=lambda: dict(self.limits),
+                                            info=lambda: {'limits': dict(self.limits)})
 
     # -- recording --
     def new_id(self, prefix):

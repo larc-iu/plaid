@@ -439,6 +439,80 @@ def test_a_draft_that_fails_partway_writes_nothing():
     assert client.writes == []
 
 
+def _many_plans(count):
+    """COUNT one-sentence plans, each replacing a machine-made graph of two
+    nodes with a new one of two nodes and an edge."""
+    import types as _types
+    plans = []
+    for i in range(count):
+        old = [_types.SimpleNamespace(piece_ids=[f'old-{i}-a']),
+               _types.SimpleNamespace(piece_ids=[f'old-{i}-b'])]
+        sentence = _types.SimpleNamespace(index=i + 1, nodes=old, redraftable=True)
+        plans.append({'sentence': sentence, 'pieces': [(i * 20, i * 20 + 3), (i * 20 + 4, i * 20 + 9)],
+                      'nodes': [{'concept': 'dog', 'meta': {'var': f's{i}d'}, 'piece_indexes': [0]},
+                                {'concept': 'bark-01', 'meta': {'var': f's{i}b'},
+                                 'piece_indexes': [1]}],
+                      'edges': [{'source': 1, 'target': 0, 'role': ':ARG0', 'order': 0}]})
+    return plans
+
+
+def test_a_long_draft_goes_in_batches_the_server_takes_each_holding_whole_sentences():
+    """A redraft of a very long document passed the server's JSON body cap in
+    one batch and was refused whole with a 413 (conc-2026-09-29 REV-F-PY
+    R1b). Each batch now holds whole sentences, sized from GET /info."""
+    from plaid_client.testing import FakeClient
+    raw = _without_triples(_document())
+    layers = resolve_layers(raw)
+    plans = _many_plans(80)
+    client = FakeClient([raw], limits={'json_body_bytes': 30_000})
+    write_graphs(client, layers, plans, {'prov': 'inferred'})
+
+    assert len(client.batches) > 2
+    seen = []
+    for batch in client.batches:
+        kinds = [name for name, _ in batch]
+        assert kinds == ['tokens.bulk_delete', 'tokens.bulk_create', 'spans.bulk_create',
+                         'relations.bulk_create']
+        gone = batch[0][1]
+        [spans] = [p for name, p in batch if name == 'spans.bulk_create']
+        [edges] = [p for name, p in batch if name == 'relations.bulk_create']
+        here = sorted({int(s['metadata']['umr']['var'][1:-1]) for s in spans})
+        # Its old anchors go in the batch that writes its new graph.
+        assert sorted(gone) == sorted(f'old-{i}-{x}' for i in here for x in 'ab')
+        assert len(edges) == len(here)
+        for s in spans:
+            [ref] = s['tokens']
+            assert ref.op == 1
+        for e in edges:
+            assert e['source'].op == e['target'].op == 2
+        seen += here
+    assert seen == list(range(80))
+
+
+def test_a_draft_whose_later_batch_fails_says_how_many_sentences_it_wrote():
+    from plaid_client.http import PlaidAPIError
+    from plaid_client.testing import FakeClient
+    raw = _without_triples(_document())
+    client = FakeClient([raw], limits={'json_body_bytes': 30_000})
+    real = client.batched
+    opened = []
+
+    def batched():
+        opened.append(1)
+        if len(opened) == 2:
+            client.fails['relations.bulk_create'] = PlaidAPIError('HTTP 409 Document version mismatch',
+                                                                  status=409)
+        return real()
+
+    client.batched = batched
+    with pytest.raises(RuntimeError) as caught:
+        write_graphs(client, resolve_layers(raw), _many_plans(80), {'prov': 'inferred'})
+    [batch] = client.batches
+    written = len([p for name, p in batch if name == 'relations.bulk_create'][0])
+    assert str(caught.value) == (f'{written} of 80 sentences were drafted, each in full. '
+                                 f'HTTP 409 Document version mismatch')
+
+
 def _finish(client, raw, plans):
     import contextlib as _contextlib
     from plaid_client.workflows.requester import Requester

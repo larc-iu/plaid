@@ -139,6 +139,35 @@ def locked_for_writes(client, document_id, read_version=None):
             client.strict_mode_document_id = previous
 
 
+#: The core's default cap on one JSON request body (``[server]
+#: max_json_body_mb``, 10 MB), for a server whose ``GET /info`` gives none.
+DEFAULT_JSON_BODY_BYTES = 10 * 1024 * 1024
+
+
+def batch_body_budget(client, share=0.5) -> int:
+    """How many bytes of body one batch request may carry: ``share`` of the
+    cap the server publishes as ``json-body-bytes`` on ``GET /info``. A write
+    that grows with the document (a parse, a draft) splits its batches by
+    this, since a batch splits itself at 1,000 operations but never by size,
+    and one bulk create is one operation however many entries it holds. The
+    rest of the cap is margin for an estimate of the body's size."""
+    try:
+        reported = (client.server.limits() or {}).get('json_body_bytes')
+    except Exception:  # noqa: BLE001 - the limit is then the core's default
+        reported = None
+    cap = reported if isinstance(reported, int) and reported > 0 else DEFAULT_JSON_BODY_BYTES
+    return int(cap * share)
+
+
+def partly_written(written, total, done, cause) -> RuntimeError:
+    """The error of a run that writes a document a group of sentences at a
+    time, and failed after ``written`` of ``total`` sentences were written in
+    full (``done`` says how: 'parsed', 'drafted'). ``cause`` is said after it
+    as the requester would be told it."""
+    return RuntimeError(f'{written} of {total} sentences were {done}, each in full. '
+                        f'{requester_message(cause)}')
+
+
 def _client_version() -> str:
     try:
         return importlib.metadata.version('larc-plaid-client')

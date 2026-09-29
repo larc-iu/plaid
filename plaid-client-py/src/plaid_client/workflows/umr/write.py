@@ -22,11 +22,13 @@ sentence.
 """
 
 import contextlib
+import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from plaid_client.provenance import PROV_DETAIL_KEY, PROV_KEY, service_source
-from plaid_client.service import locked_for_writes, progress_heartbeat
+from plaid_client.service import (batch_body_budget, locked_for_writes, partly_written,
+                                  progress_heartbeat)
 from plaid_client.service_schema import Param
 
 from ..requester import Requester, requester_of
@@ -196,16 +198,99 @@ def _predicted(frag: dict, prediction: dict) -> dict:
     return {**frag, PROV_DETAIL_KEY: {**(frag.get(PROV_DETAIL_KEY) or {}), **prediction}}
 
 
+def _sentence_writes(layers: UmrLayers, plan: dict, frag: dict) -> dict:
+    """One plan's writes: the old graph's anchors to delete, and the anchors,
+    nodes and edges to create. A node names its anchors by their index among
+    the plan's pieces and an edge its nodes by index among the plan's nodes,
+    turned into batch refs when the sentence is queued."""
+    nodes = []
+    for node in plan['nodes']:
+        prediction = {'value': node['concept']}
+        attrs = [{'rel': a['rel'], 'value': a['value']}
+                 for a in node['meta'].get('attrs') or []]
+        if attrs:
+            prediction['attrs'] = attrs
+        nodes.append(({
+            'span_layer_id': layers.concept_layer['id'],
+            'value': node['concept'],
+            'metadata': {**_predicted(frag, prediction), UMR_NAMESPACE: node['meta']},
+        }, list(node['piece_indexes'])))
+    edges = [({
+        'relation_layer_id': layers.relation_layer['id'],
+        'value': edge['role'],
+        'metadata': {**_predicted(frag, {'value': edge['role']}),
+                     UMR_NAMESPACE: {'order': edge['order']}},
+    }, edge['source'], edge['target']) for edge in plan['edges']]
+    pieces = [{'token_layer_id': layers.node_layer['id'],
+               'text': layers.text_id, 'begin': begin, 'end': end}
+              for begin, end in plan['pieces']]
+    doomed = [pid for node in plan['sentence'].nodes for pid in node.piece_ids]
+    refs = sum(len(indexes) for _, indexes in nodes) + 2 * len(edges)
+    size = (len(json.dumps([doomed, pieces, [n for n, _ in nodes], [e for e, _, _ in edges]]))
+            + _REF_BYTES * refs)
+    return {'doomed': doomed, 'pieces': pieces, 'nodes': nodes, 'edges': edges,
+            'bytes': size}
+
+
+#: What one ref beside a body costs on the wire, ``{"at": [...], "op": n,
+#: "index": k}`` with its separators, rounded up.
+_REF_BYTES = 64
+
+
+def _queue_sentences(b, units: Sequence[dict], progress: DraftProgress, alone: bool) -> None:
+    """Queue the writes of ``units`` on batch ``b``: the old anchors' delete,
+    then anchors, nodes and edges, each naming the ones before it by a ref."""
+    doomed = [pid for unit in units for pid in unit['doomed']]
+    pieces = [piece for unit in units for piece in unit['pieces']]
+    if alone and doomed:
+        progress.report(DraftProgress.WRITE, 0.1, f'Clearing {_count(len(doomed), "anchor")}…')
+    if alone:
+        progress.report(DraftProgress.WRITE, 0.3, f'Writing {_count(len(pieces), "anchor")}…')
+    if doomed:
+        b.tokens.bulk_delete(doomed)
+    if not pieces:
+        return
+    b.tokens.bulk_create(pieces)
+    piece_refs = [b.ref(-1, k) for k in range(len(pieces))]
+
+    span_ops: List[dict] = []
+    piece_base = 0
+    node_bases = []
+    for unit in units:
+        node_bases.append(len(span_ops))
+        span_ops.extend({**op, 'tokens': [piece_refs[piece_base + i] for i in indexes]}
+                        for op, indexes in unit['nodes'])
+        piece_base += len(unit['pieces'])
+    if not span_ops:
+        return
+    if alone:
+        progress.report(DraftProgress.WRITE, 0.6, f'Writing {_count(len(span_ops), "node")}…')
+    b.spans.bulk_create(span_ops)
+    node_refs = [b.ref(-1, k) for k in range(len(span_ops))]
+
+    edge_ops = [{**op, 'source': node_refs[base + source], 'target': node_refs[base + target]}
+                for unit, base in zip(units, node_bases)
+                for op, source, target in unit['edges']]
+    if edge_ops:
+        if alone:
+            progress.report(DraftProgress.WRITE, 0.9,
+                            f'Writing {_count(len(edge_ops), "relation")}…')
+        b.relations.bulk_create(edge_ops)
+
+
 def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
                  progress: Optional[DraftProgress] = None) -> None:
-    """Anchors, then nodes, then edges, in ONE atomic batch.
+    """Anchors, then nodes, then edges, one atomic batch per group of sentences.
 
     A node names its anchors, and an edge its nodes, by a ref to the ids an
     earlier op of the batch creates (``batch.ref``). In three batches, a
     failure or a lost answer after the first left anchors with no node, which
     the editor's repair deleted on someone's next open, under their name.
-    Now a run that fails leaves the document as it was, and one whose answer
-    was lost wrote its graphs whole, whenever the batch lands.
+    Now each sentence's graph goes whole in one batch, so a run that fails
+    leaves every sentence with its old graph or its whole new one. The
+    batches are as large as the server's body cap allows
+    (:func:`~plaid_client.service.batch_body_budget`): the whole run in one
+    request passed it on a long document.
 
     A plan for a sentence that already has a graph REPLACES it: the old
     graph's anchor tokens are deleted first in the same batch, which cascades
@@ -222,66 +307,36 @@ def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
             if plan['sentence'].nodes and not plan['sentence'].redraftable]
     if kept:
         raise ValueError(f'Sentence {kept[0]} has work a draft may not replace.')
-    doomed = [pid for plan in plans for node in plan['sentence'].nodes
-              for pid in node.piece_ids]
-    piece_ops: List[dict] = []
-    for plan in plans:
-        piece_ops.extend({'token_layer_id': layers.node_layer['id'],
-                          'text': layers.text_id, 'begin': begin, 'end': end}
-                         for begin, end in plan['pieces'])
-    if not doomed and not piece_ops:
+    units = [_sentence_writes(layers, plan, frag) for plan in plans]
+    units = [unit for unit in units if unit['doomed'] or unit['pieces']]
+    if not units:
         return
-    if doomed:
-        progress.report(DraftProgress.WRITE, 0.1, f'Clearing {_count(len(doomed), "anchor")}…')
-    # What each step would have said as its own request. They go as one now,
-    # but the bar still moves through them.
-    progress.report(DraftProgress.WRITE, 0.3, f'Writing {_count(len(piece_ops), "anchor")}…')
-    with client.batched() as b:
-        if doomed:
-            b.tokens.bulk_delete(doomed)
-        if not piece_ops:
-            return
-        b.tokens.bulk_create(piece_ops)
-        pieces_at = b.ref(-1)['$ref']
 
-        span_ops: List[dict] = []
-        piece_base = 0
-        node_bases = []
-        for plan in plans:
-            node_bases.append(len(span_ops))
-            for node in plan['nodes']:
-                prediction = {'value': node['concept']}
-                attrs = [{'rel': a['rel'], 'value': a['value']}
-                         for a in node['meta'].get('attrs') or []]
-                if attrs:
-                    prediction['attrs'] = attrs
-                span_ops.append({
-                    'span_layer_id': layers.concept_layer['id'],
-                    'tokens': [b.ref(pieces_at, piece_base + i) for i in node['piece_indexes']],
-                    'value': node['concept'],
-                    'metadata': {**_predicted(frag, prediction), UMR_NAMESPACE: node['meta']},
-                })
-            piece_base += len(plan['pieces'])
-        if not span_ops:
-            return
-        progress.report(DraftProgress.WRITE, 0.6, f'Writing {_count(len(span_ops), "node")}…')
-        b.spans.bulk_create(span_ops)
-        spans_at = b.ref(-1)['$ref']
+    budget = batch_body_budget(client)
+    groups: List[List[dict]] = []
+    size = 0
+    for unit in units:
+        if groups and size + unit['bytes'] <= budget:
+            groups[-1].append(unit)
+            size += unit['bytes']
+        else:
+            groups.append([unit])
+            size = unit['bytes']
 
-        edge_ops: List[dict] = []
-        for plan, node_base in zip(plans, node_bases):
-            for edge in plan['edges']:
-                edge_ops.append({
-                    'relation_layer_id': layers.relation_layer['id'],
-                    'source': b.ref(spans_at, node_base + edge['source']),
-                    'target': b.ref(spans_at, node_base + edge['target']),
-                    'value': edge['role'],
-                    'metadata': {**_predicted(frag, {'value': edge['role']}),
-                                 UMR_NAMESPACE: {'order': edge['order']}},
-                })
-        if edge_ops:
-            progress.report(DraftProgress.WRITE, 0.9, f'Writing {_count(len(edge_ops), "relation")}…')
-            b.relations.bulk_create(edge_ops)
+    written = 0
+    try:
+        for group in groups:
+            if len(groups) > 1:
+                progress.report(DraftProgress.WRITE, written / len(units),
+                                f'Writing sentences {written + 1} to {written + len(group)} '
+                                f'of {len(units)}…')
+            with client.batched() as b:
+                _queue_sentences(b, group, progress, alone=len(groups) == 1)
+            written += len(group)
+    except Exception as error:
+        if written:
+            raise partly_written(written, len(units), 'drafted', error) from error
+        raise
 
 
 def draft_params() -> List[Param]:
