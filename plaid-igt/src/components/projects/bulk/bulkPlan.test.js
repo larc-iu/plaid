@@ -11,7 +11,6 @@ import {
   collectOccurrenceRows,
   tallyCandidates,
   analysisLabel,
-  collectLinksToMove,
   groupByDoc,
 } from './bulkPlan.js';
 import { isValueAllowed, readingTagset } from '../../../domain/tagsets.js';
@@ -315,53 +314,6 @@ describe('collectOccurrenceRows / tallyCandidates / analysisLabel', () => {
       morphemes: [{ form: 'ka', morphType: null, vocabItemId: 'i1', fields: {} }],
     };
     expect(analysisLabel(a, new Map([['i1', 'ka₂']]))).toBe('ka · links: ka₂');
-  });
-});
-
-describe('collectLinksToMove', () => {
-  it('finds links to any losing item across vocabularies', () => {
-    const doc = docOf({
-      wordVocabs: [
-        {
-          id: 'v1',
-          name: 'Lex',
-          vocabLinks: [
-            { id: 'l1', tokens: ['w-1'], vocabItem: { id: 'i1', form: 'the' } },
-            { id: 'l2', tokens: ['w-2'], vocabItem: { id: 'i2', form: 'cat' }, metadata: { x: 1 } },
-          ],
-        },
-      ],
-      morphVocabs: [
-        {
-          id: 'v1',
-          name: 'Lex',
-          vocabLinks: [{ id: 'l3', tokens: ['m-2'], vocabItem: { id: 'i2', form: 'cat' } }],
-        },
-      ],
-    });
-    expect(collectLinksToMove(doc, ['i2'])).toEqual([
-      { id: 'l2', itemId: 'i2', tokens: ['w-2'], metadata: { x: 1 }, docId: 'doc-1' },
-      { id: 'l3', itemId: 'i2', tokens: ['m-2'], metadata: null, docId: 'doc-1' },
-    ]);
-  });
-
-  // A merge that stopped partway left some words linked to the survivor as
-  // well. Planning it again must not link them to it a second time.
-  it('leaves out a link whose words the survivor already has', () => {
-    const doc = docOf({
-      wordVocabs: [
-        {
-          id: 'v1',
-          name: 'Lex',
-          vocabLinks: [
-            { id: 'l1', tokens: ['w-1'], vocabItem: { id: 'i2', form: 'cat' } },
-            { id: 'l2', tokens: ['w-2'], vocabItem: { id: 'i2', form: 'cat' } },
-            { id: 'l4', tokens: ['w-1'], vocabItem: { id: 'i1', form: 'the' } },
-          ],
-        },
-      ],
-    });
-    expect(collectLinksToMove(doc, ['i2'], 'i1').map((l) => l.id)).toEqual(['l2']);
   });
 });
 

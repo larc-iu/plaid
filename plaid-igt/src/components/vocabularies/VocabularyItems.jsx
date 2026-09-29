@@ -17,7 +17,7 @@ import { Button } from '@ui/components/ui/button';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useTabParam } from '@/hooks/useTabParam';
 import { notifyError, notifyWarning, isPermissionError } from '@/utils/feedback';
-import { isUnknownOutcome } from '@ui/lib/errors.js';
+import { isUnknownOutcome, statusOf } from '@ui/lib/errors.js';
 import {
   fieldLabel,
   groupFieldsForForm,
@@ -921,9 +921,57 @@ export const VocabularyItems = ({
   // Only say the senses are freed when there are some: the count above covers
   // both them and the fields that name the entry.
   const deleteFreesSenses = !!tree.childrenOf.get(selectedItem?.id)?.length;
-  const handleConfirmDelete = async () => {
+
+  // Deleting an entry deletes its links, so the delete names how many it
+  // saw, and the server refuses it when that is no longer the number.
+  // `deleteCountRef` is the count read when the dialog opened, compared at
+  // Delete with a count read then: a link made meanwhile keeps the dialog
+  // open on the new count. Null when it cannot be told (the count failed),
+  // and then the delete goes unchecked, as before there was a count.
+  // A refused delete leaves the number the server gave in `refusedDeleteRef`
+  // for that entry: links in projects this person cannot open are counted
+  // there and not here, so the next Delete of it, while the count here is
+  // the one refused, names the server's.
+  const deleteCountRef = useRef(null);
+  const refusedDeleteRef = useRef(new Map());
+  const [deleteLinksChanged, setDeleteLinksChanged] = useState(false);
+  const countLinks = async (id) => {
+    try {
+      if (!(await vocabLinked())) return 0;
+      const res = await client.query({
+        where: [['link', '?l', { item: settledId(id) }]],
+        return: { group: [], aggregates: [['count']] },
+      });
+      return res?.results?.[0]?.[0] ?? 0;
+    } catch (err) {
+      console.error('Link count failed:', err);
+      return null;
+    }
+  };
+  const openDelete = () => {
+    const id = selectedItem?.id;
+    deleteCountRef.current = null;
+    setDeleteLinksChanged(false);
+    dispatch({ type: 'dialog/open', kind: 'delete' });
+    if (!id) return;
+    const counting = countLinks(id).then((n) => ({ id, n }));
+    deleteCountRef.current = counting;
+  };
+  const handleConfirmDelete = async (e) => {
+    e?.preventDefault?.();
     if (!selectedItem) return;
     const deletedId = selectedItem.id;
+    const opened = await deleteCountRef.current;
+    const seen = await countLinks(deletedId);
+    if (opened?.id === deletedId && opened.n != null && seen != null && seen !== opened.n) {
+      deleteCountRef.current = Promise.resolve({ id: deletedId, n: seen });
+      setDeleteLinksChanged(true);
+      fetchUsageCounts();
+      return;
+    }
+    const refused = refusedDeleteRef.current.get(deletedId);
+    const expectedLinkCount =
+      seen == null ? undefined : refused && refused.sent === seen ? refused.server : seen;
     // A headword with many senses, or a root with many variants, is one
     // repoint per referring entry: the same walk the load-time repair does,
     // so the same bulk write.
@@ -938,7 +986,19 @@ export const VocabularyItems = ({
       async () => {
         if (patches.length) await bulkRepoint(patches, before);
         try {
-          await client.vocabItems.delete(settledId(deletedId));
+          await client.vocabItems.delete(settledId(deletedId), undefined, { expectedLinkCount });
+          refusedDeleteRef.current.delete(deletedId);
+        } catch (err) {
+          if (statusOf(err) === 409 && expectedLinkCount != null) {
+            const said = String(err?.responseData?.error ?? '');
+            const server = Number(
+              err?.responseData?.links ?? /has (\d+) links? now/.exec(said)?.[1],
+            );
+            if (Number.isInteger(server)) {
+              refusedDeleteRef.current.set(deletedId, { sent: expectedLinkCount, server });
+            }
+          }
+          throw err;
         } finally {
           // Its links go with it, in documents no editor has open.
           dropPrecedent();
@@ -1144,7 +1204,7 @@ export const VocabularyItems = ({
       newSenseTo={newSenseTo}
       onSave={handleSave}
       onCancel={cancelEdit}
-      onDelete={() => dispatch({ type: 'dialog/open', kind: 'delete' })}
+      onDelete={openDelete}
       onMoveUnder={handleMoveUnder}
       onRaiseHeadword={handleRaiseHeadword}
       onSenseDrop={handleSenseDrop}
@@ -1410,6 +1470,7 @@ export const VocabularyItems = ({
         usageCounts={usageCounts}
         deleteRefPatches={deleteRefPatches}
         deleteFreesSenses={deleteFreesSenses}
+        deleteLinksChanged={deleteLinksChanged}
         onConfirmDelete={handleConfirmDelete}
       />
     </div>

@@ -15,7 +15,7 @@ import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '@/domain
 import { readAll, readLayerIds } from '@/domain/documentReads';
 import { shareVocabularies } from '@/domain/vocabLookup';
 import { readIgnoredTokens } from '@/domain/igtConfig';
-import { chunk, CHUNK } from '@/domain/bulk';
+import { chunk } from '@/domain/bulk';
 import { dropPrecedent } from '@/domain/precedentCache';
 import { readVocabulary } from '@/domain/vocabCache';
 import { extractAnalysis, analysisSignature } from '@/domain/analysisMemory';
@@ -26,7 +26,6 @@ import {
   collectLexiconRows,
   collectFieldRows,
   collectOccurrenceRows,
-  collectLinksToMove,
   respellOps,
 } from './bulkPlan.js';
 
@@ -420,17 +419,10 @@ export async function applyReanalyze(client, { rows, docs }, { analysis, label, 
 
 // ---- merge ------------------------------------------------------------------
 
-// Every vocab link pointing at a losing entry, harvested from the documents
-// that carry them (links are embedded in document GETs, and the query
-// language addresses linked tokens rather than link ids).
-export async function planMerge(
-  client,
-  project,
-  vocabId,
-  loserIds,
-  onProgress,
-  { survivorId = null } = {},
-) {
+// How many words and morphemes are linked to the losing entries, and in how
+// many documents, for the preview's summary: { tokens, docs }. The merge
+// itself reads the links when it runs, so this is a count, not a plan.
+export async function planMerge(client, vocabId, loserIds) {
   const docCounts = new Map();
   for (const itemId of loserIds) {
     const r = await client.query({
@@ -445,75 +437,32 @@ export async function planMerge(
     for (const [docId, n] of r?.results || [])
       docCounts.set(String(docId), (docCounts.get(String(docId)) || 0) + n);
   }
-  const docEntries = [...docCounts.entries()].sort((a, b) => b[1] - a[1]);
-  // Every token layer of the project, since a link comes back with the token
-  // layer it is on, and no annotation field.
-  const layers = readLayerIds(project, { tokenLayers: 'all', spans: [] });
-  const docs = await loadDocs(client, project, docEntries, {}, onProgress, layers);
-  const links = docs.flatMap((doc) => collectLinksToMove(doc, loserIds, survivorId));
-  return { links, docs };
+  let tokens = 0;
+  for (const n of docCounts.values()) tokens += n;
+  return { tokens, docs: docCounts.size };
 }
 
-// Recreate each link on the survivor, repoint every entry that referred to a
-// loser (a dictionary's senses and reference fields, see planMergeRefs),
-// then delete the losing entries (their old links cascade away server-side).
-// Under one operation. `refUpdates` is `[{id, metadata}]` where the metadata
-// is a list of metadata ops, as `metadataUpdates` builds it from planMergeRefs'
-// whole maps.
-//
-// A merge of up to one chunk of entities is ONE batch: a refusal anywhere
-// leaves the words linked to the losers alone, so the plan on screen is still
-// what a retry needs. A larger one cannot be: a batch is one transaction
-// holding the server's only write lock, and past MAX_BATCH_OPS the client
-// splits it anyway. So it goes a chunk at a time, document by document, then
-// the references, then the delete. A link that landed is marked `applied` and
-// Apply again skips it, so a retry after a refusal partway never links a word
-// to the survivor twice (and planMerge leaves out a word the survivor has).
-//
-// Link creates go per document: a bulk vocab-link create takes tokens from
-// one document, and a merge harvests links from every document that used the
-// losing entries.
-export async function applyMerge(
-  client,
-  { links, refUpdates = [] },
-  { survivorId, loserIds, label },
-) {
-  const pending = links.filter((l) => !l.applied);
-  const byDoc = new Map();
-  for (const l of pending) {
-    if (!byDoc.has(l.docId)) byDoc.set(l.docId, []);
-    byDoc.get(l.docId).push(l);
-  }
-  const specs = (part) =>
-    part.map((l) => ({
-      vocabItem: survivorId,
-      tokens: l.tokens,
-      ...(l.metadata ? { metadata: l.metadata } : {}),
-    }));
-  if (pending.length + refUpdates.length <= CHUNK) {
-    await writeAcrossDocuments(client, label, 'merge', () =>
-      client.batched((b) => {
-        for (const docLinks of byDoc.values()) b.vocabLinks.bulkCreate(specs(docLinks));
-        if (refUpdates.length) b.vocabItems.bulkUpdate(refUpdates);
-        b.vocabItems.bulkDelete(loserIds);
-      }),
-    );
-    pending.forEach((l) => (l.applied = true));
-  } else {
-    await writeAcrossDocuments(client, label, 'merge', async () => {
-      for (const docLinks of byDoc.values()) {
-        for (const part of chunk(docLinks)) {
-          await client.vocabLinks.bulkCreate(specs(part));
-          part.forEach((l) => (l.applied = true));
-        }
-      }
-      for (const part of chunk(refUpdates)) await client.vocabItems.bulkUpdate(part);
-      await client.vocabItems.bulkDelete(loserIds);
+// Repoint every entry that referred to a loser (a dictionary's senses and
+// reference fields, see planMergeRefs), then merge: the server moves every
+// link of the losers to the survivor, the ones made after the preview
+// included, drops a link on words the survivor already has, and deletes the
+// losers. One batch, so a refusal leaves everything as it was, and a repeated
+// merge changes nothing. `refUpdates` is `[{id, metadata}]` where the
+// metadata is a list of metadata ops, as `metadataUpdates` builds it from
+// planMergeRefs' whole maps. Returns what the server did.
+export async function applyMerge(client, { refUpdates = [] }, { survivorId, loserIds, label }) {
+  let merged = null;
+  await writeAcrossDocuments(client, label, 'merge', async () => {
+    const results = await client.batched((b) => {
+      for (const part of chunk(refUpdates)) b.vocabItems.bulkUpdate(part);
+      b.vocabItems.merge(survivorId, loserIds);
     });
-  }
+    merged = results.at(-1)?.body ?? null;
+  });
   return {
-    linksMoved: links.length,
-    entriesRemoved: loserIds.length,
+    linksMoved: merged?.moved ?? 0,
+    duplicatesRemoved: merged?.duplicates ?? 0,
+    entriesRemoved: merged?.removed?.length ?? 0,
     // The survivor can be in here too, when its own parent was one of the
     // losers. It does not point at itself, so it is not counted.
     entriesRepointed: refUpdates.filter((p) => p.id !== survivorId).length,

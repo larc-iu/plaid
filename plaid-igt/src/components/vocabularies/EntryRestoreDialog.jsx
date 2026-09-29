@@ -92,8 +92,11 @@ export const EntryRestoreDialog = ({
   const undo = async (before, after, inserted) => {
     const now = await latestVocabState(client, vocabularyId, itemId).catch(() => null);
     const edited = !!(now && after && now.id !== after.id);
+    // The links the question below counted (or saw none of): the delete is
+    // refused when the entry has another number by the time it runs.
+    let links = null;
     if (inserted) {
-      const links = await linkCount();
+      links = await linkCount();
       if (edited || links) {
         const ok = await confirm({
           title: `Delete “${label}” again?`,
@@ -115,7 +118,9 @@ export const EntryRestoreDialog = ({
       if (!ok) return;
     }
     const run = inserted
-      ? client.vocabItems.delete(itemId, `Delete entry “${label}”`)
+      ? client.vocabItems.delete(itemId, `Delete entry “${label}”`, {
+          expectedLinkCount: links ?? undefined,
+        })
       : client.vocabLayers.restoreItem(
           vocabularyId,
           itemId,

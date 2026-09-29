@@ -127,3 +127,102 @@ describe('deleting an entry other entries point at', () => {
     await view.unmount();
   });
 });
+
+// Deleting an entry deletes its links. The delete names how many it saw, and
+// the server refuses it when that is no longer the number (D7): a link made
+// while the question was open would otherwise go with the entry unannounced.
+describe('deleting an entry whose links change', () => {
+  const linked = (counts, { refuse = null } = {}) => {
+    const { client, calls } = stub();
+    const sent = [];
+    client.projects.list = async () => [{ id: 'p1', vocabs: [{ id: 'v1' }] }];
+    client.query = async (q) => {
+      if (q.where[0][0] !== 'link') return { results: [] };
+      return { results: [[counts.length > 1 ? counts.shift() : counts[0]]] };
+    };
+    client.vocabItems.delete = async (id, message, opts) => {
+      sent.push([id, opts?.expectedLinkCount]);
+      if (refuse) {
+        const err = refuse;
+        refuse = null;
+        throw err;
+      }
+      calls.deleted.push(id);
+    };
+    return { client, calls, sent };
+  };
+  const open = async (client) => {
+    auth.client = client;
+    const view = await renderComponent(
+      <MemoryRouter initialEntries={['/vocabularies/v1?item=deriv1']}>
+        <VocabularyItems
+          vocabularyId="v1"
+          vocabulary={{ id: 'v1' }}
+          client={client}
+          fields={FIELDS}
+          writes={new WriteQueue()}
+        />
+      </MemoryRouter>,
+    );
+    for (let i = 0; i < 4; i++) await view.step(async () => {});
+    return view;
+  };
+  const settle = async (view) => {
+    for (let i = 0; i < 4; i++)
+      await view.step(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
+  };
+  const askAndConfirm = async (view) => {
+    await view.step(() => byText('button', 'Delete').click());
+    await settle(view);
+    await view.step(() => byText('button', 'Delete entry').click());
+    await settle(view);
+  };
+
+  it('names the count it showed', async () => {
+    const { client, sent } = linked([2]);
+    const view = await open(client);
+    await askAndConfirm(view);
+    expect(sent).toEqual([['deriv1', 2]]);
+    await view.unmount();
+  });
+
+  it('stays open on the new count when a link was made while it was open', async () => {
+    const { client, sent } = linked([2, 3]);
+    const view = await open(client);
+    await askAndConfirm(view);
+    expect(sent).toEqual([]);
+    expect(document.body.textContent).toContain('Its links changed while this was open.');
+    await view.step(() => byText('button', 'Delete entry').click());
+    await settle(view);
+    expect(sent).toEqual([['deriv1', 3]]);
+    await view.unmount();
+  });
+
+  it('after a refusal counting links it cannot see, names the count the server gave', async () => {
+    const refusal = Object.assign(new Error('HTTP 409'), {
+      status: 409,
+      method: 'DELETE',
+      responseData: { error: 'This entry has 5 links now, not 2' },
+    });
+    const { client, sent, calls } = linked([2], { refuse: refusal });
+    const view = await open(client);
+    await askAndConfirm(view);
+    expect(sent).toEqual([['deriv1', 2]]);
+    expect(calls.deleted).toEqual([]);
+    // The refusal reads the entries again, and the entry is back.
+    const row = all(document.body, 'a').find((a) =>
+      [...a.querySelectorAll('*')].some((n) => n.textContent.trim() === 'kai-1'),
+    );
+    await view.step(() => row.click());
+    await settle(view);
+    await askAndConfirm(view);
+    expect(sent).toEqual([
+      ['deriv1', 2],
+      ['deriv1', 5],
+    ]);
+    expect(calls.deleted).toEqual(['deriv1']);
+    await view.unmount();
+  });
+});

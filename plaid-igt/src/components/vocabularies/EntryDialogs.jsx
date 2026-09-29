@@ -18,6 +18,9 @@ export const EntryDialogs = ({
   usageCounts,
   deleteRefPatches,
   deleteFreesSenses,
+  // The entry's links changed while the dialog was open. Delete then keeps
+  // it open, on the new count.
+  deleteLinksChanged = false,
   onConfirmDelete,
 }) => {
   const close = () => dispatch({ type: 'dialog/close' });
@@ -39,6 +42,11 @@ export const EntryDialogs = ({
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
               <div className="text-sm">
                 <p className="font-medium text-destructive">Warning</p>
+                {deleteLinksChanged && (
+                  <p className="mt-1 font-medium text-foreground">
+                    Its links changed while this was open.
+                  </p>
+                )}
                 <p className="mt-1 text-muted-foreground">
                   You are about to permanently delete the entry{' '}
                   <strong>"{selectedItem?.form}"</strong>.

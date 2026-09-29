@@ -48,18 +48,18 @@ function precedentClient() {
     vocabLayers: { get: async (id) => ({ id, items: [] }) },
     query: vi.fn(async () => ({ results: [] })),
     withOperation: async (_label, fn) => fn(),
-    batched: async (fn) =>
-      fn({
+    batched: async (fn) => {
+      await fn({
         texts: { update: () => {} },
         spans: { bulkUpdate: () => {} },
         tokens: { bulkUpdate: () => {} },
-        vocabItems: { bulkUpdate: () => {}, bulkDelete: () => {} },
-        vocabLinks: { bulkCreate: () => {} },
-      }),
+        vocabItems: { bulkUpdate: () => {}, merge: () => {} },
+      });
+      return [];
+    },
     spans: { bulkUpdate: async () => ({}) },
     tokens: { bulkUpdate: async () => ({}) },
-    vocabItems: { bulkUpdate: async () => ({}), bulkDelete: async () => ({}) },
-    vocabLinks: { bulkCreate: async () => ({}) },
+    vocabItems: { bulkUpdate: async () => ({}) },
   };
 }
 
@@ -98,12 +98,7 @@ const applies = {
       },
       { analysis: {}, label: 'Re-analyze' },
     ),
-  merge: (client) =>
-    applyMerge(
-      client,
-      { links: [{ docId: 'a', tokens: ['w'] }] },
-      { survivorId: 'k2', loserIds: ['k1'], label: 'Merge' },
-    ),
+  merge: (client) => applyMerge(client, {}, { survivorId: 'k2', loserIds: ['k1'], label: 'Merge' }),
 };
 
 describe('Bulk Edit and the project precedent read', () => {
@@ -137,62 +132,61 @@ describe('Bulk Edit in the audit log', () => {
   }
 });
 
-// A merge is link creates, reference updates and the losers' delete. Sent as
-// separate requests, a refused delete left each word linked to both entries,
-// and a retry of the plan still on screen linked it to the survivor twice.
+// A merge is the reference updates and the core's merge, in one batch. The
+// core moves every link the losers have when it runs, so a link made after
+// the preview follows too (it was deleted with the loser when the links were
+// harvested at Preview and re-made one by one).
 describe('applyMerge', () => {
-  it('sends every write of the merge as one batch', async () => {
-    const client = makeFakeClient();
-    await applyMerge(
-      client,
-      {
-        links: [
-          { docId: 'a', tokens: ['w1'] },
-          { docId: 'b', tokens: ['w2'], metadata: { note: 'x' } },
-        ],
-        refUpdates: [{ id: 'k3', metadata: [{ op: 'set', path: ['parent'], value: 'k2' }] }],
+  const mergeClient = (answer) => {
+    const queued = [];
+    return {
+      queued,
+      withOperation: async (_label, fn) => fn(),
+      batched: async (fn) => {
+        const op =
+          (kind) =>
+          (...args) =>
+            queued.push([kind, ...args]);
+        await fn({
+          vocabItems: {
+            bulkUpdate: op('vocabItems.bulkUpdate'),
+            merge: op('vocabItems.merge'),
+            bulkDelete: op('vocabItems.bulkDelete'),
+          },
+          vocabLinks: { bulkCreate: op('vocabLinks.bulkCreate') },
+        });
+        return queued.map(([kind]) => ({
+          status: 200,
+          body: kind === 'vocabItems.merge' ? answer : {},
+        }));
       },
+    };
+  };
+
+  it('sends the reference updates and the merge as one batch, and reports what the core did', async () => {
+    const client = mergeClient({ moved: 3, duplicates: 1, removed: ['k1'] });
+    const refUpdates = [{ id: 'k3', metadata: [{ op: 'set', path: ['parent'], value: 'k2' }] }];
+    const out = await applyMerge(
+      client,
+      { refUpdates },
       { survivorId: 'k2', loserIds: ['k1'], label: 'Merge' },
     );
-    const kinds = client.calls.map((c) => c.kind).filter((k) => k !== 'beginOperation');
-    expect(kinds).toEqual([
-      'vocabLinks.bulkCreate',
-      'vocabLinks.bulkCreate',
-      'vocabItems.bulkUpdate',
-      'vocabItems.bulkDelete',
-      'batch.submit',
+    expect(client.queued).toEqual([
+      ['vocabItems.bulkUpdate', refUpdates],
+      ['vocabItems.merge', 'k2', ['k1']],
     ]);
-    expect(client.calls[1].args[0]).toEqual([{ vocabItem: 'k2', tokens: ['w1'] }]);
+    expect(out).toEqual({
+      linksMoved: 3,
+      duplicatesRemoved: 1,
+      entriesRemoved: 1,
+      entriesRepointed: 1,
+    });
   });
 
-  // One batch is one transaction holding the server's only write lock, and a
-  // batch past MAX_BATCH_OPS is split anyway. A merge larger than one chunk goes
-  // document by document, and Apply again sends only the links that did not land.
-  it('past one chunk goes by document, and a retry does not link a word twice', async () => {
-    const client = makeFakeClient();
-    const links = [];
-    for (const docId of ['a', 'b'])
-      for (let i = 0; i < 300; i++) links.push({ docId, tokens: [`${docId}-${i}`] });
-    const create = client.vocabLinks.bulkCreate;
-    let refuse = true;
-    client.vocabLinks.bulkCreate = async (specs) => {
-      if (refuse && specs[0].tokens[0].startsWith('b-')) {
-        refuse = false;
-        throw Object.assign(new Error('HTTP 500'), { status: 500 });
-      }
-      return create(specs);
-    };
-    const run = () =>
-      applyMerge(client, { links }, { survivorId: 'k2', loserIds: ['k1'], label: 'Merge' });
-    await expect(run()).rejects.toThrow('HTTP 500');
-    await run();
-    // Every link create that was sent, on the client or in a batch.
-    const created = client.calls
-      .filter((c) => c.kind === 'vocabLinks.bulkCreate')
-      .flatMap((c) => c.args[0].map((spec) => spec.tokens[0]));
-    expect(created).toHaveLength(600);
-    expect(new Set(created).size).toBe(600);
-    expect(client.calls.some((c) => c.kind === 'vocabItems.bulkDelete')).toBe(true);
+  it('makes no link of its own and deletes nothing itself', async () => {
+    const client = mergeClient({ moved: 0, duplicates: 0, removed: [] });
+    await applyMerge(client, {}, { survivorId: 'k2', loserIds: ['k1', 'k4'], label: 'Merge' });
+    expect(client.queued).toEqual([['vocabItems.merge', 'k2', ['k1', 'k4']]]);
   });
 });
 
@@ -329,10 +323,10 @@ describe('the previews read what they need', () => {
     expect(forms.reads[0].layers).toEqual(substrate);
   });
 
-  it('a merge reads every token layer, and no field', async () => {
+  it('a merge counts the linked words and reads no document', async () => {
     const client = readClient();
-    await planMerge(client, project(), 'v1', ['k1']);
-    expect(client.reads[0].layers).toEqual([...substrate, 'udL'].sort());
+    expect(await planMerge(client, 'v1', ['k1', 'k2'])).toEqual({ tokens: 6, docs: 2 });
+    expect(client.reads).toEqual([]);
   });
 
   it('a re-analyze reads every field, over one shared entry list', async () => {

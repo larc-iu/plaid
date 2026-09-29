@@ -10,7 +10,8 @@
 //   field      — annotation spans (or morpheme forms) whose value changes;
 //   reanalyze  — every occurrence of one word form, with its current analysis,
 //                so one analysis can be applied to all of them;
-//   merge      — lexicon entries folded into one survivor.
+//   merge      — lexicon entries folded into one survivor (no rows here: the
+//                server moves the links).
 //
 // Match semantics mirror the Search tab (searchQueries.js): `contains` is a
 // case-insensitive literal, `exact` is whole-value equality, `regex` is the
@@ -289,35 +290,6 @@ export function analysisLabel(analysis, itemFormById = new Map()) {
   ].map((id) => itemFormById.get(id) ?? '?');
   if (links.length) parts.push(`links: ${links.join(', ')}`);
   return parts.join(' · ');
-}
-
-// ---- merge ----------------------------------------------------------------
-
-// Vocab links (from documents' embedded link tables) that point at any of
-// `loserIds`. Each is enough to recreate the link on the survivor.
-export function collectLinksToMove(doc, loserIds, survivorId = null) {
-  const losers = new Set(loserIds);
-  const out = [];
-  const wordsOf = (l) => JSON.stringify([...(l.tokens || [])].sort());
-  for (const vocab of Object.values(doc.vocabularies || {})) {
-    // Words the survivor is linked to already (a merge that stopped partway
-    // left them so): moving a loser's link there would link them twice.
-    const survivorHas = new Set(
-      (vocab.vocabLinks || []).filter((l) => l?.vocabItem?.id === survivorId).map(wordsOf),
-    );
-    for (const l of vocab.vocabLinks || []) {
-      if (l?.vocabItem?.id && losers.has(l.vocabItem.id) && !survivorHas.has(wordsOf(l))) {
-        out.push({
-          id: l.id,
-          itemId: l.vocabItem.id,
-          tokens: l.tokens || [],
-          metadata: l.metadata || null,
-          docId: doc.id,
-        });
-      }
-    }
-  }
-  return out;
 }
 
 // ---- shared -----------------------------------------------------------------

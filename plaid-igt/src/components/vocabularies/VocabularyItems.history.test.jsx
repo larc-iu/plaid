@@ -192,7 +192,11 @@ describe('the Entries tab at a past state', () => {
     expect(action.label).toBe('Undo');
     await view.step(() => action.onClick());
     await settle(view);
-    expect(client.vocabItems.delete).toHaveBeenCalledWith('b', 'Delete entry “kai2”');
+    // It names the links it said it would take (none), so a link made since
+    // refuses it.
+    expect(client.vocabItems.delete).toHaveBeenCalledWith('b', 'Delete entry “kai2”', {
+      expectedLinkCount: 0,
+    });
     await view.unmount();
   });
 

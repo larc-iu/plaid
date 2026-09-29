@@ -166,12 +166,9 @@ export const MergePanel = ({ project, client }) => {
 
   const preview = async () => {
     if (!canMerge || !survivor || losers.length === 0) return;
-    const plan = await r.run(
-      'Preview',
-      (onProgress) =>
-        planMerge(client, project, vocabId, losers, onProgress, { survivorId: survivor }),
-      { reset: true },
-    );
+    const plan = await r.run('Preview', () => planMerge(client, vocabId, losers), {
+      reset: true,
+    });
     if (plan) r.setPlan(plan);
   };
 
@@ -188,30 +185,35 @@ export const MergePanel = ({ project, client }) => {
   const doApply = async () => {
     if (!canMerge) return;
     const survivorItem = itemById.get(survivor);
-    // The vocabulary's own references to the losers (senses, reference
-    // fields) follow the links to the survivor. planMergeRefs returns the
-    // whole map each entry ends up with; the write is the patch against what
-    // it carries now, so a vocabulary with a thousand references to a merged
-    // entry repoints them in one request.
-    const refPlans = planMergeRefs(items || [], fields, survivor, losers);
-    const refUpdates = metadataUpdates(
-      refPlans,
-      new Map((items || []).map((it) => [it.id, it.metadata])),
-    );
-    const res = await r.run('Apply', () =>
-      applyMerge(
+    let now = null;
+    const res = await r.run('Apply', async () => {
+      // The vocabulary's own references to the losers (senses, reference
+      // fields) follow the links to the survivor. They are planned against
+      // the entries read now, so a reference made since this list was drawn
+      // follows too. planMergeRefs returns the whole map each entry ends up
+      // with. The write is the patch against what it carries, so a
+      // vocabulary with a thousand references to a merged entry repoints
+      // them in one request.
+      now = (await readVocabulary(client, vocabId)).items || [];
+      const refPlans = planMergeRefs(now, fields, survivor, losers);
+      const refUpdates = metadataUpdates(refPlans, new Map(now.map((it) => [it.id, it.metadata])));
+      const out = await applyMerge(
         client,
-        { links: plan.links, refUpdates },
+        { refUpdates },
         {
           survivorId: survivor,
           loserIds: losers,
           label: `Merge ${plural(losers.length, 'lexicon entry', 'lexicon entries')} into “${survivorItem?.form ?? ''}”`,
         },
-      ),
-    );
+      );
+      return { ...out, refPlans };
+    });
     if (!res) return;
     notifySuccess(
       `${plural(res.entriesRemoved, 'entry', 'entries')} merged. ${plural(res.linksMoved, 'link')} moved to “${survivorItem?.form ?? ''}”.` +
+        (res.duplicatesRemoved
+          ? ` ${plural(res.duplicatesRemoved, 'duplicate link')} removed.`
+          : '') +
         (res.entriesRepointed
           ? ` ${plural(res.entriesRepointed, 'entry', 'entries')} now ${
               res.entriesRepointed === 1 ? 'points' : 'point'
@@ -219,11 +221,11 @@ export const MergePanel = ({ project, client }) => {
           : ''),
       'Merged',
     );
-    // The maps the plan ends at, for the list on screen; the WRITE was the
+    // The maps the plan ends at, for the list on screen. The WRITE was the
     // patch against what each entry carried.
-    const patched = new Map(refPlans.map((p) => [p.id, p.metadata]));
-    setItems((prev) =>
-      (prev || [])
+    const patched = new Map(res.refPlans.map((p) => [p.id, p.metadata]));
+    setItems(
+      now
         .filter((it) => !chosen.has(it.id) || it.id === survivor)
         .map((it) => (patched.has(it.id) ? { ...it, metadata: patched.get(it.id) } : it)),
     );
@@ -372,13 +374,13 @@ export const MergePanel = ({ project, client }) => {
           count={losers.length}
           busy={r.busy}
           onApply={doApply}
-          summary={`${plural(losers.length, 'entry', 'entries')} will be merged into “${itemById.get(survivor)?.form}”: ${plural(plan.links.length, 'link')} in ${plural(new Set(plan.links.map((l) => l.docId)).size, 'document')} move to it, and the merged entries are deleted.`}
+          summary={`${plural(losers.length, 'entry', 'entries')} will be merged into “${itemById.get(survivor)?.form}”: their links move to it, and the merged entries are deleted.`}
         >
           <span className="text-sm">
             {losers.map((id) => itemById.get(id)?.form).join(', ')} →{' '}
             <strong>{itemById.get(survivor)?.form}</strong>:{' '}
-            {plural(plan.links.length, 'linked word or morpheme', 'linked words and morphemes')} in{' '}
-            {plural(new Set(plan.links.map((l) => l.docId)).size, 'document')} will follow.
+            {plural(plan.tokens, 'linked word or morpheme', 'linked words and morphemes')} in{' '}
+            {plural(plan.docs, 'document')} will follow.
           </span>
         </ApplyBar>
       )}
