@@ -400,11 +400,12 @@ def test_a_deleted_entry_never_deletes_a_link_an_analysis_took_with_its_morpheme
     for tool, args in (steps if analysis_first else reversed(steps)):
         assert call_tool(w, tool, args).startswith('Planned'), w.ops
     c = FakeClient()
-    execute_plan(c, w.plan_payload()['ops'], source='s', label='l')
+    execute_plan(c, w.plan_payload()['ops'], source='s', label='l', project=w.project)
     kinds = [(k, p) for k, p in c.calls if k in ('tokens.delete', 'vocab_links.delete', 'vocab_items.delete')]
     at = kinds.index(('tokens.delete', 'm-1b'))
     assert ('vocab_links.delete', 'l-2') not in kinds[at:], kinds
-    assert ('vocab_items.delete', 'vi-erg') in kinds
+    # The fake does not apply the writes, so l-2 is still there to count.
+    assert ('vocab_items.delete', {'args': ('vi-erg',), 'kwargs': {'expected_link_count': 1}}) in kinds
 
 
 @pytest.mark.parametrize('reshape', [

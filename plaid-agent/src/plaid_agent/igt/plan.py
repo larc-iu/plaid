@@ -138,7 +138,7 @@ class Context:
         self.planned_links: List[Dict[str, Any]] = []
         self.entry_idx: Dict[str, int] = {}
         self.respells: Dict[str, List[tuple]] = {}
-        self.pending_deletes: List[str] = []   # entries to delete once their links are gone
+        self.pending_deletes: List[Dict[str, Any]] = []  # delete_entry ops, once their links are gone
         self.pending_merges: List[tuple] = []  # (kept entry, entry merged into it), after the links
         # Ops with writes after the first pass, by the pass that ends them, so
         # each is finished (TrackingBatcher.finish) only once those stand.
@@ -328,8 +328,9 @@ def _apply_delete_entry(ctx: Context, op) -> int:
     # deleted by id. One of them can be gone already: on a morpheme a new
     # analysis or a word change in the same batch deletes, which the server
     # takes with the morpheme and then refuses to delete again. The op still
-    # lists them, for what the plan removes.
-    ctx.pending_deletes.append(op['item_id'])
+    # lists them, for what the plan removes, and for the count the delete
+    # claims (`_entry_links_now`).
+    ctx.pending_deletes.append(op)
     ctx.defer(op)
     return 1
 
@@ -1247,8 +1248,16 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
                 continue
             ctx.gone.add(('vocab_items', remove))
             b.add(lambda batch, k=keep, r=remove: batch.vocab_items.merge(k, [r]))
-        for iid in ctx.pending_deletes:
-            ctx.drop('vocab_items', iid)
+        for op in ctx.pending_deletes:
+            iid = op['item_id']
+            if ('vocab_items', iid) in ctx.gone:
+                continue
+            links = _entry_links_now(client, project, op)
+            if any(link not in set(op.get('links') or []) for link in links):
+                raise PlanError(f'An entry got a link after this plan was read, so it was not '
+                                f'deleted ({op.get("label") or "Delete entry"}).', b.applied, len(ops))
+            ctx.gone.add(('vocab_items', iid))
+            b.add(lambda batch, i=iid, n=len(links): batch.vocab_items.delete(i, expected_link_count=n))
         b.flush()
         for op in ctx.later.get('second', ()):
             b.finish(op)
@@ -1294,6 +1303,24 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
     if notes:
         result['notes'] = notes
     return result
+
+
+def _entry_links_now(client, project, op) -> List[str]:
+    """The links a delete_entry takes, read after the plan's own earlier
+    writes (the first ``len(op['links']) + 1`` of them). Every one must be a
+    link the plan read (``op['links']``), or the delete would take a link
+    someone made since, which the card never showed. The delete then claims
+    their number (``expected_link_count``), so the server refuses it when a
+    link is made in between, or when the entry has links in projects this one
+    cannot see."""
+    if project is None:
+        raise ValueError('delete_entry needs the project')
+    seen = set(op.get('links') or [])
+    res = client.query({'where': [['link', '?l', {'item': op['item_id']}]],
+                        'scope': {'project_ids': [project.id]},
+                        'return': {'group': ['?l.id'], 'aggregates': [['count']]},
+                        'limit': len(seen) + 1})
+    return [row[0] for row in (res or {}).get('results') or []]
 
 
 def create_document(client, project, name: str, text: str, metadata: Dict[str, Any]):

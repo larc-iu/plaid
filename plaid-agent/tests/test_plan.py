@@ -1,9 +1,11 @@
+import pytest
 from plaid_client.testing import as_fragment
 from fixtures import FakeClient, MGLOSS, MORPH_LAYER, TEXT_ID, VOCAB
 from plaid_client import metadata_ops
 
 from plaid_agent.core.plan import Batcher
 from plaid_agent.igt.plan import execute_plan, summarize
+from plaid_agent.igt.project import load_project
 
 
 def test_batcher_flushes_on_budget_and_indexes_globally():
@@ -583,7 +585,7 @@ def test_execute_lexicon_and_document_ops():
            {'kind': 'delete_entry', 'item_id': 'vi-gam', 'links': ['l-9'], 'label': ''},
            {'kind': 'rename_entry', 'item_id': 'vi-gam2', 'form': 'net', 'label': ''},
            {'kind': 'rename_document', 'document_id': 'd1', 'name': 'Text One', 'label': ''}]
-    counts = execute_plan(c, ops, source='s', label='l')
+    counts = execute_plan(c, ops, source='s', label='l', project=load_project(c, 'p1'))
     assert counts == {'merged entries': 1, 'deleted entries': 1, 'renamed entries': 1, 'renamed documents': 1}
     first = c.batches[0]
     # A deleted entry's links go with it (l-9 is not deleted by id).
@@ -591,8 +593,42 @@ def test_execute_lexicon_and_document_ops():
     # Entries are merged and deleted last, in the second batch. The merge is
     # the core's, which moves every link the entry has when it runs, one made
     # since the plan was read included (conc-2026-09-29 D7).
+    # The delete claims the links it read at apply, none here, so a link
+    # made in between is refused rather than deleted with the entry.
     assert c.batches[1] == [('vocab_items.merge', ('vi-ali', ['vi-erg'])),
-                            ('vocab_items.delete', 'vi-gam')]
+                            ('vocab_items.delete', {'args': ('vi-gam',),
+                                                    'kwargs': {'expected_link_count': 0}})]
+
+
+def test_a_deleted_entry_claims_the_links_it_read_at_apply():
+    """conc-2026-09-29 F-PY leftover (data loss): the delete sent no count,
+    so a link made after the plan was read went with the entry. It now reads
+    the entry's links once the plan's own earlier writes stand, and claims
+    their number, which the server checks."""
+    c = FakeClient()
+    ops = [{'kind': 'delete_entry', 'item_id': 'vi-erg', 'links': ['l-2'], 'label': 'Delete entry -di'}]
+    execute_plan(c, ops, source='s', label='l', project=load_project(c, 'p1'))
+    [query] = c.queries
+    assert query['where'] == [['link', '?l', {'item': 'vi-erg'}]]
+    assert query['scope'] == {'project_ids': ['p1']}
+    assert c.batches[-1] == [('vocab_items.delete', {'args': ('vi-erg',),
+                                                     'kwargs': {'expected_link_count': 1}})]
+
+
+def test_a_link_made_since_the_plan_was_read_keeps_the_entry():
+    """The plan read no link to -di. One made since (l-2 in the fixture) is
+    not the plan's to take: the entry is not deleted, the change before it
+    stands, and the plan says why."""
+    from plaid_agent.core.plan import PlanError
+    c = FakeClient()
+    ops = [{'kind': 'rename_document', 'document_id': 'd1', 'name': 'Text One', 'label': 'Rename'},
+           {'kind': 'delete_entry', 'item_id': 'vi-erg', 'links': [], 'label': 'Delete entry -di'}]
+    with pytest.raises(PlanError) as caught:
+        execute_plan(c, ops, source='s', label='l', project=load_project(c, 'p1'))
+    assert str(caught.value) == ('An entry got a link after this plan was read, so it was not '
+                                 'deleted (Delete entry -di).')
+    assert caught.value.applied == 1
+    assert not any(kind == 'vocab_items.delete' for kind, _ in c.calls)
 
 
 def test_an_entity_is_deleted_once_however_many_ops_ask_for_it():
