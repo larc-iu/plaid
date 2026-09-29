@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/useAuth.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
-import { notifyError } from '../../lib/notify.js';
+import { LoadError } from './LoadError.jsx';
 import { Loading } from './Loading.jsx';
 
 /**
@@ -26,6 +26,9 @@ export const ProjectTabPage = ({ title, tabs: Tabs, children }) => {
   const client = getClient();
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  // Bumped by Retry, which reads the project again.
+  const [attempt, setAttempt] = useState(0);
 
   useDocumentTitle(title, project?.name);
 
@@ -36,11 +39,13 @@ export const ProjectTabPage = ({ title, tabs: Tabs, children }) => {
     client.projects
       .get(projectId)
       .then((data) => {
-        if (alive) setProject(data);
+        if (!alive) return;
+        setProject(data);
+        setFailed(false);
       })
       .catch((err) => {
         console.error('Failed to load project:', err);
-        if (alive) notifyError('Failed to load the project');
+        if (alive) setFailed(true);
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -51,12 +56,20 @@ export const ProjectTabPage = ({ title, tabs: Tabs, children }) => {
     // getClient's identity changes on every AuthProvider render but always
     // resolves the same client.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  }, [projectId, attempt]);
+
+  let body = null;
+  if (loading) body = <Loading />;
+  else if (failed && !project) {
+    body = (
+      <LoadError onRetry={() => setAttempt((n) => n + 1)}>Failed to load the project</LoadError>
+    );
+  } else if (project) body = children({ project, projectId, client });
 
   return (
     <div className="w-full">
       <Tabs projectId={projectId} project={project} />
-      {loading ? <Loading /> : project && children({ project, projectId, client })}
+      {body}
     </div>
   );
 };

@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
-import { renderComponent, all } from '../../test/renderComponent.jsx';
+import { renderComponent, all, byText } from '../../test/renderComponent.jsx';
 import { LinkedListPage, CountCell, TimeCell } from './LinkedListPage.jsx';
 
 const ROWS = [
@@ -127,6 +127,35 @@ describe('LinkedListPage', () => {
       </MemoryRouter>,
     );
     expect(container.textContent).toBe('—');
+    await unmount();
+  });
+});
+
+// V5 H5-6: a list that could not be read said "Nothing here" under the error,
+// and stayed that way after the server came back.
+describe('a list that could not be read', () => {
+  it('is not called empty, offers Retry, and reads again when the window is back', async () => {
+    const onRetry = vi.fn();
+    const { container, step, unmount } = await mount({
+      rows: [],
+      error: 'Failed to load the things',
+      onRetry,
+    });
+    expect(container.textContent).toContain('Failed to load the things');
+    expect(container.textContent).not.toContain('Nothing here');
+    await step(() => byText(container, 'button', 'Retry').click());
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    await step(() => window.dispatchEvent(new Event('focus')));
+    await step(() => window.dispatchEvent(new Event('online')));
+    expect(onRetry).toHaveBeenCalledTimes(3);
+    await unmount();
+  });
+
+  it('listens for nothing once it has been read', async () => {
+    const onRetry = vi.fn();
+    const { unmount, step } = await mount({ onRetry });
+    await step(() => window.dispatchEvent(new Event('focus')));
+    expect(onRetry).not.toHaveBeenCalled();
     await unmount();
   });
 });

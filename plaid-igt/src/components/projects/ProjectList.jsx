@@ -133,6 +133,7 @@ export const ProjectList = () => {
       columns={columns}
       loading={loading}
       error={error}
+      onRetry={fetchProjects}
       empty={{
         title: 'No projects yet',
         hint: "Create one with New project, or ask a project's maintainer for an invitation link.",

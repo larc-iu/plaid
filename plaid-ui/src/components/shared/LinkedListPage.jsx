@@ -5,7 +5,7 @@ import { DataTable } from './data-table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
 import { Loading } from './Loading.jsx';
-import { Notice } from './Notice.jsx';
+import { LoadError } from './LoadError.jsx';
 import { PendingCell } from './PendingCell.jsx';
 
 /**
@@ -49,6 +49,10 @@ export const TimeCell = ({ at }) =>
  *
  * `className` is added to the page's outer wrapper. The app shell already pads
  * the page and holds it to the list width, so it takes no width of its own.
+ *
+ * `error` says the list could not be read, and `onRetry` reads it again. A
+ * list that could not be read is not an empty one, so the empty card waits
+ * for a read that worked.
  */
 export const LinkedListPage = ({
   title,
@@ -59,6 +63,7 @@ export const LinkedListPage = ({
   columns,
   loading,
   error,
+  onRetry,
   empty,
   tableId,
   noun,
@@ -100,14 +105,14 @@ export const LinkedListPage = ({
       </div>
 
       {error && (
-        <Notice tone="error" role="alert" className="mb-4">
+        <LoadError onRetry={onRetry} className="mb-4">
           {error}
-        </Notice>
+        </LoadError>
       )}
 
       {loading ? (
         <Loading />
-      ) : rows.length === 0 ? (
+      ) : rows.length === 0 && error ? null : rows.length === 0 ? (
         <Card className="p-10 text-center text-muted-foreground">
           <p className="text-lg">{empty.title}</p>
           <p className="mt-1 text-sm">{empty.hint}</p>

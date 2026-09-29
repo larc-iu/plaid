@@ -160,6 +160,7 @@ export const ProjectListPage = ({ wordLayerId, seedLayerId, newProject, form: Ne
         columns={columns}
         loading={loading}
         error={error}
+        onRetry={fetchProjects}
         empty={{
           title: 'No projects yet',
           hint: `Create one with ${newProject}, or ask a project's maintainer for an invitation link.`,

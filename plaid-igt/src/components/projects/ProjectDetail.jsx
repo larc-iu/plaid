@@ -9,6 +9,7 @@ import { ProjectTabStrip } from '@ui/components/shared/ProjectTabStrip.jsx';
 import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { Notice } from '@ui/components/shared/Notice.jsx';
+import { LoadError } from '@ui/components/shared/LoadError.jsx';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { lazyNamed } from '@ui/lib/lazyNamed';
 
@@ -230,9 +231,9 @@ export const ProjectDetail = () => {
 
   if (error || !project) {
     return (
-      <Notice tone="error" role="alert" className={FORM_PAGE_WIDTH}>
+      <LoadError className={FORM_PAGE_WIDTH} onRetry={() => fetchData(live.current)}>
         {error || 'The requested project could not be found.'}
-      </Notice>
+      </LoadError>
     );
   }
 

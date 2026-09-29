@@ -8,6 +8,7 @@ import { humanizeError } from '../../lib/errors.js';
 import { notifyError, notifySuccess } from '../../lib/notify.js';
 import { Button } from '../ui/button';
 import { DocumentTable } from './DocumentTable.jsx';
+import { LoadError } from './LoadError.jsx';
 import { Loading } from './Loading.jsx';
 import { Notice } from './Notice.jsx';
 
@@ -114,9 +115,9 @@ export const ProjectDocumentsPage = ({
 
   if (!project) {
     return (
-      <Notice tone="error" role="alert">
-        Project not found
-      </Notice>
+      <LoadError onRetry={error ? fetchProjectAndDocuments : undefined}>
+        {error || 'Project not found'}
+      </LoadError>
     );
   }
 
@@ -170,9 +171,9 @@ export const ProjectDocumentsPage = ({
         </div>
 
         {error && (
-          <Notice tone="error" role="alert" className="mb-4">
+          <LoadError onRetry={fetchProjectAndDocuments} className="mb-4">
             {error}
-          </Notice>
+          </LoadError>
         )}
 
         <DocumentTable
