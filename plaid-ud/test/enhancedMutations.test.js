@@ -352,21 +352,33 @@ test('a project with no enhanced layer refuses an enhanced edge', async () => {
   assert.deepEqual(log, []);
 });
 
-test('a sentence split deletes the enhanced edges it cuts as well as the basic ones', async () => {
+test('a sentence split asks the server to drop the edges it cuts, basic and enhanced, and takes them off the screen', async () => {
   const { client } = relationClient();
   const deleted = [];
-  client.tokens = { split: async () => ({ id: 'sent-right' }) };
+  const splits = [];
+  client.tokens = {
+    split: async (...args) => {
+      splits.push(args);
+      return { id: 'sent-right' };
+    },
+  };
   client.relations.delete = async (id) => deleted.push(id);
   const raw = rawDocFromConllu(INPUT, 'e', { enhanced: true });
   const doc = new ConlluDocument({ raw, client });
   const lemma = (v) => doc.layerInfo.lemmaLayer.spans.find((s) => s.value === v).id;
-  const extra = await doc.createEnhancedRelation(lemma('leave'), lemma('she'), 'nsubj');
+  await doc.createEnhancedRelation(lemma('leave'), lemma('she'), 'nsubj');
 
   // Split before "and": she | came  //  and left home.
   const and = doc.layerInfo.wordTokenLayer.tokens[2];
-  await doc.toggleSentenceBoundary(and.begin);
+  assert.equal(await doc.toggleSentenceBoundary(and.begin), true);
 
-  assert.ok(deleted.includes(extra), 'the enhanced edge leave>she crossed the boundary');
+  // One split, naming both dependency layers. The server drops what crosses,
+  // from what it has stored, in the split's own transaction.
+  assert.equal(splits.length, 1);
+  assert.deepEqual(splits[0][3], {
+    dropCrossingRelations: [doc.layerInfo.relationLayer.id, doc.layerInfo.enhancedRelationLayer.id],
+  });
+  assert.deepEqual(deleted, []);
   assert.deepEqual(doc.layerInfo.enhancedRelationLayer.relations, []);
   // The basic conj(come, leave) crossed too, as it always has.
   assert.equal(

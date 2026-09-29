@@ -5,10 +5,8 @@ import { Textarea } from '@ui/components/ui/textarea';
 import { cpSlice } from '@larc-iu/plaid-client';
 import { mergeText } from '@ui/lib/textMerge.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import {
-  hasForeignSubstrateParticipants,
-  foreignAnnotationLossForWord,
-} from '../../utils/udLayerUtils.js';
+import { plural } from '@ui/lib/plural.js';
+import { containsToken } from '../../utils/udLayerUtils.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
@@ -168,16 +166,9 @@ export const TextEditor = () => {
 
   const handleClearTokens = async () => {
     if (!doc) return;
-    // Tokens may belong to a substrate shared with another app (e.g. IGT). The
-    // clear cascades into that app's tokens/annotations, so warn explicitly.
-    const shared = hasForeignSubstrateParticipants(doc.layerInfo);
     const ok = await confirm({
       title: 'Clear all tokens?',
-      description: shared
-        ? 'These tokens are shared with another app on this project, such as interlinear ' +
-          "glossing. Clearing them here also deletes that app's annotations on this " +
-          'document. This cannot be undone.'
-        : 'This cannot be undone.',
+      description: 'This cannot be undone.',
       confirmLabel: 'Clear',
       destructive: true,
     });
@@ -190,41 +181,56 @@ export const TextEditor = () => {
     await doc.createWord(begin, end, textContent);
   };
 
-  // Deleting a word cascades into layers nested under the shared word layer —
-  // including other apps' (e.g. IGT's morphemes with their glosses and vocab
-  // links), none of which are visible here. Confirm ONLY when such foreign
-  // material would actually die; UD-only projects and unannotated words keep
-  // the instant delete. (Sentence merges don't need this: the server reparents
-  // the dying token's spans to the survivor. Word RESIZING was removed
-  // outright — a resize keeps token identity while changing what it means, so
-  // annotations silently drift onto different text; boundary fixes are now
-  // delete + re-create, which routes through this warning.)
+  // What goes with a token's words, as the question before it goes names it.
+  // Null when nothing does.
+  const lossOf = (word) => {
+    const { annotations, relations } = doc.annotationLossForWord(word);
+    const parts = [
+      annotations > 0 && `${annotations} ${plural(annotations, 'annotation')}`,
+      relations > 0 && `${relations} ${plural(relations, 'relation')}`,
+    ].filter(Boolean);
+    if (parts.length === 0) return null;
+    const surface = cpSlice(serverText, word.begin, word.end);
+    return `Deletes ${parts.join(' and ')} on “${surface}”.`;
+  };
+
+  // A token whose words carry annotations asks before it goes. The server
+  // takes its words with everything on them.
   const handleWordDelete = async (wordId) => {
     if (!doc) return;
-    const info = doc.layerInfo;
-    const word = info.wordTokenLayer?.tokens?.find((t) => t.id === wordId);
-    const { spans, links } = foreignAnnotationLossForWord(info, word);
-    if (spans + links === 0) return doc.deleteWord(wordId);
-    const surface = word ? cpSlice(textContent, word.begin, word.end) : 'this token';
-    const losses = [
-      spans > 0 && `${spans} annotation${spans === 1 ? '' : 's'}`,
-      links > 0 && `${links} vocabulary link${links === 1 ? '' : 's'}`,
-    ]
-      .filter(Boolean)
-      .join(' and ');
-    const ok = await confirm({
-      title: 'Delete token?',
-      description:
-        `Deleting “${surface}” also deletes ${losses} from another app on this ` +
-        'project, such as interlinear glossing, which are not visible in this editor. ' +
-        'This cannot be undone.',
-      confirmLabel: 'Delete',
-      destructive: true,
-    });
-    if (ok) doc.deleteWord(wordId);
+    const word = doc.layerInfo.wordTokenLayer?.tokens?.find((t) => t.id === wordId);
+    const loss = word ? lossOf(word) : null;
+    if (loss) {
+      const ok = await confirm({
+        title: 'Delete token?',
+        description: loss,
+        confirmLabel: 'Delete',
+        destructive: true,
+      });
+      if (!ok) return;
+    }
+    doc.deleteWord(wordId);
   };
   const handleSentenceBoundaryToggle = (charPos) => doc?.toggleSentenceBoundary(charPos);
-  const handleSetWordMorphemes = (word, forms) => doc?.setWordMorphemes(word, forms);
+  // As many words as before respells them and keeps what is on them. Another
+  // count replaces them, and asks first when that deletes annotations.
+  const handleSetWordMorphemes = async (word, forms) => {
+    if (!doc) return;
+    const count = (doc.layerInfo.morphemeTokenLayer?.tokens || []).filter((m) =>
+      containsToken(word, m),
+    ).length;
+    const loss = count === forms.length ? null : lossOf(word);
+    if (loss) {
+      const ok = await confirm({
+        title: 'Change words?',
+        description: loss,
+        confirmLabel: 'Change',
+        destructive: true,
+      });
+      if (!ok) return;
+    }
+    await doc.setWordMorphemes(word, forms);
+  };
 
   const layerInfo = doc.layerInfo;
   const sentenceTokens = layerInfo.sentenceTokenLayer?.tokens || [];

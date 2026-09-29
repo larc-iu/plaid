@@ -12,6 +12,7 @@ import {
   isReservedMetadataKey,
   PRESERVE_ON_SPLIT_KEY,
   PROVENANCE_KEYS,
+  stampInferred,
   writerPolicy,
 } from '@larc-iu/plaid-client';
 // By its real path rather than through `@ui`: this file is loaded by the
@@ -47,6 +48,10 @@ import { buildConllu, conlluLosses } from './conlluSerialize.js';
 import { ensureEnhancedRelationLayer } from './udProjectSetup.js';
 import { basicTokenize, newlineSentenceRanges } from '../utils/basicTokenize.js';
 import { normalizeFeature, featureRefusal } from '../utils/feats.js';
+
+// The lemma a new word starts with is a copy of its form, made by a rule and
+// by no person, so a parser may replace it (provenance write contract rule 1).
+const LEMMA_FROM_FORM = stampInferred('rule:lemma-from-form');
 
 // What a text save whose draft cannot be put onto the stored text is refused with.
 const TEXT_CONFLICT = 'The same passage was changed elsewhere. Discard changes and redo the edit.';
@@ -308,6 +313,7 @@ export class ConlluDocument extends DocumentModel {
           id: pendingId(),
           tokens: [m.id],
           value: cpSlice(body, wordRanges[i][0], wordRanges[i][1]),
+          metadata: LEMMA_FROM_FORM,
         }))
       : [];
     this._applyRawPatch((next, infoNext) => {
@@ -347,6 +353,7 @@ export class ConlluDocument extends DocumentModel {
             spanLayerId: lemmaLayer.id,
             tokens: [ids.get(span.tokens[0])],
             value: span.value,
+            metadata: span.metadata,
           })),
         );
         record(lemmas, createdIds(created));
@@ -432,13 +439,14 @@ export class ConlluDocument extends DocumentModel {
     if (!containing) return false;
     if (!this._canWrite(label)) return false;
 
-    // Any dependency relation whose endpoints land on opposite sides of
-    // charPos would cross the new sentence boundary; delete those in the
-    // same atomic batch as the split so a relation never spans two
-    // sentences. (UD relations are sentence-internal — an app-level
-    // invariant the server doesn't model.)
+    // A dependency relation whose endpoints land on opposite sides of charPos
+    // would cross the new sentence boundary (UD relations are
+    // sentence-internal). The split drops them in its own transaction, read
+    // from what is stored, so one drawn since this copy was read goes too.
+    // Here they only leave the screen.
     const crossing = relationsCrossing(this.layerInfo, charPos);
     const removedRelIds = new Set(crossing);
+    const relationLayerIds = dependencyRelationLayers(this.layerInfo).map((l) => l.id);
     // The split keeps the left half's identity; the right half is new.
     const rightId = pendingId();
 
@@ -457,11 +465,10 @@ export class ConlluDocument extends DocumentModel {
     });
 
     return this._queueWrite(label, async () => {
-      const res = await this._client.batched(async (b) => {
-        b.tokens.split(settledId(containing.id), charPos);
-        crossing.forEach((id) => b.relations.delete(settledId(id)));
+      const res = await this._client.tokens.split(settledId(containing.id), charPos, undefined, {
+        dropCrossingRelations: relationLayerIds,
       });
-      this._settle(new Map([[rightId, createdId(res[0])]]));
+      this._settle(new Map([[rightId, createdId(res)]]));
     });
   }
 
@@ -651,8 +658,11 @@ export class ConlluDocument extends DocumentModel {
   // FULL word extent (overlap allowed); a Form span carries each morpheme's
   // surface form.
   //
-  // The old morphemes go with everything on them, as the server's cascade
-  // takes them, and the new ones show under pending ids.
+  // As many forms as the token has words respells them: each word keeps its
+  // token and everything on it, and only its Form is written
+  // (`_respellWords`). A different count replaces them: the old morphemes go
+  // with everything on them, as the server's cascade takes them, and the new
+  // ones show under pending ids. `annotationLossForWord` says what goes.
   //
   // Two-batch atomicity: (1) delete-old + create-new morphemes in one
   // atomic batch. (2) Form + Lemma spans for the new morphemes in a second
@@ -690,6 +700,10 @@ export class ConlluDocument extends DocumentModel {
     }
 
     const existing = morphemeTokens.filter((m) => containsToken(word, m));
+    if (existing.length === cleanForms.length) {
+      const ordered = [...existing].sort((a, b) => (a.precedence ?? 0) - (b.precedence ?? 0));
+      return this._respellWords(word, ordered, cleanForms, wordSubstring, wordFormOps, label);
+    }
     const removedMorphIds = new Set(existing.map((m) => m.id));
     const removedLemmaSpanIds = new Set(
       (lemmaLayer?.spans || [])
@@ -709,7 +723,14 @@ export class ConlluDocument extends DocumentModel {
       if (formLayer?.id && (isMwt || form !== wordSubstring)) {
         formSpans.push({ id: pendingId(), tokens: [m.id], value: form });
       }
-      if (lemmaLayer?.id) lemmaSpans.push({ id: pendingId(), tokens: [m.id], value: form });
+      if (lemmaLayer?.id) {
+        lemmaSpans.push({
+          id: pendingId(),
+          tokens: [m.id],
+          value: form,
+          metadata: LEMMA_FROM_FORM,
+        });
+      }
     });
 
     this._applyRawPatch((next, info) => {
@@ -773,6 +794,7 @@ export class ConlluDocument extends DocumentModel {
           spanLayerId: spanLayer.id,
           tokens: [ids.get(s.tokens[0])],
           value: s.value,
+          ...(s.metadata ? { metadata: s.metadata } : {}),
         }));
       if (formSpans.length || lemmaSpans.length) {
         const spanResults = await this._client.batched(async (b) => {
@@ -787,6 +809,125 @@ export class ConlluDocument extends DocumentModel {
       }
       this._settle(ids);
     });
+  }
+
+  // The Form writes that respell a token's words in place, as many forms as
+  // it has words, in order of precedence. A word whose form is the token's
+  // own text carries no Form span (see setWordMorphemes). Nothing else on the
+  // words is touched.
+  _respellWords(word, morphemes, forms, wordSubstring, wordFormOps, label) {
+    const { formLayer } = this.layerInfo;
+    const isMwt = forms.length > 1;
+    const plan = [];
+    morphemes.forEach((m, i) => {
+      const want = isMwt || forms[i] !== wordSubstring ? forms[i] : null;
+      const span = (formLayer?.spans || []).find(
+        (s) => Array.isArray(s.tokens) && s.tokens.includes(m.id),
+      );
+      if (span && want == null) plan.push({ kind: 'delete', span });
+      else if (span && span.value !== want) {
+        plan.push({
+          kind: 'update',
+          span,
+          value: want,
+          stamp: this.writer.editStamp(span.metadata),
+        });
+      } else if (!span && want != null && formLayer?.id) {
+        const stamp = this.writer.createStamp;
+        plan.push({ kind: 'create', morpheme: m, id: pendingId(), value: want, stamp });
+      }
+    });
+    if (plan.length === 0 && !wordFormOps) return true;
+
+    this._applyRawPatch((next, info) => {
+      if (wordFormOps) {
+        const w = (info.wordTokenLayer?.tokens || []).find((t) => t.id === settledId(word.id));
+        if (w) w.metadata = applyMetadataOps(w.metadata, wordFormOps);
+      }
+      const layer = info.formLayer;
+      if (!layer) return;
+      if (!Array.isArray(layer.spans)) layer.spans = [];
+      for (const step of plan) {
+        if (step.kind === 'delete') {
+          layer.spans = layer.spans.filter((s) => s.id !== step.span.id);
+        } else if (step.kind === 'update') {
+          const s = layer.spans.find((x) => x.id === step.span.id);
+          if (!s) continue;
+          s.value = step.value;
+          if (step.stamp) s.metadata = mergeMetadata(s.metadata, step.stamp);
+        } else {
+          layer.spans.push({
+            id: step.id,
+            tokens: [step.morpheme.id],
+            value: step.value,
+            ...(step.stamp ? { metadata: step.stamp } : {}),
+          });
+        }
+      }
+    });
+
+    return this._queueWrite(label, async () => {
+      const creates = [];
+      let at = 0;
+      const results = await this._client.batched(async (b) => {
+        if (wordFormOps) {
+          b.tokens.patchMetadata(settledId(word.id), wordFormOps);
+          at += 1;
+        }
+        for (const step of plan) {
+          if (step.kind === 'delete') {
+            b.spans.delete(settledId(step.span.id));
+            at += 1;
+          } else if (step.kind === 'update') {
+            const id = settledId(step.span.id);
+            b.spans.update(id, step.value);
+            at += 1;
+            if (step.stamp) {
+              b.spans.patchMetadata(id, metadataOps(step.stamp));
+              at += 1;
+            }
+          } else {
+            creates.push([step.id, at]);
+            b.spans.create(
+              formLayer.id,
+              [settledId(step.morpheme.id)],
+              step.value,
+              step.stamp || undefined,
+            );
+            at += 1;
+          }
+        }
+      });
+      this._settle(new Map(creates.map(([id, i]) => [id, createdId(results[i])])));
+    });
+  }
+
+  // What replacing a token's words deletes with them, as the Text Editor
+  // asks before it does: the annotations on the words (a lemma that only
+  // repeats the word's form is not counted) and the dependency relations
+  // attached to them. `{ annotations, relations }`.
+  annotationLossForWord(word) {
+    const info = this.layerInfo;
+    const morphemes = (info.morphemeTokenLayer?.tokens || []).filter((m) => containsToken(word, m));
+    const ids = new Set(morphemes.map((m) => m.id));
+    const on = (layer) =>
+      (layer?.spans || []).filter(
+        (s) => Array.isArray(s.tokens) && s.tokens.some((t) => ids.has(t)),
+      );
+    const forms = new Map(on(info.formLayer).map((s) => [s.tokens[0], s.value]));
+    const surface = cpSlice(this.body, word.begin, word.end);
+    const lemmas = on(info.lemmaLayer);
+    const annotations =
+      lemmas.filter((s) => s.value != null && s.value !== (forms.get(s.tokens[0]) ?? surface))
+        .length +
+      on(info.uposLayer).length +
+      on(info.xposLayer).length +
+      on(info.featuresLayer).length;
+    const lemmaIds = new Set(lemmas.map((s) => s.id));
+    const relations = dependencyRelationLayers(info)
+      .flatMap((layer) => layer.relations || [])
+      .filter((r) => !isSuppressor(r) && (lemmaIds.has(r.source) || lemmaIds.has(r.target))).length;
+    return { annotations, relations };
   }
 
   // Delete a word token (cascades its morphemes and their spans + relations
@@ -871,7 +1012,12 @@ export class ConlluDocument extends DocumentModel {
     const wordRow = { id: pendingId(), begin, end };
     const morpheme = { id: pendingId(), begin, end };
     const lemma = lemmaLayer?.id
-      ? { id: pendingId(), tokens: [morpheme.id], value: cpSlice(textContent, begin, end) }
+      ? {
+          id: pendingId(),
+          tokens: [morpheme.id],
+          value: cpSlice(textContent, begin, end),
+          metadata: LEMMA_FROM_FORM,
+        }
       : null;
 
     this._applyRawPatch((next, infoNext) => {
@@ -907,7 +1053,12 @@ export class ConlluDocument extends DocumentModel {
       // than hiding it.
       if (lemma && morphemeId) {
         const lr = await this._client.spans.bulkCreate([
-          { spanLayerId: lemmaLayer.id, tokens: [morphemeId], value: lemma.value },
+          {
+            spanLayerId: lemmaLayer.id,
+            tokens: [morphemeId],
+            value: lemma.value,
+            metadata: lemma.metadata,
+          },
         ]);
         ids.set(lemma.id, createdIds(lr)[0]);
       }
