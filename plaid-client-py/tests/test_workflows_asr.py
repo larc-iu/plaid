@@ -73,7 +73,14 @@ class _FakeClient:
     a batch that ABORTS on an exception writes nothing at all, and a write made
     on the CLIENT goes out at once whatever batches are open."""
 
+    # strict mode, as the real client keeps it
+    strict_mode_document_id = None
+
+    def enter_strict_mode(self, document_id):
+        self.strict_mode_document_id = document_id
+
     def __init__(self, documents):
+        self.document_versions = {}
         self._documents = list(documents)
         self.token = 'tok'
         self.base_url = 'http://plaid.test'
@@ -207,7 +214,8 @@ def test_the_invariants_are_checked_against_the_document_the_writes_left(capsys)
     before = _document('')
     after = _document('hello there', sentences=[(0, 8), (4, 11)],
                       align=[(0, 11, 0.0, 1.5)])
-    client = _FakeClient([before, after])
+    # Read once for the version once the lock is held, once by the run.
+    client = _FakeClient([before, before, after])
     _run(client)
     printed = capsys.readouterr().out
     assert 'Sentence partitioning invariant violated' in printed
@@ -219,6 +227,6 @@ def test_the_invariants_are_checked_against_the_document_the_writes_left(capsys)
 def test_a_partition_the_run_left_whole_says_nothing(capsys):
     before = _document('')
     after = _document('hello there', sentences=[(0, 11)], align=[(0, 11, 0.0, 1.5)])
-    client = _FakeClient([before, after])
+    client = _FakeClient([before, before, after])
     _run(client)
     assert 'invariant violated' not in capsys.readouterr().out

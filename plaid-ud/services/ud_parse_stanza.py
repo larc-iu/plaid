@@ -3,7 +3,8 @@ import stanza
 import traceback
 from plaid_client import (BaseService, TASKS, Param, ROLES, find_by_role,
                           stamp_inferred, is_protected, service_source)
-from plaid_client.service import machine_detail, progress_heartbeat, service_version
+from plaid_client.service import (locked_for_writes, machine_detail, progress_heartbeat,
+                                  service_version)
 from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.requester import Requester, requester_of
 
@@ -677,14 +678,16 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
             if del_ids:
                 log(f"  Deleting {del_label}…")
                 progress.report(ParseProgress.WRITE, 0.0, "Clearing the previous annotations…")
-                client.tokens.bulk_delete(del_ids)
-            # Combine the creations into a single atomic batch (server runs them
-            # sequentially, so child layers see the parents from earlier ops in
-            # the same batch: those creates don't reference the *ids* produced
-            # earlier in the batch, only the pre-existing layer ids). Order is
-            # top-down (sentences → words → morphemes): a child without its
-            # parent on the server is a 400. In substrate-preserving mode the
-            # sentence/word op lists are empty and only syntactic words land.
+            # The delete and the creations go in ONE atomic batch, the delete
+            # first: a delete sent alone and a batch that then failed left the
+            # document with its words gone and nothing in their place. The
+            # server runs a batch's ops in order, so child layers see the
+            # parents from earlier ops in the same batch (those creates don't
+            # reference the *ids* produced earlier in the batch, only the
+            # pre-existing layer ids). Order is top-down (sentences → words →
+            # morphemes): a child without its parent on the server is a 400. In
+            # substrate-preserving mode the sentence/word op lists are empty and
+            # only syntactic words land.
             log(f"Building token ops: {len(sentence_ops)} sentences, "
                 f"{len(word_ops)} words, {len(morpheme_ops)} morphemes")
             progress.report(ParseProgress.WRITE, 0.15,
@@ -692,6 +695,9 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
                             f"tokens…")
             order = []  # which kind sits at each index in the batch results
             with client.batched() as token_batch:
+                if del_ids:
+                    token_batch.tokens.bulk_delete(del_ids)
+                    order.append("deleted")
                 if sentence_ops:
                     token_batch.tokens.bulk_create(sentence_ops)
                     order.append("sentences")
@@ -937,7 +943,7 @@ class StanzaParserService(BaseService):
         # writes begin and leaves the document untouched.
         with self.client.operation(requester.label(f"Stanza UD parse ({language})"),
                                    kind='service-run', ref=service_source(self.service_id)):
-            with self.client.documents.locked(document_id):
+            with locked_for_writes(self.client, document_id):
                 summary = parse_document(self.pipeline_provider, self.client, document_id,
                                          language=language, overwrite=overwrite,
                                          helper=response_helper, requester=requester)

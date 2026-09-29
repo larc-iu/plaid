@@ -72,14 +72,55 @@ test("the scrub takes an internal URL out of an API failure", () => {
   err.url = "http://plaid.internal:8085/api/v1/spans";
   assert.equal(requesterMessage(err), "HTTP 400 Span value is required");
 
-  const timedOut = new Error(
-    "Request timed out at http://plaid.internal:8085/api/v1/batch",
-  );
-  timedOut.status = 0;
-  timedOut.url = "http://plaid.internal:8085/api/v1/batch";
+});
+
+const networkError = (method, path, cause) => {
+  const url = `http://plaid.internal:8085${path}`;
+  const error = new Error(`Network error: ${cause?.message} at ${url}`);
+  error.status = 0;
+  error.url = url;
+  error.method = method;
+  error.originalError = cause;
+  return error;
+};
+
+test("a write whose answer was lost may have been saved", () => {
+  const reset = Object.assign(new TypeError("fetch failed"), {
+    cause: Object.assign(new Error("other side closed"), {
+      code: "UND_ERR_SOCKET",
+    }),
+  });
+  const said =
+    "The Plaid server did not answer. This change may or may not have been saved.";
+  assert.equal(requesterMessage(networkError("POST", "/api/v1/batch", reset)), said);
+  const timedOut = Object.assign(new Error("timed out"), { name: "TimeoutError" });
   assert.equal(
-    requesterMessage(timedOut),
+    requesterMessage(networkError("PUT", "/api/v1/spans/s1", timedOut)),
+    said,
+  );
+});
+
+test("a connection that never opened could not be reached", () => {
+  const refused = Object.assign(new TypeError("fetch failed"), {
+    cause: Object.assign(new Error("connect ECONNREFUSED"), {
+      code: "ECONNREFUSED",
+    }),
+  });
+  assert.equal(
+    requesterMessage(networkError("POST", "/api/v1/batch", refused)),
     "The Plaid server could not be reached.",
+  );
+});
+
+test("a read that got no answer saved nothing either way", () => {
+  const timedOut = Object.assign(new Error("timed out"), { name: "TimeoutError" });
+  assert.equal(
+    requesterMessage(networkError("GET", "/api/v1/documents/d1", timedOut)),
+    "The Plaid server did not answer.",
+  );
+  assert.equal(
+    requesterMessage(networkError("POST", "/api/v1/query", timedOut)),
+    "The Plaid server did not answer.",
   );
 });
 

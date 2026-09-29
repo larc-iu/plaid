@@ -48,7 +48,7 @@ import unicodedata
 from typing import Any, Dict, List, Optional
 
 from plaid_client import BaseService, Param, TASKS, service_source
-from plaid_client.service import check_unchanged
+from plaid_client.service import locked_for_writes
 from plaid_client.workflows.requester import REQUESTED_BY, requester_of
 from plaid_client.workflows.umr import (UMR_NAMESPACE, Graph, file_numbers, group_of,
                                         penman_nodes, read_document, resolve_layers,
@@ -793,11 +793,10 @@ class UmrAncastService(BaseService):
         with response_helper.critical():
             with self.client.operation(requester.label(f'AnCast adjudication against {other_name}'),
                                        kind='service-run', ref=service_source(self.service_id)):
-                with self.client.documents.locked(document_id):
-                    # The scores describe the document as it was read. If it has
-                    # moved since, the report would be a claim about a state
-                    # that is gone.
-                    check_unchanged(self.client, document_id, read_version)
+                # The scores describe the document as it was read. If it has
+                # moved since, the report would be a claim about a state
+                # that is gone.
+                with locked_for_writes(self.client, document_id, read_version):
                     self._write(document_id, report, [s.id for s in this_graph.sentences])
 
             response_helper.progress(100, notice['title'])

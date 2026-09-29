@@ -296,6 +296,10 @@ def test_an_already_tokenized_document_keeps_its_substrate():
 
     # The old syntactic words go, the substrate stays.
     assert service.client.payloads('tokens.bulk_delete') == [['m0', 'm1', 'm2']]
+    # In the same atomic batch as the new ones (conc-2026-09-29 V8-S2): a
+    # delete sent alone, then a failed batch, left the document with no words.
+    [first, *_] = service.client.batches
+    assert [kind for kind, _ in first] == ['tokens.bulk_delete', 'tokens.bulk_create']
     assert _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'sentL') == []
     assert _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'wordL') == []
     morphemes = _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'morphL')
@@ -339,7 +343,10 @@ def test_the_lock_is_taken_before_the_document_is_read_and_released_after_the_wr
               if k.startswith(('tokens.', 'spans.', 'relations.'))]
     assert kinds.index('lock') < min(writes)
     assert kinds.index('unlock') > max(writes)
-    assert kinds.count('read') == 1, 'one read, and it is the one the plan uses'
+    # One read for the version the writes claim, one the plan uses, both
+    # under the lock.
+    assert kinds.count('read') == 2
+    assert [doc for _, doc, _ in service.client.stamps] == ['d1'] * len(writes)
 
 
 def test_the_lock_is_released_when_a_write_fails():
@@ -354,6 +361,19 @@ def test_the_lock_is_released_when_a_write_fails():
     # went in an earlier batch did.
     assert service.client.payloads('spans.bulk_create') == []
     assert service.client.payloads('relations.bulk_create') == []
+
+
+def test_a_failed_token_batch_leaves_the_old_words_in_place():
+    doc = _document(sentences=[(0, 13)], words=[(0, 3), (4, 7), (8, 13)],
+                    morphemes=[('m0', 0, 3), ('m1', 4, 7), ('m2', 8, 13)])
+    service = _service(documents=[doc], fails={'tokens.bulk_create': PlaidAPIError(
+        'Network error: reset', status=0, url='http://plaid.internal:8085/api/v1/batch',
+        method='POST')})
+    helper = servicetest.run(service, REQUEST)
+
+    assert service.client.writes == []
+    assert helper.errors == ['Stanza parser: The Plaid server did not answer. '
+                             'This change may or may not have been saved.']
 
 
 def test_a_document_someone_else_holds_is_refused_without_writing():

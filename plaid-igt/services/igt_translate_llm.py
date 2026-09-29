@@ -32,7 +32,7 @@ import argparse
 from typing import Dict, Optional
 
 from plaid_client import BaseService, TASKS, Param, service_source
-from plaid_client.service import check_unchanged, machine_detail, requester_message
+from plaid_client.service import locked_for_writes, machine_detail, requester_message
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.llm import (NOT_ASKED, ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
@@ -337,12 +337,11 @@ class LLMTranslateService(BaseService):
         with response_helper.critical():
             with self.client.operation(requester.label(f'LLM translation ({len(plans)} sentences)'),
                                        kind='service-run', ref=service_source(self.service_id)):
-                with self.client.documents.locked(document_id):
-                    # The plans were made from a read taken before the model
-                    # ran. If someone has edited the document since, both the
-                    # write contract they were selected under and the span ids
-                    # they point at are out of date, so nothing is written.
-                    check_unchanged(self.client, document_id, read_version)
+                # The plans were made from a read taken before the model
+                # ran. If someone has edited the document since, both the
+                # write contract they were selected under and the span ids
+                # they point at are out of date, so nothing is written.
+                with locked_for_writes(self.client, document_id, read_version):
                     for start in range(0, len(plans), WRITE_CHUNK // 2):
                         with self.client.batched() as b:
                             for s, span, text in plans[start:start + WRITE_CHUNK // 2]:

@@ -268,8 +268,8 @@ def test_the_writes_are_planned_from_a_read_taken_under_the_lock(monkeypatch):
     reads = [i for i, k in enumerate(kinds) if k == 'read']
     lock = kinds.index('lock')
     assert reads[0] < lock, 'the media-URL read comes first'
-    assert len([i for i in reads if i > lock]) == 2, \
-        'the planning read and the read-back both happen under the lock'
+    assert len([i for i in reads if i > lock]) == 3, \
+        'the version read, the planning read and the read-back all happen under the lock'
     assert kinds.index('unlock') > reads[-1]
 
 

@@ -10,7 +10,7 @@ import logging
 from typing import List, Dict, Optional
 
 from plaid_client.provenance import stamp_inferred, is_protected
-from plaid_client.service import check_unchanged
+from plaid_client.service import check_unchanged, locked_for_writes
 from plaid_client.workflows.messages import setup_incomplete
 
 from .tokenizer_model import TokenSpan
@@ -53,7 +53,7 @@ class TokenProcessor:
         the requester an error and then, from the caller's unconditional
         ``complete``, a success over the top of it.
         """
-        with client.documents.locked(document_id):
+        with locked_for_writes(client, document_id, expect_version):
             return self._process_tokens_locked(
                 client, document_id, sentences, words,
                 primary_token_layer_id, sentence_layer_id, response_helper,

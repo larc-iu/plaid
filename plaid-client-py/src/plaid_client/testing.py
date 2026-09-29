@@ -327,6 +327,7 @@ class _Batch:
 
     def record(self, kind, payload=None, result=None):
         self.check_open()
+        self.client.note_stamp(kind)
         self.queued.append((kind, payload))
         self.results.append(result if result is not None else {'body': {}})
 
@@ -743,6 +744,13 @@ class FakeClient:
         #: {vid: [audit entries]} for ``vocab_layers.audit``
         self.vocab_audit = {vid: list(entries) for vid, entries in (vocab_audit or {}).items()}
         self.vocab_restore_summary = vocab_restore_summary
+        #: strict mode, as the real client keeps it: the document every write
+        #: is stamped for, and the versions it has learned
+        self.strict_mode_document_id = None
+        self.document_versions = {}
+        #: ``(kind, document id, version)`` for each write asked for while
+        #: strict mode was on, queued or not, in order: the stamp it carried
+        self.stamps = []
         self._ids = itertools.count(1)
         self._operation_depth = 0
         self.documents = FakeClient._Documents(self)
@@ -769,7 +777,21 @@ class FakeClient:
             raise error
 
     def record(self, kind, payload=None, result=None):
+        self.note_stamp(kind)
         self.calls.append((kind, payload))
+
+    def note_stamp(self, kind):
+        """Remember the strict-mode stamp a write carries, as the real client
+        puts it on the request when the write is made (queued or not)."""
+        if self.strict_mode_document_id and kind not in ('lock', 'unlock', 'read', 'operation'):
+            doc = self.strict_mode_document_id
+            self.stamps.append((kind, doc, self.document_versions.get(doc)))
+
+    def enter_strict_mode(self, document_id):
+        self.strict_mode_document_id = document_id
+
+    def exit_strict_mode(self):
+        self.strict_mode_document_id = None
 
     @property
     def kinds(self):

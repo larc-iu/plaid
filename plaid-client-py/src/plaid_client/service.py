@@ -105,6 +105,40 @@ def check_unchanged(client, document_id, version, current=None) -> None:
         raise ValueError('The document changed while this run was working. Run it again.')
 
 
+@contextlib.contextmanager
+def locked_for_writes(client, document_id, read_version=None):
+    """Hold ``document_id`` for a run's writes, and make every write carry the
+    version the document has once it is held (strict mode).
+
+    The lock keeps other people out while the block runs. The version is what
+    keeps out a write of this run's own that arrives LATE: a batch the client
+    gave up on (a timeout, a lost answer) can still land after the block has
+    released the lock and someone has edited the document, and it then writes
+    offsets and ids planned against text that is gone. Stamped, it is refused
+    with a 409 instead. Each write's answer moves the stamp on, so the run's
+    own writes follow one another.
+
+    ``read_version`` is the version the run's plans were made from, when the
+    run read the document before taking the lock (a model call, say). A
+    document that has moved since is refused before anything is written, as
+    :func:`check_unchanged` does.
+
+    Yields the :class:`~plaid_client.document_lock.DocumentLock`. Strict mode
+    is put back as it was on the way out.
+    """
+    with client.documents.locked(document_id) as lock:
+        current = (client.documents.get(document_id) or {}).get('version')
+        check_unchanged(client, document_id, read_version, current=current)
+        previous = client.strict_mode_document_id
+        if current:
+            client.document_versions[document_id] = current
+        client.enter_strict_mode(document_id)
+        try:
+            yield lock
+        finally:
+            client.strict_mode_document_id = previous
+
+
 def _client_version() -> str:
     try:
         return importlib.metadata.version('larc-plaid-client')

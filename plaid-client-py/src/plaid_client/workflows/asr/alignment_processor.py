@@ -11,7 +11,7 @@ import requests
 from typing import List, Dict, Optional
 
 from plaid_client.provenance import stamp_inferred, is_protected
-from plaid_client.service import requester_message
+from plaid_client.service import locked_for_writes, requester_message
 from plaid_client.workflows.messages import setup_incomplete
 
 from .asr_model import Alignment
@@ -80,9 +80,10 @@ class AlignmentProcessor:
         # Hold the document lock since we'll be modifying text and tokens; the
         # context manager acquires it (refusing with a clear error if another
         # user holds it) and always releases on exit. See
-        # PlaidClient.documents.locked.
+        # PlaidClient.documents.locked. Its writes carry the version the
+        # document has once held, so one that lands late is refused.
         response_helper.progress(lock_percent, "Writing the transcription…")
-        with client.documents.locked(document_id):
+        with locked_for_writes(client, document_id):
             # Convert alignments to transcription format
             transcriptions = [
                 {

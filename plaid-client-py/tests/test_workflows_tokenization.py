@@ -75,7 +75,14 @@ class _FakeClient:
     goes out at once whatever batches are open; one made on a batch queues
     until it submits, and an aborted batch writes nothing."""
 
+    # strict mode, as the real client keeps it
+    strict_mode_document_id = None
+
+    def enter_strict_mode(self, document_id):
+        self.strict_mode_document_id = document_id
+
     def __init__(self, document):
+        self.document_versions = {}
         self.document = document
         self.calls = []
         self.locked_documents = []

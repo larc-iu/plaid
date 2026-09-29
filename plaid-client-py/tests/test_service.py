@@ -15,6 +15,7 @@ import threading
 import time
 
 import pytest
+import requests
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
@@ -1028,9 +1029,45 @@ def test_an_api_failure_reaches_the_requester_without_its_url():
     err = PlaidAPIError('HTTP 400 Span value is required at http://plaid.internal:8085/api/v1/spans',
                         status=400, url='http://plaid.internal:8085/api/v1/spans', method='POST')
     assert requester_message(err) == 'HTTP 400 Span value is required'
-    timed_out = PlaidAPIError('Request timed out at http://plaid.internal:8085/api/v1/batch',
-                              status=0, url='http://plaid.internal:8085/api/v1/batch')
-    assert requester_message(timed_out) == 'The Plaid server could not be reached.'
+
+
+def _network_error(method, path='/api/v1/batch', cause=None):
+    url = f'http://plaid.internal:8085{path}'
+    return PlaidAPIError(f'Network error: {cause} at {url}', status=0, url=url, method=method,
+                         original_error=cause)
+
+
+def test_a_write_whose_answer_was_lost_may_have_been_saved():
+    import http.client
+    import urllib3
+    reset = requests.exceptions.ConnectionError(urllib3.exceptions.ProtocolError(
+        'Connection aborted.', http.client.RemoteDisconnected('closed')))
+    said = requester_message(_network_error('POST', cause=reset))
+    assert said == 'The Plaid server did not answer. This change may or may not have been saved.'
+    assert 'could not be reached' not in said
+    timed_out = requests.exceptions.ReadTimeout('read timed out')
+    assert requester_message(_network_error('PUT', '/api/v1/spans/s1', timed_out)) == said
+    assert requester_message(_network_error('DELETE', '/api/v1/tokens/t1', timed_out)) == said
+
+
+def test_a_connection_that_never_opened_could_not_be_reached():
+    import urllib3
+    refused = requests.exceptions.ConnectionError(urllib3.exceptions.MaxRetryError(
+        None, '/api/v1/batch', urllib3.exceptions.NewConnectionError(None, 'refused')))
+    assert requester_message(_network_error('POST', cause=refused)) == \
+        'The Plaid server could not be reached.'
+    slow = requests.exceptions.ConnectTimeout('connect timed out')
+    assert requester_message(_network_error('POST', cause=slow)) == \
+        'The Plaid server could not be reached.'
+
+
+def test_a_read_that_got_no_answer_saved_nothing_either_way():
+    timed_out = requests.exceptions.ReadTimeout('read timed out')
+    assert requester_message(_network_error('GET', '/api/v1/documents/d1', timed_out)) == \
+        'The Plaid server did not answer.'
+    # A query is a read that travels as a POST.
+    assert requester_message(_network_error('POST', '/api/v1/query', timed_out)) == \
+        'The Plaid server did not answer.'
 
 
 def test_the_locks_own_wording_survives_the_scrub():

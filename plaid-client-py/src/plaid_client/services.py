@@ -16,6 +16,7 @@ import time
 import urllib.parse
 
 import requests
+import urllib3.exceptions as urllib3_exceptions
 
 from plaid_client.http import PlaidAPIError, short_error
 from plaid_client.sse import SSE_CONNECT_TIMEOUT_S, abort_response
@@ -44,10 +45,13 @@ def requester_message(error, secrets=()) -> str:
 
     A network failure is reported as one, rather than as urllib3's retry
     chain: the requester can do nothing with the latter and it names hosts.
+    Only a connection that never opened is "could not be reached". A write
+    whose answer never came (a reset, a read timeout) may have been saved,
+    and says so (:data:`UNKNOWN_OUTCOME`).
     """
     if isinstance(error, PlaidAPIError):
         if not error.status:
-            return 'The Plaid server could not be reached.'
+            return _network_failure(error)
         text = str(error)
         if error.url:
             text = text.replace(f' at {error.url}', '').replace(error.url, '')
@@ -55,6 +59,49 @@ def requester_message(error, secrets=()) -> str:
         return _redact(text, secrets) or f'HTTP {error.status}'
     text = _URL_IN_TEXT.sub('', str(error) or '').strip().rstrip(' ,:;')
     return _redact(text, secrets) or UNKNOWN_FAILURE
+
+
+#: A write sent to the server whose answer never came back.
+UNKNOWN_OUTCOME = 'The Plaid server did not answer. This change may or may not have been saved.'
+
+#: The server was never reached, so nothing was sent.
+UNREACHABLE = 'The Plaid server could not be reached.'
+
+# A few reads travel as a POST, and saved nothing either way (the JS twin and
+# plaid-ui's errors.js keep the same list).
+_READ_POSTS = re.compile(r'/api/v1/(?:query|login|invites/lookup)(?:[?#]|$)')
+
+
+def _never_connected(error) -> bool:
+    """Whether a status-0 failure happened before a connection opened: a
+    refused connection, a name that did not resolve, a connect timeout.
+    Nothing was sent then. Anything else (a reset, a read timeout) came
+    after the request went out."""
+    seen = set()
+    cause = getattr(error, 'original_error', None)
+    while cause is not None and id(cause) not in seen:
+        seen.add(id(cause))
+        if isinstance(cause, (requests.exceptions.ConnectTimeout, urllib3_exceptions.ConnectTimeoutError)):
+            return True
+        # requests wraps urllib3's MaxRetryError, whose ``reason`` is the
+        # failure itself (NewConnectionError is a ConnectTimeoutError).
+        reason = getattr(cause, 'reason', None)
+        if isinstance(reason, urllib3_exceptions.ConnectTimeoutError):
+            return True
+        args = getattr(cause, 'args', ())
+        cause = (args[0] if args and isinstance(args[0], BaseException)
+                 else cause.__cause__ or cause.__context__)
+    return False
+
+
+def _network_failure(error) -> str:
+    method = str(getattr(error, 'method', '') or '').upper()
+    url = str(getattr(error, 'url', '') or '')
+    if _never_connected(error):
+        return UNREACHABLE
+    if method and method not in ('GET', 'HEAD') and not _READ_POSTS.search(url):
+        return UNKNOWN_OUTCOME
+    return 'The Plaid server did not answer.'
 
 
 def service_error_message(error, service_name='', secrets=()) -> str:

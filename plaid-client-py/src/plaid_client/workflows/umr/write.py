@@ -22,11 +22,12 @@ sentence.
 """
 
 import contextlib
+import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from plaid_client.provenance import PROV_DETAIL_KEY, PROV_KEY, service_source
-from plaid_client.service import check_unchanged, progress_heartbeat
+from plaid_client.service import locked_for_writes, progress_heartbeat
 from plaid_client.service_schema import Param
 
 from ..requester import Requester, requester_of
@@ -202,7 +203,8 @@ def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
 
     A plan for a sentence that already has a graph REPLACES it: the old
     graph's anchor tokens are deleted first, which cascades its concept spans
-    and with them every edge and document-level triple on them. So a plan for
+    and with them every edge and document-level triple on them, in the same
+    batch that writes the new anchors. So a plan for
     a sentence that is not :attr:`Sentence.redraftable` is refused before
     anything is written, whatever the caller decided. ``frag`` is the
     provenance stamp every write carries: it is FLAT and the app's own half
@@ -219,7 +221,6 @@ def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
               for pid in node.piece_ids]
     if doomed:
         progress.report(DraftProgress.WRITE, 0.1, f'Clearing {_count(len(doomed), "anchor")}…')
-        client.tokens.bulk_delete(doomed)
 
     piece_ops: List[dict] = []
     bases: List[Tuple[int, int]] = []
@@ -230,7 +231,17 @@ def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
                          for begin, end in plan['pieces'])
         bases.append((piece_base, 0))
     progress.report(DraftProgress.WRITE, 0.3, f'Writing {_count(len(piece_ops), "anchor")}…')
-    piece_ids = client.tokens.bulk_create(piece_ops)['ids'] if piece_ops else []
+    # The old anchors go in the same atomic batch as the new ones: a delete
+    # sent alone, then a failed create, left the sentence with no graph at all.
+    piece_ids = []
+    if doomed or piece_ops:
+        with client.batched() as b:
+            if doomed:
+                b.tokens.bulk_delete(doomed)
+            if piece_ops:
+                b.tokens.bulk_create(piece_ops)
+        if piece_ops:
+            piece_ids = (b.results[-1].get('body') or {}).get('ids') or []
     if len(piece_ids) != len(piece_ops):
         raise RuntimeError(f'The server returned {len(piece_ids)} anchor ids for '
                            f'{len(piece_ops)} anchors.')
@@ -272,6 +283,24 @@ def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
     if edge_ops:
         progress.report(DraftProgress.WRITE, 0.9, f'Writing {_count(len(edge_ops), "relation")}…')
         client.relations.bulk_create(edge_ops)
+
+
+def clear_new_anchors(client, document_id: str, layers: UmrLayers) -> int:
+    """Delete the anchor tokens a failed :func:`write_graphs` left, and with
+    them any node or edge on them. Returns how many it deleted.
+
+    ``layers`` is what the run read before it wrote, so an anchor it does not
+    hold is one this run made. The writes go in three batches, and one whose
+    answer was lost may still have been saved, so the ids are read back
+    rather than taken from answers. Call it while the lock is still held.
+    """
+    before = {t['id'] for t in (layers.node_layer or {}).get('tokens') or []}
+    raw = client.documents.get(document_id, include_body=True, layers=layers.read_layer_ids())
+    now = resolve_layers(raw).node_layer.get('tokens') or []
+    made = [t['id'] for t in now if t['id'] not in before]
+    if made:
+        client.tokens.bulk_delete(made)
+    return len(made)
 
 
 def draft_params() -> List[Param]:
@@ -417,7 +446,19 @@ def finish_draft(client, response_helper, run: DraftRun, plans: Sequence[dict],
     with response_helper.critical():
         with client.operation(run.requester.label(operation), kind='service-run',
                               ref=service_source(service_id)):
-            with client.documents.locked(run.document_id):
-                check_unchanged(client, run.document_id, run.read_version)
-                write_graphs(client, run.layers, plans, frag, run.progress)
+            with locked_for_writes(client, run.document_id, run.read_version):
+                try:
+                    write_graphs(client, run.layers, plans, frag, run.progress)
+                except ValueError:
+                    raise  # refused before anything was written
+                except Exception:
+                    # A run that failed partway leaves no half graph behind:
+                    # anchors with no node were cleaned up only when someone
+                    # next opened the document in the app, under their name.
+                    try:
+                        clear_new_anchors(client, run.document_id, run.layers)
+                    except Exception:  # noqa: BLE001 - the write's own failure is the one to report
+                        logging.getLogger(__name__).exception(
+                            'Could not remove the anchors a failed draft left')
+                    raise
         complete()

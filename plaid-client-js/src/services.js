@@ -30,6 +30,50 @@ const redact = (text, secrets) => {
   return out.trim();
 };
 
+/** A write sent to the server whose answer never came back. */
+export const UNKNOWN_OUTCOME =
+  'The Plaid server did not answer. This change may or may not have been saved.';
+
+/** The server was never reached, so nothing was sent. */
+export const UNREACHABLE = 'The Plaid server could not be reached.';
+
+// A few reads travel as a POST, and saved nothing either way (the Python twin
+// and plaid-ui's errors.js keep the same list).
+const READ_POSTS = /\/api\/v1\/(?:query|login|invites\/lookup)(?:[?#]|$)/;
+
+// Node's fetch (undici) names a connection that never opened by its code: a
+// refused port, a name that did not resolve, a connect timeout. Nothing was
+// sent then. A browser's fetch says only "Failed to fetch", which cannot be
+// told apart from a reset, so it counts as sent.
+const NEVER_CONNECTED = new Set([
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'UND_ERR_CONNECT_TIMEOUT',
+]);
+
+const neverConnected = (error) => {
+  const seen = new Set();
+  let cause = error && error.originalError;
+  while (cause && typeof cause === 'object' && !seen.has(cause)) {
+    seen.add(cause);
+    if (NEVER_CONNECTED.has(cause.code)) return true;
+    cause = cause.cause;
+  }
+  return false;
+};
+
+const networkFailure = (error) => {
+  const method = String(error.method || '').toUpperCase();
+  if (neverConnected(error)) return UNREACHABLE;
+  if (method && method !== 'GET' && method !== 'HEAD' && !READ_POSTS.test(String(error.url || ''))) {
+    return UNKNOWN_OUTCOME;
+  }
+  return 'The Plaid server did not answer.';
+};
+
 /**
  * One line about a failure that is safe to show the person who asked.
  *
@@ -38,13 +82,17 @@ const redact = (text, secrets) => {
  * own error text). The whole error still goes to the operator's console: this
  * is the requester's half only. The Python twin is `requester_message`.
  *
+ * Only a connection that never opened is "could not be reached". A write whose
+ * answer never came (a reset, a timeout) may have been saved, and says so
+ * (`UNKNOWN_OUTCOME`).
+ *
  * @param {any} error
  * @param {string[]} [secrets]
  * @returns {string}
  */
 export function requesterMessage(error, secrets = []) {
   if (error && typeof error.status === 'number') {
-    if (!error.status) return 'The Plaid server could not be reached.';
+    if (!error.status) return networkFailure(error);
     let text = String(error.message || '');
     if (error.url) text = text.split(` at ${error.url}`).join('').split(error.url).join('');
     text = text.trim().replace(/[\s,:;]+$/, '');

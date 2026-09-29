@@ -42,7 +42,7 @@ import argparse
 from typing import Dict, List, Optional, Tuple
 
 from plaid_client import BaseService, TASKS, Param, service_source
-from plaid_client.service import check_unchanged, machine_detail
+from plaid_client.service import locked_for_writes, machine_detail
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.igt import (
     ParsedWord, derive, field_layer_id, select_targets, parse_interleaved, align_words, analysis_for,
@@ -307,13 +307,11 @@ class PolyGlossService(BaseService):
         with response_helper.critical():
             with self.client.operation(requester.label(f'PolyGloss analysis ({len(plans)} words)'),
                                        kind='service-run', ref=service_source(self.service_id)):
-                with self.client.documents.locked(document_id):
-                    # The plans were made from a read taken before the model
-                    # ran. If someone has edited the document since, both the
-                    # write contract they were selected under and the ids they
-                    # point at are out of date, so nothing is written.
-                    check_unchanged(self.client, document_id, read_version)
-
+                # The plans were made from a read taken before the model
+                # ran. If someone has edited the document since, both the
+                # write contract they were selected under and the ids they
+                # point at are out of date, so nothing is written.
+                with locked_for_writes(self.client, document_id, read_version):
                     def wrote(done, total):
                         response_helper.progress(
                             88 + int(11 * done / max(total, 1)),

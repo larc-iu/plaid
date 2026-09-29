@@ -75,7 +75,7 @@ def test_finish_draft_writes_under_a_service_run(monkeypatch):
 
     # Only the operation is under test: the version check and the graph
     # writes it wraps are the umr workflow's own tests' business.
-    monkeypatch.setattr(write, 'check_unchanged', lambda *a, **k: None)
+    monkeypatch.setattr(write, 'locked_for_writes', lambda *a, **k: contextlib.nullcontext())
     monkeypatch.setattr(write, 'write_graphs', lambda *a, **k: None)
     client = FakeClient({})
     run = write.DraftRun(document_id='d1', project_id='p1', read_version=1, layers=None,
