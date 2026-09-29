@@ -2209,3 +2209,21 @@
            ["the cat sat" "the cXt sat" [(assoc (tok 1 0 11) :token/layer :s)]]]]
     (let [ops (ta/align-to-words (ta/diff old new) old tokens #{:w})]
       (is (= new (:text/body (:text (apply-all ops old []))))))))
+
+(deftest a-replace-joining-two-words-beside-another-edit-keeps-the-text
+  ;; In a script without spaces, a replace over the edge of two words joins
+  ;; them, and the word it keeps takes the other's letters up to its far
+  ;; edge. When the edit beside it takes some of those letters too, the two
+  ;; overlapped, and judging whether the fold broke the word applied them
+  ;; together and threw: the save answered 500 on a text of 12 letters.
+  (doseq [[old new extents]
+          [["tatukaiYarın" "tatuata"
+            {:s [[0 12]] :w [[0 4] [4 7] [7 12]] :m [[4 6] [6 7] [7 8] [8 9] [9 12]]}]
+           ["cafétatكتاب\ndog𐌰𐌱𐌲\nYarınköyecat\n" "caاaكتاب\ndog𐌰𐌱𐌲\nYarınköyecat\n"
+            {:s [[0 12] [12 19] [19 32]]
+             :w [[0 4] [4 7] [7 11] [12 15] [15 18] [19 24] [24 28] [28 31]]
+             :m [[0 1] [1 4] [4 6] [6 7] [15 17] [17 18]]
+             :u [[0 4] [12 15]]}]]]
+    (let [tokens (vec (for [[layer es] extents [b e] es]
+                        (assoc (tok [layer b e] b e) :token/layer layer)))]
+      (is (= new (:text/body (:text (body-edit old new tokens #{:s} #{:w :m})))) (pr-str old)))))

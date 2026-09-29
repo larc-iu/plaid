@@ -2049,8 +2049,13 @@
      ;; whole, a replace joining two words took letters the next edit also
      ;; took, and the fold gave `forUnveistbr` for `for banister`: the save
      ;; stored a body the user never typed. Where the folded ops do not give
-     ;; the same text, the ops stay as they came.
-     (let [folded (fold-whole-words* ops old tokens word?)
+     ;; the same text, the ops stay as they came. So they do where the fold
+     ;; cannot judge such edits at all: whether a word is broken applies
+     ;; them, and two taking the same letters are out of bounds there
+     ;; (`tatukaiYarın` to `tatuata` answered 500).
+     (let [folded (try (fold-whole-words* ops old tokens word?)
+                       (catch clojure.lang.ExceptionInfo _ ops)
+                       (catch IndexOutOfBoundsException _ ops))
            body #(ops-body % old)]
        (if (or (= folded ops)
                (let [b (body ops)] (and b (= b (body folded)))))
