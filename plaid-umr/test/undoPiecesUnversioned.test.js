@@ -96,3 +96,22 @@ test('the anchors already gone is nothing left to undo', async () => {
   assert.equal(client.strictModeDocumentId, 'doc-1');
   release();
 });
+
+// A re-anchor moves a node someone may have made onto the new pieces in the
+// batch after them. When that batch's answer is lost after the server stored
+// it, the pieces carry that node, and an undo without the version claim
+// deleted it, its edges with it (REV-F-REPAIR). Stamped, the delete is refused
+// once anything has landed, and the node stays.
+test('a re-anchor whose batch failed deletes its new pieces only with the version claim', async () => {
+  const { doc, client, stamps, release } = load();
+  client.batched = async () => {
+    throw nodeRefused();
+  };
+  const s1 = doc.sentence(1);
+  const node = s1.nodes.find((n) => n.wordIds?.length);
+  const other = s1.words.find((w) => !node.wordIds.includes(w.id));
+  await doc.setAnchor(node.id, [...node.wordIds, other.id]);
+  assert.deepEqual(stamps, ['doc-1']);
+  assert.equal(client.strictModeDocumentId, 'doc-1');
+  release();
+});

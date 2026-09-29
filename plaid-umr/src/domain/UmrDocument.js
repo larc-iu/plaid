@@ -881,13 +881,20 @@ export class UmrDocument extends DocumentModel {
   // lost after the server stored it: stamped, the delete would be refused and
   // leave the node the user was told had failed. Tokens already gone (404)
   // leave nothing to undo.
-  async _undoPiecesOnFailure(tokens, ids, work) {
+  //
+  // `versioned` keeps the claim, for an edit whose failed step moves an
+  // existing node onto the pieces (a re-anchor). Stored with its answer lost,
+  // that step leaves the pieces carrying a node someone else may have made,
+  // and an unclaimed delete would take it and its edges. Claimed, the delete
+  // is refused once anything has landed, and the node stays where it went.
+  async _undoPiecesOnFailure(tokens, ids, work, { versioned = false } = {}) {
     try {
       return await work();
     } catch (error) {
       const made = tokens.map((t) => ids.get(t.id)).filter(Boolean);
       if (made.length) {
-        await this._unversioned(() => this._client.tokens.bulkDelete(made)).catch((err) => {
+        const remove = () => this._client.tokens.bulkDelete(made);
+        await (versioned ? remove() : this._unversioned(remove)).catch((err) => {
           if (err?.status === 404) return;
           console.warn('Could not remove the anchors of an edit that failed:', err);
         });
@@ -1315,17 +1322,22 @@ export class UmrDocument extends DocumentModel {
       async () => {
         const ids = new Map();
         const id = settledId(node.id);
-        await this._undoPiecesOnFailure(pieces, ids, async () => {
-          await this._createPieces(pieces, ids);
-          await this._client.batched(async (b) => {
-            b.spans.setTokens(
-              id,
-              pieces.map((p) => ids.get(p.id)),
-            );
-            if (patchMeta) b.spans.patchMetadata(id, metaOps);
-            b.tokens.bulkDelete(oldIds.map(settledId));
-          });
-        });
+        await this._undoPiecesOnFailure(
+          pieces,
+          ids,
+          async () => {
+            await this._createPieces(pieces, ids);
+            await this._client.batched(async (b) => {
+              b.spans.setTokens(
+                id,
+                pieces.map((p) => ids.get(p.id)),
+              );
+              if (patchMeta) b.spans.patchMetadata(id, metaOps);
+              b.tokens.bulkDelete(oldIds.map(settledId));
+            });
+          },
+          { versioned: true },
+        );
         this._settle(ids);
       },
       words.length ? `Anchor ${node.var} to ${words.join(' ')}` : `Unanchor ${node.var}`,
