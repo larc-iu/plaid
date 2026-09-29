@@ -186,6 +186,20 @@ describe('an edit refused because the document moved on', () => {
     expect(untouched(addNode, base, elsewhere)).toBe(true);
   });
 
+  it('reads a row this page made as the server has it, whatever order or empty fields it was shown with', () => {
+    // A row shown before the server answered keeps the shape the page gave
+    // it (fields in another order, no `precedence: null`) until a read. It
+    // is not a change someone else made.
+    const shown = doc({ glosses: [{ id: 's1', value: 'DEF', tokens: ['t1'], metadata: {} }] });
+    words(shown)[1] = { end: 7, begin: 4, id: 't2' };
+    const addOnDog = edit(shown, (d) => {
+      glossLayer(d).spans[0].value = 'ART';
+    });
+    const now = doc({ version: 2, glosses: [gloss('s1', 't1', 'DEF'), gloss('s9', 't3', 'RUN')] });
+    words(now)[1] = { id: 't2', begin: 4, end: 7, precedence: null };
+    expect(untouched(addOnDog, shown, now)).toBe(true);
+  });
+
   it('is refused when nothing is known of what the edit writes', () => {
     expect(untouched(footprintOf(base, structuredClone(base)), base, doc({ version: 2 }))).toBe(
       false,

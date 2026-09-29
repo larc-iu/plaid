@@ -31,6 +31,19 @@ const isEntity = (v) =>
   v !== null && typeof v === 'object' && !Array.isArray(v) && typeof v.id === 'string';
 const isEntityList = (v) => Array.isArray(v) && v.length > 0 && v.every(isEntity);
 
+// An entity's fields as text that does not depend on how the row was shaped:
+// keys in order, a null field the same as none, pending ids as the server's.
+// A row this page showed before the server answered has the page's shape
+// (its own key order, no `precedence: null`) until the next read, and is not
+// a change someone else made.
+function canonical(key, value) {
+  if (typeof value === 'string') return settledId(value);
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
+  const out = {};
+  for (const k of Object.keys(value).sort()) if (value[k] != null) out[k] = value[k];
+  return out;
+}
+
 // Every entity in `raw` by id: `{ layer, content, strings, begin, end }`.
 // `layer` is the id of the entity it sits in, `content` its own fields (not
 // the entities under it) as text, `strings` every string among them, from
@@ -57,9 +70,7 @@ function indexEntities(raw) {
         }
       }
     }
-    const content = JSON.stringify(own, (key, value) =>
-      typeof value === 'string' ? settledId(value) : value,
-    );
+    const content = JSON.stringify(own, canonical);
     const at = (k) => (typeof node[k] === 'number' ? node[k] : null);
     index.set(id, { layer, content, strings, begin: at('begin'), end: at('end') });
   };
