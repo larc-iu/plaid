@@ -3789,13 +3789,16 @@ class PlaidClient:
         """
         return PlaidBatch(self)
 
-    def _post_batch(self, ops: list[dict], stamped_documents: list | None = None) -> list[Any]:
+    def _post_batch(self, ops: list[dict], stamped_documents: list | None = None,
+                    stamped_groups: list | None = None) -> list[Any]:
         """POST queued operations (see PlaidBatch.submit) and return one
         ``{'status', 'headers', 'body'}`` per operation, in order, with only
         the body recased: the headers keep the server's spelling.
 
         ``stamped_documents`` names, index for index, the document each op's
-        strict-mode stamp is for (None for none)."""
+        strict-mode stamp is for (None for none), and ``stamped_groups`` the
+        logical operation each joined (None for none), marked written once
+        the request holding it is taken."""
         url = f'{self.base_url}/api/v1/batch'
         # Each request is atomic, the whole is not: a failure leaves the
         # requests before it saved. The error says so, as ``committed`` (how
@@ -3850,6 +3853,10 @@ class PlaidClient:
 
                 response = retry_while_busy(attempt)
                 results = response.json()
+                # The server took the request, so each operation it joined exists.
+                for group in (stamped_groups or [])[start:start + MAX_BATCH_OPS]:
+                    if group is not None:
+                        group['written'] = True
 
                 for result in results:
                     if isinstance(result, dict) and 'headers' in result:
@@ -4104,6 +4111,9 @@ class PlaidBatch:
         #: the document each queued op's strict-mode stamp is for (None for
         #: none), index for index with ``operations``
         self.stamped_documents: list[str | None] = []
+        #: the logical operation each queued op joined (None for none), index
+        #: for index with ``operations``
+        self.stamped_groups: list[dict | None] = []
         self.open = True
         self.results: list[Any] = []
         _install_resources(self)
@@ -4134,13 +4144,15 @@ class PlaidBatch:
         self.open = False
         ops, self.operations = self.operations, []
         stamps, self.stamped_documents = self.stamped_documents, []
-        self.results = self.client._post_batch(ops, stamps) if ops else []
+        groups, self.stamped_groups = self.stamped_groups, []
+        self.results = self.client._post_batch(ops, stamps, groups) if ops else []
         return self.results
 
     def abort(self) -> None:
         """Drop the queued operations without sending them."""
         self.operations = []
         self.stamped_documents = []
+        self.stamped_groups = []
         self.open = False
 
     def ref(self, op_index: int = -1, index: int | None = None) -> BatchRef:

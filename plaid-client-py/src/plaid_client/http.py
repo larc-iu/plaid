@@ -430,9 +430,11 @@ def prepare_request(client, method, path, *, body=None, raw_body=None, form_data
     (``make_request``) and the batch path (``queue_request``), so a queued op
     is exactly the request that would have gone out. Strict mode stamps every
     write, queued or not, and ``stamped_document`` names the document it
-    stamped for (None when it stamped nothing).
+    stamped for (None when it stamped nothing). ``stamped_group`` is the open
+    logical operation the write joined (None for none), for the caller to
+    mark written once the server has taken the request.
 
-    Returns ``(url, request_body, stamped_document)``.
+    Returns ``(url, request_body, stamped_document, stamped_group)``.
     """
     url = f'{client.base_url}{path}'
 
@@ -496,7 +498,11 @@ def prepare_request(client, method, path, *, body=None, raw_body=None, form_data
     # signal is not one of those writes (see the note at the top of this
     # file): never audited, so a stamp does nothing server-side while
     # ``written`` promises a group that will never exist. A broadcast message
-    # (``no_operation``) is never audited either.
+    # (``no_operation``) is never audited either. The group counts as
+    # written only once such a write has been taken (``make_request``,
+    # ``PlaidClient._post_batch``): a group whose only write was refused was
+    # never made, and relabelling it answers 404.
+    stamped_group = None
     group = getattr(client, '_operation_group', None)
     if group is not None and method != 'GET' and not out_of_band and not no_operation:
         separator = '&' if '?' in url else '?'
@@ -507,9 +513,9 @@ def prepare_request(client, method, path, *, body=None, raw_body=None, form_data
             url += f'&group-kind={quote(str(group["kind"]), safe="")}'
         if group.get('ref'):
             url += f'&group-ref={quote(str(group["ref"]), safe="")}'
-        group['written'] = True
+        stamped_group = group
 
-    return url, request_body, stamped_document
+    return url, request_body, stamped_document, stamped_group
 
 
 def restamp_document_version(path, version):
@@ -684,7 +690,8 @@ def queue_request(batch, method, path, *, no_batch=False, out_of_band=False, **k
     prep = {k: v for k, v in kwargs.items()
             if k in ('body', 'raw_body', 'form_data', 'query_params', 'no_operation',
                      'audit_message')}
-    url, request_body, stamped_document = prepare_request(batch.client, method, path, **prep)
+    url, request_body, stamped_document, stamped_group = prepare_request(
+        batch.client, method, path, **prep)
     operation = {
         'path': url.replace(batch.client.base_url, ''),
         'method': method.upper(),
@@ -697,6 +704,7 @@ def queue_request(batch, method, path, *, no_batch=False, out_of_band=False, **k
             operation['refs'] = refs
     batch.operations.append(operation)
     batch.stamped_documents.append(stamped_document)
+    batch.stamped_groups.append(stamped_group)
     return {'batched': True}
 
 
@@ -740,7 +748,7 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
     """
     if method != 'GET' and _omitted_strict_document(client):
         _learn_omitted_version(client)
-    url, request_body, _ = prepare_request(
+    url, request_body, _, stamped_group = prepare_request(
         client, method, path, body=body, raw_body=raw_body, form_data=form_data,
         query_params=query_params, out_of_band=out_of_band, no_operation=no_operation,
         audit_message=audit_message)
@@ -794,6 +802,9 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         return resp
 
     response = retry_while_busy(attempt)
+    # The server took it, so the operation's group exists.
+    if stamped_group is not None:
+        stamped_group['written'] = True
 
     # Binary response
     if binary_response:

@@ -91,12 +91,12 @@ def test_end_operation_with_refine_patches_when_written():
     client = _client()
     calls = _stub_session(client)
     gid = client.begin_operation('Merge morphemes')
-    _queue(client)
+    client.spans.set_metadata('S1', {'a': 1})
     client.end_operation('Merged 3 morphemes')
-    assert len(calls) == 1
-    assert calls[0]['method'] == 'PATCH'
-    assert calls[0]['url'].endswith(f'/api/v1/operation-groups/{gid}')
-    assert json.loads(calls[0]['data']) == {'message': 'Merged 3 morphemes'}
+    assert len(calls) == 2
+    assert calls[1]['method'] == 'PATCH'
+    assert calls[1]['url'].endswith(f'/api/v1/operation-groups/{gid}')
+    assert json.loads(calls[1]['data']) == {'message': 'Merged 3 morphemes'}
 
 
 def test_end_operation_with_refine_skips_patch_when_nothing_written():
@@ -111,7 +111,7 @@ def test_end_operation_tolerates_404():
     client = _client()
     _stub_session(client, status=404)
     client.begin_operation('x')
-    _queue(client)
+    client._operation_group['written'] = True
     client.end_operation('y')  # must not raise
 
 
@@ -151,10 +151,10 @@ def test_context_manager_set_message_refines_at_end():
     client = _client()
     calls = _stub_session(client)
     with client.operation('Merge') as op:
-        _queue(client)
+        client.spans.set_metadata('S1', {'a': 1})
         op.set_message('Merged 2')
-    assert len(calls) == 1
-    assert json.loads(calls[0]['data']) == {'message': 'Merged 2'}
+    assert len(calls) == 2
+    assert json.loads(calls[1]['data']) == {'message': 'Merged 2'}
 
 
 def test_get_requests_never_carry_group_id():
@@ -536,3 +536,67 @@ def test_base_service_joins_the_requesters_kind_and_ref():
     assert 'error' not in seen
     assert seen['first']['group-kind'] == 'assistant-plan'
     assert seen['first']['group-ref'] == 'conv:c/plan:p'
+
+
+# --- a group counts as written only once the server took a write in it ------
+# (conc-2026-09-29, the Python twin of plaid-client-js b31e9f4b)
+
+def _batch_session(client, status):
+    calls = []
+
+    class _Sess:
+        def request(self, **kw):
+            calls.append(kw)
+            return _Resp(200)
+
+        def post(self, url, **kw):
+            calls.append({'method': 'POST', 'url': url, **kw})
+            body = json.loads(kw['data'])
+            return _Resp(status, [{'status': 200, 'headers': {}, 'body': {}} for _ in body]
+                         if status < 400 else {'error': 'Document version mismatch'})
+
+        def close(self):
+            pass
+
+    client.session = _Sess()
+    return calls
+
+
+def test_an_operation_whose_only_write_was_refused_is_not_relabelled():
+    client = _client()
+    calls = _stub_session(client, status=409)
+    client.begin_operation('Merge morphemes')
+    with pytest.raises(PlaidAPIError):
+        client.spans.set_metadata('S1', {'a': 1})
+    assert client._operation_group['written'] is False
+    client.end_operation('Merged 3 morphemes')
+    assert [c['method'] for c in calls] == ['PUT']
+
+
+def test_an_operation_whose_batch_was_refused_or_dropped_is_not_relabelled():
+    client = _client()
+    calls = _batch_session(client, 409)
+    client.begin_operation('Parse')
+    with pytest.raises(PlaidAPIError):
+        with client.batched() as b:
+            b.spans.set_metadata('S1', {'a': 1})
+    # A batch the block gave up on sends nothing.
+    with pytest.raises(RuntimeError):
+        with client.batched() as b:
+            b.spans.set_metadata('S2', {'a': 1})
+            raise RuntimeError('stopped')
+    assert client._operation_group['written'] is False
+    client.end_operation('Parsed 40 sentences')
+    assert [c['method'] for c in calls] == ['POST']
+
+
+def test_an_operation_whose_batch_was_taken_is_relabelled():
+    client = _client()
+    calls = _batch_session(client, 200)
+    gid = client.begin_operation('Parse')
+    with client.batched() as b:
+        b.spans.set_metadata('S1', {'a': 1})
+    assert client._operation_group['written'] is True
+    client.end_operation('Parsed 40 sentences')
+    assert [c['method'] for c in calls] == ['POST', 'PATCH']
+    assert calls[1]['url'].endswith(f'/api/v1/operation-groups/{gid}')
