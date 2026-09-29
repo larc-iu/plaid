@@ -403,6 +403,24 @@ describe('Re-analyze checks the version the preview read', () => {
     expect(errors).toEqual([]);
   });
 
+  it('an unanalyzed word deleted since the preview is counted as skipped', async () => {
+    const { server, client } = serverAndClient({ a: 3 });
+    const before = [token('w1', null), token('w2', null)];
+    // w1 was deleted after the preview.
+    const doc = fakeDoc(client, server, 'a', before, { onRead: [token('w2', null)] });
+    doc.raw = { version: 2 };
+    const out = await applyReanalyze(
+      client,
+      {
+        rows: before.map((t) => ({ docId: 'a', id: t.id, signature: signature(t) })),
+        docs: [doc],
+      },
+      { analysis: target, label: 'Re-analyze' },
+    );
+    expect(out).toEqual({ changed: 1, skipped: 1, failedDoc: null });
+    expect(doc.sends).toEqual([{ strict: 'a', version: 3, words: ['w2'] }]);
+  });
+
   it('a conflict while writing reads the document again and retries once, unannounced', async () => {
     const { server, client } = serverAndClient({ a: 2 });
     const t1 = token('w1', 'KITTY');

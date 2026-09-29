@@ -420,7 +420,9 @@ export async function applyReanalyze(client, { rows, docs }, { analysis, label, 
         n = await replace(targets);
       }
       if (n === false && refused) {
-        targets = docRows.filter((r) => signatureNow(doc, r.id) === r.signature);
+        targets = docRows.filter(
+          (r) => doc.tokenLookup?.has(r.id) && signatureNow(doc, r.id) === r.signature,
+        );
         skipped += docRows.length - targets.length;
         refused = false;
         n = targets.length ? await replace(targets) : 0;
