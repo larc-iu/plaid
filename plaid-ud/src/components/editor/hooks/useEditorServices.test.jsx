@@ -302,11 +302,13 @@ describe('a parse run that fails outright', () => {
 
     await view.step(() => view.api().parse.start());
 
+    // Read again before the lock goes: a run that failed may have written.
     expect(seq).toEqual([
       'lock:acquire(Parse)',
       'record:write',
       'request:send',
       'toast:error',
+      'reload',
       'record:clear',
       'lock:release',
     ]);

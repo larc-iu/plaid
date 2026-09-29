@@ -75,6 +75,44 @@ describe('a run of one integration spot', () => {
     await view.unmount();
   });
 
+  // V8 H8-1: the service's batch landed and its answer was lost, the run
+  // failed, and the screen went on showing the document without the tokens.
+  it('reads the document again after a run that failed, which may have written', async () => {
+    const requestService = vi.fn(async () => {
+      throw new Error('The server did not answer.');
+    });
+    const { view, run, doc } = await mount({
+      request: {
+        availableServices: [SERVICE],
+        requestService,
+        cancelRequest: vi.fn(),
+        progressPercent: null,
+        progressMessage: '',
+      },
+    });
+    await view.step(() => run().start());
+    expect(doc.reload).toHaveBeenCalledTimes(1);
+    await view.unmount();
+  });
+
+  it('does not read the document while the run is still out', async () => {
+    const requestService = vi.fn(async () => {
+      throw Object.assign(new Error('still running'), { pending: true });
+    });
+    const { view, run, doc } = await mount({
+      request: {
+        availableServices: [SERVICE],
+        requestService,
+        cancelRequest: vi.fn(),
+        progressPercent: null,
+        progressMessage: '',
+      },
+    });
+    await view.step(() => run().start());
+    expect(doc.reload).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
   // A spot whose chosen method is one of the app's own built-ins runs in the
   // browser, through the call site's own code. This hook takes no lock for it.
   it('takes no write lock when the chosen method is not a service', async () => {

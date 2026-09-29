@@ -107,6 +107,14 @@ export const useServiceRun = ({
         // not toast twice.
         console.error(`${label} failed:`, error);
         stillOut = error?.pending === true;
+        // A run that failed may still have written (its answer lost, or
+        // stopped partway), so the document is read again. Not while it is
+        // still out: its results are read when it finishes.
+        if (!stillOut) {
+          await doc
+            .reload()
+            .catch((err) => console.error(`Reload after the failed ${label} failed:`, err));
+        }
       } finally {
         if (!stillOut) clearRunRecord(doc.id);
         run.finish();
