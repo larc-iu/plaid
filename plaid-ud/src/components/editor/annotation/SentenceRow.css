@@ -208,6 +208,7 @@
 
 /* Annotation cells */
 .annotation-cell {
+  position: relative;
   padding: 2px;
   min-height: 28px;
   display: flex;
@@ -281,6 +282,28 @@
 .token-form--contributed {
   color: var(--plaid-contributed);
   text-decoration-color: var(--plaid-contributed-soft);
+}
+
+/* A cell whose edit lost to another user's: it shows the stored value, and
+   the refused one hangs under it until the annotator keeps it (Enter) or lets
+   it go (Escape). */
+.editable-field--conflict {
+  border-color: #f59e0b;
+}
+.editable-field-conflict {
+  position: absolute;
+  top: calc(100% - 2px);
+  inset-inline-start: 0;
+  z-index: 5;
+  padding: 1px 4px;
+  font-size: 10px;
+  line-height: 1.3;
+  white-space: nowrap;
+  color: #92400e;
+  background-color: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 2px;
+  pointer-events: none;
 }
 
 /* Features */

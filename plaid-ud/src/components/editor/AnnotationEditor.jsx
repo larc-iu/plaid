@@ -5,6 +5,9 @@ import { ParseDialog } from './services/ParseDialog.jsx';
 import { SentenceRow } from './annotation/SentenceRow.jsx';
 import { EditorSessionContext } from './annotation/editorSession.js';
 import { UnsentValues } from './annotation/unsentValues.js';
+import { whoChanged, changedTo } from './annotation/conflictNotice.js';
+import { notifyWarning } from '../../utils/feedback.jsx';
+import { statusOf } from '@ui/lib/errors.js';
 import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
@@ -228,8 +231,14 @@ export const AnnotationEditor = () => {
   // useCallback keeps their identity stable across the transient saving
   // re-renders (isSaving/error emits), so the memoized sentence/cell subtree
   // isn't re-rendered mid-edit — otherwise focus jitters during the save.
+  // A refusal answers `{ refused: true, status }`, so a cell can tell one
+  // that sending again could mend from one it cannot (see EditableCell).
   const handleAnnotationUpdate = useCallback(
-    (tokenId, field, value) => doc?.updateAnnotation(tokenId, field, value),
+    async (tokenId, field, value) => {
+      if (!doc) return undefined;
+      const ok = await doc.updateAnnotation(tokenId, field, value);
+      return ok === false ? { refused: true, status: statusOf(doc.errorCause) } : ok;
+    },
     [doc],
   );
   const handleFeatureDelete = useCallback((spanId) => doc?.deleteFeature(spanId), [doc]);
@@ -296,11 +305,38 @@ export const AnnotationEditor = () => {
 
   // Values put back after they were not saved, for the whole grid, so one on a
   // page the reader has turned away from waits for its cell and still counts
-  // as typed and not saved. Let go of with the grid, and each one once the
-  // stored value is no longer the one it was typed over or its token is gone.
-  // One per document: another document is another grid.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const unsent = useMemo(() => new UnsentValues(), [doc]);
+  // as typed and not saved. Let go of with the grid, and each one once its
+  // token is gone. One per document: another document is another grid.
+  //
+  // A value refused over one someone else has stored since is a conflict
+  // (see unsentValues.js), and a toast names who changed it and to what.
+  const conflictContext = useRef(null);
+  conflictContext.current = { client: getClient(), documentId, me: user?.id };
+  const unsent = useMemo(() => {
+    const tokenData = (tokenId) => {
+      for (const sentence of doc?.sentences || []) {
+        for (const data of sentence.tokens || []) {
+          if (String(data.token?.id) === String(tokenId)) return data;
+        }
+      }
+      return undefined;
+    };
+    return new UnsentValues(
+      (tokenId, field) => {
+        const data = tokenData(tokenId);
+        return data ? data[field]?.value || '' : undefined;
+      },
+      {
+        onConflict: (tokenId, field, stored) => {
+          const { client, documentId: id, me } = conflictContext.current;
+          const spanId = tokenData(tokenId)?.[field]?.id;
+          whoChanged(client, id, spanId, me)
+            .catch(() => null)
+            .then((who) => notifyWarning(changedTo(who, stored)));
+        },
+      },
+    );
+  }, [doc]);
   useEffect(() => () => unsent.clear(), [unsent]);
   // The question they ask before leaving is the app's confirm.
   useUnsavedGuard();

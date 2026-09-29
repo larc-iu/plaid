@@ -14,6 +14,10 @@ import { caretAtArrowEdge } from '@ui/lib/bidi.js';
 import { textIncludes } from '@ui/domain/collation.js';
 import { UnsentValues } from './unsentValues.js';
 
+// A refusal that sending the value again cannot mend: the annotator may no
+// longer write here, or the project or document is gone.
+const FINAL_REFUSALS = new Set([403, 404]);
+
 // For a cell drawn outside an editor that holds its own (a test, a preview).
 const LOOSE_UNSENT = new UnsentValues();
 
@@ -53,6 +57,13 @@ export const EditableCell = React.memo(
       const waiting = unsent.get(tokenId, field);
       return waiting && (value || '') === waiting.saved ? waiting.typed : value || '';
     });
+    // An edit refused because someone else stored another value here first,
+    // `{ typed, stored }`. The cell shows the stored value and the refused one
+    // under it. Enter keeps the refused one, Escape lets it go, and leaving the
+    // cell otherwise sends nothing.
+    const [conflict, setConflict] = useState(() => unsent.conflictOf(tokenId, field));
+    const conflictRef = useRef(conflict);
+    conflictRef.current = conflict;
     // Alt+Down replaces the cell's list with what the project has said before
     // about a word like this one, counts and all. Null means the ordinary list.
     const [precedent, setPrecedent] = useState(null);
@@ -121,23 +132,43 @@ export const EditableCell = React.memo(
     // counts as typed and not saved, so leaving the document asks first.
     // Focusing the cell takes it up, and leaving the cell then sends it.
     const unsentRef = useRef(null);
-    // A value put back for this cell while it is drawn. Focused, the cell takes
-    // it up (unless something has been typed since, which is newer and wins),
-    // and answers true so it does not wait in `unsent` as well.
+    // What happens to this cell's value while it is drawn. A value put back:
+    // focused, the cell takes it up (unless something has been typed since,
+    // which is newer and wins), and answers true so it does not wait in
+    // `unsent` as well. A conflict: the cell shows the stored value, again
+    // unless something has been typed since. Let go of: the stored value.
     useEffect(
       () =>
-        unsent.listen(tokenId, field, (put) => {
+        unsent.listen(tokenId, field, (message) => {
+          const untouched = !isEditingRef.current || !typedRef.current;
+          if (message.type === 'conflict') {
+            setConflict({ typed: message.typed, stored: message.stored });
+            if (untouched) {
+              unsentRef.current = null;
+              setValue(message.stored);
+            }
+            return false;
+          }
+          if (message.type === 'gone') {
+            setConflict(null);
+            if (untouched) {
+              unsentRef.current = null;
+              setValue(storedRef.current || '');
+            }
+            return false;
+          }
+          setConflict(null);
           if (isEditingRef.current) {
             if (!typedRef.current) {
               unsentRef.current = {
-                typed: put.typed,
-                saved: unsentRef.current?.saved ?? put.saved,
+                typed: message.typed,
+                saved: unsentRef.current?.saved ?? message.saved,
               };
-              setValue(put.typed);
+              setValue(message.typed);
             }
             return true;
           }
-          setValue(put.typed);
+          setValue(message.typed);
           return false;
         }),
       [unsent, tokenId, field],
@@ -173,14 +204,24 @@ export const EditableCell = React.memo(
     // already commits-or-reverts explicitly, so no blur-time reset is needed.
     //
     // A value put back after it was not saved is not synced over while the
-    // stored value is still the one it was typed over. Once it moves on, the
-    // put-back value is let go.
+    // stored value is still the one it was typed over. Once it moves on,
+    // someone else has stored a value here, and the put-back value turns into
+    // a conflict. A conflict whose stored value moves on again is let go.
     useEffect(() => {
+      const now = value || '';
       const waiting = unsentRef.current ?? unsent.get(tokenId, field);
       if (waiting) {
-        if ((value || '') === waiting.saved) return;
+        if (now === waiting.saved) return;
+        const takenUp = !!unsentRef.current;
         unsentRef.current = null;
-        unsent.take(tokenId, field);
+        unsent.conflict(tokenId, field, waiting.typed, now);
+        if (takenUp && !typedRef.current) setValue(now);
+      }
+      const standing = unsent.conflictOf(tokenId, field);
+      if (standing?.stored !== conflictRef.current?.stored) setConflict(standing);
+      if (standing && standing.stored !== now) {
+        unsent.resolve(tokenId, field);
+        setConflict(null);
       }
       if (!isEditingRef.current) {
         valueRef.current = value || '';
@@ -230,6 +271,8 @@ export const EditableCell = React.memo(
       if (cancelledRef.current) {
         cancelledRef.current = false;
         setValue(value || '');
+        unsent.resolve(tokenId, field);
+        setConflict(null);
         return;
       }
       const newValue = valueRef.current.trim();
@@ -262,16 +305,29 @@ export const EditableCell = React.memo(
           setValue(value || '');
           return;
         }
+        unsent.resolve(tokenId, field);
+        setConflict(null);
         // An edit that was not saved: refused, or after a conflict refused
         // unsent, made on the same out-of-date document. The refetch takes it
         // off the screen, so it is put back, measured against `saved`, the value it
         // was typed over, so leaving the cell sends it again and Escape takes
-        // it back. The cell may be paged away by then, so it goes to the
-        // grid's `unsent`, which hands it to the cell if one is drawn.
+        // it back. Over a value someone else stored meanwhile it is a conflict
+        // instead, and after a refusal that sending again cannot mend it is
+        // not put back at all. The cell may be paged away by then, so it goes
+        // to the grid's `unsent`, which hands it to the cell if one is drawn.
+        // `onUpdate` answers false, or `{ refused: true, status }`, for a
+        // refusal.
         const saved = value || '';
         onUpdate(tokenId, field, newValue || null).then(
           (ok) => {
-            if (ok === false) unsent.put(tokenId, field, newValue, saved);
+            const refusal = ok === false ? {} : ok?.refused ? ok : null;
+            if (!refusal) return;
+            const outcome = unsent.put(tokenId, field, newValue, saved, {
+              resend: !FINAL_REFUSALS.has(refusal.status),
+            });
+            // Not put back, and the refetch may not have come (a project
+            // gone refuses it too): the cell shows what it was typed over.
+            if (outcome === 'dropped' && !isEditingRef.current) setValue(saved);
           },
           (error) => {
             console.error(`Failed to update ${field}:`, error);
@@ -303,6 +359,9 @@ export const EditableCell = React.memo(
         // rather than blurring.
         if (e.ctrlKey || e.metaKey) return;
         e.preventDefault();
+        // Enter on a cell that lost a conflict, with nothing typed since,
+        // keeps the refused value.
+        if (conflictRef.current && !typedRef.current) setValue(conflictRef.current.typed);
         inputRef.current?.blur();
         return;
       }
@@ -410,7 +469,20 @@ export const EditableCell = React.memo(
     const hasContent = displayValue && displayValue.trim() !== '';
     const fieldClass =
       `editable-field ${hasContent ? 'editable-field--filled' : 'editable-field--empty'}` +
-      (mark && hasContent ? ` editable-field--${mark}` : '');
+      (mark && hasContent ? ` editable-field--${mark}` : '') +
+      (conflict && !isReadOnly ? ' editable-field--conflict' : '');
+    // The refused value, under the cell showing the stored one.
+    const withConflict = (cell) =>
+      conflict ? (
+        <>
+          {cell}
+          <span className="editable-field-conflict" role="status" dir="auto">
+            Yours: {conflict.typed || '(none)'} · Enter to keep yours
+          </span>
+        </>
+      ) : (
+        cell
+      );
 
     // An unreviewed cell wears its provenance hue, NOT the per-value colour a
     // UPOS tag carries: "nobody has looked at this" outranks "this is a NOUN",
@@ -475,7 +547,7 @@ export const EditableCell = React.memo(
         typedRef.current = true;
         inputRef.current?.blur();
       };
-      return (
+      return withConflict(
         <Combobox
           ref={inputRef}
           id={`${tokenId}-${field}`}
@@ -584,6 +656,10 @@ export const EditableCell = React.memo(
                 return;
               }
               e.preventDefault();
+              if (conflictRef.current && !typedRef.current && combo.activeValue == null) {
+                takeOption(conflictRef.current.typed);
+                return;
+              }
               takeOption(combo.activeValue ?? valueRef.current);
               return;
             }
@@ -628,11 +704,11 @@ export const EditableCell = React.memo(
             ...(hasContent && cellColor && !mark ? { color: cellColor } : {}),
           }}
           optionClassName="px-2 py-0.5 text-xs"
-        />
+        />,
       );
     }
 
-    return (
+    return withConflict(
       <input
         ref={inputRef}
         id={`${tokenId}-${field}`}
@@ -652,7 +728,7 @@ export const EditableCell = React.memo(
         }}
         title={cellTitle}
         tabIndex={tabIndex}
-      />
+      />,
     );
   },
 );

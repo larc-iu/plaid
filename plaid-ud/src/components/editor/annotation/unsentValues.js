@@ -10,13 +10,30 @@ import { setUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 // then shows it, and every one waiting counts as typed and not saved, whether
 // its cell is on screen or not.
 //
+// A value is put back only while the stored value is still the one it was
+// typed over (`saved`). Once someone else has stored another value there, the
+// refused one is a conflict instead: the cell shows the stored value, with the
+// refused one beside it, and leaving the cell sends nothing. Enter in the cell
+// keeps the refused one. A conflict is not unsaved typing, so it asks nothing
+// before leaving.
+//
 // An entry leaves when its cell is taken up (focused: leaving the cell sends
-// it), when the stored value is no longer the one it was typed over, when its
-// token is gone, and when the grid goes.
+// it), when the stored value is no longer the one it was typed over (it turns
+// into a conflict), when its token is gone, and when the grid goes. A conflict
+// leaves when the cell is committed or cancelled, when the stored value moves
+// on again, when its token is gone, and when the grid goes.
 //
 // `saved` is the value it was typed over. For a cell edited twice behind a
 // refusal the first edit's `saved` stands, since the second was typed over a
 // value the server never had.
+//
+// `storedValue(tokenId, field)` answers the value stored now, '' for none, or
+// undefined for a token no longer in the document. `onConflict(tokenId, field,
+// stored, typed)` hears each new conflict.
+//
+// A drawn cell hears `{ type: 'put', typed, saved }` (a value put back: it
+// answers true when it takes it up itself, having focus), `{ type: 'conflict',
+// typed, stored }` and `{ type: 'gone' }` (what it showed was let go).
 
 const WHAT = 'An annotation you have typed';
 const SEVERAL = 'annotations you have typed';
@@ -24,16 +41,29 @@ const SEVERAL = 'annotations you have typed';
 const keyOf = (tokenId, field) => `${tokenId}:${field}`;
 
 export class UnsentValues {
-  constructor() {
+  constructor(storedValue = null, { onConflict = null } = {}) {
+    this._storedValue = storedValue;
+    this._onConflict = onConflict;
     // key -> { tokenId, field, typed, saved, token }. `token` is the entry's
     // own registration with the leave question.
     this._entries = new Map();
+    // key -> { tokenId, field, typed, stored }.
+    this._conflicts = new Map();
     // key -> the one mounted cell's listener.
     this._cells = new Map();
   }
 
   get size() {
-    return this._entries.size;
+    return this._entries.size + this._conflicts.size;
+  }
+
+  _stored(tokenId, field, fallback) {
+    return this._storedValue ? this._storedValue(tokenId, field) : fallback;
+  }
+
+  _tell(tokenId, field, message) {
+    const cell = this._cells.get(keyOf(tokenId, field));
+    return cell ? cell(message) : false;
   }
 
   /** The value waiting for this cell, `{ typed, saved }`, or null. */
@@ -42,22 +72,70 @@ export class UnsentValues {
     return entry ? { typed: entry.typed, saved: entry.saved } : null;
   }
 
+  /** The conflict standing on this cell, `{ typed, stored }`, or null. */
+  conflictOf(tokenId, field) {
+    const c = this._conflicts.get(keyOf(tokenId, field));
+    return c ? { typed: c.typed, stored: c.stored } : null;
+  }
+
   /**
-   * Put back `typed`, not saved over `saved`. The cell showing it, if one is
-   * drawn, is told first. A focused cell takes it up and it goes no further.
+   * Put back `typed`, not saved over `saved`. Over a value someone else has
+   * stored since, it is a conflict instead. For a token that is gone, and
+   * with `resend: false` (a refusal that sending again cannot mend), nothing
+   * is put back. The cell showing it, if one is drawn, is told first. A
+   * focused cell takes it up and it goes no further. Answers what became
+   * of it: 'put', 'conflict' or 'dropped'.
    */
-  put(tokenId, field, typed, saved) {
+  put(tokenId, field, typed, saved, { resend = true } = {}) {
     const key = keyOf(tokenId, field);
     const prior = this._entries.get(key);
-    const value = { typed, saved: prior ? prior.saved : saved };
-    const cell = this._cells.get(key);
-    if (cell && cell(value)) {
+    const typedOver = prior ? prior.saved : saved;
+    const now = this._stored(tokenId, field, typedOver);
+    if (now === undefined) {
       this.take(tokenId, field);
-      return;
+      this.resolve(tokenId, field);
+      return 'dropped';
+    }
+    // Still showing the edit itself: the refetch has not come yet, and the
+    // cell hears what it brings when it comes.
+    if (now !== typedOver && now !== typed) {
+      this.conflict(tokenId, field, typed, now);
+      return 'conflict';
+    }
+    if (!resend) {
+      this.take(tokenId, field);
+      return 'dropped';
+    }
+    const value = { typed, saved: typedOver };
+    this.resolve(tokenId, field);
+    if (this._tell(tokenId, field, { type: 'put', ...value })) {
+      this.take(tokenId, field);
+      return 'put';
     }
     const token = prior?.token ?? {};
     this._entries.set(key, { tokenId, field, ...value, token });
     setUnsavedDraft(token, WHAT, SEVERAL);
+    return 'put';
+  }
+
+  /**
+   * `typed` was refused over `stored`, which someone else wrote. Nothing is
+   * held when the two agree.
+   */
+  conflict(tokenId, field, typed, stored) {
+    this.take(tokenId, field);
+    if (typed === stored) {
+      this.resolve(tokenId, field);
+      return;
+    }
+    this._conflicts.set(keyOf(tokenId, field), { tokenId, field, typed, stored });
+    this._tell(tokenId, field, { type: 'conflict', typed, stored });
+    this._onConflict?.(tokenId, field, stored, typed);
+  }
+
+  /** Let go of the conflict on this cell: the annotator has acted on it. */
+  resolve(tokenId, field) {
+    this._conflicts.delete(keyOf(tokenId, field));
   }
 
   /** Remove and return what was waiting for this cell, or null. */
@@ -70,10 +148,7 @@ export class UnsentValues {
     return { typed: entry.typed, saved: entry.saved };
   }
 
-  /**
-   * The drawn cell for a token and field hears each value put back for it.
-   * It answers true when it takes the value up itself (it has focus).
-   */
+  /** The drawn cell for a token and field hears what happens to its value. */
   listen(tokenId, field, fn) {
     const key = keyOf(tokenId, field);
     this._cells.set(key, fn);
@@ -83,19 +158,32 @@ export class UnsentValues {
   }
 
   /**
-   * Let go of every value whose stored value has moved on or whose token is
-   * gone. `storedValue(tokenId, field)` answers the value now stored, '' for
-   * none, or undefined for a token no longer in the document.
+   * Go over every value against what is stored now, `storedValue(tokenId,
+   * field)` as above (the one given to the constructor when none is passed).
+   * A value whose stored value has moved on turns into a conflict, one whose
+   * token is gone is let go, and a conflict whose stored value has moved on
+   * again is let go.
    */
-  prune(storedValue) {
+  prune(storedValue = this._storedValue) {
+    if (!storedValue) return;
     for (const entry of [...this._entries.values()]) {
       const now = storedValue(entry.tokenId, entry.field);
-      if (now === undefined || now !== entry.saved) this.take(entry.tokenId, entry.field);
+      if (now === entry.saved) continue;
+      if (now === undefined || now === entry.typed) {
+        this.take(entry.tokenId, entry.field);
+        this._tell(entry.tokenId, entry.field, { type: 'gone' });
+      } else this.conflict(entry.tokenId, entry.field, entry.typed, now);
+    }
+    for (const c of [...this._conflicts.values()]) {
+      if (storedValue(c.tokenId, c.field) === c.stored) continue;
+      this.resolve(c.tokenId, c.field);
+      this._tell(c.tokenId, c.field, { type: 'gone' });
     }
   }
 
   /** Let go of all of them: the grid is gone. */
   clear() {
     for (const entry of [...this._entries.values()]) this.take(entry.tokenId, entry.field);
+    this._conflicts.clear();
   }
 }
