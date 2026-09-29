@@ -505,6 +505,9 @@ export const vocabPopover = {
       this._popoverVocabId = id;
       this._popoverActiveIndex = null; // another lexicon, another best row
       this._render(true);
+      // The search box holds the keys (typing, the arrows, Enter), so a tab
+      // chosen by click or by key hands focus back to it.
+      this._focusPopover();
     };
 
     // `dir="ltr"` on the panel: it is chrome, not data, and reads one way

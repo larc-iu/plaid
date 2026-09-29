@@ -118,7 +118,11 @@ async function open(page, tokenId, vocabName = null) {
   await pop(page).waitFor({ state: 'visible' });
   if (vocabName) {
     const tab = page.locator('.igt-vocab-pop__vocabtab', { hasText: vocabName });
-    if (!(await tab.evaluate((el) => el.classList.contains('is-active')))) await tab.click();
+    if (!(await tab.evaluate((el) => el.classList.contains('is-active')))) {
+      await tab.click();
+      // The search box has the keys, so a tab click hands focus back to it.
+      await expect(page.locator('.igt-vocab-pop__search')).toBeFocused();
+    }
     await expect(page.locator('.igt-vocab-pop__vocabtab.is-active')).toContainText(vocabName);
   }
 }
@@ -336,11 +340,10 @@ test('B3-01/04: arrows move the highlight and clamp; Tab stays in the search box
   page,
 }) => {
   await openAnalyze(page);
+  // The popover opens on LEX-B when `hum` is already linked there (B2's
+  // Enter), and otherwise the tab is clicked, which hands focus back to the
+  // search box. Either way the arrows below are the search box's.
   await open(page, ids.w[W.hum], lexB.name);
-  // The popover opens on LEX-B only when `hum` is already linked there (B2's
-  // Enter), and otherwise the tab click takes the focus. The arrows are the
-  // search box's, so start there whichever test ran before.
-  await page.locator('.igt-vocab-pop__search').click();
   const active = () => page.locator('.igt-vocab-pop .is-active').first();
   await expect(rows(page).first()).toHaveClass(/is-active/);
   await page.keyboard.press('ArrowDown');

@@ -161,3 +161,44 @@ describe('taking every same-form token along with the first link', () => {
     await vi.waitFor(() => expect(linkedForms(old.doc).filter(Boolean)).toHaveLength(1));
   });
 });
+
+// A click on another lexicon's tab is a step on the way to typing: the search
+// box has the keys (the arrows, Enter, typing), so focus goes back there
+// rather than staying on the tab, where every key did nothing.
+describe('switching lexicons in the popover', () => {
+  it('hands focus back to the search box, with the other lexicon shown', () => {
+    const client = makeFakeClient();
+    client.query = async () => ({ results: [] });
+    const other = { id: 'v2', name: 'Other', config: {}, items: [{ id: 'o', form: 'kat' }] };
+    const doc = new IgtDocument({
+      raw: buildRawDoc({ body: 'the kat' }),
+      project: {
+        id: 'proj-1',
+        vocabs: [{ id: 'v1' }, { id: 'v2' }],
+        config: { plaid: {}, igt: {} },
+      },
+      vocabularies: { v1: structuredClone(VOCAB), v2: other },
+      client,
+      projectId: 'proj-1',
+    });
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    new IgtEditor(host, doc, {});
+    [...host.querySelectorAll('.igt-vocab__opener')]
+      .at(-1)
+      .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    const search = () => host.querySelector('.igt-vocab-pop__search');
+    const tab = (name) =>
+      [...host.querySelectorAll('.igt-vocab-pop__vocabtab')].find((t) =>
+        t.textContent.includes(name),
+      );
+    const inactive = [...host.querySelectorAll('button.igt-vocab-pop__vocabtab')][0];
+    expect(inactive).toBeTruthy();
+    const name = inactive.querySelector('.igt-vocab-pop__vtab-name').textContent;
+    // A click focuses the button it lands on before the handler runs.
+    inactive.focus();
+    inactive.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(tab(name).getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(search());
+  });
+});
