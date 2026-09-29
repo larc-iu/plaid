@@ -139,10 +139,11 @@ def test_execute_set_analysis_replaces_chain_and_glosses_new_morphemes_second_pa
     made = first[5][1]['kwargs']
     assert made['precedence'] == 2 and made['metadata']['form'] == 'ar' and 'morphType' not in made['metadata']
     assert first[6][1]['kwargs']['precedence'] == 3 and first[6][1]['kwargs']['metadata']['morphType'] == 'suffix'
-    # Second pass glosses the created morpheme by its minted id (the fake's
-    # second id, after the gloss span's), and the empty gloss is skipped.
-    [(kind, second)] = c.batches[1]
-    assert kind == 'spans.create' and second['args'][:3] == (MGLOSS, ['tokens-2'], 'PL')
+    # Second pass glosses the created morpheme by a ref to its create, in the
+    # same batch, and the empty gloss is skipped.
+    assert len(c.batches) == 1
+    kind, second = first[-1]
+    assert kind == 'spans.create' and second['args'][:3] == (MGLOSS, [{'$ref': 5}], 'PL')
 
 
 def test_execute_set_analysis_on_word_without_morphemes_creates_all():
@@ -155,7 +156,10 @@ def test_execute_set_analysis_on_word_without_morphemes_creates_all():
     execute_plan(c, [op], source='src', label='l')
     creates = [p for kind, p in c.batches[0] if kind == 'tokens.create']
     assert [p['kwargs']['precedence'] for p in creates] == [1, 2]
-    assert [p['args'][1] for _, p in c.batches[1]] == [['tokens-1'], ['tokens-2']]
+    [batch] = c.batches
+    made = [i for i, (kind, _) in enumerate(batch) if kind == 'tokens.create']
+    glosses = [p['args'][1] for kind, p in batch if kind == 'spans.create']
+    assert glosses == [[{'$ref': i}] for i in made]
 
 
 def test_execute_links_entries_orthography_and_respells_last():
@@ -181,11 +185,13 @@ def test_execute_links_entries_orthography_and_respells_last():
     assert b0[2][0] == 'vocab_links.create' and b0[2][1]['args'][:2] == ('vi-erg', ['w-1'])
     assert b0[3] == ('vocab_links.delete', 'l-2')
     assert b0[4] == ('vocab_items.patch_metadata', ('vi-ali', [{'op': 'set', 'path': ['pos'], 'value': 'PN'}]))
+    # The link to the new entry names it by a ref to its create, in the same
+    # batch.
+    assert b0[5][0] == 'vocab_links.create' and b0[5][1]['args'][:2] == ({'$ref': 0}, ['w-3'])
     # The orthography is a token metadata patch, which travels as a bulk update at the end of the batch.
-    assert b0[5] == ('tokens.bulk_update', [{'id': 'w-2', 'metadata': [{'op': 'delete', 'path': ['orthog:IPA']}]}])
-    # The link to the new entry waits for its id.
-    [b1] = c.batches[1:]
-    assert len(b1) == 1 and b1[0][0] == 'vocab_links.create' and b1[0][1]['args'][:2] == ('vocab_items-1', ['w-3'])
+    assert b0[6] == ('tokens.bulk_update', [{'id': 'w-2', 'metadata': [{'op': 'delete', 'path': ['orthog:IPA']}]}])
+    assert len(c.batches) == 1
+    b1 = []
     # Respells are one text update after every batch, highest offset first.
     last = c.writes[-1]
     assert last == ('texts.update', (TEXT_ID, [{'type': 'replace', 'index': 11, 'length': 5, 'value': 'akun'},

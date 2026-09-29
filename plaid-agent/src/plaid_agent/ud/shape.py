@@ -86,10 +86,8 @@ def t_set_words(ws: Workspace, document: str = None, ref: str = None, forms=None
 
 
 def apply_set_words(op: Dict[str, Any], b, stamp) -> None:
-    """Batch 1 of the reshape: the words themselves, and the token's own form.
-
-    Returns nothing; the created ids are read back in batch 2 (a batch op
-    cannot refer to an id made in the same batch).
+    """The reshape's words themselves, and the token's own form. The spans on
+    the new words name them by refs to this bulk create (``finish_set_words``).
     """
     forms, surface = op['forms'], op.get('surface') or ''
     if op.get('existing_word_ids'):

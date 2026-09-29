@@ -309,7 +309,10 @@ def test_set_morpheme_form_on_a_planned_morpheme_carries_its_planned_link():
     assert m2['morpheme_form'] == 'aa' and '"aa"' in m2['label']
     c = FakeClient()
     execute_plan(c, w.plan_payload()['ops'], source='s', label='l')
-    assert [(item, tokens) for item, tokens, _ in _links(c)] == [('vi-gam', ['tokens-1']), ('vi-erg', ['tokens-2'])]
+    [batch] = c.batches
+    made = [i for i, (kind, _) in enumerate(batch) if kind == 'tokens.create']
+    assert [(item, tokens) for item, tokens, _ in _links(c)] == [('vi-gam', [{'$ref': made[0]}]),
+                                                                 ('vi-erg', [{'$ref': made[1]}])]
 
 
 def test_set_morpheme_past_the_end_of_the_planned_analysis_is_refused():

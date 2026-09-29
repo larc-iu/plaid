@@ -1213,42 +1213,51 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
             if not ctx.deferred(op) and not any(op is r for r in ctx.restores):
                 b.finish(op)
 
-        b.flush()
+        # A delete_entry reads the entry's links once the plan's own changes
+        # stand (`_entry_links_now`), so they land first. Otherwise the whole
+        # plan goes in one batch.
+        if ctx.pending_deletes:
+            b.flush()
 
-        # Second pass: things that need ids minted above.
+        # Second pass: what names an id the first creates, by a ref to it
+        # when it is in the same batch (``Batcher.refer``).
+        def made(batch, idx, what):
+            made_id = b.refer(batch, idx) if idx is not None else None
+            if not made_id:
+                raise RuntimeError(what)
+            return made_id
+
         for idx, layer_id, value, document in ctx.pending_spans:
-            mid = created_id(b.results[idx] if idx < len(b.results) else None)
-            if not mid:
-                raise RuntimeError('a created morpheme came back without an id; its gloss was not written')
             with b.writing_for(document):
-                b.add(lambda batch, l=layer_id, m=mid, v=value: batch.spans.create(l, [m], v, stamps.stamp()))
+                b.add(lambda batch, l=layer_id, i=idx, v=value: batch.spans.create(
+                    l, [made(batch, i, 'a created morpheme came back without an id; its gloss was '
+                                       'not written')], v, stamps.stamp()))
         for tokens, key, document in ctx.pending_links:
-            i = ctx.entry_idx.get(key)
-            iid = created_id(b.results[i]) if i is not None and i < len(b.results) else None
-            if not iid:
-                raise RuntimeError('a created lexicon entry came back without an id; a link to it was not written')
             with b.writing_for(document):
-                b.add(lambda batch, i=iid, t=tokens: batch.vocab_links.create(i, t, stamps.stamp()))
-        # Links to the morphemes an analysis above created, by the ids those
-        # came back with (the reused first morpheme's is known already).
+                b.add(lambda batch, i=ctx.entry_idx.get(key), t=tokens: batch.vocab_links.create(
+                    made(batch, i, 'a created lexicon entry came back without an id; a link to it '
+                                   'was not written'), t, stamps.stamp()))
+        # Links to the morphemes an analysis above created (the reused first
+        # morpheme's id is known already).
         for op in ctx.planned_links:
             slots = ctx.chains.get(op['analysis_word_id']) or []
             k = op['morpheme_index']
             if not 1 <= k <= len(slots):
                 raise RuntimeError('a link names a morpheme its analysis did not create, so it was not written')
             how, at = slots[k - 1]
-            mid = at if how == 'id' else created_id(b.results[at] if at < len(b.results) else None)
-            if not mid:
-                raise RuntimeError('a created morpheme came back without an id, so its link was not written')
-            iid = op.get('item_id')
-            if not iid:
-                i = ctx.entry_idx.get(op.get('new_entry_key'))
-                iid = created_id(b.results[i]) if i is not None and i < len(b.results) else None
-            if not iid:
-                raise RuntimeError('a created lexicon entry came back without an id, so a link to it was not written')
+
+            def morpheme(batch, how=how, at=at):
+                return at if how == 'id' else made(
+                    batch, at, 'a created morpheme came back without an id, so its link was not written')
+
+            def entry(batch, o=op):
+                return o.get('item_id') or made(
+                    batch, ctx.entry_idx.get(o.get('new_entry_key')),
+                    'a created lexicon entry came back without an id, so a link to it was not written')
             with b.writing_for(op):
                 ctx.drop('vocab_links', op.get('existing_link_id'))
-                b.add(lambda batch, i=iid, m=mid: batch.vocab_links.create(i, [m], stamps.stamp()))
+                b.add(lambda batch, e=entry, m=morpheme: batch.vocab_links.create(
+                    e(batch), [m(batch)], stamps.stamp()))
         for keep, remove in ctx.pending_merges:
             if ('vocab_items', remove) in ctx.gone:
                 continue

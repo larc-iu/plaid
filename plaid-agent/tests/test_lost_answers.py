@@ -296,14 +296,15 @@ def _second_send_fails(monkeypatch):
 def test_an_igt_change_finished_in_the_second_batch_is_not_written_when_it_fails(monkeypatch):
     from fixtures import FakeClient as IgtClient
     from plaid_agent.igt.plan import execute_plan
+    from plaid_agent.igt.project import load_project
     ops = [{'kind': 'rename_entry', 'item_id': 'vi-gam2', 'form': 'net', 'label': 'a', '_row': 0},
-           {'kind': 'merge_entries', 'keep_id': 'vi-ali', 'remove_id': 'vi-erg', 'links': [],
-            'label': 'b', '_row': 1},
+           {'kind': 'delete_entry', 'item_id': 'vi-erg', 'links': ['l-2'], 'label': 'b', '_row': 1},
            {'kind': 'rename_document', 'document_id': 'd1', 'name': 'Two', 'label': 'c', '_row': 2}]
     _second_send_fails(monkeypatch)
+    c = IgtClient()
     with pytest.raises(core_plan.PlanError) as caught:
-        execute_plan(IgtClient(), ops, source='s', label='l')
-    assert caught.value.written == [0, 2], 'the merge is in the second batch'
+        execute_plan(c, ops, source='s', label='l', project=load_project(c, 'p1'))
+    assert caught.value.written == [0, 2], 'the entry delete is in the second batch'
 
 
 def test_a_ud_head_and_the_lemma_it_hangs_on_go_in_one_batch():
@@ -332,10 +333,10 @@ def test_the_history_label_of_a_partly_applied_plan_names_what_was_written(monke
     in full."""
     spec = APPS['igt']()
     client = spec['client']()
-    # The entry merge is in the igt executor's second batch.
+    # An entry delete is in the igt executor's second batch.
     plan = _plan_of(spec, client,
                     ('set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'fish'}),
-                    ('merge_entries', {'keep_id': 'vi-gam', 'remove_id': 'vi-gam2'}), scan=True)
+                    ('delete_entry', {'entry_id': 'vi-gam2'}), scan=True)
     _second_send_fails(monkeypatch)
     svc = spec['service']()
     spec = {**spec, 'service': lambda: svc}
@@ -352,14 +353,18 @@ def test_the_history_label_of_a_partly_applied_plan_names_what_was_written(monke
 def test_a_plan_with_no_change_written_in_full_says_it_is_part_of_the_plan(monkeypatch):
     spec = APPS['igt']()
     client = spec['client']()
-    # An analysis whose new morphemes go in the first batch and their gloss in
-    # the second: the first stood, and no change was written in full.
+    # The plan's one batch landed and its answer was lost, so no change is
+    # known to be written in full.
     plan = _plan_of(spec, client,
-                    ('set_analysis', {'document': 'd1', 'ref': 's1.w2',
-                                      'morphemes': [{'form': 'ga', 'fields': {'Morph Gloss': 'fish'}},
-                                                    {'form': 'm', 'fields': {'Morph Gloss': 'PL'}}]}),
+                    ('set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'fish'}),
                     scan=True)
-    _second_send_fails(monkeypatch)
+    real = core_plan.Batcher.flush
+
+    def lost(self):
+        real(self)
+        raise _lost()
+
+    monkeypatch.setattr(core_plan.Batcher, 'flush', lost)
     svc = spec['service']()
     spec = {**spec, 'service': lambda: svc}
     sbs._approve(spec, client, plan)
