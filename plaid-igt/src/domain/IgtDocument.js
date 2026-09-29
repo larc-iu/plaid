@@ -356,19 +356,65 @@ export class IgtDocument extends DocumentModel {
     }
   }
 
-  // A reload refreshes the project vocabularies with the document, at the same
-  // snapshot. The document itself is kept even when the vocabularies cannot
-  // be: the user is told the links may be stale rather than shown old ones
-  // silently.
+  /**
+   * Read the project again. Its tagsets, metadata fields, speakers and review
+   * setting change while a document stays open, and a copy from the page load
+   * let a value through a tagset closed since, or refused one opened since.
+   * Every refetch reads it, and so does a return to the tab while a screen
+   * holds the document (`hold`). A past state keeps the project it has, since
+   * a project has no past state. Quiet on failure: the copy stays as it was.
+   */
+  async refreshProject() {
+    const project = await this._readProject();
+    if (!project) return false;
+    this._project = project;
+    // `document` derives its metadata fields from the project.
+    this._derivedCache.delete('document');
+    this._emit();
+    return true;
+  }
+
+  async _readProject() {
+    if (!this._client || !this._projectId || this._asOf) return null;
+    try {
+      return await this._client.projects.get(this._projectId);
+    } catch (err) {
+      console.warn('Could not read the project again:', err);
+      return null;
+    }
+  }
+
+  hold() {
+    const release = super.hold();
+    if (this._holds === 1 && typeof document !== 'undefined') {
+      this._onVisible = () => {
+        if (document.visibilityState === 'visible') this.refreshProject();
+      };
+      document.addEventListener('visibilitychange', this._onVisible);
+    }
+    return () => {
+      release();
+      if (this._holds === 0 && this._onVisible) {
+        document.removeEventListener('visibilitychange', this._onVisible);
+        this._onVisible = null;
+      }
+    };
+  }
+
+  // A reload refreshes the project and its vocabularies with the document, at
+  // the same snapshot. The document itself is kept even when the vocabularies
+  // cannot be: the user is told the links may be stale rather than shown old
+  // ones silently.
   async _adoptReload(updated) {
     if (!this._project) return;
     const at = this._asOf || undefined;
     try {
-      const { vocabularies: reloaded, failedCount } = await loadProjectVocabularies(
-        this._client,
-        this._project,
-        at,
-      );
+      const [project, { vocabularies: reloaded, failedCount }] = await Promise.all([
+        this._readProject(),
+        loadProjectVocabularies(this._client, this._project, at),
+      ]);
+      // The raw swap that follows re-derives everything that reads it.
+      if (project) this._project = project;
       this._vocabularies = mergeRawVocabLinks(updated, reloaded);
       if (failedCount > 0 && this.onError) {
         this.onError(

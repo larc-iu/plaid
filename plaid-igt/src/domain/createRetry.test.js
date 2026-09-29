@@ -48,6 +48,8 @@ const server = (user = WRITER) => {
   client.vocabLinks.create = (...args) => refuse(() => linkCreate(...args));
   const batched = client.batched.bind(client);
   client.batched = (fn) => refuse(() => batched(fn));
+  // The project the document was opened with, as a refetch reads it again.
+  client.projects.get = async () => PROJECT();
   client.vocabLayers.get = async (id) => ({
     id,
     name: 'Lexicon',
@@ -57,10 +59,12 @@ const server = (user = WRITER) => {
   return { client, items, state };
 };
 
+const PROJECT = () => ({ id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } });
+
 const makeDoc = (client, user = WRITER) =>
   new IgtDocument({
     raw: buildRawDoc(),
-    project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+    project: PROJECT(),
     vocabularies: {
       v1: {
         id: 'v1',
