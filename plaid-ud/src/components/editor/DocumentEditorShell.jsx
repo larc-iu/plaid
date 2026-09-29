@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useLocation, Outlet, useSearchParams } from 'react-router-dom';
 import { History } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
@@ -20,7 +20,7 @@ import { isReviewed } from '@larc-iu/plaid-client';
 import { UD_ASSISTANT } from '../assistant/adapter.js';
 import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { dismissIntegrityFindings } from '@ui/lib/integrityToast.js';
-import { humanizeError } from '@ui/lib/errors.js';
+import { humanizeError, isGone } from '@ui/lib/errors.js';
 import { notifyError } from '../../utils/feedback.jsx';
 import { useHistoryView } from '@ui/hooks/useHistoryView.js';
 import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
@@ -68,6 +68,9 @@ const DocumentEditor = () => {
   const [, setSearchParams] = useSearchParams();
 
   const [doc, setDoc] = useState(null);
+  // The document now, for the comment store's error channel, which is set once.
+  const docRef = useRef(null);
+  docRef.current = doc;
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -96,7 +99,12 @@ const DocumentEditor = () => {
     // wires to its two stores.
     // The label is the title: it is what a person scans, and the description
     // is the reason under it.
-    comments.onError = (msg, err, label) => notifyError(err ?? msg, label);
+    // A comment refused because what it is on was deleted meanwhile: the
+    // document is read again, so the deletion shows.
+    comments.onError = (msg, err, label) => {
+      notifyError(err ?? msg, label);
+      if (isGone(err)) docRef.current?.reload();
+    };
     comments.load();
   }, [comments]);
   // The tab strip is chrome, so it survives a tab switch — but it must not be

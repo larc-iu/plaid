@@ -34,6 +34,10 @@ vi.mock('../../domain/ConlluDocument.js', () => ({
     hold() {
       return () => {};
     }
+    reload() {
+      this.reloads = (this.reloads ?? 0) + 1;
+      return Promise.resolve();
+    }
   },
 }));
 vi.mock('@ui/domain/useDocumentModel.js', () => ({ useDocumentModel: () => 0 }));
@@ -211,6 +215,19 @@ describe('the document editor shell', () => {
     store.onError('Post comment: HTTP 423', err, 'Post comment');
     expect(feedback.notifyError).toHaveBeenCalledTimes(1);
     expect(feedback.notifyError.mock.calls[0]).toEqual([err, 'Post comment']);
+    await view.unmount();
+  });
+
+  // A comment refused because the annotation it is on was deleted meanwhile
+  // (H7-5): the document is read again, so the grid shows the deletion.
+  it('reads the document again when a comment is refused because its annotation is gone', async () => {
+    await mountAt('/projects/p1/documents/d1/annotate');
+    const store = stores[stores.length - 1];
+    const doc = docs[docs.length - 1];
+    store.onError('Post comment: HTTP 423', { status: 423, method: 'POST' }, 'Post comment');
+    expect(doc.reloads ?? 0).toBe(0);
+    store.onError('Post comment: HTTP 404', { status: 404, method: 'POST' }, 'Post comment');
+    expect(doc.reloads).toBe(1);
     await view.unmount();
   });
 
