@@ -191,9 +191,11 @@ def title_from(text: str) -> str:
 
 
 def build_meta(prev: Optional[Dict[str, Any]], conv_id: str, conv: Dict[str, Any], service_id: Optional[str],
-               model: Optional[str], pending: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+               model: Optional[str], pending: Optional[Dict[str, Any]] = None,
+               version: Optional[str] = None) -> Dict[str, Any]:
     """The sidebar entry after a write. The title is set once, from the first
-    message; the assistant recorded is the one that answered."""
+    message; the assistant recorded is the one that answered, by its model and
+    its version (``BaseAssistantService.version``), as each turn names them."""
     prev = prev or {}
     first_user = next((d for d in conv['display'] if d.get('kind') == 'user'), None)
     return {
@@ -203,6 +205,7 @@ def build_meta(prev: Optional[Dict[str, Any]], conv_id: str, conv: Dict[str, Any
         'updated_at': now_iso(),
         'service_id': service_id or prev.get('service_id'),
         'model': model or prev.get('model'),
+        'version': version or prev.get('version'),
         'turns': sum(1 for d in conv['display'] if d.get('kind') == 'user'),
         'pending': pending,
         # The document a docked conversation is about. The app writes it when

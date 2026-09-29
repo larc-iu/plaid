@@ -148,6 +148,8 @@ export const buildMeta = (store, prev, conv, service, pending = null, about = nu
     updatedAt: new Date().toISOString(),
     serviceId: service?.serviceId || prev?.serviceId || null,
     model: service?.extras?.model || prev?.model || null,
+    // Which version of it, as each turn names it (the service advertises it).
+    version: service?.extras?.version || prev?.version || null,
     turns: conv.display.filter((d) => d.kind === 'user').length,
     // The document the conversation was started from, if any. It is what the
     // tab's list tags a row with, and it never changes once set: a

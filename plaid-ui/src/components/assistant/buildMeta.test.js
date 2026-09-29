@@ -33,6 +33,22 @@ describe('buildMeta', () => {
   });
 });
 
+// Each turn names the model and the version that answered it. The entry names
+// both too, from the service that is answering, so a list of conversations can
+// tell two versions of one assistant apart, and a rewrite here keeps them.
+describe('the assistant an entry names', () => {
+  it('is the model and the version the service advertises, kept when it says nothing', () => {
+    const service = { serviceId: 's', extras: { model: 'openai/m', version: '0.0.0+0123abcd' } };
+    const meta = buildMeta(store(), null, conv, service);
+    expect(meta.model).toBe('openai/m');
+    expect(meta.version).toBe('0.0.0+0123abcd');
+    const kept = buildMeta(store(), meta, conv, null);
+    expect(kept.model).toBe('openai/m');
+    expect(kept.version).toBe('0.0.0+0123abcd');
+    expect(buildMeta(store(), null, conv, null).version).toBeNull();
+  });
+});
+
 describe('readConv', () => {
   it('stamps the entry with the project whose keys it was read under', async () => {
     const records = new Map([

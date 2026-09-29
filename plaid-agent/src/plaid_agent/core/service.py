@@ -303,6 +303,9 @@ class BaseAssistantService(BaseService):
         # namespaced by app, so an app that offered a foreign assistant sent
         # every turn to a service that could not find the conversation.
         self.extras['model'] = self.cfg.model
+        # And which version of it, for the conversation's sidebar entry, which
+        # the browser rewrites too.
+        self.extras['version'] = self.version
         self.extras['app'] = self.APP
         # How many projects one conversation may read, its own included. The
         # browser offers to add projects only when this is here, and stops at
@@ -504,7 +507,8 @@ class BaseAssistantService(BaseService):
             stopped = {'messages': transcript[:-1],
                        'display': conv['display'] + [error_item('Stopped.', stopped=True, model=model,
                                                                 version=self.version)]}
-            self._write(store, conv_id, stopped, build_meta(meta, conv_id, stopped, self.service_id, model), request_id)
+            self._write(store, conv_id, stopped,
+                        build_meta(meta, conv_id, stopped, self.service_id, model, version=self.version), request_id)
             response_helper.complete({'kind': 'stopped'})
             return
         except Exception as e:  # noqa: BLE001 - whatever failed, the record must say so
@@ -513,7 +517,8 @@ class BaseAssistantService(BaseService):
             line = self.turn_failure_line(e)
             failed = {'messages': transcript[:-1],
                       'display': conv['display'] + [error_item(line, model=model, version=self.version)]}
-            self._write(store, conv_id, failed, build_meta(meta, conv_id, failed, self.service_id, model), request_id)
+            self._write(store, conv_id, failed,
+                        build_meta(meta, conv_id, failed, self.service_id, model, version=self.version), request_id)
             response_helper.error(line)
             return
         self._release(ws)
@@ -538,7 +543,8 @@ class BaseAssistantService(BaseService):
         done = prune({'messages': transcript + turn.messages, 'display': conv['display'] + [item]},
                      record_budget(client), self.transcript_budget(model, overhead))
         try:
-            self._write(store, conv_id, done, build_meta(meta, conv_id, done, self.service_id, model), request_id)
+            self._write(store, conv_id, done,
+                        build_meta(meta, conv_id, done, self.service_id, model, version=self.version), request_id)
         except Exception as e:  # noqa: BLE001 - the answer is in hand; say so rather than lose it
             # This write is the LAST thing a turn does, and it sat outside the
             # try that catches everything else, so a refused save (too large,
@@ -596,7 +602,7 @@ class BaseAssistantService(BaseService):
             refused the write, which `_write` reports rather than raising."""
             c = next_conv or conv
             return self._write(store, conv_id, c,
-                               build_meta(meta, conv_id, c, self.service_id, model), request_id)
+                               build_meta(meta, conv_id, c, self.service_id, model, version=self.version), request_id)
 
         # A second approval of the same plan (a retried request, a double
         # click) does not write it twice.
