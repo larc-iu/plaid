@@ -6,7 +6,6 @@ Run with::
     cd plaid-client-py && python -m pytest tests/ -q
 """
 
-import contextlib
 import copy
 import os
 import sys
@@ -348,60 +347,14 @@ def test_the_writer_refuses_to_replace_a_sentence_it_may_not():
     doc = _read()
     plans = [{'sentence': doc.sentences[0], 'pieces': [(4, 7)],
               'nodes': [{'concept': 'dog', 'meta': {}, 'piece_indexes': [0]}], 'edges': []}]
-    client = _Client()
+    from plaid_client.testing import FakeClient
+    client = FakeClient([_document()])
     with pytest.raises(ValueError, match='Sentence 1'):
         write_graphs(client, resolve_layers(_document()), plans, {})
-    assert client.calls == []
+    assert client.writes == []
 
 
 # --- writing --------------------------------------------------------------------
-
-class _Client:
-    """Records the three batches and hands back ids in order. ``batches``
-    holds the calls each batch sent together."""
-
-    def __init__(self):
-        self.calls = []
-        self.batches = []
-        self.tokens = self._Res(self, 'tokens')
-        self.spans = self._Res(self, 'spans')
-        self.relations = self._Res(self, 'relations')
-
-    @contextlib.contextmanager
-    def batched(self):
-        client = self
-
-        class _Batch:
-            results = []
-
-            def __init__(self):
-                self.tokens = client._Res(self, 'tokens')
-                self.calls = []
-
-        batch = _Batch()
-        yield batch
-        self.calls.extend(batch.calls)
-        self.batches.append(batch.calls)
-
-    class _Res:
-        def __init__(self, client, name):
-            self._client, self._name = client, name
-
-        def bulk_create(self, ops):
-            self._client.calls.append((f'{self._name}.bulk_create', ops))
-            answer = {'ids': [f'{self._name}{i}' for i in range(len(ops))]}
-            self._answered(answer)
-            return answer
-
-        def bulk_delete(self, ids):
-            self._client.calls.append((f'{self._name}.bulk_delete', ids))
-            self._answered({})
-
-        def _answered(self, body):
-            results = getattr(self._client, 'results', None)
-            if results is not None:
-                self._client.results = [*results, {'body': body}]
-
 
 def test_the_draft_notice_names_each_failed_sentence_and_sticks():
     from plaid_client.workflows.umr.write import build_draft_notice
@@ -436,10 +389,12 @@ def test_run_labels_name_one_sentence_and_count_several():
 
 
 def test_a_drafted_graph_is_written_as_anchors_then_nodes_then_edges():
-    """An op cannot reference an id produced earlier in the same batch, so the
-    three passes are three batches, in the order the importer writes in. The
-    old anchors go in the first, with the new ones, so a failure in between
-    cannot leave the sentence with no graph."""
+    """In ONE atomic batch, in the order the importer writes in, the old
+    anchors' delete first. A node names its anchors, and an edge its nodes,
+    by a ref to the ids an earlier op creates. In three batches, a failure or
+    a lost answer after the first left anchors with no node (conc-2026-09-29
+    H4-7)."""
+    from plaid_client.testing import FakeClient
     raw = _without_triples(_document())
     _machine_drafted(raw)
     doc = _read(raw)
@@ -448,23 +403,40 @@ def test_a_drafted_graph_is_written_as_anchors_then_nodes_then_edges():
               'nodes': [{'concept': 'dog', 'meta': {'var': 's1d'}, 'piece_indexes': [0]},
                         {'concept': 'bark-01', 'meta': {'var': 's1b'}, 'piece_indexes': [1]}],
               'edges': [{'source': 1, 'target': 0, 'role': ':ARG0', 'order': 0}]}]
-    client = _Client()
+    client = FakeClient([raw])
     write_graphs(client, layers, plans, {'prov': 'inferred'})
 
-    assert [name for name, _ in client.calls] == [
+    [batch] = client.batches
+    assert [name for name, _ in batch] == [
         'tokens.bulk_delete', 'tokens.bulk_create', 'spans.bulk_create',
         'relations.bulk_create']
-    assert [[name for name, _ in batch] for batch in client.batches] == [
-        ['tokens.bulk_delete', 'tokens.bulk_create']]
-    spans = client.calls[2][1]
+    [spans] = client.payloads('spans.bulk_create')
     assert [s['value'] for s in spans] == ['dog', 'bark-01']
+    assert [s['tokens'] for s in spans] == [[{'$ref': 1, 'index': 0}], [{'$ref': 1, 'index': 1}]]
     # The provenance stamp is FLAT and the app's own half sits beside it.
     # provDetail records what was drafted, per item.
     assert spans[0]['metadata'] == {'prov': 'inferred', 'provDetail': {'value': 'dog'},
                                     'umr': {'var': 's1d'}}
-    [edge] = client.calls[3][1]
-    assert (edge['source'], edge['target'], edge['value']) == ('spans1', 'spans0', ':ARG0')
+    [[edge]] = client.payloads('relations.bulk_create')
+    assert (edge['source'], edge['target'], edge['value']) == (
+        {'$ref': 2, 'index': 1}, {'$ref': 2, 'index': 0}, ':ARG0')
     assert edge['metadata']['provDetail'] == {'value': ':ARG0'}
+
+
+def test_a_draft_that_fails_partway_writes_nothing():
+    from plaid_client.http import PlaidAPIError
+    from plaid_client.testing import FakeClient
+    raw = _without_triples(_document())
+    _machine_drafted(raw)
+    doc = _read(raw)
+    plans = [{'sentence': doc.sentences[0], 'pieces': [(4, 7), (8, 14)],
+              'nodes': [{'concept': 'dog', 'meta': {}, 'piece_indexes': [0]},
+                        {'concept': 'bark-01', 'meta': {}, 'piece_indexes': [1]}],
+              'edges': [{'source': 1, 'target': 0, 'role': ':ARG0', 'order': 0}]}]
+    client = FakeClient([raw], fails={'relations.bulk_create': PlaidAPIError('HTTP 400 no', status=400)})
+    with pytest.raises(PlaidAPIError):
+        write_graphs(client, resolve_layers(raw), plans, {})
+    assert client.writes == []
 
 
 def _finish(client, raw, plans):
@@ -488,50 +460,6 @@ def _finish(client, raw, plans):
                  writing='Writing', service_id='umr:draft:x')
 
 
-def test_a_draft_that_fails_partway_removes_the_anchors_it_made():
-    """conc-2026-09-29 H4-7: each failed run left anchors with no node, until
-    someone opened the document in the app more than two minutes later and
-    the repair went under their name. The anchors are read back, since a
-    write whose answer was lost may have been saved."""
-    from plaid_client.http import PlaidAPIError
-    from plaid_client.testing import FakeClient
-    raw = _without_triples(_document())
-    _machine_drafted(raw)
-    after = copy.deepcopy(raw)
-    node_layer = after['text_layers'][0]['token_layers'][2]
-    node_layer['tokens'].append({'id': 'new-anchor', 'text': 'x', 'begin': 4, 'end': 7})
-    lost = PlaidAPIError('Network error: reset', status=0, method='POST')
-    client = FakeClient([raw, after], fails={'spans.bulk_create': lost})
-    doc = _read(raw)
-    plans = [{'sentence': doc.sentences[0], 'pieces': [(4, 7)],
-              'nodes': [{'concept': 'dog', 'meta': {}, 'piece_indexes': [0]}], 'edges': []}]
-    # The lost answer is settled by the read-back, so the requester is not
-    # told the change may or may not have been saved.
-    with pytest.raises(ValueError, match='^The Plaid server did not answer. The document is as it was.$'):
-        _finish(client, raw, plans)
-    assert client.payloads('tokens.bulk_delete')[-1] == ['new-anchor']
-    # Still under the lock, and stamped with the version it read.
-    assert client.kinds.index('unlock') > client.kinds.index('tokens.bulk_delete')
-    assert all(doc_id == 'd1' for _, doc_id, _ in client.stamps)
-
-
-def test_a_lost_answer_with_nothing_to_clear_may_still_land():
-    """The lost write had not landed when it was read back, so it may yet:
-    the requester is told so, not that the document is as it was."""
-    from plaid_client.http import PlaidAPIError
-    from plaid_client.testing import FakeClient
-    raw = _without_triples(_document())
-    _machine_drafted(raw)
-    lost = PlaidAPIError('Request timed out', status=0, method='POST')
-    client = FakeClient([raw], fails={'tokens.bulk_create': lost})
-    doc = _read(raw)
-    plans = [{'sentence': doc.sentences[0], 'pieces': [(4, 7)],
-              'nodes': [{'concept': 'dog', 'meta': {}, 'piece_indexes': [0]}], 'edges': []}]
-    with pytest.raises(PlaidAPIError):
-        _finish(client, raw, plans)
-    assert client.payloads('tokens.bulk_delete') == []
-
-
 def test_a_draft_refused_before_writing_reads_nothing_back():
     from plaid_client.testing import FakeClient
     raw = _without_triples(_document())    # a person's graph: not redraftable
@@ -542,24 +470,6 @@ def test_a_draft_refused_before_writing_reads_nothing_back():
     with pytest.raises(ValueError, match='may not replace'):
         _finish(client, raw, plans)
     assert client.writes == []
-
-
-def test_the_writer_refuses_a_short_answer_rather_than_writing_the_wrong_ids():
-    class _Short(_Client):
-        class _Res(_Client._Res):
-            def bulk_create(self, ops):
-                super().bulk_create(ops)
-                if getattr(self._client, 'results', None):
-                    self._client.results = [*self._client.results[:-1], {'body': {'ids': []}}]
-                return {'ids': []}
-
-    raw = _without_triples(_document())
-    _machine_drafted(raw)
-    doc = _read(raw)
-    plans = [{'sentence': doc.sentences[0], 'pieces': [(4, 7)],
-              'nodes': [{'concept': 'dog', 'meta': {}, 'piece_indexes': [0]}], 'edges': []}]
-    with pytest.raises(RuntimeError, match='anchor ids'):
-        write_graphs(_Short(), resolve_layers(raw), plans, {})
 
 
 def test_reading_a_document_does_not_change_it():

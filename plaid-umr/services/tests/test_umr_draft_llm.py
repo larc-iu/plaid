@@ -219,8 +219,9 @@ def test_a_good_answer_becomes_anchors_nodes_and_relations():
     nodes = _ops(service.client, 'spans.bulk_create')
     assert [n['value'] for n in nodes] == ['bark-01', 'dog', 'now']
     assert {n['span_layer_id'] for n in nodes} == {'conceptL'}
-    # Each node takes its own anchor.
-    assert [n['tokens'] for n in nodes] == [['tokens-1'], ['tokens-2'], ['tokens-3']]
+    # Each node takes its own anchor, by a ref to the id the anchor op makes:
+    # anchors, nodes and relations go in one batch.
+    assert [n['tokens'] for n in nodes] == [[{'$ref': 0, 'index': k}] for k in range(3)]
 
     umr_meta = [n['metadata']['umr'] for n in nodes]
     # The project's variable rule, re-generated: the model's v1/v2/v3 are gone.
@@ -238,8 +239,8 @@ def test_a_good_answer_becomes_anchors_nodes_and_relations():
     [relations] = service.client.payloads('relations.bulk_create')
     assert [(r['value'], r['source'], r['target'], r['metadata']['umr'])
             for r in relations] == [
-        (':ARG0', 'spans-4', 'spans-5', {'order': 0}),
-        (':temporal', 'spans-4', 'spans-6', {'order': 2}),
+        (':ARG0', {'$ref': 1, 'index': 0}, {'$ref': 1, 'index': 1}, {'order': 0}),
+        (':temporal', {'$ref': 1, 'index': 0}, {'$ref': 1, 'index': 2}, {'order': 2}),
     ]
     assert {r['relation_layer_id'] for r in relations} == {'relL'}
 
@@ -293,7 +294,7 @@ def test_a_discontiguous_alignment_becomes_one_anchor_per_run_of_words():
     anchors = _ops(service.client, 'tokens.bulk_create')
     assert [(a['begin'], a['end']) for a in anchors] == [(0, 3), (8, 13)]
     [node] = _ops(service.client, 'spans.bulk_create')
-    assert node['tokens'] == ['tokens-1', 'tokens-2']
+    assert node['tokens'] == [{'$ref': 0, 'index': 0}, {'$ref': 0, 'index': 1}]
 
 
 def test_the_scope_of_one_sentence_drafts_only_that_sentence():

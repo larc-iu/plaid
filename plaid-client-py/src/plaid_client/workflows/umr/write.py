@@ -9,8 +9,8 @@ A service that drafts graphs hands :func:`write_graphs` one plan per sentence::
      'edges':    [{'source': i, 'target': i,
                    'role': ':ARG0', 'order': n}, ...]} nodes by index
 
-and gets three batched passes: anchors, then nodes, then edges, because an op
-cannot reference an id produced earlier in the same batch. That is the order the
+and gets one atomic batch: anchors, then nodes, then edges, each naming the
+ones before it by a ref to the ids they are created with. That is the order the
 ``.umr`` importer writes in (``src/domain/umrImport.js``).
 
 Two services write this shape (drafting with a model, and the skeleton from
@@ -22,13 +22,11 @@ sentence.
 """
 
 import contextlib
-import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from plaid_client.provenance import PROV_DETAIL_KEY, PROV_KEY, service_source
 from plaid_client.service import locked_for_writes, progress_heartbeat
-from plaid_client.services import UNKNOWN_OUTCOME, requester_message
 from plaid_client.service_schema import Param
 
 from ..requester import Requester, requester_of
@@ -200,18 +198,24 @@ def _predicted(frag: dict, prediction: dict) -> dict:
 
 def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
                  progress: Optional[DraftProgress] = None) -> None:
-    """Anchors, then nodes, then edges, in three batches.
+    """Anchors, then nodes, then edges, in ONE atomic batch.
+
+    A node names its anchors, and an edge its nodes, by a ref to the ids an
+    earlier op of the batch creates (``batch.ref``). In three batches, a
+    failure or a lost answer after the first left anchors with no node, which
+    the editor's repair deleted on someone's next open, under their name.
+    Now a run that fails leaves the document as it was, and one whose answer
+    was lost wrote its graphs whole, whenever the batch lands.
 
     A plan for a sentence that already has a graph REPLACES it: the old
-    graph's anchor tokens are deleted first, which cascades its concept spans
-    and with them every edge and document-level triple on them, in the same
-    batch that writes the new anchors. So a plan for
-    a sentence that is not :attr:`Sentence.redraftable` is refused before
-    anything is written, whatever the caller decided. ``frag`` is the
-    provenance stamp every write carries: it is FLAT and the app's own half
-    sits beside it under ``umr``, exactly as the importer and the canvas write
-    it. Each node's ``provDetail`` also records the concept and attributes it
-    was drafted with, and each edge's its role.
+    graph's anchor tokens are deleted first in the same batch, which cascades
+    its concept spans and with them every edge and document-level triple on
+    them. So a plan for a sentence that is not :attr:`Sentence.redraftable`
+    is refused before anything is written, whatever the caller decided.
+    ``frag`` is the provenance stamp every write carries: it is FLAT and the
+    app's own half sits beside it under ``umr``, exactly as the importer and
+    the canvas write it. Each node's ``provDetail`` also records the concept
+    and attributes it was drafted with, and each edge's its role.
     """
     progress = progress or DraftProgress(None)
     kept = [plan['sentence'].index for plan in plans
@@ -220,88 +224,64 @@ def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
         raise ValueError(f'Sentence {kept[0]} has work a draft may not replace.')
     doomed = [pid for plan in plans for node in plan['sentence'].nodes
               for pid in node.piece_ids]
-    if doomed:
-        progress.report(DraftProgress.WRITE, 0.1, f'Clearing {_count(len(doomed), "anchor")}…')
-
     piece_ops: List[dict] = []
-    bases: List[Tuple[int, int]] = []
     for plan in plans:
-        piece_base = len(piece_ops)
         piece_ops.extend({'token_layer_id': layers.node_layer['id'],
                           'text': layers.text_id, 'begin': begin, 'end': end}
                          for begin, end in plan['pieces'])
-        bases.append((piece_base, 0))
+    if not doomed and not piece_ops:
+        return
+    if doomed:
+        progress.report(DraftProgress.WRITE, 0.1, f'Clearing {_count(len(doomed), "anchor")}…')
+    # What each step would have said as its own request. They go as one now,
+    # but the bar still moves through them.
     progress.report(DraftProgress.WRITE, 0.3, f'Writing {_count(len(piece_ops), "anchor")}…')
-    # The old anchors go in the same atomic batch as the new ones: a delete
-    # sent alone, then a failed create, left the sentence with no graph at all.
-    piece_ids = []
-    if doomed or piece_ops:
-        with client.batched() as b:
-            if doomed:
-                b.tokens.bulk_delete(doomed)
-            if piece_ops:
-                b.tokens.bulk_create(piece_ops)
-        if piece_ops:
-            piece_ids = (b.results[-1].get('body') or {}).get('ids') or []
-    if len(piece_ids) != len(piece_ops):
-        raise RuntimeError(f'The server returned {len(piece_ids)} anchor ids for '
-                           f'{len(piece_ops)} anchors.')
+    with client.batched() as b:
+        if doomed:
+            b.tokens.bulk_delete(doomed)
+        if not piece_ops:
+            return
+        b.tokens.bulk_create(piece_ops)
+        pieces_at = b.ref(-1)['$ref']
 
-    span_ops: List[dict] = []
-    for n, plan in enumerate(plans):
-        piece_base, _ = bases[n]
-        bases[n] = (piece_base, len(span_ops))
-        for node in plan['nodes']:
-            prediction = {'value': node['concept']}
-            attrs = [{'rel': a['rel'], 'value': a['value']}
-                     for a in node['meta'].get('attrs') or []]
-            if attrs:
-                prediction['attrs'] = attrs
-            span_ops.append({
-                'span_layer_id': layers.concept_layer['id'],
-                'tokens': [piece_ids[piece_base + i] for i in node['piece_indexes']],
-                'value': node['concept'],
-                'metadata': {**_predicted(frag, prediction), UMR_NAMESPACE: node['meta']},
-            })
-    progress.report(DraftProgress.WRITE, 0.6, f'Writing {_count(len(span_ops), "node")}…')
-    span_ids = client.spans.bulk_create(span_ops)['ids'] if span_ops else []
-    if len(span_ids) != len(span_ops):
-        raise RuntimeError(f'The server returned {len(span_ids)} node ids for '
-                           f'{len(span_ops)} nodes.')
+        span_ops: List[dict] = []
+        piece_base = 0
+        node_bases = []
+        for plan in plans:
+            node_bases.append(len(span_ops))
+            for node in plan['nodes']:
+                prediction = {'value': node['concept']}
+                attrs = [{'rel': a['rel'], 'value': a['value']}
+                         for a in node['meta'].get('attrs') or []]
+                if attrs:
+                    prediction['attrs'] = attrs
+                span_ops.append({
+                    'span_layer_id': layers.concept_layer['id'],
+                    'tokens': [b.ref(pieces_at, piece_base + i) for i in node['piece_indexes']],
+                    'value': node['concept'],
+                    'metadata': {**_predicted(frag, prediction), UMR_NAMESPACE: node['meta']},
+                })
+            piece_base += len(plan['pieces'])
+        if not span_ops:
+            return
+        progress.report(DraftProgress.WRITE, 0.6, f'Writing {_count(len(span_ops), "node")}…')
+        b.spans.bulk_create(span_ops)
+        spans_at = b.ref(-1)['$ref']
 
-    edge_ops: List[dict] = []
-    for n, plan in enumerate(plans):
-        _, node_base = bases[n]
-        for edge in plan['edges']:
-            edge_ops.append({
-                'relation_layer_id': layers.relation_layer['id'],
-                'source': span_ids[node_base + edge['source']],
-                'target': span_ids[node_base + edge['target']],
-                'value': edge['role'],
-                'metadata': {**_predicted(frag, {'value': edge['role']}),
-                             UMR_NAMESPACE: {'order': edge['order']}},
-            })
-    if edge_ops:
-        progress.report(DraftProgress.WRITE, 0.9, f'Writing {_count(len(edge_ops), "relation")}…')
-        client.relations.bulk_create(edge_ops)
-
-
-def clear_new_anchors(client, document_id: str, layers: UmrLayers) -> int:
-    """Delete the anchor tokens a failed :func:`write_graphs` left, and with
-    them any node or edge on them. Returns how many it deleted.
-
-    ``layers`` is what the run read before it wrote, so an anchor it does not
-    hold is one this run made. The writes go in three batches, and one whose
-    answer was lost may still have been saved, so the ids are read back
-    rather than taken from answers. Call it while the lock is still held.
-    """
-    before = {t['id'] for t in (layers.node_layer or {}).get('tokens') or []}
-    raw = client.documents.get(document_id, include_body=True, layers=layers.read_layer_ids())
-    now = resolve_layers(raw).node_layer.get('tokens') or []
-    made = [t['id'] for t in now if t['id'] not in before]
-    if made:
-        client.tokens.bulk_delete(made)
-    return len(made)
+        edge_ops: List[dict] = []
+        for plan, node_base in zip(plans, node_bases):
+            for edge in plan['edges']:
+                edge_ops.append({
+                    'relation_layer_id': layers.relation_layer['id'],
+                    'source': b.ref(spans_at, node_base + edge['source']),
+                    'target': b.ref(spans_at, node_base + edge['target']),
+                    'value': edge['role'],
+                    'metadata': {**_predicted(frag, {'value': edge['role']}),
+                                 UMR_NAMESPACE: {'order': edge['order']}},
+                })
+        if edge_ops:
+            progress.report(DraftProgress.WRITE, 0.9, f'Writing {_count(len(edge_ops), "relation")}…')
+            b.relations.bulk_create(edge_ops)
 
 
 def draft_params() -> List[Param]:
@@ -448,28 +428,5 @@ def finish_draft(client, response_helper, run: DraftRun, plans: Sequence[dict],
         with client.operation(run.requester.label(operation), kind='service-run',
                               ref=service_source(service_id)):
             with locked_for_writes(client, run.document_id, run.read_version):
-                try:
-                    write_graphs(client, run.layers, plans, frag, run.progress)
-                except ValueError:
-                    raise  # refused before anything was written
-                except Exception as failure:
-                    # A run that failed partway leaves no half graph behind:
-                    # anchors with no node were cleaned up only when someone
-                    # next opened the document in the app, under their name.
-                    try:
-                        cleared = clear_new_anchors(client, run.document_id, run.layers)
-                    except Exception:  # noqa: BLE001 - the write's own failure is the one to report
-                        logging.getLogger(__name__).exception(
-                            'Could not remove the anchors a failed draft left')
-                        raise failure
-                    # Read back and cleared, so what the requester would be
-                    # told of a lost answer ("may or may not have been
-                    # saved") is known now. Only when something was cleared:
-                    # that moved the version on, so a write of this run still
-                    # on its way is refused. With nothing to clear, the lost
-                    # write may yet land.
-                    if cleared and requester_message(failure) == UNKNOWN_OUTCOME:
-                        raise ValueError('The Plaid server did not answer. '
-                                         'The document is as it was.') from failure
-                    raise
+                write_graphs(client, run.layers, plans, frag, run.progress)
         complete()
