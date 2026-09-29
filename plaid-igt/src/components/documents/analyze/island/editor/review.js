@@ -95,10 +95,13 @@ export const review = {
       );
       return true;
     }
-    // Each guess taken is recorded once the write lands.
+    // Each guess taken is recorded once the write lands, and only a guess the
+    // accept writes: one it skips is no answer. Asked before the accept, which
+    // changes what the word holds.
+    const taken = this.doc.wordAdoptionsWritten(wordId, adoptions);
     this._recordWhenSaved(
       this.doc.confirmWordAnalysis(wordId, adoptions),
-      adoptions.map((a) => this._suggestionEvent('suggestion.adopted', a)).filter(Boolean),
+      taken.map((a) => this._suggestionEvent('suggestion.adopted', a)).filter(Boolean),
     );
     this._pulseWord(wordId);
     const from = e.target;

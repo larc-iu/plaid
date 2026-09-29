@@ -1986,6 +1986,54 @@ describe('confirmWordAnalysis', () => {
     expect(kinds(doc.client)).not.toContain('spans.create');
   });
 
+  // A stored empty value (an import or another app can leave one) draws as
+  // an empty cell showing the guess, and Enter on that cell writes the guess
+  // over it. The whole-word accept does the same, on the span that is there.
+  it('writes an adopted guess over a stored empty value, on that span', async () => {
+    const raw = buildRawDoc();
+    raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [
+      {
+        id: 'sp-1',
+        tokens: ['w-1'],
+        value: '',
+        metadata: { prov: 'inferred', provSource: 'import:x' },
+      },
+    ];
+    const doc = makeDoc({ raw });
+    const stamp = {
+      prov: 'inferred',
+      provSource: 'gloss:precedent',
+      provConfirmed: true,
+      provDetail: { value: 'DET' },
+    };
+    const ok = await doc.confirmWordAnalysis('w-1', [
+      { targetId: 'w-1', field: 'POS', value: 'DET', metadata: stamp },
+    ]);
+    expect(ok).toBe(true);
+    expect(kinds(doc.client)).not.toContain('spans.create');
+    const updates = doc.client.calls.filter((c) => c.kind === 'spans.update');
+    expect(updates.map((c) => c.args.slice(0, 2))).toEqual([['sp-1', 'DET']]);
+    const pos = doc.sentences[0].tokens[0].annotations.POS;
+    expect(pos.value).toBe('DET');
+    expect(pos.metadata.provSource).toBe('gloss:precedent');
+    expect(pos.metadata.provConfirmed).toBe(true);
+    const begun = doc.client.calls.filter((c) => c.kind === 'beginOperation').map((c) => c.args);
+    expect(begun).toEqual([['Accept word analysis', { kind: 'guess-adoption' }]]);
+  });
+
+  it('names the adoptions it writes, and none it skips', () => {
+    const raw = buildRawDoc();
+    raw.textLayers[0].tokenLayers[1].spanLayers[0].spans = [
+      { id: 'sp-1', tokens: ['w-1'], value: 'N', metadata: {} },
+    ];
+    const doc = makeDoc({ raw });
+    const pos = { targetId: 'w-1', field: 'POS', value: 'DET', metadata: {} };
+    const gloss = { targetId: 'm-1', field: 'Gloss', value: 'the', metadata: {} };
+    const outside = { targetId: 'w-2', field: 'POS', value: 'N', metadata: {} };
+    expect(doc.wordAdoptionsWritten('w-1', [pos, gloss, outside])).toEqual([gloss]);
+    expect(doc.wordAdoptionsWritten('nope', [gloss])).toEqual([]);
+  });
+
   it('ignores an adoption aimed at a token outside this word', async () => {
     const doc = makeDoc();
     const ok = await doc.confirmWordAnalysis('w-1', [

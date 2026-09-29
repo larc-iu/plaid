@@ -27,7 +27,7 @@ let serial = 0;
 
 // "the cat the": w-2 is linked to the entry (a POS guess of N from the
 // entry), and w-3 has precedent from w-1 (a POS guess of DET).
-function mount({ telemetry = true, readOnly = false, tagset = null } = {}) {
+function mount({ telemetry = true, readOnly = false, tagset = null, w3 = null } = {}) {
   const raw = buildRawDoc({
     body: 'the cat the',
     words: [
@@ -38,7 +38,11 @@ function mount({ telemetry = true, readOnly = false, tagset = null } = {}) {
   });
   raw.textLayers[0].tokenLayers
     .flatMap((tl) => tl.spanLayers || [])
-    .find((sl) => sl.id === 'wsl-0').spans = [{ id: 's-1', tokens: ['w-1'], value: 'DET' }];
+    .find((sl) => sl.id === 'wsl-0').spans = [
+    { id: 's-1', tokens: ['w-1'], value: 'DET' },
+    // A value stored for w-3's POS, when a test gives one.
+    ...(w3 == null ? [] : [{ id: 's-3', tokens: ['w-3'], value: w3 }]),
+  ];
   if (tagset) {
     raw.textLayers[0].tokenLayers
       .flatMap((tl) => tl.spanLayers || [])
@@ -412,5 +416,39 @@ describe('an answer waits for its save', () => {
         data: expect.objectContaining({ value: 'DET', written: 'N' }),
       }),
     ]);
+  });
+
+  // An import can leave a stored empty value, which draws as an empty cell
+  // showing the guess. Ctrl+Enter takes the guess there as Enter does.
+  it('Ctrl+Enter over a stored empty value writes the guess, and records it once it lands', async () => {
+    const { doc, client } = mount({ w3: '' });
+    const c = cell('wa:w-3:POS');
+    expect(c.value).toBe('');
+    expect(c.dataset.guessValue).toBe('DET');
+    c.focus();
+    key(c, 'Enter', { ctrlKey: true });
+    await settle(40);
+    expect(doc.sentences[0].tokens[2].annotations.POS.value).toBe('DET');
+    expect(client.calls.filter((x) => x.kind === 'spans.update').map((x) => x.args[1])).toEqual([
+      'DET',
+    ]);
+    const pos = answers(await sent(client)).filter((e) => e.data.field === 'POS');
+    expect(pos).toEqual([
+      expect.objectContaining({ type: 'suggestion.adopted', 'target-id': 'w-3' }),
+    ]);
+  });
+
+  // What the accept does not write is no answer, whatever the cell showed.
+  it('Ctrl+Enter records no adoption for a guess it does not write', async () => {
+    const { client } = mount();
+    const c = cell('wa:w-3:POS');
+    // A guess aimed at a token that is not in the word, as a cell drawn before
+    // its word changed would carry.
+    c.dataset.guessTarget = 'm-elsewhere';
+    c.focus();
+    key(c, 'Enter', { ctrlKey: true });
+    await settle(40);
+    expect(client.calls.filter((x) => x.kind === 'spans.create')).toEqual([]);
+    expect(answers(await sent(client)).filter((e) => e.data.field === 'POS')).toEqual([]);
   });
 });

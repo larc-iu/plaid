@@ -741,6 +741,41 @@ export const analysisCopyMutations = {
     return true;
   },
 
+  // The adoptions an accept of this word writes now, resolved against the word
+  // itself: the scope follows the target, a target outside the word or a
+  // field with no layer writes nothing, and a cell that gained a value between
+  // the render and the keypress is skipped rather than written over. A stored
+  // EMPTY value is no value (the cell draws empty, with the guess in it, and
+  // Enter there writes the guess over it), so the guess goes onto that span.
+  // Each write carries the adoption it came from.
+  _wordAdoptionWrites(token, adoptions) {
+    const writes = [];
+    for (const adoption of adoptions) {
+      const { targetId, field, value, metadata } = adoption;
+      const target =
+        targetId === token.id ? token : (token.morphemes || []).find((m) => m.id === targetId);
+      if (!target || !value) continue;
+      const stored = target.annotations?.[field];
+      if (stored?.id && (stored.value ?? '') !== '') continue;
+      const scope = target === token ? 'word' : 'morpheme';
+      const layer = (this.layerInfo.spanLayers?.[scope] || []).find((sl) => sl.name === field);
+      if (!layer) continue;
+      const spanId = stored?.id ?? null;
+      writes.push({ layerId: layer.id, scope, targetId, value, metadata, spanId, adoption });
+    }
+    return writes;
+  },
+
+  // Which of `adoptions` confirmWordAnalysis(wordTokenId, adoptions) would
+  // write now: what a caller that reports the answers counts as taken.
+  wordAdoptionsWritten(wordTokenId, adoptions = []) {
+    const token = this.tokenLookup.get(wordTokenId);
+    if (!token) return [];
+    const writes = this._wordAdoptionWrites(token, adoptions);
+    const { ids } = this._planMorphemes(writes.map((w) => w.targetId));
+    return writes.filter((w, i) => ids[i]).map((w) => w.adoption);
+  },
+
   async confirmWordAnalysis(wordTokenId, adoptions = []) {
     const token = this.tokenLookup.get(wordTokenId);
     if (!token) {
@@ -752,19 +787,7 @@ export const analysisCopyMutations = {
     const confirmOps = metadataOps(confirm);
     const { spanIds, tokenIds, linkIds } = this._reviewableIdsOf([token]);
 
-    // Resolve adoptions against the word itself: the scope follows the target,
-    // and a cell that gained a value between the render and the keypress is
-    // skipped rather than given a second span on the same token.
-    const writes = [];
-    for (const { targetId, field, value, metadata } of adoptions) {
-      const target =
-        targetId === token.id ? token : (token.morphemes || []).find((m) => m.id === targetId);
-      if (!target || !value || target.annotations?.[field]?.id) continue;
-      const scope = target === token ? 'word' : 'morpheme';
-      const layer = (this.layerInfo.spanLayers?.[scope] || []).find((sl) => sl.name === field);
-      if (!layer) continue;
-      writes.push({ layerId: layer.id, scope, targetId, value, metadata });
-    }
+    const writes = this._wordAdoptionWrites(token, adoptions);
 
     if (!spanIds.length && !tokenIds.length && !linkIds.length && !writes.length) return true;
     const label = 'Failed to accept word analysis';
@@ -772,12 +795,16 @@ export const analysisCopyMutations = {
 
     // An adoption can target the morpheme derive synthesized for a word
     // nobody has segmented, which is the ordinary case for a guessed gloss:
-    // that morpheme is made too. Each adopted guess is a new span, and all of
-    // it shows at once.
+    // that morpheme is made too. Each adopted guess is a new span, or goes
+    // onto the stored empty one, and all of it shows at once.
     const { ids: targets, creates } = this._planMorphemes(writes.map((w) => w.targetId));
     const live = writes
-      .map((w, i) => ({ ...w, targetId: targets[i], id: pendingId() }))
+      .map((w, i) => ({ ...w, targetId: targets[i], id: w.spanId ?? pendingId() }))
       .filter((w) => w.targetId);
+    // A guess over a stored empty value is written onto that span, the rest
+    // are new spans.
+    const over = live.filter((w) => w.spanId);
+    const fresh = live.filter((w) => !w.spanId);
 
     const spanSet = new Set(spanIds);
     const tokenSet = new Set(tokenIds);
@@ -794,7 +821,15 @@ export const analysisCopyMutations = {
           (sl.spans || []).forEach((s) => {
             if (spanSet.has(s.id)) s.metadata = mergeMetadata(s.metadata, confirm);
           });
-          live
+          over
+            .filter((w) => w.layerId === sl.id)
+            .forEach((w) => {
+              const s = (sl.spans || []).find((x) => x.id === w.spanId);
+              if (!s) return;
+              s.value = w.value;
+              if (w.metadata) s.metadata = mergeMetadata(s.metadata, w.metadata);
+            });
+          fresh
             .filter((w) => w.layerId === sl.id)
             .forEach((w) => {
               if (!Array.isArray(sl.spans)) sl.spans = [];
@@ -826,13 +861,17 @@ export const analysisCopyMutations = {
           tokenIds.forEach((id) => b.tokens.patchMetadata(settledId(id), confirmOps));
           linkIds.forEach((id) => b.vocabLinks.patchMetadata(settledId(id), confirmOps));
           spanIds.forEach((id) => b.spans.patchMetadata(settledId(id), confirmOps));
-          live.forEach((w) =>
+          over.forEach((w) => {
+            b.spans.update(settledId(w.spanId), w.value);
+            if (w.metadata) b.spans.patchMetadata(settledId(w.spanId), metadataOps(w.metadata));
+          });
+          fresh.forEach((w) =>
             b.spans.create(w.layerId, [serverId(w.targetId)], w.value, w.metadata || undefined),
           );
         });
         // The creates are the batch's last ops, in the order they were queued.
-        const offset = results.length - live.length;
-        live.forEach((w, i) => ids.set(w.id, createdId(results[offset + i])));
+        const offset = results.length - fresh.length;
+        fresh.forEach((w, i) => ids.set(w.id, createdId(results[offset + i])));
         this._settle(ids);
       },
       undefined,
