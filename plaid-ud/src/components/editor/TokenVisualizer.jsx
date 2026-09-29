@@ -278,6 +278,9 @@ export const TokenVisualizer = ({
 
     return words.map((word) => {
       const wordText = cpSlice(original, word.begin, word.end);
+      // A token with no text in `original` cannot be looked for: '' is found
+      // everywhere, and the search below would never end.
+      if (!wordText) return { ...word, invalid: true };
       if (word.end <= editPos) return word;
       if (word.begin >= editPos) {
         const nb = word.begin + lengthDiff;
@@ -289,7 +292,7 @@ export const TokenVisualizer = ({
       let best = null;
       let bestScore = -1;
       let from = 0;
-      while (true) {
+      while (from <= curLen) {
         const idx = cpIndexOf(current, wordText, from);
         if (idx === -1) break;
         const score = 1000 - Math.abs(idx - word.begin);

@@ -28,6 +28,8 @@ import {
 import { SUPPRESS_KEY, isSuppressor, suppressorFor } from './enhancedGraph.js';
 import { notSetUp } from '../../../plaid-ui/src/domain/setupGuard.js';
 import { pendingId, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
+import { statusOf } from '../../../plaid-ui/src/lib/errors.js';
+import { mergeText } from '../../../plaid-ui/src/lib/textMerge.js';
 import {
   interSententialRelationIds,
   relationsCrossing,
@@ -45,6 +47,9 @@ import { buildConllu, conlluLosses } from './conlluSerialize.js';
 import { ensureEnhancedRelationLayer } from './udProjectSetup.js';
 import { basicTokenize, newlineSentenceRanges } from '../utils/basicTokenize.js';
 import { normalizeFeature, featureRefusal } from '../utils/feats.js';
+
+// What a text save whose draft cannot be put onto the stored text is refused with.
+const TEXT_CONFLICT = 'The same passage was changed elsewhere. Discard changes and redo the edit.';
 
 export class ConlluDocument extends DocumentModel {
   constructor({ raw, client = null, projectId = null, project = null, user = null, asOf = null }) {
@@ -202,7 +207,15 @@ export class ConlluDocument extends DocumentModel {
   // The server works out what a body edit does to the tokens over it
   // (plaid.algos.text), which this cannot replay. The textarea already shows
   // the new text, so the document is refetched once the send has landed.
-  async saveText(newBody) {
+  //
+  // `base` is the body the draft was typed over. The draft goes whole, so a
+  // draft typed on a copy someone else has since saved over would put their
+  // passages back as they were. When the stored body is no longer `base`,
+  // the draft's changes are merged onto it (`mergeText`) and the merged text
+  // is sent, and a save refused as out of date (409) is merged again onto
+  // what the refetch read. Changes to the same passage are refused.
+  // `onStored(body)` hears the body that was stored.
+  async saveText(newBody, { base = this.body, onStored = null } = {}) {
     const label = 'Failed to save text';
     if (!this._canWrite(label)) return false;
     const { textLayer } = this.layerInfo;
@@ -211,10 +224,23 @@ export class ConlluDocument extends DocumentModel {
     return this._queueWrite(
       label,
       async () => {
-        if (text?.id) {
-          await this._client.texts.update(text.id, newBody);
-        } else {
+        if (!text?.id) {
           await this._client.texts.create(textLayer.id, this.id, newBody);
+          onStored?.(newBody);
+          return;
+        }
+        for (let attempt = 0; ; attempt += 1) {
+          const merged =
+            this.body === base ? { text: newBody } : mergeText(base, newBody, this.body);
+          if (merged.conflict) throw new Error(TEXT_CONFLICT);
+          try {
+            await this._client.texts.update(text.id, merged.text);
+            onStored?.(merged.text);
+            return;
+          } catch (err) {
+            if (statusOf(err) !== 409 || attempt >= 2) throw err;
+            await this._reloadInSend();
+          }
         }
       },
       undefined,

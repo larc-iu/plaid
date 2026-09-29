@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@ui/components/ui/button';
 import { Textarea } from '@ui/components/ui/textarea';
 import { cpSlice } from '@larc-iu/plaid-client';
+import { mergeText } from '@ui/lib/textMerge.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import {
   hasForeignSubstrateParticipants,
@@ -32,7 +33,6 @@ export const TextEditor = () => {
   const [flashSentId, setFlashSentId] = useState(null);
   const scrolledForRef = useRef(null);
   const [textContent, setTextContent] = useState('');
-  const [originalTokenizedText, setOriginalTokenizedText] = useState('');
   const [lastSaved, setLastSaved] = useState(null);
   const { getClient, user } = useAuth();
   const confirm = useConfirm();
@@ -89,17 +89,28 @@ export const TextEditor = () => {
   const serverText = doc.layerInfo.textLayer?.text?.body || '';
 
   // Mirror the server's text into the textarea whenever it changes underneath
-  // us: the initial load, or a service that rewrote the body. Keyed on the body
-  // itself rather than on the doc instance, so the many emits from ordinary
-  // token edits don't stomp on what the user is typing.
-  // `seeded` is the body last copied in, so the render before that copy lands
-  // does not read as typed text.
+  // us: the initial load, a save's refetch, or a service that rewrote the
+  // body. Keyed on the body itself rather than on the doc instance, so the
+  // many emits from ordinary token edits don't stomp on what the user is
+  // typing. `seeded` is the stored body the box's text was typed over (the
+  // base a save merges from, see ConlluDocument.saveText). A draft is kept
+  // across a new body: its changes are put onto it, and when they touch a
+  // passage the new body changed too, the box and its base stay as they were.
+  // Done while rendering, so the box and the tokens change in one render.
   const [seeded, setSeeded] = useState('');
-  useEffect(() => {
-    if (!serverText) return;
-    setTextContent(serverText);
-    setSeeded(serverText);
-  }, [documentId, serverText]);
+  const [mirrored, setMirrored] = useState({ documentId: null, body: null });
+  if (serverText && (mirrored.documentId !== documentId || mirrored.body !== serverText)) {
+    setMirrored({ documentId, body: serverText });
+    const draft = mirrored.documentId === documentId && textContent !== seeded;
+    const merged = draft ? mergeText(seeded, textContent, serverText) : { text: serverText };
+    if (!merged.conflict) {
+      setTextContent(merged.text);
+      setSeeded(serverText);
+    }
+  }
+  // The box's text as of the last render, for a save that resolves later.
+  const textNow = useRef('');
+  textNow.current = textContent;
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -108,15 +119,15 @@ export const TextEditor = () => {
     el.style.height = `${el.scrollHeight}px`;
   }, [textContent]);
 
+  // Every write from here carries the version this tab read, so a save,
+  // a Tokenize or a sentence split made on a copy another user has since
+  // changed is refused (409) rather than laid over their change.
   useEffect(() => {
-    // The text editor does structural edits (text body, tokenization) that
-    // aren't optimistic-concurrency-gated. Make sure no leaked strict mode (from
-    // a previously-open annotation editor) attaches a stale document-version and
-    // makes Tokenize / Save fail with a spurious 409.
     const client = getClient();
-    if (client) client.exitStrictMode();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, documentId]);
+    if (!client) return undefined;
+    client.enterStrictMode(documentId);
+    return () => client.exitStrictMode();
+  }, [documentId, getClient]);
 
   // --- thin wrappers around doc methods, kept for the bits that need to
   // poke TextEditor-local state (originalTokenizedText, lastSaved, etc.). ---
@@ -124,11 +135,30 @@ export const TextEditor = () => {
   const handleSaveText = async () => {
     if (!doc) return;
     if (!textContent.trim() || doc.isSaving) return;
-    const ok = await doc.saveText(textContent);
-    if (ok) {
-      setLastSaved(new Date());
-      setOriginalTokenizedText(textContent);
-    }
+    const sent = textContent;
+    let stored = null;
+    const ok = await doc.saveText(sent, {
+      base: seeded,
+      onStored: (body) => {
+        stored = body;
+      },
+    });
+    if (!ok || stored == null) return;
+    setLastSaved(new Date());
+    // What was stored can hold another user's changes merged in. Text typed
+    // while the save was on its way is kept, on top of it.
+    const now = textNow.current;
+    const rebased = now === sent ? { text: stored } : mergeText(sent, now, stored);
+    if (rebased.conflict) return;
+    setTextContent(rebased.text);
+    setSeeded(stored);
+  };
+
+  // The box's text and its base go back to what is stored.
+  const handleDiscard = () => {
+    setTextContent(serverText);
+    setSeeded(serverText);
+    setLastSaved(null);
   };
 
   const handleTextChange = (e) => {
@@ -152,16 +182,12 @@ export const TextEditor = () => {
       destructive: true,
     });
     if (!ok) return;
-    if (await doc.clearTokens()) setOriginalTokenizedText('');
+    await doc.clearTokens();
   };
 
   const handleWordCreate = async (begin, end) => {
     if (!doc) return;
-    const ok = await doc.createWord(begin, end, textContent);
-    // After the very first manual creation, treat the current text as the
-    // tokenized baseline (mirrors tokenize) so the dirty banner doesn't fire
-    // just because tokens now exist.
-    if (ok && !originalTokenizedText) setOriginalTokenizedText(textContent);
+    await doc.createWord(begin, end, textContent);
   };
 
   // Deleting a word cascades into layers nested under the shared word layer —
@@ -212,7 +238,6 @@ export const TextEditor = () => {
     if (tokenId != null && span.value != null) morphemeForms.set(tokenId, span.value);
   });
 
-  const isTextDirty = originalTokenizedText && textContent !== originalTokenizedText;
   // Typed and not yet on the server: every way out of the tab asks first. The
   // measure is the saved body, not the tokenized one, so text typed into a
   // document that has no tokens yet counts too. It is the body as last copied
@@ -224,13 +249,14 @@ export const TextEditor = () => {
   );
   const hasTokens = sentenceTokens.length > 0 || wordTokens.length > 0 || morphemeTokens.length > 0;
 
-  // Once the document has tokens, the text those tokens were cut from is what
-  // "Unsaved changes" is measured against. Keyed on `hasTokens` as well as the
-  // body, so a tokenize run that changes no text still settles the mark.
-  useEffect(() => {
-    if (!serverText || !hasTokens) return;
-    setOriginalTokenizedText((prev) => prev || serverText);
-  }, [documentId, serverText, hasTokens]);
+  // The tokens are always at their places in the stored body, which comes in
+  // the same render as they do. It is what the box's text is measured against
+  // for "Unsaved changes", and what the token view moves them from.
+  const originalTokenizedText = hasTokens ? serverText : '';
+  const isTextDirty = Boolean(originalTokenizedText) && textContent !== originalTokenizedText;
+  // Typed over a body that has changed since, and not put onto it: the two
+  // changed the same passage.
+  const behind = textContent !== seeded && Boolean(serverText) && seeded !== serverText;
   const hasText = Boolean(layerInfo.textLayer?.text?.body);
   const saving = doc.isSaving;
 
@@ -268,6 +294,15 @@ export const TextEditor = () => {
       {setupIncomplete && (
         <Notice tone="warning" className="mb-3">
           {NOT_SET_UP}
+        </Notice>
+      )}
+
+      {behind && !readOnly && (
+        <Notice tone="warning" className="mb-3" role="alert">
+          Changed elsewhere in the same passage.{' '}
+          <Button size="sm" variant="outline" className="ms-2 h-7" onClick={handleDiscard}>
+            Discard changes
+          </Button>
         </Notice>
       )}
 
