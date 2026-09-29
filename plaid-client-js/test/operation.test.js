@@ -383,3 +383,25 @@ test('requestService carries the kind and ref to the service', async () => {
   });
   await client.endOperation();
 });
+
+// One client holds one open operation. An editor write still saving when the
+// user approves an assistant plan or starts a service run held it open, so the
+// request carried it, the service joined it, and the whole plan or run was
+// recorded as that edit, under the edit's kind. A request made with
+// `noOperation` never carries one, so the service starts its own.
+test('requestService with noOperation carries no open operation', async () => {
+  const client = makeClient();
+  let sent = null;
+  globalThis.fetch = async (url, opts) => {
+    sent = JSON.parse(opts.body);
+    return { ok: false, status: 500, statusText: 'nope' };
+  };
+  client.beginOperation('Gloss', { kind: 'guess-adoption' });
+  await assert.rejects(
+    client.messages.requestService('P', 'svc', { approve: { planId: 'p1' } }, 1000, undefined, undefined, {
+      noOperation: true,
+    }),
+  );
+  assert.deepStrictEqual(sent, { approve: { 'plan-id': 'p1' } });
+  await client.endOperation();
+});

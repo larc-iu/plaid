@@ -598,6 +598,11 @@ export const useMediaOperations = () => {
       // keep when they join it.
       const label = `Transcribe audio (${service.serviceName || serviceId})`;
       transcribeRun.start(['Transcribe']);
+      // The client holds one open operation, and an edit still saving holds
+      // one: opened now, this run's would join it and be recorded as that
+      // edit. The lock keeps new edits out, so the wait is for those already
+      // made.
+      await doc.whenSaved();
       await doc.client.withOperation(
         label,
         async () => {
@@ -635,6 +640,8 @@ export const useMediaOperations = () => {
                   label: 'Transcribe',
                 }),
               timeout: TRANSCRIBE_TIMEOUT_MS,
+              // The operation opened above, for this run.
+              inOperation: true,
             },
           );
         },

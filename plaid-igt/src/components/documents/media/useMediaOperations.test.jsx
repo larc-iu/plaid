@@ -374,6 +374,47 @@ describe('useMediaOperations: transcribing in the audit log', () => {
     expect(opts).toEqual([{ kind: 'service-run', ref: 'service:asr-1' }]);
     await h.unmount();
   });
+
+  // The client holds one open operation, and an edit still saving holds one.
+  // Opened then, the run's operation joined the edit's, and the clearing of
+  // the old transcript and every write the service made were recorded as that
+  // edit. The run waits for the edits made before it, then opens its own and
+  // hands it to the service.
+  it('waits for the edits made before it, so its operation is its own', async () => {
+    const saved = deferred();
+    const order = [];
+    const client = fakeClient({
+      withOperation: async (_label, fn) => {
+        order.push('operation');
+        return fn();
+      },
+      messages: { discoverServices: vi.fn(async () => SERVICES) },
+    });
+    const doc = withMedia('/api/v1/documents/doc-1/media?v=a', {
+      body: '',
+      whenSaved: vi.fn(() => {
+        order.push('saving');
+        return saved.promise;
+      }),
+    });
+    const h = await mountMedia({ doc, client });
+    let done;
+    await h.step(async () => {
+      done = h.api.handleTranscribe();
+      await settle();
+    });
+    expect(order).toEqual(['saving']);
+    expect(client.messages.requestService).not.toHaveBeenCalled();
+    await h.step(async () => {
+      saved.resolve();
+      await done;
+      await settle();
+    });
+    expect(order).toEqual(['saving', 'operation']);
+    expect(client.messages.requestService).toHaveBeenCalledTimes(1);
+    expect(client.messages.requestService.mock.calls[0][6]).toMatchObject({ noOperation: false });
+    await h.unmount();
+  });
 });
 
 describe('useMediaOperations: detecting speech', () => {

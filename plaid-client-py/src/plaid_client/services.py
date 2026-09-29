@@ -604,7 +604,7 @@ class ServiceCancelled(BaseException):
 
 
 def request_service(client, project_id, service_id, data, timeout=10.0, on_progress=None,
-                    request_id=None, on_accepted=None, project_ids=None):
+                    request_id=None, on_accepted=None, project_ids=None, no_operation=False):
     """Submit work to a service and await its result.
 
     Streams the service's progress + result back over a single server-mediated
@@ -628,6 +628,9 @@ def request_service(client, project_id, service_id, data, timeout=10.0, on_progr
     ``project_ids`` names other projects the request is about, beside
     ``project_id``. A delegating service's token is scoped to ``project_id``
     and to those of them the requester can read, and reaches nothing else.
+
+    ``no_operation`` carries no open operation: the service's writes are a
+    group of their own, not part of whatever operation the client has open.
     """
     url = (f'{client.base_url}/api/v1/projects/{project_id}/services/'
            f'{urllib.parse.quote(service_id, safe="")}/requests')
@@ -643,7 +646,13 @@ def request_service(client, project_id, service_id, data, timeout=10.0, on_progr
     # (BaseService adopts the id around process_request). Its kind and
     # reference go too, so a service that writes before the requester does
     # still records them.
-    group = getattr(client, '_operation_group', None)
+    #
+    # ``no_operation`` sends none: the service starts a group of its own. For a
+    # request that is its own action whatever else is under way, such as
+    # approving an assistant's plan or starting a service run. The client holds
+    # one open operation, so without it an operation open at that moment would
+    # take in every write the request makes, under its kind.
+    group = None if no_operation else getattr(client, '_operation_group', None)
     if group is not None and isinstance(data, dict):
         carried = {'id': group['id'], 'message': group['message']}
         carried.update({k: group[k] for k in ('kind', 'ref') if group.get(k)})

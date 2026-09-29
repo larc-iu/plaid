@@ -442,7 +442,14 @@ export const startTurn = ({ store, service, conv, prevMeta, where = null }) => {
         // The other projects the message reads. The server scopes the token it
         // hands the assistant to this project and those of these the reader
         // can open, so a turn reaches nothing else.
-        { requestId, projectIds: lastProjects(conv.display).map((p) => p.id) },
+        //
+        // `noOperation`: a turn is its own action. The client holds one open
+        // operation, and an edit still saving would otherwise take it in.
+        {
+          requestId,
+          projectIds: lastProjects(conv.display).map((p) => p.id),
+          noOperation: true,
+        },
       ),
     );
     return finishJob(j, store, service);
@@ -526,7 +533,11 @@ export const startApply = ({
         REQUEST_TIMEOUT_MS,
         progressOf(j),
         undefined,
-        { requestId },
+        // Approving is its own action, applied as one assistant-plan
+        // operation the service opens. The client holds one open operation,
+        // so an edit still saving would otherwise take in every write of the
+        // plan, under the edit's kind.
+        { requestId, noOperation: true },
       ),
     );
     applyToasts(j, plan.summary, { docked });

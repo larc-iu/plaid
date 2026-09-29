@@ -491,6 +491,39 @@ def test_request_service_carries_the_kind_and_ref(monkeypatch):
                                                'kind': 'service-run', 'ref': 'service:asr'}
 
 
+
+def test_request_service_with_no_operation_carries_none(monkeypatch):
+    # One client holds one open operation, so a request that is its own
+    # action (approving an assistant's plan, starting a service run) made
+    # while another operation is open would put every write it causes under
+    # that operation and its kind. With no_operation the service starts its own.
+    from plaid_client import services
+    client = _client()
+    sent = {}
+
+    class _Refused:
+        status_code = 500
+        ok = False
+        text = 'nope'
+        reason = 'nope'
+        headers = {}
+
+        def close(self):
+            pass
+
+    def post(url, headers=None, json=None, stream=None, timeout=None):
+        sent['body'] = json
+        return _Refused()
+
+    monkeypatch.setattr(services.requests, 'post', post)
+    client.begin_operation('Gloss', kind='guess-adoption')
+    with pytest.raises(Exception):
+        client.messages.request_service('P', 'svc', {'approve': {'plan_id': 'p1'}}, timeout=1, no_operation=True)
+    assert sent['body'] == {'approve': {'plan-id': 'p1'}}
+    with pytest.raises(Exception):
+        services.request_service(client, 'P', 'svc', {'document_id': 'D'}, timeout=1, no_operation=True)
+    assert sent['body'] == {'document-id': 'D'}
+
 def test_base_service_joins_the_requesters_kind_and_ref():
     # The service may write before the requester does, and then its write
     # creates the group, so it must carry the kind and ref too.

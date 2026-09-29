@@ -1060,6 +1060,8 @@ interface MessagesBundle {
       onAccepted?: (requestId: string) => void;
       /** Other projects the request is about. A delegating service's token reaches `projectId` and those of these the requester can read, nothing else. */
       projectIds?: string[];
+      /** Carry no open operation: the service's writes are a group of their own, not part of whatever operation this client has open. */
+      noOperation?: boolean;
     },
   ): Promise<any>;
   /**

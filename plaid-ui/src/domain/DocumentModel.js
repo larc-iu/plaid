@@ -492,6 +492,15 @@ export class DocumentModel {
     void ids;
   }
 
+  // Resolves once every edit queued so far has been sent. For an action with
+  // an operation of its own (a service run): the client holds one open
+  // operation, and each queued edit holds one while it saves, so an operation
+  // opened before they land would join the edit's. Never call it from inside
+  // a send, which the queue is waiting on.
+  whenSaved() {
+    return this._writes.whenIdle();
+  }
+
   // Re-read this document IN PLACE, keeping its identity. `atAsOf` returns a
   // NEW instance, which is right for time travel (the snapshot really is a
   // different document) and wrong for a refresh: an editor keyed on the

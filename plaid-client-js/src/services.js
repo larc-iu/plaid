@@ -402,6 +402,8 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
  * @param {string[]} [opts.projectIds] - Other projects the request is about, beside
  *   `projectId`. A delegating service's token is scoped to `projectId` and to those of
  *   these the requester can read, and reaches nothing else
+ * @param {boolean} [opts.noOperation] - Carry no open operation: the service's writes
+ *   are a group of their own, not part of whatever operation this client has open
  * @returns {Promise<any>} The service's result
  */
 export function requestService(client, projectId, serviceId, data, timeout = 10000, onProgress, signal, opts = {}) {
@@ -412,7 +414,13 @@ export function requestService(client, projectId, serviceId, data, timeout = 100
   // delivers anyway.
   // Its kind and reference go too, so a service that writes before the
   // requester does still records them.
-  const group = client.operationGroup;
+  //
+  // `opts.noOperation` sends none: the service starts a group of its own. For
+  // a request that is its own action whatever else is on the wire, such as
+  // approving an assistant's plan or starting a service run. The client holds
+  // one open operation, so without it an edit still saving at that moment
+  // would take in every write the request makes, under the edit's kind.
+  const group = opts.noOperation ? null : client.operationGroup;
   const payload =
     group && data && typeof data === 'object' && !Array.isArray(data)
       ? {

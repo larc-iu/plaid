@@ -143,6 +143,13 @@ export const useServiceRequest = (client) => {
         lostMessage = 'Lost contact with the service. It is still running. Reload to pick it back up.',
         timeout = 300000,
         onRequestId,
+        // A service run is its own action, so the request carries no open
+        // operation and the service's writes are a group of their own: the
+        // client holds one open operation, and an edit still saving would
+        // otherwise take the whole run in, under the edit's kind. A caller
+        // that opened an operation FOR this run, to hold its own writes beside
+        // the service's, says so.
+        inOperation = false,
       } = options;
 
       const requestId = crypto.randomUUID();
@@ -158,7 +165,7 @@ export const useServiceRequest = (client) => {
           timeout,
           applyProgress,
           undefined,
-          { requestId },
+          { requestId, noOperation: !inOperation },
         );
         succeed(result, { successMessage, successTitle, stoppedTitle, stoppedMessage, notice });
         return result;
