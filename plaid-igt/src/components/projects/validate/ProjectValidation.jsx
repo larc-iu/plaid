@@ -8,6 +8,7 @@ import { Loading } from '@ui/components/shared/Loading.jsx';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { ValidationHeader } from '@ui/components/shared/ValidationHeader.jsx';
 import { notifyError, notifySuccess, humanizeError } from '@/utils/feedback';
+import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { IGT_NAMESPACE } from '@/domain/igtConfig';
 import { governedFields, offTagsetValues, readTagsets } from '@/domain/tagsets';
@@ -247,18 +248,35 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
 
   // Add an unknown part to the tagset. The other remedy (change the values) is
   // a bulk replace, which is why every row also links there.
+  // The parts are added to the tagsets as stored: a write refused because
+  // someone saved them since is made again to what they saved.
   const addToTagset = async (g, parts) => {
-    try {
-      const tagsets = readTagsets(project?.config);
+    const attempt = async (p) => {
+      const tagsets = readTagsets(p?.config);
       const t = tagsets[g.tagsetName];
       if (!t) throw new Error(`Tagset "${g.tagsetName}" no longer exists`);
       const have = new Set(t.values.map((v) => v.value));
-      const fresh = parts.filter((p) => p && !have.has(p)).map((value) => ({ value }));
+      const fresh = parts.filter((v) => v && !have.has(v)).map((value) => ({ value }));
+      if (!fresh.length) return fresh;
+      await client.projects.setConfig(
+        projectId,
+        IGT_NAMESPACE,
+        'tagsets',
+        { ...tagsets, [g.tagsetName]: { ...t, values: [...t.values, ...fresh] } },
+        undefined,
+        expectStored(p, IGT_NAMESPACE, 'tagsets'),
+      );
+      return fresh;
+    };
+    try {
+      let fresh;
+      try {
+        fresh = await attempt(project);
+      } catch (err) {
+        if (!isConfigConflict(err)) throw err;
+        fresh = await attempt(await client.projects.get(projectId));
+      }
       if (!fresh.length) return;
-      await client.projects.setConfig(projectId, IGT_NAMESPACE, 'tagsets', {
-        ...tagsets,
-        [g.tagsetName]: { ...t, values: [...t.values, ...fresh] },
-      });
       notifySuccess(`${fresh.map((f) => `“${f.value}”`).join(', ')} added to ${g.tagsetName}`);
       // The scan reads the tagset from the project, so refresh it and re-check.
       await onProjectUpdate?.();

@@ -17,6 +17,7 @@ import { getIgtLayerInfo } from './layerInfo.js';
 import { readSpeakers, IGT_NAMESPACE } from './igtConfig.js';
 import { readVocabulary } from './vocabCache.js';
 import { statusOf } from '@ui/lib/errors.js';
+import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
 import {
   planMorphemeReconcile,
   planSpanDedup,
@@ -268,18 +269,39 @@ export class IgtDocument extends DocumentModel {
   async _rememberSpeaker(name) {
     const speaker = (name || '').trim();
     if (!speaker || !this._client || !this._projectId) return;
-    const known = readSpeakers(this._project?.config);
-    if (known.includes(speaker)) return;
-    const next = [...known, speaker];
-    try {
-      await this._client.projects.setConfig(this._projectId, IGT_NAMESPACE, 'speakers', next);
+    // Added to the list as stored: a write refused because someone else
+    // saved the list since is made again to what they saved.
+    const append = async (project) => {
+      const known = readSpeakers(project?.config);
+      if (known.includes(speaker)) return;
+      const next = [...known, speaker];
+      await this._client.projects.setConfig(
+        this._projectId,
+        IGT_NAMESPACE,
+        'speakers',
+        next,
+        undefined,
+        expectStored(project, IGT_NAMESPACE, 'speakers'),
+      );
       if (this._project) {
-        this._project.config = this._project.config || {};
-        this._project.config[IGT_NAMESPACE] = {
-          ...(this._project.config[IGT_NAMESPACE] || {}),
-          speakers: next,
+        const config = this._project.config || {};
+        this._project = {
+          ...this._project,
+          config: {
+            ...config,
+            [IGT_NAMESPACE]: { ...(config[IGT_NAMESPACE] || {}), speakers: next },
+          },
         };
         this._emit();
+      }
+    };
+    if (readSpeakers(this._project?.config).includes(speaker)) return;
+    try {
+      try {
+        await append(this._project);
+      } catch (err) {
+        if (!isConfigConflict(err)) throw err;
+        await append(await this._client.projects.get(this._projectId));
       }
     } catch (err) {
       console.warn('Could not record speaker in project config:', err);

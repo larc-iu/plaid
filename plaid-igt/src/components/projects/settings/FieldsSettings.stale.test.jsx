@@ -16,6 +16,7 @@ vi.mock('@/utils/feedback', () => ({
 
 const { FieldsSettings } = await import('./FieldsSettings.jsx');
 const { fieldChange } = await import('./fieldChange.js');
+const { notifyError } = await import('@/utils/feedback');
 
 const role = (r) => ({ plaid: { role: r } });
 const layer = (id, name, igt = {}) => ({ id, name, config: { igt: { scope: 'Word', ...igt } } });
@@ -102,7 +103,9 @@ describe('Settings > Fields on a page opened before another maintainer saved', (
       box.dispatchEvent(new FocusEvent('blur'));
       await settle();
     });
-    expect(client.writes).toEqual([['spanLayers.setConfig', 'gloss', 'igt', 'lang', 'fr']]);
+    expect(client.writes).toEqual([
+      ['spanLayers.setConfig', 'gloss', 'igt', 'lang', 'fr', undefined, { expected: 'en' }],
+    ]);
     await unmount();
   });
 
@@ -122,6 +125,38 @@ describe('Settings > Fields on a page opened before another maintainer saved', (
     });
     expect(client.writes).toEqual([['spanLayers.delete', 'pos']]);
     await unmount();
+  });
+});
+
+describe('Settings > Fields when the same value changed elsewhere', () => {
+  it('refuses a language change over one another maintainer made, and reads the project again', async () => {
+    const client = fakeClient();
+    const onProjectUpdate = vi.fn(async () => {});
+    client.projects.get = async () => {
+      const p = server();
+      p.textLayers[0].tokenLayers[1].spanLayers[0].config.igt.lang = 'de';
+      return p;
+    };
+    const view = await renderComponent(
+      <FieldsSettings
+        project={loaded()}
+        projectId="p1"
+        client={client}
+        onProjectUpdate={onProjectUpdate}
+      />,
+    );
+    await view.step(async () => {});
+    const box = document.querySelector('input[aria-label="Language of Gloss"]');
+    await view.step(() => typeInto(box, 'fr'));
+    await view.step(async () => {
+      box.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+      box.dispatchEvent(new FocusEvent('blur'));
+      await settle();
+    });
+    expect(client.writes).toEqual([]);
+    expect(notifyError).toHaveBeenCalledTimes(1);
+    expect(onProjectUpdate).toHaveBeenCalled();
+    await view.unmount();
   });
 });
 

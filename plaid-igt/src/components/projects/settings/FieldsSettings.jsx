@@ -10,6 +10,7 @@ import {
   readScope,
   readIgnoredTokens,
   ignoredTokensSetup,
+  defaultIgnoredTokensSetup,
   storedIgnoredTokens,
   IGT_NAMESPACE,
 } from '@/domain/igtConfig';
@@ -17,6 +18,7 @@ import { readTagsetName } from '@/domain/tagsets';
 import { readFieldLang, readLanguages } from '@/domain/igtConfig';
 import { notSetUp } from '@ui/domain/setupGuard.js';
 import { fieldChange } from './fieldChange.js';
+import { sameConfig, storedConfig } from '@ui/domain/configCells.js';
 
 const PREDEFINED = ['Gloss', 'POS', 'Translation', 'Literal Translation', 'Note'];
 const isPredefinedField = (fieldName) => PREDEFINED.includes(fieldName);
@@ -161,15 +163,28 @@ export const FieldsSettings = ({
 
   // Everything a save writes once each field has its layer: the ignored
   // tokens, the removed fields' layers, and each field's tagset and language,
-  // each only when the user changed it on this page.
+  // each only when the user changed it on this page. A value someone else
+  // changed since the page read it refuses the save (409), and so does the
+  // server when it changes between this read and the write.
   const queueRest = (b, data, change, { primary, managed }, layerIds) => {
-    if (data.ignoredTokens && change.ignoredTokens) {
-      b.tokenLayers.setConfig(
-        primary.id,
-        IGT_NAMESPACE,
-        'ignoredTokens',
-        storedIgnoredTokens(data.ignoredTokens),
+    const changedElsewhere = () => Object.assign(new Error('Changed elsewhere'), { status: 409 });
+    const shown = new Map(data.previous.fields.map((f) => [fieldKey(f), f]));
+    const layerOf = new Map(managed.map((l) => [layerKey(l), l]));
+
+    if (change.ignoredTokens) {
+      const raw = storedConfig(primary, IGT_NAMESPACE, 'ignoredTokens');
+      const stored = storedIgnoredTokens(
+        raw ? ignoredTokensSetup(raw) : defaultIgnoredTokensSetup(),
       );
+      const next = storedIgnoredTokens(data.ignoredTokens);
+      if (!sameConfig(stored, next)) {
+        if (!sameConfig(stored, storedIgnoredTokens(data.previous.ignoredTokens))) {
+          throw changedElsewhere();
+        }
+        b.tokenLayers.setConfig(primary.id, IGT_NAMESPACE, 'ignoredTokens', next, undefined, {
+          expected: raw,
+        });
+      }
     }
 
     // Delete the span layers of the fields removed here. A layer this page
@@ -182,34 +197,45 @@ export const FieldsSettings = ({
       layerIds.delete(key);
     }
 
-    // Sync each field's tagset reference. A field stores the tagset's NAME,
-    // never a copy of the list, so pointing two fields at one tagset is what
-    // makes them share it. Written only for a field whose tagset the user
-    // changed here, and only when the server holds something else, so a
-    // stale page never writes back a value another maintainer replaced.
-    const storedTagset = new Map(managed.map((l) => [layerKey(l), readTagsetName(l.config)]));
-    for (const field of change.tagset) {
-      const key = fieldKey(field);
-      const layerId = layerIds.get(key);
-      if (!layerId) continue;
-      const next = field.tagset ?? null;
-      // A layer created a moment ago has no stored tagset yet.
-      if (next === (storedTagset.get(key) ?? null)) continue;
-      if (next) b.spanLayers.setConfig(layerId, IGT_NAMESPACE, 'tagset', next);
-      else b.spanLayers.deleteConfig(layerId, IGT_NAMESPACE, 'tagset');
-    }
-    // And each field's language, the same way: the record the exporters
-    // read, written only when it changed.
-    const storedLang = new Map(managed.map((l) => [layerKey(l), readFieldLang(l.config)]));
-    for (const field of change.lang) {
-      const key = fieldKey(field);
-      const layerId = layerIds.get(key);
-      if (!layerId) continue;
-      const next = field.lang || null;
-      if (next === (storedLang.get(key) ?? null)) continue;
-      if (next) b.spanLayers.setConfig(layerId, IGT_NAMESPACE, 'lang', next);
-      else b.spanLayers.deleteConfig(layerId, IGT_NAMESPACE, 'lang');
-    }
+    // Each field's tagset reference and language, for the fields whose value
+    // the user changed here. A field stores the tagset's NAME, never a copy of
+    // the list, so pointing two fields at one tagset is what makes them share
+    // it. The language is the record the exporters read.
+    const sync = (fields, cell, read, valueOf, write) => {
+      for (const field of fields) {
+        const key = fieldKey(field);
+        const layerId = layerIds.get(key);
+        if (!layerId) continue;
+        const next = valueOf(field);
+        // A layer created a moment ago has nothing stored yet.
+        const layer = layerOf.get(key);
+        const stored = layer ? read(layer.config) : null;
+        if (next === stored) continue;
+        const was = shown.has(key) ? valueOf(shown.get(key)) : null;
+        if (stored !== was) throw changedElsewhere();
+        write(layerId, next, { expected: storedConfig(layer, IGT_NAMESPACE, cell) });
+      }
+    };
+    sync(
+      change.tagset,
+      'tagset',
+      readTagsetName,
+      (f) => f.tagset ?? null,
+      (id, next, options) =>
+        next
+          ? b.spanLayers.setConfig(id, IGT_NAMESPACE, 'tagset', next, undefined, options)
+          : b.spanLayers.deleteConfig(id, IGT_NAMESPACE, 'tagset', undefined, options),
+    );
+    sync(
+      change.lang,
+      'lang',
+      readFieldLang,
+      (f) => f.lang || null,
+      (id, next, options) =>
+        next
+          ? b.spanLayers.setConfig(id, IGT_NAMESPACE, 'lang', next, undefined, options)
+          : b.spanLayers.deleteConfig(id, IGT_NAMESPACE, 'lang', undefined, options),
+    );
   };
 
   // Move a field one place among the fields of its scope. Order lives on the

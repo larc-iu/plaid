@@ -78,3 +78,29 @@ describe('the project copy an open document holds', () => {
     expect(doc.document.metadata).toEqual({ Place: 'Bloomington' });
   });
 });
+
+// The speaker list is one value in the project config. A page that loaded it
+// before another document added a speaker wrote its own copy over theirs.
+describe('remembering a speaker', () => {
+  it('adds to the list as stored when someone else added one since', async () => {
+    resetIds();
+    const server = { id: 'proj-1', vocabs: [], config: { igt: { speakers: ['Ana', 'Bea'] } } };
+    const client = makeFakeClient();
+    client.projects.get = async () => structuredClone(server);
+    client.projects.setConfig = async (_id, ns, key, value, _audit, options) => {
+      if (JSON.stringify(options.expected) !== JSON.stringify(server.config[ns][key])) {
+        throw Object.assign(new Error('HTTP 409'), { status: 409 });
+      }
+      server.config[ns][key] = value;
+    };
+    const doc = new IgtDocument({
+      raw: buildRawDoc(),
+      project: { id: 'proj-1', vocabs: [], config: { igt: { speakers: ['Ana'] } } },
+      client,
+      projectId: 'proj-1',
+    });
+    await doc._rememberSpeaker('Cy');
+    expect(server.config.igt.speakers).toEqual(['Ana', 'Bea', 'Cy']);
+    expect(doc.knownSpeakers).toEqual(['Ana', 'Bea', 'Cy']);
+  });
+});
