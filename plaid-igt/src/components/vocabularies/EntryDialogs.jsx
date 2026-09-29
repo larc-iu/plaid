@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { AlertTriangle, Trash2 } from 'lucide-react';
 import {
   AlertDialog,
@@ -28,11 +29,26 @@ export const EntryDialogs = ({
   onConfirmDelete,
 }) => {
   const close = () => dispatch({ type: 'dialog/close' });
-  const uses = deleteHidden ? deleteHidden.total : (usageCounts?.[selectedItem?.id] ?? 0);
+  const open = dialog?.kind === 'delete';
+  // The entry the question was last asked about. Delete closes the dialog
+  // and the entry together, and a refusal opens the question again, so
+  // while the dialog is closing and reopening it still names that entry.
+  const askedRef = useRef(null);
+  if (selectedItem) askedRef.current = selectedItem;
+  const item = selectedItem ?? askedRef.current;
+  const uses = deleteHidden ? deleteHidden.total : (usageCounts?.[item?.id] ?? 0);
+  // Asked again on a new count, the question starts on Cancel, as when it
+  // first opens. A refusal that comes back while the dialog is still closing
+  // reopens the same content, which Radix does not focus again, so focus
+  // would stay on Delete entry, where Enter was pressed.
+  const cancelRef = useRef(null);
+  useEffect(() => {
+    if (open && (deleteHidden || deleteLinksChanged)) cancelRef.current?.focus();
+  }, [open, deleteHidden, deleteLinksChanged]);
   return (
     <>
       <AlertDialog
-        open={dialog?.kind === 'delete'}
+        open={open}
         onOpenChange={(o) => {
           if (!o) close();
         }}
@@ -52,8 +68,7 @@ export const EntryDialogs = ({
                   </p>
                 )}
                 <p className="mt-1 text-muted-foreground">
-                  You are about to permanently delete the entry{' '}
-                  <strong>"{selectedItem?.form}"</strong>.
+                  You are about to permanently delete the entry <strong>"{item?.form}"</strong>.
                 </p>
                 <p className="mt-1 text-muted-foreground">
                   {(usageCounts || deleteHidden) && uses > 0 ? (
@@ -87,7 +102,9 @@ export const EntryDialogs = ({
             </div>
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={close}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel ref={cancelRef} onClick={close}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={onConfirmDelete}
