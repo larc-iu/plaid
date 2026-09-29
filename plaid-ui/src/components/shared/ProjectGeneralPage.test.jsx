@@ -178,9 +178,15 @@ describe('ProjectGeneralPage', () => {
       await mount({ research: true, onSaved });
       await view.step(() => box(view.container).click());
       expect(box(view.container).checked).toBe(true);
-      expect(client.projects.setConfig).toHaveBeenCalledWith('p1', 'plaid', 'research', {
-        telemetry: true,
-      });
+      expect(client.projects.setConfig).toHaveBeenCalledWith(
+        'p1',
+        'plaid',
+        'research',
+        { telemetry: true },
+        undefined,
+        // What the page read: nothing stored yet.
+        { expected: undefined },
+      );
       expect(client.events.setEnabled).toHaveBeenCalledWith('p1', true);
       expect(onSaved).toHaveBeenCalledTimes(1);
     });
@@ -191,9 +197,14 @@ describe('ProjectGeneralPage', () => {
         project: { id: 'p1', name: 'Texts', config: { plaid: { research: { telemetry: true } } } },
       });
       await view.step(() => box(view.container).click());
-      expect(client.projects.setConfig).toHaveBeenCalledWith('p1', 'plaid', 'research', {
-        telemetry: false,
-      });
+      expect(client.projects.setConfig).toHaveBeenCalledWith(
+        'p1',
+        'plaid',
+        'research',
+        { telemetry: false },
+        undefined,
+        { expected: { telemetry: true } },
+      );
       expect(client.events.setEnabled).toHaveBeenCalledWith('p1', false);
     });
 

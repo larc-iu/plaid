@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { TASKS } from '@larc-iu/plaid-client';
 import { ServiceDefaultsSettings } from '@ui/components/shared/ServiceDefaultsSettings.jsx';
 import { IGT_NAMESPACE, resolveAutoAnalysis } from '@/domain/igtConfig';
+import { storedConfig } from '@ui/domain/configCells.js';
 import { fieldNamesOf } from '@/import/elan/fieldTargets';
 import {
   BUILTIN_TOKENIZE_RULE_BASED,
@@ -131,6 +132,7 @@ function BuiltinLinkOptions({ draft, onChange }) {
 export const ServicesSettings = ({ projectId, client }) => {
   const [autoDraft, setAutoDraft] = useState(resolveAutoAnalysis(null));
   const [autoDirty, setAutoDirty] = useState(false);
+  const [autoStored, setAutoStored] = useState(undefined);
 
   const setAutoAnalysis = (next) => {
     setAutoDraft(next);
@@ -145,11 +147,22 @@ export const ServicesSettings = ({ projectId, client }) => {
       spots={SPOTS}
       onProjectLoaded={(project) => {
         setAutoDraft(resolveAutoAnalysis(project?.config));
+        setAutoStored(storedConfig(project, IGT_NAMESPACE, 'autoAnalysis'));
         setAutoDirty(false);
       }}
       extraDirty={autoDirty}
+      // Written only when changed, expecting what the page read.
       saveExtra={async () => {
-        await client.projects.setConfig(projectId, IGT_NAMESPACE, 'autoAnalysis', autoDraft);
+        if (!autoDirty) return;
+        await client.projects.setConfig(
+          projectId,
+          IGT_NAMESPACE,
+          'autoAnalysis',
+          autoDraft,
+          undefined,
+          { expected: autoStored },
+        );
+        setAutoStored(autoDraft);
         setAutoDirty(false);
       }}
       builtinOptions={(spotKey, name) =>

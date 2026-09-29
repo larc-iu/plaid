@@ -13,6 +13,7 @@ import { DataTable } from './data-table';
 import { UserAvatar } from './UserAvatar';
 import { notifyError } from '../../lib/notify.js';
 import { ROLE_RANK, aclMemberIds, roleOf, setProjectRole } from '../../domain/projectRoles.js';
+import { isConfigConflict, storedConfig } from '../../domain/configCells.js';
 
 /**
  * Everyone explicitly granted a role on a project, what they may do, and whose
@@ -57,6 +58,8 @@ export const ProjectMembers = ({
   const reviewMarks = useRef(new Map());
   const projectRef = useRef(project);
   projectRef.current = project;
+  // The review list this page last wrote, and the project it was read from.
+  const reviewWritten = useRef(null);
 
   // Resolve ACL member ids to user objects (project-sized, so per-id GETs are
   // fine). Keyed on WHO is on the ACL, not on the project object: a refetch
@@ -181,12 +184,34 @@ export const ProjectMembers = ({
     showReview(userId, on);
     const mark = (reviewMarks.current.get(userId) || 0) + 1;
     reviewMarks.current.set(userId, mark);
-    const send = async () => {
-      // The stored list with every mark still shown over it.
-      let next = projectRef.current?.config?.[PLAID_NAMESPACE]?.[REVIEW_KEY];
+    // The stored list as this page knows it: its own last write, until the
+    // project is read again.
+    const known = () => {
+      const w = reviewWritten.current;
+      return w && w.project === projectRef.current
+        ? w.value
+        : storedConfig(projectRef.current, PLAID_NAMESPACE, REVIEW_KEY);
+    };
+    // The stored list with every mark still shown over it, expecting the
+    // list to be what it was built on.
+    const write = async (stored) => {
+      let next = stored;
       for (const [id, mark] of pendingReview.current) next = withReviewedUser(next, id, mark);
+      await client.projects.setConfig(projectId, PLAID_NAMESPACE, REVIEW_KEY, next, undefined, {
+        expected: stored,
+      });
+      reviewWritten.current = { project: projectRef.current, value: next };
+    };
+    const send = async () => {
       try {
-        await client.projects.setConfig(projectId, PLAID_NAMESPACE, REVIEW_KEY, next);
+        try {
+          await write(known());
+        } catch (err) {
+          // Someone else saved the list since: the marks go over theirs.
+          if (!isConfigConflict(err)) throw err;
+          const fresh = await client.projects.get(projectId);
+          await write(storedConfig(fresh, PLAID_NAMESPACE, REVIEW_KEY));
+        }
       } catch (err) {
         console.error('Error updating review:', err);
         // A later click on this row is still shown and still to be sent.

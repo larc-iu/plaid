@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { RefreshCw, Trash2 } from 'lucide-react';
 import {
   filterServicesByTask,
@@ -14,6 +14,12 @@ import { ServiceSummary } from '../services/ServiceSummary.jsx';
 import { Loading } from './Loading.jsx';
 import { notifySuccess, notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
+import {
+  expectStored,
+  isConfigConflict,
+  sameConfig,
+  storedConfig,
+} from '../../domain/configCells.js';
 import { useLatestCall } from '../../hooks/useLatestCall.js';
 import { configNamespace } from '../../lib/uiConfig.js';
 import {
@@ -232,43 +238,55 @@ export const ServiceDefaultsSettings = ({
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
 
+  // Whether anything on the page is unsaved, for a reload that must not
+  // throw it away.
+  const unsavedRef = useRef(false);
+  unsavedRef.current = dirty || extraDirty;
+
   const begin = useLatestCall();
-  const load = useCallback(async () => {
-    if (!client) return;
-    // The project can change under this screen, and a discovery is slow enough
-    // that the project just left can answer last.
-    const isCurrent = begin();
-    setLoading(true);
-    try {
-      const [p, svcs] = await Promise.all([
-        client.projects.get(projectId),
-        client.messages.discoverServices(projectId),
-      ]);
-      if (!isCurrent()) return;
-      setProject(p);
-      setServices(svcs || []);
-      setDraft(p?.config?.[namespace]?.serviceDefaults || {});
-      onProjectLoaded?.(p);
-      setDirty(false);
-    } catch (error) {
-      if (!isCurrent()) return;
-      notifyError(humanizeError(error), 'Failed to load the services');
-    } finally {
-      if (isCurrent()) setLoading(false);
-    }
+  // `servicesOnly` refreshes which services are online and leaves the saved
+  // settings, and an unsaved change to them, as they are.
+  const load = useCallback(
+    async (servicesOnly = false) => {
+      if (!client) return;
+      // The project can change under this screen, and a discovery is slow enough
+      // that the project just left can answer last.
+      const isCurrent = begin();
+      setLoading(true);
+      try {
+        const [p, svcs] = await Promise.all([
+          servicesOnly ? null : client.projects.get(projectId),
+          client.messages.discoverServices(projectId),
+        ]);
+        if (!isCurrent()) return;
+        setServices(svcs || []);
+        if (servicesOnly) return;
+        setProject(p);
+        setDraft(p?.config?.[namespace]?.serviceDefaults || {});
+        onProjectLoaded?.(p);
+        setDirty(false);
+      } catch (error) {
+        if (!isCurrent()) return;
+        notifyError(humanizeError(error), 'Failed to load the services');
+      } finally {
+        if (isCurrent()) setLoading(false);
+      }
+    },
     // `onProjectLoaded` is the app's and is redefined every render; naming it
     // here would reload on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, client, begin, namespace]);
+    [projectId, client, begin, namespace],
+  );
 
   useEffect(() => {
     load();
   }, [load]);
 
-  // The online/offline picture goes stale while the tab is hidden; refresh on return.
+  // The online/offline picture goes stale while the tab is hidden; refresh on
+  // return. The settings are read again too, unless one is unsaved.
   useEffect(() => {
     const onVisibility = () => {
-      if (!document.hidden) load();
+      if (!document.hidden) load(unsavedRef.current);
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
@@ -288,12 +306,32 @@ export const ServiceDefaultsSettings = ({
     if (!client) return;
     setSaving(true);
     try {
-      await client.projects.setConfig(projectId, namespace, 'serviceDefaults', draft);
-      await saveExtra?.();
+      // Written only when changed, expecting what the page read, so a save by
+      // someone else since is refused rather than written over.
+      if (!sameConfig(draft, storedConfig(project, namespace, 'serviceDefaults') || {})) {
+        await client.projects.setConfig(
+          projectId,
+          namespace,
+          'serviceDefaults',
+          draft,
+          undefined,
+          expectStored(project, namespace, 'serviceDefaults'),
+        );
+        setProject((p) => ({
+          ...p,
+          config: {
+            ...p?.config,
+            [namespace]: { ...p?.config?.[namespace], serviceDefaults: draft },
+          },
+        }));
+      }
+      await saveExtra?.(project);
       setDirty(false);
       notifySuccess('Service defaults saved');
     } catch (error) {
       notifyError(humanizeError(error), 'Failed to save the defaults');
+      // Someone else saved since: show what is stored now.
+      if (isConfigConflict(error)) load();
     } finally {
       setSaving(false);
     }
@@ -303,7 +341,7 @@ export const ServiceDefaultsSettings = ({
     if (!client) return;
     try {
       await client.messages.discardService(projectId, serviceId);
-      await load();
+      await load(unsavedRef.current);
     } catch (error) {
       notifyError(humanizeError(error), 'Failed to forget the service');
     }
@@ -326,7 +364,12 @@ export const ServiceDefaultsSettings = ({
         <p className="max-w-xl text-sm text-muted-foreground">
           Set a default service and its options for each task.
         </p>
-        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => load(unsavedRef.current)}
+          disabled={loading}
+        >
           <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
           Refresh
         </Button>

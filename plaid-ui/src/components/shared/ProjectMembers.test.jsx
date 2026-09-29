@@ -261,6 +261,34 @@ describe('ProjectMembers', () => {
     await unmount();
   });
 
+  // A page opened before another maintainer marked someone wrote its own copy
+  // of the list over theirs (V6). Each write expects the list it was built on,
+  // and a refused one is built again on the list as stored.
+  it('keeps a mark another maintainer made after the page loaded', async () => {
+    const project = { ...PROJECT, writers: ['ada@example.com', 'bo@example.com'] };
+    USERS['bo@example.com'] = { id: 'bo@example.com', displayName: 'Bo', isAdmin: false };
+    const server = { plaid: { review: { users: ['bo@example.com'] } } };
+    const client = makeClient();
+    client.projects.get = vi.fn(async () => ({ ...project, config: structuredClone(server) }));
+    client.projects.setConfig = vi.fn(async (_p, ns, key, value, _audit, options) => {
+      if (JSON.stringify(options.expected ?? null) !== JSON.stringify(server[ns][key] ?? null)) {
+        throw Object.assign(new Error('HTTP 409 changed'), { status: 409 });
+      }
+      server[ns][key] = value;
+    });
+    const { container, step, unmount } = await mount({ client, project });
+    await step(async () => {
+      container.querySelector('input[aria-label="Review Ada\'s work"]').click();
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(client.projects.setConfig).toHaveBeenCalledTimes(2);
+    expect(server.plaid.review.users).toEqual(
+      expect.arrayContaining(['ada@example.com', 'bo@example.com']),
+    );
+    expect(toast.error).not.toHaveBeenCalled();
+    await unmount();
+  });
+
   it('takes back only the refused mark when the same member was toggled again after it', async () => {
     const client = makeClient();
     const sent = [];

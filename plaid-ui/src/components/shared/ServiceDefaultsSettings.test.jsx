@@ -99,8 +99,61 @@ describe('ServiceDefaultsSettings', () => {
       'igt', // the test run configures the package as plaid-igt
       'serviceDefaults',
       expect.objectContaining({ tokenize: expect.anything() }),
+      undefined,
+      // What the page read: nothing stored yet.
+      { expected: undefined },
     );
     expect(toast.success).toHaveBeenCalled();
+    await unmount();
+  });
+
+  // A page opened before another maintainer saved wrote its whole copy over
+  // that save, and a return to the tab threw an unsaved choice away (V6).
+  it('keeps an unsaved choice when the tab comes back', async () => {
+    const { container, step, unmount } = await mount();
+    const punkt = radios(container).find((r) => r.id.includes('s1'));
+    await step(() => punkt.click());
+    expect(punkt.checked).toBe(true);
+    await step(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(radios(container).find((r) => r.id.includes('s1')).checked).toBe(true);
+    expect(byText(container, 'button', 'Save defaults').disabled).toBe(false);
+    await unmount();
+  });
+
+  it('reads the settings again when someone else saved them since', async () => {
+    const stored = { analyze: { builtin: 'builtin-a' } };
+    const get = vi.fn(async () => ({ id: 'p1', config: { igt: { serviceDefaults: stored } } }));
+    const setConfig = vi.fn(async () => {
+      throw Object.assign(new Error('HTTP 409 changed'), { status: 409 });
+    });
+    const client = makeClient({
+      projects: { get, setConfig },
+    });
+    const { container, step, unmount } = await mount({ client });
+    const punkt = radios(container).find((r) => r.id.includes('s1'));
+    await step(() => punkt.click());
+    await step(async () => {
+      byText(container, 'button', 'Save defaults').click();
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(setConfig.mock.calls[0][5]).toEqual({ expected: stored });
+    expect(toast.error).toHaveBeenCalled();
+    expect(get).toHaveBeenCalledTimes(2);
+    await unmount();
+  });
+
+  it('does not write the defaults when only the second key changed', async () => {
+    const saveExtra = vi.fn(async () => {});
+    const { container, client, step, unmount } = await mount({ saveExtra, extraDirty: true });
+    await step(async () => {
+      byText(container, 'button', 'Save defaults').click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(client.projects.setConfig).not.toHaveBeenCalled();
+    expect(saveExtra).toHaveBeenCalledWith({ id: 'p1', config: {} });
     await unmount();
   });
 

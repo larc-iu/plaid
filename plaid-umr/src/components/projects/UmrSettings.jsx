@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useManagedProject } from '@ui/hooks/useManagedProject.js';
+import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
 import { getUmrLayerInfo, readIlgConfig, UMR_NAMESPACE } from '../../utils/umrLayerUtils.js';
 import { HEADERS, proposeIlg } from '../../domain/ilg.js';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
@@ -96,12 +97,21 @@ export const UmrSettings = () => {
                 source: r.source,
               },
         );
-      await getClient().projects.setConfig(projectId, UMR_NAMESPACE, 'ilg', clean);
+      await getClient().projects.setConfig(
+        projectId,
+        UMR_NAMESPACE,
+        'ilg',
+        clean,
+        undefined,
+        expectStored(project, UMR_NAMESPACE, 'ilg'),
+      );
       await fetchProject();
       notifySuccess('Gloss lines saved');
     } catch (err) {
       console.error('Failed to save the gloss lines:', err);
       notifyError(err, 'Failed to save the gloss lines');
+      // Someone else saved since: show what is stored now.
+      if (isConfigConflict(err)) fetchProject();
     } finally {
       setSaving(false);
     }

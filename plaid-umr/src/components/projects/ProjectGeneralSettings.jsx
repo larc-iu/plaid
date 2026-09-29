@@ -1,6 +1,7 @@
 import { FRAME_LANGUAGES, framesFor } from '../../domain/lexicon.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { UMR_NAMESPACE, readProjectLanguage } from '../../utils/umrLayerUtils.js';
+import { expectStored } from '@ui/domain/configCells.js';
 import { useManagedProject } from '@ui/hooks/useManagedProject.js';
 import { ProjectGeneralPage } from '@ui/components/shared/ProjectGeneralPage.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
@@ -57,8 +58,24 @@ export const ProjectGeneralSettings = ({ onProjectUpdate }) => {
   // The tag is on the PROJECT, in this app's half of its config.
   const saveLanguage = async (tag) => {
     const client = getClient();
-    if (tag) await client.projects.setConfig(project.id, UMR_NAMESPACE, 'language', tag);
-    else await client.projects.deleteConfig(project.id, UMR_NAMESPACE, 'language');
+    const expected = expectStored(project, UMR_NAMESPACE, 'language');
+    if (tag)
+      await client.projects.setConfig(
+        project.id,
+        UMR_NAMESPACE,
+        'language',
+        tag,
+        undefined,
+        expected,
+      );
+    else
+      await client.projects.deleteConfig(
+        project.id,
+        UMR_NAMESPACE,
+        'language',
+        undefined,
+        expected,
+      );
   };
 
   return (

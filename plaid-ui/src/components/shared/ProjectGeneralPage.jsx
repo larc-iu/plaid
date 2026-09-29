@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/useAuth.js';
 import { humanizeError } from '../../lib/errors.js';
+import { expectStored, isConfigConflict } from '../../domain/configCells.js';
 import { notifySuccess, notifyError } from '../../lib/notify.js';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -129,6 +130,8 @@ const LanguageCard = ({ onSaved, saved, save, description, note }) => {
     } catch (err) {
       console.error('Failed to save project language:', err);
       notifyError(humanizeError(err, 'Failed to save the language.'));
+      // Someone else saved since: show what is stored now.
+      if (isConfigConflict(err)) onSaved?.();
     } finally {
       setSaving(false);
     }
@@ -177,13 +180,21 @@ const ResearchCard = ({ project, onSaved }) => {
     setSaving(true);
     try {
       const client = getClient();
-      await client.projects.setConfig(project.id, 'plaid', 'research', { telemetry: next });
+      await client.projects.setConfig(
+        project.id,
+        'plaid',
+        'research',
+        { telemetry: next },
+        undefined,
+        expectStored(project, 'plaid', 'research'),
+      );
       client.events?.setEnabled?.(project.id, next);
       await onSaved?.();
     } catch (err) {
       console.error('Failed to save research telemetry:', err);
       setOn(!next);
       notifyError(humanizeError(err, 'Failed to save the research setting.'));
+      if (isConfigConflict(err)) onSaved?.();
     } finally {
       setSaving(false);
     }
