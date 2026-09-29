@@ -4,10 +4,10 @@
 
   Each case runs a write between the save's reads and its transaction (a
   token layer delete, a new partitioning layer with its tokens, another body
-  save of the same text, token writes in the same document, a write in
-  another document of the project) and compares the result with a twin
-  project where the same write simply came first. A write in another project
-  leaves the worked-out save standing. The write itself answering 2xx from
+  save of the same text, token writes in the same document) and compares the
+  result with a twin project where the same write simply came first. A write
+  to another document, in the project or outside it, leaves the worked-out
+  save standing. The write itself answering 2xx from
   inside the save shows the save did not hold the lock while it worked."
   (:require [clojure.test :refer :all]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler admin-request api-call
@@ -98,10 +98,7 @@
      (update-token admin-request (nth nodes 1) :begin 4 :end 11))
    :token-create
    (fn [{:keys [layers text]}]
-     (create-token admin-request (:n layers) text 4 7))
-   :other-document
-   (fn [{:keys [other-text]}]
-     (update-text admin-request other-text "another body"))})
+     (create-token admin-request (:n layers) text 4 7))})
 
 (defn- save-with-write
   "Save `new-body` over the setup's text, running `write` in the middle of
@@ -143,19 +140,22 @@
         (is (= [false true] calls) "worked out before the lock, then again under it")
         (is (= (snapshot twin) (snapshot ctx)))))))
 
-(deftest a-write-in-another-project-leaves-the-worked-out-save-standing
-  (doseq [at [:before :after]]
-    (let [elsewhere (setup (str "Elsewhere " (name at)))
-          twin (setup (str "Twin " (name at)))
-          _ (assert-ok (update-text admin-request (:text twin) new-body))
-          ctx (setup (str "Here " (name at)))
-          {:keys [save write calls]}
-          (save-with-write ctx (fn [_] (update-text admin-request (:text elsewhere) "changed elsewhere")) at)]
-      (assert-ok save)
-      (is (< (:status write) 300))
-      (is (= [false] calls) "worked out once, before the lock")
-      (is (= (snapshot twin) (snapshot ctx)))
-      (is (= new-body (-> (get-text admin-request (:text ctx)) :body :text/body))))))
+(deftest a-write-to-another-document-leaves-the-worked-out-save-standing
+  (doseq [where [:other-project :same-project]
+          at [:before :after]]
+    (testing (str where " " at)
+      (let [elsewhere (setup (str "Elsewhere " (name where) (name at)))
+            twin (setup (str "Twin " (name where) (name at)))
+            _ (assert-ok (update-text admin-request (:text twin) new-body))
+            ctx (setup (str "Here " (name where) (name at)))
+            target (if (= where :other-project) (:text elsewhere) (:other-text ctx))
+            {:keys [save write calls]}
+            (save-with-write ctx (fn [_] (update-text admin-request target "changed elsewhere")) at)]
+        (assert-ok save)
+        (is (< (:status write) 300))
+        (is (= [false] calls) "worked out once, before the lock")
+        (is (= (snapshot twin) (snapshot ctx)))
+        (is (= "changed elsewhere" (-> (get-text admin-request target) :body :text/body)))))))
 
 (deftest a-save-the-plan-refuses-is-refused-under-the-lock
   (let [ctx (setup "Refused")
@@ -226,10 +226,15 @@
                            " WHERE a.target_table IN ('texts', 'tokens', 'token_layers') AND o.ts > ?"
                            " GROUP BY a.target_table")
                       (plaid.sql.common/instant->iso before))
+        ;; A text or token write names the row's document (or none), and a
+        ;; token layer write names no document.
         stray (rows (str "SELECT o.op_type AS op, a.target_table AS t FROM audit_writes a"
                          " JOIN operations o ON o.id = a.op_id"
                          " WHERE a.target_table IN ('texts', 'tokens', 'token_layers')"
-                         " AND (o.project_id IS NULL OR o.project_id <> ?)")
+                         " AND (o.project_id IS NULL OR o.project_id <> ?"
+                         "      OR (a.target_table = 'token_layers' AND o.document_id IS NOT NULL)"
+                         "      OR (a.target_table <> 'token_layers' AND o.document_id IS NOT NULL"
+                         "          AND o.document_id IS NOT a.document_id))")
                     project)]
     (is (= #{"texts" "tokens" "token_layers"} (set (map :t audited))) "every table was written")
     (is (empty? stray))))

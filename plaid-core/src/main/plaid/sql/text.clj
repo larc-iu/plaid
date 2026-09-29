@@ -22,8 +22,8 @@
        what it needs)
 
   The one exception is a body save's diff, which `update-body` works out
-  before the transaction and writes only when no operation of its project
-  has committed in between (see `update-body`).
+  before the transaction and writes only when no write that could change
+  what it read has committed in between (see `update-body`).
 
   Cross-namespace dependencies: this file calls into
   `plaid.sql.token/multi-delete!` and `plaid.sql.token/compensate-partition-layers!`
@@ -301,22 +301,28 @@
   (or (:ts (psc/q1 db {:select [[[:max :ts] :ts]] :from [:operations]})) ""))
 
 (defn- written-since?
-  "True when an operation other than `op-id` has committed since `ts` in
-  project `project-id`, or in no project. Every write to a text, a token or a
-  token layer records an operation naming its project (the writers are listed
-  in the V-LOCK report of the 2026-09-28 UMR round), so an answer of false
-  means a save's inputs are as they were at `ts`. The operations naming no
-  project are vocabulary, user and token writes, none of which reach a
-  project's texts or tokens today. They are counted anyway, so a writer that
-  one day leaves its project out makes a save recompute rather than write
-  stale rows. Two seeks on `idx_operations_project_ts`."
-  [tx project-id ts op-id]
+  "True when an operation other than `op-id` that could have changed what a
+  save of document `doc-id` in project `project-id` read has committed since
+  `ts`: one naming the document, one naming the project and no document (a
+  layer write), or one naming neither. Every write to a text or a token
+  records an operation naming its document, and every write to a token layer
+  one naming its project and no document (the writers are listed in the
+  V-LOCK report of the 2026-09-28 UMR round, and
+  `text-save-outside-lock-test` pins it), so false means the save's inputs
+  are as they were at `ts`. A write to another document of the project
+  changes nothing the save read. The operations naming no project are
+  vocabulary, user and API token writes, which reach no text or token today.
+  They are counted anyway, so a writer that one day leaves its project out
+  makes a save work itself out again rather than write stale rows. Three
+  seeks, on `idx_operations_document_ts` and `idx_operations_project_ts`."
+  [tx project-id doc-id ts op-id]
   (let [newer? (fn [scope]
                  (some? (psc/q1 tx {:select [:id]
                                     :from [:operations]
                                     :where [:and scope [:> :ts ts] [:<> :id op-id]]
                                     :limit 1})))]
-    (or (newer? [:= :project_id project-id])
+    (or (newer? [:= :document_id doc-id])
+        (newer? [:and [:= :project_id project-id] [:= :document_id nil]])
         (newer? [:= :project_id nil]))))
 
 (defn update-body
@@ -329,7 +335,8 @@
   The diff and the token arithmetic (`save-plan`) run BEFORE the write lock,
   on what the database holds then, which at 50,000 words takes seconds.
   Inside `BEGIN IMMEDIATE` the save checks that no operation has committed
-  since in its project (`written-since?`). If none has, it writes what it
+  since that could change what it read (`written-since?`): one on its
+  document, on its project's layers, or naming no project. If none has, it writes what it
   worked out. If one has, it works the save out again under the lock, as
   every save did before. Inside an atomic batch the lock is already held,
   so the save works it out there once.
@@ -371,7 +378,7 @@
      (when (nil? pre)
        (throw (ex-info (psc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
      (let [{:keys [new-body new-text-length deleted-ids survivor-updates survivors]}
-           (or (when (and ahead (not (written-since? tx project (:ts ahead) (:id psaw/*op*))))
+           (or (when (and ahead (not (written-since? tx project (:document_id pre) (:ts ahead) (:id psaw/*op*))))
                  (:plan ahead))
                (save-plan tx eid new-body-or-ops)
                (throw (ex-info (psc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
