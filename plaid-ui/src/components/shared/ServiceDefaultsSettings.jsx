@@ -213,9 +213,11 @@ function SpotCard({
  * editor seeds from them (a per-user localStorage choice still wins).
  *
  * `spots` is the app's, being a list of places in its own UI. `builtinOptions`
- * lets a selected built-in show options of its own, and `saveExtra` lets the
- * app write a second config key in the same Save, clearing its own `extraDirty`
- * once that write has landed. `fieldsOf(project)` gives the project's
+ * lets a selected built-in show options of its own. `saveExtra(batch)` lets
+ * the app write a second config key in the same Save: it queues that write on
+ * the batch the defaults go in, so the two land together or not at all, and
+ * `onExtraSaved` runs once they have landed, for the app to clear its own
+ * `extraDirty`. `fieldsOf(project)` gives the project's
  * annotation fields as {scope: [field name]}, for a `field` parameter to be
  * chosen from.
  */
@@ -228,6 +230,7 @@ export const ServiceDefaultsSettings = ({
   onProjectLoaded,
   extraDirty = false,
   saveExtra,
+  onExtraSaved,
   fieldsOf,
 }) => {
   const namespace = configNamespace();
@@ -307,16 +310,26 @@ export const ServiceDefaultsSettings = ({
     setSaving(true);
     try {
       // Written only when changed, expecting what the page read, so a save by
-      // someone else since is refused rather than written over.
-      if (!sameConfig(draft, storedConfig(project, namespace, 'serviceDefaults') || {})) {
-        await client.projects.setConfig(
-          projectId,
-          namespace,
-          'serviceDefaults',
-          draft,
-          undefined,
-          expectStored(project, namespace, 'serviceDefaults'),
-        );
+      // someone else since is refused rather than written over. The app's
+      // own key goes in the same batch, so a refusal of either writes neither.
+      const defaultsChanged = !sameConfig(
+        draft,
+        storedConfig(project, namespace, 'serviceDefaults') || {},
+      );
+      await client.batched(async (b) => {
+        if (defaultsChanged) {
+          b.projects.setConfig(
+            projectId,
+            namespace,
+            'serviceDefaults',
+            draft,
+            undefined,
+            expectStored(project, namespace, 'serviceDefaults'),
+          );
+        }
+        if (extraDirty) await saveExtra?.(b, project);
+      });
+      if (defaultsChanged) {
         setProject((p) => ({
           ...p,
           config: {
@@ -325,7 +338,7 @@ export const ServiceDefaultsSettings = ({
           },
         }));
       }
-      await saveExtra?.(project);
+      if (extraDirty) onExtraSaved?.();
       setDirty(false);
       notifySuccess('Service defaults saved');
     } catch (error) {

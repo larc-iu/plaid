@@ -32,17 +32,27 @@ const STRAY = {
   extras: { tasks: ['translate'] },
 };
 
-const makeClient = (over = {}) => ({
-  projects: {
-    get: async () => ({ id: 'p1', config: {} }),
-    setConfig: vi.fn(async () => {}),
-  },
-  messages: {
-    discoverServices: async () => [SERVICE, STRAY],
-    discardService: vi.fn(async () => {}),
-  },
-  ...over,
-});
+// `batched` hands the page a batch whose writes are the client's own
+// setConfig, sent when the batch is: each Save is one request.
+const makeClient = (over = {}) => {
+  const client = {
+    projects: {
+      get: async () => ({ id: 'p1', config: {} }),
+      setConfig: vi.fn(async () => {}),
+    },
+    messages: {
+      discoverServices: async () => [SERVICE, STRAY],
+      discardService: vi.fn(async () => {}),
+    },
+    ...over,
+  };
+  client.batched = vi.fn(async (fn) => {
+    const queued = [];
+    await fn({ projects: { setConfig: (...args) => queued.push(args) } });
+    for (const args of queued) await client.projects.setConfig(...args);
+  });
+  return client;
+};
 
 const mount = (props = {}) => {
   const client = props.client || makeClient();
@@ -146,20 +156,25 @@ describe('ServiceDefaultsSettings', () => {
   });
 
   it('does not write the defaults when only the second key changed', async () => {
-    const saveExtra = vi.fn(async () => {});
+    const saveExtra = vi.fn();
     const { container, client, step, unmount } = await mount({ saveExtra, extraDirty: true });
     await step(async () => {
       byText(container, 'button', 'Save defaults').click();
       await new Promise((r) => setTimeout(r, 0));
     });
     expect(client.projects.setConfig).not.toHaveBeenCalled();
-    expect(saveExtra).toHaveBeenCalledWith({ id: 'p1', config: {} });
+    expect(saveExtra).toHaveBeenCalledWith(expect.anything(), { id: 'p1', config: {} });
     await unmount();
   });
 
   it('saves the app’s own second key in the same Save', async () => {
-    const saveExtra = vi.fn(async () => {});
-    const { container, step, unmount } = await mount({ saveExtra, extraDirty: true });
+    const saveExtra = vi.fn();
+    const onExtraSaved = vi.fn();
+    const { container, step, unmount } = await mount({
+      saveExtra,
+      onExtraSaved,
+      extraDirty: true,
+    });
 
     await step(async () => {
       byText(container, 'button', 'Save defaults').click();
@@ -167,6 +182,41 @@ describe('ServiceDefaultsSettings', () => {
     });
 
     expect(saveExtra).toHaveBeenCalled();
+    expect(onExtraSaved).toHaveBeenCalled();
+    await unmount();
+  });
+
+  // Two writes, the defaults and the app's key: a refusal of the second said
+  // the Save failed though the first had landed. One batch lands both or
+  // neither.
+  it('sends the defaults and the app’s own key as one request, and keeps both unsaved when it is refused', async () => {
+    const client = makeClient();
+    const sent = [];
+    client.batched = vi.fn(async (fn) => {
+      const queued = [];
+      await fn({ projects: { setConfig: (...args) => queued.push(args) } });
+      sent.push(queued.map((args) => args[2]));
+      throw Object.assign(new Error('HTTP 409 changed'), { status: 409 });
+    });
+    const onExtraSaved = vi.fn();
+    const saveExtra = (b) => b.projects.setConfig('p1', 'igt', 'autoAnalysis', { on: 1 });
+    const { container, step, unmount } = await mount({
+      client,
+      saveExtra,
+      onExtraSaved,
+      extraDirty: true,
+    });
+    const punkt = radios(container).find((r) => r.id.includes('s1'));
+    await step(() => punkt.click());
+    await step(async () => {
+      byText(container, 'button', 'Save defaults').click();
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(sent).toEqual([['serviceDefaults', 'autoAnalysis']]);
+    expect(client.projects.setConfig).not.toHaveBeenCalled();
+    expect(onExtraSaved).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalled();
     await unmount();
   });
 

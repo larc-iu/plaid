@@ -151,17 +151,14 @@ export const ServicesSettings = ({ projectId, client }) => {
         setAutoDirty(false);
       }}
       extraDirty={autoDirty}
-      // Written only when changed, expecting what the page read.
-      saveExtra={async () => {
-        if (!autoDirty) return;
-        await client.projects.setConfig(
-          projectId,
-          IGT_NAMESPACE,
-          'autoAnalysis',
-          autoDraft,
-          undefined,
-          { expected: autoStored },
-        );
+      // Written only when changed, expecting what the page read, in the same
+      // batch as the defaults.
+      saveExtra={(b) => {
+        b.projects.setConfig(projectId, IGT_NAMESPACE, 'autoAnalysis', autoDraft, undefined, {
+          expected: autoStored,
+        });
+      }}
+      onExtraSaved={() => {
         setAutoStored(autoDraft);
         setAutoDirty(false);
       }}
