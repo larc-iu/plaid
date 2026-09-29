@@ -532,8 +532,9 @@ describe('a word nobody has analyzed', () => {
     expect(m.annotations.Gloss?.value).toBe('dog');
     const spans = client.calls.filter((c) => c.kind === 'spans.create');
     expect(spans).toHaveLength(1);
-    expect(spans[0].args[1]).toEqual([m.id]);
-    expect(m.id.startsWith('virtual:')).toBe(false);
+    // Made in the same batch as the morpheme, which it names by reference.
+    expect(spans[0].args[1]).toEqual([{ $ref: 0 }]);
+    expect(m.id.startsWith('tok')).toBe(true);
   });
 });
 

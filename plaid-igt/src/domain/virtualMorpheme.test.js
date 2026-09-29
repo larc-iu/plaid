@@ -100,19 +100,21 @@ describe('writing to a virtual morpheme', () => {
     expect(m.metadata.form).toBe('ngo');
   });
 
-  it('updateMorphemeSpan writes the morpheme before the gloss that hangs off it', async () => {
+  it('updateMorphemeSpan writes the morpheme and the gloss that hangs off it in one batch', async () => {
     const client = makeFakeClient();
     const doc = makeDoc(buildRawDoc({ morphemes: [] }), client);
 
     expect(await doc.updateMorphemeSpan(morphOf(doc).id, 'Gloss', 'DOG')).toBe(true);
 
-    const created = callsOf(client, 'tokens.create');
-    expect(created).toHaveLength(1);
+    expect(callsOf(client, 'tokens.create')).toHaveLength(1);
     const spans = callsOf(client, 'spans.create');
     expect(spans).toHaveLength(1);
-    // The span points at the token that was just written, never at the virtual id.
-    expect(spans[0].args[1]).toEqual([created[0].result?.id ?? 'tok-1']);
+    expect(callsOf(client, 'batch.submit')).toHaveLength(1);
+    // The span points at the token written before it in the batch, never at
+    // the virtual id.
+    expect(spans[0].args[1]).toEqual([{ $ref: 0 }]);
     expect(morphOf(doc).annotations.Gloss?.value).toBe('DOG');
+    expect(morphOf(doc).id.startsWith('tok')).toBe(true);
   });
 
   it('setMorphemeType creates it carrying the type', async () => {

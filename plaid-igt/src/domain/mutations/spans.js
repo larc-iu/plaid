@@ -132,8 +132,27 @@ const makeSpanUpdater = (scope) =>
       label,
       async () => {
         const ids = new Map();
-        await this._sendMorphemes(creates, ids);
-        await sendSpan(this, layer.id, plan, ids);
+        if (creates.length) {
+          // The morpheme and its first span in one batch, so a refusal
+          // leaves neither. A morpheme made here has no span yet, so this
+          // plan is a create.
+          let morphemes;
+          let spanAt;
+          const results = await this._client.batched(async (b) => {
+            morphemes = this._queueMorphemes(b, creates);
+            b.spans.create(
+              layer.id,
+              [morphemes.tokenRef(plan.token)],
+              plan.value,
+              plan.stamp || undefined,
+            );
+            spanAt = b.ref().$ref;
+          });
+          morphemes.read(results, ids);
+          ids.set(plan.id, createdId(results[spanAt]));
+        } else {
+          await sendSpan(this, layer.id, plan, ids);
+        }
         this._settle(ids);
       },
       undefined,
