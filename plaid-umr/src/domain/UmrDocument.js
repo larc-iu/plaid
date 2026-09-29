@@ -1110,6 +1110,14 @@ export class UmrDocument extends DocumentModel {
       node.concept === concept
         ? `Change the entry of ${node.var} ${concept}`
         : `Change ${node.var} from ${node.concept} to ${concept}`,
+      {
+        // Sent again on a later version: no edge another user hung under
+        // the node since takes only a value under the new concept.
+        recheck: (fresh) => {
+          const now = fresh.node(node.id);
+          return !!now && !fresh._newlyUnderProblem(now, concept);
+        },
+      },
     );
   }
 
@@ -1226,7 +1234,11 @@ export class UmrDocument extends DocumentModel {
       this.setError(problem);
       return false;
     }
-    return this._patchNodeMeta(nodeId, { var: variable }, `Rename ${node.var} to ${variable}`);
+    return this._patchNodeMeta(nodeId, { var: variable }, `Rename ${node.var} to ${variable}`, {
+      // Sent again on a later version: nobody gave another node the name
+      // meanwhile.
+      recheck: (fresh) => !fresh.variableProblem(nodeId, variable),
+    });
   }
 
   // The node's attributes, whole: `[{ rel, value }]` in the order to write.
@@ -1257,7 +1269,7 @@ export class UmrDocument extends DocumentModel {
   // Every edit of a node's `umr` namespace: a rename, its attributes, its
   // root mark. The writer's edit stamp rides in the same patch, flat beside
   // the namespace, so one request both changes the node and settles it.
-  async _patchNodeMeta(nodeId, changes, label) {
+  async _patchNodeMeta(nodeId, changes, label, { recheck = null } = {}) {
     const node = this.node(nodeId);
     if (!node) return false;
     const failed = 'Failed to save the node';
@@ -1271,6 +1283,7 @@ export class UmrDocument extends DocumentModel {
       failed,
       () => this._client.spans.patchMetadata(settledId(node.id), ops),
       label,
+      { recheck },
     );
   }
 
@@ -2426,6 +2439,8 @@ export class UmrDocument extends DocumentModel {
     if (!plan.changes) return 0;
     const label = 'Failed to apply the text';
     if (!this._canWrite(label)) return false;
+    // The sentence the text was written over, for a send again (below).
+    const seen = this.penmanOf(sentenceIndex);
 
     const idByVar = new Map(sentence.nodes.map((n) => [n.var, n.id]));
     const L = this._layers(info);
@@ -2698,6 +2713,19 @@ export class UmrDocument extends DocumentModel {
         this._settle(ids);
       },
       `Apply text to sentence ${sentenceIndex} (${plan.changes} change${plan.changes === 1 ? '' : 's'})`,
+      {
+        // The text is the whole sentence: sent again on a later version, it
+        // goes only while nobody else changed the sentence's graph (a node
+        // renamed to a variable the text gives a new node, an edge that the
+        // text's edges would close a cycle with) or its words.
+        recheck: (fresh) =>
+          fresh.penmanOf(sentenceIndex) === seen &&
+          this._sameWords(
+            fresh,
+            sentence,
+            sentence.words.map((w) => w.id),
+          ),
+      },
     ).then((ok) => (ok ? plan.changes : false));
   }
 }

@@ -195,3 +195,84 @@ test('a node whose variable another user took meanwhile is refused, not sent aga
   );
   release();
 });
+
+// A rename is checked against every variable in the document when it is
+// made. Sent again after another user renamed another node to the same name,
+// it gave two nodes one variable (REV-W-RESEND).
+test('a rename to a variable another user took meanwhile is refused, not sent again', async () => {
+  let theirs = null;
+  let mine;
+  const { doc, calls, errors, release } = load((raw) => {
+    const find = (node) => {
+      if (node && typeof node === 'object') {
+        if (node.id === theirs.id) return node;
+        for (const v of Object.values(node)) {
+          const hit = find(v);
+          if (hit) return hit;
+        }
+      }
+      return null;
+    };
+    find(raw).metadata.umr.var = 's1zz';
+    return raw;
+  });
+  [theirs, mine] = doc.sentence(1).nodes.filter((n) => !n.root);
+  const patch = doc._client.spans.patchMetadata;
+  let refused = false;
+  doc._client.spans.patchMetadata = async (...args) => {
+    if (!refused) {
+      refused = true;
+      throw conflict();
+    }
+    return patch(...args);
+  };
+  assert.equal(await doc.setVariable(mine.id, 's1zz'), false);
+  assert.equal(calls.filter((c) => c.name === 'spans.patchMetadata').length, 0, 'not sent again');
+  assert.deepEqual(
+    errors.map((e) => e?.status),
+    [409],
+  );
+  release();
+});
+
+// Text mode writes the whole sentence. Sent again after another user renamed
+// a node of it to the variable the text gives a new node, it gave two nodes
+// one variable (REV-W-RESEND).
+test('a sentence text sent again after another user changed that sentence is refused', async () => {
+  let theirs = null;
+  const { doc, calls, errors, release } = load((raw) => {
+    const find = (node) => {
+      if (node && typeof node === 'object') {
+        if (node.id === theirs.id) return node;
+        for (const v of Object.values(node)) {
+          const hit = find(v);
+          if (hit) return hit;
+        }
+      }
+      return null;
+    };
+    find(raw).metadata.umr.var = 's1zz';
+    return raw;
+  });
+  const root = doc.sentence(1).nodes.find((n) => n.root);
+  theirs = doc.sentence(1).nodes.find((n) => !n.root);
+  const text = doc
+    .penmanOf(1)
+    .replace(`(${root.var} / ${root.concept}`, `(${root.var} / ${root.concept} :mod (s1zz / huge)`);
+  assert.notEqual(text, doc.penmanOf(1));
+  const batched = doc._client.batched;
+  let sent = 0;
+  doc._client.batched = async (...args) => {
+    sent += 1;
+    if (sent === 1) throw conflict();
+    return batched(...args);
+  };
+  assert.equal(await doc.applyPenman(1, text), false);
+  assert.equal(sent, 1, 'not sent again');
+  assert.deepEqual(
+    errors.map((e) => e?.status),
+    [409],
+  );
+  void calls;
+  release();
+});
