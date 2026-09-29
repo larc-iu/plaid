@@ -281,10 +281,22 @@ export const FieldsManager = ({
       .catch(() => setPendingDelete((p) => (p?.key === key ? { ...base, count: null } : p)));
   };
 
-  const handleConfirmDelete = async () => {
-    const key = pendingDelete?.key;
+  // Counted again at the click: annotations added since the dialog opened
+  // are deleted too, so a count that changed is shown and asked again.
+  const handleConfirmDelete = async (event) => {
+    const asked = pendingDelete;
+    if (!asked?.key) return;
+    if (onCountFieldUsage && typeof asked.count === 'number') {
+      event?.preventDefault?.();
+      const field = fields.find((f) => fieldKey(f) === asked.key);
+      const now = await Promise.resolve(onCountFieldUsage(field)).catch(() => null);
+      if (now !== asked.count) {
+        setPendingDelete((p) => (p?.key === asked.key ? { ...asked, count: now } : p));
+        return;
+      }
+    }
     setPendingDelete(null);
-    if (key) await handleDeleteField(key);
+    await handleDeleteField(asked.key);
   };
 
   // A field only ever moves among the fields of its own scope: the grid shows

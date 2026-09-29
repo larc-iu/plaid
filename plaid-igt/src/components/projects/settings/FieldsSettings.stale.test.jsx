@@ -160,6 +160,40 @@ describe('Settings > Fields when the same value changed elsewhere', () => {
   });
 });
 
+// The delete dialog counted a field's annotations when it opened, and the
+// delete then took every annotation added since (V6, sibling of H6-1).
+describe('Settings > Fields delete', () => {
+  it('counts again at the click, and asks again when the count changed', async () => {
+    const client = fakeClient();
+    let count = 0;
+    client.query = async () => ({ results: [[count]] });
+    const { container, step, unmount } = await mount(client);
+    const row = all(container, 'tbody tr').find((tr) => tr.textContent.includes('POS'));
+    await step(async () => {
+      all(row, 'button')
+        .find((b) => b.title === 'Remove')
+        .click();
+      await settle();
+    });
+    expect(document.body.textContent).toContain('This field has no annotations yet.');
+    count = 1;
+    const confirm = () =>
+      all(document.body, 'button').find((b) => b.textContent.trim() === 'Delete');
+    await step(async () => {
+      confirm().click();
+      await settle();
+    });
+    expect(client.writes).toEqual([]);
+    expect(document.body.textContent).toContain('1 annotation');
+    await step(async () => {
+      confirm().click();
+      await settle();
+    });
+    expect(client.writes).toEqual([['spanLayers.delete', 'pos']]);
+    await unmount();
+  });
+});
+
 describe('fieldChange', () => {
   const f = (name, extra = {}) => ({ name, scope: 'Word', tagset: null, lang: null, ...extra });
   const ignored = {
