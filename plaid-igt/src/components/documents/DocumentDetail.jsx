@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback, useSyncExternalStore } from 'react';
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useStrictClient } from './contexts/StrictModeContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
@@ -6,6 +6,7 @@ import { DocumentProvider } from './contexts/DocumentContext.jsx';
 import { IgtDocument } from '../../domain/IgtDocument.js';
 import { readInitialized, readImportState, importRouteFor } from '@/domain/igtConfig';
 import { notifyError, humanizeError } from '@/utils/feedback';
+import { isGone } from '@ui/lib/errors.js';
 import { History } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { DocumentTabStrip } from '@ui/components/shared/DocumentTabStrip.jsx';
@@ -203,11 +204,23 @@ const DocumentEditor = () => {
 
   const commentCount = comments?.count ?? 0;
 
+  // The live document, for the comment store's errors, without making the
+  // store load again whenever the document is read again.
+  const liveDocRef = useRef(null);
+  liveDocRef.current = liveDoc;
   useEffect(() => {
     if (!comments) return undefined;
     // The label is the title: it is what a person scans, and the description
-    // is the reason under it.
-    comments.onError = (msg, err, label) => notifyError(err ?? msg, label);
+    // is the reason under it. A comment on something another user deleted
+    // reads the document again, so what it was on shows gone.
+    comments.onError = (msg, err, label) => {
+      notifyError(err ?? msg, label);
+      if (isGone(err)) {
+        liveDocRef.current
+          ?.reload()
+          .catch((e) => console.error('Reading the document again failed:', e));
+      }
+    };
     comments.load();
   }, [comments]);
 

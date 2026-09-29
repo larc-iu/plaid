@@ -399,6 +399,16 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
       // waiting, the service did not stop working, so keep the record and let a
       // reload rejoin it instead of losing the run.
       stillOut = err?.pending === true;
+      // A run that failed may still have written (its answer lost, or stopped
+      // partway), so the document is read again while the lock is held. Not
+      // while it is still out: its results are read when it finishes.
+      if (!stillOut) {
+        await doc
+          .reload()
+          .catch((e) =>
+            console.error('Reading the document after the failed Auto-analyze failed:', e),
+          );
+      }
       // Only what the request hook has NOT already reported. This used to read
       // `isProcessing`, which the closure fixes at false for the whole run, so
       // every service failure was toasted twice: once by its own name, and
