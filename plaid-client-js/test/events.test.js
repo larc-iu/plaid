@@ -75,7 +75,7 @@ test("a project with the switch on gets its events after the interval, in one re
   const [{ url, opts, body }] = sent;
   assert.equal(url, "http://x/api/v1/projects/p1/events");
   assert.equal(opts.method, "POST");
-  assert.equal(opts.keepalive, true);
+  assert.equal(opts.keepalive, false, "only the pagehide send is keepalive");
   assert.equal(opts.headers.Authorization, "Bearer tok");
   assert.deepEqual(
     body.map((e) => e.type),
@@ -124,6 +124,38 @@ test("fifty events flush at once", async () => {
   await settle();
   assert.equal(sent.length, 1);
   assert.equal(sent[0].body.length, FLUSH_AT);
+});
+
+// A browser refuses a keepalive request whose body, with the other keepalive
+// requests in flight, passes 64 KiB. Found live: a first grid page with 1197
+// guesses, drawn while the switch was being read, went out as three requests
+// of up to 500 events, and the two of 120 KB were refused, so 1000 of the
+// 1197 were lost.
+const KEEPALIVE_QUOTA = 64 * 1024;
+function browserFetch() {
+  let inFlight = 0;
+  return (url, opts) => {
+    const bytes = Buffer.byteLength(opts.body);
+    if (opts.keepalive && inFlight + bytes > KEEPALIVE_QUOTA) {
+      return Promise.reject(new TypeError("Failed to fetch"));
+    }
+    sent.push({ url, opts, body: JSON.parse(opts.body) });
+    if (opts.keepalive) inFlight += bytes;
+    return Promise.resolve({ status: 201, ok: true });
+  };
+}
+
+test("a backlog drawn while the switch was being read reaches the server whole", async () => {
+  globalThis.fetch = browserFetch();
+  const r = new EventRecorder({ window: new EventTarget() });
+  const client = fakeClient(true);
+  const n = 1197;
+  const long = "a gloss of some length ".repeat(4);
+  for (let i = 0; i < n; i++) r.record(client, "suggestion.shown", shown(`target-${i}`, long));
+  await settle();
+  assert.equal(sent.reduce((k, s) => k + s.body.length, 0), n, "every event was sent");
+  assert.ok(sent.every((s) => s.body.length <= FLUSH_AT));
+  assert.ok(sent.every((s) => !s.opts.keepalive), "a page that stays sends without keepalive");
 });
 
 test("pagehide sends what is buffered with keepalive, and drops what waits on the switch", async () => {

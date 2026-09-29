@@ -34,8 +34,14 @@ export const EVENT_TYPES = Object.freeze([
 export const FLUSH_INTERVAL_MS = 10000;
 export const FLUSH_AT = 50;
 export const FLAG_TTL_MS = 5 * 60 * 1000;
-// The server's cap on one request.
-const MAX_PER_REQUEST = 500;
+// Events per request. A browser refuses a `keepalive` request whose body,
+// with every other keepalive request still in flight, passes 64 KiB, and a
+// refused request is lost. So the pagehide send goes out in small pieces, and
+// only that send is keepalive: a backlog sent while the page stays (the first
+// page of a grid, drawn while the switch was still being read, can hold
+// hundreds of guesses) would otherwise lose everything past the quota. The
+// server takes up to 500 in one request.
+const PER_REQUEST = FLUSH_AT;
 // A suggested or written value is a gloss, not prose; a long one is cut.
 const MAX_VALUE_CHARS = 200;
 
@@ -140,8 +146,8 @@ export class EventRecorder {
     }
     this.buffer = keep;
     for (const [projectId, events] of byProject) {
-      for (let i = 0; i < events.length; i += MAX_PER_REQUEST) {
-        this._send(projectId, events.slice(i, i + MAX_PER_REQUEST));
+      for (let i = 0; i < events.length; i += PER_REQUEST) {
+        this._send(projectId, events.slice(i, i + PER_REQUEST), keepalive);
       }
     }
   }
@@ -196,13 +202,13 @@ export class EventRecorder {
     return known ? known.state : "pending";
   }
 
-  _send(projectId, events) {
+  _send(projectId, events, keepalive) {
     const client = this.client;
     try {
       const url = `${client.baseUrl}/api/v1/projects/${projectId}/events`;
       fetch(url, {
         method: "POST",
-        keepalive: true,
+        keepalive,
         headers: {
           Authorization: `Bearer ${client.token}`,
           "Content-Type": "application/json",
