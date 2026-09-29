@@ -1867,6 +1867,133 @@
     (is (= 52500 (count tokens)))
     (is (< ms 1000) (str ms " ms"))))
 
+;; ---------------------------------------------------------------------------
+;; A save that changes every word of a long text. Editscript gave up after
+;; 1,000 ms and returned the new text whole, and the save then deleted every
+;; token, with its spans, relations and vocabulary links: from about 2,000
+;; words when every word changed, sooner on a busy server.
+
+(defn- long-text
+  "`n` words in sentences of 15, each sentence ending in a period and `sep`,
+  and the same text with `f` applied to every word. Tokens: a sentence over
+  each sentence and its `sep` (a partition), a word, two morphemes (the first
+  letter and the rest), and the period. Returns the old and new bodies, the
+  tokens, and what each token should read in the new body."
+  [n sep f]
+  (let [vocab ["the" "cat" "sat" "on" "a" "mat" "with" "tat" "kaki" "dog"
+               "told" "me" "then" "we" "left" "at" "noon" "ab" "é" "to"]
+        ob (StringBuilder.) nb (StringBuilder.)
+        len (fn [^StringBuilder sb] (cp/cp-count (str sb)))]
+    (loop [i 0 s-start [0 0] toks [] expect {}]
+      (if (= i n)
+        {:old (str ob) :new (str nb) :tokens toks :expect expect}
+        (let [w (nth vocab (mod (* 7 i) (count vocab)))
+              w' (f w)
+              ob0 (len ob)
+              _ (do (.append ob ^String w) (.append nb ^String w'))
+              k (cp/cp-count w) k' (cp/cp-count w')
+              toks (-> toks
+                       (conj (assoc (tok [:w i] ob0 (+ ob0 k)) :token/layer :w))
+                       (conj (assoc (tok [:m i 0] ob0 (inc ob0)) :token/layer :m))
+                       (cond-> (< 1 k) (conj (assoc (tok [:m i 1] (inc ob0) (+ ob0 k)) :token/layer :m))))
+              expect (-> expect
+                         (assoc [:w i] w' [:m i 0] (cp/cp-subs w' 0 1))
+                         (cond-> (< 1 k) (assoc [:m i 1] (cp/cp-subs w' 1 k'))))
+              end? (or (= 14 (mod i 15)) (= i (dec n)))]
+          (if end?
+            (let [p (len ob) p' (len nb)
+                  _ (do (.append ob ".") (.append ob ^String sep)
+                        (.append nb ".") (.append nb ^String sep))
+                  s (quot i 15)
+                  [sb sb'] s-start]
+              (recur (inc i) [(len ob) (len nb)]
+                     (-> toks
+                         (conj (assoc (tok [:p s] p (inc p)) :token/layer :p))
+                         (conj (assoc (tok [:s s] sb (len ob)) :token/layer :s)))
+                     (assoc expect [:p s] "." [:s s] (subs (str nb) (.offsetByCodePoints (str nb) 0 sb') (.length nb)))))
+            (do (.append ob " ") (.append nb " ")
+                (recur (inc i) s-start toks expect))))))))
+
+(defn- slow-clock
+  "A clock for editscript that moves 10 s at every look, as a loaded server's
+  might between two looks."
+  []
+  (let [t (atom 0)]
+    (fn ^long [] (swap! t + 10000))))
+
+(deftest a-save-changing-every-word-of-a-long-text-keeps-every-token
+  (doseq [sep ["\n" " "]]
+    (testing (str "sentences separated by " (pr-str sep))
+      (let [{:keys [old new tokens expect]} (long-text 3000 sep str/capitalize)
+            {:keys [text tokens deleted]}
+            (with-redefs [editscript.util.common/current-time (slow-clock)]
+              (body-edit old new tokens #{:s} #{:w :m}))
+            body (:text/body text)]
+        (is (= new body))
+        (is (= [] deleted))
+        (is (= (count expect) (count tokens)))
+        (is (= [] (for [{:token/keys [id begin end]} tokens
+                        :let [reads (cp/cp-subs body begin end)]
+                        :when (not= (expect id) reads)]
+                    [id (expect id) reads])))))))
+
+(deftest the-diff-never-depends-on-the-clock
+  ;; The same save with editscript's clock moving 10 s at every look gives the
+  ;; same ops as with the real clock, and never a delete over the whole body.
+  (doseq [[old new] [["the cat sat" "the cats sat"]
+                     ["I saw it\nthen we left\n" "I saw it too\nwhen we left\n"]
+                     (let [{:keys [old new]} (long-text 600 "\n" str/capitalize)] [old new])
+                     (let [{:keys [old new]} (long-text 600 " " str/capitalize)] [old new])]]
+    (let [ops (ta/diff old new)
+          slow (with-redefs [editscript.util.common/current-time (slow-clock)] (ta/diff old new))]
+      (is (= ops slow))
+      (is (= new (:text/body (:text (apply-all ops old [])))))
+      (is (not-any? #(and (= :delete (:type %)) (= (cp/cp-count old) (:value %))) ops)))))
+
+(deftest a-long-diff-reconstructs-the-new-body
+  ;; Past `hunk-limit` a stretch is split by lines, then words, then diffed
+  ;; by characters with a bounded search. Whatever it splits, the ops must
+  ;; give the new body back, astral letters included.
+  (let [r (java.util.Random. 11)
+        alphabet ["a" "b" "t" " " " " "\n" "é" "𐍂" "\t" "的"]
+        rstr (fn [n] (apply str (repeatedly n #(nth alphabet (.nextInt r (count alphabet))))))
+        mutate (fn [s] (apply str (mapcat (fn [c] (case (.nextInt r 12) 0 [] 1 [(str c) (rstr 2)] 2 [(rstr 1)] [(str c)]))
+                                          (map #(String. (Character/toChars (int %))) (.toArray (.codePoints ^String s))))))]
+    (doseq [limit [0 4 30 1000]]
+      (with-redefs [ta/hunk-limit limit]
+        (dotimes [i 400]
+          (let [old (rstr (.nextInt r 200))
+                new (if (even? i) (mutate old) (rstr (.nextInt r 200)))
+                ops (ta/diff old new)]
+            (is (= new (:text/body (:text (apply-all ops old [])))) (str limit " " (pr-str old) " -> " (pr-str new)))))))))
+
+(deftest the-banded-alignment-keeps-a-common-subsequence
+  ;; The last resort when the line or word diff would search too long. With a
+  ;; band as narrow as it gets, what it keeps must still be equal elements in
+  ;; order, and with room enough it keeps a longest common subsequence.
+  (let [r (java.util.Random. 5)
+        lcs (fn [a b]
+              (let [m (count b)]
+                (last (reduce (fn [prev x]
+                                (reduce (fn [row j]
+                                          (conj row (if (= x (nth b (dec j)))
+                                                      (inc (nth prev (dec j)))
+                                                      (max (nth prev j) (peek row)))))
+                                        [0] (range 1 (inc m))))
+                              (vec (repeat (inc m) 0)) a))))]
+    (dotimes [_ 300]
+      (let [a (vec (repeatedly (inc (.nextInt r 40)) #(.nextInt r 3)))
+            b (vec (repeatedly (inc (.nextInt r 40)) #(.nextInt r 3)))]
+        (doseq [cells [1 200000]]
+          (with-redefs [ta/band-cells cells]
+            (let [[ma mb] (map vec (#'ta/band-matches (int-array a) (int-array b)))]
+              (is (= (count ma) (count mb)))
+              (is (every? true? (map #(= (a %1) (b %2)) ma mb)))
+              (is (apply < -1 ma))
+              (is (apply < -1 mb))
+              (when (= cells 200000)
+                (is (= (lcs a b) (count ma)) (pr-str a b))))))))))
+
 (deftest a-line-retyped-almost-whole-keeps-the-text-it-was-given
   ;; A line retyped almost whole. A replace joining two words took letters
   ;; the next edit took too, and the fold then threw (the save answered 500)
