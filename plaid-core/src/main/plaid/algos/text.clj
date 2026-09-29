@@ -1391,6 +1391,13 @@
                                    (cond
                                      (= st :d) (recur (rest steps) (inc i) j true spaced? typed out)
                                      (nsp j) (recur (rest steps) i (inc j) dels? true typed out)
+                                     ;; combining marks a run starts with join
+                                     ;; the letter before them, as an insert
+                                     ;; gives them to the token ending there:
+                                     ;; `ña` to `ä` beside a deleted word keeps
+                                     ;; its `a` and types the mark after it
+                                     (and (zero? typed) (combining-mark? (aget N (int j))))
+                                     (recur (rest steps) i (inc j) dels? spaced? typed out)
                                      :else (recur (rest steps) i (inc j) dels? spaced? (inc typed) out))))))]
             ;; A stretch of typed text alone deletes no word whose letters
             ;; the diff could have kept, and where it stands is the slide's

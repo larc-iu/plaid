@@ -1499,6 +1499,26 @@
             (str (pr-str old) " -> " (pr-str new) " "
                  (pr-str (map (fn [{:token/keys [id begin end]}] [id (cp/cp-subs body begin end)]) tokens))))))))
 
+(deftest word-alignment-takes-a-combining-mark-typed-after-a-word-as-that-words
+  ;; In a script without spaces, a word deleted and the next one respelled
+  ;; with a combining mark after its last letter (`ña` to `ä`, written `a`
+  ;; and U+0308). The mark joins the letter before it, so it is no letter
+  ;; typed between two words, and the alignment keeping `ña`'s `a` stands:
+  ;; counted as one, it left the diff's reading, which kept `kaki` by its
+  ;; middle `a` and took the `a` of `áb` for it, so `áb` read a lone accent
+  ;; and `b`.
+  (let [w (fn [id b e] (assoc (tok id b e) :token/layer :w))
+        m (fn [id b e] (assoc (tok id b e) :token/layer :m))
+        old "caf\u00e9kakin\u0303aa\u0301b\n\ud800\udf30kai\n"
+        new "caf\u00e9a\u0308a\u0301b\nkai\n"
+        tokens [(w :cafe 0 4) (w :kaki 4 8) (w :na 8 11) (w :ab 11 14) (w :goth 15 16) (w :kai 16 19)
+                (m :na-1 8 10) (m :na-2 10 11)]
+        {:keys [text tokens]} (body-edit old new tokens #{} #{:w})
+        body (:text/body text)
+        read (into {} (map (fn [{:token/keys [id begin end]}] [id (cp/cp-subs body begin end)])) tokens)]
+    (is (= new body))
+    (is (= {:cafe "caf\u00e9" :na "a\u0308" :ab "a\u0301b" :kai "kai" :na-2 "a\u0308"} read))))
+
 (deftest word-alignment-of-one-long-stretch-is-quick
   ;; A body replaced outright (select all and paste, or a diff that gave up)
   ;; is one delete over every word. It is longer than the aligner looks, so
