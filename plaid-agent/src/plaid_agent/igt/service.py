@@ -50,7 +50,12 @@ class AssistantService(BaseAssistantService):
     proposed_keys = (('token_id', 'analysis_word_id', 'word_id', 'morpheme_id', 'span_id', 'link_id', 'token_ids',
                       'item_id', 'keep_id', 'guideline_id', 'sentence_id', 'entity_id', 'document_id',
                       'vocab_id', 'text_id'),
-                     ('value', 'form', 'entry_form', 'new', 'name', 'morph_type', 'title', 'body', 'as_of'))
+                     ('value', 'form', 'entry_form', 'new', 'name', 'morph_type', 'title', 'body', 'as_of'),
+                     # The second thing a change joins: the entry a word is
+                     # linked to (None for one the plan makes), and what a
+                     # merge takes in.
+                     {'link': 'item_id', 'link_phrase': 'item_id', 'merge_entries': 'remove_id',
+                      'merge_words': 'other_ids', 'merge_sentences': 'other_id'})
 
     def toolkit(self) -> Toolkit:
         return Toolkit(tools_for=tools_for, call_tool=call_tool, tracer=TRACER)

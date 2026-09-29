@@ -34,9 +34,10 @@ RUNNER = os.path.join(HERE, 'plan_record_mirror.mjs')
 UI = os.path.abspath(os.path.join(HERE, '..', '..', 'plaid-ui', 'src', 'components', 'assistant', 'planRecord.js'))
 CASES = 300
 
-KINDS = ['set_span', 'set_head', 'confirm', 'respell', 'edit_text', 'create_node', 'bulk_scope', 'add_comment']
+KINDS = ['set_span', 'set_head', 'confirm', 'respell', 'edit_text', 'create_node', 'bulk_scope', 'add_comment',
+         'create_edge', 'link', 'merge_sentences']
 KEYS = [IgtService.proposed_keys, UdService.proposed_keys, UmrService.proposed_keys]
-ALL_KEYS = tuple(sorted({k for targets, values in KEYS for k in targets + values}))
+ALL_KEYS = tuple(sorted({k for targets, values, others in KEYS for k in targets + values + tuple(others.values())}))
 # Values that are clipped: letters outside the BMP, which a JS string holds as
 # two units, and Arabic with its vowel marks.
 TEXTS = ['fish', '', 'x' * 30, '𝄞' * 30, 'كَتَبَ' * 6, 'a' * PROPOSED_VALUE_MAX, 'b' * (PROPOSED_VALUE_MAX + 1)]
@@ -135,10 +136,11 @@ def test_the_cases_reach_every_shape_they_are_for(compared):
     proposed = [compact_plan(c)['plan'] for c in cases if c.get('plan') and c.get('status')]
     flat = [p for plan in proposed for p in plan['proposed']]
     assert any(plan['proposed_count'] > PROPOSED_MAX for plan in proposed), 'the cap'
-    assert any(isinstance(v, str) and v.endswith('…') and '𝄞' in v for _, _, v in flat), 'a clip past the BMP'
-    assert any(isinstance(v, int) for _, _, v in flat), 'a number kept'
-    assert any(t is None for _, t, _ in flat) and any(t for _, t, _ in flat)
-    assert any(k is None for k, _, _ in flat), 'an op with no kind'
+    assert any(isinstance(p[2], str) and p[2].endswith('…') and '𝄞' in p[2] for p in flat), 'a clip past the BMP'
+    assert any(isinstance(p[2], int) for p in flat), 'a number kept'
+    assert any(p[1] is None for p in flat) and any(p[1] for p in flat)
+    assert any(p[0] is None for p in flat), 'an op with no kind'
+    assert any(len(p) == 4 and p[3] for p in flat) and any(len(p) == 4 and p[3] is None for p in flat), 'a second end'
     assert any(c.get('status') is None and c.get('plan') for c in cases), 'an undecided plan'
 
 

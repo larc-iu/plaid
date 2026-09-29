@@ -253,10 +253,14 @@ def _proposed_value(op: Dict[str, Any], keys: Sequence[str]):
     return None
 
 
-def proposed_changes(ops: List[Dict[str, Any]], target_keys: Sequence[str],
-                     value_keys: Sequence[str]) -> Tuple[List[list], int]:
+def proposed_changes(ops: List[Dict[str, Any]], target_keys: Sequence[str], value_keys: Sequence[str],
+                     other_keys: Optional[Dict[str, str]] = None) -> Tuple[List[list], int]:
     """``([kind, target id, short value], ...)`` for the changes a plan
     proposes, the first :data:`PROPOSED_MAX` of them, and how many there are.
+    A kind that joins two things (a relation's second end, say) is
+    ``[kind, target id, short value, other id]``, the other id read from the
+    key ``other_keys`` names for that kind (a list at its first entry, None
+    when the op names none yet), so each kind has one shape.
 
     A plan that is discarded or refused writes nothing, so the audit log never
     sees what it proposed. This is what the record keeps of it, a few dozen
@@ -272,7 +276,11 @@ def proposed_changes(ops: List[Dict[str, Any]], target_keys: Sequence[str],
     for op in expand_ops([op for op in ops if isinstance(op, dict)]):
         total += 1
         if len(out) < PROPOSED_MAX:
-            out.append([op.get('kind'), _proposed_target(op, target_keys), _proposed_value(op, value_keys)])
+            change = [op.get('kind'), _proposed_target(op, target_keys), _proposed_value(op, value_keys)]
+            other = (other_keys or {}).get(op.get('kind'))
+            if other:
+                change.append(_proposed_target(op, (other,)))
+            out.append(change)
     return out, total
 
 

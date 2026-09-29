@@ -9,7 +9,9 @@
 // and `labels`, and the audit log records what was written. What each change
 // targeted and proposed stays, as `proposed` and `proposedCount`, which the
 // service wrote when it staged the plan: a discarded plan writes nothing, so
-// that is the only record of what it proposed.
+// that is the only record of what it proposed. Each entry is `[kind, target,
+// value]`, or `[kind, target, value, other]` for a kind that joins two things
+// (a head, an edge's target, a link's entry), kept as the service wrote it.
 export const compactPlan = (item) => {
   const plan = item?.plan;
   if (!plan || item.status === null || item.status === undefined || !('ops' in plan)) return item;

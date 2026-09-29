@@ -86,15 +86,22 @@ describe('a settled plan', () => {
 // against it in plaid-agent's test_plan_record_mirror.py).
 describe('what a settled plan proposed', () => {
   const T1 = '019a0000-0000-7000-8000-000000000001';
+  const T2 = '019a0000-0000-7000-8000-000000000002';
   const plan = {
     id: 'p1',
     summary: 's',
     labels: ['a'],
     changes: [{ label: 'a' }],
-    ops: [{ kind: 'set_span', tokenId: T1, value: 'fish' }],
+    ops: [
+      { kind: 'set_span', tokenId: T1, value: 'fish' },
+      { kind: 'link', tokenId: T1, itemId: T2, entryForm: 'fish' },
+    ],
     documents: [{ id: 'd1', version: 3 }],
-    proposed: [['set_span', T1, 'fish']],
-    proposedCount: 1,
+    proposed: [
+      ['set_span', T1, 'fish'],
+      ['link', T1, 'fish', T2],
+    ],
+    proposedCount: 2,
   };
 
   it('is kept when the plan is discarded here, with when', () => {
@@ -102,8 +109,11 @@ describe('what a settled plan proposed', () => {
     const out = settle(conv, 0, 'discarded', null);
     const d = out.display[0];
     expect(d.plan).not.toHaveProperty('ops');
-    expect(d.plan.proposed).toEqual([['set_span', T1, 'fish']]);
-    expect(d.plan.proposedCount).toBe(1);
+    expect(d.plan.proposed).toEqual([
+      ['set_span', T1, 'fish'],
+      ['link', T1, 'fish', T2],
+    ]);
+    expect(d.plan.proposedCount).toBe(2);
     expect(d.settledAt).toMatch(/^\d{4}-\d\d-\d\dT.*Z$/);
     expect(new Date(d.settledAt).getTime()).toBeLessThanOrEqual(Date.now());
   });

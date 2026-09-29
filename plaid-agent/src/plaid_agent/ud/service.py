@@ -47,7 +47,10 @@ class AssistantService(BaseAssistantService):
     # relation label).
     proposed_keys = (('word_id', 'token_id', 'span_id', 'relation_id', 'sentence_id', 'entity_id', 'guideline_id',
                       'document_id', 'document_ids', 'text_id'),
-                     ('value', 'deprel', 'replacement', 'title', 'body', 'as_of'))
+                     ('value', 'deprel', 'replacement', 'title', 'body', 'as_of'),
+                     # The second thing a change joins: a dependent's head (the
+                     # word itself for the root), and the sentence a merge takes in.
+                     {'set_head': 'head_id', 'merge_sentences': 'previous_id'})
 
     def toolkit(self) -> Toolkit:
         return Toolkit(tools_for=tools_for, call_tool=call_tool, tracer=TRACER)

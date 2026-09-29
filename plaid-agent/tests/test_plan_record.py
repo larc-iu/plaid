@@ -7,7 +7,7 @@ only `changes` and `labels` (for people), so the ids a change targeted and the
 value it proposed were gone with `ops` (plaid_assistant_record_size ruling).
 
 Now each change the plan stood for keeps ``[kind, target id, short value]``
-under ``proposed``, at most :data:`PROPOSED_MAX` of them with ``proposed_count``
+(and the second thing it joins, for a kind that joins two) under ``proposed``, at most :data:`PROPOSED_MAX` of them with ``proposed_count``
 saying how many there were, and the item keeps when it was settled. Approval
 is of the whole plan, so each change's outcome is the plan's ``status``.
 """
@@ -54,9 +54,9 @@ def test_each_change_keeps_its_kind_target_and_a_short_value():
     long = 'x' * (PROPOSED_VALUE_MAX - 1) + '…'
     assert plan['proposed'] == [
         ['set_span', T1, 'fish'],
-        ['link', T2, 'kai'],
+        ['link', T2, 'kai', T3],
         ['confirm', T3, None],
-        ['link_phrase', T2, None],
+        ['link_phrase', T2, None, None],
         ['edit_text', T1, long],
         ['set_span', T1, None],
         ['add_guideline', None, 'Glossing'],
@@ -68,11 +68,41 @@ def test_each_change_keeps_its_kind_target_and_a_short_value():
 
 def test_each_app_names_its_own_targets_and_values():
     head = {'kind': 'set_head', 'word_id': T2, 'head_id': T3, 'word_form': 'corre', 'deprel': 'nsubj'}
-    assert proposed_changes([head], *UdService.proposed_keys)[0] == [['set_head', T2, 'nsubj']]
+    assert proposed_changes([head], *UdService.proposed_keys)[0] == [['set_head', T2, 'nsubj', T3]]
     edge = {'kind': 'create_edge', 'relation_layer_id': 'L', 'role': ':ARG0', 'source_span_id': T1}
     concept = {'kind': 'set_concept', 'span_id': T2, 'var': 's1e', 'concept': 'eat-01', 'ref': 's1.s1e'}
     assert proposed_changes([edge, concept], *UmrService.proposed_keys)[0] == [
-        ['create_edge', T1, ':ARG0'], ['set_concept', T2, 'eat-01']]
+        ['create_edge', T1, ':ARG0', None], ['set_concept', T2, 'eat-01']]
+
+
+def test_a_change_between_two_things_keeps_the_second_one():
+    # A head proposal is mostly the head, and an edge mostly its target: with
+    # only the dependent or the source kept, a discarded plan's record could
+    # not say what it proposed. The kinds that join two things keep the second
+    # one in a fourth slot, and only those kinds, so each kind has one shape.
+    ud = UdService.proposed_keys
+    head = {'kind': 'set_head', 'word_id': T2, 'head_id': T3, 'word_form': 'corre', 'deprel': 'nsubj'}
+    root = {**head, 'head_id': T2, 'deprel': 'root'}
+    merge = {'kind': 'merge_sentences', 'document_id': 'd1', 'sentence_id': T1, 'previous_id': T2}
+    span = {'kind': 'set_span', 'layer_id': 'L', 'token_id': T1, 'value': 'NOUN'}
+    assert proposed_changes([head, root, merge, span], *ud)[0] == [
+        ['set_head', T2, 'nsubj', T3], ['set_head', T2, 'root', T2], ['merge_sentences', T1, None, T2],
+        ['set_span', T1, 'NOUN']]
+    umr = UmrService.proposed_keys
+    edge = {'kind': 'create_edge', 'relation_layer_id': 'L', 'role': ':ARG0', 'source_span_id': T1,
+            'target_span_id': T2}
+    to_new = {**edge, 'target_span_id': None, 'target_var': 's1p'}
+    triple = {'kind': 'create_triple', 'rel': ':modal', 'source_span_id': T1, 'target_span_id': T3}
+    assert proposed_changes([edge, to_new, triple], *umr)[0] == [
+        ['create_edge', T1, ':ARG0', T2], ['create_edge', T1, ':ARG0', None], ['create_triple', T1, ':modal', T3]]
+    link = {'kind': 'link', 'token_id': T1, 'item_id': T3, 'entry_form': 'kai'}
+    phrase = {'kind': 'link_phrase', 'token_ids': [T1, T2], 'item_id': T3, 'entry_form': 'kai'}
+    entries = {'kind': 'merge_entries', 'keep_id': T1, 'remove_id': T2}
+    words = {'kind': 'merge_words', 'word_id': T1, 'other_ids': [T2, T3]}
+    sentences = {'kind': 'merge_sentences', 'sentence_id': T1, 'other_id': T2}
+    assert proposed_changes([link, phrase, entries, words, sentences], *IGT)[0] == [
+        ['link', T1, 'kai', T3], ['link_phrase', T1, 'kai', T3], ['merge_entries', T1, None, T2],
+        ['merge_words', T1, None, T2], ['merge_sentences', T1, None, T2]]
 
 
 def test_one_kind_of_change_always_names_the_same_kind_of_thing():
@@ -83,7 +113,8 @@ def test_one_kind_of_change_always_names_the_same_kind_of_thing():
     to_old = {'kind': 'link_phrase', 'token_ids': [T2, T3], 'item_id': T1, 'new_entry_key': None,
               'existing_link_id': None, 'entry_form': 'kai'}
     to_new = {**to_old, 'item_id': None, 'new_entry_key': {'form': 'kai'}}
-    assert proposed_changes([to_old, to_new], *IGT)[0] == [['link_phrase', T2, 'kai'], ['link_phrase', T2, 'kai']]
+    assert proposed_changes([to_old, to_new], *IGT)[0] == [['link_phrase', T2, 'kai', T1],
+                                                          ['link_phrase', T2, 'kai', None]]
     # A node a UMR plan adds to a sentence names the sentence, not the whole
     # document, as the ops of a drafted graph otherwise all would.
     node = {'kind': 'create_node', 'document_id': 'd1', 'ref': 's1.s1e', 'var': 's1e', 'concept': 'eat-01',

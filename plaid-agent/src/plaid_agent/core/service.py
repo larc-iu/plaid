@@ -170,12 +170,13 @@ class BaseAssistantService(BaseService):
     #: note. The app's own grammar, so the app states it.
     reference_shape = 'a bare reference'
 
-    #: ``(target keys, value keys)``: the keys of this app's plan ops that name
-    #: what a change lands on, most specific first, and those that carry the
-    #: value it proposes. What a plan proposed is kept by them
-    #: (``core.conversation.proposed_changes``), since a plan that is discarded
-    #: or refused writes nothing the audit log could show.
-    proposed_keys: Tuple[Tuple[str, ...], Tuple[str, ...]] = ((), ())
+    #: ``(target keys, value keys, other keys)``: the keys of this app's plan
+    #: ops that name what a change lands on, most specific first, those that
+    #: carry the value it proposes, and, for each kind that joins two things,
+    #: the key naming the second one (a relation's other end). What a plan
+    #: proposed is kept by them (``core.conversation.proposed_changes``), since
+    #: a plan that is discarded or refused writes nothing the audit log could show.
+    proposed_keys: Tuple[Tuple[str, ...], Tuple[str, ...], Dict[str, str]] = ((), (), {})
 
     def place(self, ws, where: Optional[dict]) -> Optional[tuple]:
         """``(noun, name, note)`` for what the user has open, or None.

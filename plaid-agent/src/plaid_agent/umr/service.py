@@ -46,7 +46,10 @@ class AssistantService(BaseAssistantService):
     # and its new value.
     proposed_keys = (('span_id', 'relation_id', 'token_ids', 'source_span_id', 'guideline_id', 'entity_id',
                       'sentence_id', 'document_id', 'text_id'),
-                     ('value', 'concept', 'role', 'rel', 'order', 'title', 'body', 'as_of'))
+                     ('value', 'concept', 'role', 'rel', 'order', 'title', 'body', 'as_of'),
+                     # The second thing a relation joins: its target node
+                     # (None for a node the plan makes).
+                     {'create_edge': 'target_span_id', 'create_triple': 'target_span_id'})
 
     def toolkit(self) -> Toolkit:
         return Toolkit(tools_for=tools_for, call_tool=call_tool, tracer=TRACER)
