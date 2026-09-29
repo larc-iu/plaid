@@ -874,17 +874,39 @@ export class UmrDocument extends DocumentModel {
   // that half happened. Best effort: a connection that is gone takes this
   // request too, and reconcile on the next open removes what is left
   // (planStrayTokens). `ids` is where `_createPieces` records the pieces.
+  //
+  // The delete carries no document version. It names only tokens this edit
+  // made, so no one else's edit can be overwritten by it, and the version the
+  // client holds is the one before the failed step, whose answer may have been
+  // lost after the server stored it: stamped, the delete would be refused and
+  // leave the node the user was told had failed. Tokens already gone (404)
+  // leave nothing to undo.
   async _undoPiecesOnFailure(tokens, ids, work) {
     try {
       return await work();
     } catch (error) {
       const made = tokens.map((t) => ids.get(t.id)).filter(Boolean);
       if (made.length) {
-        await this._client.tokens.bulkDelete(made).catch((err) => {
+        await this._unversioned(() => this._client.tokens.bulkDelete(made)).catch((err) => {
+          if (err?.status === 404) return;
           console.warn('Could not remove the anchors of an edit that failed:', err);
         });
       }
       throw error;
+    }
+  }
+
+  // One request sent without the strict-mode version claim. The client stamps a
+  // request synchronously when it is made (before its first await), so strict
+  // mode is off for exactly that call.
+  _unversioned(send) {
+    const client = this._client;
+    const strict = client.strictModeDocumentId;
+    client.strictModeDocumentId = null;
+    try {
+      return send();
+    } finally {
+      client.strictModeDocumentId = strict;
     }
   }
 
