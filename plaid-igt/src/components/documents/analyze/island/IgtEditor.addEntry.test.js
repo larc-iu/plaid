@@ -143,4 +143,45 @@ describe('the lexicon popover', () => {
     expect(link.args.slice(0, 2)).toEqual(['i-sat', ['m-3']]);
     expect(client.calls.some((c) => c.kind === 'vocabItems.create')).toBe(false);
   });
+
+  it('opened while an older read is out that brings nothing back, reads once more', async () => {
+    const { doc, client } = mount();
+    let open;
+    const gate = new Promise((r) => (open = r));
+    let reads = 0;
+    const fresh = {
+      id: 'v1',
+      name: 'Lexicon',
+      maintainers: ['mara@example.com'],
+      timeModified: 2,
+      items: [
+        { id: 'i-cat', form: 'cat', metadata: { morphType: 'stem' } },
+        { id: 'i-sat', form: 'sat', metadata: { morphType: 'stem' } },
+      ],
+    };
+    // The first read answers with no entries (a stub), and only after the
+    // popover opened. Reads after it have "sat".
+    client.vocabLayers = {
+      get: async (_id, withItems) => {
+        if (!withItems) {
+          if (reads === 0) await gate;
+          return { id: 'v1', timeModified: reads + 1 };
+        }
+        reads += 1;
+        return reads === 1 ? null : fresh;
+      },
+    };
+    const forms = () =>
+      [...popover().querySelectorAll('.igt-vocab-pop__item .igt-vocab-pop__form')].map((el) =>
+        el.textContent.trim(),
+      );
+    // A read started before the popover (the tab came back).
+    editor._refreshVocabularies();
+    openOn('m-3');
+    open();
+    await settle();
+    expect(reads).toBe(2);
+    expect(doc.vocabularies.v1.items.map((it) => it.form)).toContain('sat');
+    expect(forms()).toContain('sat');
+  });
 });

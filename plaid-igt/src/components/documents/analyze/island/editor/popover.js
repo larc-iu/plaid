@@ -68,9 +68,12 @@ export const popover = {
   // under the hand reaching for it: the popover that asked is drawn again
   // when the read lands, unless the user has moved to a row or is editing a
   // new entry's form, and then its next key draws it. One read in flight at
-  // a time.
-  _refreshVocabularies({ forPopover = false } = {}) {
+  // a time. A popover that found a read already out, which then brought
+  // nothing back (an edit landed meanwhile), asks for one more, since that
+  // read may have started before what it should show.
+  _refreshVocabularies({ forPopover = false, again = true } = {}) {
     if (this.readOnly || (this._popover && !forPopover)) return;
+    const joined = Boolean(this._vocabRefresh);
     if (!this._vocabRefresh) {
       const ids = Object.keys(this.doc.vocabularies || {});
       if (!ids.length) return;
@@ -83,7 +86,11 @@ export const popover = {
     if (!forPopover) return;
     const opened = this._popover;
     this._vocabRefresh.then((read) => {
-      if (!read?.some(Boolean) || this._popover !== opened) return;
+      if (this._popover !== opened) return;
+      if (!read?.some(Boolean)) {
+        if (joined && again) this._refreshVocabularies({ forPopover: true, again: false });
+        return;
+      }
       if (this._popoverCreateEdit != null) return;
       if (this._popoverActiveIndex !== this._popoverPickedIndex) return;
       this._popoverActiveIndex = null;

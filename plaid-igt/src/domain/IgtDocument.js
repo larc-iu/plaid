@@ -360,10 +360,17 @@ export class IgtDocument extends DocumentModel {
    * one person in two tabs, add entries to a shared lexicon, and a list from
    * the page load showed neither, so the same headword was made twice with
    * nothing said. Quiet on failure: the list stays as it was.
+   *
+   * A save still on its way is waited for first: the popover opens most often
+   * right after a gloss was typed, whose blur is that save, and a read skipped
+   * then offered "+ Create" for an entry someone else had made. A read that
+   * lands after an edit of the list is dropped and made once more.
    */
-  async refreshVocabulary(vocabId) {
+  async refreshVocabulary(vocabId, { again = 1 } = {}) {
+    if (this._asOf || !this._vocabularies?.[vocabId]) return false;
+    if (this.isSaving) await this.whenSaved();
     const current = this._vocabularies?.[vocabId];
-    if (!current || this._asOf || this.isSaving) return false;
+    if (!current) return false;
     try {
       const fresh = await readVocabulary(this._client, vocabId);
       // Only a read that actually brought entries back replaces them: a stub
@@ -371,9 +378,11 @@ export class IgtDocument extends DocumentModel {
       if (!fresh || !Array.isArray(fresh.items)) return false;
       // An edit made while the read was out (an entry made, a link added), or
       // still on its way, may not be in it, and replacing the list would take
-      // it off the screen. The list stays as the edits left it, and the next
-      // read brings it up to date.
-      if (this._vocabularies?.[vocabId] !== current || this.isSaving) return false;
+      // it off the screen. The list stays as the edits left it, and a read
+      // made after them brings it up to date.
+      if (this._vocabularies?.[vocabId] !== current || this.isSaving) {
+        return again > 0 ? this.refreshVocabulary(vocabId, { again: again - 1 }) : false;
+      }
       this._vocabularies = {
         ...this._vocabularies,
         [vocabId]: { ...current, ...fresh, vocabLinks: current.vocabLinks || [] },
