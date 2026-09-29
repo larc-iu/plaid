@@ -85,7 +85,7 @@ from typing import Any, Dict, List, Optional
 from ..core import guidelines as _guidelines
 from ..core import opkind as ok
 from ..core.opkind import OpKind
-from plaid_client import metadata_ops
+from plaid_client import PlaidAPIError, metadata_ops
 
 from plaid_client.service import requester_message
 
@@ -129,7 +129,6 @@ class Context:
         self.counts = counts
         self.notes = notes
         self.b = b
-        self.pending_spans: List[tuple] = []   # (result idx of the created morpheme, layer_id, value, document)
         self.pending_links: List[tuple] = []   # ([token_id, ...], new_entry_key, document)
         # Each analysed word's new chain, slot by slot: ('id', the reused first
         # morpheme) or ('idx', the result index of the created one). A link to
@@ -217,11 +216,14 @@ def _apply_set_analysis(ctx: Context, op) -> int:
         idx = b.add(lambda batch, j=j, meta=meta: batch.tokens.create(
             layer, text_id, begin, end, precedence=j + 1, metadata=meta))
         slots.append(('idx', idx))
+        # Its glosses name it by a ref, in the same batch: the analysis is
+        # one change, written whole or not at all.
         for fv in m.get('fields') or []:
             if fv.get('value') not in (None, ''):
-                ctx.pending_spans.append((idx, fv['layer_id'], fv['value'], ctx.b.document))
-                if not ctx.deferred(op):
-                    ctx.defer(op)
+                b.add(lambda batch, i=idx, fv=fv: batch.spans.create(
+                    fv['layer_id'], [_made(b, batch, i, 'a created morpheme came back without an id; '
+                                                        'its gloss was not written')],
+                    fv['value'], ctx.stamp()))
     ctx.chains[op['word_id']] = slots
     return 1
 
@@ -237,25 +239,71 @@ def _apply_respell(ctx: Context, op) -> int:
     return 1
 
 
+def _made(b, batch, idx, what):
+    """The id the op at result index ``idx`` creates, for a write queued on
+    ``batch`` (a ref when it is in the same batch), or ``what`` raised."""
+    made_id = b.refer(batch, idx) if idx is not None else None
+    if not made_id:
+        raise RuntimeError(what)
+    return made_id
+
+
+def _link_new_entry(ctx: Context, tokens: List[str], key: str) -> None:
+    ctx.b.add(lambda batch, i=ctx.entry_idx.get(key), t=tokens: batch.vocab_links.create(
+        _made(ctx.b, batch, i, 'a created lexicon entry came back without an id; a link to it '
+                               'was not written'), t, ctx.stamp()))
+
+
 def _link(ctx: Context, op, tokens: List[str]) -> int:
     if op.get('existing_link_id'):
         ctx.drop('vocab_links', op['existing_link_id'])
     if op.get('item_id'):
         ctx.b.add(lambda batch, o=op, t=tokens: batch.vocab_links.create(o['item_id'], t, ctx.stamp()))
+    elif op.get('new_entry_key') in ctx.entry_idx:
+        # The entry is an earlier change of the plan: named by a ref.
+        _link_new_entry(ctx, tokens, op['new_entry_key'])
     elif op.get('new_entry_key'):
+        # A later one: written in the second pass, once it is queued.
         ctx.pending_links.append((tokens, op['new_entry_key'], ctx.b.document))
         ctx.defer(op)
     return 1
 
 
+def _link_planned_morpheme(ctx: Context, op) -> None:
+    """A link to a morpheme the plan's own analysis creates. The link it
+    replaces (the kept first morpheme's) goes in the same batch, so a batch
+    that fails leaves the stored link where it was."""
+    slots = ctx.chains.get(op['analysis_word_id']) or []
+    k = op['morpheme_index']
+    if not 1 <= k <= len(slots):
+        raise RuntimeError('a link names a morpheme its analysis did not create, so it was not written')
+    how, at = slots[k - 1]
+    b = ctx.b
+
+    def morpheme(batch, how=how, at=at):
+        return at if how == 'id' else _made(
+            b, batch, at, 'a created morpheme came back without an id, so its link was not written')
+
+    def entry(batch, o=op):
+        return o.get('item_id') or _made(
+            b, batch, ctx.entry_idx.get(o.get('new_entry_key')),
+            'a created lexicon entry came back without an id, so a link to it was not written')
+    ctx.drop('vocab_links', op.get('existing_link_id'))
+    b.add(lambda batch, e=entry, m=morpheme: batch.vocab_links.create(
+        e(batch), [m(batch)], ctx.stamp()))
+
+
 def _apply_link(ctx: Context, op) -> int:
     if op.get('analysis_word_id'):
-        # A morpheme the plan's own analysis creates: written in the second
-        # pass, once that morpheme has an id. The link it replaces (the kept
-        # first morpheme's) goes in that batch too, so a second batch that
-        # fails leaves the stored link where it was.
-        ctx.planned_links.append(op)
-        ctx.defer(op)
+        # A morpheme the plan's own analysis creates. Its analysis and the
+        # entry it names are earlier changes: written now, naming them by
+        # refs. Otherwise in the second pass, once they are queued.
+        if (op['analysis_word_id'] in ctx.chains
+                and (op.get('item_id') or op.get('new_entry_key') in ctx.entry_idx)):
+            _link_planned_morpheme(ctx, op)
+        else:
+            ctx.planned_links.append(op)
+            ctx.defer(op)
         return 1
     return _link(ctx, op, [op['token_id']])
 
@@ -1219,45 +1267,15 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
         if ctx.pending_deletes:
             b.flush()
 
-        # Second pass: what names an id the first creates, by a ref to it
-        # when it is in the same batch (``Batcher.refer``).
-        def made(batch, idx, what):
-            made_id = b.refer(batch, idx) if idx is not None else None
-            if not made_id:
-                raise RuntimeError(what)
-            return made_id
-
-        for idx, layer_id, value, document in ctx.pending_spans:
-            with b.writing_for(document):
-                b.add(lambda batch, l=layer_id, i=idx, v=value: batch.spans.create(
-                    l, [made(batch, i, 'a created morpheme came back without an id; its gloss was '
-                                       'not written')], v, stamps.stamp()))
+        # Second pass: what names a change the plan makes after it (a link to
+        # an entry or a morpheme created later on), by a ref to it when it is
+        # in the same batch (``Batcher.refer``).
         for tokens, key, document in ctx.pending_links:
             with b.writing_for(document):
-                b.add(lambda batch, i=ctx.entry_idx.get(key), t=tokens: batch.vocab_links.create(
-                    made(batch, i, 'a created lexicon entry came back without an id; a link to it '
-                                   'was not written'), t, stamps.stamp()))
-        # Links to the morphemes an analysis above created (the reused first
-        # morpheme's id is known already).
+                _link_new_entry(ctx, tokens, key)
         for op in ctx.planned_links:
-            slots = ctx.chains.get(op['analysis_word_id']) or []
-            k = op['morpheme_index']
-            if not 1 <= k <= len(slots):
-                raise RuntimeError('a link names a morpheme its analysis did not create, so it was not written')
-            how, at = slots[k - 1]
-
-            def morpheme(batch, how=how, at=at):
-                return at if how == 'id' else made(
-                    batch, at, 'a created morpheme came back without an id, so its link was not written')
-
-            def entry(batch, o=op):
-                return o.get('item_id') or made(
-                    batch, ctx.entry_idx.get(o.get('new_entry_key')),
-                    'a created lexicon entry came back without an id, so a link to it was not written')
             with b.writing_for(op):
-                ctx.drop('vocab_links', op.get('existing_link_id'))
-                b.add(lambda batch, e=entry, m=morpheme: batch.vocab_links.create(
-                    e(batch), [m(batch)], stamps.stamp()))
+                _link_planned_morpheme(ctx, op)
         for keep, remove in ctx.pending_merges:
             if ('vocab_items', remove) in ctx.gone:
                 continue
@@ -1273,13 +1291,22 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
                                 f'deleted ({op.get("label") or "Delete entry"}).', b.applied, len(ops))
             ctx.gone.add(('vocab_items', iid))
             b.add(lambda batch, i=iid, n=len(links): batch.vocab_items.delete(i, expected_link_count=n))
-        b.flush()
+        try:
+            b.flush()
+        except PlaidAPIError as e:
+            # Every link it has in this project is one the plan read, so the
+            # server counting more means links in projects this one cannot
+            # open, which the assistant can neither see nor take.
+            if ctx.pending_deletes and e.status == 409 and 'links' in (e.response_data or {}):
+                raise _linked_elsewhere(ctx.pending_deletes) from e
+            raise
         for op in ctx.later.get('second', ()):
             b.finish(op)
 
         # A restore is the server's own single operation over the document.
         for op in ctx.restores:
-            client.documents.restore(op['document_id'], op['as_of'])
+            with b.on_client(op['document_id']):
+                client.documents.restore(op['document_id'], op['as_of'])
             b.applied += 1
             b.finish(op)
 
@@ -1291,14 +1318,16 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
         for op in sorted(ctx.text_edits, key=lambda o: -o['begin']):
             if project is None:
                 raise ValueError('edit_text needs the project')
-            _write_text_edit(client, project, op)
+            with b.on_client(op['document_id']):
+                _write_text_edit(client, project, op)
             b.finish(op)
         # Whole-token replaces keep the token (and its morphemes, which share
         # its extent) and shift everything after it.
         for text_id, edits in ctx.respells.items():
             edits.sort(key=lambda e: -e[0])
-            client.texts.update(text_id, [{'type': 'replace', 'index': bg, 'length': en - bg, 'value': v}
-                                          for bg, en, v in edits])
+            with b.on_client(_document_of_text(ctx.later.get(f'respell:{text_id}'))):
+                client.texts.update(text_id, [{'type': 'replace', 'index': bg, 'length': en - bg, 'value': v}
+                                              for bg, en, v in edits])
             for op in ctx.later.get(f'respell:{text_id}', ()):
                 b.finish(op)
 
@@ -1318,6 +1347,21 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
     if notes:
         result['notes'] = notes
     return result
+
+
+def _document_of_text(ops) -> Optional[str]:
+    """The document a respelled text belongs to, as its ops name it."""
+    return next((op.get('doc') for op in ops or () if op.get('doc')), None)
+
+
+def _linked_elsewhere(deletes: List[Dict[str, Any]]) -> PlanOutOfDate:
+    if len(deletes) == 1:
+        name = deletes[0].get('name')
+        what = f'The entry {name}' if name else 'The entry'
+        return PlanOutOfDate([f'{what} is linked in projects this assistant cannot open, so it was not '
+                              f'deleted'])
+    return PlanOutOfDate(['An entry this plan deletes is linked in projects this assistant cannot open, '
+                          'so none was deleted'])
 
 
 def _entry_links_now(client, project, op) -> List[str]:

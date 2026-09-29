@@ -323,7 +323,7 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
                                     'a respelling cannot remove a word (retype_sentence can)')
                 check_respell_overlap(ws, w.text_id, w.begin, w.end, f'{ws.doc_label(doc.id)} {word_ref(s, w)}')
                 staged.append({'kind': 'respell', 'text_id': w.text_id, 'begin': w.begin, 'end': w.end, 'value': new,
-                               **labelled(f'{ws.doc_label(doc.id)} {word_ref(s, w)}', f'respell "{w.surface}" → "{new}"')})
+                               'doc': doc.id, **labelled(f'{ws.doc_label(doc.id)} {word_ref(s, w)}', f'respell "{w.surface}" → "{new}"')})
                 n_words += 1
                 if not morpheme_forms:
                     continue
@@ -652,6 +652,7 @@ def t_delete_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Opt
     view = ws.view_of_item(it['id'])
     with ws.staging():
         ws.add_op({'kind': 'delete_entry', 'item_id': it['id'], 'links': [l['link_id'] for l in links],
+                   'name': _name(view, it),
                    'label': f'Delete entry {_name(view, it)} '
                             f'({len(links)} link{"s" if len(links) != 1 else ""} removed)'})
         refs = _ref_repair_ops(ws, view, plan_delete_refs, [it['id']])

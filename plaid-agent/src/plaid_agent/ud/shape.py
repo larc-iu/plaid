@@ -87,14 +87,19 @@ def t_set_words(ws: Workspace, document: str = None, ref: str = None, forms=None
 
 def apply_set_words(op: Dict[str, Any], b, stamp) -> None:
     """The reshape's words themselves, and the token's own form. The spans on
-    the new words name them by refs to this bulk create (``finish_set_words``).
+    the new words name them by refs to this bulk create (``finish_set_words``,
+    which the executor calls right after, in the same change).
     """
     forms, surface = op['forms'], op.get('surface') or ''
     if op.get('existing_word_ids'):
         b.add(lambda batch, ids=list(op['existing_word_ids']): batch.tokens.bulk_delete(ids))
+    # The words carry the plan's provenance, as a parser's syntactic words
+    # carry its own (the substrate token above them carries none).
+    prov = stamp()
     idx = b.add(lambda batch, o=op: batch.tokens.bulk_create([
         {'token_layer_id': o['word_layer_id'], 'text': o['text_id'],
-         'begin': o['begin'], 'end': o['end'], 'precedence': i}
+         'begin': o['begin'], 'end': o['end'], 'precedence': i,
+         **({'metadata': dict(prov)} if prov else {})}
         for i, _ in enumerate(o['forms'])]))
     # A multi-word token records its own surface, the way the editor does, so
     # an export knows what to print on the range line. A token back down to one

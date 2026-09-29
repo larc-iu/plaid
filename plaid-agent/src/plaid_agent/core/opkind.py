@@ -454,21 +454,27 @@ def stored_count(spec: OpKind, op: Dict[str, Any]) -> int:
     return 1
 
 
-def run_stage(kinds: Dict[str, 'OpKind'], ctx, ops, stage: str) -> None:
+def run_stage(kinds: Dict[str, 'OpKind'], ctx, ops, stage: str, finish=None) -> None:
     """One pass of an executor: every op whose kind belongs to ``stage``.
 
     An applier that wrote nothing (clearing a value that was not there) adds no
     key. A zero-valued one would reach the user as "0 of something" on the
     applied card.
+
+    ``finish(op)``, when given, says the op's writes are all queued once it
+    has applied, and it is finished there (``TrackingBatcher.finish``), so a
+    plan that fails in a later batch counts it written once its batch stood.
     """
     for op in ops:
         spec = kinds[op['kind']]
         if spec.stage != stage:
             continue
-        # Its writes carry the version of the document it is for (see
-        # plan.Batcher.writing_for).
+        # Its writes carry the version of the document it is for, and go in
+        # one batch (see plan.Batcher.writing_for).
         with ctx.b.writing_for(op):
             n = spec.apply(ctx, op)
+        if finish is not None and finish(op):
+            ctx.b.finish(op)
         n = 1 if n is None else n
         if n:
             ctx.counts[spec.noun[1]] += n

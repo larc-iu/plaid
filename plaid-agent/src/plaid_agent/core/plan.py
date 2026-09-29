@@ -23,6 +23,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 # created_id is plaid_client's reader of a create response, which the plans take from here.
 from plaid_client import DocumentLockLost, PlaidAPIError, created_id, created_ids, metadata_ops  # noqa: F401
+from plaid_client.client import MAX_BATCH_OPS
 from plaid_client.service import locked_for_writes
 
 from .opkind import ROW
@@ -40,7 +41,7 @@ CLEAR_PROV = {PROV_KEY: None, PROV_SOURCE_KEY: None, PROV_CONFIRMED_KEY: None, P
               PROV_DETAIL_KEY: None}
 CONFIRM = {PROV_CONFIRMED_KEY: True}
 
-BATCH_OP_BUDGET = 800  # the server caps one atomic batch at 1000 ops
+BATCH_OP_BUDGET = 800  # the server caps one atomic batch at 1000 ops (MAX_BATCH_OPS)
 BULK_CHUNK = 1000      # entities one bulk update request carries
 _UNSET = object()
 
@@ -106,6 +107,10 @@ class Batcher:
         self._bulk: Dict[tuple, Dict[str, Dict[str, Any]]] = {}
         #: the document the writes queued now are for (see ``writing_for``)
         self.document: Optional[str] = None
+        # How deep inside one change's writes the executor is (``writing_for``
+        # with an op). The budget is not checked there, so a change is never
+        # cut across two batches.
+        self._held = 0
 
     @contextmanager
     def writing_for(self, op_or_document):
@@ -114,17 +119,29 @@ class Batcher:
         of several documents each write then carries that document's
         version, and a batch of the plan's that lands after the apply gave up
         on it is refused over an edit made since, as a one-document plan's
-        is."""
-        if isinstance(op_or_document, dict):
+        is.
+
+        Given an op, the block is one change: its writes go in one batch,
+        the budget checked once it ends, so a failure leaves the change
+        whole or not written. Only a change that would take the batch past
+        the server's cap (``MAX_BATCH_OPS``) is cut."""
+        change = isinstance(op_or_document, dict)
+        if change:
             docs = docs_of_op(op_or_document)
             document = next(iter(docs)) if len(docs) == 1 else None
         else:
             document = op_or_document
         previous, self.document = self.document, document
+        if change:
+            self._held += 1
         try:
             yield
         finally:
             self.document = previous
+            if change:
+                self._held -= 1
+        if change and not self._held and self._weight >= self.budget:
+            self.flush()
 
     @contextmanager
     def _stamping(self):
@@ -143,9 +160,27 @@ class Batcher:
         finally:
             self.client.strict_mode_document_id = None
 
+    @contextmanager
+    def on_client(self, document: Optional[str]):
+        """For the writes the executor makes on the client itself, outside
+        the batches (a text update, a restore): under a hold of several
+        documents they carry ``document``'s version, as a queued write does,
+        so one whose answer was lost cannot land after the apply gave up on
+        it, over an edit made since."""
+        previous, self.document = self.document, document
+        try:
+            with self._stamping():
+                yield
+        finally:
+            self.document = previous
+
     def add(self, fn, weight: int = 1, count: int = 1) -> int:
         """Queue what ``fn(batch)`` writes: ``count`` sub-ops, which land in
         one batch together. Returns the result index of the first."""
+        if self._batch is not None and self._held and self._pending + count > MAX_BATCH_OPS:
+            # A change too big for one batch: the server would take this
+            # write in a request of its own anyway.
+            self.flush()
         if self._batch is None:
             self._batch = self.client.batch()
         with self._stamping():
@@ -153,7 +188,7 @@ class Batcher:
         idx = len(self.results) + self._pending
         self._pending += count
         self._weight += weight
-        if self._weight >= self.budget:
+        if self._weight >= self.budget and (not self._held or self._pending >= MAX_BATCH_OPS):
             self.flush()
         return idx
 
@@ -334,6 +369,12 @@ def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
         if e.written is None:
             e.written = written()
         raise
+    except PlanOutOfDate as e:
+        # Found out of date by a write the server refused: settled as out of
+        # date when nothing stands, as partly applied when something does.
+        if not tracker.applied:
+            raise
+        raise PlanError(' '.join(e.reasons), tracker.applied, len(ops), False, written()) from e
     except Exception as e:  # noqa: BLE001 - every failure becomes one the user can read
         applied = getattr(e, '_applied', None)
         unknown = bool(getattr(e, '_unknown', False)) or outcome_unknown(e)

@@ -116,7 +116,7 @@ def test_confirm_and_discard_analysis_ops():
         execute_plan(c, [{'kind': 'confirm', 'span_ids': [], 'label': ''}], source='s', label='l')
 
 
-def test_execute_set_analysis_replaces_chain_and_glosses_new_morphemes_second_pass():
+def test_execute_set_analysis_replaces_chain_and_glosses_new_morphemes_in_its_turn():
     c = FakeClient()
     op = {'kind': 'set_analysis', 'word_id': 'w-4', 'text_id': TEXT_ID, 'begin': 18, 'end': 24,
           'morpheme_layer_id': MORPH_LAYER,
@@ -138,12 +138,12 @@ def test_execute_set_analysis_replaces_chain_and_glosses_new_morphemes_second_pa
     assert first[5][0] == 'tokens.create' and first[5][1]['args'] == (MORPH_LAYER, TEXT_ID, 18, 24)
     made = first[5][1]['kwargs']
     assert made['precedence'] == 2 and made['metadata']['form'] == 'ar' and 'morphType' not in made['metadata']
-    assert first[6][1]['kwargs']['precedence'] == 3 and first[6][1]['kwargs']['metadata']['morphType'] == 'suffix'
-    # Second pass glosses the created morpheme by a ref to its create, in the
-    # same batch, and the empty gloss is skipped.
-    assert len(c.batches) == 1
-    kind, second = first[-1]
-    assert kind == 'spans.create' and second['args'][:3] == (MGLOSS, [{'$ref': 5}], 'PL')
+    # The created morpheme is glossed right after it, by a ref to its create,
+    # in the same batch, and the empty gloss is skipped.
+    kind, gloss = first[6]
+    assert kind == 'spans.create' and gloss['args'][:3] == (MGLOSS, [{'$ref': 5}], 'PL')
+    assert first[7][1]['kwargs']['precedence'] == 3 and first[7][1]['kwargs']['metadata']['morphType'] == 'suffix'
+    assert len(first) == 8 and len(c.batches) == 1
 
 
 def test_execute_set_analysis_on_word_without_morphemes_creates_all():
@@ -181,13 +181,13 @@ def test_execute_links_entries_orthography_and_respells_last():
     entry = b0[0][1]['args']
     assert b0[0][0] == 'vocab_items.create' and entry == (VOCAB, 'akun', {'gloss': 'see', **entry[2]})
     assert entry[2]['prov'] == 'inferred'
-    assert b0[1] == ('vocab_links.delete', 'l-1')
-    assert b0[2][0] == 'vocab_links.create' and b0[2][1]['args'][:2] == ('vi-erg', ['w-1'])
-    assert b0[3] == ('vocab_links.delete', 'l-2')
-    assert b0[4] == ('vocab_items.patch_metadata', ('vi-ali', [{'op': 'set', 'path': ['pos'], 'value': 'PN'}]))
     # The link to the new entry names it by a ref to its create, in the same
-    # batch.
-    assert b0[5][0] == 'vocab_links.create' and b0[5][1]['args'][:2] == ({'$ref': 0}, ['w-3'])
+    # batch, in its own turn.
+    assert b0[1][0] == 'vocab_links.create' and b0[1][1]['args'][:2] == ({'$ref': 0}, ['w-3'])
+    assert b0[2] == ('vocab_links.delete', 'l-1')
+    assert b0[3][0] == 'vocab_links.create' and b0[3][1]['args'][:2] == ('vi-erg', ['w-1'])
+    assert b0[4] == ('vocab_links.delete', 'l-2')
+    assert b0[5] == ('vocab_items.patch_metadata', ('vi-ali', [{'op': 'set', 'path': ['pos'], 'value': 'PN'}]))
     # The orthography is a token metadata patch, which travels as a bulk update at the end of the batch.
     assert b0[6] == ('tokens.bulk_update', [{'id': 'w-2', 'metadata': [{'op': 'delete', 'path': ['orthog:IPA']}]}])
     assert len(c.batches) == 1
@@ -355,7 +355,7 @@ def test_ud_runs_exactly_the_passes_it_declares(monkeypatch):
     from collections import Counter
     seen = []
     monkeypatch.setattr(plan.ok, 'run_stage',
-                        lambda kinds, ctx, ops, stage: seen.append(stage))
+                        lambda kinds, ctx, ops, stage, finish=None: seen.append(stage))
     plan._execute(FakeClient(), [], label='l', counts=Counter(), notes=[],
                   stamps=Stamps('verified', 's'))
     assert seen == list(plan.STAGES)

@@ -146,11 +146,11 @@ def test_execute_link_phrase_and_pending_entries():
     assert counts == {'new lexicon entries': 1, 'multi-word expressions': 2}
     first = c.batches[0]
     assert first[1] == ('vocab_links.delete', MWE_LINK)
-    assert first[2][0] == 'vocab_links.create' and first[2][1]['args'][:2] == ('vi-ali', ['w-1', 'w-2'])
-    # The entry made at the head of the same batch, by a ref to its create.
+    # The entry made at the head of the same batch, by a ref to its create,
+    # in the expression's own turn.
+    assert first[2][0] == 'vocab_links.create' and first[2][1]['args'][:2] == ({'$ref': 0}, ['w-2', 'w-3'])
+    assert first[3][0] == 'vocab_links.create' and first[3][1]['args'][:2] == ('vi-ali', ['w-1', 'w-2'])
     assert len(c.batches) == 1
-    assert ('vocab_links.create', ({'$ref': 0}, ['w-2', 'w-3'])) in [
-        (kind, p['args'][:2]) for kind, p in first if kind == 'vocab_links.create']
     # A member deleted elsewhere in the plan refuses the expression, as a
     # deleted entry does: the pair is refused while it is being staged, and
     # this is the backstop under that.

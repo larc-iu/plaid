@@ -261,7 +261,7 @@ def t_respell(ws: Workspace, document: str, ref: str, new_text: str, morpheme_fo
         return ws.planned_note(0)
     check_respell_overlap(ws, w.text_id, w.begin, w.end, f'{ws.doc_label(doc.id)} {ref}')
     staged = [{'kind': 'respell', 'text_id': w.text_id, 'begin': w.begin, 'end': w.end, 'value': new_text,
-               **labelled(f'{ws.doc_label(doc.id)} {ref}', f'respell "{w.surface}" → "{new_text}"')}]
+               'doc': doc.id, **labelled(f'{ws.doc_label(doc.id)} {ref}', f'respell "{w.surface}" → "{new_text}"')}]
     # A single-morpheme own form spelt like the word follows it. A longer
     # chain cannot be re-derived from a whole-word replacement.
     kept = []

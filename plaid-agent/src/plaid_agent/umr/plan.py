@@ -550,20 +550,15 @@ def _execute(client, project, ops, *, label, counts, notes, stamps: Stamps,
         b = ctx.b
         b.expect(ops)
 
-        # Each op is finished after the flush of its last pass, so a card row
-        # counts as written only once every batch holding its writes stood.
-        def finish(which):
-            for op in ops:
-                if which(op):
-                    b.finish(op)
-
         # Deletes, values, metadata and every new node, then the relations,
         # which name a new node's span by a ref to it: one batch, unless the
-        # plan is past the batch's budget.
-        ok.run_stage(KIND, ctx, ops, ok.BATCH)
-        ok.run_stage(KIND, ctx, ops, LINKS)
+        # plan is past the batch's budget. Each op's writes are in one batch,
+        # and it is finished as soon as they are queued, so a card row counts
+        # as written once the batch holding them stood, whichever later batch
+        # failed.
+        ok.run_stage(KIND, ctx, ops, ok.BATCH, finish=lambda op: True)
+        ok.run_stage(KIND, ctx, ops, LINKS, finish=lambda op: True)
         b.flush()
-        finish(lambda op: True)
 
     result = dict(counts)
     if notes:

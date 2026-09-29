@@ -154,8 +154,11 @@ def _apply_confirm(ctx: Context, op) -> int:
 
 
 def _apply_set_words(ctx: Context, op) -> int:
-    from .shape import apply_set_words
+    from .shape import apply_set_words, finish_set_words
+    # The words, then their Form and Lemma spans by refs to them: one change,
+    # in one batch.
     apply_set_words(op, ctx.b, ctx.stamp)
+    finish_set_words(op, ctx.b, ctx.stamp)
     return 1
 
 
@@ -197,7 +200,36 @@ def _apply_del_relation(ctx: Context, op) -> int:
     return 1
 
 
+def _seed_lemmas(ctx: Context, op) -> None:
+    """The lemma spans a relation is going to need, now that ``creating``
+    says which ones the plan already makes (every set_span has applied, in
+    the pass before). A word with no lemma at all gets one valued with its
+    FORM. The app does the same when a person draws an arc onto an
+    unannotated word, except that it uses the token's surface text, which is
+    wrong for a part of a multi-word token ("al" for both halves of a + el).
+    The form is right in every case the surface is, and right in the case it
+    is not."""
+    for wid, form, existing in ((op['word_id'], op.get('word_form') or '', op.get('lemma_span_id')),
+                                (op['head_id'], op.get('head_form') or '', op.get('head_lemma_span_id'))):
+        if wid in ctx.lemma_at:
+            continue
+        if existing:
+            ctx.lemma_at[wid] = existing
+            continue
+        planned = ctx.creating.get((op['lemma_layer_id'], wid))
+        if planned is not None:
+            # The user approved a lemma for this word in this very plan. Hang
+            # the relation off THAT span rather than making a second one
+            # seeded from the form.
+            ctx.lemma_at[wid] = planned
+            continue
+        ctx.lemma_at[wid] = ctx.b.add(
+            lambda batch, o=op, w=wid, f=form: batch.spans.create(
+                o['lemma_layer_id'], [w], f, dict(LEMMA_FROM_FORM)))
+
+
 def _apply_set_head(ctx: Context, op) -> int:
+    _seed_lemmas(ctx, op)
     # One head per word: the old relation goes in the same batch as the new
     # one, so the word is never headless and never twice headed, whichever way
     # a failure falls. Its ends are the words' lemma spans, by a ref to one
@@ -673,58 +705,19 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
         b = ctx.b
         b.expect(ops)
 
-        # Each op is finished after the flush of its last pass, so a card row
-        # counts as written only once every batch holding its writes stood.
-        def finish(which):
-            for op in ops:
-                if which(op):
-                    b.finish(op)
         restores = {id(op) for op in ops if op.get('kind') == 'restore_document'}
 
-        # --- pass 1: the columns, and any lemma span a relation is going to need ---
-        # Every kind the executor sees that is not waiting on a minted id.
-        ok.run_stage(KIND, ctx, ops, ok.BATCH)
-
-        # Second sub-pass: the lemma spans a relation is going to need, now
-        # that `creating` says which ones the plan already makes. A word with
-        # no lemma at all gets one valued with its FORM. The app does the same
-        # when a person draws an arc onto an unannotated word, except that it
-        # uses the token's surface text, which is wrong for a part of a
-        # multi-word token ("al" for both halves of a + el). The form is right
-        # in every case the surface is, and right in the case it is not.
-        for op in ops:
-            if op.get('kind') != 'set_head':
-                continue
-            for wid, form, existing in ((op['word_id'], op.get('word_form') or '', op.get('lemma_span_id')),
-                                        (op['head_id'], op.get('head_form') or '', op.get('head_lemma_span_id'))):
-                if wid in ctx.lemma_at:
-                    continue
-                if existing:
-                    ctx.lemma_at[wid] = existing
-                    continue
-                planned = ctx.creating.get((op['lemma_layer_id'], wid))
-                if planned is not None:
-                    # The user approved a lemma for this word in this very
-                    # plan. Hang the relation off THAT span rather than making
-                    # a second one seeded from the form.
-                    ctx.lemma_at[wid] = planned
-                    continue
-                with b.writing_for(op):
-                    ctx.lemma_at[wid] = b.add(
-                        lambda batch, o=op, w=wid, f=form: batch.spans.create(
-                            o['lemma_layer_id'], [w], f, dict(LEMMA_FROM_FORM)))
-
-        # --- pass 2: what names an id pass 1 creates, by a ref to it, in the
-        # same batch, so a plan under the batch's budget is written whole or
-        # not at all ---
-        from .shape import finish_set_words
-        for op in ops:
-            if op.get('kind') == 'set_words':
-                with b.writing_for(op):
-                    finish_set_words(op, b, ctx.stamp)
-        ok.run_stage(KIND, ctx, ops, IDS)
+        # Each op's writes go in one batch (``Batcher.writing_for``), and it is
+        # finished as soon as they are queued, so a card row counts as written
+        # once the batch holding them stood, whichever later batch failed.
+        # --- pass 1: the columns, the reshapes and the sentence edits ---
+        ok.run_stage(KIND, ctx, ops, ok.BATCH, finish=lambda op: id(op) not in restores)
+        # --- pass 2: the heads, each with the lemma spans its relation hangs
+        # off, and the removed dependencies. They name what pass 1 creates by
+        # a ref to it, in the same batch, so a plan under the batch's budget
+        # is written whole or not at all ---
+        ok.run_stage(KIND, ctx, ops, IDS, finish=lambda op: True)
         b.flush()
-        finish(lambda op: KIND[op['kind']].stage in (ok.BATCH, IDS) and id(op) not in restores)
 
         # The server's own restore, after the batch and never with it: it is
         # one operation of its own and a plan holding one holds nothing else.
@@ -737,8 +730,7 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
         # Last, and outside the batches, because it is not a write of ours at
         # all: it is another service rewriting whole documents, under its own
         # document lock, for as long as that takes.
-        ok.run_stage(KIND, ctx, ops, PARSE)
-        finish(lambda op: KIND[op['kind']].stage == PARSE)
+        ok.run_stage(KIND, ctx, ops, PARSE, finish=lambda op: True)
 
     result = dict(counts)
     if notes:
