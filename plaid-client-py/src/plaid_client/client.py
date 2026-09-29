@@ -15,7 +15,7 @@ import requests as req_lib
 from plaid_client.document_lock import DocumentLock, LockKeeper, lock_ttl_s
 from plaid_client.http import (
     PlaidAPIError, make_request, queue_request, extract_document_versions,
-    restamp_document_version, BatchRef, make_batch_ref, rebase_refs,
+    restamp_document_version, BatchRef, make_batch_ref, rebase_refs, _unsendable,
     list_all, list_page, iter_pages, build_api_error, retry_while_busy,
     DEFAULT_TIMEOUT_S, DEFAULT_BATCH_TIMEOUT_S,
 )
@@ -3841,7 +3841,8 @@ class PlaidClient:
                 # own, longer budget — giving up here does not stop the
                 # server's transaction.
                 def attempt(body=body):
-                    resp = self.session.post(url, headers=headers, data=json.dumps(body),
+                    resp = self.session.post(url, headers=headers,
+                                             data=json.dumps(body, default=_unsendable),
                                              timeout=self.batch_timeout)
                     if not resp.ok:
                         raise build_api_error(resp, url, 'POST')

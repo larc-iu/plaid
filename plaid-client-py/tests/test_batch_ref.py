@@ -154,3 +154,36 @@ def test_a_ref_anywhere_but_a_later_body_on_its_own_batch_is_refused(monkeypatch
     assert sent == []
     assert len(b.operations) == 1
     b.abort()
+
+
+def test_a_ref_in_a_tuple_is_taken_out_as_json_sends_a_tuple_as_a_list(monkeypatch):
+    # json.dumps sends a tuple (a namedtuple too) as a list, so a ref in one
+    # is in the body like any other. Left in, it failed at submit as a
+    # "Network error", an unknown outcome, though nothing was sent.
+    client = _client()
+    sent = _recording(monkeypatch, client)
+    b = client.batch()
+    b.tokens.bulk_create([{'token_layer_id': 'L', 'text': 'x', 'begin': 0, 'end': 1}])
+    b.spans.create('S', ('t0', b.ref(0, 0)), 'v', metadata={'pair': ('a', b.ref(0, 0))})
+    b.submit()
+    op = sent[0][1]
+    assert op['body']['tokens'] == ['t0', None]
+    assert op['body']['metadata']['pair'] == ['a', None]
+    assert op['refs'] == [{'at': ['tokens', 1], 'op': 0, 'index': 0},
+                          {'at': ['metadata', 'pair', 1], 'op': 0, 'index': 0}]
+
+
+def test_a_ref_the_body_walk_cannot_reach_is_named_at_submit_not_a_network_error(monkeypatch):
+    client = _client()
+    posts = []
+    monkeypatch.setattr(client.session, 'post', lambda *a, **k: posts.append(1))
+    b = client.batch()
+    b.vocab_items.create('V', 'dog')
+    ref = b.ref()
+    # Put in after the op was queued, so the walk at queue time never saw it.
+    b.vocab_items.create('V', 'cat', metadata={'later': []})
+    b.operations[1]['body']['metadata']['later'].append(ref)
+    with pytest.raises(PlaidAPIError, match=r'b\.ref\(\)') as caught:
+        b.submit()
+    assert 'Network error' not in str(caught.value)
+    assert posts == []

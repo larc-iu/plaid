@@ -605,7 +605,8 @@ def make_batch_ref(batch, op_index, index):
 def _holds_ref(v):
     if isinstance(v, BatchRef):
         return True
-    if isinstance(v, list):
+    # A tuple is a JSON list to json.dumps, so a ref can be in one too.
+    if isinstance(v, (list, tuple)):
         return any(_holds_ref(x) for x in v)
     if isinstance(v, dict):
         return any(_holds_ref(x) for x in v.values())
@@ -630,8 +631,8 @@ def take_refs(batch, body):
             return None
         if not _holds_ref(v):
             return v
-        items = enumerate(v) if isinstance(v, list) else v.items()
-        out = [] if isinstance(v, list) else {}
+        items = v.items() if isinstance(v, dict) else enumerate(v)
+        out = {} if isinstance(v, dict) else []
         for k, x in items:
             at.append(k)
             taken = take(x)
