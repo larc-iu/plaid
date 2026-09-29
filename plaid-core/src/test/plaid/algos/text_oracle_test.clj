@@ -236,6 +236,23 @@
                                      (conj item)
                                      (into (subvec sent (inc i)))))
                    {:resp #{(:id (sent i))} :ins true}])
+      ;; Two words beside each other made one by deleting the space between
+      ;; them and letters of both: `a big dog` to `a bog`. It is one word
+      ;; respelled and the other deleted, either way round, and the new word
+      ;; has one token.
+      :join-words (let [i (when (> n 1) (.nextInt rng (dec n)))
+                        a (some-> i sent)
+                        b (some-> i inc sent)]
+                    (if (or (nil? i) (not= " " (:sep a)) (seq (:post a)) (seq (:pre b))
+                            (< (count (cps (:w a))) 2) (< (count (cps (:w b))) 2))
+                      (edit doc rng [:resp])
+                      (let [ca (cps (:w a))
+                            cb (cps (:w b))
+                            w (str (apply str (take (inc (.nextInt rng (dec (count ca)))) ca))
+                                   (apply str (take-last (inc (.nextInt rng (dec (count cb)))) cb)))
+                            joined (assoc a :w w :post (:post b) :sep (:sep b) :cuts nil)]
+                        [(assoc doc si (-> (subvec sent 0 i) (conj joined) (into (subvec sent (+ i 2)))))
+                         {:resp #{(:id a)} :del #{(:id b)} :si si :amb #{} :group [(:id a) (:id b)]}])))
       :join (if (< si (dec (count doc)))
               [(-> doc
                    (assoc-in [si (dec n) :sep] " ")
@@ -445,7 +462,9 @@
      :no-spaces {:seps [""] :kinds [:resp :del :del+resp]}
      ;; UMR nodes over the words of a script without spaces
      :no-spaces-nodes {:seps [""] :nodes 4 :kinds [:resp :del :del+resp] :cases 2000}
-     :joins {:seps [" "] :kinds [:join]}}))
+     :joins {:seps [" "] :kinds [:join]}
+     :joined-words {:seps [" "] :kinds [:join-words]}
+     :joined-words-marked {:seps [" "] :marks 0.4 :nodes 4 :kinds [:join-words]}}))
 
 ;; ---------------------------------------------------------------- the test
 
@@ -473,3 +492,20 @@
             :let [failed (get @open-failures cls [])]]
       (is (<= (count failed) ceiling)
           (str cls ": " (count failed) " cases fail, at most " ceiling " may: " (pr-str failed))))))
+
+(deftest a-delete-joining-two-words-leaves-one-token-on-the-new-word
+  (doseq [[old new want] [["a big dog ran" "a bog ran" [[0 1] [2 5] [6 9]]]
+                          ["ka1292x ob1293 zz" "sh1299 zz" [[0 6] [7 9]]]]]
+    (let [tokens (map-indexed (fn [i [b e]] {:token/id i :token/layer :w :token/begin b :token/end e})
+                              (let [m (re-matcher #"\S+" old)]
+                                (loop [out []] (if (.find m) (recur (conj out [(.start m) (.end m)])) out))))
+          result (-> (ta/diff old new)
+                     (ta/slide-to-tokens old tokens #{})
+                     (ta/normalize-deletes old tokens)
+                     (ta/align-to-words old tokens #{:w})
+                     (ta/pair-replacements old tokens)
+                     (ta/fold-whole-words old tokens #{:w})
+                     (ta/apply-text-edits {:text/body old} tokens))]
+      (is (= new (:text/body (:text result))))
+      (is (= want (sort (map (juxt :token/begin :token/end) (:tokens result))))
+          (str (pr-str old) " -> " (pr-str new))))))

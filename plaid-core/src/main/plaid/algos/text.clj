@@ -1999,8 +1999,11 @@
   word sharing more letters with it takes whole (the first on a tie), and
   the other is deleted: `cat dog` to `cQog` keeps `dog` on `cQog`, where
   the replace as it was left `c` and `og` a token each. With a space typed
-  it stays as it is. The edits in the letters of the two words that the
-  join types back become part of it: those of the word it deletes, taken
+  it stays as it is. A delete reaching into two words joins them the same
+  way (`a big dog` to `a bog` keeps `big` on `bog`, where the delete left
+  `b` and `og` a token each), and is otherwise left as it is. The edits in
+  the letters of the two words that the join types back become part of it:
+  those of the word it deletes, taken
   from the end of `out` or the start of `later` (the edits after `r`), and
   one reaching out of the word is cut at its edge. So no edit takes a
   letter another one takes. Gives the new `out` and how many of `later` it
@@ -2023,7 +2026,11 @@
   begin or end in a stretch (see `tokens-near`), and `inside-word?` is
   `inside-word-fn`'s for `o`, `near` and `word?`."
   [^ints o near word? inside-word? out r later]
-  (let [{s :start t :end ^String value :value} r
+  (let [{s :start t :end} r
+        ;; A delete is cut only where it joins two words, as a replace
+        ;; typing nothing would be.
+        delete? (= :delete (:kind r))
+        ^String value (if delete? "" (:value r))
         o-space? (fn [i] (space? (aget o (int i))))
         no-space? (fn [p q] (not-any? o-space? (range p q)))
         width? (fn [{:token/keys [begin end]}] (< begin end))
@@ -2065,12 +2072,12 @@
                     [{:kind :delete :start p :end q} {:kind :insert :at q :value value}])
                   :else [{:kind :replace :start p :end q :value value}]))]
     (cond
-      (and (seq into-next) (empty? into-prev))
+      (and (not delete?) (seq into-next) (empty? into-prev))
       (let [b (reduce max (map :token/begin into-next))
             k (loop [k n] (if (and (pos? k) (not (ws? (dec k)))) (recur (dec k)) k))]
         [(-> out (into (piece s b (sub 0 k) s)) (into (piece b t (sub k n) t))) 0])
 
-      (and (seq into-prev) (empty? into-next))
+      (and (not delete?) (seq into-prev) (empty? into-next))
       (let [a (reduce min (map :token/end into-prev))
             k (loop [k 0] (if (and (< k n) (not (ws? k))) (recur (inc k)) k))]
         [(-> out (into (piece s a (sub 0 k) s)) (into (piece a t (sub k n) t))) 0])
@@ -2087,7 +2094,7 @@
       ;; back instead, and are part of the join. Left beside it they would
       ;; take letters the join takes too, and the fold could not judge the
       ;; edits (a 500) or would make another text of them.
-      (and (seq prev-in) (seq next-in) (pos? n) (not-any? ws? (range n)))
+      (and (seq prev-in) (seq next-in) (or delete? (pos? n)) (not-any? ws? (range n)))
       (let [pb (loop [p s] (if (edge? p) p (recur (dec p))))
             a (loop [p s] (if (edge? p) p (recur (inc p))))
             b (loop [p t] (if (edge? p) p (recur (dec p))))
@@ -2132,13 +2139,14 @@
       :else [(conj out r) 0])))
 
 (defn- split-all-at-token-edges
-  "`edits` with each replace cut by `split-at-token-edges`, in order."
+  "`edits` with each replace, and each delete joining two words, cut by
+  `split-at-token-edges`, in order."
   [^ints o near word? inside-word? edits]
   (let [edits (vec edits)]
     (loop [i 0 out []]
       (if (< i (count edits))
         (let [e (edits i)]
-          (if (= :replace (:kind e))
+          (if (#{:replace :delete} (:kind e))
             (let [[out k] (split-at-token-edges o near word? inside-word? out e (subvec edits (inc i)))]
               (recur (+ i 1 k) out))
             (recur (inc i) (conj out e))))
