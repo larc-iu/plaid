@@ -58,12 +58,53 @@ test('endOperation(message) PATCHes the group when something was written', async
     };
   };
   const id = client.beginOperation('Merge morphemes');
-  queue(client); // queued (and aborted) — still counts as "written" for the client
+  await client.spans.setMetadata('S1', { a: 1 });
   await client.endOperation('Merged 3 morphemes');
-  assert.strictEqual(calls.length, 1);
-  assert.strictEqual(calls[0].method, 'PATCH');
-  assert.ok(calls[0].url.endsWith(`/api/v1/operation-groups/${id}`));
-  assert.deepStrictEqual(JSON.parse(calls[0].body), { message: 'Merged 3 morphemes' });
+  assert.strictEqual(calls.length, 2);
+  assert.strictEqual(calls[1].method, 'PATCH');
+  assert.ok(calls[1].url.endsWith(`/api/v1/operation-groups/${id}`));
+  assert.deepStrictEqual(JSON.parse(calls[1].body), { message: 'Merged 3 morphemes' });
+});
+
+// The group is made by the first of its writes the server takes. One whose
+// only write was refused was never made, and relabelling it 404ed (REV of
+// F-REPAIR: every refused repair logged a 404).
+test('endOperation(message) skips the PATCH when every write of the group was refused', async () => {
+  const client = makeClient();
+  const calls = [];
+  globalThis.fetch = async (url, opts) => {
+    calls.push({ url, method: opts.method });
+    return {
+      ok: false, status: 409,
+      headers: { get: (n) => (String(n).toLowerCase() === 'content-type' ? 'application/json' : null) },
+      json: async () => ({ error: 'Document version mismatch' }), text: async () => '',
+    };
+  };
+  client.beginOperation('Repair on open');
+  await assert.rejects(client.spans.setMetadata('S1', { a: 1 }));
+  await client.endOperation('Repaired 2 words');
+  assert.deepStrictEqual(calls.map((c) => c.method), ['PUT']);
+});
+
+test('a queued write counts once its batch is taken, not when it is queued', async () => {
+  const client = makeClient();
+  const calls = [];
+  globalThis.fetch = async (url, opts) => {
+    calls.push({ url, method: opts.method });
+    return {
+      ok: true, status: 200,
+      headers: { get: (n) => (String(n).toLowerCase() === 'content-type' ? 'application/json' : null) },
+      json: async () => [{ status: 200, body: {} }], text: async () => '',
+    };
+  };
+  client.beginOperation('Merge');
+  queue(client);
+  assert.strictEqual(client.operationGroup.written, false);
+  await client.batched(async (b) => {
+    b.spans.setMetadata('S1', { a: 1 });
+  });
+  await client.endOperation('Merged');
+  assert.deepStrictEqual(calls.map((c) => c.method), ['POST', 'PATCH']);
 });
 
 test('endOperation(message) skips the PATCH when nothing was written', async () => {
@@ -124,11 +165,11 @@ test('withOperation setMessage refines the label at the end', async () => {
     };
   };
   await client.withOperation('Merge', async (setMessage) => {
-    queue(client);
+    await client.spans.setMetadata('S1', { a: 1 });
     setMessage('Merged 2');
   });
-  assert.strictEqual(calls.length, 1);
-  assert.deepStrictEqual(JSON.parse(calls[0].body), { message: 'Merged 2' });
+  assert.strictEqual(calls.length, 2);
+  assert.deepStrictEqual(JSON.parse(calls[1].body), { message: 'Merged 2' });
 });
 
 test('GET requests never carry a group-id', async () => {

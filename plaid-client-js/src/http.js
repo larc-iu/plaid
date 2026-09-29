@@ -328,7 +328,9 @@ export function xhrSend(
  * (`makeRequest`) and the batch path (`queueRequest`), so a queued op is
  * exactly the request that would have gone out. Strict mode stamps every
  * write, queued or not, and `stampedDocument` names the document it stamped
- * for (null when it stamped nothing).
+ * for (null when it stamped nothing). `stampedGroup` is the open logical
+ * operation it joined, if any, for `makeRequest` to mark written once the
+ * server has taken the request.
  */
 export function prepareRequest(client, method, path, options = {}) {
   const {
@@ -412,13 +414,16 @@ export function prepareRequest(client, method, path, options = {}) {
 
   // Logical-operation group (see client.beginOperation): stamp every write
   // with the group id; the message rides along too so the server can label
-  // the group lazily on whichever tagged write lands first.
+  // the group lazily on whichever tagged write lands first. The group counts
+  // as written only once such a write has been taken (`makeRequest`): a group
+  // whose only write was refused was never made, and relabelling it 404s.
   //
   // An out-of-band signal is not one of those writes (see the note at the top
   // of this file): it never lands in the audit log, so a stamp does nothing
   // server-side while `written` promises a group that will never exist, and
   // the relabel PATCH then 404s. A broadcast message (`noOperation`) is
   // never audited either.
+  let stampedGroup = null;
   if (
     client.operationGroup &&
     method !== "GET" &&
@@ -432,10 +437,10 @@ export function prepareRequest(client, method, path, options = {}) {
       url += `&group-message=${encodeURIComponent(group.message)}`;
     if (group.kind) url += `&group-kind=${encodeURIComponent(group.kind)}`;
     if (group.ref) url += `&group-ref=${encodeURIComponent(group.ref)}`;
-    group.written = true;
+    stampedGroup = group;
   }
 
-  return { url, requestBody, stampedDocument };
+  return { url, requestBody, stampedDocument, stampedGroup };
 }
 
 /**
@@ -519,7 +524,7 @@ export async function queueRequest(batch, method, path, options = {}) {
   if (options.noBatch) {
     throw new Error(`This endpoint cannot be used in a batch: ${path}`);
   }
-  const { url, requestBody, stampedDocument } = prepareRequest(
+  const { url, requestBody, stampedDocument, stampedGroup } = prepareRequest(
     batch.client,
     method,
     path,
@@ -538,6 +543,7 @@ export async function queueRequest(batch, method, path, options = {}) {
   }
   batch.operations.push(operation);
   batch.stampedDocuments.push(stampedDocument);
+  batch.stampedGroups.push(stampedGroup);
   return { batched: true };
 }
 
@@ -584,7 +590,12 @@ export async function makeRequest(client, method, path, options = {}) {
   if (method !== "GET" && omittedStrictDocument(client)) {
     await learnOmittedVersion(client);
   }
-  const { url, requestBody } = prepareRequest(client, method, path, options);
+  const { url, requestBody, stampedGroup } = prepareRequest(
+    client,
+    method,
+    path,
+    options,
+  );
 
   // Build fetch options
   const headers = {};
@@ -650,6 +661,8 @@ export async function makeRequest(client, method, path, options = {}) {
       }
       throw error;
     }
+    // The server took it, so the operation's group exists.
+    if (stampedGroup) stampedGroup.written = true;
 
     // Binary response (getMedia)
     if (binaryResponse) {

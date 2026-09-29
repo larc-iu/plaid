@@ -136,8 +136,10 @@ function openBatch(client) {
   batch.client = client;
   batch.operations = [];
   // The document each queued op's strict-mode stamp is for (null for none),
-  // index for index with `operations`.
+  // and the logical operation it joined (null for none), index for index with
+  // `operations`.
   batch.stampedDocuments = [];
+  batch.stampedGroups = [];
   batch.open = true;
   batch._request = (method, path, options = {}) =>
     queueRequest(batch, method, path, options);
@@ -152,6 +154,7 @@ function openBatch(client) {
   batch.abort = () => {
     batch.operations = [];
     batch.stampedDocuments = [];
+    batch.stampedGroups = [];
     batch.open = false;
   };
   batch._installResources();
@@ -165,8 +168,10 @@ async function submitBatch(batch) {
   batch.open = false;
   const ops = batch.operations;
   const stamps = batch.stampedDocuments;
+  const groups = batch.stampedGroups;
   batch.operations = [];
   batch.stampedDocuments = [];
+  batch.stampedGroups = [];
   if (ops.length === 0) return [];
   const client = batch.client;
   const url = `${client.baseUrl}/api/v1/batch`;
@@ -186,7 +191,7 @@ async function submitBatch(batch) {
   // failed request itself counts as unsaved, even when its answer was lost.
   const results = [];
   try {
-    await sendChunks(client, url, ops, stamps, results);
+    await sendChunks(client, url, ops, stamps, results, groups);
   } catch (error) {
     if (error && typeof error === "object") {
       error.committed = results.length;
@@ -197,7 +202,7 @@ async function submitBatch(batch) {
   return results;
 }
 
-async function sendChunks(client, url, ops, stamps, results) {
+async function sendChunks(client, url, ops, stamps, results, groups = []) {
   // Every chunk's refs are checked before the first request goes, so a batch
   // whose refs cannot resolve writes nothing.
   const chunks = [];
@@ -225,6 +230,10 @@ async function sendChunks(client, url, ops, stamps, results) {
       });
     }
     results.push(...(await client._postBatch(url, chunk)));
+    // The server took the chunk, so each operation it joined exists.
+    for (let j = i; j < i + chunk.length; j++) {
+      if (groups[j]) groups[j].written = true;
+    }
   }
 }
 
