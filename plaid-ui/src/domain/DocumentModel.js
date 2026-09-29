@@ -6,12 +6,12 @@
 // beside the live document. What a document MEANS (its layers, rows, and every
 // mutation) is the subclass's.
 //
-// Imports three siblings with no imports of their own, and lib/errors.js, which
-// has none either, and nothing else: plaid-ud's node suite reaches this file by
+// Imports four siblings with no imports but each other's, and lib/errors.js,
+// which has none, and nothing else: plaid-ud's node suite reaches this file by
 // relative path, where no alias and no package resolves. Errors leave through
 // `onError`.
 
-import { isChangedElsewhere, isUnknownOutcome } from '../lib/errors.js';
+import { isChangedElsewhere, isUnknownOutcome, statusOf } from '../lib/errors.js';
 import {
   AUTO,
   LTR,
@@ -23,6 +23,7 @@ import {
 } from './textDirection.js';
 import { WriteQueue } from './WriteQueue.js';
 import { recordSettled, settleIds } from './pendingIds.js';
+import { footprintOf, untouched } from './rebase.js';
 
 const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
 
@@ -44,6 +45,12 @@ const conflictError = () =>
 // write may still land after the read that followed the failure (a request
 // the client gave up on is not stopped), and nothing else would show it.
 const LATE_READS_MS = [30000, 90000];
+
+// How many waiting edits keep the document they were made on, for telling
+// whether a change elsewhere touched them (rebase.js). One past that is
+// treated as touched: a long offline queue must not hold a copy of the
+// document per edit.
+const KEEP_BASES = 16;
 
 // "Failed to create relation" is the error label; "Create relation" is the
 // operation the audit log shows for it, unless the screen named it (`labelled`).
@@ -100,6 +107,9 @@ export class DocumentModel {
     // and the timers of the reads after a lost answer (`_readLater`).
     this._operation = null;
     this._lateReads = new Set();
+    // The document before the first patch of the edit being made, until its
+    // write is queued (`_queueWrite`).
+    this._patchBase = null;
     // The screen's error channel, `(message, err, label)`: the label is what
     // was being done and `err` the client's error, for the screen to word.
     // Null until the screen wires it. The domain layer shows nothing itself.
@@ -413,8 +423,18 @@ export class DocumentModel {
     const operation = this._operation || named;
     // A caller that patches first has asked `_canWrite` already. One whose
     // send does all its work is refused here instead.
-    const unsent = { patches: this._patches, stale: false };
+    const kept = this._unsent.filter((u) => u.base).length;
+    const unsent = {
+      patches: this._patches,
+      stale: false,
+      // The document the edit was made on and the one it made, for what it
+      // touches (`_untouched`).
+      base: this._patches.length && kept < KEEP_BASES ? this._patchBase : null,
+      made: this._raw,
+      footprint: undefined,
+    };
     this._patches = [];
+    this._patchBase = null;
     if (!this._canWrite(label)) return Promise.resolve(false);
     this._unsent.push(unsent);
     let conflict = false;
@@ -434,8 +454,14 @@ export class DocumentModel {
           // claims has not moved, so going again once back online is safe. If
           // it did land after all, the server refuses the second as a
           // conflict.
-          resend = err?.offline === true && before != null && this._checkedVersion() === before;
-          throw err;
+          const nothingLanded = before != null && this._checkedVersion() === before;
+          resend = err?.offline === true && nothingLanded;
+          // Refused because the document moved on, with none of it written:
+          // when what changed does not touch it, it goes again, once, on the
+          // new version.
+          if (statusOf(err) === 409 && nothingLanded && (await this._rebase(unsent))) {
+            await this._client.withOperation(operation, send, { kind, ref });
+          } else throw err;
         }
         if (reload) this._writes.reloadWhenDrained = true;
       },
@@ -452,6 +478,47 @@ export class DocumentModel {
         resync: () => (unsent.stale ? undefined : this._reloadAfterFailure(conflict)),
       },
     );
+  }
+
+  // After a refusal for a changed document: read it, and when nothing that
+  // changed touches `unsent` (rebase.js), show it again on top of what was
+  // read, with the edits waiting behind it, and answer true so it is sent
+  // again. False leaves everything as it was, for the refusal to take its
+  // course.
+  async _rebase(unsent) {
+    if (!unsent.base) return false;
+    let updated;
+    try {
+      updated = await this._fetch();
+    } catch (err) {
+      console.error('Reading the document after a refusal failed:', err);
+      return false;
+    }
+    if (!this._untouched(unsent, updated)) return false;
+    let shown = updated;
+    try {
+      for (const producer of unsent.patches) shown = this._patched(shown, producer);
+    } catch (err) {
+      console.error('A refused edit could not be shown again:', err);
+      return false;
+    }
+    await this._adoptReload(updated);
+    this._showUnsent(shown);
+    return true;
+  }
+
+  // Whether nothing that changed between the document `unsent` was last
+  // checked against and `now` touches what it writes. From then on it is
+  // checked against `now`.
+  _untouched(unsent, now) {
+    if (!unsent.base) return false;
+    if (unsent.footprint === undefined) {
+      unsent.footprint = footprintOf(unsent.base, unsent.made);
+      unsent.made = null;
+    }
+    if (!untouched(unsent.footprint, unsent.base, now)) return false;
+    unsent.base = now;
+    return true;
   }
 
   // The version the server checks this document's writes against, or null
@@ -497,12 +564,15 @@ export class DocumentModel {
   // with a version bump and a notify, which is the invariant every derived
   // value relies on.
   _applyRawPatch(producer) {
+    const base = this._raw;
     this._raw = this._patched(this._raw, producer);
     this._dataVersion++;
     this._emit();
     if (this._patches.length === 0) {
+      this._patchBase = base;
       queueMicrotask(() => {
         this._patches = [];
+        this._patchBase = null;
       });
     }
     this._patches.push(producer);
@@ -631,18 +701,23 @@ export class DocumentModel {
   // After a conflict (409) in strict mode, those edits were planned on the
   // same out-of-date document. Sent now, they would carry the version this
   // fetch has just learned, get past the check that refused the first, and
-  // could make a second value where someone else has made one. They are
-  // refused as well, without being sent, and taken off the screen with it.
+  // could make a second value where someone else has made one. Each one that
+  // what changed touches (rebase.js) is refused as well, without being sent,
+  // and taken off the screen with it. The others go in turn.
   async _reloadAfterFailure(conflict = false) {
     if (!this._client || !this.id) return;
     const updated = await this._fetch();
     await this._adoptReload(updated);
     if (conflict && this._client.strictModeDocumentId === this.id) {
-      this._unsent.forEach((u) => {
-        u.stale = true;
-      });
+      // Only those that what changed elsewhere touches (rebase.js). The rest
+      // are shown again and sent in turn, each checked on its own.
+      const waiting = this._unsent;
       this._unsent = [];
-      this._swapRaw(updated);
+      for (const u of waiting) {
+        if (this._untouched(u, updated)) this._unsent.push(u);
+        else u.stale = true;
+      }
+      this._showUnsent(updated);
       return;
     }
     this._showUnsent(updated);

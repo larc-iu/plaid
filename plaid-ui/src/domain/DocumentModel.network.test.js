@@ -209,3 +209,150 @@ describe('naming an edit in History', () => {
     expect(server.labels).toEqual(['Gloss of dogs in sentence 3: DOG', 'Update pos']);
   });
 });
+
+// Luke's ruling Q2: a 409 whose changes in between touch nothing the edit
+// writes is sent again, once, by itself (rebase.js).
+describe('an edit refused because someone else wrote elsewhere in the document', () => {
+  const words = [
+    { id: 't1', begin: 0, end: 3 },
+    { id: 't2', begin: 4, end: 7 },
+    { id: 't3', begin: 8, end: 12 },
+  ];
+  // A server holding a document of the core's shape, with a version.
+  const docServer = () => {
+    const server = {
+      spans: [],
+      version: 1,
+      writes: 0,
+      raw() {
+        return {
+          id: 'd1',
+          version: server.version,
+          textLayers: [
+            {
+              id: 'tl',
+              tokenLayers: [
+                {
+                  id: 'words',
+                  tokens: structuredClone(words),
+                  spanLayers: [{ id: 'gloss', spans: structuredClone(server.spans) }],
+                },
+              ],
+            },
+          ],
+        };
+      },
+    };
+    let seq = 0;
+    const client = {
+      strictModeDocumentId: 'd1',
+      documentVersions: { d1: 1 },
+      withOperation: async (label, fn) => fn(() => {}),
+      documents: {
+        get: async () => {
+          client.documentVersions = { ...client.documentVersions, d1: server.version };
+          return server.raw();
+        },
+      },
+      addGloss: async (token, value) => {
+        if (client.documentVersions.d1 !== server.version) {
+          throw Object.assign(new Error('HTTP 409 Document version mismatch'), {
+            status: 409,
+            method: 'POST',
+          });
+        }
+        server.writes += 1;
+        server.spans.push({ id: `s${++seq}`, tokens: [token], value });
+        server.version += 1;
+        client.documentVersions = { ...client.documentVersions, d1: server.version };
+      },
+    };
+    // Another user's gloss.
+    server.elsewhere = (token, value) => {
+      server.spans.push({ id: `x${++seq}`, tokens: [token], value });
+      server.version += 1;
+    };
+    return { server, client };
+  };
+
+  class GlossDoc extends DocumentModel {
+    gloss(token, value) {
+      this._applyRawPatch((raw) => {
+        raw.textLayers[0].tokenLayers[0].spanLayers[0].spans.push({
+          id: `pending:${token}`,
+          tokens: [token],
+          value,
+        });
+      });
+      return this._queueWrite('Failed to update Gloss', () => this._client.addGloss(token, value));
+    }
+  }
+
+  const openGlossDoc = async () => {
+    const { server, client } = docServer();
+    const doc = new GlossDoc({ raw: server.raw(), client });
+    const errors = [];
+    doc.onError = (msg, err) => errors.push(err);
+    return { server, client, doc, errors };
+  };
+  const valuesOn = (raw) =>
+    Object.fromEntries(
+      raw.textLayers[0].tokenLayers[0].spanLayers[0].spans.map((s) => [s.tokens[0], s.value]),
+    );
+
+  it('is sent again when the other write was on another word', async () => {
+    const { server, doc, errors } = await openGlossDoc();
+    server.elsewhere('t1', 'DEF');
+    expect(await doc.gloss('t2', 'CANINE')).toBe(true);
+    expect(errors).toEqual([]);
+    expect(valuesOn(server.raw())).toEqual({ t1: 'DEF', t2: 'CANINE' });
+    expect(valuesOn(doc.raw)).toEqual({ t1: 'DEF', t2: 'CANINE' });
+  });
+
+  it('sends the edits waiting behind it too', async () => {
+    const { server, doc, errors } = await openGlossDoc();
+    server.elsewhere('t1', 'DEF');
+    const a = doc.gloss('t2', 'CANINE');
+    const b = doc.gloss('t3', 'RUN');
+    expect(await a).toBe(true);
+    expect(await b).toBe(true);
+    expect(errors).toEqual([]);
+    expect(valuesOn(server.raw())).toEqual({ t1: 'DEF', t2: 'CANINE', t3: 'RUN' });
+  });
+
+  it('is refused and shown when the other write was on the same word', async () => {
+    const { server, doc, errors } = await openGlossDoc();
+    server.elsewhere('t2', 'HOUND');
+    expect(await doc.gloss('t2', 'CANINE')).toBe(false);
+    expect(errors.map((e) => e.status)).toEqual([409]);
+    expect(valuesOn(server.raw())).toEqual({ t2: 'HOUND' });
+    await flush();
+    expect(valuesOn(doc.raw)).toEqual({ t2: 'HOUND' });
+  });
+
+  it('after a real conflict, still sends a waiting edit the conflict does not touch', async () => {
+    const { server, doc, errors } = await openGlossDoc();
+    server.elsewhere('t2', 'HOUND');
+    const a = doc.gloss('t2', 'CANINE');
+    const b = doc.gloss('t3', 'RUN');
+    expect(await a).toBe(false);
+    expect(await b).toBe(true);
+    expect(errors.map((e) => e.status)).toEqual([409]);
+    expect(valuesOn(server.raw())).toEqual({ t2: 'HOUND', t3: 'RUN' });
+  });
+
+  it('goes again only once', async () => {
+    const { server, client, doc, errors } = await openGlossDoc();
+    server.elsewhere('t1', 'DEF');
+    // Someone writes again between the read and the second try.
+    const get = client.documents.get;
+    client.documents.get = async () => {
+      const raw = await get();
+      server.elsewhere('t3', 'RUN');
+      return raw;
+    };
+    expect(await doc.gloss('t2', 'CANINE')).toBe(false);
+    expect(errors.map((e) => e.status)).toEqual([409]);
+    expect(server.writes).toBe(0);
+  });
+});
