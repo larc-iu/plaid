@@ -272,6 +272,12 @@ def test_a_umr_plan_that_stops_after_its_anchors_wrote_no_node(monkeypatch):
     assert [kinds[i] for i in written] == [k for k in kinds if k not in ('create_node', 'create_edge')]
     assert done['message'] == (f'Partly applied: {len(written)} of {rows} changes written. '
                                'HTTP 500 boom.')
+    # The new node's anchor, written in the first batch, is taken back out:
+    # left, it was an anchor with no node, which the editor's repair deleted
+    # on someone's next open, under their name (conc-2026-09-29 H8-2).
+    [anchors] = [p for p in client.payloads('tokens.bulk_create')]
+    [cleared] = client.payloads('tokens.bulk_delete')
+    assert len(cleared) == len(anchors) == 1
 
 
 def _second_send_fails(monkeypatch):

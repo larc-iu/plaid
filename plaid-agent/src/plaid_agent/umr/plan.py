@@ -13,6 +13,7 @@ That is the order ``umrImport.js`` writes a document in, and the order
 ``UmrDocument.applyPenman`` writes one sentence in.
 """
 
+import logging
 import re
 from collections import Counter
 from typing import Any, Dict, List, Optional, Tuple
@@ -31,6 +32,8 @@ UMR = 'umr'
 # The pass past the first. A span needs the anchor token the first batch mints,
 # and it is made by the executor itself rather than by a kind of its own; an
 # edge or a triple needs those spans, which is this pass.
+logger = logging.getLogger(__name__)
+
 LINKS = 'links'
 
 #: Every pass ``_execute`` runs, which is the whole list a kind may be staged
@@ -561,29 +564,11 @@ def _execute(client, project, ops, *, label, counts, notes, stamps: Stamps,
         finish(lambda op: KIND[op['kind']].stage == ok.BATCH and op['kind'] != 'create_node')
 
         # --- pass 2: the concept spans over the tokens pass 1 minted --------
-        made = 0
-        for op in ops:
-            if op.get('kind') != 'create_node':
-                continue
-            token = ctx.token_id(op['document_id'], op['var'])
-            meta: Dict[str, Any] = {'var': op['var'], 'attrs': list(op.get('attrs') or [])}
-            if op.get('constant'):
-                meta['constant'] = True
-            if op.get('root'):
-                meta['root'] = True
-            # A node aligned to no word records its sentence, as the editor
-            # does: the record is what says so, and the anchor stands over the
-            # whole sentence, so an edit to the text around it resizes the
-            # anchor rather than taking the node with it.
-            if op.get('sentence_id') and not op.get('constant'):
-                meta['sentence'] = op['sentence_id']
-            ctx.span_at[(op['document_id'], op['var'])] = b.add(
-                lambda batch, o=op, t=token, m=meta: batch.spans.create(
-                    o['concept_layer_id'], [t], o.get('concept') or '',
-                    {**ctx.stamp(), UMR: m}))
-            made += 1
-        if made:
-            b.flush()
+        try:
+            _write_concepts(ctx, ops)
+        except Exception:
+            _clear_anchors(ctx, ops)
+            raise
         finish(lambda op: op['kind'] == 'create_node')
 
         # --- pass 3: the relations between those spans ----------------------
@@ -595,6 +580,62 @@ def _execute(client, project, ops, *, label, counts, notes, stamps: Stamps,
     if notes:
         result['notes'] = notes
     return result
+
+
+def _clear_anchors(ctx, ops) -> None:
+    """Delete the anchor tokens pass 1 made for nodes whose concept spans did
+    not land, when pass 2 failed. Left, they were anchors with no node, which
+    the editor's repair deleted on someone's next open, under their name. A
+    span whose answer was lost goes with its anchor, and so does one that
+    lands later. Best effort: the failure is what is reported."""
+    client = ctx.client
+    by_doc: Dict[str, List[str]] = {}
+    for op in ops:
+        if op.get('kind') != 'create_node':
+            continue
+        try:
+            token = ctx.token_id(op['document_id'], op['var'])
+        except Exception:  # noqa: BLE001 - an anchor that never came back has nothing to delete
+            continue
+        if token:
+            by_doc.setdefault(op['document_id'], []).append(token)
+    for document_id, tokens in by_doc.items():
+        try:
+            # The version a lost answer moved on, for a strict-mode client.
+            client.documents.get(document_id)
+            client.tokens.bulk_delete(tokens)
+        except Exception as e:  # noqa: BLE001
+            logger.warning('Could not remove the anchors of nodes that were not written: %s', e)
+
+
+def _write_concepts(ctx, ops) -> int:
+    """Pass 2: the concept span of each new node, over the anchor pass 1
+    made. How many were written."""
+    b = ctx.b
+    made = 0
+    for op in ops:
+        if op.get('kind') != 'create_node':
+            continue
+        token = ctx.token_id(op['document_id'], op['var'])
+        meta: Dict[str, Any] = {'var': op['var'], 'attrs': list(op.get('attrs') or [])}
+        if op.get('constant'):
+            meta['constant'] = True
+        if op.get('root'):
+            meta['root'] = True
+        # A node aligned to no word records its sentence, as the editor
+        # does: the record is what says so, and the anchor stands over the
+        # whole sentence, so an edit to the text around it resizes the
+        # anchor rather than taking the node with it.
+        if op.get('sentence_id') and not op.get('constant'):
+            meta['sentence'] = op['sentence_id']
+        ctx.span_at[(op['document_id'], op['var'])] = b.add(
+            lambda batch, o=op, t=token, m=meta: batch.spans.create(
+                o['concept_layer_id'], [t], o.get('concept') or '',
+                {**ctx.stamp(), UMR: m}))
+        made += 1
+    if made:
+        b.flush()
+    return made
 
 
 def summarize(ops: List[Dict[str, Any]]) -> str:
