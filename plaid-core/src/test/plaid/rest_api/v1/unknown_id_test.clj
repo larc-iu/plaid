@@ -6,13 +6,22 @@
   with an empty page (guidelines, comments, documents, the audit reads,
   services), a lock on a document that does not exist, or a 500."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
+            [mount.core :as mount]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler
                                     with-admin with-test-users with-clean-db
                                     admin-request user1-request api-call
                                     assert-status]]
             [plaid.test-helpers :refer [create-test-project create-test-document]]))
 
-(use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
+(defn- with-service-channels-started
+  "The services route reads the live service channels, a mount state the
+  fixture chain does not start and another test namespace may have stopped."
+  [f]
+  (mount/start #'plaid.server.events/service-channels)
+  (f))
+
+(use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users
+  with-service-channels-started)
 (use-fixtures :each with-clean-db)
 
 (defn- project-routes
@@ -170,4 +179,8 @@
     (testing path
       (let [resp (call req [:get path])]
         (assert-status 404 resp)
-        (is (= "User not found" (-> resp :body :error)))))))
+        (is (= "User not found" (-> resp :body :error))))))
+  (testing "a real user with no picture"
+    (let [resp (call user1-request [:get "/api/v1/users/user2@example.com/avatar"])]
+      (assert-status 404 resp)
+      (is (= "User has no profile picture" (-> resp :body :error))))))
