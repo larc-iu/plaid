@@ -97,3 +97,26 @@ test("a write outside a batch always carries the stamp", async () => {
     ["7", "7"],
   );
 });
+
+test("an out-of-band signal carries no stamp", async () => {
+  // A lock, a service's progress and a query are no write of the document,
+  // so nothing checks a claim on them (the Python client leaves it off too).
+  const client = strictClient();
+  const sent = [];
+  const realFetch = globalThis.fetch;
+  stubFetch(sent);
+  try {
+    await client.documents.acquireLock("d1", undefined, "L1");
+    await client.documents.renewLock("d1", "L1");
+    await client.documents.releaseLock("d1", "L1");
+    await client.query({ find: ["?t"], where: [] });
+    await client.spans.update("s1", "NOUN");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+
+  assert.deepEqual(
+    sent.map((req) => versionOf(req.url)),
+    [null, null, null, null, "7"],
+  );
+});

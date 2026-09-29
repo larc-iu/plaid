@@ -387,9 +387,11 @@ export function prepareRequest(client, method, path, options = {}) {
   // whenever that write was one the route ignores, such as a vocabulary
   // entry's metadata, which is exactly what the igt editor queues first.
   // `stampedDocument` names the document the stamp is for, so a batch split
-  // into several requests can restamp its later ones (see submitBatch).
+  // into several requests can restamp its later ones (see submitBatch). An
+  // out-of-band signal (a lock, a service's progress, a query) is no write of
+  // the document and carries none.
   let stampedDocument = null;
-  if (client.strictModeDocumentId && method !== "GET") {
+  if (client.strictModeDocumentId && method !== "GET" && !outOfBand) {
     const docId = client.strictModeDocumentId;
     if (client.documentVersions[docId]) {
       const docVersion = client.documentVersions[docId];
