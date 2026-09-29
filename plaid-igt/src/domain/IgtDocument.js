@@ -492,16 +492,35 @@ export class IgtDocument extends DocumentModel {
   // Declared on the layer so a split in ANY app preserves it, including one
   // that has never heard of these keys. Maintainers only, since it is layer
   // config; a failure is not worth interrupting anyone over, because nothing
-  // is worse than it was.
+  // is worse than it was. The write adds only the missing keys to what the
+  // layer declared, and names that declaration as `expected`, so a key
+  // another app declared after this page loaded is not written over: that
+  // write is refused and the next open plans again.
   async _backfillPreserveOnSplit(info) {
     if (!canManageProject(this._project, this._user)) return;
     const ids = planPreserveOnSplit(info, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, PROVENANCE_KEYS);
+    const layers = [
+      info?.sentenceTokenLayer,
+      info?.primaryTokenLayer,
+      info?.morphemeTokenLayer,
+      info?.alignmentTokenLayer,
+    ];
     for (const id of ids) {
+      const layer = layers.find((l) => l?.id === id);
+      const options = expectStored(layer, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY);
+      const declared = Array.isArray(options.expected) ? options.expected : [];
+      const value = [...declared, ...PROVENANCE_KEYS.filter((k) => !declared.includes(k))];
       try {
-        await this._client.tokenLayers.setConfig(id, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, [
-          ...PROVENANCE_KEYS,
-        ]);
+        await this._client.tokenLayers.setConfig(
+          id,
+          PLAID_NAMESPACE,
+          PRESERVE_ON_SPLIT_KEY,
+          value,
+          undefined,
+          options,
+        );
       } catch (err) {
+        if (isConfigConflict(err)) continue;
         console.error('Could not declare preserveOnSplit on a layer:', err);
         return;
       }
@@ -512,21 +531,52 @@ export class IgtDocument extends DocumentModel {
   // FLEx importer said "nl" before fields recorded a language, and the
   // exporters read the record now, not the name. Maintainers only, and a
   // failure is not worth interrupting anyone over.
+  //
+  // Each write names the value this page read as `expected` (compare-and-set),
+  // so it adds only the missing languages to what is stored. A maintainer's
+  // settings save made after this page loaded makes the write a 409, which is
+  // let go: the save stands, and the next open plans from it.
   async _backfillFieldLangs(info) {
     if (!canManageProject(this._project, this._user)) return;
     const spanLayers = Object.values(info.spanLayers || {}).flat();
-    try {
-      for (const { id, lang } of planFieldLangBackfill(spanLayers)) {
-        await this._client.spanLayers.setConfig(id, IGT_NAMESPACE, 'lang', lang);
-      }
-      for (const vocab of Object.values(this._vocabularies || {})) {
+    const byId = new Map(spanLayers.map((sl) => [sl?.id, sl]));
+    const writes = [
+      ...planFieldLangBackfill(spanLayers).map(
+        ({ id, lang }) =>
+          () =>
+            this._client.spanLayers.setConfig(
+              id,
+              IGT_NAMESPACE,
+              'lang',
+              lang,
+              undefined,
+              expectStored(byId.get(id), IGT_NAMESPACE, 'lang'),
+            ),
+      ),
+      ...Object.values(this._vocabularies || {}).flatMap((vocab) => {
         const fields = planVocabFieldLangBackfill(vocab);
-        if (fields) {
-          await this._client.vocabLayers.setConfig(vocab.id, IGT_NAMESPACE, 'fields', fields);
-        }
+        if (!fields) return [];
+        return [
+          () =>
+            this._client.vocabLayers.setConfig(
+              vocab.id,
+              IGT_NAMESPACE,
+              'fields',
+              fields,
+              undefined,
+              expectStored(vocab, IGT_NAMESPACE, 'fields'),
+            ),
+        ];
+      }),
+    ];
+    for (const write of writes) {
+      try {
+        await write();
+      } catch (err) {
+        if (isConfigConflict(err)) continue;
+        console.error('Could not record a field language:', err);
+        return;
       }
-    } catch (err) {
-      console.error('Could not record a field language:', err);
     }
   }
 
