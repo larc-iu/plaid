@@ -1068,6 +1068,7 @@ Opening an account shows the projects it can reach, the API tokens it holds, and
 
 **Invites** is every invitation link on the server, whoever minted it, with what it grants and whether it has been used.
 It also mints a numbered set of links in one step, one use each, so a link can be matched to whoever was handed it.
+With **No project** as the project, a link creates an account and grants nothing else.
 
 **Activity** is the same view described under <<_activity>>, across every project.
 

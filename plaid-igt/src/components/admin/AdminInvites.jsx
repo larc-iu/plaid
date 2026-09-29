@@ -36,6 +36,9 @@ import { plural } from '@/utils/plural';
 
 const EMPTY_BATCH = { count: '20', role: 'writer', ttlDays: '30', note: '', projectId: '' };
 
+// The project choice for links that create an account and grant nothing else.
+const NO_PROJECT = 'none';
+
 // Minted links, shown once. Nothing stores a code, so this list is the only
 // chance to capture them.
 const BatchResult = ({ links, onClose }) => {
@@ -129,9 +132,11 @@ export const AdminInvites = ({ client }) => {
       return;
     }
     if (!batch.projectId) {
-      notifyError('Choose the project the links grant access to.', 'Project required');
+      notifyError('Choose a project, or No project.', 'Project required');
       return;
     }
+    const grant =
+      batch.projectId === NO_PROJECT ? {} : { projectId: batch.projectId, projectRole: batch.role };
     setMinting(true);
     const links = [];
     try {
@@ -140,8 +145,7 @@ export const AdminInvites = ({ client }) => {
         // One single-use link each rather than one link with many uses: the
         // notes let a person be matched to the link they were handed.
         const inv = await client.invites.create({
-          projectId: batch.projectId,
-          projectRole: batch.role,
+          ...grant,
           ttlDays: Number(batch.ttlDays) || undefined,
           note,
         });
@@ -320,6 +324,7 @@ export const AdminInvites = ({ client }) => {
                   <SelectValue placeholder="Choose a project" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value={NO_PROJECT}>No project</SelectItem>
                   {projects.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.name}
@@ -328,21 +333,23 @@ export const AdminInvites = ({ client }) => {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Role</Label>
-              <Select value={batch.role} onValueChange={(v) => setBatch({ ...batch, role: v })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {GRANT_ROLES.map((r) => (
-                    <SelectItem key={r} value={r} hint={ROLE_HINTS[r]}>
-                      {cap(r)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {batch.projectId !== NO_PROJECT && (
+              <div className="flex flex-col gap-1.5">
+                <Label>Role</Label>
+                <Select value={batch.role} onValueChange={(v) => setBatch({ ...batch, role: v })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GRANT_ROLES.map((r) => (
+                      <SelectItem key={r} value={r} hint={ROLE_HINTS[r]}>
+                        {cap(r)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="flex flex-col gap-1.5">
               <Label>Expires in (days)</Label>
               <Input
