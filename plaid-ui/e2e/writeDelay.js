@@ -17,7 +17,7 @@ const WRITES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 // networkidle, which then waits past the write as well and hides the race.
 const POST_READS = /\/api\/v1\/(query|invites\/lookup|login)(\?|$)/;
 
-export const writeDelayMs = () => Number(process.env.PLAID_E2E_WRITE_DELAY_MS) || 0;
+const writeDelayMs = () => Number(process.env.PLAID_E2E_WRITE_DELAY_MS) || 0;
 
 // Holds the context's writes to /api for `ms` before sending them on.
 export async function delayWrites(context, ms = writeDelayMs()) {
