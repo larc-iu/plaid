@@ -12,6 +12,8 @@ import { readFieldLang, readVocabFields } from '@/domain/igtConfig';
 import { notifyError, notifyInfo } from '@/utils/feedback';
 import { arrowStep, caretAtArrowEdge } from '@ui/lib/bidi.js';
 import { keys } from '@/lib/keymap.js';
+import { settledId } from '@ui/domain/pendingIds.js';
+import { sameCell } from './shared.js';
 
 // An annotation cell's life: focus, typing, commit, the keyboard chords that
 // move between cells, and the sentence fields' own handlers.
@@ -45,6 +47,10 @@ export const cells = {
   _stampOrig(el) {
     el.dataset.orig = el.igtUnsent ? el.igtUnsent.saved : el.value;
     el.igtUnsent = null;
+    // Which cell the edit is made in. A commit goes to whatever the input is
+    // bound to when it leaves, so a render that reuses the input for another
+    // row's cell has to know (uncontrolledValue in shared.js).
+    el.igtFocusKey = el.dataset.cellKey;
   },
 
   // Morpheme form fields must NOT select-all on focus: the split handler reads
@@ -358,6 +364,7 @@ export const cells = {
       delete el.dataset.suppressCommit;
       return;
     }
+    if (!this._stillFocusedCell(el)) return;
     const next = el.value;
     this._syncCellClasses(el, next, tagset);
     // An enforcing tagset refuses a value it does not allow. Typing is the ONLY
@@ -448,12 +455,14 @@ export const cells = {
   // nothing typed is lost.
   //
   // The cell is refocused, so Enter retries (E2: focus is never lost), only
-  // when that loses nothing: focus still in this cell, dropped to the body, or
-  // resting in another cell that holds nothing typed (where Enter or Tab put
-  // it). A cell with typed text keeps focus, since taking focus from it
-  // commits it, and two cells whose saves keep failing would take focus from
-  // each other and resend forever. Otherwise the value goes back without
-  // focus (_restoreUnsent).
+  // when focus is still in this cell or dropped to the body. Focus resting in
+  // another cell stays there, typed into or not: the person may be typing into
+  // it the moment the refusal lands, and taking focus back sent those letters
+  // after the refused value, into the refused cell ("DOG" refused, "CHASE"
+  // typed in the next word, "DOGCHASE" stored on the first). Taking focus from
+  // a cell with typed text also commits it, and two cells whose saves keep
+  // failing would take focus from each other and resend forever. Otherwise
+  // the value goes back without focus (_restoreUnsent).
   _runKeepingFocus(el, typed, fn) {
     const key = el.dataset.cellKey;
     // The stored value as of this commit: what Escape must revert to and what
@@ -489,9 +498,7 @@ export const cells = {
       let stored = saved;
       if (cell.igtUnsent) stored = cell.igtUnsent.saved;
       else if (active !== cell && cell.value !== typed) stored = cell.value;
-      const untouchedCell =
-        active?.dataset?.cellKey && active.value === (active.dataset.orig ?? '');
-      if (active && active !== document.body && active !== cell && !untouchedCell) {
+      if (active && active !== document.body && active !== cell) {
         this._restoreUnsent(cell, typed, stored);
         return;
       }
@@ -517,8 +524,37 @@ export const cells = {
     this._syncUnsentDrafts();
   },
 
+  // Text typed into a cell whose input a render has since reused for another
+  // row's cell (`igtDisplaced`, set by uncontrolledValue in shared.js). It
+  // goes back, unsent, into the cell it was typed in when that is still
+  // drawn. A cell made by an edit the server refused is gone with it, and
+  // that refusal has said so. Otherwise the row is gone: say what was lost.
+  _rehomeDisplaced() {
+    const el = document.activeElement;
+    const d = el?.igtDisplaced;
+    if (!d) return;
+    el.igtDisplaced = null;
+    this._syncCellClasses(el, el.value, el.igtTagset ?? null);
+    const key = d.key.replace(/pending:\d+/g, (p) => settledId(p));
+    const home = this.container.querySelector(`[data-cell-key="${key}"]`);
+    if (home && home !== el) {
+      this._restoreUnsent(home, d.typed, d.saved);
+      return;
+    }
+    if (/pending:\d+/.test(key)) return;
+    notifyError(`Not saved: ${d.typed}`, 'Changed elsewhere');
+  },
+
+  // Whether a cell's input is still bound to the cell it was focused in. A
+  // render that reuses it for another takes the typed text out first (see
+  // uncontrolledValue), so this is the last line: a commit never goes to a
+  // row the edit was not made in.
+  _stillFocusedCell(el) {
+    return el.igtFocusKey == null || sameCell(el.igtFocusKey, el.dataset.cellKey);
+  },
+
   _putBackInto(cell, typed, saved) {
-    cell.igtUnsent = { typed, saved };
+    cell.igtUnsent = { typed, saved, key: cell.dataset.cellKey };
     cell.value = typed;
     this._syncCellClasses(cell, typed, cell.igtTagset ?? null);
   },

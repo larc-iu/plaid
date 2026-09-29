@@ -385,6 +385,7 @@ export const morphForm = {
       delete el.dataset.suppressCommit;
       return;
     }
+    if (!this._stillFocusedCell(el)) return;
     const next = el.value;
     this._syncCellClasses(el, next);
     if (next === (el.dataset.orig ?? '')) return;

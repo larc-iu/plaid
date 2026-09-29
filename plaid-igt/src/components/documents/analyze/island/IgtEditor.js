@@ -573,6 +573,7 @@ export class IgtEditor {
       Object.keys(this.doc.vocabularies || {}).length > 0,
     );
     render(this._template(), this.container);
+    this._rehomeDisplaced();
     this._syncUnsentDrafts();
     // The pill lives in a nested root the template above does not write, so a
     // fresh toolbar comes back empty until this puts it back.

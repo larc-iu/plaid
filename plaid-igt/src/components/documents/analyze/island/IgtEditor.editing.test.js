@@ -752,6 +752,40 @@ describe('a failed save', () => {
   });
 });
 
+describe('a save refused after the user moved on to the next cell', () => {
+  it('leaves focus there, so what is typed next goes into that cell and not after the refused value', async () => {
+    const { client } = mount();
+    const create = client.spans.create;
+    let hold;
+    client.spans.create = async () => {
+      await new Promise((r) => (hold = r));
+      throw Object.assign(new Error('HTTP 409 changed'), { status: 409 });
+    };
+    const a = cell('ma:m-1:Gloss');
+    const b = cell('ma:m-2:Gloss');
+    focus(a);
+    type(a, 'DOG');
+    // Enter's move: into the next word's cell, nothing typed there yet.
+    focus(b);
+    await settle();
+    hold();
+    await settle(30);
+    client.spans.create = create;
+    expect(document.activeElement).toBe(b);
+    expect(b.value).toBe('');
+    // The refused value is back in its own cell, unsent.
+    expect(a.value).toBe('DOG');
+    expect(a.igtUnsent).toBeTruthy();
+    type(b, 'CHASE');
+    b.blur();
+    await settle();
+    const sent = client.calls
+      .filter((c) => c.kind === 'spans.create')
+      .map((c) => [c.args[1], c.args[2]]);
+    expect(sent).toEqual([[['m-2'], 'CHASE']]);
+  });
+});
+
 describe('saves that keep failing', () => {
   it('leave focus in the cell the user moved on to, and send each value once', async () => {
     // Every save refused. Taking focus back to a failed cell commits the cell

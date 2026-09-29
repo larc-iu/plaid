@@ -2,6 +2,35 @@ import { html, nothing } from 'lit-html';
 import { directive, Directive, PartType } from 'lit-html/directive.js';
 import { PROV, provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { keys } from '@/lib/keymap.js';
+import { isPendingId, settledId, stableKey } from '@ui/domain/pendingIds.js';
+
+// Whether two cell keys name the same cell of the same row: the same key, or
+// the same row under the id the server gave it (a pending id settles), or the
+// morpheme an unanalyzed word showed made real by this page's own write
+// (`virtual:<word>` becomes the pending id planned for it). A morpheme column
+// is drawn by POSITION in its word (see _morphemes in grid.js), so after a
+// refetch the same input can hold another morpheme, one another writer made.
+// That is a different cell, and what was typed into it was meant for the
+// first.
+export const sameCell = (a, b) => {
+  if (a === b) return true;
+  if (a == null || b == null) return false;
+  const norm = (k) => k.replace(/pending:\d+/g, (p) => settledId(p));
+  const na = norm(a);
+  const nb = norm(b);
+  if (na === nb) return true;
+  const kind = na.slice(0, na.indexOf(':') + 1);
+  if (!kind || !nb.startsWith(kind) || !na.startsWith(`${kind}virtual:`)) return false;
+  // `<kind>:virtual:<word id>[:<field>]`. A word id is a server id, which
+  // holds no colon.
+  const restA = na.slice(kind.length);
+  const virtualId = restA.split(':', 2).join(':');
+  const suffix = restA.slice(virtualId.length);
+  const restB = nb.slice(kind.length);
+  if (!restB.endsWith(suffix)) return false;
+  const made = restB.slice(0, restB.length - suffix.length);
+  return isPendingId(made) || stableKey(made) !== made;
+};
 
 // The dotted number that tells an entry apart ("1.2"), drawn after its form as
 // a SUBSCRIPT — kai₁, as FieldWorks writes a homograph number. Never a
@@ -33,6 +62,25 @@ class UncontrolledValueDirective extends Directive {
   update(part, [value]) {
     const el = part.element;
     const v = value ?? '';
+    // Reused for another row's cell (see sameCell): nothing held for the one
+    // it showed before stays in it. Text typed there is handed to the editor
+    // as `igtDisplaced` (cells.js _rehomeDisplaced), and the cell shows what is
+    // stored for the row it holds now. The data-cell-key binding comes before
+    // this directive in every template, so the key read here is the new one.
+    const key = el.dataset.cellKey;
+    if (el.igtUnsent && !sameCell(el.igtUnsent.key, key)) el.igtUnsent = null;
+    if (el.igtFocusKey != null) {
+      if (!sameCell(el.igtFocusKey, key)) {
+        if (document.activeElement === el && el.value !== (el.dataset.orig ?? '')) {
+          el.igtDisplaced = { key: el.igtFocusKey, typed: el.value, saved: el.dataset.orig ?? '' };
+        }
+        el.igtFocusKey = key;
+        el.value = v;
+        el.dataset.orig = v;
+        return this.render(value);
+      }
+      el.igtFocusKey = key;
+    }
     // A value put back after it was not saved (cells.js _restoreUnsent) stays
     // on screen until the stored value moves on from the one it was typed over.
     if (el?.igtUnsent) {
