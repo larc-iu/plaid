@@ -1027,6 +1027,7 @@ Notice that multiple tokens may be specified, allowing for multi-word and non-co
 
 Deleting a vocab item deletes every link to it.
 A screen that shows how many links an entry has before deleting it can pass that count (`expected_link_count` / `{ expectedLinkCount }`), and the delete is then refused with a 409 when the entry has any other number of links by the time it runs.
+The refusal carries the number of links the entry has now as `links`, beside the message.
 
 To merge entries into one, `vocab_items.merge(survivor_id, loser_ids)` / `vocabItems.merge(survivorId, loserIds)` (`POST /api/v1/vocab-items/{id}/merge` with `{"losers": [...]}`) moves every link of the losers to the survivor and deletes the losers, in one operation.
 A moved link keeps its id and metadata. A link on words the survivor is already linked to is deleted instead, since it would say the same thing twice.
@@ -1118,6 +1119,7 @@ In JavaScript the same is `setConfig(id, namespace, key, value, auditMessage, { 
 A key that was absent is expected as `None` / `null` (in JavaScript `expected: undefined` counts the same, as long as the `expected` key is given).
 On the wire this is `?if-unchanged=true` with the body `{"expected": ..., "value": ...}` (a DELETE sends `{"expected": ...}`).
 The check compares one key's whole value, so it holds inside an atomic batch too, where a 409 rolls back the batch.
+Values are compared as JSON, so `1` and `1.0` are the same number and the order of keys does not matter.
 
 NOTE: Config and metadata values are schema-less, meaning that keys and values are unconstrained. If you'd like to see schema support for either of these, please feel free to https://github.com/larc-iu/plaid/issues[open an issue].
 

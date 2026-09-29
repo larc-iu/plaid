@@ -228,19 +228,21 @@
 
      :delete {:summary (str "Delete a vocab item, and every link to it. Every document holding a link to the entry has its version bumped, and their new versions are returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted). "
                             "Needs maintainer rights on the vocabulary. With <query>expected-link-count</query> the delete is refused with a 409 "
-                            "when the entry no longer has that many links, so a delete confirmed over a count does not take a link made since.")
+                            "when the entry no longer has that many links, so a delete confirmed over a count does not take a link made since. "
+                            "The 409 body carries the number it has now as <body>links</body>.")
               :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id-from-item maintainers-only]]
               :parameters {:query [:map [:expected-link-count {:optional true} [:int {:min 0}]]]}
               :handler (fn [{{{:keys [id]} :path {:keys [expected-link-count]} :query} :parameters
                              db :db
                              user-id :user/id :as req}]
-                         (let [{:keys [success code error documents]}
+                         (let [{:keys [success code error documents links]}
                                (vocab-item/delete db id user-id expected-link-count)]
                            (if success
                              (prm/assoc-document-versions-in-header
                               {:status 204} db documents)
                              {:status (or code 500)
-                              :body {:error (or error "Internal server error")}})))}}]
+                              :body (cond-> {:error (or error "Internal server error")}
+                                      links (assoc :links links))})))}}]
 
    ["/:id/merge"
     {:conflicting true

@@ -142,9 +142,18 @@
                                              :path (str "/api/v1/vocab-items/" s "?expected-link-count=" n)}))]
     (link! s (:token (first docs)))
     (testing "the dialog said 0 uses, and someone linked a word since"
-      (assert-status 409 (del 0))
+      (let [resp (del 0)]
+        (assert-status 409 resp)
+        (is (string? (get-in resp [:body :error])))
+        (is (= 1 (get-in resp [:body :links])) "the refusal carries the count it found"))
       (is (item-exists? s))
       (is (= 1 (count (links-of s)))))
+    (testing "in a batch the refusal carries the count too"
+      (let [resp (api-call admin-request
+                           {:method :post :path "/api/v1/batch"
+                            :body [{:path (str "/api/v1/vocab-items/" s "?expected-link-count=3") :method "DELETE"}]})]
+        (assert-status 409 resp)
+        (is (= 1 (get-in resp [:body :links])))))
     (testing "the count shown is the count stored"
       (assert-status 204 (del 1))
       (is (not (item-exists? s))))))

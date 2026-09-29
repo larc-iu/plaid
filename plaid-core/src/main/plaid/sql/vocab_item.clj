@@ -184,6 +184,47 @@
                          (op/bump-document-versions! tx doc-ids)
                          eid))))
 
+(defn- delete*
+  "The operation of `delete`. `links-found` is an atom it sets to the number
+  of links the entry has, read inside the transaction."
+  [db eid user-id expected-link-count links-found]
+  (submit-operation! [tx db {:type :vocab-item/delete
+                             :project nil
+                             :document nil
+                             :description (str "Delete vocab item " eid)
+                             :user user-id}]
+                     (let [existing (psc/fetch-by-id tx :vocab_items eid)]
+                       (when (nil? existing)
+                         (throw (ex-info (psc/err-msg-not-found "Vocab item" eid)
+                                         {:code 404 :id eid})))
+                       (let [vl-rows (psc/q tx {:select [:id :document_id]
+                                                :from :vocab_links
+                                                :where [:= :vocab_item_id eid]})
+                             vl-ids (mapv :id vl-rows)]
+                         (reset! links-found (count vl-rows))
+                         (when (and (some? expected-link-count)
+                                    (not= expected-link-count (count vl-rows)))
+                           (throw (ex-info (str "This entry has " (count vl-rows) " links now, not "
+                                                expected-link-count)
+                                           {:code 409 :id eid :links (count vl-rows)})))
+                         (doseq [vlid vl-ids]
+                           (crud/delete-by-id! tx :vocab_links vlid))
+                         (when (seq vl-ids)
+                           (psc/execute! tx
+                                         {:delete-from :entity_metadata
+                                          :where [:and
+                                                  [:= :entity_type "vocab-link"]
+                                                  [:in :entity_id vl-ids]]}))
+                         (op/bump-document-versions! tx (mapv :document_id vl-rows)))
+                       (psc/execute! tx
+                                     {:delete-from :entity_metadata
+                                      :where [:and
+                                              [:= :entity_type "vocab-item"]
+                                              [:= :entity_id eid]]})
+                       (crud/delete-by-id! tx :vocab_items eid)
+                       (op/touch-vocab-layer! tx (:vocab_layer_id existing))
+                       eid)))
+
 (defn delete
   "Delete a vocab item. Walks the descendant subtree (vocab_links
   pointing at this item) and audits each row deletion through the
@@ -192,45 +233,15 @@
   cleaned up alongside each link; this item's own entity_metadata is
   swept here too (no FK on entity_metadata). With `expected-link-count`
   the delete is refused (409) when the entry has any other number of
-  links, read inside the transaction."
+  links, read inside the transaction, and the refusal carries that number
+  as `:links` beside its message, for the dialog to show."
   ([db eid user-id]
    (delete db eid user-id nil))
   ([db eid user-id expected-link-count]
-   (submit-operation! [tx db {:type :vocab-item/delete
-                              :project nil
-                              :document nil
-                              :description (str "Delete vocab item " eid)
-                              :user user-id}]
-                      (let [existing (psc/fetch-by-id tx :vocab_items eid)]
-                        (when (nil? existing)
-                          (throw (ex-info (psc/err-msg-not-found "Vocab item" eid)
-                                          {:code 404 :id eid})))
-                        (let [vl-rows (psc/q tx {:select [:id :document_id]
-                                                 :from :vocab_links
-                                                 :where [:= :vocab_item_id eid]})
-                              vl-ids (mapv :id vl-rows)]
-                          (when (and (some? expected-link-count)
-                                     (not= expected-link-count (count vl-rows)))
-                            (throw (ex-info (str "This entry has " (count vl-rows) " links now, not "
-                                                 expected-link-count)
-                                            {:code 409 :id eid :links (count vl-rows)})))
-                          (doseq [vlid vl-ids]
-                            (crud/delete-by-id! tx :vocab_links vlid))
-                          (when (seq vl-ids)
-                            (psc/execute! tx
-                                          {:delete-from :entity_metadata
-                                           :where [:and
-                                                   [:= :entity_type "vocab-link"]
-                                                   [:in :entity_id vl-ids]]}))
-                          (op/bump-document-versions! tx (mapv :document_id vl-rows)))
-                        (psc/execute! tx
-                                      {:delete-from :entity_metadata
-                                       :where [:and
-                                               [:= :entity_type "vocab-item"]
-                                               [:= :entity_id eid]]})
-                        (crud/delete-by-id! tx :vocab_items eid)
-                        (op/touch-vocab-layer! tx (:vocab_layer_id existing))
-                        eid))))
+   (let [links-found (atom nil)
+         result (delete* db eid user-id expected-link-count links-found)]
+     (cond-> result
+       (and (= 409 (:code result)) (some? @links-found)) (assoc :links @links-found)))))
 
 ;; ============================================================
 ;; Bulk create / delete
