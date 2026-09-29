@@ -848,7 +848,13 @@
 (defn wrap-vocab-maintainer-required
   "Requires that the user is a maintainer of the vocab layer or an admin.
   `refusal`, when given, is the 403's message in place of the generic one,
-  for a route whose refusal a client shows as it stands."
+  for a route whose refusal a client shows as it stands.
+
+  An id that resolves to no vocabulary (an entry deleted since the caller
+  read it) is refused with the generic unknown-id wording, never `refusal`:
+  it names no vocabulary, as the reader and writer gates' refusal does for
+  such an id, so a client can tell it from a real refusal and read it as
+  changed or removed. The status stays 403 (the core ruling on unknown ids)."
   ([handler get-vocab-id]
    (wrap-vocab-maintainer-required handler get-vocab-id nil))
   ([handler get-vocab-id refusal]
@@ -864,8 +870,10 @@
                                (vocab/maintainer? db vocab-id user-id))))]
        (if-not allowed?
          {:status 403
-          :body {:error (or refusal
-                            (str "User " user-id " lacks maintainer privileges for vocab layer " vocab-id))}}
+          :body {:error (cond
+                          (nil? vocab-id) (str "User " user-id " lacks maintainer access to vocab layer")
+                          refusal refusal
+                          :else (str "User " user-id " lacks maintainer privileges for vocab layer " vocab-id))}}
          (or (unknown-vocab-layer request vocab-id) (handler request)))))))
 
 (defn wrap-vocab-reader-required
