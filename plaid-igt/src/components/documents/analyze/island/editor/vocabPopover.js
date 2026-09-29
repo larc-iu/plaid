@@ -345,7 +345,13 @@ export const vocabPopover = {
       (tree?.childrenOf.get(it.id) || []).some((c) => c.form === it.form && rankedIds.has(c.id));
     const first = items.find((it) => !covered(it)) ?? items[0];
     const best = limited.findIndex((r) => !r._context && r.id === first?.id);
-    if (this._popoverActiveIndex == null) this._popoverActiveIndex = Math.max(0, best);
+    // The row the render picked, told apart from one the user moved to, so a
+    // lexicon read landing while this is open picks again (see
+    // _refreshVocabularies) only when the user has not.
+    if (this._popoverActiveIndex == null) {
+      this._popoverActiveIndex = Math.max(0, best);
+      this._popoverPickedIndex = this._popoverActiveIndex;
+    }
     const activeIdx = Math.min(this._popoverActiveIndex ?? 0, Math.max(0, total - 1));
     // The other tokens in this text that read the same and have no link. While
     // THIS token has none either, a row can take them all along with it ("all

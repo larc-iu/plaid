@@ -111,3 +111,36 @@ describe('a writer who does not maintain the lexicon', () => {
     expect(type.disabled).toBe(true);
   });
 });
+
+describe('the lexicon popover', () => {
+  it('reads the lexicon again when it opens, so an entry added elsewhere since the page loaded is offered', async () => {
+    const { doc, client } = mount();
+    // Another person added "sat" after this page loaded.
+    const fresh = {
+      id: 'v1',
+      name: 'Lexicon',
+      maintainers: ['mara@example.com'],
+      timeModified: 2,
+      items: [
+        { id: 'i-cat', form: 'cat', metadata: { morphType: 'stem' } },
+        { id: 'i-sat', form: 'sat', metadata: { morphType: 'stem' } },
+      ],
+    };
+    client.vocabLayers = { get: async () => fresh };
+    const forms = () =>
+      [...popover().querySelectorAll('.igt-vocab-pop__item .igt-vocab-pop__form')].map((el) =>
+        el.textContent.trim(),
+      );
+    openOn('m-3');
+    expect(forms()).not.toContain('sat');
+    await settle();
+    expect(doc.vocabularies.v1.items.map((it) => it.form)).toContain('sat');
+    expect(forms()).toContain('sat');
+    // The link made from the popover's best row is to the entry that exists.
+    key(popover().querySelector('.igt-vocab-pop__search'), 'Enter');
+    await settle();
+    const link = client.calls.find((c) => c.kind === 'vocabLinks.create');
+    expect(link.args.slice(0, 2)).toEqual(['i-sat', ['m-3']]);
+    expect(client.calls.some((c) => c.kind === 'vocabItems.create')).toBe(false);
+  });
+});

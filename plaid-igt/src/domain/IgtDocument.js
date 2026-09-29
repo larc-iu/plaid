@@ -361,12 +361,17 @@ export class IgtDocument extends DocumentModel {
    */
   async refreshVocabulary(vocabId) {
     const current = this._vocabularies?.[vocabId];
-    if (!current || this._asOf) return false;
+    if (!current || this._asOf || this.isSaving) return false;
     try {
       const fresh = await readVocabulary(this._client, vocabId);
       // Only a read that actually brought entries back replaces them: a stub
       // or a half-answer must not empty the list the editor is showing.
       if (!fresh || !Array.isArray(fresh.items)) return false;
+      // An edit made while the read was out (an entry made, a link added), or
+      // still on its way, may not be in it, and replacing the list would take
+      // it off the screen. The list stays as the edits left it, and the next
+      // read brings it up to date.
+      if (this._vocabularies?.[vocabId] !== current || this.isSaving) return false;
       this._vocabularies = {
         ...this._vocabularies,
         [vocabId]: { ...current, ...fresh, vocabLinks: current.vocabLinks || [] },

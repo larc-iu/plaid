@@ -56,23 +56,39 @@ export const popover = {
     this._ensurePrecedent();
     this._render(true);
     this._focusPopover();
+    this._refreshVocabularies({ forPopover: true });
   },
 
   // Every lexicon this editor can show, read again in the background: entries
   // somebody else has added, or this person has added in another tab, are not
   // in the copy this page loaded with, and the popover offered to make a
   // second entry of a headword it could not see. Asked for when the tab
-  // regains focus (see `_onVisibility`), never while a popover is open, so no
-  // row moves under the hand reaching for it. One read in flight at a time.
-  _refreshVocabularies() {
-    if (this.readOnly || this._vocabRefresh || this._popover) return;
-    const ids = Object.keys(this.doc.vocabularies || {});
-    if (!ids.length) return;
-    this._vocabRefresh = Promise.all(ids.map((id) => this.doc.refreshVocabulary?.(id))).finally(
-      () => {
-        this._vocabRefresh = null;
-      },
-    );
+  // regains focus (see `_onVisibility`) and when the lexicon popover opens
+  // (`forPopover`). Otherwise never while a popover is open, so no row moves
+  // under the hand reaching for it: the popover that asked is drawn again
+  // when the read lands, unless the user has moved to a row or is editing a
+  // new entry's form, and then its next key draws it. One read in flight at
+  // a time.
+  _refreshVocabularies({ forPopover = false } = {}) {
+    if (this.readOnly || (this._popover && !forPopover)) return;
+    if (!this._vocabRefresh) {
+      const ids = Object.keys(this.doc.vocabularies || {});
+      if (!ids.length) return;
+      this._vocabRefresh = Promise.all(ids.map((id) => this.doc.refreshVocabulary?.(id))).finally(
+        () => {
+          this._vocabRefresh = null;
+        },
+      );
+    }
+    if (!forPopover) return;
+    const opened = this._popover;
+    this._vocabRefresh.then((read) => {
+      if (!read?.some(Boolean) || this._popover !== opened) return;
+      if (this._popoverCreateEdit != null) return;
+      if (this._popoverActiveIndex !== this._popoverPickedIndex) return;
+      this._popoverActiveIndex = null;
+      this._render(true);
+    });
   },
 
   // Move the highlighted popover row. `total` includes the virtual "create" row
