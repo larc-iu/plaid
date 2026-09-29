@@ -653,6 +653,15 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
     with client.operation(label):
         ctx = Context(client, ops, stamps, counts, notes, TrackingBatcher(client, tracker=tracker))
         b = ctx.b
+        b.expect(ops)
+
+        # Each op is finished after the flush of its last pass, so a card row
+        # counts as written only once every batch holding its writes stood.
+        def finish(which):
+            for op in ops:
+                if which(op):
+                    b.finish(op)
+        restores = {id(op) for op in ops if op.get('kind') == 'restore_document'}
 
         # --- pass 1: the columns, and any lemma span a relation is going to need ---
         # Every kind the executor sees that is not waiting on a minted id.
@@ -688,12 +697,15 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
 
         # The relations need those spans to exist, so the batch has to land first.
         b.flush()
+        finish(lambda op: (KIND[op['kind']].stage == ok.BATCH and op['kind'] != 'set_words'
+                           and id(op) not in restores))
 
         # The server's own restore, after the batches and never with them: it
         # is one operation of its own and a plan holds at most one.
         for op in ctx.restores:
             client.documents.restore(op['document_id'], op['as_of'])
             b.applied += 1
+            b.finish(op)
 
         # --- pass 2: what needed the first batch's ids ---
         from .shape import finish_set_words
@@ -702,12 +714,14 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
                 finish_set_words(op, b, b.results, ctx.stamp)
         ok.run_stage(KIND, ctx, ops, IDS)
         b.flush()
+        finish(lambda op: op['kind'] == 'set_words' or KIND[op['kind']].stage == IDS)
 
         # --- pass 3: the parser ---
         # Last, and outside the batches, because it is not a write of ours at
         # all: it is another service rewriting whole documents, under its own
         # document lock, for as long as that takes.
         ok.run_stage(KIND, ctx, ops, PARSE)
+        finish(lambda op: KIND[op['kind']].stage == PARSE)
 
     result = dict(counts)
     if notes:

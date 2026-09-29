@@ -24,6 +24,8 @@ from typing import Any, Dict, Iterable, List, Optional
 # created_id is plaid_client's reader of a create response, which the plans take from here.
 from plaid_client import DocumentLockLost, PlaidAPIError, created_id, metadata_ops  # noqa: F401
 from plaid_client.service import locked_for_writes
+
+from .opkind import ROW
 from plaid_client.services import UNKNOWN_OUTCOME, requester_message
 from plaid_client.provenance import (confirmed_inferred, stamp_contributed, PROV_KEY, PROV_SOURCE_KEY,
                                      PROV_CONFIRMED_KEY, PROV_PROB_KEY, PROV_DETAIL_KEY)
@@ -173,12 +175,18 @@ class TrackingBatcher(Batcher):
     def __init__(self, client, budget: int = BATCH_OP_BUDGET, tracker: Optional[Tracker] = None):
         super().__init__(client, budget)
         self.applied = 0
+        #: batches that committed
+        self.flushed = 0
+        # Card row (see ``opkind.ROW``): [ops from it, ops finished, batches
+        # that must commit before all their writes stand].
+        self._rows: Dict[Any, List[int]] = {}
         if tracker is not None:
             tracker.batcher = self
 
     def flush(self) -> None:
         self._drain()
         n = self._weight
+        sending = self._batch is not None
         try:
             super().flush()
         except Exception as e:
@@ -188,6 +196,31 @@ class TrackingBatcher(Batcher):
             e._unknown = outcome_unknown(e)
             raise
         self.applied += n
+        if sending:
+            self.flushed += 1
+
+    # A change on the card is written when every operation it became has
+    # queued or sent all its writes (``finish``) and the batches holding them
+    # committed. An executor calls ``expect`` with the operations it is about
+    # to run, and ``finish`` for each once its last write is queued or made.
+
+    def expect(self, ops: List[Dict[str, Any]]) -> None:
+        for op in ops:
+            if op.get(ROW) is not None:
+                self._rows.setdefault(op[ROW], [0, 0, 0])[0] += 1
+
+    def finish(self, op: Dict[str, Any]) -> None:
+        row = self._rows.get(op.get(ROW))
+        if row is None:
+            return
+        queued = self._batch is not None or any(self._bulk.values())
+        row[1] += 1
+        row[2] = max(row[2], self.flushed + (1 if queued else 0))
+
+    def written_rows(self) -> List[Any]:
+        """The card rows every write of which stands."""
+        return sorted(r for r, (n, done, need) in self._rows.items()
+                      if done == n and need <= self.flushed)
 
 
 def outcome_unknown(error) -> bool:
@@ -210,12 +243,15 @@ class PlanError(Exception):
     when its answer was lost.
     """
 
-    def __init__(self, message: str, applied: int, total: int, unknown: bool = False):
+    def __init__(self, message: str, applied: int, total: int, unknown: bool = False,
+                 written: Optional[List[Any]] = None):
         super().__init__(message)
         self.applied = applied
         self.total = total
         #: The write it failed on got no answer, so it may have landed too.
         self.unknown = unknown
+        #: The card rows written in full (``TrackingBatcher.written_rows``).
+        self.written = written
 
 
 def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
@@ -227,9 +263,14 @@ def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
     batches had already committed, reported nothing written.
     """
     tracker = Tracker()
+
+    def written():
+        return tracker.batcher.written_rows() if tracker.batcher is not None else []
     try:
         return run(tracker)
-    except PlanError:
+    except PlanError as e:
+        if e.written is None:
+            e.written = written()
         raise
     except Exception as e:  # noqa: BLE001 - every failure becomes one the user can read
         applied = getattr(e, '_applied', None)
@@ -238,7 +279,7 @@ def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
         # class or the server's address.
         if isinstance(e, PlaidAPIError):
             raise PlanError(requester_message(e), applied if applied is not None else tracker.applied,
-                            len(ops), unknown) from e
+                            len(ops), unknown, written()) from e
         # The one message in the package that keeps a Python class name. This
         # one reaches the USER, after batches have already committed, and an
         # exception carrying no message of its own would otherwise leave them
@@ -246,7 +287,8 @@ def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
         # act on; the class name is for the operator reading the same line in
         # the log.
         raise PlanError(f'{type(e).__name__}: {e}',
-                        applied if applied is not None else tracker.applied, len(ops), unknown) from e
+                        applied if applied is not None else tracker.applied, len(ops), unknown,
+                        written()) from e
 
 
 class Stamps:

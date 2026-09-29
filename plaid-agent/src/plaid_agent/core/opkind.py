@@ -53,6 +53,12 @@ PROSE = 'prose'
 BATCH = 'batch'
 RESOLVED = 'resolved'
 
+# The key an executed operation carries naming the row of the approval card it
+# came from (its index in the stored plan's ops), so a plan that stops partway
+# can say which of its changes were written. Put on by the service at
+# approval, carried through expansion and resolution, and never written.
+ROW = '_row'
+
 
 @dataclass(frozen=True)
 class OpKind:
@@ -246,7 +252,7 @@ def resolve_ops(reg: Mapping[str, OpKind], ctx: Any, ops: Iterable[Dict[str, Any
         if fn is None:
             out.append(op)
             continue
-        resolved = list(fn(ctx, op))
+        resolved = [({**o, ROW: op[ROW]} if ROW in op else o) for o in fn(ctx, op)]
         if check is not None:
             check(op, resolved)
         out.extend(o for o in resolved if keep is None or keep(o))

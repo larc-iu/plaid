@@ -56,6 +56,42 @@ describe('a plan refused as out of date', () => {
   });
 });
 
+// Luke's ruling Q4 (2026-09-29): a plan that stopped partway settles as
+// "Partly applied: N of M changes written", marks the changes written, and
+// offers no Approve. Approving it again wrote nothing and said nothing.
+describe('a plan that stopped partway', () => {
+  const three = plan([{ label: 'a' }, { label: 'b' }, { label: 'c' }]);
+
+  it('says how many of its changes were written, marks them, and offers nothing to approve', async () => {
+    const view = await mount(three, { status: 'partial', written: [0, 2] });
+    expect(byText(view.container, 'span, div', 'Partly applied')).not.toBeNull();
+    expect(view.container.textContent).toContain('2 of 3 changes written.');
+    expect(view.container.textContent).not.toContain('did not answer');
+    const rows = all(view.container, 'tr[data-written]').map((r) => r.dataset.written);
+    expect(rows).toEqual(['true', 'false', 'true']);
+    expect(all(view.container, 'button')).toEqual([]);
+    await view.unmount();
+  });
+
+  it('says so when the server went quiet on the rest', async () => {
+    const view = await mount(three, { status: 'partial', written: [], unknown: true });
+    expect(view.container.textContent).toContain(
+      '0 of 3 changes written. The server did not answer for the rest.',
+    );
+    await view.unmount();
+  });
+
+  it('is exported as partly applied', () => {
+    const conv = {
+      display: [
+        { kind: 'assistant', text: 'Planned.', plan: three, status: 'partial', written: [1] },
+      ],
+    };
+    const md = conversationToMarkdown(conv, { title: 'T' }, { adapter: { ...adapter } });
+    expect(md).toContain('(Partly applied: 1 of 3 changes written.)');
+  });
+});
+
 describe('changes that replace accepted work', () => {
   it('are counted in a line above the list and marked on their rows', async () => {
     const view = await mount(

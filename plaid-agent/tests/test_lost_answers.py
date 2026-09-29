@@ -54,11 +54,13 @@ def test_a_batch_whose_answer_was_lost_counts_as_maybe_written(spec, monkeypatch
     svc = spec['service']()
     spec = {**spec, 'service': lambda: svc}   # one running service, as in production
     helper = sbs._approve(spec, client, plan)
-    assert helper.errors == ['Failed to apply the plan: the server did not answer. '
-                             'Part of the plan may have been written.'], helper.errors
-    assert 'PlaidAPIError' not in helper.errors[0]
+    assert not helper.errors
+    [done] = helper.done
+    rows = len(plan['ops'])
+    assert done['message'] == (f'Partly applied: 0 of {rows} changes written. '
+                               'The server did not answer for the rest.')
     item = _stored(spec, client)
-    assert item.get('partly_applied') is True
+    assert item['status'] == 'partial' and item['unknown'] is True
 
     # Approving again does not write the plan a second time.
     monkeypatch.setattr(core_plan.Batcher, 'flush', real)
@@ -175,3 +177,141 @@ def test_a_new_document_is_written_without_the_held_documents_version():
     with core_plan.holding(c, ['d1']):
         execute_plan(c, ops, source='s', label='l', project=project)
     assert [kind for kind, _, _ in c.stamps] == ['documents.patch_metadata']
+
+
+# --- which changes a plan that stopped partway wrote (Luke's ruling Q4) ------
+
+class _Batch:
+    def __init__(self, sent):
+        self.sent = sent
+
+    def submit(self):
+        self.sent.append(1)
+        return [{}]
+
+
+class _Client:
+    def __init__(self):
+        self.sent = []
+
+    def batch(self):
+        return _Batch(self.sent)
+
+
+def test_a_change_is_written_once_every_batch_holding_it_committed():
+    b = core_plan.TrackingBatcher(_Client())
+    ops = [{'_row': 0}, {'_row': 1}, {'_row': 1}, {'_row': 2}]
+    b.expect(ops)
+    b.add(lambda batch: None)
+    b.finish(ops[0])                 # queued, not yet sent
+    assert b.written_rows() == []
+    b.flush()
+    assert b.written_rows() == [0]
+    b.add(lambda batch: None)
+    b.finish(ops[1])                 # one of row 1's two ops
+    b.flush()
+    assert b.written_rows() == [0], 'a change of two ops needs both'
+    b.add(lambda batch: None)
+    b.finish(ops[2])
+    b.finish(ops[3])
+    assert b.written_rows() == [0], 'its last write is still queued'
+    b.flush()
+    assert b.written_rows() == [0, 1, 2]
+
+
+def _plan_of(spec, client, *tools):
+    """sbs._plan with several changes staged in one workspace."""
+    from importlib import import_module
+    from plaid_agent.core.conversation import assistant_item, build_meta, user_item
+    call_tool = import_module(f'plaid_agent.{spec["app"]}.toolkit').call_tool
+    ws = spec['workspace'](client, spec['load'](client, spec['pid']))
+    for name, args in tools:
+        out = call_tool(ws, name, dict(args))
+        assert ws.ops, out
+    plan = ws.plan_payload()
+    store = ConversationStore(client, 'u@x', spec['pid'], spec['app'])
+    item = assistant_item('Planned.', plan, [], [], '', 'fake/model', service=f'{spec["app"]}:assist:fake')
+    conv = {'messages': [{'role': 'user', 'content': 'do it'}], 'display': [user_item('do it'), item]}
+    store.save('c1', conv, build_meta(None, 'c1', conv, f'{spec["app"]}:assist:fake', 'fake/model',
+                                      pending={'kind': 'apply', 'request_id': 'r9',
+                                               'plan_id': plan['id']}))
+    return plan
+
+
+def test_a_umr_plan_that_stops_after_its_anchors_wrote_no_node(monkeypatch):
+    """A node is its anchor token (pass 1) and its concept span (pass 2). The
+    anchors committed and the spans did not, so no change is written in
+    full, though a batch was."""
+    from umr_fixtures import SENTENCE_1_PENMAN
+    spec = APPS['umr']()
+    client = spec['client']()
+    text = SENTENCE_1_PENMAN.replace(':aspect performance)', ':ARG1 (s1c / cat)\n    :aspect performance)')
+    plan = _plan_of(spec, client, ('set_attributes', {'document': 'Story', 'sentence': 2, 'var': 's2r',
+                                                      'line': ':aspect state'}),
+                    ('apply_penman', {'document': 'Story', 'sentence': 1, 'text': text}))
+    kinds = [op['kind'] for op in plan['ops']]
+    assert 'create_node' in kinds and 'create_node' != kinds[0], kinds
+    real = core_plan.Batcher.flush
+    sent = []
+
+    def second_fails(self):
+        if self._batch is not None or any(self._bulk.values()):
+            sent.append(1)
+            if len(sent) == 2:
+                raise PlaidAPIError('HTTP 500 boom at http://h:8085/api/v1/batch', status=500,
+                                    url='http://h:8085/api/v1/batch', method='POST')
+        real(self)
+
+    monkeypatch.setattr(core_plan.Batcher, 'flush', second_fails)
+    svc = spec['service']()
+    spec = {**spec, 'service': lambda: svc}
+    helper = sbs._approve(spec, client, plan)
+    [done] = helper.done
+    rows = len(plan['ops'])
+    written = _stored(spec, client)['written']
+    assert [kinds[i] for i in written] == [k for k in kinds if k not in ('create_node', 'create_edge')]
+    assert done['message'] == (f'Partly applied: {len(written)} of {rows} changes written. '
+                               'HTTP 500 boom.')
+
+
+def _second_send_fails(monkeypatch):
+    real = core_plan.Batcher.flush
+    sent = []
+
+    def flush(self):
+        if self._batch is not None or any(self._bulk.values()):
+            sent.append(1)
+            if len(sent) == 2:
+                raise PlaidAPIError('HTTP 500 boom', status=500, method='POST')
+        real(self)
+    monkeypatch.setattr(core_plan.Batcher, 'flush', flush)
+
+
+def test_an_igt_change_finished_in_the_second_batch_is_not_written_when_it_fails(monkeypatch):
+    from fixtures import FakeClient as IgtClient
+    from plaid_agent.igt.plan import execute_plan
+    ops = [{'kind': 'rename_entry', 'item_id': 'vi-gam2', 'form': 'net', 'label': 'a', '_row': 0},
+           {'kind': 'merge_entries', 'keep_id': 'vi-ali', 'remove_id': 'vi-erg', 'links': [],
+            'label': 'b', '_row': 1},
+           {'kind': 'rename_document', 'document_id': 'd1', 'name': 'Two', 'label': 'c', '_row': 2}]
+    _second_send_fails(monkeypatch)
+    with pytest.raises(core_plan.PlanError) as caught:
+        execute_plan(IgtClient(), ops, source='s', label='l')
+    assert caught.value.written == [0, 2], 'the merge is in the second batch'
+
+
+def test_a_ud_head_needs_its_second_batch(monkeypatch):
+    from plaid_agent.ud.plan import execute_plan
+    spec = APPS['ud']()
+    client = spec['client']()
+    ws = spec['workspace'](client, spec['load'](client, spec['pid']))
+    from plaid_agent.ud.toolkit import call_tool
+    call_tool(ws, 'set_field', {'document': 'Viaje', 'refs': ['s1.w1'], 'field': 'lemma', 'value': 'ir'})
+    call_tool(ws, 'set_head', {'document': 'Viaje', 'ref': 's2.w1', 'head': 0, 'deprel': 'root'})
+    ops = [{**op, '_row': i} for i, op in enumerate(ws.ops)]
+    kinds = [op['kind'] for op in ops]
+    assert kinds[-1] == 'set_head', kinds
+    _second_send_fails(monkeypatch)
+    with pytest.raises(core_plan.PlanError) as caught:
+        execute_plan(client, ops, source='s', label='l', project=ws.project)
+    assert caught.value.written == [i for i, k in enumerate(kinds) if k != 'set_head']

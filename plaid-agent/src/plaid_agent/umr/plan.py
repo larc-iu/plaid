@@ -546,10 +546,19 @@ def _execute(client, project, ops, *, label, counts, notes, stamps: Stamps,
         ctx = Context(client, project, ops, stamps, counts, notes,
                       TrackingBatcher(client, tracker=tracker))
         b = ctx.b
+        b.expect(ops)
+
+        # Each op is finished after the flush of its last pass, so a card row
+        # counts as written only once every batch holding its writes stood.
+        def finish(which):
+            for op in ops:
+                if which(op):
+                    b.finish(op)
 
         # --- pass 1: deletes, values, metadata, and every anchor token ------
         ok.run_stage(KIND, ctx, ops, ok.BATCH)
         b.flush()
+        finish(lambda op: KIND[op['kind']].stage == ok.BATCH and op['kind'] != 'create_node')
 
         # --- pass 2: the concept spans over the tokens pass 1 minted --------
         made = 0
@@ -575,10 +584,12 @@ def _execute(client, project, ops, *, label, counts, notes, stamps: Stamps,
             made += 1
         if made:
             b.flush()
+        finish(lambda op: op['kind'] == 'create_node')
 
         # --- pass 3: the relations between those spans ----------------------
         ok.run_stage(KIND, ctx, ops, LINKS)
         b.flush()
+        finish(lambda op: KIND[op['kind']].stage == LINKS)
 
     result = dict(counts)
     if notes:

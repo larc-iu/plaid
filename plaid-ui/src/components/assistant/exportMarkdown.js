@@ -43,17 +43,20 @@ export const replyToMarkdown = (text, citations, ctx) => {
   return `${out}\n\n**Cited examples**\n\n${inline.map((c) => cardToMarkdown(c, ctx)).join('\n\n')}`;
 };
 
-const planToMarkdown = (plan, status, interrupted) => {
+const planToMarkdown = (plan, status, interrupted, written) => {
+  const rows = plan.opCount ?? (plan.labels || []).length;
   const outcome =
     status === 'applied'
       ? 'Approved and applied.'
-      : status === 'discarded'
-        ? 'Discarded.'
-        : status === 'stale'
-          ? 'Out of date.'
-          : interrupted
-            ? 'Approved, but applying did not finish.'
-            : 'Not yet approved.';
+      : status === 'partial'
+        ? `Partly applied: ${(written || []).length} of ${rows} changes written.`
+        : status === 'discarded'
+          ? 'Discarded.'
+          : status === 'stale'
+            ? 'Out of date.'
+            : interrupted
+              ? 'Approved, but applying did not finish.'
+              : 'Not yet approved.';
   const lines = [`**Proposed changes:** ${plan.summary || ''} (${outcome})`, ''];
   (plan.labels || []).forEach((l, i) => lines.push(`${i + 1}. ${l}`));
   return lines.join('\n');
@@ -90,7 +93,7 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
         const cited = namedCitations(d.citations, projectId, projectNamesAt(display, i));
         out.push(replyToMarkdown(d.text, cited, ctx), '');
       }
-      if (d.plan) out.push(planToMarkdown(d.plan, d.status, !!d.interrupted), '');
+      if (d.plan) out.push(planToMarkdown(d.plan, d.status, !!d.interrupted, d.written), '');
     }
   });
   return (

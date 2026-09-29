@@ -140,6 +140,9 @@ class Context:
         self.respells: Dict[str, List[tuple]] = {}
         self.pending_deletes: List[str] = []   # entries to delete once their links are gone
         self.pending_merges: List[tuple] = []  # (kept entry, entry merged into it), after the links
+        # Ops with writes after the first pass, by the pass that ends them, so
+        # each is finished (TrackingBatcher.finish) only once those stand.
+        self.later: Dict[str, List[Dict[str, Any]]] = {}
         self.dead_tokens: set = set()          # tokens the plan certainly deletes
         self.text_edits: List[Dict[str, Any]] = []
         self.restores: List[Dict[str, Any]] = []
@@ -151,6 +154,12 @@ class Context:
         # discard that deletes the same span, a merge beside a delete of the
         # same entry. Each pair is a whole plan refused after approval.
         self.gone: set = set()
+
+    def defer(self, op, when: str = 'second') -> None:
+        self.later.setdefault(when, []).append(op)
+
+    def deferred(self, op) -> bool:
+        return any(o is op for ops in self.later.values() for o in ops)
 
     def drop(self, resource: str, entity_id) -> None:
         if not entity_id or (resource, entity_id) in self.gone:
@@ -211,6 +220,8 @@ def _apply_set_analysis(ctx: Context, op) -> int:
         for fv in m.get('fields') or []:
             if fv.get('value') not in (None, ''):
                 ctx.pending_spans.append((idx, fv['layer_id'], fv['value']))
+                if not ctx.deferred(op):
+                    ctx.defer(op)
     ctx.chains[op['word_id']] = slots
     return 1
 
@@ -222,6 +233,7 @@ def _apply_set_orthography(ctx: Context, op) -> int:
 
 def _apply_respell(ctx: Context, op) -> int:
     ctx.respells.setdefault(op['text_id'], []).append((op['begin'], op['end'], op['value']))
+    ctx.defer(op, f'respell:{op["text_id"]}')
     return 1
 
 
@@ -232,6 +244,7 @@ def _link(ctx: Context, op, tokens: List[str]) -> int:
         ctx.b.add(lambda batch, o=op, t=tokens: batch.vocab_links.create(o['item_id'], t, ctx.stamp()))
     elif op.get('new_entry_key'):
         ctx.pending_links.append((tokens, op['new_entry_key']))
+        ctx.defer(op)
     return 1
 
 
@@ -242,6 +255,7 @@ def _apply_link(ctx: Context, op) -> int:
         # first morpheme's) goes in that batch too, so a second batch that
         # fails leaves the stored link where it was.
         ctx.planned_links.append(op)
+        ctx.defer(op)
         return 1
     return _link(ctx, op, [op['token_id']])
 
@@ -294,6 +308,7 @@ def _apply_set_doc_metadata(ctx: Context, op) -> int:
 
 def _apply_create_document(ctx: Context, op) -> int:
     ctx.new_docs.append(op)  # after the batches: several dependent calls
+    ctx.defer(op, 'direct')
     return 1
 
 
@@ -304,6 +319,7 @@ def _apply_merge_entries(ctx: Context, op) -> int:
     # read, a link made in between was deleted with the entry. The op's
     # `links` are what the card shows.
     ctx.pending_merges.append((op['keep_id'], op['remove_id']))
+    ctx.defer(op)
     return 1
 
 
@@ -314,6 +330,7 @@ def _apply_delete_entry(ctx: Context, op) -> int:
     # takes with the morpheme and then refuses to delete again. The op still
     # lists them, for what the plan removes.
     ctx.pending_deletes.append(op['item_id'])
+    ctx.defer(op)
     return 1
 
 
@@ -381,6 +398,7 @@ def _apply_split_sentence(ctx: Context, op) -> int:
 
 def _apply_edit_text(ctx: Context, op) -> int:
     ctx.text_edits.append(op)  # after the batches: several dependent calls
+    ctx.defer(op, 'direct')
     return 1
 
 
@@ -1170,6 +1188,7 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
     with client.operation(label):
         ctx = Context(client, project, stamps, counts, notes, TrackingBatcher(client, tracker=tracker))
         b = ctx.b
+        b.expect(ops)
         # Seeded with what goes without a delete call of its own, so a single
         # delete naming the same id is never issued beside it.
         for _tid in _bulk_gone(ops):
@@ -1187,6 +1206,8 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
             # "0 field values" on the applied card.
             if n:
                 counts[spec.noun[1]] += n
+            if not ctx.deferred(op) and not any(op is r for r in ctx.restores):
+                b.finish(op)
 
         b.flush()
 
@@ -1229,11 +1250,14 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
         for iid in ctx.pending_deletes:
             ctx.drop('vocab_items', iid)
         b.flush()
+        for op in ctx.later.get('second', ()):
+            b.finish(op)
 
         # A restore is the server's own single operation over the document.
         for op in ctx.restores:
             client.documents.restore(op['document_id'], op['as_of'])
             b.applied += 1
+            b.finish(op)
 
         # Text edits after the batches (which carry pre-edit offsets).
         # Region edits first, highest region first: each is re-verified
@@ -1244,12 +1268,15 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
             if project is None:
                 raise ValueError('edit_text needs the project')
             _write_text_edit(client, project, op)
+            b.finish(op)
         # Whole-token replaces keep the token (and its morphemes, which share
         # its extent) and shift everything after it.
         for text_id, edits in ctx.respells.items():
             edits.sort(key=lambda e: -e[0])
             client.texts.update(text_id, [{'type': 'replace', 'index': bg, 'length': en - bg, 'value': v}
                                           for bg, en, v in edits])
+            for op in ctx.later.get(f'respell:{text_id}', ()):
+                b.finish(op)
 
         for op in ctx.new_docs:
             if project is None:
@@ -1262,6 +1289,7 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
                 create_document(client, project, op['name'], op['text'], op.get('metadata') or {})
             finally:
                 client.strict_mode_document_id = held
+            b.finish(op)
     result = dict(counts)
     if notes:
         result['notes'] = notes

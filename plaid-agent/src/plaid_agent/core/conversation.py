@@ -346,12 +346,30 @@ def settle_plan(conv: Dict[str, Any], index: int, status: Optional[str], note: O
     return {'messages': messages, 'display': display}
 
 
-def partly_applied(conv: Dict[str, Any], index: int) -> Dict[str, Any]:
-    """The plan at ``index`` failed after some of it was written. It stays
-    undecided (the card still offers Approve and Discard), and the item says
-    so, since a discard afterwards would otherwise read as nothing written."""
-    display = [({**d, 'partly_applied': True} if i == index else d) for i, d in enumerate(conv['display'])]
-    return {**conv, 'display': display}
+def partial_note(labels: Sequence[str], written: Sequence[int], unknown: bool, why: str) -> str:
+    """What the model is told of a plan that stopped partway (Luke's ruling
+    Q4, 2026-09-29): how many of its changes were written, which, and which
+    were not, so the next turn plans only what is missing. ``labels`` are the
+    card's rows, ``written`` the rows written in full."""
+    done = set(written)
+
+    def listed(rows):
+        shown = [labels[i] or f'change {i + 1}' for i in rows[:PARTIAL_LISTED]]
+        more = len(rows) - len(shown)
+        return '; '.join(shown) + (f'; and {more} more' if more > 0 else '')
+    yes = [i for i in range(len(labels)) if i in done]
+    no = [i for i in range(len(labels)) if i not in done]
+    out = f'(note) Applying stopped partway ({why}): {len(yes)} of {len(labels)} changes were written.'
+    if yes:
+        out += f' Written: {listed(yes)}.'
+    if no:
+        out += (f' Not written{", or not known to be" if unknown else ""}: {listed(no)}. '
+                'Read the document before planning them again.')
+    return out
+
+
+#: How many changes a partial note names on each side before it counts the rest.
+PARTIAL_LISTED = 20
 
 
 # --- size ---------------------------------------------------------------------

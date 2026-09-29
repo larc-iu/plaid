@@ -66,3 +66,17 @@ describe('changesTheView', () => {
     expect(changesTheView({ done: false, kind: 'apply' })).toBe(false);
   });
 });
+
+describe('a plan that stopped partway', () => {
+  beforeEach(() => vi.clearAllMocks());
+  it('is a warning titled Partly applied, docked or not', async () => {
+    const { applyToasts } = await import('./jobs.js');
+    const j = { outcome: { partial: true, message: 'Partly applied: 1 of 3 changes written.' } };
+    applyToasts(j, 'x', { docked: true });
+    expect(notifyWarning).toHaveBeenCalledWith(
+      'Partly applied: 1 of 3 changes written.',
+      'Partly applied',
+    );
+    expect(notifySuccess).not.toHaveBeenCalled();
+  });
+});

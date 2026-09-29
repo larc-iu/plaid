@@ -273,6 +273,8 @@ export const Turn = ({
           <PlanCard
             plan={item.plan}
             status={item.status}
+            written={item.written}
+            unknown={!!item.unknown}
             recordedAsHuman={item.asHuman}
             interrupted={interrupted}
             applying={applying}

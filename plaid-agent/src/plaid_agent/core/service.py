@@ -75,8 +75,9 @@ from .agent import (ModelConfig, ModelTooSlow, PING_TIMEOUT_S, Toolkit, TurnCanc
 from .files import Attachments
 from .guidelines import in_context as guidelines_in_context
 from .conversation import (ConversationStore, MissingConversation, assistant_item, build_meta, error_item,
-                           find_plan, partly_applied, proposed_changes, prune, record_budget,
+                           find_plan, partial_note, proposed_changes, prune, record_budget,
                            settle_plan)
+from .opkind import ROW
 from .plan import (DocumentsBusy, PlanError, PlanOutOfDate, ScopeMoved, documents_to_lock, holding,
                    outcome_unknown)
 from .web import BACKENDS, WebConfig, session_for, ping as ping_search
@@ -642,6 +643,11 @@ class BaseAssistantService(BaseService):
             return self._write(store, conv_id, c,
                                build_meta(meta, conv_id, c, self.service_id, model, version=self.version), request_id)
 
+        # A plan that stopped partway is settled: finishing it is a new plan.
+        if item.get('status') == 'partial':
+            settled()
+            response_helper.error('This plan was partly applied. Ask the assistant to finish it.')
+            return
         # A second approval of the same plan (a retried request, a double
         # click) does not write it twice.
         if item.get('status') == 'applied' or (plan_id in self._applied_plans):
@@ -768,7 +774,10 @@ class BaseAssistantService(BaseService):
         ref = f'conv:{conv_id}/plan:{plan_id}/{source}'
         try:
             with client.operation(label, kind='assistant-plan', ref=ref):
-                counts = self.execute_plan(client, ops, source=source,
+                # Each op names its row on the card, so a plan that stops
+                # partway can say which changes were written.
+                counts = self.execute_plan(client, [{**op, ROW: i} for i, op in enumerate(ops)],
+                                           source=source,
                                            label=label, project=project,
                                            stamp_mode=stamp_mode, contributor=contributor,
                                            requester=store.user_id, detail=detail)
@@ -789,18 +798,26 @@ class BaseAssistantService(BaseService):
                 self._remember_applied(plan_id)
 
             def failed(e=e):
-                # Left undecided, as before, but a later discard must not read
-                # as nothing written, so the item says some of it was.
-                settled(partly_applied(conv, index) if written else None)
                 why = 'the server did not answer' if e.unknown else _failure(client, documents, e)
-                # No fraction: `applied` counts batch calls and `total` counts
-                # plan ops, and one op can be several calls, so the two together
-                # read as "failed after 10 of 3 changes were applied".
-                response_helper.error(
-                    f'Failed to apply the plan: {why}. '
-                    + ('Stopped partway. What was written before the failure is in the documents.'
-                       if e.applied else 'Part of the plan may have been written.'
-                       if e.unknown else 'Nothing was written.'))
+                if not written:
+                    settled()
+                    response_helper.error(f'Failed to apply the plan: {why}. Nothing was written.')
+                    return
+                # Settled as partly applied (Luke's ruling Q4): no Approve that
+                # cannot work, the card marks the changes written in full, and
+                # the model is told which, so the user asks it to finish. The
+                # count is of the card's rows: `applied` counts batch calls,
+                # and one change can be several.
+                done = list(e.written or [])
+                labels = [op.get('label') or '' for op in ops]
+                note = partial_note(labels, done, e.unknown, why)
+                fields = {'written': done, **({'unknown': True} if e.unknown else {})}
+                said = (f'Partly applied: {len(done)} of {len(ops)} changes written. '
+                        + ('The server did not answer for the rest.' if e.unknown else _sentence(why)))
+                if not settled(settle_plan(conv, index, 'partial', note, **fields)):
+                    said += ' This conversation was changed elsewhere and does not show it.'
+                response_helper.complete({'kind': 'applied', 'partial': True, 'applied': len(done),
+                                          'counts': [], 'message': said})
             return failed
         except ValueError as e:
             def rejected(e=e):

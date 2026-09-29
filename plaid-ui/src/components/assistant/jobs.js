@@ -475,6 +475,10 @@ export const applyToasts = (j, summary, { docked = false } = {}) => {
     notifyWarning(LOST_CONTACT, 'Assistant');
   } else if (j.error && j.error.status !== 404) {
     notifyError(humanizeError(j.error, 'Failed to apply the changes.'), 'Not applied');
+  } else if (j.outcome?.partial) {
+    // The card says it too, but a plan that stopped partway is not something
+    // to leave to a glance at the card.
+    notifyWarning(j.outcome.message, 'Partly applied');
   } else if (j.outcome && !j.outcome.duplicate && !docked) {
     notifySuccess(j.outcome.message || `Applied ${summary}.`, 'Changes applied');
   }

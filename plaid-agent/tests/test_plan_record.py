@@ -245,22 +245,36 @@ def test_a_plan_refused_as_out_of_date_keeps_what_it_proposed(spec, monkeypatch)
     _check_record(item, plan)
 
 
-def test_a_plan_that_failed_partway_says_so_and_stays_decidable(spec, monkeypatch):
-    """A failure after some batches committed leaves the card undecided, as
-    before. Discarding it later must not read as "nothing was written"."""
+def test_a_plan_that_failed_partway_is_settled_as_partly_applied(spec, monkeypatch):
+    """Luke's ruling Q4: a plan that stopped partway settles as "Partly
+    applied: N of M changes written". The card marks the rows written in full
+    and offers no Approve, the model is told which changes landed, and the
+    user asks it to finish. Approving it again wrote nothing and said nothing
+    (conc-2026-09-29 H8-3)."""
     client = spec['client']()
     plan = _staged(spec, client, monkeypatch)
     svc_cls = spec['service']
+    rows = len(plan['ops'])
 
     def boom(self, *a, **k):
-        raise PlanError('the server refused', applied=1, total=2)
+        raise PlanError('the server refused', applied=1, total=2, written=[0])
 
     monkeypatch.setattr(svc_cls, 'execute_plan', boom)
     helper = sbs._approve(spec, client, plan)
-    assert helper.errors and 'Stopped partway' in helper.errors[-1]
+    assert not helper.errors
+    [done] = helper.done
+    assert done['partial'] is True
+    assert done['message'] == f'Partly applied: 1 of {rows} changes written. The server refused.'
     item = _stored(spec, client)
-    assert item['status'] is None and item['plan']['ops'], 'still undecided, still whole'
-    assert item['partly_applied'] is True
+    assert item['status'] == 'partial' and item['written'] == [0]
+    assert 'ops' not in item['plan'], 'settled, so compacted like any other'
+    conv, _ = ConversationStore(client, 'u@x', spec['pid'], spec['app']).load('c1')
+    note = conv['messages'][-1]['content']
+    assert note.startswith(f'(note) Applying stopped partway (the server refused): 1 of {rows} '
+                           'changes were written. Written: ')
+
+    helper = sbs._approve(spec, client, plan)
+    assert helper.errors == ['This plan was partly applied. Ask the assistant to finish it.']
 
 
 def test_a_failure_before_anything_was_written_leaves_no_mark(spec, monkeypatch):
@@ -272,7 +286,7 @@ def test_a_failure_before_anything_was_written_leaves_no_mark(spec, monkeypatch)
 
     monkeypatch.setattr(spec['service'], 'execute_plan', boom)
     sbs._approve(spec, client, plan)
-    assert 'partly_applied' not in _stored(spec, client)
+    assert _stored(spec, client)['status'] is None, 'nothing written, so still undecided'
 
 
 def test_an_applied_plan_keeps_what_was_dropped_when_it_was_applied(spec, monkeypatch):

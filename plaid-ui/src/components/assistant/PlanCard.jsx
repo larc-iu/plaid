@@ -19,6 +19,10 @@ import {
 export const PlanCard = ({
   plan,
   status,
+  // A plan that stopped partway: the rows written in full, and whether the
+  // server went quiet on the rest.
+  written,
+  unknown = false,
   recordedAsHuman,
   interrupted,
   applying,
@@ -59,12 +63,16 @@ export const PlanCard = ({
   // undecided plan: applying again is safe, since the service refuses to
   // write the same plan twice.
   const lost = undecided && interrupted && !applying;
+  // Stopped partway, and settled so: finishing it is a new plan.
+  const partial = status === 'partial';
+  const writtenRows = useMemo(() => new Set(partial ? written || [] : []), [partial, written]);
   return (
     <div
       className={cn(
         'rounded-lg border px-3 py-2 text-sm',
         undecided && 'border-primary/40 bg-primary/5',
         status === 'applied' && 'border-success/40 bg-success/5',
+        partial && 'border-warning/40 bg-warning/10',
         (status === 'discarded' || stale) && 'opacity-60',
       )}
     >
@@ -86,6 +94,11 @@ export const PlanCard = ({
             Out of date
           </Badge>
         )}
+        {partial && (
+          <Badge variant="outline" className="ml-auto">
+            Partly applied
+          </Badge>
+        )}
         {applying && (
           <Badge variant="secondary" className="ml-auto">
             <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Applying…
@@ -98,6 +111,12 @@ export const PlanCard = ({
         )}
       </div>
       {lost && <p className="mt-2 text-xs text-muted-foreground">Applying did not finish.</p>}
+      {partial && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          {writtenRows.size} of {allRows.length} changes written.
+          {unknown && ' The server did not answer for the rest.'}
+        </p>
+      )}
       {rewrites > 0 && (
         <p className="mt-1.5 flex items-center gap-1.5 text-xs text-warning-foreground">
           <PenLine className="h-3.5 w-3.5 shrink-0" />
@@ -141,7 +160,13 @@ export const PlanCard = ({
                   </th>
                 </tr>
                 {g.rows.map((r) => (
-                  <ChangeRow key={r.index} row={r} projectId={projectId} adapter={adapter} />
+                  <ChangeRow
+                    key={r.index}
+                    row={r}
+                    projectId={projectId}
+                    adapter={adapter}
+                    written={partial ? writtenRows.has(r.index) : undefined}
+                  />
                 ))}
               </Fragment>
             ))}
@@ -220,10 +245,15 @@ export const PlanCard = ({
 // card arranges (Turn.jsx). Opening a new browser tab for every row was the
 // panel's one link that behaved differently from the rest of the app, and it
 // left the thread behind on a navigation the panel is built to survive.
-const ChangeRow = ({ row, projectId, adapter }) => {
+// On a plan that stopped partway, `written` says whether this change was
+// written in full: a check if so, faded if not.
+const ChangeRow = ({ row, projectId, adapter, written }) => {
   const place = adapter.changePlace(projectId, row.where);
   return (
-    <tr className="align-top">
+    <tr
+      className={cn('align-top', written === false && 'text-muted-foreground')}
+      data-written={written === undefined ? undefined : String(written)}
+    >
       <td className="w-px whitespace-nowrap py-0.5 pr-4">
         <span className="inline-block max-w-[min(18rem,40cqi)] truncate align-bottom">
           {place && (
@@ -245,6 +275,9 @@ const ChangeRow = ({ row, projectId, adapter }) => {
         </span>
       </td>
       <td className="py-0.5">
+        {written && (
+          <Check className="mr-1 inline h-3 w-3 align-[-2px] text-success" aria-label="Written" />
+        )}
         {row.writesText && (
           <Badge
             variant="outline"
