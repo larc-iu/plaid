@@ -97,6 +97,27 @@ describe('an edit refused because the document moved on', () => {
     expect(untouched(addGlossOnDog, base, gone)).toBe(false);
   });
 
+  it('is refused when the word was respelled where it stands, and goes past another word respelled', () => {
+    const respell = (body) => {
+      const now = doc({ version: 2, glosses: [gloss('s1', 't1', 'DEF')] });
+      now.textLayers[0].text.body = body;
+      return now;
+    };
+    expect(untouched(addGlossOnDog, base, respell('the hog runs home'))).toBe(false);
+    expect(untouched(addGlossOnDog, base, respell('the dog runs hone'))).toBe(true);
+    // Offsets count code points: a letter before the word that takes two
+    // UTF-16 units does not shift what the word covers.
+    const astral = doc({ glosses: [gloss('s1', 't1', 'DEF')] });
+    astral.textLayers[0].text.body = '𝒶he dog runs home';
+    const onDog = edit(astral, (d) => glossLayer(d).spans.push(gloss(pendingId(), 't2', 'CANINE')));
+    const dot = structuredClone(astral);
+    dot.textLayers[0].text.body = '𝒶he dot runs home';
+    expect(untouched(onDog, astral, dot)).toBe(false);
+    const hone = structuredClone(astral);
+    hone.textLayers[0].text.body = '𝒶he dog runs hone';
+    expect(untouched(onDog, astral, hone)).toBe(true);
+  });
+
   it('is refused when someone changed the very value it changes', () => {
     const change = edit(base, (d) => {
       glossLayer(d).spans[0].value = 'ART';

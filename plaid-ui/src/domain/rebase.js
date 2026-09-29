@@ -27,6 +27,8 @@
 // - or, when the edit places something in the text (a token's begin and
 //   end), is that text itself: the positions it sends were measured in the
 //   text as it was,
+// - or is the text under a token the edit's rows sit on, changed there (a
+//   word respelled in place, its token kept where it was),
 // - or, again for an edit that places something, is a token over the same
 //   stretch in a layer the edit's layer nests in (its parent token layer, or
 //   that one's), moved, resized or removed: the stretch was cut up
@@ -325,6 +327,25 @@ function nestsIn(layer, outer, ...indexes) {
 const recut = (was, is) =>
   was && was.begin !== null && (!is || is.begin !== was.begin || is.end !== was.end);
 
+// Whether `was` is a text (a row holding text in a string field) that `is`
+// changed inside one of `stretches`, the tokens placed in it, at the same
+// offsets. Offsets count code points.
+function respelled(was, is, stretches, a, b) {
+  if (!was || !is || stretches.length === 0) return false;
+  for (const k of Object.keys(was.own)) {
+    const x = was.own[k];
+    const y = is.own[k];
+    if (typeof x !== 'string' || typeof y !== 'string' || x === y) continue;
+    const xs = [...x];
+    const ys = [...y];
+    for (const s of stretches) {
+      if ((a.get(s.layer) ?? b.get(s.layer))?.layer !== was.layer) continue;
+      if (xs.slice(s.begin, s.end).join('') !== ys.slice(s.begin, s.end).join('')) return true;
+    }
+  }
+  return false;
+}
+
 // True when nothing that changed between `before` (what the edit was made on)
 // and `now` (the document read after the refusal) touches `footprint`.
 export function untouched(footprint, before, now) {
@@ -343,6 +364,10 @@ export function untouched(footprint, before, now) {
     ) {
       return false;
     }
+    // The letters under a token its rows sit on, changed where the token
+    // stands (a word respelled with its length kept): the value was given
+    // to the word as it read.
+    if (!holders.has(id) && respelled(was, b.get(id), footprint.anchors, a, b)) return false;
     for (const e of [a.get(id), b.get(id)]) {
       // A row, in any layer, that names a row the edit removes: sent again,
       // the removal would take it with it unseen.
