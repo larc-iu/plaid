@@ -540,8 +540,9 @@ export class IgtEditor {
       clearTimeout(this._savedTimer);
     } else if (this._statusState === 'saving' || this._statusState === 'offline') {
       // Save just finished: flash "Saved" briefly unless it failed (the error
-      // banner/toast covers failures).
-      if (this.doc.error) {
+      // banner/toast covers failures), a conflict the cell shows included
+      // (`errorCause` without `error`).
+      if (this.doc.error || this.doc.errorCause) {
         this._statusState = 'idle';
       } else {
         this._statusState = 'saved';
