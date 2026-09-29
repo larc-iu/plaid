@@ -1476,6 +1476,29 @@
             (str (pr-str old) " -> " (pr-str new) " "
                  (pr-str (map (fn [{:token/keys [id begin end]}] [id (cp/cp-subs body begin end)]) tokens))))))))
 
+(deftest word-alignment-leaves-no-letter-typed-between-two-words-without-a-space-outside-a-word
+  ;; In a script without spaces, a word respelled beside a deleted one. The
+  ;; diff kept a letter from the respelled word's middle, and the fold put
+  ;; the word on its new spelling. Keeping it by its first letter instead
+  ;; (fewer words kept by their middle alone) is as short, but typed the
+  ;; other new letters between two words, where no token takes them: `kai`
+  ;; was left on `k` of `aek` and `ae` in no word.
+  (let [w (fn [id b e] (assoc (tok id b e) :token/layer :w))]
+    (doseq [[old new tokens]
+            [["thekaitatdogcafé" "theaekdogcafé"
+              [(w :the 0 3) (w :kai 3 6) (w :tat 6 9) (w :dog 9 12) (w :café 12 16)]]
+             ["caféYarınaكتابa\n" "caféYarınاaka\n"
+              [(w :café 0 4) (w :Yarın 4 9) (w :a 9 10) (w :kitab 10 14) (w :a2 14 15)]]]]
+      (let [{:keys [text tokens]} (body-edit old new tokens #{} #{:w})
+            body (:text/body text)
+            held (fn [i] (some (fn [{:token/keys [begin end]}] (<= begin i (dec end))) tokens))
+            letters (filter #(Character/isLetter (int (.codePointAt ^String body (.offsetByCodePoints ^String body 0 (int %)))))
+                            (range (cp/cp-count body)))]
+        (is (= new body))
+        (is (every? held letters)
+            (str (pr-str old) " -> " (pr-str new) " "
+                 (pr-str (map (fn [{:token/keys [id begin end]}] [id (cp/cp-subs body begin end)]) tokens))))))))
+
 (deftest word-alignment-of-one-long-stretch-is-quick
   ;; A body replaced outright (select all and paste, or a diff that gave up)
   ;; is one delete over every word. It is longer than the aligner looks, so

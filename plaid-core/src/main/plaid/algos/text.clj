@@ -1170,8 +1170,10 @@
   where its token does not take them, types no space inside a kept word,
   and joins fewer old words into one new word. Where those tie, the one touching fewer words is
   preferred, and between words without a space only when the diff keeps a
-  word by letters from its middle alone: there, which of two words kept a
-  letter is otherwise not for the text to say. `sat tat` to `tX` then
+  word by letters from its middle alone and the other alignment types no
+  more letters between two such words where it deletes nothing (see
+  `edge-typed`): there, which of two words kept a letter is otherwise not
+  for the text to say. `sat tat` to `tX` then
   deletes `sat ` and respells `tat`, `a ab` to `aX` deletes `a ` and
   respells `ab`, `café é` to `caЖé` respells `café` and deletes ` é`, and
   `thesattatu` to `taЖ`, three words without spaces, deletes `the` and
@@ -1364,7 +1366,32 @@
                                       whole-end? (and (not (osp i)) (bound? (+ a i 1)))]
                                   (recur (rest steps) (inc i) lost-first? kept?
                                          (if (and whole-end? lost-first? kept? (= st :d)) (inc out) out))))
-                              out)))]
+                              out)))
+                 ;; How many letters `steps` type between two old words
+                 ;; written without a space, in a run that deletes nothing
+                 ;; and types no space: a new word, or the end of one of them
+                 ;; or the start of the other, which the text cannot tell. No
+                 ;; token takes them, where the fold puts the letters typed
+                 ;; in a word the diff kept by its middle on that word:
+                 ;; `thekaitat` to `theaek` keeps `kai` by its `a`, and the
+                 ;; fold gives it `aek`, where keeping it by its `k` left
+                 ;; `ae` in no word.
+                edge-typed (fn [steps]
+                             (loop [steps steps i 0 j 0 dels? false spaced? false typed 0 out 0]
+                               (let [st (first steps)]
+                                 (if (or (nil? st) (= st :m))
+                                   (let [p (+ a i)
+                                         out (if (and (pos? typed) (not dels?) (not spaced?) (< 0 p n)
+                                                      (lt? (dec p)) (lt? p) (eg p))
+                                               (+ out typed)
+                                               out)]
+                                     (if st
+                                       (recur (rest steps) (inc i) (inc j) false false 0 out)
+                                       out))
+                                   (cond
+                                     (= st :d) (recur (rest steps) (inc i) j true spaced? typed out)
+                                     (nsp j) (recur (rest steps) i (inc j) dels? true typed out)
+                                     :else (recur (rest steps) i (inc j) dels? spaced? (inc typed) out))))))]
             ;; A stretch of typed text alone deletes no word whose letters
             ;; the diff could have kept, and where it stands is the slide's
             ;; business (text typed at a word's edge stays outside it).
@@ -1497,7 +1524,9 @@
                   (when (and (= bc dc)
                              (or (< bx dx)
                                  (and (= bx dx) (< by dy)
-                                      (or spaced? (< (middles steps) (middles diff-steps))))))
+                                      (or spaced?
+                                          (and (< (middles steps) (middles diff-steps))
+                                               (<= (edge-typed steps) (edge-typed diff-steps)))))))
                      ;; each run of the steps as one delete and one insert
                     (loop [steps steps i 0 j 0 out []]
                       (if (empty? steps)
