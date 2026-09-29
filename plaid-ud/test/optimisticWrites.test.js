@@ -188,7 +188,7 @@ test('a refused write reloads, and the edits queued behind it are still sent', a
   const before = headOf(lemma('home'))[0];
   const drawn = doc.createRelation(lemma('come'), lemma('home'), 'obj');
   await settle();
-  const relabelled = doc.updateRelation(headOf(lemma('home'))[0].id, 'nmod');
+  const relabelled = doc.updateRelation(headOf(lemma('she'))[0].id, 'expl');
 
   release();
   assert.equal(await drawn, false);
@@ -197,6 +197,21 @@ test('a refused write reloads, and the edits queued behind it are still sent', a
   while (doc.isSaving) await settle();
   // Once it has landed the document is read again (this server kept nothing).
   assert.deepEqual(headOf(lemma('home')), [before]);
+});
+
+// An edit to what the refused write made names a row the server never made:
+// it is refused without being sent (F-IGT's queue note), where it went out
+// under the pending id and the core answered 400.
+test('an edit queued behind a refused create, to what that create made, is refused unsent', async () => {
+  const { doc, release, calls, lemma, headOf } = open({ fail: 'relations.create' });
+  const drawn = doc.createRelation(lemma('come'), lemma('home'), 'obj');
+  await settle();
+  const relabelled = doc.updateRelation(headOf(lemma('home'))[0].id, 'nmod');
+
+  release();
+  assert.equal(await drawn, false);
+  assert.equal(await relabelled, false);
+  assert.ok(!calls.some((c) => c.call === 'relations.update'));
 });
 
 test('a sentence split and a merge show before the server answers', async () => {
