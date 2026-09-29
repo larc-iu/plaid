@@ -264,7 +264,9 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
             timeout: ANALYZE_TIMEOUT_MS,
           },
         );
-        if (stopped(result)) return;
+        // What ran before the stop is in the document, and the request
+        // hook's toast says so: it is read again while the lock is held.
+        if (stopped(result)) return await reload();
         await reload();
         const n = result?.sentencesWritten ?? result?.sentences_written;
         if (n > 0) {
@@ -323,7 +325,9 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
             timeout: ANALYZE_TIMEOUT_MS,
           },
         );
-        if (stopped(result)) return;
+        // What ran before the stop is in the document, and the request
+        // hook's toast says so: it is read again while the lock is held.
+        if (stopped(result)) return await reload();
         await reload();
         const n = result?.wordsWritten ?? result?.words_written;
         if (n > 0) {
@@ -378,7 +382,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
               onRequestId: recordStep,
             },
           );
-          if (stopped(result)) return;
+          if (stopped(result)) return await reload();
           await reload();
           parts.push('ran the linking service');
           wrote = true;
