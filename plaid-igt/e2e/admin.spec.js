@@ -205,8 +205,10 @@ test('the activity feed reads newest first and can be searched', async ({ page }
   await expect(search).toBeVisible({ timeout: 20000 });
 
   const feedRows = () => page.locator('table').last().locator('tbody tr');
-  const before = await feedRows().count();
-  expect(before, 'the dev database must have audit history').toBeGreaterThan(0);
+  // The search box draws before the feed's first page arrives, and a count does not wait.
+  await expect
+    .poll(() => feedRows().count(), { message: 'the dev database must have audit history' })
+    .toBeGreaterThan(0);
 
   await search.fill('zzzznotathing');
   await expect(page.getByText(/No changes match/)).toBeVisible();

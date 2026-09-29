@@ -1,5 +1,6 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { delayWrites } from '../../plaid-ui/e2e/writeDelay.js';
 
 // TEST_PLAN B13-02/03: two tabs on one document. The stale tab's write hits
 // the document-version check (409), shows a humanized banner (no URL, no
@@ -67,6 +68,7 @@ test.afterAll(async () => {
 
 async function openTab(browser) {
   const ctx = await browser.newContext();
+  await delayWrites(ctx);
   const page = await ctx.newPage();
   await seedAuth(page);
   await page.goto(`/#/projects/${projectId}/documents/${documentId}?tab=analyze`);
@@ -83,6 +85,14 @@ async function linkVia(page, tokenId, form) {
   await page.locator('.igt-vocab-pop__search').fill(form);
   await page.locator('.igt-vocab-pop__item', { hasText: form }).first().click();
 }
+const glossOf = async (tokenId) => {
+  const raw = await client.documents.get(documentId, true);
+  return raw.textLayers
+    .flatMap((t) => t.tokenLayers)
+    .flatMap((l) => l.spanLayers || [])
+    .flatMap((sl) => sl.spans || [])
+    .find((sp) => sp.tokens[0] === tokenId)?.value;
+};
 const linksTo = async (tokenId) => {
   const raw = await client.documents.get(documentId, true);
   return raw.textLayers
@@ -100,7 +110,10 @@ test('B13-03: the same token linked from a stale tab conflicts; one link survive
   try {
     await linkVia(A.page, ids.w[0], items.occA.form);
     await expect(chip(A.page, ids.w[0])).toHaveText(items.occA.form);
-    await A.page.waitForLoadState('networkidle');
+    // B is stale only once A's write has landed, and the chip shows first.
+    await expect
+      .poll(async () => (await linksTo(ids.w[0])).map((l) => l.vocabItem.id))
+      .toEqual([items.occA.id]);
     // B still holds the old document version.
     await linkVia(B.page, ids.w[0], items.occB.form);
     const status = B.page.locator('.igt-island__error');
@@ -129,7 +142,8 @@ test("B13-02: a gloss in A, then a link in stale B: banner, resync, A's gloss ke
     await gA.click();
     await A.page.keyboard.type('TWO');
     await A.page.keyboard.press('Enter');
-    await A.page.waitForLoadState('networkidle');
+    // B is stale only once A's write has landed, and the cell shows first.
+    await expect.poll(() => glossOf(ids.m[1])).toBe('TWO');
     await linkVia(B.page, ids.w[2], items.occB.form);
     await expect(B.page.locator('.igt-island__error')).toContainText(/changed elsewhere/i);
     // After the resync B sees A's gloss; B's rejected link is not on the server.
@@ -140,8 +154,7 @@ test("B13-02: a gloss in A, then a link in stale B: banner, resync, A's gloss ke
     // Redoing the link from the now-current B succeeds.
     await linkVia(B.page, ids.w[2], items.occB.form);
     await expect(chip(B.page, ids.w[2])).toHaveText(items.occB.form);
-    await B.page.waitForLoadState('networkidle');
-    expect((await linksTo(ids.w[2])).length).toBe(1);
+    await expect.poll(async () => (await linksTo(ids.w[2])).length).toBe(1);
   } finally {
     await A.ctx.close();
     await B.ctx.close();

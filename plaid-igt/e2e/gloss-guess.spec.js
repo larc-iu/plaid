@@ -147,10 +147,15 @@ test('A1-01/02: a guessed cell is a placeholder; Enter adopts it born-verified a
   await expect(cell).not.toHaveClass(/igt-field--guess/);
   // Enter commits and moves to the next cell in the same row.
   await expect(page.locator(`.igt-field[data-cell-key="ma:${ids.m[2]}:Gloss"]`)).toBeFocused();
-  await page.waitForLoadState('networkidle');
+  // The cell shows the value before the write lands, so wait for the server.
+  let span;
+  await expect
+    .poll(async () => {
+      span = (await glossSpans()).find((s) => s.tokens[0] === ids.m[1]);
+      return span?.value;
+    })
+    .toBe('DET.PL');
   expect(seen).toEqual(['POST /api/v1/spans']);
-  const span = (await glossSpans()).find((s) => s.tokens[0] === ids.m[1]);
-  expect(span?.value).toBe('DET.PL');
   expect(span?.metadata?.prov).toBe('inferred');
   expect(span?.metadata?.provSource).toBe('gloss:precedent');
   expect(span?.metadata?.provConfirmed).toBe(true);
@@ -184,9 +189,13 @@ test('A1-04: typing over a guess makes a plain human span', async ({ page }) => 
   await page.keyboard.press('Enter');
   await expect(cell).toHaveValue('X');
   await expect(cell).not.toHaveClass(/igt-field--(machine|verified|guess)/);
-  await page.waitForLoadState('networkidle');
-  const span = (await glossSpans()).find((s) => s.tokens[0] === ids.m[3]);
-  expect(span?.value).toBe('X');
+  let span;
+  await expect
+    .poll(async () => {
+      span = (await glossSpans()).find((s) => s.tokens[0] === ids.m[3]);
+      return span?.value;
+    })
+    .toBe('X');
   expect(span?.metadata?.prov).toBeUndefined();
 });
 
@@ -332,15 +341,19 @@ test('A1-12: Alt+Down lists the values seen for the form, ranked with counts; pi
   expect(await page.evaluate(() => document.activeElement?.dataset?.cellKey ?? null)).not.toBe(
     `ma:${d.m[3]}:Gloss`,
   );
-  await page.waitForLoadState('networkidle');
+  let span;
+  await expect
+    .poll(async () => {
+      const raw = await client.documents.get(d.id, true);
+      span = raw.textLayers
+        .flatMap((t) => t.tokenLayers)
+        .flatMap((l) => l.spanLayers || [])
+        .find((s) => s.id === ids.gloss)
+        .spans.find((s) => s.tokens[0] === d.m[3]);
+      return span?.value;
+    })
+    .toBe('the.PL');
   expect(seen).toEqual(['POST /api/v1/spans']);
-  const raw = await client.documents.get(d.id, true);
-  const span = raw.textLayers
-    .flatMap((t) => t.tokenLayers)
-    .flatMap((l) => l.spanLayers || [])
-    .find((s) => s.id === ids.gloss)
-    .spans.find((s) => s.tokens[0] === d.m[3]);
-  expect(span?.value).toBe('the.PL');
   expect(span?.metadata?.provSource).toBe('gloss:precedent');
   expect(span?.metadata?.provConfirmed).toBe(true);
   expect(span?.metadata?.provDetail?.value).toBe('the.PL');

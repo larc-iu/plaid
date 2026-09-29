@@ -148,7 +148,9 @@ test('B5-01/02/14: "+ Create" trims edge punctuation, creates + links, and repla
   await expect(createRow(page)).not.toContainText('derechos.');
   await createRow(page).dblclick();
   await expect(chip(page, ids.w[W.derechos])).toHaveText(/derechos/);
-  await page.waitForLoadState('networkidle');
+  // The chip shows before the writes land, so wait for the server to have the
+  // link (sent after the entry it points at).
+  await expect.poll(async () => (await linksTo(ids.w[W.derechos])).length).toBe(1);
   const items = (await client.vocabLayers.get(lexB.id, true)).items;
   const made = items.find((it) => it.form === 'derechos');
   expect(made, 'item created in LEX-B').toBeTruthy();
@@ -162,8 +164,12 @@ test('B5-01/02/14: "+ Create" trims edge punctuation, creates + links, and repla
   await createRow(page).dblclick();
   await expect.poll(() => seen.length, { timeout: 5000 }).toBe(2);
   expect(seen).toEqual(['POST /api/v1/vocab-items', 'POST /api/v1/batch']);
-  await page.waitForLoadState('networkidle');
-  links = await linksTo(ids.w[W.derechos]);
+  await expect
+    .poll(async () => {
+      links = await linksTo(ids.w[W.derechos]);
+      return links.some((l) => l.vocabItem.id !== made.id);
+    })
+    .toBe(true);
   expect(links.length).toBe(1);
   expect(links[0].vocabItem.id).not.toBe(made.id);
 });
@@ -212,11 +218,14 @@ test('B5-10/11: entries spelled alike are numbered, and a third is announced wit
   await expect(chip(page, ids.w[W.ser])).toContainText('ser');
   await expect(chip(page, ids.w[W.ser]).locator('.igt-vocab__num')).toHaveText('3');
   await expect(chip(page, ids.w[W.ser]).locator('sub.igt-vocab__num')).toHaveCount(1);
-  await page.waitForLoadState('networkidle');
-  const forms = (await client.vocabLayers.get(lexB.id, true)).items.filter(
-    (it) => it.form === 'ser',
-  );
-  expect(forms.length).toBe(3);
+  // The chip shows before the entry's write lands, so wait for the server.
+  await expect
+    .poll(
+      async () =>
+        (await client.vocabLayers.get(lexB.id, true)).items.filter((it) => it.form === 'ser')
+          .length,
+    )
+    .toBe(3);
 });
 
 test('B2 + B3-02: ranking tiers, narrowing, no-match, Enter links and returns focus', async ({
@@ -260,20 +269,25 @@ test('B4-03/04 + B6-05: unlink mini-action, relink in one batch, cross-vocab rep
   await open(page, ids.w[W.the], lexB.name);
   await rows(page).filter({ hasText: 'the' }).first().click();
   await expect(chip(page, ids.w[W.the])).toHaveText('the');
+  // Each chip changes before its write lands, and writes queue one behind
+  // another, so each step waits for the server to have the one before.
+  await expect.poll(async () => (await linksTo(ids.w[W.the])).length).toBe(1);
   await open(page, ids.w[W.the]);
   await page.locator('.igt-vocab-pop__item.is-linked .igt-vocab-pop__x').click();
   await expect(chip(page, ids.w[W.the])).toHaveCount(0);
-  await page.waitForLoadState('networkidle');
-  expect((await linksTo(ids.w[W.the])).length).toBe(0);
+  await expect.poll(async () => (await linksTo(ids.w[W.the])).length).toBe(0);
   // B4-04: link, then pick another item: one batch (delete + create).
   await open(page, ids.w[W.the], lexB.name);
   await rows(page).filter({ hasText: 'the' }).first().click();
-  await page.waitForLoadState('networkidle');
+  await expect.poll(async () => (await linksTo(ids.w[W.the])).length).toBe(1);
+  const linked = (await linksTo(ids.w[W.the]))[0].vocabItem.id;
   const seen = writes(page);
   await open(page, ids.w[W.the], lexB.name);
   await rows(page).filter({ hasText: 'humble' }).first().click();
   await expect(chip(page, ids.w[W.the])).toHaveText('humble');
-  await page.waitForLoadState('networkidle');
+  await expect
+    .poll(async () => (await linksTo(ids.w[W.the])).map((l) => l.vocabItem.id !== linked))
+    .toEqual([true]);
   expect(seen).toEqual(['POST /api/v1/batch']);
   // B6-05: pick an item from the OTHER vocab: silent replace, one link, in LEX-A.
   await open(page, ids.w[W.the], lexA.name);
@@ -323,6 +337,10 @@ test('B3-01/04: arrows move the highlight and clamp; Tab stays in the search box
 }) => {
   await openAnalyze(page);
   await open(page, ids.w[W.hum], lexB.name);
+  // The popover opens on LEX-B only when `hum` is already linked there (B2's
+  // Enter), and otherwise the tab click takes the focus. The arrows are the
+  // search box's, so start there whichever test ran before.
+  await page.locator('.igt-vocab-pop__search').click();
   const active = () => page.locator('.igt-vocab-pop .is-active').first();
   await expect(rows(page).first()).toHaveClass(/is-active/);
   await page.keyboard.press('ArrowDown');

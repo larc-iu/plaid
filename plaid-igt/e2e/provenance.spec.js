@@ -125,7 +125,9 @@ test('A2-03/05: editing a machine gloss verifies it in one batch; clearing delet
   await page.keyboard.type('FIX');
   await page.keyboard.press('Enter');
   await expect(cell).toHaveClass(/igt-field--verified/);
-  await page.waitForLoadState('networkidle');
+  // The cell changes before the write lands, and the next edit queues behind
+  // it, so wait for the server to have this one.
+  await expect.poll(async () => (await client.spans.get(ids.alphaGloss)).value).toBe('FIX');
   expect(seen, 'one atomic batch (update + setMetadata)').toEqual(['POST /api/v1/batch']);
   await expect(cell).toHaveValue('FIX');
 
@@ -135,7 +137,14 @@ test('A2-03/05: editing a machine gloss verifies it in one batch; clearing delet
   await page.keyboard.press('Delete');
   await page.keyboard.press('Enter');
   await expect(cell).not.toHaveClass(/igt-field--(machine|verified)/);
-  await page.waitForLoadState('networkidle');
+  await expect
+    .poll(async () =>
+      client.spans.get(ids.alphaGloss).then(
+        () => 'present',
+        () => 'gone',
+      ),
+    )
+    .toBe('gone');
   expect(seen).toEqual([`DELETE /api/v1/spans/${ids.alphaGloss}`]);
   await expect(cell).toHaveValue('');
   // Persisted: a reload shows an empty, plain cell.
@@ -167,11 +176,24 @@ test('A4-05/06: Enter confirms the focused machine chip and Delete unlinks, focu
   // focus stays; Ctrl+Down at the end likewise.
   await page.keyboard.press('Control+ArrowDown');
   await expect(chip(ids.m[3])).toBeFocused();
-  await page.waitForLoadState('networkidle');
-  const reload = await client.documents.get(documentId, true);
-  const links = reload.textLayers[0].tokenLayers
-    .flatMap((l) => l.vocabs || [])
-    .flatMap((v) => v.vocabLinks || []);
+  // The chips change before the writes land, so wait for the server to have both.
+  const readLinks = async () =>
+    (await client.documents.get(documentId, true)).textLayers[0].tokenLayers
+      .flatMap((l) => l.vocabs || [])
+      .flatMap((v) => v.vocabLinks || []);
+  let links;
+  await expect
+    .poll(
+      async () => {
+        links = await readLinks();
+        return [
+          links.some((l) => l.tokens[0] === ids.m[2]),
+          links.find((l) => l.tokens[0] === ids.m[1])?.metadata?.provConfirmed,
+        ];
+      },
+      { message: 'gamma link deleted and beta link confirmed server-side' },
+    )
+    .toEqual([false, true]);
   expect(
     links.some((l) => l.tokens[0] === ids.m[2]),
     'gamma link deleted server-side',

@@ -256,7 +256,10 @@ test('C5-08: orthography cells edit and persist', async ({ page }) => {
   await o.click();
   await page.keyboard.type('ˈuno');
   await page.keyboard.press('Enter');
-  await page.waitForLoadState('networkidle');
+  // Reopening cuts off a write still on its way, so wait for the server to have it.
+  await expect
+    .poll(async () => (await client.tokens.get(ids.w[0])).metadata?.['orthog:IPA'])
+    .toBe('ˈuno');
   await openAnalyze(page);
   await expect(cell(page, `or:${ids.w[0]}:IPA`)).toHaveValue('ˈuno');
 });

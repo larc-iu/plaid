@@ -114,13 +114,18 @@ test('K-01: Ctrl+Enter writes every guess on the word, born verified, then hops'
   // The hop lands on the same tier of the next word, after the beat that lets
   // the confirmation show first.
   await expect.poll(() => focusedKey(page)).toBe(`ma:${ids.m[2]}:Gloss`);
-  await page.waitForLoadState('networkidle');
-  const gs = (await spansOf(ids.gloss)).find((s) => s.tokens.includes(ids.m[1]));
-  expect(gs.value).toBe('sun');
+  // The cells show the values before the writes land, so wait for the server.
+  let gs;
+  let ps;
+  await expect
+    .poll(async () => {
+      gs = (await spansOf(ids.gloss)).find((s) => s.tokens.includes(ids.m[1]));
+      ps = (await spansOf(ids.pos)).find((s) => s.tokens.includes(ids.w[1]));
+      return [gs?.value, ps?.value];
+    })
+    .toEqual(['sun', 'N']);
   expect(gs.metadata.provConfirmed).toBe(true);
   expect(gs.metadata.provSource).toBe('gloss:precedent');
-  const ps = (await spansOf(ids.pos)).find((s) => s.tokens.includes(ids.w[1]));
-  expect(ps.value).toBe('N');
   expect(ps.metadata.provConfirmed).toBe(true);
 });
 
