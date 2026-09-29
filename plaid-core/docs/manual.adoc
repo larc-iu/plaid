@@ -1378,6 +1378,7 @@ Writes carry no lock id. A write to a locked document passes for the user who ho
 
 An acquire may name its holder itself: `acquireLock(documentId, auditMessage, newLockId)` (`new_lock_id=` in Python, `?new-lock-id=` on the wire) takes the lock under an id the client minted, such as a fresh UUID.
 Sent again while that holder has the lock, it answers 200 with the same id, so an acquire whose answer was lost can be retried, and released, instead of standing in everyone's way until it expires.
+An id is spent once its holder releases it, even before the acquire arrives: an acquire held up in the network that lands after the release takes nothing and answers 423.
 
 An acquire waits for a write already under way on the document to finish.
 Every write either lands before the acquire answers, and the holder's first read sees it, or is refused with HTTP 423.

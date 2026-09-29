@@ -241,7 +241,8 @@
         doc (create-test-document admin-request proj "Doc")
         _ (assert-no-content (add-project-writer admin-request proj "user1@example.com"))
         _ (assert-no-content (add-project-writer admin-request proj "user2@example.com"))
-        mine "0b6f7e52-3c1a-4f0e-9d7a-2a8f1c9e4b21"]
+        mine "0b6f7e52-3c1a-4f0e-9d7a-2a8f1c9e4b21"
+        again "4e8c1a2b-6d7f-4a3e-b5c9-0d1e2f3a4b5c"]
 
     (testing "the acquire takes the lock under the id it names"
       (let [r (acquire-as user1-request doc mine)]
@@ -270,8 +271,35 @@
       (assert-status 204 (check-lock user1-request doc)))
 
     (testing "after an admin drops it, a renewal under that id is still refused"
-      (assert-ok (acquire-as user1-request doc mine))
+      (assert-ok (acquire-as user1-request doc again))
       (assert-ok (api-call admin-request {:method :delete
                                           :path (str "/api/v1/admin/locks/" doc)}))
-      (assert-status 423 (acquire-lock user1-request doc mine))
+      (assert-status 423 (acquire-lock user1-request doc again))
       (assert-status 204 (check-lock user1-request doc)))))
+
+(deftest a-released-holder-id-never-takes-the-lock-again
+  ;; An acquire held up in the network past the client's timeout is sent again
+  ;; under the same id, the retry takes the lock, the block runs and releases
+  ;; it, and then the first acquire reaches the core. It used to take the free
+  ;; document under the released id, which nobody would release, so everyone
+  ;; else's writes got a 423 for a minute. A block that never heard any answer
+  ;; releases before a late acquire can land, with the same result.
+  (let [proj (create-test-project admin-request "LockSpentIdProj")
+        doc (create-test-document admin-request proj "Doc")
+        _ (assert-no-content (add-project-writer admin-request proj "user1@example.com"))
+        spent "5f1d2c3b-8a4e-4b7c-9e21-0c6a7d8e9f10"
+        unheard "7a2e4c6d-1b3f-4d5e-8f90-a1b2c3d4e5f6"]
+
+    (testing "a late acquire under an id its holder released is refused"
+      (assert-ok (acquire-as user1-request doc spent))
+      (assert-status 204 (release-lock user1-request doc spent))
+      (assert-status 423 (acquire-as user1-request doc spent))
+      (assert-status 204 (check-lock user1-request doc)))
+
+    (testing "a release that arrives before its acquire spends the id too"
+      (assert-status 204 (release-lock user1-request doc unheard))
+      (assert-status 423 (acquire-as user1-request doc unheard))
+      (assert-status 204 (check-lock user1-request doc)))
+
+    (testing "a fresh id still takes the document"
+      (assert-ok (acquire-as user1-request doc "c3d4e5f6-0000-4000-8000-000000000001")))))

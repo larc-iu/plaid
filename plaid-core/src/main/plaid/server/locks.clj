@@ -49,9 +49,29 @@
 ;; into the next.
 (defonce ^:private locks (atom {}))
 
+;; Holder ids whose holder has released them, as {[user-id lock-id] spent-at-ms}.
+;; A client that minted its id sends the acquire again when no answer came, so
+;; an acquire held up in the network can reach the core after its retry took
+;; the lock and the block released it, or after a block that never heard an
+;; answer released what it might hold. Taking the free document then would
+;; leave a lock nobody releases. An id released once never takes a lock again.
+(defonce ^:private spent (atom {}))
+
+;; An acquire and a release of one holder id can arrive together (a retry and
+;; the release of a block that gave up). Taken under one monitor, the release
+;; either finds the lock the acquire took and releases it, or spends the id
+;; before the acquire looks.
+(defonce ^:private acquire-release-monitor (Object.))
+
+(defn- spent-window-ms
+  "How long a released id is remembered: ten lock windows, far longer than
+  any acquire stays in flight."
+  []
+  (* 10 (lock-expiration-ms)))
+
 (defstate ^:private lock-lifecycle
-  :start (do (reset! locks {}) :ready)
-  :stop (do (reset! locks {}) :stopped))
+  :start (do (reset! locks {}) (reset! spent {}) :ready)
+  :stop (do (reset! locks {}) (reset! spent {}) :stopped))
 
 (defn- current-time-ms []
   (.toEpochMilli (Instant/now)))
@@ -91,29 +111,40 @@
      held by `lock-id`
    - :refreshed if `lock-id` already held it, which extends it
    - :conflict if another holder has it, whatever its user. The same user
-     acquiring again is a second holder and is refused."
+     acquiring again is a second holder and is refused.
+   - :lapsed if this holder already released `lock-id`: a late acquire under
+     a spent id takes nothing."
   ([document-id user-id]
    (acquire-lock! document-id user-id (new-lock-id)))
   ([document-id user-id lock-id]
    (let [now (current-time-ms)
          expires-at (+ now (lock-expiration-ms))
-         [before _]
-         (swap-vals! locks
-                     (fn [lock-map]
-                       (let [existing-lock (get lock-map document-id)]
-                         (if (or (nil? existing-lock)
-                                 (expired-at? existing-lock now)
-                                 (holds? existing-lock user-id lock-id))
-                           (assoc lock-map document-id {:lock-id lock-id
-                                                        :user-id user-id
-                                                        :expires-at expires-at})
-                           lock-map))))
+         [spent? before]
+         (locking acquire-release-monitor
+           (let [spent? (contains? @spent [user-id lock-id])
+                 [before _]
+                 (swap-vals! locks
+                             (fn [lock-map]
+                               (let [existing-lock (get lock-map document-id)]
+                                 (if (and (not spent?)
+                                          (or (nil? existing-lock)
+                                              (expired-at? existing-lock now)
+                                              (holds? existing-lock user-id lock-id)))
+                                   (assoc lock-map document-id {:lock-id lock-id
+                                                                :user-id user-id
+                                                                :expires-at expires-at})
+                                   lock-map))))]
+             [spent? before]))
          previous-lock (get before document-id)
+         free? (or (nil? previous-lock) (expired-at? previous-lock now))
          result (cond
-                  (or (nil? previous-lock) (expired-at? previous-lock now)) :acquired
-                  (holds? previous-lock user-id lock-id) :refreshed
-                  :else :conflict)]
+                  (and (not free?) (not (holds? previous-lock user-id lock-id))) :conflict
+                  spent? :lapsed
+                  free? :acquired
+                  :else :refreshed)]
      (case result
+       :lapsed (log/debug "Refused an acquire under a released holder id for document" document-id
+                          "user" user-id)
        :acquired (log/debug "Acquired lock for document" document-id "user" user-id)
        :refreshed (log/debug "Refreshed lock for document" document-id "user" user-id)
        :conflict (log/debug "Lock conflict for document" document-id
@@ -155,12 +186,7 @@
     (log/debug "Renewing lock for document" document-id "user" user-id ":" result)
     result))
 
-(defn release-lock!
-  "Release a lock if it is held by the holder `lock-id` acting as `user-id`.
-   Returns:
-   - :released if lock was successfully released
-   - :not-held if that holder didn't hold the lock"
-  [document-id user-id lock-id]
+(defn- release-held! [document-id user-id lock-id]
   (let [released? (atom false)]
     (swap! locks
            (fn [lock-map]
@@ -174,6 +200,23 @@
                  lock-map)
                lock-map)))
     (if @released? :released :not-held)))
+
+(defn release-lock!
+  "Release a lock if it is held by the holder `lock-id` acting as `user-id`.
+   Returns:
+   - :released if lock was successfully released
+   - :not-held if that holder didn't hold the lock
+  Either way the id is spent: an acquire under it later takes nothing."
+  [document-id user-id lock-id]
+  ;; Spent whether or not it holds the lock now: a release can overtake the
+  ;; acquire it follows, which must then take nothing.
+  (locking acquire-release-monitor
+    (let [now (current-time-ms)
+          window (spent-window-ms)]
+      (swap! spent (fn [m]
+                     (assoc (into {} (remove (fn [[_ at]] (< (+ at window) now))) m)
+                            [user-id lock-id] now))))
+    (release-held! document-id user-id lock-id)))
 
 (defn get-lock-info
   "Get information about a lock.
@@ -263,4 +306,5 @@
   independence. Called from `plaid.fixtures/with-clean-db` (and any
   per-test reset hook that wants a fresh lock-table)."
   []
-  (reset! locks {}))
+  (reset! locks {})
+  (reset! spent {}))

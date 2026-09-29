@@ -28,9 +28,26 @@
     (is (= :released (locks/release-lock! :document :user "first")))
     (is (nil? (locks/get-lock-info :document))))
   (testing "a holder's id held by another user does not release it"
+    (is (= :acquired (locks/acquire-lock! :document :user "third")))
+    (is (= :not-held (locks/release-lock! :document :other "third")))
+    (is (= :conflict (locks/acquire-lock! :document :other "third")))))
+
+(deftest a-released-id-takes-nothing-again
+  (testing "released after it held the lock"
     (is (= :acquired (locks/acquire-lock! :document :user "first")))
-    (is (= :not-held (locks/release-lock! :document :other "first")))
-    (is (= :conflict (locks/acquire-lock! :document :other "first")))))
+    (is (= :released (locks/release-lock! :document :user "first")))
+    (is (= :lapsed (locks/acquire-lock! :document :user "first")))
+    (is (nil? (locks/get-lock-info :document))))
+  (testing "released before its acquire arrived"
+    (is (= :not-held (locks/release-lock! :document :user "second")))
+    (is (= :lapsed (locks/acquire-lock! :document :user "second")))
+    (is (nil? (locks/get-lock-info :document))))
+  (testing "while another holder has the document it is a conflict, as for anyone"
+    (is (= :acquired (locks/acquire-lock! :document :other "x")))
+    (is (= :conflict (locks/acquire-lock! :document :user "first"))))
+  (testing "the same id under another user is not spent"
+    (is (= :released (locks/release-lock! :document :other "x")))
+    (is (= :acquired (locks/acquire-lock! :document :user "x")))))
 
 (deftest a-write-by-the-holding-user-extends-the-lock-and-keeps-its-holder
   (is (= :acquired (locks/acquire-lock! :document :user "first")))
