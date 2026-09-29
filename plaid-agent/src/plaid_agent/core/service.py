@@ -537,7 +537,8 @@ class BaseAssistantService(BaseService):
             # send it twice) and stays on screen with what happened.
             stopped = {'messages': transcript[:-1],
                        'display': conv['display'] + [error_item('Stopped.', stopped=True, model=model,
-                                                                version=self.version)]}
+                                                                version=self.version,
+                                                                service=self.service_id)]}
             self._write(store, conv_id, stopped,
                         build_meta(meta, conv_id, stopped, self.service_id, model, version=self.version), request_id)
             response_helper.complete({'kind': 'stopped'})
@@ -547,7 +548,8 @@ class BaseAssistantService(BaseService):
             traceback.print_exc()
             line = self.turn_failure_line(e)
             failed = {'messages': transcript[:-1],
-                      'display': conv['display'] + [error_item(line, model=model, version=self.version)]}
+                      'display': conv['display'] + [error_item(line, model=model, version=self.version,
+                                                             service=self.service_id)]}
             self._write(store, conv_id, failed,
                         build_meta(meta, conv_id, failed, self.service_id, model, version=self.version), request_id)
             response_helper.error(line)
@@ -568,7 +570,7 @@ class BaseAssistantService(BaseService):
         item = assistant_item(turn.text, plan, self.citations(ws, turn.text),
                               turn.steps, turn.summary, model, usage,
                               guidelines_in_context(getattr(project, 'guidelines', None) or []),
-                              version=self.version)
+                              version=self.version, service=self.service_id)
         if reach is not None and reach.unavailable:
             item['unavailable_projects'] = [dict(u) for u in reach.unavailable]
         done = prune({'messages': transcript + turn.messages, 'display': conv['display'] + [item]},
@@ -673,7 +675,8 @@ class BaseAssistantService(BaseService):
             with holding(client, self.documents_to_lock(ops, documents)):
                 counts = self._check_and_execute(client, project, ops, documents, plan_id, summary,
                                                  index, conv, settled, stamp_mode, contributor, store,
-                                                 response_helper, conv_id, proposed_by(item))
+                                                 response_helper, conv_id, proposed_by(item),
+                                                 item['service'])
         except DocumentsBusy as e:
             settled()
             name = next((d.get('name') for d in documents
@@ -717,8 +720,12 @@ class BaseAssistantService(BaseService):
 
     def _check_and_execute(self, client, project, ops, documents, plan_id, summary, index, conv,
                            settled, stamp_mode, contributor, store,
-                           response_helper, conv_id, detail=None):
+                           response_helper, conv_id, detail, proposer):
         """The staleness check and the writes, under the documents' locks.
+        ``detail`` and ``proposer`` are the model and version, and the service
+        id, of the turn that proposed the plan: the writes name that assistant
+        (`provSource`, `provDetail`) and so does the operation's ref, whichever
+        is running now.
         The counts of what was applied, or, when the plan was refused or
         failed, the answer to give once the locks are released: it writes the
         conversation record, which must not be written under a lock that may
@@ -739,13 +746,14 @@ class BaseAssistantService(BaseService):
             return out_of_date(stale)
         response_helper.progress(10, 'Applying changes…')
         # One operation of kind assistant-plan, naming the conversation, the
-        # plan and this assistant, so the audit log says which writes a plan
-        # made. The app's own operation inside flattens into it.
+        # plan and the assistant that proposed it, so the audit log says which
+        # writes a plan made. The app's own operation inside flattens into it.
         label = f'Assistant: {summary}'
-        ref = f'conv:{conv_id}/plan:{plan_id}/{service_source(self.service_id)}'
+        source = service_source(proposer)
+        ref = f'conv:{conv_id}/plan:{plan_id}/{source}'
         try:
             with client.operation(label, kind='assistant-plan', ref=ref):
-                counts = self.execute_plan(client, ops, source=service_source(self.service_id),
+                counts = self.execute_plan(client, ops, source=source,
                                            label=label, project=project,
                                            stamp_mode=stamp_mode, contributor=contributor,
                                            requester=store.user_id, detail=detail)

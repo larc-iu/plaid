@@ -231,7 +231,7 @@ def _stage(client):
     _segment_and_link(w)
     plan = w.plan_payload()
     store = ConversationStore(client, 'u@x', spec['pid'], 'igt')
-    item = assistant_item('Planned.', plan, [], [], '', 'fake/model')
+    item = assistant_item('Planned.', plan, [], [], '', 'fake/model', service='igt:assist:fake')
     conv = {'messages': [{'role': 'user', 'content': 'do it'}, {'role': 'assistant', 'content': 'Planned.'}],
             'display': [user_item('do it'), item]}
     meta = build_meta(None, 'c1', conv, 'igt:assist:fake', 'fake/model',

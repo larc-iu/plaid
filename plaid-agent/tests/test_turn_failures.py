@@ -343,5 +343,5 @@ def test_an_empty_reply_is_a_failed_turn_with_its_own_line(monkeypatch):
     _service().process_request(_request(client), helper)
     conv, _meta = store.load('c1')
     assert conv['display'][-1] == {'kind': 'error', 'text': EMPTY_REPLY, 'model': 'fake/model',
-                                   'version': _service().version}
+                                   'version': _service().version, 'service': 'igt:assist:fake'}
     assert conv['messages'] == [], 'the message leaves the transcript, so Retry sends it once'

@@ -5,13 +5,17 @@
 // row is its sentence token's, at the same path, so no one write grows with
 // the document:
 //
-//   document: { version, tool, against: {id, name}, at, scope, sentenceCount,
+//   document: { version, tool, serviceVersion, against: {id, name}, at, scope,
+//               sentenceCount,
 //               scores: { sentence, modal, temporal, coref, comprehensive },
 //               requestedBy?: {id, name} }
 //   sentence: { index, at, concept, labeled, unlabeled, weighted, smatch,
 //               matches: [[this, other, thisConcept, otherConcept, leftover]],
 //               unmatched: [var], unmatchedOther: [var], skipped,
 //               thisGraph, otherGraph }
+//
+// `tool` is AnCast and its release, and `serviceVersion` the version of the
+// service that ran it (the manual, "Provenance"). Neither is read here.
 //
 // `requestedBy` is who asked for the run (the service writes with its own
 // token, so History alone would name the operator). It is absent when the run

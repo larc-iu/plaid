@@ -195,11 +195,14 @@ test fixture.
 
 An approved plan's writes carry the model and version of the turn that
 proposed the plan in their `provDetail`, beside `provSource:
-service:<id>`, even when another model is running by the time it is
-approved. A contributor's approval keeps them with the assistant's source
-as `provDetail.guess`, and a plan recorded as human-made carries neither. The
-manual's "Provenance" section has the convention every machine writer
-follows.
+service:<id>` naming the service that turn answered as, even when another
+model is running by the time it is approved. Each turn records all three
+(`model`, `version`, `service`), and the plan's `assistant-plan` operation
+names the same service in its ref. The conversation's sidebar entry names
+the model and version of the assistant that last wrote it. A contributor's
+approval keeps them with the assistant's source as `provDetail.guess`, and a
+plan recorded as human-made carries neither. The manual's "Provenance"
+section has the convention every machine writer follows.
 
 ### The project's guidelines (always on)
 

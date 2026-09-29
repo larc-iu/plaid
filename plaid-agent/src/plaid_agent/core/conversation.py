@@ -138,7 +138,8 @@ def user_item(text: str) -> Dict[str, Any]:
 def assistant_item(text: str, plan: Optional[Dict[str, Any]], citations: List[Dict[str, Any]],
                    steps: List[Dict[str, Any]], steps_summary: str, model: Optional[str],
                    usage: Optional[Dict[str, int]] = None,
-                   context_note: str = '', version: Optional[str] = None) -> Dict[str, Any]:
+                   context_note: str = '', version: Optional[str] = None,
+                   service: Optional[str] = None) -> Dict[str, Any]:
     """What the person sees of a reply. A step's own output is not repeated
     here: it is the ``tool`` message with the same id in the transcript.
 
@@ -155,15 +156,19 @@ def assistant_item(text: str, plan: Optional[Dict[str, Any]], citations: List[Di
     manual is written, and it is shown at all because a rule the model was
     never given is the one way this fails without anyone seeing it.
 
-    ``model`` and ``version`` name what answered: the model, and the
-    assistant's prompt version (``service.agent_version``). Both are per
-    reply because the operator can restart the service on another model or
-    another release in the middle of a conversation.
+    ``model``, ``version`` and ``service`` name what answered: the model,
+    the assistant's prompt version (``service.agent_version``) and the
+    service id it answered as. All three are per reply because the operator
+    can restart the service on another model or another release in the
+    middle of a conversation, and a plan's writes name the one that proposed
+    it, not the one running when it is approved.
     """
     item = {'kind': 'assistant', 'text': text or '', 'plan': plan, 'citations': citations or [],
             'status': None, 'model': model, 'steps': steps or [], 'steps_summary': steps_summary or ''}
     if version:
         item['version'] = version
+    if service:
+        item['service'] = service
     if usage:
         item['usage'] = usage
     if context_note:
@@ -172,9 +177,9 @@ def assistant_item(text: str, plan: Optional[Dict[str, Any]], citations: List[Di
 
 
 def error_item(text: str, stopped: bool = False, model: Optional[str] = None,
-               version: Optional[str] = None) -> Dict[str, Any]:
-    """A turn that ended without an answer. ``model`` and ``version`` say
-    which assistant it was asked of, as on an answer."""
+               version: Optional[str] = None, service: Optional[str] = None) -> Dict[str, Any]:
+    """A turn that ended without an answer. ``model``, ``version`` and
+    ``service`` say which assistant it was asked of, as on an answer."""
     item: Dict[str, Any] = {'kind': 'error', 'text': text}
     if stopped:
         item['stopped'] = True
@@ -182,6 +187,8 @@ def error_item(text: str, stopped: bool = False, model: Optional[str] = None,
         item['model'] = model
     if version:
         item['version'] = version
+    if service:
+        item['service'] = service
     return item
 
 

@@ -119,7 +119,7 @@ def _plan(spec, client, tool=None):
     assert ws.ops, out
     plan = ws.plan_payload()
     store = ConversationStore(client, 'u@x', spec['pid'], spec['app'])
-    item = assistant_item('Planned.', plan, [], [], '', 'fake/model')
+    item = assistant_item('Planned.', plan, [], [], '', 'fake/model', service=f'{spec["app"]}:assist:fake')
     conv = {'messages': [{'role': 'user', 'content': 'do it'}, {'role': 'assistant', 'content': 'Planned.'}],
             'display': [user_item('do it'), item]}
     sid = f'{spec["app"]}:assist:fake'

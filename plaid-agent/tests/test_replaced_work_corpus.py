@@ -113,7 +113,7 @@ def test_igt_past_the_read_budget_a_document_is_pinned_whole(monkeypatch):
 def _store(ws, client, pid, app):
     plan = ws.plan_payload()
     store = ConversationStore(client, 'u@x', pid, app)
-    item = assistant_item('Planned.', plan, [], [], '', 'fake/model')
+    item = assistant_item('Planned.', plan, [], [], '', 'fake/model', service=f'{app}:assist:fake')
     conv = {'messages': [{'role': 'user', 'content': 'do it'}, {'role': 'assistant', 'content': 'Planned.'}],
             'display': [user_item('do it'), item]}
     meta = build_meta(None, 'c1', conv, f'{app}:assist:fake', 'fake/model',

@@ -98,7 +98,8 @@ def test_a_cancelled_turn_is_settled_as_stopped(monkeypatch):
     assert helper.done == [{'kind': 'stopped'}] and not helper.errors
     conv, meta = store.load('c1')
     assert conv['display'][-1] == {'kind': 'error', 'text': 'Stopped.', 'stopped': True,
-                                   'model': 'fake/model', 'version': _service().version}
+                                   'model': 'fake/model', 'version': _service().version,
+                                   'service': 'igt:assist:fake'}
     assert conv['messages'] == [], 'the unanswered message leaves the transcript so a retry sends it once'
     assert meta['pending'] is None
 
@@ -158,7 +159,7 @@ def _seed_plan(client, status=None, request_id='r9'):
             'ops': [{'kind': 'set_span', 'layer_id': 'sl-gloss', 'token_id': 'w-2', 'span_id': None, 'value': 'fish',
                      'label': 'Text 1 s1.w2 "gam": Gloss = "fish"'}],
             'documents': [{'id': 'd1', 'name': 'Text 1', 'version': 7}]}
-    item = assistant_item('I can gloss it.', plan, [], [], '', 'fake/model')
+    item = assistant_item('I can gloss it.', plan, [], [], '', 'fake/model', service='igt:assist:fake')
     item['status'] = status
     conv = {'messages': [{'role': 'user', 'content': 'gloss gam'}, {'role': 'assistant', 'content': 'I can gloss it.'}],
             'display': [user_item('gloss gam'), item]}
