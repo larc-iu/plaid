@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { DocumentMetadataManager } from './DocumentMetadataManager.jsx';
 import { notifyError } from '@/utils/feedback';
+import { isConfigConflict, storedConfig } from '@ui/domain/configCells.js';
+import { useConfigCell } from '@ui/hooks/useConfigCell.js';
 import { PREDEFINED_FIELDS, readDocumentMetadata, IGT_NAMESPACE } from '@/domain/igtConfig';
 
 // What DocumentMetadataManager shows, read off a project's config. Null means
@@ -43,6 +45,10 @@ export const DocumentMetadataSettings = ({
   // Tagsets section renames a tagset and repoints the fields that used it. A
   // table still holding the old name would write it back on its next save.
   const initialData = useMemo(() => extractMetadata(project), [project]);
+  // Each write expects the fields this page last read or wrote, so a page
+  // opened before another maintainer's save is refused rather than writing
+  // over it.
+  const metadataCell = useConfigCell(storedConfig(project, IGT_NAMESPACE, 'documentMetadata'));
 
   // Save changes to the API
   const handleSaveChanges = async (data) => {
@@ -61,21 +67,38 @@ export const DocumentMetadataSettings = ({
         ...(field.tagset ? { tagset: field.tagset } : {}),
       }));
 
-      await client.projects.setConfig(projectId, IGT_NAMESPACE, 'documentMetadata', apiConfig);
+      await metadataCell.write(async (expected) => {
+        await client.projects.setConfig(
+          projectId,
+          IGT_NAMESPACE,
+          'documentMetadata',
+          apiConfig,
+          undefined,
+          { expected },
+        );
+        return apiConfig;
+      });
       // The Tagsets section reads which fields point at which tagset off the
       // project: its "used by" line and seed button for a tagset used only by
       // a metadata field stayed stale until a reload without this.
       await onProjectUpdate?.();
     } catch (error) {
       console.error('Failed to save document metadata configuration:', error);
-      setHasError(true);
+      // Someone else saved since: show what is stored now.
+      if (isConfigConflict(error)) {
+        Promise.resolve(onProjectUpdate?.()).catch((err) =>
+          console.error('Failed to reload the project:', err),
+        );
+      } else {
+        setHasError(true);
+      }
       throw error;
     }
   };
 
   // Handle errors
   const handleError = (error) => {
-    setHasError(true);
+    if (!isConfigConflict(error)) setHasError(true);
     notifyError(error, 'Failed to save the metadata fields');
   };
 

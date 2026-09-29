@@ -35,7 +35,7 @@ import { useLatestCall } from '@ui/hooks/useLatestCall.js';
 import { readLanguages } from '@/domain/igtConfig';
 import {
   readExportPresets,
-  writeExportPresets,
+  updateExportPresets,
   newPreset,
   suggestPresetName,
   EXPORT_FORMATS,
@@ -82,9 +82,12 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
     load();
   }, [load]);
 
-  const persist = async (next, successMessage) => {
-    await writeExportPresets(client, projectId, next);
-    setPresets(next);
+  // `change(list)` returns the list to store. It is made to the stored list,
+  // so a preset another maintainer saved meanwhile stays.
+  const persist = async (change, successMessage) => {
+    const stored = await updateExportPresets(client, project, change);
+    setProject(stored.project);
+    setPresets(stored.presets);
     // The project object the rest of the page holds carries these presets, so
     // it has to be refetched. Without this the Export dialog on the Documents
     // tab still reads the config as it was when the page loaded and reports
@@ -113,7 +116,7 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
         name,
         readLanguages(project.config),
       );
-      await persist([...presets, preset]);
+      await persist((list) => [...list, preset]);
       setCreateOpen(false);
       setNewName('');
       setNameTouched(false);
@@ -129,10 +132,7 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
   const remove = async (id) => {
     const target = presets.find((p) => p.id === id);
     try {
-      await persist(
-        presets.filter((p) => p.id !== id),
-        `Deleted preset “${target?.name}”.`,
-      );
+      await persist((list) => list.filter((p) => p.id !== id), `Deleted preset “${target?.name}”.`);
     } catch (err) {
       console.error('Failed to delete export preset:', err);
       notifyError(err, 'Failed to delete the preset');

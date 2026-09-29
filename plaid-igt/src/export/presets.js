@@ -3,6 +3,7 @@
 // run-time scope (whole project / selected docs / this doc) is deliberately
 // NOT part of a preset.
 
+import { statusOf } from '@ui/lib/errors.js';
 import { IGT_NAMESPACE } from '../domain/igtConfig.js';
 import { defaultCldfOptions } from './cldf.js';
 import { defaultElanOptions } from './elan.js';
@@ -42,6 +43,30 @@ export const readExportPresets = (project) => {
 
 export async function writeExportPresets(client, projectId, presets) {
   await client.projects.setConfig(projectId, IGT_NAMESPACE, 'export', { presets });
+}
+
+/**
+ * Change a project's preset list by `change(list)`, which returns the list to
+ * store. The write expects the list as `project` holds it. When another save
+ * came in between, the list is read again and `change` made to it once more,
+ * so a preset someone else added or edited meanwhile stays. `change` throws to
+ * refuse (a preset it edits was changed or removed meanwhile). Resolves to the
+ * project with the list as stored, and the list.
+ */
+export async function updateExportPresets(client, project, change) {
+  const attempt = async (p) => {
+    const presets = change(readExportPresets(p));
+    await client.projects.setConfig(p.id, IGT_NAMESPACE, 'export', { presets }, undefined, {
+      expected: p.config?.[IGT_NAMESPACE]?.export,
+    });
+    return { project: applyExportPresets(p, presets), presets };
+  };
+  try {
+    return await attempt(project);
+  } catch (err) {
+    if (statusOf(err) !== 409) throw err;
+    return attempt(await client.projects.get(project.id));
+  }
 }
 
 /**

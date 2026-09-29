@@ -4,6 +4,7 @@ import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { notifyError } from '@/utils/feedback';
+import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
 import { readLanguages, IGT_NAMESPACE } from '@/domain/igtConfig';
 import { isLangTag } from '@/domain/fieldNames';
 
@@ -118,11 +119,20 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
     setSaving(true);
     try {
       if (!client) throw new Error('Not authenticated');
-      await client.projects.setConfig(projectId, IGT_NAMESPACE, 'languages', draft);
+      await client.projects.setConfig(
+        projectId,
+        IGT_NAMESPACE,
+        'languages',
+        draft,
+        undefined,
+        expectStored(project, IGT_NAMESPACE, 'languages'),
+      );
       onProjectUpdate?.();
     } catch (err) {
       console.error('Failed to save project languages:', err);
       notifyError(err, 'Failed to save the languages');
+      // Someone else saved since: show what is stored now.
+      if (isConfigConflict(err)) onProjectUpdate?.();
     } finally {
       setSaving(false);
     }

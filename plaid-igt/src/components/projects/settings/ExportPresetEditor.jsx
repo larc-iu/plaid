@@ -9,12 +9,8 @@ import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 import { discoverExportLayers } from '@/export/exportLayers';
 import { readLanguages } from '@/domain/igtConfig';
-import {
-  applyExportPresets,
-  readExportPresets,
-  writeExportPresets,
-  EXPORT_FORMATS,
-} from '@/export/presets';
+import { readExportPresets, updateExportPresets, EXPORT_FORMATS } from '@/export/presets';
+import { isConfigConflict, sameConfig } from '@ui/domain/configCells.js';
 import { ExportRunner } from '@/components/export/ExportRunner.jsx';
 import { PlainTextOptions } from '@/components/export/PlainTextOptions.jsx';
 import { CldfOptions } from '@/components/export/CldfOptions.jsx';
@@ -37,6 +33,8 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // A new value reads the preset again.
+  const [reloads, setReloads] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,7 +56,7 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
     return () => {
       cancelled = true;
     };
-  }, [client, projectId, presetId]);
+  }, [client, projectId, presetId, reloads]);
 
   const layers = useMemo(() => (project ? discoverExportLayers(project) : null), [project]);
   const saved = presets?.find((p) => p.id === presetId) ?? null;
@@ -71,22 +69,31 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
     if (!draft || !draft.name.trim()) return;
     setSaving(true);
     try {
-      const next = presets.map((p) =>
-        p.id === presetId ? { ...draft, name: draft.name.trim() } : p,
-      );
-      await writeExportPresets(client, projectId, next);
-      setPresets(next);
-      setDraft(next.find((p) => p.id === presetId));
+      const edited = { ...draft, name: draft.name.trim() };
+      // Only this preset is written. Another maintainer's save of the list
+      // meanwhile stays, unless it changed or removed this preset, which
+      // refuses the save.
+      const stored = await updateExportPresets(client, project, (list) => {
+        const now = list.find((p) => p.id === presetId);
+        if (!sameConfig(now, saved)) {
+          throw Object.assign(new Error('Changed elsewhere'), { status: 409 });
+        }
+        return list.map((p) => (p.id === presetId ? edited : p));
+      });
+      setPresets(stored.presets);
+      setDraft(stored.presets.find((p) => p.id === presetId));
       // The page's own project object holds the presets too, and the runner
       // below reads the preset it runs out of THAT. Left stale, saving and
       // running in one sitting exported the settings from before the save.
-      setProject((p) => applyExportPresets(p, next));
+      setProject(stored.project);
       // See ExportPresetsSettings: the containing page holds one as well.
       onProjectUpdate?.();
       notifySuccess(`Preset “${draft.name.trim()}” saved`);
     } catch (err) {
       console.error('Failed to save export preset:', err);
       notifyError(err, 'Failed to save the preset');
+      // This preset changed or went meanwhile: show it as it is stored now.
+      if (isConfigConflict(err)) setReloads((n) => n + 1);
     } finally {
       setSaving(false);
     }

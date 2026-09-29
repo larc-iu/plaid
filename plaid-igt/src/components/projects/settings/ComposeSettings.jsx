@@ -6,6 +6,7 @@ import { Badge } from '@ui/components/ui/badge';
 import { SearchInput, ListCount, ListPager } from '@ui/components/shared/list-search';
 import { usePagedList, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { notifyError } from '@/utils/feedback';
+import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
 import { IGT_NAMESPACE, readCompose } from '@/domain/igtConfig';
 import {
   BUILT_IN_TABLE,
@@ -114,14 +115,20 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
     try {
       if (!client) throw new Error('Not authenticated');
       const existing = readCompose(project?.config) || {};
-      await client.projects.setConfig(projectId, IGT_NAMESPACE, 'compose', {
-        ...existing,
-        ...rowsToConfig(draft),
-      });
+      await client.projects.setConfig(
+        projectId,
+        IGT_NAMESPACE,
+        'compose',
+        { ...existing, ...rowsToConfig(draft) },
+        undefined,
+        expectStored(project, IGT_NAMESPACE, 'compose'),
+      );
       onProjectUpdate?.();
     } catch (err) {
       console.error('Failed to save the project codes:', err);
       notifyError(err, 'Failed to save the codes');
+      // Someone else saved since: show what is stored now.
+      if (isConfigConflict(err)) onProjectUpdate?.();
     } finally {
       setSaving(false);
     }

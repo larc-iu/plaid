@@ -5,6 +5,8 @@ import { IGT_NAMESPACE, readDocumentMetadata } from '@/domain/igtConfig';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { byTagsetName, governedFields, readTagsets } from '@/domain/tagsets';
 import { loadAttested, mergeAttested } from '../validate/attested.js';
+import { expectStored, isConfigConflict, storedConfig } from '@ui/domain/configCells.js';
+import { useConfigCell } from '@ui/hooks/useConfigCell.js';
 
 // Everything here is derived from the LIVE project rather than a private fetch.
 // `usage` (which fields point at which tagset) changes when the field table
@@ -14,6 +16,10 @@ import { loadAttested, mergeAttested } from '../validate/attested.js';
 // sections now read the same object and each other's edits land immediately.
 export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate }) => {
   const [draftTagsets, setDraftTagsets] = useState(null);
+  // Each write expects the tagsets this page last read or wrote, so a page
+  // opened before another maintainer's save is refused rather than writing
+  // over it.
+  const tagsetsCell = useConfigCell(storedConfig(project, IGT_NAMESPACE, 'tagsets'));
 
   const tagsets = draftTagsets ?? readTagsets(project?.config);
 
@@ -32,14 +38,23 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
     const fields = byName[from] || [];
     for (const g of fields) {
       if (g.kind === 'span') {
-        await client.spanLayers.setConfig(g.layerId, IGT_NAMESPACE, 'tagset', to);
+        await client.spanLayers.setConfig(g.layerId, IGT_NAMESPACE, 'tagset', to, undefined, {
+          expected: from,
+        });
       }
     }
     if (fields.some((g) => g.kind === 'metadata')) {
       const meta = (readDocumentMetadata(project?.config) || []).map((f) =>
         f.tagset === from ? { ...f, tagset: to } : f,
       );
-      await client.projects.setConfig(projectId, IGT_NAMESPACE, 'documentMetadata', meta);
+      await client.projects.setConfig(
+        projectId,
+        IGT_NAMESPACE,
+        'documentMetadata',
+        meta,
+        undefined,
+        expectStored(project, IGT_NAMESPACE, 'documentMetadata'),
+      );
     }
   };
 
@@ -50,10 +65,21 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
   const handleSaveChanges = async (next, meta) => {
     try {
       if (!client) throw new Error('Not authenticated');
-      await client.projects.setConfig(projectId, IGT_NAMESPACE, 'tagsets', next);
+      await tagsetsCell.write(async (expected) => {
+        await client.projects.setConfig(projectId, IGT_NAMESPACE, 'tagsets', next, undefined, {
+          expected,
+        });
+        return next;
+      });
     } catch (error) {
       console.error('Failed to save tagsets:', error);
       notifyError(error, 'Failed to save the tagsets');
+      // Someone else saved since: show what is stored now.
+      if (isConfigConflict(error)) {
+        Promise.resolve(onProjectUpdate?.()).catch((err) =>
+          console.error('Failed to reload the project:', err),
+        );
+      }
       throw error;
     }
     // Hold what we just wrote until the refreshed project comes back, so the

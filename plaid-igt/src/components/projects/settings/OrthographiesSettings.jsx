@@ -2,6 +2,8 @@ import { useState, useRef } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { OrthographiesManager } from './OrthographiesManager.jsx';
 import { notifyError } from '@/utils/feedback';
+import { isConfigConflict, storedConfig } from '@ui/domain/configCells.js';
+import { useConfigCell } from '@ui/hooks/useConfigCell.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
 import {
   findBaselineTextLayer,
@@ -15,6 +17,12 @@ export const OrthographiesSettings = ({ projectId, client }) => {
   const [hasError, setHasError] = useState(false);
   // Word token layer id, for usage counts at delete time (set during load).
   const wordLayerIdRef = useRef(null);
+  // The stored list as last read, which every write expects, so a page opened
+  // before another maintainer's save is refused rather than writing over it.
+  // A refused save loads the list again (a new `reloads` remounts the editor).
+  const [stored, setStored] = useState(undefined);
+  const orthographiesCell = useConfigCell(stored);
+  const [reloads, setReloads] = useState(0);
 
   // Helper to check if an orthography is predefined
   const isPredefinedOrthography = (orthographyName) => {
@@ -51,6 +59,7 @@ export const OrthographiesSettings = ({ projectId, client }) => {
       const tokenLayer = findWordTokenLayer(textLayer.tokenLayers);
       if (!tokenLayer) return null;
       wordLayerIdRef.current = tokenLayer.id;
+      setStored(storedConfig(tokenLayer, IGT_NAMESPACE, 'orthographies'));
 
       // Extract current orthographies configuration
       const currentConfig = readOrthographies(tokenLayer.config);
@@ -130,15 +139,22 @@ export const OrthographiesSettings = ({ projectId, client }) => {
           name: orth.name,
         }));
 
-      await client.tokenLayers.setConfig(
-        tokenLayerId,
-        IGT_NAMESPACE,
-        'orthographies',
-        nonBaselineOrthographies,
-      );
+      await orthographiesCell.write(async (expected) => {
+        await client.tokenLayers.setConfig(
+          tokenLayerId,
+          IGT_NAMESPACE,
+          'orthographies',
+          nonBaselineOrthographies,
+          undefined,
+          { expected },
+        );
+        return nonBaselineOrthographies;
+      });
     } catch (error) {
       console.error('Failed to save orthographies configuration:', error);
-      setHasError(true);
+      // Someone else saved since: show what is stored now.
+      if (isConfigConflict(error)) setReloads((n) => n + 1);
+      else setHasError(true);
       throw error;
     } finally {
       setIsLoading(false);
@@ -167,7 +183,7 @@ export const OrthographiesSettings = ({ projectId, client }) => {
 
   // Handle errors
   const handleError = (error) => {
-    setHasError(true);
+    if (!isConfigConflict(error)) setHasError(true);
     notifyError(error, 'Failed to save the orthographies');
   };
 
@@ -196,6 +212,7 @@ export const OrthographiesSettings = ({ projectId, client }) => {
       </p>
 
       <OrthographiesManager
+        key={reloads}
         onLoadData={handleLoadData}
         onSaveChanges={handleSaveChanges}
         onError={handleError}

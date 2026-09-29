@@ -22,6 +22,7 @@ import {
   seedCandidates,
 } from '@/domain/tagsets';
 import { textIncludes } from '@ui/domain/collation.js';
+import { sameConfig } from '@ui/domain/configCells.js';
 
 // The editor for a project's tagsets. Owns a draft of the whole map and hands
 // the whole map back on every discrete change (add/delete/toggle) or on blur
@@ -85,6 +86,14 @@ export const TagsetsManager = ({
   enforceNote = 'Closed lists apply to what you type. Values brought in by imports, services or the assistant are not checked. The Validation tab lists them.',
 }) => {
   const [draft, setDraft] = useState(tagsets);
+  // The tagsets as the page last read them. A read that brings something new
+  // (another maintainer's save) replaces the draft, so the next change is
+  // made to what is stored now and not written over it.
+  const [seen, setSeen] = useState(tagsets);
+  if (seen !== tagsets && !sameConfig(seen, tagsets)) {
+    setSeen(tagsets);
+    setDraft(tagsets);
+  }
   const [openName, setOpenName] = useState(null);
   const [expandedValue, setExpandedValue] = useState(null);
   const [newTagsetName, setNewTagsetName] = useState('');
@@ -125,7 +134,8 @@ export const TagsetsManager = ({
       notifyError(`A tagset named "${name}" already exists`, 'Duplicate tagset');
       return;
     }
-    await save({ ...draft, [name]: { delimiters: '', mode: MODES.SUGGEST, values: [] } });
+    if (!(await save({ ...draft, [name]: { delimiters: '', mode: MODES.SUGGEST, values: [] } })))
+      return;
     setNewTagsetName('');
     setOpenName(name);
     notifySuccess(`Tagset “${name}” added`);
@@ -159,7 +169,7 @@ export const TagsetsManager = ({
   const handleDeleteTagset = async (name) => {
     const next = { ...draft };
     delete next[name];
-    await save(next);
+    if (!(await save(next))) return;
     if (openName === name) setOpenName(null);
     notifyInfo(`Tagset “${name}” removed`);
   };
@@ -179,7 +189,8 @@ export const TagsetsManager = ({
       return 0;
     }
     const values = [...t.values, ...fresh];
-    await patch(name, { values });
+    // Refused: null, and what was pasted stays to be added again.
+    if (!(await patch(name, { values }))) return null;
     // The table reads in alphabetical order, so one added value lands
     // somewhere in the middle: show the page it landed on rather than leaving
     // it out of sight.
@@ -225,6 +236,7 @@ export const TagsetsManager = ({
       .filter(Boolean)
       .map((value) => ({ value }));
     const n = await handleAddValues(name, records);
+    if (n === null) return;
     if (n) notifySuccess(`Added ${n} value${n === 1 ? '' : 's'}`);
     setPasteText('');
     setPasteOpen(false);

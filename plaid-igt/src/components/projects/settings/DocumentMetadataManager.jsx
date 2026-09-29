@@ -216,9 +216,18 @@ export const DocumentMetadataManager = ({
   // than a gloss ever is.
   const handleSetTagset = async (name, choice) => {
     const tagset = choice === NO_TAGSET ? null : choice;
+    const before = enabledFields;
     const next = enabledFields.map((f) => (f.name === name ? { ...f, tagset } : f));
     setEnabledFields(next);
-    if (onSaveChanges) await onSaveChanges({ enabledFields: next });
+    try {
+      if (onSaveChanges) await onSaveChanges({ enabledFields: next });
+    } catch (error) {
+      // Shown at once, put back when refused.
+      console.error('Failed to save metadata configuration:', error);
+      setEnabledFields(before);
+      if (onError) onError(error);
+      else notifyError(error, 'Failed to save the metadata fields');
+    }
   };
 
   const tableData = enabledFields.map((field, index) => ({
