@@ -62,110 +62,106 @@
 (defn sse-handler
   "Handle SSE connections for project audit log events with manual heartbeat tracking"
   [{{{:keys [id]} :path} :parameters user-id :user/id db :db :as req}]
-  (if (nil? (prj/get db id))
-    ;; The privilege check lets an admin in on any project id, so a project
-    ;; that does not exist is refused here, while a status can still be sent.
-    ;; Only an admin gets this far, and an unknown id answers an admin 404
-    ;; (a non-member already had the middleware's 403).
-    {:status 404 :body {:error "Project not found"}}
-    (http-kit/as-channel req
-                         {:on-open
-                          (fn [channel]
-                            (let [client-chan (async/chan (async/sliding-buffer 100))
-                                  stop-chan (async/chan)
+  ;; The reader gate answers a project that does not exist (404 to an admin,
+  ;; 403 to anyone else), so every id that reaches here names a project.
+  (http-kit/as-channel req
+                       {:on-open
+                        (fn [channel]
+                          (let [client-chan (async/chan (async/sliding-buffer 100))
+                                stop-chan (async/chan)
                                 ;; Generate unique client ID for heartbeat tracking
-                                  client-id (events/register-client-with-id! id client-chan)]
+                                client-id (events/register-client-with-id! id client-chan)]
 
-                              (log/debug "New SSE client connected for project" id "with client-id" client-id
-                                         "- Total clients:" (events/get-client-count))
+                            (log/debug "New SSE client connected for project" id "with client-id" client-id
+                                       "- Total clients:" (events/get-client-count))
 
                             ;; Send SSE headers
-                              (http-kit/send! channel
-                                              {:status  200
-                                               :headers {"Content-Type"  "text/event-stream"
-                                                         "Cache-Control" "no-cache"
-                                                         "Connection"    "keep-alive"}}
-                                              false)                   ; don't close connection
+                            (http-kit/send! channel
+                                            {:status  200
+                                             :headers {"Content-Type"  "text/event-stream"
+                                                       "Cache-Control" "no-cache"
+                                                       "Connection"    "keep-alive"}}
+                                            false)                   ; don't close connection
 
                             ;; Send initial connection message with client ID
-                              (http-kit/send! channel
-                                              (str "event: connected\n"
-                                                   "data: " (json/write-str {:status    "connected"
-                                                                             :client-id client-id}) "\n\n")
-                                              false)
+                            (http-kit/send! channel
+                                            (str "event: connected\n"
+                                                 "data: " (json/write-str {:status    "connected"
+                                                                           :client-id client-id}) "\n\n")
+                                            false)
 
                             ;; Start heartbeat loop. This shouldn't be necessary, and for Python it isn't, but something about the
                             ;; JavaScript setup we have is causing channel closes to never happen.
-                              (async/go-loop [consecutive-misses 0
-                                              last-check-time (System/currentTimeMillis)]
-                                (let [hb-config (events/heartbeat-config)
-                                      interval-ms (:interval-ms hb-config)
-                                      max-misses (:max-consecutive-misses hb-config)
-                                      [_ ch] (async/alts! [(async/timeout interval-ms) stop-chan])]
-                                  (if (= ch stop-chan)
-                                    nil  ; exit loop on stop signal
-                                    (do
+                            (async/go-loop [consecutive-misses 0
+                                            last-check-time (System/currentTimeMillis)]
+                              (let [hb-config (events/heartbeat-config)
+                                    interval-ms (:interval-ms hb-config)
+                                    max-misses (:max-consecutive-misses hb-config)
+                                    [_ ch] (async/alts! [(async/timeout interval-ms) stop-chan])]
+                                (if (= ch stop-chan)
+                                  nil  ; exit loop on stop signal
+                                  (do
                                                  ;; Send heartbeat ping
-                                      (try
-                                        (http-kit/send! channel "event: heartbeat\ndata: \"ping\"\n\n" false)
-                                        (catch Exception e
-                                          (log/warn "Heartbeat send failed for client" client-id ":" (.getMessage e))))
+                                    (try
+                                      (http-kit/send! channel "event: heartbeat\ndata: \"ping\"\n\n" false)
+                                      (catch Exception e
+                                        (log/warn "Heartbeat send failed for client" client-id ":" (.getMessage e))))
 
                                                  ;; Check if we received a confirmation since last check
-                                      (if-let [client-info (get @events/heartbeat-registry client-id)]
-                                        (let [last-heartbeat (:last-heartbeat client-info)]
-                                          (if (> last-heartbeat last-check-time)
+                                    (if-let [client-info (get @events/heartbeat-registry client-id)]
+                                      (let [last-heartbeat (:last-heartbeat client-info)]
+                                        (if (> last-heartbeat last-check-time)
                                                        ;; Got response since last check - reset miss counter
-                                            (recur 0 (System/currentTimeMillis))
+                                          (recur 0 (System/currentTimeMillis))
                                                        ;; No response since last check - count as miss
-                                            (let [new-misses (inc consecutive-misses)]
-                                              (if (>= new-misses max-misses)
-                                                (do
-                                                  (log/debug "Client" client-id "disconnected after" new-misses "consecutive missed heartbeats")
-                                                  (events/cleanup-channel! channel)
-                                                  nil)  ; exit loop
-                                                (recur new-misses (System/currentTimeMillis))))))
-                                        (do
-                                          (log/warn "Client" client-id "not found in heartbeat registry, disconnecting")
-                                          (events/cleanup-channel! channel)
-                                          nil))))))
+                                          (let [new-misses (inc consecutive-misses)]
+                                            (if (>= new-misses max-misses)
+                                              (do
+                                                (log/debug "Client" client-id "disconnected after" new-misses "consecutive missed heartbeats")
+                                                (events/cleanup-channel! channel)
+                                                nil)  ; exit loop
+                                              (recur new-misses (System/currentTimeMillis))))))
+                                      (do
+                                        (log/warn "Client" client-id "not found in heartbeat registry, disconnecting")
+                                        (events/cleanup-channel! channel)
+                                        nil))))))
 
                             ;; Main event loop
-                              (async/go-loop []
-                                (let [[event ch] (async/alts! [client-chan stop-chan])]
-                                  (cond
-                                    (= ch stop-chan) nil  ; exit loop on stop signal
-                                    event (do
-                                            (try
-                                              (let [payload (events/wire-payload event)
-                                                    event-str (str "event: " (:type payload) "\n"
-                                                                   "data: " (json/write-str payload) "\n\n")]
-                                                (http-kit/send! channel event-str false))
-                                              (catch Exception e
-                                                (log/warn "Event send failed for client" client-id ":" (.getMessage e))))
-                                            (recur))
-                                    :else nil)))  ; channel closed, exit
+                            (async/go-loop []
+                              (let [[event ch] (async/alts! [client-chan stop-chan])]
+                                (cond
+                                  (= ch stop-chan) nil  ; exit loop on stop signal
+                                  event (do
+                                          (try
+                                            (let [payload (events/wire-payload event)
+                                                  event-str (str "event: " (:type payload) "\n"
+                                                                 "data: " (json/write-str payload) "\n\n")]
+                                              (http-kit/send! channel event-str false))
+                                            (catch Exception e
+                                              (log/warn "Event send failed for client" client-id ":" (.getMessage e))))
+                                          (recur))
+                                  :else nil)))  ; channel closed, exit
 
                             ;; Store mapping for cleanup using the channel itself as key,
                             ;; with what opened the stream, so it closes the moment that
                             ;; credential or its user's role no longer would.
-                              (let [opener {:user-id user-id
-                                            :token-id (:api-token/id req)
-                                            :token-version (-> req :jwt-data :version)
-                                            :token-exp (-> req :jwt-data :exp)
-                                            :db db}]
-                                (events/register-channel-mapping! channel client-chan id stop-chan client-id opener)
+                            (let [opener {:user-id user-id
+                                          :token-id (:api-token/id req)
+                                          :token-version (-> req :jwt-data :version)
+                                          :token-exp (-> req :jwt-data :exp)
+                                          :db db}]
+                              (events/register-channel-mapping! channel client-chan id stop-chan client-id opener)
                               ;; The credential was admitted by the middleware, before this
                               ;; stream registered. A write that took it away in between
                               ;; found no stream to close, so ask again now that there is one.
-                                (when-not (standing-holds? (assoc opener :project-id id) :project/readers)
-                                  (close-listen-stream! {:channel channel :project-id id})))))
+                              (when-not (standing-holds? (assoc opener :project-id id) :project/readers)
+                                (close-listen-stream! {:channel channel :project-id id})))))
 
-                          :on-close
-                          (fn [channel _]
-                            (log/debug "Connection closed, cleaning up channel for project" id)
-                            (events/cleanup-channel! channel)
-                            (log/debug "After cleanup - Total clients:" (events/get-client-count)))})))
+                        :on-close
+                        (fn [channel _]
+                          (log/debug "Connection closed, cleaning up channel for project" id)
+                          (events/cleanup-channel! channel)
+                          (log/debug "After cleanup - Total clients:" (events/get-client-count)))}))
 
 ;; =============================================================================
 ;; Server-mediated service RPC (addressed; off the broadcast bus)
