@@ -1,6 +1,13 @@
 import { notifyInfo } from '@/utils/feedback';
 import { keys } from '@/lib/keymap.js';
-import { ADVANCE_BEAT_MS, PULSE_CLASS, PULSE_MS, reviewSelector, reviewStates } from './shared.js';
+import {
+  ADVANCE_BEAT_MS,
+  cellByKey,
+  PULSE_CLASS,
+  PULSE_MS,
+  reviewSelector,
+  reviewStates,
+} from './shared.js';
 
 // Reviewing proposals: the beat and pulse that say a confirmation landed,
 // Ctrl+Enter and Ctrl+Backspace on a word, the jump between unverified
@@ -112,7 +119,7 @@ export const review = {
         const key = from.dataset.cellKey;
         from.blur();
         this._pendingFocus = { cellKey: key };
-        const same = key ? this.container.querySelector(`[data-cell-key="${key}"]`) : null;
+        const same = key ? cellByKey(this.container, key) : null;
         if (same) same.focus();
       } else if (adoptions.length) {
         // Adopting reloads the document (new spans), which re-renders the grid
@@ -216,7 +223,7 @@ export const review = {
       const key = e.target.dataset.cellKey;
       e.target.blur();
       this._pendingFocus = { cellKey: key, wordId };
-      const same = key ? this.container.querySelector(`[data-cell-key="${key}"]`) : null;
+      const same = key ? cellByKey(this.container, key) : null;
       if (same) same.focus();
     }
     return true;

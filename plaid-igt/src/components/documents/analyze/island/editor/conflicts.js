@@ -1,5 +1,6 @@
 import { html, nothing } from 'lit-html';
 import { settledId } from '@ui/domain/pendingIds.js';
+import { cellByKey } from './shared.js';
 import { notifyWarning } from '@/utils/feedback';
 
 // A cell edit refused because another user changed the cell first (Luke's
@@ -129,7 +130,7 @@ export const conflicts = {
     let ids = null;
     let gone = false;
     for (const [key, c] of this._conflicts) {
-      const cell = this.container.querySelector(`.igt-field[data-cell-key="${key}"]`);
+      const cell = cellByKey(this.container, key, '.igt-field');
       if (cell) {
         if ((cell.igtRendered ?? cell.value) !== c.stored) gone = this._conflicts.delete(key);
         continue;

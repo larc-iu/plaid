@@ -21,6 +21,7 @@ import { isVirtualMorphemeId, virtualMorphemeWordId } from '@/domain/virtualMorp
 import { precedentFetchedAt } from '@/domain/precedentCache';
 import { setUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import {
+  cellByKey,
   cellTier,
   PRECEDENT_REFRESH_MIN_MS,
   provClass,
@@ -450,9 +451,7 @@ export class IgtEditor {
     }
     let ids = null;
     for (const [key, entry] of this._unsent) {
-      const cell = this._destroyed
-        ? null
-        : this.container.querySelector(`.igt-field[data-cell-key="${key}"]`);
+      const cell = this._destroyed ? null : cellByKey(this.container, key, '.igt-field');
       let keep = !this._destroyed;
       if (keep && !cell) {
         // Not drawn: on another page, or gone from the document (a refused
@@ -673,7 +672,7 @@ export class IgtEditor {
     }
     if (pf.cellKey != null) {
       const cell =
-        this.container.querySelector(`[data-cell-key="${pf.cellKey}"]`) ??
+        cellByKey(this.container, pf.cellKey) ??
         (pf.wordId != null
           ? this.container.querySelector(`.igt-field[data-confirm-word="${pf.wordId}"]`)
           : null);

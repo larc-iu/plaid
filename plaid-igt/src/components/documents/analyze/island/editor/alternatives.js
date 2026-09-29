@@ -2,7 +2,7 @@ import { render, html, nothing } from 'lit-html';
 import { collationKey } from '@ui/domain/collation.js';
 import { TAGSET_SOURCE } from '@/domain/glossGuess';
 import { isValueAllowed, replacePartAtCaret } from '@/domain/tagsets';
-import { anchoredPos } from './shared.js';
+import { anchoredPos, cellByKey } from './shared.js';
 import { keys } from '@/lib/keymap.js';
 
 // The alternatives list: Alt+Down on a cell lists every value the project
@@ -40,9 +40,7 @@ export const alternatives = {
   _renderAlts() {
     // The list has its own root, taken down with the island (see destroy).
     if (this._destroyed) return;
-    const el = this._alts
-      ? this.container.querySelector(`[data-cell-key="${this._alts.cellKey}"]`)
-      : null;
+    const el = this._alts ? cellByKey(this.container, this._alts.cellKey) : null;
     const items = el && typeof el.igtAlts === 'function' ? el.igtAlts() : null;
     render(
       this._alts && items ? this._altsTemplate(items, this._alts.cellKey) : nothing,
@@ -191,7 +189,7 @@ export const alternatives = {
     }
     const key = el.dataset.cellKey;
     el.blur(); // commits via _commitField (born-verified) and re-renders
-    const same = this.container.querySelector(`[data-cell-key="${key}"]`);
+    const same = cellByKey(this.container, key);
     if (same) {
       this._skipAltsOnFocus = true;
       same.focus();
@@ -199,7 +197,7 @@ export const alternatives = {
   },
 
   _pickAltByKey(cellKey, item) {
-    const el = this.container.querySelector(`[data-cell-key="${cellKey}"]`);
+    const el = cellByKey(this.container, cellKey);
     if (el) this._pickAlt(el, item);
   },
 
@@ -213,7 +211,7 @@ export const alternatives = {
 
   _repositionAlts() {
     if (!this._alts) return;
-    const el = this.container.querySelector(`[data-cell-key="${this._alts.cellKey}"]`);
+    const el = cellByKey(this.container, this._alts.cellKey);
     const list = this._altsRoot?.querySelector('.igt-alts');
     if (!el || !list) return;
     const pos = this._computeAltsPos(el, (this._alts.visible || []).length || 1);

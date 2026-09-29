@@ -14,7 +14,7 @@ import { arrowStep, caretAtArrowEdge } from '@ui/lib/bidi.js';
 import { keys } from '@/lib/keymap.js';
 import { settledId } from '@ui/domain/pendingIds.js';
 import { statusOf } from '@ui/lib/errors.js';
-import { morphFormOf, sameCell } from './shared.js';
+import { cellByKey, morphFormOf, sameCell } from './shared.js';
 
 // An annotation cell's life: focus, typing, commit, the keyboard chords that
 // move between cells, and the sentence fields' own handlers.
@@ -539,7 +539,7 @@ export const cells = {
       // neither put back nor a conflict (as plaid-ud's 490ca14a).
       if (base.pending > 0) return;
       const status = statusOf(this.doc.errorCause);
-      const cell = this.container.querySelector(`[data-cell-key="${key}"]`);
+      const cell = cellByKey(this.container, key);
       // Not drawn (the reader paged away): kept until its page is drawn again,
       // which tells a conflict from a value to send again (_syncUnsentDrafts).
       if (!cell) {
@@ -626,7 +626,7 @@ export const cells = {
     this._syncCellClasses(el, el.value, el.igtTagset ?? null);
     el.blur();
     const key = d.key.replace(/pending:\d+/g, (p) => settledId(p));
-    const home = this.container.querySelector(`[data-cell-key="${key}"]`);
+    const home = cellByKey(this.container, key);
     if (home && home !== el) {
       const stored = home.igtRendered ?? home.value;
       if (stored !== d.saved) {

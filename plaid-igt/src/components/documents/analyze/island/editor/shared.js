@@ -32,6 +32,18 @@ export const sameCell = (a, b) => {
   return isPendingId(made) || stableKey(made) !== made;
 };
 
+// The cell whose key is `key`, optionally among the elements `sel` matches.
+// A key carries its field's name, which is whatever a maintainer typed
+// ('Gloss "a"'), so it is compared as a value rather than put into a
+// selector, where a quote in it made querySelector throw.
+export const cellByKey = (root, key, sel = '') => {
+  if (key == null) return null;
+  for (const el of root.querySelectorAll(`${sel}[data-cell-key]`)) {
+    if (el.dataset.cellKey === key) return el;
+  }
+  return null;
+};
+
 // The dotted number that tells an entry apart ("1.2"), drawn after its form as
 // a SUBSCRIPT — kai₁, as FieldWorks writes a homograph number. Never a
 // superscript: those mark tone. The React counterpart is FormLabel, which
