@@ -29,6 +29,9 @@ export const PlanCard = ({
   contributor = false,
   projectId,
   adapter,
+  // Called when the card is expanded to show every change (research
+  // telemetry's `plan.opened`, recorded by the chat around it).
+  onOpen,
 }) => {
   const allRows = useMemo(() => planRows(plan), [plan]);
   const groups = useMemo(
@@ -148,7 +151,10 @@ export const PlanCard = ({
       {shown.hidden > 0 && (
         <button
           type="button"
-          onClick={() => setExpanded(true)}
+          onClick={() => {
+            setExpanded(true);
+            onOpen?.();
+          }}
           className="mt-1 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
         >
           <ChevronDown className="h-3 w-3" /> Show all {allRows.length}

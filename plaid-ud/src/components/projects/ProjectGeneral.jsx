@@ -41,6 +41,7 @@ export const ProjectGeneral = ({ onProjectUpdate }) => {
     <ProjectGeneralPage
       project={project}
       onSaved={refresh}
+      research
       language={{
         saved: readProjectLanguage(project),
         save: saveLanguage,

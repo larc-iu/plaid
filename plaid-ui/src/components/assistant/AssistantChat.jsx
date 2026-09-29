@@ -896,6 +896,13 @@ export const AssistantChat = ({
                 applying={!!d.plan && applyingPlanId === d.plan.id}
                 onApprove={(opts) => approve(d.plan, opts)}
                 onDiscard={() => discard(i)}
+                onOpenPlan={() =>
+                  client.events?.record?.('plan.opened', {
+                    projectId,
+                    targetId: d.plan.id,
+                    data: { conversation: active?.id ?? null },
+                  })
+                }
               />
             ))}
             {canRetryTurn && stoppedHere && stoppedHere.steps.length > 0 && (

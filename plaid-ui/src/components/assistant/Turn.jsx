@@ -142,6 +142,7 @@ export const Turn = ({
   applying,
   onApprove,
   onDiscard,
+  onOpenPlan,
 }) => {
   if (item.kind === 'user') {
     return (
@@ -282,6 +283,7 @@ export const Turn = ({
             busy={busy}
             onApprove={onApprove}
             onDiscard={onDiscard}
+            onOpen={onOpenPlan}
           />
         )}
       </div>

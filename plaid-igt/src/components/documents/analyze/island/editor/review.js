@@ -96,6 +96,7 @@ export const review = {
       return true;
     }
     this.doc.confirmWordAnalysis(wordId, adoptions);
+    for (const a of adoptions) this._recordSuggestion('suggestion.adopted', a);
     this._pulseWord(wordId);
     const from = e.target;
     this._afterABeat(() => {
@@ -136,11 +137,13 @@ export const review = {
       const field = el.dataset.guessField;
       const value = el.dataset.guessValue;
       if (!targetId || !field || !value) continue;
+      const source = el.dataset.guessSource || 'unknown';
       out.push({
         targetId,
         field,
         value,
-        metadata: this.doc.adoptStamp(el.dataset.guessSource || 'unknown', { value }),
+        source,
+        metadata: this.doc.adoptStamp(source, { value }),
       });
     }
     return out;

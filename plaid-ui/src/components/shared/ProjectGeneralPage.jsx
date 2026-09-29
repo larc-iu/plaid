@@ -26,8 +26,18 @@ import { DeleteProjectCard } from './DeleteProjectCard.jsx';
  *   heading, and `note(savedTag)` an optional line under the field about what
  *   the SAVED tag does.
  * - `children`: the app's own sections, drawn between Language and Delete.
+ * - `research`: when true, a Research card with the project's telemetry
+ *   switch (`config.plaid.research.telemetry`, the core manual's "Research
+ *   telemetry"), drawn after the app's sections. Only the apps that record
+ *   events pass it.
  */
-export const ProjectGeneralPage = ({ project, onSaved, language = null, children }) => {
+export const ProjectGeneralPage = ({
+  project,
+  onSaved,
+  language = null,
+  research = false,
+  children,
+}) => {
   const { getClient } = useAuth();
 
   const [name, setName] = useState(project.name ?? '');
@@ -92,6 +102,8 @@ export const ProjectGeneralPage = ({ project, onSaved, language = null, children
 
       {children}
 
+      {research && <ResearchCard project={project} onSaved={onSaved} />}
+
       <DeleteProjectCard project={project} />
     </div>
   );
@@ -144,6 +156,59 @@ const LanguageCard = ({ onSaved, saved, save, description, note }) => {
           </Button>
         </form>
         {note && <p className="text-sm text-muted-foreground">{note(saved)}</p>}
+      </CardContent>
+    </Card>
+  );
+};
+
+// The project's research-telemetry switch. A checkbox that saves on its own,
+// shown at once and put back if the save fails. The recorder in this tab is
+// told straight away, so the editors in it start or stop at once rather than
+// when they next read the project.
+const ResearchCard = ({ project, onSaved }) => {
+  const { getClient } = useAuth();
+  const saved = project.config?.plaid?.research?.telemetry === true;
+  const [on, setOn] = useState(saved);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => setOn(saved), [saved]);
+
+  const toggle = async (next) => {
+    setOn(next);
+    setSaving(true);
+    try {
+      const client = getClient();
+      await client.projects.setConfig(project.id, 'plaid', 'research', { telemetry: next });
+      client.events?.setEnabled?.(project.id, next);
+      await onSaved?.();
+    } catch (err) {
+      console.error('Failed to save research telemetry:', err);
+      setOn(!next);
+      notifyError(humanizeError(err, 'Failed to save the research setting.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Research</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="h-4 w-4 cursor-pointer accent-primary disabled:cursor-not-allowed"
+            checked={on}
+            disabled={saving}
+            onChange={(e) => toggle(e.target.checked)}
+          />
+          Record responses to suggestions
+        </label>
+        <p className="text-sm text-muted-foreground">
+          Records when a suggestion is shown to a member, accepted or replaced, and when an
+          assistant plan is expanded.
+        </p>
       </CardContent>
     </Card>
   );

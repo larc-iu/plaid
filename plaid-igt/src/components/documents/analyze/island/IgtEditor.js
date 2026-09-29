@@ -27,6 +27,7 @@ import {
   uncontrolledValue,
 } from './editor/shared.js';
 import { comments } from './editor/comments.js';
+import { telemetry } from './editor/telemetry.js';
 import { popover } from './editor/popover.js';
 import { linking } from './editor/linking.js';
 import { mwe } from './editor/mwe.js';
@@ -708,6 +709,7 @@ export class IgtEditor {
     // nothing persists unless explicitly confirmed (Enter/Tab — see
     // _maybeConfirmGuess) and stats/jump still see the cell as empty.
     const g = !sentence && !filled && !this.readOnly && guess ? guess : null;
+    if (g && guessTarget) this._guessShown(g, guessTarget, fieldName);
     // Sentence-scoped fields (e.g. free Translation) are full free-text values —
     // an auto-growing textarea that wraps, rather than a one-line scrolling input.
     if (sentence) {
@@ -862,6 +864,7 @@ Object.assign(
   rows,
   grid,
   vocabPopover,
+  telemetry,
 );
 
 // ---------------------------------------------------------------------------

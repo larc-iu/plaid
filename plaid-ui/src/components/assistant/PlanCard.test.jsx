@@ -132,3 +132,27 @@ describe('changes that replace accepted work', () => {
     await view.unmount();
   });
 });
+
+describe('expanding a long plan', () => {
+  const long = () => plan(Array.from({ length: 20 }, (_, i) => ({ label: `change ${i}` })));
+  const showAll = (root) =>
+    all(root, 'button').find((b) => b.textContent.trim().startsWith('Show all'));
+
+  it('says so once, when the card is expanded and not before', async () => {
+    const opened = [];
+    const view = await mount(long(), { onOpen: () => opened.push('p1') });
+    expect(opened).toEqual([]);
+    await view.step(() => showAll(view.container).click());
+    expect(opened).toEqual(['p1']);
+    expect(showAll(view.container)).toBeUndefined();
+    await view.unmount();
+  });
+
+  it('a short plan, already whole, has nothing to expand', async () => {
+    const opened = [];
+    const view = await mount(plan([{ label: 'one' }]), { onOpen: () => opened.push('p1') });
+    expect(showAll(view.container)).toBeUndefined();
+    expect(opened).toEqual([]);
+    await view.unmount();
+  });
+});

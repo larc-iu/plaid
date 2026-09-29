@@ -140,4 +140,72 @@ describe('ProjectGeneralPage', () => {
     await view.step(() => typeInto(field, 'de'));
     expect(view.container.textContent).toContain('Saved: en');
   });
+
+  describe('Research', () => {
+    const box = (root) =>
+      all(root, 'label')
+        .find((l) => l.textContent.includes('Record responses to suggestions'))
+        ?.querySelector('input[type="checkbox"]');
+
+    beforeEach(() => {
+      client.events = { setEnabled: vi.fn() };
+    });
+
+    it('is drawn only for an app that asks for it, after its sections', async () => {
+      await mount();
+      expect(box(view.container)).toBeUndefined();
+      await view.unmount();
+      await mount({ research: true });
+      expect(cards(view.container)).toEqual(['Name', 'Research', 'Delete']);
+      expect(view.container.textContent).toContain(
+        'Records when a suggestion is shown to a member, accepted or replaced, and when an assistant plan is expanded.',
+      );
+    });
+
+    it('is off by default and shows the stored switch', async () => {
+      await mount({ research: true });
+      expect(box(view.container).checked).toBe(false);
+      await view.unmount();
+      await mount({
+        research: true,
+        project: { id: 'p1', name: 'Texts', config: { plaid: { research: { telemetry: true } } } },
+      });
+      expect(box(view.container).checked).toBe(true);
+    });
+
+    it('saves on a click, tells the recorder and refreshes the project', async () => {
+      const onSaved = vi.fn();
+      await mount({ research: true, onSaved });
+      await view.step(() => box(view.container).click());
+      expect(box(view.container).checked).toBe(true);
+      expect(client.projects.setConfig).toHaveBeenCalledWith('p1', 'plaid', 'research', {
+        telemetry: true,
+      });
+      expect(client.events.setEnabled).toHaveBeenCalledWith('p1', true);
+      expect(onSaved).toHaveBeenCalledTimes(1);
+    });
+
+    it('turns off the same way', async () => {
+      await mount({
+        research: true,
+        project: { id: 'p1', name: 'Texts', config: { plaid: { research: { telemetry: true } } } },
+      });
+      await view.step(() => box(view.container).click());
+      expect(client.projects.setConfig).toHaveBeenCalledWith('p1', 'plaid', 'research', {
+        telemetry: false,
+      });
+      expect(client.events.setEnabled).toHaveBeenCalledWith('p1', false);
+    });
+
+    it('puts the box back and says so when the save fails', async () => {
+      client.projects.setConfig = vi.fn(async () => {
+        throw new Error('nope');
+      });
+      await mount({ research: true });
+      await view.step(() => box(view.container).click());
+      expect(box(view.container).checked).toBe(false);
+      expect(client.events.setEnabled).not.toHaveBeenCalled();
+      expect(notify.notifyError).toHaveBeenCalledTimes(1);
+    });
+  });
 });

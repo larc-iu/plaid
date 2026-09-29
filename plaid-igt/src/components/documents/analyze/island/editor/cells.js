@@ -410,6 +410,7 @@ export const cells = {
           : null;
     delete el.dataset.guessConfirmed;
     if (next === (el.dataset.orig ?? '')) return;
+    this._guessAnswered(el, next);
     // Born-verified provenance is for a NEW span made from a suggestion. Over
     // a stored value a pick is a correction of that value, and the span keeps
     // its own history: the domain layer verifies a machine span on any human
