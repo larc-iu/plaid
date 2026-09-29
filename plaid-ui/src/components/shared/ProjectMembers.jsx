@@ -50,11 +50,16 @@ export const ProjectMembers = ({
   const [sendingRole, setSendingRole] = useState(() => new Set());
   // Review marks are one list in the project config. They are sent one at a
   // time, and each write is worked out when its turn comes, from the project
-  // as it stands then and the marks still shown, so a refused one is not
+  // as it stands then and the marks not yet stored, so a refused one is not
   // carried by the next. `reviewMarks` counts each row's clicks, so a refusal
   // takes back only its own mark and not one made after it.
+  // `pendingReview` is the marks not yet stored. A mark leaves it when a
+  // write carrying it lands, and moves to `landedReview`, which only shows it
+  // until the project is read again: from then on the stored list is the
+  // truth, and another maintainer's unmark made since is not undone.
   const reviewTail = useRef(Promise.resolve());
   const pendingReview = useRef(new Map());
+  const landedReview = useRef(new Map());
   const reviewMarks = useRef(new Map());
   const projectRef = useRef(project);
   projectRef.current = project;
@@ -98,17 +103,16 @@ export const ProjectMembers = ({
     };
   }, [aclKey, projectLoaded, client]);
 
-  // Drop what the refetched project now agrees with.
+  // Drop what the refetched project now agrees with. A review mark that
+  // landed gives way to any new read.
   useEffect(() => {
     const settled = (map, stored) => {
       const next = new Map([...map].filter(([id, value]) => stored(id) !== value));
       return next.size === map.size ? map : next;
     };
     setShownRole((m) => settled(m, (id) => roleOf(project, id)));
-    pendingReview.current = settled(pendingReview.current, (id) =>
-      readReview(project?.config).users.includes(id),
-    );
-    setShownReview(pendingReview.current);
+    landedReview.current = new Map();
+    setShownReview(new Map(pendingReview.current));
   }, [project]);
 
   const withEntry = (map, key, value) => {
@@ -177,7 +181,7 @@ export const ProjectMembers = ({
 
   const showReview = (userId, on) => {
     pendingReview.current = withEntry(pendingReview.current, userId, on);
-    setShownReview(pendingReview.current);
+    setShownReview(new Map([...landedReview.current, ...pendingReview.current]));
   };
 
   const setReviewed = (userId, on) => {
@@ -192,15 +196,26 @@ export const ProjectMembers = ({
         ? w.value
         : storedConfig(projectRef.current, PLAID_NAMESPACE, REVIEW_KEY);
     };
-    // The stored list with every mark still shown over it, expecting the
-    // list to be what it was built on.
+    // The stored list with every mark not yet stored over it, expecting the
+    // list to be what it was built on. The marks it carried are stored once
+    // it lands, unless their row was clicked again meanwhile.
     const write = async (stored) => {
       let next = stored;
-      for (const [id, mark] of pendingReview.current) next = withReviewedUser(next, id, mark);
+      const carried = [...pendingReview.current].map(([id, on]) => [
+        id,
+        on,
+        reviewMarks.current.get(id),
+      ]);
+      for (const [id, on] of carried) next = withReviewedUser(next, id, on);
       await client.projects.setConfig(projectId, PLAID_NAMESPACE, REVIEW_KEY, next, undefined, {
         expected: stored,
       });
       reviewWritten.current = { project: projectRef.current, value: next };
+      for (const [id, on, click] of carried) {
+        if (reviewMarks.current.get(id) !== click) continue;
+        pendingReview.current = withEntry(pendingReview.current, id, undefined);
+        landedReview.current = withEntry(landedReview.current, id, on);
+      }
     };
     const send = async () => {
       try {

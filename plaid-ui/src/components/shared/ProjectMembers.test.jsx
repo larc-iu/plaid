@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { useState } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, texts, all } from '../../test/renderComponent.jsx';
 import { ProjectMembers } from './ProjectMembers.jsx';
@@ -326,6 +327,73 @@ describe('ProjectMembers', () => {
     expect(box().checked).toBe(true);
     expect(JSON.stringify(sent[sent.length - 1])).toContain('ada@example.com');
     expect(toast.error).toHaveBeenCalledWith('Failed to update review', expect.anything());
+    await unmount();
+  });
+
+  // A mark that landed is the server's from then on. Another maintainer who
+  // unmarks the member before this page reads the project again has the last
+  // word: this page's next mark, on someone else, must not put it back.
+  it('does not mark someone again that another maintainer unmarked after this mark landed', async () => {
+    USERS['bo@example.com'] = { id: 'bo@example.com', displayName: 'Bo', isAdmin: false };
+    const base = { ...PROJECT, writers: ['ada@example.com', 'bo@example.com'] };
+    const server = { plaid: { review: { users: [] } } };
+    const read = () => ({ ...base, config: structuredClone(server) });
+    const client = makeClient();
+    client.projects.get = vi.fn(async () => read());
+    client.projects.setConfig = vi.fn(async (_p, ns, key, value, _audit, options) => {
+      if (JSON.stringify(options.expected ?? null) !== JSON.stringify(server[ns][key] ?? null)) {
+        throw Object.assign(new Error('HTTP 409 changed'), { status: 409 });
+      }
+      server[ns][key] = value;
+    });
+    // The refetch after a mark answers only when the test says so, so C's
+    // unmark can come in between.
+    let answer = null;
+    const Host = () => {
+      const [project, set] = useState(read);
+      return (
+        <ProjectMembers
+          project={project}
+          projectId="p1"
+          currentUser={{ id: 'me@example.com', isAdmin: true }}
+          onDataUpdate={() => new Promise((r) => (answer = () => r(set(read()))))}
+          roleOptions={ROLE_OPTIONS}
+          client={client}
+        />
+      );
+    };
+    const settle = async () => {
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    };
+    const { container, step, unmount } = await renderComponent(
+      <MemoryRouter>
+        <Host />
+      </MemoryRouter>,
+    );
+    const box = (name) => container.querySelector(`input[aria-label="Review ${name}'s work"]`);
+    await step(async () => {
+      box('Ada').click();
+      await settle();
+    });
+    expect(server.plaid.review.users).toEqual(['ada@example.com']);
+    // C unmarks Ada before this page's reread answers.
+    server.plaid.review.users = [];
+    await step(async () => {
+      answer();
+      await settle();
+    });
+    expect(box('Ada').checked).toBe(false);
+    await step(async () => {
+      box('Bo').click();
+      await settle();
+    });
+    expect(server.plaid.review.users).toEqual(['bo@example.com']);
+    await step(async () => {
+      answer();
+      await settle();
+    });
+    expect(box('Ada').checked).toBe(false);
+    expect(box('Bo').checked).toBe(true);
     await unmount();
   });
 
