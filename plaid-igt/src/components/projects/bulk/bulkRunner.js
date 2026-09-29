@@ -19,7 +19,7 @@ import { chunk } from '@/domain/bulk';
 import { dropPrecedent } from '@/domain/precedentCache';
 import { readVocabulary } from '@/domain/vocabCache';
 import { extractAnalysis, analysisSignature } from '@/domain/analysisMemory';
-import { isChangedElsewhere } from '@ui/lib/errors.js';
+import { isChangedElsewhere, statusOf } from '@ui/lib/errors.js';
 import { buildMatchSpec, hitsByDocQueries } from '../search/searchQueries.js';
 import {
   collectRespellRows,
@@ -110,7 +110,13 @@ async function sendDocument(client, { docId, version, rows, replan, same, send }
   } catch (e) {
     if (!isChangedElsewhere(e)) throw e;
   }
-  const fresh = await replan(docId);
+  let fresh;
+  try {
+    fresh = await replan(docId);
+  } catch (e) {
+    if (unreadable(e)) return { sent: [], skipped: rows };
+    throw e;
+  }
   const freshById = new Map(fresh.rows.map((r) => [r.id, r]));
   const kept = rows.filter((r) => freshById.has(r.id) && same(r, freshById.get(r.id)));
   const keptSet = new Set(kept);
@@ -124,6 +130,10 @@ async function sendDocument(client, { docId, version, rows, replan, same, send }
     return { sent: [], skipped: rows };
   }
 }
+
+// A document read again that cannot be read: deleted since the preview (404),
+// or no longer this person's to read (403). Its rows are skipped.
+const unreadable = (e) => statusOf(e) === 404 || statusOf(e) === 403;
 
 // Rows grouped by document, in first-seen order: Map docId -> rows.
 const rowsByDoc = (rows) => {
@@ -394,7 +404,14 @@ export async function applyReanalyze(client, { rows, docs }, { analysis, label, 
         );
       let targets = docRows;
       let n;
-      const head = await client.documents.get(docId);
+      let head;
+      try {
+        head = await client.documents.get(docId);
+      } catch (e) {
+        if (!unreadable(e)) throw e;
+        skipped += docRows.length;
+        continue;
+      }
       if (head?.version !== doc.raw?.version) {
         await doc.reload();
         refused = true;

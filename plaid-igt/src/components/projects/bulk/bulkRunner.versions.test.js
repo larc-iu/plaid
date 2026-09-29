@@ -55,6 +55,13 @@ function serverAndClient(versions, vocabs = {}) {
   return { server, client };
 }
 
+const notFound = () =>
+  Object.assign(new Error('HTTP 404'), {
+    status: 404,
+    method: 'GET',
+    responseData: { error: 'Document not found' },
+  });
+
 const spanRow = (docId, id, old, next) => ({ docId, id, kind: 'span', old, new: next });
 
 describe('Replace in a field checks the version the preview read', () => {
@@ -216,6 +223,28 @@ describe('Respell checks the version the preview read', () => {
     expect(server.batches.map((b) => [b.version, b.ops[0].arg1])).toEqual([
       [7, [{ type: 'replace', index: 20, length: 6, value: 'yard' }]],
       [8, [{ type: 'replace', index: 26, length: 6, value: 'yard' }]],
+    ]);
+  });
+
+  it('a document deleted since the preview is skipped, and the next is still respelled', async () => {
+    // a was deleted after the preview: its write is refused and it cannot be read again.
+    const { server, client } = serverAndClient({ a: 8, b: 3 });
+    const out = await applyRespell(
+      client,
+      {
+        rows: [word('a', 'w1', 20), word('b', 'w2', 4)],
+        lexiconRows: [],
+        versions: { a: 7, b: 3 },
+        replan: async () => {
+          throw notFound();
+        },
+      },
+      opts,
+    );
+    expect(out).toMatchObject({ docsChanged: 1, wordsChanged: 1, wordsSkipped: 1 });
+    expect(server.batches.map((b) => [b.doc, b.version])).toEqual([
+      ['a', 7],
+      ['b', 3],
     ]);
   });
 
@@ -386,6 +415,32 @@ describe('Re-analyze checks the version the preview read', () => {
     );
     expect(out).toEqual({ changed: 1, skipped: 0, failedDoc: null });
     expect(doc.sends.map((s) => s.version)).toEqual([2, 3]);
+    expect(errors).toEqual([]);
+  });
+
+  it('a document deleted since the preview is skipped, and the next is still re-analyzed', async () => {
+    const { server, client } = serverAndClient({ a: 2, b: 2 });
+    const t1 = token('w1', 'KITTY');
+    const a = fakeDoc(client, server, 'a', [t1]);
+    const b = fakeDoc(client, server, 'b', [t1]);
+    client.documents.get = async (id) => {
+      if (id === 'a') throw notFound();
+      return { id, version: server.versions[id] };
+    };
+    const errors = [];
+    const out = await applyReanalyze(
+      client,
+      {
+        rows: [
+          { docId: 'a', id: 'w1', signature: signature(t1) },
+          { docId: 'b', id: 'w1', signature: signature(t1) },
+        ],
+        docs: [a, b],
+      },
+      { analysis: target, label: 'Re-analyze', onError: (m) => errors.push(m) },
+    );
+    expect(out).toEqual({ changed: 1, skipped: 1, failedDoc: null });
+    expect(a.sends).toEqual([]);
     expect(errors).toEqual([]);
   });
 
