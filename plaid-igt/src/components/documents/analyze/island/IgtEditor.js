@@ -770,6 +770,7 @@ export class IgtEditor {
           data-confirm-sentence=${confirmSentence ?? nothing}
           data-field-name=${fieldName ?? nothing}
           aria-label=${ariaLabel ?? nothing}
+          aria-describedby=${this._conflictDescribedBy(key)}
           title=${violations.length
             ? this._violationText(violations, tagset)
             : ps
@@ -848,6 +849,7 @@ export class IgtEditor {
       data-guess-field=${g && fieldName ? fieldName : nothing}
       data-confirm-word=${confirmWord ?? nothing}
       aria-label=${ariaLabel ?? nothing}
+      aria-describedby=${this._conflictDescribedBy(key)}
       title=${title}
       .igtAlts=${alternatives || null}
       .igtTagset=${tagset}

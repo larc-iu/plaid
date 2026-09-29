@@ -517,10 +517,13 @@ export const cells = {
     const what = el.igtWhat ?? null;
     // What the server held under the cell before this page's edits of it
     // that have not landed: two edits made one over the other behind a
-    // refusal are both over it. An edit that lands moves it on.
+    // refusal are both over it. An edit that lands moves it on. `mine` is
+    // every value those edits sent: one of them stored unheard (a lost
+    // answer) is this page's own, never another user's.
     let base = this._editBases.get(key);
-    if (!base) this._editBases.set(key, (base = { value: saved, pending: 0 }));
+    if (!base) this._editBases.set(key, (base = { value: saved, pending: 0, mine: new Set() }));
     base.pending += 1;
+    base.mine.add(typed);
     // A conflict is this cell's to report (conflicts.js), so the document
     // raises no toast of its own for one.
     Promise.resolve(this.doc.handlesConflicts(fn)).then((ok) => {
@@ -531,6 +534,10 @@ export const cells = {
         return;
       }
       if (!key) return;
+      // A later edit of the same cell is still out: its value is the newer
+      // one, the one on screen, and it reports its own outcome. This one is
+      // neither put back nor a conflict (as plaid-ud's 490ca14a).
+      if (base.pending > 0) return;
       const status = statusOf(this.doc.errorCause);
       const cell = this.container.querySelector(`[data-cell-key="${key}"]`);
       // Not drawn (the reader paged away): kept until its page is drawn again,
@@ -558,7 +565,7 @@ export const cells = {
       const stored = drawn === typed ? base.value : drawn;
       // Someone else changed the cell first: theirs shows, with this one under
       // it (Luke's ruling Q1).
-      if (stored !== base.value) {
+      if (stored !== base.value && !base.mine.has(stored)) {
         this._enterConflict(cell, typed, stored);
         return;
       }
@@ -605,21 +612,35 @@ export const cells = {
   },
 
   // Text typed into a cell whose input a render has since reused for another
-  // row's cell (`igtDisplaced`, set by uncontrolledValue in shared.js). It
-  // goes back, unsent, into the cell it was typed in when that is still
-  // drawn. A cell made by an edit the server refused is gone with it, and
-  // that refusal has said so. Otherwise the row is gone: say what was lost.
+  // row's cell (`igtDisplaced`, set by uncontrolledValue in shared.js). Focus
+  // leaves that input first, or the next keystroke would go onto the other
+  // row. The text, and focus with it, goes back into the cell it was typed in
+  // when that is still drawn, so typing goes on there. A cell made by an edit
+  // the server refused is gone with it, and that refusal has said so.
+  // Otherwise the row is gone: say what was lost.
   _rehomeDisplaced() {
     const el = document.activeElement;
     const d = el?.igtDisplaced;
     if (!d) return;
     el.igtDisplaced = null;
     this._syncCellClasses(el, el.value, el.igtTagset ?? null);
+    el.blur();
     const key = d.key.replace(/pending:\d+/g, (p) => settledId(p));
     const home = this.container.querySelector(`[data-cell-key="${key}"]`);
     if (home && home !== el) {
-      if ((home.igtRendered ?? home.value) === d.saved) this._restoreUnsent(home, d.typed, d.saved);
-      else this._enterConflict(home, d.typed, home.igtRendered ?? home.value);
+      const stored = home.igtRendered ?? home.value;
+      if (stored !== d.saved) {
+        this._enterConflict(home, d.typed, stored);
+        return;
+      }
+      // Focus first (the focus handler stamps dataset.orig from the stored
+      // value), then the text, so leaving the cell sends it.
+      home.focus();
+      home.value = d.typed;
+      home.igtPutBack = d.typed;
+      home.dataset.orig = d.saved;
+      home.setSelectionRange?.(d.typed.length, d.typed.length);
+      this._syncCellClasses(home, d.typed, home.igtTagset ?? null);
       return;
     }
     if (/pending:\d+/.test(key)) return;

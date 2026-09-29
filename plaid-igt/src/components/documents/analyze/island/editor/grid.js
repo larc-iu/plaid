@@ -319,6 +319,7 @@ export const grid = {
               data-prec=${morph.precedence ?? 1}
               data-confirm-word=${word.id}
               aria-label=${`Morpheme form${value ? ` ${value}` : ''}`}
+              aria-describedby=${this._conflictDescribedBy(formKey)}
               title=${prov
                 ? this._cellTitle(value, prov, provOrigin(morph.metadata))
                 : filled

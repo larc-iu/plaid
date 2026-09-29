@@ -86,9 +86,11 @@ describe('a gloss being typed when a refetch puts another morpheme in its column
     await doc.reload();
     await settle();
 
-    expect(document.activeElement).toBe(c);
     expect(c.dataset.cellKey).toBe('ma:m-9:Gloss');
     expect(c.value).toBe('');
+    // Focus leaves the input, so the next keystroke cannot go onto m-9.
+    expect(document.activeElement).not.toBe(c);
+    c.focus();
     c.blur();
     await settle();
     expect(writes(client)).toHaveLength(0);
@@ -112,11 +114,16 @@ describe('a gloss being typed when a refetch puts another morpheme in its column
     const own = cell('ma:m-2:Gloss');
     expect(own).not.toBe(c);
     expect(own.value).toBe('PST');
-    expect(own.igtUnsent).toBeTruthy();
-    c.blur();
-    await settle();
-    expect(writes(client)).toHaveLength(0);
+    // Focus goes with the text, so typing goes on in its own morpheme.
+    expect(document.activeElement).toBe(own);
+    expect(own.selectionStart).toBe(3);
     expect(notifyError).not.toHaveBeenCalled();
+    type(own, 'PSTX');
+    own.blur();
+    await settle();
+    expect(writes(client).map((w) => [w.kind, w.args[1], w.args[2]])).toEqual([
+      ['spans.create', ['m-2'], 'PSTX'],
+    ]);
   });
 
   it('keeps a value put back unsent off the morpheme its input is reused for', async () => {
@@ -162,6 +169,8 @@ describe('a split refused by the server', () => {
 
     expect(fresh.dataset.cellKey).toBe('mf:x-2');
     expect(fresh.value).toBe('e');
+    expect(document.activeElement).not.toBe(fresh);
+    fresh.focus();
     fresh.blur();
     await settle();
     expect(writes(client)).toHaveLength(0);

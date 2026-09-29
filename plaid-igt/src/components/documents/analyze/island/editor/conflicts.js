@@ -20,6 +20,10 @@ const RECENT = 50;
 // across the swap.
 const conflictKey = (key) => (key ?? '').replace(/pending:\d+/g, (p) => settledId(p));
 
+// An element id for the note of the cell `key` names: no white space, which
+// an id list cannot hold.
+const noteId = (key) => `igt-conflict-${encodeURIComponent(conflictKey(key))}`;
+
 // The row a cell key names: `<kind>:<id>` for a morpheme form,
 // `<kind>:<id>:<field>` for the rest, where the id may itself hold a colon
 // (`virtual:<word>`, `pending:<n>`) and so may the field.
@@ -37,13 +41,22 @@ export const conflicts = {
     return this._conflicts.get(conflictKey(key)) ?? null;
   },
 
-  // The note under a cell that lost a conflict, or nothing.
+  // The note under a cell that lost a conflict, or nothing. It has no `dir`
+  // of its own: it hangs from the start of its cell, which is the right edge
+  // in a right-to-left sentence, and "Yours" would make it left to right. The
+  // words are left to right and the value takes its own direction.
   _conflictNote(key) {
     const c = this.readOnly ? null : this._conflictOf(key);
     if (!c) return nothing;
-    return html`<span class="igt-field-conflict" role="status" dir="auto"
-      >Yours: ${c.typed || '(none)'} · Enter to keep yours</span
+    return html`<span class="igt-field-conflict" role="status" id=${noteId(key)}
+      ><span dir="ltr">Yours: <bdi>${c.typed || '(none)'}</bdi> · Enter to keep yours</span></span
     >`;
+  },
+
+  // The id of a cell's conflict note, for the cell's aria-describedby, so a
+  // screen reader arriving in the cell reads the note. Nothing when none.
+  _conflictDescribedBy(key) {
+    return !this.readOnly && this._conflictOf(key) ? noteId(key) : nothing;
   },
 
   // A refused edit of `cell` lost to `stored`, another user's value: the cell
