@@ -45,9 +45,10 @@ class AssistantService(BaseAssistantService):
     reference_shape = 'a bare reference like s3, s3.w2 or s3.w2.m1'
     # What a proposed change is kept as once its plan is settled: the word,
     # morpheme, entry or text it lands on, and its new value (a link's is the
-    # entry form it links to).
-    proposed_keys = (('token_id', 'analysis_word_id', 'word_id', 'morpheme_id', 'span_id', 'link_id', 'item_id',
-                      'keep_id', 'guideline_id', 'sentence_id', 'entity_id', 'token_ids', 'document_id',
+    # entry form it links to). A phrase link is at its first word, whether its
+    # entry exists or not.
+    proposed_keys = (('token_id', 'analysis_word_id', 'word_id', 'morpheme_id', 'span_id', 'link_id', 'token_ids',
+                      'item_id', 'keep_id', 'guideline_id', 'sentence_id', 'entity_id', 'document_id',
                       'vocab_id', 'text_id'),
                      ('value', 'form', 'entry_form', 'new', 'name', 'morph_type', 'title', 'body', 'as_of'))
 

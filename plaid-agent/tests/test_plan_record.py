@@ -75,6 +75,23 @@ def test_each_app_names_its_own_targets_and_values():
         ['create_edge', T1, ':ARG0'], ['set_concept', T2, 'eat-01']]
 
 
+def test_one_kind_of_change_always_names_the_same_kind_of_thing():
+    # A phrase link lands on its words (its card row's `at`), whether it links
+    # them to an entry that exists or to one the plan makes. Naming the entry in
+    # one case and the first word in the other would make one kind's targets
+    # two kinds of id, and a reader counting proposals per word would miss half.
+    to_old = {'kind': 'link_phrase', 'token_ids': [T2, T3], 'item_id': T1, 'new_entry_key': None,
+              'existing_link_id': None, 'entry_form': 'kai'}
+    to_new = {**to_old, 'item_id': None, 'new_entry_key': {'form': 'kai'}}
+    assert proposed_changes([to_old, to_new], *IGT)[0] == [['link_phrase', T2, 'kai'], ['link_phrase', T2, 'kai']]
+    # A node a UMR plan adds to a sentence names the sentence, not the whole
+    # document, as the ops of a drafted graph otherwise all would.
+    node = {'kind': 'create_node', 'document_id': 'd1', 'ref': 's1.s1e', 'var': 's1e', 'concept': 'eat-01',
+            'attrs': [], 'node_layer_id': 'N', 'concept_layer_id': 'C', 'text_id': 'x1', 'sentence_id': T3,
+            'begin': 0, 'end': 9}
+    assert proposed_changes([node], *UmrService.proposed_keys)[0] == [['create_node', T3, 'eat-01']]
+
+
 def test_a_value_is_clipped_by_code_points():
     clef = '\U0001d11e' * 30
     [[_, _, v]], _ = proposed_changes([{'kind': 'set_span', 'token_id': T1, 'value': clef}], *IGT)
