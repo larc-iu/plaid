@@ -30,6 +30,7 @@ import { canManageVocabulary } from '@ui/domain/permissions.js';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { useAuth } from '@/contexts/AuthContext';
 import { readVocabulary } from '@/domain/vocabCache';
+import { isChangedElsewhere } from '@ui/lib/errors.js';
 
 // Merge entries: fold one lexicon entry into another, relinking its uses.
 // Provenance keys are bookkeeping rather than content. The structural keys
@@ -182,10 +183,31 @@ export const MergePanel = ({ project, client }) => {
       .filter((v) => v != null && String(v).trim() !== '')
       .join(' · ');
 
+  // The entries read again after a merge refused because one of them changed
+  // or went: the list, the ticks and the survivor follow what is there now.
+  const reloadAfterRefusal = async () => {
+    let layer;
+    try {
+      layer = await readVocabulary(client, vocabId);
+    } catch (err) {
+      console.error('Load vocabulary failed:', err);
+      return;
+    }
+    const fresh = layer.items || [];
+    const ids = new Set(fresh.map((it) => it.id));
+    setItems(fresh);
+    setChosen((prev) => new Set([...prev].filter((id) => ids.has(id))));
+    if (survivor && !ids.has(survivor)) setSurvivor(null);
+    r.setPlan(null);
+  };
+
   const doApply = async () => {
     if (!canMerge) return;
     const survivorItem = itemById.get(survivor);
+    // Written out, as the History entry and the toast carry it: "dog 1".
+    const survivorName = itemLabel(survivorItem, numbers);
     let now = null;
+    let refused = false;
     const res = await r.run('Apply', async () => {
       // The vocabulary's own references to the losers (senses, reference
       // fields) follow the links to the survivor. They are planned against
@@ -197,20 +219,37 @@ export const MergePanel = ({ project, client }) => {
       now = (await readVocabulary(client, vocabId)).items || [];
       const refPlans = planMergeRefs(now, fields, survivor, losers);
       const refUpdates = metadataUpdates(refPlans, new Map(now.map((it) => [it.id, it.metadata])));
-      const out = await applyMerge(
-        client,
-        { refUpdates },
-        {
-          survivorId: survivor,
-          loserIds: losers,
-          label: `Merge ${plural(losers.length, 'lexicon entry', 'lexicon entries')} into “${survivorItem?.form ?? ''}”`,
-        },
-      );
-      return { ...out, refPlans };
+      // The links this person can see, counted again now: the merge moves
+      // the ones in projects they cannot open as well, and the toast says
+      // how many of those there were.
+      const seen = await planMerge(client, vocabId, losers);
+      try {
+        const out = await applyMerge(
+          client,
+          { refUpdates },
+          {
+            survivorId: survivor,
+            loserIds: losers,
+            label: `Merge ${plural(losers.length, 'lexicon entry', 'lexicon entries')} into “${survivorName}”`,
+          },
+        );
+        return { ...out, refPlans, seen: seen.links };
+      } catch (err) {
+        refused = isChangedElsewhere(err);
+        throw err;
+      }
     });
-    if (!res) return;
+    if (!res) {
+      if (refused) await reloadAfterRefusal();
+      return;
+    }
+    const hidden = Math.min(
+      res.linksMoved,
+      Math.max(0, res.linksMoved + res.duplicatesRemoved - res.seen),
+    );
     notifySuccess(
-      `${plural(res.entriesRemoved, 'entry', 'entries')} merged. ${plural(res.linksMoved, 'link')} moved to “${survivorItem?.form ?? ''}”.` +
+      `${plural(res.entriesRemoved, 'entry', 'entries')} merged. ${plural(res.linksMoved, 'link')} moved to “${survivorName}”` +
+        (hidden ? `, ${hidden} of them in projects you cannot open.` : '.') +
         (res.duplicatesRemoved
           ? ` ${plural(res.duplicatesRemoved, 'duplicate link')} removed.`
           : '') +
@@ -354,7 +393,10 @@ export const MergePanel = ({ project, client }) => {
             {plural(chosen.size, 'entry', 'entries')} ticked
             {survivor && (
               <>
-                , keeping <strong>{itemById.get(survivor)?.form}</strong>
+                , keeping{' '}
+                <strong>
+                  <FormLabel form={itemById.get(survivor)?.form} index={numbers.get(survivor)} />
+                </strong>
               </>
             )}
           </span>
@@ -374,13 +416,26 @@ export const MergePanel = ({ project, client }) => {
           count={losers.length}
           busy={r.busy}
           onApply={doApply}
-          summary={`${plural(losers.length, 'entry', 'entries')} will be merged into “${itemById.get(survivor)?.form}”: their links move to it, and the merged entries are deleted.`}
+          summary={
+            <>
+              {plural(losers.length, 'entry', 'entries')} will be merged into “
+              <FormLabel form={itemById.get(survivor)?.form} index={numbers.get(survivor)} />
+              ”: their links move to it, and the merged entries are deleted.
+            </>
+          }
         >
           <span className="text-sm">
-            {losers.map((id) => itemById.get(id)?.form).join(', ')} →{' '}
-            <strong>{itemById.get(survivor)?.form}</strong>:{' '}
-            {plural(plan.tokens, 'linked word or morpheme', 'linked words and morphemes')} in{' '}
-            {plural(plan.docs, 'document')} will follow.
+            {losers.map((id, i) => (
+              <Fragment key={id}>
+                {i > 0 && ', '}
+                <FormLabel form={itemById.get(id)?.form} index={numbers.get(id)} />
+              </Fragment>
+            ))}{' '}
+            →{' '}
+            <strong>
+              <FormLabel form={itemById.get(survivor)?.form} index={numbers.get(survivor)} />
+            </strong>
+            : {plural(plan.links, 'link')} in {plural(plan.docs, 'document')} will follow.
           </span>
         </ApplyBar>
       )}

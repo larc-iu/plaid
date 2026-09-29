@@ -218,7 +218,10 @@ describe('applyRespell', () => {
     };
     const rows = [row('a', 0), row('b', 4)];
     const opts = { includeMorphemes: true, includeLexicon: false, label: 'Respell' };
-    await expect(applyRespell(client, { rows, lexiconRows: [], versions }, opts)).rejects.toThrow();
+    // It stops at b, having written a, and says so.
+    const first = await applyRespell(client, { rows, lexiconRows: [], versions }, opts);
+    expect(first.docsChanged).toBe(1);
+    expect(first.failed.error.message).toBe('HTTP 500');
     refuse = false;
     const out = await applyRespell(client, { rows, lexiconRows: [], versions }, opts);
     expect(out.docsChanged).toBe(1);
@@ -323,9 +326,19 @@ describe('the previews read what they need', () => {
     expect(forms.reads[0].layers).toEqual(substrate);
   });
 
-  it('a merge counts the linked words and reads no document', async () => {
+  it('a merge counts the links, as the server counts the ones it moves, and reads no document', async () => {
     const client = readClient();
-    expect(await planMerge(client, 'v1', ['k1', 'k2'])).toEqual({ tokens: 6, docs: 2 });
+    // One row per document and link, with the words each link covers: l1 is
+    // a multi-word expression over two words, and counts once.
+    const answers = {
+      k1: [
+        ['d1', 'l1', 2],
+        ['d2', 'l2', 1],
+      ],
+      k2: [['d1', 'l3', 1]],
+    };
+    client.query = async (q) => ({ results: answers[q.where[1][2]] });
+    expect(await planMerge(client, 'v1', ['k1', 'k2'])).toEqual({ links: 3, docs: 2 });
     expect(client.reads).toEqual([]);
   });
 

@@ -21,7 +21,7 @@ import {
 import { searchDomains } from '../search/searchQueries.js';
 import { buildReplacer } from './bulkPlan.js';
 import { planField, applyField } from './bulkRunner.js';
-import { plural, skippedNote, useRun } from './bulkShared.js';
+import { notifyStopped, plural, skippedNote, useRun } from './bulkShared.js';
 import { scopeTextClass } from '@/domain/scopeColors';
 import {
   ApplyBar,
@@ -139,6 +139,15 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
     );
     if (!res) return;
     const skipped = skippedNote([[res.skipped, 'value']]);
+    if (res.failed) {
+      // The plan stays, so Apply again sends what did not land.
+      notifyStopped(
+        res.failed,
+        `${plural(res.changed, 'value')} replaced in ${targetLabel}`,
+        skipped,
+      );
+      return;
+    }
     if (!res.changed && skipped) notifyWarning(skipped.trim(), 'Nothing replaced');
     else
       notifySuccess(

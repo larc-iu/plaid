@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { notifyError, humanizeError } from '@/utils/feedback';
+import { notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
 import { plural } from '@/utils/plural';
 
 // What every Bulk Edit panel shares: the run state machine, the scope
@@ -13,6 +13,20 @@ export const skippedNote = (counts) => {
   const parts = counts.filter(([n]) => n > 0).map(([n, word, words]) => plural(n, word, words));
   if (!parts.length) return '';
   return ` Skipped ${parts.join(' and ')} changed since the preview.`;
+};
+
+// The toasts for a run that stopped partway after something landed:
+// `failed` is the runner's { docName, error } and `done` names what landed
+// ("3 words in 1 document respelled"). The error as any failed apply shows
+// it, then what was written before the stop, as Re-analyze says it.
+export const notifyStopped = (failed, done, skipped = '') => {
+  notifyError(humanizeError(failed.error), 'Failed to apply');
+  notifyWarning(
+    failed.docName
+      ? `${done} before “${failed.docName}” failed. The remaining documents were not changed.${skipped}`
+      : `${done} before the lexicon entries failed.${skipped}`,
+    'Stopped early',
+  );
 };
 
 // ---- shared bits ----------------------------------------------------------------

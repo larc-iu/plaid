@@ -99,11 +99,14 @@ async function atVersion(client, docId, version, send) {
 // document changed since then is refused whole: it is read again
 // (`replan(docId)`, resolving to { version, rows }), and the rows that still
 // read as the preview showed them (`same(previewRow, freshRow)`) are sent
-// once more, as re-planned, at the version just read. The rest are skipped,
-// and every row when the document is refused a second time. `send(rows)`
-// makes the writes. Resolves to { sent, skipped }, both lists of the
-// preview's rows.
-async function sendDocument(client, { docId, version, rows, replan, same, send }) {
+// once more, as re-planned, at the version just read. A row that already
+// reads as the preview's new value (`landed(previewRow, nowRow)`, against the
+// re-read's `now`, every entity as it reads) is counted as sent: it is this
+// run's own write from an attempt whose answer was lost. The rest are
+// skipped, and every row but those when the document is refused a second
+// time. `send(rows)` makes the writes. Resolves to { sent, skipped }, both
+// lists of the preview's rows.
+async function sendDocument(client, { docId, version, rows, replan, same, landed, send }) {
   try {
     await atVersion(client, docId, version, () => send(rows));
     return { sent: rows, skipped: [] };
@@ -120,16 +123,25 @@ async function sendDocument(client, { docId, version, rows, replan, same, send }
   const freshById = new Map(fresh.rows.map((r) => [r.id, r]));
   const kept = rows.filter((r) => freshById.has(r.id) && same(r, freshById.get(r.id)));
   const keptSet = new Set(kept);
-  const skipped = rows.filter((r) => !keptSet.has(r));
-  if (!kept.length) return { sent: [], skipped };
+  const already = rows.filter(
+    (r) => !keptSet.has(r) && landed && fresh.now?.has(r.id) && landed(r, fresh.now.get(r.id)),
+  );
+  const alreadySet = new Set(already);
+  const skipped = rows.filter((r) => !keptSet.has(r) && !alreadySet.has(r));
+  if (!kept.length) return { sent: already, skipped };
   try {
     await atVersion(client, docId, fresh.version, () => send(kept.map((r) => freshById.get(r.id))));
-    return { sent: kept, skipped };
+    return { sent: [...already, ...kept], skipped };
   } catch (e) {
     if (!isChangedElsewhere(e)) throw e;
-    return { sent: [], skipped: rows };
+    return { sent: already, skipped: [...skipped, ...kept] };
   }
 }
+
+// Every entity a collector plans over, as it reads now: the collector run
+// with a substitution that changes nothing, so each row's `old` is the
+// current value. Map id -> row.
+const readingNow = (collect, doc, ...args) => new Map(collect(doc, ...args).map((r) => [r.id, r]));
 
 // A document read again that cannot be read: deleted since the preview (404),
 // or no longer this person's to read (403). Its rows are skipped.
@@ -168,7 +180,11 @@ export async function planRespell(
   // document that changed between Preview and Apply.
   const replan = async (docId) => {
     const [doc] = await loadDocs(client, project, [[docId]], {}, undefined, layers);
-    return { version: doc.raw?.version, rows: collectRespellRows(doc, apply) };
+    return {
+      version: doc.raw?.version,
+      rows: collectRespellRows(doc, apply),
+      now: readingNow(collectRespellRows, doc, (v) => v),
+    };
   };
   return { rows, lexiconRows, docs, versions: versionsOf(docs), replan };
 }
@@ -180,6 +196,15 @@ const sameRespell = (includeMorphemes) => (a, b) =>
   a.old === b.old &&
   a.new === b.new &&
   (!includeMorphemes || JSON.stringify(a.morphemes || []) === JSON.stringify(b.morphemes || []));
+
+// A respell row already reads as respelled: the word, and when they are
+// respelled too, its morpheme forms.
+const landedRespell = (includeMorphemes) => (row, now) =>
+  now.old === row.new &&
+  (!includeMorphemes ||
+    (row.morphemes || []).every(
+      (m) => (now.morphemes || []).find((x) => x.id === m.id)?.old === m.new,
+    ));
 
 // The selected lexicon rows whose entry still has the form the preview read,
 // read again from each vocabulary. A renamed or deleted entry is left out.
@@ -210,7 +235,8 @@ async function unchangedEntries(client, lexiconRows) {
 // where its words still read as they did (`replan`, see sendDocument). A
 // lexicon entry is renamed only while it still has the form the preview
 // read. Returns { docsChanged, wordsChanged, morphemesChanged,
-// entriesChanged, wordsSkipped, entriesSkipped }.
+// entriesChanged, wordsSkipped, entriesSkipped, failed? }, `failed` when it
+// stopped partway after something landed (see stoppedOrDone).
 //
 // A row that landed or was skipped is marked `applied` and left out of a
 // later apply of the same plan, which would otherwise respell a document a
@@ -235,12 +261,13 @@ export async function applyRespell(
 
   await writeAcrossDocuments(client, label, 'respell', async () => {
     for (const [docId, docRows] of byDoc) {
-      const { sent, skipped } = await sendDocument(client, {
+      const res = await sendDocument(client, {
         docId,
         version: versions?.[docId],
         rows: docRows,
         replan,
         same: sameRespell(includeMorphemes),
+        landed: landedRespell(includeMorphemes),
         // Every chunk of morpheme forms rides in the same batch as the text
         // edit, so the document lands whole or not at all.
         send: (toSend) =>
@@ -248,7 +275,12 @@ export async function applyRespell(
             b.texts.update(toSend[0].textId, respellOps(toSend));
             for (const part of chunk(morphemesOf(toSend))) b.tokens.bulkUpdate(formPatches(part));
           }),
+      }).catch((error) => {
+        out.failed = { docName: docRows[0]?.docName ?? null, error };
+        return null;
       });
+      if (!res) return;
+      const { sent, skipped } = res;
       docRows.forEach((r) => (r.applied = true));
       if (sent.length) out.docsChanged += 1;
       out.wordsChanged += sent.length;
@@ -256,23 +288,36 @@ export async function applyRespell(
       out.wordsSkipped += skipped.length;
     }
     if (includeLexicon) {
-      const open = lexiconRows.filter((r) => !r.applied && !r.locked);
-      const kept = await unchangedEntries(client, open);
-      const keptSet = new Set(kept);
-      for (const r of open) {
-        if (keptSet.has(r)) continue;
-        r.applied = true;
-        out.entriesSkipped += 1;
-      }
-      for (const part of chunk(kept)) {
-        await client.vocabItems.bulkUpdate(part.map((r) => ({ id: r.id, form: r.new })));
-        part.forEach((r) => (r.applied = true));
-        out.entriesChanged += part.length;
+      try {
+        const open = lexiconRows.filter((r) => !r.applied && !r.locked);
+        const kept = await unchangedEntries(client, open);
+        const keptSet = new Set(kept);
+        for (const r of open) {
+          if (keptSet.has(r)) continue;
+          r.applied = true;
+          out.entriesSkipped += 1;
+        }
+        for (const part of chunk(kept)) {
+          await client.vocabItems.bulkUpdate(part.map((r) => ({ id: r.id, form: r.new })));
+          part.forEach((r) => (r.applied = true));
+          out.entriesChanged += part.length;
+        }
+      } catch (error) {
+        out.failed = { docName: null, error };
       }
     }
   });
-  return out;
+  return stoppedOrDone(out, out.docsChanged + out.entriesChanged);
 }
+
+// A run that failed partway: with nothing written, its error is thrown as
+// before. With something written, the run resolves with `failed`
+// ({ docName, error }: the document it stopped at, null for the lexicon
+// entries), so the toast can say what landed before the stop.
+const stoppedOrDone = (out, written) => {
+  if (out.failed && !written) throw out.failed.error;
+  return out;
+};
 
 // ---- field ----------------------------------------------------------------
 
@@ -284,7 +329,11 @@ export async function planField(client, project, target, { find, matchType, appl
   const rows = docs.flatMap((doc) => collectFieldRows(doc, target, apply));
   const replan = async (docId) => {
     const [doc] = await loadDocs(client, project, [[docId]], {}, undefined, layers);
-    return { version: doc.raw?.version, rows: collectFieldRows(doc, target, apply) };
+    return {
+      version: doc.raw?.version,
+      rows: collectFieldRows(doc, target, apply),
+      now: readingNow(collectFieldRows, doc, target, (v) => v),
+    };
   };
   return { rows, docs, versions: versionsOf(docs), replan };
 }
@@ -292,17 +341,23 @@ export async function planField(client, project, target, { find, matchType, appl
 // A value still reads as the preview showed it.
 const sameValue = (a, b) => a.old === b.old && a.new === b.new;
 
+// A value already reads as the preview's new one.
+const landedValue = (row, now) => now.old === row.new;
+
 // Span values, or morpheme forms, one document at a time, each document's in
 // one batch carrying the version the preview read. A document changed since
 // then is read again, and only the values that still read as the preview
-// showed them are replaced (see sendDocument). Returns { changed, skipped }.
+// showed them are replaced (see sendDocument). Returns { changed, skipped,
+// failed }.
 //
 // A row that landed or was skipped is marked `applied` and left out of a
 // later apply of the same plan, as Respell's are, so Apply again after a
-// stop partway sends only the documents that did not land.
+// stop partway sends only the documents that did not land. A stop after a
+// document landed resolves with `failed` (see stoppedOrDone).
 export async function applyField(client, { rows, versions, replan }, { label }) {
   let changed = 0;
   let skipped = 0;
+  let failed = null;
   const send = (docRows) =>
     client.batched(async (b) => {
       const spanRows = docRows.filter((r) => r.kind !== 'morphForm');
@@ -324,14 +379,19 @@ export async function applyField(client, { rows, versions, replan }, { label }) 
         rows: docRows,
         replan,
         same: sameValue,
+        landed: landedValue,
         send,
+      }).catch((error) => {
+        failed = { docName: docRows[0]?.docName ?? null, error };
+        return null;
       });
+      if (!out) return;
       docRows.forEach((r) => (r.applied = true));
       changed += out.sent.length;
       skipped += out.skipped.length;
     }
   });
-  return { changed, skipped };
+  return stoppedOrDone({ changed, skipped, ...(failed ? { failed } : {}) }, changed);
 }
 
 // ---- reanalyze --------------------------------------------------------------
@@ -443,27 +503,32 @@ export async function applyReanalyze(client, { rows, docs }, { analysis, label, 
 
 // ---- merge ------------------------------------------------------------------
 
-// How many words and morphemes are linked to the losing entries, and in how
-// many documents, for the preview's summary: { tokens, docs }. The merge
-// itself reads the links when it runs, so this is a count, not a plan.
+// How many links the losing entries have, and in how many documents, for the
+// preview's summary: { links, docs }. A link over several words (a
+// multi-word expression) is one link, as the server counts the links it
+// moves. Only documents this person can read are counted, and the merge
+// moves the links in the others too. The merge itself reads the links when
+// it runs, so this is a count, not a plan.
 export async function planMerge(client, vocabId, loserIds) {
-  const docCounts = new Map();
+  const links = new Set();
+  const docs = new Set();
   for (const itemId of loserIds) {
     const r = await client.query({
       where: [
         ['vocab', '?v', { layer: vocabId }],
         ['=', '?v.id', itemId],
-        ['vocab-link', '?t', '?v'],
+        ['link-item', '?l', '?v'],
+        ['link-token', '?l', '?t'],
         ['token', '?t', { doc: { var: '?d' } }],
       ],
-      return: { group: ['?d'], aggregates: [['count']] },
+      return: { group: ['?d', '?l'], aggregates: [['count']] },
     });
-    for (const [docId, n] of r?.results || [])
-      docCounts.set(String(docId), (docCounts.get(String(docId)) || 0) + n);
+    for (const [docId, linkId] of r?.results || []) {
+      docs.add(String(docId));
+      links.add(String(linkId));
+    }
   }
-  let tokens = 0;
-  for (const n of docCounts.values()) tokens += n;
-  return { tokens, docs: docCounts.size };
+  return { links: links.size, docs: docs.size };
 }
 
 // Repoint every entry that referred to a loser (a dictionary's senses and

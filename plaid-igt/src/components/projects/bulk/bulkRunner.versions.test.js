@@ -184,7 +184,10 @@ describe('Replace in a field checks the version the preview read', () => {
       versions: { a: 1, b: 1 },
       replan: async (doc) => ({ version: server.versions[doc], rows: [] }),
     };
-    await expect(applyField(client, plan, { label: 'Replace' })).rejects.toThrow('HTTP 500');
+    // It stops at b, having written a: it says so rather than failing whole.
+    const first = await applyField(client, plan, { label: 'Replace' });
+    expect(first.changed).toBe(1);
+    expect(first.failed.error.message).toBe('HTTP 500');
     server.fail = null;
     const out = await applyField(client, plan, { label: 'Replace' });
     // The value in a landed first time, and is not counted as changed since.

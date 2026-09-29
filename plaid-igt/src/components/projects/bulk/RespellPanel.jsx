@@ -4,7 +4,7 @@ import { cn } from '@ui/lib/utils';
 import { notifySuccess, notifyWarning } from '@/utils/feedback';
 import { buildReplacer, chainText } from './bulkPlan.js';
 import { planRespell, applyRespell } from './bulkRunner.js';
-import { plural, skippedNote, useRun } from './bulkShared.js';
+import { notifyStopped, plural, skippedNote, useRun } from './bulkShared.js';
 import { scopeTextClass } from '@/domain/scopeColors';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
 import { useAuth } from '@/contexts/AuthContext';
@@ -110,19 +110,22 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
       [res.wordsSkipped, 'word'],
       [res.entriesSkipped, 'lexicon entry', 'lexicon entries'],
     ]);
+    const done =
+      `${plural(res.wordsChanged, 'word')} in ${plural(res.docsChanged, 'document')}` +
+      (res.morphemesChanged ? `, ${plural(res.morphemesChanged, 'morpheme form')}` : '') +
+      (res.entriesChanged
+        ? `, ${plural(res.entriesChanged, 'lexicon entry', 'lexicon entries')}`
+        : '') +
+      ' respelled';
+    if (res.failed) {
+      // The plan stays, so Apply again sends what did not land.
+      notifyStopped(res.failed, done, skipped);
+      return;
+    }
     if (!res.wordsChanged && !res.entriesChanged && skipped) {
       notifyWarning(skipped.trim(), 'Nothing respelled');
     } else {
-      notifySuccess(
-        `${plural(res.wordsChanged, 'word')} in ${plural(res.docsChanged, 'document')}` +
-          (res.morphemesChanged ? `, ${plural(res.morphemesChanged, 'morpheme form')}` : '') +
-          (res.entriesChanged
-            ? `, ${plural(res.entriesChanged, 'lexicon entry', 'lexicon entries')}`
-            : '') +
-          ' respelled.' +
-          skipped,
-        'Respelled',
-      );
+      notifySuccess(`${done}.${skipped}`, 'Respelled');
     }
     r.setPlan(null);
   };
