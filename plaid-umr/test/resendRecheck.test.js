@@ -133,12 +133,43 @@ test('an edge that would close a cycle with an edge added meanwhile is refused, 
   release();
 });
 
-test('an edge goes again when the edge added meanwhile is elsewhere', async () => {
+// Luke's ruling Q2 narrowed (2026-09-30): an edge goes again only when what
+// changed meanwhile is all in layers it neither reads nor writes. Another
+// edge, even in another sentence, is in its own layer.
+test('an edge is refused, not sent again, when an edge went in elsewhere meanwhile', async () => {
   let c;
   let d;
   const { doc, calls, errors, release } = load((raw, dd) => withEdge(raw, dd, d.id, c.id));
   const [a, b] = unrelated(doc, 1);
   [c, d] = unrelated(doc, 2);
+  const result = await doc.createEdge(a.id, b.id, ':ARG1');
+  assert.equal(result, false);
+  assert.equal(created(calls).length, 0, 'not sent again');
+  assert.deepEqual(
+    errors.map((e) => e?.status),
+    [409],
+  );
+  release();
+});
+
+test('an edge goes again when what changed meanwhile is in a layer it does not read', async () => {
+  // Another app's value on a word (an igt gloss), as a field of the word.
+  const { doc, calls, errors, release } = load((raw, dd) => {
+    const words = dd.layerInfo.wordTokenLayer.id;
+    const find = (node) => {
+      if (node && typeof node === 'object') {
+        if (node.id === words) return node;
+        for (const v of Object.values(node)) {
+          const hit = find(v);
+          if (hit) return hit;
+        }
+      }
+      return null;
+    };
+    find(raw).tokens[0].metadata = { gloss: 'DEF' };
+    return raw;
+  });
+  const [a, b] = unrelated(doc, 1);
   const result = await doc.createEdge(a.id, b.id, ':ARG1');
   assert.ok(result, 'the edge was written');
   assert.equal(created(calls).length, 1);

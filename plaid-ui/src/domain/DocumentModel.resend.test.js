@@ -24,6 +24,8 @@ const words = [
 function docServer() {
   const server = {
     spans: [],
+    // Another app's layer over the same text (UMR's nodes).
+    nodes: [],
     version: 1,
     sent: [],
     fail: [],
@@ -40,6 +42,7 @@ function docServer() {
                 tokens: structuredClone(words),
                 spanLayers: [{ id: 'gloss', spans: structuredClone(server.spans) }],
               },
+              { id: 'nodes', tokens: structuredClone(server.nodes) },
             ],
           },
         ],
@@ -95,23 +98,27 @@ class GlossDoc extends DocumentModel {
     return spansOf(this._raw).find((s) => s.tokens[0] === token)?.value ?? null;
   }
   // A gloss, with an optional app check to make again on a later version.
-  gloss(token, value, { recheck = null, besideToo = false } = {}) {
+  gloss(token, value, { recheck = null, besideToo = false, byEntity = true } = {}) {
     const id = pendingId();
     this._applyRawPatch((raw, beside) => {
       spansOf(raw).push({ id, tokens: [token], value });
       if (besideToo) beside.push(value);
     });
-    const done = this._queueWrite(
-      'Failed to update Gloss',
-      () =>
-        this._client.write(`add ${token} ${value}`, () => {
-          const made = { id: this._server.nextId(), tokens: [token], value };
-          this._server.spans.push(made);
-          this._settle(new Map([[id, made.id]]));
-        }),
-      undefined,
-      { recheck },
-    );
+    // Glosses, opted in to the rule by entity as igt's are, unless the test
+    // says otherwise.
+    const queue = () =>
+      this._queueWrite(
+        'Failed to update Gloss',
+        () =>
+          this._client.write(`add ${token} ${value}`, () => {
+            const made = { id: this._server.nextId(), tokens: [token], value };
+            this._server.spans.push(made);
+            this._settle(new Map([[id, made.id]]));
+          }),
+        undefined,
+        { recheck },
+      );
+    const done = byEntity ? this.resendsByEntity(queue) : queue();
     return { id, done };
   }
   // A second write to a gloss this page made, naming it by its pending id.
@@ -120,11 +127,13 @@ class GlossDoc extends DocumentModel {
       const span = spansOf(raw).find((s) => s.id === spanId);
       if (span) span.value = value;
     });
-    return this._queueWrite('Failed to update Gloss', () =>
-      this._client.write(`patch ${settledId(spanId)} ${value}`, () => {
-        const span = this._server.spans.find((s) => s.id === settledId(spanId));
-        span.value = value;
-      }),
+    return this.resendsByEntity(() =>
+      this._queueWrite('Failed to update Gloss', () =>
+        this._client.write(`patch ${settledId(spanId)} ${value}`, () => {
+          const span = this._server.spans.find((s) => s.id === settledId(spanId));
+          span.value = value;
+        }),
+      ),
     );
   }
   _patchContext() {
@@ -247,5 +256,41 @@ describe('an edit naming a row that a refused edit made', () => {
     expect(await again).toBe(true);
     expect(errors).toEqual([]);
     expect(server.spans.map((s) => s.value)).toEqual(['ART']);
+  });
+});
+
+// Luke's ruling Q2 narrowed (2026-09-30): an edit not opted in goes again
+// only when what changed is all in layers it neither reads nor writes.
+describe('an edit not opted in to the rule by entity', () => {
+  it('is refused when someone wrote on another word of the layer it writes', async () => {
+    const { server, doc, errors } = openDoc();
+    server.elsewhere('t1', 'DEF');
+    const { done } = doc.gloss('t2', 'CANINE', { byEntity: false });
+    expect(await done).toBe(false);
+    expect(errors.map((e) => e.status)).toEqual([409]);
+    expect(server.spans.map((s) => s.value)).toEqual(['DEF']);
+    expect(server.sent).toEqual(['add t2 CANINE']);
+  });
+
+  it('goes again when what changed is in a layer it neither reads nor writes', async () => {
+    const { server, doc, errors } = openDoc();
+    server.nodes.push({ id: 'n1', begin: 0, end: 3 });
+    server.version += 1;
+    const { done } = doc.gloss('t2', 'CANINE', { byEntity: false });
+    expect(await done).toBe(true);
+    expect(errors).toEqual([]);
+    expect(server.spans.map((s) => s.value)).toEqual(['CANINE']);
+  });
+
+  it('is judged by layer when it waits behind an edit that was refused', async () => {
+    const { server, doc } = openDoc();
+    server.elsewhere('t1', 'HOUND');
+    const first = doc.gloss('t1', 'DEF');
+    const behind = doc.gloss('t3', 'RUN', { byEntity: false });
+    const opted = doc.gloss('t2', 'CANINE');
+    expect(await first.done).toBe(false);
+    expect(await behind.done).toBe(false);
+    expect(await opted.done).toBe(true);
+    expect(server.sent).toEqual(['add t1 DEF', 'add t2 CANINE']);
   });
 });

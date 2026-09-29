@@ -23,7 +23,7 @@ import {
 } from './textDirection.js';
 import { WriteQueue } from './WriteQueue.js';
 import { recordSettled, settleIds } from './pendingIds.js';
-import { footprintOf, landed, pendingIdsOf, untouched } from './rebase.js';
+import { footprintOf, landed, pendingIdsOf, resendable } from './rebase.js';
 
 const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
 
@@ -124,6 +124,7 @@ export class DocumentModel {
     // and the timers of the reads after a lost answer (`_readLater`).
     this._operation = null;
     this._conflictHandled = false;
+    this._byEntity = false;
     this._lateReads = new Set();
     // The document before the first patch of the edit being made, until its
     // write is queued (`_queueWrite`), and whether any of its patches changed
@@ -361,6 +362,26 @@ export class DocumentModel {
     }
   }
 
+  /**
+   * Run `fn`, whose writes are values on a token that leave its extent as it
+   * is (igt's glosses), and opt them in to the rule by entity when one is
+   * refused because the document moved on: it goes again by itself when
+   * nothing that changed touches what it writes, a change in its own layer
+   * included (rebase.js `untouched`). Every other write goes again only when
+   * what changed is all in layers it neither reads nor writes (`apart`). A
+   * write in the scope that moves a token or the text gets the rule by layer
+   * all the same. The same scope as `labelled`. Returns what `fn` returns.
+   */
+  resendsByEntity(fn) {
+    const outer = this._byEntity;
+    this._byEntity = true;
+    try {
+      return fn();
+    } finally {
+      this._byEntity = outer;
+    }
+  }
+
   // ----- subscription bridge (useSyncExternalStore-compatible) -----
   // Arrow-field properties so identities stay stable across renders of the
   // same instance.
@@ -476,8 +497,9 @@ export class DocumentModel {
   // since, see `_afterConflict`), it is asked again, on that version before
   // the edit: `fresh` is a document of the subclass's own kind (`_snapshot`)
   // over what was read, with the edits ahead of it shown. False refuses the
-  // edit like a conflict. Without one, only what the edit's own rows touch is
-  // looked at (rebase.js).
+  // edit like a conflict. Without one, only what changed in between is
+  // looked at (rebase.js): by layer, or by entity for a write made inside
+  // `resendsByEntity`.
   //
   // Every write goes through here, one at a time, so nothing is ever sent
   // beside a send or a refetch: a rename made while an edit is saving is sent
@@ -509,6 +531,8 @@ export class DocumentModel {
       // links), which no read of the document shows: never sent again.
       beside: this._patchesBeside,
       recheck,
+      // Opted in to the rule by entity (`resendsByEntity`).
+      byEntity: this._byEntity,
     };
     if (unsent.base) unsent.made = this._raw;
     this._patches = [];
@@ -663,12 +687,13 @@ export class DocumentModel {
   }
 
   // Whether nothing that changed between the document `unsent` was last
-  // checked against and `now` touches what it writes. From then on it is
+  // checked against and `now` touches what it writes, by layer or, when it
+  // was opted in, by entity (rebase.js `resendable`). From then on it is
   // checked against `now`.
   _untouched(unsent, now) {
     if (!unsent.base || unsent.beside) return false;
     const { footprint } = this._summary(unsent);
-    if (!untouched(footprint, unsent.base, now)) return false;
+    if (!resendable(footprint, unsent.base, now, { byEntity: unsent.byEntity })) return false;
     unsent.origin ??= unsent.base;
     unsent.base = now;
     return true;

@@ -317,7 +317,10 @@ describe('an edit refused because someone else wrote elsewhere in the document',
           value,
         });
       });
-      return this._queueWrite('Failed to update Gloss', () => this._client.addGloss(token, value));
+      // A gloss, opted in to the rule by entity as igt's are.
+      return this.resendsByEntity(() =>
+        this._queueWrite('Failed to update Gloss', () => this._client.addGloss(token, value)),
+      );
     }
   }
 
@@ -401,8 +404,8 @@ describe('an edit refused because someone else wrote elsewhere in the document',
           });
           beside.push(value);
         });
-        return this._queueWrite('Failed to update Gloss', () =>
-          this._client.addGloss(token, value),
+        return this.resendsByEntity(() =>
+          this._queueWrite('Failed to update Gloss', () => this._client.addGloss(token, value)),
         );
       }
     }

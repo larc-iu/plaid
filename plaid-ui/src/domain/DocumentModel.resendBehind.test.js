@@ -82,10 +82,12 @@ class GlossDoc extends DocumentModel {
       const span = spansOf(raw).find((s) => s.id === spanId);
       if (span) span.value = value;
     });
-    return this._queueWrite('Failed to update Gloss', () =>
-      this._client.write(`patch ${settledId(spanId)} ${value}`, () => {
-        this._server.spans.find((s) => s.id === settledId(spanId)).value = value;
-      }),
+    return this.resendsByEntity(() =>
+      this._queueWrite('Failed to update Gloss', () =>
+        this._client.write(`patch ${settledId(spanId)} ${value}`, () => {
+          this._server.spans.find((s) => s.id === settledId(spanId)).value = value;
+        }),
+      ),
     );
   }
   gloss(token, value) {
@@ -93,12 +95,15 @@ class GlossDoc extends DocumentModel {
     this._applyRawPatch((raw) => {
       spansOf(raw).push({ id, tokens: [token], value });
     });
-    const done = this._queueWrite('Failed to update Gloss', () =>
-      this._client.write(`add ${token} ${value}`, () => {
-        const made = { id: this._server.nextId(), tokens: [token], value };
-        this._server.spans.push(made);
-        this._settle(new Map([[id, made.id]]));
-      }),
+    // Glosses, opted in to the rule by entity as igt's are.
+    const done = this.resendsByEntity(() =>
+      this._queueWrite('Failed to update Gloss', () =>
+        this._client.write(`add ${token} ${value}`, () => {
+          const made = { id: this._server.nextId(), tokens: [token], value };
+          this._server.spans.push(made);
+          this._settle(new Map([[id, made.id]]));
+        }),
+      ),
     );
     return Object.assign(done, { id });
   }

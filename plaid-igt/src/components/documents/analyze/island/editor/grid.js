@@ -174,11 +174,17 @@ export const grid = {
                     )
                   : null,
                 value: token.annotations?.[name]?.value ?? '',
+                // A gloss goes again by itself past another user's value on
+                // another word (DocumentModel.resendsByEntity).
                 apply: (v, meta) =>
-                  this.doc.labelled(
-                    this._editLabel(name, `"${token.content}"`, sctx.index, v),
-                    () =>
-                      this.doc.updateTokenSpan(token.id, name, v, meta, { adopted: meta != null }),
+                  this.doc.resendsByEntity(() =>
+                    this.doc.labelled(
+                      this._editLabel(name, `"${token.content}"`, sctx.index, v),
+                      () =>
+                        this.doc.updateTokenSpan(token.id, name, v, meta, {
+                          adopted: meta != null,
+                        }),
+                    ),
                   ),
                 ariaLabel: `${name} for ${token.content}`,
                 fieldName: name,
@@ -380,13 +386,16 @@ export const grid = {
                     )
                   : null,
                 value: morph.annotations?.[name]?.value ?? '',
+                // As a word's gloss (DocumentModel.resendsByEntity).
                 apply: (v, meta) =>
-                  this.doc.labelled(
-                    this._editLabel(name, this._morphemeSubject(morph, word, siblings), index, v),
-                    () =>
-                      this.doc.updateMorphemeSpan(morph.id, name, v, meta, {
-                        adopted: meta != null,
-                      }),
+                  this.doc.resendsByEntity(() =>
+                    this.doc.labelled(
+                      this._editLabel(name, this._morphemeSubject(morph, word, siblings), index, v),
+                      () =>
+                        this.doc.updateMorphemeSpan(morph.id, name, v, meta, {
+                          adopted: meta != null,
+                        }),
+                    ),
                   ),
                 extraClass: 'igt-morph-field',
                 ariaLabel: `${name} for morpheme${value ? ` ${value}` : ''}`,

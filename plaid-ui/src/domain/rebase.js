@@ -4,6 +4,12 @@
 // glossing different words, or an igt gloss and a UMR node, refuse each other
 // although they share nothing.
 //
+// Two rules (Q2 narrowed, 2026-09-30). Every edit gets the rule by layer
+// (`apart`): it goes again only when every change in between is in a layer it
+// neither reads nor writes. A caller may opt a value write in to the rule by
+// entity (`untouched`, below), which also lets it pass a change in its own
+// layer that touches nothing it writes. `resendable` picks between them.
+//
 // Generic by layer and entity, with nothing of any app: a document read is a
 // tree of objects with an `id` (layers, tokens, spans, relations, the text,
 // the document itself), and that is all this reads. An edit's FOOTPRINT is
@@ -165,7 +171,103 @@ export function footprintOf(before, after) {
     const holder = (a.get(s.layer) ?? b.get(s.layer))?.layer;
     if (holder) texts.add(holder);
   }
-  return { layers, names, spans, anchors, texts, removed };
+  return {
+    layers,
+    names,
+    spans,
+    anchors,
+    texts,
+    removed,
+    reads: layersRead(changed, a, b, holders, reshapes(changed, a, b)),
+    reshapes: reshapes(changed, a, b),
+  };
+}
+
+// Every layer an edit reads or writes: the layers of the rows it changes, of
+// every row those name and so on down (a relation's spans, their tokens), the
+// token layers those tokens' layers nest in, and the layers holding token
+// layers (the text layer, whose text a token's begin and end are measured in).
+// An edit that moves a token or the text (`shaped`) also writes every layer
+// under the ones it changes.
+function layersRead(changed, a, b, holders, shaped) {
+  const reads = new Set();
+  const placed = new Set();
+  const seen = new Set();
+  const visit = (id) => {
+    if (seen.has(id) || holders.has(id)) return;
+    seen.add(id);
+    for (const e of [a.get(id), b.get(id)]) {
+      if (!e) continue;
+      if (e.layer) reads.add(e.layer);
+      if (e.begin !== null && e.end !== null && e.layer) placed.add(e.layer);
+      e.strings.forEach(visit);
+    }
+  };
+  changed.forEach(visit);
+  // What sits under a layer it re-cuts: a text edit moves or removes the
+  // tokens of every layer in that text, and a word moved or removed takes
+  // what is placed in it along.
+  const written = new Set();
+  for (const id of shaped ? changed : []) {
+    for (const e of [a.get(id), b.get(id)]) if (e?.layer) written.add(e.layer);
+  }
+  // Every entity, not only the layers holding rows now: a layer still empty
+  // is one too.
+  const under = new Map();
+  const isUnder = (id, path = new Set()) => {
+    if (under.has(id)) return under.get(id);
+    if (path.has(id)) return false;
+    path.add(id);
+    const e = a.get(id) ?? b.get(id);
+    const parent =
+      typeof e?.own?.parentTokenLayer === 'string' ? settledId(e.own.parentTokenLayer) : null;
+    const answer = [e?.layer, parent].some(
+      (outer) => outer && (written.has(outer) || isUnder(outer, path)),
+    );
+    under.set(id, answer);
+    return answer;
+  };
+  for (const index of [a, b]) {
+    for (const [id, e] of index)
+      if (isUnder(id) && !(e.begin !== null && e.end !== null)) reads.add(id);
+  }
+  for (const layer of placed) {
+    const holder = (a.get(layer) ?? b.get(layer))?.layer;
+    if (holder) reads.add(holder);
+    const seenLayers = new Set();
+    let at = layer;
+    while (at && !seenLayers.has(at)) {
+      seenLayers.add(at);
+      const own = (a.get(at) ?? b.get(at))?.own;
+      at = typeof own?.parentTokenLayer === 'string' ? settledId(own.parentTokenLayer) : null;
+      if (at) {
+        reads.add(at);
+        const outer = (a.get(at) ?? b.get(at))?.layer;
+        if (outer) reads.add(outer);
+      }
+    }
+  }
+  return reads;
+}
+
+// Whether an edit changes where something already in the text sits: a row it
+// moves, resizes or removes that has a begin and an end, or the text those
+// are measured in.
+function reshapes(changed, a, b) {
+  const textLayers = new Set();
+  for (const index of [a, b]) {
+    for (const e of index.values()) {
+      if (e.begin === null || e.end === null) continue;
+      const holder = (a.get(e.layer) ?? b.get(e.layer))?.layer;
+      if (holder) textLayers.add(holder);
+    }
+  }
+  for (const id of changed) {
+    const was = a.get(id);
+    if (recut(was, b.get(id))) return true;
+    if ([was, b.get(id)].some((e) => e && textLayers.has(e.layer))) return true;
+  }
+  return false;
 }
 
 // The pending ids an edit made (`created`: rows it added under an id the
@@ -255,6 +357,45 @@ export function untouched(footprint, before, now) {
     }
   }
   return true;
+}
+
+// True when every change between `before` and `now` is in a layer the edit
+// neither reads nor writes (`footprint.reads`), names nothing it names, and
+// names no row it removes. A layer's own change (its settings, or the layer
+// made or removed) counts for that layer. Rows this page made that the server
+// does not have yet are its own, not a change made elsewhere. The rule every
+// edit gets (Luke's ruling Q2 narrowed): an igt gloss passes a UMR node or a
+// parser's relations, while two edits in one layer never pass each other.
+export function apart(footprint, before, now) {
+  if (!footprint) return false;
+  const a = indexEntities(before);
+  const b = indexEntities(now);
+  const holders = holdersOf(a, b);
+  for (const id of changedIds(a, b)) {
+    if (isPendingId(id)) continue;
+    if (footprint.names.has(id) || footprint.removed.has(id)) return false;
+    if (holders.has(id)) {
+      if (footprint.reads.has(id)) return false;
+      continue;
+    }
+    for (const e of [a.get(id), b.get(id)]) {
+      if (!e) continue;
+      if (footprint.reads.has(e.layer)) return false;
+      if (e.strings.some((s) => footprint.names.has(s) || footprint.removed.has(s))) return false;
+    }
+  }
+  return true;
+}
+
+// Whether an edit refused because the document moved on can go again by
+// itself on `now`. By layer (`apart`), unless the caller opted it in to the
+// rule by entity (`untouched`) and it moves no token and no text: a value on
+// a token whose extent it leaves as it is (Luke's ruling Q2 (c), igt's
+// glosses).
+export function resendable(footprint, before, now, { byEntity = false } = {}) {
+  if (!footprint) return false;
+  if (byEntity && !footprint.reshapes) return untouched(footprint, before, now);
+  return apart(footprint, before, now);
 }
 
 // Whether `x`, a value the edit showed, is `y`, the value read from the
