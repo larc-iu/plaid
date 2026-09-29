@@ -633,10 +633,16 @@ export const cells = {
   },
 
   // The word a cell is on and the text of it, and of the cell's morpheme for
-  // a morpheme's cell, or null for a cell on no word (a sentence's).
+  // a morpheme's cell. For a sentence's cell, the sentence and its text.
   _cellShape(el) {
     const wordId = el?.closest?.('[data-word-col]')?.dataset.wordCol;
-    if (!wordId) return null;
+    if (!wordId) {
+      const sentenceId = el?.dataset?.cellKey?.startsWith('sa:')
+        ? rowOfKey(el.dataset.cellKey)
+        : null;
+      const sentence = sentenceId ? this._sentenceTextNow(sentenceId) : null;
+      return sentence == null ? null : { sentenceId, sentence };
+    }
     const rowId = rowOfKey(el.dataset.cellKey);
     const now = this._shapeNow(wordId, rowId);
     return now && { wordId, rowId, ...now };
@@ -654,11 +660,25 @@ export const cells = {
     return { word: word.content, morpheme: morpheme ? morphFormOf(morpheme) : null };
   },
 
+  // The text of a sentence as it reads now, or null when it is gone.
+  _sentenceTextNow(sentenceId) {
+    const sentence = this.doc.sentenceLookup?.get(settledId(sentenceId));
+    const body = this.doc.layerInfo?.primaryTextLayer?.text?.body;
+    if (!sentence || typeof body !== 'string') return null;
+    return [...body].slice(sentence.begin, sentence.end).join('').trim();
+  },
+
   // What the cell is on now, as `{ unit, text }`, when the word under `shape`
   // was split or joined since (its text changed), or its morpheme
-  // re-segmented (its form changed), else null.
+  // re-segmented (its form changed), or its sentence split, joined or
+  // respelled, else null.
   _recutSince(shape) {
     if (!shape) return null;
+    // A sentence split, joined or respelled: its text changed.
+    if (shape.sentenceId) {
+      const text = this._sentenceTextNow(shape.sentenceId);
+      return text != null && text !== shape.sentence ? { unit: 'sentence', text } : null;
+    }
     const now = this._shapeNow(shape.wordId, shape.rowId);
     if (!now) return null;
     if (now.word !== shape.word) return { unit: 'word', text: now.word };
