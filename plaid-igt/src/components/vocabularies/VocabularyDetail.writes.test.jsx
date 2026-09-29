@@ -320,3 +320,113 @@ describe('the values a vocabulary tagset seed reads', () => {
     await view.unmount();
   });
 });
+
+// The vocabulary's fields and tagsets are written whole, each expecting what
+// this page last read or wrote (config compare-and-set, D6). A page opened
+// before another maintainer saved is refused rather than writing over that
+// save, and the refusal's re-read shows what is stored.
+describe('the vocabulary schema written from a stale page', () => {
+  const casServer = () => {
+    const server = {
+      id: 'A',
+      name: 'Ayvale lexicon',
+      maintainers: ['u'],
+      config: {
+        igt: {
+          fields: { gloss: { inline: true }, pos: { inline: true } },
+          tagsets: { cases: { mode: 'closed', values: [{ value: 'NOM' }] } },
+        },
+      },
+    };
+    const sent = [];
+    const canonical = (v) =>
+      JSON.stringify(v ?? null, (_k, x) =>
+        x && typeof x === 'object' && !Array.isArray(x)
+          ? Object.fromEntries(
+              Object.keys(x)
+                .sort()
+                .map((k) => [k, x[k]]),
+            )
+          : x,
+      );
+    const client = {
+      vocabLayers: {
+        get: async () => structuredClone(server),
+        setConfig: async (_id, _ns, key, value, _msg, options) => {
+          sent.push([key, options]);
+          // A write that names no expected value is not checked.
+          const checked = !!options && 'expected' in options;
+          if (checked && canonical(options.expected) !== canonical(server.config.igt[key])) {
+            throw Object.assign(new Error('HTTP 409'), { status: 409, method: 'PUT' });
+          }
+          server.config.igt[key] = structuredClone(value);
+        },
+        update: async () => {},
+      },
+      projects: { list: async () => [] },
+    };
+    return { server, client, sent };
+  };
+
+  it('expects the fields it read, and then the ones it wrote', async () => {
+    const { server, client, sent } = casServer();
+    const view = await mount(client, '/vocabularies/A?tab=settings');
+    const read = structuredClone(server.config.igt.fields);
+    await view.step(async () => {
+      firstInlineSwitch().click();
+      await settle();
+    });
+    const first = structuredClone(server.config.igt.fields);
+    await view.step(async () => {
+      firstInlineSwitch().click();
+      await settle();
+    });
+    expect(sent.map(([key, o]) => [key, o.expected])).toEqual([
+      ['fields', read],
+      ['fields', first],
+    ]);
+    await view.unmount();
+  });
+
+  it('is refused over another maintainer’s save, and then shows it', async () => {
+    const { server, client } = casServer();
+    feedback.notifyError.mockClear();
+    const view = await mount(client, '/vocabularies/A?tab=settings');
+    // Someone else adds a field after this page read the vocabulary.
+    server.config.igt.fields = { ...server.config.igt.fields, remark: { inline: true } };
+    const theirs = structuredClone(server.config.igt.fields);
+    await view.step(async () => {
+      firstInlineSwitch().click();
+      await settle();
+    });
+    expect(server.config.igt.fields).toEqual(theirs);
+    expect(feedback.notifyError).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 409 }),
+      'Failed to save the fields',
+    );
+    expect(document.body.textContent).toContain('Remark');
+    await view.unmount();
+  });
+
+  it('refuses a tagsets save over another maintainer’s, and the editor learns it', async () => {
+    const { server, client } = casServer();
+    const view = await mount(client, '/vocabularies/A?tab=settings');
+    server.config.igt.tagsets = {
+      ...server.config.igt.tagsets,
+      moods: { mode: 'open', values: [] },
+    };
+    let threw = false;
+    await view.step(async () => {
+      try {
+        await tagsetsManager.props.onSaveChanges({ cases: server.config.igt.tagsets.cases });
+      } catch {
+        threw = true;
+      }
+      await settle();
+    });
+    expect(threw).toBe(true);
+    expect(Object.keys(server.config.igt.tagsets).sort()).toEqual(['cases', 'moods']);
+    expect(Object.keys(tagsetsManager.props.tagsets).sort()).toEqual(['cases', 'moods']);
+    await view.unmount();
+  });
+});

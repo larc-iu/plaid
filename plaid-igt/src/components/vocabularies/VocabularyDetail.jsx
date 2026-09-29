@@ -58,6 +58,8 @@ import {
   DialogTitle,
 } from '@ui/components/ui/dialog';
 import { notifySuccess, notifyError } from '@/utils/feedback';
+import { storedConfig } from '@ui/domain/configCells.js';
+import { useConfigCell } from '@ui/hooks/useConfigCell.js';
 import { VocabularyItems } from './VocabularyItems';
 import { VocabularyMaintainers } from './VocabularyMaintainers';
 import { VocabularyCommentsTab } from './VocabularyCommentsTab';
@@ -157,6 +159,13 @@ export const VocabularyDetail = () => {
   useSavingGuard(writes.schema);
   useSavingGuard(writes.entries);
   const guardLeavingTab = useUnsavedGuard();
+
+  // Each schema write expects the fields, or the tagsets, this page last read
+  // or wrote, so a page opened before another maintainer's save is refused
+  // (409) rather than writing over it. The refusal's re-read shows what is
+  // stored now.
+  const fieldsCell = useConfigCell(storedConfig(vocabulary, IGT_NAMESPACE, 'fields'));
+  const tagsetsCell = useConfigCell(storedConfig(vocabulary, IGT_NAMESPACE, 'tagsets'));
 
   const fetchVocabulary = async (token) => {
     if (isNewVocabulary) {
@@ -496,12 +505,18 @@ export const VocabularyDetail = () => {
     if (isNewVocabulary) return Promise.resolve(true);
     return writes.schema.push(
       async () => {
-        await client.vocabLayers.setConfig(
-          vocabularyId,
-          IGT_NAMESPACE,
-          'fields',
-          fieldsToConfig(updatedFields),
-        );
+        const value = fieldsToConfig(updatedFields);
+        await fieldsCell.write(async (expected) => {
+          await client.vocabLayers.setConfig(
+            vocabularyId,
+            IGT_NAMESPACE,
+            'fields',
+            value,
+            undefined,
+            { expected },
+          );
+          return value;
+        });
       },
       {
         refused: (err) => {
@@ -681,7 +696,20 @@ export const VocabularyDetail = () => {
   const handleSaveTagsets = async (next, meta) => {
     setDraftTagsets(next);
     const tagsetsLanded = writes.schema.push(
-      () => client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, 'tagsets', next),
+      () =>
+        tagsetsCell.write(async (expected) => {
+          await client.vocabLayers.setConfig(
+            vocabularyId,
+            IGT_NAMESPACE,
+            'tagsets',
+            next,
+            undefined,
+            {
+              expected,
+            },
+          );
+          return next;
+        }),
       {
         refused: (err) => {
           console.error('Failed to save tagsets:', err);
