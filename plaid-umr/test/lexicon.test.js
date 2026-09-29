@@ -217,3 +217,67 @@ test('a lemma matching the word as written comes before one matching only folded
   // A tatweel is no difference.
   assert.equal(sensesFor(file, 'الأـم')[0].id, 'أم-01');
 });
+
+// U-ARABIC, 2026-09-29. A verb whose last letter is alif or alif maqsura
+// drops it before the subject suffix ت (دعا, دعت), and one ending in any of
+// the three drops it before وا (دعوا, رموا, نسوا). The word finds the verb
+// with the letter put back, after every sense the word finds as it is.
+test('a defective verb finds its lemma with the dropped final letter put back', () => {
+  const file = { 'نما-01': {}, 'رمى-01': {}, 'نسي-01': {}, 'دعا-01': {} };
+  assert.deepEqual(
+    sensesFor(file, 'نمت').map((s) => s.id),
+    ['نما-01'],
+  );
+  assert.deepEqual(
+    sensesFor(file, 'ورمت').map((s) => s.id),
+    ['رمى-01'],
+  );
+  assert.deepEqual(
+    sensesFor(file, 'فدعوا').map((s) => s.id),
+    ['دعا-01'],
+  );
+  assert.deepEqual(
+    sensesFor(file, 'نسوا').map((s) => s.id),
+    ['نسي-01'],
+  );
+  // A kasra verb keeps its ي before ت (نسيت), so نست is not نسي.
+  assert.deepEqual(
+    sensesFor(file, 'نست').map((s) => s.id),
+    [],
+  );
+  // A hamza is not a weak letter: أنبأ keeps it before ت (أنبأت).
+  assert.deepEqual(
+    sensesFor({ 'أنبأ-01': {} }, 'أنبت').map((s) => s.id),
+    [],
+  );
+  // The written hamza still counts: رأت is رأى.
+  assert.deepEqual(
+    sensesFor({ 'رأى-01': {} }, 'رأت').map((s) => s.id),
+    ['رأى-01'],
+  );
+});
+
+test('a restored lemma comes after every sense the word finds as it is', () => {
+  // نمت is also a lemma, and نم + ت, and folded: all before نما.
+  const file = { 'نما-01': {}, 'نمت-01': {}, 'نم-01': {}, 'نمى-01': {} };
+  assert.deepEqual(
+    sensesFor(file, 'نمت').map((s) => s.id),
+    ['نمت-01', 'نم-01', 'نما-01', 'نمى-01'],
+  );
+  // A lemma the word finds without the rule keeps its place.
+  assert.deepEqual(
+    sensesFor({ 'دعا-01': {}, 'دع-01': {} }, 'دعا').map((s) => s.id),
+    ['دعا-01', 'دع-01'],
+  );
+  // The guesses a word gives are unchanged: the rule is only in the senses.
+  assert.ok(!lemmaCandidates('نمت').includes('نما'));
+});
+
+test('on the bundled Arabic file, نمت lists نما-01 and رمت lists رمى-01', () => {
+  const file = JSON.parse(
+    fs.readFileSync(new URL('../src/data/frames/arabic.json', import.meta.url), 'utf8'),
+  );
+  assert.ok(sensesFor(file, 'نمت').some((s) => s.id === 'نما-01'));
+  assert.ok(sensesFor(file, 'ورمت').some((s) => s.id === 'رمى-01'));
+  assert.ok(sensesFor(file, 'دعوا').some((s) => s.id === 'دعا-01'));
+});

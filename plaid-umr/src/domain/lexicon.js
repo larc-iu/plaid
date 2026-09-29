@@ -108,14 +108,20 @@ const ARABIC_SUFFIXES = [
 // half the file.
 const MIN_STEM = 2;
 
-function arabicCandidates(form) {
-  const out = new Set([form]);
+// The word, then the word less each proclitic it starts with.
+function arabicStems(form) {
   const stems = [form];
   ARABIC_PROCLITICS.forEach((clitic) => {
     if (form.startsWith(clitic) && [...form].length - [...clitic].length >= MIN_STEM) {
       stems.push(form.slice(clitic.length));
     }
   });
+  return stems;
+}
+
+function arabicCandidates(form) {
+  const out = new Set([form]);
+  const stems = arabicStems(form);
   stems.forEach((stem) => out.add(stem));
   stems.forEach((stem) => {
     ARABIC_SUFFIXES.forEach((suffix) => {
@@ -171,40 +177,90 @@ function writtenCandidates(form) {
   return arabicCandidates(f.replace(TATWEEL, ''));
 }
 
+// A defective verb, whose last root letter is weak, drops its final letter
+// before a subject suffix: alif (دعا) and alif maqsura (رمى) before the ت of
+// she (دعت, رمت), and those and the ya of a kasra verb (نسي) before the وا of
+// they (دعوا, رموا, نسوا). A kasra verb keeps its ya before ت (نسيت), so ت
+// puts back only alif or alif maqsura. These are the only drops restored.
+const DEFECTIVE_DROPS = [
+  ['\u062a', ['\u0627', '\u0649']], // ت: ا ى
+  ['\u0648\u0627', ['\u0627', '\u0649', '\u064a']], // وا: ا ى ي
+];
+const WEAK_FINAL = /[\u0627\u0649\u064a]$/u;
+
+// The lemmas a defective verb's suffixed form leaves once its dropped letter
+// is back, for one prepared form (folded, or as written): نمت gives نما and
+// نمى, ورموا gives رما, رمى and رمي.
+function defectiveCandidates(form) {
+  const out = new Set();
+  arabicStems(form).forEach((stem) => {
+    DEFECTIVE_DROPS.forEach(([suffix, finals]) => {
+      if (stem.endsWith(suffix) && [...stem].length - [...suffix].length >= MIN_STEM) {
+        finals.forEach((final) => out.add(stem.slice(0, -suffix.length) + final));
+      }
+    });
+  });
+  return [...out];
+}
+
+// A word's defective guesses, folded and as written, less any its ordinary
+// guesses already make. None outside Arabic script.
+function restoredCandidates(form, ordinary, written) {
+  const f = String(form || '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}'-]/gu, '');
+  if (!f || !ARABIC.test(f)) return { folded: [], written: [] };
+  return {
+    folded: defectiveCandidates(foldAlif(f)).filter((c) => !ordinary.includes(c)),
+    written: defectiveCandidates(f.replace(TATWEEL, '')).filter((c) => !written.includes(c)),
+  };
+}
+
 // A roleset's lemma less the second hyphen of a lost vowel class: upstream's
 // Arabic keeps `أثر--01` beside a different `أثر-01`, and it is a sense of أثر.
 const DOUBLED = /-$/;
 
 /**
  * The rolesets of a frame file whose lemma is one of the candidates, best
- * first: a lemma guessed from the word as written before one only its alif
- * fold finds (الأم lists أم-01 before ألام-01), then an exact lemma before a
- * stripped one, a lemma's plain senses before its `lemma--NN` ones, lower
- * sense numbers first.
+ * first: every lemma the word gives as it is before one found only by putting
+ * back a defective verb's dropped letter (نمت lists نمت-01 and نم-01 before
+ * نما-01), then a lemma guessed from the word as written before one only its
+ * alif fold finds (الأم lists أم-01 before ألام-01), then an exact lemma
+ * before a stripped one, a lemma's plain senses before its `lemma--NN` ones,
+ * lower sense numbers first.
  * @returns {Array<{ id: string, lemma: string, args: object }>}
  */
 export function sensesFor(frames, form) {
   if (!frames) return [];
   const candidates = lemmaCandidates(form);
   const written = writtenCandidates(form);
+  const restored = restoredCandidates(form, candidates, written);
   const out = [];
   const seen = new Set();
-  candidates.forEach((lemma, rank) => {
-    rolesetsStartingWith(frames, `${lemma}-`, 200).forEach(({ id, args }) => {
-      const full = lemmaOf(id);
-      const doubled = DOUBLED.test(full);
-      const own = doubled ? full.slice(0, -1) : full;
-      if (foldAlif(own) !== lemma || seen.has(id)) return;
-      seen.add(id);
-      // Guessed from the word as written, it ranks among those guesses.
-      const asWritten = written.indexOf(own);
-      const folded = asWritten < 0;
-      out.push({ id, lemma: own, args, rank: folded ? rank : asWritten, folded, doubled });
+  const collect = (lemmas, writtenLemmas, isRestored) =>
+    lemmas.forEach((lemma, rank) => {
+      rolesetsStartingWith(frames, `${lemma}-`, 200).forEach(({ id, args }) => {
+        const full = lemmaOf(id);
+        const doubled = DOUBLED.test(full);
+        const own = doubled ? full.slice(0, -1) : full;
+        if (foldAlif(own) !== lemma || seen.has(id)) return;
+        // A letter put back is a weak one, never a hamza: أنبأ keeps its
+        // hamza before ت (أنبأت), so أنبت is not أنبأ.
+        if (isRestored && !WEAK_FINAL.test(own)) return;
+        seen.add(id);
+        // Guessed from the word as written, it ranks among those guesses.
+        const asWritten = writtenLemmas.indexOf(own);
+        const folded = asWritten < 0;
+        const at = folded ? rank : asWritten;
+        out.push({ id, lemma: own, args, rank: at, folded, doubled, restored: isRestored });
+      });
     });
-  });
+  collect(candidates, written, false);
+  collect(restored.folded, restored.written, true);
   return out
     .sort(
       (a, b) =>
+        a.restored - b.restored ||
         a.folded - b.folded ||
         a.rank - b.rank ||
         a.doubled - b.doubled ||
