@@ -24,6 +24,7 @@ import pytest
 from plaid_client import apply_metadata_ops
 from plaid_client import testing as servicetest
 from plaid_client.http import PlaidAPIError
+from plaid_client.service import service_version
 
 SERVICES = pathlib.Path(__file__).resolve().parent.parent
 FIXTURES = pathlib.Path(__file__).resolve().parent / 'fixtures'
@@ -487,6 +488,8 @@ def test_a_run_writes_the_report_on_the_scored_document_and_reports_the_scores()
     report = _report(service.client)
     assert report['version'] == 4
     assert report['tool'].startswith('ancast ')
+    # Which version of this service scored it, beside the AnCast that did.
+    assert report['serviceVersion'] == service_version(umr.__file__)
     assert report['against'] == {'id': OTHER, 'name': 'Bo'}
     assert report['scope'] == 'doc'
     assert report['at'].endswith('Z') and len(report['at']) == 20

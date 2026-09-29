@@ -47,7 +47,7 @@ import difflib
 from typing import List, Optional
 
 from plaid_client import BaseService, TASKS, Param, service_source
-from plaid_client.service import check_unchanged, requester_message
+from plaid_client.service import check_unchanged, machine_detail, requester_message
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.llm import (NOT_ASKED, ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
@@ -468,8 +468,8 @@ class LLMAnalyzeService(BaseService):
         ) if n_examples else []
 
         # One model call per sentence.
-        stamp_detail = requester.detail({**self.model.describe(), 'language': language,
-                                         'metalanguage': metalanguage})
+        stamp_detail = requester.detail(machine_detail(self.version, **self.model.describe(),
+                                                       language=language, metalanguage=metalanguage))
         plans = []
         failed = []
         replaced = 0

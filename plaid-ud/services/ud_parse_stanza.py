@@ -3,24 +3,29 @@ import stanza
 import traceback
 from plaid_client import (BaseService, TASKS, Param, ROLES, find_by_role,
                           stamp_inferred, is_protected, service_source)
-from plaid_client.service import progress_heartbeat
+from plaid_client.service import machine_detail, progress_heartbeat, service_version
 from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.requester import Requester, requester_of
+
+
+#: This file's version, stamped as provDetail.version (the service's own
+#: ``self.version``, read here because the parse runs outside the service).
+VERSION = service_version(__file__)
 
 
 def prov_fragment(language, requester=Requester()):
     """Provenance fragment merged into everything this service creates
     (tokens, spans, relations): marks it machine-made + unverified until a
-    human edits or confirms it, and records the producing model + language in
-    provDetail. (Stanza's pipeline output carries no per-prediction
-    probabilities, so there is no provProb; a producer that has real
+    human edits or confirms it, and records the producing model, this file's
+    version and the language in provDetail. (Stanza's pipeline output carries
+    no per-prediction probabilities, so there is no provProb; a producer that has real
     probabilities would add `prob=` here and put its top-k distribution in
     the detail map.) See the manual, "Provenance". The detail also names who
     asked for the run (``requester``, see plaid_client.workflows.requester)."""
     return stamp_inferred(
         service_source('stanza-parser'),
-        detail=requester.detail({'model': f'stanza=={stanza.__version__}',
-                                 'language': language}),
+        detail=requester.detail(machine_detail(VERSION, model=f'stanza=={stanza.__version__}',
+                                               language=language)),
     )
 
 

@@ -11,6 +11,7 @@ import pathlib
 
 import pytest
 from plaid_client import testing as servicetest
+from plaid_client.service import service_version
 
 import test_umr_draft_llm as draft_tests
 
@@ -117,6 +118,20 @@ def test_the_skeleton_names_who_asked_in_history_and_on_what_it_writes():
         'UMR skeleton from glosses of sentence 1, requested by second']
     for op in _ops(service.client, 'spans.bulk_create'):
         assert op['metadata']['provDetail']['requestedBy'] == 'second@x.com'
+
+
+def test_the_skeleton_names_this_files_version_and_no_model():
+    # Rules the service holds itself: no model to name, and the version
+    # says which rules ran.
+    service = _service()
+    servicetest.run(service, REQUEST)
+
+    ops = _ops(service.client, 'spans.bulk_create')
+    assert ops
+    for op in ops:
+        detail = op['metadata']['provDetail']
+        assert detail['version'] == service_version(boot.__file__)
+        assert detail['method'] == 'glosses' and 'model' not in detail
 
 
 def test_the_skeleton_is_one_anchored_node_per_glossed_or_linked_word():

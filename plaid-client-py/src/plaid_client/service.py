@@ -19,6 +19,8 @@ Two distinct kinds of "arguments", do not conflate them:
 
 import argparse
 import contextlib
+import hashlib
+import importlib.metadata
 import sys
 import threading
 import time
@@ -103,6 +105,56 @@ def check_unchanged(client, document_id, version, current=None) -> None:
         raise ValueError('The document changed while this run was working. Run it again.')
 
 
+def _client_version() -> str:
+    try:
+        return importlib.metadata.version('larc-plaid-client')
+    except importlib.metadata.PackageNotFoundError:
+        return '0.0.0'  # a checkout on the path, not an installed release
+
+
+#: The plaid-client release this process runs on (``0.0.0`` in a checkout).
+CLIENT_VERSION = _client_version()
+
+
+def service_version(path: str) -> str:
+    """What a service stamps as its ``provDetail.version``: the plaid-client
+    release it ran on and the first 8 hex digits of the SHA-256 of the
+    service's own file, ``'1.4.0+3fa9c2d1'``. The file holds the service's
+    prompt, rules and defaults, so the hash changes exactly when one of them
+    does, and anyone can match it to a commit with ``sha256sum``. See the
+    core manual, "Provenance"."""
+    with open(path, 'rb') as fh:
+        digest = hashlib.sha256(fh.read()).hexdigest()[:8]
+    return f'{CLIENT_VERSION}+{digest}'
+
+
+def machine_detail(version: str, *, model: Optional[str], **extra) -> Dict[str, Any]:
+    """The ``provDetail`` of a machine write: ``model`` names what made the
+    prediction (a model name, or a tool and its version such as
+    ``stanza==1.9.2``), ``version`` which version of the writer ran (its
+    :func:`service_version`), and ``extra`` anything else the writer records
+    (language, scores). ``model=None`` is for a writer of rules held in the
+    service itself, where the version says everything."""
+    out: Dict[str, Any] = {} if model is None else {'model': model}
+    out['version'] = version
+    out.update(extra)
+    return out
+
+
+def _own_version(cls) -> str:
+    """The :func:`service_version` of the file ``cls`` is written in, found
+    through its own functions, since a service loaded from a path is not in
+    ``sys.modules``."""
+    for value in vars(cls).values():
+        code = getattr(value, '__code__', None)
+        if code is not None:
+            try:
+                return service_version(code.co_filename)
+            except OSError:
+                break
+    return CLIENT_VERSION  # a class with no file of its own (built in a REPL)
+
+
 class BaseService(ABC):
     """Base class for Plaid services.
 
@@ -134,6 +186,8 @@ class BaseService(ABC):
         self.service_name = service_name
         self.description = description
         self.delegation = delegation
+        # What this service stamps as provDetail.version (see service_version).
+        self.version = _own_version(type(self))
         self.extras = build_extras(tasks=tasks or [], summary=summary,
                                    parameters=parameters, extra=extras,
                                    delegation=delegation)

@@ -14,6 +14,7 @@ import types
 from plaid_client import apply_metadata_ops
 from plaid_client import testing as servicetest
 from plaid_client.http import PlaidAPIError
+from plaid_client.service import service_version
 
 SERVICES = pathlib.Path(__file__).resolve().parent.parent
 
@@ -149,6 +150,7 @@ def test_an_analysis_lands_stamped_machine_made_and_never_confirmed():
         assert 'provConfirmed' not in meta
         assert 'provProb' not in meta          # PolyGloss exposes no probabilities
         assert meta['provDetail']['model'] == 'polygloss-test'
+        assert meta['provDetail']['version'] == service_version(polygloss.__file__)
         assert meta['provDetail']['language'] == 'Turkish'
     assert patched['m1']['provDetail']['form'] == 'ev'
     assert patched['m2']['provDetail']['boundaries'] == '-'

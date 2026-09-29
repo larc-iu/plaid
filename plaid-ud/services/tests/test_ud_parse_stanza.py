@@ -16,6 +16,7 @@ import types
 import pytest
 from plaid_client import testing as servicetest
 from plaid_client.http import PlaidAPIError
+from plaid_client.service import service_version
 from plaid_client.workflows.messages import SETUP_INCOMPLETE
 
 SERVICES = pathlib.Path(__file__).resolve().parent.parent
@@ -195,7 +196,8 @@ def test_a_parse_lands_stamped_machine_made_and_never_confirmed():
         assert meta['provSource'] == SOURCE
         assert 'provConfirmed' not in meta
         assert 'provProb' not in meta          # Stanza exposes no probabilities
-        assert meta['provDetail'] == {'model': 'stanza==1.11.0', 'language': 'en'}
+        assert meta['provDetail'] == {'model': 'stanza==1.11.0', 'language': 'en',
+                                      'version': service_version(ud.__file__)}
 
     # The UD columns each land in their own layer; Form only where the surface
     # differs from the body slice, which it never does for a 1:1 tokenization.

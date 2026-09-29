@@ -8,6 +8,7 @@ This demonstrates how easy it is to create new tokenization services.
 import nltk
 from typing import List, Dict, Any, Tuple
 from plaid_client import BaseService, TASKS, Param, service_source
+from plaid_client.service import machine_detail
 from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.tokenization import TokenizerModel, TokenSpan, TokenProcessor, helpers
@@ -187,7 +188,8 @@ class NLTKTokenizerService(BaseService):
                     text_layer_id=text_layer_id,
                     expect_version=full_document.get('version'),
                     prov_source=service_source(self.service_id),
-                    prov_detail=requester.detail(),
+                    prov_detail=requester.detail(machine_detail(
+                        self.version, model=f'nltk=={nltk.__version__}', language=language)),
                     overwrite=overwrite,
                 )
             response_helper.progress(100, "Done")

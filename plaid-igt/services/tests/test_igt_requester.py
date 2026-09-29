@@ -8,6 +8,7 @@ import types
 
 import pytest
 from plaid_client import testing as servicetest
+from plaid_client.service import service_version
 
 from test_igt_model_down import SERVICES_UNDER_TEST, REQUEST, _service
 
@@ -26,3 +27,15 @@ def test_a_run_names_who_asked_in_history_and_on_what_it_writes(module, cls, rep
     assert stamped, "nothing was written"
     for meta in stamped:
         assert meta['provDetail']['requestedBy'] == 'second@x.com'
+
+
+@pytest.mark.parametrize('module, cls, reply', SERVICES_UNDER_TEST)
+def test_every_stamp_names_the_model_and_this_files_version(module, cls, reply):
+    service = _service(module, cls, [reply] * 5)
+    servicetest.run(service, REQUEST)
+
+    stamped = [call['args'][3] for kind, call in service.client.calls if kind == 'spans.create']
+    assert stamped, "nothing was written"
+    for meta in stamped:
+        assert meta['provDetail']['model'] == 'fake/m'
+        assert meta['provDetail']['version'] == service_version(module.__file__)

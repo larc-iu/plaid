@@ -550,13 +550,17 @@ def ancast_version() -> str:
 
 
 def build_report(scores, sentences, against, scope: str, at: Optional[str] = None,
-                 requested_by: Optional[Dict[str, str]] = None):
+                 requested_by: Optional[Dict[str, str]] = None, service_version: Optional[str] = None):
     """The whole report, before `split_report` divides it for storage.
     `requested_by` is who asked for the run, `{id, name}` (see
-    `plaid_client.workflows.requester`), left out when nobody did."""
+    `plaid_client.workflows.requester`), left out when nobody did.
+    `service_version` is the version of this service that scored it (see
+    `plaid_client.service.service_version`), beside `tool`, the AnCast that
+    did; `version` is the report's own shape."""
     report = {
         'version': REPORT_VERSION,
         'tool': ancast_version(),
+        **({'serviceVersion': service_version} if service_version else {}),
         'against': {'id': against['id'], 'name': against['name']},
         'at': at or _now(),
         'scope': 'snt' if scope == 'snt' else 'doc',
@@ -779,7 +783,7 @@ class UmrAncastService(BaseService):
         scored = len(sentences) - skipped
 
         report = build_report(scores, sentences, {'id': against_id, 'name': other_name}, scope,
-                              requested_by=requester.record())
+                              requested_by=requester.record(), service_version=self.version)
         notice = build_notice(report, scored, skipped)
 
         # Everything from here must finish once begun. The final report is inside

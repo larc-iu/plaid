@@ -16,6 +16,7 @@ import types
 import pytest
 from plaid_client import testing as servicetest
 from plaid_client.http import PlaidAPIError
+from plaid_client.service import service_version
 from plaid_client.workflows.asr import alignment_processor as ap_module
 
 SERVICES = pathlib.Path(__file__).resolve().parent.parent
@@ -166,6 +167,7 @@ def test_a_transcription_lands_stamped_machine_made_and_never_confirmed(monkeypa
         assert 'provConfirmed' not in meta
         assert 'provProb' not in meta          # avg_logprob is not a probability
         assert meta['provDetail'] == {'model': 'whisper-small',
+                                      'version': service_version(module.__file__),
                                       'avgLogprob': segment['avg_logprob'],
                                       'noSpeechProb': segment['no_speech_prob']}
         assert meta['timeBegin'] == segment['start'] and meta['timeEnd'] == segment['end']

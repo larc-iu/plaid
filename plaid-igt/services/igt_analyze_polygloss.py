@@ -42,7 +42,7 @@ import argparse
 from typing import Dict, List, Optional, Tuple
 
 from plaid_client import BaseService, TASKS, Param, service_source
-from plaid_client.service import check_unchanged
+from plaid_client.service import check_unchanged, machine_detail
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.igt import (
     ParsedWord, derive, field_layer_id, select_targets, parse_interleaved, align_words, analysis_for,
@@ -245,8 +245,8 @@ class PolyGlossService(BaseService):
             return
 
         # Generate, with continuation passes for truncated tails.
-        stamp_detail = requester.detail({**self.model.describe(), 'language': language,
-                                         'metalanguage': metalanguage})
+        stamp_detail = requester.detail(machine_detail(self.version, **self.model.describe(),
+                                                       language=language, metalanguage=metalanguage))
         aligned: Dict[str, List[Optional[ParsedWord]]] = {}  # sentence id -> per input word
         pending = [(s, 0) for s, _ in targets]  # (sentence, first word index still to transcribe)
         for s, _ in targets:

@@ -1526,6 +1526,17 @@ The IGT app's producers (the PolyGloss analyzer, the built-in analysis-copy rule
 The entity's value may later be edited, so this copy is what makes "accepted as-is" and "corrected" distinguishable once an entity is verified, which is the basis of any accuracy report.
 A producer that has a distribution records it as a top-k `{label: probability}` map under `provDetail.valueProbs` (spans) or `provDetail.formProbs` (morpheme tokens), the chosen label included, with `provProb` duplicating that label's entry as the flat, queryable copy.
 
+Every machine writer also says what made the prediction and which version of the writer ran, under `provDetail.model` and `provDetail.version`.
+`model` is the model's name for a language model (`gpt-oss-120b`), and the tool with its release for anything else (`stanza==1.11.0`, `nltk==3.9.1`, `whisper-small`).
+A writer made only of rules in its own code, such as the UMR skeleton-from-glosses service, has no `model`.
+`version` is `<release>+<hash>`: the Plaid release the writer ran on, then the first 8 hex digits of a SHA-256.
+For a bundled service the hash is of the service's own file, which holds its prompt, its rules and its defaults, so running `sha256sum` on the file at a given commit tells whether that commit's code wrote a value.
+The Python client computes it as `BaseService.version`, and `machine_detail(version, model=...)` in `plaid_client.service` builds the map.
+For an assistant the hash is of its system prompt template and every tool schema (see the plaid-agent README, "Model and prompt version").
+An approved assistant plan's writes carry the model and version of the turn that proposed the plan. When a contributor approves, the writes are the contributor's, and the model and version stay beside them with the assistant's source as `provDetail.guess`, as for any guess a contributor adopts.
+The AnCast scorer writes a report rather than an annotation, and names the same two things as `tool` and `serviceVersion`.
+Keep the rest of `provDetail` small: these two strings, what was predicted, and the handful of scores a reviewer would use.
+
 The convention is made operational by a **write contract** that every machine writer (service, built-in algorithm, importer) is expected to follow:
 
 1. A machine writer may freely create new material and freely **replace machine-made, unverified material**—its own or another machine's. Unverified machine output is by definition replaceable.

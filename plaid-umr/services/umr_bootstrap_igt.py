@@ -77,6 +77,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from plaid_client import BaseService, TASKS, stamp_inferred, service_source
+from plaid_client.service import machine_detail
 from plaid_client.workflows.umr import (DraftProgress, begin_draft, draft_params, finish_draft,
                                         next_variable, run_label, unknown_relation_problem)
 from plaid_client.workflows.igt.glossing import (GLOSS_ABBREVIATIONS, PERSON_NUMBER,
@@ -541,7 +542,8 @@ class UmrBootstrapService(BaseService):
             plans.append({'sentence': sentence, 'pieces': pieces, 'nodes': nodes,
                           'edges': edges})
 
-        frag = stamp_inferred(service_source(self.service_id), detail={'method': 'glosses'})
+        frag = stamp_inferred(service_source(self.service_id),
+                              detail=machine_detail(self.version, model=None, method='glosses'))
         finish_draft(self.client, response_helper, run, plans, failures, frag,
                      service_id=self.service_id,
                      operation=run_label('UMR skeleton from glosses', plans),

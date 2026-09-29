@@ -22,6 +22,7 @@ from plaid_client.workflows.llm import Reply
 SERVICES = pathlib.Path(__file__).resolve().parent.parent
 
 umr = servicetest.load_service(SERVICES / 'umr_draft_llm.py')
+from plaid_client.service import service_version  # noqa: E402
 
 DOC = 'd1'
 PROJECT = 'p1'
@@ -252,7 +253,8 @@ def test_a_good_answer_becomes_anchors_nodes_and_relations():
     # Each item records what was drafted, so a node accepted as drafted and
     # one corrected before it was verified stay distinguishable
     # (provDetail.value, the provenance convention's prediction extra).
-    base = {'model': 'openai/gpt-4o-mini', 'language': 'English'}
+    # The model and this file's version come first (the core manual, "Provenance").
+    base = {'model': 'openai/gpt-4o-mini', 'version': service_version(umr.__file__), 'language': 'English'}
     assert [n['metadata']['provDetail'] for n in nodes] == [
         {**base, 'value': 'bark-01', 'attrs': [{'rel': ':aspect', 'value': 'process'}]},
         {**base, 'value': 'dog', 'attrs': [{'rel': ':refer-number', 'value': 'singular'}]},

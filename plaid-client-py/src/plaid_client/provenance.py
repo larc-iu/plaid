@@ -81,7 +81,12 @@ alternatives) can read any producer's output:
 - ``valueProbs`` / ``formProbs``: a top-k ``{label: probability}`` map over
   the alternatives the producer considered, the chosen label included
   (``provProb``, when given, is that label's entry duplicated flat).
-- ``model``, and anything else (language, adapter, raw scores).
+- ``model``: what made the prediction (a model name, or a tool and its
+  release such as ``'stanza==1.11.0'``), and ``version``: which version of
+  the writer ran (``'<release>+<8 hex>'``, see
+  :func:`plaid_client.service.machine_detail`). Every machine writer records
+  both, one of rules alone only ``version``.
+- anything else (language, adapter, raw scores).
 
 NOTE on key casing: these keys are metadata CONTENT, which both clients treat
 as opaque (no recasing) — ``provSource``/``provConfirmed`` are camelCase on the

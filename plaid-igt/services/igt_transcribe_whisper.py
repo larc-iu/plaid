@@ -11,7 +11,7 @@ import whisper
 from typing import List, Dict, Any
 from plaid_client.workflows.asr import ASRModel, Alignment, AlignmentProcessor
 from plaid_client import BaseService, TASKS, Param, service_source, PROV_DETAIL_KEY
-from plaid_client.service import progress_heartbeat
+from plaid_client.service import machine_detail, progress_heartbeat
 from plaid_client.workflows.requester import requester_of
 
 
@@ -266,8 +266,9 @@ class WhisperASRService(BaseService):
             audit_msg = requester.label(f"Whisper ASR transcription ({language})" if language
                                         else "Whisper ASR transcription")
             for alignment in alignments:
+                scores = (alignment.metadata or {}).get(PROV_DETAIL_KEY) or {}
                 alignment.metadata = {**(alignment.metadata or {}), PROV_DETAIL_KEY:
-                                      requester.detail((alignment.metadata or {}).get(PROV_DETAIL_KEY))}
+                                      requester.detail(machine_detail(self.version, **scores))}
             # The report of the work is inside `critical()` with the work itself:
             # a stop that arrives once the writing is done has nothing left to
             # prevent, and a checkpoint out here would throw the result away and

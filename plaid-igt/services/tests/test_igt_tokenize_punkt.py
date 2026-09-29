@@ -4,6 +4,7 @@ import pathlib
 import types
 
 from plaid_client import testing as servicetest
+from plaid_client.service import service_version
 from plaid_client.workflows.messages import SETUP_INCOMPLETE
 
 SERVICES = pathlib.Path(__file__).resolve().parent.parent
@@ -11,6 +12,7 @@ SERVICES = pathlib.Path(__file__).resolve().parent.parent
 fake_nltk = types.ModuleType('nltk')
 fake_nltk.data = types.SimpleNamespace(load=lambda path: object())
 fake_nltk.download = lambda *a, **k: None
+fake_nltk.__version__ = '3.9.1'
 
 punkt = servicetest.load_service(SERVICES / 'igt_tokenize_punkt.py', {'nltk': fake_nltk})
 
@@ -50,3 +52,20 @@ def test_an_empty_document_is_refused_once():
     assert helper.errors[0].endswith('The document has no text.')
     assert 'd1' not in helper.errors[0]
     assert service.client.writes == []
+
+
+def test_the_tokens_are_stamped_with_the_punkt_release_and_this_files_version():
+    service = _service(_document())
+    service.tokenizer_model.tokenize_text = lambda text, language: (['s'], ['w'])
+    handed = {}
+
+    def process_tokens(*args, **kwargs):
+        handed.update(kwargs)
+        return {'tokens_created': 1}
+    service.token_processor.process_tokens = process_tokens
+    helper = servicetest.run(service, {**REQUEST, 'language': 'german'})
+
+    assert helper.errors == []
+    assert handed['prov_source'] == 'service:tok:nltk-punkt-tokenizer'
+    assert handed['prov_detail'] == {'model': 'nltk==3.9.1', 'language': 'german',
+                                     'version': service_version(punkt.__file__)}

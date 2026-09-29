@@ -46,7 +46,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from plaid_client import BaseService, TASKS, stamp_inferred, service_source
-from plaid_client.service import requester_message
+from plaid_client.service import machine_detail, requester_message
 from plaid_client.workflows.llm import (ChatModel, UnansweredRun, add_model_arguments,
                                         setup_service)
 from plaid_client.workflows.umr import (DraftProgress, anchor_pieces, begin_draft,
@@ -383,9 +383,8 @@ class UmrDraftService(BaseService):
                 print(f'Could not read the project language: {exc}')
         progress.report(DraftProgress.READ, 1.0, 'Reading the document…')
 
-        stamp_detail = {**self.model.describe()}
-        if language:
-            stamp_detail['language'] = language
+        stamp_detail = machine_detail(self.version, **self.model.describe(),
+                                      **({'language': language} if language else {}))
         frag = stamp_inferred(service_source(self.service_id), detail=stamp_detail)
 
         # One model call per sentence. A sentence the model fails is counted and
