@@ -934,6 +934,19 @@
   [(if (keyword? editor-name) (name editor-name) (str editor-name))
    (if (keyword? config-key) (name config-key) (str config-key))])
 
+(defn- same-json?
+  "Whether two decoded JSON values are the same JSON. JSON has one kind of
+  number, so 1 and 1.0 are the same: a Python writer stores `1.0`, and a
+  JavaScript page reads it back as 1 and sends `1`."
+  [a b]
+  (cond
+    (and (number? a) (number? b)) (== a b)
+    (and (map? a) (map? b)) (and (= (count a) (count b))
+                                 (every? (fn [[k v]] (and (contains? b k) (same-json? v (clojure.core/get b k)))) a))
+    (and (sequential? a) (sequential? b)) (and (= (count a) (count b))
+                                               (every? true? (map same-json? a b)))
+    :else (= a b)))
+
 (defn- assert-config-unchanged!
   "Compare-and-set for a config write. `check` is nil (no check) or
   `{:expected v}`, the value the writer read for this one cell (nil when
@@ -946,7 +959,7 @@
   [current cell check]
   (when check
     (let [expected (json/read-str (json/write-str (:expected check)))]
-      (when (not= expected (get-in current cell))
+      (when-not (same-json? expected (get-in current cell))
         (throw (ex-info "This setting was changed by someone else since it was read"
                         {:code 409 :cell cell}))))))
 
