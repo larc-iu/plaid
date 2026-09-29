@@ -144,7 +144,7 @@
               :project prj-id
               :document document
               :description (str "Create text in layer " layer " for document " document
-                                (when metadata-map (str " with " (count metadata-map) " metadata keys")))
+                                (when (seq metadata-map) (str " with " (count metadata-map) " metadata keys")))
               :user user-id}]
       ;; Body-shape validation inside the body (task #47) so a non-string
       ;; body surfaces as {:success false :code 400}. `body` is the raw

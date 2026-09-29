@@ -220,7 +220,7 @@
               :project project-id
               :document doc-id
               :description (str "Create vocab mapping"
-                                (when metadata
+                                (when (seq metadata)
                                   (str " with " (count metadata) " metadata keys")))
               :user user-id}]
       (when (psc/fetch-by-id tx :vocab_links new-id)

@@ -404,7 +404,7 @@
                                 :project project
                                 :document new-id
                                 :description (str "Create document \"" name "\" in project " project
-                                                  (when metadata-map
+                                                  (when (seq metadata-map)
                                                     (str " with " (count metadata-map) " metadata keys")))
                                 :user user-id
                                 ;; Body INSERTs at version=1; skip the post-body bump
