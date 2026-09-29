@@ -19,7 +19,14 @@ vi.mock('./DocumentList', () => ({
   },
 }));
 vi.mock('./search/ProjectSearch.jsx', () => ({ ProjectSearch: () => null }));
-vi.mock('./ProjectSettingsPanel', () => ({ ProjectSettingsPanel: () => null }));
+// The settings panel is only a stand-in that hands the test what it was given.
+const panel = vi.hoisted(() => ({ props: null }));
+vi.mock('./ProjectSettingsPanel', () => ({
+  ProjectSettingsPanel: (props) => {
+    panel.props = props;
+    return null;
+  },
+}));
 vi.mock('@/hooks/useCompose', () => ({ useComposeProject: () => {} }));
 vi.mock('@ui/components/assistant/useAssistantAvailable.js', () => ({
   useAssistantAvailable: () => false,
@@ -311,6 +318,76 @@ describe('a reader on a maintainers-only page', () => {
     const view = await renderComponent(at('/projects/A/general'));
     await view.step(async () => d.settle('A'));
     expect(notifyError).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+});
+
+// A settings page reads the project again after each save and waits for it
+// before the next save, which expects what that read says. A read that
+// started first and answers last must not put the project back one save.
+describe('reading the project again from a settings page', () => {
+  it('shows the newest read however late an older one answers, and waits for it', async () => {
+    const reads = [];
+    auth.client = {
+      projects: {
+        get: () => new Promise((resolve) => reads.push(resolve)),
+        listDocuments: async () => [],
+      },
+    };
+    const version = (v) => ({ ...PROJECTS.A, config: { ...PROJECTS.A.config, v } });
+    const view = await renderComponent(
+      <MemoryRouter initialEntries={['/projects/A/general']}>
+        <Routes>
+          <Route path="/projects/:projectId/general" element={<ProjectDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await view.step(async () => reads[0](version(0)));
+    expect(panel.props.project.config.v).toBe(0);
+
+    const settled = [];
+    await view.step(async () => {
+      panel.props.onProjectUpdate().then(() => settled.push('first'));
+      panel.props.onProjectUpdate().then(() => settled.push('second'));
+    });
+    expect(reads).toHaveLength(3);
+    // The newer read answers first, then the older one with what it saw.
+    await view.step(async () => reads[2](version(2)));
+    expect(panel.props.project.config.v).toBe(2);
+    await view.step(async () => reads[1](version(1)));
+    expect(panel.props.project.config.v).toBe(2);
+    expect(settled.sort()).toEqual(['first', 'second']);
+    await view.unmount();
+  });
+
+  it('lets a superseded call finish only once the newest read has answered', async () => {
+    const reads = [];
+    auth.client = {
+      projects: {
+        get: () => new Promise((resolve) => reads.push(resolve)),
+        listDocuments: async () => [],
+      },
+    };
+    const version = (v) => ({ ...PROJECTS.A, config: { ...PROJECTS.A.config, v } });
+    const view = await renderComponent(
+      <MemoryRouter initialEntries={['/projects/A/general']}>
+        <Routes>
+          <Route path="/projects/:projectId/general" element={<ProjectDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await view.step(async () => reads[0](version(0)));
+    const settled = [];
+    await view.step(async () => {
+      panel.props.onProjectUpdate().then(() => settled.push('first'));
+      panel.props.onProjectUpdate().then(() => settled.push('second'));
+    });
+    await view.step(async () => reads[1](version(1)));
+    expect(settled).toEqual([]);
+    expect(panel.props.project.config.v).toBe(0);
+    await view.step(async () => reads[2](version(2)));
+    expect(panel.props.project.config.v).toBe(2);
+    expect(settled.sort()).toEqual(['first', 'second']);
     await view.unmount();
   });
 });

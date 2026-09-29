@@ -34,6 +34,7 @@ const ProjectExport = lazyNamed(() => import('./ProjectExport.jsx'), 'ProjectExp
 import { readInitialized, readImportState, importRouteFor } from '@/domain/igtConfig';
 import { isReviewed } from '@larc-iu/plaid-client';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
+import { useLatestCall } from '@ui/hooks/useLatestCall.js';
 import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { useTabParam } from '@/hooks/useTabParam';
 import { contentTabsFor, isMaintainerTab, TAB_ALIASES } from '@/domain/projectTabs';
@@ -94,16 +95,34 @@ export const ProjectDetail = () => {
   // cleanup, and both writers of `project` check it.
   const live = useRef(null);
 
-  const refreshProject = async () => {
-    if (!client) return;
+  // A settings page reads the project again after each save, and waits for it
+  // before it lets the next save go, since the next save expects what that
+  // read says. Two reads can be out at once (two saves, or two pages), and a
+  // read that started first can answer last. Only the newest read is shown,
+  // or a page would expect a value from before its own last save and be
+  // refused as changed elsewhere. A superseded call waits for the newest one,
+  // so whoever awaits it sees the project as it stands.
+  const begin = useLatestCall();
+  const newestRefresh = useRef(null);
+  const refreshProject = () => {
+    if (!client) return Promise.resolve();
     const token = live.current;
-    try {
-      const projectData = await client.projects.get(projectId);
-      if (token?.cancelled) return;
-      setProject(projectData);
-    } catch (err) {
-      console.error('Could not refresh the project:', err);
-    }
+    const isCurrent = begin();
+    const done = (async () => {
+      try {
+        const projectData = await client.projects.get(projectId);
+        if (token?.cancelled || !isCurrent()) return;
+        setProject(projectData);
+      } catch (err) {
+        if (isCurrent()) console.error('Could not refresh the project:', err);
+      }
+    })().then(() => {
+      // Unmounting also ends a call, with no newer one to wait for.
+      const newest = newestRefresh.current;
+      return isCurrent() || newest === done ? undefined : newest;
+    });
+    newestRefresh.current = done;
+    return done;
   };
 
   const fetchData = async (token) => {
