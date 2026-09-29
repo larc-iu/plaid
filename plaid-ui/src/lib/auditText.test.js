@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readableDescription } from './auditText.js';
+import { readableDescription, operationKindLabel } from './auditText.js';
 
 // The audit log is immutable, so these descriptions are already stored with the
 // id in them and the tidy-up has to happen at read time.
@@ -54,5 +54,27 @@ describe('readableDescription, ids in the middle', () => {
         'Create document "NotesC" in project 01a09938-baba-736b-bca2-f1af827135b7',
       ),
     ).toBe('Create document "NotesC"');
+  });
+});
+
+// An operation's kind, in the words its History row shows.
+describe('operationKindLabel', () => {
+  it('names every kind the server accepts', () => {
+    expect(
+      [
+        'assistant-plan',
+        'service-run',
+        'import',
+        'bulk-edit',
+        'guess-adoption',
+        'repair',
+        'review',
+      ].map(operationKindLabel),
+    ).toEqual(['Assistant', 'Automatic', 'Import', 'Bulk edit', 'Guess taken', 'Repair', 'Review']);
+  });
+
+  it('names nothing for an operation with no kind', () => {
+    expect(operationKindLabel(undefined)).toBe(null);
+    expect(operationKindLabel(null)).toBe(null);
   });
 });

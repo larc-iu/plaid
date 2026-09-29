@@ -7,7 +7,8 @@ import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
 import { notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
 import { useLatestCall } from '../../hooks/useLatestCall.js';
-import { readableDescription } from '../../lib/auditText.js';
+import { readableDescription, operationKindLabel } from '../../lib/auditText.js';
+import { KindChip } from './HistoryDrawer.jsx';
 import { textIncludes } from '../../domain/collation.js';
 
 // A paged audit feed. `fetchPage({cursor, limit})` returns the server's
@@ -152,7 +153,12 @@ export const AuditFeed = ({
       key: 'change',
       label: 'Change',
       sort: (e) => entryLabel(e).toLowerCase(),
-      render: entryLabel,
+      render: (e) => (
+        <>
+          <KindChip kind={e.kind} />
+          {entryLabel(e)}
+        </>
+      ),
     },
     {
       key: 'where',
@@ -232,6 +238,7 @@ export const AuditFeed = ({
           match: (e, q) =>
             [
               entryLabel(e),
+              operationKindLabel(e.kind),
               e.user?.displayName,
               e.user?.id,
               ...(e.documents || []).map((d) => d.name),

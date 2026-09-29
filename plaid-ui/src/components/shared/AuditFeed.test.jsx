@@ -135,6 +135,25 @@ describe('the audit feed when its scope changes under it', () => {
   });
 });
 
+describe('the kind of an operation', () => {
+  it('is named on its row, and nothing is for a change with none', async () => {
+    const d = deferred();
+    d.at('A');
+    const view = await renderComponent(feed(d, 'A'));
+    await view.step(async () =>
+      d.settle('A', [
+        { ...entry('ay'), kind: 'review', message: 'Accept word analysis' },
+        entry('bee'),
+      ]),
+    );
+    const cells = texts(view.container, 'td');
+    expect(cells).toContain('ReviewAccept word analysis');
+    expect(cells).toContain('changed bee');
+    expect(view.container.querySelectorAll('[data-operation-kind]')).toHaveLength(1);
+    await view.unmount();
+  });
+});
+
 describe('the href builders the app owes the feed', () => {
   it('are named when one is missing, rather than dropping the links', async () => {
     // Each app routes to a document differently, so the package cannot guess.

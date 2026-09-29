@@ -18,3 +18,17 @@ const UUID_CLAUSE =
 
 export const readableDescription = (text) =>
   typeof text === 'string' ? text.replace(UUID_CLAUSE, '').trim() : text;
+
+// What an operation's kind (the server's closed list, `?group-kind=`) is
+// called on a History row. An operation with no kind names none.
+const KIND_LABELS = {
+  'assistant-plan': 'Assistant',
+  'service-run': 'Automatic',
+  import: 'Import',
+  'bulk-edit': 'Bulk edit',
+  'guess-adoption': 'Guess taken',
+  repair: 'Repair',
+  review: 'Review',
+};
+
+export const operationKindLabel = (kind) => KIND_LABELS[kind] ?? null;

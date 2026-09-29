@@ -4,7 +4,7 @@ import { Button } from '../ui/button.jsx';
 import { Badge } from '../ui/badge.jsx';
 import { cn } from '../../lib/utils.js';
 import { fullTimestamp } from '../../lib/formatTime.js';
-import { readableDescription } from '../../lib/auditText.js';
+import { readableDescription, operationKindLabel } from '../../lib/auditText.js';
 import { Loading } from './Loading.jsx';
 import { Notice } from './Notice.jsx';
 
@@ -22,6 +22,21 @@ import { Notice } from './Notice.jsx';
 // entries a reader is looking for.
 const unitLabel = (entry) =>
   entry.message || readableDescription(entry.ops?.[0]?.description) || 'No description';
+
+// What kind of operation the entry is (a review, an import, the assistant),
+// when it says. A neutral chip: color on a row means provenance elsewhere.
+export const KindChip = ({ kind }) => {
+  const label = operationKindLabel(kind);
+  if (!label) return null;
+  return (
+    <span
+      data-operation-kind={kind}
+      className="mr-1.5 inline-block rounded border px-1.5 align-[1px] text-[11px] font-medium text-muted-foreground"
+    >
+      {label}
+    </span>
+  );
+};
 
 const actor = (user, apiToken) =>
   user ? ` · by ${user.displayName}${apiToken ? ` (via ${apiToken.name})` : ''}` : '';
@@ -224,6 +239,7 @@ export const HistoryDrawer = ({
                   {ops.length} actions
                 </span>
               )}
+              <KindChip kind={entry.kind} />
               {unitLabel(entry)}
             </span>
             <span className="mt-0.5 block text-xs text-muted-foreground" title={range}>

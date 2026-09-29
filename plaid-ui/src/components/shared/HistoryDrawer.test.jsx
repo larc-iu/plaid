@@ -164,4 +164,35 @@ describe('HistoryDrawer', () => {
       await view.unmount();
     });
   });
+
+  it('names the kind of an operation that has one, and nothing for one that has none', async () => {
+    const one = (id, kind, message) => ({
+      id,
+      time: '2026-09-01T00:00:00.000000001Z',
+      ...(kind ? { kind } : {}),
+      message,
+      user: { id: 'u', displayName: 'u' },
+      ops: [{ id: `${id}-op`, description: message, time: '2026-09-01T00:00:00.000000001Z' }],
+    });
+    const view = await renderComponent(
+      <HistoryDrawer
+        isOpen
+        onClose={() => {}}
+        auditEntries={[
+          one('a', 'review', 'Accept word analysis'),
+          one('b', 'guess-adoption', 'Update Gloss'),
+          one('c', null, 'Update POS'),
+        ]}
+        loading={false}
+        error={null}
+        onSelectEntry={() => {}}
+        selectedEntry={null}
+      />,
+    );
+    const row = (label) => byText(view.container, '[data-history-item^="u:"]', label);
+    expect(row('Accept word analysis').textContent).toContain('Review');
+    expect(row('Update Gloss').textContent).toContain('Guess taken');
+    expect(row('Update POS').querySelector('[data-operation-kind]')).toBe(null);
+    await view.unmount();
+  });
 });
