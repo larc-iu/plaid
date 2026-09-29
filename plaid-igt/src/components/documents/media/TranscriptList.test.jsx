@@ -233,6 +233,85 @@ describe('TranscriptList', () => {
     await r.unmount();
   });
 
+  // Every write shows before the server answers. A mutation that has shown
+  // its edit has moved the document on (`dataVersion`), and the row moves on
+  // with it: the server's answer is still out here, and never comes.
+  describe('while the server has not answered', () => {
+    const held = (doc) => {
+      doc.dataVersion = 0;
+      const show = () => {
+        doc.dataVersion += 1;
+        return new Promise(() => {});
+      };
+      doc.editAlignment = vi.fn(show);
+      doc.updateAlignmentSpeaker = vi.fn(show);
+      doc.createAlignment = vi.fn(show);
+      return doc;
+    };
+
+    it('Enter on an edited row moves on at once', async () => {
+      const doc = held(makeDoc({ body: 'the cat', tokens: TOKENS }));
+      const r = await renderComponent(element(doc, makeOps()));
+      const [first, second] = rowTextareas(r.container);
+      await r.step(() => first.focus());
+      await r.step(() => setValue(first, 'thee'));
+      await r.step(async () => {
+        press(first, 'Enter');
+        await settle();
+      });
+      expect(doc.editAlignment).toHaveBeenCalledTimes(1);
+      expect(document.activeElement).toBe(second);
+      await r.unmount();
+    });
+
+    it('Enter on the last edited row moves into the new-segment row at once', async () => {
+      const doc = held(makeDoc({ body: 'the cat', tokens: TOKENS }));
+      const r = await renderComponent(element(doc, makeOps()));
+      const last = rowTextareas(r.container)[1];
+      await r.step(() => last.focus());
+      await r.step(() => setValue(last, 'cats'));
+      await r.step(async () => {
+        press(last, 'Enter');
+        await settle();
+      });
+      expect(doc.editAlignment).toHaveBeenCalledTimes(1);
+      expect(document.activeElement).toBe(newTextarea(r.container));
+      await r.unmount();
+    });
+
+    it('Enter on a relabelled speaker moves into the text at once', async () => {
+      const doc = held(makeDoc({ body: 'the cat', tokens: TOKENS }));
+      const r = await renderComponent(element(doc, makeOps()));
+      const speaker = r.container.querySelector('input[aria-label="Segment 2 speaker"]');
+      await r.step(() => speaker.focus());
+      await r.step(() => setValue(speaker, 'Ben'));
+      await r.step(async () => {
+        press(speaker, 'Enter');
+        await settle();
+      });
+      expect(doc.updateAlignmentSpeaker).toHaveBeenCalledWith('b', 'Ben');
+      expect(document.activeElement).toBe(rowTextareas(r.container)[1]);
+      await r.unmount();
+    });
+
+    it('an edit refused before it shows keeps the typing and the focus', async () => {
+      const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+      doc.dataVersion = 0;
+      doc.editAlignment = vi.fn(async () => false);
+      const r = await renderComponent(element(doc, makeOps()));
+      const first = rowTextareas(r.container)[0];
+      await r.step(() => first.focus());
+      await r.step(() => setValue(first, 'thee'));
+      await r.step(async () => {
+        press(first, 'Enter');
+        await settle();
+      });
+      expect(document.activeElement).toBe(first);
+      expect(first.value).toBe('thee');
+      await r.unmount();
+    });
+  });
+
   it('Enter on the last row moves into the new-segment row', async () => {
     const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
     const r = await renderComponent(element(doc, makeOps()));
@@ -684,6 +763,26 @@ describe('TranscriptList proposals', () => {
     await r.step(() => blur(box));
     await settle();
     expect(doc.createAlignment).not.toHaveBeenCalled();
+  });
+
+  it('Enter on a typed proposal moves on at once, before the server answers', async () => {
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    doc.dataVersion = 0;
+    doc.createAlignment = vi.fn(() => {
+      doc.dataVersion += 1;
+      return new Promise(() => {});
+    });
+    const r = await renderComponent(element(doc, withVad()));
+    const box = proposalText(r.container, 'vad-2');
+    await r.step(() => box.focus());
+    await r.step(() => setValue(box, 'heard'));
+    await r.step(async () => {
+      press(box, 'Enter');
+      await settle();
+    });
+    expect(doc.createAlignment).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(newTextarea(r.container));
+    await r.unmount();
   });
 
   it('saves a proposal once, though Enter is followed by the blur it causes', async () => {

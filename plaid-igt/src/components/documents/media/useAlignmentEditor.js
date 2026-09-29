@@ -3,6 +3,7 @@ import { cpSlice, cpLength } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { alignableRange } from '../../../domain/mutations/alignment.js';
+import { shownOrRefused as shownOrRefusedBy } from './shownOrRefused.js';
 
 // The timeline popover's operations, backed by the shared IgtDocument: make a
 // segment from new text, or over a stretch of the baseline text still free
@@ -39,9 +40,7 @@ export const useAlignmentEditor = (selection, onAlignmentCreated) => {
   // document and says why. One refused before it showed answers false.
   const shownOrRefused = useCallback(
     async (write) => {
-      const before = doc.dataVersion;
-      const saving = write();
-      const ok = doc.dataVersion !== before || (await saving);
+      const ok = await shownOrRefusedBy(doc, write);
       if (ok && onAlignmentCreated) onAlignmentCreated();
       return ok;
     },

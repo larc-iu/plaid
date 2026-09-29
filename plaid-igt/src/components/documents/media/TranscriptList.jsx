@@ -20,6 +20,7 @@ import { RUNNING_TIME_MS, useThrottledValue } from './useThrottledValue.js';
 import { getStickySpeaker, setStickySpeaker } from './stickySpeaker.js';
 import { keys } from '@/lib/keymap.js';
 import { stableKey } from '@ui/domain/pendingIds.js';
+import { shownOrRefused } from './shownOrRefused.js';
 
 // The transcript: every time-aligned segment as a row you can type into, in
 // time order, with the recording following your focus. This is the pass a
@@ -827,15 +828,20 @@ export function TranscriptList({
       if (!token) return false;
       const storedText = cpSlice(doc.body || '', token.begin, token.end);
       const storedSpeaker = token.metadata?.speaker || '';
+      // The row moves on once the edit shows, not when the server has it.
       if (text !== storedText) {
-        return doc.editAlignment(id, {
-          text,
-          timeBegin: timeBeginOf(token),
-          timeEnd: timeEndOf(token),
-          speaker,
-        });
+        return shownOrRefused(doc, () =>
+          doc.editAlignment(id, {
+            text,
+            timeBegin: timeBeginOf(token),
+            timeEnd: timeEndOf(token),
+            speaker,
+          }),
+        );
       }
-      if (speaker !== storedSpeaker) return doc.updateAlignmentSpeaker(id, speaker);
+      if (speaker !== storedSpeaker) {
+        return shownOrRefused(doc, () => doc.updateAlignmentSpeaker(id, speaker));
+      }
       return true;
     },
     [doc],
@@ -871,6 +877,13 @@ export function TranscriptList({
   // proposal then falls out of the list because a real segment now covers that
   // stretch of time.
   const handleCreate = useCallback((args) => doc.createAlignment(args), [doc]);
+  // A proposal typed into is gone once its segment shows, so its row moves on
+  // then. The new-segment row stays, and waits for the answer only to put
+  // refused text back.
+  const handleAccept = useCallback(
+    (args) => shownOrRefused(doc, () => doc.createAlignment(args)),
+    [doc],
+  );
 
   const handleDelete = useCallback(
     (id, opts) => opsRef.current.handleDeleteAlignment(id, opts),
@@ -1081,7 +1094,7 @@ export function TranscriptList({
               playing={row.proposal.id === playingId}
               canPlay={canPlay}
               onFocusRow={handleFocusProposal}
-              onAccept={handleCreate}
+              onAccept={handleAccept}
               onAdvance={handleAdvance}
               onStep={handleStep}
               onDiscard={handleDiscardProposal}

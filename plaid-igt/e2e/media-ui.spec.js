@@ -146,6 +146,18 @@ test('the transcript adds a segment at the playhead and Enter saves an edit', as
     timeout: 15000,
   });
   await expect(page.getByLabel('New segment text')).toBeFocused();
+  // The focus moves as the edit shows, before the server has it. The tests
+  // after this one start from the stored segment, so the edit must land
+  // before this page closes.
+  await expect
+    .poll(
+      async () => {
+        const fresh = await ctx.client.documents.get(ctx.documentId, true);
+        return fresh.textLayers[0].text.body;
+      },
+      { timeout: 15000 },
+    )
+    .toContain('hello there friend');
 
   const realFailures = diag.failures.filter((f) => !/\/media(\?|$)/.test(f.url || ''));
   expect.soft(realFailures, 'no unexpected API failures during transcription').toEqual([]);
@@ -272,7 +284,8 @@ test('deleting a segment takes its text, and existing text is aligned by selecti
   // Deleting it takes those words out of the baseline too.
   await page.getByRole('button', { name: 'Delete segment', exact: true }).click();
   await expect(page.getByLabel('Segment 1 text')).toHaveCount(0);
-  await expect.poll(bodyNow).toBe(bodyAfter.replace('the quick brown ', ''));
+  // Two writes, one after the other (the segment, then its words).
+  await expect.poll(bodyNow, { timeout: 15000 }).toBe(bodyAfter.replace('the quick brown ', ''));
 
   const realFailures = diag.failures.filter((f) => !/\/media(\?|$)/.test(f.url || ''));
   expect.soft(realFailures, 'no unexpected API failures during delete and align').toEqual([]);
