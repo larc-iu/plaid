@@ -857,21 +857,26 @@
   are typed between two letters of one word. Otherwise the letters typed
   against a kept word's edge at a space are outside every word's token,
   one orphan for each side they touch. Against an edge between two words
-  without a space they may be a new word, which the text cannot tell."
+  without a space they may be a new word, which the text cannot tell. A
+  space or line break typed between two kept letters of one word counts
+  one too, since the word's token stays over it."
   [state next? first? spaced?]
   (let [d (quot state 32) f (bit-and (quot state 16) 1) p (bit-and (quot state 8) 1)
         l (bit-and (quot state 4) 1) s (bit-and (quot state 2) 1) r (bit-and state 1)
         inside? (and next? (not first?))
         held-left? (or (= f 1) (and (zero? d) inside?))
         right? (and next? first? spaced?)]
-    (cond
-      (and (zero? l) (zero? r)) [0 0]
-      (= d 1) [0 0]
-      (zero? s) [(if (and (or (= p 1) right?) (not (or held-left? inside?))) 1 0)
-                 (if (and (zero? d) inside?) 1 0)]
-      :else [(+ (if (and (= l 1) (= p 1) (not held-left?)) 1 0)
-                (if (and (= r 1) right?) 1 0))
-             0])))
+    (update (cond
+              (and (zero? l) (zero? r)) [0 0]
+              (= d 1) [0 0]
+              (zero? s) [(if (and (or (= p 1) right?) (not (or held-left? inside?))) 1 0)
+                         (if (and (zero? d) inside?) 1 0)]
+              :else [(+ (if (and (= l 1) (= p 1) (not held-left?)) 1 0)
+                        (if (and (= r 1) right?) 1 0))
+                     0])
+            ;; a space or line break typed between two kept letters of one
+            ;; word leaves the word's token over it
+            0 + (if (and (= s 1) inside? (or (zero? d) (and (= d 1) (= f 1)))) 1 0))))
 
 (defn- run-step
   "[state' touched] after deleting an old letter (`kind` :d) or typing a new
@@ -900,8 +905,9 @@
   aligned word by word where the diff kept a letter of a deleted word in
   place of the respelled word's own. Among the alignments of fewest edits,
   one is preferred that leaves fewer letters typed against a kept word's
-  edge at a space, where its token does not take them, and joins fewer old
-  words into one new word. Where those tie, the one touching fewer words is
+  edge at a space or at the punctuation after a word written with spaces,
+  where its token does not take them, types no space inside a kept word,
+  and joins fewer old words into one new word. Where those tie, the one touching fewer words is
   preferred, and between words without a space only when the diff keeps a
   word by letters from its middle alone: there, which of two words kept a
   letter is otherwise not for the text to say. `sat tat` to `tX` then
@@ -932,14 +938,27 @@
         sp? (fn [i] (space? (aget o (int i))))
         start-of (fn [e] (or (:start e) (:at e)))
         reach-of (fn [e] (or (:end e) (:at e)))
-         ;; the edges between two words without a space, near [lo hi]
+         ;; the edges between two words without a space, near [lo hi]: the
+         ;; ends of the word tokens there that none of them holds strictly
+         ;; inside it. By a sweep, since one long delete reaches every word.
         edges (fn [lo hi]
-                (let [ws (filter (fn [{:token/keys [begin end layer]}]
-                                   (and (< begin end) (contains? word-layers layer)))
-                                 (near lo hi))]
+                (let [ws (sort-by :token/begin
+                                  (filter (fn [{:token/keys [begin end layer]}]
+                                            (and (< begin end) (contains? word-layers layer)))
+                                          (near lo hi)))
+                      begins (long-array (map :token/begin ws))
+                      ;; the furthest end among the first i+1 tokens
+                      reach (long-array (reductions max (map :token/end ws)))
+                      inside? (fn [p]
+                                (let [c (loop [x 0 y (alength begins)]
+                                          (if (< x y)
+                                            (let [h (quot (+ x y) 2)]
+                                              (if (< (aget begins h) (long p)) (recur (inc h) y) (recur x h)))
+                                            x))]
+                                  (and (pos? c) (> (aget reach (dec c)) (long p)))))]
                   (into #{}
                         (comp (mapcat (juxt :token/begin :token/end))
-                              (remove (fn [p] (some (fn [{:token/keys [begin end]}] (< begin p end)) ws))))
+                              (remove inside?))
                         ws)))
          ;; [a b edits] for each stretch, a and b at word edges one word
          ;; beyond its edits each way
@@ -990,9 +1009,27 @@
                            (fn [i] (and (aget held i) (letter? i))))
                 osp (fn [i] (sp? (+ a i)))
                 nsp (fn [j] (space? (aget N (int j))))
+                lt? (fn [q] (let [c (aget o (int q))] (or (Character/isLetterOrDigit (int c)) (combining-mark? c))))
+                 ;; whether the letter at p ends a word written with spaces
+                 ;; before punctuation that a space or the text's end
+                 ;; follows: `a` in `a! ab`, where letters typed after it
+                 ;; are outside its token as at a space
+                before-punct? (fn [p]
+                                (and (lt? p) (< (inc p) n) (not (lt? (inc p))) (not (sp? (inc p)))
+                                     (loop [q (inc p)] (cond (= q n) true (sp? q) true (lt? q) false :else (recur (inc q))))
+                                     ;; back to the word's start, then over
+                                     ;; punctuation to a space or the text's
+                                     ;; start, and not another word's letter
+                                     (let [q (loop [q p] (if (and (pos? q) (lt? (dec q)) (not (bound? q))) (recur (dec q)) (dec q)))]
+                                       (loop [q q] (cond (< q 0) true (sp? q) true (lt? q) false :else (recur (dec q)))))))
                  ;; whether the old letter at p is not a space and ends its
-                 ;; word at a space or the text's end
-                spaced-end? (fn [p] (and (not (sp? p)) (or (= (inc p) n) (sp? (inc p)))))
+                 ;; word at a space, the text's end or such punctuation
+                spaced-end? (fn [p] (and (not (sp? p)) (or (= (inc p) n) (sp? (inc p)) (before-punct? p))))
+                 ;; the same for each letter of the window, looked up in the
+                 ;; alignment's inner loop
+                window-end (let [xs (boolean-array (max m 1))]
+                             (dotimes [i m] (aset xs i (boolean (spaced-end? (+ a i)))))
+                             xs)
                 spaced-start? (fn [p] (or (zero? p) (sp? (dec p))))
                  ;; Every word of the window ends at a space. Between two
                  ;; words without one, which of them kept a letter is not
@@ -1022,7 +1059,7 @@
                                    ;; both old words (see `split-at-token-edges`),
                                    ;; and not when it takes one's first or last
                                    ;; letter.
-                                  [(+ (run-state 0 0 (if (spaced-end? (+ a i)) 1 0) 0 0 0) RS)
+                                  [(+ (run-state 0 0 (if (aget window-end i) 1 0) 0 0 0) RS)
                                    (+ x (if (and (= w 2) (in-word? i) (or (first? i) (= 1 (bit-and (quot r 8) 1)))) 1 0)) y]))
                            :d (let [[r' y] (run-step r :d (osp i) (first? i))]
                                 [(+ r' (* RS (if (and (osp i) (= w 1)) 2 w))) 0 y])
@@ -1124,7 +1161,11 @@
                                      (pos? dn) (conj {:kind :delete :start (+ a i) :end (+ a i dn)})
                                      (pos? in) (conj {:kind :insert :at (+ a i dn)
                                                       :value (String. N (int j) (int in))})))))))))))))
-        out (reduce (fn [out [_ _ es :as w]] (into out (or (realign w) es))) [] windows)]
+        ;; a window longer than the aligner looks is left as it is before
+        ;; any work on it
+        out (reduce (fn [out [a b es :as w]]
+                      (into out (or (when (<= (- b a) align-limit) (realign w)) es)))
+                    [] windows)]
     (if (= out edits) ops (edits->ops out))))
 
 (defn slide-to-tokens

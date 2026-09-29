@@ -1432,6 +1432,66 @@
                     (ta/normalize-deletes old tokens))]
         (is (identical? ops (ta/align-to-words ops old tokens #{:w})) (str (pr-str old) " -> " (pr-str new)))))))
 
+(deftest word-alignment-types-no-line-break-inside-a-kept-word
+  ;; A word typed at the end of one line and the first word of the next
+  ;; respelled, in one save. Deleting the line break and typing "oo\nw"
+  ;; between the `t` and the `hen` of `then` is as short, and deletes no
+  ;; letter of `then`, but it put `then` and its morpheme over "too\nwhen"
+  ;; and moved the sentence break in front of "too".
+  (let [on (fn [layer t] (assoc t :token/layer layer))
+        w (fn [id b e] (on :w (tok id b e)))]
+    (doseq [[old new tokens want]
+            [["I saw it\nthen we left\n" "I saw it too\nwhen we left\n"
+              [(on :s (tok :s1 0 9)) (on :s (tok :s2 9 22))
+               (w :i 0 1) (w :saw 2 5) (w :it 6 8) (w :then 9 13) (w :we 14 16) (w :left 17 21)
+               (on :m (tok :th 9 11)) (on :m (tok :en 11 13))]
+              {:s1 "I saw it too\n" :s2 "when we left\n" :then "when" :th "wh" :en "en" :it "it"}]
+             ["the dog\ntold me\n" "the dog to\nsold me\n"
+              [(on :s (tok :s1 0 8)) (on :s (tok :s2 8 16))
+               (w :the 0 3) (w :dog 4 7) (w :told 8 12) (w :me 13 15)]
+              {:s1 "the dog to\n" :s2 "sold me\n" :told "sold" :dog "dog"}]]]
+      (let [{:keys [text tokens]} (body-edit old new tokens #{:s} #{:w :m})
+            body (:text/body text)
+            read (into {} (map (fn [{:token/keys [id begin end]}] [id (cp/cp-subs body begin end)])) tokens)]
+        (is (= new body))
+        (is (= want (select-keys read (keys want))) (str (pr-str old) " -> " (pr-str new) " " (pr-str read)))))))
+
+(deftest word-alignment-leaves-no-letter-typed-before-punctuation-outside-a-word
+  ;; Words deleted and the next word respelled at its end, before the
+  ;; punctuation after it. Keeping `a` and typing `e` after it is as short as
+  ;; the diff, which kept the `a` of `cat` and left `ae` on its token, but the
+  ;; `e` then stood between `a` and `!` in no word's token.
+  (let [w (fn [id b e] (assoc (tok id b e) :token/layer :w))]
+    (doseq [[old new tokens]
+            [["cat é a! ab." "ae! ab." [(w :cat 0 3) (w :é 4 5) (w :a 6 7) (w :ab 9 11)]]
+             ["sat é a,\ncafé the." "aX,\ncafé the." [(w :sat 0 3) (w :é 4 5) (w :a 6 7) (w :café 9 13) (w :the 14 17)]]
+             ["so tea a! ok" "so ae! ok" [(w :so 0 2) (w :tea 3 6) (w :a 7 8) (w :ok 10 12)]]]]
+      (let [{:keys [text tokens]} (body-edit old new tokens #{} #{:w})
+            body (:text/body text)
+            held (fn [i] (some (fn [{:token/keys [begin end]}] (<= begin i (dec end))) tokens))
+            letters (filter #(Character/isLetter (int (.codePointAt ^String body (.offsetByCodePoints ^String body 0 (int %)))))
+                            (range (cp/cp-count body)))]
+        (is (= new body))
+        (is (every? held letters)
+            (str (pr-str old) " -> " (pr-str new) " "
+                 (pr-str (map (fn [{:token/keys [id begin end]}] [id (cp/cp-subs body begin end)]) tokens))))))))
+
+(deftest word-alignment-of-one-long-stretch-is-quick
+  ;; A body replaced outright (select all and paste, or a diff that gave up)
+  ;; is one delete over every word. It is longer than the aligner looks, so
+  ;; the ops come back as they are, and finding its window must not compare
+  ;; every word token with every other: with 10,000 words that took
+  ;; seconds under the write lock.
+  (let [n 10000
+        old (str/join " " (repeat n "abc"))
+        tokens (mapv (fn [i] (assoc (tok i (* 4 i) (+ 3 (* 4 i))) :token/layer :w)) (range n))
+        ops [(ta/delete-op 0 (cp/cp-count old)) (ta/insert-op 0 "xyz")]
+        t0 (System/nanoTime)
+        out (ta/align-to-words ops old tokens #{:w})
+        ms (/ (- (System/nanoTime) t0) 1e6)]
+    (is (= ops out))
+    (is (< ms 1500) (str "took " ms " ms"))))
+
 (deftest two-edits-sliding-towards-each-other-do-not-meet
   ;; Each delete cuts a token where it stands and could slide into the run of
   ;; `a` between them, and both would have taken the same letter.
