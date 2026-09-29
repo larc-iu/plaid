@@ -153,6 +153,9 @@ export const Setup = () => {
 
   const [draft, setDraft] = useState(emptyDraft);
   const [seeded, setSeeded] = useState(false);
+  // The vocabulary's config the draft was seeded from. A save writes the keys
+  // the draft changed from it, each expecting what it held there.
+  const [basis, setBasis] = useState(null);
   const [saving, setSaving] = useState(false);
   const [items, setItems] = useState(null);
   const [publishing, setPublishing] = useState(null); // {done, total} while running
@@ -173,6 +176,7 @@ export const Setup = () => {
     if (seeded || !vocab) return;
     const seed = saved ?? { ...emptyDraft(), title: vocab.name, slug: slugify(vocab.name) };
     setDraft(seed);
+    setBasis(vocab.config ?? null);
     setAlphabetText(formatAlphabet(seed.alphabet));
     setSeeded(true);
   }, [vocab, saved, seeded]);
@@ -264,7 +268,7 @@ export const Setup = () => {
     try {
       const record = await saveDictRecord(client, vocabularyId, draft, {
         label: saved ? `Update dictionary "${draft.title}"` : `Set up dictionary "${draft.title}"`,
-        loaded: vocab?.config,
+        loaded: basis,
       });
       await reload();
       notifySuccess(saved ? 'Saved.' : 'Dictionary set up.');
@@ -272,8 +276,11 @@ export const Setup = () => {
     } catch (err) {
       console.error('Failed to save the dictionary record:', err);
       notifyError(err, 'Failed to save the dictionary');
-      // Someone else saved since: show what is stored now.
-      if (statusOf(err) === 409) reload();
+      // Someone else saved since: show what is stored now, in the form too.
+      if (statusOf(err) === 409) {
+        await reload();
+        setSeeded(false);
+      }
     } finally {
       setSaving(false);
     }
