@@ -23,8 +23,10 @@ export async function whoChanged(client, documentId, entityIds, me) {
 }
 
 /** "b changed this word to si.": the word under a refused cell edit was
- * split or joined meanwhile, so the value was typed for another word. */
-export const recutTo = (who, text) => `${who || 'Someone'} changed this word to ${text}.`;
+ * split or joined meanwhile, so the value was typed for another word. `unit`
+ * is 'morpheme' for a morpheme re-segmented meanwhile. */
+export const recutTo = (who, text, unit = 'word') =>
+  `${who || 'Someone'} changed this ${unit} to ${text}.`;
 
 /** "b changed this to NOUN.", or "b cleared this." */
 export const changedTo = (who, stored) =>

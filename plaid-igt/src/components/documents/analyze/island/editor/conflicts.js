@@ -58,8 +58,9 @@ export const conflicts = {
   // A refused edit of `cell` lost to `stored`, another user's value: the cell
   // shows theirs, with `typed` under it, and focus stays where it is unless it
   // was in this cell or nowhere.
-  // `recut`: the text of the word the cell is on, when the conflict is that
-  // the word was split or joined since the edit was typed.
+  // `recut`: `{ unit, text }`, the word or morpheme the cell is on as it
+  // reads now, when the conflict is that the word was split or joined, or
+  // the morpheme re-segmented, since the edit was typed.
   _enterConflict(cell, typed, stored, recut = null) {
     const key = cell.dataset.cellKey;
     this._conflicts.set(conflictKey(key), { typed, stored });
@@ -82,7 +83,9 @@ export const conflicts = {
       .then(() => whoChanged(this.doc.client, this.doc.id, ids, this.doc._user?.id))
       .catch(() => null)
       .then((name) =>
-        notifyWarning(recut != null ? recutTo(name, recut) : changedTo(name, stored)),
+        notifyWarning(
+          recut != null ? recutTo(name, recut.text, recut.unit) : changedTo(name, stored),
+        ),
       );
   },
 

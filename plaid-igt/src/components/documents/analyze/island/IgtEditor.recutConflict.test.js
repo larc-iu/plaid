@@ -144,6 +144,38 @@ describe('a gloss refused because its word was re-cut meanwhile', () => {
     });
   }
 
+  // igt re-segments a morpheme in its form, not its extent: "the" becomes
+  // th-e as two morphemes over the whole word, the first keeping its id with
+  // the form "th". A gloss typed for "the" went back into the cell of "th"
+  // and was stored there on leaving (REV-W-FINAL).
+  it('shows what is stored when the morpheme was re-segmented, and leaving sends nothing', async () => {
+    const { client } = mount();
+    const resegmented = buildRawDoc({
+      morphemes: [
+        { id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: { form: 'th' } },
+        { id: 'm-3', begin: 0, end: 3, precedence: 2, metadata: { form: 'e' } },
+        { id: 'm-2', begin: 4, end: 7, precedence: 1, metadata: {} },
+      ],
+    });
+    const restore = refuseWith(client, resegmented);
+    const c = cell('ma:m-1:Gloss');
+    c.focus();
+    type(c, 'THE');
+    c.blur();
+    await settle();
+    restore();
+
+    const after = cell('ma:m-1:Gloss');
+    expect(after.value).toBe('');
+    expect(note('ma:m-1:Gloss')?.textContent).toBe('Yours: THE · Enter to keep yours');
+    after.focus();
+    after.blur();
+    await settle();
+    expect(writes(client)).toEqual([]);
+    expect(notifyWarning).toHaveBeenCalledWith('b changed this morpheme to th.');
+    expect(notifyError).not.toHaveBeenCalledWith(KEPT_IN_CELL, expect.anything());
+  });
+
   it('is put back to be sent again when the word was not re-cut', async () => {
     const { client } = mount();
     const restore = refuseWith(client, elsewhere());

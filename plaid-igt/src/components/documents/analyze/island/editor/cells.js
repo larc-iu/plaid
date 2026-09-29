@@ -649,19 +649,23 @@ export const cells = {
       rowId && rowId !== wordId
         ? (word.morphemes || []).find((m) => settledId(m.id) === settledId(rowId))
         : null;
-    return { word: word.content, morpheme: morpheme?.content ?? null };
+    // A morpheme is re-segmented in its form, the text its cell shows, and
+    // keeps its id and extent ("sing" to si-ng leaves "si" on the same token).
+    return { word: word.content, morpheme: morpheme ? morphFormOf(morpheme) : null };
   },
 
-  // The word's text now, when the word under `shape` was split or joined
-  // since (its text, or its morpheme's, changed), else null.
+  // What the cell is on now, as `{ unit, text }`, when the word under `shape`
+  // was split or joined since (its text changed), or its morpheme
+  // re-segmented (its form changed), else null.
   _recutSince(shape) {
     if (!shape) return null;
     const now = this._shapeNow(shape.wordId, shape.rowId);
     if (!now) return null;
-    const recut =
-      now.word !== shape.word ||
-      (shape.morpheme != null && now.morpheme != null && now.morpheme !== shape.morpheme);
-    return recut ? now.word : null;
+    if (now.word !== shape.word) return { unit: 'word', text: now.word };
+    if (shape.morpheme != null && now.morpheme != null && now.morpheme !== shape.morpheme) {
+      return { unit: 'morpheme', text: now.morpheme };
+    }
+    return null;
   },
 
   // Put a value that was not saved back into a cell that does not have focus.
