@@ -178,14 +178,20 @@ another release in the middle of a conversation.
 
 The version is `<release>+<hash>`, for example `1.4.0+3fa9c2d1`: the
 plaid-agent release (`0.0.0` in a checkout), then the first 8 hex digits of
-the SHA-256 of the app's system prompt template and every tool schema, as
-JSON with sorted keys. The template is the prompt before a project fills in
-its name, shape and guidelines, with the web and code sections included, so
-the hash changes exactly when what every model is told changes, and not with
-the project or with which tools a turn is offered. The service computes it
-at startup (`BaseAssistantService.version`, from each app's
-`prompt_template()`). `docs/*/SAMPLE_PROMPT.md` shows the same prompt and
-tools rendered over the test fixture.
+the SHA-256 of the app's system prompt template, every tool schema and the
+SHA-256 of each Python file of the harness (`plaid_agent/core`) and of the
+app's own package, as JSON with sorted keys. The template is the prompt
+before a project fills in its name, shape and guidelines, with the web and
+code sections included. The rest of what a model reads (the guidelines
+paragraph, the project's shape lines, the note on other projects, the notes
+a turn adds, every tool's answer) is written by that code, so the hash
+changes whenever any of it can have, though not with the project or with
+which tools a turn is offered. A change to the code that leaves all of it
+alone is a new version too. Line endings count as the repository stores
+them. The service computes it at startup (`BaseAssistantService.version`,
+from each app's `prompt_template()` and `core.service.agent_sources`).
+`docs/*/SAMPLE_PROMPT.md` shows the same prompt and tools rendered over the
+test fixture.
 
 An approved plan's writes carry the model and version of the turn that
 proposed the plan in their `provDetail`, beside `provSource:

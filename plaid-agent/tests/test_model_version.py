@@ -23,7 +23,7 @@ from test_service_flow import Helper, _request, _seed, _seed_plan, _service
 from plaid_agent.core import service as service_mod
 from plaid_agent.core.agent import TurnCancelled, TurnResult
 from plaid_agent.core.plan import Stamps
-from plaid_agent.core.service import AGENT_VERSION, agent_version
+from plaid_agent.core.service import AGENT_VERSION, agent_sources, agent_version
 from plaid_agent.igt.service import AssistantService as IgtService
 from plaid_agent.ud.service import AssistantService as UdService
 from plaid_agent.umr.service import AssistantService as UmrService
@@ -33,20 +33,26 @@ SERVICES = (IgtService, UdService, UmrService)
 
 # --- the version ------------------------------------------------------------------
 
-def test_the_version_is_the_release_and_a_hash_of_the_prompt_and_tools():
+def test_the_version_is_the_release_and_a_hash_of_the_prompt_tools_and_code():
     texts, tools = ['You are {project_name}.'], [{'type': 'function', 'function': {'name': 'x'}}]
-    digest = hashlib.sha256(json.dumps([texts, tools], sort_keys=True, ensure_ascii=False)
+    sources = [['core/a.py', 'ab' * 32]]
+    digest = hashlib.sha256(json.dumps([texts, tools, sources], sort_keys=True, ensure_ascii=False)
                             .encode('utf-8')).hexdigest()[:8]
-    assert agent_version(texts, tools) == f'{AGENT_VERSION}+{digest}'
+    assert agent_version(texts, tools, sources) == f'{AGENT_VERSION}+{digest}'
     # A tool's words are part of what the model is told.
     tools2 = [{'type': 'function', 'function': {'name': 'x', 'description': 'd'}}]
-    assert agent_version(texts, tools2) != agent_version(texts, tools)
+    assert agent_version(texts, tools2, sources) != agent_version(texts, tools, sources)
+    assert agent_version(texts, tools, [['core/a.py', 'cd' * 32]]) != agent_version(texts, tools, sources)
 
 
 @pytest.mark.parametrize('cls', SERVICES)
-def test_each_assistant_knows_its_version_from_its_own_prompt_and_tools(cls):
+def test_each_assistant_knows_its_version_from_its_own_prompt_tools_and_code(cls):
     svc = cls()
-    assert svc.version == agent_version(*svc.prompt_template())
+    assert svc.version == agent_version(*svc.prompt_template(), agent_sources(cls))
+    app = cls.__module__.split('.')[1]
+    paths = [p for p, _ in agent_sources(cls)]
+    assert 'core/guidelines.py' in paths and f'{app}/prompt.py' in paths and f'{app}/toolkit.py' in paths
+    assert {p.split('/')[0] for p in paths} == {'core', app}
     texts, tools = svc.prompt_template()
     assert texts and all(isinstance(t, str) and t for t in texts)
     assert len(tools) > 10
@@ -67,6 +73,50 @@ def test_the_version_is_the_same_in_another_process():
             for seed in ('1', '2')}
     assert len(runs) == 1
     assert runs.pop().split() == [cls().version for cls in SERVICES]
+
+
+def test_a_service_run_as_a_script_has_the_version_it_has_when_imported():
+    # `python -m plaid_agent.umr.service` makes the module `__main__`, so the
+    # app cannot be found from the class's module name. `__mp_main__` is the
+    # same situation without running main().
+    code = ('import runpy; '
+            'print(" ".join(runpy.run_module(f"plaid_agent.{app}.service", run_name="__mp_main__")'
+            '["AssistantService"]().version for app in ("igt", "ud", "umr")))')
+    out = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, check=True).stdout
+    assert out.split() == [cls().version for cls in SERVICES]
+
+
+def _versions_from(src) -> list:
+    code = ('from plaid_agent.igt.service import AssistantService as A; '
+            'from plaid_agent.ud.service import AssistantService as B; '
+            'from plaid_agent.umr.service import AssistantService as C; '
+            'print(A().version, B().version, C().version)')
+    env = {**os.environ, 'PYTHONPATH': os.pathsep.join([str(src), os.environ.get('PYTHONPATH', '')])}
+    return subprocess.run([sys.executable, '-c', code], capture_output=True, text=True,
+                          env=env, check=True, cwd=str(src)).stdout.split()
+
+
+def test_the_version_changes_with_what_the_harness_tells_the_model_and_not_with_line_endings(tmp_path):
+    # The guidelines paragraph is written by core code, not by an app's
+    # template, and every project with guidelines sends it: a change to it is
+    # a new version of all three assistants. A CRLF checkout of the same code
+    # is the same version.
+    import shutil
+    import plaid_agent
+    here = os.path.dirname(plaid_agent.__file__)
+    src = tmp_path / 'src'
+    shutil.copytree(here, src / 'plaid_agent', ignore=shutil.ignore_patterns('__pycache__'))
+    before = _versions_from(src)
+    assert before == [cls().version for cls in SERVICES]
+    for f in (src / 'plaid_agent').rglob('*.py'):
+        f.write_bytes(f.read_bytes().replace(b'\n', b'\r\n'))
+    assert _versions_from(src) == before
+    g = src / 'plaid_agent' / 'core' / 'guidelines.py'
+    text = g.read_text()
+    assert "'The project\\'s guidelines:'" in text
+    g.write_text(text.replace("'The project\\'s guidelines:'", "'The project\\'s written guidelines:'"))
+    after = _versions_from(src)
+    assert all(a != b for a, b in zip(after, before)), (before, after)
 
 
 # --- the conversation record --------------------------------------------------------
