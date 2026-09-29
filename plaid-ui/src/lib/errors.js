@@ -44,6 +44,10 @@ export const isUnreachable = (error) => {
 // network's "could not reach" but its own case. The client puts the request's
 // `method` on the error, and a read changes nothing either way.
 //
+// A 502 is one of them. A gateway answers it both when the server was down
+// and when the server stored the write and then dropped the connection, and
+// nothing in the answer tells the two apart.
+//
 // A few reads go as a POST (a query, signing in, looking an invite up), and
 // saved nothing either way.
 const READ_POSTS = /\/api\/v1\/(query|login|invites\/lookup)(?:[?#]|$)/;
@@ -54,10 +58,36 @@ export const isUnknownOutcome = (error) => {
   const url = String(error.url || String(error.message || '').match(/\bat (\S+)$/)?.[1] || '');
   if (READ_POSTS.test(url)) return false;
   const s = statusOf(error);
-  return s === 0 || s === 504 || (s === null && isUnreachable(error));
+  return s === 0 || s === 502 || s === 504 || (s === null && isUnreachable(error));
 };
 
+// A write refused because what it names is gone: another user deleted the
+// word, the annotation or the entry since this screen read it. The server
+// answers a writer 403 for an id it cannot place in a project (the core's
+// unknown-id ruling), and then its message names no project, where a real
+// refusal names the one it refused. An admin, and a route that looks the id
+// up itself, answers 404.
+const GONE_403 =
+  /\bthe project this entity belongs to\b|\baccess to vocab layer(?:\(s\))?\s*(?:\[\s*\])?$/i;
+
+export const isGone = (error) => {
+  const method = String((error && error.method) || '').toUpperCase();
+  if (!method || method === 'GET' || method === 'HEAD') return false;
+  const s = statusOf(error);
+  if (s === 404) return true;
+  if (s !== 403) return false;
+  const said = String(error?.responseData?.error ?? '').trim();
+  const msg = said || String(error?.message || '').replace(/\s+at\s+https?:\/\/\S+$/i, '');
+  return GONE_403.test(msg.trim());
+};
+
+// A write refused because the document changed under it: a conflict (409),
+// or what it names is gone. Either way the screen refetches and shows what
+// is there now.
+export const isChangedElsewhere = (error) => statusOf(error) === 409 || isGone(error);
+
 export const UNKNOWN_OUTCOME_TITLE = 'Not confirmed';
+const GONE = 'Changed or removed by someone else.';
 const UNKNOWN_OUTCOME =
   'The server did not answer in time. This change may or may not have been saved.';
 
@@ -79,6 +109,7 @@ const isLockLost = (error) =>
 export const humanizeError = (error, fallback = 'Something went wrong.') => {
   if (isUnknownOutcome(error)) return UNKNOWN_OUTCOME;
   if (isUnreachable(error)) return UNREACHABLE;
+  if (isGone(error)) return GONE;
   if (isLockLost(error)) return 'The lock on this document lapsed.';
   // An edit that names a row by the id it was shown under before the server
   // made it (pendingIds.js): the create it waited on was refused.

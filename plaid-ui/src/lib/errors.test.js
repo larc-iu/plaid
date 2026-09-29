@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   humanizeError,
+  isChangedElsewhere,
+  isGone,
   isPermissionError,
   isUnknownOutcome,
   signInError,
@@ -158,6 +160,21 @@ describe('a write whose answer was lost', () => {
     expect(isUnknownOutcome(Object.assign(httpError(503), { method: 'POST' }))).toBe(false);
   });
 
+  // A gateway answers 502 both when the server was down and when it stored
+  // the write and then dropped the connection (V5, H5-2 and H7-3).
+  it('counts a 502 on a write as lost, and on a read as the network', () => {
+    const bad = (method) =>
+      Object.assign(httpError(502, 'Unable to read error response'), {
+        method,
+        url: 'http://x/api/v1/spans',
+      });
+    expect(isUnknownOutcome(bad('POST'))).toBe(true);
+    expect(isUnknownOutcome(bad('PATCH'))).toBe(true);
+    expect(humanizeError(bad('POST'))).toBe(MAYBE);
+    expect(isUnknownOutcome(bad('GET'))).toBe(false);
+    expect(humanizeError(bad('GET'))).toMatch(/Failed to reach the server/);
+  });
+
   it('says it may or may not have been saved', () => {
     expect(humanizeError(lost('POST'))).toBe(MAYBE);
     expect(humanizeError(lost('get'))).toMatch(/Failed to reach the server/);
@@ -194,5 +211,63 @@ describe('a write whose answer was lost', () => {
     expect(signInError(at('http://x/api/v1/login'))).toMatch(/Failed to reach the server/);
     expect(isUnknownOutcome(at('http://x/api/v1/invites/redeem'))).toBe(true);
     expect(isUnknownOutcome(at('http://x/api/v1/query-log'))).toBe(true);
+  });
+});
+
+// A writer's write to something another user deleted is answered 403 with no
+// project named (the core's unknown-id ruling), an admin's 404 (D3).
+describe('a write to something that is gone', () => {
+  const refused = (status, said, method = 'PATCH') =>
+    Object.assign(httpError(status, said), {
+      method,
+      responseData: { error: said },
+    });
+  const GONE = 'Changed or removed by someone else.';
+
+  it('is told apart from a refusal that names its project', () => {
+    const gone = refused(
+      403,
+      'User b@x.com lacks sufficient privileges to write the project this entity belongs to',
+    );
+    expect(isGone(gone)).toBe(true);
+    expect(isChangedElsewhere(gone)).toBe(true);
+    expect(humanizeError(gone)).toBe(GONE);
+    const real = refused(
+      403,
+      'User b@x.com lacks sufficient privileges to write project 0199aaaa-0000-7000-8000-000000000001',
+    );
+    expect(isGone(real)).toBe(false);
+    expect(humanizeError(real)).toBe("You don't have permission to do that.");
+  });
+
+  it('reads the message off the error when the body is not there', () => {
+    const e = Object.assign(
+      new Error(
+        'HTTP 403 User b@x.com lacks sufficient privileges to write the project this entity belongs to at http://x/api/v1/spans/1',
+      ),
+      { status: 403, method: 'POST' },
+    );
+    expect(isGone(e)).toBe(true);
+  });
+
+  it('covers a vocabulary entry whose vocabulary cannot be placed', () => {
+    expect(isGone(refused(403, 'User b@x.com lacks read access to vocab layer ', 'POST'))).toBe(
+      true,
+    );
+    expect(
+      isGone(refused(403, 'User b@x.com lacks read access to vocab layer 0199aaaa-0000', 'POST')),
+    ).toBe(false);
+  });
+
+  it('counts a 404 on a write, and never a read', () => {
+    expect(humanizeError(refused(404, 'Not found', 'DELETE'))).toBe(GONE);
+    expect(isGone(refused(404, 'Not found', 'GET'))).toBe(false);
+    expect(humanizeError(refused(404, 'Not found', 'GET'))).toBe('Not found.');
+    expect(isGone(httpError(404))).toBe(false);
+  });
+
+  it('is a change elsewhere, as a 409 is', () => {
+    expect(isChangedElsewhere(refused(409, 'conflict'))).toBe(true);
+    expect(isChangedElsewhere(refused(400, 'bad'))).toBe(false);
   });
 });

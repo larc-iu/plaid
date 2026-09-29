@@ -25,6 +25,21 @@ describe('findLostCreate', () => {
     expect(made).toEqual({ id: 'c', name: 'Story' });
   });
 
+  // A gateway's 502 after the server stored the create (V5, H5-2a): Create
+  // pressed again made a second document.
+  it('reads again after a 502, which a stored create can answer', async () => {
+    const bad = Object.assign(
+      new Error('HTTP 502 Unable to read error response at http://x/api/v1/documents'),
+      { status: 502, method: 'POST', url: 'http://x/api/v1/documents' },
+    );
+    const made = await findLostCreate(bad, {
+      before,
+      reread: async () => [...before, { id: 'c', name: 'Story' }],
+      isIt: (row) => row.name === 'Story',
+    });
+    expect(made).toEqual({ id: 'c', name: 'Story' });
+  });
+
   it('is null when the create made nothing', async () => {
     const made = await findLostCreate(lost(), {
       before,
