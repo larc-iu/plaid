@@ -16,6 +16,7 @@ import { settledId } from '@ui/domain/pendingIds.js';
 import { statusOf } from '@ui/lib/errors.js';
 import { KEPT_IN_CELL } from '@ui/lib/cellConflict.js';
 import { cellByKey, morphFormOf, sameCell } from './shared.js';
+import { rowOfKey } from './conflicts.js';
 
 // An annotation cell's life: focus, typing, commit, the keyboard chords that
 // move between cells, and the sentence fields' own handlers.
@@ -544,7 +545,15 @@ export const cells = {
       // Not drawn (the reader paged away): kept until its page is drawn again,
       // which tells a conflict from a value to send again (_syncUnsentDrafts).
       if (!cell) {
-        if (!REFUSED_FOR_GOOD.has(status)) this._keepUnsent(key, typed, base.value, what);
+        if (REFUSED_FOR_GOOD.has(status)) return;
+        // Gone from the document (another user deleted or merged the word):
+        // there is no cell to put it back into, and this cell took the
+        // conflict from the document, so it says so.
+        if (status === 409 && !this._shownIds().has(rowOfKey(key))) {
+          notifyError(`Not saved: ${typed}`, 'Changed elsewhere');
+          return;
+        }
+        this._keepUnsent(key, typed, base.value, what);
         return;
       }
       const active = document.activeElement;
