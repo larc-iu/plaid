@@ -464,3 +464,42 @@ def test_the_words_of_a_long_document_go_in_batches_the_server_takes():
     made = [(op['begin'], op['end']) for b in client.batches for call in b if call[0] == 'bulk_create'
             for op in call[1] if op['token_layer_id'] == 'word-layer']
     assert made == words
+
+
+def test_a_failure_in_a_later_word_batch_says_what_was_written():
+    """The first batch (the new sentences and the first words) stands when a
+    later one fails, and the requester was told only "HTTP 500" (conc-2026-09-29
+    REV-W-PY2)."""
+    import types
+    from plaid_client.http import PlaidAPIError
+    words = [(i * 5, i * 5 + 4) for i in range(200)]
+    body = ' '.join(['word'] * 200)
+    doc = _document(body, sentences=[(0, len(body))], words=[])
+    client = _FakeClient(doc)
+    client.server = types.SimpleNamespace(limits=lambda: {'json_body_bytes': 8000})
+    real = client.batched
+    opened = []
+
+    @contextlib.contextmanager
+    def batched():
+        opened.append(1)
+        if len(opened) == 3:
+            raise PlaidAPIError('HTTP 500 boom', status=500, method='POST',
+                                url='http://plaid.internal:8085/api/v1/batch')
+        with real() as b:
+            yield b
+
+    client.batched = batched
+    with pytest.raises(RuntimeError) as caught:
+        TokenProcessor().process_tokens(
+            client, 'd1', [TokenSpan(text=body[:499], start=0, end=499),
+                           TokenSpan(text=body[500:], start=500, end=len(body))],
+            [TokenSpan(text='word', start=b, end=e) for b, e in words],
+            'word-layer', 'sentence-layer', _Helper(), text_layer_id='text-layer',
+            prov_source='service:punkt')
+    made = [op for b in client.batches for call in b if call[0] == 'bulk_create'
+            for op in call[1] if op['token_layer_id'] == 'word-layer']
+    assert len(client.batches) == 2 and 0 < len(made) < 200
+    assert str(caught.value).startswith(f'The 2 sentences were written, and {len(made)} of 200 words. '
+                                        'Run the tokenizer again to finish. ')
+    assert 'plaid.internal' not in str(caught.value)

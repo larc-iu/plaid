@@ -11,7 +11,8 @@ import logging
 from typing import List, Dict, Optional
 
 from plaid_client.provenance import stamp_inferred, is_protected
-from plaid_client.service import batch_body_budget, check_unchanged, locked_for_writes
+from plaid_client.service import (batch_body_budget, check_unchanged, locked_for_writes,
+                                  requester_message)
 from plaid_client.workflows.messages import setup_incomplete
 
 from .tokenizer_model import TokenSpan
@@ -350,9 +351,21 @@ class TokenProcessor:
                 # Create word tokens
                 if word_chunks:
                     b.tokens.bulk_create(word_chunks[0])
+            written = len(word_chunks[0]) if word_chunks else 0
             for chunk in word_chunks[1:]:
-                with client.batched() as b:
-                    b.tokens.bulk_create(chunk)
+                try:
+                    with client.batched() as b:
+                        b.tokens.bulk_create(chunk)
+                except Exception as error:
+                    # The first batch stands: say what it and the ones after
+                    # it wrote, and that a second run fills in the rest.
+                    done = (f'The {len(sent_operations)} sentences were written, and '
+                            f'{written} of {len(token_operations)} words.'
+                            if sent_operations else
+                            f'{written} of {len(token_operations)} words were written.')
+                    raise RuntimeError(f'{done} Run the tokenizer again to finish. '
+                                       f'{requester_message(error)}') from error
+                written += len(chunk)
             if token_operations:
                 response_helper.progress(90, f"Created {len(token_operations)} tokens…")
             response_helper.progress(95, "Saving…")

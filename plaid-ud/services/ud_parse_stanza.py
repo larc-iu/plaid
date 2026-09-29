@@ -5,7 +5,8 @@ import traceback
 from plaid_client import (BaseService, TASKS, Param, ROLES, find_by_role,
                           stamp_inferred, is_protected, service_source)
 from plaid_client.service import (batch_body_budget, locked_for_writes, machine_detail,
-                                  partly_written, progress_heartbeat, service_version)
+                                  partly_written, progress_heartbeat, requester_message,
+                                  service_version)
 from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.requester import Requester, requester_of
 
@@ -56,7 +57,8 @@ Two modes, picked automatically:
   annotations, so sentences you've reviewed or edited are left exactly as they
   are. Clicking Parse again thus refreshes the machine-only and not-yet-parsed
   sentences without disturbing your work. Other apps' annotations are
-  untouched. (Trade-off: multiword tokens aren't split in this mode.)
+  untouched. A sentence that has no words yet is tokenized on its own and
+  parsed. (Trade-off: multiword tokens aren't split in this mode.)
 
 Options:
 
@@ -562,10 +564,15 @@ def write_parse(client, head_deletes, sentence_ops, units, layers, progress, log
     which the next run fills in without changing them."""
     budget = batch_body_budget(client)
     items = []  # (kind, unit index, bytes), in the order they must land
-    if head_deletes or sentence_ops:
+    # Substrate-preserving mode makes words only for a sentence that had
+    # none, and they go in the batch that parses it, so the sentence is left
+    # as it was or whole.
+    joined = not (head_deletes or sentence_ops)
+    if not joined:
         items.append(("head", None, _json_bytes([head_deletes, sentence_ops])))
-    items += [("words", i, unit.word_bytes()) for i, unit in enumerate(units) if unit.words]
-    items += [("parse", i, unit.parse_bytes()) for i, unit in enumerate(units)]
+        items += [("words", i, unit.word_bytes()) for i, unit in enumerate(units) if unit.words]
+    items += [("parse", i, unit.parse_bytes() + (unit.word_bytes() if joined and unit.words else 0))
+              for i, unit in enumerate(units)]
 
     batches, current, size = [], [], 0
     for item in items:
@@ -579,10 +586,13 @@ def write_parse(client, head_deletes, sentence_ops, units, layers, progress, log
 
     total = len(units)
     written = 0
+    head_written = False
+    worded = 0  # sentences whose words stand, in a from-scratch parse
     try:
         for group in batches:
             head = any(kind == "head" for kind, _, _ in group)
-            word_units = [units[i] for kind, i, _ in group if kind == "words"]
+            word_units = [units[i] for kind, i, _ in group
+                          if kind == "words" or (joined and kind == "parse")]
             parse_units = [units[i] for kind, i, _ in group if kind == "parse"]
             if parse_units and len(batches) == 1:
                 message = f"Writing {total} sentence{'' if total == 1 else 's'}…"
@@ -597,10 +607,38 @@ def write_parse(client, head_deletes, sentence_ops, units, layers, progress, log
                 queue_sentences(batch, head_deletes if head else [],
                                 sentence_ops if head else [], word_units, parse_units, layers)
             written += len(parse_units)
+            head_written = head_written or head
+            worded += sum(1 for kind, _, _ in group if kind == "words")
     except Exception as error:
         if written:
             raise partly_written(written, total, "parsed", error) from error
+        if head_written:
+            # The new sentences stand, and some of their words, none parsed.
+            raise RuntimeError(
+                f"The {len(sentence_ops)} sentences were written, and the words of {worded} of them, "
+                f"none parsed. Parse again to finish. {requester_message(error)}") from error
         raise
+
+
+def sentence_words(tokenizer, body, begin, end):
+    """The surface words Stanza finds in ``body[begin:end]``, as
+    ``{begin, end}`` in the body's offsets. A multiword token is one word
+    over its whole surface, as the full parse writes it. Whatever sentences
+    Stanza splits the stretch into, it stays the one sentence the document
+    has."""
+    words = []
+    for sentence_data in tokenizer(body[begin:end]).to_dict():
+        i = 0
+        while i < len(sentence_data):
+            td = sentence_data[i]
+            wb, we = td["start_char"] + begin, td["end_char"] + begin
+            if begin <= wb < we <= end:
+                words.append({"begin": wb, "end": we})
+            if isinstance(td["id"], tuple):
+                i += 1 + td["id"][1] - td["id"][0] + 1
+            else:
+                i += 1
+    return words
 
 
 def parse_document(pipeline_provider, client, document_id, language='en', overwrite=False,
@@ -711,6 +749,26 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
             morph_to_sent = morpheme_sentence_index(sent_groups, existing_morphemes)
             protected_idxs = protected_sentence_indexes(morpheme_layer, lemma_layer, morph_to_sent)
 
+            # A sentence with text and no words (a from-scratch parse that
+            # stopped after writing the sentences) is tokenized here, on its
+            # own, and its words are written with its parse. Left out, it was
+            # skipped by every later Parse, which reported success.
+            unworded = [idx for idx, (sent, ws) in enumerate(sent_groups)
+                        if not ws and body[sent["begin"]:sent["end"]].strip()]
+            new_words = set()
+            if unworded:
+                log(f"  {len(unworded)} sentence(s) have no words; tokenizing them")
+                progress.report(ParseProgress.LOAD, 0.0, f"Loading the {language} models…")
+                with progress.heartbeat(ParseProgress.LOAD, 0.0, f"Loading the {language} models…"):
+                    tokenizer = pipeline_provider.get(language)
+                for n, idx in enumerate(unworded):
+                    progress.report(ParseProgress.PARSE, n / len(unworded),
+                                    f"Finding the words of sentence {n + 1} of {len(unworded)}…")
+                    sent = sent_groups[idx][0]
+                    ws = sentence_words(tokenizer, body, sent["begin"], sent["end"])
+                    sent_groups[idx] = (sent, ws)
+                    new_words.add(idx)
+
             # Sentences to (re)parse: those with words and — unless overwrite —
             # no human annotations. Carry the original index for clear errors.
             reparse = [(idx, sent, ws) for idx, (sent, ws) in enumerate(sent_groups)
@@ -771,6 +829,9 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
                     raise RuntimeError(
                         f"Pretokenized parse returned {len(rows)} words for a "
                         f"{len(ws)}-word sentence (original index {orig_idx}); aborting")
+                if orig_idx in new_words:
+                    units[r_idx].words = [make_bulk_token(word_layer["id"], text_id, w["begin"], w["end"])
+                                          for w in ws]
                 for w, row in zip(ws, rows):
                     op = make_bulk_token(morpheme_layer["id"], text_id,
                                          w["begin"], w["end"], metadata=dict(frag))

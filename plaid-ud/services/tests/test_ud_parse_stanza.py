@@ -787,3 +787,81 @@ def test_a_failed_later_batch_says_how_many_sentences_were_parsed_in_full():
                              f'each in full. The Plaid server did not answer. '
                              f'This change may or may not have been saved.']
     assert service.client.kinds[-1] == 'unlock'
+
+
+# --- a from-scratch parse that stopped after its first batch (REV-W-PY2 D1) --
+
+class _TwoPipelines(_PipelineProvider):
+    """The tokenizing pipeline answers ROWS over whatever stretch it is given
+    (one sentence, offsets from its start); the pretokenized one parses each
+    sentence it is handed as ROWS."""
+
+    def get(self, language, pretokenized=False):
+        self.asked.append((language, pretokenized))
+
+        def pipeline(value):
+            self.inputs.append(value)
+            if pretokenized:
+                return _Parsed([ROWS] * len(value), [0] * len(value))
+            return _Parsed([ROWS], [0])
+
+        return pipeline
+
+
+def test_a_sentence_with_no_words_is_tokenized_and_parsed_with_its_words():
+    """A from-scratch parse whose second batch failed left sentences with no
+    words, and every later Parse skipped them while it said it had parsed the
+    document. Such a sentence is now tokenized on its own, and its words go in
+    the batch that parses it."""
+    body = f'{BODY} {BODY}'
+    doc = _document(body=body, sentences=[(0, 14), (14, 27)], words=[(0, 3), (4, 7), (8, 13)])
+    provider = _TwoPipelines()
+    service = _service(documents=[doc], provider=provider)
+    helper = servicetest.run(service, REQUEST)
+
+    assert helper.errors == []
+    [result] = helper.results
+    assert result['mode'] == 'preserve' and result['parsed_sentences'] == 2
+    assert ('en', False) in provider.asked and ('en', True) in provider.asked
+    assert 'the dog barks' in provider.inputs
+    [batch] = service.client.batches
+    words = _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'wordL')
+    assert [(w['begin'], w['end']) for w in words] == [(14, 17), (18, 21), (22, 27)]
+    assert 'metadata' not in words[0] or not words[0]['metadata'], 'substrate carries no stamp'
+    morphemes = _ops(service.client, 'tokens.bulk_create', 'token_layer_id', 'morphL')
+    assert sorted((m['begin'], m['end']) for m in morphemes) == \
+        [(0, 3), (4, 7), (8, 13), (14, 17), (18, 21), (22, 27)]
+    kinds = [kind for kind, _ in batch]
+    assert kinds.index('tokens.bulk_create') < len(kinds) - 1
+    rels = [op for kind, p in batch if kind == 'relations.bulk_create' for op in p]
+    assert len(rels) == 6
+
+
+def test_a_failure_after_the_sentences_says_what_was_written():
+    """The first batch of a long from-scratch parse holds the new sentences
+    and the first words. A failure after it said only "HTTP 500"."""
+    count = 100
+    doc, provider = _long(count)
+    service = _service(documents=[doc], provider=provider,
+                       limits={'json_body_bytes': CAP})
+    real_batched = service.client.batched
+    opened = []
+
+    def batched():
+        opened.append(1)
+        if len(opened) == 2:
+            service.client.fails['tokens.bulk_create'] = PlaidAPIError(
+                'HTTP 500 boom', status=500, method='POST', url='http://plaid.internal:8085/api/v1/batch')
+        return real_batched()
+
+    service.client.batched = batched
+    helper = servicetest.run(service, REQUEST)
+
+    [first] = service.client.batches
+    worded = {op['begin'] // 14 for kind, p in first if kind == 'tokens.bulk_create'
+              for op in p if op['token_layer_id'] == 'wordL'}
+    assert 0 < len(worded) < count
+    [error] = helper.errors
+    assert error.startswith(f'Stanza parser: The {count} sentences were written, and the words of '
+                            f'{len(worded)} of them, none parsed. Parse again to finish. ')
+    assert 'plaid.internal' not in error
