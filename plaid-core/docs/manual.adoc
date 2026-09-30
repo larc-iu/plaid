@@ -964,6 +964,11 @@ Only the net change counts: typing a word one letter at a time and inserting it 
 An insert or a delete stays exactly where it was made.
 A stretch that was both deleted and typed over is read the way a whole new body is read, so a word typed over keeps its tokens and what hangs off them.
 
+A space typed inside a word splits it, and the word's token stays on one of the two halves.
+A nested token as long as the word moves with it, as a syntactic word does, unless its layer's config sets `segmentsParent` to `true` in the `plaid` namespace (`SEGMENTS_PARENT_KEY` in both clients).
+Each token of such a layer spells a stretch of its parent's text, as a morpheme does, so one as long as its word is the word's only morpheme, and the space deletes it with everything on it, as a space typed inside a morpheme deletes the word's morphemes.
+This holds for `body` and `edits` alike.
+
 Send `base` with `edits`: the `digest` of the body the edits were made on.
 The edits apply only when the stored body is still that body.
 Otherwise the answer is `409` with `text-changed: true` and the stored `digest`, and nothing is written.
@@ -1677,14 +1682,14 @@ with client.operation("Gloss word", keys=keys):
 == Trust
 
 For all constraints which you might attempt to enforce using the three mechanisms described above, there is, of course, nothing stopping a malicious user from circumventing them and submitting changes which invalidate your formalism-specific data integrity constraints.
-For example, if you have a document where you want all spans to be in one-to-one correspondence with tokens, a malicious user could simply circumvent your UI code entirely and craft a malicious request to e.g. create multiple spans associated with a single token.
+For example, if you have a document where you want every token to carry exactly one span, a malicious user could simply circumvent your UI code entirely and craft a malicious request to e.g. delete the span on a token, leaving it with none.
 Since there is no server-side validation for this constraint, the server will happily execute it and advance into a database state that does not violate any core data integrity constraints but _does_ violate your formalism-specific constraints.
 
 This is a fundamental limitation of Plaid which was deliberately adopted in order to support frontend-only development.
 You therefore must only grant write privileges only to users who you trust not to circumvent client-side validation guardrails.
 Fortunately, we think this is not an onerous imposition in most real-world circumstances.
 
-NOTE: The token layer constraints described in <<Token Layer Constraints>> are the exception to this caveat. Because they are enforced on the server, they cannot be circumvented by a malicious client, and they hold no matter how a request is crafted.
+NOTE: The token layer constraints described in <<Token Layer Constraints>> and the rules described in <<layer-constraints>> are the exception to this caveat. Because they are enforced on the server, they cannot be circumvented by a malicious client, and they hold no matter how a request is crafted.
 
 = Layer Interoperability
 
