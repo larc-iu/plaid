@@ -65,7 +65,7 @@
 (defn agent-python-exe []
   (or (System/getenv "PLAID_AGENT_PYTHON")
       (let [home (System/getProperty "user.home")]
-        (->> [".mambaforge" "mambaforge" "miniforge3" "micromamba" "miniconda3" "anaconda3"]
+        (->> [".mambaforge" "mambaforge" ".miniforge3" "miniforge3" "micromamba" "miniconda3" "anaconda3"]
              (map #(str home "/" % "/envs/plaid-agent/bin/python"))
              (filter fs/exists?)
              first))
