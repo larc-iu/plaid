@@ -165,6 +165,12 @@ export class DocumentModel {
   get isSaving() {
     return this._writes.isSaving;
   }
+  // True while the document holds text the server refused and the reader has
+  // not yet dismissed, which a reload would lose. A subclass that keeps such
+  // text says so. A reload or a closed tab asks first (`useSavingGuard`).
+  get holdsUnsaved() {
+    return false;
+  }
   // True while a refetch after a refused edit waits for the server to be
   // reachable again. The save-status pills say "Offline, retrying".
   get isOffline() {

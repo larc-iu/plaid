@@ -20,9 +20,12 @@ const held = new Map();
 // Documents no screen holds that are still sending, watched until they finish.
 const draining = new Map(); // document -> unsubscribe
 
-/** Whether any document the app has opened still has writes to send. */
+/**
+ * Whether any document the app has opened still has writes to send, or a
+ * document a screen holds keeps refused text not yet dismissed.
+ */
 export const anyDocumentSaving = () => {
-  for (const doc of held.keys()) if (doc.isSaving) return true;
+  for (const doc of held.keys()) if (doc.isSaving || doc.holdsUnsaved) return true;
   for (const doc of draining.keys()) if (doc.isSaving) return true;
   return false;
 };

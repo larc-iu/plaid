@@ -928,9 +928,9 @@ export function TranscriptList({
   });
 
   // Row edits refused after their segment was deleted or made again
-  // elsewhere, with no row to hold them: `{ id, typed, timeBegin, timeEnd }`.
-  const [unsaved, setUnsaved] = useState(EMPTY);
-  const unsavedSeq = useRef(0);
+  // elsewhere, with no row to hold them, kept on the document so a switch of
+  // view keeps them (`IgtDocument.keepUnsavedRow`).
+  const unsaved = doc.unsavedRows ?? EMPTY;
 
   const handleCommit = useCallback(
     async (id, { text, speaker, saved, what }) => {
@@ -964,7 +964,7 @@ export function TranscriptList({
           // Refused, and its segment is gone: the text stays on screen until
           // dismissed.
           if (cells.settle(ticket, o).kind === 'gone') {
-            setUnsaved((list) => [...list, { id: ++unsavedSeq.current, typed: text, ...times }]);
+            doc.keepUnsavedRow({ typed: text, ...times });
           }
         });
         return true;
@@ -1168,7 +1168,7 @@ export function TranscriptList({
                 size="icon"
                 className="h-5 w-5 shrink-0"
                 aria-label="Dismiss"
-                onClick={() => setUnsaved((list) => list.filter((x) => x.id !== u.id))}
+                onClick={() => doc.dismissUnsavedRow(u.id)}
               >
                 <X className="h-3.5 w-3.5" />
               </Button>

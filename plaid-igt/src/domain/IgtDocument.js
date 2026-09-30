@@ -113,6 +113,30 @@ export class IgtDocument extends DocumentModel {
     // links, so this is the only way links survive a fresh load. See
     // mergeRawVocabLinks. A reload re-folds explicitly (it bypasses the ctor).
     this._vocabularies = mergeRawVocabLinks(raw, vocabularies);
+    // Transcript row edits refused because their segment was deleted or made
+    // again elsewhere, with no row left to hold them (`keepUnsavedRow`).
+    this._unsavedRows = [];
+    this._unsavedSeq = 0;
+  }
+
+  // The refused row edits, `{ id, typed, timeBegin, timeEnd }`, listed until
+  // dismissed. Kept on the document and not on the transcript's screen, so a
+  // switch of view keeps them, and a reload or a closed tab asks first while
+  // any is listed.
+  get unsavedRows() {
+    return this._unsavedRows;
+  }
+  get holdsUnsaved() {
+    return this._unsavedRows.length > 0;
+  }
+  keepUnsavedRow(row) {
+    this._unsavedSeq += 1;
+    this._unsavedRows = [...this._unsavedRows, { ...row, id: this._unsavedSeq }];
+    this._emit();
+  }
+  dismissUnsavedRow(id) {
+    this._unsavedRows = this._unsavedRows.filter((r) => r.id !== id);
+    this._emit();
   }
 
   // Convenience factory: fetch document + project + project vocabularies and

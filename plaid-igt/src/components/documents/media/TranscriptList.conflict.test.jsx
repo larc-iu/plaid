@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { DocumentProvider } from '../contexts/DocumentContext.jsx';
 import { TranscriptList } from './TranscriptList.jsx';
+import { anyDocumentSaving, useSavingGuard } from '@ui/hooks/useSavingGuard.js';
 import { IgtDocument } from '@/domain/IgtDocument.js';
 import { buildRawDoc, resetIds } from '@/domain/test-helpers.js';
 import { digestOf, segmentServer } from '@/test/segmentServer.js';
@@ -410,6 +411,37 @@ describe('a refused row edit whose segment is gone (B1, F5)', () => {
     await r.step(() => dismiss.click());
     expect(unsavedOf(r.container)).toEqual([]);
     await r.unmount();
+  });
+
+  it('the line outlasts the list: shown again when the view comes back, and a reload asks while it is there (B1-list)', async () => {
+    const server = segmentServer(RAW());
+    const { doc, r, drain } = await mount(server);
+    server.otherEdits('a-2', 'deux');
+    await typeAndEnter(r, 2, 'dos');
+    await drain();
+    await r.unmount();
+    expect(doc.holdsUnsaved).toBe(true);
+
+    // The document's screen holds it, as DocumentDetail does.
+    const Held = () => {
+      useSavingGuard(doc);
+      return null;
+    };
+    const again = await renderComponent(
+      <DocumentProvider value={{ doc, readOnly: false }}>
+        <Held />
+        <TranscriptList mediaOps={makeOps(doc)} />
+      </DocumentProvider>,
+    );
+    expect(unsavedOf(again.container)).toEqual(['Not saved, 0:01.000 to 0:02.000: dos']);
+    expect(anyDocumentSaving()).toBe(true);
+    await again.step(() =>
+      again.container.querySelector('ul[aria-label="Not saved"] button').click(),
+    );
+    expect(unsavedOf(again.container)).toEqual([]);
+    expect(doc.holdsUnsaved).toBe(false);
+    expect(anyDocumentSaving()).toBe(false);
+    await again.unmount();
   });
 
   it('deleted, and a new segment of its speaker made over part of its time: Enter there keeps it (B1)', async () => {
