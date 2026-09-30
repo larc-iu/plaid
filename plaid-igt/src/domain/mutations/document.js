@@ -16,7 +16,8 @@ import {
 } from '@larc-iu/plaid-client';
 import { lineSentenceRanges } from '../../utils/tokenizationUtils.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
-import { isUnknownOutcome, statusOf } from '@ui/lib/errors.js';
+import { statusOf } from '@ui/lib/errors.js';
+import { pendingId } from '@ui/domain/pendingIds.js';
 import { mergeText, rebaseEdits } from '@ui/lib/textMerge.js';
 import { applyReshape } from '@ui/domain/textReshape.js';
 
@@ -64,6 +65,8 @@ export const documentMutations = {
       return false;
     }
 
+    // Minted outside the send, so a resend of it names the same text.
+    const newTextId = primaryTextLayer.text?.id ? null : pendingId();
     return this._queueWrite('Failed to save baseline text', async () => {
       const textId = primaryTextLayer.text?.id;
 
@@ -71,40 +74,19 @@ export const documentMutations = {
       if (textId) {
         sent = await this._sendBaselineUpdate(textId, newBody, base);
       } else {
-        // No existing text — texts.create, then seed the sentence partition
-        // in a follow-up call (it needs the new text's id). A create whose
-        // answer was lost is looked up, and when it landed the seed below
-        // the reload makes its sentences.
-        const newTextObj = await this._client.texts
-          .create(primaryTextLayer.id, this.id, newBody)
-          .catch(async (err) => {
-            if (!isUnknownOutcome(err)) throw err;
-            if (await this._landedAs(newBody)) return null;
-            throw err;
+        // No existing text: the text and its sentences, one per line, in one
+        // batch, the text under an id minted here, so the sentences can name
+        // it. A lost answer is sent again under the same keys by the queue
+        // and answered from what the first one stored.
+        await this._client.batched(async (b) => {
+          b.texts.create(primaryTextLayer.id, this.id, newBody, undefined, undefined, {
+            id: newTextId,
           });
-        if (newTextObj && cpLength(newBody) > 0) {
-          try {
-            await this._client.tokens.bulkCreate(
-              sentenceSeed(sentenceTokenLayer.id, newTextObj.id, newBody),
-            );
-          } catch (bulkCreateError) {
-            console.error(
-              'Sentence partition create failed after text create; rolling back text:',
-              bulkCreateError,
-            );
-            try {
-              await this._client.texts.delete(newTextObj.id);
-            } catch (deleteError) {
-              console.error(
-                'Failed to roll back text after partition create failure:',
-                deleteError,
-              );
-            }
-            throw bulkCreateError;
+          if (cpLength(newBody) > 0) {
+            b.tokens.bulkCreate(sentenceSeed(sentenceTokenLayer.id, newTextId, newBody));
           }
-        }
+        });
       }
-
       await this._reloadInSend();
 
       // A replacement that shares nothing with the old body deletes the old
@@ -171,8 +153,8 @@ export const documentMutations = {
 
   // The edit half of `editBaselineText`, from inside its send. A text with no
   // sentences gets its partition in the same batch as the edit, measured on
-  // the body the edit makes. A lost answer is looked up: the edit landed when
-  // the stored body is the one it makes.
+  // the body the edit makes. A lost answer is sent again by the queue under
+  // the same keys, and answered from what the first one stored.
   async _sendBaselineEdit(textId, base, digest, gaps) {
     for (let attempt = 0; ; attempt += 1) {
       // A body changed here and not yet answered has no digest: read the
@@ -211,7 +193,6 @@ export const documentMutations = {
           await this._reloadInSend();
           continue;
         }
-        if (isUnknownOutcome(err) && (await this._landedAs(body))) return { body, seeded: false };
         throw err;
       }
     }
@@ -222,8 +203,7 @@ export const documentMutations = {
   //
   // A text with no sentences gets its partition in the same batch as the
   // update, so a lost answer cannot leave the text saved and unsegmented. A
-  // save whose answer was lost is looked up: when the stored body is the one
-  // sent, it landed, and the save goes on as if it had been answered.
+  // lost answer is sent again by the queue under the same keys.
   async _sendBaselineUpdate(textId, newBody, base) {
     for (let attempt = 0; ; attempt += 1) {
       const merged = this.body === base ? { text: newBody } : mergeText(base, newBody, this.body);
@@ -246,21 +226,8 @@ export const documentMutations = {
           await this._reloadInSend();
           continue;
         }
-        if (isUnknownOutcome(err) && (await this._landedAs(body))) return body;
         throw err;
       }
-    }
-  },
-
-  // After a save whose answer was lost, from inside its send: whether the
-  // stored text is now `body`, read back from the server.
-  async _landedAs(body) {
-    try {
-      await this._reloadInSend();
-      return Boolean(this.layerInfo.primaryTextLayer?.text?.id) && this.body === body;
-    } catch (readError) {
-      console.error('Could not read the text back after a lost answer:', readError);
-      return false;
     }
   },
 

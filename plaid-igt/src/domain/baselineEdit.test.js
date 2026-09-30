@@ -164,21 +164,26 @@ describe('editBaselineText', () => {
     expect(doc.body).toBe('one\ntwo');
   });
 
-  it('finds an edit whose answer was lost stored, and does not send it again', async () => {
-    const landed = withDigest(buildRawDoc({ body: 'the cats' }), 'd1');
-    const client = makeFakeClient({ reloadDoc: landed });
+  it('sends an edit whose answer was lost again, the same request, and patches from the answer', async () => {
+    const client = makeFakeClient();
+    let sent = 0;
     client.texts.edit = async (id, ops, auditMessage, options) => {
       client.calls.push({ kind: 'texts.edit', args: [id, ops, auditMessage, options] });
-      throw Object.assign(new Error('Network error at http://x/api/v1/texts/text-1'), {
-        status: 0,
-        method: 'PATCH',
-      });
+      sent += 1;
+      if (sent === 1) {
+        throw Object.assign(new Error('Network error at http://x/api/v1/texts/text-1'), {
+          status: 0,
+          method: 'PATCH',
+        });
+      }
+      return { id, body: 'the cats', digest: 'd1', reshape: { tokens: [], deleted: {} } };
     };
     const doc = makeDoc({ raw: withDigest(buildRawDoc({ body: 'the cat' }), 'd0'), client });
     const gaps = [{ start: 7, end: 7, value: 's' }];
     expect(applyTextOps('the cat', gapsToOps(gaps))).toBe('the cats');
     expect(await doc.editBaselineText({ base: 'the cat', digest: 'd0', gaps })).toBe(true);
-    expect(edits(client)).toHaveLength(1);
+    const [first, second] = edits(client);
+    expect(second).toEqual(first);
     expect(doc.body).toBe('the cats');
   });
 });

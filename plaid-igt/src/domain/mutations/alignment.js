@@ -729,6 +729,7 @@ export const alignmentMutations = {
         if (m.textOps.length) {
           b.texts.update(textId, m.textOps, undefined, { base, versioned: true });
         }
+        // Under the ids shown, so a resend of a lost answer names the same rows.
         b.tokens.create(
           alignmentLayerId,
           textId,
@@ -736,10 +737,18 @@ export const alignmentMutations = {
           m.segment.end,
           undefined,
           m.segment.metadata,
+          undefined,
+          { id: m.segment.id },
         );
         if (m.seeded) {
           b.tokens.bulkCreate([
-            { tokenLayerId: sentenceLayerId, text: textId, begin: 0, end: m.seeded.end },
+            {
+              id: m.seeded.id,
+              tokenLayerId: sentenceLayerId,
+              text: textId,
+              begin: 0,
+              end: m.seeded.end,
+            },
           ]);
         }
       });

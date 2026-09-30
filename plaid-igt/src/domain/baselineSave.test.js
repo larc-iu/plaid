@@ -151,21 +151,21 @@ describe('saveBaselineText and the sentence partition', () => {
 });
 
 describe('saveBaselineText on a document with no text yet', () => {
-  it('a create whose answer was lost and that landed seeds the sentences', async () => {
+  it('makes the text and its sentences in one batch, the sentences naming the id minted for the text', async () => {
     const raw = buildRawDoc({ body: '', sentences: [], words: [], morphemes: [] });
     raw.textLayers[0].text = null;
-    const landed = buildRawDoc({ body: 'a\nb', sentences: [], words: [], morphemes: [] });
-    const client = makeFakeClient();
-    client.documents.get = async () => landed;
-    client.texts.create = async () => {
-      throw httpError(0, 'POST');
-    };
+    const client = makeFakeClient({
+      reloadDoc: buildRawDoc({ body: 'a\nb', sentences: [], words: [], morphemes: [] }),
+    });
     const doc = makeDoc({ raw, client });
     expect(await doc.saveBaselineText('a\nb')).toBe(true);
+    const create = client.calls.find((c) => c.kind === 'texts.create');
+    const id = create.args[5].id;
+    expect(typeof id).toBe('string');
     const seed = client.calls.find((c) => c.kind === 'tokens.bulkCreate');
     expect(seed.args[0]).toEqual([
-      { tokenLayerId: 'sentL', text: 'text-1', begin: 0, end: 2 },
-      { tokenLayerId: 'sentL', text: 'text-1', begin: 2, end: 3 },
+      { tokenLayerId: 'sentL', text: id, begin: 0, end: 2 },
+      { tokenLayerId: 'sentL', text: id, begin: 2, end: 3 },
     ]);
   });
 });
