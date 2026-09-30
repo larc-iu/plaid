@@ -475,6 +475,7 @@ const CONFIG_KEYS = {
   ),
   'projects plaid.review': covers('project.reviewedMembers'),
   'projects plaid.research': notData('the research telemetry switch, not archived'),
+  'projects plaid.tartan': notData('the switch that hides the project’s plaid, not archived'),
   'textLayers plaid.role': notData('structure, how every app finds the layer'),
   'tokenLayers plaid.role': notData('structure, how every app finds the layer'),
   'tokenLayers plaid.preserveOnSplit': notData('written by setup on every token layer'),
