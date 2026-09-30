@@ -1,4 +1,10 @@
-import PlaidClient, { ROLES, cpLength, cpSlice } from '@larc-iu/plaid-client';
+import PlaidClient, {
+  ROLES,
+  PLAID_NAMESPACE,
+  PLAIN_EDITS_KEY,
+  cpLength,
+  cpSlice,
+} from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
 import { createScratchProject } from './fixtureProject.js';
 import { wavBytes } from './bugbash/harness.mjs';
@@ -58,7 +64,10 @@ test.beforeAll(async () => {
   const words = layerOf(tl, ROLES.WORD).tokens;
   // One morpheme per word, glossed, and one segment per word, a second each.
   const morphemeLayer = layerOf(tl, ROLES.MORPHEME);
-  await admin.tokenLayers.setConfig(morphemeLayer.id, 'plaid', 'segmentsParent', true);
+  // what a maintainer's open back-fills, set here so the test does not race it
+  for (const role of [ROLES.WORD, ROLES.MORPHEME, ROLES.TIME_ALIGNMENT]) {
+    await admin.tokenLayers.setConfig(layerOf(tl, role).id, PLAID_NAMESPACE, PLAIN_EDITS_KEY, true);
+  }
   const { ids } = await admin.tokens.bulkCreate(
     words.map((w) => ({
       tokenLayerId: morphemeLayer.id,
@@ -134,7 +143,7 @@ test("two users edit the same row: each edit keeps the segment and the word's gl
   });
   try {
     // A types "!" at the end of row 2. The segment keeps its id, and the
-    // word keeps its morpheme and gloss (M1).
+    // word, which the "!" joins, keeps its morpheme and gloss (M1).
     const rowA = A.page.getByLabel('Segment 2 text');
     await rowA.click();
     await rowA.press('End');
@@ -142,7 +151,7 @@ test("two users edit the same row: each edit keeps the segment and the word's gl
     await rowA.press('Enter');
     await expect.poll(async () => (await segments())[1][1]).toBe('dos!');
     expect((await segments()).map(([id]) => id)).toEqual(before.map(([id]) => id));
-    expect(await glosses()).toEqual(['uno:G1', 'dos:G2', 'tres:G3']);
+    expect(await glosses()).toEqual(['uno:G1', 'dos!:G2', 'tres:G3']);
 
     // B, on the text as it was, types over row 2. Refused: the row shows
     // A's text with B's under it, on the same row.

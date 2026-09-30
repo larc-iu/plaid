@@ -238,9 +238,8 @@ const rowGaps = (over, trimmed, edits = null) => {
 // `segment`'s text changed by `gaps` (of its text) into `trimmed`, and the
 // segment over the new text. `{ error }` when the new time or extent would
 // break the order or overlap another segment, else `{ gaps }`, the edits in
-// the body, `extent`, the segment's new one, `whole` when the segment is the
-// whole body and nothing of it is kept at either end (see `_showRowEdit`),
-// and `seedLength` as `planCreate` has it.
+// the body, `extent`, the segment's new one, and `seedLength` as `planCreate`
+// has it.
 const planEdit = (info, segment, gaps, trimmed, timeBegin) => {
   const alignmentTokens = info.alignmentTokenLayer.tokens || [];
   const tokenBegin = segment.begin;
@@ -269,23 +268,10 @@ const planEdit = (info, segment, gaps, trimmed, timeBegin) => {
     return { error: 'The edited segment would overlap an existing segment.' };
   }
 
-  // A stretch typed over that is the whole body is a new text, and the server
-  // deletes every token over it, the segment too, unless a letter is kept at
-  // one of its ends (plaid-core reads it as a whole-body save does).
-  const over = cpSlice(body, tokenBegin, tokenEnd);
-  const chars = [...over];
-  const typed = [...trimmed];
-  const whole =
-    tokenBegin === 0 &&
-    tokenEnd === cpLength(body) &&
-    gaps.some((g) => g.start === 0 && g.end === chars.length) &&
-    chars[0] !== typed[0] &&
-    chars.at(-1) !== typed.at(-1);
   const sentences = info.sentenceTokenLayer.tokens || [];
   return {
     gaps: gaps.map((g) => ({ ...g, start: g.start + tokenBegin, end: g.end + tokenBegin })),
     extent: { begin: tokenBegin, end: newAlignmentEnd },
-    whole,
     seedLength: sentences.length === 0 && newTextLength > 0 ? newTextLength : null,
   };
 };
@@ -929,14 +915,13 @@ export const alignmentMutations = {
   // caret with the digest of the body they were planned on, in ONE batch
   // with the segment's new extent, its metadata and the sentence. What the
   // edit did to the words inside is the server's to say: the answer's
-  // `reshape` is shown (`_showRowAnswer`). `whole` is a segment that is the
-  // whole body typed over with nothing kept at either end: the new text is
-  // typed after the old one, the segment set over both and the old text then
-  // deleted, so the segment is not deleted with the old body. `replan(fresh)`
+  // `reshape` is shown (`_showRowAnswer`). A segment typed over whole keeps
+  // its token, since the text rules keep a token holding the stretch typed
+  // over (`plainEdits`). `replan(fresh)`
   // is as `_showSegmentWrite` has it, its plan with its own `patch`.
   _showRowEdit(
     label,
-    { textId, segmentId, gaps, extent, whole, typed, seedLength, patch, speaker, replan },
+    { textId, segmentId, gaps, extent, typed, seedLength, patch, speaker, replan },
   ) {
     if (!this._canWrite(label)) return false;
     const info = this.layerInfo;
@@ -945,7 +930,6 @@ export const alignmentMutations = {
     const made = (plan, before = null) => ({
       gaps: plan.gaps,
       extent: plan.extent,
-      whole: plan.whole,
       patch: plan.patch ?? patch,
       seeded:
         plan.seedLength != null
@@ -978,20 +962,9 @@ export const alignmentMutations = {
       return this._client
         .batched(async (b) => {
           const patched = Object.keys(m.patch).length > 0;
-          if (m.whole) {
-            const old = m.gaps[0].end;
-            b.texts.edit(textId, [{ type: 'insert', index: old, value: typed }], undefined, {
-              base,
-              versioned: true,
-            });
-            b.tokens.update(id, 0, old + cpLength(typed));
-            b.texts.edit(textId, [{ type: 'delete', index: 0, value: old }]);
-            at.text = 2;
-          } else {
-            b.texts.edit(textId, gapsToOps(m.gaps), undefined, { base, versioned: true });
-            b.tokens.update(id, m.extent.begin, m.extent.end);
-            at.text = 0;
-          }
+          b.texts.edit(textId, gapsToOps(m.gaps), undefined, { base, versioned: true });
+          b.tokens.update(id, m.extent.begin, m.extent.end);
+          at.text = 0;
           if (patched) b.tokens.patchMetadata(id, metadataOps(m.patch));
           if (m.seeded) {
             b.tokens.bulkCreate([
@@ -1003,12 +976,12 @@ export const alignmentMutations = {
                 end: m.seeded.end,
               },
             ]);
-            at.seeded = (m.whole ? 3 : 2) + (patched ? 1 : 0);
+            at.seeded = 2 + (patched ? 1 : 0);
           }
         })
         .then((results) => Object.assign(results, { at }));
     };
-    let sent = made({ gaps, extent, whole, seedLength });
+    let sent = made({ gaps, extent, seedLength });
     this._applyRawPatch(show(sent));
     const state = { planned, send: (base) => send(sent, base) };
     return this._queueWrite(label, async () => {
@@ -1041,10 +1014,9 @@ export const alignmentMutations = {
         if (made) this._settle(new Map([[sent.seeded.id, made]]));
       }
       // A replayed answer (this send run again, or the client's own resend)
-      // carries the body as it was when the write first landed, and a whole
-      // body typed over is two text writes: what is stored now is read once
-      // the queue has drained.
-      if (state.again || wasReplayed(results) || sent.whole) {
+      // carries the body as it was when the write first landed: what is
+      // stored now is read once the queue has drained.
+      if (state.again || wasReplayed(results)) {
         this._writes.reloadWhenDrained = true;
       } else {
         this._showRowAnswer(textId, segmentId, sent, answer);

@@ -4,7 +4,8 @@
 // these tabs send, as the core does:
 //
 // - A text write whose `base` is not the digest of the body stored is refused
-//   409, `text-changed`.
+//   409, `text-changed`. An edit is taken as the core takes it on layers that
+//   declare `plainEdits`, as igt's do (`plainEditLocally`).
 // - Strict mode: the stored document has a version, which every write moves
 //   on, and a write the client stamps with a version that is not the stored
 //   one is refused 409 (a batch is checked at its first stamped write). The
@@ -29,8 +30,12 @@
 // code.
 
 import { createHash } from 'node:crypto';
-import { composeTextEdits } from '@larc-iu/plaid-client';
-import { applyGapsLocally, applyTextEditsLocally } from '@/domain/textEdits.js';
+import { ROLES, composeTextEdits } from '@larc-iu/plaid-client';
+import {
+  applyTextEditsLocally,
+  compensatePartition,
+  removeTokensLocally,
+} from '@/domain/textEdits.js';
 import { makeFakeClient } from '@/domain/test-helpers.js';
 
 export const digestOf = (body) => createHash('sha256').update(body, 'utf8').digest('hex');
@@ -106,6 +111,91 @@ function reshapeOf(before, after) {
   };
 }
 
+// An edit's gaps taken as the core takes them on igt's layers, which declare
+// `plainEdits` (plaid-core `apply-plain-gaps`): a gap inside a token or
+// reaching one of its ends from inside resizes it, the letters of new text
+// touching a token with no whitespace between join it (where the words meet,
+// the word holding the gap at that end takes them, else the one before), a
+// token left with no letter goes with what hangs off it, and a token is kept
+// off whitespace at an edge it did not have. Where the text goes is decided
+// by the words, and the other layers follow. The sentences are then gap-filled.
+const ws = (c) => /\s/u.test(c);
+function plainEditLocally(raw, textId, gaps, vocabs) {
+  const textLayer = raw.textLayers.find((tl) => tl.text?.id === textId);
+  let cps = [...textLayer.text.body];
+  const layers = textLayer.tokenLayers || [];
+  const words = layers.find((l) => l.config?.plaid?.role === ROLES.WORD)?.tokens || [];
+  const gone = new Set();
+  for (const { start: a, end: b, value } of [...gaps].reverse()) {
+    const v = [...value];
+    const n = v.length;
+    let lead = 0;
+    while (lead < n && !ws(v[lead])) lead++;
+    let trail = 0;
+    while (trail < n && !ws(v[n - 1 - trail])) trail++;
+    const beforeOk = lead > 0 && a > 0 && !ws(cps[a - 1]);
+    const afterOk = trail > 0 && b < cps.length && !ws(cps[b]);
+    const live = words.filter((w) => !gone.has(w.id) && w.begin < w.end);
+    const exact = live.some((w) => a < b && w.begin === a && w.end === b);
+    const holdsEnd = live.some((w) => a < b && w.begin <= a && w.end === b);
+    const holdsStart = live.some((w) => a < b && w.begin === a && b <= w.end);
+    const before = live.some(
+      (w) => w.begin < a && a <= w.end && (w.end < b || (a === b && w.end === a)),
+    );
+    const after = live.some(
+      (w) => (a < w.begin && w.begin <= b && b < w.end) || (a === b && w.begin === a && a < w.end),
+    );
+    const [toBefore, toAfter] = exact
+      ? [0, 0]
+      : lead < n
+        ? [
+            beforeOk && (before || holdsEnd) ? lead : 0,
+            afterOk && (after || holdsStart) ? trail : 0,
+          ]
+        : holdsEnd
+          ? [beforeOk ? n : 0, 0]
+          : holdsStart
+            ? [0, afterOk ? n : 0]
+            : beforeOk && before
+              ? [n, 0]
+              : afterOk && after
+                ? [0, n]
+                : [0, 0];
+    const next = [...cps.slice(0, a), ...v, ...cps.slice(b)];
+    const delta = n - (b - a);
+    for (const layer of layers) {
+      for (const t of layer.tokens || []) {
+        if (gone.has(t.id) || t.begin === t.end) continue;
+        const { begin: B, end: E } = t;
+        let nb;
+        if (a < B && B <= b) nb = E <= b ? null : a + n - toAfter;
+        else if (a === B) nb = a === b ? a + n - toAfter : E >= b ? a + toBefore : null;
+        else nb = B > b ? B + delta : B;
+        let ne;
+        if (a === E || (a < E && E < b)) ne = B < a ? a + toBefore : null;
+        else if (a < E && E === b) ne = B <= a ? a + n - toAfter : null;
+        else ne = E > b || (a === b && a < E) ? E + delta : E;
+        if (nb == null || ne == null || nb >= ne) {
+          gone.add(t.id);
+          continue;
+        }
+        if (!ws(cps[B])) while (nb < ne && ws(next[nb])) nb++;
+        if (!ws(cps[E - 1])) while (ne > nb && ws(next[ne - 1])) ne--;
+        if (nb >= ne) gone.add(t.id);
+        else Object.assign(t, { begin: nb, end: ne });
+      }
+    }
+    cps = next;
+  }
+  textLayer.text.body = cps.join('');
+  if (gone.size) removeTokensLocally(raw, textId, [...gone], vocabs);
+  for (const layer of layers) {
+    if (layer.overlapMode === 'partitioning') {
+      layer.tokens = compensatePartition(layer.tokens || [], cps.length);
+    }
+  }
+}
+
 // The writes the two tabs send, applied to `raw` in place. Each answers what
 // the server answers.
 const writesOn = (raw, { mint, claim }) => {
@@ -134,13 +224,7 @@ const writesOn = (raw, { mint, claim }) => {
     'texts.edit': (textId, ops, auditMessage, { base } = {}) => {
       checkBase(base);
       const before = structuredClone(raw);
-      // An insert or a delete as the raw form makes it. A stretch typed over
-      // keeps the tokens over and inside it, resized, as a word typed over
-      // keeps its token in the core.
-      for (const op of ops) {
-        if (op.type !== 'replace') applyTextEditsLocally(raw, textId, [op], vocabsIn(raw));
-        else applyGapsLocally(raw, textId, composeTextEdits(textOf(raw).body, [op]));
-      }
+      plainEditLocally(raw, textId, composeTextEdits(textOf(raw).body, ops), vocabsIn(raw));
       const text = textOf(raw);
       text.digest = digestOf(text.body);
       return { id: textId, body: text.body, digest: text.digest, reshape: reshapeOf(before, raw) };

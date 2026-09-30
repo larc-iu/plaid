@@ -94,11 +94,11 @@ describe('a row edit is saved as the edits typed, and the segment keeps its id (
     expect(server.segments().map((t) => t.id)).toEqual(['a-1', 'a-2', 'a-3']);
     expect(textOf(server.stored, 'a-2')).toBe('two!');
     expect(layer(server.stored, 'wordL').tokens.map((t) => t.id)).toEqual(['w-1', 'w-2', 'w-3']);
-    expect(glosses(server.stored)).toEqual(['one:G1', 'two:G2', 'three:G3']);
+    expect(glosses(server.stored)).toEqual(['one:G1', 'two!:G2', 'three:G3']);
     // The page shows what is stored.
     expect(doc.body).toBe(server.body);
     expect(textOf(doc._raw, 'a-2')).toBe('two!');
-    expect(glosses(doc._raw)).toEqual(['one:G1', 'two:G2', 'three:G3']);
+    expect(glosses(doc._raw)).toEqual(['one:G1', 'two!:G2', 'three:G3']);
   });
 
   it('text typed at the front of a row is inside its segment', async () => {
@@ -156,7 +156,7 @@ describe('a row edit is saved as the edits typed, and the segment keeps its id (
     });
   });
 
-  it('a row that is the whole text, typed over with nothing kept, keeps its segment', async () => {
+  it('a row that is the whole text, typed over with nothing kept, is one edit that keeps its segment and its word', async () => {
     const server = segmentServer(
       buildRawDoc({
         body: 'abc',
@@ -172,6 +172,17 @@ describe('a row edit is saved as the edits typed, and the segment keeps its id (
     expect(layer(server.stored, 'sentL').tokens.map((t) => [t.begin, t.end])).toEqual([[0, 4]]);
     expect(doc.body).toBe('xyzw');
     expect(textOf(doc._raw, 'a-1')).toBe('xyzw');
+    // one text write, the stretch typed over as it was typed
+    const edits = server.sent
+      .flatMap((s) => (s.kind === 'batch' ? s.ops : [s]))
+      .filter((w) => w.kind === 'texts.edit');
+    expect(edits.map((w) => w.args[1])).toEqual([
+      [{ type: 'replace', index: 0, length: 3, value: 'xyzw' }],
+    ]);
+    // the word typed over whole keeps its token, as in the Baseline
+    expect(layer(server.stored, 'wordL').tokens.map((t) => [t.id, t.begin, t.end])).toEqual([
+      ['w-1', 0, 4],
+    ]);
   });
 });
 
@@ -298,7 +309,7 @@ describe('two pages edit the same row (Q1)', () => {
     expect(outcome.landed).toBe(true);
     expect(server.body).toBe('uno two three!');
     expect(textWrites(server).at(-1).args[3].base).toBe(digestOf('uno two three'));
-    expect(glosses(server.stored)).toEqual(['uno:G1', 'two:G2', 'three:G3']);
+    expect(glosses(server.stored)).toEqual(['uno:G1', 'two:G2', 'three!:G3']);
     expect(mine.body).toBe(server.body);
   });
 });
