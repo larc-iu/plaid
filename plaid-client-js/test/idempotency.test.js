@@ -333,3 +333,66 @@ for (const [name, call] of creates) {
     assert.equal("id" in requests[1].body, false);
   });
 }
+
+// REV-idempotency F1: an edit queued inside a longer operation (igt's autoPass
+// link phase, a transcribe run, the repair on open) brought its seed to a
+// nested begin, which dropped it, so its resend got fresh keys.
+test("a nested operation that brings its own seed numbers its keys, then the outer one resumes", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  const outer = client.keySeed();
+  const inner = client.keySeed();
+  const { requests, restore } = stubServer();
+  try {
+    await client.withOperation(
+      "Link to the lexicon",
+      async () => {
+        await client.spans.update("s0", "O");
+        await client.withOperation("Gloss", async () => {
+          await client.spans.update("s1", "A");
+          await client.spans.update("s2", "B");
+        }, { keys: inner });
+        await client.spans.update("s3", "O2");
+      },
+      { keys: outer },
+    );
+    // No outer seed: the inner seed still numbers the inner requests.
+    await client.withOperation("Run", async () => {
+      await client.withOperation("Gloss", () => client.spans.update("s4", "C"), { keys: inner });
+    });
+  } finally {
+    restore();
+  }
+  assert.deepEqual(
+    requests.map((r) => r.key),
+    [`${outer.seed}.0`, `${inner.seed}.0`, `${inner.seed}.1`, `${outer.seed}.1`, `${inner.seed}.0`],
+  );
+  // One operation in the audit log: the inner joins the outer's group.
+  const group = (r) => new URL(r.url).searchParams.get("group-id");
+  assert.equal(group(requests[1]), group(requests[0]));
+});
+
+// REV-idempotency F2: a comment made while an edit's operation is open took
+// one of the edit's numbered keys, so the edit's resend met a key used for
+// the comment.
+test("a comment made while an operation is open takes none of its keys and joins nothing", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  const keys = client.keySeed();
+  const { requests, restore } = stubServer(() => response(201, { id: "x" }));
+  try {
+    await client.withOperation(
+      "Gloss",
+      async () => {
+        await client.spans.update("s1", "A");
+        await client.comments.create("span", "s1", "hmm");
+        await client.spans.update("s1", "B");
+      },
+      { keys },
+    );
+  } finally {
+    restore();
+  }
+  assert.equal(requests[0].key, `${keys.seed}.0`);
+  assert.ok(!requests[1].key.startsWith(keys.seed));
+  assert.equal(new URL(requests[1].url).searchParams.get("group-id"), null);
+  assert.equal(requests[2].key, `${keys.seed}.1`);
+});

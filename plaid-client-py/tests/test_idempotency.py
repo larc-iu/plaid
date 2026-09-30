@@ -245,17 +245,54 @@ def test_inside_an_operation_with_keys_the_nth_write_takes_seed_n_and_its_first_
     assert f'group-id={group_id}' in requests[0]['url']
 
 
-def test_a_nested_operation_joins_the_outer_ones_keys():
+def test_a_nested_operation_that_brings_its_own_seed_numbers_its_keys_then_the_outer_resumes():
+    # REV-idempotency F1: the inner seed was dropped by the nested begin.
+    client = PlaidClient('http://x', 'tok', **FAST)
+    outer = client.key_seed()
+    inner = client.key_seed()
+    requests = _stub_server(client)
+    with client.operation('Outer', keys=outer):
+        client.spans.update('s0', 'O')
+        with client.operation('Inner', keys=inner):
+            client.spans.update('s1', 'A')
+            client.spans.update('s2', 'B')
+        client.spans.update('s3', 'O2')
+    with client.operation('Run'):
+        with client.operation('Gloss', keys=inner):
+            client.spans.update('s4', 'C')
+    client.spans.update('s5', 'D')
+    assert [r['key'] for r in requests[:5]] == [
+        f"{outer['seed']}.0", f"{inner['seed']}.0", f"{inner['seed']}.1",
+        f"{outer['seed']}.1", f"{inner['seed']}.0"]
+    assert not requests[5]['key'].startswith(inner['seed'])
+    group = lambda r: re.search(r'group-id=([^&]+)', r['url']).group(1)
+    assert group(requests[1]) == group(requests[0])
+
+
+def test_a_nested_operation_without_a_seed_joins_the_outer_ones_keys():
     client = PlaidClient('http://x', 'tok', **FAST)
     keys = client.key_seed()
     requests = _stub_server(client)
     with client.operation('Outer', keys=keys):
         client.spans.update('s1', 'A')
-        with client.operation('Inner', keys=client.key_seed()):
+        with client.operation('Inner'):
             client.spans.update('s2', 'B')
-    client.spans.update('s3', 'C')
-    assert [r['key'] for r in requests[:2]] == [f"{keys['seed']}.0", f"{keys['seed']}.1"]
-    assert not requests[2]['key'].startswith(keys['seed'])
+    assert [r['key'] for r in requests] == [f"{keys['seed']}.0", f"{keys['seed']}.1"]
+
+
+def test_a_comment_made_while_an_operation_is_open_takes_none_of_its_keys_and_joins_nothing():
+    # REV-idempotency F2.
+    client = PlaidClient('http://x', 'tok', **FAST)
+    keys = client.key_seed()
+    requests = _stub_server(client, lambda request, n: _Resp(201, {'id': 'x'}))
+    with client.operation('Gloss', keys=keys):
+        client.spans.update('s1', 'A')
+        client.comments.create('span', 's1', 'hmm')
+        client.spans.update('s1', 'B')
+    assert requests[0]['key'] == f"{keys['seed']}.0"
+    assert not requests[1]['key'].startswith(keys['seed'])
+    assert 'group-id' not in requests[1]['url']
+    assert requests[2]['key'] == f"{keys['seed']}.1"
 
 
 def test_a_batch_in_a_keyed_operation_takes_its_key_and_pins_its_claim():
