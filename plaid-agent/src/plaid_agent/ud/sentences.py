@@ -5,13 +5,14 @@ the editor offers: a sentence boundary at a character position is either there
 or not, and clicking a token toggles it. Splitting and merging are that one
 operation seen from two sides, so they are built from it rather than beside it.
 
-**A dependency relation never spans a sentence.** That is this app's rule, not
-the server's: nothing rejects a relation whose ends are in different
-sentences, and reconcile-on-open quietly deletes them the next time someone
-opens the document. So a split deletes the relations it would orphan, in the
-SAME batch, exactly as the editor does and just as silently. The alternative,
-listing them for approval, was considered and turned down: the editor does it
-without asking and two answers to the same gesture is worse than one.
+**A dependency relation never spans a sentence.** This app declares that as a
+layer rule on both relation layers (the relation's ends lie in one sentence),
+and the server keeps it: a split deletes every relation it would leave across
+the new boundary, in the split's own transaction, whoever makes the split and
+just as silently as the editor's. So the plan writes only the split. The
+alternative, listing them for approval, was considered and turned down: the
+editor does it without asking and two answers to the same gesture is worse
+than one. What is found here is what the card counts.
 
 **In BOTH relation layers.** An edge across two sentences is invalid data
 whichever layer holds it, and the editor asks the same question of both (its
@@ -183,11 +184,6 @@ def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> st
         # A suppressor is no arc of its own, so it is not counted: it stands
         # over one of `losing` and goes with it.
         'suppressor_ids': crossing_suppressors(doc, sentence, thing.token.begin),
-        # The layers the split must leave no relation across. The core drops
-        # what crosses in the split's own transaction, read from what is
-        # stored then, so one drawn after the plan was made goes too.
-        'relation_layer_ids': [i for i in (ws.project.relation_layer_id,
-                                           ws.project.enhanced_relation_layer_id) if i],
         'label': f'split s{sentence.index} before "{thing.form}" ({ref})',
     })
     lost = f', dropping {len(losing)} dependency relation(s) that would cross it' if losing else ''
@@ -220,15 +216,14 @@ def t_merge_sentences(ws: Workspace, document: str = None, ref: str = None) -> s
 
 
 def apply_split_sentence(op: Dict[str, Any], b, stamp) -> None:
-    """The split, which drops the relations it would leave across the new
-    boundary (and so the suppressors over them) in its own transaction, as
-    the editor's does. The core reads them from what is stored when the split
-    runs: deleted by the ids the plan read, one drawn since stayed across two
-    sentences. ``relation_ids`` and ``suppressor_ids`` are what the card
-    counts.
+    """The split alone. The relations it leaves across the new boundary (and
+    so the suppressors over them, which are rows of the enhanced layer) are
+    the server's to delete, in the split's own transaction, read from what is
+    stored when the split runs, so one drawn after the plan was made goes too.
+    A delete of them here would find them gone and fail the batch.
+    ``relation_ids`` and ``suppressor_ids`` are what the card counts.
     """
-    b.add(lambda batch, o=op: batch.tokens.split(
-        o['sentence_id'], o['char_pos'], drop_crossing_relations=list(o['relation_layer_ids'])))
+    b.add(lambda batch, o=op: batch.tokens.split(o['sentence_id'], o['char_pos']))
 
 
 def apply_merge_sentences(op: Dict[str, Any], b, stamp) -> None:

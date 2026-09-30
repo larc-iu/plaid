@@ -53,7 +53,9 @@ wire's key recasing):
   set_morpheme_form {morpheme_id, form}   (a respelling carried into a morpheme's own form, with no restamp, as in Bulk Edit)
   split_word      {word_id, position, morpheme_ids}          (coincident morphemes deleted first, as the editor does)
   merge_words     {word_id, other_ids, morpheme_ids, spans: [{layer_id, keep_id, value|null, delete_ids}],
-                   links: {keep_id, delete_ids}}              (sequential merges, then the lossless span/link dedup)
+                   links: {keep_id, delete_ids}, mwe_ids}     (the collapsed expressions' links deleted, then
+                   sequential merges. spans and links say what the server's layer rules join and drop in
+                   the merge's own transaction, for the card and the guards, and are not written)
   delete_word     {word_id, morpheme_ids}
   split_sentence  {sentence_id, position}
   merge_sentences {sentence_id, other_id, spans: [...]}
@@ -408,18 +410,17 @@ def _apply_split_word(ctx: Context, op) -> int:
 def _merge(ctx: Context, op, key: str, others: List[str]) -> int:
     if op.get('morpheme_ids'):
         ctx.b.add(lambda batch, o=op: batch.tokens.bulk_delete(list(o['morpheme_ids'])))
+    # A multi-word expression made only of the merged words would sit on one
+    # word after the merge, which is no expression: it goes first.
+    for lid in op.get('mwe_ids') or []:
+        ctx.drop('vocab_links', lid)
     # Sequential merges into the survivor: the server runs batch ops in order,
-    # so each merge sees the widened extent. The dedup ops after them see the
-    # reparented spans and links.
+    # so each merge sees the widened extent. Nothing follows them: the layer
+    # rules igt declares make the server join the values of the spans the
+    # merge gathers on the survivor and drop the extra links, in the same
+    # transaction (``spans`` and ``links`` are what the card says it does).
     for oid in others:
         ctx.b.add(lambda batch, o=op, x=oid, k=key: batch.tokens.merge(o[k], x))
-    for sp in op.get('spans') or []:
-        if sp.get('value') is not None:
-            ctx.b.add(lambda batch, sp=sp: batch.spans.update(sp['keep_id'], sp['value']))
-        for sid in sp.get('delete_ids') or []:
-            ctx.drop('spans', sid)
-    for lid in (op.get('links') or {}).get('delete_ids') or []:
-        ctx.drop('vocab_links', lid)
     return 1
 
 
@@ -500,7 +501,8 @@ def _set_analysis_deletes_tokens(op):
 
 def _merge_deletes(op):
     return ([sid for sp in (op.get('spans') or []) for sid in (sp.get('delete_ids') or [])]
-            + list((op.get('links') or {}).get('delete_ids') or []))
+            + list((op.get('links') or {}).get('delete_ids') or [])
+            + list(op.get('mwe_ids') or []))
 
 
 def _discard_analysis_deletes(op):

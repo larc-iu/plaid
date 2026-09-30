@@ -898,7 +898,8 @@ REPLACES = {
     'split_word': lambda ws, op: _analysis(_morphemes(ws, op.get('morpheme_ids'))),
     'merge_words': lambda ws, op: (_analysis(_morphemes(ws, op.get('morpheme_ids')))
                                    + [sid for sp in op.get('spans') or [] for sid in sp.get('delete_ids') or []]
-                                   + list((op.get('links') or {}).get('delete_ids') or [])),
+                                   + list((op.get('links') or {}).get('delete_ids') or [])
+                                   + list(op.get('mwe_ids') or [])),
     'merge_sentences': lambda ws, op: [sid for sp in op.get('spans') or []
                                        for sid in sp.get('delete_ids') or []],
     # Confirming takes nothing away, a comment adds, and a new document or a

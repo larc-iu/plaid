@@ -85,12 +85,17 @@ def test_merging_or_deleting_members_removes_a_collapsed_expression():
     w = ws()
     call_tool(w, 'merge_words', {'document': 'd1', 'refs': ['s1.w2', 's1.w3']})
     op = w.ops[-1]
-    assert op['links'] == {'keep_id': None, 'delete_ids': [MWE_LINK]}
+    assert op['links'] == {'keep_id': None, 'delete_ids': []}
+    assert op['mwe_ids'] == [MWE_LINK]
     assert 'the multi-word expression "gam akuna" is dropped: its words become one' in op['label']
+    # Deleted before the merge, so it never sits on one word as a second link.
+    execute_plan(w.client, [op], source='s', label='l')
+    kinds = [k for k, _ in w.client.batches[0]]
+    assert kinds.index('vocab_links.delete') < kinds.index('tokens.merge')
     # Merging a member with an outside word keeps the expression (the server trims it).
     w2 = ws()
     call_tool(w2, 'merge_words', {'document': 'd1', 'refs': ['s1.w1', 's1.w2']})
-    assert w2.ops[-1]['links']['delete_ids'] == []
+    assert w2.ops[-1]['links']['delete_ids'] == [] and w2.ops[-1]['mwe_ids'] == []
     # Deleting one member leaves one, which is no expression: the link goes too, and says so.
     w3 = ws()
     call_tool(w3, 'delete_word', {'document': 'd1', 'refs': ['s1.w3']})

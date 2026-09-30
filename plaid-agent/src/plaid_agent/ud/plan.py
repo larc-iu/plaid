@@ -49,8 +49,14 @@ WORD_SHAPE = 'word_shape'      # a token's words are deleted and remade
 # refuses is per document rather than per plan.
 DOCUMENT_SHAPE = 'document_shape'
 
-# The passes of the executor past the first. Heads need the ids the first
-# batch mints; the parser runs outside the batches entirely.
+# The passes of the executor past the first. Every relation a plan removes
+# goes before any it draws (``UNHEAD``): the relation layers hold one head per
+# word and no cycle, and a plan too big for one batch is written in several,
+# each checked as it commits, so a boundary between two batches must never
+# find a word with its new head and its old one, or a cycle the old and new
+# heads make together. Heads need the ids the first batch mints; the parser
+# runs outside the batches entirely.
+UNHEAD = 'unhead'
 IDS = 'ids'
 PARSE = 'parse'
 
@@ -59,7 +65,7 @@ PARSE = 'parse'
 # it, nothing would count it, and the operation label would say it was
 # applied. The plan refuses before the first pass runs
 # (`core.opkind.check_applicable`).
-STAGES = (ok.BATCH, IDS, PARSE)
+STAGES = (ok.BATCH, UNHEAD, IDS, PARSE)
 
 # How long the parser may say nothing before the plan gives up on it. This
 # measures SILENCE, not elapsed time: the parser reports progress as it goes,
@@ -228,16 +234,22 @@ def _seed_lemmas(ctx: Context, op) -> None:
                 o['lemma_layer_id'], [w], f, dict(LEMMA_FROM_FORM)))
 
 
-def _apply_set_head(ctx: Context, op) -> int:
-    _seed_lemmas(ctx, op)
-    # One head per word: the old relation goes in the same batch as the new
-    # one, so the word is never headless and never twice headed, whichever way
-    # a failure falls. Its ends are the words' lemma spans, by a ref to one
-    # this plan creates in the same batch. An old relation another op of the
-    # plan takes away (a reshape of its head's token) is not deleted again.
+def _unhead_set_head(ctx: Context, op) -> None:
+    """A new head's old relation and the suppressors over it, deleted in the
+    pass before any relation is drawn (see ``UNHEAD``). An old relation
+    another op of the plan takes away (a reshape of its head's token) is not
+    deleted again."""
     if op.get('relation_id') and not ctx.removed_by_others(op, op['relation_id']):
         ctx.b.add(lambda batch, i=op['relation_id']: batch.relations.delete(i))
     _suppressors(ctx, op)
+
+
+def _apply_set_head(ctx: Context, op) -> int:
+    _seed_lemmas(ctx, op)
+    # One head per word: the old relation went in the pass before
+    # (``_unhead_set_head``), so no batch boundary finds the word twice
+    # headed. Its ends are the words' lemma spans, by a ref to one this plan
+    # creates in the same batch.
     ctx.b.add(lambda batch, o=op: batch.relations.create(
         o['relation_layer_id'], ctx.lemma_span(o['head_id'], batch),
         ctx.lemma_span(o['word_id'], batch), o['deprel'], ctx.stamp() or None))
@@ -396,12 +408,13 @@ KIND = ok.registry([
     OpKind('set_head', ('dependency', 'dependencies'), stage=IDS, apply=_apply_set_head,
            required=('word_id', 'head_id', 'lemma_layer_id', 'relation_layer_id', 'deprel'),
            target=lambda op: ('head', op.get('word_id')),
-           token_keys=('word_id', 'head_id'), extra={'entity': _relation_entity},
+           token_keys=('word_id', 'head_id'),
+           extra={'entity': _relation_entity, UNHEAD: _unhead_set_head},
            deletes=lambda op: [op.get('relation_id')] + list(op.get('suppressor_ids') or []),
            compact_each=('word_id', 'head_id', 'word_form', 'head_form', 'lemma_span_id',
                          'head_lemma_span_id', 'relation_id', 'suppressor_ids', 'ref'),
            compact_label=_set_head_label),
-    OpKind('del_relation', _REMOVED_DEP, stage=IDS, apply=_apply_del_relation,
+    OpKind('del_relation', _REMOVED_DEP, stage=UNHEAD, apply=_apply_del_relation,
            required=('relation_id',), target=lambda op: ('head', op.get('word_id')),
            token_keys=('word_id',), extra={'entity': _relation_entity},
            deletes=lambda op: [op['relation_id']] + list(op.get('suppressor_ids') or []),
@@ -424,7 +437,7 @@ KIND = ok.registry([
            deletes_tokens=lambda op: list(op.get('existing_word_ids') or []),
            deletes=lambda op: list(op.get('relation_ids') or [])),
     OpKind('split_sentence', ('sentence split', 'sentence splits'), apply=_apply_split_sentence,
-           required=('document_id', 'sentence_id', 'char_pos', 'relation_layer_ids'), shape=SENTENCE_SHAPE,
+           required=('document_id', 'sentence_id', 'char_pos'), shape=SENTENCE_SHAPE,
            deletes=lambda op: (list(op.get('relation_ids') or [])
                                + list(op.get('suppressor_ids') or [])),
            summary=_split_sentence_summary),
@@ -714,10 +727,19 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
         # once the batch holding them stood, whichever later batch failed.
         # --- pass 1: the columns, the reshapes and the sentence edits ---
         ok.run_stage(KIND, ctx, ops, ok.BATCH, finish=lambda op: id(op) not in restores)
-        # --- pass 2: the heads, each with the lemma spans its relation hangs
-        # off, and the removed dependencies. They name what pass 1 creates by
-        # a ref to it, in the same batch, so a plan under the batch's budget
-        # is written whole or not at all ---
+        # --- pass 2: every relation the plan removes, the removed
+        # dependencies and the old relations of the new heads, before any is
+        # drawn (see ``UNHEAD``) ---
+        ok.run_stage(KIND, ctx, ops, UNHEAD, finish=lambda op: True)
+        for op in ops:
+            unhead = KIND[op['kind']].extra.get(UNHEAD)
+            if unhead is not None:
+                with b.writing_for(op):
+                    unhead(ctx, op)
+        # --- pass 3: the heads, each with the lemma spans its relation hangs
+        # off. They name what pass 1 creates by a ref to it, in the same
+        # batch, so a plan under the batch's budget is written whole or not
+        # at all ---
         ok.run_stage(KIND, ctx, ops, IDS, finish=lambda op: True)
         b.flush()
 
@@ -728,7 +750,7 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
             b.applied += 1
             b.finish(op)
 
-        # --- pass 3: the parser ---
+        # --- pass 4: the parser ---
         # Last, and outside the batches, because it is not a write of ours at
         # all: it is another service rewriting whole documents, under its own
         # document lock, for as long as that takes.

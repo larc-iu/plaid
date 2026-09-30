@@ -128,8 +128,7 @@ def test_a_plan_moves_at_most_one_boundary(ws):
 
 def test_validate_refuses_a_mixed_plan_even_if_the_tools_did_not():
     ops = [
-        {'kind': 'split_sentence', 'document_id': 'd1', 'sentence_id': 's1', 'char_pos': 6,
-         'relation_layer_ids': ['R']},
+        {'kind': 'split_sentence', 'document_id': 'd1', 'sentence_id': 's1', 'char_pos': 6},
         {'kind': 'set_span', 'document_id': 'd1', 'layer_id': 'L', 'token_id': 'w1', 'value': 'x'},
     ]
     with pytest.raises(ValueError, match='renumbers'):
@@ -138,10 +137,8 @@ def test_validate_refuses_a_mixed_plan_even_if_the_tools_did_not():
 
 def test_validate_refuses_two_boundaries():
     ops = [
-        {'kind': 'split_sentence', 'document_id': 'd1', 'sentence_id': 's1', 'char_pos': 6,
-         'relation_layer_ids': ['R']},
-        {'kind': 'split_sentence', 'document_id': 'd1', 'sentence_id': 's1', 'char_pos': 9,
-         'relation_layer_ids': ['R']},
+        {'kind': 'split_sentence', 'document_id': 'd1', 'sentence_id': 's1', 'char_pos': 6},
+        {'kind': 'split_sentence', 'document_id': 'd1', 'sentence_id': 's1', 'char_pos': 9},
     ]
     with pytest.raises(ValueError, match='at most one sentence boundary per document'):
         validate_ops(ops)
@@ -151,21 +148,23 @@ def test_a_boundary_in_ANOTHER_document_is_fine():
     """The renumbering is per document, so a plan may move one boundary and
     edit a different document."""
     ops = [
-        {'kind': 'split_sentence', 'document_id': 'd1', 'sentence_id': 's1', 'char_pos': 6,
-         'relation_layer_ids': ['R']},
+        {'kind': 'split_sentence', 'document_id': 'd1', 'sentence_id': 's1', 'char_pos': 6},
         {'kind': 'set_span', 'document_id': 'd2', 'layer_id': 'L', 'token_id': 'w1', 'value': 'x'},
     ]
     validate_ops(ops)
 
 
 def _split_drops_both_layers(client, ws):
-    """The split names both dependency layers, and the core drops what
-    crosses it in the split's own transaction (conc-2026-09-29 D5), from what
-    is stored then: a relation drawn after the plan was made goes too. Nothing
-    is deleted by the ids the plan read."""
+    """The split goes alone, with no option naming relation layers: the core
+    drops what crosses it in the split's own transaction, by the layer rule
+    both dependency layers declare, from what is stored then, so a relation
+    drawn after the plan was made goes too. Nothing is deleted by the ids the
+    plan read, since a delete of a relation the core already took would fail
+    the batch."""
     [split] = client.payloads('tokens.split')
-    assert split['kwargs']['drop_crossing_relations'] == [ws.project.relation_layer_id,
-                                                          ws.project.enhanced_relation_layer_id]
+    args = split['args'] if isinstance(split, dict) else split
+    assert not (isinstance(split, dict) and split.get('kwargs'))
+    assert list(args[:2]) == [ws.ops[-1]['sentence_id'], ws.ops[-1]['char_pos']]
     assert client.payloads('relations.delete') == []
 
 

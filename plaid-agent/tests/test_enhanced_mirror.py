@@ -190,7 +190,8 @@ def _sent(client):
     out = []
     for kind, payload in client.writes:
         if kind == 'tokens.split':
-            out.append(['split', *payload['args'][:2], payload['kwargs'].get('drop_crossing_relations')])
+            args = payload['args'] if isinstance(payload, dict) else payload
+            out.append(['split', *args[:2]])
         elif kind == 'tokens.merge':
             out.append([kind.split('.')[1], *payload])
         elif kind == 'relations.delete':
@@ -304,7 +305,7 @@ def test_the_cases_reach_every_shape_they_are_for(compared):
     raws, js, py = compared
     assert sum(any(p['hasEnhanced']) for p in py) > CASES // 3
     assert sum(bool(p['suppressorOf']) for p in py) > CASES // 10
-    # A split with relations across it, which the core drops (D5).
+    # A split with relations across it, which the core drops (its layer rule).
     assert sum(any(p['crossing'].values()) for p in py) > CASES // 3
     assert sum(bool(p['merges']) for p in py) > CASES // 3
     rows = [_suppressor_rows(raw) for raw in raws]
@@ -376,9 +377,11 @@ def test_the_suppressor_over_each_basic_relation(compared):
 
 @pytest.mark.parametrize('key', ['splits', 'merges'])
 def test_a_sentence_boundary_sends_what_the_editor_sends(compared, key):
-    """The cut with the relation layers it may leave nothing across (the core
-    drops those in the split, D5), and a merge. Any delete sent beside them
-    is compared as a set, since order within the deletes is each side's own."""
+    """The cut and a merge. The relations a cut leaves across the boundary
+    are the core's to drop, by the layer rule both relation layers declare,
+    so the cut is compared as an id and a position. Any delete sent beside
+    them is compared as a set, since order within the deletes is each side's
+    own."""
     raws, js, py = compared
 
     def norm(ops):
@@ -394,7 +397,7 @@ def test_a_sentence_boundary_sends_what_the_editor_sends(compared, key):
 def test_a_split_drops_what_the_editor_takes_off_the_screen(compared):
     """What the card counts as a split's dropped relations, suppressors
     included, against the editor's ``relationsCrossing``. The core does the
-    dropping (D5), so this is what the user approves."""
+    dropping (its layer rule), so this is what the user approves."""
     raws, js, py = compared
     for i, (a, b) in enumerate(zip(js, py)):
         app = {k: sorted(v) for k, v in a['crossing'].items()}

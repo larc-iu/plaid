@@ -106,14 +106,46 @@ def test_execute_shape_ops_in_order():
     counts = execute_plan(c, ops, source='s', label='l')
     assert counts == {'split words': 1, 'word merges': 1, 'deleted words': 1, 'split sentences': 1,
                       'sentence merges': 1}
+    # A merge is the merge alone: the layer rules igt declares make the
+    # server join the gathered values and drop the extra spans and links in
+    # the merge's own transaction, and a delete of one it already took would
+    # fail the batch. `spans` and `links` are what the card says.
     assert c.batches[0] == [
         ('tokens.bulk_delete', ['m-1a', 'm-1b']), ('tokens.split', ('w-1', 3)),
         ('tokens.bulk_delete', ['m-2']), ('tokens.merge', ('w-2', 'w-3')), ('tokens.merge', ('w-2', 'w-x')),
-        ('spans.update', ('sp-a', 'a | b')), ('spans.delete', 'sp-b'), ('spans.delete', 'sp-d'),
-        ('vocab_links.delete', 'l-b'),
         ('tokens.delete', 'w-4'),
         ('tokens.split', ('s-1', 7)),
-        ('tokens.merge', ('s-1', 's-2')), ('spans.update', ('sp-t1', 'x | y')), ('spans.delete', 'sp-t2')]
+        ('tokens.merge', ('s-1', 's-2'))]
+
+
+def test_the_card_says_what_the_servers_merge_keeps():
+    """The survivor's own span and link are kept, as the server's layer rule
+    keeps them. When the survivor has none, the one with the smallest id is,
+    its value leads the joined one, and the rest follow in text order. A
+    closed tagset would refuse the joined value, so there the kept one stays."""
+    raw = document_raw()
+    layers = raw['text_layers'][0]['token_layers']
+    layers[1]['span_layers'][0]['spans'] = [{'id': 'sp-z2', 'value': 'fish', 'tokens': ['w-2']},
+                                            {'id': 'sp-a3', 'value': 'see', 'tokens': ['w-3']}]
+    layers[1]['vocabs'][0]['vocab_links'] = [
+        {'id': 'l-z2', 'vocab_item': {'id': 'vi-gam', 'form': 'gam'}, 'tokens': ['w-2']},
+        {'id': 'l-a3', 'vocab_item': {'id': 'vi-ali', 'form': 'Ali'}, 'tokens': ['w-3']}]
+    w = ws(raw)
+    call_tool(w, 'merge_words', {'document': 'd1', 'refs': ['s1.w1', 's1.w2', 's1.w3']})
+    op = w.ops[0]
+    assert op['spans'] == [{'layer_id': GLOSS, 'keep_id': 'sp-a3', 'value': 'see | fish', 'delete_ids': ['sp-z2']}]
+    assert op['links'] == {'keep_id': 'l-a3', 'delete_ids': ['l-z2']}
+    assert '(keeps the link "Ali", drops 1)' in op['label']
+    # The survivor's own, whatever its id.
+    w2 = ws(raw)
+    call_tool(w2, 'merge_words', {'document': 'd1', 'refs': ['s1.w2', 's1.w3']})
+    assert w2.ops[0]['spans'][0]['keep_id'] == 'sp-z2' and w2.ops[0]['links']['keep_id'] == 'l-z2'
+    assert w2.ops[0]['spans'][0]['value'] == 'fish | see'
+    # A closed tagset keeps the kept value.
+    w3 = ws(raw)
+    w3.project.field_by_layer(GLOSS).tagset = {'mode': 'closed', 'values': []}
+    call_tool(w3, 'merge_words', {'document': 'd1', 'refs': ['s1.w2', 's1.w3']})
+    assert w3.ops[0]['spans'][0]['value'] is None and 'values combined' not in w3.ops[0]['label']
 
 
 def test_ops_on_tokens_a_shape_op_removes_refuse_the_plan_or_are_filtered():

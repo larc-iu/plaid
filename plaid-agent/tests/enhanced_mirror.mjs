@@ -41,9 +41,11 @@ const toggle = async (raw, charPos) => {
   const sent = [];
   const client = withOps({
     tokens: {
-      // The relation layers the core is to leave nothing across (D5).
-      split: async (id, pos, _audit, opts) => {
-        sent.push(['split', id, pos, opts?.dropCrossingRelations ?? null]);
+      // The cut alone: the relations it leaves across the new boundary
+      // are the core's to delete, by the layer rule both relation layers
+      // declare, so any option the editor still sends is not compared.
+      split: async (id, pos) => {
+        sent.push(['split', id, pos]);
         return { id: 'new-sentence' };
       },
       merge: async (a, b) => {

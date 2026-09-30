@@ -6,9 +6,15 @@ or merge deletes the affected words' morpheme analyses (a boundary change
 invalidates them, and the server would otherwise cascade-split them into
 nonsense), a merge combines the words' or sentences' field values losslessly
 (distinct values joined with " | ") and keeps one lexicon link, and a deleted
-word takes its analysis, values, and links with it while the text stays."""
+word takes its analysis, values, and links with it while the text stays. The
+merge's combining is the server's: the layer rules igt declares (one span per
+token per field, one link per word) make it join the values and drop the
+extra links in the merge's own transaction, so the plan writes only the merge
+and the card says what it will combine."""
 
 from typing import Any, Dict, List, Optional
+
+from plaid_client.workflows.igt.tagsets import CLOSED
 
 from ..core.args import whole
 from ..core.tools import ToolError
@@ -31,27 +37,37 @@ def _guard(ws: Workspace, obj, ref: str, merging: bool = False, word_ids=None) -
     refuse_shape_and_analysis(ws, word_ids if word_ids is not None else obj.id, ref, analysing=False)
 
 
-def _dedup_spans(units) -> List[Dict[str, Any]]:
-    """After a server-side merge every unit's spans sit on the survivor, one
-    per unit per layer; keep the first unit's span (else the first that has
-    one), give it the distinct non-empty values joined with " | ", and delete
-    the rest. The lossless heal the editor applies after its own merges."""
+def _joined_spans(units, project) -> List[Dict[str, Any]]:
+    """What the server's merge does to the units' field values, for the card:
+    every unit's spans sit on the survivor after a merge, and the layer rule
+    each field declares (one span per token) makes the server keep the
+    survivor's own span (else the one with the smallest id), give it the
+    distinct non-empty values joined with " | " in text order, and delete the
+    rest, in the merge's own transaction. A closed tagset would refuse the
+    joined value, so there the kept value stays.
+
+    Nothing here is written by the plan: it is what the card says the merge
+    combines and what the plan's guards count as gone."""
     layers: Dict[str, List] = {}
     for u in units:
         for sp in u.fields.values():
             layers.setdefault(sp.layer_id, []).append(sp)
+    own = {sp.id for sp in units[0].fields.values()} if units else set()
     out = []
     for layer_id, spans in layers.items():
         if len(spans) < 2:
             continue
+        keep = next((sp for sp in spans if sp.id in own), None) or min(spans, key=lambda sp: sp.id)
         values: List[str] = []
-        for sp in spans:
-            if sp.value != '' and sp.value not in values:
+        for sp in [keep] + [sp for sp in spans if sp is not keep]:
+            if isinstance(sp.value, str) and sp.value != '' and sp.value not in values:
                 values.append(sp.value)
         merged = ' | '.join(values)
-        out.append({'layer_id': layer_id, 'keep_id': spans[0].id,
-                    'value': merged if merged != spans[0].value else None,
-                    'delete_ids': [sp.id for sp in spans[1:]]})
+        f = project.field_by_layer(layer_id) if project is not None else None
+        closed = bool(f and (f.tagset or {}).get('mode') == CLOSED)
+        out.append({'layer_id': layer_id, 'keep_id': keep.id,
+                    'value': merged if merged != keep.value and not closed else None,
+                    'delete_ids': [sp.id for sp in spans if sp is not keep]})
     return out
 
 
@@ -64,12 +80,16 @@ def _combined_values(spans: List[Dict[str, Any]], project) -> str:
     return ', '.join(bits)
 
 
-def _dedup_links(words: List[Word]) -> Dict[str, Any]:
-    """Keep the survivor's own link, else the earliest merged word's. Delete the rest."""
+def _kept_link(words: List[Word]) -> Dict[str, Any]:
+    """Which lexicon link the server's merge keeps, for the card: the
+    survivor's own, else the one with the smallest id. The others are deleted
+    by the layer rule the word layer declares (one link per word), in the
+    merge's own transaction."""
     links = [w.link for w in words if w.link]
     if len(links) < 2:
         return {'keep_id': links[0].id if links else None, 'delete_ids': []}
-    return {'keep_id': links[0].id, 'delete_ids': [l.id for l in links[1:]]}
+    keep = words[0].link or min(links, key=lambda l: l.id)
+    return {'keep_id': keep.id, 'delete_ids': [l.id for l in links if l is not keep]}
 
 
 def _collapsed_mwes(words: List[Word]) -> list:
@@ -145,8 +165,8 @@ def t_merge_words(ws: Workspace, document: str, refs) -> str:
         _guard(ws, w, word_ref(next(s for s in doc.sentences if s.id in sents), w), merging=True)
     first, last = words[0], words[-1]
     merged = doc.body[first.begin:last.end]
-    spans = _dedup_spans(words)
-    links = _dedup_links(words)
+    spans = _joined_spans(words, ws.project)
+    links = _kept_link(words)
     morphs = [m.id for w in words for m in w.morphemes]
     analysed = sum(1 for w in words if len(w.morphemes) > 1 or any(m.fields or m.link for m in w.morphemes))
     note = ''
@@ -156,15 +176,16 @@ def t_merge_words(ws: Workspace, document: str, refs) -> str:
     if comb:
         note += f' (values combined: {comb})'
     if links['delete_ids']:
-        note += f' (keeps the link "{[w.link.form for w in words if w.link][0]}", drops {len(links["delete_ids"])})'
+        kept = next(w.link.form for w in words if w.link and w.link.id == links['keep_id'])
+        note += f' (keeps the link "{kept}", drops {len(links["delete_ids"])})'
     collapsed = _collapsed_mwes(words)
     if collapsed:
-        links['delete_ids'] = links['delete_ids'] + [l.id for l in collapsed]
         note += ' (the multi-word expression ' + ', '.join(f'"{l.form}"' for l in collapsed) \
             + ' is dropped: its words become one)'
     s = next(s for s in doc.sentences if s.id in sents)
     ws.add_op({'kind': 'merge_words', 'word_id': first.id, 'other_ids': [w.id for w in words[1:]],
                'morpheme_ids': morphs, 'spans': spans, 'links': links,
+               'mwe_ids': [l.id for l in collapsed],
                'label': f'{ws.doc_label(doc.id)} s{s.index}: merge ' + ' + '.join(f'w{w.index} "{w.surface}"' for w in words)
                         + f' → "{merged}"{note}'})
     return ws.planned_note(1)
@@ -233,7 +254,7 @@ def t_merge_sentences(ws: Workspace, document: str, ref: str) -> str:
     prev = doc.sentences[s.index - 2]
     _guard(ws, s, ref, merging=True)
     _guard(ws, prev, f's{prev.index}', merging=True)
-    spans = _dedup_spans([prev, s])
+    spans = _joined_spans([prev, s], ws.project)
     comb = _combined_values(spans, ws.project)
     ws.add_op({'kind': 'merge_sentences', 'sentence_id': prev.id, 'other_id': s.id, 'spans': spans,
                'label': f'{ws.doc_label(doc.id)}: merge s{s.index} "{s.text[:30]}" into s{prev.index} "{prev.text[:30]}"'

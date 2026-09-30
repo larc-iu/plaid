@@ -122,12 +122,42 @@ def test_a_ud_head_counts_once_its_batch_stood(monkeypatch):
                                                      'deprel': 'dep'})
     assert len(ws.ops) == 2
     _budget(monkeypatch, 1)
-    _nth_send_fails(monkeypatch, 2)
+    # The old head of s1.w4 goes before either new one is drawn (ud/plan.py
+    # UNHEAD), so the budget of one sends that delete, then the first head,
+    # and the third send, the second head, fails.
+    _nth_send_fails(monkeypatch, 3)
     with pytest.raises(core_plan.PlanError) as caught:
         execute_plan(client, _rows(ws.ops), source='s', label='l', project=ws.project)
     assert caught.value.written == [0]
-    [first] = client.batches
-    assert 'relations.create' in [kind for kind, _ in first]
+    kinds = [[kind for kind, _ in batch] for batch in client.batches]
+    assert kinds[0] == ['relations.delete']
+    assert 'relations.create' in kinds[1] and len(kinds) == 2
+
+
+def test_a_ud_plan_removes_every_head_before_it_draws_one(monkeypatch):
+    """The relation layers hold one head per word and no cycle, and a plan
+    past the budget is written in several batches, each checked as it
+    commits. So every relation the plan removes goes before any it draws:
+    no batch boundary finds a word with its old head and its new one, or a
+    cycle the old and new heads make together."""
+    from ud_fixtures import PID, ud_client
+    from plaid_agent.ud.plan import execute_plan
+    from plaid_agent.ud.project import load_project
+    from plaid_agent.ud.toolkit import call_tool
+    from plaid_agent.ud.tools import Workspace
+    client = ud_client()
+    ws = Workspace(client, load_project(client, PID))
+    for ref in ('s1.w4', 's1.w5'):
+        call_tool(ws, 'set_head', {'document': 'Viaje', 'ref': ref, 'head': 1, 'deprel': 'dep'})
+    call_tool(ws, 'del_relation', {'document': 'Viaje', 'refs': ['s1.w2']})
+    assert [op['kind'] for op in ws.ops] == ['set_head', 'set_head', 'del_relation']
+    _budget(monkeypatch, 1)
+    execute_plan(client, ws.ops, source='s', label='l', project=ws.project)
+    sent = [kind for batch in client.batches for kind, _ in batch if kind.startswith('relations.')]
+    assert sent.count('relations.delete') == 3 and sent.count('relations.create') == 2
+    last_delete = max(i for i, k in enumerate(sent) if k == 'relations.delete')
+    first_create = min(i for i, k in enumerate(sent) if k == 'relations.create')
+    assert last_delete < first_create
 
 
 def test_a_ud_reshape_is_whole_in_its_batch_and_its_words_carry_the_plans_provenance(monkeypatch):
