@@ -49,7 +49,11 @@
 // Meanwhile `isOffline` is true, so "Saving" and the close-tab question stay
 // on. A caller asks for it when its sends are keyed (an Idempotency-Key per
 // request, the same on every attempt): the requests of an attempt that
-// landed are answered from what they stored and write nothing twice. Once
+// landed are answered from what they stored and write nothing twice. While
+// the browser says it is offline the wait has no end, but a send the server
+// side keeps failing to answer (a proxy's 502 or 504, a request slower than
+// the client waits) is given up after `resendForMs` (two minutes) and refused
+// like any other, so one bad send cannot hold every edit behind it. Once
 // the queue is let go, the wait ends at once: the send is tried one more
 // time, and refused if it fails again, so nothing waits on a network no
 // screen is watching for.
@@ -69,6 +73,10 @@ const FINAL_STATUSES = new Set([401, 403, 404]);
 
 // How long to wait before retrying a refetch: 1 s, 2 s, 4 s, then every 15 s.
 const backoff = (attempt) => Math.min(1000 * 2 ** attempt, 15000);
+
+// How long a send that gets no answer while the browser is online is sent
+// again before it is refused.
+const RESEND_FOR_MS = 120000;
 
 // How many tries a refetch gets when it fails for a reason other than the
 // network.
@@ -108,6 +116,7 @@ export class WriteQueue {
     retryDelay = backoff,
     onOutOfStep = null,
     onOfflineChange = null,
+    resendForMs = RESEND_FOR_MS,
   } = {}) {
     this._tail = Promise.resolve();
     // Sends waiting or in flight.
@@ -126,6 +135,7 @@ export class WriteQueue {
     this._retryDelay = retryDelay;
     this._onOutOfStep = onOutOfStep;
     this._onOfflineChange = onOfflineChange;
+    this._resendForMs = resendForMs;
     this._offline = false;
     // Whether `onOutOfStep` has been told since a refetch last landed.
     this._outOfStep = false;
@@ -260,13 +270,15 @@ export class WriteQueue {
   // Run `send`, and again each time it fails in a way `resendWhenBack` allows,
   // once the network is back. `isOffline` holds while it waits.
   async _sendUntilBack(send, resendWhenBack) {
+    const started = Date.now();
     for (let attempt = 0; ; attempt += 1) {
       try {
         await send();
         if (attempt) this._setOffline(false);
         return;
       } catch (err) {
-        if (!resendWhenBack?.(err) || (attempt && this._letGo)) {
+        const outOfTime = !err?.offline && Date.now() - started >= this._resendForMs;
+        if (!resendWhenBack?.(err) || (attempt && this._letGo) || outOfTime) {
           if (attempt) this._setOffline(false);
           throw err;
         }

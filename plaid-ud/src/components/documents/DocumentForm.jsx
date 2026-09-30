@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { humanizeError, isUnknownOutcome } from '@ui/lib/errors.js';
@@ -18,8 +18,12 @@ export const DocumentForm = ({ projectId, isOpen, onClose }) => {
   const [documentName, setDocumentName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  // The id the create names, kept across presses of Create (createOnce.js).
+  // The id the create names, kept across presses of Create (createOnce.js)
+  // for one name in one opening of the dialog.
   const mint = useRef(null);
+  useEffect(() => {
+    if (!isOpen) mint.current = null;
+  }, [isOpen]);
   const { getClient } = useAuth();
   const navigate = useNavigate();
 
@@ -73,7 +77,10 @@ export const DocumentForm = ({ projectId, isOpen, onClose }) => {
             <Input
               id="document-name"
               value={documentName}
-              onChange={(e) => setDocumentName(e.target.value)}
+              onChange={(e) => {
+                mint.current = null;
+                setDocumentName(e.target.value);
+              }}
               disabled={loading}
               autoFocus
             />

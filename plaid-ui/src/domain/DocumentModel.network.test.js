@@ -31,19 +31,28 @@ function fakeServer() {
     writes: 0,
   };
   let seeds = 0;
+  // The open operation's key frames, nesting as the client's do: an inner
+  // operation that brings its own seed numbers its writes until it ends.
+  const frames = [];
   let open = null;
   const client = {
     strictModeDocumentId: 'd1',
     documentVersions: { d1: 1 },
     keySeed: () => ({ seed: `seed${++seeds}`, stamps: new Map() }),
     withOperation: async (label, fn, { id, keys } = {}) => {
-      server.labels.push(label);
-      server.groups.push(id);
-      open = { keys, n: 0 };
+      const outermost = frames.length === 0;
+      if (outermost) {
+        server.labels.push(label);
+        server.groups.push(id);
+      }
+      const frame = outermost || keys ? { keys, n: 0 } : frames.at(-1);
+      frames.push(frame);
+      open = frame;
       try {
         return await fn(() => {});
       } finally {
-        open = null;
+        frames.pop();
+        open = frames.at(-1) ?? null;
       }
     },
     documents: {
@@ -230,6 +239,19 @@ describe('a write whose answer was lost', () => {
     expect(server.writes).toBe(1);
     expect(errors).toEqual([]);
     expect(server.values).toEqual({ gloss: 'DOG' });
+  });
+
+  it('queued inside another open operation, it is sent again under its own keys, and lands once', async () => {
+    const { server, client, doc, errors } = open();
+    doc._writes._retryDelay = () => 0;
+    server.fail.push({ error: lost, landed: true });
+    await client.withOperation('Link to the lexicon', async () => {
+      expect(await doc.set('gloss', 'DOG')).toBe(true);
+    });
+    expect(server.writes).toBe(1);
+    expect(server.keys[0]).toBe(server.keys[1]);
+    expect(server.keys[0]).toMatch(/^seed\d+\.0$/);
+    expect(errors).toEqual([]);
   });
 
   it('every attempt of one edit joins the same operation, and the next edit its own', async () => {

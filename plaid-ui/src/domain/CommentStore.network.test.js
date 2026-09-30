@@ -86,7 +86,11 @@ describe('a post whose answer was lost', () => {
       const { store, errors } = open(client);
       await store.load();
       client.state.loseNext = { error: lost(status) };
+      // The thread cannot be read either, so the post is not confirmed.
+      const list = client.comments.list;
+      client.comments.list = async () => Promise.reject(lost(status)());
       expect(await store.post('token', 't1', 'Is this right?')).toBe(null);
+      client.comments.list = list;
       expect(errors).toHaveLength(1);
       const posted = await store.post('token', 't1', 'Is this right?');
       expect(posted?.body).toBe('Is this right?');
@@ -96,6 +100,19 @@ describe('a post whose answer was lost', () => {
       expect(client.state.rows).toHaveLength(1);
     });
   }
+
+  // REV-idempotency F5: taken off the screen as failed while the server had it.
+  it('is kept when the thread read after the lost answer holds it', async () => {
+    const client = fakeClient();
+    const { store, errors } = open(client);
+    await store.load();
+    client.state.loseNext = { error: lost(502) };
+    const posted = await store.post('token', 't1', 'Is this a loan word?');
+    expect(posted?.body).toBe('Is this a loan word?');
+    expect(errors).toEqual([]);
+    expect(store.threadFor('t1').map((c) => c.body)).toEqual(['Is this a loan word?']);
+    expect(client.state.rows).toHaveLength(1);
+  });
 
   it('posted again after it was not stored, it is stored once', async () => {
     const client = fakeClient();

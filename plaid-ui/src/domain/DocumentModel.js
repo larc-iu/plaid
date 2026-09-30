@@ -11,7 +11,7 @@
 // relative path, where no alias and no package resolves. Errors leave through
 // `onError`.
 
-import { isChangedElsewhere, isUnknownOutcome, statusOf } from '../lib/errors.js';
+import { isChangedElsewhere, isIdTaken, isUnknownOutcome, statusOf } from '../lib/errors.js';
 import {
   AUTO,
   LTR,
@@ -621,8 +621,19 @@ export class DocumentModel {
           // way someone else changed the document.
           conflict = isChangedElsewhere(err);
           if (cell) cell.error = err;
+          const created = this._summary(unsent)?.created ?? new Set();
+          // Refused because a row it makes is there already under the id this
+          // page minted: an earlier send of it landed and its answer was
+          // lost. That row is made, and nothing is reported. The read that
+          // follows shows what the rest of the edit did.
+          const made = isIdTaken(err) ? err.responseData?.id : null;
+          if (made && created.has(made)) {
+            recordSettled([[made, made]]);
+            for (const id of created) if (id !== made) this._refusedIds.add(id);
+            return;
+          }
           // The rows it made are not on the server, whatever the refusal.
-          for (const id of this._summary(unsent)?.created ?? []) this._refusedIds.add(id);
+          for (const id of created) this._refusedIds.add(id);
           this._writeFailed(label, err, conflictHandled && statusOf(err) === 409);
         },
         resync: () => (unsent.stale ? undefined : this._reloadAfterFailure(conflict)),
@@ -918,6 +929,7 @@ export class DocumentModel {
   async _reloadAfterFailure(conflict = false) {
     if (!this._client || !this.id) return;
     const updated = await this._fetch();
+    this._settleFound(updated);
     await this._adoptReload(updated);
     if (conflict && this._client.strictModeDocumentId === this.id) {
       // Only those that what changed elsewhere touches (rebase.js). The rest
@@ -949,6 +961,18 @@ export class DocumentModel {
 
   _fetch() {
     return this._client.documents.get(this.id, true, this._asOf || undefined);
+  }
+
+  // A row an edit made under the id this page minted, and that the edit was
+  // then refused for, is on the server after all when a read holds it (the
+  // create landed with its answer lost). It is made, not refused: an edit
+  // that names it is sent.
+  _settleFound(raw) {
+    if (this._refusedIds.size === 0) return;
+    const text = JSON.stringify(raw);
+    const found = [...this._refusedIds].filter((id) => text.includes(id));
+    for (const id of found) this._refusedIds.delete(id);
+    recordSettled(found.map((id) => [id, id]));
   }
 
   _swapRaw(updated) {

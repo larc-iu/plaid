@@ -120,6 +120,11 @@ export const VocabularyDetail = () => {
   const [error, setError] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState('');
+  // The id a new vocabulary's create names is kept across presses of Create
+  // for one name only (createOnce.js).
+  useEffect(() => {
+    mintRef.current = null;
+  }, [editedName]);
   // Normalized field inventory: [{name, inline, immutable}], morphType always present.
   const [fields, setFields] = useState([]);
   const [newFieldName, setNewFieldName] = useState('');

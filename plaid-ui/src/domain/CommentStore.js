@@ -384,9 +384,20 @@ export class CommentStore {
           console.error('Could not read a comment that was posted already:', readErr);
         }
       }
-      // No answer came even after the client's own resends. Posting the same
-      // words again names the same id, so it cannot store them twice.
-      if (isUnknownOutcome(err)) this._unconfirmed.set(said, id);
+      // No answer came even after the client's own resends. The thread is
+      // read once: the comment is kept when the server has it. Otherwise
+      // posting the same words again names the same id, so it cannot store
+      // them twice.
+      if (isUnknownOutcome(err)) {
+        try {
+          const thread = await this._readThread(entityType, entityId);
+          const landed = thread.find((c) => c.id === id);
+          if (landed) return this._posted(said, id, landed);
+        } catch (readErr) {
+          console.error('Could not read the thread again after a lost answer:', readErr);
+        }
+        this._unconfirmed.set(said, id);
+      }
       this._fail('Failed to post comment', err);
       this._emit();
       return null;

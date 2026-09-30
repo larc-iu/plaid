@@ -143,3 +143,48 @@ describe('leaving the page', () => {
     expect(sent).toEqual(['a', 'b']);
   });
 });
+
+// REV-idempotency F9: a send the server side keeps failing to answer (a
+// proxy's 502 on every attempt) was sent again forever, holding every edit
+// behind it.
+describe('a send that never gets an answer while the browser is online', () => {
+  const gateway = () => Object.assign(new Error('HTTP 502 Bad gateway'), { status: 502 });
+
+  it('is given up after the resend window and refused, and the edits behind it go', async () => {
+    vi.useFakeTimers();
+    const q = new WriteQueue({ retryDelay: () => 15000, resendForMs: 120000 });
+    let attempts = 0;
+    const refused = [];
+    const first = q.push(
+      async () => {
+        attempts += 1;
+        throw gateway();
+      },
+      { resendWhenBack: () => true, refused: (err) => refused.push(err.status) },
+    );
+    const behind = q.push(async () => {});
+    await vi.advanceTimersByTimeAsync(200000);
+    expect(await first).toBe(false);
+    expect(await behind).toBe(true);
+    expect(refused).toEqual([502]);
+    expect(attempts).toBeGreaterThan(5);
+    expect(attempts).toBeLessThan(12);
+    expect(q.isOffline).toBe(false);
+  });
+
+  it('keeps waiting while the browser says it is offline', async () => {
+    vi.useFakeTimers();
+    const q = new WriteQueue({ retryDelay: () => 15000, resendForMs: 120000 });
+    let attempts = 0;
+    const sent = q.push(
+      async () => {
+        attempts += 1;
+        if (attempts < 20) throw offline();
+      },
+      { resendWhenBack: () => true },
+    );
+    await vi.advanceTimersByTimeAsync(400000);
+    expect(await sent).toBe(true);
+    expect(attempts).toBe(20);
+  });
+});

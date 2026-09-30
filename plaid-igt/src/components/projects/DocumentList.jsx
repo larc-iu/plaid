@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AudioLines, ChevronRight, PenLine, Plus } from 'lucide-react';
 import { DocumentTable } from '@ui/components/shared/DocumentTable.jsx';
@@ -35,8 +35,12 @@ export const DocumentList = ({
   const [choosing, setChoosing] = useState(false);
   const [documentName, setDocumentName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
-  // The id the create names, kept across presses of Create (createOnce.js).
+  // The id the create names, kept across presses of Create (createOnce.js)
+  // for one name in one opening of the dialog.
   const mint = useRef(null);
+  useEffect(() => {
+    if (!open) mint.current = null;
+  }, [open]);
   const navigate = useNavigate();
 
   const handleCreateDocument = async () => {
@@ -156,7 +160,10 @@ export const DocumentList = ({
                   id="doc-name"
                   placeholder="Enter document name"
                   value={documentName}
-                  onChange={(e) => setDocumentName(e.target.value)}
+                  onChange={(e) => {
+                    mint.current = null;
+                    setDocumentName(e.target.value);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && documentName.trim() && !isCreating)
                       handleCreateDocument();
