@@ -377,14 +377,16 @@
 
 (defn id-taken
   "The 409 for a create that names an id already used. Its body's `error`
-  is `id-taken` (with `id-taken: true`, the id, and the sentence under
-  `message`), so no client can take it for a version conflict: a create
-  retried after its first answer was lost sees it when that first send
-  landed."
+  is `id-taken` (with `id-taken: true`, the id, `deleted`, and the sentence
+  under `message`), so no client can take it for a version conflict: a
+  create retried after its first answer was lost sees it when that first
+  send landed. `deleted` is true when the row is gone, so a client does not
+  take the row for one it can open."
   [kind id deleted?]
   (let [said (str "A " kind " with id " id (if deleted? " existed" " already exists") ".")]
     (ex-info said {:code 409 :id id
-                   :plaid/body {:error "id-taken" :id-taken true :id (str id) :message said}})))
+                   :plaid/body {:error "id-taken" :id-taken true :id (str id)
+                                :deleted (boolean deleted?) :message said}})))
 
 (declare q1)
 

@@ -964,7 +964,9 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
     except PlaidAPIError as e:
         data = e.response_data if isinstance(e.response_data, dict) else {}
         # Only a single create: a bulk refused whole made none of its rows.
+        # Never a deleted row: there is nothing to open.
         if (e.status == 409 and data.get('error') == 'id-taken'
+                and not data.get('deleted')
                 and minted and data.get('id') in minted
                 and isinstance(request_body, dict) and request_body.get('id') == data.get('id')):
             if stamped_group is not None:

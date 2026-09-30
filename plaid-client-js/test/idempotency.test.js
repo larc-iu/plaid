@@ -511,3 +511,25 @@ test("a bulk create refused id-taken is a refusal, even for an id the operation 
   }
   assert.equal(single.id, a);
 });
+
+// REV3 H8: an id-taken for a row since deleted names nothing to open, so it
+// is a refusal even for an id the operation minted.
+test("an id-taken for a deleted row is a refusal, even for an id the operation minted", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  const id = uuidv7();
+  const { restore } = stubServer(() =>
+    response(409, { error: "id-taken", "id-taken": true, id, deleted: true }),
+  );
+  try {
+    await assert.rejects(
+      client.withOperation(
+        "Gloss",
+        () => client.spans.create("L", ["t"], "N", undefined, undefined, { id }),
+        { minted: [id] },
+      ),
+      (e) => e.status === 409,
+    );
+  } finally {
+    restore();
+  }
+});

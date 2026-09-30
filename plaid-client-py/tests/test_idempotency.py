@@ -484,3 +484,15 @@ def test_a_bulk_create_refused_id_taken_is_a_refusal_even_for_an_id_the_operatio
     with client.operation('Gloss', minted=[a]):
         made = client.spans.create('L', ['t'], 'N', id=a)
     assert made['id'] == a
+
+
+def test_an_id_taken_for_a_deleted_row_is_a_refusal_even_for_an_id_the_operation_minted():
+    # REV3 H8: the row is gone, so there is nothing to answer as made.
+    client = PlaidClient('http://x', 'tok', **FAST)
+    new_id = uuid7()
+    _stub_server(client, lambda request, n: _Resp(
+        409, {'error': 'id-taken', 'id-taken': True, 'id': new_id, 'deleted': True}))
+    with pytest.raises(PlaidAPIError) as e:
+        with client.operation('Gloss', minted=[new_id]):
+            client.spans.create('L', ['t'], 'N', id=new_id)
+    assert e.value.status == 409

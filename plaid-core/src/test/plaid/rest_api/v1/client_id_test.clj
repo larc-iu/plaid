@@ -84,6 +84,7 @@
           (is (= 409 (:status r)))
           (is (= "id-taken" (get-in r [:body :error])))
           (is (true? (get-in r [:body :id-taken])))
+          (is (false? (get-in r [:body :deleted])))
           (is (= (str id) (get-in r [:body :id]))))))))
 
 (deftest ids-that-are-refused
@@ -108,6 +109,7 @@
     (let [r (post "/api/v1/spans" body)]
       (is (= 409 (:status r)))
       (is (true? (get-in r [:body :id-taken])))
+      (is (true? (get-in r [:body :deleted])))
       (is (re-find #"existed" (get-in r [:body :message]))))))
 
 (deftest bulk-creates

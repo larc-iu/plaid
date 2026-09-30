@@ -1602,10 +1602,10 @@ An id that was used before is refused with 409, and the body says so:
 
 [,json]
 ----
-{"error": "id-taken", "id-taken": true, "id": "0199...", "message": "A span with id 0199... already exists."}
+{"error": "id-taken", "id-taken": true, "id": "0199...", "deleted": false, "message": "A span with id 0199... already exists."}
 ----
 
-That holds for an id whose row was since deleted too ("existed" in the message), so a create sent again late never brings back a row someone deleted meanwhile.
+That holds for an id whose row was since deleted too (`"deleted": true`, and "existed" in the message), so a create sent again late never brings back a row someone deleted meanwhile.
 A comment has no history, so only a comment that still exists holds its id.
 Tell `id-taken` apart from a version conflict by the body, never by the status alone.
 

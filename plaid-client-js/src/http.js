@@ -816,9 +816,11 @@ export async function makeRequest(client, method, path, options = {}) {
     if (!response.ok) {
       const errorData = await parseErrorBody(response);
       // Only a single create: a bulk refused whole made none of its rows.
+      // Never a deleted row: there is nothing to open.
       if (
         response.status === 409 &&
         errorData?.error === "id-taken" &&
+        !errorData.deleted &&
         minted?.has(errorData.id) &&
         requestBody?.id === errorData.id
       ) {
