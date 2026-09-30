@@ -18,7 +18,7 @@ import {
 // By its real path rather than through `@ui`: this file is loaded by the
 // `node --test` suite, where no alias exists. It is the same file the alias
 // resolves to, and it imports nothing itself, which is what lets node load it.
-import { canManageProject } from '../../../plaid-ui/src/domain/permissions.js';
+import { canEditProject, canManageProject } from '../../../plaid-ui/src/domain/permissions.js';
 import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
 import {
   getUdLayerInfo,
@@ -573,6 +573,8 @@ export class ConlluDocument extends DocumentModel {
       }
       const rules = await ensureLayerConstraints(this._client, wantedConstraints(info), {
         canManage: canManageProject(this._project, this._user),
+        canWrite: canEditProject(this._project, this._user),
+        documentId: this.id,
       });
       // The server's repair changed stored rows this screen shows.
       if (rules.repaired) {

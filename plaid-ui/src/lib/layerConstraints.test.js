@@ -9,13 +9,15 @@ const fakeClient = (answers = {}) => {
   const groups = [];
   const run = (method, layerId, args) => {
     calls.push([method, layerId, ...args]);
-    const a = answers[`${method}:${layerId}`];
+    let a = answers[`${method}:${layerId}`];
+    if (typeof a === 'function') a = a(...args);
     if (a instanceof Error) throw a;
     return a ?? (method === 'repairConstraints' ? { repaired: [] } : { constraints: {} });
   };
   const bundle = () => ({
     setConstraints: (id, ...args) => run('setConstraints', id, args),
     repairConstraints: (id, ...args) => run('repairConstraints', id, args),
+    checkConstraints: (id, ...args) => run('checkConstraints', id, args),
     get: (id) => run('get', id, []),
   });
   const client = {
@@ -180,6 +182,126 @@ describe('ensureLayerConstraints', () => {
     });
     expect(out.pending).toEqual([]);
     expect(c.calls.filter((x) => x[0] === 'get')).toHaveLength(1);
+  });
+});
+
+describe('a layer the data breaks for some of its rules', () => {
+  const ud = [
+    { type: 'acyclic', selfLoops: true },
+    { type: 'max-in-degree', max: 1 },
+    { type: 'same-ancestor', tokenLayer: 'S' },
+  ];
+  const rest = [ud[0], ud[2]];
+  const without = (list, type) => !list.some((c) => c.type === type);
+
+  it('declares every rule the refusal does not name, and only the refused ones are pending', async () => {
+    const c = fakeClient({
+      'setConstraints:R': (ns, list) =>
+        without(list, 'max-in-degree')
+          ? { constraints: {} }
+          : refused([{ constraint: 'max-in-degree' }]),
+    });
+    const out = await ensureLayerConstraints(c, [entry('R', ud, null, 'relation')], {
+      canManage: true,
+    });
+    expect(out.changed).toBe(true);
+    expect(out.pending).toEqual([
+      expect.objectContaining({ layerId: 'R', constraints: ['max-in-degree'], violationCount: 1 }),
+    ]);
+    expect(c.calls.filter((x) => x[0] === 'setConstraints').at(-1)).toEqual([
+      'setConstraints',
+      'R',
+      'igt',
+      rest,
+      undefined,
+      { expected: null },
+    ]);
+  });
+
+  it('keeps taking out what each refusal names until the rest is declared', async () => {
+    const c = fakeClient({
+      'setConstraints:R': (ns, list) =>
+        !without(list, 'max-in-degree')
+          ? refused([{ constraint: 'max-in-degree' }])
+          : !without(list, 'acyclic')
+            ? refused([{ constraint: 'acyclic' }])
+            : { constraints: {} },
+    });
+    const out = await ensureLayerConstraints(c, [entry('R', ud, null, 'relation')], {
+      canManage: true,
+    });
+    expect(out.pending).toEqual([
+      expect.objectContaining({ constraints: ['max-in-degree', 'acyclic'] }),
+    ]);
+    expect(c.calls.filter((x) => x[0] === 'setConstraints').at(-1)[3]).toEqual([ud[2]]);
+  });
+
+  it('on a later open, checks only the rules still out, and writes nothing while the data still breaks them', async () => {
+    const c = fakeClient({
+      'checkConstraints:R': { violations: [{ constraint: 'max-in-degree' }], violationCount: 2 },
+    });
+    const out = await ensureLayerConstraints(c, [entry('R', ud, rest, 'relation')], {
+      canManage: true,
+    });
+    expect(c.calls).toEqual([['checkConstraints', 'R', [ud[1]]]]);
+    expect(out).toEqual({
+      changed: false,
+      repaired: false,
+      pending: [
+        {
+          layerId: 'R',
+          kind: 'relation',
+          namespace: 'igt',
+          constraints: ['max-in-degree'],
+          violationCount: 2,
+        },
+      ],
+    });
+  });
+
+  it('declares the whole list once the data no longer breaks the rules still out', async () => {
+    const c = fakeClient({ 'checkConstraints:R': { violations: [], violationCount: 0 } });
+    const out = await ensureLayerConstraints(c, [entry('R', ud, rest, 'relation')], {
+      canManage: true,
+    });
+    expect(out).toEqual({ changed: true, repaired: false, pending: [] });
+    // Nothing to repair: the rules still out have no remedy.
+    expect(c.calls.map((x) => x[0])).toEqual(['checkConstraints', 'setConstraints']);
+    expect(c.calls[1][3]).toEqual(ud);
+  });
+});
+
+describe("a writer's open of a layer with no rules declared", () => {
+  it('repairs the document being opened, and declares nothing', async () => {
+    const c = fakeClient({ 'repairConstraints:L': { repaired: [{ document: 'D', deleted: 1 }] } });
+    const out = await ensureLayerConstraints(
+      c,
+      [
+        entry('L', [{ type: 'single-span' }]),
+        entry('V', [{ type: 'value-set', values: ['N'] }]),
+        entry('K', [{ type: 'single-span' }], [{ type: 'single-span' }]),
+        entry(
+          'P',
+          [{ type: 'single-span' }, { type: 'value-set', values: ['N'] }],
+          [{ type: 'single-span' }],
+        ),
+      ],
+      { canWrite: true, documentId: 'D' },
+    );
+    expect(out).toEqual({ changed: false, repaired: true, pending: [] });
+    // Only a layer holding no rules is repaired: once declared, the server
+    // keeps them.
+    expect(c.calls).toEqual([
+      ['batch', 1],
+      ['repairConstraints', 'L', [{ type: 'single-span' }], undefined, { document: 'D' }],
+    ]);
+  });
+
+  it('does nothing without a document, or for a reader', async () => {
+    const c = fakeClient();
+    await ensureLayerConstraints(c, [entry('L', [{ type: 'single-span' }])], { canWrite: true });
+    await ensureLayerConstraints(c, [entry('L', [{ type: 'single-span' }])], { documentId: 'D' });
+    expect(c.calls).toEqual([]);
   });
 });
 

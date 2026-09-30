@@ -157,12 +157,24 @@ test('an open by a maintainer repairs, then declares the rule on UMR relations o
   );
 });
 
-test('an open by a writer who is not a maintainer declares nothing', async () => {
-  const { doc, calls, reloads } = load({ user: WRITER });
+test('an open by a writer who is not a maintainer repairs the document opened and declares nothing', async () => {
+  const { doc, calls, raw, reloads } = load({ user: WRITER });
   const result = await doc._reconcile();
   assert.deepEqual(result, { findings: [] });
+  assert.deepEqual(constraintCalls(calls), [
+    {
+      name: 'relationLayers.repairConstraints',
+      args: [relationLayerOf(raw).id, ruleFor(raw), undefined, { document: doc.id }],
+    },
+  ]);
+  assert.equal(reloads(), 0, 'nothing was repaired, so nothing is read again');
+});
+
+test('an open by a writer once the rule is declared asks for nothing', async () => {
+  const probe = load();
+  const { doc, calls } = load({ user: WRITER, stored: ruleFor(probe.raw) });
+  assert.deepEqual(await doc._reconcile(), { findings: [] });
   assert.deepEqual(constraintCalls(calls), []);
-  assert.equal(reloads(), 0);
 });
 
 test('a declaration the stored data refuses becomes one warning', async () => {

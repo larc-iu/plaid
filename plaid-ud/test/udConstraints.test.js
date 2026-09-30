@@ -136,8 +136,8 @@ test('a layer the data breaks becomes one warning', () => {
   assert.match(f.message, /"Dependency Relations"/);
 });
 
-test("a maintainer's open repairs, then declares UD's rules, and a reader's declares nothing", async () => {
-  const run = async (user, maintainers) => {
+test("a maintainer's open repairs, then declares UD's rules, a writer's repairs the document opened, and a reader's does nothing", async () => {
+  const run = async (user, maintainers, writers = []) => {
     const calls = [];
     const bundle = (name) => ({
       setConfig: async () => {},
@@ -157,7 +157,7 @@ test("a maintainer's open repairs, then declares UD's rules, and a reader's decl
     const doc = new ConlluDocument({
       raw: rawDocFromConllu(INPUT, 'e', { enhanced: true }),
       client,
-      project: { maintainers },
+      project: { maintainers, writers },
       user: { id: user },
     });
     const result = await doc._reconcile();
@@ -165,6 +165,11 @@ test("a maintainer's open repairs, then declares UD's rules, and a reader's decl
   };
   const reader = await run('r@x.org', ['m@x.org']);
   assert.deepEqual(reader.calls, []);
+  // A writer's open repairs the document opened, and declares nothing.
+  const writer = await run('w@x.org', ['m@x.org'], ['w@x.org']);
+  assert.ok(writer.calls.length > 0);
+  assert.ok(writer.calls.every((c) => c[0].endsWith('.repairConstraints')));
+  assert.ok(writer.calls.every((c) => c[4]?.document === 'e-id'));
   const { calls, result } = await run('m@x.org', ['m@x.org']);
   const kinds = calls.map((c) => c[0]);
   assert.ok(kinds.indexOf('relationLayers.repairConstraints') >= 0);

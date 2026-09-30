@@ -10,7 +10,7 @@ import {
   writerPolicy,
   createdId,
 } from '@larc-iu/plaid-client';
-import { canManageProject } from '@ui/domain/permissions.js';
+import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { DocumentModel } from '@ui/domain/DocumentModel.js';
 import { followIds, pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { newHalfMetadata, survivorPatch } from './tokenReshape.js';
@@ -695,7 +695,11 @@ export class IgtDocument extends DocumentModel {
       const rules = await ensureLayerConstraints(
         this._client,
         wantedConstraints(info, this._project?.config),
-        { canManage: canManageProject(this._project, this._user) },
+        {
+          canManage: canManageProject(this._project, this._user),
+          canWrite: canEditProject(this._project, this._user),
+          documentId: this.id,
+        },
       );
       // The server's repair changed stored rows this screen shows.
       if (rules.repaired) {

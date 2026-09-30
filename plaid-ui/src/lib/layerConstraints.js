@@ -3,10 +3,15 @@
 // owns from its layer info (a pure `wantedConstraints`), and a maintainer's
 // open hands it here: a layer whose stored list differs is repaired first
 // (the same deletions the old open-time heals made, once, project-wide), then
-// declared. A declaration the stored data still breaks (a rule with no
-// remedy: two heads on a word, a cycle, an off-list value) is refused by the
-// server and the layer stays undeclared, returned under `pending` for the
-// app's validator to report.
+// declared. A rule the stored data still breaks (one with no remedy: two
+// heads on a word, a cycle, an off-list value, or a repair a lock held off)
+// is refused by the server. The layer is then declared with the rest of its
+// list, and the refused rules are returned under `pending` for the app's
+// validator to report. A later open checks only those rules, and declares
+// them once the data no longer breaks them.
+//
+// A writer's open of a layer that holds none of the app's rules yet repairs
+// the document being opened, as the old heals did, and declares nothing.
 
 import { isConstraintViolation, statusOf } from './errors.js';
 
@@ -32,15 +37,59 @@ const canonical = (value) => {
 const sameConstraints = (a, b) =>
   JSON.stringify(canonical(a?.length ? a : [])) === JSON.stringify(canonical(b?.length ? b : []));
 
+const sameRule = (a, b) => sameConstraints([a], [b]);
+
 /** The list a layer read holds for `namespace`, or null. */
 export const storedConstraints = (layer, namespace) => layer?.constraints?.[namespace] ?? null;
 
-const pendingOf = (entry, error) => ({
+const countOf = (answer) =>
+  answer?.violationCount ?? answer?.['violation-count'] ?? answer?.violations?.length ?? 0;
+
+const typesOf = (violations) => [...new Set((violations || []).map((v) => v.constraint))];
+
+/**
+ * The rules of `entry` still out when its layer holds part of the list it
+ * wants (an earlier open declared the rest), else null.
+ */
+const stillOut = (entry) => {
+  const stored = entry.stored || [];
+  if (!stored.length) return null;
+  if (!stored.every((s) => entry.constraints.some((c) => sameRule(s, c)))) return null;
+  return entry.constraints.filter((c) => !stored.some((s) => sameRule(s, c)));
+};
+
+/**
+ * What a maintainer's open does for one entry: the list to declare, the list
+ * to repair first, and the rules left pending, read from a check of the
+ * rules still out that have no remedy.
+ */
+const planOf = async (client, entry) => {
+  const out = stillOut(entry);
+  if (!out) return { entry, target: entry.constraints, repair: entry.constraints, pending: null };
+  const unfixable = out.filter((c) => !REMEDIABLE.has(c.type));
+  let broken = [];
+  let count = 0;
+  if (unfixable.length) {
+    const answer = await client[BUNDLE[entry.kind]].checkConstraints(entry.layerId, unfixable);
+    count = countOf(answer);
+    broken = typesOf(answer?.violations);
+    if (count && !broken.length) broken = unfixable.map((c) => c.type);
+  }
+  const keep = (c) => !broken.includes(c.type);
+  return {
+    entry,
+    target: entry.constraints.filter(keep),
+    repair: out.filter(keep),
+    pending: broken.length ? { constraints: broken, violationCount: count } : null,
+  };
+};
+
+const pendingEntry = (entry, constraints, violationCount) => ({
   layerId: entry.layerId,
   kind: entry.kind,
   namespace: entry.namespace,
-  constraints: [...new Set(error.responseData.violations.map((v) => v.constraint))],
-  violationCount: error.responseData['violation-count'] ?? error.responseData.violations.length,
+  constraints,
+  violationCount,
 });
 
 /**
@@ -49,61 +98,124 @@ const pendingOf = (entry, error) => ({
  * @param {object} client - a PlaidClient
  * @param {Array<{kind: 'token'|'span'|'relation', layerId: string, namespace: string,
  *   constraints: Array<object>, stored: Array<object>|null}>} wanted
- * @param {{canManage?: boolean}} options - only a maintainer declares
+ * @param {{canManage?: boolean, canWrite?: boolean, documentId?: string}} options -
+ *   a maintainer declares. A writer, given the document being opened,
+ *   repairs it for the layers that hold none of the rules yet.
  * @returns {Promise<{changed: boolean, repaired: boolean, pending: Array<object>}>}
  *   `changed` when a list was declared, `repaired` when stored data was
- *   changed (the caller reloads), `pending` for each layer left undeclared.
+ *   changed (the caller reloads), `pending` for each layer with rules left
+ *   undeclared, naming them.
  */
-export async function ensureLayerConstraints(client, wanted, { canManage = false } = {}) {
+export async function ensureLayerConstraints(
+  client,
+  wanted,
+  { canManage = false, canWrite = false, documentId = null } = {},
+) {
   const result = { changed: false, repaired: false, pending: [] };
-  if (!canManage) return result;
+  if (!canManage) {
+    if (canWrite && documentId) result.repaired = await repairDocument(client, wanted, documentId);
+    return result;
+  }
   const differs = wanted.filter((w) => !sameConstraints(w.stored, w.constraints));
   if (!differs.length) return result;
 
-  await client.withOperation(
-    'Set up layer rules',
-    async () => {
-      const toRepair = differs.filter((w) => w.constraints.some((c) => REMEDIABLE.has(c.type)));
-      if (toRepair.length) {
-        const answers = await client.batched((b) =>
-          toRepair.forEach((w) => b[BUNDLE[w.kind]].repairConstraints(w.layerId, w.constraints)),
-        );
-        // A batch answers `{status, headers, body}` per operation.
-        result.repaired = (answers || []).some((a) => (a?.body ?? a)?.repaired?.length > 0);
-      }
+  // Reads only: the rules an earlier open left out are checked before
+  // anything is written, so a layer the data still breaks costs one check.
+  const plans = [];
+  for (const w of differs) plans.push(await planOf(client, w));
+  const pendingOf = new Map();
+  for (const p of plans) if (p.pending) pendingOf.set(p.entry.layerId, { ...p.pending });
+  const toDeclare = plans.filter((p) => !sameConstraints(p.entry.stored, p.target));
 
-      const declare = (api, w) =>
-        api[BUNDLE[w.kind]].setConstraints(w.layerId, w.namespace, w.constraints, undefined, {
-          expected: w.stored ?? null,
-        });
-      try {
-        await client.batched((b) => differs.forEach((w) => declare(b, w)));
-        result.changed = true;
-        return;
-      } catch (e) {
-        if (!isConstraintViolation(e) && statusOf(e) !== 409) throw e;
-      }
-      // One refusal rolled the whole batch back: declare each on its own to
-      // learn which layers the stored data still breaks.
-      for (const w of differs) {
-        try {
-          await declare(client, w);
-          result.changed = true;
-        } catch (e) {
-          if (isConstraintViolation(e)) {
-            result.pending.push(pendingOf(w, e));
-          } else if (statusOf(e) === 409) {
-            // Another maintainer declared meanwhile. Read it once: theirs
-            // stands, and this open does not write over it.
-            const layer = await client[BUNDLE[w.kind]].get(w.layerId);
-            if (!sameConstraints(storedConstraints(layer, w.namespace), w.constraints)) continue;
-          } else {
-            throw e;
+  if (toDeclare.length) {
+    await client.withOperation(
+      'Set up layer rules',
+      async () => {
+        const toRepair = toDeclare.filter((p) => p.repair.some((c) => REMEDIABLE.has(c.type)));
+        if (toRepair.length) {
+          const answers = await client.batched((b) =>
+            toRepair.forEach((p) =>
+              b[BUNDLE[p.entry.kind]].repairConstraints(p.entry.layerId, p.repair),
+            ),
+          );
+          // A batch answers `{status, headers, body}` per operation.
+          result.repaired = (answers || []).some((a) => (a?.body ?? a)?.repaired?.length > 0);
+        }
+
+        const declare = (api, w, list) =>
+          api[BUNDLE[w.kind]].setConstraints(w.layerId, w.namespace, list, undefined, {
+            expected: w.stored ?? null,
+          });
+        if (toDeclare.length > 1) {
+          try {
+            await client.batched((b) => toDeclare.forEach((p) => declare(b, p.entry, p.target)));
+            result.changed = true;
+            return;
+          } catch (e) {
+            if (!isConstraintViolation(e) && statusOf(e) !== 409) throw e;
           }
         }
-      }
-    },
-    { kind: 'repair' },
-  );
+        // One layer, or one refusal rolled the whole batch back: declare each
+        // on its own, taking out the rules each refusal names, to declare the
+        // rest.
+        for (const { entry: w, target } of toDeclare) {
+          let list = target;
+          // The first refusal counts every violation of the rules refused.
+          let counted = false;
+          while (list.length && !sameConstraints(w.stored, list)) {
+            try {
+              await declare(client, w, list);
+              result.changed = true;
+              break;
+            } catch (e) {
+              if (isConstraintViolation(e)) {
+                const named = typesOf(e.responseData.violations);
+                const held = pendingOf.get(w.layerId) ?? { constraints: [], violationCount: 0 };
+                if (!counted) held.violationCount += countOf(e.responseData);
+                counted = true;
+                for (const t of named) if (!held.constraints.includes(t)) held.constraints.push(t);
+                pendingOf.set(w.layerId, held);
+                const next = list.filter((c) => !named.includes(c.type));
+                if (next.length === list.length) break;
+                list = next;
+              } else if (statusOf(e) === 409) {
+                // Another maintainer declared meanwhile. Theirs stands, and
+                // this open does not write over it.
+                await client[BUNDLE[w.kind]].get(w.layerId);
+                break;
+              } else {
+                throw e;
+              }
+            }
+          }
+        }
+      },
+      { kind: 'repair' },
+    );
+  }
+  for (const p of plans) {
+    const held = pendingOf.get(p.entry.layerId);
+    if (held) result.pending.push(pendingEntry(p.entry, held.constraints, held.violationCount));
+  }
   return result;
+}
+
+/**
+ * A writer's open: repair document `documentId` for every layer in `wanted`
+ * that holds none of its rules yet. Answers whether anything was changed.
+ */
+async function repairDocument(client, wanted, documentId) {
+  const bare = wanted.filter(
+    (w) => !w.stored?.length && w.constraints.some((c) => REMEDIABLE.has(c.type)),
+  );
+  if (!bare.length) return false;
+  // One batch, so History shows the repairs as one step.
+  const answers = await client.batched((b) =>
+    bare.forEach((w) =>
+      b[BUNDLE[w.kind]].repairConstraints(w.layerId, w.constraints, undefined, {
+        document: documentId,
+      }),
+    ),
+  );
+  return (answers || []).some((a) => (a?.body ?? a)?.repaired?.length > 0);
 }

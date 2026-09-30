@@ -171,6 +171,23 @@ describe('reconcileOnOpen and the layer rules', () => {
     expect(client.calls.some((c) => c.kind.endsWith('Constraints'))).toBe(false);
   });
 
+  it('repairs only the document a writer opens, and declares nothing, while no rules are declared', async () => {
+    const client = makeFakeClient();
+    const doc = new IgtDocument({
+      raw: buildRawDoc(),
+      project: { id: 'proj-1', vocabs: [], config: {}, maintainers: ['m'], writers: ['me'] },
+      user: { id: 'me' },
+      vocabularies: {},
+      client,
+      projectId: 'proj-1',
+    });
+    await doc.reconcileOnOpen();
+    const rules = client.calls.filter((c) => c.kind.endsWith('Constraints'));
+    expect(rules.length).toBeGreaterThan(0);
+    expect(rules.every((c) => c.kind.endsWith('.repairConstraints'))).toBe(true);
+    expect(rules.every((c) => c.args[3]?.document === doc.id)).toBe(true);
+  });
+
   it('repairs, then declares the rules a maintainer opens without', async () => {
     const client = makeFakeClient();
     const doc = maintainerDoc(client);

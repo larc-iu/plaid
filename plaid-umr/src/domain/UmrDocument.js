@@ -20,7 +20,7 @@ import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
 import { pendingId, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
 import { isUnknownOutcome } from '../../../plaid-ui/src/lib/errors.js';
 import { ensureLayerConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
-import { canManageProject } from '../../../plaid-ui/src/domain/permissions.js';
+import { canEditProject, canManageProject } from '../../../plaid-ui/src/domain/permissions.js';
 import { constraintFindings, wantedConstraints } from './umrConstraints.js';
 import { buildLexicon, vocabLinksByToken } from './vocabLexicon.js';
 import { getUmrLayerInfo, UMR_NAMESPACE, readIlgConfig } from '../utils/umrLayerUtils.js';
@@ -517,6 +517,8 @@ export class UmrDocument extends DocumentModel {
     try {
       rules = await ensureLayerConstraints(this._client, wantedConstraints(this.layerInfo), {
         canManage: canManageProject(this._project, this._user),
+        canWrite: canEditProject(this._project, this._user),
+        documentId: this.id,
       });
     } catch (error) {
       if (error?.status === 423) return { findings: [], deferred: true, interrupted: true };
