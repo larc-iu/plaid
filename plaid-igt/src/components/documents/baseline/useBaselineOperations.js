@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useDocumentCtx, useUnsavedDraft } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
+import { useEditLog } from '@ui/hooks/useEditLog.js';
 import { notifySuccess } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 
-// Baseline tab operations, backed by the shared IgtDocument. The save itself
-// (texts.update with server-side token shifting, plus the create/seed paths)
-// lives in doc.saveBaselineText; the hook just owns the local editing state.
+// Baseline tab operations, backed by the shared IgtDocument. The box keeps
+// its changes as edits made at the caret (plaid-ui's useEditLog), and the
+// save (doc.editBaselineText) sends them as such, so each stands where it was
+// typed. The hook owns the local editing state.
 export const useBaselineOperations = () => {
   const { doc } = useDocumentCtx();
   useDocumentModel(doc);
@@ -18,28 +20,34 @@ export const useBaselineOperations = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editedText, setEditedText] = useState('');
-  // The body the draft was typed over. A save merges the draft's changes onto
-  // the body stored by then (see saveBaselineText), so a passage someone else
+  // The body the draft was typed over. A save moves the draft's changes onto
+  // the body stored by then (see editBaselineText), so a passage someone else
   // saved meanwhile is not put back as it was here.
   const [base, setBase] = useState('');
+  const editLog = useEditLog();
 
   const handleEdit = () => {
     setEditedText(body);
     setBase(body);
+    editLog.reset(body, primaryTextLayer?.text?.digest ?? null);
     setIsEditing(true);
   };
 
   const handleCancel = () => {
     setEditedText('');
     setBase('');
+    editLog.reset('');
     setIsEditing(false);
   };
 
   const handleSave = async () => {
     // Editing the baseline of an already-tokenized doc can delete or mis-align
-    // existing tokens (and their annotations) in the changed/removed regions —
-    // the server re-diffs the text. A pure append (new text starts with the
-    // current body) leaves existing tokens untouched, so only confirm otherwise.
+    // existing tokens (and their annotations) in the changed/removed regions.
+    // Text added at the end of the body leaves existing tokens untouched, so
+    // only confirm otherwise. Read from the text, since a box filled whole
+    // (a paste over everything) is one edit over the whole body even when it
+    // only adds to the end.
+    const gaps = editLog.gaps();
     const tokenized = (doc.layerInfo?.primaryTokenLayer?.tokens || []).length > 0;
     const risky = tokenized && editedText !== base && !editedText.startsWith(base);
     if (
@@ -57,7 +65,7 @@ export const useBaselineOperations = () => {
       return;
     }
     setSaving(true);
-    const ok = await doc.saveBaselineText(editedText, base);
+    const ok = await doc.editBaselineText({ base, digest: editLog.log.digest, gaps });
     setSaving(false);
     if (ok) {
       notifySuccess('Baseline text saved');
@@ -73,6 +81,12 @@ export const useBaselineOperations = () => {
   );
 
   const updateEditedText = (text) => setEditedText(text);
+  // The box's change, with the selection before it (editLogHandlers) and the
+  // caret after it, kept as an edit.
+  const handleTextChange = (event) => {
+    editLog.onChange(event);
+    setEditedText(event.target.value);
+  };
 
   return {
     document: doc.document,
@@ -87,5 +101,7 @@ export const useBaselineOperations = () => {
     handleCancel,
     handleSave,
     updateEditedText,
+    handleTextChange,
+    editLogHandlers: editLog.handlers,
   };
 };

@@ -8,14 +8,17 @@
 
 import {
   applyMetadataOps,
+  applyTextOps,
   cpLength,
+  gapsToOps,
   isReservedMetadataKey,
   metadataOps,
 } from '@larc-iu/plaid-client';
 import { lineSentenceRanges } from '../../utils/tokenizationUtils.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
 import { isUnknownOutcome, statusOf } from '@ui/lib/errors.js';
-import { mergeText } from '@ui/lib/textMerge.js';
+import { mergeText, rebaseEdits } from '@ui/lib/textMerge.js';
+import { applyReshape } from '@ui/domain/textReshape.js';
 
 // One sentence per line of a freshly saved text. The server keeps the
 // partition in step with later edits; the Tokenize tab moves the breaks.
@@ -120,6 +123,98 @@ export const documentMutations = {
         }
       }
     });
+  },
+
+  // The Baseline tab's save: the edits typed in the box, as gaps of `base`
+  // (`{ start, end, value }` in code points, see plaid-ui's editLog.js), and
+  // `digest`, the digest of `base` the server issued. They go to the server
+  // as edits at the caret with that digest (texts.edit), so an insert or a
+  // delete stands exactly where it was typed and only a stretch typed over is
+  // read as a whole-body save reads it. The answer says what the edit did to
+  // the tokens, and the document is patched from it instead of read again.
+  //
+  // When the stored body is no longer `base` (someone saved meanwhile, or the
+  // server refused the digest), the gaps are moved onto the stored body with
+  // `rebaseEdits` and sent again with its digest. Changes to the same passage
+  // are refused, with the draft left in the tab.
+  async editBaselineText({ base, digest, gaps }) {
+    const info = this.layerInfo;
+    const primaryTextLayer = info.primaryTextLayer;
+    if (!primaryTextLayer) {
+      this.setError(notSetUp('No primary text layer found'));
+      return false;
+    }
+    if (!info.sentenceTokenLayer?.id) {
+      this.setError(notSetUp('No sentence layer found'));
+      return false;
+    }
+    // A text not made yet has no edits to send: it is created whole.
+    if (!primaryTextLayer.text?.id) {
+      return this.saveBaselineText(applyTextOps(base, gapsToOps(gaps)), base);
+    }
+    return this._queueWrite('Failed to save baseline text', async () => {
+      const textId = primaryTextLayer.text.id;
+      const { seeded } = await this._sendBaselineEdit(textId, base, digest, gaps);
+      if (seeded) await this._reloadInSend();
+      // An edit that took every sentence with it leaves a text with none, so
+      // the partition is seeded again, one sentence per line.
+      const body = this.body;
+      const sentencesAfter = this.layerInfo.sentenceTokenLayer?.tokens || [];
+      if (cpLength(body) > 0 && sentencesAfter.length === 0) {
+        await this._client.tokens.bulkCreate(
+          sentenceSeed(this.layerInfo.sentenceTokenLayer.id, textId, body),
+        );
+        await this._reloadInSend();
+      }
+    });
+  },
+
+  // The edit half of `editBaselineText`, from inside its send. A text with no
+  // sentences gets its partition in the same batch as the edit, measured on
+  // the body the edit makes. A lost answer is looked up: the edit landed when
+  // the stored body is the one it makes.
+  async _sendBaselineEdit(textId, base, digest, gaps) {
+    for (let attempt = 0; ; attempt += 1) {
+      // A body changed here and not yet answered has no digest: read the
+      // stored one, so the edit never goes without its precondition.
+      if (!(this.layerInfo.primaryTextLayer?.text?.digest ?? null)) await this._reloadInSend();
+      const stored = this.body;
+      const storedDigest = this.layerInfo.primaryTextLayer?.text?.digest ?? null;
+      if (stored !== base) {
+        const moved = rebaseEdits(base, gaps, stored);
+        if (moved.conflict) throw new Error(BASELINE_CONFLICT);
+        ({ gaps } = moved);
+        base = stored;
+        digest = storedDigest;
+      }
+      const ops = gapsToOps(gaps);
+      const body = applyTextOps(base, ops);
+      const sentenceLayer = this.layerInfo.sentenceTokenLayer;
+      const seed = cpLength(body) > 0 && (sentenceLayer?.tokens || []).length === 0;
+      try {
+        if (seed) {
+          // The sentences after it are stamped with the version from before
+          // the batch, so the edit is stamped too, and checked first.
+          await this._client.batched(async (b) => {
+            b.texts.edit(textId, ops, undefined, { base: digest, versioned: true });
+            b.tokens.bulkCreate(sentenceSeed(sentenceLayer.id, textId, body));
+          });
+          return { body, seeded: true };
+        }
+        const answer = await this._client.texts.edit(textId, ops, undefined, { base: digest });
+        this._applyRawPatch((next) => {
+          Object.assign(next, applyReshape(next, textId, answer));
+        });
+        return { body, seeded: false };
+      } catch (err) {
+        if (statusOf(err) === 409 && attempt < 2) {
+          await this._reloadInSend();
+          continue;
+        }
+        if (isUnknownOutcome(err) && (await this._landedAs(body))) return { body, seeded: false };
+        throw err;
+      }
+    }
   },
 
   // The update half of `saveBaselineText`, from inside its send. Answers the

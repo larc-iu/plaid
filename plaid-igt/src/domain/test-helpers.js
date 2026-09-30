@@ -260,6 +260,10 @@ export function makeFakeClient(opts = {}) {
       texts: {
         create: op('texts.create', () => ({ id: nextId('text') })),
         update: op('texts.update', () => ({})),
+        edit: op('texts.edit', (id) => ({
+          id,
+          reshape: { tokens: [], spans: [], vocabLinks: [], deleted: {} },
+        })),
         delete: op('texts.delete', () => ({})),
       },
       documents: {
