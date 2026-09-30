@@ -132,10 +132,11 @@ When you both changed the same passage, the save is refused and the editor says 
 The save is also refused when the text has passages that read the same and your change could be in either of them.
 
 Tokens already made follow an edit of the saved text.
-Deleting only the space between two words keeps them two words.
-Deleting the space and letters of either makes one word, which keeps the annotations of the word it shares more letters with.
-Typing a space inside an annotated word keeps its annotations on one of the two new words.
-A word typed in front of a sentence's first word joins the sentence before it.
+A change inside a token, or touching it with no space between, changes that token, and it keeps its words and annotations.
+Typing a space inside a token splits it: the token and its annotations stay on the half sharing more letters with it, and the other half is untokenized text.
+Deleting the space between two tokens keeps them two tokens. Merge them to make one.
+A token goes, along with its annotations, only when all its text is deleted.
+Text typed right before a sentence's first character joins that sentence, and text typed right after a sentence's last character joins that one.
 
 There are two ways to turn saved text into tokens, and both are runs (see <<_services>>):
 

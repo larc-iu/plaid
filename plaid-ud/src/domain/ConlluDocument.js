@@ -11,6 +11,8 @@ import {
   PLAID_NAMESPACE,
   isReservedMetadataKey,
   PRESERVE_ON_SPLIT_KEY,
+  PLAIN_EDITS_KEY,
+  SPLIT_ON_SPACE_KEY,
   PROVENANCE_KEYS,
   applyTextOps,
   gapsToOps,
@@ -698,6 +700,38 @@ export class ConlluDocument extends DocumentModel {
     }
   }
 
+  // The words take a text edit plainly (an edit inside a word or touching it
+  // grows or shrinks it with its analysis), except that a space typed inside
+  // a word splits it: `plainEdits` and `splitOnSpace` on the word layer. A
+  // project made before the keys existed picks them up here, for a
+  // maintainer, the missing ones in one batch naming what this page read, so
+  // the words never take one key without the other. A failure is let go: the
+  // next open tries again.
+  async _backfillPlainEdits(info) {
+    const layer = info?.wordTokenLayer;
+    if (!canManageProject(this._project, this._user) || !layer?.id) return;
+    const missing = [PLAIN_EDITS_KEY, SPLIT_ON_SPACE_KEY].filter(
+      (key) => layer.config?.[PLAID_NAMESPACE]?.[key] !== true,
+    );
+    if (missing.length === 0) return;
+    try {
+      await this._client.batched(async (b) => {
+        for (const key of missing) {
+          b.tokenLayers.setConfig(
+            layer.id,
+            PLAID_NAMESPACE,
+            key,
+            true,
+            undefined,
+            expectStored(layer, PLAID_NAMESPACE, key),
+          );
+        }
+      });
+    } catch (err) {
+      if (!isConfigConflict(err)) console.error('Could not declare plainEdits on the words:', err);
+    }
+  }
+
   // The same back-fill for the enhanced relation layer, which a project from
   // before it existed lacks. True when a layer was made, so the caller re-reads.
   async _backfillEnhancedLayer(info) {
@@ -725,6 +759,7 @@ export class ConlluDocument extends DocumentModel {
       // split leaves nothing for a later pass to find, so the declaration has
       // to be in place before the split, not repaired after it.
       await this._backfillPreserveOnSplit(info);
+      await this._backfillPlainEdits(info);
       const addedEnhancedLayer = await this._backfillEnhancedLayer(info);
       if (addedEnhancedLayer) {
         await this._reload();

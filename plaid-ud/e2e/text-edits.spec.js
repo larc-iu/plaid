@@ -1,6 +1,7 @@
 // The Text Editor saves the edits typed in the box, where they were typed,
 // against the body they were typed on (PATCH /texts/:id with `edits` and
-// `base`). A space typed inside a word cuts it, and the word's token goes
+// `base`). An edit inside a word or touching it changes that word and keeps
+// its analysis. A space typed inside a word cuts it, and the word's token goes
 // with one half. Backspace over a space joins two words, and both tokens stay.
 // Two tabs saving different passages both land, and a tab that changed the
 // passage another tab saved first is refused with its text kept. After each
@@ -154,6 +155,45 @@ test('Backspace over a space keeps both words', async ({ page }) => {
 
   const shown = await expectScreenIsStored(page, S);
   expect(shown.sentences).toEqual([['the', 'dog', 'runs']]);
+});
+
+test('a letter fixed inside a word and a word typed after it keep the word and its analysis', async ({
+  page,
+}) => {
+  // F1: `walkdd`, Backspace, then ` home` typed after it.
+  const body = 'they walkdd there';
+  const S = await seed('fix', body, [
+    [0, 4],
+    [5, 11],
+    [12, 17],
+  ]);
+  const before = await stored(S);
+  await openEditor(page, S, body);
+
+  await caretAt(page, 11);
+  await page.keyboard.press('Backspace');
+  await page.keyboard.type(' home');
+  await caretAt(page, 4);
+  await page.keyboard.type('s');
+  await expect(boxOf(page)).toHaveValue('theys walkd home there');
+  await save(page);
+  await saved(page);
+
+  await expect.poll(async () => (await stored(S)).body).toBe('theys walkd home there');
+  const { words, morphemes } = await stored(S);
+  // the letter typed at a word's end joins it, the fixed word keeps its
+  // token, and ` home` is apart from every word
+  expect(words).toEqual([
+    [before.words[0][0], 0, 5],
+    [before.words[1][0], 6, 11],
+    [before.words[2][0], 17, 22],
+  ]);
+  expect(morphemes.map((m) => m.slice(1))).toEqual([
+    [0, 5],
+    [6, 11],
+    [17, 22],
+  ]);
+  await expectScreenIsStored(page, S);
 });
 
 test('two tabs editing different passages both land', async ({ browser }) => {
