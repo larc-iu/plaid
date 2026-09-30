@@ -31,7 +31,8 @@
   require this namespace, but to avoid a load-time cycle if/when token
   ever needs to reach back, we resolve those two fns at call-site via
   `requiring-resolve`."
-  (:require [plaid.algos.text :as ta]
+  (:require [clojure.set :as set]
+            [plaid.algos.text :as ta]
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
@@ -257,7 +258,7 @@
           layer-rows (when (and (or (string? new-body-or-ops) edits) (seq tokens))
                        (psc/q db {:select [:id :overlap_mode :parent_token_layer_id :config]
                                   :from [:token_layers]
-                                  :where [:in :id (vec (distinct (map :token/layer tokens)))]}))
+                                  :where [:= :text_layer_id (:text_layer_id text-row)]}))
           partitioning (into #{} (comp (filter #(= "partitioning" (:overlap_mode %))) (map :id)) layer-rows)
           word-layers (into #{}
                             (comp (filter #(and (= "non-overlapping" (:overlap_mode %))
@@ -265,20 +266,32 @@
                                   (map :id))
                             layer-rows)
           ;; A layer whose config sets `plainEdits` (igt's) takes the edit
-          ;; the plain way (see ta/apply-plain-gaps), and so do the
-          ;; partitions over it, which then stay on its tokens' edges. The
-          ;; other layers take it by the rules above and below, worked out
-          ;; over every token, and keep only their own tokens' outcome.
+          ;; the plain way (see ta/apply-plain-gaps), and so do the layers
+          ;; nested under it at any depth (another app's syntactic words or
+          ;; nodes on the same words), which then keep to its tokens, and the
+          ;; partitions, which stay on its tokens' edges. Its own word layers
+          ;; decide where typed text goes. The other layers take the edit by
+          ;; the rules above and below, worked out over every token, and keep
+          ;; only their own tokens' outcome.
+          declared (into #{}
+                         (comp (filter #(true? (some-> (:config %) psc/parse-config (get-in ["plaid" "plainEdits"]))))
+                               (map :id))
+                         layer-rows)
+          parent-of (into {} (map (juxt :id :parent_token_layer_id)) layer-rows)
           plain (into #{}
-                      (comp (filter #(true? (some-> (:config %) psc/parse-config (get-in ["plaid" "plainEdits"]))))
-                            (map :id))
-                      layer-rows)
+                      (filter (fn [id] (loop [id id seen #{}]
+                                         (cond (nil? id) false
+                                               (declared id) true
+                                               (seen id) false
+                                               :else (recur (parent-of id) (conj seen id))))))
+                      (keys parent-of))
+          deciders (let [ws (set/intersection word-layers declared)] (if (seq ws) ws word-layers))
           plain? (fn [{:token/keys [layer]}] (or (contains? plain layer) (contains? partitioning layer)))
           plain-tokens (when (seq plain) (filterv plain? tokens))
           plain-result (when (seq plain)
                          (cond
-                           edits (ta/plain-edits old-body plain-tokens edits partitioning word-layers)
-                           (string? new-body-or-ops) (ta/plain-body old-body new-body-or-ops plain-tokens partitioning word-layers)
+                           edits (ta/plain-edits old-body plain-tokens edits partitioning deciders)
+                           (string? new-body-or-ops) (ta/plain-body old-body new-body-or-ops plain-tokens partitioning deciders)
                            :else nil))
           tokens-rest (if plain-result (filterv (complement plain?) tokens) tokens)
           ops (cond

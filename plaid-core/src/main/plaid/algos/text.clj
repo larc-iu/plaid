@@ -3560,7 +3560,8 @@
     text ends with, after the last whitespace, when its first letter kept is
     not whitespace. New text with no whitespace between two such tokens
     goes to the word holding the gap at that end, else the first. A gap
-    that is exactly a word's text goes to that word alone.
+    that is exactly a token's text (a word, a sentence with its separator,
+    a segment) goes to that token alone, which keeps its place on it.
   - Where new text goes is decided by the words, the tokens on a layer in
     `word-layers` (else every token on no layer in `partitioning`), and the
     other tokens follow them, so a sentence or a time-alignment segment
@@ -3625,7 +3626,7 @@
                         (if (< a b)
                           (cond
                             (and (< begin a) (<= a end) (< end b)) (mark! g :before)
-                            (and (<= begin a) (= end b)) (do (mark! g :holds-end) (when (= begin a) (mark! g :exact))))
+                            (and (<= begin a) (= end b)) (mark! g :holds-end))
                           (when (and (= end a) (< begin a)) (mark! g :before))))))
                   (let [g (at-or-before begin)]
                     (when (>= g 0)
@@ -3635,6 +3636,13 @@
                             (and (< a begin) (<= begin b) (< b end)) (mark! g :after)
                             (and (= begin a) (<= b end)) (mark! g :holds-start))
                           (when (and (= begin a) (< a end)) (mark! g :after)))))))
+                ;; A gap that is exactly a token's text (a word, a sentence
+                ;; with its separator, a segment) is that token typed over.
+                (doseq [{:token/keys [begin end]} wide]
+                  (let [g (at-or-before begin)]
+                    (when (>= g 0)
+                      (let [{:keys [a b]} (info g)]
+                        (when (and (< a b) (= begin a) (= end b)) (mark! g :exact))))))
                 f)
         flag? (fn [g x] (contains? (aget ^objects flags g) x))
         new-at (fn [g] (+ (long (:a (info g))) (aget shift g)))
@@ -3642,8 +3650,8 @@
         ;; beginning after it take], the same for every layer, so that a
         ;; partition keeps to the words' edges. New text with no whitespace
         ;; goes to one side: the word holding the gap at that end, else the
-        ;; word before it, else the one after. A gap a word is exactly goes to
-        ;; that word alone.
+        ;; word before it, else the one after. A gap a token is exactly goes
+        ;; to that token alone.
         given (mapv (fn [g]
                       (let [{:keys [n lead trail word? before-ok after-ok]} (info g)
                             before? (and before-ok (or (flag? g :before) (flag? g :holds-end)))

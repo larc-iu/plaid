@@ -142,3 +142,26 @@
     (is (= "köye XZ XZ XZdog" (:text/body (:text r))))
     (is (= [11 16] (at [:w 2]) (at [:s 1])))
     (is (= [0 11] (at [:s 0])))))
+
+(deftest a-sentence-or-a-segment-typed-over-exactly-keeps-its-token
+  ;; L1: `kai\n` (all of sentence 1) typed over as `-`, which touches `dog`
+  (let [{:keys [body tokens]} (doc "|kai|\n/|dog| |cat|")
+        r (ta/plain-edits body tokens [(rep 0 4 "-")] #{:s} #{:w})
+        at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
+    (is (= "-dog cat" (:text/body (:text r))))
+    (is (= [0 1] (at [:s 0])))
+    (is (= [1 8] (at [:s 1])))
+    (is (= [1 4] (at [:w 1])))
+    (is (nil? (at [:w 0]))))
+  ;; a segment glued to the next one, typed over whole
+  (let [tokens [{:token/id :s :token/layer :s :token/begin 0 :token/end 7}
+                {:token/id :w1 :token/layer :w :token/begin 0 :token/end 2}
+                {:token/id :w2 :token/layer :w :token/begin 2 :token/end 4}
+                {:token/id :w3 :token/layer :w :token/begin 5 :token/end 7}
+                {:token/id :a1 :token/layer :a :token/begin 0 :token/end 2}
+                {:token/id :a2 :token/layer :a :token/begin 2 :token/end 7}]
+        r (ta/plain-edits "abcd ef" tokens [(rep 2 5 "xy")] #{:s} #{:w})
+        at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
+    (is (= "abxy" (:text/body (:text r))))
+    (is (= [0 2] (at :a1) (at :w1)))
+    (is (= [2 4] (at :a2)))))

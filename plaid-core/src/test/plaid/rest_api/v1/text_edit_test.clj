@@ -39,9 +39,10 @@
               (assert-status 204 (api-call admin-request {:method :put
                                                           :path (str "/api/v1/token-layers/" l "/config/plaid/plainEdits")
                                                           :body true}))))
+        ;; another app's layer: beside the words, or (`:child`) nested under them
         others (when other
                  (-> (create-token-layer-opts admin-request tl "Other" {:overlap-mode "non-overlapping"
-                                                                        :parent-token-layer-id sentences})
+                                                                        :parent-token-layer-id (if (= other :child) words sentences)})
                      :body :id))
         glosses (-> (create-span-layer admin-request morphemes "Gloss") :body :id)
         text-id (-> (create-text admin-request tl doc body) :body :id)
@@ -248,3 +249,30 @@
         (assert-not-found (get-token admin-request (morphemes 2)))
         (assert-not-found (get-span admin-request (glosses 2)))
         (is (all-there (take 2 glosses)))))))
+
+(deftest a-layer-under-a-plain-layer-follows-it
+  ;; H1: igt and ud on one project. The words are plain (igt), ud's syntactic
+  ;; words nest under them with a coextensive rule. An edit must move them
+  ;; with their word, never delete them for not matching it.
+  (let [{:keys [text words others]} (setup "dog cat eel" :plain true :other :child)
+        syn others
+        lemma (-> (create-span-layer admin-request (first (map #(:token/layer (:body (get-token admin-request %))) syn)) "Lemma")
+                  :body :id)
+        lemmas (mapv (fn [s w] (-> (create-span admin-request lemma [s] w) :body :id)) syn ["DOG" "CAT" "EEL"])
+        layer-of (:token/layer (:body (get-token admin-request (first syn))))
+        _ (assert-status 200 (api-call admin-request {:method :put :path (str "/api/v1/token-layers/" layer-of "/constraints/ud")
+                                                      :body {:constraints [{:type "coextensive"}]}}))
+        digest-of #(-> (get-text admin-request text) :body :text/digest)
+        all-there (fn [ids] (every? #(= 200 (:status (get-span admin-request %))) ids))]
+    (testing "a letter typed at a word's end"
+      (assert-ok (edit-text text {:edits [(ins 3 "s")] :base (digest-of)}))
+      (is (= [0 4 "dogs"] (extent (words 0)) (extent (syn 0))))
+      (is (all-there lemmas)))
+    (testing "a space typed inside a word"
+      (assert-ok (edit-text text {:edits [(ins 6 " ")] :base (digest-of)}))
+      (is (= [5 9 "c at"] (extent (words 1)) (extent (syn 1))))
+      (is (all-there lemmas)))
+    (testing "a whole-body save"
+      (assert-ok (api-call admin-request {:method :patch :path (str "/api/v1/texts/" text) :body {:body "dogsc at eels"}}))
+      (is (= [[0 4 "dogs"] [4 8 "c at"] [9 13 "eels"]] (map extent words) (map extent syn)))
+      (is (all-there lemmas)))))

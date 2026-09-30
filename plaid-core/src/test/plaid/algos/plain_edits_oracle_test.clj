@@ -12,15 +12,17 @@
   The judge, for each token of a plain layer, against the change as the
   server takes it (the composed gaps, or for a whole body the gaps its
   diff gives):
-  - a token is deleted only when none of its old text is left and no new
-    text was typed inside it (a word typed over whole is kept, a segment
-    typed over whole may go when its new text joins the word beside it),
+  - a token (a word, a morpheme, a segment, a sentence, a token of a layer
+    nested under the words) is deleted only when none of its old text is
+    left and no new text was typed inside it (a token typed over whole is
+    kept),
   - a token left keeps all of its old letters that are left, and holds none
     of the old text outside it (so no word takes the space before it or
     another word's letters),
   - it neither begins nor ends on whitespace it did not have there,
   - a new letter joined to a word's letters with no whitespace between is
-    in a word, and a new letter in a word is inside the word, joined to its
+    in a word, unless it was typed over exactly a sentence's or a segment's
+    text, which keeps it, and a new letter in a word is inside the word, joined to its
     letters, or typed over it,
   - a word's morphemes keep its extent, go with it, and are never moved
     onto another word,
@@ -66,6 +68,10 @@
                              (conj! toks {:token/id [:w id] :token/layer :w :token/begin b :token/end e})
                              (dotimes [m (inc (.nextInt rng 3))]
                                (conj! toks {:token/id [:m id m] :token/layer :m :token/begin b :token/end e}))
+                             ;; another app's layer nested under the words
+                             ;; (a ud syntactic word): plain because its parent is
+                             (when (and (:child opts) (< (.nextDouble rng) (:child opts)))
+                               (conj! toks {:token/id [:x id] :token/layer :x :token/begin b :token/end e}))
                              (when (< i (dec n))
                                ;; words written together, as after the space
                                ;; between them was deleted
@@ -202,7 +208,7 @@
                     out))
         by-id (into {} (map (juxt :token/id identity)) (:tokens result))
         gone (set (:deleted result))
-        plain #{:w :m :a}
+        plain #{:w :m :a :x :s}
         out (transient [])
         bad! (fn [& xs] (conj! out (apply str xs)))
         kept-of (fn [{:token/keys [begin end]}] (filterv #(not (aget in-gap %)) (range begin end)))
@@ -225,10 +231,14 @@
               now (by-id id)]
           (cond
             (and must-go (not (gone id))) (bad! id " kept with none of its text")
-            ;; a segment typed over whole follows the words: the new text
-            ;; may go to the word beside it
+            ;; a sentence or a segment follows the words: with no letter of
+            ;; its own left, text typed at its edge may go to the next word
+            ;; and its sentence, so it must stay only when a letter is left or
+            ;; it was typed over exactly
             (and (not must-go) (gone id)
-                 (or (not= layer :a) (some #(not (ws? (aget o %))) kept)))
+                 (or (not (#{:s :a} layer))
+                     (some #(not (ws? (aget o %))) kept)
+                     (some #(and (= begin (:start %)) (= end (:end %))) cov)))
             (bad! id " deleted though it has text")
             (and now (not (gone id)))
             (let [{nb :token/begin ne :token/end} now]
@@ -271,9 +281,17 @@
                                   k (kept-of t)]
                             (aset a (aget newpos k) true))
                           a)]
-        ;; reached from a word's letter through new letters only
+        ;; reached from a word's letter through new letters only, unless it
+        ;; was typed over exactly a token's text (a sentence, a segment),
+        ;; which keeps it
         (dotimes [p (alength nw)]
-          (when (and (aget inserted p) (not (ws? (aget nw p))) (not (aget word-at p)))
+          (when (and (aget inserted p) (not (ws? (aget nw p))) (not (aget word-at p))
+                     (not-any? (fn [g] (let [na (gap-new g)]
+                                         (and (<= na p) (< p (+ na (cp/cp-count (:value g))))
+                                              (some #(and (= (:start g) (:token/begin %)) (= (:end g) (:token/end %))
+                                                          (< (:start g) (:end g)))
+                                                    tokens))))
+                               gaps))
             (let [reach (fn [step]
                           (loop [q (step p)]
                             (cond
@@ -282,8 +300,8 @@
                               :else (aget word-letter q))))]
               (when (or (reach dec) (reach inc))
                 (bad! "new letter at " p " joined to a word is in none " (pr-str new-body)))))))
-      ;; morphemes with their word
-      (doseq [{:token/keys [id layer]} tokens :when (= layer :m)]
+      ;; morphemes and child tokens with their word
+      (doseq [{:token/keys [id layer]} tokens :when (#{:m :x} layer)]
         (let [w [:w (second id)]]
           (cond
             (not= (boolean (gone id)) (boolean (gone w))) (bad! id " and its word part")
@@ -321,7 +339,8 @@
    :spaced-words {:carets 2 :spaced 0.6}
    :across-words {:carets 2 :reach 40}
    :lamkang-like {:carets 3 :spaced 0.39 :reach 30}
-   :written-together {:carets 3 :glue 0.3 :spaced 0.3}})
+   :written-together {:carets 3 :glue 0.3 :spaced 0.3}
+   :nested-layer {:carets 3 :child 0.7 :spaced 0.3 :glue 0.1}})
 
 (def ^:private cases-per-config 1500)
 

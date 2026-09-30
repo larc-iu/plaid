@@ -973,9 +973,11 @@ A token layer whose config sets `plainEdits` to `true` in the `plaid` namespace 
 * A space typed inside a token does not split it. The token now holds the space.
 * Deleting the whitespace between two tokens keeps both, now side by side. Text then typed between them with no whitespace goes to the first.
 * New text apart from every token, with whitespace between, belongs to none of them.
-* A token is deleted only when all its text is deleted. A token typed over whole keeps its place on the new text.
+* A token is deleted only when all its text is deleted. A token typed over whole keeps its place on the new text, and so does a sentence typed over whole with its separator.
 * A token is never moved onto another word, and nothing that hangs off it is deleted or moved.
 
+A layer nested under such a layer, at any depth, takes a change the same way, so its tokens keep to their parents' edges.
+This holds for another app's layer on the same words too.
 Partition layers over such a layer follow its tokens' edges.
 This holds for `body` and `edits` alike.
 
