@@ -133,10 +133,11 @@ The save is also refused when the text has passages that read the same and your 
 
 Tokens already made follow an edit of the saved text.
 A change inside a token, or touching it with no space between, changes that token, and it keeps its words and annotations.
-Typing a space inside a token splits it: the token and its annotations stay on the half sharing more letters with it, and the other half is untokenized text.
+Typing a space inside a token splits it there: the token and its annotations stay on the part holding most of its letters, and the rest is untokenized text. Spaces a token already had do not split it.
+On a project whose tokens are shared with another app, the split holds for that app too.
 Deleting the space between two tokens keeps them two tokens. Merge them to make one.
 A token goes, along with its annotations, only when all its text is deleted.
-Text typed right before a sentence's first character joins that sentence, and text typed right after a sentence's last character joins that one.
+Text typed right before a sentence's first character joins that sentence, unless it holds a line break, and text typed right after a sentence's last character joins that one.
 
 There are two ways to turn saved text into tokens, and both are runs (see <<_services>>):
 

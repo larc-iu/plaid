@@ -431,7 +431,8 @@ test('a save over a text whose digest is not known reads it first, and never goe
   const { doc, sent, server } = setup();
   doc._raw = withBody(doc._raw, 'the big dog ran', null);
   doc._dataVersion += 1;
-  assert.equal(await doc.saveText('the big dog ran home'), true);
+  const log = { ...edited('the big dog ran', 'the big dog ran home'), digest: null };
+  assert.equal(await doc.saveText(log), true);
   assert.equal(server.reads, 1);
   assert.deepEqual(
     sent.map((c) => c.digest),
@@ -520,20 +521,6 @@ test('a document with no text saved creates it with the typed body', async () =>
   assert.equal(ok, true);
   assert.deepEqual(created, [{ layerId: layer.id, docId: raw.id, body: 'Hello.' }]);
   assert.equal(stored, 'Hello.');
-});
-
-test('a whole new body (for scripts) is sent as the stored body typed over', async () => {
-  const { doc, base, sent } = setup();
-  const ok = await doc.saveText('the big cat ran');
-  assert.equal(ok, true);
-  assert.deepEqual(sent, [
-    {
-      id: 'text-1',
-      ops: [{ type: 'replace', index: 0, length: [...base].length, value: 'the big cat ran' }],
-      digest: digestOf(base),
-    },
-  ]);
-  assert.equal(doc.body, 'the big cat ran');
 });
 
 // REV3-edit-ops G1-gap: the save landed with its answer lost, and its resend
@@ -643,4 +630,24 @@ test('a first send refused 500 that stored nothing is refused', async () => {
   const ok = await doc.saveText(edited(base, `${base} home`));
   assert.equal(ok, false);
   assert.equal(server.body, base);
+});
+
+test('a save takes the edits typed, never a whole new body, which would delete the words between two changes', async () => {
+  // REV2 L5: a string went as one replace of the whole body, and the core
+  // deleted every word between the two changes.
+  const { doc, base, sent } = setup({ body: 'dog cat eel fox.' });
+  await assert.rejects(() => doc.saveText('dot cat eel fix.'), /edits/);
+  assert.deepEqual(sent, []);
+  const log = recordEdit(
+    edited(base, 'dot cat eel fox.'),
+    'dot cat eel fox.',
+    null,
+    'dot cat eel fix.',
+    null,
+  );
+  assert.equal(await doc.saveText(log), true);
+  assert.deepEqual(sent[0].ops, [
+    { type: 'replace', index: 2, length: 1, value: 't' },
+    { type: 'replace', index: 13, length: 1, value: 'i' },
+  ]);
 });

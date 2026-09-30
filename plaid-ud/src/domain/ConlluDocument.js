@@ -262,14 +262,9 @@ export class ConlluDocument extends DocumentModel {
     const { textLayer } = this.layerInfo;
     const text = textLayer?.text;
     if (!text?.id && !textLayer?.id) return false;
-    if (typeof log === 'string') {
-      const stored = text?.id ? this._storedText(text.id) : { body: '', digest: null };
-      log = {
-        base: stored.body,
-        digest: stored.digest,
-        gaps: log === stored.body ? [] : [{ start: 0, end: [...stored.body].length, value: log }],
-      };
-    }
+    // The edits typed, never a whole new body: sent as one stretch typed
+    // over, it would delete every word between two changes.
+    if (typeof log === 'string') throw new Error('saveText takes the edits typed (an edit log).');
     const typedBase = log.base ?? '';
     const typedGaps = log.gaps ?? editLogGaps(log);
     // Not `ready` until it is made to be sent (`_planText`).

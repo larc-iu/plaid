@@ -53,7 +53,7 @@ try {
       `A: createWord, virgin doc, text=${JSON.stringify(text)} (cp=${cpLength(text)}, utf16=${text.length})`,
     );
     const doc = await freshDoc(client, project.id, 'astral-createWord');
-    await doc.saveText(text);
+    await doc.saveText({ base: '', digest: null, gaps: [{ start: 0, end: 0, value: text }] });
     const ok1 = await doc.createWord(1, 4, text); // "the"
     check('createWord("the") succeeds', ok1 === true, doc.error);
     const v = await ConlluDocument.load(client, project.id, doc.id);
@@ -116,7 +116,7 @@ try {
       `B: tokenize, text=${JSON.stringify(text)} (cp=${cpLength(text)}, utf16=${text.length})`,
     );
     const doc = await freshDoc(client, project.id, 'astral-tokenize');
-    await doc.saveText(text);
+    await doc.saveText({ base: '', digest: null, gaps: [{ start: 0, end: 0, value: text }] });
     const okB = await doc.tokenize(text);
     check('tokenize succeeds', okB === true, doc.error);
     const v = await ConlluDocument.load(client, project.id, doc.id);
