@@ -12,7 +12,8 @@ import { useEffect } from 'react';
 //
 // So the question is asked here, once for the whole app. A screen holds its
 // document while it is open (`useSavingGuard(doc)`), and a document it lets go
-// of is kept watched until its queue has drained.
+// of is kept watched until its queue has drained, however long a send waiting
+// for the network takes to land.
 
 // document -> how many screens hold it right now.
 const held = new Map();

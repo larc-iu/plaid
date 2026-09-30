@@ -18,6 +18,7 @@ const offline = () =>
   Object.assign(new Error('Network error: Failed to fetch'), { status: 0, offline: true });
 
 afterEach(() => {
+  vi.useRealTimers();
   window.dispatchEvent(new Event('pageshow'));
 });
 
@@ -81,33 +82,44 @@ describe('a send that never left the browser', () => {
   });
 });
 
-// F-REPAIR's note: the wait for the network did not end when the queue was
-// let go, so a send waited out its timer (a minute and more) for a screen
-// that had closed, and the close-tab question stayed on meanwhile.
+// REV4 J1: letting the queue go stops its refetches only. A send waiting for
+// the network keeps waiting after the screen goes, and lands once the network
+// is back, with the close-tab question on all the while.
 describe('a send waiting for the network when the screen goes', () => {
-  it('is tried once more at once, and refused if it fails again', async () => {
-    const q = new WriteQueue({ retryDelay: () => 600000 });
+  it('keeps waiting, stays saving, and lands once the network is back', async () => {
+    vi.useFakeTimers();
+    const q = new WriteQueue({ retryDelay: () => 10000 });
     const refused = vi.fn();
     let tries = 0;
+    let back = false;
     const a = q.push(
       async () => {
         tries += 1;
-        throw offline();
+        if (!back) throw offline();
       },
       { refused, resync: async () => {}, resendWhenBack: (err) => err.offline === true },
     );
-    await flush();
+    const behind = q.push(async () => {}, { resync: async () => {} });
+    await vi.advanceTimersByTimeAsync(10);
     expect(q.isOffline).toBe(true);
     q.letGo();
-    expect(await a).toBe(false);
-    expect(tries).toBe(2);
-    expect(refused).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(tries).toBe(1);
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(tries).toBeGreaterThan(3);
+    expect(q.isSaving).toBe(true);
+    expect(q.isOffline).toBe(true);
+    expect(refused).not.toHaveBeenCalled();
+    back = true;
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(await a).toBe(true);
+    expect(await behind).toBe(true);
     expect(q.isSaving).toBe(false);
     expect(q.isOffline).toBe(false);
   });
 
   it('lands when the network is back by then', async () => {
-    const q = new WriteQueue({ retryDelay: () => 600000 });
+    const q = new WriteQueue({ retryDelay: () => 0 });
     let tries = 0;
     const a = q.push(
       async () => {

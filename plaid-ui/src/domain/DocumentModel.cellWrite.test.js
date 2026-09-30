@@ -90,15 +90,17 @@ describe('cellWrite', () => {
     expect(errors.map((e) => e.err.status)).toEqual([500]);
   });
 
-  it('says a write whose answer was lost may have landed, once no screen waits for it', async () => {
+  // REV4 J1: letting the document go stops refetches only.
+  it('sends a write whose answer was lost again after no screen waits for it, until it lands', async () => {
     const { server, doc } = open();
+    doc._writes._retryDelay = () => 0;
     server.fail.push(failing(502), failing(502));
     const release = doc.hold();
     const pending = doc.cellWrite(() => doc.set('gloss', 'DOG'));
     await new Promise((r) => setTimeout(r, 0));
     release();
-    const outcome = await pending;
-    expect(outcome).toMatchObject({ landed: false, status: 502, uncertain: true });
+    expect(await pending).toEqual({ landed: true, value: true });
+    expect(server.values.gloss).toBe('DOG');
   });
 
   it('sends a write whose answer was lost again until it is answered', async () => {

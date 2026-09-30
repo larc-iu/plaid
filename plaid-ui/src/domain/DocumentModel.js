@@ -291,11 +291,11 @@ export class DocumentModel {
   /**
    * Hold this document while a screen shows it. Returns the release.
    *
-   * Once no screen holds it, a refetch has nothing left to put right: the
-   * queue still sends what it holds (useSavingGuard keeps the close-tab
-   * question on until it has), but a refetch after a refusal stops, even one
-   * retrying while offline, so the question does not stay on with nothing
-   * left to lose.
+   * Once no screen holds it, a refetch has nothing left to put right: a
+   * refetch after a refusal stops, even one retrying while offline. What the
+   * queue holds is still sent, a send waiting for the network included, for
+   * as long as the page is open, and useSavingGuard keeps the close-tab
+   * question on until it has landed.
    *
    * The release takes effect a moment later, so a screen that lets go and
    * holds again at once (StrictMode, a remount) is not let go at all. Held

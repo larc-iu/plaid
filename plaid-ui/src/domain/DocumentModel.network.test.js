@@ -265,18 +265,20 @@ describe('a write whose answer was lost', () => {
     expect(server.keys[2]).not.toBe(server.keys[0]);
   });
 
-  it('once no screen shows the document it is tried once more, then refused', async () => {
+  // REV4 J1: letting the document go stops refetches only.
+  it('once no screen shows the document it is still sent again, under its keys, until it lands', async () => {
     const { server, doc, errors } = open();
-    doc._writes._retryDelay = () => 60000;
+    doc._writes._retryDelay = () => 5;
     const release = doc.hold();
-    server.fail.push({ error: lost }, { error: lost });
+    server.fail.push({ error: lost }, { error: lost }, { error: lost });
     const saved = doc.set('gloss', 'DOG');
     await flush();
     release();
-    await flush();
-    expect(await saved).toBe(false);
-    expect(server.keys).toHaveLength(2);
-    expect(errors).toHaveLength(1);
+    expect(await saved).toBe(true);
+    expect(server.keys).toHaveLength(4);
+    expect(new Set(server.keys).size).toBe(1);
+    expect(server.values).toEqual({ gloss: 'DOG' });
+    expect(errors).toEqual([]);
   });
 });
 

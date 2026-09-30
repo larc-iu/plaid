@@ -179,6 +179,35 @@ describe('edits made while a proxy answers 502', () => {
   });
 });
 
+// REV4 J1 (s1_letgo): the person leaves the document's screen while its edits
+// are being sent again through a 502 run. The page is open, so they keep
+// going under their keys and land once the server answers, and the document
+// stays saving until then.
+describe('edits being sent again when the screen lets the document go', () => {
+  it('keep going, and land once the server answers', async () => {
+    const { state, doc, errors } = open();
+    doc._writes._retryDelay = () => 5;
+    const release = doc.hold();
+    state.gateway = 1000;
+    const a = doc.create('A');
+    const b = doc.create('B');
+    const c = doc.create('C');
+    for (let i = 0; i < 10; i += 1) await new Promise((r) => setTimeout(r, 5));
+    release();
+    const settled = [];
+    for (const x of [a, b, c]) x.ok.then((v) => settled.push(v));
+    for (let i = 0; i < 20; i += 1) await new Promise((r) => setTimeout(r, 5));
+    expect(settled).toEqual([]);
+    expect(doc.isSaving).toBe(true);
+    expect(errors).toEqual([]);
+    state.gateway = 0;
+    expect([await a.ok, await b.ok, await c.ok]).toEqual([true, true, true]);
+    expect([...state.rows.values()]).toEqual(['A', 'B', 'C']);
+    expect(errors).toEqual([]);
+    expect(doc.isSaving).toBe(false);
+  });
+});
+
 // REV2 G3: an id-taken inside a batch takes the whole batch back, so the
 // rest of the edit is not stored. The row is made (settled), and the edit is
 // reported, never passed over in silence.

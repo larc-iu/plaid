@@ -25,9 +25,11 @@
 // close-tab question on for good.
 //
 // Once the screen showing the queue's work has gone (`letGo`), nothing is
-// left for a refetch to put right. The queue still sends what it holds, but
-// refetches nothing, and a retry waiting its turn stops at once. `hold` says
-// whether a refetch was left undone meanwhile, for a screen that comes back.
+// left for a refetch to put right. The queue refetches nothing, and a refetch
+// being retried stops at once. What it holds is still sent, and a send
+// waiting for the network keeps waiting, for as long as the page is open.
+// `hold` says whether a refetch was left undone meanwhile, for a screen that
+// comes back.
 //
 // `shown: false` is for a write that put nothing on screen (a copy). Its
 // failure takes nothing back, so it refetches nothing.
@@ -52,10 +54,9 @@
 // landed are answered from what they stored and write nothing twice. The
 // wait has no end while the page is open: a proxy's 502 or 504 is the
 // server's fault as much as a connection refused, and the edits behind the
-// send wait their turn and land in order once it is answered. Once the queue
-// is let go, the wait ends at once: the send is tried one more
-// time, and refused if it fails again, so nothing waits on a network no
-// screen is watching for.
+// send wait their turn and land in order once it is answered. That holds
+// after the queue is let go too: the page is still open, and useSavingGuard
+// keeps the close-tab question on until the send lands.
 //
 // Once the page is being unloaded (`pagehide`), no send starts. Leaving the
 // page aborts the send in flight, and the one behind it would otherwise go
@@ -141,19 +142,18 @@ export class WriteQueue {
     // whether a refetch was left undone since.
     this._letGo = false;
     this._missed = false;
-    // End the wait before a retry, and the wait for the network, early.
+    // End the wait before a refetch's retry early.
     this._wake = null;
-    this._wakeOnline = null;
   }
 
   /**
-   * The screen showing this queue's work has gone. What is queued is still
-   * sent, but nothing is refetched, and a refetch being retried stops.
+   * The screen showing this queue's work has gone. Nothing is refetched, and
+   * a refetch being retried stops. What is queued is still sent, and a send
+   * waiting for the network keeps waiting.
    */
   letGo() {
     this._letGo = true;
     if (this._wake) this._wake();
-    if (this._wakeOnline) this._wakeOnline();
   }
 
   /**
@@ -270,7 +270,7 @@ export class WriteQueue {
         if (attempt) this._setOffline(false);
         return;
       } catch (err) {
-        if (!resendWhenBack?.(err) || (attempt && this._letGo)) {
+        if (!resendWhenBack?.(err)) {
           if (attempt) this._setOffline(false);
           throw err;
         }
@@ -282,20 +282,16 @@ export class WriteQueue {
     }
   }
 
-  // Resolves after `ms`, as soon as the browser says the network is back, or
-  // as soon as the queue is let go.
+  // Resolves after `ms`, or as soon as the browser says the network is back.
   _untilOnline(ms) {
-    if (this._letGo) return Promise.resolve();
     return new Promise((resolve) => {
       const done = () => {
         clearTimeout(timer);
         globalThis.removeEventListener?.('online', done);
-        this._wakeOnline = null;
         resolve();
       };
       const timer = setTimeout(done, ms);
       globalThis.addEventListener?.('online', done);
-      this._wakeOnline = done;
     });
   }
 
