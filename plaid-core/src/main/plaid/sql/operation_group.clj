@@ -53,6 +53,26 @@
   [db id]
   (:scoped_token (psc/fetch-by-id db :operation_groups id)))
 
+(defn may-join?
+  "Whether a write by `user-id`, made with the scoped token `token-key` (nil
+  for a session or a named API token), may join the group whose row is
+  `row` (its `user_id` and `scoped_token` columns). The same user may, with
+  any session or named token. A scoped token may join only a group its own
+  writes created, the same rule that lets it relabel one. So History says
+  who did what: a group's writes are all its creator's, or a service's that
+  the creator handed the group to (see `plaid.server.events/grant-group!`)."
+  [row user-id token-key]
+  (and (some? row)
+       (= (:user_id row) user-id)
+       (or (nil? token-key) (= (:scoped_token row) token-key))))
+
+(defn joinable?
+  "Whether `user-id` with `token-key` may join the group `id`: it does not
+  exist yet (the first write creates it as theirs), or `may-join?` says so."
+  [db id user-id token-key]
+  (let [row (psc/fetch-by-id db :operation_groups id)]
+    (or (nil? row) (may-join? row user-id token-key))))
+
 (defn set-message!
   "Refine the group's label (e.g. `endOperation('Merged 3 morphemes')` once
   the count is known). Returns the updated group, or nil if no such group."

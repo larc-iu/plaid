@@ -16,6 +16,7 @@
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.datasource :as psd]
+            [plaid.sql.operation-group :as og]
             [plaid.server.events :as events]
             [plaid.server.locks :as locks]
             [taoensso.timbre :as log])
@@ -110,19 +111,39 @@
   member and a crash can never leave an unlabeled group). Later members
   no-op via ON CONFLICT DO NOTHING; the label is refined only through the
   explicit PATCH /operation-groups/:id. No audit_writes row: this is
-  audit-log metadata, not domain data."
+  audit-log metadata, not domain data.
+
+  Then the write must be one the group may take in
+  (`plaid.sql.operation-group/may-join?`): its creator's, or the writes of a
+  service the creator handed the group to with an unfinished request
+  (`plaid.server.events/group-grant`). Such a service writes as the
+  creator here, so a group it starts is the requester's, who may then write
+  into it and relabel it. Anything else is refused with 403 and the whole
+  op rolls back, so no caller can put their writes under another caller's
+  History entry. Checked after the insert, under the write lock, so the
+  row it reads is the one that stands."
   [tx {:keys [group-id user ts]}]
   (when group-id
-    (psc/execute! tx {:insert-into :operation_groups
-                      :values [{:id group-id
-                                :message *current-group-message*
-                                :kind *current-group-kind*
-                                :ref *current-group-ref*
-                                :user_id user
-                                :scoped_token *scoped-token-key*
-                                :created_at ts}]
-                      :on-conflict [:id]
-                      :do-nothing []})))
+    (let [grant (events/group-grant group-id user *scoped-token-key*)
+          owner (if grant (:owner grant) user)
+          owner-token (if grant (:owner-token grant) *scoped-token-key*)]
+      (psc/execute! tx {:insert-into :operation_groups
+                        :values [{:id group-id
+                                  :message *current-group-message*
+                                  :kind *current-group-kind*
+                                  :ref *current-group-ref*
+                                  :user_id owner
+                                  :scoped_token owner-token
+                                  :created_at ts}]
+                        :on-conflict [:id]
+                        :do-nothing []})
+      (when-not (og/may-join? (psc/q1 tx {:select [:user_id :scoped_token]
+                                          :from [:operation_groups]
+                                          :where [:= :id group-id]})
+                              owner owner-token)
+        (throw (ex-info (str "Operation group " group-id " was started by another user or token, "
+                             "so this write cannot join it.")
+                        {:code 403 :group-id group-id}))))))
 
 (defn- check-locks!
   "Refuse the op with a 423 when another user holds the lock on its document.

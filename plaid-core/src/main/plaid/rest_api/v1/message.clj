@@ -1,8 +1,10 @@
 (ns plaid.rest-api.v1.message
   (:require [plaid.rest-api.v1.auth :as pra]
+            [buddy.sign.jwt :as jwt]
             [taoensso.timbre :as log]
             [plaid.server.events :as events]
             [plaid.sql.api-token :as api-token]
+            [plaid.sql.operation-group :as og]
             [plaid.sql.project :as prj]
             [plaid.sql.service-registry :as service-registry]
             [plaid.sql.user :as user]
@@ -432,6 +434,17 @@
     (when (every? uuid-string? ids)
       (vec ids))))
 
+(defn- handed-group
+  "The operation group a request hands its service, as a UUID, or nil: the
+  `operation-group` the clients put in the request data while an operation
+  is open (`requestService` / `request_service`), whose `id` the service
+  adopts for its writes."
+  [data]
+  (let [g (when (map? data) (or (get data :operation-group) (get data "operation-group")))
+        id (when (map? g) (or (get g :id) (get g "id")))]
+    (when (uuid-string? id)
+      (java.util.UUID/fromString id))))
+
 (defn submit-request-handler
   "Client POSTs work for a service; the response is an SSE stream of that
   service's progress events ending in a result or error. 503 if no service is
@@ -458,7 +471,12 @@
   (let [entry (events/get-service-entry id service-id)
         delegating? (events/delegating-service? entry)
         existing (when request-id (events/get-request request-id))
-        user-id (pra/->user-id req)]
+        user-id (pra/->user-id req)
+        requester-token (-> req :auth/token-scope :token-key)
+        group-id (handed-group data)
+        ;; A service handing on the group it was handed (a service that asks
+        ;; another) hands it on as its requester's.
+        handed-on (when group-id (events/group-grant group-id user-id requester-token))]
     (cond
       existing
       (if (request-visible? existing req id)
@@ -485,6 +503,12 @@
       (do (drop-service-channel! (assoc entry :project-id id))
           {:status 503 :body {:error (str "No live service '" service-id "' on this project")}})
 
+      ;; The service's writes go under the group it is handed, so handing
+      ;; one is joining it (`og/may-join?`).
+      (and group-id (not handed-on) (not (og/joinable? db group-id user-id requester-token)))
+      {:status 403 :body {:error (str "Operation group " group-id " was started by another user or "
+                                      "token, so this request cannot hand it to a service.")}}
+
       :else
       (let [request-id (or request-id (str (java.util.UUID/randomUUID)))
             scope (when delegating?
@@ -509,6 +533,17 @@
             ;; answer the request.
             (let [{service-ch :channel service-user-id :user-id} (events/get-service-entry id service-id)]
               (events/track-request! request-id requester id service-id user-id service-user-id)
+              ;; While the request runs, the service may write into the group
+              ;; it was handed, as the requester (`events/grant-group!`).
+              (when group-id
+                (events/grant-group!
+                 request-id
+                 {:group-id group-id
+                  :owner (if handed-on (:owner handed-on) user-id)
+                  :owner-token (if handed-on (:owner-token handed-on) requester-token)
+                  :grantee-user (if delegating? user-id service-user-id)
+                  :grantee-token (when delegating?
+                                   (some-> delegated-token (jwt/unsign secret-key) :jti))}))
               (http-kit/send! requester (sse-event "accepted" {:request-id request-id}) false)
               (start-keepalive! requester)
               (when-not (and service-ch
