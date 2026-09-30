@@ -173,3 +173,22 @@
     (is (= "x. c ow y" body))
     (is (= "c" (by-id 1)))
     (is (= "c ow y" (by-id :s2)))))
+
+(deftest a-new-word-or-a-comma-typed-at-a-words-edge-with-a-typo-fix-stays-outside-it
+  ;; N1: a letter deleted inside `walkd` and `slowly ` typed in front keeps
+  ;; the word's morpheme and gloss, as the whole-body save does
+  (let [old "the man walkd to"
+        edit (fn [ops] (let [r (ta/apply-edits old (one-morpheme old) ops {:partitioning #{} :word-layers #{:w} :segments #{:m}})
+                             body (:text/body (:text r))]
+                         [body (->> (:tokens r) (sort-by (juxt :token/begin (comp str :token/id)))
+                                    (mapv (fn [{:token/keys [id begin end]}] [id (subs body begin end)])))]))]
+    (is (= ["the man slowly wlkd to" [[0 "the"] [[:m 0] "the"] [1 "man"] [[:m 1] "man"]
+                                      [2 "wlkd"] [[:m 2] "wlkd"] [3 "to"] [[:m 3] "to"]]]
+           (edit [(del 9 1) (ins 8 "slowly ")])))
+    (is (= ["the man walked home to" [[0 "the"] [[:m 0] "the"] [1 "man"] [[:m 1] "man"]
+                                      [2 "walked"] [[:m 2] "walked"] [3 "to"] [[:m 3] "to"]]]
+           (edit [(ins 12 "e") (ins 14 " home")])))
+    ;; N2: a comma typed after it stays outside the word and its morpheme
+    (is (= ["the man walked, to" [[0 "the"] [[:m 0] "the"] [1 "man"] [[:m 1] "man"]
+                                  [2 "walked"] [[:m 2] "walked"] [3 "to"] [[:m 3] "to"]]]
+           (edit [(ins 12 "e") (ins 14 ",")])))))

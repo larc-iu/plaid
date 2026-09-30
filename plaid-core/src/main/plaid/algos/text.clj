@@ -1942,16 +1942,23 @@
         ;; sentence before, or stands by a marker), the next that shares any
         ;; letter can, so no token is left over a space (`the` split as `t
         ;; he` at a sentence start stays on `t`).
+        ;; Last, when only markers stand in the way (a word marked at both
+        ;; edges), the word goes on the new word sharing the most letters and
+        ;; the markers stay where they are, rather than the token staying
+        ;; over a space. Text in front never goes to the sentence before.
         (if-let [choice (or (first (filter allowed? choices))
                             (when (and (not before?) (not after?) (seq words))
                               (let [old-word (java.util.Arrays/copyOfRange o (int s) (int t))
-                                    score (fn [[p q]] (lcs-length old-word (java.util.Arrays/copyOfRange v (int p) (int q))))]
-                                (->> words
-                                     (remove (set choices))
-                                     (filter #(pos? (score %)))
-                                     (sort-by (comp - score))
-                                     (filter allowed?)
-                                     first))))]
+                                    score (fn [[p q]] (lcs-length old-word (java.util.Arrays/copyOfRange v (int p) (int q))))
+                                    ranked (->> words
+                                                (filter #(pos? (score %)))
+                                                (sort-by (comp - score)))
+                                    partition-ok? (fn [[p _]]
+                                                    (or (zero? p) (blank? 0 p)
+                                                        (not-any? (fn [{:token/keys [begin end]}] (and (< begin end) (= end s)))
+                                                                  (near s s))))]
+                                (or (first (filter allowed? (remove (set choices) ranked)))
+                                    (first (filter partition-ok? ranked))))))]
           (edits choice)
           [r])))))
 
@@ -2406,9 +2413,20 @@
         ;; it, or a delete or replace ends at b or begins at e, as the parts
         ;; of a replace cut at a word's edge do. Text typed at an edge does
         ;; not, since it stays outside the word.
-        clear-before? (fn [prev b] (or (nil? prev) (< (reach-of prev) b) (= (:end prev) b)))
+        ;; Text typed at a word's edge that meets it with a space or a
+        ;; punctuation mark (a new word typed in front with its space, a comma
+        ;; after it) stays outside the word, as it does when typed alone,
+        ;; whatever else was changed in the word (N1, N2).
+        punct-at? (fn [x at before?]
+                    (and (= :insert (:kind x)) (= at (:at x))
+                         (let [cs (.toArray (.codePoints ^String (:value x)))
+                               c (when (pos? (alength cs)) (aget cs (if before? (dec (alength cs)) 0)))]
+                           (and c (not (Character/isLetterOrDigit (int c))) (not (combining-mark? c))))))
+        clear-before? (fn [prev b] (or (nil? prev) (< (reach-of prev) b) (= (:end prev) b)
+                                       (punct-at? prev b true)))
         clear-after? (fn [j e] (or (= j (count edits)) (> (start-of (edits j)) e)
-                                   (and (:end (edits j)) (= (:start (edits j)) e))))
+                                   (and (:end (edits j)) (= (:start (edits j)) e))
+                                   (punct-at? (edits j) e false)))
         starts (set (map start-of edits))
         ends-at (reduce (fn [m {:token/keys [begin end]}]
                           (if (and (starts begin) (< begin end)
@@ -2517,13 +2535,14 @@
                 ([i b e split?] (group i b e split? false))
                 ([i b e split? cut-ok?]
                  (let [j (loop [j i]
-                           (if (and (< j (count edits)) (<= (reach-of (edits j)) e)
+                           (if (and (< j (count edits)) (<= (reach-of (edits j)) e) (not (punct-at? (edits j) e false))
                                     (>= (start-of (edits j)) b))
                              (recur (inc j))
                              j))
                        g (subvec edits i j)
                        kinds (set (map :kind g))]
                    (when (and (seq g)
+                              (not (punct-at? (first g) b true))
                               (apart? g)
                               (clear-after? j e)
                               ;; spaces alone are no word to fold onto: a word
@@ -2612,7 +2631,7 @@
         ;; whose edits reach both ends does.
         partial-group (fn [i b e]
                         (let [j (loop [j i]
-                                  (if (and (< j (count edits)) (<= (reach-of (edits j)) e)
+                                  (if (and (< j (count edits)) (<= (reach-of (edits j)) e) (not (punct-at? (edits j) e false))
                                            (>= (start-of (edits j)) b))
                                     (recur (inc j))
                                     j))
@@ -2653,7 +2672,7 @@
         ;; morphemes does, and the morphemes of the others are deleted.
         split-between (fn [i b e]
                         (let [j (loop [j i]
-                                  (if (and (< j (count edits)) (<= (reach-of (edits j)) e)
+                                  (if (and (< j (count edits)) (<= (reach-of (edits j)) e) (not (punct-at? (edits j) e false))
                                            (>= (start-of (edits j)) b))
                                     (recur (inc j))
                                     j))
@@ -3378,10 +3397,22 @@
         ;; with a space between them, or in no one word without a space, stay
         ;; apart (L3).
         ;; the word without a space holding gaps g to h, or nil
+        ;; Text typed at the word's edge is part of the word only when it is
+        ;; letters (or digits, or marks): a new word typed there with its space
+        ;; (`slowly ` in front of `walkd`), or a comma after it, stays outside,
+        ;; as a whole-body save reads it, whatever else was fixed in the word.
+        word-text? (fn [^String v]
+                     (and (seq v)
+                          (.allMatch (.codePoints v) (reify java.util.function.IntPredicate
+                                                       (test [_ c] (or (Character/isLetterOrDigit c)
+                                                                       (combining-mark? c)))))))
         one-word (fn [g h]
                    (when (not-any? #(space? (aget o %)) (range (:start g) (:end h)))
                      (some (fn [{:token/keys [begin end] :as t}]
-                             (when (and (word? t) (< begin end) (<= begin (:start g)) (<= (:end h) end)) t))
+                             (when (and (word? t) (< begin end) (<= begin (:start g)) (<= (:end h) end)
+                                        (not (and (= (:start g) (:end g) begin) (not (word-text? (:value g)))))
+                                        (not (and (= (:start h) (:end h) end) (not (word-text? (:value h))))))
+                               t))
                            tokens)))
         ;; runs of gaps inside one word, each with its word
         runs (reduce (fn [out h]
