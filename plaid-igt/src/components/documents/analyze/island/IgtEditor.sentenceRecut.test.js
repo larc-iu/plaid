@@ -140,7 +140,9 @@ describe('a translation refused because its sentence changed meanwhile', () => {
       await settle();
       expect(writes(client)).toEqual([]);
       expect(hasUnsavedDraft()).toBe(null);
-      expect(notifyWarning).toHaveBeenCalledWith(`b changed this sentence to ${now}.`);
+      expect(notifyWarning).toHaveBeenCalledWith(
+        `b changed this sentence to ${/[.!?…]$/u.test(now) ? now : `${now}.`}`,
+      );
       expect(notifyError).not.toHaveBeenCalledWith(KEPT_IN_CELL, expect.anything());
     });
   }
