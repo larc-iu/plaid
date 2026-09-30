@@ -963,8 +963,10 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
                     if keyed else retry_while_busy(attempt))
     except PlaidAPIError as e:
         data = e.response_data if isinstance(e.response_data, dict) else {}
+        # Only a single create: a bulk refused whole made none of its rows.
         if (e.status == 409 and data.get('error') == 'id-taken'
-                and minted and data.get('id') in minted):
+                and minted and data.get('id') in minted
+                and isinstance(request_body, dict) and request_body.get('id') == data.get('id')):
             if stamped_group is not None:
                 stamped_group['written'] = True
             return transform_response({'id': data['id']})

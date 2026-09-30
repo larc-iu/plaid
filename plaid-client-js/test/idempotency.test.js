@@ -476,3 +476,38 @@ test("an id-taken for an id the operation minted answers as made, and the rest i
   assert.equal(requests.length, 3);
   assert.equal(requests[1].method, "PATCH");
 });
+
+// REV3 H7: a bulk create refused id-taken was refused whole and made none of
+// its rows, so it is thrown as a refusal, never answered as made. The ids
+// may come as any iterable.
+test("a bulk create refused id-taken is a refusal, even for an id the operation minted", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  const a = uuidv7();
+  const b = uuidv7();
+  const { restore } = stubServer(() =>
+    response(409, { error: "id-taken", "id-taken": true, id: a }),
+  );
+  let single;
+  try {
+    await assert.rejects(
+      client.withOperation(
+        "Gloss",
+        () =>
+          client.spans.bulkCreate([
+            { id: a, spanLayerId: "L", tokens: ["t"], value: "N" },
+            { id: b, spanLayerId: "L", tokens: ["u"], value: "M" },
+          ]),
+        { minted: [a, b] },
+      ),
+      (e) => e.status === 409,
+    );
+    single = await client.withOperation(
+      "Gloss",
+      () => client.spans.create("L", ["t"], "N", undefined, undefined, { id: a }),
+      { minted: [a] },
+    );
+  } finally {
+    restore();
+  }
+  assert.equal(single.id, a);
+});

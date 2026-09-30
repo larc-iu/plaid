@@ -3649,7 +3649,13 @@ class PlaidClient {
    * @returns {string} The operation's group id.
    */
   beginOperation(message, { id, kind, ref, keys, minted } = {}) {
-    const frame = { keys: keys || null, count: 0, minted: minted || null, depth: 1 };
+    const frame = {
+      keys: keys || null,
+      count: 0,
+      // Any iterable of ids (a Set, an array).
+      minted: minted ? new Set(minted) : null,
+      depth: 1,
+    };
     const open = this.operationGroup;
     this._openedFrame = null;
     if (open) {

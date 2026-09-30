@@ -3921,7 +3921,7 @@ class PlaidClient:
         Returns:
             The operation's group id.
         """
-        frame = {'keys': keys or None, 'count': 0, 'minted': minted or None,
+        frame = {'keys': keys or None, 'count': 0, 'minted': set(minted) if minted else None,
                  'depth': 1, 'owned': False}
         open_group = self._operation_group
         self._opened_frame = None

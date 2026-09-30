@@ -467,3 +467,20 @@ def test_an_id_taken_for_an_id_the_operation_minted_answers_as_made_and_the_rest
     assert e.value.status == 409
     assert made['id'] == new_id
     assert [r['method'] for r in requests] == ['POST', 'PATCH', 'POST']
+
+
+def test_a_bulk_create_refused_id_taken_is_a_refusal_even_for_an_id_the_operation_minted():
+    # REV3 H7.
+    client = PlaidClient('http://x', 'tok', **FAST)
+    a, b = uuid7(), uuid7()
+    _stub_server(client, lambda request, n: _Resp(409, {'error': 'id-taken', 'id-taken': True, 'id': a}))
+    with pytest.raises(PlaidAPIError) as e:
+        with client.operation('Gloss', minted=[a, b]):
+            client.spans.bulk_create([
+                {'id': a, 'span_layer_id': 'L', 'tokens': ['t'], 'value': 'N'},
+                {'id': b, 'span_layer_id': 'L', 'tokens': ['u'], 'value': 'M'},
+            ])
+    assert e.value.status == 409
+    with client.operation('Gloss', minted=[a]):
+        made = client.spans.create('L', ['t'], 'N', id=a)
+    assert made['id'] == a
