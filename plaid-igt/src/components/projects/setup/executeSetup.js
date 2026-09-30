@@ -38,7 +38,7 @@ import {
 } from '../../../domain/igtConfig.js';
 import { seedDefaultFields } from '../../../domain/vocabFields.js';
 import { getIgtLayerInfo } from '../../../domain/layerInfo.js';
-import { wantedConstraints } from '../../../domain/igtConstraints.js';
+import { sameConstraints, wantedConstraints } from '../../../domain/igtConstraints.js';
 import { statusFieldSeed } from '../../../domain/vocabDictionary.js';
 
 // The text layer's name is internal (it is matched by role, never surfaced),
@@ -535,7 +535,7 @@ async function executeProjectSetupImpl({
     const project = await client.projects.get(currentProjectId);
     const bundle = { token: 'tokenLayers', span: 'spanLayers', relation: 'relationLayers' };
     for (const w of wantedConstraints(getIgtLayerInfo(project), project?.config)) {
-      if (JSON.stringify(w.stored ?? []) === JSON.stringify(w.constraints)) continue;
+      if (sameConstraints(w.stored, w.constraints)) continue;
       try {
         await client[bundle[w.kind]].setConstraints(
           w.layerId,

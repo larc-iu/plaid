@@ -103,6 +103,18 @@ test('queueDeclarations declares what differs, naming what each layer holds', ()
     },
   ]);
   assert.deepEqual(queued, [['t', 'ud', [{ type: 'coextensive' }], undefined, { expected: null }]]);
+  // A list held with its keys in another order is the same list.
+  queued.length = 0;
+  queueDeclarations(b, [
+    {
+      kind: 'token',
+      layerId: 'v',
+      namespace: 'ud',
+      constraints: [{ type: 'acyclic', selfLoops: true }],
+      stored: [{ selfLoops: true, type: 'acyclic' }],
+    },
+  ]);
+  assert.deepEqual(queued, []);
 });
 
 test('a layer the data breaks becomes one warning', () => {

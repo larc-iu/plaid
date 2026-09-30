@@ -13,6 +13,24 @@
 import { IGT_NAMESPACE } from './igtConfig.js';
 import { MODES, resolveTagset, splitValue } from './tagsets.js';
 
+// A value with every object's keys in order: the server hands a constraint
+// back with its keys in an order of its own.
+const canonical = (value) => {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((k) => [k, canonical(value[k])]),
+    );
+  }
+  return value;
+};
+
+/** Whether two constraint lists are the same, absent and empty alike. */
+export const sameConstraints = (a, b) =>
+  JSON.stringify(canonical(a?.length ? a : [])) === JSON.stringify(canonical(b?.length ? b : []));
+
 /** The list a layer read holds for IGT's namespace, or null. */
 const storedConstraints = (layer, namespace) => layer?.constraints?.[namespace] ?? null;
 
@@ -94,7 +112,7 @@ export const queueFieldDeclarations = (b, spanLayers, projectConfig) => {
     if (!sl?.id) continue;
     const wanted = fieldConstraints(sl.config, projectConfig);
     const stored = storedConstraints(sl, IGT_NAMESPACE);
-    if (JSON.stringify(wanted) === JSON.stringify(stored ?? [])) continue;
+    if (sameConstraints(wanted, stored)) continue;
     b.spanLayers.setConstraints(sl.id, IGT_NAMESPACE, wanted, undefined, {
       expected: stored ?? null,
     });

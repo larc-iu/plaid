@@ -74,8 +74,17 @@ describe('the rules IGT wants', () => {
       undefined,
       { expected: [{ type: 'single-span' }] },
     ]);
-    // The same save once the layer holds it queues nothing.
+    // The same save once the layer holds it queues nothing, whatever order
+    // the server hands its keys back in.
     queued.length = 0;
+    gloss.constraints = {
+      igt: [
+        { type: 'single-span' },
+        { parts: 'all', delimiters: '.', values: ['N'], type: 'value-set' },
+      ],
+    };
+    expect(queueFieldDeclarations(b, [gloss], tagsets('closed', ['N']))).toBe(0);
+    gloss.constraints = { igt: [{ type: 'single-span' }] };
     expect(queueFieldDeclarations(b, igtFields(info), tagsets('suggest'))).toBe(0);
   });
 });

@@ -10,6 +10,24 @@ import { MODES } from './udVocabMode.js';
 
 const UD_NAMESPACE = 'ud';
 
+// A value with every object's keys in order: the server hands a constraint
+// back with its keys in an order of its own.
+const canonical = (value) => {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((k) => [k, canonical(value[k])]),
+    );
+  }
+  return value;
+};
+
+/** Whether two constraint lists are the same, absent and empty alike. */
+const sameConstraints = (a, b) =>
+  JSON.stringify(canonical(a?.length ? a : [])) === JSON.stringify(canonical(b?.length ? b : []));
+
 const stored = (layer) => layer?.constraints?.[UD_NAMESPACE] ?? null;
 
 const entry = (kind, layer, constraints) => ({
@@ -101,7 +119,7 @@ export const queueRuleChanges = (b, before, after) => {
   let n = 0;
   for (const w of wantedConstraints(after)) {
     if (!w.stored) continue;
-    if (JSON.stringify(w.constraints) === JSON.stringify(was.get(w.layerId)?.constraints)) continue;
+    if (sameConstraints(w.constraints, was.get(w.layerId)?.constraints)) continue;
     b[BUNDLE[w.kind]].setConstraints(w.layerId, w.namespace, w.constraints, undefined, {
       expected: w.stored,
     });
@@ -171,7 +189,7 @@ export const withConfigWrites = (project, writes) => {
  */
 export const queueDeclarations = (b, wanted) => {
   for (const w of wanted) {
-    if (JSON.stringify(w.stored ?? []) === JSON.stringify(w.constraints)) continue;
+    if (sameConstraints(w.stored, w.constraints)) continue;
     b[BUNDLE[w.kind]].setConstraints(w.layerId, w.namespace, w.constraints, undefined, {
       expected: w.stored ?? null,
     });
