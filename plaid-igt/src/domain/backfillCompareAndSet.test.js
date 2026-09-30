@@ -125,3 +125,30 @@ describe('the preserveOnSplit declaration', () => {
     expect(server.store.token[layer.id].plaid.preserveOnSplit).toEqual(['later']);
   });
 });
+
+describe('the segmentsParent back-fill', () => {
+  it('declares it on the morpheme layer, naming what it read, and only when missing', async () => {
+    const { doc, info, server } = setup();
+    await doc._backfillSegmentsParent(info);
+    const writes = server.sent.filter((s) => s.key === 'segmentsParent');
+    expect(writes).toEqual([
+      {
+        kind: 'token',
+        id: info.morphemeTokenLayer.id,
+        key: 'segmentsParent',
+        value: true,
+        options: { expected: undefined },
+      },
+    ]);
+    info.morphemeTokenLayer.config.plaid.segmentsParent = true;
+    await doc._backfillSegmentsParent(info);
+    expect(server.sent.filter((s) => s.key === 'segmentsParent')).toHaveLength(1);
+  });
+
+  it('lets a declaration another page made first stand', async () => {
+    const { doc, info, server } = setup();
+    server.store.token[info.morphemeTokenLayer.id] = { plaid: { segmentsParent: false } };
+    await doc._backfillSegmentsParent(info);
+    expect(server.store.token[info.morphemeTokenLayer.id].plaid.segmentsParent).toBe(false);
+  });
+});

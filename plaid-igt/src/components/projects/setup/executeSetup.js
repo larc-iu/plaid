@@ -18,6 +18,7 @@
 import {
   PLAID_NAMESPACE,
   PRESERVE_ON_SPLIT_KEY,
+  SEGMENTS_PARENT_KEY,
   PROVENANCE_KEYS,
   ROLE_KEY,
   ROLES,
@@ -232,6 +233,12 @@ async function executeProjectSetupImpl({
         await client.tokenLayers.setConfig(layer.id, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, [
           ...PROVENANCE_KEYS,
         ]);
+      }
+      // A morpheme spells a stretch of its word, so one morpheme over the
+      // whole word goes when a space is typed inside the word (see
+      // SEGMENTS_PARENT_KEY).
+      if (role === ROLES.MORPHEME && config[SEGMENTS_PARENT_KEY] !== true) {
+        await client.tokenLayers.setConfig(layer.id, PLAID_NAMESPACE, SEGMENTS_PARENT_KEY, true);
       }
       return layer.id;
     };
