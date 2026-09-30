@@ -242,10 +242,14 @@ An addition cut off partway (a closed tab, a lost connection) leaves nothing beh
 A node picked from a vocabulary entry that has since been deleted no longer names it.
 No repair is made while a service run or an approved assistant plan is writing to the document. It is made the next time the document is opened.
 A repair cut off partway is named `Repair on open (interrupted)` in the history, and the next opening finishes it.
+When someone saves while a repair is being made, it starts again by itself.
+If it fails again, or the server does not answer, a message asks you to reload the page.
 
 = Editing
 
 Every edit is written as it happens and lands in the document's history. There is no save button.
+An edit made while the connection is down is sent once it is back, and the page reads **Offline, retrying** meanwhile.
+When the server does not answer, a message headed **Not confirmed** says that the edit may or may not have been saved, and the document is read again a little later.
 Focus a node by clicking it or with the arrows, then the keys below act on it.
 The default shortcuts are listed here. Arrows, Tab, Enter and Escape are fixed, and every other key can be rebound under your profile.
 **? Keys and marks** over the sentences lists every key, with any you have rebound.
@@ -332,11 +336,13 @@ The text is parsed as you type, and the first problem shows under it.
 Ctrl+Enter (Cmd+Enter) applies, as **Apply** does.
 **Apply** compares the text with the stored graph, node by variable and edge by relation and target, and writes the difference as one operation: a node that is new in the text is made unaligned (anchor it on the canvas afterwards), a node missing from the text is deleted with what only it reached, a changed root moves the root.
 An empty text deletes every node of the sentence.
+Apply writes the whole text at once: if it fails, nothing of it is applied.
+An apply too large to write in one step that fails partway says what was saved and what was not.
 The line under the text names every concept Apply changes, by variable (`s9x changes from sleep-01 to cat, s9y from cat to sleep-01.`). Nodes are matched by variable, so exchanging two variables exchanges their concepts, and each node keeps its words and document-level relations.
 Apply refuses what the canvas refuses: a new node's variable that is malformed or used elsewhere in the document, a relation UMR does not have, a new edge that closes a cycle through anything but `:quote`, a new node under a relation that takes a value (`s1a: ':li' takes a value, not a node.`), and a value the official validator cannot read, with the reason. A value a node already has from an import is kept as it is.
 A variable typed over is read as a rename when one variable goes and one arrives and they are plainly the same node: the same concept, under the same parents by the same relations, or both the sentence's root. The node keeps its anchor, its edges and its document-level relations, and the line under the text says which name changed.
 Anything less clear-cut, two variables typed over at once or a concept changed along with the name, is a node deleted and a node made, and the line names what Apply would delete that way.
-Cancel with unapplied changes asks first.
+Cancel, or **Text** again, with unapplied changes asks first.
 
 = The Document Graph
 
@@ -381,6 +387,7 @@ An entry that is one of these kinds is marked with it:
 * **Repair**: a repair made when the document was opened.
 
 The Activity tab marks its entries the same way.
+An assistant plan that stopped partway is listed as `Assistant, partly applied:` followed by the changes it wrote.
 
 = Validation
 
@@ -401,8 +408,9 @@ The one exception is `:li`: the official validator refuses every value under it,
 A document's **Comments** tab holds comments on the document and on its sentences.
 **Activity** shows who has been working on the project and on what.
 
-Two people can have one document open.
-An edit made on a page that another person has changed since it loaded is refused with `Changed elsewhere. Now showing the latest version. Redo your edit.`, and the page then shows their change.
+Two people can have one document open, and neither page shows the other's edits as they are made.
+An edit is refused when another person changed the document since the page loaded, unless everything they changed is annotation this edit does not touch, such as a gloss in Plaid IGT on another word.
+It says `Changed elsewhere. Now showing the latest version. Redo your edit.`, and the page then shows their change.
 **Settings → Access** manages the project's members and invitation links, and makes named tokens for scripts and services.
 
 = Services
@@ -415,6 +423,7 @@ A sentence the draft could not do is named in the report with its reason, and th
 A reply the model writes as one block per node, linked by variables, is read as one graph. A block that no earlier block uses is refused as a second graph.
 A draft stops early when the model gives no answer for two sentences in a row. It keeps what it drafted, and its report names those two sentences and counts the sentences it did not reach.
 **Stop** ends a draft within about a second, even while the model has not answered.
+A draft writes each sentence's graph whole. If it fails partway, the message says how many sentences were drafted.
 The operator sets how long one reply may take (`--timeout`, 120 seconds by default). A reply that does not come in time is asked for once more, then its sentence is reported as not drafted.
 A second drafting method, **Skeleton from glosses**, needs no model: it writes one anchored node per word that is linked to a vocabulary entry or carries a gloss, with the headword or the gloss's lexical part as the concept and the grammatical abbreviations (`3SG`, `NEG`, `HAB`) as attributes, and marks the word carrying tense or aspect as the root. It draws no relations.
 
@@ -461,6 +470,9 @@ Approving a plan after a sentence it changes has been edited is refused, and the
 An edit to another sentence does not stop it, and an edit to a sentence's glosses in Plaid IGT counts as an edit to that sentence.
 A change to every node of a concept is refused after any edit to its document.
 Approving a plan on a document that another run (Draft, a parser) is writing to is refused with nothing written. Approve again once the run has finished.
+
+A plan that stops partway reads **Partly applied**, with how many of its changes were written, and the changes not written are dimmed.
+Ask the assistant to finish it.
 
 A reply is written into the conversation as it arrives, and it lands whether or not the page stays open: leave the tab, reload, or close the browser, and the answer is there when the conversation is next opened.
 **Stop** ends a turn early, even while the model is still working on its answer.

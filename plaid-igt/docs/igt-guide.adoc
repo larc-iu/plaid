@@ -147,6 +147,11 @@ Existing sentences, words, and annotations are kept and adjusted to fit the new 
 Words inside text you delete go with it, along with their annotations.
 A line added later joins the sentence before it. Split it on the Tokenize tab.
 
+When someone else saved the baseline after you pressed **Edit text**, **Save changes** puts your changes onto their text.
+When you both changed the same passage, the save is refused and your text stays in the box.
+**Cancel** then shows the saved text, and you make the edit again.
+The save is also refused when the text has passages that read the same and your change could be in either of them.
+
 A project may define additional **orthographies**, alternate representations of each word such as a phonetic transcription or a practical spelling.
 These appear as their own rows in the Analyze grid (see <<_text_and_vocab>>).
 
@@ -266,6 +271,7 @@ Or run a tokenizer over the whole document with **Tokenize**, in the **Tokens** 
 Words already there are kept, so text added after a first run can be tokenized by running it again.
 The built-in **Rule-based punctuation** splitter finds words and leaves sentence breaks as they are.
 A tokenization service can replace it with smarter segmentation of both sentences and words (see <<_services>>).
+A service run that stops partway says how many sentences and words it wrote. Run it again to finish.
 **Clear tokens** and **Reset sentences**, beside it, start over.
 **Split at segments** adds a sentence break wherever a segment from the Media tab starts, so a recording cut into utterances becomes one sentence per utterance.
 It only adds breaks, never removes one, and a segment that starts inside a word is left alone.
@@ -332,6 +338,29 @@ Everyone else is a **verifier**: their work shows plain, and their edits and con
 
 A value that a field's tagset refuses is underlined in red, and a closed tagset will not let it be entered at all (see <<_tagsets>>).
 
+=== Saving
+
+A value is saved when you leave its cell, and there is no save button.
+An edit made while the connection is down is sent once it is back, and the save status reads **Offline, retrying** meanwhile.
+One that reached the server just before the connection dropped is found there, and is not sent twice.
+When the server does not answer a save, a message headed **Not confirmed** says that the change may or may not have been saved.
+The document is then read again a little later, and a value that was saved shows as saved.
+
+Two people can have one document open, and neither page shows the other's edits as they are made.
+An edit that reaches the server after someone else changed the document is handled this way:
+
+* A gloss, a translation, or any other word, morpheme or sentence field is saved when what the other person changed is on another word or sentence, or is a kind of annotation the field does not touch.
+* A link to a lexicon entry is refused, and you link it again.
+* Any other edit is saved only when what the other person changed is a kind of annotation it does not touch. Otherwise it is refused with `Changed elsewhere. Now showing the latest version. Redo your edit.`, and the document shows their change.
+
+When someone else changed the same cell first, the cell shows their value with an amber edge, and yours under it: **Yours: X · Enter to keep yours**.
+A message names the change, such as `b changed this to DOG.`
+**Enter** writes your value over theirs, **Escape** or typing another value lets yours go, and leaving the cell sends nothing.
+The same happens when the word was split or joined, or its morpheme re-segmented, by someone else before your value was saved. The message then names the word as it reads now, such as `b changed this word to si.`
+
+A value refused because of a change elsewhere in the document stays in its cell with an amber edge, and leaving the cell again sends it.
+Leaving the document first asks, naming the cell.
+
 == Comments
 
 Any sentence, word, morpheme, or annotation value can carry **comments**: a conversation in the margin of the text, for a question to the speaker, a doubt about a gloss, or a note to a classmate.
@@ -343,6 +372,7 @@ Click a thread to open it, and click its heading to jump to its sentence.
 Search finds a word, an author, or a phrase from any comment, and the list can be sorted in text order instead.
 Comments take Markdown.
 You can edit your own, and a maintainer can remove any.
+Comments other people write appear while the tab is open.
 
 A comment stays even when what it was about is edited away, for example a word that is merged or retyped.
 Such a comment sits behind the tab's **Outdated** filter, headed by what it was about, until someone deletes it.
@@ -392,6 +422,7 @@ See <<_headwords_and_senses>>.
 
 **Bulk Add** takes rows pasted from a spreadsheet or read from a file.
 It lets you map the columns onto the entry fields, then reviews each row against the entries that already exist before anything is created, so a homonym stays separate and an existing entry is never overwritten unless you say so.
+When the entries change between the review and **Import** so that the import would write something else, nothing is written and the review is shown again.
 **Replace** finds text in one field of every entry, the form included, and replaces it: as plain text, as a whole value, or as a regular expression.
 Plain text ignores case.
 The other two do not.
@@ -399,6 +430,7 @@ A fourth kind, **is empty**, matches the entries that have no value in the field
 It has no counterpart in Bulk Edit: an annotation field has no value on a word until something writes one, so filling every blank means visiting every word rather than matching what is there.
 Use **Validation** to find the words a field is missing on, or ask the assistant.
 Each entry it would change is listed with its old and new value, and only the ticked ones are written.
+A value that changed after the list was drawn is skipped, and the message says how many.
 A value the field's tagset refuses is listed but never written.
 **Export** downloads the table as a tab-separated file that opens in any spreadsheet.
 
@@ -485,6 +517,9 @@ A sentence worth citing that is not in any text belongs in a document, where it 
 Examples brought in by a FLEx import are shown in the same panel as text.
 
 Deleting an entry frees its senses, which become entries of their own, and clears the fields that named it, and the confirmation says how many entries that touches.
+The confirmation counts the entry's links again when you press **Delete entry**.
+When a word was linked to it meanwhile, the entry is not deleted, and the confirmation stays open on the new count with `Its links changed while this was open.`
+Links in projects you cannot open are not in the count you see first. When there are any, the confirmation opens again with the full count and says how many of them are in projects you cannot open.
 Merging entries with **Bulk Edit** points those references at the surviving entry, hands the merged entries' senses to it in their own order, and, when the survivor was a sense under one of them, makes it an entry in that one's place.
 
 A FLEx import keeps the sense structure of the lexicon: an entry with several senses becomes an entry with them under it, numbered as FLEx numbered them, and an entry with one sense is that sense.
@@ -545,6 +580,7 @@ You can close the dialog and watch the document instead: the run carries on, and
 Editing is paused for as long as the run writes, and the document says so at the top. It comes back when the run ends.
 Reloading the page does not stop it, but it does end the run early: the step that was in flight is picked up and finishes, and the steps after it do not run.
 **Stop** ends the run at whichever step it is on, whether that step is a service or one of the built-in ones, and the steps after it do not run.
+What the stopped step wrote before the stop stays, and the document shows it.
 When the run finishes, a message says what was done: how many translations were proposed, how many words received a copied analysis, and so on. It also says when a service went without a field it reads for context, such as the translation an analysis service is shown.
 Then review the result with the gestures under <<_analyze>>: **Ctrl/Cmd+Enter** accepts a whole word, **Ctrl/Cmd+Backspace** discards its proposal, and **Ctrl/Cmd+Shift+↑/↓** jumps between the words that still have unconfirmed material.
 
@@ -599,6 +635,10 @@ For one document's history, and for putting a document back the way it was, see 
 A maintainer opens a project's **Settings** tab.
 It has five sections, listed down the left side.
 
+A save writes only what you changed on the page.
+If another maintainer saved the same setting after you opened the page, your save is refused with `Changed elsewhere. Now showing the latest version. Redo your edit.`, and the page shows the settings as they are now.
+Make the change again.
+
 == General
 
 The project's name, its languages, and the option to delete the project.
@@ -621,6 +661,7 @@ Three things live here:
 
 The annotation **fields** at each scope, sentence, word, and morpheme.
 You can add, rename, reorder, and remove them, and removing a field first tells you how many values it holds.
+The count is checked again when you press **Delete**. If it changed, the dialog shows the new count and asks again.
 Each field records the **language** its values are in, as a writing system tag such as `pmy` or `nl`: a FLEx, ELAN, or CLDF import fills it in from the file, a field named with a tag in parentheses (`Gloss (nl)`) is given that tag when the project is next opened, and FLEx and ELAN exports label each field with it.
 A field with no language goes out under the project's meta language.
 Alongside the fields sits the **ignored tokens** rule, usually punctuation, so those tokens carry no word-level annotation and host no morphemes.
@@ -669,6 +710,7 @@ A value can carry a description, shown beside it in the list.
 **Add values used in this project** fills a new tagset with the values a field already uses, so an existing corpus comes under a tagset without retyping anything.
 
 A tagset is enforced as you type and in Bulk Edit, and nowhere else.
+A tagset another maintainer closes or opens applies in a document you have open once you come back to its browser tab, or the document is read again.
 An import, a service, the Assistant, or a script writes past it.
 The project's **Validation** tab (maintainers) closes that gap.
 It lists, for each governed field, every value in the project that its tagset refuses, with a count, and offers the remedies: **Add to tagset**, **Fix in Bulk Edit**, or open each occurrence and correct it by hand.
@@ -723,10 +765,11 @@ There are four operations:
 * **Respell words**: change the spelling of a word everywhere it occurs, keeping its morphemes, glosses, links, and other annotations. Optionally respell the same string inside morpheme forms and lexicon entry forms too.
 * **Replace in a field**: find and replace across one field's values, as plain text or a regular expression, or across morpheme forms.
 * **Re-analyze a word**: give every occurrence of a word the same analysis, chosen from the analyses it already has in the project.
-* **Merge lexicon entries**: fold duplicate entries into one, moving every link to the survivor.
+* **Merge lexicon entries**: fold duplicate entries into one, moving every link to the survivor, links made after the preview included. A word already linked to the survivor keeps its one link.
 
 Respelling a lexicon entry and merging entries rename or delete them, which only a maintainer of the entry's vocabulary may do.
 Entries of a vocabulary you do not maintain are listed as *maintainers only* and are not respelled, and a merge says so.
+A merge's preview counts the links in documents you can open. The message after **Apply** counts every link moved, and says how many were in projects you cannot open.
 
 Respelling and replacing ask how to match, with the same three kinds the Search tab offers.
 Contains ignores case.
@@ -734,6 +777,10 @@ Is exactly and matches a regular expression do not, and here a match is a write.
 
 A long preview is paged.
 A document's heading ticks every match in that document, not only the ones on the page.
+
+A place that changed after the preview is skipped, and so is a document deleted after it.
+The message after **Apply** says how many were skipped, and the rest of each document is still changed.
+When **Apply** stops partway, the message says what was written before the stop, and the remaining documents are not changed. **Apply** again writes the rest.
 
 Bulk Edit respects tagsets.
 A replacement a closed tagset refuses is skipped, and the preview says so.
@@ -760,6 +807,11 @@ An edit to another sentence does not stop it.
 A text edit is refused after any edit to its document.
 A replacement across documents is also out of date when a document starts or stops matching it after the plan was made.
 Approving a plan on a document that a service run (a transcription, an analysis) is writing to is refused with nothing written. Approve again once the run has finished.
+Deleting an entry through a plan is refused when the entry was linked after the plan was made.
+The assistant cannot delete an entry that has links in projects it cannot open: the plan says so and is not applied.
+
+A plan that stops partway reads **Partly applied**, with how many of its changes were written, and the changes not written are dimmed.
+Ask the assistant to finish it.
 
 A reply is written into the conversation as it arrives, and it lands whether or not the page stays open: leave the tab, reload, or close the browser, and the answer is there when the conversation is next opened.
 A conversation that is still being answered says so in the list, and opening it picks the answer up as it comes.
@@ -847,6 +899,7 @@ A translation or analysis run by a language model stops early when the model giv
 
 If the page loses contact with a service, because the connection dropped or the service went quiet for a long time, it says so rather than reporting the run as failed.
 The service is still working. Reload the document to pick the run back up.
+When the server does not answer one of a run's writes, the run says that the change may or may not have been saved.
 
 There are six integration points:
 
@@ -983,6 +1036,7 @@ Comments are the exception: they are kept beside the data rather than in it, so 
 
 Open a document's **history** with **History** at the end of its tab row, on any tab, or from the rail at the left edge of the editor.
 Each entry is one action as you performed it, such as "Merge morphemes" or "Tokenize", even when it was made up of several underlying changes.
+An edit made in a cell names the field, the word or morpheme, the sentence and the value, such as `Gloss of "dogs" in sentence 3: DOG`.
 Selecting an entry shows the document as it was right after that action.
 An entry made of several changes has an arrow you can expand to see, and select, each individual change.
 
@@ -1000,6 +1054,11 @@ An entry that is one of these kinds is marked with it:
 * **Repair**: a repair made when the document was opened.
 
 The Activity tab marks its entries the same way.
+An Assistant plan that stopped partway is listed as `Assistant, partly applied:` followed by the changes it wrote.
+
+A repair is made when a document that needs one is opened.
+When someone saves while it is being made, it starts again by itself.
+If it fails again, or the server does not answer, a message asks you to reload the page.
 
 Viewing history changes nothing.
 To bring a document back to an earlier state, select that entry and click **Restore**.

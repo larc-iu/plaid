@@ -123,19 +123,21 @@ The **Text Editor** tab is where raw text becomes tokens.
 
 == Entering and Tokenizing Text
 
-Paste or type your text into the editor.
-We encourage the convention of using newlines to separate sentences.
+Paste or type your text into the editor, one sentence per line.
 Use **Save** to save edits to the raw text without re-tokenizing.
+
+When someone else saved the text after you started editing it, your save puts your changes onto their text.
+When you both changed the same passage, the save is refused and the editor says `Changed elsewhere in the same passage.` **Discard changes** then shows the saved text, and you make the edit again.
+The save is also refused when the text has passages that read the same and your change could be in either of them.
 
 There are two ways to turn saved text into tokens, and both are runs (see <<_services>>):
 
-* **Tokenize** segments the text into sentences and tokens. The built-in method uses your project's tokenizer locale, falling back to the project's language (both set in <<_settings,project settings>>, and language-agnostic when neither is set). It produces tokens only. You add the annotations and dependency tree yourself in the Annotate tab.
+* **Tokenize** segments the text into sentences and tokens. The built-in method uses your project's tokenizer locale, falling back to the project's language (both set in <<_settings,project settings>>, and language-agnostic when neither is set). It makes one sentence of each line of the text. Each word gets a lemma copied from its form, marked as machine-made, which **Parse** replaces. You add the other annotations and the dependency tree yourself in the Annotate tab.
 * **Parse** does the whole job at once. Where your project has a parsing service connected, for example the bundled Stanza parser, it fills in the entire document: sentences, tokens, words, every annotation, and the dependency tree. This gives you a first draft to correct by hand, and is the fastest way to get started.
 
 Each button opens a dialog naming the method it will use and the options that method offers.
 A document that already has tokens cannot be tokenized again. **Tokenize** says to clear the tokens first, and **Clear tokens** beside it does that, after asking.
 Clearing takes the annotations on those tokens with them, and cannot be undone.
-Where the tokens are shared with another Plaid app on the project, the confirmation says whose annotations go too.
 
 == Working with Tokens
 
@@ -151,6 +153,10 @@ Hover over a token to open its panel, where you can:
 * **delete** the token
 
 You can also select a span of text directly to create a new token from it.
+
+Editing a token's words with the same number of words keeps their annotations and relations, and changes only the forms.
+Changing the number of words replaces them, and asks first when annotations would go.
+Deleting a token asks first when anything on its words would go, including the split of a multi-word token or a word's changed form.
 
 = Annotation
 
@@ -280,6 +286,30 @@ If a prediction is already correct, you don't have to retype it:
 
 **Gestures and marks**, above the first sentence, opens a legend of these marks and every gesture in the editor.
 
+== Saving
+
+A cell is saved when you leave it, and a relation when you draw or change it. There is no save button.
+An edit made while the connection is down is sent once it is back, and the page reads **Offline, retrying** meanwhile.
+One that reached the server just before the connection dropped is found there, and is not sent twice.
+When the server does not answer a save, a message headed **Not confirmed** says that the change may or may not have been saved.
+The document is then read again a little later, and a value that was saved shows as saved.
+
+Two people can have one document open, and neither page shows the other's edits as they are made.
+An edit is refused when someone else changed the same kind of annotation in the document since the page loaded (a lemma, a head, the words), even on another word.
+A change to another kind of annotation, on other words, does not refuse it.
+
+When someone else changed the same cell first, the cell shows their value, with yours under it: **Yours: X · Enter to keep yours**.
+A message names the change, such as `b changed this to NOUN.`
+**Enter** in the cell saves yours, **Escape** or typing another value drops it, and leaving the cell saves nothing.
+The same happens when the word was split or joined by someone else before your value was saved.
+A value refused because of a change elsewhere in the document stays in its cell, and leaving the cell again sends it.
+Any other edit that is refused says `Changed elsewhere. Now showing the latest version. Redo your edit.`, and the document shows the other person's change.
+
+A repair is made when a document that needs one is opened.
+When someone saves while it is being made, it starts again by itself.
+If it fails again, or the server does not answer, a message asks you to reload the page.
+A document with no sentences to show until then says `The document could not be repaired. Reload the page to try again.`
+
 = Export
 
 The **Export** tab shows the current document as CoNLL-U, with **Copy** and **Download**.
@@ -343,6 +373,9 @@ Approving a plan after a sentence it changes has been edited is refused, and the
 An edit to another sentence does not stop it.
 A replacement across documents is also out of date when a document starts or stops matching it after the plan was made.
 Approving a plan on a document that a parser run is writing to is refused with nothing written. Approve again once the run has finished.
+
+A plan that stops partway reads **Partly applied**, with how many of its changes were written, and the changes not written are dimmed.
+Ask the assistant to finish it.
 
 A reply lands whether or not the page stays open: leave the tab, reload, or close the browser, and the answer is there when the conversation is next opened.
 **Stop** ends a turn early, even while the model is still working on its answer.
@@ -505,6 +538,7 @@ An entry that is one of these kinds is marked with it:
 * **Repair**: a repair made when the document was opened.
 
 The Activity tab marks its entries the same way.
+An assistant plan that stopped partway is listed as `Assistant, partly applied:` followed by the changes it wrote.
 
 === Restoring an earlier state
 
@@ -538,7 +572,7 @@ The mark is shared with every Plaid app on the project.
 
 A project's maintainers can tailor the annotation scheme from the project's **Settings** tab:
 
-* **UD settings**: the controlled vocabularies (UPOS, XPOS, DEPREL tags), tag and relation **colors**, the **feature inventory** offered in the Features column, and the **document** and **sentence fields** the project keeps notes in (see <<_metadata>>). All vocabularies start from the standard universal sets and can be extended or replaced.
+* **UD settings**: the controlled vocabularies (UPOS, XPOS, DEPREL tags), tag and relation **colors**, the **feature inventory** offered in the Features column, and the **document** and **sentence fields** the project keeps notes in (see <<_metadata>>). All vocabularies start from the standard universal sets and can be extended or replaced. **Save** writes only the settings you changed. If another maintainer changed the same one since you opened the tab, the save is refused and the tab shows the stored settings.
 * **General**: the project's **language**, the **tokenizer locale** used by **Tokenize**, and project deletion. The language is a BCP-47 tag such as `en`, `de` or `zh-Hans`. It is the language a connected parser starts on, and the locale **Tokenize** segments with unless the tokenizer locale is set to something more specific.
 
 === Suggestions or rules
@@ -622,11 +656,12 @@ Whatever it wrote stays.
 
 If the page loses contact with a service, because the connection dropped or the service went quiet for a long time, it says so rather than reporting the run as failed.
 The service is still working. Reload the document to pick the run back up.
+When the server does not answer one of a run's writes, the run says that the change may or may not have been saved.
 
 There are two integration points, both in the Text Editor (see <<_entering_and_tokenizing_text>>), and Parse is also in the Annotate toolbar:
 
 * **Tokenization**: splits the saved text into sentences, tokens and words. The built-in uses the browser's own segmentation and is always available. A service can replace it with segmentation of its own.
-* **Parsing**: fills in lemmas, parts of speech, features and dependency relations. There is no built-in, so this needs a connected service. The bundled example wraps Stanza. Where the service offers a language option, it opens on the project's language, and sentences a person has annotated are left alone unless you say otherwise.
+* **Parsing**: fills in lemmas, parts of speech, features and dependency relations. There is no built-in, so this needs a connected service. The bundled example wraps Stanza. Where the service offers a language option, it opens on the project's language, and sentences a person has annotated are left alone unless you say otherwise. A parse writes the document a group of sentences at a time. If it stops partway, each sentence has its previous annotation or its whole new one, and the message says what was written. Parse again to finish: a sentence with no words yet is tokenized and parsed then.
 
 Every annotation and relation a service produces is stamped unverified, in the same violet state as any other machine value (see <<_machine_vs_human_annotations>>), so you stay in control of what gets confirmed.
 Where a service draws the sentence and token boundaries, those are not marked. History names the run that drew them.
