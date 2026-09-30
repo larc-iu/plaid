@@ -20,18 +20,27 @@ const INPUT = [
   '2\tleft\tleave\tVERB\t_\t_\t0\troot\t_\t_',
 ].join('\n');
 
-// A document with one relation from "came" to "left", across the sentence
-// boundary, as a split in another app leaves one. The operation's label is
-// the one it opened with, or the last message the pass set.
-function crossing(get) {
+// A document one of whose words has no syntactic word, as a word made in
+// another app leaves it. The operation's label is the one it opened with, or
+// the last message the pass set.
+function bare(get) {
   const raw = rawDocFromConllu(INPUT, 'e');
-  const layer = raw.textLayers[0].tokenLayers[2].spanLayers[1].relationLayers[0];
-  const lemmas = raw.textLayers[0].tokenLayers[2].spanLayers[1].spans;
-  const id = (v) => lemmas.find((s) => s.value === v).id;
-  layer.relations.push({ id: 'across', source: id('come'), target: id('leave'), value: 'conj' });
-  const deleted = [];
+  const syntactic = raw.textLayers[0].tokenLayers[2];
+  const left = syntactic.tokens.find(
+    (t) => raw.textLayers[0].text.body.slice(t.begin, t.end) === 'left',
+  );
+  syntactic.tokens = syntactic.tokens.filter((t) => t !== left);
+  for (const sl of syntactic.spanLayers) {
+    sl.spans = (sl.spans || []).filter((sp) => !sp.tokens.includes(left.id));
+    for (const rl of sl.relationLayers || []) {
+      const gone = new Set((sl.spans || []).map((sp) => sp.id));
+      rl.relations = (rl.relations || []).filter((r) => gone.has(r.source) && gone.has(r.target));
+    }
+  }
+  const created = [];
   const client = withOps({
-    relations: { delete: async (rid) => deleted.push(rid) },
+    tokens: { bulkCreate: async (rows) => created.push(...rows) },
+    relations: { delete: async () => {} },
     documents: { get },
     tokenLayers: { setConfig: async () => {} },
   });
@@ -40,31 +49,28 @@ function crossing(get) {
     labels.push(message);
     return fn((m) => labels.push(m));
   };
-  return { doc: new ConlluDocument({ raw, client }), deleted, labels };
+  return { doc: new ConlluDocument({ raw, client }), created, labels };
 }
 
 test('a repair that lands and then fails to re-read keeps the label naming it', async () => {
   const lost = Object.assign(new Error('Failed to fetch'), { status: 0 });
-  const { doc, deleted, labels } = crossing(async () => {
+  const { doc, created, labels } = bare(async () => {
     throw lost;
   });
   const result = await doc.reconcileOnOpen();
-  assert.deepEqual(deleted, ['across']);
-  assert.equal(result.deletedRelations, 1);
+  assert.equal(created.length, 1);
+  assert.equal(result.createdSyntacticWords, 1);
   assert.equal(result.refreshError, lost);
   assert.equal(result.error, undefined);
   assert.deepEqual(result.findings, []);
-  assert.deepEqual(labels, [
-    'Repair on open',
-    'Repaired: removed 1 relation crossing a sentence boundary',
-  ]);
+  assert.deepEqual(labels, ['Repair on open', 'Repaired: added 1 word to the annotation grid']);
 });
 
 test('a repair whose write fails is still labeled as interrupted', async () => {
-  const { doc, labels } = crossing(async () => {
+  const { doc, labels } = bare(async () => {
     throw new Error('not reached');
   });
-  doc._client.relations.delete = async () => {
+  doc._client.tokens.bulkCreate = async () => {
     throw Object.assign(new Error('refused'), { status: 500 });
   };
   const result = await doc.reconcileOnOpen();

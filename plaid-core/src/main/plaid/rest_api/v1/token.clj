@@ -257,11 +257,9 @@
                            "spans, vocab-links). Returns the new right token's ID. If the layer has child token "
                            "layers, every descendant token that straddles the split position is split there too, so "
                            "nesting is preserved at every level (a split aligned to an existing child boundary needs "
-                           "no child split). <body>drop-crossing-relations</body>, an optional list of relation "
-                           "layer ids, deletes in the same operation every relation of those layers that had both "
-                           "ends inside the token and now has one on each side of the split (an end's place is its "
-                           "span's first token), for relations that must stay inside one token, such as a "
-                           "dependency tree inside its sentence. <body>id</body>, optional, is the new right token's id, a "
+                           "no child split). A relation layer's same-ancestor constraint deletes, in the same "
+                           "transaction, the relations the split leaves crossing. <body>id</body>, optional, is the "
+                           "new right token's id, a "
                            "UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 "
                            "and <body>id-taken</body>.")
              :middleware [[pra/wrap-writer-required get-project-id]
@@ -269,14 +267,11 @@
              :parameters {:query [:map [:document-version {:optional true} :int]]
                           :body [:map
                                  [:id {:optional true} :uuid]
-                                 [:position int?]
-                                 [:drop-crossing-relations {:optional true} [:sequential :uuid]]]}
-             :handler (fn [{{{:keys [token-id]} :path {:keys [id position drop-crossing-relations]} :body} :parameters db :db user-id :user/id :as request}]
+                                 [:position int?]]}
+             :handler (fn [{{{:keys [token-id]} :path {:keys [id position]} :body} :parameters db :db user-id :user/id :as request}]
                         (let [doc-id (get-document-id request)
                               {:keys [success code extra] :as result}
-                              (tok/split db token-id position user-id
-                                         {:drop-crossing-relations drop-crossing-relations
-                                          :id id})]
+                              (tok/split db token-id position user-id {:id id})]
                           (if success
                             (prm/assoc-document-version-in-header
                              {:status 201 :body {:id extra}}

@@ -16,6 +16,7 @@ import { getUdLayerInfo, UD_NAMESPACE } from '../../utils/udLayerUtils.js';
 import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
 import { baseRel } from '../../utils/udVocab.js';
 import { MODES } from '../../utils/udVocabMode.js';
+import { queueRuleChanges, withConfigWrites } from '../../utils/udConstraints.js';
 import {
   spanValueCounts,
   relationValueCounts,
@@ -217,16 +218,26 @@ export const ProjectValidation = () => {
             expectStored(layer, UD_NAMESPACE, 'inventory'),
           );
         } else {
-          const next = [...(info.vocab[field.key] || []), ...field.values.map((v) => v.value)];
-          const layers = field.kind === 'relation' ? client.relationLayers : client.spanLayers;
-          await layers.setConfig(
-            field.layerId,
-            UD_NAMESPACE,
-            'vocab',
-            [...new Set(next)],
-            undefined,
-            expectStored(layer, UD_NAMESPACE, 'vocab'),
+          const next = [
+            ...new Set([...(info.vocab[field.key] || []), ...field.values.map((v) => v.value)]),
+          ];
+          const bundle = field.kind === 'relation' ? 'relationLayers' : 'spanLayers';
+          // A closed list is a rule its layer holds on the server, so the
+          // layer takes the new list's rule in the same batch.
+          const after = getUdLayerInfo(
+            withConfigWrites(proj, [{ entity: layer, key: 'vocab', value: next }]),
           );
+          await client.batched((b) => {
+            b[bundle].setConfig(
+              field.layerId,
+              UD_NAMESPACE,
+              'vocab',
+              next,
+              undefined,
+              expectStored(layer, UD_NAMESPACE, 'vocab'),
+            );
+            queueRuleChanges(b, info, after);
+          });
         }
       };
       try {

@@ -352,7 +352,7 @@ test('a project with no enhanced layer refuses an enhanced edge', async () => {
   assert.deepEqual(log, []);
 });
 
-test('a sentence split asks the server to drop the edges it cuts, basic and enhanced, and takes them off the screen', async () => {
+test("a sentence split leaves the edges it cuts to the server's rule, and takes them off the screen", async () => {
   const { client } = relationClient();
   const deleted = [];
   const splits = [];
@@ -372,13 +372,11 @@ test('a sentence split asks the server to drop the edges it cuts, basic and enha
   const and = doc.layerInfo.wordTokenLayer.tokens[2];
   assert.equal(await doc.toggleSentenceBoundary(and.begin), true);
 
-  // One split, naming both dependency layers. The server drops what crosses,
-  // from what it has stored, in the split's own transaction.
+  // One bare split. The server's same-ancestor rule drops what crosses, from
+  // what it has stored, in the split's own transaction.
   assert.equal(splits.length, 1);
   const { id: rightId, ...splitOptions } = splits[0][3];
-  assert.deepEqual(splitOptions, {
-    dropCrossingRelations: [doc.layerInfo.relationLayer.id, doc.layerInfo.enhancedRelationLayer.id],
-  });
+  assert.deepEqual(splitOptions, {});
   // The right half is made under the id it was shown under.
   assert.equal(typeof rightId, 'string');
   assert.deepEqual(deleted, []);
@@ -425,7 +423,6 @@ test('reconcile deletes a suppressor whose basic relation another writer removed
 
   assert.deepEqual(deleted, ['stale']);
   // Housekeeping, not a loss: nothing is reported to the annotator.
-  assert.equal(result.deletedRelations, 0);
   assert.equal(doc.describeReconcile(result), null);
 });
 

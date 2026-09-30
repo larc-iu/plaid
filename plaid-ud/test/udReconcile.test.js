@@ -1,13 +1,10 @@
-// Reconcile-on-open: which dependency relations cross a sentence boundary.
+// Reconcile-on-open planners, and which relations a sentence split takes off
+// the screen (the server's same-ancestor rule deletes them).
 // Uses Node's built-in test runner — run `npm test`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-  interSententialRelationIds,
-  relationsCrossing,
-  wordsNeedingSyntacticWord,
-} from '../src/utils/udReconcile.js';
+import { relationsCrossing, wordsNeedingSyntacticWord } from '../src/utils/udReconcile.js';
 
 // Two sentences [0,10) and [10,20). Three lemma spans, one per morpheme, whose
 // begin offsets place them: ls1,ls2 in sentence 1; ls3 in sentence 2.
@@ -42,40 +39,10 @@ const layerInfo = {
   },
 };
 
-test('flags only relations whose endpoints are in different sentences', () => {
-  assert.deepEqual(interSententialRelationIds(layerInfo), ['r2']);
-});
-
-test('returns [] when there are no relations or no sentences', () => {
-  assert.deepEqual(
-    interSententialRelationIds({ ...layerInfo, relationLayer: { relations: [] } }),
-    [],
-  );
-  assert.deepEqual(
-    interSententialRelationIds({ ...layerInfo, sentenceTokenLayer: { tokens: [] } }),
-    [],
-  );
-  assert.deepEqual(interSententialRelationIds(null), []);
-});
-
-test('ignores root self-loops and same-sentence relations', () => {
-  const onlySafe = {
-    ...layerInfo,
-    relationLayer: {
-      relations: [
-        { id: 'r1', source: 'ls1', target: 'ls2' },
-        { id: 'r3', source: 'ls1', target: 'ls1' },
-      ],
-    },
-  };
-  assert.deepEqual(interSententialRelationIds(onlySafe), []);
-});
-
 // --- relationsCrossing (the same rule, asked of a boundary not yet made) ---
 
 // The one sentence [0,20) about to be split at 10. ls1,ls2 are left of it and
-// ls3 is right of it, so the same relation the reconcile pass flags is the one
-// flagged here, one edit earlier.
+// ls3 is right of it, so r2 is the relation the split cuts.
 const beforeSplit = {
   ...layerInfo,
   sentenceTokenLayer: { tokens: [{ id: 's1', begin: 0, end: 20 }] },

@@ -310,7 +310,7 @@ class PlaidClient {
     // The open logical operation (audit-log group), or null. While set, every
     // write is stamped with `?group-id=` (+ `group-message`) so the audit log
     // folds them into ONE expandable entry. See beginOperation / withOperation.
-    // Shape: { id, message, depth, written, refined, keys, keyCount }.
+    // Shape: { id, message, depth, written, refined, keys, keyCount, keyStack }.
     this.operationGroup = null;
     // Optional callback fired once (per client) when any request returns HTTP
     // 401 — i.e. the token is missing/expired/invalid. Apps use it to discard
@@ -2893,21 +2893,20 @@ class PlaidClient {
        * @param {string} tokenId - The token ID
        * @param {number} position - Code-point offset to split at (strictly between begin and end)
        * @param {string} [auditMessage] - Audit message for this write
-       * @param {{dropCrossingRelations?: string[]}} [options] - `dropCrossingRelations`:
-       *   relation layer ids whose relations must not cross the new boundary (a
-       *   sentence split, for a dependency tree). Every relation of those layers
-       *   that had both ends inside the token and now has one on each side is
-       *   deleted in the same operation, read from what is stored.
+       * @param {{id?: string}} [options] - `id`: the right half's id, a UUIDv7 this
+       *   client minted. A relation layer whose relations must stay inside one token
+       *   of this layer declares a same-ancestor constraint, and the server deletes
+       *   the relations the split leaves crossing in the same transaction.
        */
       split: (
         tokenId,
         position,
         auditMessage,
-        { dropCrossingRelations, id } = {},
+        { id } = {},
       ) =>
         this._request("POST", `/api/v1/tokens/${tokenId}/split`, {
           auditMessage,
-          body: bodyOf({ id, position, dropCrossingRelations }),
+          body: bodyOf({ id, position }),
         }),
       /**
        * Merge two tokens. The left token (smaller begin) survives with the combined
@@ -3198,6 +3197,9 @@ class PlaidClient {
        */
       create: (entityType, entityId, body, { anchorLabel, id } = {}) =>
         this._request("POST", "/api/v1/comments", {
+          // A comment is not audited, so it never joins an open operation,
+          // and never takes a number from an edit's Idempotency-Key seed.
+          noOperation: true,
           body: bodyOf({
             id,
             "entity-type": entityType,
@@ -3218,13 +3220,17 @@ class PlaidClient {
        * @param {string} body - The replacement text
        */
       update: (id, body) =>
-        this._request("PATCH", `/api/v1/comments/${id}`, { body: { body } }),
+        this._request("PATCH", `/api/v1/comments/${id}`, {
+          body: { body },
+          noOperation: true,
+        }),
       /**
        * Delete a comment. The author may delete their own; a project
        * maintainer (or admin) may delete any.
        * @param {string} id - The comment id
        */
-      delete: (id) => this._request("DELETE", `/api/v1/comments/${id}`),
+      delete: (id) =>
+        this._request("DELETE", `/api/v1/comments/${id}`, { noOperation: true }),
       /**
        * List comments in a project, oldest first. Transparently follows
        * pagination cursors and returns the full flat array.
@@ -3622,16 +3628,27 @@ class PlaidClient {
    * joins it takes the Idempotency-Key `<seed>.<n>` and the document-version
    * its first run claimed, so a request that landed is answered from its
    * first send and writes nothing again. The count starts at 0 at each
-   * outermost begin. A nested operation joins the outer one's keys.
+   * outermost begin. A nested operation joins the outer one's keys, unless it
+   * brings its own: then it numbers from 0 under its own seed until its
+   * matching end, and the outer numbering resumes after it.
    *
    * @param {string} message - Human label for the operation.
    * @param {object} [opts] - Optional `{ id, kind, ref, keys }`. `id` adopts an existing group id instead of minting one (a service joining the requester's operation; `requestService` propagates an open operation to the service automatically). `kind`, `ref` and `keys` are described above.
    * @returns {string} The operation's group id.
    */
   beginOperation(message, { id, kind, ref, keys } = {}) {
-    if (this.operationGroup) {
-      this.operationGroup.depth += 1;
-      return this.operationGroup.id;
+    const open = this.operationGroup;
+    if (open) {
+      // A nested operation joins the outer one. When it brings its own key
+      // seed (a queued edit run inside a longer operation), it numbers the
+      // keys until its matching end, then the outer numbering resumes.
+      if (keys) {
+        open.keyStack.push({ keys: open.keys, keyCount: open.keyCount, depth: open.depth });
+        open.keys = keys;
+        open.keyCount = 0;
+      }
+      open.depth += 1;
+      return open.id;
     }
     this.operationGroup = {
       id: id || crypto.randomUUID(),
@@ -3643,6 +3660,7 @@ class PlaidClient {
       refined: undefined,
       keys: keys || null,
       keyCount: 0,
+      keyStack: [],
     };
     return this.operationGroup.id;
   }
@@ -3671,6 +3689,12 @@ class PlaidClient {
     if (!group) return;
     if (group.depth > 1) {
       group.depth -= 1;
+      const saved = group.keyStack.at(-1);
+      if (saved && saved.depth === group.depth) {
+        group.keyStack.pop();
+        group.keys = saved.keys;
+        group.keyCount = saved.keyCount;
+      }
       return;
     }
     this.operationGroup = null;

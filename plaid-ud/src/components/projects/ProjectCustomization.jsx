@@ -24,6 +24,7 @@ import { MetadataFieldList } from '../common/MetadataFieldList.jsx';
 import { VocabModeSwitch } from '../common/VocabModeSwitch.jsx';
 import { DescriptionList } from '../common/DescriptionList.jsx';
 import { MODES, cleanDescriptions } from '../../utils/udVocabMode.js';
+import { queueRuleChanges, withConfigWrites } from '../../utils/udConstraints.js';
 import { UPOS_DESCRIPTIONS, DEPREL_DESCRIPTIONS } from '../../utils/udVocabDescriptions.js';
 import { ColorField } from '../common/ColorField.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
@@ -248,6 +249,10 @@ export const ProjectCustomization = () => {
       const changed = configCells(current, info, project).filter(
         (c) => !sameConfig(c.value, loaded.get(c.id)?.value),
       );
+      // A closed list is a rule its layer holds on the server, so the layers
+      // whose rules this save changes take them in the same batch, and a
+      // list the stored values break is refused whole.
+      const after = getUdLayerInfo(withConfigWrites(project, changed));
       await client.batched((b) => {
         for (const c of changed) {
           b[c.bundle].setConfig(
@@ -259,6 +264,7 @@ export const ProjectCustomization = () => {
             expectStored(c.entity, UD_NAMESPACE, c.key),
           );
         }
+        queueRuleChanges(b, info, after);
       });
 
       await fetchProject();

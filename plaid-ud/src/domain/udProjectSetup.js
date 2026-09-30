@@ -50,7 +50,10 @@ import {
   UD_SPAN_CONFIG_KEYS,
   UD_RELATION_CONFIG_KEY,
   UD_ENHANCED_RELATION_CONFIG_KEY,
+  getUdLayerInfo,
 } from '../utils/udLayerUtils.js';
+import { queueDeclarations, wantedConstraints } from '../utils/udConstraints.js';
+import { ensureLayerConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
 
 export const SPAN_LAYER_SPECS = [
   ['Form', UD_SPAN_CONFIG_KEYS.form],
@@ -140,7 +143,22 @@ const bootstrap = async (client, projectName) => {
     // The two creates are the LAST two results (see the note on B2 above).
     const [relationLayerId, enhancedLayerId] = b7.slice(-2).map(createdId);
 
-    // B8: both relationLayer.setConfig
+    // B8: both relationLayer.setConfig, and UD's layer rules (see
+    // utils/udConstraints.js), in force before anything is written.
+    const spanId = (key) => ({
+      id: spanLayerIds[SPAN_LAYER_SPECS.findIndex(([, k]) => k === key)],
+    });
+    const rules = wantedConstraints({
+      sentenceTokenLayer: { id: sentenceLayerId },
+      wordTokenLayer: { id: wordLayerId },
+      morphemeTokenLayer: { id: morphemeLayerId },
+      formLayer: spanId(UD_SPAN_CONFIG_KEYS.form),
+      lemmaLayer: spanId(UD_SPAN_CONFIG_KEYS.lemma),
+      uposLayer: spanId(UD_SPAN_CONFIG_KEYS.upos),
+      xposLayer: spanId(UD_SPAN_CONFIG_KEYS.xpos),
+      relationLayer: { id: relationLayerId },
+      enhancedRelationLayer: { id: enhancedLayerId },
+    });
     await client.batched(async (b) => {
       b.relationLayers.setConfig(relationLayerId, UD_NAMESPACE, UD_RELATION_CONFIG_KEY, true);
       b.relationLayers.setConfig(
@@ -149,6 +167,7 @@ const bootstrap = async (client, projectName) => {
         UD_ENHANCED_RELATION_CONFIG_KEY,
         true,
       );
+      queueDeclarations(b, rules);
     });
 
     return project;
@@ -288,6 +307,13 @@ export const adoptSubstrate = (client, project) =>
       );
     }
     await ensureEnhancedRelationLayer(client, lemmaLayer || { id: lemmaLayerId });
+
+    // UD's layer rules (utils/udConstraints.js). The layers adopted may hold
+    // another app's data, which the server repairs first where a rule has a
+    // repair. A rule the data still breaks is left for a maintainer's open
+    // to report.
+    const info = getUdLayerInfo(await client.projects.get(project.id));
+    await ensureLayerConstraints(client, wantedConstraints(info), { canManage: true });
   });
 
 /**

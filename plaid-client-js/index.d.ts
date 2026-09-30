@@ -1452,7 +1452,7 @@ interface TokensBundle {
     tokenId: string,
     position: number,
     auditMessage?: string,
-    options?: { dropCrossingRelations?: string[]; id?: string },
+    options?: { id?: string },
   ): Promise<any>;
   merge(
     tokenId: string,

@@ -1399,9 +1399,12 @@ class CommentsResource(_Resource):
                 its answer was lost lands once (409 with ``id_taken`` when the
                 id was used before).
         """
+        # A comment is not audited, so it never joins an open operation, and
+        # never takes a number from an operation's Idempotency-Key seed.
         return self._request('POST', '/api/v1/comments',
                              body=_body_of(id=_UNSET if id is None else id, entity_type=entity_type, entity_id=entity_id, body=body,
-                                           anchor_label=_UNSET if anchor_label is None else anchor_label))
+                                           anchor_label=_UNSET if anchor_label is None else anchor_label),
+                             no_operation=True)
 
     def get(self, comment_id: str) -> Any:
         """Read one comment."""
@@ -1414,11 +1417,11 @@ class CommentsResource(_Resource):
         Sets ``edited`` on the returned comment.
         """
         return self._request('PATCH', f'/api/v1/comments/{comment_id}',
-                             body=_body_of(body=body))
+                             body=_body_of(body=body), no_operation=True)
 
     def delete(self, comment_id: str) -> Any:
         """Delete a comment (author, or a maintainer of its project)."""
-        return self._request('DELETE', f'/api/v1/comments/{comment_id}')
+        return self._request('DELETE', f'/api/v1/comments/{comment_id}', no_operation=True)
 
     def list(self, project_id: str, *, document_id: str | None = None,
              entity_type: str | None = None, entity_id: str | None = None) -> Any:
@@ -3247,28 +3250,26 @@ class TokensResource(_Resource):
         return self._request('PATCH', '/api/v1/tokens/bulk', body=body, audit_message=audit_message)
 
     def split(self, token_id: str, position: int, audit_message=None,
-              drop_crossing_relations: Any = _UNSET, *, id: str | None = None) -> Any:
+              *, id: str | None = None) -> Any:
         """Split a token at a Unicode code-point offset.
 
         The original token becomes the left half (keeping its ID, spans, and
         vocab-links); a new token is created for the right half and its ID is
         returned. ``position`` must be strictly between the token's begin and end.
+        A relation layer whose relations must stay inside one token of this
+        layer declares a same-ancestor constraint, and the server deletes the
+        relations the split leaves crossing in the same transaction.
 
         Args:
             token_id: The token ID
             position: Code-point offset to split at (strictly between begin and end)
-            drop_crossing_relations: Relation layer ids whose relations must not
-                cross the new boundary (a sentence split, for a dependency
-                tree). Every relation of those layers that had both ends inside
-                the token and now has one on each side is deleted in the same
-                operation, read from what is stored.
             id: Optional. The id to create the right half under, a UUIDv7 this client
                 minted (``plaid_client.uuid7()``), so a create sent again after
                 its answer was lost lands once (409 with ``id_taken`` when the
                 id was used before).
         """
         return self._request('POST', f'/api/v1/tokens/{token_id}/split',
-                             body=_body_of(id=_UNSET if id is None else id, position=position, drop_crossing_relations=drop_crossing_relations),
+                             body=_body_of(id=_UNSET if id is None else id, position=position),
                              audit_message=audit_message)
 
     def merge(self, token_id: str, other_token_id: str, audit_message=None) -> Any:
@@ -3770,7 +3771,7 @@ class PlaidClient:
         # write is stamped with ``?group-id=`` (+ ``group-message``) so the audit
         # log folds them into ONE expandable entry. See begin_operation /
         # operation(). Shape: {'id', 'message', 'kind', 'ref', 'depth', 'written', 'refined',
-        # 'keys', 'key_count'}.
+        # 'keys', 'key_count', 'key_stack'}.
         self._operation_group: dict | None = None
         self.session = req_lib.Session()
 
@@ -3891,7 +3892,9 @@ class PlaidClient:
         document-version its first run claimed, so a request that landed is
         answered from its first send and writes nothing again. The count
         starts at 0 at each outermost begin. A nested operation joins the
-        outer one's keys.
+        outer one's keys, unless it brings its own: then it numbers from 0
+        under its own seed until its matching end, and the outer numbering
+        resumes after it.
 
         Prefer the ``operation()`` context manager; this is the manual form.
 
@@ -3907,9 +3910,20 @@ class PlaidClient:
         Returns:
             The operation's group id.
         """
-        if self._operation_group is not None:
-            self._operation_group['depth'] += 1
-            return self._operation_group['id']
+        open_group = self._operation_group
+        if open_group is not None:
+            # A nested operation that brings its own key seed numbers the
+            # keys until its matching end.
+            if keys:
+                open_group['key_stack'].append({
+                    'keys': open_group['keys'],
+                    'key_count': open_group['key_count'],
+                    'depth': open_group['depth'],
+                })
+                open_group['keys'] = keys
+                open_group['key_count'] = 0
+            open_group['depth'] += 1
+            return open_group['id']
         self._operation_group = {
             'id': str(group_id) if group_id else str(uuid.uuid4()),
             'message': None if message is None else str(message),
@@ -3920,6 +3934,7 @@ class PlaidClient:
             'refined': _UNSET_MESSAGE,
             'keys': keys or None,
             'key_count': 0,
+            'key_stack': [],
         }
         return self._operation_group['id']
 
@@ -3951,6 +3966,11 @@ class PlaidClient:
             return
         if group['depth'] > 1:
             group['depth'] -= 1
+            stack = group['key_stack']
+            if stack and stack[-1]['depth'] == group['depth']:
+                saved = stack.pop()
+                group['keys'] = saved['keys']
+                group['key_count'] = saved['key_count']
             return
         self._operation_group = None
         refined = message if message is not _UNSET_MESSAGE else group['refined']

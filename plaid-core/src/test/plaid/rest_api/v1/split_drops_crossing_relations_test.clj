@@ -1,9 +1,10 @@
 (ns plaid.rest-api.v1.split-drops-crossing-relations-test
-  "A token split can name relation layers whose relations must not cross the
-  new boundary (a sentence split, for dependency trees), and then deletes
-  those that would in the same transaction, from what is stored. A client
-  that computed the crossing relations from a stale copy used to leave one
-  drawn since behind (D5, V3 H3-3)."
+  "A relation layer that declares same-ancestor over the sentence layer loses,
+  in a sentence split's own transaction, the relations the split leaves
+  crossing, read from what is stored. A client that computed the crossing
+  relations from a stale copy used to leave one drawn since behind (D5, V3
+  H3-3), and a split made in an app that cannot name the layer (igt splitting
+  a sentence of a ud project) left them for the next open to repair."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.sql.common :as psc]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
@@ -30,12 +31,12 @@
   word layer with a span each, a dependency layer and a second relation
   layer, and relations:
     deps  cat->The (left), sat->Dogs (crosses 13), ran->Dogs (right)
-    other sat->ran (crosses 13, but its layer is not named)"
+    other sat->ran (crosses 13, but its layer declares nothing)"
   []
   (let [proj (create-test-project admin-request "Split")
         doc (create-test-document admin-request proj "D")
         tl (id (create-text-layer admin-request proj "T"))
-        sl (id (create-token-layer admin-request tl "Sentence"))
+        sl (id (create-token-layer admin-request tl "Sentence" "non-overlapping"))
         wl (id (create-token-layer admin-request tl "Word"))
         lemma (id (create-span-layer admin-request wl "Lemma"))
         deps (id (create-relation-layer admin-request lemma "Deps"))
@@ -45,7 +46,7 @@
         span (into {} (for [[w [b e]] words]
                         [w (id (create-span admin-request lemma [(id (create-token admin-request wl txt b e))] w))]))
         rel (fn [layer s t] (id (create-relation admin-request layer (span s) (span t) "dep")))]
-    {:proj proj :doc doc :sentence sentence :deps deps :other other
+    {:proj proj :doc doc :sl sl :sentence sentence :deps deps :other other
      :rels {:cat-the (rel deps "cat" "The")
             :sat-dogs (rel deps "sat" "Dogs")
             :ran-dogs (rel deps "ran" "Dogs")
@@ -56,32 +57,40 @@
 (defn- split! [token body]
   (api-call admin-request {:method :post :path (str "/api/v1/tokens/" token "/split") :body body}))
 
-(deftest a-split-naming-a-layer-drops-its-crossing-relations
-  (let [{:keys [sentence deps rels]} (setup!)]
-    (assert-status 201 (split! sentence {:position 13 :drop-crossing-relations [deps]}))
+(defn- declare! [layer token-layer]
+  (api-call admin-request {:method :put
+                           :path (str "/api/v1/relation-layers/" layer "/constraints/ud")
+                           :body {:constraints [{:type "same-ancestor" :token-layer token-layer}]}}))
+
+(defn- rule-ops [doc]
+  (psc/q db {:select [:id] :from :operations
+             :where [:and [:= :op_type "layer/apply-constraints"] [:= :document_id (str doc)]]}))
+
+(deftest a-split-drops-the-relations-its-declared-layer-leaves-crossing
+  (let [{:keys [sentence deps rels doc sl]} (setup!)]
+    (assert-status 200 (declare! deps sl))
+    (assert-status 201 (split! sentence {:position 13}))
     (is (not (exists? (:sat-dogs rels))) "the relation now crossing the boundary is gone")
     (is (exists? (:cat-the rels)))
     (is (exists? (:ran-dogs rels)))
-    (is (exists? (:other-sat-ran rels)) "a layer not named keeps its relations")))
+    (is (exists? (:other-sat-ran rels)) "a layer that declares nothing keeps its relations")
+    (is (= 1 (count (rule-ops doc))) "one operation of the rules, in the split's transaction")))
 
-(deftest a-split-naming-nothing-keeps-every-relation
+(deftest a-split-with-nothing-declared-keeps-every-relation
+  (let [{:keys [sentence rels doc]} (setup!)]
+    (assert-status 201 (split! sentence {:position 13}))
+    (is (every? exists? (vals rels)))
+    (is (empty? (rule-ops doc)))))
+
+(deftest a-relation-reaching-outside-its-sentence-refuses-the-declaration
+  (let [{:keys [sentence deps rels sl]} (setup!)]
+    ;; Split first with nothing declared: sat->Dogs now crosses, so the rule
+    ;; cannot be declared over it.
+    (assert-status 201 (split! sentence {:position 13}))
+    (assert-status 422 (declare! deps sl))
+    (is (exists? (:sat-dogs rels)))))
+
+(deftest a-split-body-naming-layers-is-read-as-a-plain-split
   (let [{:keys [sentence rels]} (setup!)]
-    (assert-status 201 (split! sentence {:position 13}))
-    (is (every? exists? (vals rels)))))
-
-(deftest a-relation-reaching-outside-the-split-token-is-left-alone
-  (let [{:keys [sentence deps rels]} (setup!)]
-    ;; First split at 13, keeping everything, then split the left sentence
-    ;; at 8: sat->Dogs reached outside that sentence before this split.
-    (assert-status 201 (split! sentence {:position 13}))
-    (assert-status 201 (split! sentence {:position 8 :drop-crossing-relations [deps]}))
-    (is (exists? (:sat-dogs rels)))
-    (is (exists? (:cat-the rels)))))
-
-(deftest a-layer-from-elsewhere-refuses-the-split
-  (let [{:keys [sentence rels]} (setup!)
-        stranger (-> (setup!) :deps)]
-    (assert-status 400 (split! sentence {:position 13 :drop-crossing-relations [stranger]}))
-    (assert-status 400 (split! sentence {:position 13 :drop-crossing-relations [(random-uuid)]}))
-    (is (= (count text) (:end_ (psc/fetch-by-id db :tokens sentence))) "the split did not happen")
+    (assert-status 201 (split! sentence {:position 13 :drop-crossing-relations [(random-uuid)]}))
     (is (every? exists? (vals rels)))))

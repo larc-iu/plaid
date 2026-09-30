@@ -36,13 +36,12 @@ import { expectStored, isConfigConflict } from '../../../plaid-ui/src/domain/con
 import { rebaseEdits } from '../../../plaid-ui/src/lib/textMerge.js';
 import { editLogGaps } from '../../../plaid-ui/src/lib/editLog.js';
 import { applyReshape } from '../../../plaid-ui/src/domain/textReshape.js';
+import { ensureLayerConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
+import { rulesNotInForce, wantedConstraints } from '../utils/udConstraints.js';
 import {
-  interSententialRelationIds,
   relationsCrossing,
   staleSuppressorIds,
   wordsNeedingSyntacticWord,
-  orphanSyntacticWords,
-  planSpanDedup,
   planPreserveOnSplit,
   describeReconcile as describeUdReconcile,
 } from '../utils/udReconcile.js';
@@ -514,12 +513,11 @@ export class ConlluDocument extends DocumentModel {
 
     // A dependency relation whose endpoints land on opposite sides of charPos
     // would cross the new sentence boundary (UD relations are
-    // sentence-internal). The split drops them in its own transaction, read
-    // from what is stored, so one drawn since this copy was read goes too.
-    // Here they only leave the screen.
+    // sentence-internal). The server's same-ancestor rule deletes them in the
+    // split's own transaction, read from what is stored, so one drawn since
+    // this copy was read goes too. Here they only leave the screen.
     const crossing = relationsCrossing(this.layerInfo, charPos);
     const removedRelIds = new Set(crossing);
-    const relationLayerIds = dependencyRelationLayers(this.layerInfo).map((l) => l.id);
     // The split keeps the left half's identity; the right half is new.
     const rightId = pendingId();
 
@@ -539,33 +537,29 @@ export class ConlluDocument extends DocumentModel {
 
     return this._queueWrite(label, async () => {
       const res = await this._client.tokens.split(settledId(containing.id), charPos, undefined, {
-        dropCrossingRelations: relationLayerIds,
         id: rightId,
       });
       this._settle(new Map([[rightId, createdId(res)]]));
     });
   }
 
-  // Reconcile-on-open: repair UD invariants that another app may have broken
-  // while editing the shared substrate, then validate what remains. All repairs
-  // heal DOWNWARD toward the substrate (never reverting it), loud + recoverable
-  // (ordinary audited writes):
-  //   1. Seed a default full-width syntactic-word for every word that lacks one
+  // Reconcile-on-open: make sure the server holds UD's layer rules, repair
+  // what the rules leave to an app, then validate what remains.
+  //   1. Layer rules (utils/udConstraints.js), maintainers only: a relation
+  //      inside one sentence, one head per word, no cycle, one Form, Lemma,
+  //      UPOS and XPOS per word, syntactic words as wide as their word, a
+  //      closed list's values. The server applies them in every write,
+  //      whoever writes. A project whose layers do not hold them yet gets the
+  //      server's repair of its stored data first, then the declaration. A
+  //      rule the data still breaks (two heads, a cycle, an off-list value) is
+  //      not put in force, and a finding says so.
+  //   2. Seed a default full-width syntactic-word for every word that lacks one
   //      (another app, e.g. IGT, can leave words bare — UD annotations live on
   //      the syntactic-word layer, so a bare word is invisible/unannotatable).
-  //   2. Delete orphan syntactic-words (matching no word) left behind when
-  //      another app re-tokenized words — incl. annotated ones (gloss loss is
-  //      rare and recoverable via document history; they otherwise render as
-  //      spurious extra morphemes).
-  //   3. Losslessly dedup duplicate single-valued spans (Form/Lemma/UPOS/XPOS)
-  //      on a morpheme (only the first is visible in the grid).
-  //   4. Delete dependency relations that now cross a sentence boundary (e.g.
-  //      after another app split a sentence), in the tree and in the enhanced
-  //      layer alike, and enhanced-layer suppressors whose basic relation has
-  //      gone (see enhancedGraph.js).
+  //   3. Delete enhanced-layer suppressors whose basic relation has gone (see
+  //      enhancedGraph.js).
   // Then run validateConlluDocument over the reloaded state: residual heal
-  // failures and un-healable contracts (e.g. a node with >1 head) come back as
-  // `findings` for the caller to log + toast.
+  // failures come back as `findings` for the caller to log + toast.
   // Deliberately NOT a queued write: this runs once on a freshly loaded doc,
   // and a heal failure must not trigger the queue's reload-and-revert (which
   // would discard the just-loaded doc). A single-flight guard plus the editor's
@@ -624,87 +618,64 @@ export class ConlluDocument extends DocumentModel {
 
   async _reconcile() {
     const ZERO = {
-      deletedRelations: 0,
       createdSyntacticWords: 0,
-      deletedOrphans: 0,
-      deletedAnnotatedOrphans: 0,
-      dedupedSpans: 0,
+      rulesDeclared: false,
+      rulesRepaired: false,
       findings: [],
     };
     if (this._reconciling) return ZERO;
     this._reconciling = true;
     try {
-      const info = this.layerInfo;
+      let info = this.layerInfo;
       // Back-fill, the reconcile contract's second step. Provenance lost in a
       // split leaves nothing for a later pass to find, so the declaration has
       // to be in place before the split, not repaired after it.
       await this._backfillPreserveOnSplit(info);
       const addedEnhancedLayer = await this._backfillEnhancedLayer(info);
-      const crossingIds = interSententialRelationIds(info);
-      // A suppressor can be both stale and crossing, and a second delete of
-      // one id is a 404 that takes the batch with it.
-      const crossingSet = new Set(crossingIds);
-      const staleIds = staleSuppressorIds(info).filter((id) => !crossingSet.has(id));
-      const relIds = [...crossingIds, ...staleIds];
+      if (addedEnhancedLayer) {
+        await this._reload();
+        info = this.layerInfo;
+      }
+      const rules = await ensureLayerConstraints(this._client, wantedConstraints(info), {
+        canManage: canManageProject(this._project, this._user),
+      });
+      // The server's repair changed stored rows this screen shows.
+      if (rules.repaired) {
+        await this._reload();
+        info = this.layerInfo;
+      }
+      const staleIds = staleSuppressorIds(info);
       const { morphemeTokenLayer, textLayer } = info;
       const textId = textLayer?.text?.id;
       const canHeal = Boolean(morphemeTokenLayer?.id && textId);
       const seedExtents = canHeal ? wordsNeedingSyntacticWord(info) : [];
-      const orphans = orphanSyntacticWords(info);
-      // Don't dedup spans on orphan tokens we're about to delete (the cascade
-      // takes those spans anyway; touching them in the same batch would 404).
-      const orphanIdSet = new Set(orphans.ids);
-      const dedupPlans = planSpanDedup(info).filter((p) => !orphanIdSet.has(p.tokenId));
 
       let createdSyntacticWords = 0;
-      let deletedRelations = 0;
-      let deletedOrphans = 0;
-      let dedupedSpans = 0;
-
-      // Batch A (atomic): seed bare words + delete orphan syntactic-words +
-      // lossless span dedup. Disjoint targets, all expected to succeed.
-      if (seedExtents.length || orphans.ids.length || dedupPlans.length) {
+      if (seedExtents.length) {
         await this._client.batched(async (b) => {
-          if (seedExtents.length) {
-            b.tokens.bulkCreate(
-              seedExtents.map((e) => ({
-                tokenLayerId: morphemeTokenLayer.id,
-                text: textId,
-                begin: e.begin,
-                end: e.end,
-                precedence: 0,
-              })),
-            );
-          }
-          if (orphans.ids.length) b.tokens.bulkDelete(orphans.ids);
-          dedupPlans.forEach((p) => {
-            if (p.needsUpdate) b.spans.update(p.keepSpanId, p.mergedValue);
-            p.deleteSpanIds.forEach((id) => b.spans.delete(id));
-          });
+          b.tokens.bulkCreate(
+            seedExtents.map((e) => ({
+              tokenLayerId: morphemeTokenLayer.id,
+              text: textId,
+              begin: e.begin,
+              end: e.end,
+              precedence: 0,
+            })),
+          );
         });
         createdSyntacticWords = seedExtents.length;
-        deletedOrphans = orphans.ids.length;
-        dedupedSpans = dedupPlans.reduce((n, p) => n + p.deleteSpanIds.length, 0);
       }
 
-      // Batch B (404-tolerant): drop now-inter-sentential dependency relations.
-      // A concurrent open may have already deleted them, or an orphan delete
-      // above may have cascaded them — treat not-found as success.
-      if (relIds.length) {
+      // Suppressors left over a pair with no relation. A concurrent open may
+      // have deleted them already, so a not-found is success.
+      if (staleIds.length) {
         try {
           await this._client.batched(async (b) => {
-            relIds.forEach((id) => b.relations.delete(id));
+            staleIds.forEach((id) => b.relations.delete(id));
           });
         } catch (err) {
           if (err?.status !== 404) throw err;
         }
-        // Reported as what the annotator lost. A suppressor is housekeeping,
-        // stale or crossing: one that crossed went with the relation it lay
-        // over, which is the loss and is counted once.
-        const suppressorIds = new Set(
-          (info.enhancedRelationLayer?.relations || []).filter(isSuppressor).map((r) => r.id),
-        );
-        deletedRelations = crossingIds.filter((id) => !suppressorIds.has(id)).length;
       }
 
       // Re-read only when a heal actually wrote. The batches above land
@@ -713,15 +684,11 @@ export class ConlluDocument extends DocumentModel {
       // state IS the server state. This runs behind a blocking spinner on every
       // Annotate open now, so an unconditional reload would make the ordinary
       // case (nothing to repair) pay a full document fetch for the rare one.
-      const healed =
-        addedEnhancedLayer ||
-        createdSyntacticWords + deletedOrphans + dedupedSpans + relIds.length > 0;
+      const healed = createdSyntacticWords + staleIds.length > 0;
       const tally = {
-        deletedRelations,
         createdSyntacticWords,
-        deletedOrphans,
-        deletedAnnotatedOrphans: orphans.annotatedCount,
-        dedupedSpans,
+        rulesDeclared: rules.changed,
+        rulesRepaired: rules.repaired,
       };
       // Every write has landed: the repair is whole, and a failure from here
       // on leaves only the screen behind it. Its findings would describe the
@@ -729,7 +696,13 @@ export class ConlluDocument extends DocumentModel {
       try {
         if (healed) await this._reload();
         // Validate the true server state — even when nothing healed.
-        return { ...tally, findings: validateConlluDocument(this.layerInfo) };
+        return {
+          ...tally,
+          findings: [
+            ...validateConlluDocument(this.layerInfo),
+            ...rulesNotInForce(rules.pending, this.layerInfo),
+          ],
+        };
       } catch (refreshError) {
         console.error('reconcileOnOpen could not re-read the repaired document:', refreshError);
         return { ...tally, findings: [], refreshError };
