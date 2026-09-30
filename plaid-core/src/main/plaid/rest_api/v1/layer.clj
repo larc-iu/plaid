@@ -4,6 +4,7 @@
   relation layers all expose."
   (:require [clojure.string :as str]
             [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.layer-constraints :as lcr]
             [plaid.sql.project :as prj]))
 
 (defn- config-check
@@ -159,4 +160,8 @@
                                    400 (str "Failed to shift " noun)
                                    (fn [] {:status 204})))}}]
 
-      (layer-config-routes table id-key project-fn)]]))
+      (layer-config-routes table id-key project-fn)
+
+      ;; Text layers carry no constraints: nothing on them to constrain.
+      (when-let [kind ({:token_layers :token :span_layers :span :relation_layers :relation} table)]
+        (lcr/constraint-routes kind id-key project-fn))]]))

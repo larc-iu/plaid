@@ -6,6 +6,7 @@
             [next.jdbc :as jdbc]
             [plaid.server.log-buffer :as log-buffer]
             [plaid.sql.audit-write :as psaw]
+            [plaid.sql.constraints.layer :as lc]
             [plaid.sql.datasource :as psd]
             [plaid.sql.operation :as op]
             [taoensso.timbre :as log])
@@ -310,7 +311,10 @@
           (fn [tx]
             (or (when pending ((:check pending) tx))
                 (let [response (binding [*pending-key* nil]
-                                 (run-operations request raw-ops tx))]
+                                 ;; Layer constraints, checked once after
+                                 ;; the last operation.
+                                 (lc/check-batch! tx (:user/id request)
+                                                  #(run-operations request raw-ops tx)))]
                   (when pending ((:store! pending) tx response))
                   response))))))))
 

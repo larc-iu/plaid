@@ -49,17 +49,20 @@
 (defn- row->token-layer [row]
   {:token-layer/id   (:id row)
    :token-layer/name (:name row)
-   :config           (psc/parse-config (:config row))})
+   :config           (psc/parse-config (:config row))
+   :constraints      (psc/parse-config (:constraints row))})
 
 (defn- row->span-layer [row]
   {:span-layer/id   (:id row)
    :span-layer/name (:name row)
-   :config          (psc/parse-config (:config row))})
+   :config          (psc/parse-config (:config row))
+   :constraints     (psc/parse-config (:constraints row))})
 
 (defn- row->relation-layer [row]
   {:relation-layer/id   (:id row)
    :relation-layer/name (:name row)
-   :config              (psc/parse-config (:config row))})
+   :config              (psc/parse-config (:config row))
+   :constraints         (psc/parse-config (:constraints row))})
 
 (defn- row->vocab-layer [row maintainers]
   {:vocab/id           (:id row)

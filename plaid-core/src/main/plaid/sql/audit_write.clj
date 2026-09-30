@@ -10,7 +10,8 @@
 
   Split out of `plaid.sql.common` so the audit contract is one file, separate
   from the row helpers that obey it."
-  (:require [next.jdbc :as jdbc]
+  (:require [clojure.string]
+            [next.jdbc :as jdbc]
             [plaid.sql.common :as psc]))
 
 ;; ============================================================
@@ -62,6 +63,112 @@
   skip repeating the original OCC check after earlier sub-requests have
   advanced its version. nil outside the batch endpoint."
   nil)
+
+(def ^:dynamic *pending*
+  "The rows the current write transaction has written that a layer
+  constraint may speak of (tokens, spans, relations, vocabulary links), as an
+  atom holding a map from `[table id]` to what `note-write!` gathered, or nil
+  when no transaction is collecting. Bound by the outermost
+  `plaid.sql.operation/submit-operation*` and by the atomic batch handler,
+  and read by `plaid.sql.constraints.layer/finish!` at the end of the
+  transaction. It lives here rather than in that namespace because the audit
+  helpers below fill it, and that namespace writes through them."
+  nil)
+
+(def ^:dynamic *refusal*
+  "An atom bound per request by
+  `plaid.rest-api.v1.layer-constraints/wrap-constraint-refusal`. An
+  operation refused for breaking a layer constraint puts the violations here,
+  and the middleware adds them to the 422 answer, whatever the route's own
+  handler built from the operation's result."
+  nil)
+
+(def ^:private noted-tables #{"tokens" "spans" "relations" "vocab_links"})
+
+(defn- op-kind
+  "The namespace of the op type, e.g. \"span\" for :span/create."
+  [op]
+  (let [t (:type op)]
+    (cond
+      (keyword? t) (namespace t)
+      (string? t) (first (clojure.string/split t #"/" 2))
+      :else nil)))
+
+(defn- prov-state
+  "The provenance keys of an image's folded :metadata, or ::unknown when the
+  image carries no metadata fold."
+  [image]
+  (if (contains? image :metadata)
+    (let [m (:metadata image)]
+      [(get m "prov" (get m :prov)) (get m "provConfirmed" (get m :provConfirmed))])
+    ::unknown))
+
+(defn- note-write!
+  "Record one audited write of a row a layer constraint may speak of into
+  `*pending*`. Keeps, per row, its layer and document, whether it is gone,
+  the first image before the transaction (a token's old extent, a span's old
+  token list), and the op kinds that changed what each constraint reads:
+  a token's extent, a span's or link's token list, a relation's endpoints,
+  a span's or relation's value (or its provenance, which decides whether
+  the value is exempt). The op kind is the op type's namespace, which is how
+  `finish!` tells a write on the row's own kind from a structural one."
+  [op table-name id change pre post]
+  (when-let [pending *pending*]
+    (let [kind (op-kind op)
+          group (:group-id op)
+          insert? (= change :insert)
+          delete? (= change :delete)
+          changed? (fn [k] (or insert? (and pre post (not= (get pre k) (get post k)))))
+          layer-key (case table-name
+                      "tokens" :token_layer_id
+                      "spans" :span_layer_id
+                      "relations" :relation_layer_id
+                      nil)
+          image (or post pre)
+          cats (case table-name
+                 "tokens" (when (or delete? (changed? :begin) (changed? :end_)) #{:extent})
+                 "spans" (cond-> #{}
+                           (or insert? (and (contains? pre :tokens) (contains? post :tokens)
+                                            (not= (:tokens pre) (:tokens post))))
+                           (conj :tokens)
+                           (or (changed? :value)
+                               (and pre post (not= (prov-state pre) (prov-state post))))
+                           (conj :value))
+                 "relations" (cond-> #{}
+                               (or (changed? :source_span_id) (changed? :target_span_id))
+                               (conj :edge)
+                               (or (changed? :value)
+                                   (and pre post (not= (prov-state pre) (prov-state post))))
+                               (conj :value))
+                 "vocab_links" (when (or insert? (and (contains? pre :tokens) (contains? post :tokens)
+                                                      (not= (:tokens pre) (:tokens post))))
+                                 #{:tokens})
+                 nil)]
+      (swap! pending update [table-name id]
+             (fn [info]
+               (let [info (or info {:table table-name
+                                    :id id
+                                    ;; The row as it stood before the transaction, nil for
+                                    ;; one it created.
+                                    :pre (when-not insert? pre)})
+                     info (cond-> info
+                            (and (nil? (:pre-tokens info)) (not insert?) (contains? pre :tokens))
+                            (assoc :pre-tokens (:tokens pre)))]
+                 (cond-> (assoc info
+                                :layer (or (when layer-key (get image layer-key)) (:layer info))
+                                :doc (or (:document_id image) (:doc info))
+                                :deleted? delete?)
+                   (seq cats)
+                   (update :kinds (fn [m] (reduce (fn [m c] (update m c (fnil conj #{}) kind)) m cats)))
+                   (contains? cats :value)
+                   (update :value-groups (fnil conj #{}) group))))))))
+
+(defn- note!
+  [op target-table target-id change-type pre-image post-image]
+  (when *pending*
+    (let [t (name target-table)]
+      (when (noted-tables t)
+        (note-write! op t target-id change-type pre-image post-image)))))
 
 (defn ensure-op-bound!
   "Fail-fast guard for the audited write helpers. Throws ex-info with
@@ -233,13 +340,15 @@
       nil
 
       :else
-      (jdbc/execute-one!
-       tx
-       (psc/format-sql
-        {:insert-into :audit_writes
-         :values [(audit-row-values op (reserve-seqs! op 1)
-                                    target-table target-id change-type
-                                    pre-image post-image)]})))))
+      (do
+        (jdbc/execute-one!
+         tx
+         (psc/format-sql
+          {:insert-into :audit_writes
+           :values [(audit-row-values op (reserve-seqs! op 1)
+                                      target-table target-id change-type
+                                      pre-image post-image)]}))
+        (note! op target-table target-id change-type pre-image post-image)))))
 
 (defn record-audit-writes!
   "Batched form of `record-audit-write!` for many rows that share one
@@ -280,4 +389,7 @@
                   entries)]
         (doseq [chunk (partition-all audit-bulk-chunk-size rows)]
           (jdbc/execute-one! tx (psc/format-sql {:insert-into :audit_writes
-                                                 :values (vec chunk)})))))))
+                                                 :values (vec chunk)})))
+        (when *pending*
+          (doseq [[target-id pre-image post-image] entries]
+            (note! op target-table target-id change-type pre-image post-image)))))))

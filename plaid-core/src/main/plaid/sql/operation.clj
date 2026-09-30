@@ -456,6 +456,16 @@
   [db op-attrs body-fn]
   (try
     (let [op-id (psc/new-uuid)
+          ;; The outermost operation of a transaction collects the rows it
+          ;; writes and checks the layer constraints on them at its end
+          ;; (`plaid.sql.constraints.layer/finish!`). Inside a batch, or inside
+          ;; another operation, the collector is already bound and whoever
+          ;; bound it checks.
+          outermost? (nil? psaw/*pending*)
+          pending (or psaw/*pending* (atom {}))
+          ;; Audit events of the operations that apply layer rules, published
+          ;; with this one's after the commit.
+          constraint-events (atom [])
           ;; `op-record` is built INSIDE the write tx because `ts` must be
           ;; stamped under the BEGIN IMMEDIATE lock (see
           ;; psc/next-monotonic-ts!). Capture it out via this volatile so
@@ -475,7 +485,8 @@
                   ;; concurrent writers; the history tailer's
                   ;; `(ts,id) > cursor` keyset then skipped the lower-ts
                   ;; op forever (silent replica data loss).
-                  (check-locks! op-attrs)
+                  (when-not (:skip-lock-check? op-attrs)
+                    (check-locks! op-attrs))
                   (let [ts (psc/next-monotonic-ts! tx)
                         op-record (assoc op-attrs
                                          :id op-id
@@ -539,8 +550,24 @@
                     ;; counter — no real contention.
                     (binding [psaw/*op* {:id op-id :ts ts :tx tx
                                          :seq-counter (atom 0)
-                                         :affected-documents affected-docs}]
+                                         :affected-documents affected-docs
+                                         :type (:type op-attrs)
+                                         :user (:user op-attrs)
+                                         :group-id (:group-id op-record)}
+                              psaw/*pending* pending]
                       (let [result (body-fn tx)]
+                        ;; Layer constraints, checked on what the transaction
+                        ;; wrote before its document versions move. A refusal
+                        ;; throws and rolls everything back. A rule applied
+                        ;; to another document bumps that one, which the
+                        ;; answer's versions must name.
+                        (when outermost?
+                          (let [finish! (requiring-resolve 'plaid.sql.constraints.layer/finish!)]
+                            (swap! affected-docs into
+                                   (if *deferred-events*
+                                     (finish! tx)
+                                     (binding [*deferred-events* constraint-events]
+                                       (finish! tx))))))
                         ;; Bump documents.version so the optimistic-concurrency
                         ;; middleware (wrap-document-version) detects stale clients.
                         (when (and (:document op-attrs)
@@ -548,6 +575,10 @@
                           (bump-document-version! tx (:document op-attrs) ts))
                         result))))
           op-record (assoc @op-record* :documents @affected-docs)]
+      (try
+        (flush-deferred-events! @constraint-events)
+        (catch Throwable t
+          (log/warn t "Publishing the layer rule events failed after the commit:" (ex-message t))))
       ;; The try/catch around post-submit! is defensive: the OLTP commit
       ;; is already durable, so nothing post-commit may invert success
       ;; into a 5xx response.

@@ -123,6 +123,11 @@
   (api-call admin-request {:method :delete
                            :path (str "/api/v1/" layer-path "/" id "/config/" ns* "/" key*)}))
 
+(defn- constraints-call [method layer-path id tail body]
+  (api-call admin-request (cond-> {:method method
+                                   :path (str "/api/v1/" layer-path "/" id "/constraints/" tail)}
+                            body (assoc :body body))))
+
 (defn- create-user! [email admin?]
   (api-call admin-request {:method :post
                            :path "/api/v1/users"
@@ -165,6 +170,8 @@
     "document/update"
     "guideline/create" "guideline/delete" "guideline/update"
     "layer/assoc-editor-config-pair" "layer/dissoc-editor-config-pair"
+    "layer/set-constraints" "layer/delete-constraints"
+    "layer/apply-constraints" "layer/repair-constraints"
     "project/add-maintainer" "project/add-reader" "project/add-vocab"
     "project/add-writer" "project/create" "project/delete"
     "project/remove-maintainer" "project/remove-reader" "project/remove-vocab"
@@ -421,6 +428,18 @@
                           :body :ids)                                        ; relation/bulk-create
             _ (assert-status 204 (bulk-delete-relations admin-request bulk-rels)) ; relation/bulk-delete
             _ (assert-status 204 (delete-relation admin-request r2))         ; relation/delete
+
+            ;; ---- layer constraints ----
+            _ (assert-ok (constraints-call :put "span-layers" slB "fc" {:constraints [{:type "single-span"}]})) ; layer/set-constraints
+            _ (assert-status 204 (constraints-call :delete "span-layers" slB "fc" nil)) ; layer/delete-constraints
+            _ (assert-ok (constraints-call :post "span-layers" slA "repair" {:constraints [{:type "single-span"}]})) ; layer/repair-constraints
+            _ (assert-ok (constraints-call :put "span-layers" slA "fc" {:constraints [{:type "single-span"}]}))
+            tx (-> (create-token admin-request tklA text-id 23 26) :body :id)
+            ty (-> (create-token admin-request tklA text-id 26 30) :body :id)
+            _ (create-span admin-request slA [tx] "X")
+            _ (create-span admin-request slA [ty] "Y")
+            _ (assert-ok (merge-tokens admin-request tx ty))                 ; layer/apply-constraints (the doubled span)
+            _ (assert-status 204 (constraints-call :delete "span-layers" slA "fc" nil))
 
             ;; ---- vocab ----
             vS (-> (create-vocab-layer admin-request "FC-Vocab") :body :id)  ; vocab/create

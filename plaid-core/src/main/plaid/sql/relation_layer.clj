@@ -29,7 +29,8 @@
      :relation-layer/name       (:name row)
      :relation-layer/span-layer (:span_layer_id row)
      :relation-layer/project    (:project_id row)
-     :config                    (psc/parse-config (:config row))}))
+     :config                    (psc/parse-config (:config row))
+     :constraints               (psc/parse-config (:constraints row))}))
 
 ;; ============================================================
 ;; Reads

@@ -12,6 +12,7 @@
             [malli.util :as mu]
             [plaid.server.config :refer [config]]
             [plaid.rest-api.v1.middleware :as prm]
+            [plaid.rest-api.v1.layer-constraints :as layer-constraints]
             [plaid.rest-api.v1.auth :as pra :refer [authentication-routes logout-routes]]
             [plaid.rest-api.v1.user :refer [user-routes]]
             [plaid.rest-api.v1.api-token :refer [api-token-routes]]
@@ -241,6 +242,11 @@
                                        ;; Inside wrap-read-jwt: needs the
                                        ;; :api-token/id it sets on the request.
                                        prm/wrap-api-token-id
+                                       ;; A write refused by a layer constraint
+                                       ;; answers 422 with its violations,
+                                       ;; whatever the route built. Also per
+                                       ;; batch sub-op.
+                                       layer-constraints/wrap-constraint-refusal
                                        ;; Inner of coercion/multipart so
                                        ;; :parameters/:path-params/:body-params
                                        ;; are populated for `{...}` templating.

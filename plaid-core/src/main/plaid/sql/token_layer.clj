@@ -45,7 +45,8 @@
      :token-layer/project              (:project_id row)
      :token-layer/overlap-mode         (some-> (:overlap_mode row) keyword)
      :token-layer/parent-token-layer   (:parent_token_layer_id row)
-     :config                           (psc/parse-config (:config row))}))
+     :config                           (psc/parse-config (:config row))
+     :constraints                      (psc/parse-config (:constraints row))}))
 
 ;; ============================================================
 ;; Reads
@@ -245,6 +246,27 @@
                                    d))))]
         (vec (sort-by (comp - depth-of) all-ids))))))
 
+(defn- drop-constraints-naming!
+  "Remove every same-ancestor constraint of a relation layer of `project-id`
+  that names one of the token layers `layer-ids`, which are being deleted,
+  as an audited update of the relation layer row. A constraint never names
+  a layer that is gone."
+  [tx project-id layer-ids]
+  (let [gone (set (map str layer-ids))
+        names-gone? (fn [c] (and (= "same-ancestor" (clojure.core/get c "type"))
+                                 (contains? gone (str (clojure.core/get c "token-layer")))))]
+    (doseq [{:keys [id constraints]} (psc/q tx {:select [:id :constraints]
+                                                :from :relation_layers
+                                                :where [:and [:= :project_id project-id]
+                                                        [:<> :constraints "{}"]]})
+            :let [stored (psc/parse-config constraints)
+                  kept (into {} (keep (fn [[ns cs]]
+                                        (let [cs (vec (remove names-gone? cs))]
+                                          (when (seq cs) [ns cs]))))
+                             stored)]
+            :when (not= kept stored)]
+      (crud/update-by-id! tx :relation_layers id {:constraints (psc/write-json kept)}))))
+
 (defn cascade-delete!
   "Tx-level cascade for a token_layer. Walks the descendant subtree
   (child token_layers via parent_token_layer_id, plus the
@@ -267,7 +289,8 @@
   Reused by text_layer's cascade walker as well as `delete` here."
   [tx root-id]
   ;; Resolve once: child token_layers (deepest first).
-  (let [layer-ids (descendant-token-layer-ids tx root-id)]
+  (let [layer-ids (descendant-token-layer-ids tx root-id)
+        project-id (:project_id (psc/fetch-by-id tx :token_layers root-id))]
     ;; Step 1: drop vocab_links touching tokens in ANY descendant layer
     ;; in one pass — dedupes cross-layer links so each is audited once.
     (let [vl-ids (->> (psc/q tx {:select-distinct [:vl.id]
@@ -307,7 +330,8 @@
                      :where [:and
                              [:= :entity_type "token-layer"]
                              [:= :entity_id tl-id]]})
-      (crud/delete-by-id! tx :token_layers tl-id))))
+      (crud/delete-by-id! tx :token_layers tl-id))
+    (drop-constraints-naming! tx project-id layer-ids)))
 
 (defn delete
   "Delete a token layer. Walks the descendant subtree (child

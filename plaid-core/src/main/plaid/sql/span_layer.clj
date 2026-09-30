@@ -29,7 +29,8 @@
      :span-layer/name        (:name row)
      :span-layer/token-layer (:token_layer_id row)
      :span-layer/project     (:project_id row)
-     :config                 (psc/parse-config (:config row))}))
+     :config                 (psc/parse-config (:config row))
+     :constraints            (psc/parse-config (:constraints row))}))
 
 ;; ============================================================
 ;; Reads

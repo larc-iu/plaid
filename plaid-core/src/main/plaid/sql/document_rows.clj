@@ -245,6 +245,7 @@
           {:relation-layer/id (:id rl)
            :relation-layer/name (:name rl)
            :config (psc/parse-config (:config rl))
+           :constraints (psc/parse-config (:constraints rl))
            :relation-layer/relations (mapv build-relation
                                            (get relations-by-layer (:id rl) []))})
         build-span-layer
@@ -252,6 +253,7 @@
           {:span-layer/id (:id sl)
            :span-layer/name (:name sl)
            :config (psc/parse-config (:config sl))
+           :constraints (psc/parse-config (:constraints sl))
            :span-layer/spans (mapv build-span (get spans-by-layer (:id sl) []))
            :span-layer/relation-layers (->> (get relation-layers-by-span-layer (:id sl) [])
                                             (sort-by :order_idx)
@@ -261,6 +263,7 @@
           {:token-layer/id (:id tl)
            :token-layer/name (:name tl)
            :config (psc/parse-config (:config tl))
+           :constraints (psc/parse-config (:constraints tl))
            :token-layer/overlap-mode (some-> (:overlap_mode tl) keyword)
            :token-layer/parent-token-layer (:parent_token_layer_id tl)
            :token-layer/tokens (vec (token-layer/sort-token-records
