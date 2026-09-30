@@ -95,6 +95,13 @@ export const isIdTaken = (error) =>
 const isKeyReused = (error) =>
   statusOf(error) === 422 && error?.responseData?.error === 'idempotency-key-reused';
 
+// A write refused by a rule its layer declares (422 with `violations`): two
+// heads on one word, a value outside a closed tagset, a relation across
+// sentences. Nothing was stored. Not a conflict: the same write refused again
+// the same way, so the screen puts the value back rather than refetch.
+export const isConstraintViolation = (error) =>
+  statusOf(error) === 422 && Array.isArray(error?.responseData?.violations);
+
 // A write refused because the document changed under it: a conflict (409),
 // or what it names is gone. Either way the screen refetches and shows what
 // is there now. A taken id is not that: it is the page's own create.
@@ -128,6 +135,11 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
   if (isLockLost(error)) return 'The lock on this document lapsed.';
   if (isIdTaken(error)) return 'This was saved already.';
   if (isKeyReused(error)) return 'This change was not sent: try it again.';
+  // The server words the first violation by layer name, never by app.
+  if (isConstraintViolation(error)) {
+    const said = String(error.responseData.error ?? '').trim();
+    return said && !namesAnId(said) ? said : 'Not allowed by the rules of this layer.';
+  }
   // An edit that names a row by the id it was shown under before the server
   // made it (pendingIds.js): the create it waited on was refused.
   if (statusOf(error) === 400 && /\bshould be a uuid\b/i.test(String(error?.message ?? error))) {
