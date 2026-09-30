@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { mergeText, textUnits, unitHunks } from './textMerge.js';
+import { mergeText, rebaseEdits, textUnits, unitHunks } from './textMerge.js';
+import {
+  applyTextOps,
+  composeTextEdits,
+  gapsToOps,
+} from '../../../plaid-client-js/src/textEdits.js';
 
 const apply = (units, hunks) => {
   let out = [];
@@ -380,5 +385,185 @@ describe('mergeText', () => {
       if (!one.conflict) merged += 1;
     }
     expect(merged).toBeGreaterThan(100);
+  });
+});
+
+describe('rebaseEdits', () => {
+  const G = (start, end, value) => ({ start, end, value });
+  const onto = (stored, result) => applyTextOps(stored, gapsToOps(result.gaps));
+  // A gap less the start and end it shares with the text it replaces.
+  const trim = (text, gaps) =>
+    gaps
+      .map((g) => {
+        const was = [...text].slice(g.start, g.end);
+        const now = [...g.value];
+        let pre = 0;
+        while (pre < was.length && pre < now.length && was[pre] === now[pre]) pre += 1;
+        let suf = 0;
+        while (
+          suf < was.length - pre &&
+          suf < now.length - pre &&
+          was[was.length - 1 - suf] === now[now.length - 1 - suf]
+        ) {
+          suf += 1;
+        }
+        return G(g.start + pre, g.end - suf, now.slice(pre, now.length - suf).join(''));
+      })
+      .filter((g) => g.start < g.end || g.value);
+
+  it('moves a change by the other side’s changes before it, in code points', () => {
+    const base = '𐌰𐌱 the dog ran';
+    // ours: `dog` to `cat`
+    const gaps = [G(7, 10, 'cat')];
+    // theirs: `the` to `a 𐌲𐌳𐌴`, two code points longer, before ours
+    const result = rebaseEdits(base, gaps, '𐌰𐌱 a 𐌲𐌳𐌴 dog ran');
+    expect(result).toEqual({ gaps: [G(9, 12, 'cat')] });
+    expect(onto('𐌰𐌱 a 𐌲𐌳𐌴 dog ran', result)).toBe('𐌰𐌱 a 𐌲𐌳𐌴 cat ran');
+  });
+
+  it('keeps a change inside a word exactly where it was typed', () => {
+    // `do|g`: an `o` typed after the first `o`, and the other side changed a later word
+    const result = rebaseEdits('the dog ran', [G(6, 6, 'o')], 'the dog walked');
+    expect(result).toEqual({ gaps: [G(6, 6, 'o')] });
+    expect(onto('the dog walked', result)).toBe('the doog walked');
+  });
+
+  it('is a conflict when both changed the same word', () => {
+    expect(rebaseEdits('the dog ran', [G(4, 7, 'cat')], 'the cow ran')).toEqual({
+      conflict: true,
+    });
+    // a letter typed at the end of a word the other side changed
+    expect(rebaseEdits('the dog ran', [G(7, 7, 's')], 'the cow ran')).toEqual({ conflict: true });
+  });
+
+  it('answers no gaps when the other side made the same change', () => {
+    expect(rebaseEdits('the dog ran', [G(4, 7, 'cat')], 'the cat ran')).toEqual({ gaps: [] });
+  });
+
+  it('answers the gaps unchanged when the stored text is the base', () => {
+    expect(rebaseEdits('ab cd', [G(0, 2, 'x')], 'ab cd')).toEqual({ gaps: [G(0, 2, 'x')] });
+  });
+
+  it('keeps our typed word where it was typed, where a diff would put it after theirs', () => {
+    // `na` typed between the two spaces before `na`, and the other side made that `na` `rana`
+    const base = 'dog  na .';
+    const result = rebaseEdits(base, [G(4, 4, 'na')], 'dog  rana .');
+    expect(onto('dog  rana .', result)).toBe('dog na rana .');
+  });
+
+  // Words that each stand once, so a change to one cannot be read anywhere else.
+  const UNIQUE = ['kai', 'na', 'dog', '𐌰𐌱', 'ǃxóõ', 'ran', '猫', 'the', 'é', 'tree', 'sun'];
+
+  it('never merges a gap that reaches into a word the other side changed', () => {
+    const r = rng(20260930);
+    let checked = 0;
+    for (let t = 0; t < 3000; t += 1) {
+      const words = [...UNIQUE].sort(() => r() - 0.5).slice(0, 3 + Math.floor(r() * 6));
+      let base = '';
+      const spans = [];
+      for (const w of words) {
+        const start = [...base].length;
+        base += w;
+        spans.push([start, start + [...w].length]);
+        base += SEPS[Math.floor(r() * SEPS.length)];
+      }
+      const k = Math.floor(r() * words.length);
+      const [ws, we] = spans[k];
+      // theirs: the word changed to another, or deleted
+      const stored = applyTextOps(base, [
+        r() < 0.5
+          ? { type: 'replace', index: ws, length: we - ws, value: 'zz' }
+          : { type: 'delete', index: ws, value: we - ws },
+      ]);
+      // ours: a gap reaching into that word
+      const start = ws + Math.floor(r() * (we - ws));
+      const end = Math.min(start + Math.floor(r() * 4), [...base].length);
+      const value = r() < 0.5 ? '' : ['q', 'x y', 'kai'][Math.floor(r() * 3)];
+      if (start === end && start === ws) continue;
+      const gaps = composeTextEdits(base, [
+        { type: 'replace', index: start, length: end - start, value },
+      ]);
+      // the same change on both sides is no conflict
+      if (gaps.length === 0 || applyTextOps(base, gapsToOps(gaps)) === stored) continue;
+      checked += 1;
+      expect(rebaseEdits(base, gaps, stored), JSON.stringify({ base, gaps, stored })).toEqual({
+        conflict: true,
+      });
+    }
+    expect(checked).toBeGreaterThan(2000);
+  });
+
+  // Random keystroke streams over random texts, both sides.
+  const randomOps = (r, body) => {
+    const ops = [];
+    let len = [...body].length;
+    const n = 1 + Math.floor(r() * 4);
+    for (let i = 0; i < n; i += 1) {
+      const index = Math.floor(r() * (len + 1));
+      const kind = r();
+      if (kind < 0.4) {
+        const w = WORDS[Math.floor(r() * WORDS.length)];
+        const value = r() < 0.5 ? w : SEPS[Math.floor(r() * SEPS.length)] + w;
+        ops.push({ type: 'insert', index, value });
+        len += [...value].length;
+      } else if (kind < 0.8) {
+        const value = Math.min(len - index, Math.floor(r() * 5));
+        ops.push({ type: 'delete', index, value });
+        len -= value;
+      } else {
+        const length = Math.min(len - index, Math.floor(r() * 4));
+        const value = WORDS[Math.floor(r() * WORDS.length)];
+        ops.push({ type: 'replace', index, length, value });
+        len += [...value].length - length;
+      }
+    }
+    return ops;
+  };
+
+  it('merges every pair mergeText merges, to the same text or with our change kept as typed', () => {
+    const r = rng(4099);
+    let both = 0;
+    let onlyRebase = 0;
+    for (let t = 0; t < 6000; t += 1) {
+      const base = randomText(r, 2 + Math.floor(r() * 8));
+      const gaps = composeTextEdits(base, randomOps(r, base));
+      const mine = applyTextOps(base, gapsToOps(gaps));
+      const stored = applyTextOps(base, randomOps(r, base));
+      const merged = mergeText(base, mine, stored);
+      const result = rebaseEdits(base, gaps, stored);
+      const where = JSON.stringify({ base, gaps, stored });
+      if (result.conflict) {
+        expect(merged.conflict, where).toBe(true);
+        continue;
+      }
+      const text = onto(stored, result);
+      if (merged.conflict) {
+        onlyRebase += 1;
+      } else {
+        both += 1;
+        if (text === merged.text) continue;
+      }
+      // Our change as typed, moved: our gaps, each taking the text it took
+      // from the base, less any the other side made too. A deletion may have
+      // taken the separator on its other side instead, which leaves the same
+      // text.
+      const own = trim(base, gaps);
+      const taken = (text, g) => [...text].slice(g.start, g.end).join('');
+      const same = (o, g) =>
+        o.value === g.value &&
+        (o.value === ''
+          ? o.end - o.start === g.end - g.start
+          : taken(base, o) === taken(stored, g));
+      let i = 0;
+      for (const g of result.gaps) {
+        while (i < own.length && !same(own[i], g)) {
+          i += 1;
+        }
+        expect(i < own.length, where).toBe(true);
+        i += 1;
+      }
+    }
+    expect(both).toBeGreaterThan(1500);
+    expect(onlyRebase).toBeGreaterThan(20);
   });
 });

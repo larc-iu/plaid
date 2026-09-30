@@ -470,3 +470,223 @@ export function mergeText(base, mine, theirs) {
   }
   return { text };
 }
+
+// How many code points `s` holds.
+const cpCount = (s) => {
+  let n = 0;
+  for (let i = 0; i < s.length; i += 1) {
+    const c = s.charCodeAt(i);
+    if (c < 0xd800 || c > 0xdbff || i + 1 >= s.length) n += 1;
+  }
+  return n;
+};
+
+// Where each unit starts, in code points, with the end of the text last.
+const unitStarts = (units) => {
+  const at = [0];
+  units.forEach((u, i) => at.push(at[i] + cpCount(u)));
+  return at;
+};
+
+// `text` with gaps (code points of `text`, sorted, apart) put in.
+function applyGaps(text, gaps) {
+  const chars = [...text];
+  let out = '';
+  let pos = 0;
+  for (const g of gaps) {
+    out += chars.slice(pos, g.start).join('') + g.value;
+    pos = g.end;
+  }
+  return out + chars.slice(pos).join('');
+}
+
+// Our gaps as unit changes of `units`, each with the gaps it holds. A unit
+// stays when no gap reaches into it and it is still one unit of the text the
+// gaps make, which may take in a neighbour a gap only touches (`cat` less `t`
+// and with `s` typed after it is the unit `cat` changed). Where the changes
+// stand is known exactly: nothing is read from a diff.
+function exactHunks(units, at, gaps, mine) {
+  const n = units.length;
+  // how far text no gap takes has moved in `mine`, at old code point `p`
+  const shiftAt = (p) =>
+    gaps.filter((g) => g.end <= p).reduce((k, g) => k + cpCount(g.value) - (g.end - g.start), 0);
+  const mineUnits = textUnits(mine);
+  const mineAt = unitStarts(mineUnits);
+  const mineUnitAt = new Map();
+  mineUnits.forEach((_, j) => mineUnitAt.set(mineAt[j], j));
+  // for each unit of `units` that stays, the unit of `mine` it is
+  const keptAs = new Array(n).fill(-1);
+  for (let i = 0; i < n; i += 1) {
+    const s = at[i];
+    const e = at[i + 1];
+    const reached = gaps.some((g) =>
+      g.start === g.end ? s < g.start && g.start < e : g.start < e && s < g.end,
+    );
+    if (reached) continue;
+    const from = s + shiftAt(s);
+    const j = mineUnitAt.get(from);
+    if (j !== undefined && mineAt[j + 1] === from + (e - s)) keptAs[i] = j;
+  }
+  const hunks = [];
+  let prevBase = 0; // units before this index are settled
+  let prevMine = 0;
+  const close = (base, mineIndex) => {
+    if (base > prevBase || mineIndex > prevMine) {
+      const lo = at[prevBase];
+      const hi = at[base];
+      hunks.push({
+        start: prevBase,
+        end: base,
+        insert: mineUnits.slice(prevMine, mineIndex),
+        gaps: gaps.filter((g) =>
+          g.start === g.end ? lo <= g.start && g.start <= hi : lo <= g.start && g.end <= hi,
+        ),
+      });
+    }
+  };
+  for (let i = 0; i < n; i += 1) {
+    if (keptAs[i] < 0) continue;
+    close(i, keptAs[i]);
+    prevBase = i + 1;
+    prevMine = keptAs[i] + 1;
+  }
+  close(n, mineUnits.length);
+  // a gap at the edge of two changes goes with the first only
+  const seen = new Set();
+  for (const h of hunks) {
+    h.gaps = h.gaps.filter((g) => !seen.has(g));
+    h.gaps.forEach((g) => seen.add(g));
+  }
+  return seen.size === gaps.length ? hunks : null;
+}
+
+// Each gap less the start and end it shares with the text it replaces, and
+// none that is left empty: the same change, standing where it touches less.
+function trimGaps(text, gaps) {
+  const old = [...text];
+  const out = [];
+  for (const g of gaps) {
+    const was = old.slice(g.start, g.end);
+    const now = [...g.value];
+    let pre = 0;
+    while (pre < was.length && pre < now.length && was[pre] === now[pre]) pre += 1;
+    let suf = 0;
+    while (
+      suf < was.length - pre &&
+      suf < now.length - pre &&
+      was[was.length - 1 - suf] === now[now.length - 1 - suf]
+    ) {
+      suf += 1;
+    }
+    const start = g.start + pre;
+    const end = g.end - suf;
+    const value = now.slice(pre, now.length - suf).join('');
+    if (start < end || value) out.push({ start, end, value });
+  }
+  return out;
+}
+
+// Our changes, given per reading by `oursFor`, put onto the other side's
+// changes read each of the three ways. Returns `{ gaps }` in code points of
+// `stored`, or null when a reading refuses or two readings give different
+// texts. `strict` refuses any change of ours touching one of theirs. Without
+// it, the pairs refused are the ones `mergeText` refuses.
+function putOnto(ctx, oursFor, strict) {
+  const { units, at, lineOf, theirUnits, stored } = ctx;
+  let answer = null;
+  for (const read of READINGS) {
+    const own = oursFor(read).map((h, _, all) => {
+      const moved = onWholeLines(units, lineOf, h, all);
+      return moved === h ? h : { ...moved, gaps: h.gaps, moved: true };
+    });
+    const [spaced, other] = spaceApart(
+      units,
+      lineOf,
+      own,
+      read(units, theirUnits).map((h, _, all) => onWholeLines(units, lineOf, h, all)),
+    );
+    const ours = spaced.map((h, i) =>
+      h === own[i] ? h : { ...h, gaps: own[i].gaps, moved: true },
+    );
+    if (
+      mixesEditedLines(units, lineOf, ours, other) ||
+      mixesEditedLines(units, lineOf, other, ours)
+    ) {
+      return null;
+    }
+    // A change the two sides both made is in `stored` already.
+    const kept = [];
+    for (const h of ours) {
+      const touched = other.filter((q) => touch(h, q));
+      if (touched.length === 0) kept.push(h);
+      else if (touched.some((q) => sameHunk(h, q))) continue;
+      else if (strict) return null;
+      else kept.push(h);
+    }
+    const text = applyBoth(units, ours, other);
+    if (text === null || (answer && answer.text !== text)) return null;
+    const gaps = [];
+    for (const h of kept) {
+      const shift = other
+        .filter((q) => q.end <= h.start)
+        .reduce((k, q) => k + cpCount(q.insert.join('')) - (at[q.end] - at[q.start]), 0);
+      const put = h.moved ? [{ start: at[h.start], end: at[h.end], value: '' }] : h.gaps;
+      for (const g of put) {
+        gaps.push({ start: g.start + shift, end: g.end + shift, value: g.value });
+      }
+    }
+    if (applyGaps(stored, gaps) !== text) return null;
+    answer = answer ?? { text, gaps };
+  }
+  return { gaps: answer.gaps };
+}
+
+/**
+ * Move our gaps, made on `base`, onto `stored`, which is `base` as someone
+ * else changed it. Gaps are `{ start, end, value }` in code points of the text
+ * they are made on, sorted and apart (as plaid-client's `composeTextEdits`
+ * gives them). Returns `{ gaps }` in code points of `stored`, or
+ * `{ conflict: true }`.
+ *
+ * Where our changes stand is known, so only the other side's changes are read
+ * from a diff, the three ways `mergeText` reads them, and each of our changes
+ * moves by the other side's changes before it. A change of ours that touches
+ * a unit the other side changed is a conflict, and so is a text on which the
+ * readings of the other side disagree. A deletion of ours may stand on whole
+ * lines, or take the separator beside it, as in `mergeText`, since the text
+ * it takes is the same.
+ *
+ * When our changes where they stand touch the other side's but the same text
+ * could have been made elsewhere (a line break typed before a line break,
+ * where one typed after it reads the same), our side is read from the text as
+ * `mergeText` reads it, so this merges every pair `mergeText` merges.
+ */
+export function rebaseEdits(base, gaps, stored) {
+  base = String(base ?? '');
+  stored = String(stored ?? '');
+  if (stored === base) return { gaps };
+  const mine = applyGaps(base, gaps);
+  if (mine === base || mine === stored) return { gaps: [] };
+  const units = textUnits(base);
+  const ctx = {
+    units,
+    at: unitStarts(units),
+    lineOf: lineOfUnits(units),
+    theirUnits: textUnits(stored),
+    stored,
+  };
+  const exact = exactHunks(units, ctx.at, trimGaps(base, gaps), mine);
+  const placed = exact && putOnto(ctx, () => exact, true);
+  if (placed) return placed;
+  const mineUnits = textUnits(mine);
+  const read = putOnto(
+    ctx,
+    (reading) =>
+      reading(units, mineUnits).map((h) => ({
+        ...h,
+        gaps: [{ start: ctx.at[h.start], end: ctx.at[h.end], value: h.insert.join('') }],
+      })),
+    false,
+  );
+  return read ?? { conflict: true };
+}
