@@ -281,7 +281,7 @@
         tokens (conj tokens
                      {:token/id :seg :token/layer :a :token/begin 4 :token/end 12}
                      {:token/id :node :token/layer :u :token/begin 4 :token/end 7})
-        r (ta/plain-edits body tokens [(ins 4 "Oh ")] #{:s} #{:w})
+        r (ta/plain-edits body tokens [(ins 4 "Oh ")] #{:s} #{:w} {:exclusive #{:a}})
         at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
     (is (= "Hi. Oh The end." (:text/body (:text r))))
     (is (= [4 15] (at [:s 1]) (at :seg)))
@@ -289,7 +289,7 @@
 
 (defn- extents-after [s extra ops & [opts]]
   (let [{:keys [body tokens]} (doc s)
-        r (ta/plain-edits body (into tokens extra) ops #{:s} #{:w} (merge {:children #{:m}} opts))
+        r (ta/plain-edits body (into tokens extra) ops #{:s} #{:w} (merge {:children #{:m} :exclusive #{:a}} opts))
         nb (:text/body (:text r))
         at (fn [id] (some #(when (= id (:token/id %)) (cp/cp-subs nb (:token/begin %) (:token/end %))) (:tokens r)))]
     [nb at r]))
@@ -325,7 +325,7 @@
                               [(ins 4 "Oh ")])]
     (is (= "New York" (at :ny)))
     (is (= "Ne" (at :ne)))
-    (is (= "Oh New York is big." (at :all)))))
+    (is (= "New York is big." (at :all)) "a node (overlap allowed) keeps to its words (REV4 R2)")))
 
 (deftest a-line-typed-before-the-first-sentence-is-a-sentence-of-its-own
   ;; REV3 N1: nothing before it to join, so the core makes a sentence over it
@@ -362,3 +362,58 @@
         r (ta/follow-word-edges (into words segs) plain rest #(= :w (:token/layer %)) #{:g1 :g2} #{:g})
         gs (filter #(= :g (:token/layer %)) (:tokens r))]
     (is (<= (count gs) 1) (pr-str gs))))
+
+(deftest side-decides-where-sentences-meet-though-no-words-do
+  ;; REV4 R1: rows `Hi.` and `Yo.` written together, the words leaving out the
+  ;; punctuation: text typed at the end of row 1 goes to its sentence (and
+  ;; its row), and to no word
+  (let [{:keys [body tokens]} (doc "|Hi|./|Yo|.")
+        run (fn [op] (let [r (ta/plain-edits body tokens [op] #{:s} #{:w} {:exclusive #{:a}})
+                           nb (:text/body (:text r))
+                           ss (sort-by first (keep #(when (= :s (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r)))
+                           ;; the gap-fill
+                           ss [[0 (first (second ss))] [(first (second ss)) (cp/cp-count nb)]]
+                           ws (sort-by first (keep #(when (= :w (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
+                       [nb (mapv (fn [[b e]] (cp/cp-subs nb b e)) ss) (mapv (fn [[b e]] (cp/cp-subs nb b e)) ws)]))]
+    (is (= ["Hi.xYo." ["Hi.x" "Yo."] ["Hi" "Yo"]] (run (assoc (ins 3 "x") :side "before"))))
+    (is (= ["Hi. xYo." ["Hi. x" "Yo."] ["Hi" "Yo"]] (run (assoc (ins 3 " x") :side "before"))))
+    (is (= ["Hi.xYo." ["Hi." "xYo."] ["Hi" "xYo"]] (run (assoc (ins 3 "x") :side "after"))))))
+
+(deftest only-a-token-of-a-layer-that-forbids-overlap-follows-a-sentence
+  ;; REV4 R2: a UMR node (overlap allowed) over a one-word sentence, or over
+  ;; every word of one, keeps to its words; a segment follows the sentence
+  (let [[_ at] (extents-after "|hi| |there|. /|yes|"
+                              [{:token/id :node :token/layer :u :token/begin 10 :token/end 13}
+                               {:token/id :seg :token/layer :a :token/begin 10 :token/end 13}]
+                              [(ins 13 " sir")] {:exclusive #{:a}})]
+    (is (= "yes" (at :node)))
+    (is (= "yes sir" (at :seg))))
+  (let [[_ at] (extents-after "|the| |big| |dog|\n/|ran|"
+                              [{:token/id :node :token/layer :u :token/begin 0 :token/end 11}]
+                              [(ins 0 "oh ")] {:exclusive #{:a}})]
+    (is (= "the big dog" (at :node)))))
+
+(deftest a-point-at-a-growing-tokens-edge-stays-at-its-edge
+  ;; REV4 R3: an empty segment at the end of a row the text grows stays at
+  ;; the row's new end, and nothing overlaps
+  (let [{:keys [body tokens]} (doc "|Hi.| /|The| |end.|")
+        tokens (conj tokens
+                     {:token/id :a0 :token/layer :a :token/begin 0 :token/end 3}
+                     {:token/id :z :token/layer :a :token/begin 3 :token/end 3})
+        r (ta/plain-edits body tokens [(ins 3 "x")] #{:s} #{:w} {:exclusive #{:a}})
+        at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
+    (is (= [0 4] (at :a0)))
+    (is (= [4 4] (at :z)))))
+
+(deftest a-head-sentence-needs-a-line-with-letters-and-any-save-shape
+  ;; REV4 R4: whitespace alone typed at the start joins the first sentence;
+  ;; R5: the same line typed with a letter of the first word deleted, or
+  ;; after whitespace the text began with, makes the same head
+  (let [heads (fn [s ops] (:heads (nth (extents-after s [] ops) 2)))]
+    (is (nil? (heads "|Hi.|\n/|The| |end.|" [(ins 0 "\n")])))
+    (is (nil? (heads "|Hi.|\n/|The| |end.|" [(ins 0 "  \n")])))
+    (is (= [{:token/layer :s :token/begin 0 :token/end 4}] (heads "|Hi.|\n/|The| |end.|" [(ins 0 "Oh.\n") (del 4 1)])))
+    (is (= [{:token/layer :s :token/begin 0 :token/end 5}] (heads " |Hi.|\n/|The| |end.|" [(ins 1 "Oh.\n")])))
+    (let [[nb at] (extents-after "|Hi.|\n/|The| |end.|" [] [(ins 0 "Oh.\n") (del 4 1)])]
+      (is (= "Oh.\ni.\nThe end." nb))
+      (is (= "i.\n" (at [:s 0]))))))

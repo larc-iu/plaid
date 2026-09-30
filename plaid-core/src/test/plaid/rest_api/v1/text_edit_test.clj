@@ -380,3 +380,21 @@
     (is (some #(and (= (str (:id (first sents))) (str (:id %))) (= 0 (:begin %)) (some? (:layer %)))
               (-> res :body :reshape :tokens))
         (pr-str (-> res :body :reshape :tokens)))))
+
+(deftest an-empty-segment-at-a-growing-rows-end-stays-at-its-end
+  ;; REV4 R3: legacy data can hold an empty time-alignment segment at a row's
+  ;; end; text typed there saves, and the empty segment stays at the row's end
+  (let [{:keys [text]} (setup "Hi. The end." :plain true)
+        tl (:text/layer (:body (get-text admin-request text)))
+        rows (-> (create-token-layer-opts admin-request tl "Rows" {:overlap-mode "non-overlapping"}) :body :id)
+        _ (assert-status 204 (api-call admin-request {:method :put
+                                                      :path (str "/api/v1/token-layers/" rows "/config/plaid/plainEdits")
+                                                      :body true}))
+        r1 (-> (create-token admin-request rows text 0 3) :body :id)
+        empty (-> (create-token admin-request rows text 3 3) :body :id)
+        r2 (-> (create-token admin-request rows text 4 12) :body :id)
+        base (-> (get-text admin-request text) :body :text/digest)]
+    (assert-ok (edit-text text {:edits [{:type "insert" :index 3 :value "x" :side "before"}] :base base}))
+    (is (= [0 4 "Hi.x"] (extent r1)))
+    (is (= [4 4 ""] (extent empty)))
+    (is (= [5 13 "The end."] (extent r2)))))

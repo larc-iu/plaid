@@ -3552,6 +3552,23 @@
         (copy! at (alength o))))
     (str sb)))
 
+(defn- pin-points-to-edges
+  "`points` (zero-width tokens as a text edit left them) with each one that
+  stood at the edge of a token of its own layer, which now holds it strictly
+  inside, moved to that token's edge: its end when it stood at the end."
+  [old-tokens kept points]
+  (let [was (into {} (map (juxt :token/id identity)) old-tokens)]
+    (mapv (fn [{:token/keys [id layer begin] :as z}]
+            (let [p (:token/begin (was id))
+                  t (some (fn [t] (when (and (= layer (:token/layer t)) (< (:token/begin t) begin (:token/end t))) t)) kept)
+                  w (some-> t :token/id was)]
+              (cond
+                (nil? t) z
+                (= p (:token/end w)) (assoc z :token/begin (:token/end t) :token/end (:token/end t))
+                (= p (:token/begin w)) (assoc z :token/begin (:token/begin t) :token/end (:token/begin t))
+                :else z)))
+          points)))
+
 (defn follow-sentences
   "`kept` (tokens as a text edit left them) with each follower (`follower?`)
   whose old extent was a sentence's (a token of a layer in `partitioning`),
@@ -3675,7 +3692,7 @@
   A zero-width token is moved as `apply-text-edits` moves it."
   ([old tokens gaps partitioning word-layers]
    (apply-plain-gaps old tokens gaps partitioning word-layers nil))
-  ([^String old tokens gaps partitioning word-layers {:keys [caret split-on-space children]}]
+  ([^String old tokens gaps partitioning word-layers {:keys [caret split-on-space children exclusive]}]
    (let [^ints o (.toArray (.codePoints old))
          len (alength o)
          partitioning (set partitioning)
@@ -3746,21 +3763,16 @@
                          (when (and (< a b) (= begin a) (= end b)) (mark! g :exact))))))
                  f)
          flag? (fn [g x] (contains? (aget ^objects flags g) x))
-        ;; the length of a line typed before the text's first sentence: up
-        ;; to the last line break of an insert at 0
-         head-length (fn [g]
-                       (let [{:keys [a b]} (info g)
-                             v (:value (gaps g))]
-                         (when (= a b 0)
-                           (when-let [m (last (re-seq #"[\s\S]*[\n\r\u0085\u2028\u2029]" v))]
-                             (cp/cp-count m)))))
-        ;; an insert's `side`, where a word ends and another begins at it
-        ;; with no whitespace between, else none
+        ;; an insert's `side`, where two words, or two sentences (words
+        ;; leaving out punctuation), meet at it with no whitespace between,
+        ;; else none
+         sentence-starts (into #{} (comp (filter #(partitioning (:token/layer %))) (map :token/begin)) wide)
          side-of (fn [g]
                    (let [{:keys [a b]} (info g)]
                      (when (and (= a b) (pos? a) (< a len)
                                 (not (ws? (aget o (dec a)))) (not (ws? (aget o a)))
-                                (flag? g :before) (flag? g :after))
+                                (or (and (flag? g :before) (flag? g :after))
+                                    (sentence-starts a)))
                        (:side (gaps g)))))
          new-at (fn [g] (+ (long (:a (info g))) (aget shift g)))
         ;; [the letters the tokens ending at the gap take, the letters those
@@ -3815,9 +3827,6 @@
                                      ;; goes whole to the side the caret said
                                      (and (= a b) (partitioning layer) (= :after (side-of gb))) (new-at gb)
                                      (and (= a b) (partitioning layer) (= :before (side-of gb))) (+ (new-at gb) n)
-                                     ;; a line typed before the text's first
-                                     ;; sentence is a sentence of its own
-                                     (and (= a b 0) (partitioning layer) (head-length gb)) (head-length gb)
                                      (= a b) (- (+ (new-at gb) n) (given-after gb))
                                      (>= end b) (+ (new-at gb) (given-before gb))
                                      :else nil)
@@ -3863,19 +3872,53 @@
          zero-r (when (seq zero) (apply-text-edits (gap-ops gaps) {:text/body old} zero))
          kept (filterv (complement ::gone) placed)
          was-token (let [m (into {} (map (juxt :token/id identity)) wide)] #(m (:token/id %)))
-        ;; the partitions that begin after a line typed before them at the
-        ;; start of the text: a sentence is made over that line (`:heads`)
-         heads (when (and (pos? k) (head-length 0))
-                 (vec (keep (fn [{:token/keys [layer begin]}]
-                              (when (and (partitioning layer) (= begin (head-length 0)))
-                                {:token/layer layer :token/begin 0 :token/end (head-length 0)}))
-                            (filter #(zero? (:token/begin (was-token %))) kept))))
+        ;; A line typed before the text's first sentence, one holding a
+        ;; letter before its last line break, is a sentence of its own
+        ;; (`:heads`): the new text before the first sentence's first letter
+        ;; left, whatever the save's shape.
+         firsts (filter #(and (partitioning (:token/layer %)) (zero? (:token/begin %))) wide)
+         head-end (when-let [{:token/keys [end]} (first firsts)]
+                    (let [in-gap? (fn [i] (let [g (at-or-before i)]
+                                            (and (>= g 0) (< i (:b (info g))) (<= (:a (info g)) i))))
+                          q (first (filter #(and (not (ws? (aget o %))) (not (in-gap? %))) (range 0 end)))]
+                      (when q
+                        (let [p (+ q (aget shift (inc (at-or-before q))))
+                              p (if (neg? (at-or-before q)) q p)
+                              prefix (String. nw 0 (int p))
+                              m (last (re-seq #"[\s\S]*[\n\r\u0085\u2028\u2029]" prefix))]
+                          (when (and m (re-find #"\S" m))
+                            (let [k (cp/cp-count m)]
+                             ;; not over a whole word the edit kept (one typed
+                             ;; over with the line)
+                              (when-not (some #(and (some (fn [d] (= (:token/layer d) (:token/layer %))) deciders)
+                                                    (<= (:token/end %) k))
+                                              kept)
+                                k)))))))
+        ;; the first sentence, and any token reaching over the line (a word
+        ;; typed over at its start with it), begin at the first letter after
+        ;; the line
+         kept (if head-end
+                (mapv (fn [t] (if (and (< head-end (:token/end t))
+                                       (or (< (:token/begin t) head-end)
+                                           (some #(= (:token/id %) (:token/id t)) firsts)))
+                                (let [e (:token/end t)
+                                      b (loop [x head-end] (if (and (< x e) (ws? (aget nw x))) (recur (inc x)) x))]
+                                  (assoc t :token/begin (min b (dec e))))
+                                t))
+                      kept)
+                kept)
+         heads (when head-end
+                 (mapv (fn [{:token/keys [layer]}] {:token/layer layer :token/begin 0 :token/end head-end})
+                       (filter #(some (fn [f] (= (:token/id f) (:token/id %))) firsts) kept)))
          kept (follow-sentences o wide kept heads nw partitioning
-                                (fn [t] (not (or (partitioning (:token/layer t))
+                                (fn [t] (not (or (not (contains? exclusive (:token/layer t)))
+                                                 (partitioning (:token/layer t))
                                                  (some #(= (:token/layer %) (:token/layer t)) deciders)
                                                  (contains? children (:token/layer t))))))]
      (cond-> {:text {:text/body new-body}
-              :tokens (into kept (:tokens zero-r))
+              ;; a point at the edge of a token of its layer that grew over it
+              ;; stays at that edge, so nothing ends up inside another
+              :tokens (into kept (pin-points-to-edges tokens kept (:tokens zero-r)))
               :deleted (into (mapv :token/id (filter ::gone placed)) (:deleted zero-r))}
        (seq heads) (assoc :heads heads)))))
 

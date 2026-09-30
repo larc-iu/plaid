@@ -308,7 +308,7 @@
                                                   :else (recur (parent-of id) (conj seen id))))))
                          (keys parent-of))
           exclusive (into #{} (comp (filter #(= "non-overlapping" (:overlap_mode %))) (map :id)) layer-rows)
-          plain-opts {:split-on-space (boolean split-on-space) :children children}
+          plain-opts {:split-on-space (boolean split-on-space) :children children :exclusive exclusive}
           plain-tokens (when (seq plain) (filterv plain? tokens))
           plain-result (when (seq plain)
                          (cond
@@ -355,7 +355,10 @@
                                                                      tokens (into (:tokens r) parts) nil
                                                                      (.toArray (.codePoints ^String (:text/body (:text r))))
                                                                      partitioning
-                                                                     #(not (children (:token/layer %))))]
+                                                                     ;; a row (a layer that forbids
+                                                                     ;; overlap), never a node
+                                                                     #(and (exclusive (:token/layer %))
+                                                                           (not (children (:token/layer %)))))]
                                    (assoc r :tokens (filterv #(plain-ids (:token/id %)) followed)))
                                  plain-result)]
               (when (and rest-result (not= (:text/body (:text rest-result)) (:text/body (:text plain-result))))
@@ -400,11 +403,13 @@
                     ;; never two tokens of a layer that forbids overlap on one
                     ;; stretch: should a rule above ever leave them, the save
                     ;; is refused rather than stored
-                    (doseq [[_ ts] (group-by :token/layer (filter #(and (exclusive (:token/layer %)) (plain (:token/layer %)))
-                                                                  survivors))
+                    (doseq [[layer ts] (group-by :token/layer (filter #(and (exclusive (:token/layer %)) (plain (:token/layer %)))
+                                                                      survivors))
                             [x y] (partition 2 1 (sort-by (juxt :token/begin :token/end) ts))]
                       (when (> (:token/end x) (:token/begin y))
-                        (throw (ex-info "The new body could not be applied." {:code 500 :id eid}))))
+                        (throw (ex-info (str "The change would leave two tokens of layer " layer
+                                             " over the same text, which the layer does not allow.")
+                                        {:code 409 :id eid :layer layer}))))
                     survivors)})))
 
 (defn- last-op-ts

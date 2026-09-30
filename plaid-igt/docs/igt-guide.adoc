@@ -152,6 +152,7 @@ Deleting the space between two words keeps them two words. Merge them on the Tok
 New text with a space between it and every word is in no word. The Tokenize tab makes words of it.
 A word goes, along with its annotations, only when all its text is deleted.
 Text typed right before a sentence's first character joins that sentence, unless it holds a line break: a line added in front of a sentence joins the sentence before, so splitting it off leaves the sentence its translation.
+A line typed in front of the first sentence becomes a sentence of its own. Spaces typed there alone join the first sentence.
 Text typed right after a sentence's last character joins that one. Move a sentence break on the Tokenize tab.
 
 When someone else saved the baseline after you pressed **Edit text**, **Save changes** puts your changes onto their text.
