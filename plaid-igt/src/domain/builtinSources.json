@@ -17,6 +17,7 @@
     "plaid-igt/src/domain/vocabLookup.js",
     "plaid-igt/src/domain/zeroMorph.js",
     "plaid-ui/src/domain/collation.js",
+    "plaid-ui/src/domain/glossCase.js",
     "plaid-ui/src/domain/morphemes.js",
     "plaid-ui/src/domain/pendingIds.js",
     "plaid-ui/src/domain/setupGuard.js"
@@ -38,6 +39,7 @@
     "plaid-igt/src/domain/vocabLookup.js",
     "plaid-igt/src/domain/zeroMorph.js",
     "plaid-ui/src/domain/collation.js",
+    "plaid-ui/src/domain/glossCase.js",
     "plaid-ui/src/domain/morphemes.js",
     "plaid-ui/src/domain/pendingIds.js"
   ]

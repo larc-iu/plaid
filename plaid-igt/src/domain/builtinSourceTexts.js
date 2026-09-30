@@ -25,6 +25,7 @@ import s19 from '@ui/domain/collation.js?raw';
 import s20 from '@ui/domain/morphemes.js?raw';
 import s21 from '@ui/domain/pendingIds.js?raw';
 import s23 from '@ui/domain/setupGuard.js?raw';
+import s25 from '@ui/domain/glossCase.js?raw';
 
 export const SOURCE_TEXTS = {
   'plaid-client-js/src/ids.js': s24,
@@ -46,6 +47,7 @@ export const SOURCE_TEXTS = {
   'plaid-igt/src/domain/vocabLookup.js': s17,
   'plaid-igt/src/domain/zeroMorph.js': s18,
   'plaid-ui/src/domain/collation.js': s19,
+  'plaid-ui/src/domain/glossCase.js': s25,
   'plaid-ui/src/domain/morphemes.js': s20,
   'plaid-ui/src/domain/pendingIds.js': s21,
   'plaid-ui/src/domain/setupGuard.js': s23,
