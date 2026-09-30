@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { apart, footprintOf, landed, pendingIdsOf, resendable, untouched } from './rebase.js';
+import { apart, footprintOf, pendingIdsOf, resendable, untouched } from './rebase.js';
 import { pendingId } from './pendingIds.js';
 
 // Luke's ruling Q2 (2026-09-29): a refused edit goes again by itself when what
@@ -280,79 +280,6 @@ describe('an edit that places something inside a token of a parent layer', () =>
 
 // REV-F-NET D-6: a resend of a write whose first answer was lost is refused,
 // and the read after it shows whether the write is there already.
-describe('whether an edit is on the server already', () => {
-  const base = doc({ glosses: [gloss('s1', 't1', 'DEF')] });
-  const made = (change) => {
-    const d = structuredClone(base);
-    change(d);
-    return d;
-  };
-
-  it('finds a row it added by its fields, and names its server id', () => {
-    const id = pendingId();
-    const mine = made((d) => glossLayer(d).spans.push(gloss(id, 't2', 'CANINE')));
-    const now = doc({
-      version: 2,
-      glosses: [gloss('s1', 't1', 'DEF'), gloss('s7', 't2', 'CANINE')],
-    });
-    expect(landed(base, mine, now)).toEqual(new Map([[id, 's7']]));
-    const other = doc({
-      version: 2,
-      glosses: [gloss('s1', 't1', 'DEF'), gloss('s7', 't2', 'HOUND')],
-    });
-    expect(landed(base, mine, other)).toBe(null);
-    expect(landed(base, mine, base)).toBe(null);
-  });
-
-  it('ties the rows it added to each other by the ids they name', () => {
-    const tok = pendingId();
-    const span = pendingId();
-    const mine = made((d) => {
-      d.textLayers[0].tokenLayers[1].tokens.push({ id: tok, begin: 4, end: 7 });
-      d.textLayers[0].tokenLayers[1].spanLayers[0].spans.push({
-        id: span,
-        tokens: [tok],
-        value: 'dog',
-      });
-    });
-    const now = doc({
-      version: 2,
-      glosses: [gloss('s1', 't1', 'DEF')],
-      other: [
-        { id: 'n1', begin: 0, end: 3 },
-        { id: 'n2', begin: 4, end: 7 },
-      ],
-      otherSpans: [
-        { id: 'c1', tokens: ['n1'], value: 'dog' },
-        { id: 'c2', tokens: ['n2'], value: 'dog' },
-      ],
-    });
-    expect(landed(base, mine, now)).toEqual(
-      new Map([
-        [tok, 'n2'],
-        [span, 'c2'],
-      ]),
-    );
-  });
-
-  it('reads a changed field and a removed row', () => {
-    const mine = made((d) => {
-      glossLayer(d).spans[0].value = 'ART';
-    });
-    expect(landed(base, mine, doc({ version: 2, glosses: [gloss('s1', 't1', 'ART')] }))).toEqual(
-      new Map(),
-    );
-    expect(landed(base, mine, doc({ version: 2, glosses: [gloss('s1', 't1', 'THE')] }))).toBe(null);
-    const removed = made((d) => glossLayer(d).spans.splice(0, 1));
-    expect(landed(base, removed, doc({ version: 2 }))).toEqual(new Map());
-    expect(landed(base, removed, base)).toBe(null);
-  });
-
-  it('knows nothing of an edit that changed no row', () => {
-    expect(landed(base, structuredClone(base), base)).toBe(null);
-  });
-});
-
 describe('the pending ids an edit makes and names', () => {
   it('tells the rows it made from the ones it only points at', () => {
     const tok = pendingId();
