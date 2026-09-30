@@ -13,7 +13,8 @@
   server takes it (the composed gaps, or for a whole body the gaps its
   diff gives):
   - a token is deleted only when none of its old text is left and no new
-    text was typed inside it (a word typed over whole is kept),
+    text was typed inside it (a word typed over whole is kept, a segment
+    typed over whole may go when its new text joins the word beside it),
   - a token left keeps all of its old letters that are left, and holds none
     of the old text outside it (so no word takes the space before it or
     another word's letters),
@@ -65,7 +66,12 @@
                              (conj! toks {:token/id [:w id] :token/layer :w :token/begin b :token/end e})
                              (dotimes [m (inc (.nextInt rng 3))]
                                (conj! toks {:token/id [:m id m] :token/layer :m :token/begin b :token/end e}))
-                             (when (< i (dec n)) (add (pick [" " " " " " "  " "\t"])))
+                             (when (< i (dec n))
+                               ;; words written together, as after the space
+                               ;; between them was deleted
+                               (add (if (and (:glue opts) (< (.nextDouble rng) (:glue opts)))
+                                      ""
+                                      (pick [" " " " " " "  " "\t"]))))
                              [b e]))))]
         ;; segments over runs of words
         (loop [i 0]
@@ -75,7 +81,8 @@
                 (conj! toks {:token/id [:a si i] :token/layer :a
                              :token/begin (first (words i)) :token/end (second (words (dec j)))}))
               (recur j))))
-        (when (< si (dec nsent)) (add (pick [" " "\n" ". "])))
+        (when (< si (dec nsent))
+          (add (if (and (:glue opts) (< (.nextDouble rng) (:glue opts))) "" (pick [" " "\n" ". "]))))
         (conj! toks {:token/id [:s si] :token/layer :s :token/begin sb0 :token/end @pos})))
     (let [tokens (persistent! toks)
           body (str sb)
@@ -218,7 +225,11 @@
               now (by-id id)]
           (cond
             (and must-go (not (gone id))) (bad! id " kept with none of its text")
-            (and (not must-go) (gone id)) (bad! id " deleted though it has text")
+            ;; a segment typed over whole follows the words: the new text
+            ;; may go to the word beside it
+            (and (not must-go) (gone id)
+                 (or (not= layer :a) (some #(not (ws? (aget o %))) kept)))
+            (bad! id " deleted though it has text")
             (and now (not (gone id)))
             (let [{nb :token/begin ne :token/end} now]
               (doseq [k kept :let [p (aget newpos k)] :when (not (ws? (aget o k)))]
@@ -279,6 +290,13 @@
             (and (by-id id) (not (gone id))
                  (not= ((juxt :token/begin :token/end) (by-id id)) ((juxt :token/begin :token/end) (by-id w))))
             (bad! id " off its word"))))
+      ;; no two tokens of a layer without overlaps overlap, nor two sentences
+      (doseq [layer [:w :a :s]]
+        (let [ts (sort-by :token/begin (filter #(and (= layer (:token/layer %)) (not (gone (:token/id %))))
+                                               (:tokens result)))]
+          (doseq [[x y] (partition 2 1 ts)]
+            (when (> (:token/end x) (:token/begin y))
+              (bad! (:token/id x) " overlaps " (:token/id y) " " (pr-str new-body))))))
       ;; words in their segments, and in one sentence after the gap-fill
       (let [live (fn [id] (when-not (gone id) (by-id id)))
             inside? (fn [w s] (and (<= (:token/begin s) (:token/begin w)) (<= (:token/end w) (:token/end s))))
@@ -302,11 +320,12 @@
    :several-carets {:carets 4}
    :spaced-words {:carets 2 :spaced 0.6}
    :across-words {:carets 2 :reach 40}
-   :lamkang-like {:carets 3 :spaced 0.39 :reach 30}})
+   :lamkang-like {:carets 3 :spaced 0.39 :reach 30}
+   :written-together {:carets 3 :glue 0.3 :spaced 0.3}})
 
 (def ^:private cases-per-config 1500)
 
-(defn- run [old tokens ops] (ta/plain-edits old tokens ops #{:s}))
+(defn- run [old tokens ops] (ta/plain-edits old tokens ops #{:s} #{:w}))
 
 (deftest a-plain-layer-takes-every-edit-the-plain-way
   (doseq [[cname opts] configs]
@@ -325,7 +344,7 @@
                   ps (problems body tokens server r)]
               (when (seq ps) (swap! fails conj {:config cname :seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))
           (let [bgaps (ta/plain-body-gaps body new-body tokens #{:s})
-                r (ta/plain-body body new-body tokens #{:s})
+                r (ta/plain-body body new-body tokens #{:s} #{:w})
                 ps (problems body tokens bgaps r)]
             (when (seq ps) (swap! fails conj {:config cname :seed seed :reading :whole-body :old body :gaps bgaps :problems (take 3 ps)})))))
       (when (System/getenv "PLAIN_ORACLE_DEBUG")

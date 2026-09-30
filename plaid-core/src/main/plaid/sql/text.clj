@@ -277,8 +277,8 @@
           plain-tokens (when (seq plain) (filterv plain? tokens))
           plain-result (when (seq plain)
                          (cond
-                           edits (ta/plain-edits old-body plain-tokens edits partitioning)
-                           (string? new-body-or-ops) (ta/plain-body old-body new-body-or-ops plain-tokens partitioning)
+                           edits (ta/plain-edits old-body plain-tokens edits partitioning word-layers)
+                           (string? new-body-or-ops) (ta/plain-body old-body new-body-or-ops plain-tokens partitioning word-layers)
                            :else nil))
           tokens-rest (if plain-result (filterv (complement plain?) tokens) tokens)
           ops (cond

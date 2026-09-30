@@ -53,11 +53,11 @@
 
 (defn- edit [s ops]
   (let [{:keys [body tokens]} (doc s)]
-    (view (ta/plain-edits body tokens ops #{:s}) (count (filter #(= :w (:token/layer %)) tokens)))))
+    (view (ta/plain-edits body tokens ops #{:s} #{:w}) (count (filter #(= :w (:token/layer %)) tokens)))))
 
 (defn- save [s new]
   (let [{:keys [body tokens]} (doc s)]
-    (view (ta/plain-body body new tokens #{:s}) (count (filter #(= :w (:token/layer %)) tokens)))))
+    (view (ta/plain-body body new tokens #{:s} #{:w}) (count (filter #(= :w (:token/layer %)) tokens)))))
 
 (deftest an-edit-inside-a-word-or-at-its-edge-grows-it
   (testing "inside"
@@ -111,7 +111,7 @@
 
 (deftest partitions-follow-the-words
   (let [{:keys [body tokens]} (doc "|Hi.| /|Bye.|")
-        r (ta/plain-edits body tokens [(ins 4 "x")] #{:s})
+        r (ta/plain-edits body tokens [(ins 4 "x")] #{:s} #{:w})
         at (fn [id] (let [t (some #(when (= id (:token/id %)) %) (:tokens r))] [(:token/begin t) (:token/end t)]))]
     (is (= "Hi. xBye." (:text/body (:text r))))
     (is (= [4 9] (at [:w 1]) (at [:s 1])))
@@ -125,3 +125,20 @@
   (is (= ["the cow" "the" nil "cow"] (save "|the| |cat| |cow|" "the cow")))
   (is (= ["the bat sat in" "the" "bat" "sat" "in"] (save "|the| |cat| |sat| |on|" "the bat sat in")))
   (is (= ["talu new lei x" "talu new lei" "x"] (save "|talu lei| |x|" "talu new lei x"))))
+
+(deftest words-written-together-each-keep-what-is-typed-inside-them
+  (is (= ["caxdog" "cax" "dog"] (edit "|cat||dog|" [(rep 2 1 "x")])))
+  (is (= ["catxog" "cat" "xog"] (edit "|cat||dog|" [(rep 3 1 "x")])))
+  (is (= ["caxdog" "cax" "dog"] (edit "|cat||dog|" [(ins 3 "x") (del 2 1)])))
+  (testing "text typed with a space where they meet is shared out"
+    (is (= ["cax ydog" "cax" "ydog"] (edit "|cat||dog|" [(rep 2 1 "x y")])))))
+
+(deftest a-sentence-keeps-to-the-words-edges
+  ;; the sentence before holds the stretch typed over, and the letters typed
+  ;; against the next word go with it into the next sentence
+  (let [{:keys [body tokens]} (doc "|köye| |a| /|dog|")
+        r (ta/plain-edits body tokens [(rep 5 2 "XZ XZ XZ")] #{:s} #{:w})
+        at (fn [id] (let [t (some #(when (= id (:token/id %)) %) (:tokens r))] [(:token/begin t) (:token/end t)]))]
+    (is (= "köye XZ XZ XZdog" (:text/body (:text r))))
+    (is (= [11 16] (at [:w 2]) (at [:s 1])))
+    (is (= [0 11] (at [:s 0])))))
