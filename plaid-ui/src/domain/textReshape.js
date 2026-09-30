@@ -2,7 +2,8 @@
 // /texts/:id), instead of reading the whole document again. The answer names
 // every row the edit wrote, read from the edit's own audit rows: the new body
 // and its digest, each token's new extent, each span's and vocab link's new
-// token list, and every row deleted with them.
+// token list (and a span's value when a layer rule's remedy changed it), and
+// every row deleted with them.
 //
 // Generic over the document read's tree (text layers, their token layers,
 // span layers, relation layers and vocabularies), with nothing of any app.
@@ -49,9 +50,9 @@ const sameList = (a, b) =>
 /**
  * `raw` (a document read with its bodies, as plaid-client returns it) with
  * the answer to a text edit of text `textId` applied: the text's body and
- * digest, token extents, span and vocab-link token lists, and the rows the
- * edit deleted removed. `raw` is not changed, and a part of it the answer
- * does not touch is shared with the result.
+ * digest, token extents, span and vocab-link token lists (and span values),
+ * and the rows the edit deleted removed. `raw` is not changed, and a part of
+ * it the answer does not touch is shared with the result.
  */
 export function applyReshape(raw, textId, answer) {
   const reshape = answer?.reshape ?? {};
@@ -75,8 +76,17 @@ export function applyReshape(raw, textId, answer) {
     return relations === layer.relations ? layer : { ...layer, relations };
   };
 
+  // A span's entry gives its value too when a layer rule's remedy changed it.
+  const withTokensAndValue = (row) => {
+    const moved = withTokens(spanTokens)(row);
+    const next = spanTokens.get(row.id);
+    return next && 'value' in next && !Object.is(next.value, moved.value)
+      ? { ...moved, value: next.value }
+      : moved;
+  };
+
   const patchSpanLayer = (layer) => {
-    const spans = patchRows(layer.spans, deleted.spans, withTokens(spanTokens));
+    const spans = patchRows(layer.spans, deleted.spans, withTokensAndValue);
     const relationLayers = patchRows(layer.relationLayers, new Set(), patchRelationLayer);
     return spans === layer.spans && relationLayers === layer.relationLayers
       ? layer

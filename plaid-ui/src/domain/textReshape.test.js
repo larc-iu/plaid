@@ -174,4 +174,28 @@ describe('applyReshape', () => {
     });
     expect(after.textLayers[0].tokenLayers).toBe(before.textLayers[0].tokenLayers);
   });
+
+  it('sets a span’s value when the answer gives one, as a layer rule’s remedy does', () => {
+    const before = read();
+    const after = applyReshape(before, 'text', {
+      body: 'the big dog ran',
+      digest: 'd3',
+      reshape: {
+        tokens: [],
+        spans: [
+          { id: 's2', tokens: ['w2'], value: 'NOUN' },
+          { id: 's3', tokens: ['w3'], value: 'NP2' },
+        ],
+        vocabLinks: [],
+        deleted: { tokens: [], spans: [], relations: [], vocabLinks: [] },
+      },
+    });
+    const spans = after.textLayers[0].tokenLayers[0].spanLayers[0].spans;
+    expect(spans).toEqual([
+      { id: 's1', value: 'DET', tokens: ['w1'] },
+      { id: 's2', value: 'NOUN', tokens: ['w2'] },
+      { id: 's3', value: 'NP2', tokens: ['w3'] },
+    ]);
+    expect(spans[0]).toBe(before.textLayers[0].tokenLayers[0].spanLayers[0].spans[0]);
+  });
 });
