@@ -597,64 +597,116 @@
       (psc/execute! tx {:delete-from :projects :where [:= :id pid]})
       true)))
 
-(def ^:private purge-batch-size 5000)
+(def purge-chunking
+  "How `purge-deleted-project-history!` sizes its DELETEs. Each is one
+  autocommit statement, so each holds the write lock for as long as it runs,
+  and the number that matters is that time, not the row count: a 5000-row
+  DELETE on `operations` took 0.1 s on fresh planner statistics and 34 to
+  138 s on stale ones (a table analysed while nearly empty plans the FK
+  cascade into `audit_writes` as a scan per deleted row), and every save
+  answered 503 meanwhile. So a chunk starts small, and the next one is sized
+  from how long the last took, to stay near `:budget-ms`, growing at most
+  twofold, never past `:max-rows` and never below one row."
+  {:initial-rows 50 :max-rows 5000 :budget-ms 100})
+
+(defn next-purge-chunk
+  "The row count of the chunk after one of `rows` rows that took `ms`."
+  [rows ms]
+  (let [{:keys [max-rows budget-ms]} purge-chunking
+        fit (long (* rows (/ (double budget-ms) (max (double ms) 1.0))))]
+    (-> fit (min (* 2 rows)) (min max-rows) (max 1))))
+
+(def ^:private purge-attempts
+  "How many times one chunk is tried when it cannot get the write lock (a
+  long write elsewhere, SQLITE_BUSY past busy_timeout) before the purge
+  gives up."
+  10)
+
+(defn- purge-chunk!
+  "Run one chunk's DELETE, trying again a second later while it is busy."
+  [datasource sql]
+  (loop [i 1]
+    (let [r (try {:n (psc/execute! datasource sql)}
+                 (catch Exception e
+                   (if (and (< i purge-attempts) (psd/sqlite-busy? e))
+                     ::busy
+                     (throw e))))]
+      (if (= ::busy r)
+        (do (Thread/sleep 1000) (recur (inc i)))
+        (:n r)))))
 
 (defn purge-deleted-project-history!
   "Reclaim the `operations` + `audit_writes` a project accumulated over its
-  lifetime. Project delete is intentionally cheap — it does NOT audit its
+  lifetime. Project delete is intentionally cheap: it does NOT audit its
   descendants and leaves the project's whole op/audit history in place. A
   deleted project is not time-travelable (`plaid.history.read/project-live?`),
   so that history is unreadable dead weight; this purges it.
 
-  Best-effort GC, meant to run in the BACKGROUND after a project delete (see
-  the `:delete` REST handler). Deletes in capped batches — each batch is its
-  own auto-commit statement on `datasource`, so the single SQLite writer lock
-  is released between batches and concurrent user writes can interleave (a
-  single unbounded DELETE would hold the lock for the whole multi-million-row
-  sweep and stall every other write). Phase 1 clears the project's audit_writes
-  (the bulk), phase 2 the now-childless operations rows.
+  Best-effort GC, meant to run in the BACKGROUND after a project's removal
+  (`plaid.server.project-removal`). Deletes in chunks, each its own
+  autocommit statement on `datasource`, so the single SQLite writer lock is
+  released between them. A chunk is sized by how long the last one held the
+  lock (`purge-chunking`), and with `:pause-ms` the purge stands off the
+  database after each chunk for that long or for as long as the chunk took,
+  whichever is more, so a writer parked in its busy_timeout retry loop (which
+  polls at most 100 ms apart) is certain to find the lock free. Phase 1
+  clears the project's audit_writes (the bulk), phase 2 the now-childless
+  operations rows, phase 3 the operation_groups no operation names.
 
   Raw + unaudited: operations/audit_writes ARE the audit infrastructure, not
   audited entities, so this does not go through `submit-operation!`.
 
   Caller is responsible for only invoking this once the project row is gone
   (UUIDv7 ids are never reused, so there's no risk of clobbering a live
-  project's history). A crash mid-sweep leaves some orphaned rows — a periodic
+  project's history). A crash mid-sweep leaves some orphaned rows, and a periodic
   sweep (`project_id NOT IN (SELECT id FROM projects)`) is the backstop.
-  Returns `{:audit-rows n :operations n}`."
-  [datasource project-id]
-  (let [drain! (fn [query-fn]
-                 (loop [total 0]
-                   (let [n (psc/execute! datasource (query-fn))]
-                     (if (pos? n) (recur (+ total n)) total))))
-        audit-rows (drain!
-                    (fn []
-                      {:delete-from :audit_writes
-                       :where [:in :id
-                               {:select [:id] :from [:audit_writes]
-                                :where [:in :op_id
-                                        {:select [:id] :from [:operations]
-                                         :where [:= :project_id project-id]}]
-                                :limit purge-batch-size}]}))
-        operations (drain!
-                    (fn []
-                      {:delete-from :operations
-                       :where [:in :id
-                               {:select [:id] :from [:operations]
-                                :where [:= :project_id project-id]
-                                :limit purge-batch-size}]}))
-        ;; Phase 3: operation_groups rows that no surviving op references
-        ;; any more. The grouped audit read folds FROM operations, so an
-        ;; orphan would never surface anyway; this just keeps the table tidy.
-        groups (drain!
-                (fn []
-                  {:delete-from :operation_groups
-                   :where [:in :id
-                           {:select [:id] :from [:operation_groups]
-                            :where [:not [:exists {:select [1] :from [:operations]
-                                                   :where [:= :operations.group_id :operation_groups.id]}]]
-                            :limit purge-batch-size}]}))]
-    {:audit-rows audit-rows :operations operations :operation-groups groups}))
+  Returns `{:audit-rows n :operations n :operation-groups n :longest-ms n}`,
+  the last the longest one chunk held the lock."
+  ([datasource project-id]
+   (purge-deleted-project-history! datasource project-id nil))
+  ([datasource project-id {:keys [pause-ms] :or {pause-ms 0}}]
+   (let [longest (atom 0)
+         drain! (fn [query-fn]
+                  (loop [total 0
+                         rows (:initial-rows purge-chunking)]
+                    (let [t0 (System/nanoTime)
+                          n (purge-chunk! datasource (query-fn rows))
+                          ms (quot (- (System/nanoTime) t0) 1000000)]
+                      (swap! longest max ms)
+                      (if (pos? n)
+                        (do (when (pos? pause-ms)
+                              (Thread/sleep (long (max pause-ms ms))))
+                            (recur (+ total n) (next-purge-chunk rows ms)))
+                        total))))
+         audit-rows (drain!
+                     (fn [limit]
+                       {:delete-from :audit_writes
+                        :where [:in :id
+                                {:select [:id] :from [:audit_writes]
+                                 :where [:in :op_id
+                                         {:select [:id] :from [:operations]
+                                          :where [:= :project_id project-id]}]
+                                 :limit limit}]}))
+         operations (drain!
+                     (fn [limit]
+                       {:delete-from :operations
+                        :where [:in :id
+                                {:select [:id] :from [:operations]
+                                 :where [:= :project_id project-id]
+                                 :limit limit}]}))
+         ;; Phase 3: operation_groups rows that no surviving op references
+         ;; any more. The grouped audit read folds FROM operations, so an
+         ;; orphan would never surface anyway; this just keeps the table tidy.
+         groups (drain!
+                 (fn [limit]
+                   {:delete-from :operation_groups
+                    :where [:in :id
+                            {:select [:id] :from [:operation_groups]
+                             :where [:not [:exists {:select [1] :from [:operations]
+                                                    :where [:= :operations.group_id :operation_groups.id]}]]
+                             :limit limit}]}))]
+     {:audit-rows audit-rows :operations operations :operation-groups groups
+      :longest-ms @longest})))
 
 ;; ============================================================
 ;; Access privileges (project_users join table)

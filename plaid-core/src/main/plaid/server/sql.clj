@@ -198,7 +198,7 @@
           (.execute stmt orphan-statistics-statement)))
       statements)))
 
-(defn- refresh-stale-statistics!
+(defn refresh-stale-statistics!
   "One pass of the refresh: ANALYZE what went stale (`analyze-tables!`), and
    when anything was, drop the pool's open connections so every later one
    loads the fresh statistics. `occasion` names the pass in the log line.

@@ -17,6 +17,7 @@
   when the DELETE returns. The HTTP server switches `background?` on at
   startup, a path tests never run."
   (:require [plaid.media.storage :as media]
+            [plaid.server.sql :as server-sql]
             [plaid.sql.project :as prj]
             [taoensso.timbre :as log])
   (:import (com.zaxxer.hikari HikariDataSource)
@@ -40,6 +41,13 @@
   write lock is parked in its busy_timeout retry loop, and this is the window
   in which it is certain to find the lock free."
   50)
+
+(def ^:private purge-pause-ms
+  "The least the history purge stands off the database after each of its
+  chunks, in the background (`prj/purge-deleted-project-history!` stands off
+  for as long as the chunk took when that is more). Above the 100 ms a
+  writer parked in busy_timeout sleeps between polls, so it wins the lock."
+  150)
 
 (def ^:private attempts
   "How many times one step is tried before the removal gives up until the
@@ -71,6 +79,16 @@
   "Remove everything under project `pid`, which `prj/delete` has hidden, then
   the project itself. Returns the number of documents removed."
   [datasource pid]
+  ;; Every step below leans on FK cascades, and SQLite plans each cascade
+  ;; from its statistics. A table analysed while nearly empty and since grown
+  ;; past a tenfold (a young install, before the hourly refresh) is planned as
+  ;; a scan per deleted row: 34 to 138 s for one 5000-row chunk of the history
+  ;; purge, against 0.1 s once analysed. When nothing is stale this is one
+  ;; PRAGMA.
+  (when @background?
+    (try (server-sql/refresh-stale-statistics! datasource "before a project removal")
+         (catch Exception e
+           (log/warn e "ANALYZE before a project removal failed; removing with the statistics there are"))))
   (let [t0 (System/nanoTime)
         n (loop [n 0]
             (if-let [doc-id (with-retries "a document" datasource #(prj/remove-hidden-document! datasource pid))]
@@ -88,7 +106,8 @@
                           pid n (quot (- (System/nanoTime) t0) 1000000)))
         (when @purge-history?
           (log/info "Purged history for deleted project" pid
-                    (prj/purge-deleted-project-history! datasource pid))))
+                    (prj/purge-deleted-project-history!
+                     datasource pid {:pause-ms (if @background? purge-pause-ms 0)}))))
       ;; Already removed (a second run of the same removal), or a document
       ;; still under it, which the next startup takes up again.
       (when (prj/hidden? datasource pid)
