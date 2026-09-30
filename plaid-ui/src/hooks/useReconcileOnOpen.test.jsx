@@ -293,6 +293,29 @@ describe('the reconcile gate', () => {
     await view.unmount();
   });
 
+  it('re-reads and plans again once after a layer rule refuses the repair (a word seeded at stale offsets)', async () => {
+    const refused = Object.assign(
+      new Error('HTTP 422 A token of "Words" does not have the extent'),
+      {
+        status: 422,
+        responseData: { violations: [{ constraint: 'coextensive' }], 'violation-count': 1 },
+      },
+    );
+    const doc = makeDoc();
+    doc.reload = vi.fn(() => Promise.resolve());
+    doc.reconcileOnOpen = vi
+      .fn()
+      .mockResolvedValueOnce({ findings: [], error: refused })
+      .mockResolvedValueOnce({ findings: [], createdSyntacticWords: 1 });
+    view = await renderComponent(<Probe {...base} doc={doc} />);
+    await settle();
+    await settle();
+    expect(doc.reload).toHaveBeenCalledTimes(1);
+    expect(doc.reconcileOnOpen).toHaveBeenCalledTimes(2);
+    expect(notifyError).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
   it('says the document changed while it was checked when the second plan is refused too', async () => {
     const conflict = Object.assign(new Error('HTTP 409 Document version mismatch'), {
       status: 409,

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import PlaidClient from '@larc-iu/plaid-client';
 import { reportIntegrityFindings } from '../lib/integrityToast.js';
-import { humanizeError, isUnknownOutcome, statusOf } from '../lib/errors.js';
+import { humanizeError, isConstraintViolation, isUnknownOutcome, statusOf } from '../lib/errors.js';
 import { notifyError } from '../lib/notify.js';
 
 // How long one request of a repair may wait for its answer before the repair
@@ -155,8 +155,13 @@ export function useReconcileOnOpen({ doc, asOf, canWrite, enterStrictMode, onFai
         let result = await repair();
         if (cancelled) return;
         // Someone saved between the read the repair was planned from and its
-        // write. Read again and plan again, once.
-        if (result.error && statusOf(result.error) === 409) {
+        // write. Read again and plan again, once. A repair refused by a layer
+        // rule (422) was planned from a copy the save made stale too, such as
+        // a word seeded at offsets the save moved.
+        if (
+          result.error &&
+          (statusOf(result.error) === 409 || isConstraintViolation(result.error))
+        ) {
           try {
             await doc.reload();
             if (cancelled) return;
