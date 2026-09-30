@@ -358,9 +358,7 @@
    :written-together {:carets 3 :glue 0.3 :spaced 0.3}
    :nested-layer {:carets 3 :child 0.7 :spaced 0.3 :glue 0.1}
    ;; UMR's nodes beside the words: the words decide, the nodes follow
-   :nodes-beside-words {:carets 3 :nodes true :spaced 0.3 :glue 0.1}
-   ;; UMR's nodes on a text with no plain words: the nodes decide
-   :nodes-alone {:carets 3 :nodes true :spaced 0.3 :glue 0.1 :nodes-only true}})
+   :nodes-beside-words {:carets 3 :nodes true :spaced 0.3 :glue 0.1}})
 
 (def ^:private cases-per-config 1500)
 
@@ -373,7 +371,6 @@
         (let [rng (java.util.Random. (+ seed (* 7919 (hash cname))))
               {:keys [body tokens]} (gen-doc rng opts)
               gaps (gen-gaps rng body tokens opts)
-              tokens (if (:nodes-only opts) (filterv #(#{:u :s} (:token/layer %)) tokens) tokens)
               new-body (ta/edit-ops-body (ta/gap-ops gaps) body)
               server (ta/plain-edit-gaps body (ta/gap-ops gaps))
               readings {:composed (ta/gap-ops gaps)
@@ -392,3 +389,64 @@
         (doseq [f (take 6 @fails)] (println (pr-str f))))
       (testing (str cname)
         (is (empty? @fails) (pr-str (take 3 @fails)))))))
+
+;; ---------------------------------------------------------------- nodes beside words on the other rules
+
+(defn- mixed
+  "What `save-plan` does for plain nodes (:u) beside words (:w) that are not
+  plain: the words and sentences by the other rules, the nodes plain, then
+  following the words at their edges."
+  [old tokens {:keys [ops new]}]
+  (let [u (filterv #(= :u (:token/layer %)) tokens)
+        plain (if ops
+                (ta/plain-edits old u ops #{:s} #{:w})
+                (ta/plain-body old new u #{:s} #{:w}))
+        rest (if ops
+               (ta/apply-edits old tokens ops {:partitioning #{:s} :word-layers #{:w}})
+               (-> (ta/diff old new) (ta/slide-to-tokens old tokens #{:s}) (ta/normalize-deletes old tokens)
+                   (ta/align-to-words old tokens #{:w}) (ta/pair-replacements old tokens)
+                   (ta/fold-whole-words old tokens #{:w}) (ta/apply-text-edits {:text/body old} tokens)
+                   (as-> r (ta/keep-edges-off-spaces old tokens r #{:s}))))
+        plain (ta/follow-word-edges tokens plain rest #(= :w (:token/layer %)) (into #{} (map :token/id) u))]
+    {:body [(:text/body (:text plain)) (:text/body (:text rest))]
+     :words (into {} (comp (filter #(= :w (:token/layer %))) (map (juxt :token/id identity))) (:tokens rest))
+     :nodes (into {} (map (juxt :token/id identity)) (:tokens plain))
+     :deleted-nodes (set (:deleted plain))}))
+
+(defn- follow-problems
+  "A node edge that stood at a word's edge stands at that word's edge now,
+  whenever the word is left, and a node goes only when all its letters do."
+  [tokens expected {:keys [body words nodes deleted-nodes]}]
+  (let [ws (filterv #(= :w (:token/layer %)) tokens)
+        out (transient [])]
+    (when (not= [expected expected] body) (conj! out (str "body " (pr-str body))))
+    (doseq [{:token/keys [id layer begin end]} tokens :when (= :u layer)]
+      (if-let [n (nodes id)]
+        (do
+          (doseq [w ws :when (= begin (:token/begin w)) :let [w* (words (:token/id w))] :when w*]
+            (when (not= (:token/begin w*) (:token/begin n))
+              (conj! out (str id " begins at " (:token/begin n) ", its word " (:token/id w) " at " (:token/begin w*)))))
+          (doseq [w ws :when (= end (:token/end w)) :let [w* (words (:token/id w))] :when w*]
+            (when (not= (:token/end w*) (:token/end n))
+              (conj! out (str id " ends at " (:token/end n) ", its word " (:token/id w) " at " (:token/end w*))))))
+        (when-not (deleted-nodes id)
+          (conj! out (str id " missing")))))
+    (persistent! out)))
+
+(deftest nodes-beside-words-on-the-other-rules-keep-to-the-words
+  ;; Luke (2026-09-30, option c): a plain node layer beside words that are
+  ;; not plain follows the words' outcome at their edges, whatever the edit.
+  (let [opts {:carets 3 :nodes true :spaced 0.3 :glue 0.1}
+        fails (atom [])]
+    (dotimes [seed cases-per-config]
+      (let [rng (java.util.Random. (+ seed 424242))
+            {:keys [body tokens]} (gen-doc rng opts)
+            gaps (gen-gaps rng body tokens opts)
+            tokens (filterv #(#{:w :u :s} (:token/layer %)) tokens)
+            new-body (ta/edit-ops-body (ta/gap-ops gaps) body)]
+        (doseq [[rname change] {:composed {:ops (ta/gap-ops gaps)}
+                                :keys-left-to-right {:ops (keystrokes gaps false)}
+                                :whole-body {:new new-body}}]
+          (let [ps (follow-problems tokens new-body (mixed body tokens change))]
+            (when (seq ps) (swap! fails conj {:seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))))
+    (is (empty? @fails) (str (count @fails) " " (pr-str (take 3 @fails))))))

@@ -25,7 +25,7 @@
 (defn- setup
   "A document with sentences, words, morphemes and glosses over `body`, the
   words at the runs without spaces, each word one morpheme."
-  [body & {:keys [plain other nodes]}]
+  [body & {:keys [plain other nodes runs]}]
   (let [proj (create-test-project admin-request "EditProj")
         doc (create-test-document admin-request proj "Doc")
         tl (-> (create-text-layer admin-request proj "TL") :body :id)
@@ -48,7 +48,9 @@
         text-id (-> (create-text admin-request tl doc body) :body :id)
         _ (assert-created (bulk-create-tokens admin-request [{:token-layer-id sentences :text text-id
                                                               :begin 0 :end (count body)}]))
-        runs (let [m (re-matcher #"\S+" body)] (loop [out []] (if (.find m) (recur (conj out [(.start m) (.end m)])) out)))
+        runs (if (= runs :chars)
+               (mapv (fn [i] [i (inc i)]) (range (count body)))
+               (let [m (re-matcher #"\S+" body)] (loop [out []] (if (.find m) (recur (conj out [(.start m) (.end m)])) out))))
         ws (mapv (fn [[b e]] (-> (create-token admin-request words text-id b e) :body :id)) runs)
         ms (mapv (fn [[b e]] (-> (create-token admin-request morphemes text-id b e) :body :id)) runs)
         gs (mapv (fn [m] (-> (create-span admin-request glosses [m] "G") :body :id)) ms)
@@ -304,18 +306,30 @@
       (is (= [0 4 "dogX"] (extent (words 0)) (extent (nodes 0))))
       (is (= [5 7 "at"] (extent (words 1)) (extent (nodes 1)))))))
 
-(deftest nodes-on-a-text-with-no-plain-words-decide-for-themselves
-  ;; A UMR-only text: the words keep the other rules, the plain nodes grow and
-  ;; shrink with edits inside or touching them, and are never split.
-  (let [{:keys [text nodes node-layer]} (setup "dog cat eel" :nodes true)
-        over (-> (create-token admin-request node-layer text 0 7) :body :id)
-        digest-of #(-> (get-text admin-request text) :body :text/digest)]
-    (assert-ok (edit-text text {:edits [(ins 3 "s") (ins 6 " ")] :base (digest-of)}))
-    (is (= "dogs c at eel" (-> (get-text admin-request text) :body :text/body)))
-    (is (= [0 4 "dogs"] (extent (nodes 0))))
-    (is (= [5 9 "c at"] (extent (nodes 1))))
-    (is (= [0 9 "dogs c at"] (extent over)))
-    (testing "only a node whose letters are all gone goes"
-      (assert-ok (edit-text text {:edits [(del 9 4)] :base (digest-of)}))
-      (is (nil? (extent (nodes 2))))
-      (is (= [0 9 "dogs c at"] (extent over))))))
+(deftest nodes-beside-words-on-the-other-rules-follow-the-words
+  ;; A plain node layer beside word layers that are not plain (a UMR-only
+  ;; text, or ud and UMR on one text): at a word's edge a node takes the
+  ;; word's outcome, whatever rule the word takes, so a node never differs
+  ;; from its word (Luke, 2026-09-30, option c).
+  (doseq [[label body edit child] [["a letter typed after `200`" "200 dollars" (ins 3 "x") false]
+                                   ["a letter typed after `就` in a text without spaces" "他就去" (ins 2 "x") false]
+                                   ["a space typed inside a word" "dog cat eel" (ins 5 " ") false]
+                                   ["a stretch over two words typed over" "dog cat eel" {:type "replace" :index 2 :length 3 :value "X"} false]
+                                   ["ud's syntactic words under the words" "dog cat eel" (ins 3 "s") true]]]
+    (testing label
+      (let [{:keys [text words nodes node-layer]} (setup body :nodes true :other (when child :child) :runs (when (= body "他就去") :chars))
+            over (when (< 1 (count words))
+                   (-> (create-token admin-request node-layer text
+                                     (first (extent (words 0))) (second (extent (words 1))))
+                       :body :id))
+            base (-> (get-text admin-request text) :body :text/digest)]
+        (assert-ok (edit-text text {:edits [edit] :base base}))
+        ;; a node whose word went (joined into another) keeps the letters it
+        ;; has, as nothing goes unless all its letters do
+        (doseq [[w n] (map vector words nodes)]
+          (if (extent w)
+            (is (= (extent w) (extent n)) (str label ": word " (extent w) " node " (extent n)))
+            (is (some? (extent n)) (str label ": the node of a word joined into another is kept"))))
+        (when (and over (extent (words 0)) (extent (words 1)))
+          (is (= [(first (extent (words 0))) (second (extent (words 1)))] (take 2 (extent over)))
+              (str label ": a node over two words")))))))

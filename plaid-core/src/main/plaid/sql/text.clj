@@ -285,8 +285,14 @@
                                                (seen id) false
                                                :else (recur (parent-of id) (conj seen id))))))
                       (keys parent-of))
+          ;; With no plain word layer (a node layer beside words on the other
+          ;; rules) the words and the partitions over them take the other
+          ;; rules, and the plain tokens follow the words at their edges
+          ;; (see ta/follow-word-edges), so a node never differs from its word.
+          plain-words (set/intersection word-layers plain)
           deciders (let [ws (set/intersection word-layers declared)] (if (seq ws) ws word-layers))
-          plain? (fn [{:token/keys [layer]}] (or (contains? plain layer) (contains? partitioning layer)))
+          plain? (fn [{:token/keys [layer]}] (or (contains? plain layer)
+                                                 (and (seq plain-words) (contains? partitioning layer))))
           plain-tokens (when (seq plain) (filterv plain? tokens))
           plain-result (when (seq plain)
                          (cond
@@ -325,7 +331,12 @@
               (when (and rest-result (not= (:text/body (:text rest-result)) (:text/body (:text plain-result))))
                 (throw (ex-info "The new body could not be applied." {:code 500 :id eid})))
               {:text (:text plain-result)
-               :tokens (into (:tokens plain-result) (filter #(rest-ids (:token/id %))) (:tokens rest-result))
+               :tokens (into (:tokens (if (and (empty? plain-words) rest-result)
+                                        (ta/follow-word-edges tokens plain-result rest-result
+                                                              #(contains? word-layers (:token/layer %))
+                                                              (into #{} (map :token/id) plain-tokens))
+                                        plain-result))
+                             (filter #(rest-ids (:token/id %))) (:tokens rest-result))
                :deleted (into (vec (:deleted plain-result)) (filter rest-ids) (:deleted rest-result))})
             rest-result)
           new-body (:text/body new-text)

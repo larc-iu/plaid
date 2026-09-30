@@ -3741,3 +3741,41 @@
   `plain-body-gaps`)."
   [^String old ^String new tokens partitioning word-layers]
   (apply-plain-gaps old tokens (plain-body-gaps old new tokens partitioning) partitioning word-layers))
+
+(defn follow-word-edges
+  "`result` (tokens and deleted ids, as `apply-plain-gaps` gives them) with
+  each edge of a token in `followers` that stood at a word's edge in `old`
+  (a begin at a word's begin, an end at a word's end) moved to where that
+  word's edge is in `words-result`, whatever rule the word took. For a plain
+  layer beside words that are not plain (a node layer beside the words): a
+  node never differs from its words. An edge whose word is gone keeps its
+  plain place, and when one edge followed its word past the other, the token
+  keeps to that word."
+  [old-tokens result words-result word? followers]
+  (let [was (into {} (map (juxt :token/id identity)) old-tokens)
+        now (into {} (comp (filter word?) (map (juxt :token/id identity))) (:tokens words-result))
+        gone (set (:deleted words-result))
+        live (fn [w] (when-not (gone (:token/id w)) (now (:token/id w))))
+        words (filterv #(and (word? %) (< (:token/begin %) (:token/end %))) old-tokens)
+        by-begin (group-by :token/begin words)
+        by-end (group-by :token/end words)]
+    (update result :tokens
+            (fn [ts]
+              (mapv (fn [{:token/keys [id] :as t}]
+                      (if-let [{:token/keys [begin end]} (when (followers id) (was id))]
+                        (let [wb (some live (by-begin begin))
+                              we (some live (by-end end))
+                              b (or (:token/begin wb) (:token/begin t))
+                              e (or (:token/end we) (:token/end t))
+                              ;; one edge followed its word past the other:
+                              ;; the node keeps to that word
+                              [b e] (cond
+                                      (< b e) [b e]
+                                      we [(:token/begin we) e]
+                                      wb [b (:token/end wb)]
+                                      :else [b e])]
+                          (if (and (or wb we) (< b e))
+                            (assoc t :token/begin b :token/end e)
+                            t))
+                        t))
+                    ts)))))
