@@ -1071,13 +1071,43 @@ class PlaidClient {
        *   {type: 'replace', index, length, value: string} — unlike
        *     delete+insert, a token covering the whole range is resized to keep
        *     it (respell a word in place without losing its annotations).
+       * A list is applied exactly as sent. With `base` (the `digest` of the
+       * body the update was made on, as every read of a text gives it) the
+       * update applies only to that body, and is refused with 409 and
+       * `text-changed` otherwise. Strict mode then does not stamp it.
        * @param {string} textId - The text ID
        * @param {any} body - The request body
+       * @param {string} [auditMessage]
+       * @param {{base?: string}} [options]
        */
-      update: (textId, body, auditMessage) =>
+      update: (textId, body, auditMessage, { base } = {}) =>
         this._request("PATCH", `/api/v1/texts/${textId}`, {
           auditMessage,
-          body: bodyOf({ body }),
+          body: bodyOf({ body, base }),
+          versioned: base === undefined || base === null,
+        }),
+      /**
+       * Change a text's body by the edits made at the caret: a list of edit
+       * directives as `update` takes them (code-point indices, applied in
+       * order, each index in the body the ones before it left). Only their
+       * net change counts. An insert or a delete stays where it was made, and
+       * a stretch deleted and typed over is read as a whole new body is. The
+       * answer is the text with its new `digest` and `reshape` (the tokens
+       * moved, the spans and vocab links trimmed, the rows deleted). With
+       * `base`, the digest of the body the edits were made on, the edit
+       * applies only to that body and is refused with 409 and `text-changed`
+       * otherwise, and strict mode does not stamp it.
+       * See composeTextEdits and gapsToOps.
+       * @param {string} textId - The text ID
+       * @param {Array<object>} edits - The edit directives
+       * @param {string} [auditMessage]
+       * @param {{base?: string}} [options]
+       */
+      edit: (textId, edits, auditMessage, { base } = {}) =>
+        this._request("PATCH", `/api/v1/texts/${textId}`, {
+          auditMessage,
+          body: bodyOf({ edits, base }),
+          versioned: base === undefined || base === null,
         }),
     };
 
@@ -4027,6 +4057,7 @@ export {
   PLAID_NAMESPACE,
   ROLE_KEY,
   PRESERVE_ON_SPLIT_KEY,
+  SEGMENTS_PARENT_KEY,
   ROLES,
   readRole,
   findByRole,

@@ -839,7 +839,7 @@ class TextsResource(_Resource):
         """
         return self._request('DELETE', f'/api/v1/texts/{text_id}', audit_message=audit_message)
 
-    def update(self, text_id: str, body: Any, audit_message=None) -> Any:
+    def update(self, text_id: str, body: Any, audit_message=None, *, base: str | None = None) -> Any:
         """Update a text's ``body``.
 
         A diff is computed and token indices are updated so that tokens
@@ -849,9 +849,37 @@ class TextsResource(_Resource):
         Args:
             text_id: The text ID
             body: The request body
+            base: Optional. The ``digest`` of the body the update was made on,
+                as every read of a text gives it. The update then applies only
+                to that body, and is refused with 409 and ``text_changed``
+                otherwise, and strict mode does not stamp it.
         """
         return self._request('PATCH', f'/api/v1/texts/{text_id}',
-                             body=_body_of(body=body), audit_message=audit_message)
+                             body=_body_of(body=body, base=_UNSET if base is None else base),
+                             audit_message=audit_message, versioned=base is None)
+
+    def edit(self, text_id: str, edits: list, audit_message=None, *, base: str | None = None) -> Any:
+        """Change a text's body by the edits made at the caret.
+
+        ``edits`` are edit directives as ``update`` takes them (code-point
+        indices, applied in order, each index in the body the ones before it
+        left). Only their net change counts: an insert or a delete stays where
+        it was made, and a stretch deleted and typed over is read as a whole
+        new body is. The answer is the text with its new ``digest`` and
+        ``reshape`` (the tokens moved, the spans and vocab links trimmed, the
+        rows deleted). See ``compose_text_edits`` and ``gaps_to_ops``.
+
+        Args:
+            text_id: The text ID
+            edits: The edit directives
+            base: Optional. The ``digest`` of the body the edits were made on.
+                The edit then applies only to that body, and is refused with
+                409 and ``text_changed`` otherwise, and strict mode does not
+                stamp it.
+        """
+        return self._request('PATCH', f'/api/v1/texts/{text_id}',
+                             body=_body_of(edits=edits, base=_UNSET if base is None else base),
+                             audit_message=audit_message, versioned=base is None)
 
     def set_metadata(self, text_id: str, body: Any, audit_message=None) -> Any:
         """Replace all metadata for a text.

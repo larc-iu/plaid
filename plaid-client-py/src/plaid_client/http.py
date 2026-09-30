@@ -549,7 +549,7 @@ class _ProgressBody:
 
 def prepare_request(client, method, path, *, body=None, raw_body=None, form_data=False,
                     query_params=None, out_of_band=False, no_operation=False,
-                    audit_message=None, pinned_version=NO_PIN):
+                    audit_message=None, pinned_version=NO_PIN, versioned=True):
     """Everything a request is before it goes anywhere: the URL with its query
     params and the stamps strict mode, a per-call audit message and an open
     logical operation add, plus the transformed body. Shared by the wire path
@@ -607,10 +607,11 @@ def prepare_request(client, method, path, *, body=None, raw_body=None, form_data
     # for, so a batch split into several requests can restamp its later ones
     # (see ``PlaidClient._post_batch``). An out-of-band signal (a lock, a
     # service's progress, a query) is no write of the document and carries
-    # none.
+    # none. Nor does a write with its own precondition (``versioned=False``,
+    # a text edit sent with the digest of the body it was made on).
     stamped_document = None
     stamped_version = None
-    if client.strict_mode_document_id and method != 'GET' and not out_of_band:
+    if client.strict_mode_document_id and method != 'GET' and not out_of_band and versioned:
         doc_id = client.strict_mode_document_id
         doc_version = (pinned_version if pinned_version is not NO_PIN
                        else client.document_versions.get(doc_id))
@@ -823,7 +824,7 @@ def queue_request(batch, method, path, *, no_batch=False, out_of_band=False, **k
         raise PlaidAPIError(f'This endpoint cannot be used in a batch: {path}')
     prep = {k: v for k, v in kwargs.items()
             if k in ('body', 'raw_body', 'form_data', 'query_params', 'no_operation',
-                     'audit_message')}
+                     'audit_message', 'versioned')}
     url, request_body, stamped_document, stamped_group, _ = prepare_request(
         batch.client, method, path, **prep)
     operation = {
@@ -846,7 +847,7 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
                  query_params=None, no_batch=False, out_of_band=False,
                  no_operation=False, no_idempotency=False, skip_response_transform=False,
                  no_auth=False, binary_response=False, audit_message=None,
-                 timeout=_UNSET, on_upload_progress=None,
+                 timeout=_UNSET, on_upload_progress=None, versioned=True,
                  _learning_omitted_version=False):
     """Generic request method handling all HTTP logic.
 
@@ -871,6 +872,9 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         no_operation: If True, the call never joins an open logical operation
             but still queues on a batch like a write. For a broadcast message,
             which is never audited.
+        versioned: If False, strict mode does not stamp the call with the
+            document version. For a write that carries its own precondition
+            (a text edit with ``base``).
         no_idempotency: If True, the write goes out with no Idempotency-Key
             (see the note above ``retry_unknown``). For a call whose answer is
             a secret the server never keeps (an API token, an invite code), so
@@ -893,7 +897,7 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
     url, request_body, _, stamped_group, stamped_version = prepare_request(
         client, method, path, body=body, raw_body=raw_body, form_data=form_data,
         query_params=query_params, out_of_band=out_of_band, no_operation=no_operation,
-        audit_message=audit_message, pinned_version=pin)
+        audit_message=audit_message, pinned_version=pin, versioned=versioned)
     if keyed:
         record(stamped_version)
 

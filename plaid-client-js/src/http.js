@@ -451,6 +451,7 @@ export function prepareRequest(client, method, path, options = {}) {
     noOperation,
     auditMessage,
     pinnedVersion,
+    versioned,
   } = options;
 
   // A write must not go out on a lock that lapsed. `documents.locked()`
@@ -506,7 +507,14 @@ export function prepareRequest(client, method, path, options = {}) {
   // (`pinnedVersion`, null for no claim), so the two are the same request.
   let stampedDocument = null;
   let stampedVersion = null;
-  if (client.strictModeDocumentId && method !== "GET" && !outOfBand) {
+  // A write with its own precondition (`versioned: false`, a text edit sent
+  // with the digest of the body it was made on) goes without the stamp.
+  if (
+    client.strictModeDocumentId &&
+    method !== "GET" &&
+    !outOfBand &&
+    versioned !== false
+  ) {
     const docId = client.strictModeDocumentId;
     const docVersion =
       pinnedVersion !== undefined
@@ -706,6 +714,9 @@ export async function queueRequest(batch, method, path, options = {}) {
  *   noOperation     - If true, the call never joins an open logical operation
  *                     but still queues on a batch like a write. For a
  *                     broadcast message, which is never audited.
+ *   versioned       - If false, strict mode does not stamp the call with the
+ *                     document version. For a write that carries its own
+ *                     precondition (a text edit with `base`).
  *   skipResponseTransform - Return raw parsed JSON (no transformResponse)
  *   noAuth          - Skip Authorization header
  *   binaryResponse  - Return arrayBuffer instead of JSON/text

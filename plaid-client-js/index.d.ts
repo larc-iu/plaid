@@ -348,7 +348,10 @@ interface TextsBundle {
   ): Promise<any>;
   get(textId: string): Promise<any>;
   delete(textId: string, auditMessage?: string): Promise<any>;
-  update(textId: string, body: any, auditMessage?: string): Promise<any>;
+  /** With `base` (a text's `digest`) the update applies only to that body. */
+  update(textId: string, body: any, auditMessage?: string, opts?: { base?: string }): Promise<any>;
+  /** Edits made at the caret; with `base` they apply only to that body. Answers the text with `digest` and `reshape`. */
+  edit(textId: string, edits: TextEditOp[], auditMessage?: string, opts?: { base?: string }): Promise<any>;
 }
 
 interface UsersBundle {
@@ -1648,6 +1651,7 @@ export const PLAID_NAMESPACE: "plaid";
 export const ROLE_KEY: "role";
 /** Layer config key naming the metadata keys a token born of a SPLIT inherits. */
 export const PRESERVE_ON_SPLIT_KEY: "preserveOnSplit";
+export const SEGMENTS_PARENT_KEY: "segmentsParent";
 
 /** The server's cap on operations per batch request; a larger batch goes as consecutive requests. */
 export const MAX_BATCH_OPS: 1000;
