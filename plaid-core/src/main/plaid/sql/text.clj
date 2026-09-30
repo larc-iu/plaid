@@ -293,11 +293,17 @@
           deciders (let [ws (set/intersection word-layers declared)] (if (seq ws) ws word-layers))
           plain? (fn [{:token/keys [layer]}] (or (contains? plain layer)
                                                  (and (seq plain-words) (contains? partitioning layer))))
+          ;; A layer that also sets `splitOnSpace` (ud's words) has a space
+          ;; typed inside a word split it. Declared on a layer the text's
+          ;; words share with another app, it holds for the whole text.
+          split-on-space (some #(true? (some-> (:config %) psc/parse-config (get-in ["plaid" "splitOnSpace"])))
+                               layer-rows)
+          plain-opts {:split-on-space (boolean split-on-space)}
           plain-tokens (when (seq plain) (filterv plain? tokens))
           plain-result (when (seq plain)
                          (cond
-                           edits (ta/plain-edits old-body plain-tokens edits partitioning deciders)
-                           (string? new-body-or-ops) (ta/plain-body old-body new-body-or-ops plain-tokens partitioning deciders)
+                           edits (ta/plain-edits old-body plain-tokens edits partitioning deciders plain-opts)
+                           (string? new-body-or-ops) (ta/plain-body old-body new-body-or-ops plain-tokens partitioning deciders plain-opts)
                            :else nil))
           tokens-rest (if plain-result (filterv (complement plain?) tokens) tokens)
           ops (cond

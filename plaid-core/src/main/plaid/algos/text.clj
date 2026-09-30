@@ -3544,6 +3544,47 @@
         (copy! at (alength o))))
     (str sb)))
 
+(defn- split-spaced-words
+  "`placed` (the tokens `apply-plain-gaps` placed, `::gone` marking the
+  deleted) with each word (`word?`) given whitespace inside it that it did
+  not have split, as D28 has it: the word goes on the run of its new text
+  without whitespace that shares the most letters with its old text (the
+  first on a tie), a token that was as long as it goes with it, and a token
+  that stood strictly inside it (not a partition) is deleted."
+  [^ints o ^ints nw old-tokens placed word? part?]
+  (let [runs (fn [^ints cs b e] (loop [i b in? false n 0]
+                                  (if (< i e)
+                                    (let [w (space? (aget cs i))]
+                                      (recur (inc i) w (if (and w (not in?)) (inc n) n)))
+                                    n)))
+        was (into {} (map (juxt :token/id identity)) old-tokens)
+        moves (into {}
+                    (keep (fn [{:token/keys [id begin end] :as t}]
+                            (let [{ob :token/begin oe :token/end} (was id)]
+                              (when (and (word? t) (not (::gone t)) ob
+                                         (> (runs nw begin end) (runs o ob oe)))
+                                (let [pieces (loop [i begin start nil out []]
+                                               (cond
+                                                 (= i end) (cond-> out start (conj [start end]))
+                                                 (space? (aget nw i)) (recur (inc i) nil (cond-> out start (conj [start i])))
+                                                 :else (recur (inc i) (or start i) out)))
+                                      old-word (java.util.Arrays/copyOfRange o (int ob) (int oe))
+                                      score (fn [[x y]] (lcs-length old-word (java.util.Arrays/copyOfRange nw (int x) (int y))))
+                                      best (reduce max (map score pieces))]
+                                  [[ob oe] (first (filter #(= best (score %)) pieces))])))))
+                    placed)]
+    (if (empty? moves)
+      placed
+      (mapv (fn [{:token/keys [id] :as t}]
+              (let [{ob :token/begin oe :token/end} (was id)]
+                (cond
+                  (or (::gone t) (nil? ob) (part? t)) t
+                  (moves [ob oe]) (let [[x y] (moves [ob oe])] (assoc t :token/begin x :token/end y))
+                  (some (fn [[[wb we] _]] (and (<= wb ob) (<= oe we) (not (and (= wb ob) (= we oe))))) moves)
+                  (assoc t ::gone true)
+                  :else t)))
+            placed))))
+
 (defn apply-plain-gaps
   "What `gaps` (old-body code points, in order, never touching, each
   `{:start a :end b :value v}`, see `compose-edits`) do to `old` and to
@@ -3574,140 +3615,165 @@
     the word on `thung`), and one left with only whitespace is deleted.
 
   A zero-width token is moved as `apply-text-edits` moves it."
-  [^String old tokens gaps partitioning word-layers]
-  (let [^ints o (.toArray (.codePoints old))
-        len (alength o)
-        partitioning (set partitioning)
-        word-layers (set word-layers)
-        gaps (vec gaps)
-        k (count gaps)
-        ws? (fn [c] (space? c))
-        info (mapv (fn [{:keys [start end value]}]
-                     (let [^ints v (.toArray (.codePoints ^String value))
-                           n (alength v)
-                           run (fn [idx] (loop [i 0] (if (and (< i n) (not (ws? (aget v (int (idx i)))))) (recur (inc i)) i)))
-                           lead (run identity)
-                           trail (run #(- n 1 %))]
-                       {:a start :b end :n n :delta (- n (- end start))
-                        :lead lead :trail trail :word? (= lead n)
-                        :before-ok (and (pos? lead) (pos? start) (not (ws? (aget o (dec start)))))
-                        :after-ok (and (pos? trail) (< end len) (not (ws? (aget o end))))}))
-                   gaps)
-        new-body (gaps-body old gaps)
-        ^ints nw (.toArray (.codePoints ^String new-body))
+  ([old tokens gaps partitioning word-layers]
+   (apply-plain-gaps old tokens gaps partitioning word-layers nil))
+  ([^String old tokens gaps partitioning word-layers {:keys [caret split-on-space]}]
+   (let [^ints o (.toArray (.codePoints old))
+         len (alength o)
+         partitioning (set partitioning)
+         word-layers (set word-layers)
+         gaps (vec gaps)
+         k (count gaps)
+         ws? (fn [c] (space? c))
+         info (mapv (fn [{:keys [start end value]}]
+                      (let [^ints v (.toArray (.codePoints ^String value))
+                            n (alength v)
+                            run (fn [idx] (loop [i 0] (if (and (< i n) (not (ws? (aget v (int (idx i)))))) (recur (inc i)) i)))
+                            lead (run identity)
+                            trail (run #(- n 1 %))]
+                        {:a start :b end :n n :delta (- n (- end start))
+                         :lead lead :trail trail :word? (= lead n)
+                         :before-ok (and (pos? lead) (pos? start) (not (ws? (aget o (dec start)))))
+                         :after-ok (and (pos? trail) (< end len) (not (ws? (aget o end))))}))
+                    gaps)
+         new-body (gaps-body old gaps)
+         ^ints nw (.toArray (.codePoints ^String new-body))
         ;; shift[i]: what the gaps before gap i add to a position
-        shift (long-array (inc k))
-        _ (dotimes [i k] (aset shift (inc i) (+ (aget shift i) (long (:delta (info i))))))
-        starts (long-array (map :start gaps))
+         shift (long-array (inc k))
+         _ (dotimes [i k] (aset shift (inc i) (+ (aget shift i) (long (:delta (info i))))))
+         starts (long-array (map :start gaps))
         ;; the last gap starting at or before x, or -1
-        at-or-before (fn [x]
-                       (loop [lo 0 hi k]
-                         (if (< lo hi)
-                           (let [m (quot (+ lo hi) 2)]
-                             (if (<= (aget starts m) (long x)) (recur (inc m) hi) (recur lo m)))
-                           (dec lo))))
-        wide (filterv #(< (:token/begin %) (:token/end %)) tokens)
-        zero (filterv #(= (:token/begin %) (:token/end %)) tokens)
+         at-or-before (fn [x]
+                        (loop [lo 0 hi k]
+                          (if (< lo hi)
+                            (let [m (quot (+ lo hi) 2)]
+                              (if (<= (aget starts m) (long x)) (recur (inc m) hi) (recur lo m)))
+                            (dec lo))))
+         wide (filterv #(< (:token/begin %) (:token/end %)) tokens)
+         zero (filterv #(= (:token/begin %) (:token/end %)) tokens)
         ;; The tokens that decide where new text goes: the words, those on a
         ;; layer in `word-layers`, else every token on no partition. The
         ;; others (sentences, time-alignment segments) follow them.
-        deciders (let [ws (filterv #(word-layers (:token/layer %)) wide)]
-                   (if (seq ws) ws (filterv #(not (partitioning (:token/layer %))) wide)))
+         deciders (let [ws (filterv #(word-layers (:token/layer %)) wide)]
+                    (if (seq ws) ws (filterv #(not (partitioning (:token/layer %))) wide)))
         ;; What the words have at each gap: one
         ;; ending at its start or inside it, one beginning inside it or at its
         ;; end, one holding it at its end or at its start (the gap reaches
         ;; that end of the token from inside), one it is exactly.
-        flags (let [f (object-array k)
-                    mark! (fn [g x] (aset f g (conj (or (aget f g) #{}) x)))]
-                (doseq [{:token/keys [begin end]} deciders]
-                  (let [g (at-or-before end)]
-                    (when (>= g 0)
-                      (let [{:keys [a b]} (info g)]
-                        (if (< a b)
-                          (cond
-                            (and (< begin a) (<= a end) (< end b)) (mark! g :before)
-                            (and (<= begin a) (= end b)) (mark! g :holds-end))
-                          (when (and (= end a) (< begin a)) (mark! g :before))))))
-                  (let [g (at-or-before begin)]
-                    (when (>= g 0)
-                      (let [{:keys [a b]} (info g)]
-                        (if (< a b)
-                          (cond
-                            (and (< a begin) (<= begin b) (< b end)) (mark! g :after)
-                            (and (= begin a) (<= b end)) (mark! g :holds-start))
-                          (when (and (= begin a) (< a end)) (mark! g :after)))))))
+         flags (let [f (object-array k)
+                     mark! (fn [g x] (aset f g (conj (or (aget f g) #{}) x)))]
+                 (doseq [{:token/keys [begin end]} deciders]
+                   (let [g (at-or-before end)]
+                     (when (>= g 0)
+                       (let [{:keys [a b]} (info g)]
+                         (if (< a b)
+                           (cond
+                             (and (< begin a) (<= a end) (< end b)) (mark! g :before)
+                             (and (<= begin a) (= end b)) (mark! g :holds-end))
+                           (when (and (= end a) (< begin a)) (mark! g :before))))))
+                   (let [g (at-or-before begin)]
+                     (when (>= g 0)
+                       (let [{:keys [a b]} (info g)]
+                         (if (< a b)
+                           (cond
+                             (and (< a begin) (<= begin b) (< b end)) (mark! g :after)
+                             (and (= begin a) (<= b end)) (mark! g :holds-start))
+                           (when (and (= begin a) (< a end)) (mark! g :after)))))))
                 ;; A gap that is exactly a token's text (a word, a sentence
                 ;; with its separator, a segment) is that token typed over.
-                (doseq [{:token/keys [begin end]} wide]
-                  (let [g (at-or-before begin)]
-                    (when (>= g 0)
-                      (let [{:keys [a b]} (info g)]
-                        (when (and (< a b) (= begin a) (= end b)) (mark! g :exact))))))
-                f)
-        flag? (fn [g x] (contains? (aget ^objects flags g) x))
-        new-at (fn [g] (+ (long (:a (info g))) (aget shift g)))
+                 (doseq [{:token/keys [begin end]} wide]
+                   (let [g (at-or-before begin)]
+                     (when (>= g 0)
+                       (let [{:keys [a b]} (info g)]
+                         (when (and (< a b) (= begin a) (= end b)) (mark! g :exact))))))
+                 f)
+         flag? (fn [g x] (contains? (aget ^objects flags g) x))
+         new-at (fn [g] (+ (long (:a (info g))) (aget shift g)))
         ;; [the letters the tokens ending at the gap take, the letters those
         ;; beginning after it take], the same for every layer, so that a
         ;; partition keeps to the words' edges. New text with no whitespace
         ;; goes to one side: the word holding the gap at that end, else the
         ;; word before it, else the one after. A gap a token is exactly goes
         ;; to that token alone.
-        given (mapv (fn [g]
-                      (let [{:keys [n lead trail word? before-ok after-ok]} (info g)
-                            before? (and before-ok (or (flag? g :before) (flag? g :holds-end)))
-                            after? (and after-ok (or (flag? g :after) (flag? g :holds-start)))]
-                        (cond
-                          (flag? g :exact) [0 0]
-                          (not word?) [(if before? lead 0) (if after? trail 0)]
-                          (flag? g :holds-end) [(if before-ok n 0) 0]
-                          (flag? g :holds-start) [0 (if after-ok n 0)]
-                          before? [n 0]
-                          after? [0 n]
-                          :else [0 0])))
-                    (range k))
-        given-before (fn [g] (first (given g)))
-        given-after (fn [g] (second (given g)))
-        placed (mapv (fn [{:token/keys [begin end] :as t}]
-                       (let [gb (at-or-before begin)
-                             {:keys [a b n]} (when (>= gb 0) (info gb))
-                             nb (cond
-                                  (neg? gb) begin
+         given (mapv (fn [g]
+                       (let [{:keys [n lead trail word? before-ok after-ok]} (info g)
+                             before? (and before-ok (or (flag? g :before) (flag? g :holds-end)))
+                             after? (and after-ok (or (flag? g :after) (flag? g :holds-start)))]
+                         (cond
+                           (flag? g :exact) [0 0]
+                           (not word?) [(if before? lead 0) (if after? trail 0)]
+                           (flag? g :holds-end) [(if before-ok n 0) 0]
+                           (flag? g :holds-start) [0 (if after-ok n 0)]
+                           before? [n 0]
+                           after? [0 n]
+                           :else [0 0])))
+                     (range k))
+         given-before (fn [g] (first (given g)))
+         given-after (fn [g] (second (given g)))
+        ;; text typed where two sentences meet, between whitespace and the
+        ;; next sentence's first letter, goes to that sentence when the
+        ;; caret put it there
+         by-caret? (fn [g layer]
+                     (let [{:keys [a b]} (info g)]
+                       (and caret (= a b) (partitioning layer) (pos? a) (< a len)
+                            (ws? (aget o (dec a))) (not (ws? (aget o a))))))
+         placed (mapv (fn [{:token/keys [begin end layer] :as t}]
+                        (let [gb (at-or-before begin)
+                              {:keys [a b n]} (when (>= gb 0) (info gb))
+                              nb (cond
+                                   (neg? gb) begin
                                   ;; a gap took its first letters, or stands
                                   ;; right before it
-                                  (and (< a begin) (<= begin b))
-                                  (if (<= end b) nil (- (+ (new-at gb) n) (given-after gb)))
-                                  (= a begin)
-                                  (cond
-                                    (= a b) (- (+ (new-at gb) n) (given-after gb))
-                                    (>= end b) (+ (new-at gb) (given-before gb))
-                                    :else nil)
-                                  :else (+ begin (aget shift (inc gb))))
-                             ge (at-or-before end)
-                             {a2 :a b2 :b n2 :n} (when (>= ge 0) (info ge))
-                             ne (cond
-                                  (neg? ge) end
-                                  (or (= a2 end) (and (< a2 end) (< end b2)))
-                                  (if (< begin a2) (+ (new-at ge) (given-before ge)) nil)
-                                  (and (< a2 end) (= end b2))
-                                  (if (<= begin a2) (- (+ (new-at ge) n2) (given-after ge)) nil)
-                                  :else (+ end (aget shift (inc ge))))]
-                         (if (and nb ne (< nb ne))
+                                   (and (< a begin) (<= begin b))
+                                   (if (<= end b) nil (- (+ (new-at gb) n) (given-after gb)))
+                                   (= a begin)
+                                   (cond
+                                     (and (= a b) (by-caret? gb layer)) (new-at gb)
+                                     (= a b) (- (+ (new-at gb) n) (given-after gb))
+                                     (>= end b) (+ (new-at gb) (given-before gb))
+                                     :else nil)
+                                   :else (+ begin (aget shift (inc gb))))
+                              ge (at-or-before end)
+                              {a2 :a b2 :b n2 :n} (when (>= ge 0) (info ge))
+                              ne (cond
+                                   (neg? ge) end
+                                   (or (= a2 end) (and (< a2 end) (< end b2)))
+                                   (if (< begin a2) (+ (new-at ge) (given-before ge)) nil)
+                                   (and (< a2 end) (= end b2))
+                                   (if (<= begin a2) (- (+ (new-at ge) n2) (given-after ge)) nil)
+                                   :else (+ end (aget shift (inc ge))))]
+                          (if (and nb ne (< nb ne) (partitioning layer))
+                           ;; a partition has no gaps and keeps the whitespace
+                           ;; it took, but one left with only whitespace, which
+                           ;; had letters, is deleted
+                            (if (and (every? #(ws? (aget nw %)) (range nb ne))
+                                     (some #(not (ws? (aget o %))) (range begin end)))
+                              (assoc t ::gone true)
+                              (assoc t :token/begin nb :token/end ne))
+                            (if (and nb ne (< nb ne))
                            ;; off whitespace it did not have at that edge
-                           (let [nb (if (ws? (aget o begin))
-                                      nb
-                                      (loop [x nb] (if (and (< x ne) (ws? (aget nw x))) (recur (inc x)) x)))
-                                 ne (if (ws? (aget o (dec end)))
-                                      ne
-                                      (loop [x ne] (if (and (> x nb) (ws? (aget nw (dec x)))) (recur (dec x)) x)))]
-                             (if (< nb ne)
-                               (assoc t :token/begin nb :token/end ne)
-                               (assoc t ::gone true)))
-                           (assoc t ::gone true))))
-                     wide)
-        zero-r (when (seq zero) (apply-text-edits (gap-ops gaps) {:text/body old} zero))]
-    {:text {:text/body new-body}
-     :tokens (into (filterv (complement ::gone) placed) (:tokens zero-r))
-     :deleted (into (mapv :token/id (filter ::gone placed)) (:deleted zero-r))}))
+                              (let [nb (if (ws? (aget o begin))
+                                         nb
+                                         (loop [x nb] (if (and (< x ne) (ws? (aget nw x))) (recur (inc x)) x)))
+                                    ne (if (ws? (aget o (dec end)))
+                                         ne
+                                         (loop [x ne] (if (and (> x nb) (ws? (aget nw (dec x)))) (recur (dec x)) x)))]
+                                (if (< nb ne)
+                                  (assoc t :token/begin nb :token/end ne)
+                                  (assoc t ::gone true)))
+                              (assoc t ::gone true)))))
+                      wide)
+         placed (if split-on-space
+                  (split-spaced-words o nw wide placed
+                                      (if (seq (filter #(word-layers (:token/layer %)) wide))
+                                        #(word-layers (:token/layer %))
+                                        #(not (partitioning (:token/layer %))))
+                                      #(partitioning (:token/layer %)))
+                  placed)
+         zero-r (when (seq zero) (apply-text-edits (gap-ops gaps) {:text/body old} zero))]
+     {:text {:text/body new-body}
+      :tokens (into (filterv (complement ::gone) placed) (:tokens zero-r))
+      :deleted (into (mapv :token/id (filter ::gone placed)) (:deleted zero-r))})))
 
 (defn plain-edit-gaps
   "The gaps an edit of `old` by `ops` from the caret is taken as on a layer
@@ -3721,8 +3787,9 @@
   "`apply-plain-gaps` for an edit of `old` by `ops` from the caret (running
   coordinates, see `compose-edits`). Each gap is taken as it was made, less
   the text its new value shares with the old at either end."
-  [^String old tokens ops partitioning word-layers]
-  (apply-plain-gaps old tokens (plain-edit-gaps old ops) partitioning word-layers))
+  ([old tokens ops partitioning word-layers] (plain-edits old tokens ops partitioning word-layers nil))
+  ([^String old tokens ops partitioning word-layers opts]
+   (apply-plain-gaps old tokens (plain-edit-gaps old ops) partitioning word-layers (assoc opts :caret true))))
 
 (defn plain-body-gaps
   "The gaps a whole-body save of `old` as `new` is taken as on a layer that
@@ -3739,8 +3806,10 @@
 (defn plain-body
   "`apply-plain-gaps` for a whole-body save of `old` as `new` (see
   `plain-body-gaps`)."
-  [^String old ^String new tokens partitioning word-layers]
-  (apply-plain-gaps old tokens (plain-body-gaps old new tokens partitioning) partitioning word-layers))
+  ([old new tokens partitioning word-layers] (plain-body old new tokens partitioning word-layers nil))
+  ([^String old ^String new tokens partitioning word-layers opts]
+   (apply-plain-gaps old tokens (plain-body-gaps old new tokens partitioning) partitioning word-layers
+                     (dissoc opts :caret))))
 
 (defn follow-word-edges
   "`result` (tokens and deleted ids, as `apply-plain-gaps` gives them) with

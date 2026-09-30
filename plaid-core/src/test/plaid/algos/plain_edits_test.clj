@@ -165,3 +165,54 @@
     (is (= "abxy" (:text/body (:text r))))
     (is (= [0 2] (at :a1) (at :w1)))
     (is (= [2 4] (at :a2)))))
+
+(defn- edit-with [s ops opts]
+  (let [{:keys [body tokens]} (doc s)]
+    (view (ta/plain-edits body tokens ops #{:s} #{:w} opts) (count (filter #(= :w (:token/layer %)) tokens)))))
+
+(deftest a-layer-that-splits-on-space-splits-a-word-a-space-is-typed-in
+  ;; ud (Luke, 2026-09-30): as igt, but a space typed strictly inside a word
+  ;; splits it, the word going on the half sharing more letters with it, as
+  ;; D28 has it, the tokens inside it dropped and those as long as it moved
+  ;; with it
+  (let [split {:split-on-space true}]
+    (is (= ["the c at" "the" "at"] (edit-with "|the| |cat|" [(ins 5 " ")] split)))
+    (is (= ["the ca t" "the" "ca"] (edit-with "|the| |cat|" [(ins 6 " ")] split)))
+    (testing "everything else as igt"
+      (is (= ["the cats" "the" "cats"] (edit-with "|the| |cat|" [(ins 7 "s")] split)))
+      (is (= ["thecat" "the" "cat"] (edit-with "|the| |cat|" [(del 3 1)] split)))
+      (is (= ["the " "the" nil] (edit-with "|the| |cat|" [(del 4 3)] split)))
+      ;; F1: `walkdd`, Backspace, ` home` typed after it
+      (is (= ["a walkd home" "a" "walkd"] (edit-with "|a| |walkdd|" [(del 7 1) (ins 7 " home")] split))))
+    (testing "a space typed at a word's edge splits nothing"
+      (is (= ["the  cat" "the" "cat"] (edit-with "|the| |cat|" [(ins 4 " ")] split))))
+    (testing "the morpheme as long as the word moves with it"
+      (let [{:keys [body tokens]} (doc "|the| |cat|")
+            r (ta/plain-edits body tokens [(ins 5 " ")] #{:s} #{:w} split)
+            at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
+        (is (= [6 8] (at [:w 1]) (at [:m 1])))))))
+
+(deftest text-typed-between-two-sentences-goes-by-the-caret
+  ;; Luke (2026-09-30): right after the last letter of a sentence, it joins
+  ;; that sentence; right before the first letter of the next, it joins the
+  ;; next; in the middle of a longer run of whitespace, or with no caret (a
+  ;; whole-body save), the sentence before.
+  (let [sents (fn [s ops & [body-new]]
+                (let [{:keys [body tokens]} (doc s)
+                      r (if body-new
+                          (ta/plain-body body body-new tokens #{:s} #{:w})
+                          (ta/plain-edits body tokens ops #{:s} #{:w}))
+                      nb (:text/body (:text r))
+                      ss (sort-by first (keep #(when (= :s (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r)))
+                      ;; the gap-fill, as the save runs it
+                      ss (map-indexed (fn [i [b e]] [(if (zero? i) 0 b) (if (= i (dec (count ss))) (cp/cp-count nb) (first (nth ss (inc i))))]) ss)]
+                  (mapv (fn [[b e]] (cp/cp-subs nb b e)) ss)))]
+    (testing "right before the next sentence's first letter"
+      (is (= ["Hi. " "New The end."] (sents "|Hi.| /|The| |end.|" [(ins 4 "New ")]))))
+    (testing "right after the last letter of a sentence whose whitespace is the next one's"
+      (is (= ["Hi. And more." " The end."] (sents "|Hi.|/ |The| |end.|" [(ins 3 " And more.")]))))
+    (testing "in the middle of a longer run of whitespace"
+      (is (= ["Hi.  X  " "  The end."] (sents "|Hi.|  /  |The| |end.|" [(ins 5 "X  ")]))
+          "a boundary inside the run: the sentence before"))
+    (testing "a whole-body save knows no caret: the sentence before"
+      (is (= ["Hi. New " "The end."] (sents "|Hi.| /|The| |end.|" nil "Hi. New The end."))))))

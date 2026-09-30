@@ -25,7 +25,7 @@
 (defn- setup
   "A document with sentences, words, morphemes and glosses over `body`, the
   words at the runs without spaces, each word one morpheme."
-  [body & {:keys [plain other nodes runs]}]
+  [body & {:keys [plain other nodes runs split]}]
   (let [proj (create-test-project admin-request "EditProj")
         doc (create-test-document admin-request proj "Doc")
         tl (-> (create-text-layer admin-request proj "TL") :body :id)
@@ -34,6 +34,10 @@
                                                                      :parent-token-layer-id sentences})
                   :body :id)
         morphemes (-> (create-token-layer-opts admin-request tl "Morphemes" {:parent-token-layer-id words}) :body :id)
+        _ (when split
+            (assert-status 204 (api-call admin-request {:method :put
+                                                        :path (str "/api/v1/token-layers/" words "/config/plaid/splitOnSpace")
+                                                        :body true})))
         _ (when plain
             (doseq [l [words morphemes]]
               (assert-status 204 (api-call admin-request {:method :put
@@ -333,3 +337,20 @@
         (when (and over (extent (words 0)) (extent (words 1)))
           (is (= [(first (extent (words 0))) (second (extent (words 1)))] (take 2 (extent over)))
               (str label ": a node over two words")))))))
+
+(deftest a-plain-layer-that-splits-on-space
+  ;; ud (Luke, 2026-09-30): the plain rule, but a space typed inside a word
+  ;; splits it, the word and what is as long as it going on the half sharing
+  ;; more letters (D28). F1: `walkdd`, Backspace, ` home` keeps the analysis.
+  (let [{:keys [text words others]} (setup "a walkdd cat" :plain true :split true :other :child)
+        digest-of #(-> (get-text admin-request text) :body :text/digest)]
+    (testing "a letter deleted inside and a word typed after"
+      (assert-ok (edit-text text {:edits [(del 7 1) (ins 7 " home")] :base (digest-of)}))
+      (is (= "a walkd home cat" (-> (get-text admin-request text) :body :text/body)))
+      (is (= [2 7 "walkd"] (extent (words 1)) (extent (others 1)))))
+    (testing "a space typed inside a word splits it"
+      (assert-ok (edit-text text {:edits [(ins 14 " ")] :base (digest-of)}))
+      (is (= [15 17 "at"] (extent (words 2)) (extent (others 2)))))
+    (testing "a deleted space keeps both words"
+      (assert-ok (edit-text text {:edits [(del 1 1)] :base (digest-of)}))
+      (is (= [[0 1 "a"] [1 6 "walkd"]] [(extent (words 0)) (extent (words 1))])))))

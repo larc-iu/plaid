@@ -4194,6 +4194,7 @@ export {
   ROLE_KEY,
   PRESERVE_ON_SPLIT_KEY,
   PLAIN_EDITS_KEY,
+  SPLIT_ON_SPACE_KEY,
   ROLES,
   readRole,
   findByRole,

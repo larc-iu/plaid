@@ -983,6 +983,12 @@ Every other token of a layer with the key, such as a node over several words on 
 When the text's word layers do not have the key, they and the sentences take the change by the other rules, and a token of a layer with the key follows its words at their edges, so a node over a word stays on it.
 An edge of such a token that stands at no word's edge, or whose word is deleted, takes the change the plain way.
 Partition layers over such a layer follow its tokens' edges.
+Text typed between two sentences that no token takes goes by where it was typed: right after a sentence's last character it joins that sentence, and right before the next sentence's first character it joins the next one.
+In the middle of a longer run of whitespace, or in a `body` save, which says nothing of where the text was typed, it joins the sentence before.
+
+A word layer whose config also sets `splitOnSpace` to `true` (`SPLIT_ON_SPACE_KEY`) takes a change the same way, but a space typed inside one of its tokens splits it.
+The token goes on the part sharing more letters with it, the first on a tie, with the tokens as long as it, and the tokens inside it are deleted.
+The key holds for every word of the text, so on a word layer two apps share, one app's key decides for both.
 This holds for `body` and `edits` alike.
 
 Send `base` with `edits`: the `digest` of the body the edits were made on.

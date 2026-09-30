@@ -43,6 +43,14 @@ export const PRESERVE_ON_SPLIT_KEY = 'preserveOnSplit';
  */
 export const PLAIN_EDITS_KEY = 'plainEdits';
 
+/**
+ * Layer config key (true), beside PLAIN_EDITS_KEY: a space typed inside a
+ * token of the text's words splits it, the token going on the half sharing
+ * more letters with it. Declared on a word layer another app shares, it holds
+ * for the whole text.
+ */
+export const SPLIT_ON_SPACE_KEY = 'splitOnSpace';
+
 export const ROLES = Object.freeze({
   BASELINE: 'baseline',
   SENTENCE: 'sentence',

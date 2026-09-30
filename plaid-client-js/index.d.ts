@@ -1737,6 +1737,8 @@ export const ROLE_KEY: "role";
 export const PRESERVE_ON_SPLIT_KEY: "preserveOnSplit";
 /** Layer config key asking Plaid to take a text edit plainly on the layer (see the manual's "Changing a text's body"). */
 export const PLAIN_EDITS_KEY: "plainEdits";
+/** Layer config key: a space typed inside a word of the text splits it (beside plainEdits). */
+export const SPLIT_ON_SPACE_KEY: "splitOnSpace";
 
 /** The server's cap on operations per batch request; a larger batch goes as consecutive requests. */
 export const MAX_BATCH_OPS: 1000;

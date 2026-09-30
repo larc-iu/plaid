@@ -39,6 +39,12 @@ PRESERVE_ON_SPLIT_KEY = 'preserveOnSplit'
 #: manual's "Changing a text's body".
 PLAIN_EDITS_KEY = 'plainEdits'
 
+#: Layer config key (true), beside PLAIN_EDITS_KEY: a space typed inside a
+#: token of the text's words splits it, the token going on the half sharing
+#: more letters with it. Declared on a word layer another app shares, it holds
+#: for the whole text.
+SPLIT_ON_SPACE_KEY = 'splitOnSpace'
+
 
 class ROLES:
     """The fixed role inventory (attribute access mirrors JS ``ROLES.BASELINE``)."""

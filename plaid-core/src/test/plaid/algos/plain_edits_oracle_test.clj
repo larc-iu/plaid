@@ -56,9 +56,12 @@
         add (fn [^String s] (.append sb s) (vswap! pos + (cp/cp-count s)))
         toks (transient [])
         nsent (inc (.nextInt rng 3))
-        wid (volatile! 0)]
+        wid (volatile! 0)
+        ;; where the next sentence begins: after the whitespace between two
+        ;; sentences, or (`:bound-early`) before it
+        nstart (volatile! 0)]
     (dotimes [si nsent]
-      (let [sb0 @pos
+      (let [sb0 @nstart
             n (+ 1 (.nextInt rng 5))
             words (vec (for [i (range n)]
                          (let [w (if (< (.nextDouble rng) (:spaced opts 0.3)) (pick phrases) (pick vocab))
@@ -100,9 +103,14 @@
                 (conj! toks {:token/id [:a si i] :token/layer :a
                              :token/begin (first (words i)) :token/end (second (words (dec j)))}))
               (recur j))))
-        (when (< si (dec nsent))
-          (add (if (and (:glue opts) (< (.nextDouble rng) (:glue opts))) "" (pick [" " "\n" ". "]))))
-        (conj! toks {:token/id [:s si] :token/layer :s :token/begin sb0 :token/end @pos})))
+        (let [before @pos]
+          (when (< si (dec nsent))
+            (add (if (and (:glue opts) (< (.nextDouble rng) (:glue opts)))
+                   ""
+                   (pick (:sentence-seps opts [" " "\n" ". "])))))
+          (let [e (if (and (:bound-early opts) (< (.nextDouble rng) (:bound-early opts))) before @pos)]
+            (vreset! nstart e)
+            (conj! toks {:token/id [:s si] :token/layer :s :token/begin sb0 :token/end e})))))
     (let [tokens (persistent! toks)
           body (str sb)
           ;; the last sentence ends at the end of the text
@@ -119,10 +127,12 @@
   (let [n (cp/cp-count body)
         words (filterv #(= :w (:token/layer %)) tokens)
         pick #(nth % (.nextInt rng (count %)))
+        bounds (vec (keep #(when (and (= :s (:token/layer %)) (pos? (:token/begin %))) (:token/begin %)) tokens))
         spot (fn []
                (let [w (pick words)
-                     r (.nextInt rng 6)]
+                     r (if (and (:at-sentences opts) (seq bounds) (.nextBoolean rng)) 9 (.nextInt rng 6))]
                  (case r
+                   9 (min n (max 0 (+ (pick bounds) (dec (.nextInt rng 3)))))
                    0 (:token/begin w)
                    1 (:token/end w)
                    2 (max 0 (dec (:token/begin w)))
@@ -264,9 +274,10 @@
                 (when (and (not (aget inserted p))
                            (let [k (aget oldpos p)] (or (< k begin) (>= k end))))
                   (bad! id " took old text outside it at " p " (" (pr-str (text-of now)) ")")))
-              (when (and (ws? (aget nw nb)) (not (ws? (aget o begin))))
+              ;; a sentence has no gaps, and may begin or end on whitespace
+              (when (and (not= :s layer) (ws? (aget nw nb)) (not (ws? (aget o begin))))
                 (bad! id " begins on whitespace " (pr-str (text-of now))))
-              (when (and (ws? (aget nw (dec ne))) (not (ws? (aget o (dec end)))))
+              (when (and (not= :s layer) (ws? (aget nw (dec ne))) (not (ws? (aget o (dec end)))))
                 (bad! id " ends on whitespace " (pr-str (text-of now))))
               ;; a new letter in a word is inside it, joined to it, or typed over it
               (when (= layer wl)
@@ -448,5 +459,123 @@
                                 :keys-left-to-right {:ops (keystrokes gaps false)}
                                 :whole-body {:new new-body}}]
           (let [ps (follow-problems tokens new-body (mixed body tokens change))]
+            (when (seq ps) (swap! fails conj {:seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))))
+    (is (empty? @fails) (str (count @fails) " " (pr-str (take 3 @fails))))))
+
+;; ---------------------------------------------------------------- ud: a space splits a word
+
+(defn- ws-runs [^ints cs b e]
+  (loop [i b in? false n 0]
+    (if (< i e)
+      (let [w (ws? (aget cs i))] (recur (inc i) w (if (and w (not in?)) (inc n) n)))
+      n)))
+
+(defn- split-problems
+  "`split` against `plain`, the same edit without `splitOnSpace`: a word the
+  plain rule gives whitespace it did not have is on the run of its new text
+  without whitespace sharing the most letters with its old text (the first
+  on a tie), the tokens as long as it with it, and nothing else differs."
+  [^String old tokens plain split]
+  (let [o (cps old)
+        nw (cps (:text/body (:text plain)))
+        p (into {} (map (juxt :token/id identity)) (:tokens plain))
+        q (into {} (map (juxt :token/id identity)) (:tokens split))
+        was (into {} (map (juxt :token/id identity)) tokens)
+        lcs* (fn [a b]
+               (peek (reduce (fn [prev x]
+                               (reduce (fn [row [j y]]
+                                         (conj row (if (= x y) (inc (prev j)) (max (prev (inc j)) (peek row)))))
+                                       [0] (map-indexed vector b)))
+                             (vec (repeat (inc (count b)) 0))
+                             a)))
+        moved (into {}
+                    (keep (fn [{:token/keys [id layer begin end]}]
+                            (when-let [t (and (= :w layer) (p id))]
+                              (when (> (ws-runs nw (:token/begin t) (:token/end t)) (ws-runs o begin end))
+                                (let [pieces (->> (range (:token/begin t) (:token/end t))
+                                                  (partition-by #(ws? (aget nw %)))
+                                                  (remove #(ws? (aget nw (first %))))
+                                                  (map (fn [r] [(first r) (inc (last r))])))
+                                      old-w (java.util.Arrays/copyOfRange o (int begin) (int end))
+                                      score (fn [[x y]] (lcs* old-w (java.util.Arrays/copyOfRange nw (int x) (int y))))
+                                      best (reduce max (map score pieces))]
+                                  [[begin end] (first (filter #(= best (score %)) pieces))])))))
+                    tokens)
+        out (transient [])]
+    (when (not= (:text split) (:text plain)) (conj! out "body"))
+    (doseq [{:token/keys [id layer begin end]} tokens
+            :let [want (cond
+                         (= :s layer) (p id)
+                         (moved [begin end]) (some-> (p id) (assoc :token/begin (first (moved [begin end]))
+                                                                   :token/end (second (moved [begin end]))))
+                         :else (p id))
+                  got (q id)]]
+      (when (not= (some-> want ((juxt :token/begin :token/end))) (some-> got ((juxt :token/begin :token/end))))
+        (conj! out (str id " at " (some-> got ((juxt :token/begin :token/end))) ", want " (some-> want ((juxt :token/begin :token/end)))))))
+    (doseq [t (vals q) :when (= :w (:token/layer t)) :let [w (was (:token/id t))]]
+      (when (> (ws-runs nw (:token/begin t) (:token/end t)) (ws-runs o (:token/begin w) (:token/end w)))
+        (conj! out (str (:token/id t) " holds a space it did not"))))
+    (persistent! out)))
+
+(deftest a-layer-that-splits-on-space-differs-from-igt-only-there
+  ;; ud (Luke, 2026-09-30): the plain rule, but a word given a space splits
+  (let [opts {:carets 3 :spaced 0 :child 0.7 :nodes true :glue 0.1}
+        fails (atom [])]
+    (dotimes [seed cases-per-config]
+      (let [rng (java.util.Random. (+ seed 5151))
+            {:keys [body tokens]} (gen-doc rng opts)
+            gaps (gen-gaps rng body tokens opts)
+            new-body (ta/edit-ops-body (ta/gap-ops gaps) body)]
+        (doseq [[rname plain split] [[:composed
+                                      (ta/plain-edits body tokens (ta/gap-ops gaps) #{:s} #{:w})
+                                      (ta/plain-edits body tokens (ta/gap-ops gaps) #{:s} #{:w} {:split-on-space true})]
+                                     [:keys-right-to-left
+                                      (ta/plain-edits body tokens (keystrokes gaps true) #{:s} #{:w})
+                                      (ta/plain-edits body tokens (keystrokes gaps true) #{:s} #{:w} {:split-on-space true})]
+                                     [:whole-body
+                                      (ta/plain-body body new-body tokens #{:s} #{:w})
+                                      (ta/plain-body body new-body tokens #{:s} #{:w} {:split-on-space true})]]]
+          (let [ps (split-problems body tokens plain split)]
+            (when (seq ps) (swap! fails conj {:seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))))
+    (is (empty? @fails) (str (count @fails) " " (pr-str (take 3 @fails))))))
+
+;; ---------------------------------------------------------------- sentence starts by the caret
+
+(deftest text-typed-where-two-sentences-meet-goes-by-the-caret
+  ;; Luke (2026-09-30): no word taking it, text typed right after a sentence's
+  ;; last letter joins it, right before the next sentence's first letter joins
+  ;; that one, and in the middle of a longer run of whitespace the sentence
+  ;; before. Every other rule judged as ever.
+  (let [opts {:carets 3 :spaced 0.3 :bound-early 0.5 :at-sentences true
+              :sentence-seps [" " "  " "\n" ". " " \n "]}
+        fails (atom [])]
+    (dotimes [seed cases-per-config]
+      (let [rng (java.util.Random. (+ seed 777))
+            {:keys [body tokens]} (gen-doc rng opts)
+            gaps (gen-gaps rng body tokens opts)
+            o (cps body)
+            sents (sort-by :token/begin (filter #(= :s (:token/layer %)) tokens))]
+        (doseq [[rname ops] {:composed (ta/gap-ops gaps) :keys-left-to-right (keystrokes gaps false)}]
+          (let [r (ta/plain-edits body tokens ops #{:s} #{:w})
+                server (ta/plain-edit-gaps body ops)
+                ps (vec (problems body tokens server r))
+                nb (:text/body (:text r))
+                ss (gap-fill (filterv #(= :s (:token/layer %)) (:tokens r)) (cp/cp-count nb))
+                shift (fn [g] (reduce + 0 (map #(- (cp/cp-count (:value %)) (- (:end %) (:start %)))
+                                               (take-while #(not= % g) server))))
+                ps (into ps
+                         (keep (fn [{a :start b :end v :value :as g}]
+                                 (when-let [[x y] (and (= a b) (seq v)
+                                                       (some (fn [[x y]] (when (= a (:token/begin y)) [x y]))
+                                                             (partition 2 1 sents)))]
+                                   (let [want (cond
+                                                (not (ws? (aget o (dec a)))) (:token/id x)
+                                                (and (< a (alength o)) (not (ws? (aget o a)))) (:token/id y)
+                                                :else (:token/id x))
+                                         p (+ a (shift g))
+                                         got (some #(when (and (<= (:token/begin %) p) (< p (:token/end %))) (:token/id %)) ss)]
+                                     (when (not= want got)
+                                       (str "text typed at " a " went to " got ", not " want))))))
+                         server)]
             (when (seq ps) (swap! fails conj {:seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))))
     (is (empty? @fails) (str (count @fails) " " (pr-str (take 3 @fails))))))
