@@ -378,7 +378,7 @@ const SegmentRow = memo(function SegmentRow({
       )}
 
       {readOnly ? (
-        <p dir="auto" className="whitespace-pre-wrap py-1.5 text-sm">
+        <p dir="auto" className="whitespace-pre-wrap py-1.5 font-text text-sm">
           {text}
         </p>
       ) : (
@@ -396,7 +396,7 @@ const SegmentRow = memo(function SegmentRow({
             aria-label={`Segment ${index + 1} text`}
             aria-describedby={conflict ? noteId : undefined}
             className={cn(
-              'min-h-8 resize-none py-1.5 text-sm',
+              'min-h-8 resize-none py-1.5 font-text text-sm',
               conflict && 'border-amber-500 focus-visible:ring-amber-500',
             )}
             onChange={(e) => {
@@ -636,7 +636,7 @@ const ProposalRow = memo(function ProposalRow({
         placeholder="Proposed segment"
         compose
         aria-label={`Proposed segment at ${formatTime(proposal.timeBegin)}, text`}
-        className="min-h-8 resize-none py-1.5 text-sm"
+        className="min-h-8 resize-none py-1.5 font-text text-sm"
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={onKeyDown}
         onBlur={commit}
@@ -778,7 +778,7 @@ const NewSegmentRow = memo(function NewSegmentRow({
           placeholder="New segment"
           compose
           aria-label="New segment text"
-          className="min-h-8 resize-none py-1.5 text-sm"
+          className="min-h-8 resize-none py-1.5 font-text text-sm"
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
         />

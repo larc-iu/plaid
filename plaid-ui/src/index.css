@@ -135,6 +135,12 @@ body {
   font-family: var(--plaid-font-text);
 }
 
+/* A grammatical tag in a gloss, as print sets it (glossSmallCaps in
+   domain/glossCase.js): small capitals whatever case it was typed in. */
+.plaid-sc {
+  font-variant-caps: all-small-caps;
+}
+
 :root {
   /* Machine-made material, until a person confirms it. */
   --plaid-machine: #6d28d9;

@@ -1,6 +1,7 @@
 import React from 'react';
 import { HEADERS, morphemeJoinersFor } from '../../../domain/ilg.js';
 import { modernHeader } from '../../../domain/format/umrFile.js';
+import { glossSmallCaps } from '@ui/domain/glossCase.js';
 
 // The words of a sentence as columns, with the gloss lines beneath. A line
 // that can be told word by word (ilg.js) is laid under the words column by
@@ -100,7 +101,16 @@ export const TokenRow = React.memo(function TokenRow({
                             dir="auto"
                             title={modernHeader(line)}
                           >
-                            {line.perWord[i][ci] ?? ''}
+                            {line.key === 'morpheme-gloss' ? (
+                              <Gloss
+                                value={line.perWord[i][ci] ?? ''}
+                                reading={{
+                                  beside: line.perWord[i].filter((_, cj) => cj !== ci),
+                                }}
+                              />
+                            ) : (
+                              (line.perWord[i][ci] ?? '')
+                            )}
                           </span>
                         ))}
                       </div>
@@ -110,7 +120,11 @@ export const TokenRow = React.memo(function TokenRow({
               ) : (
                 block.lines.map((line, li) => (
                   <span key={li} className="umr-word-gloss" dir="auto" title={modernHeader(line)}>
-                    {line.perWord[i].join(' ')}
+                    {line.key === 'word-gloss' ? (
+                      <Gloss value={line.perWord[i].join(' ')} />
+                    ) : (
+                      line.perWord[i].join(' ')
+                    )}
                   </span>
                 ))
               ),
@@ -131,6 +145,21 @@ export const TokenRow = React.memo(function TokenRow({
     </div>
   );
 });
+
+// A gloss as print sets it, as plaid-igt shows and exports one: each
+// grammatical tag in small caps (glossSmallCaps). `reading` is how its value
+// is read: a morpheme's gloss beside the word's other morpheme glosses, since
+// the lines carry no morph types to tell a stem from an affix.
+const Gloss = ({ value, reading }) =>
+  glossSmallCaps(value, reading).map((p, k) =>
+    p.smallCaps ? (
+      <span key={k} className="plaid-sc">
+        {p.text}
+      </span>
+    ) : (
+      p.text
+    ),
+  );
 
 const MORPHEME_KEYS = new Set(HEADERS.filter((h) => h.scope === 'morpheme').map((h) => h.key));
 

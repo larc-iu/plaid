@@ -397,7 +397,7 @@ export const TokenVisualizer = ({
         >
           <div ref={panelRef} className="flex flex-col gap-2">
             <div className="flex items-center justify-between gap-4">
-              <span dir="auto" className="text-sm font-semibold">
+              <span dir="auto" className="font-text text-sm font-semibold">
                 {display}
               </span>
               <span className="text-xs text-muted-foreground">
@@ -439,7 +439,7 @@ export const TokenVisualizer = ({
                             saveWords(word);
                           }
                         }}
-                        className="h-8 flex-1 text-sm"
+                        className="h-8 flex-1 font-text text-sm"
                       />
                       {draftForms.length > 1 && (
                         <Button

@@ -46,6 +46,7 @@
   color: hsl(var(--foreground));
 }
 .umr-block-text {
+  font-family: var(--plaid-font-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -367,6 +368,7 @@
   font-variant-numeric: tabular-nums;
 }
 .umr-word-text {
+  font-family: var(--plaid-font-text);
   font-size: 0.95rem;
   white-space: nowrap;
   padding-bottom: 1px;
@@ -375,6 +377,7 @@
   border-bottom: 2px solid transparent;
 }
 .umr-word-gloss {
+  font-family: var(--plaid-font-text);
   font-size: 0.75rem;
   /* Set, so a line's name in the margin (smaller type) stays level. */
   line-height: 1.1rem;
@@ -422,6 +425,10 @@
   color: hsl(var(--muted-foreground) / 0.7);
   user-select: none;
   pointer-events: none;
+}
+/* A sentence line's text: a gloss or a translation, set as language data. */
+.umr-ilg-items {
+  font-family: var(--plaid-font-text);
 }
 .umr-ilg-row {
   position: relative;

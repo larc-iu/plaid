@@ -79,7 +79,7 @@ export function DocumentBaseline() {
                   placeholder="Type or paste the text"
                   spellCheck={false}
                   rows={10}
-                  className="resize-none overflow-auto"
+                  className="resize-none overflow-auto font-text"
                   required
                 />
                 {ops.changedElsewhere && (
@@ -118,7 +118,7 @@ export function DocumentBaseline() {
             <div className="flex flex-col gap-4">
               <div>
                 <div className="rounded-md bg-muted p-4">
-                  <p dir="auto" className="whitespace-pre-wrap text-sm">
+                  <p dir="auto" className="whitespace-pre-wrap font-text text-sm">
                     {ops.body || ''}
                   </p>
                 </div>

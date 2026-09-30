@@ -194,8 +194,11 @@
    grid aligns by COLUMN (each token is its own flex column, measured), so a
    monospaced cell bought no alignment and cost coverage: a monospace family
    resolves to a far smaller pool of fonts, and complex scripts are the first
-   thing those pools drop. A Saraiki text went to tofu on U+0658 here. */
+   thing those pools drop. A Saraiki text went to tofu on U+0658 here. It is
+   set in plaid-ui's data face (Charis), whose family list ends in the
+   system's serif, so a script Charis lacks still finds a font. */
 .token-form {
+  font-family: var(--plaid-font-text);
   text-align: center;
   font-size: 14px;
   font-weight: bold;
@@ -234,7 +237,7 @@
   outline: none;
   white-space: nowrap;
   background-color: transparent;
-  font-family: inherit;
+  font-family: var(--plaid-font-text);
   box-sizing: border-box;
 }
 
@@ -291,6 +294,7 @@
   border-color: #f59e0b;
 }
 .editable-field-conflict {
+  font-family: var(--plaid-font-text);
   position: absolute;
   top: calc(100% - 2px);
   inset-inline-start: 0;
@@ -346,7 +350,7 @@
 
 .feature-text {
   flex: 1;
-  font-family: sans-serif;
+  font-family: var(--plaid-font-text);
   text-align: center;
 }
 
@@ -391,7 +395,7 @@
   box-sizing: border-box;
   width: 100%;
   min-height: 18px;
-  font-family: inherit;
+  font-family: var(--plaid-font-text);
   font-size: 10px;
   line-height: 14px;
   text-align: center;
@@ -440,6 +444,7 @@
 }
 
 .mwt-bracket__form {
+  font-family: var(--plaid-font-text);
   position: relative;
   top: 0;
   height: 16px;

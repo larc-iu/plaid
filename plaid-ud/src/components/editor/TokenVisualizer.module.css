@@ -11,9 +11,10 @@
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 4px;
-  /* The page's own sans, not monospace, as in the annotation grid (see the
-     note on .token-form in SentenceRow.css). Nothing here aligns by column, and
-     a monospace family draws Arabic stretched into fixed cells. */
+  /* The data face, not monospace, as in the annotation grid (see the note on
+     .token-form in SentenceRow.css). Nothing here aligns by column, and a
+     monospace family draws Arabic stretched into fixed cells. */
+  font-family: var(--plaid-font-text);
   font-size: 0.875rem;
   line-height: 1.625;
   user-select: text;

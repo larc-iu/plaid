@@ -358,7 +358,7 @@ export const TextEditor = () => {
             readOnly={readOnly}
             placeholder="Type or paste the text. One sentence per line."
             rows={12}
-            className="resize-none overflow-hidden leading-relaxed"
+            className="resize-none overflow-hidden font-text leading-relaxed"
           />
 
           <div className="flex flex-wrap items-center gap-3">

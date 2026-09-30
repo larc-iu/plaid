@@ -50,6 +50,30 @@ describe('TokenRow', () => {
   });
 });
 
+// A gloss's tags are set in small caps, as plaid-igt shows and exports them
+// (glossSmallCaps), and the words around them are left as they are.
+describe('TokenRow glosses', () => {
+  it('sets a tag in small caps and leaves a lexical gloss alone', async () => {
+    const r = await renderComponent(<TokenRow sentence={sentence()} wordRef={() => undefined} />);
+    expect(texts(r.container, '.plaid-sc')).toEqual(['PFV']);
+    // The text reads the same with the small caps in it.
+    expect(texts(r.container, '.umr-word-gloss:not(.umr-morph-form)')[2]).toBe('PFV');
+    await r.unmount();
+  });
+
+  it('sets the tags of a word gloss in small caps', async () => {
+    const s = {
+      words: [{ id: 'w1', index: 1, begin: 0, end: 3, text: 'abc' }],
+      morphemes: [],
+      ilg: [{ header: 'Word Gloss (en)', key: 'word-gloss', lang: 'en', perWord: [['go.PST']] }],
+    };
+    const r = await renderComponent(<TokenRow sentence={s} wordRef={() => undefined} />);
+    expect(texts(r.container, '.plaid-sc')).toEqual(['PST']);
+    expect(texts(r.container, '.umr-word-gloss')).toEqual(['go.PST']);
+    await r.unmount();
+  });
+});
+
 // A line is named as the export writes it, and the names read left to right
 // in either script, which is also what keeps them in the left margin of an
 // RTL document (their logical insets resolve by their own direction).
