@@ -68,7 +68,9 @@ export function applyReshape(raw, textId, answer) {
 
   const withTokens = (rows) => (row) => {
     const next = rows.get(row.id);
-    return next && !sameList(next.tokens, row.tokens) ? { ...row, tokens: next.tokens } : row;
+    return next && Array.isArray(next.tokens) && !sameList(next.tokens, row.tokens)
+      ? { ...row, tokens: next.tokens }
+      : row;
   };
 
   const patchRelationLayer = (layer) => {

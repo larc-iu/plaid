@@ -199,3 +199,33 @@ describe('applyReshape', () => {
     expect(spans[0]).toBe(before.textLayers[0].tokenLayers[0].spanLayers[0].spans[0]);
   });
 });
+
+describe('applyReshape with a span entry that holds only a value', () => {
+  it('sets the value and keeps the token list', async () => {
+    const { applyReshape: apply } = await import('./textReshape.js');
+    const raw = {
+      textLayers: [
+        {
+          text: { id: 't1', body: 'ab', digest: 'd0' },
+          tokenLayers: [
+            {
+              id: 'tl',
+              tokens: [{ id: 'k1', begin: 0, end: 2 }],
+              spanLayers: [{ id: 'sl', spans: [{ id: 's1', tokens: ['k1'], value: 'OLD' }] }],
+            },
+          ],
+        },
+      ],
+    };
+    const next = apply(raw, 't1', {
+      body: 'ab',
+      digest: 'd0',
+      reshape: { spans: [{ id: 's1', value: 'NEW' }], deleted: {} },
+    });
+    expect(next.textLayers[0].tokenLayers[0].spanLayers[0].spans[0]).toEqual({
+      id: 's1',
+      tokens: ['k1'],
+      value: 'NEW',
+    });
+  });
+});

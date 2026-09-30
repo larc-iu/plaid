@@ -1937,7 +1937,21 @@
                               ;; home than the whole new text)
                               (let [best (reduce max (map score words))]
                                 (filter #(= best (score %)) words))))]
-        (if-let [choice (first (filter allowed? choices))]
+        ;; When none of the words sharing the most letters can take them
+        ;; (the word starts a sentence, whose text in front would go to the
+        ;; sentence before, or stands by a marker), the next that shares any
+        ;; letter can, so no token is left over a space (`the` split as `t
+        ;; he` at a sentence start stays on `t`).
+        (if-let [choice (or (first (filter allowed? choices))
+                            (when (and (not before?) (not after?) (seq words))
+                              (let [old-word (java.util.Arrays/copyOfRange o (int s) (int t))
+                                    score (fn [[p q]] (lcs-length old-word (java.util.Arrays/copyOfRange v (int p) (int q))))]
+                                (->> words
+                                     (remove (set choices))
+                                     (filter #(pos? (score %)))
+                                     (sort-by (comp - score))
+                                     (filter allowed?)
+                                     first))))]
           (edits choice)
           [r])))))
 
@@ -2468,6 +2482,15 @@
                                                               (or (= k :replace) (< tb s) (< t te))))))))
                                       g))
                               (parts b e)))))
+        ;; A stretch of the word typed over with a space in what was typed,
+        ;; so the word's text is two words now (`kaki` to `a ki`, a letter
+        ;; deleted at one caret and a space typed at another, paired into one
+        ;; replace): the word is given a space as by a typed space (D28), even
+        ;; when the letters it keeps are all in one of the new words.
+        retyped-split? (fn [g b e]
+                         (and (some #(and (= :replace (:kind %)) (has-ws? (:value %))) g)
+                              (not-any? #(ws? (aget o %)) (range b e))
+                              (boolean (re-find #"\S\s+\S" (new-text g b e)))))
         ;; The edits of `g` as one replace of [b e).
         as-replace (fn [g b e]
                      (let [v (new-text g b e)
@@ -2476,7 +2499,7 @@
                        {:kind :replace :start b :end e :value v
                         ;; a word given a space loses its one morpheme (see
                         ;; `fold-whole-words`)
-                        :drop (when (splits? g b e)
+                        :drop (when (or (splits? g b e) (retyped-split? g b e))
                                 (seq (keep (fn [{tb :token/begin te :token/end :as t}]
                                              (when (and (= b tb) (= e te) (segment? t)) (:token/id t)))
                                            (@near b e))))
@@ -2511,7 +2534,8 @@
                                        (= e (reduce max (map reach-of g)))
                                        (or (kinds :replace)
                                            (and (kinds :delete) (kinds :insert))))
-                                  (splits? g b e))
+                                  (splits? g b e)
+                                  (retyped-split? g b e))
                               ;; A token inside a word (a morpheme) given a space
                               ;; is left to the word, which folds onto one of
                               ;; the new words (D28: `unbreakable` as `un` +
@@ -2521,7 +2545,7 @@
                               ;; take the replace when one new word can take it
                               ;; whole.
                               (not (and (not (word-at? b e))
-                                        (splits? g b e)
+                                        (or (splits? g b e) (retyped-split? g b e))
                                         (some #(and (word? %) (not (and (= b (:token/begin %)) (= e (:token/end %)))))
                                               (@covering b e))
                                         (or (not cut-ok?)
@@ -2538,7 +2562,7 @@
                               (or (not (inside? b e))
                                   (and (word-at? b e)
                                        (not-any? #(ws? (aget o %)) (range b e))
-                                       (or (broken? g b e) (and split? (splits? g b e)))
+                                       (or (broken? g b e) (and split? (splits? g b e)) (retyped-split? g b e))
                                        (not-any? #(and (= :replace (:kind %)) (has-ws? (:value %)))
                                                  (split-off-new-words o @near @covering (as-replace g b e))))))
                      g))))
@@ -2707,10 +2731,40 @@
                                 (holding e0)))
                       (catch clojure.lang.ExceptionInfo _ nil)
                       (catch IndexOutOfBoundsException _ nil)))]
-          (if-let [[g b e split] g-e]
-            (recur (+ i (count g))
-                   (if split (into out split) (conj out (as-replace g b e)))
-                   true)
+          ;; A space typed in a word after other edits of it left as they
+          ;; came (`pumpkin` to `pXump kin`, two inserts): the word is found
+          ;; from the space, and the edits of it before are taken back from
+          ;; `out` into the group, so it folds as one edit of the word.
+          (if-let [[g b e split k]
+                   (or (when (has-ws? (:value e0))
+                         (try
+                           (some (fn [{tb :token/begin te :token/end :as w}]
+                                   (let [k (loop [k 0]
+                                             (let [j (- i k 1)
+                                                   x (when (<= 0 j) (nth out (- (count out) k 1) nil))]
+                                               (if (and x (= x (edits j)) (<= tb (start-of x)))
+                                                 (recur (inc k))
+                                                 k)))]
+                                     (when (pos? k)
+                                       (let [prev (nth out (- (count out) k 1) nil)]
+                                         (when (clear-before? prev tb)
+                                           (when-let [g (group (- i k) tb te true)]
+                                             [g tb te nil k]))))))
+                                 (filter (fn [{tb :token/begin te :token/end :as w}]
+                                           (and (word? w) (< tb (start-of e0) te)
+                                                (not (and (zero? tb) (= te whole)))
+                                                (not-any? #(ws? (aget o %)) (range tb te))))
+                                         (let [[^ints st ^ints en] @ws-runs
+                                               p (start-of e0)]
+                                           (@near (aget st (int p)) (aget en (int p))))))
+                           (catch clojure.lang.ExceptionInfo _ nil)
+                           (catch IndexOutOfBoundsException _ nil)))
+                       g-e)]
+            (let [out (if k (subvec out 0 (- (count out) k)) out)
+                  i (if k (- i k) i)]
+              (recur (+ i (count g))
+                     (if split (into out split) (conj out (as-replace g b e)))
+                     true))
             (recur (inc i) (conj out e0) folded?)))
         ;; A word typed beside the replaced letters stays out of them,
         ;; here and in the replaces `pair-replacements` made, and a replace
@@ -3188,16 +3242,17 @@
   and the edits slid to the tokens (`slide-to-tokens`), snapped
   (`normalize-deletes`) and aligned by words (`align-to-words`), so a
   selection typed over keeps what a respelling keeps. Those steps only move
-  an edit to an equal place, and one may go past the gap's edge (`sat tat`
-  typed over with `tX` deletes ` sat` and respells `tat`), but never up to
-  another gap: each stays in the old text between the gaps beside it. When
-  one would, or the stretch would come out as other text, the gap stays one
-  delete and one insert. `partitioning` and `word-layers`
+  an edit to an equal place, and each edit is kept inside its gap: one moved
+  past the gap's edge is put back at an equal place inside it (`sat tat`
+  typed over with `tX` deletes `sat `, not ` sat`). When that cannot be
+  done, or the stretch would come out as other text, the gap stays one
+  delete and one insert, so no text outside it is ever read as changed. `partitioning` and `word-layers`
   are as `update-body` gives them to those steps."
   [^String old tokens gaps partitioning word-layers]
   (let [o (.toArray (.codePoints old))
         gaps (vec gaps)
-        pure? (fn [{:keys [start end value]}] (or (= start end) (empty? value)))
+        ;; an exact gap (see `apply-edits`) stands as made too
+        pure? (fn [{:keys [start end value exact]}] (or exact (= start end) (empty? value)))
         start-of (fn [e] (or (:start e) (:at e)))
         reach-of (fn [e] (or (:end e) (:at e)))
         ;; the edits a gap's own diff gives, in old coordinates
@@ -3207,11 +3262,24 @@
                                  (:end e) (update :end + start)
                                  (:at e) (update :at + start)))
                        (ops->edits (diff (String. ^ints o (int start) (int (- end start))) value))))
-        n (alength o)
-        ;; the old text a gap's edits may stand in: up to the gaps beside it,
-        ;; never touching them
-        window (fn [i] [(if (zero? i) 0 (inc (:end (gaps (dec i)))))
-                        (if (= i (dec (count gaps))) n (dec (:start (gaps (inc i)))))])
+        ;; A gap's edits stand in the gap: the caret or the selection said
+        ;; where the change was, and text outside it is not the user's to
+        ;; lose. A step that moves an edit to an equal place outside the gap
+        ;; (`sat tat` typed over as `tX` reads as ` sat` deleted) has it put
+        ;; back at an equal place inside (`sat ` deleted), when there is one.
+        window (fn [i] [(:start (gaps i)) (:end (gaps i))])
+        pull-in (fn [idx e]
+                  (if (some (fn [i] (let [[lo hi] (window i)]
+                                      (and (<= lo (start-of e)) (<= (reach-of e) hi))))
+                            idx)
+                    e
+                    (or (some (fn [i]
+                                (let [[lo hi] (window i)]
+                                  (when (and (<= (- lo slide-reach) (start-of e)) (<= (reach-of e) (+ hi slide-reach)))
+                                    (first (filter #(and (<= lo (start-of %)) (<= (reach-of %) hi))
+                                                   (slide-places o e 0 (alength o)))))))
+                              idx)
+                        e)))
         ;; the placed edits of the gaps in `idx`, or the gaps among them
         ;; whose edits left their window
         place (fn [idx]
@@ -3225,6 +3293,8 @@
                                    (normalize-deletes old tokens)
                                    (align-to-words old tokens word-layers)
                                    ops->edits
+                                   (->> (mapv #(pull-in idx %)))
+                                   (->> (sort-by start-of))
                                    vec))
                       ;; each placed edit's gap, or nil when it lies in none
                       owner (fn [e]
@@ -3238,8 +3308,10 @@
                                  (for [i idx
                                        :let [{:keys [start end value]} (gaps i)
                                              [lo hi] (window i)]
-                                       :when (not= (edits-text o [{:kind :replace :start start :end end :value value}] lo hi)
-                                                   (edits-text o (get owned i) lo hi))]
+                                       :let [mine (get owned i)]
+                                       :when (or (some (fn [[x y]] (> (reach-of x) (start-of y))) (partition 2 1 mine))
+                                                 (not= (edits-text o [{:kind :replace :start start :end end :value value}] lo hi)
+                                                       (edits-text o mine lo hi)))]
                                    i)
                                  ;; an edit outside every window: the gaps beside it
                                  (for [e stray
@@ -3247,10 +3319,13 @@
                                        :let [[lo hi] (window i)]
                                        :when (and (<= (start-of e) (inc hi)) (<= (dec lo) (reach-of e)))]
                                    i)
-                                 ;; the edits of two gaps meeting between them
+                                 ;; the edits of two gaps meeting between them, or
+                                 ;; two edits put in one place
                                  (for [[x y] (partition 2 1 placed)
                                        :let [i (owner x) j (owner y)]
-                                       :when (and i j (not= i j) (>= (reach-of x) (start-of y)))
+                                       :when (and i j (if (= i j)
+                                                        (> (reach-of x) (start-of y))
+                                                        (>= (reach-of x) (start-of y))))
                                        k [i j]]
                                    k)))
                       bad (if (and (seq stray) (empty? bad)) (set idx) bad)]
@@ -3294,7 +3369,76 @@
   `fold-whole-words`, `apply-text-edits`, `keep-edges-off-spaces`), with the
   layer sets `update-body` gives them."
   [^String old tokens ops {:keys [partitioning word-layers segments]}]
-  (let [{:keys [ops stretch]} (plan-edits old tokens (compose-edits ops old) partitioning word-layers)]
+  (let [^ints o (.toArray (.codePoints old))
+        word? (if (nil? word-layers) (constantly true) #(contains? word-layers (:token/layer %)))
+        ;; Gaps inside one word are one change of it, and are read as one
+        ;; stretch typed over, as a whole-body save reads the change: a typo
+        ;; fixed at two carets (`teh` to `the`) keeps the whole word, and a
+        ;; space typed with another change in the word folds it (D28). Gaps
+        ;; with a space between them, or in no one word without a space, stay
+        ;; apart (L3).
+        ;; the word without a space holding gaps g to h, or nil
+        one-word (fn [g h]
+                   (when (not-any? #(space? (aget o %)) (range (:start g) (:end h)))
+                     (some (fn [{:token/keys [begin end] :as t}]
+                             (when (and (word? t) (< begin end) (<= begin (:start g)) (<= (:end h) end)) t))
+                           tokens)))
+        ;; runs of gaps inside one word, each with its word
+        runs (reduce (fn [out h]
+                       (let [{run :gaps} (peek out)
+                             w (when run (one-word (first run) h))]
+                         (if w
+                           (conj (pop out) {:gaps (conj run h) :word w})
+                           (conj out {:gaps [h]}))))
+                     []
+                     (compose-edits ops old))
+        letter-at (fn [i] (String. o (int i) 1))
+        has-space? (fn [^String v] (.anyMatch (.codePoints v) (reify java.util.function.IntPredicate
+                                                                (test [_ c] (space? c)))))
+        merged (fn [run]
+                 {:start (:start (first run)) :end (:end (peek run))
+                  :value (apply str (map-indexed (fn [k g]
+                                                   (str (when (pos? k)
+                                                          (let [f (run (dec k))]
+                                                            (String. o (int (:end f)) (int (- (:start g) (:end f))))))
+                                                        (:value g)))
+                                                 run))})
+        ;; Letters typed at the word's edge in a run without a space typed
+        ;; (`mat` to `mtX`, a letter deleted inside and one typed at the end)
+        ;; are part of the word: the typed letters replace the edge letter
+        ;; with it and them, which the token holding it keeps. The other
+        ;; gaps stay where they were made.
+        edge-letters (fn [{:keys [gaps word]}]
+                       (let [b (:token/begin word) e (:token/end word)
+                             g0 (first gaps) gn (peek gaps)
+                             v (vec gaps)
+                             ;; an edge letter with a gap right beside it is
+                             ;; taken in with that gap
+                             v (if (= (:start g0) (:end g0) b)
+                                 (let [h (second v)]
+                                   (if (< (inc b) (:start h))
+                                     (assoc v 0 {:start b :end (inc b) :value (str (:value g0) (letter-at b)) :exact true})
+                                     (into [{:start b :end (:end h) :value (str (:value g0) (letter-at b) (:value h)) :exact true}]
+                                           (subvec v 2))))
+                                 v)
+                             n (dec (count v))
+                             v (if (and (pos? n) (= (:start gn) (:end gn) e))
+                                 (let [h (v (dec n))]
+                                   (if (< (:end h) (dec e))
+                                     (assoc v n {:start (dec e) :end e :value (str (letter-at (dec e)) (:value gn)) :exact true})
+                                     (conj (subvec v 0 (dec n))
+                                           {:start (:start h) :end e :value (str (:value h) (letter-at (dec e)) (:value gn))
+                                            :exact true})))
+                                 v)]
+                         (when (not= v (vec gaps)) v)))
+        gaps (into []
+                   (mapcat (fn [{run :gaps :as r}]
+                             (cond
+                               (= 1 (count run)) run
+                               (and (not-any? #(has-space? (:value %)) run) (edge-letters r)) (edge-letters r)
+                               :else [(merged run)])))
+                   runs)
+        {:keys [ops stretch]} (plan-edits old tokens gaps partitioning word-layers)]
     (-> ops
         (pair-replacements old tokens stretch)
         (fold-whole-words old tokens word-layers segments)

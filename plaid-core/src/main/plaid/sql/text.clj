@@ -418,8 +418,10 @@
            ;;    post) match the per-row helper's behavior.
            (when (seq survivor-updates)
              (crud/bulk-update-by-id! tx :tokens survivor-updates))
-           ;; 3. Update the text body.
+           ;; 3. Update the text body. The answer carries the body this
+           ;; transaction wrote, not one read after it.
            (crud/update-by-id! tx :texts eid {:body new-body})
+           (vswap! op assoc :body new-body)
            ;; 4. Partitioning-mode gap-fill on the surviving tokens.
            (compensate-partition-layers! tx survivors new-text-length)
            eid))]
@@ -515,9 +517,14 @@
         live (fn [table f] (vec (keep (fn [k] (let [{:keys [deleted? post]} (last-of k)]
                                                 (when (and (not deleted?) post) (f (second k) post))))
                                       (of table))))
-        get* (fn [m k] (if (contains? m k) (clojure.core/get m k) (clojure.core/get m (keyword k))))]
+        get* (fn [m k] (if (contains? m k) (clojure.core/get m k) (clojure.core/get m (keyword k))))
+        contains-key? (fn [m k] (or (contains? m k) (contains? m (keyword k))))]
     {:tokens (live "tokens" (fn [id p] {:id id :begin (get* p "begin") :end (get* p "end_")}))
-     :spans (live "spans" (fn [id p] (when (some? (get* p "tokens")) {:id id :tokens (vec (get* p "tokens"))})))
+     ;; with the value, which a layer rule's remedy may have rewritten
+     :spans (live "spans" (fn [id p] (when (or (some? (get* p "tokens")) (contains-key? p "value"))
+                                       (cond-> {:id id}
+                                         (some? (get* p "tokens")) (assoc :tokens (vec (get* p "tokens")))
+                                         (contains-key? p "value") (assoc :value (some-> (get* p "value") psc/read-json))))))
      :vocab-links (live "vocab_links" (fn [id p] (when (some? (get* p "tokens")) {:id id :tokens (vec (get* p "tokens"))})))
      :deleted {:tokens (gone "tokens")
                :spans (gone "spans")

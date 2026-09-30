@@ -4,7 +4,8 @@
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
             [plaid.sql.text-layer :as txtl]
-            [plaid.sql.text :as txt]))
+            [plaid.sql.text :as txt]
+            [plaid.util.digest :as digest]))
 
 (defn get-project-id [{db :db params :parameters}]
   (let [txtl-id (-> params :body :text-layer-id)
@@ -130,7 +131,13 @@
                                 success
                                 (prm/assoc-document-version-in-header
                                  {:status 200
-                                  :body (assoc (txt/get db text-id) :reshape (txt/reshape db op))}
+                                  ;; the body and digest the save wrote, not a
+                                  ;; read after it that another save may have
+                                  ;; changed, beside the reshape it made
+                                  :body (assoc (txt/get db text-id)
+                                               :text/body (:body op)
+                                               :text/digest (digest/text-digest (:body op))
+                                               :reshape (txt/reshape db op))}
                                  db doc-id)
                                 text-changed
                                 {:status 409

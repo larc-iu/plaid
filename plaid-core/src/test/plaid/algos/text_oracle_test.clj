@@ -336,7 +336,16 @@
       (let [inner (fn [{:keys [w cuts]}] (remove (set cuts) (range 1 (count (cps w)))))
             cands (filter #(case kind
                              :space-at-cut (seq (:cuts (sent %)))
-                             :split-any (< 1 (count (cps (:w (sent %)))))
+                             ;; Not a word with a marker at both edges, nor one
+                             ;; starting a sentence with a marker at its end: no
+                             ;; new word can take the token and leave the markers
+                             ;; at its edges (the right one would take text into
+                             ;; the sentence before or behind the start marker, the
+                             ;; left one would leave the end marker off its end).
+                             :split-any (let [{:keys [w zs ze]} (sent %)]
+                                          (and (< 1 (count (cps w)))
+                                               (not (and zs ze))
+                                               (not (and ze (zero? %) (pos? si)))))
                              (let [{:keys [w zs ze cuts] :as it} (sent %)]
                                (and (< 1 (count (cps w))) (not zs) (not ze)
                                     (or (pos? %) (zero? si))
@@ -400,6 +409,52 @@
             [(split (+ 2000 bid) bid)
              {:resp #{bid} :si si :fold #{bid} :kind :move-space :i i :k k
               :alts [[(split bid (+ 2000 bid)) {:resp #{bid} :si si :fold #{bid}}]]}])))
+      ;; A word changed at two carets, as people fix one: a letter deleted
+      ;; at one place and a letter typed at another (`teh` to `the`, a
+      ;; transposition, or a fresh letter), or a letter deleted and a space
+      ;; typed elsewhere in the word (the word folds onto the half sharing
+      ;; more letters, and an analysis is dropped, D28).
+      :two-carets
+      (let [cands (filter (fn [i] (let [{:keys [w zs ze]} (sent i)]
+                                    (and (<= 3 (count (cps w))) (not zs) (not ze))))
+                          (range n))
+            i (when (seq cands) (nth cands (.nextInt rng (count cands))))
+            {:keys [id w cuts post sep] :as it} (when i (sent i))
+            c (when i (cps w))
+            k (count c)
+            a (when i (.nextInt rng k))
+            ;; an old place for the second caret, a letter or more away
+            ps (when i (vec (remove #(<= (dec a) % (inc a)) (range 0 (inc k)))))
+            split? (when (seq ps) (.nextBoolean rng))
+            sps (when split? (vec (remove (set cuts) (filter #(< 0 % k) ps))))
+            p (cond (seq sps) (sps (.nextInt rng (count sps)))
+                    (and (not split?) (seq ps)) (ps (.nextInt rng (count ps))))
+            keep-at (fn [x y] (apply str (keep-indexed (fn [j ch] (when (and (<= x j) (< j y) (not= j a)) ch)) c)))
+            left (when (and split? p) (keep-at 0 p))
+            right (when (and split? p) (keep-at p k))
+            letter (when (and p (not split?)) (if (.nextBoolean rng) (c a) (fresh-word rng 1)))
+            w' (when letter (str (keep-at 0 p) letter (keep-at p k)))]
+        (cond
+          (nil? p) (edit doc rng [:resp])
+          split?
+          (if (or (empty? left) (empty? right))
+            (edit doc rng [:resp])
+            (let [split (fn [lid rid]
+                          (assoc doc si (-> (subvec sent 0 i)
+                                            (conj (assoc it :id lid :w left :post "" :sep " " :cuts nil)
+                                                  {:id rid :pre "" :w right :post post :sep sep})
+                                            (into (subvec sent (inc i))))))
+                  fold (when cuts #{id})]
+              [(split id (+ 2000 id))
+               {:resp #{id} :si si :fold fold :kind :two-carets :i i
+                :caret-gaps [[a (inc a) ""] [p p " "]]
+                :typed (str left " " right)
+                :alts [[(split (+ 2000 id) id)
+                        {:resp #{id} :si si :fold fold :typed-front {id (inc (count (cps left)))}}]]}]))
+          (= w' w) (edit doc rng [:resp])
+          :else [(assoc-in doc [si i :w] w')
+                 {:resp #{id} :kind :two-carets :si si :i i
+                  :caret-gaps [[a (inc a) ""] [p p letter]] :typed w'}]))
       :join (if (< si (dec (count doc)))
               [(-> doc
                    (assoc-in [si (dec n) :sep] " ")
@@ -836,6 +891,10 @@
                            :value (str (:w (sent i)) (apply str (subvec c 0 k)) " " (apply str (subvec c k)))}])
                        [{:start (:qe a) :end (:pb b) :value ""}
                         {:start (+ (:b b) k) :end (+ (:b b) k) :value " "}]))
+       :two-carets (let [{:keys [b e]} (at i)]
+                     (if (= reading :words)
+                       [{:start b :end e :value (:typed info)}]
+                       (map (fn [[x y v]] {:start (+ b x) :end (+ b y) :value v}) (:caret-gaps info))))
        :join (let [last-item (peek sent)
                    e (:qe (words (:id last-item)))]
                [{:start e :end (+ e (cp/cp-count (:sep last-item))) :value " "}])))))
@@ -870,15 +929,35 @@
       []
       ps)))
 
+(defn- outside-changed
+  "The tokens wholly apart from every gap (not touching one) that `result`
+  deleted or gave another length: an edit changes nothing outside the text
+  it was made in."
+  [tokens gaps result]
+  (let [after (into {} (map (juxt :token/id identity)) (:tokens result))
+        ;; each gap with the words it touches, whose morphemes a fold may drop
+        reach (for [{:keys [start end]} gaps
+                    :let [ws (filter (fn [{:token/keys [layer begin] :as w}]
+                                       (and (#{:w :p} layer) (<= begin end) (<= start (:token/end w))))
+                                     tokens)]]
+                [(reduce min start (map :token/begin ws)) (reduce max end (map :token/end ws))])]
+    (for [{:token/keys [id begin end] :as t} tokens
+          :when (every? (fn [[s e]] (or (< (:token/end t) s) (> begin e))) reach)
+          :let [t' (after id)]
+          :when (or (nil? t') (not= (- end begin) (- (:token/end t') (:token/begin t'))))]
+      (str "OUTSIDE " (pr-str id) " [" begin " " end ")" (if t' " resized" " deleted")))))
+
 (defn- run-case-edits
   "The problems of the case typed as `reading` (see `intended-gaps`), and
-  the gaps. Throws when the gaps do not make the case's new body."
+  the tokens outside every gap it changed. Throws when the gaps do not make
+  the case's new body."
   [{:keys [old new tokens opts] :as c} reading]
   (let [gaps (intended-gaps c reading)
         ops (if (= reading :words) (gaps->replaces gaps) (gaps->keystrokes gaps))]
     (when (not= new (ta/edit-ops-body ops old))
       (throw (ex-info "reading does not make the new body" {:case (select-keys c [:seed :old :new :info]) :gaps gaps})))
-    (judged c (edit-chain old tokens ops opts))))
+    (let [result (edit-chain old tokens ops opts)]
+      (into (vec (judged c result)) (outside-changed tokens gaps result)))))
 
 (def ^:private edit-configs
   "The whole-body configs, and the residue the edit path was made for."
@@ -887,13 +966,15 @@
           :l3-space-moved-into-morpheme {:seps [" "] :kinds [:move-space]}
           :l3-space-moved-marked {:seps [" "] :marks 0.4 :nodes 4 :kinds [:move-space]}
           ;; A space typed in a word at a sentence start or beside a marker,
-          ;; where the second new word should take the token: it stays over
-          ;; both, the edit path as the whole-body save (`x. cow y` to `x. a
-          ;; co y` in text_test). Text put in front of the word would go to
-          ;; the sentence before, or behind the marker. Held to no more
-          ;; failures than the whole-body save.
-          :split-at-sentence-start {:seps [" "] :kinds [:split-any] :limit true}
-          :split-beside-marker {:seps [" "] :marks 0.5 :nodes 4 :kinds [:split-any] :limit true}
+          ;; where the second new word would take the token: text put in front
+          ;; of it would go to the sentence before, or behind the marker, so
+          ;; the first new word takes it (R9).
+          :split-at-sentence-start {:seps [" "] :kinds [:split-any]}
+          :split-beside-marker {:seps [" "] :marks 0.5 :nodes 4 :kinds [:split-any]}
+          ;; a word fixed at two carets (R2, R8)
+          :two-carets {:seps [" "] :kinds [:two-carets]}
+          :two-carets-nodes {:seps [" " "\t"] :nodes 4 :kinds [:two-carets]}
+          :two-carets-one-morpheme {:seps [" "] :one-morph 0.6 :segments #{:m} :kinds [:two-carets]}
           :one-morpheme-moved-space {:seps [" "] :one-morph 0.6 :segments #{:m} :kinds [:move-space]}}))
 
 (def ^:private old-seeds
@@ -947,6 +1028,27 @@
                  5 {:type :insert :index pos :value (nth ["the cat " "a\nb" "你好"] (.nextInt rng 3))})]
         (recur (ta/edit-ops-body [op] body) (inc i) (conj out op))))))
 
+(defn- whole-chain
+  "What `update-body` does with the whole new body."
+  [old new tokens opts]
+  (-> (ta/diff old new) (ta/slide-to-tokens old tokens #{:s}) (ta/normalize-deletes old tokens)
+      (ta/align-to-words old tokens #{:w :p}) (ta/pair-replacements old tokens)
+      (ta/fold-whole-words old tokens #{:w :p} (:segments opts)) (ta/apply-text-edits {:text/body old} tokens)
+      (as-> r (ta/keep-edges-off-spaces old tokens r #{:s}))))
+
+(defn- spaced-new
+  "How many word, morpheme and punctuation tokens `result` gives a space they
+  did not hold."
+  [old tokens result]
+  (let [body (:text/body (:text result))
+        before (into {} (map (juxt :token/id identity)) tokens)]
+    (count (for [t (:tokens result)
+                 :when (#{:w :m :p} (:token/layer t))
+                 :let [was (before (:token/id t))]
+                 :when (and (spaced? (cp/cp-subs body (:token/begin t) (:token/end t)))
+                            (not (spaced? (cp/cp-subs old (:token/begin was) (:token/end was)))))]
+             t))))
+
 (deftest an-edit-depends-only-on-the-change-it-makes
   ;; Keystrokes and their composed form give the same body and the same
   ;; tokens: what the server does depends on the gaps alone.
@@ -965,16 +1067,29 @@
           (let [raw (edit-chain old tokens ops opts)
                 pre (edit-chain old tokens composed opts)
                 view (fn [r] [(:text/body (:text r)) (set (map (juxt :token/id :token/begin :token/end) (:tokens r)))
-                              (set (:deleted r))])]
+                              (set (:deleted r))])
+                read (fn [{:token/keys [begin end]}] (cp/cp-subs body begin end))
+                before (into {} (map (juxt :token/id identity)) tokens)]
             (is (= body (:text/body (:text raw))))
-            (is (= (view raw) (view pre)) (pr-str old ops))))))))
+            (is (= (view raw) (view pre)) (pr-str old ops))
+            ;; and the result is right: nothing outside the edits changed, and
+            ;; for a change of at most two stretches (a person's edit before a
+            ;; save, not a mashup of pastes into words) no word, morpheme or
+            ;; punctuation token is given a space where a whole-body save of
+            ;; the same change gives none
+            (is (empty? (outside-changed tokens gaps raw)) (pr-str old ops (outside-changed tokens gaps raw)))
+            (when (<= (count gaps) 2)
+              (is (<= (spaced-new old tokens raw) (spaced-new old tokens (whole-chain old body tokens opts)))
+                  (pr-str old ops)))))))))
 
 (deftest one-typed-over-stretch-is-read-as-a-whole-body-save-reads-it
   ;; The update-body differential: an edit that types over the stretch a
   ;; whole-body save's diff finds changed gives the whole-body save's
-  ;; tokens. Cases whose change is a pure insert or delete are not such an
-  ;; edit (those stand where the caret put them), and are counted.
-  (let [pure (atom 0) same (atom 0)]
+  ;; tokens, whenever the whole-body save's placed edits lie inside that
+  ;; stretch (the edit path keeps them there). Cases whose change is a pure
+  ;; insert or delete are not such an edit (those stand where the caret put
+  ;; them), and the others are counted.
+  (let [pure (atom 0) same (atom 0) outside (atom 0)]
     (doseq [[_ opts] (sort edit-configs)
             seed (range 200)
             :let [{:keys [old new tokens]} (gen-case seed opts)
@@ -983,8 +1098,18 @@
                   s (min (count (take-while true? (map = (rseq o) (rseq n)))) (- (min (count o) (count n)) p))
                   gap {:start p :end (- (count o) s) :value (apply str (subvec n p (- (count n) s)))}]
             :when (not= old new)]
-      (if (or (= (:start gap) (:end gap)) (empty? (:value gap)))
+      (cond
+        (or (= (:start gap) (:end gap)) (empty? (:value gap)))
         (swap! pure inc)
+        (let [placed (-> (ta/diff old new)
+                         (ta/slide-to-tokens old tokens #{:s})
+                         (ta/normalize-deletes old tokens)
+                         (ta/align-to-words old tokens #{:w :p}))]
+          (not-every? (fn [e] (and (<= (:start gap) (or (:start e) (:at e)))
+                                   (<= (or (:end e) (:at e)) (:end gap))))
+                      (#'ta/ops->edits placed)))
+        (swap! outside inc)
+        :else
         (let [whole (-> (ta/diff old new)
                         (ta/slide-to-tokens old tokens #{:s})
                         (ta/normalize-deletes old tokens)
@@ -997,4 +1122,4 @@
               view (fn [r] [(:text/body (:text r)) (set (map (juxt :token/id :token/begin :token/end) (:tokens r)))])]
           (swap! same inc)
           (is (= (view whole) (view edit)) (str (pr-str old) " -> " (pr-str new))))))
-    (is (< 1000 @same) (str @same " typed over, " @pure " pure"))))
+    (is (< 1000 @same) (str @same " typed over, " @pure " pure, " @outside " placed outside"))))

@@ -31,7 +31,7 @@
         tl (-> (create-text-layer admin-request proj "TL") :body :id)
         sentences (-> (create-token-layer-opts admin-request tl "Sentences" {:overlap-mode "partitioning"}) :body :id)
         words (-> (create-token-layer-opts admin-request tl "Words" {:overlap-mode "non-overlapping"
-                                                                   :parent-token-layer-id sentences})
+                                                                     :parent-token-layer-id sentences})
                   :body :id)
         morphemes (-> (create-token-layer-opts admin-request tl "Morphemes" {:parent-token-layer-id words}) :body :id)
         _ (when segments
@@ -187,3 +187,32 @@
     (is (= 200 (:status again)))
     (is (= (:body first-answer) (:body again)))
     (is (= "the cats" (-> (get-text admin-request text) :body :text/body)))))
+
+(deftest the-answer-is-the-body-the-save-wrote
+  ;; R16: a read after the commit could hold another save's body next to this
+  ;; save's reshape. The answer's body and digest are the ones written.
+  (let [{:keys [text]} (setup "the cat")
+        real-get plaid.sql.text/get
+        res (with-redefs [plaid.sql.text/get (fn [db id]
+                                               (assoc (real-get db id) :text/body "someone else's"))]
+              (edit-text text {:edits [(ins 7 "s")] :base (digest/text-digest "the cat")}))]
+    (assert-ok res)
+    (is (= "the cats" (-> res :body :text/body)))
+    (is (= (digest/text-digest "the cats") (-> res :body :text/digest)))))
+
+(deftest reshape-carries-a-trimmed-spans-value
+  ;; R14: a span in the reshape comes with its value, so a page shows a value
+  ;; a layer rule's remedy rewrote.
+  (let [proj (create-test-project admin-request "SpanValueProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        words (-> (create-token-layer admin-request tl "W") :body :id)
+        sl (-> (create-span-layer admin-request words "S") :body :id)
+        text (-> (create-text admin-request tl doc "ab cd") :body :id)
+        a (-> (create-token admin-request words text 0 2) :body :id)
+        c (-> (create-token admin-request words text 3 5) :body :id)
+        _ (assert-created (create-span admin-request sl [a c] "BOTH"))
+        res (edit-text text {:edits [(del 0 3)] :base (digest/text-digest "ab cd")})
+        spans (-> res :body :reshape :spans)]
+    (assert-ok res)
+    (is (= [{:tokens [(str c)] :value "BOTH"}] (map #(-> % (dissoc :id) (update :tokens (partial mapv str))) spans)))))

@@ -70,22 +70,22 @@
   (testing "letters typed at a word's end stay outside it"
     (is (= ["cats sat" [[0 "cat"] [1 "sat"]]] (typed "cat sat" [(ins 3 "s")]))))
   (testing "a word selected and typed over keeps its token"
-    (is (= ["dog sat" [[0 "dog"] [1 "sat"]]] (typed "cat sat" [(rep 0 3 "dog")]))))
-  (testing "a letter deleted inside a word and one typed after it are two edits"
-    (is (= ["danced x" [[0 "dance"] [1 "x"]]] (typed "dancde x" [(del 4 1) (ins 5 "d")])))))
+    (is (= ["dog sat" [[0 "dog"] [1 "sat"]]] (typed "cat sat" [(rep 0 3 "dog")])))))
 
-(deftest a-typed-over-stretch-whose-reading-would-reach-another-edit-stays-one-replace
-  ;; `sat tat` typed over as `tX` deletes ` sat` (past the stretch's start)
-  ;; and respells `tat`, but an insert just before the stretch leaves no room
-  ;; to go past it, and the stretch is one delete and one insert: the text is
-  ;; right either way.
+(deftest a-typed-over-stretch-is-read-inside-itself
+  ;; `sat tat` typed over as `tX` deletes `sat ` and respells `tat`: the
+  ;; whole-body save's reading (` sat` deleted) is put back at the equal place
+  ;; inside the selection, and an insert just before the selection changes
+  ;; nothing about it.
   (let [old "kai sat tat\n"
         tokens (words old)
         free (ta/apply-edits old tokens [(rep 4 7 "tX")] {:partitioning #{} :word-layers #{:w}})
-        fenced (ta/apply-edits old tokens [(rep 4 7 "tX") (ins 3 "Q")] {:partitioning #{} :word-layers #{:w}})]
+        beside (ta/apply-edits old tokens [(rep 4 7 "tX") (ins 3 "Q")] {:partitioning #{} :word-layers #{:w}})
+        extents (fn [r] (sort (map (juxt :token/id :token/begin :token/end) (:tokens r))))]
     (is (= "kai tX\n" (:text/body (:text free))))
-    (is (= "kaiQ tX\n" (:text/body (:text fenced))))
-    (is (some #(= 2 (:token/id %)) (:tokens free)))))
+    (is (= [[0 0 3] [2 4 6]] (extents free)))
+    (is (= "kaiQ tX\n" (:text/body (:text beside))))
+    (is (= [[0 0 3] [2 5 7]] (extents beside)))))
 
 (defn- one-morpheme [old]
   (into (words old) (map (fn [{:token/keys [id begin end]}] {:token/id [:m id] :token/layer :m :token/begin begin :token/end end}))
@@ -116,3 +116,60 @@
       (is (= ["hh pum pkin" [[0 "hh"] [[:m 0] "hh"] [1 "pkin"] [[:m 1] "pkin"]]] (edit [(ins 6 " ")] nil))))
     (testing "in a whole body"
       (is (= ["hh pum pkin" [[0 "hh"] [[:m 0] "hh"] [1 "pkin"]]] (body "hh pum pkin" #{:m}))))))
+
+(deftest a-word-fixed-at-two-carets-is-one-change-of-it
+  ;; R8: a transposition fixed at two carets keeps the whole word, as the
+  ;; whole-body save did
+  (is (= ["a the cat" [[0 "a"] [1 "the"] [2 "cat"]]] (typed "a teh cat" [(del 3 1) (ins 4 "e")])))
+  (is (= ["a danced x" [[0 "a"] [1 "danced"] [2 "x"]]] (typed "a dancde x" [(del 6 1) (ins 7 "d")])))
+  ;; a letter deleted inside and one typed at the end
+  (is (= ["a mtX" [[0 "a"] [1 "mtX"]]] (typed "a mat" [(del 3 1) (ins 4 "X")])))
+  ;; R2: a space typed with another change earlier in the word folds it
+  (is (= ["a pmp kin x" [[0 "a"] [1 "pmp"] [2 "x"]]] (typed "a pumpkin x" [(del 3 1) (ins 5 " ")])))
+  (is (= ["a pXump kin x" [[0 "a"] [1 "pXump"] [2 "x"]]] (typed "a pumpkin x" [(ins 6 " ") (ins 3 "X")]))))
+
+(deftest a-space-typed-in-a-one-morpheme-word-with-another-change-drops-the-morpheme
+  ;; R2 with segmentsParent: Luke's ruling holds for any mix of edits in the word
+  (let [old "a pumpkin x"
+        r (ta/apply-edits old (one-morpheme old) [(del 3 1) (ins 5 " ")] {:partitioning #{} :word-layers #{:w} :segments #{:m}})]
+    (is (= "a pmp kin x" (:text/body (:text r))))
+    (is (some #{[:m 1]} (:deleted r)))))
+
+(deftest a-selection-typed-over-changes-no-token-outside-it
+  ;; R3: `ab b` of `a ab ab b` selected and typed over as `bd` leaves the
+  ;; first `ab` alone
+  (is (= ["a ab bd" [[0 "a"] [1 "ab"]]]
+         (update (typed "a ab ab b" [(rep 5 4 "bd")]) 1 #(filterv (fn [[id]] (#{0 1} id)) %))))
+  ;; and over random selections of repeated words: every word apart from the
+  ;; selection keeps its place and length
+  (let [rng (java.util.Random. 7)
+        vocab ["a" "ab" "ba" "big" "bag" "dog" "do" "g" "bb" "b"]
+        pick #(nth % (.nextInt rng (count %)))]
+    (dotimes [_ 5000]
+      (let [old (clojure.string/join " " (repeatedly (+ 3 (.nextInt rng 5)) #(pick vocab)))
+            n (count old)
+            s (.nextInt rng n)
+            e (+ s 1 (.nextInt rng (min 8 (- n s))))
+            v (apply str (repeatedly (inc (.nextInt rng 5)) #(pick ["a" "b" " " "g" "o" "d"])))
+            tokens (words old)
+            r (ta/apply-edits old tokens [(rep s (- e s) v)] {:partitioning #{} :word-layers #{:w}})
+            after (into {} (map (juxt :token/id identity)) (:tokens r))
+            shift (- (count v) (- e s))]
+        (doseq [{:token/keys [id begin end]} tokens :when (or (< end s) (> begin e))
+                :let [t (after id)
+                      want (if (> begin e) [(+ begin shift) (+ end shift)] [begin end])]]
+          (is (= want [(:token/begin t) (:token/end t)]) (pr-str old s e v)))))))
+
+(deftest a-space-typed-in-the-first-word-of-a-sentence-leaves-no-word-over-it
+  ;; R9: the second half cannot take the word (text in front of it would go to
+  ;; the sentence before), so the first does
+  (let [old "x. cow y"
+        tokens (conj (words old)
+                     {:token/id :s1 :token/layer :s :token/begin 0 :token/end 3}
+                     {:token/id :s2 :token/layer :s :token/begin 3 :token/end 8})
+        r (ta/apply-edits old tokens [(ins 4 " ")] {:partitioning #{:s} :word-layers #{:w}})
+        body (:text/body (:text r))
+        by-id (into {} (map (juxt :token/id #(subs body (:token/begin %) (:token/end %)))) (:tokens r))]
+    (is (= "x. c ow y" body))
+    (is (= "c" (by-id 1)))
+    (is (= "c ow y" (by-id :s2)))))
