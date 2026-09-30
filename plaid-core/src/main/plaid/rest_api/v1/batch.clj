@@ -235,9 +235,9 @@
     (try
       (let [result
             ;; psd/with-tx* rather than jdbc/with-transaction directly: it
-            ;; checks the connection out itself so a BEGIN that loses the
-            ;; write lock can't return a half-configured connection to the
-            ;; pool. See plaid.sql.datasource/heal-autocommit!.
+            ;; opens and closes the transaction in SQL, so the write lock is
+            ;; taken once and a commit never answers for anything but its
+            ;; own work. See plaid.sql.datasource/with-tx*.
             (psd/with-tx [tx db]
               (binding [op/*current-batch-id* batch-id
                         op/*deferred-events* deferred-events
@@ -260,8 +260,7 @@
           failure
           (busy-or-500 e (str "transaction " batch-id))))
       ;; BEGIN IMMEDIATE can fail before anything runs (SQLITE_BUSY after
-      ;; busy_timeout), and next.jdbc can wrap that busy in a plain ex-info
-      ;; on a failed rollback. Both are a retryable 503, not a 500.
+      ;; busy_timeout), a retryable 503, not a 500.
       (catch SQLException e
         (busy-or-500 e (str "transaction " batch-id)))
       (catch Exception e

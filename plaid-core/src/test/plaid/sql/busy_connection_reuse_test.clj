@@ -102,3 +102,113 @@
       (finally
         (.close ds)
         (cleanup! db-path)))))
+
+;; ------------------------------------------------------------------
+;; The end of a transaction must not open another one.
+;;
+;; sqlite-jdbc's `commit()` and `rollback()` each issue the next
+;; `BEGIN IMMEDIATE` straight after their COMMIT or ROLLBACK, in the same
+;; call, so a JDBC connection with autocommit off is never outside a
+;; transaction. That second BEGIN has to take the write lock again, the
+;; instant it was released, and under load another writer parked in its
+;; busy_timeout wins it: the BEGIN waits out busy_timeout and fails. The
+;; write itself was already committed, but `.commit` throws, next.jdbc's
+;; rollback finds no transaction, `heal-autocommit!` resets the driver's
+;; flag while Hikari's proxy still believes autocommit is off, and the
+;; proxy's close rolls back a connection in autocommit mode: a 500
+;; "database in auto-commit mode" for a write that landed.
+;;
+;; `PRAGMA query_only` stands in for the other writer here: it makes that
+;; second BEGIN IMMEDIATE fail every time (SQLITE_READONLY rather than
+;; SQLITE_BUSY), after the body's work has ended normally.
+
+(defn- reset-query-only! [ds]
+  (with-open [c (.getConnection ds)]
+    (jdbc/execute! c ["PRAGMA query_only=0"])))
+
+(deftest a-commit-answers-for-the-write-it-committed
+  (let [db-path (temp-db-path)
+        ds (psd/build-datasource db-path {:busy-timeout-ms 300 :max-pool-size 1})]
+    (try
+      (with-open [c (.getConnection ds)]
+        (jdbc/execute! c ["create table t (id integer primary key, v text)"]))
+      (testing "a body that ends normally commits and says so"
+        (is (= :done (psd/with-tx [tx ds]
+                       (jdbc/execute! tx ["insert into t (v) values ('landed')"])
+                       (jdbc/execute! tx ["PRAGMA query_only=1"])
+                       :done))
+            "no error for a write that is durable")
+        (reset-query-only! ds)
+        (is (= ["landed"] (values ds))))
+      (testing "the connection is still transactional afterwards"
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo #"boom"
+                              (psd/with-tx [tx ds]
+                                (jdbc/execute! tx ["insert into t (v) values ('doomed')"])
+                                (throw (ex-info "boom" {})))))
+        (is (= ["landed"] (values ds))))
+      (finally
+        (.close ds)
+        (cleanup! db-path)))))
+
+(deftest a-rollback-rethrows-the-bodys-own-error
+  (let [db-path (temp-db-path)
+        ds (psd/build-datasource db-path {:busy-timeout-ms 300 :max-pool-size 1})]
+    (try
+      (with-open [c (.getConnection ds)]
+        (jdbc/execute! c ["create table t (id integer primary key, v text)"]))
+      (testing "the caller sees the body's error, not the pool's"
+        (is (thrown-with-msg? clojure.lang.ExceptionInfo #"boom"
+                              (psd/with-tx [tx ds]
+                                (jdbc/execute! tx ["insert into t (v) values ('doomed')"])
+                                (jdbc/execute! tx ["PRAGMA query_only=1"])
+                                (throw (ex-info "boom" {}))))))
+      (reset-query-only! ds)
+      (is (= [] (values ds)) "rolled back")
+      (testing "and the connection goes on working, in transactions"
+        (is (some? (write! ds "after")))
+        (is (thrown? clojure.lang.ExceptionInfo
+                     (psd/with-tx [tx ds]
+                       (jdbc/execute! tx ["insert into t (v) values ('doomed2')"])
+                       (throw (ex-info "boom" {})))))
+        (is (= ["after"] (values ds))))
+      (finally
+        (.close ds)
+        (cleanup! db-path)))))
+
+(deftest parallel-writers-get-an-answer-that-is-true
+  ;; The load the reviewers ran, in miniature: several writers on a pool,
+  ;; a short busy_timeout. Every write either lands and says so, or fails
+  ;; as contention (a 503) and leaves nothing. Nothing else.
+  (let [db-path (temp-db-path)
+        ds (psd/build-datasource db-path {:busy-timeout-ms 100 :max-pool-size 8})
+        threads 8
+        per-thread 150]
+    (try
+      (with-open [c (.getConnection ds)]
+        (jdbc/execute! c ["create table t (id integer primary key, v text)"]))
+      (let [outcomes (->> (range threads)
+                          (mapv (fn [i]
+                                  (future
+                                    (vec (for [j (range per-thread)
+                                               :let [v (str i "-" j)]]
+                                           (try
+                                             (psd/with-tx [tx ds]
+                                               (jdbc/execute! tx ["insert into t (v) values (?)" v])
+                                               (jdbc/execute! tx ["select count(*) from t"]))
+                                             [v :ok]
+                                             (catch Exception e
+                                               (if (psd/sqlite-busy? e)
+                                                 [v :busy]
+                                                 [v :error (.getMessage e)]))))))))
+                          (mapcat deref)
+                          vec)
+            landed (set (values ds))]
+        (is (= [] (filterv #(= :error (second %)) outcomes))
+            "no failure other than contention")
+        (is (= [] (filterv (fn [[v k]] (and (= :busy k) (landed v))) outcomes))
+            "a write refused as busy left nothing behind")
+        (is (= [] (filterv (fn [[v k]] (and (= :ok k) (not (landed v)))) outcomes))
+            "a write that said it landed did"))
+      (finally
+        (.close ds)
+        (cleanup! db-path)))))

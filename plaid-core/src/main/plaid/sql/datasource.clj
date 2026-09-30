@@ -246,8 +246,9 @@
   service for good (until Hikari's 30-minute maxLifetime retires it) AND
   costs the atomicity guarantee on it.
 
-  Called on every exit from `with-tx*`. When autocommit is already true
-  (the overwhelmingly common case, including a normal rollback) this is a
+  `with-tx*` no longer touches the flag (it opens and closes its transaction
+  in SQL), so this now guards against anything else that did, and runs when
+  `with-tx*` borrows a connection. When autocommit is already true this is a
   no-op. Otherwise roll back first — that can only DISCARD work, never
   commit it — and then force the flag back with `setAutoCommit(true)`,
   which sets the flag before its own exec and so lands correctly even when
@@ -265,25 +266,66 @@
       ;; Nothing to heal in that case — Hikari will discard it.
       nil)))
 
-(defn with-tx*
-  "Run `f` inside a JDBC transaction. `f` is called with a Connection.
-  If `db` is already a Connection in an outer transaction (the REST batch
-  handler's case), we DO NOT wrap with another with-transaction — next.jdbc's
-  default behavior there would commit the underlying tx prematurely. Instead
-  we run the body inline; the outer batch handler owns commit/rollback.
+(defn- exec-sql!
+  [^java.sql.Connection con ^String sql]
+  (with-open [stmt (.createStatement con)]
+    (.execute stmt sql)))
 
-  We check the connection out ourselves rather than handing the DataSource to
-  `jdbc/with-transaction` so that `heal-autocommit!` gets a chance to run
-  before the connection is recycled — see its docstring for what happens
-  when it doesn't."
+(defn- end-or-evict!
+  "Run `sql` (COMMIT or ROLLBACK) on `con`. If it fails, the connection may
+  still hold an open transaction, and with it the write lock, so it must not
+  go back to the pool: evict it, and Hikari closes it when it is returned
+  (closing a SQLite connection rolls back whatever it held). Rethrows."
+  [db ^java.sql.Connection con ^String sql]
+  (try
+    (exec-sql! con sql)
+    (catch Throwable t
+      (when (instance? HikariDataSource db)
+        (try (.evictConnection ^HikariDataSource db con)
+             (catch Throwable _ nil)))
+      (throw t))))
+
+(defn with-tx*
+  "Run `f` inside a write transaction. `f` is called with a Connection.
+  If `db` is already a Connection in an outer transaction (the REST batch
+  handler's case), the body runs inline and the outer owner commits or rolls
+  back.
+
+  The transaction is opened and closed in SQL (`BEGIN IMMEDIATE`, then
+  `COMMIT` or `ROLLBACK`) on a connection left in JDBC autocommit mode, NOT
+  through `setAutoCommit(false)` and the driver's `commit()` and
+  `rollback()`. sqlite-jdbc's `commit()` and `rollback()` each issue the
+  NEXT `BEGIN IMMEDIATE` in the same call, since a JDBC connection with
+  autocommit off is never outside a transaction. That BEGIN needs the write
+  lock the COMMIT has just released, and under load a writer parked in its
+  busy_timeout takes it first: the driver's BEGIN waits out busy_timeout and
+  throws from a `.commit` whose work is already durable. The caller then got,
+  5 s later, a 500 \"database in auto-commit mode\" (next.jdbc's rollback
+  found no transaction, `heal-autocommit!` reset the driver's flag, and
+  Hikari's proxy, still believing autocommit was off, rolled back on close)
+  for a write that had landed. A rollback went the same way. In SQL the
+  transaction takes the lock once and lets it go once, and a busy can only
+  come from the BEGIN, before anything ran.
+
+  A COMMIT or ROLLBACK that fails evicts the connection (`end-or-evict!`), so
+  one still holding a transaction never returns to the pool."
   [db f]
   (if (instance? java.sql.Connection db)
     (f db)
     (with-open [con (jdbc/get-connection db)]
-      (try
-        (jdbc/with-transaction [tx con] (f tx))
-        (finally
-          (heal-autocommit! con))))))
+      ;; Something else that went through the driver's own transactions on
+      ;; this pooled connection (next.jdbc's with-transaction, in tests) may
+      ;; have left its autocommit flag off. See `heal-autocommit!`.
+      (heal-autocommit! con)
+      (exec-sql! con "BEGIN IMMEDIATE")
+      (let [result (try
+                     (f con)
+                     (catch Throwable t
+                       (try (end-or-evict! db con "ROLLBACK")
+                            (catch Throwable rb (.addSuppressed t rb)))
+                       (throw t)))]
+        (end-or-evict! db con "COMMIT")
+        result))))
 
 (defmacro with-tx
   "Execute body inside a JDBC transaction. Binds `tx-sym` to the Connection."
