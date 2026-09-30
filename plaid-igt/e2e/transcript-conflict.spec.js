@@ -2,12 +2,12 @@ import PlaidClient, { ROLES, cpLength, cpSlice } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
 import { wavBytes } from './bugbash/harness.mjs';
 
-// Two tabs edit the text of one transcript segment. Tab A's edit lands first
-// and makes the segment anew. Tab B's edit goes with the digest of the body
-// it read and is refused, and B's segment is gone, so B's edit is never put
-// on another segment: its text is listed as not saved, and nothing B does in
-// the row writes over A's. A throwaway document in "E2E
-// IGT Fixture", deleted afterwards.
+// Two tabs edit the text of one transcript segment. Tab A's edit lands first,
+// and the segment keeps its id. Tab B's edit goes with the digest of the body
+// it read and is refused as a conflict on that row (Luke's ruling Q1): the
+// row shows A's text with B's under it, leaving the row writes nothing, and
+// Enter stores B's. A throwaway document in "E2E IGT Fixture", deleted
+// afterwards.
 
 const CORE = process.env.PLAID_CORE_URL || 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
@@ -88,41 +88,42 @@ async function openTab(browser) {
   return tab;
 }
 
-test("a row's edit that lost to another tab's edit of the same segment is not saved, its text stays listed, and nothing is written over theirs", async ({
+test("a row's edit that lost to another tab's edit of the same segment shows the stored text with its own under it, leaving writes nothing, and Enter stores it", async ({
   browser,
 }) => {
   const A = await openTab(browser);
   const B = await openTab(browser);
   try {
-    // A's edit lands first. A row's text edit makes the segment anew, so the
-    // segment B's edit was made on is gone.
+    // A's edit lands first, on the same segment.
     const rowA = A.page.getByLabel('Segment 2 text');
     await rowA.click();
     await rowA.fill('dos!');
     await rowA.press('Enter');
     await expect.poll(() => storedText(1)).toBe('dos!');
 
-    // B's edit is refused. The row shows the stored text, and B's text is
-    // listed as not saved until dismissed.
+    // B's edit is refused. The row shows the stored text with B's under it.
     const row = B.page.getByLabel('Segment 2 text');
     await row.click();
     await row.fill('DOS');
     await row.press('Enter');
     await expect(row).toHaveValue('dos!', { timeout: 15000 });
-    const notSaved = B.page.getByRole('list', { name: 'Not saved' });
-    await expect(notSaved).toContainText('DOS');
+    await expect(B.page.getByText('Yours: DOS · Enter to keep yours')).toBeVisible();
+    await expect(B.page.getByRole('list', { name: 'Not saved' })).toHaveCount(0);
     expect(await storedText(1)).toBe('dos!');
 
-    // Leaving the row, or Enter in it, writes nothing over A's text.
+    // Leaving the row writes nothing over A's text.
     const before = B.writes;
     await row.click();
     await row.press('Tab');
-    await row.click();
-    await row.press('Enter');
     await B.page.waitForTimeout(800);
     expect(B.writes).toBe(before);
     expect(await storedText(1)).toBe('dos!');
-    await expect(notSaved).toContainText('DOS');
+
+    // Enter in it stores B's.
+    await row.click();
+    await row.press('Enter');
+    await expect.poll(() => storedText(1)).toBe('DOS');
+    await expect(B.page.getByText('Enter to keep yours')).toHaveCount(0);
     expect(await storedText(0)).toBe('uno');
     expect(await storedText(2)).toBe('tres');
   } finally {

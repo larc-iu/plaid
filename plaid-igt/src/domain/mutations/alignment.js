@@ -25,21 +25,29 @@
 // the same edit is made again at the segment's place now and sent once more.
 // Otherwise nothing is sent and the write is refused with 409 and
 // `conflict: { stored, mine }`, which the transcript row shows (Luke's ruling
-// Q1). The edits stay on the raw op form: a segment edit replaces exactly the
-// segment's stretch and makes its token over the new text there.
+// Q1). A new segment and a segment deleted with its text go on the raw op
+// form. An edit of a segment's text goes as the edits typed in its row, at
+// the caret (`editAlignment`), and the segment, which keeps its id, is set
+// over its new text in the same batch.
 
 import {
+  applyTextOps,
+  composeTextEdits,
   cpLength,
   cpSlice,
+  gapsToOps,
   mergeMetadata,
   metadataOps,
   createdId,
   createdIds,
   wasReplayed,
 } from '@larc-iu/plaid-client';
-import { pendingId, settledId, stableKey } from '@ui/domain/pendingIds.js';
-import { isChangedElsewhere, statusOf } from '@ui/lib/errors.js';
-import { applyTextEditsLocally, removeTokensLocally } from '../textEdits.js';
+import { pendingId, settledId } from '@ui/domain/pendingIds.js';
+import { isChangedElsewhere, isUnknownOutcome, statusOf } from '@ui/lib/errors.js';
+import { inferEdit } from '@ui/lib/editLog.js';
+import { applyReshape } from '@ui/domain/textReshape.js';
+import { applyGapsLocally, applyTextEditsLocally, removeTokensLocally } from '../textEdits.js';
+import { reshapeVocabLinks } from './document.js';
 import { getIgtLayerInfo } from '../layerInfo.js';
 import { rangeProblem } from '../alignmentTimes.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
@@ -206,15 +214,40 @@ const planCreate = (info, trimmed, timeBegin) => {
   };
 };
 
-// `segment`'s text replaced by `trimmed`, and the token over the new text.
-// `{ error }` when the new time or extent would break the order or overlap
-// another segment, else as `planCreate`.
-const planEdit = (info, segment, trimmed, timeBegin) => {
+// The edits that make `trimmed` of `over`, a segment's text, as gaps of it
+// (plaid-client `composeTextEdits`). `edits` are the ones typed in its row,
+// `{ over, gaps }` (plaid-ui's editLog), taken when they were made over this
+// text and make it once the spaces at its ends are trimmed off, which are then
+// deleted by gaps of their own. Otherwise, the one change between the two.
+const rowGaps = (over, trimmed, edits = null) => {
+  if (edits?.over === over && Array.isArray(edits.gaps)) {
+    const ops = gapsToOps(edits.gaps);
+    const typed = applyTextOps(over, ops);
+    if (typed.trim() === trimmed) {
+      const lead = cpLength(typed) - cpLength(typed.trimStart());
+      const trail = cpLength(typed) - cpLength(typed.trimEnd());
+      if (trail) ops.push({ type: 'delete', index: cpLength(typed) - trail, value: trail });
+      if (lead) ops.push({ type: 'delete', index: 0, value: lead });
+      return composeTextEdits(over, ops);
+    }
+  }
+  const change = inferEdit(over, null, trimmed, null);
+  return change ? composeTextEdits(over, [change]) : [];
+};
+
+// `segment`'s text changed by `gaps` (of its text) into `trimmed`, and the
+// segment over the new text. `{ error }` when the new time or extent would
+// break the order or overlap another segment, else `{ gaps }`, the edits in
+// the body, `extent`, the segment's new one, `whole` when the segment is the
+// whole body and nothing of it is kept at either end (see `_showRowEdit`),
+// and `seedLength` as `planCreate` has it.
+const planEdit = (info, segment, gaps, trimmed, timeBegin) => {
   const alignmentTokens = info.alignmentTokenLayer.tokens || [];
   const tokenBegin = segment.begin;
   const tokenEnd = segment.end;
   const newAlignmentEnd = tokenBegin + cpLength(trimmed);
-  const newTextLength = cpLength(bodyOf(info)) - (tokenEnd - tokenBegin) + cpLength(trimmed);
+  const body = bodyOf(info);
+  const newTextLength = cpLength(body) - (tokenEnd - tokenBegin) + cpLength(trimmed);
 
   const inversion = findTemporalInversion(alignmentTokens, tokenBegin, timeBegin, segment.id);
   if (inversion) {
@@ -223,9 +256,9 @@ const planEdit = (info, segment, trimmed, timeBegin) => {
     };
   }
 
-  // Overlap check in POST-edit coordinates: replacing [tokenBegin, tokenEnd)
-  // with `trimmed` shifts every later token by (newLen - oldLen). Without
-  // projecting, growing the text past the next token reads as a false overlap.
+  // Overlap check in POST-edit coordinates: the edit shifts every later token
+  // by (newLen - oldLen). Without projecting, growing the text past the next
+  // token reads as a false overlap.
   const editDelta = cpLength(trimmed) - (tokenEnd - tokenBegin);
   const projectedTokens = alignmentTokens.map((t) =>
     t.id !== segment.id && t.begin >= tokenEnd
@@ -236,28 +269,36 @@ const planEdit = (info, segment, trimmed, timeBegin) => {
     return { error: 'The edited segment would overlap an existing segment.' };
   }
 
-  // Predict whether the cascade wipes the partition entirely (every
-  // sentence sits inside the deletion range). If so, we re-seed it.
-  // Otherwise some sentence survives and compensate-after-cascade covers
-  // the new text. Adding a bulkCreate would conflict with the
-  // partition-establish ASSERT.
+  // A stretch typed over that is the whole body is a new text, and the server
+  // deletes every token over it, the segment too, unless a letter is kept at
+  // one of its ends (plaid-core reads it as a whole-body save does).
+  const over = cpSlice(body, tokenBegin, tokenEnd);
+  const chars = [...over];
+  const typed = [...trimmed];
+  const whole =
+    tokenBegin === 0 &&
+    tokenEnd === cpLength(body) &&
+    gaps.some((g) => g.start === 0 && g.end === chars.length) &&
+    chars[0] !== typed[0] &&
+    chars.at(-1) !== typed.at(-1);
   const sentences = info.sentenceTokenLayer.tokens || [];
-  const cascadeWipesAllSentences =
-    sentences.length === 0 || sentences.every((s) => s.begin >= tokenBegin && s.end <= tokenEnd);
-  const seedSentence = cascadeWipesAllSentences && newTextLength > 0;
-
-  // Explicit delete + insert (not a string update): a server-computed diff
-  // can produce a narrower deletion range that leaves the alignment token
-  // surviving and trips an ASSERT against tokens.create. Explicit ops over
-  // exactly [tokenBegin, tokenEnd) guarantee the old token is cascaded out.
   return {
-    textOps: [
-      { type: 'delete', index: tokenBegin, value: tokenEnd - tokenBegin },
-      { type: 'insert', index: tokenBegin, value: trimmed },
-    ],
-    token: { begin: tokenBegin, end: newAlignmentEnd },
-    seedLength: seedSentence ? newTextLength : null,
+    gaps: gaps.map((g) => ({ ...g, start: g.start + tokenBegin, end: g.end + tokenBegin })),
+    extent: { begin: tokenBegin, end: newAlignmentEnd },
+    whole,
+    seedLength: sentences.length === 0 && newTextLength > 0 ? newTextLength : null,
   };
+};
+
+// The metadata patch of a row edit: each of the row's keys `mine` sets to
+// another value than `was` has (the segment's), and the writer's stamp.
+const rowPatch = (mine, was, stamp) => {
+  const patch = {};
+  for (const key of ROW_KEYS) {
+    if (sameRowValue(key, rowValue(mine, key), rowValue(was, key))) continue;
+    patch[key] = key === 'speaker' ? mine.speaker || null : rowValue(mine, key);
+  }
+  return { ...patch, ...(stamp || {}) };
 };
 
 // The text delete that takes `segment`'s text with it: the surrounding
@@ -416,10 +457,14 @@ export const alignmentMutations = {
     });
   },
 
-  // Replace an existing alignment's text and time range. The cascade deletes
-  // the old alignment token (it's fully contained in the deletion range), so
-  // we recreate it alongside the text update.
-  async editAlignment(existingAlignmentId, { text, timeBegin, timeEnd, speaker }) {
+  // Change a segment's text, from its transcript row: `text` the row's new
+  // text, and `edits` the changes typed in it (`rowGaps`). They are saved as
+  // edits at the caret with the digest of the body they were made on
+  // (`_showRowEdit`), and the segment is set over the new text, so it keeps
+  // its id, and the words inside keep what the text rules keep of them. The
+  // times and the speaker are written only where they differ from the
+  // segment's, with the writer's stamp.
+  async editAlignment(existingAlignmentId, { text, timeBegin, timeEnd, speaker, edits = null }) {
     const trimmed = (text || '').trim();
     if (!trimmed) {
       this.setError('Segment text is required');
@@ -449,39 +494,50 @@ export const alignmentMutations = {
       return false;
     }
 
-    const plan = planEdit(info, existingAlignment, trimmed, timeBegin);
+    // What the edit changes, for the entity rule when it is refused.
+    const over = cpSlice(this.body, existingAlignment.begin, existingAlignment.end);
+    const gaps = rowGaps(over, trimmed, edits);
+    const mine = alignmentMeta(timeBegin, timeEnd, speaker);
+    const was = existingAlignment.metadata;
+    if (!gaps.length) {
+      // Only spaces were typed: what else the row changed, or nothing.
+      const s = (speaker || '').trim();
+      return s === (was?.speaker || '')
+        ? true
+        : this.updateAlignmentSpeaker(existingAlignmentId, s);
+    }
+    const plan = planEdit(info, existingAlignment, gaps, trimmed, timeBegin);
     if (plan.error) {
       this.setError(plan.error);
       return false;
     }
-    const meta = { ...alignmentMeta(timeBegin, timeEnd, speaker), ...(this.createStamp || {}) };
 
-    // What the edit replaces, for the entity rule when it is refused.
-    const over = cpSlice(this.body, existingAlignment.begin, existingAlignment.end);
-    // Made again over the segment as stored, whose speaker and times are the
-    // ones stored now except where this edit changed them: someone else's
-    // relabel of the segment is a change to another field of it, and stays.
-    // The same field changed on both sides is a conflict.
+    // Made again over the segment as stored: a speaker or a time someone else
+    // set meanwhile is a change to another field of it, and stays, since only
+    // the keys this edit changed are written. The same field changed on both
+    // sides is a conflict.
     const replan = (fresh) => {
       const found = segmentConflict(fresh, existingAlignmentId, over, trimmed);
       if (!found.segment || found.conflict || found.landed) return found;
-      const metadata = replannedMetadata(meta, existingAlignment.metadata, found.segment.metadata);
-      if (!metadata) return { conflict: { stored: over, mine: trimmed } };
-      const again = planEdit(fresh, found.segment, trimmed, metadata.timeBegin ?? 0);
+      if (!replannedMetadata(mine, was, found.segment.metadata)) {
+        return { conflict: { stored: over, mine: trimmed } };
+      }
+      const again = planEdit(fresh, found.segment, gaps, trimmed, timeBegin);
       return again.error
         ? { conflict: { stored: over, mine: trimmed } }
-        : { plan: { ...again, metadata } };
+        : {
+            plan: { ...again, patch: rowPatch(mine, was, this.editStamp(found.segment.metadata)) },
+          };
     };
 
-    // The delete removes the old alignment token (and any words inside the
-    // range, with their annotations); the insert shifts what follows.
-    return this._showSegmentWrite('Failed to edit alignment', {
+    return this._showRowEdit('Failed to edit alignment', {
       textId,
+      segmentId: existingAlignmentId,
       ...plan,
-      metadata: meta,
+      typed: trimmed,
+      patch: rowPatch(mine, was, this.editStamp(was)),
       speaker,
       replan,
-      from: existingAlignmentId,
     });
   },
 
@@ -767,12 +823,8 @@ export const alignmentMutations = {
   // the sentence are made in ONE batch with the text edit. `replan(fresh)`
   // makes the write again on the layers of the document as stored, after a
   // refusal: `{ plan }` to send (with its own `metadata` when it differs),
-  // or `{ conflict }` to refuse with. `from` is the segment an edit makes
-  // again, which the new one stands for (`segmentOrigin`).
-  _showSegmentWrite(
-    label,
-    { textId, textOps, token, metadata, seedLength, speaker, replan, from = null },
-  ) {
+  // or `{ conflict }` to refuse with.
+  _showSegmentWrite(label, { textId, textOps, token, metadata, seedLength, speaker, replan }) {
     if (!this._canWrite(label)) return false;
     const info = this.layerInfo;
     const alignmentLayerId = info.alignmentTokenLayer.id;
@@ -830,7 +882,6 @@ export const alignmentMutations = {
         }
       });
     let sent = made({ textOps, token, seedLength });
-    if (from) this._segmentFrom(sent.segment.id, from);
     this._applyRawPatch(show(sent));
     // What is sent, kept outside the send (see `_sendOverSegmentText`).
     const state = { planned, send: (base) => send(sent, base) };
@@ -848,9 +899,11 @@ export const alignmentMutations = {
                 show: () => this._showRead(updated, show(m)),
               };
             },
-            // A write whose key was sent before with another request: it
-            // landed when the segment it makes is there.
+            // A write whose key was sent before with another request, or
+            // refused after the client sent it again: it landed when the
+            // segment it makes is there.
             landed: (fresh) => segmentIds(fresh).has(settledId(sent.segment.id)),
+            readOnRefusal: true,
           });
       const at = sent.textOps.length ? 1 : 0;
       if (at) this._heardText(textId, results?.[0]?.body);
@@ -866,6 +919,169 @@ export const alignmentMutations = {
         if (state.again || wasReplayed(results)) this._writes.reloadWhenDrained = true;
       }
       await this._rememberSpeaker(speaker);
+    });
+  },
+
+  // A segment's text changed by a row edit, shown at once: the edits shown
+  // on the body (textEdits.js `applyGapsLocally`, which deletes nothing), the
+  // segment set over its new text with its metadata patched, and a first
+  // sentence when there is none (`seedLength`). The edits go as edits at the
+  // caret with the digest of the body they were planned on, in ONE batch
+  // with the segment's new extent, its metadata and the sentence. What the
+  // edit did to the words inside is the server's to say: the answer's
+  // `reshape` is shown (`_showRowAnswer`). `whole` is a segment that is the
+  // whole body typed over with nothing kept at either end: the new text is
+  // typed after the old one, the segment set over both and the old text then
+  // deleted, so the segment is not deleted with the old body. `replan(fresh)`
+  // is as `_showSegmentWrite` has it, its plan with its own `patch`.
+  _showRowEdit(
+    label,
+    { textId, segmentId, gaps, extent, whole, typed, seedLength, patch, speaker, replan },
+  ) {
+    if (!this._canWrite(label)) return false;
+    const info = this.layerInfo;
+    const sentenceLayerId = info.sentenceTokenLayer.id;
+    const planned = this._plannedText();
+    const made = (plan, before = null) => ({
+      gaps: plan.gaps,
+      extent: plan.extent,
+      whole: plan.whole,
+      patch: plan.patch ?? patch,
+      seeded:
+        plan.seedLength != null
+          ? { id: before?.seeded?.id ?? pendingId(), end: plan.seedLength }
+          : null,
+      // The tokens the edit moved on screen, the last time it was shown.
+      changed: new Set(),
+    });
+    const show = (m) => (next, infoNext) => {
+      m.changed = applyGapsLocally(next, textId, m.gaps);
+      const segment = (infoNext.alignmentTokenLayer?.tokens || []).find(
+        (t) => settledId(t.id) === settledId(segmentId),
+      );
+      if (segment) {
+        segment.begin = m.extent.begin;
+        segment.end = m.extent.end;
+        segment.metadata = mergeMetadata(segment.metadata, m.patch);
+      }
+      if (m.seeded) {
+        infoNext.sentenceTokenLayer.tokens = [
+          { id: m.seeded.id, text: textId, begin: 0, end: m.seeded.end },
+        ];
+      }
+    };
+    // Answers where in the batch's results the last text write and the
+    // sentences are.
+    const send = (m, base) => {
+      const id = settledId(segmentId);
+      const at = {};
+      return this._client
+        .batched(async (b) => {
+          const patched = Object.keys(m.patch).length > 0;
+          if (m.whole) {
+            const old = m.gaps[0].end;
+            b.texts.edit(textId, [{ type: 'insert', index: old, value: typed }], undefined, {
+              base,
+              versioned: true,
+            });
+            b.tokens.update(id, 0, old + cpLength(typed));
+            b.texts.edit(textId, [{ type: 'delete', index: 0, value: old }]);
+            at.text = 2;
+          } else {
+            b.texts.edit(textId, gapsToOps(m.gaps), undefined, { base, versioned: true });
+            b.tokens.update(id, m.extent.begin, m.extent.end);
+            at.text = 0;
+          }
+          if (patched) b.tokens.patchMetadata(id, metadataOps(m.patch));
+          if (m.seeded) {
+            b.tokens.bulkCreate([
+              {
+                id: m.seeded.id,
+                tokenLayerId: sentenceLayerId,
+                text: textId,
+                begin: 0,
+                end: m.seeded.end,
+              },
+            ]);
+            at.seeded = (m.whole ? 3 : 2) + (patched ? 1 : 0);
+          }
+        })
+        .then((results) => Object.assign(results, { at }));
+    };
+    let sent = made({ gaps, extent, whole, seedLength });
+    this._applyRawPatch(show(sent));
+    const state = { planned, send: (base) => send(sent, base) };
+    return this._queueWrite(label, async () => {
+      const results = await this._sendOverSegmentText(state, {
+        replan: (fresh, updated) => {
+          const again = replan(fresh);
+          if (!again.plan) return again;
+          const m = made(again.plan, sent);
+          sent = m;
+          return {
+            send: (base) => send(m, base),
+            show: () => this._showRead(updated, show(m)),
+          };
+        },
+        // A write whose key was sent before with another request, or refused
+        // after the client sent it again: it landed when its segment holds its
+        // text.
+        landed: (fresh) => {
+          const segment = segmentNow(fresh, segmentId);
+          return !!segment && cpSlice(bodyOf(fresh), segment.begin, segment.end) === typed;
+        },
+        readOnRefusal: true,
+      });
+      if (!results) return; // found stored already
+      const at = results.at ?? {};
+      const answer = results[at.text ?? 0]?.body;
+      this._heardText(textId, answer);
+      if (sent.seeded) {
+        const made = createdIds(results[at.seeded])[0];
+        if (made) this._settle(new Map([[sent.seeded.id, made]]));
+      }
+      // A replayed answer (this send run again, or the client's own resend)
+      // carries the body as it was when the write first landed, and a whole
+      // body typed over is two text writes: what is stored now is read once
+      // the queue has drained.
+      if (state.again || wasReplayed(results) || sent.whole) {
+        this._writes.reloadWhenDrained = true;
+      } else {
+        this._showRowAnswer(textId, segmentId, sent, answer);
+      }
+      await this._rememberSpeaker(speaker);
+    });
+  },
+
+  // The answer to a row edit's text write shown: what it did to the tokens
+  // and what hangs off them (plaid-ui `applyReshape`), and the segment over
+  // the extent the batch set after it. Only when the page shows exactly the
+  // body the answer has, with no edit queued behind, and every token the
+  // edit moved on screen is one the answer names. Otherwise the document is
+  // read once the queue has drained.
+  _showRowAnswer(textId, segmentId, sent, answer) {
+    const reshape = answer?.reshape;
+    const text = this.layerInfo.primaryTextLayer?.text;
+    const named = new Set([
+      ...(reshape?.tokens ?? []).map((t) => t.id),
+      ...(reshape?.deleted?.tokens ?? []),
+      settledId(segmentId),
+    ]);
+    const guessed = [...sent.changed].some((id) => !named.has(settledId(id)));
+    if (!reshape || guessed || this._writes.queued > 1 || text?.body !== answer.body) {
+      this._writes.reloadWhenDrained = true;
+      return;
+    }
+    this._applyRawPatch((next, infoNext, vocabs) => {
+      Object.assign(next, applyReshape(next, textId, answer));
+      reshapeVocabLinks(vocabs, reshape);
+      const segment = (getIgtLayerInfo(next).alignmentTokenLayer?.tokens || []).find(
+        (t) => settledId(t.id) === settledId(segmentId),
+      );
+      if (segment) {
+        segment.begin = sent.extent.begin;
+        segment.end = sent.extent.end;
+      }
     });
   },
 
@@ -927,9 +1143,12 @@ export const alignmentMutations = {
   // puts it on screen and whose `send(base)` goes once, with the digest read.
   // A request refused because its key was sent before with another one is read
   // back too: `landed(fresh)` says whether the write is stored, and otherwise
-  // it is made again. Answers the batch's results, null when it was found
-  // stored.
-  async _sendOverSegmentText(state, { replan, landed = null }) {
+  // it is made again. With `readOnRefusal`, any other refusal is read back
+  // the same way: a send under these keys may have landed with its answer
+  // lost, sent by the client inside its own resend, whatever the refusal of
+  // the resend says (a 500, a 403), and it has when `landed(fresh)`. Answers
+  // the batch's results, null when it was found stored.
+  async _sendOverSegmentText(state, { replan, landed = null, readOnRefusal = false }) {
     if (!state.keys) {
       state.base = this._segmentBase(state.planned);
       state.keys = this._client.keySeed?.() ?? null;
@@ -942,7 +1161,19 @@ export const alignmentMutations = {
         return await underKeys(this._client, state.keys, () => state.send(state.base));
       } catch (err) {
         reused = isKeyReused(err);
-        if (!reused && !isChangedElsewhere(err)) throw err;
+        if (!reused && !isChangedElsewhere(err)) {
+          if (!readOnRefusal || !landed || isUnknownOutcome(err)) throw err;
+          let updated;
+          try {
+            updated = await this._fetch();
+          } catch {
+            throw err;
+          }
+          if (!landed(getIgtLayerInfo(updated))) throw err;
+          await this._adoptReload(updated);
+          this._showRead(updated);
+          return null;
+        }
       }
     }
     const updated = await this._fetch();
@@ -963,25 +1194,6 @@ export const alignmentMutations = {
     state.keys = this._client.keySeed?.() ?? null;
     state.again = false;
     return underKeys(this._client, state.keys, () => state.send(state.base));
-  },
-
-  // Which segment the segment token `id` stands for: the token an edit of its
-  // text made it again from, and so on back, else itself. A transcript row's
-  // cell is named by it, so a conflict stays with the row whose segment it is
-  // while the edits make its token again. Settled ids throughout.
-  segmentOrigin(id) {
-    const origins = this._segmentOrigins;
-    const origin = origins?.get(settledId(id)) ?? origins?.get(stableKey(id)) ?? id;
-    return settledId(origin);
-  },
-
-  // The segment token `id` stands for the segment `from` stands for: an
-  // edit made it again, here or elsewhere.
-  _segmentFrom(id, from) {
-    const origin = this.segmentOrigin(from);
-    if (settledId(id) === origin) return;
-    this._segmentOrigins ??= new Map();
-    this._segmentOrigins.set(id, origin);
   },
 
   // From inside a send: `updated`, just read, on screen, with `producer` (the

@@ -3,6 +3,7 @@ import { renderComponent, all, texts } from '@ui/test/renderComponent.jsx';
 import { DocumentProvider } from '../contexts/DocumentContext.jsx';
 import { TranscriptList } from './TranscriptList.jsx';
 import { pendingId, recordSettled } from '@ui/domain/pendingIds.js';
+import { applyTextOps, gapsToOps } from '@larc-iu/plaid-client';
 
 // The transcript rows against a fake document: what a row shows, what a
 // keystroke writes, and where focus goes next. The real mutations are covered
@@ -27,9 +28,6 @@ function makeDoc({ body, tokens }) {
           ? { landed: false, status: null, error: null, readBack: true, uncertain: false }
           : { landed: true, value },
       ),
-    // Which segment a token stands for, as IgtDocument answers it: no edit
-    // here makes one again, so each is its own.
-    segmentOrigin: (id) => id,
     editAlignment: vi.fn(async () => true),
     updateAlignmentSpeaker: vi.fn(async () => true),
     updateAlignmentBounds: vi.fn(async () => true),
@@ -238,7 +236,11 @@ describe('TranscriptList', () => {
       timeBegin: 0,
       timeEnd: 1.5,
       speaker: 'Ana',
+      edits: { over: 'the', gaps: expect.any(Array) },
     });
+    // The edits typed, over the stored text.
+    const { gaps } = doc.editAlignment.mock.calls[0][1].edits;
+    expect(applyTextOps('the', gapsToOps(gaps))).toBe('thee');
     expect(document.activeElement).toBe(second);
     await r.unmount();
   });

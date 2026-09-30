@@ -23,7 +23,8 @@ import { TimecodeField } from './TimecodeField.jsx';
 import { RUNNING_TIME_MS, useThrottledValue } from './useThrottledValue.js';
 import { getStickySpeaker, setStickySpeaker } from './stickySpeaker.js';
 import { keys } from '@/lib/keymap.js';
-import { stableKey } from '@ui/domain/pendingIds.js';
+import { settledId, stableKey } from '@ui/domain/pendingIds.js';
+import { useEditLog } from '@ui/hooks/useEditLog.js';
 import { shownOrRefused } from './shownOrRefused.js';
 
 // The transcript: every time-aligned segment as a row you can type into, in
@@ -31,24 +32,22 @@ import { shownOrRefused } from './shownOrRefused.js';
 // linguist makes by ear. The timeline above is for cutting and trimming, and
 // the transcription-service card below lets a model take the first pass.
 //
-// Rows are keyed by token id. Editing a segment's text recreates its token
-// (delete + insert cascade, see mutations/alignment.js), so a row that was just
-// edited unmounts and its successor mounts. Focus therefore always MOVES on a
-// text commit (to the next row, or to the new-segment row) and never tries to
-// stay. A time edit only patches metadata, so the row and its focus stay put.
-// The document queues its writes, so a commit made while another is saving
-// is sent after it rather than dropped.
+// Rows are keyed by the id each segment was first shown under. A row's text
+// is saved as the edits typed in it, at the caret (plaid-ui's useEditLog, and
+// mutations/alignment.js `editAlignment`), so the segment keeps its id and the
+// words inside keep what the text rules keep of them. Enter still moves focus
+// on (to the next row, or to the new-segment row). The document queues its
+// writes, so a commit made while another is saving is sent after it rather
+// than dropped.
 //
 // A row's text is a cell on plaid-ui's cell engine (Luke's ruling Q1): when
 // its edit loses to someone else's change of the same segment, the row shows
 // the stored text with "Yours: X · Enter to keep yours" under it, leaving the
 // row sends nothing, Enter sends yours over the stored text, and Escape or
-// typing lets it go. The cell is named by the segment, not its token: a row
-// edit makes the token again, so a row's queued edits name tokens this page
-// made from it (IgtDocument `segmentOrigin`). A segment deleted or made again
-// elsewhere is another segment, and an edit refused over it has no row: its
-// text is listed above the rows, with its times, until dismissed. Two
-// speakers over one time span are two cells.
+// typing lets it go. The cell is named by the segment. A segment deleted
+// elsewhere has no row, and an edit refused over it is listed above the rows
+// with its times until dismissed. Two speakers over one time span are two
+// cells.
 //
 // Play/pause inside a row is Shift+Space: the one modifier every platform
 // leaves alone in a text box (Ctrl+Space and Cmd+Space belong to macOS,
@@ -62,7 +61,7 @@ const timeBeginOf = (t) => t.metadata?.timeBegin ?? 0;
 const timeEndOf = (t) => t.metadata?.timeEnd ?? timeBeginOf(t);
 const byTime = (a, b) => timeBeginOf(a) - timeBeginOf(b);
 // The cell engine's key for a segment's text (see above).
-const segmentKey = (doc, t) => `segment:${doc.segmentOrigin(t.id)}`;
+const segmentKey = (t) => `segment:${settledId(t.id)}`;
 
 // Up and Down move between rows, but only from an edge of the text: in the
 // middle of a wrapped line they are the caret keys the box is entitled to, and
@@ -159,11 +158,22 @@ const SegmentRow = memo(function SegmentRow({
   // since it took focus, for the cell engine.
   const editingRef = useRef(false);
   const typedRef = useRef(false);
+  // The edits typed in the text box, over the text it was last given, so the
+  // save says where each change was made.
+  const editLog = useEditLog(text);
+  const logBase = useRef(text);
+  const resetLog = editLog.reset;
 
-  const setDraft = (v) => {
-    draftRef.current = v;
-    setDraftState(v);
-  };
+  // The text box given a value that was not typed: the log starts over it.
+  const setDraft = useCallback(
+    (v) => {
+      draftRef.current = v;
+      setDraftState(v);
+      logBase.current = v;
+      resetLog(v);
+    },
+    [resetLog],
+  );
   const setSpeaker = (v) => {
     speakerRef.current = v;
     setSpeakerState(v);
@@ -193,7 +203,7 @@ const SegmentRow = memo(function SegmentRow({
       setDraft(cells.display(cellKey, text));
       setSpeaker(storedSpeaker);
     }
-  }, [cells, cellKey, text, storedSpeaker, dirty]);
+  }, [cells, cellKey, text, storedSpeaker, dirty, setDraft]);
 
   useLayoutEffect(() => autoGrow(textRef.current), [draft]);
 
@@ -222,9 +232,12 @@ const SegmentRow = memo(function SegmentRow({
         setDirty(false);
         return true;
       }
+      // The edits typed, when they were made over the stored text.
+      const edits = logBase.current === text ? { over: text, gaps: editLog.gaps() } : null;
       const ok = await onCommit(token.id, {
         text: nextText,
         speaker: nextSpeaker,
+        edits,
         saved: taken?.saved,
         what: `Segment ${index + 1} text`,
       });
@@ -257,8 +270,8 @@ const SegmentRow = memo(function SegmentRow({
       const timeBegin = timeBeginOf(token);
       if (await commit()) onAdvance(timeBegin);
     } else if (step) {
-      // Committed first, like Enter: editing the text recreates the token, and
-      // this row unmounts, so the move must not race the blur that follows it.
+      // Committed first, like Enter, so the move does not race the blur that
+      // follows it.
       e.preventDefault();
       const timeBegin = timeBeginOf(token);
       if (await commit()) onStep(timeBegin, step);
@@ -387,18 +400,26 @@ const SegmentRow = memo(function SegmentRow({
               conflict && 'border-amber-500 focus-visible:ring-amber-500',
             )}
             onChange={(e) => {
-              setDraft(e.target.value);
+              editLog.onChange(e);
+              draftRef.current = e.target.value;
+              setDraftState(e.target.value);
               setDirty(true);
               typedRef.current = true;
               cell.onTyped();
             }}
-            onFocus={() => {
+            onFocus={(e) => {
+              editLog.capture(e);
               editingRef.current = true;
               typedRef.current = false;
               cell.onFocus();
               onFocusRow(token);
             }}
-            onKeyDown={onTextKeyDown}
+            onSelect={editLog.capture}
+            onMouseUp={editLog.capture}
+            onKeyDown={(e) => {
+              editLog.capture(e);
+              onTextKeyDown(e);
+            }}
             onBlur={() => {
               editingRef.current = false;
               commit();
@@ -902,7 +923,7 @@ export function TranscriptList({
 
   // The segments' text cells. What a cell holds is read from the document,
   // by the segment that names it.
-  const segmentAt = (key) => doc.alignmentTokens.find((t) => segmentKey(doc, t) === key);
+  const segmentAt = (key) => doc.alignmentTokens.find((t) => segmentKey(t) === key);
   const cells = useCellEngine(doc, {
     read: (key) => {
       const token = segmentAt(key);
@@ -927,13 +948,13 @@ export function TranscriptList({
     }),
   });
 
-  // Row edits refused after their segment was deleted or made again
-  // elsewhere, with no row to hold them, kept on the document so a switch of
-  // view keeps them (`IgtDocument.keepUnsavedRow`).
+  // Row edits refused after their segment was deleted elsewhere, with no
+  // row to hold them, kept on the document so a switch of view keeps them
+  // (`IgtDocument.keepUnsavedRow`).
   const unsaved = doc.unsavedRows ?? EMPTY;
 
   const handleCommit = useCallback(
-    async (id, { text, speaker, saved, what }) => {
+    async (id, { text, speaker, edits, saved, what }) => {
       const token = doc.alignmentTokens.find((t) => t.id === id);
       if (!token) return false;
       const storedText = cpSlice(doc.body || '', token.begin, token.end);
@@ -948,11 +969,12 @@ export function TranscriptList({
             timeBegin: timeBeginOf(token),
             timeEnd: timeEndOf(token),
             speaker,
+            edits,
           }),
         );
         // Refused by a check before it showed: nothing went out.
         if (doc.dataVersion === before) return (await outcome).landed;
-        const ticket = cells.sending(segmentKey(doc, token), {
+        const ticket = cells.sending(segmentKey(token), {
           saved: saved ?? storedText,
           typed: text,
           entityIds: [token.id],
@@ -1051,10 +1073,10 @@ export function TranscriptList({
 
   const handleDiscardProposal = useCallback((id) => opsRef.current.vad?.dismiss(id), []);
 
-  // After a commit the edited row may be gone (new token id), so the successor
-  // is found by time rather than by position. Segments come from the document,
-  // which is always current; the proposals are last render's, re-filtered here
-  // against the live segments so the one just accepted is not offered back.
+  // The next row is found by time rather than by position. Segments come from
+  // the document, which is always current; the proposals are last render's,
+  // re-filtered here against the live segments so the one just accepted is
+  // not offered back.
   // Move focus to the row before or after a time. Proposals are rows too, so
   // they are in the order; the row after the last one is the new-segment row,
   // and there is nothing before the first.
@@ -1241,7 +1263,7 @@ export function TranscriptList({
               onPlayToggle={handlePlayToggle}
               registerText={registerText}
               cells={cells}
-              cellKey={segmentKey(doc, row.token)}
+              cellKey={segmentKey(row.token)}
             />
           ) : (
             <ProposalRow

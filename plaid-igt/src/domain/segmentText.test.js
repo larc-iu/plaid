@@ -47,7 +47,7 @@ const idle = async (doc) => {
 const textWrites = (server) =>
   server.sent
     .flatMap((r) => (r.kind === 'batch' ? r.ops : [r]))
-    .filter((w) => w.kind === 'texts.update');
+    .filter((w) => w.kind === 'texts.update' || w.kind === 'texts.edit');
 const baseOf = (write) => write.args[3]?.base;
 const textAt = (doc, times) => {
   const t = doc.alignmentTokens.find((s) => s.metadata.timeBegin === times);
@@ -103,11 +103,9 @@ describe('refused because the body changed', () => {
     const writes = textWrites(server);
     expect(writes).toHaveLength(2);
     expect(baseOf(writes[1])).toBe(digestOf('uno two three'));
-    // Replaced where the segment is on the server, not where it was read.
-    expect(writes[1].args[1]).toEqual([
-      { type: 'delete', index: 4, value: 3 },
-      { type: 'insert', index: 4, value: 'dos' },
-    ]);
+    // Typed over where the segment is on the server, not where it was read.
+    expect(writes[1].kind).toBe('texts.edit');
+    expect(writes[1].args[1]).toEqual([{ type: 'replace', index: 4, length: 3, value: 'dos' }]);
     expect(server.body).toBe('uno dos three');
     expect(doc.body).toBe(server.body);
     expect(textAt(doc, 1)).toBe('dos');
@@ -157,14 +155,14 @@ describe('refused because the body changed', () => {
   it('a delete with its text over a segment someone else changed is refused, and nothing is deleted', async () => {
     const server = segmentServer(RAW());
     const doc = open(server);
-    const theirs = server.otherEdits('a-2', 'deux');
+    server.otherEdits('a-2', 'deux');
     const errors = [];
     doc.onError = (message, err, title) => errors.push({ err, title });
     expect(await doc.deleteAlignment('a-2', { deleteText: true })).toBe(false);
     await idle(doc);
     expect(textWrites(server)).toHaveLength(1);
     expect(server.body).toBe('one deux three');
-    expect(server.segments().map((t) => t.id)).toContain(theirs);
+    expect(server.segments().map((t) => t.id)).toContain('a-2');
     expect(doc.body).toBe('one deux three');
     expect(textAt(doc, 1)).toBe('deux');
     expect(errors).toHaveLength(1);
@@ -242,15 +240,16 @@ describe('made again after a refusal', () => {
     doc.onError = (message, err) => errors.push(err?.message ?? message);
     server.otherEdits('a-1', 'uno!');
     const first = doc.editAlignment('a-2', { text: 'dos', timeBegin: 1, timeEnd: 2 });
-    const pending = doc.alignmentTokens.find((t) => t.metadata.timeBegin === 1).id;
-    const second = doc.editAlignment(pending, { text: 'dos!', timeBegin: 1, timeEnd: 2 });
+    // The row's segment keeps its id.
+    expect(doc.alignmentTokens.find((t) => t.metadata.timeBegin === 1).id).toBe('a-2');
+    const second = doc.editAlignment('a-2', { text: 'dos!', timeBegin: 1, timeEnd: 2 });
     expect([await first, await second]).toEqual([true, true]);
     await idle(doc);
     expect(server.body).toBe('uno! dos! three');
     expect(errors).toEqual([]);
   });
 
-  it('two speakers over one time span: neither is taken for the other when one is made again', async () => {
+  it('two speakers over one time span: neither is taken for the other when one is made again elsewhere', async () => {
     const speaking = (id, begin, end, speaker) => ({
       id,
       text: 'text-1',
@@ -271,7 +270,7 @@ describe('made again after a refusal', () => {
       }),
     );
     const doc = open(server);
-    const theirs = server.otherEdits('a-2', 'deux');
+    server.otherRemakes('a-2', 'deux');
     const outcome = await doc.cellWrite(() =>
       doc.editAlignment('a-2', { text: 'dos', timeBegin: 1, timeEnd: 2, speaker: 'A' }),
     );
@@ -279,8 +278,6 @@ describe('made again after a refusal', () => {
     // The segment made again elsewhere is another segment: the edit is
     // refused as its own row's, and written onto neither.
     expect(outcome.error.conflict).toEqual({ stored: null, mine: 'dos' });
-    expect(doc.segmentOrigin(theirs)).toBe(theirs);
-    expect(doc.segmentOrigin('a-3')).toBe('a-3');
     expect(server.body).toBe('one deux three');
     expect(server.answers()).toEqual([409]);
   });

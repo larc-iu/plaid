@@ -57,7 +57,7 @@ describe('a refused row edit is about its own segment only', () => {
     const doc = open(server);
     // Elsewhere: B's text changed (its token made again), A's segment
     // deleted with its text.
-    const theirs = server.otherEdits('a-3', 'tres');
+    const theirs = server.otherRemakes('a-3', 'tres');
     alignLayer(server).tokens = alignLayer(server).tokens.filter((t) => t.id !== 'a-2');
     server.otherSaves([{ type: 'delete', index: 3, value: 4 }]);
     expect(server.body).toBe('one tres');
@@ -67,7 +67,7 @@ describe('a refused row edit is about its own segment only', () => {
     expect(outcome.landed).toBe(false);
     expect(outcome.error.conflict).toEqual({ stored: null, mine: 'dos' });
     // B's row keeps its own segment, so no note of A's lands on it.
-    expect(doc.segmentOrigin(theirs)).toBe(theirs);
+    expect(doc.alignmentTokens.map((t) => t.id)).toContain(theirs);
     expect(server.body).toBe('one tres');
     expect(server.answers()).toEqual([409]);
   });
@@ -75,14 +75,14 @@ describe('a refused row edit is about its own segment only', () => {
   it('with A’s segment deleted and its text kept, B’s is not taken for it either (R6-bis)', async () => {
     const server = twoSpeakers();
     const doc = open(server);
-    const theirs = server.otherEdits('a-3', 'tres');
+    const theirs = server.otherRemakes('a-3', 'tres');
     alignLayer(server).tokens = alignLayer(server).tokens.filter((t) => t.id !== 'a-2');
     server.otherRelabels('a-1', { speaker: 'X' });
 
     const outcome = await edit(doc, 'a-2', { text: 'dos', speaker: 'A' });
     await idle(doc);
     expect(outcome.error.conflict).toEqual({ stored: null, mine: 'dos' });
-    expect(doc.segmentOrigin(theirs)).toBe(theirs);
+    expect(doc.alignmentTokens.map((t) => t.id)).toContain(theirs);
     expect(server.body).toBe('one two tres');
   });
 
@@ -93,14 +93,14 @@ describe('a refused row edit is about its own segment only', () => {
       seg('a-3', 8, 13, 1, 2, 'A'),
     ]);
     const doc = open(server);
-    const theirs = server.otherEdits('a-3', 'tres');
+    const theirs = server.otherRemakes('a-3', 'tres');
     alignLayer(server).tokens = alignLayer(server).tokens.filter((t) => t.id !== 'a-2');
     server.otherRelabels('a-1', { speaker: 'X' });
 
     const outcome = await edit(doc, 'a-2', { text: 'dos', speaker: 'A' });
     await idle(doc);
     expect(outcome.error.conflict).toEqual({ stored: null, mine: 'dos' });
-    expect(doc.segmentOrigin(theirs)).toBe(theirs);
+    expect(doc.alignmentTokens.map((t) => t.id)).toContain(theirs);
   });
 
   it('its text and its end changed elsewhere: refused with both texts, on its own row (T1)', async () => {
@@ -114,7 +114,7 @@ describe('a refused row edit is about its own segment only', () => {
     );
     await idle(doc);
     expect(outcome.error.conflict).toEqual({ stored: 'tres!', mine: 'MINE3' });
-    expect(doc.segmentOrigin('a-3')).toBe('a-3');
+    expect(doc.alignmentTokens.map((t) => t.id)).toContain('a-3');
     expect(server.body).toBe('one two tres!');
   });
 
@@ -136,12 +136,12 @@ describe('a refused row edit whose segment is gone is never written onto another
   it('its segment made again elsewhere, same speaker and times: refused as its own row', async () => {
     const server = plain();
     const doc = open(server);
-    const theirs = server.otherEdits('a-2', 'deux');
+    const theirs = server.otherRemakes('a-2', 'deux');
     const outcome = await edit(doc, 'a-2', { text: 'dos', speaker: 'Ana' });
     await idle(doc);
     expect(outcome.landed).toBe(false);
     expect(outcome.error.conflict).toEqual({ stored: null, mine: 'dos' });
-    expect(doc.segmentOrigin(theirs)).toBe(theirs);
+    expect(doc.alignmentTokens.map((t) => t.id)).toContain(theirs);
     expect(server.body).toBe('one deux three');
     expect(server.answers()).toEqual([409]);
   });
@@ -167,7 +167,7 @@ describe('a refused row edit whose segment is gone is never written onto another
     const outcome = await edit(doc, 'a-2', { text: 'dos', speaker: 'A' });
     await idle(doc);
     expect(outcome.error.conflict).toEqual({ stored: null, mine: 'dos' });
-    expect(doc.segmentOrigin('b-new')).toBe('b-new');
+    expect(doc.alignmentTokens.map((t) => t.id)).toContain('b-new');
     expect(server.body).toBe('one nuevo three');
     expect(server.answers()).toEqual([409]);
   });
@@ -197,7 +197,7 @@ describe('a refused row edit whose segment is gone is never written onto another
   it('a delete with its text of a segment made again elsewhere is refused', async () => {
     const server = plain();
     const doc = open(server);
-    server.otherEdits('a-2', 'two');
+    server.otherRemakes('a-2', 'two');
     expect(await doc.deleteAlignment('a-2', { deleteText: true })).toBe(false);
     await idle(doc);
     expect(server.body).toBe('one two three');

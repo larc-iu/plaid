@@ -29,7 +29,8 @@
 // code.
 
 import { createHash } from 'node:crypto';
-import { applyTextEditsLocally } from '@/domain/textEdits.js';
+import { composeTextEdits } from '@larc-iu/plaid-client';
+import { applyGapsLocally, applyTextEditsLocally } from '@/domain/textEdits.js';
 import { makeFakeClient } from '@/domain/test-helpers.js';
 
 export const digestOf = (body) => createHash('sha256').update(body, 'utf8').digest('hex');
@@ -133,7 +134,13 @@ const writesOn = (raw, { mint, claim }) => {
     'texts.edit': (textId, ops, auditMessage, { base } = {}) => {
       checkBase(base);
       const before = structuredClone(raw);
-      applyTextEditsLocally(raw, textId, ops, vocabsIn(raw));
+      // An insert or a delete as the raw form makes it. A stretch typed over
+      // keeps the tokens over and inside it, resized, as a word typed over
+      // keeps its token in the core.
+      for (const op of ops) {
+        if (op.type !== 'replace') applyTextEditsLocally(raw, textId, [op], vocabsIn(raw));
+        else applyGapsLocally(raw, textId, composeTextEdits(textOf(raw).body, [op]));
+      }
       const text = textOf(raw);
       text.digest = digestOf(text.body);
       return { id: textId, body: text.body, digest: text.digest, reshape: reshapeOf(before, raw) };
@@ -169,6 +176,19 @@ const writesOn = (raw, { mint, claim }) => {
       layer.tokens = layer.tokens.filter((t) => t.id !== id);
       return {};
     },
+    'tokens.update': (id, begin, end) => {
+      const token = layersOf(raw)
+        .flatMap((l) => l.tokens)
+        .find((t) => t.id === id);
+      if (!token) {
+        throw refused(409, {
+          error: `${VERSION_MISMATCH} What this request names is no longer in the document.`,
+        });
+      }
+      if (begin != null) token.begin = begin;
+      if (end != null) token.end = end;
+      return {};
+    },
     'tokens.patchMetadata': (id, ops) => {
       const token = layersOf(raw)
         .flatMap((l) => l.tokens)
@@ -184,6 +204,14 @@ const writesOn = (raw, { mint, claim }) => {
     },
   };
 };
+
+// What the audit log says of `ops` ([kind, args] pairs), naming the tokens.
+const described = (ops) =>
+  ops.map(([kind, args]) =>
+    kind.startsWith('texts.')
+      ? { description: 'Edit body of text' }
+      : { description: `${kind === 'tokens.create' ? 'Create' : 'Update'} token ${args[0]}` },
+  );
 
 // Whether a write goes stamped with the document version (see the header).
 const stamped = (kind, args) => {
@@ -203,147 +231,167 @@ export function segmentServer(raw) {
   const audit = [];
   // Every request this page sent that writes: `{ kind, args, key, stamp }`,
   // a batch as one entry of kind 'batch' whose `ops` are its writes.
-  const sent = [];
+  const sentHere = [];
   // Refusals to answer the next writes with, before any is applied.
   const refusals = [];
   // Writes applied whose answer is then lost (status 0).
   let lose = 0;
+  // Writes applied whose answer the client's own resend gets, refused with
+  // one of these statuses (a 500, a 403 before the key is looked up).
+  const refusedAfter = [];
   // Writes applied whose answer the client's own resend gets, replayed: what
   // to run between the first send and the resend, for each.
   const replays = [];
   // Idempotency-Key -> { fingerprint, results }.
   const keyed = new Map();
 
-  const client = makeFakeClient();
+  // A page's client: `user` null for this page, whose writes are `sent`, or
+  // another user's page (`connect`), whose writes the audit log names as theirs.
+  const connect = (user = null) => {
+    const sent = user == null ? sentHere : [];
+    const client = makeFakeClient();
 
-  // What the client knows: the version it last heard, and the key frames of
-  // the operations open, as plaid-client keeps them.
-  let held = version;
-  const frames = [];
-  let seeds = 0;
-  client.keySeed = () => ({ seed: `seed-${++seeds}`, stamps: new Map() });
-  client.withOperation = async (message, fn, { keys } = {}) => {
-    const opened = keys || frames.length === 0;
-    if (opened) frames.push({ keys: keys ?? null, count: 0 });
-    try {
-      return await fn(() => {});
-    } finally {
-      if (opened) frames.pop();
-    }
-  };
-  // The key of the next write, and the version it claims (null for one that
-  // claims none), pinned by the first run of its operation.
-  const nextKey = (claims) => {
-    const frame = frames.at(-1);
-    const now = claims ? held : null;
-    if (!frame?.keys) return { key: null, stamp: now };
-    const i = frame.count;
-    frame.count += 1;
-    const { stamps } = frame.keys;
-    if (!stamps.has(i)) stamps.set(i, now);
-    return { key: `${frame.keys.seed}.${i}`, stamp: stamps.get(i) };
-  };
-
-  client.documents.get = async () => {
-    held = version;
-    return structuredClone(stored);
-  };
-  client.documents.auditPage = async () => ({ entries: [...audit].reverse() });
-
-  // Send `ops` ([kind, args] pairs) as one request, all or nothing, and
-  // record it in `sent` as `item` with its key, stamp and answer.
-  const request = (item, ops) => {
-    const checkAt = ops.findIndex(([kind, args]) => stamped(kind, args));
-    const { key, stamp } = nextKey(checkAt >= 0);
-    const entry = { ...item, key, stamp, answer: null };
-    sent.push(entry);
-    const fingerprint = JSON.stringify([ops, stamp]);
-    if (key && keyed.has(key)) {
-      const kept = keyed.get(key);
-      if (kept.fingerprint !== fingerprint) {
-        entry.answer = 422;
-        throw refused(422, {
-          error: 'idempotency-key-reused',
-          'idempotency-key-reused': true,
-        });
+    // What the client knows: the version it last heard, and the key frames of
+    // the operations open, as plaid-client keeps them.
+    let held = version;
+    const frames = [];
+    let seeds = 0;
+    client.keySeed = () => ({ seed: `seed-${user ?? ''}${++seeds}`, stamps: new Map() });
+    client.withOperation = async (message, fn, { keys } = {}) => {
+      const opened = keys || frames.length === 0;
+      if (opened) frames.push({ keys: keys ?? null, count: 0 });
+      try {
+        return await fn(() => {});
+      } finally {
+        if (opened) frames.pop();
       }
-      entry.answer = 'replayed';
-      return structuredClone(kept.results);
-    }
-    try {
-      if (refusals.length) throw refusals.shift();
-      const draft = structuredClone(stored);
-      const claimed = new Set();
-      const claim = (id) => {
-        if (id == null) return null;
-        if (everHeld.has(id) || claimed.has(id)) {
-          throw refused(409, {
-            error: 'id-taken',
-            'id-taken': true,
-            id,
-            message: `A token with id ${id} already exists.`,
+    };
+    // The key of the next write, and the version it claims (null for one that
+    // claims none), pinned by the first run of its operation.
+    const nextKey = (claims) => {
+      const frame = frames.at(-1);
+      const now = claims ? held : null;
+      if (!frame?.keys) return { key: null, stamp: now };
+      const i = frame.count;
+      frame.count += 1;
+      const { stamps } = frame.keys;
+      if (!stamps.has(i)) stamps.set(i, now);
+      return { key: `${frame.keys.seed}.${i}`, stamp: stamps.get(i) };
+    };
+
+    client.documents.get = async () => {
+      held = version;
+      return structuredClone(stored);
+    };
+    client.documents.auditPage = async () => ({ entries: [...audit].reverse() });
+
+    // Send `ops` ([kind, args] pairs) as one request, all or nothing, and
+    // record it in `sent` as `item` with its key, stamp and answer.
+    const request = (item, ops) => {
+      const checkAt = ops.findIndex(([kind, args]) => stamped(kind, args));
+      const { key, stamp } = nextKey(checkAt >= 0);
+      const entry = { ...item, key, stamp, answer: null };
+      sent.push(entry);
+      const fingerprint = JSON.stringify([ops, stamp]);
+      if (key && keyed.has(key)) {
+        const kept = keyed.get(key);
+        if (kept.fingerprint !== fingerprint) {
+          entry.answer = 422;
+          throw refused(422, {
+            error: 'idempotency-key-reused',
+            'idempotency-key-reused': true,
           });
         }
-        claimed.add(id);
-        return id;
-      };
-      const on = writesOn(draft, { mint, claim });
-      const results = ops.map(([kind, args], i) => {
-        if (i === checkAt && stamp !== version) throw refused(409, { error: VERSION_MISMATCH });
-        return { status: 200, body: on[kind](...args) };
-      });
-      stored = draft;
-      for (const id of idsIn(stored)) everHeld.add(id);
-      version += 1;
-      if (key) keyed.set(key, { fingerprint, results: structuredClone(results) });
-      if (lose > 0) {
-        lose -= 1;
-        entry.answer = 'lost';
-        throw Object.assign(new Error('Network error'), { status: 0, method: 'POST' });
+        entry.answer = 'replayed';
+        return structuredClone(kept.results);
       }
-      held = version;
-      if (replays.length) {
-        const between = replays.shift();
-        entry.answer = 'replayed in the client';
-        between?.();
-        const replayed = structuredClone(results);
-        for (const r of replayed) markReplayed(r.body);
-        return markReplayed(replayed);
+      try {
+        if (refusals.length) throw refusals.shift();
+        const draft = structuredClone(stored);
+        const claimed = new Set();
+        const claim = (id) => {
+          if (id == null) return null;
+          if (everHeld.has(id) || claimed.has(id)) {
+            throw refused(409, {
+              error: 'id-taken',
+              'id-taken': true,
+              id,
+              message: `A token with id ${id} already exists.`,
+            });
+          }
+          claimed.add(id);
+          return id;
+        };
+        const on = writesOn(draft, { mint, claim });
+        const results = ops.map(([kind, args], i) => {
+          if (i === checkAt && stamp !== version) throw refused(409, { error: VERSION_MISMATCH });
+          return { status: 200, body: on[kind](...args) };
+        });
+        stored = draft;
+        for (const id of idsIn(stored)) everHeld.add(id);
+        version += 1;
+        if (key) keyed.set(key, { fingerprint, results: structuredClone(results) });
+        if (lose > 0) {
+          lose -= 1;
+          entry.answer = 'lost';
+          throw Object.assign(new Error('Network error'), { status: 0, method: 'POST' });
+        }
+        if (refusedAfter.length) {
+          const status = refusedAfter.shift();
+          entry.answer = `stored, then ${status} in the client`;
+          throw refused(status, { error: 'Injected' });
+        }
+        held = version;
+        if (replays.length) {
+          const between = replays.shift();
+          entry.answer = 'replayed in the client';
+          between?.();
+          const replayed = structuredClone(results);
+          for (const r of replayed) markReplayed(r.body);
+          return markReplayed(replayed);
+        }
+        entry.answer = 200;
+        if (user != null)
+          audit.push({ user: { id: user, displayName: user }, ops: described(ops) });
+        return results;
+      } catch (err) {
+        entry.answer ??= err.status;
+        throw err;
       }
-      entry.answer = 200;
-      return results;
-    } catch (err) {
-      entry.answer ??= err.status;
-      throw err;
-    }
-  };
+    };
 
-  const BATCHED = [
-    'texts.update',
-    'texts.edit',
-    'tokens.create',
-    'tokens.delete',
-    'tokens.bulkCreate',
-  ];
-  client.batched = async (fn) => {
-    const ops = [];
-    const queue =
-      (kind) =>
-      (...args) => {
-        ops.push([kind, args]);
-      };
-    const b = { texts: {}, tokens: {} };
+    const BATCHED = [
+      'texts.update',
+      'texts.edit',
+      'tokens.create',
+      'tokens.update',
+      'tokens.delete',
+      'tokens.bulkCreate',
+      'tokens.patchMetadata',
+    ];
+    client.batched = async (fn) => {
+      const ops = [];
+      const queue =
+        (kind) =>
+        (...args) => {
+          ops.push([kind, args]);
+        };
+      const b = { texts: {}, tokens: {} };
+      for (const kind of BATCHED) {
+        const [group, method] = kind.split('.');
+        b[group][method] = queue(kind);
+      }
+      await fn(b);
+      return request({ kind: 'batch', ops: ops.map(([kind, args]) => ({ kind, args })) }, ops);
+    };
     for (const kind of BATCHED) {
       const [group, method] = kind.split('.');
-      b[group][method] = queue(kind);
+      client[group][method] = async (...args) => request({ kind, args }, [[kind, args]])[0].body;
     }
-    await fn(b);
-    return request({ kind: 'batch', ops: ops.map(([kind, args]) => ({ kind, args })) }, ops);
+
+    return client;
   };
-  for (const kind of [...BATCHED, 'tokens.patchMetadata']) {
-    const [group, method] = kind.split('.');
-    client[group][method] = async (...args) => request({ kind, args }, [[kind, args]])[0].body;
-  }
+  const client = connect();
 
   // A write as another user, straight to the store: the version moves on, and
   // the audit log names the rows it wrote.
@@ -358,7 +406,9 @@ export function segmentServer(raw) {
 
   return {
     client,
-    sent,
+    sent: sentHere,
+    // Another user's page on the same document: its own client.
+    connect: (user = 'b') => connect(user),
     get stored() {
       return stored;
     },
@@ -373,7 +423,7 @@ export function segmentServer(raw) {
     },
     segments: () => layerOf(stored, 'alignL').tokens,
     // The requests sent that wrote something, by their answer.
-    answers: () => sent.map((r) => r.answer),
+    answers: () => sentHere.map((r) => r.answer),
     // Refuse the next write with `status` (a document version that moved,
     // with the body unchanged).
     refuseNext: (status = 409, error = VERSION_MISMATCH) =>
@@ -388,9 +438,30 @@ export function segmentServer(raw) {
     replayNext: (between = null) => {
       replays.push(between);
     },
+    // Store the next write and answer it as the client's own resend of it is
+    // refused: with `status`, which does not say the first send landed.
+    storeThenRefuse: (status = 500) => {
+      refusedAfter.push(status);
+    },
     // Another user's edit of the segment `id`'s text, as the Media tab makes
-    // it: the text replaced and the segment made again over the same time.
+    // it: the text typed over, and the segment, which keeps its id, set over
+    // the new text.
     otherEdits(id, value, user = 'b') {
+      return other(user, (on) => {
+        const segment = layerOf(stored, 'alignL').tokens.find((t) => t.id === id);
+        on['texts.edit'](textOf(stored).id, [
+          { type: 'replace', index: segment.begin, length: segment.end - segment.begin, value },
+        ]);
+        on['tokens.update'](id, segment.begin, segment.begin + [...value].length);
+        return {
+          value: id,
+          ops: [{ description: 'Edit body of text' }, { description: `Update token ${id}` }],
+        };
+      });
+    },
+    // Another user's segment `id` deleted with its text and made again over
+    // the same time with `value`: another segment, whose id is new.
+    otherRemakes(id, value, user = 'b') {
       return other(user, (on) => {
         const segment = layerOf(stored, 'alignL').tokens.find((t) => t.id === id);
         on['texts.update'](textOf(stored).id, [

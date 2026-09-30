@@ -41,7 +41,7 @@ const NO_DIGEST = 'The saved text could not be read. Reload the page and save ag
 // mutable copy), brought up to date from a text edit's `reshape` as the
 // document's own are (applyReshape): deleted links dropped, and a link whose
 // tokens changed given its new ones.
-function reshapeVocabLinks(vocabs, reshape) {
+export function reshapeVocabLinks(vocabs, reshape) {
   const gone = new Set(reshape?.deleted?.vocabLinks ?? []);
   const moved = new Map((reshape?.vocabLinks ?? []).map((link) => [link.id, link.tokens]));
   if (!gone.size && !moved.size) return;

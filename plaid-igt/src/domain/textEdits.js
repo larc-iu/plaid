@@ -144,6 +144,62 @@ export function applyTextEditsLocally(raw, textId, ops, vocabs = null) {
   return deletedIds;
 }
 
+// Where a token's begin (`edge` 'begin') or end ('end') at `p` goes when
+// `gaps` are made: moved by the change before it, and a place inside a
+// stretch typed over or deleted put at that stretch's start (a begin) or at
+// the end of what was typed there (an end). A begin where text is inserted
+// moves past it, an end there stays.
+function mapEdge(p, gaps, edge) {
+  let shift = 0;
+  for (const { start, end, value } of gaps) {
+    const delta = cpLength(value) - (end - start);
+    if (start === end) {
+      if (p > start || (edge === 'begin' && p === start)) shift += delta;
+      continue;
+    }
+    if (p >= end) shift += delta;
+    else if (p > start) return edge === 'begin' ? start + shift : start + shift + cpLength(value);
+  }
+  return p + shift;
+}
+
+/**
+ * Show `gaps` (plaid-client `composeTextEdits`: `{ start, end, value }` in
+ * code points of the body, in order, apart) on the raw document in place,
+ * until the server's answer to the edit says what it did: the body changed,
+ * each token moved or resized by the change beside or inside it, and no token
+ * deleted, since which ones the server deletes is its own rules' to say
+ * (plaid-core `plan-edits`). A partitioning layer is stretched back into a
+ * cover of the body. Returns the ids of the tokens whose extent changed.
+ */
+export function applyGapsLocally(raw, textId, gaps) {
+  const changed = new Set();
+  const textLayer = (raw?.textLayers || []).find((tl) => tl.text?.id === textId);
+  if (!textLayer?.text || gaps.length === 0) return changed;
+  let body = textLayer.text.body ?? '';
+  for (const { start, end, value } of [...gaps].reverse()) {
+    body = cpSlice(body, 0, start) + value + cpSlice(body, end);
+  }
+  textLayer.text.body = body;
+  if ('digest' in textLayer.text) textLayer.text.digest = null;
+  const newLength = cpLength(body);
+  for (const layer of textLayer.tokenLayers || []) {
+    let tokens = (layer.tokens || []).map((t) => {
+      const begin = mapEdge(t.begin, gaps, 'begin');
+      const end = Math.max(begin, mapEdge(t.end, gaps, 'end'));
+      return begin === t.begin && end === t.end ? t : { ...t, begin, end };
+    });
+    if (layer.overlapMode === 'partitioning') tokens = compensatePartition(tokens, newLength);
+    const before = new Map((layer.tokens || []).map((t) => [t.id, t]));
+    for (const t of tokens) {
+      const was = before.get(t.id);
+      if (was && (was.begin !== t.begin || was.end !== t.end)) changed.add(t.id);
+    }
+    layer.tokens = tokens;
+  }
+  return changed;
+}
+
 /**
  * Take the tokens in `deletedIds` out of every span and vocab link, as the
  * server does when a token goes: a span or link over other tokens as well

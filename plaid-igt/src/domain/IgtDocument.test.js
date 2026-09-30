@@ -1701,7 +1701,7 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     expect(s).toMatchObject({ begin: 0, end: 5 });
   });
 
-  it('editAlignment replaces the text in place, dropping the words inside it and shifting the rest', async () => {
+  it('editAlignment shows the text in place at once, the segment keeping its id and the words resized or shifted', async () => {
     const raw = digested(
       buildRawDoc({
         body: 'the cat sat',
@@ -1716,18 +1716,27 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
       }),
     );
     const doc = makeDoc({ raw });
-    const ok = await doc.editAlignment('a-1', { text: 'dogs', timeBegin: 1, timeEnd: 2 });
-    expect(ok).toBe(true);
-    expect(kinds(doc.client)).not.toContain('documents.get');
+    const saved = doc.editAlignment('a-1', { text: 'dogs', timeBegin: 1, timeEnd: 2 });
+    // Shown before the server answers, with nothing deleted: which tokens go
+    // is the answer's to say.
     expect(doc.body).toBe('the dogs sat');
-    expect(doc.alignmentTokens).toHaveLength(1);
-    expect(doc.alignmentTokens[0].id).not.toBe('a-1'); // the token is recreated
-    expect(doc.alignmentTokens[0]).toMatchObject({ begin: 4, end: 8 });
+    expect(doc.alignmentTokens.map((t) => [t.id, t.begin, t.end])).toEqual([['a-1', 4, 8]]);
     expect(doc.layerInfo.primaryTokenLayer.tokens.map((t) => [t.id, t.begin, t.end])).toEqual([
       ['w-1', 0, 3],
+      ['w-2', 4, 8],
       ['w-3', 9, 12],
     ]);
     expect(doc.layerInfo.sentenceTokenLayer.tokens[0]).toMatchObject({ begin: 0, end: 12 });
+    expect(await saved).toBe(true);
+    const edit = doc.client.calls.find((c) => c.kind === 'texts.edit');
+    expect(edit.args[1]).toEqual([{ type: 'replace', index: 4, length: 3, value: 'dogs' }]);
+    expect(edit.args[3]).toMatchObject({ base: 'd:the cat sat' });
+    expect(doc.client.calls.find((c) => c.kind === 'tokens.update').args.slice(0, 3)).toEqual([
+      'a-1',
+      4,
+      8,
+    ]);
+    expect(kinds(doc.client)).not.toContain('tokens.create');
   });
 
   it('deleteAlignment in the middle keeps one separator and shifts what follows, in place', async () => {

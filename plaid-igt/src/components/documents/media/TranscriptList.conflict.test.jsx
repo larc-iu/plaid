@@ -164,7 +164,7 @@ describe('a transcript row whose edit lost to another change of its segment', ()
     await drain();
     expect(writes(server)).toBe(before + 1);
     const [text] = server.sent.at(-1).ops;
-    expect(text.kind).toBe('texts.update');
+    expect(text.kind).toBe('texts.edit');
     expect(text.args[3].base).toBe(stored);
     expect(stored).toBe(digestOf('one deux three'));
     expect(server.body).toBe('one dos three');
@@ -379,7 +379,7 @@ describe('a refused row edit whose segment is gone (B1, F5)', () => {
   it('made again elsewhere: no note on any row, a lasting line with the text, and Enter sends nothing', async () => {
     const server = segmentServer(RAW());
     const { r, drain } = await mount(server);
-    server.otherEdits('a-2', 'deux');
+    server.otherRemakes('a-2', 'deux');
     await typeAndEnter(r, 2, 'dos');
     await drain();
 
@@ -403,7 +403,7 @@ describe('a refused row edit whose segment is gone (B1, F5)', () => {
   it('the line goes when dismissed', async () => {
     const server = segmentServer(RAW());
     const { r, drain } = await mount(server);
-    server.otherEdits('a-2', 'deux');
+    server.otherRemakes('a-2', 'deux');
     await typeAndEnter(r, 2, 'dos');
     await drain();
     const dismiss = r.container.querySelector('ul[aria-label="Not saved"] button');
@@ -416,7 +416,7 @@ describe('a refused row edit whose segment is gone (B1, F5)', () => {
   it('the line outlasts the list: shown again when the view comes back, and a reload asks while it is there (B1-list)', async () => {
     const server = segmentServer(RAW());
     const { doc, r, drain } = await mount(server);
-    server.otherEdits('a-2', 'deux');
+    server.otherRemakes('a-2', 'deux');
     await typeAndEnter(r, 2, 'dos');
     await drain();
     await r.unmount();
@@ -510,6 +510,70 @@ describe('a refused row edit whose segment is gone (B1, F5)', () => {
       expect(writes(server)).toBe(before);
     }
     expect(server.body).toBe('one two three later');
+    await r.unmount();
+  });
+});
+
+describe('two pages edit the same row (Q1 on a row)', () => {
+  it('the later edit shows the stored text with its own under it, the same segment keeps both rows, and Enter stores it', async () => {
+    const server = segmentServer(RAW());
+    const { r, drain } = await mount(server);
+    // Another user's page edits row 2 from its own transcript.
+    const theirs = new IgtDocument({
+      raw: structuredClone(server.stored),
+      project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
+      vocabularies: {},
+      client: server.connect('b'),
+      projectId: 'proj-1',
+      user: { id: 'b' },
+    });
+    expect(await theirs.editAlignment('a-2', { text: 'deux', timeBegin: 1, timeEnd: 2 })).toBe(
+      true,
+    );
+    while (theirs.isSaving) await settle();
+
+    await typeAndEnter(r, 2, 'dos');
+    await drain();
+    expect(row(r.container, 2).value).toBe('deux');
+    expect(noteOf(r.container, 2)).toBe('Yours: dos · Enter to keep yours');
+    expect(toasts.warn).toEqual(['b changed this to deux.']);
+    expect(unsavedOf(r.container)).toEqual([]);
+    expect(server.segments().map((t) => t.id)).toEqual(['a-1', 'a-2', 'a-3']);
+
+    await r.step(() => row(r.container, 2).focus());
+    await r.step(async () => {
+      press(row(r.container, 2), 'Enter');
+      await settle();
+    });
+    await drain();
+    expect(server.body).toBe('one dos three');
+    expect(server.segments().map((t) => t.id)).toEqual(['a-1', 'a-2', 'a-3']);
+    expect(noteOf(r.container, 2)).toBe(null);
+    await r.unmount();
+  });
+
+  it('a letter typed at the end of a row keeps the word’s morpheme and gloss (M1)', async () => {
+    // One morpheme per word (buildRawDoc's default), a gloss on the second.
+    const raw = buildRawDoc({
+      body: 'one two three',
+      words: [
+        { id: 'w-1', begin: 0, end: 3 },
+        { id: 'w-2', begin: 4, end: 7 },
+        { id: 'w-3', begin: 8, end: 13 },
+      ],
+      alignmentTokens: [seg('a-1', 0, 3, 0, 1), seg('a-2', 4, 7, 1, 2), seg('a-3', 8, 13, 2, 3)],
+    });
+    const morphL = raw.textLayers[0].tokenLayers.find((l) => l.id === 'morphL');
+    morphL.spanLayers[0].spans = [{ id: 'g-2', tokens: ['m-2'], value: 'TWO' }];
+    const server = segmentServer(raw);
+    const { r, drain } = await mount(server);
+    await typeAndEnter(r, 2, 'two!');
+    await drain();
+    const stored = server.stored.textLayers[0].tokenLayers.find((l) => l.id === 'morphL');
+    expect(server.body).toBe('one two! three');
+    expect(stored.tokens.map((t) => t.id)).toEqual(['m-1', 'm-2', 'm-3']);
+    expect(stored.spanLayers[0].spans).toEqual([{ id: 'g-2', tokens: ['m-2'], value: 'TWO' }]);
+    expect(row(r.container, 2).value).toBe('two!');
     await r.unmount();
   });
 });

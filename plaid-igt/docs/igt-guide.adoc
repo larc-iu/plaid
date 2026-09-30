@@ -189,9 +189,13 @@ Every segment is a row you can edit:
 * **Shift+←** and **Shift+→** move playback one second, in a row or out of one.
 * **Space** plays and pauses the whole recording when you are not typing in a box.
 
+A change to a row's text is saved where you typed it, as in the Baseline tab.
+The segment keeps its times and speaker, and the words in it keep their analysis as they do there.
+
 When someone else changed a segment's text while you were editing it, the row shows their text with yours under it: **Yours: X · Enter to keep yours**.
 **Enter** saves yours over theirs, **Esc** or typing lets yours go, and leaving the row then saves nothing.
-When the segment is gone, a message says `Not saved:` and your text.
+When someone else deleted the segment, your text is listed above the rows as `Not saved`, with the segment's times, until you dismiss it.
+Reloading or closing the page asks first while anything is listed.
 
 A segment's start and end times are boxes of digits in its row.
 Type into the box under the caret, or step it with **↑** and **↓**: milliseconds by 10, or by 100 with Shift.
