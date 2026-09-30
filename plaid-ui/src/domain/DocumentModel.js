@@ -129,6 +129,12 @@ export class DocumentModel {
     // The pending ids of rows made by edits that were refused: the server
     // never made them, and an edit that names one is refused unsent.
     this._refusedIds = new Set();
+    // Edits whose sends were given up with their outcome still unknown (the
+    // queue's resend window ran out on a proxy's 502 or 504), each as
+    // `{ run, created }`: `run` sends it again under the same keys and ids.
+    // The next edit sends them first, so a late landing is answered from its
+    // key and never made twice.
+    this._givenUp = [];
     // The screen's error channel, `(message, err, label)`: the label is what
     // was being done and `err` the client's error, for the screen to word.
     // Null until the screen wires it. The domain layer shows nothing itself.
@@ -587,9 +593,16 @@ export class DocumentModel {
         ref,
         id: unsent.groupId,
         keys: unsent.keys,
+        // A create refused 409 id-taken for a row this edit made was made by
+        // an earlier send of it, and answers as made (the client).
+        minted: this._summary(unsent)?.created,
       });
     return this._writes.push(
       async () => {
+        // Edits given up earlier go first, under their own keys: one that
+        // landed late is answered from what it stored, and the edits planned
+        // without it that it touches are refused like a conflict.
+        if (this._givenUp.length) await this._resendGivenUp();
         this._unsent = this._unsent.filter((u) => u !== unsent);
         // Planned on a document that turned out to have changed elsewhere
         // (`_reloadAfterFailure`): refused like the edit that found it out,
@@ -622,18 +635,19 @@ export class DocumentModel {
           conflict = isChangedElsewhere(err);
           if (cell) cell.error = err;
           const created = this._summary(unsent)?.created ?? new Set();
-          // Refused because a row it makes is there already under the id this
-          // page minted: an earlier send of it landed and its answer was
-          // lost. That row is made, and nothing is reported. The read that
-          // follows shows what the rest of the edit did.
-          const made = isIdTaken(err) ? err.responseData?.id : null;
-          if (made && created.has(made)) {
-            recordSettled([[made, made]]);
+          // Given up with its outcome unknown: it may still land. Its ids are
+          // not refused, and the next edit sends it again under its keys.
+          if (isUnknownOutcome(err)) {
+            this._givenUp.push({ run, created });
+          } else {
+            // Refused because a row it makes is there already under the id
+            // this page minted, inside a batch the refusal took back whole:
+            // that row is made, and the rest of the edit is not.
+            const made = isIdTaken(err) ? err.responseData?.id : null;
+            if (made && created.has(made)) recordSettled([[made, made]]);
+            // The rows it made are not on the server otherwise.
             for (const id of created) if (id !== made) this._refusedIds.add(id);
-            return;
           }
-          // The rows it made are not on the server, whatever the refusal.
-          for (const id of created) this._refusedIds.add(id);
           this._writeFailed(label, err, conflictHandled && statusOf(err) === 409);
         },
         resync: () => (unsent.stale ? undefined : this._reloadAfterFailure(conflict)),
@@ -929,7 +943,6 @@ export class DocumentModel {
   async _reloadAfterFailure(conflict = false) {
     if (!this._client || !this.id) return;
     const updated = await this._fetch();
-    this._settleFound(updated);
     await this._adoptReload(updated);
     if (conflict && this._client.strictModeDocumentId === this.id) {
       // Only those that what changed elsewhere touches (rebase.js). The rest
@@ -959,20 +972,52 @@ export class DocumentModel {
     this._swapRaw(updated);
   }
 
-  _fetch() {
-    return this._client.documents.get(this.id, true, this._asOf || undefined);
+  // Every read of the document goes through here, and settles the rows it
+  // holds that an edit made and was refused or given up for.
+  async _fetch() {
+    const raw = await this._client.documents.get(this.id, true, this._asOf || undefined);
+    this._settleFound(raw);
+    return raw;
   }
 
   // A row an edit made under the id this page minted, and that the edit was
-  // then refused for, is on the server after all when a read holds it (the
-  // create landed with its answer lost). It is made, not refused: an edit
-  // that names it is sent.
+  // then refused or given up for, is on the server after all when a read
+  // holds it (the create landed late, or with its answer lost). It is made,
+  // not refused: an edit that names it is sent.
   _settleFound(raw) {
-    if (this._refusedIds.size === 0) return;
+    const watched = [...this._refusedIds];
+    for (const g of this._givenUp) watched.push(...g.created);
+    if (watched.length === 0) return;
     const text = JSON.stringify(raw);
-    const found = [...this._refusedIds].filter((id) => text.includes(id));
+    const found = watched.filter((id) => text.includes(id));
     for (const id of found) this._refusedIds.delete(id);
     recordSettled(found.map((id) => [id, id]));
+  }
+
+  // Send the edits given up earlier again, each under its own keys, from
+  // inside the queue. One that lands is off the list, and when any did, the
+  // document is read and the edits waiting behind it that what landed
+  // touches are refused like a conflict (rebase.js), since they were planned
+  // without it. One refused for good gives its rows up. One whose outcome is
+  // still unknown stays for the next edit.
+  async _resendGivenUp() {
+    let landed = false;
+    for (const g of [...this._givenUp]) {
+      try {
+        await g.run();
+        landed = true;
+        this._givenUp = this._givenUp.filter((x) => x !== g);
+      } catch (err) {
+        if (isUnknownOutcome(err)) continue;
+        this._givenUp = this._givenUp.filter((x) => x !== g);
+        for (const id of g.created) this._refusedIds.add(id);
+      }
+    }
+    if (!landed) return;
+    const updated = await this._fetch();
+    await this._adoptReload(updated);
+    this._keepUntouched(updated);
+    this._showUnsent(updated, { recheck: true });
   }
 
   _swapRaw(updated) {

@@ -6,19 +6,24 @@ import { getUmrLayerInfo } from '../../utils/umrLayerUtils.js';
 // What an import is in the audit log, for a reader counting operations by kind.
 const IMPORT_KIND = { kind: 'import', ref: 'format:umr' };
 
+// Per file, the id its new document is created under, kept while the page is
+// open across every import of that file (the same name, size and time), so an
+// import made again after a create whose answer was lost names the same id and
+// cannot make a second document (createOnce.js). Dropped once the file is
+// imported.
+const mints = new Map();
+const mintKey = (projectId, name, file) =>
+  [projectId, name, file?.size ?? '', file?.lastModified ?? ''].join('\n');
+const mintOf = (key) => {
+  if (!mints.has(key)) mints.set(key, { current: null });
+  return mints.get(key);
+};
+
 export const prepareImport = async ({ client, project, projectId }) => {
   // Layer config is the same for every document, so it is read once here and
   // passed in: otherwise the importer re-reads the project per document.
   const layerInfo = getUmrLayerInfo(project);
   let existingDocs = [];
-  // Per file of this import, the id its new document is created under, kept
-  // across the attempts at that file so a second cannot make a second
-  // document (createOnce.js).
-  const mints = new Map();
-  const mintOf = (name) => {
-    if (!mints.has(name)) mints.set(name, { current: null });
-    return mints.get(name);
-  };
   try {
     existingDocs = await client.projects.listDocuments(projectId);
   } catch (err) {
@@ -26,7 +31,8 @@ export const prepareImport = async ({ client, project, projectId }) => {
   }
 
   // One file is one document. A throw is the file's rejected row.
-  return async ({ text, index, name, push }) => {
+  return async ({ file, text, index, name, push }) => {
+    const key = mintKey(projectId, name, file);
     if (!text.trim()) {
       push({ key: `${index}-empty`, name, status: 'rejected', reason: 'File is empty' });
       return;
@@ -55,7 +61,7 @@ export const prepareImport = async ({ client, project, projectId }) => {
       result = await client.withOperation(
         `Import UMR document "${name}"`,
         () =>
-          importUmrDocument(client, projectId, name, text, layerInfo, { into, mint: mintOf(name) }),
+          importUmrDocument(client, projectId, name, text, layerInfo, { into, mint: mintOf(key) }),
         IMPORT_KIND,
       );
       if (target.note) result = asNew(target.note)(result);
@@ -66,11 +72,12 @@ export const prepareImport = async ({ client, project, projectId }) => {
       result = asNew(err.message)(
         await client.withOperation(
           `Import UMR document "${name}"`,
-          () => importUmrDocument(client, projectId, name, text, layerInfo, { mint: mintOf(name) }),
+          () => importUmrDocument(client, projectId, name, text, layerInfo, { mint: mintOf(key) }),
           IMPORT_KIND,
         ),
       );
     }
+    mints.delete(key);
     const { warnings, attached } = result;
     push({
       key: `${index}`,

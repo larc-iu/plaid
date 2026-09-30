@@ -172,6 +172,24 @@ describe('a send that never gets an answer while the browser is online', () => {
     expect(q.isOffline).toBe(false);
   });
 
+  // REV2 G6: a connection refused or reset never reached the server, which
+  // may be restarting: it is sent again for as long as it takes.
+  it('keeps resending a send that got no answer at all, past the window', async () => {
+    vi.useFakeTimers();
+    const q = new WriteQueue({ retryDelay: () => 15000, resendForMs: 120000 });
+    let attempts = 0;
+    const sent = q.push(
+      async () => {
+        attempts += 1;
+        if (attempts < 30) throw Object.assign(new Error('fetch failed'), { status: 0 });
+      },
+      { resendWhenBack: () => true },
+    );
+    await vi.advanceTimersByTimeAsync(600000);
+    expect(await sent).toBe(true);
+    expect(attempts).toBe(30);
+  });
+
   it('keeps waiting while the browser says it is offline', async () => {
     vi.useFakeTimers();
     const q = new WriteQueue({ retryDelay: () => 15000, resendForMs: 120000 });

@@ -12,7 +12,7 @@
 // document read. Nothing in here goes through `client.withOperation`.
 
 import { clipText } from '../lib/text.js';
-import { isIdTaken, isUnknownOutcome } from '../lib/errors.js';
+import { isIdTaken, isUnknownOutcome, isUnreachable } from '../lib/errors.js';
 import { isPendingId, newId, recordSettled } from './pendingIds.js';
 
 // Comments sort oldest-first by (createdAt, id), matching the server's keyset
@@ -374,6 +374,19 @@ export class CommentStore {
       );
       return this._posted(said, id, created);
     } catch (err) {
+      // No answer came even after the client's own resends. The comment stays
+      // on screen as sending, and the thread is read once the server can be
+      // reached again (the `online` event, or a read that succeeds): kept when
+      // the server has it, taken off otherwise.
+      if (isUnknownOutcome(err)) {
+        this._unconfirmed.set(said, id);
+        const landed = await this._whenReachable(entityType, entityId, id);
+        if (landed) return this._posted(said, id, landed);
+        this._forget(id);
+        this._fail('Failed to post comment', err);
+        this._emit();
+        return null;
+      }
       this._forget(id);
       // The same words posted before under this id, whose answer was lost:
       // that post landed, and it is the comment.
@@ -384,23 +397,34 @@ export class CommentStore {
           console.error('Could not read a comment that was posted already:', readErr);
         }
       }
-      // No answer came even after the client's own resends. The thread is
-      // read once: the comment is kept when the server has it. Otherwise
-      // posting the same words again names the same id, so it cannot store
-      // them twice.
-      if (isUnknownOutcome(err)) {
-        try {
-          const thread = await this._readThread(entityType, entityId);
-          const landed = thread.find((c) => c.id === id);
-          if (landed) return this._posted(said, id, landed);
-        } catch (readErr) {
-          console.error('Could not read the thread again after a lost answer:', readErr);
-        }
-        this._unconfirmed.set(said, id);
-      }
       this._fail('Failed to post comment', err);
       this._emit();
       return null;
+    }
+  }
+
+  // The comment `id` from the thread on `entityId`, read once the server can
+  // be reached, or null when the thread holds none (or no screen shows this
+  // store any more). Waits for the `online` event or a back-off, whichever
+  // comes first, and reads again while the read itself gets no answer.
+  async _whenReachable(entityType, entityId, id) {
+    for (let attempt = 0; ; attempt += 1) {
+      await new Promise((resolve) => {
+        const done = () => {
+          clearTimeout(timer);
+          globalThis.removeEventListener?.('online', done);
+          resolve();
+        };
+        const timer = setTimeout(done, Math.min(2000 * 2 ** attempt, 30000));
+        globalThis.addEventListener?.('online', done);
+      });
+      if (this._listeners.size === 0) return null;
+      try {
+        const thread = await this._readThread(entityType, entityId);
+        return thread.find((c) => c.id === id) ?? null;
+      } catch (readErr) {
+        if (!isUnknownOutcome(readErr) && !isUnreachable(readErr)) return null;
+      }
     }
   }
 
@@ -430,7 +454,12 @@ export class CommentStore {
   // Put `thread`, just read, in place of what this store holds for `entityId`.
   _replaceThread(entityId, thread) {
     for (const c of this.threadFor(entityId).slice()) if (!isPending(c)) this._forget(c.id);
-    for (const c of [...thread].sort(byCreated)) this._insert(c);
+    // A pending post the server already has comes back under the same id:
+    // the server's row takes its place, never a second copy beside it.
+    for (const c of [...thread].sort(byCreated)) {
+      if (this._byId.has(c.id)) this._forget(c.id);
+      this._insert(c);
+    }
     this._emit();
     this._authorsPromise = this._resolveAuthors();
   }

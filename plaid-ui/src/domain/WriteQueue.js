@@ -50,10 +50,11 @@
 // on. A caller asks for it when its sends are keyed (an Idempotency-Key per
 // request, the same on every attempt): the requests of an attempt that
 // landed are answered from what they stored and write nothing twice. While
-// the browser says it is offline the wait has no end, but a send the server
-// side keeps failing to answer (a proxy's 502 or 504, a request slower than
-// the client waits) is given up after `resendForMs` (two minutes) and refused
-// like any other, so one bad send cannot hold every edit behind it. Once
+// the network or the server is away the wait has no end, but a send a proxy
+// keeps answering 502 or 504 is given up after `resendForMs` (two minutes)
+// and refused like any other, so one bad send cannot hold every edit behind
+// it. The caller keeps it (DocumentModel `_givenUp`) and sends it again under
+// the same keys before its next edit. Once
 // the queue is let go, the wait ends at once: the send is tried one more
 // time, and refused if it fails again, so nothing waits on a network no
 // screen is watching for.
@@ -74,8 +75,8 @@ const FINAL_STATUSES = new Set([401, 403, 404]);
 // How long to wait before retrying a refetch: 1 s, 2 s, 4 s, then every 15 s.
 const backoff = (attempt) => Math.min(1000 * 2 ** attempt, 15000);
 
-// How long a send that gets no answer while the browser is online is sent
-// again before it is refused.
+// How long a send a proxy keeps answering 502 or 504 is sent again before it
+// is refused.
 const RESEND_FOR_MS = 120000;
 
 // How many tries a refetch gets when it fails for a reason other than the
@@ -277,7 +278,11 @@ export class WriteQueue {
         if (attempt) this._setOffline(false);
         return;
       } catch (err) {
-        const outOfTime = !err?.offline && Date.now() - started >= this._resendForMs;
+        // Only an answer a proxy gave (502, 504) runs the window out. A
+        // connection refused or reset, or no answer at all, is resent for as
+        // long as it takes: the server may be restarting.
+        const answered = err?.status === 502 || err?.status === 504;
+        const outOfTime = answered && Date.now() - started >= this._resendForMs;
         if (!resendWhenBack?.(err) || (attempt && this._letGo) || outOfTime) {
           if (attempt) this._setOffline(false);
           throw err;

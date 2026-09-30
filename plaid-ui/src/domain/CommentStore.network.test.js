@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { CommentStore } from './CommentStore.js';
+import { CommentStore, isPending } from './CommentStore.js';
+import { newId } from './pendingIds.js';
 
 // A comment post whose answer was lost (V5, H5-1): posted again it was stored
 // twice. A post names the id of the comment it makes, and the client sends a
@@ -101,17 +102,65 @@ describe('a post whose answer was lost', () => {
     });
   }
 
-  // REV-idempotency F5: taken off the screen as failed while the server had it.
-  it('is kept when the thread read after the lost answer holds it', async () => {
+  // REV-idempotency F5, REV2 G5: taken off the screen as failed while the
+  // server had it, and the read after the last resend came inside the same
+  // outage. The comment stays as sending until the thread can be read.
+  it('stays as sending through the outage, and is kept once the thread read holds it', async () => {
+    vi.useFakeTimers();
     const client = fakeClient();
     const { store, errors } = open(client);
+    store.subscribe(() => {});
     await store.load();
     client.state.loseNext = { error: lost(502) };
-    const posted = await store.post('token', 't1', 'Is this a loan word?');
+    const list = client.comments.list;
+    let down = 2;
+    client.comments.list = async (...args) => {
+      if (down > 0) {
+        down -= 1;
+        throw lost(0)();
+      }
+      return list(...args);
+    };
+    const posting = store.post('token', 't1', 'Is this a loan word?');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(store.threadFor('t1').map((c) => [c.body, isPending(c)])).toEqual([
+      ['Is this a loan word?', true],
+    ]);
+    await vi.advanceTimersByTimeAsync(20000);
+    const posted = await posting;
     expect(posted?.body).toBe('Is this a loan word?');
     expect(errors).toEqual([]);
-    expect(store.threadFor('t1').map((c) => c.body)).toEqual(['Is this a loan word?']);
+    expect(store.threadFor('t1').map((c) => [c.body, isPending(c)])).toEqual([
+      ['Is this a loan word?', false],
+    ]);
     expect(client.state.rows).toHaveLength(1);
+  });
+
+  it('is read at once when the browser says it is back online', async () => {
+    vi.useFakeTimers();
+    const client = fakeClient();
+    const { store } = open(client);
+    store.subscribe(() => {});
+    await store.load();
+    client.state.loseNext = { error: lost(0) };
+    const reads = client.comments.list.mock.calls.length;
+    const posting = store.post('token', 't1', 'Back');
+    await vi.advanceTimersByTimeAsync(100);
+    expect(client.comments.list.mock.calls.length).toBe(reads);
+    window.dispatchEvent(new Event('online'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect((await posting)?.body).toBe('Back');
+  });
+
+  // REV2 G8: a live event re-reads the thread while a post is still unknown.
+  it('shows a pending post once when the thread is read meanwhile', async () => {
+    const client = fakeClient();
+    const { store } = open(client);
+    await store.load();
+    client.state.rows.push(row({ id: newId(), body: 'mine' }));
+    store._insert({ ...client.state.rows[0] });
+    store._replaceThread('t1', client.state.rows);
+    expect(store.threadFor('t1').map((c) => c.body)).toEqual(['mine']);
   });
 
   it('posted again after it was not stored, it is stored once', async () => {
