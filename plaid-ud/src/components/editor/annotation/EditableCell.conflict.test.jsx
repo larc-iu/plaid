@@ -203,6 +203,22 @@ describe('an edit refused because someone else changed the cell first', () => {
     });
   }
 
+  it('Enter keeps yours, and a third change before it lands brings the note back', async () => {
+    const run = await lostTo(CASES[0]);
+    let answer;
+    run.onAnnotationUpdate.mockImplementation(() => new Promise((r) => (answer = r)));
+    run.input.focus();
+    await run.view.step(async () => focus(run.input));
+    await run.view.step(async () => press(run.input, 'Enter'));
+    expect(run.onAnnotationUpdate).toHaveBeenLastCalledWith('t1', 'lemma', 'sitC');
+    run.stored.set('t1:lemma', 'sitA');
+    await run.view.rerender(cellWith(run.s, 'lemma', 'sitA'));
+    await run.view.step(async () => answer({ landed: false, status: 409, readBack: true }));
+    expect(run.input.value).toBe('sitA');
+    expect(noteOf(run.view)?.textContent).toBe('Yours: sitC · Enter to keep yours');
+    await run.view.unmount();
+  });
+
   it('Escape lets yours go', async () => {
     const run = await lostTo(CASES[0]);
     run.input.focus();
