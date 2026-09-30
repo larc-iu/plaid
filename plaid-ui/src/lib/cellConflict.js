@@ -22,15 +22,20 @@ export async function whoChanged(client, documentId, entityIds, me) {
   return entry ? entry.user.displayName || entry.user.id : null;
 }
 
+// A value that already ends a sentence ("He is tall.") takes no second period.
+const closed = (value) => (/[.!?…]$/u.test(value) ? value : `${value}.`);
+
 /** "b changed this word to si.": the word under a refused cell edit was
  * split or joined meanwhile, so the value was typed for another word. `unit`
  * is 'morpheme' for a morpheme re-segmented meanwhile. */
 export const recutTo = (who, text, unit = 'word') =>
-  `${who || 'Someone'} changed this ${unit} to ${text}.`;
+  `${who || 'Someone'} changed this ${unit} to ${closed(text)}`;
 
 /** "b changed this to NOUN.", or "b cleared this." */
 export const changedTo = (who, stored) =>
-  stored ? `${who || 'Someone'} changed this to ${stored}.` : `${who || 'Someone'} cleared this.`;
+  stored
+    ? `${who || 'Someone'} changed this to ${closed(stored)}`
+    : `${who || 'Someone'} cleared this.`;
 
 /**
  * The message for a cell edit refused as a conflict that is not the cell's
