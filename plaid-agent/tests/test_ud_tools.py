@@ -627,6 +627,24 @@ def _parsers(*ids):
             for i in ids]
 
 
+def test_a_connected_parser_is_found_by_the_tasks_in_its_extras(ws, monkeypatch):
+    """The server lists a service's tasks inside its `extras`, as the parser
+    registered them, so a connected parser must be found there. Read at the
+    top level, no parser was ever found and every parse was refused."""
+    from plaid_agent.ud.tools import parse_services
+    listed = [
+        {'service_id': 'stanza-parser', 'service_name': 'Stanza parser', 'online': True,
+         'extras': {'schema_version': 1, 'tasks': ['parse']}},
+        {'service_id': 'old-parser', 'service_name': 'Old parser', 'online': False,
+         'extras': {'tasks': ['parse']}},
+        {'service_id': 'ud:assist:m', 'service_name': 'UD Assistant', 'online': True,
+         'extras': {'tasks': ['assist']}},
+        {'service_id': 'bare', 'service_name': 'Bare', 'online': True},
+    ]
+    monkeypatch.setattr('plaid_client.services.discover_services', lambda c, pid: listed)
+    assert [s['service_id'] for s in parse_services(ws)] == ['stanza-parser']
+
+
 def test_run_parse_refuses_when_no_parser_is_connected(ws, monkeypatch):
     monkeypatch.setattr('plaid_agent.ud.tools.parse_services', lambda w: [])
     out = call_tool(ws, 'run_parse', {'documents': ['Viaje']})

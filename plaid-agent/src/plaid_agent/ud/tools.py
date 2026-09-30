@@ -789,7 +789,8 @@ def parse_services(ws: Workspace) -> List[dict]:
         seen = discover_services(ws.client, ws.project.id) or []
     except Exception as e:  # noqa: BLE001 - the model reads the server's reason
         raise server_refused('The project\'s services', e)
-    return [s for s in seen if s.get('online') and 'parse' in (s.get('tasks') or [])]
+    return [s for s in seen
+            if s.get('online') and 'parse' in ((s.get('extras') or {}).get('tasks') or [])]
 
 
 def t_run_parse(ws: Workspace, documents=None, language: str = None,
