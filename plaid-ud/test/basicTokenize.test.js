@@ -61,3 +61,18 @@ test('newlineSentenceRanges counts code points, not UTF-16 units', () => {
     [3, 4],
   ]);
 });
+
+test('a run of CRLF line breaks is one break, and no sentence holds only a line break (CR1)', () => {
+  assert.deepEqual(newlineSentenceRanges('one two\r\n\r\nthree four'), [
+    [0, 11],
+    [11, 21],
+  ]);
+  assert.deepEqual(newlineSentenceRanges('one\r\ntwo'), [
+    [0, 5],
+    [5, 8],
+  ]);
+  assert.deepEqual(newlineSentenceRanges('😀 one\r\n\r\n\r\ntwo'), [
+    [0, 11],
+    [11, 14],
+  ]);
+});

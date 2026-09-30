@@ -15,6 +15,7 @@ import {
   applyTextOps,
   gapsToOps,
   stampInferred,
+  wasReplayed,
   writerPolicy,
 } from '@larc-iu/plaid-client';
 // By its real path rather than through `@ui`: this file is loaded by the
@@ -34,7 +35,7 @@ import { pendingId, settledId } from '../../../plaid-ui/src/domain/pendingIds.js
 import { isUnknownOutcome, statusOf } from '../../../plaid-ui/src/lib/errors.js';
 import { expectStored, isConfigConflict } from '../../../plaid-ui/src/domain/configCells.js';
 import { rebaseEdits } from '../../../plaid-ui/src/lib/textMerge.js';
-import { editLogGaps } from '../../../plaid-ui/src/lib/editLog.js';
+import { editLogGaps, storedHolds } from '../../../plaid-ui/src/lib/editLog.js';
 import { applyReshape } from '../../../plaid-ui/src/domain/textReshape.js';
 import { ensureLayerConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
 import { rulesNotInForce, wantedConstraints } from '../utils/udConstraints.js';
@@ -317,22 +318,28 @@ export class ConlluDocument extends DocumentModel {
           { keys: plan.keys },
         );
       } catch (err) {
-        if (isKeyReused(err)) {
-          // A request under this plan's key has landed, as some other
-          // request than this one. The stored text is what the save did
-          // when it holds the change, and the save is refused otherwise.
+        const textChanged = statusOf(err) === 409 && err?.responseData?.['text-changed'];
+        // A request under this plan's key has landed, as some other request
+        // than this one, or this is a send again of a plan whose answer was
+        // lost, refused now: the first send may have landed whatever this
+        // answer says. It has when the stored text holds its change,
+        // someone else's saved since or not.
+        const reused = isKeyReused(err);
+        if (reused || (plan.lost && !isUnknownOutcome(err))) {
           await this._reloadInSend();
           const now = this._storedText(text.id);
-          if (now.body !== gapsBody(plan.base, plan.gaps)) {
-            throw new Error(TEXT_CONFLICT, { cause: err });
+          if (storedHolds(plan.base, plan.gaps, now.body)) {
+            onStored?.(now.body, now.digest);
+            return;
           }
-          onStored?.(now.body, now.digest);
-          return;
+          if (reused) throw new Error(TEXT_CONFLICT, { cause: err });
+          if (!textChanged || attempt >= 2) throw err;
+          plan.ready = false;
+          continue;
         }
         // A lost answer goes to the queue, which runs this again with the
         // plan as it is.
         if (isUnknownOutcome(err)) plan.lost = true;
-        const textChanged = statusOf(err) === 409 && err?.responseData?.['text-changed'];
         if (!textChanged || attempt >= 2) throw err;
         await this._reloadInSend();
         plan.ready = false;
@@ -342,10 +349,11 @@ export class ConlluDocument extends DocumentModel {
         this._applyRawPatch((raw) => {
           Object.assign(raw, applyReshape(raw, text.id, answer));
         });
-        // Maybe answered from its key, with the body its first send stored.
-        // The save has landed either way, so a read that fails leaves the
-        // answer on screen.
-        if (plan.lost) {
+        // Maybe answered from its key, with the body its first send stored:
+        // sent again here, or by the client inside its own resend. The save
+        // has landed either way, so a read that fails leaves the answer on
+        // screen.
+        if (plan.lost || wasReplayed(answer)) {
           try {
             const stored = await this._client.texts.get(text.id);
             if (stored?.digest !== answer.digest) await this._reloadInSend();

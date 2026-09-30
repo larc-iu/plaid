@@ -535,3 +535,81 @@ test('a whole new body (for scripts) is sent as the stored body typed over', asy
   ]);
   assert.equal(doc.body, 'the big cat ran');
 });
+
+// REV3-edit-ops G1-gap: the save landed with its answer lost, and its resend
+// is refused without reaching the server (a 403 or a 500), or refused as a
+// key used for another request after someone else saved. The stored text
+// holds the save's change, so the save has landed.
+for (const status of [403, 500]) {
+  test(`a landed save whose resend is refused ${status} is saved when the stored text holds it`, async () => {
+    const { doc, base, server } = setup({
+      onEdit: (_c, n) => (n === 1 ? lostAnswer() : null),
+    });
+    const edit = doc._client.texts.edit;
+    let calls = 0;
+    doc._client.texts.edit = async (...args) => {
+      calls += 1;
+      if (calls === 2)
+        throw Object.assign(new Error(`HTTP ${status}`), { status, method: 'PATCH' });
+      return edit(...args);
+    };
+    let stored = null;
+    const ok = await doc.saveText(edited(base, `${base} home`), { onStored: (b) => (stored = b) });
+    assert.equal(ok, true);
+    assert.equal(server.body, `${base} home`);
+    assert.equal(stored, `${base} home`);
+    assert.equal(doc.body, `${base} home`);
+    assert.ok(!doc.error);
+  });
+}
+
+test('a save whose resend is refused 500 and which did not land is refused', async () => {
+  const { doc, base, server } = setup();
+  let calls = 0;
+  doc._client.texts.edit = async () => {
+    calls += 1;
+    if (calls === 1) throw lostAnswer();
+    throw Object.assign(new Error('HTTP 500'), { status: 500, method: 'PATCH' });
+  };
+  const ok = await doc.saveText(edited(base, `${base} home`));
+  assert.equal(ok, false);
+  assert.equal(server.body, base);
+});
+
+test('a key refused as used for another request after someone else saved: stored holds the change, so saved', async () => {
+  const { doc, base, sent, server } = setup();
+  // Ours landed, then someone else's save at the start.
+  server.body = `a big dog ran home`;
+  doc._client.texts.edit = async (id, ops, _m, { base: digest } = {}) => {
+    sent.push({ id, ops, digest });
+    throw Object.assign(new Error('HTTP 422 key reused'), {
+      status: 422,
+      method: 'PATCH',
+      responseData: { error: 'idempotency-key-reused' },
+    });
+  };
+  let stored = null;
+  const ok = await doc.saveText(edited(base, `${base} home`), { onStored: (b) => (stored = b) });
+  assert.equal(ok, true);
+  assert.equal(stored, 'a big dog ran home');
+  assert.equal(doc.body, 'a big dog ran home');
+  assert.ok(!doc.error);
+});
+
+// REV3-edit-ops U1-client: a replay inside the client's own resend carries
+// the body its first send stored, and someone else saved since.
+test('an answer the client replayed is followed by a read of the text stored', async () => {
+  const { doc, base, server } = setup();
+  const edit = doc._client.texts.edit;
+  doc._client.texts.edit = async (...args) => {
+    const out = await edit(...args);
+    server.body = `a big dog ran home`;
+    return Object.defineProperty({ ...out }, 'replayed', { value: true, enumerable: false });
+  };
+  let stored = null;
+  const ok = await doc.saveText(edited(base, `${base} home`), { onStored: (b) => (stored = b) });
+  assert.equal(ok, true);
+  assert.equal(server.textReads, 1);
+  assert.equal(doc.body, 'a big dog ran home');
+  assert.equal(stored, 'a big dog ran home');
+});

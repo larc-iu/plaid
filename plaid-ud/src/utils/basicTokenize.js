@@ -39,8 +39,9 @@ export function basicTokenize(text, locale = 'und') {
 /**
  * The document's sentences, as a gap-free partition of [0, len) in code points.
  *
- * A run of newlines ends a sentence and is kept with the sentence it follows,
- * so the ranges tile the whole text (the sentence layer is partitioning, and a
+ * A run of line breaks (`\n` or `\r\n`) ends a sentence and is kept with the
+ * sentence it follows, so the ranges tile the whole text (the sentence layer is
+ * partitioning, and a
  * gap in it is not a thing the server will accept). A text with no newline in
  * it is one sentence, and so is an empty one.
  *
@@ -54,7 +55,7 @@ export function newlineSentenceRanges(text) {
   const len = cpLength(text);
   const ranges = [];
   let start = 0;
-  const newlineRun = /\n+/g;
+  const newlineRun = /(\r?\n)+/g;
   let m;
   while ((m = newlineRun.exec(text)) !== null) {
     const endCp = utf16ToCp(text, m.index + m[0].length);
