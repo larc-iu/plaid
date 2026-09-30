@@ -20,6 +20,13 @@ function makeDoc({ raw, project, vocabularies, client } = {}) {
 // Pull the call kinds in order (to assert batch ordering).
 const kinds = (client) => client.calls.map((c) => c.kind);
 
+// A document as the server reads it: its text carries the digest of its body,
+// which a segment's text write sends as the base it was planned on.
+const digested = (raw = buildRawDoc()) => {
+  raw.textLayers[0].text.digest = `d:${raw.textLayers[0].text.body}`;
+  return raw;
+};
+
 beforeEach(() => resetIds());
 
 describe('layerInfo + derive', () => {
@@ -1367,7 +1374,7 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
   });
 
   it('createAlignment inserts text + creates the alignment token', async () => {
-    const doc = makeDoc(); // body 'the cat', no existing alignments
+    const doc = makeDoc({ raw: digested() }); // body 'the cat', no existing alignments
     const ok = await doc.createAlignment({ text: 'hi', timeBegin: 0, timeEnd: 1 });
     expect(ok).toBe(true);
     const k = kinds(doc.client);
@@ -1539,11 +1546,13 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
   });
 
   it('deleteAlignment with deleteText removes the text range', async () => {
-    const raw = buildRawDoc({
-      alignmentTokens: [
-        { id: 'a-1', text: 'text-1', begin: 0, end: 3, metadata: { timeBegin: 0, timeEnd: 1 } },
-      ],
-    });
+    const raw = digested(
+      buildRawDoc({
+        alignmentTokens: [
+          { id: 'a-1', text: 'text-1', begin: 0, end: 3, metadata: { timeBegin: 0, timeEnd: 1 } },
+        ],
+      }),
+    );
     const doc = makeDoc({ raw });
     const ok = await doc.deleteAlignment('a-1', { deleteText: true });
     expect(ok).toBe(true);
@@ -1654,7 +1663,7 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
   // the batch's ids instead of refetching it: a full document GET grows with
   // the document and was the lag between Enter and the row appearing.
   it('createAlignment patches in place: no refetch, real id, sentence stretched over the new text', async () => {
-    const doc = makeDoc(); // body 'the cat', one sentence [0,7), words the/cat
+    const doc = makeDoc({ raw: digested() }); // body 'the cat', one sentence [0,7), words the/cat
     const ok = await doc.createAlignment({ text: 'hi', timeBegin: 0, timeEnd: 1, speaker: 'Ana' });
     expect(ok).toBe(true);
     expect(kinds(doc.client)).not.toContain('documents.get');
@@ -1678,7 +1687,7 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
   });
 
   it('createAlignment on an empty document seeds the sentence partition with the returned id', async () => {
-    const raw = buildRawDoc({ body: '', sentences: [], words: [], morphemes: [] });
+    const raw = digested(buildRawDoc({ body: '', sentences: [], words: [], morphemes: [] }));
     const doc = makeDoc({ raw });
     const ok = await doc.createAlignment({ text: 'hello', timeBegin: 0, timeEnd: 2 });
     expect(ok).toBe(true);
@@ -1691,17 +1700,19 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
   });
 
   it('editAlignment replaces the text in place, dropping the words inside it and shifting the rest', async () => {
-    const raw = buildRawDoc({
-      body: 'the cat sat',
-      words: [
-        { id: 'w-1', begin: 0, end: 3 },
-        { id: 'w-2', begin: 4, end: 7 },
-        { id: 'w-3', begin: 8, end: 11 },
-      ],
-      alignmentTokens: [
-        { id: 'a-1', text: 'text-1', begin: 4, end: 7, metadata: { timeBegin: 1, timeEnd: 2 } },
-      ],
-    });
+    const raw = digested(
+      buildRawDoc({
+        body: 'the cat sat',
+        words: [
+          { id: 'w-1', begin: 0, end: 3 },
+          { id: 'w-2', begin: 4, end: 7 },
+          { id: 'w-3', begin: 8, end: 11 },
+        ],
+        alignmentTokens: [
+          { id: 'a-1', text: 'text-1', begin: 4, end: 7, metadata: { timeBegin: 1, timeEnd: 2 } },
+        ],
+      }),
+    );
     const doc = makeDoc({ raw });
     const ok = await doc.editAlignment('a-1', { text: 'dogs', timeBegin: 1, timeEnd: 2 });
     expect(ok).toBe(true);
@@ -1718,17 +1729,19 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
   });
 
   it('deleteAlignment in the middle keeps one separator and shifts what follows, in place', async () => {
-    const raw = buildRawDoc({
-      body: 'the cat sat',
-      words: [
-        { id: 'w-1', begin: 0, end: 3 },
-        { id: 'w-2', begin: 4, end: 7 },
-        { id: 'w-3', begin: 8, end: 11 },
-      ],
-      alignmentTokens: [
-        { id: 'a-1', text: 'text-1', begin: 4, end: 7, metadata: { timeBegin: 1, timeEnd: 2 } },
-      ],
-    });
+    const raw = digested(
+      buildRawDoc({
+        body: 'the cat sat',
+        words: [
+          { id: 'w-1', begin: 0, end: 3 },
+          { id: 'w-2', begin: 4, end: 7 },
+          { id: 'w-3', begin: 8, end: 11 },
+        ],
+        alignmentTokens: [
+          { id: 'a-1', text: 'text-1', begin: 4, end: 7, metadata: { timeBegin: 1, timeEnd: 2 } },
+        ],
+      }),
+    );
     const doc = makeDoc({ raw });
     const ok = await doc.deleteAlignment('a-1', { deleteText: true });
     expect(ok).toBe(true);

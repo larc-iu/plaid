@@ -9,7 +9,11 @@ import { Label } from '@ui/components/ui/label';
 import { Switch } from '@ui/components/ui/switch';
 import { Textarea } from '@ui/components/ui/textarea';
 import { cn } from '@ui/lib/utils';
-import { notifyError } from '@/utils/feedback';
+import { announceCells } from '@ui/lib/cellConflict.js';
+import { useCellEngine } from '@ui/hooks/useCellEngine.js';
+import { useConflictCell } from '@ui/hooks/useConflictCell.js';
+import { ConflictNote } from '@ui/components/shared/conflict-note.jsx';
+import { notifyError, notifyWarning } from '@/utils/feedback';
 import { PLAYBACK_RATE_STEP } from './useMediaOperations';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
@@ -35,6 +39,14 @@ import { shownOrRefused } from './shownOrRefused.js';
 // The document queues its writes, so a commit made while another is saving
 // is sent after it rather than dropped.
 //
+// A row's text is a cell on plaid-ui's cell engine (Luke's ruling Q1): when
+// its edit loses to someone else's change of the same segment, the row shows
+// the stored text with "Yours: X · Enter to keep yours" under it, leaving the
+// row sends nothing, Enter sends yours over the stored text, and Escape or
+// typing lets it go. The cell is named by the segment's time span, not its
+// token: an edit of the text makes the token again, so the row that lost and
+// the row that shows the winner's text are different tokens over one span.
+//
 // Play/pause inside a row is Shift+Space: the one modifier every platform
 // leaves alone in a text box (Ctrl+Space and Cmd+Space belong to macOS,
 // Alt+Space to Windows and GNOME). Matched on the key code so it holds
@@ -46,6 +58,8 @@ const EMPTY = [];
 const timeBeginOf = (t) => t.metadata?.timeBegin ?? 0;
 const timeEndOf = (t) => t.metadata?.timeEnd ?? timeBeginOf(t);
 const byTime = (a, b) => timeBeginOf(a) - timeBeginOf(b);
+// The cell engine's key for a segment's text (see above).
+const segmentKey = (t) => `segment:${timeBeginOf(t)}:${timeEndOf(t)}`;
 
 // Up and Down move between rows, but only from an edge of the text: in the
 // middle of a wrapped line they are the caret keys the box is entitled to, and
@@ -117,8 +131,10 @@ const SegmentRow = memo(function SegmentRow({
   lossFor,
   onPlayToggle,
   registerText,
+  cells,
 }) {
   const storedSpeaker = token.metadata?.speaker || '';
+  const cellKey = segmentKey(token);
   // What deleting this segment's text would take, while the row is asking.
   // Null when it is not: an unannotated segment goes straight through, with
   // its text, since a segment is its utterance. An annotated one asks whether
@@ -136,6 +152,10 @@ const SegmentRow = memo(function SegmentRow({
   const dirtyRef = useRef(false);
   const textRef = useRef(null);
   const inFlight = useRef(null);
+  // Whether the text box has focus, and whether anything was typed into it
+  // since it took focus, for the cell engine.
+  const editingRef = useRef(false);
+  const typedRef = useRef(false);
 
   const setDraft = (v) => {
     draftRef.current = v;
@@ -150,13 +170,27 @@ const SegmentRow = memo(function SegmentRow({
     setDirtyState(v);
   };
 
-  // A row that is not being edited always shows what is stored.
+  // What the engine puts in the text box: the stored text over a lost edit,
+  // or a refused edit waiting to be sent again. Neither is typing.
+  const cell = useConflictCell(cells, cellKey, {
+    stored: text,
+    editingRef,
+    typedRef,
+    setShown: (v) => {
+      setDraft(v);
+      setDirty(false);
+    },
+  });
+  const { conflict } = cell;
+
+  // A row that is not being edited always shows what is stored, or the
+  // refused edit that waits for it.
   useEffect(() => {
     if (!dirty) {
-      setDraft(text);
+      setDraft(cells.display(cellKey, text));
       setSpeaker(storedSpeaker);
     }
-  }, [text, storedSpeaker, dirty]);
+  }, [cells, cellKey, text, storedSpeaker, dirty]);
 
   useLayoutEffect(() => autoGrow(textRef.current), [draft]);
 
@@ -166,11 +200,14 @@ const SegmentRow = memo(function SegmentRow({
     setDirty(false);
   };
 
-  // One commit at a time per row, and never the same edit twice.
+  // One commit at a time per row, and never the same edit twice. A refused
+  // edit put back in the row and taken up by its focus is sent on leaving,
+  // typed over the text it was refused on.
   const commit = () => {
     if (inFlight.current) return inFlight.current;
     const run = async () => {
-      if (!dirtyRef.current) return true;
+      const taken = cell.leave();
+      if (!dirtyRef.current && !taken) return true;
       const nextText = draftRef.current.trim();
       const nextSpeaker = speakerRef.current.trim();
       if (!nextText) {
@@ -182,7 +219,12 @@ const SegmentRow = memo(function SegmentRow({
         setDirty(false);
         return true;
       }
-      const ok = await onCommit(token.id, { text: nextText, speaker: nextSpeaker });
+      const ok = await onCommit(token.id, {
+        text: nextText,
+        speaker: nextSpeaker,
+        saved: taken?.saved,
+        what: `Segment ${index + 1} text`,
+      });
       // On failure the typing stays in the row; the document has already toasted why.
       if (ok) setDirty(false);
       return ok;
@@ -202,6 +244,13 @@ const SegmentRow = memo(function SegmentRow({
       playToggle();
     } else if (e.key === 'Enter') {
       e.preventDefault();
+      // Enter on a row whose edit lost, with nothing typed since, sends that
+      // edit over the stored text.
+      const mine = typedRef.current || e.ctrlKey || e.metaKey ? null : cell.keepYours();
+      if (mine != null) {
+        setDraft(mine);
+        setDirty(true);
+      }
       const timeBegin = timeBeginOf(token);
       if (await commit()) onAdvance(timeBegin);
     } else if (step) {
@@ -213,6 +262,7 @@ const SegmentRow = memo(function SegmentRow({
     } else if (e.key === 'Escape') {
       e.preventDefault();
       revert();
+      cell.onEscape();
     }
   };
 
@@ -233,6 +283,8 @@ const SegmentRow = memo(function SegmentRow({
       revert();
     }
   };
+
+  const noteId = `transcript-conflict-${index}`;
 
   // A segment somebody else proposed: a transcriber service's (machine) or a
   // contributor's. Editing it as a verifier confirms it, so the tag goes.
@@ -314,26 +366,49 @@ const SegmentRow = memo(function SegmentRow({
           {text}
         </p>
       ) : (
-        <Textarea
-          ref={(el) => {
-            textRef.current = el;
-            registerText(token.id, el);
-            autoGrow(el);
-          }}
-          value={draft}
-          rows={1}
-          spellCheck={false}
-          compose
-          aria-label={`Segment ${index + 1} text`}
-          className="min-h-8 resize-none py-1.5 text-sm"
-          onChange={(e) => {
-            setDraft(e.target.value);
-            setDirty(true);
-          }}
-          onFocus={() => onFocusRow(token)}
-          onKeyDown={onTextKeyDown}
-          onBlur={commit}
-        />
+        <div className="flex flex-col gap-0.5">
+          <Textarea
+            ref={(el) => {
+              textRef.current = el;
+              registerText(token.id, el);
+              autoGrow(el);
+            }}
+            value={draft}
+            rows={1}
+            spellCheck={false}
+            compose
+            aria-label={`Segment ${index + 1} text`}
+            aria-describedby={conflict ? noteId : undefined}
+            className={cn(
+              'min-h-8 resize-none py-1.5 text-sm',
+              conflict && 'border-amber-500 focus-visible:ring-amber-500',
+            )}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              setDirty(true);
+              typedRef.current = true;
+              cell.onTyped();
+            }}
+            onFocus={() => {
+              editingRef.current = true;
+              typedRef.current = false;
+              cell.onFocus();
+              onFocusRow(token);
+            }}
+            onKeyDown={onTextKeyDown}
+            onBlur={() => {
+              editingRef.current = false;
+              commit();
+            }}
+          />
+          {conflict && (
+            <ConflictNote
+              id={noteId}
+              className="text-xs text-amber-700 dark:text-amber-400"
+              typed={conflict.typed}
+            />
+          )}
+        </div>
       )}
 
       <div className="flex items-center gap-0.5">
@@ -822,15 +897,44 @@ export function TranscriptList({
     [doc],
   );
 
+  // The segments' text cells. What a cell holds is read from the document,
+  // by the time span that names it.
+  const segmentAt = (key) => doc.alignmentTokens.find((t) => segmentKey(t) === key);
+  const cells = useCellEngine(doc, {
+    read: (key) => {
+      const token = segmentAt(key);
+      return token ? cpSlice(doc.body || '', token.begin, token.end) : undefined;
+    },
+    entityIds: (key) => {
+      const token = segmentAt(key);
+      return token ? [token.id] : [];
+    },
+    announce: announceCells({
+      get client() {
+        return doc.client;
+      },
+      get documentId() {
+        return doc.id;
+      },
+      get me() {
+        return doc._user?.id;
+      },
+      warn: (message) => notifyWarning(message),
+      error: (message, title) => notifyError(message, title),
+    }),
+  });
+
   const handleCommit = useCallback(
-    async (id, { text, speaker }) => {
+    async (id, { text, speaker, saved, what }) => {
       const token = doc.alignmentTokens.find((t) => t.id === id);
       if (!token) return false;
       const storedText = cpSlice(doc.body || '', token.begin, token.end);
       const storedSpeaker = token.metadata?.speaker || '';
       // The row moves on once the edit shows, not when the server has it.
+      // What becomes of it if the server refuses it is the cell engine's.
       if (text !== storedText) {
-        return shownOrRefused(doc, () =>
+        const before = doc.dataVersion;
+        const outcome = doc.cellWrite(() =>
           doc.editAlignment(id, {
             text,
             timeBegin: timeBeginOf(token),
@@ -838,13 +942,24 @@ export function TranscriptList({
             speaker,
           }),
         );
+        // Refused by a check before it showed: nothing went out.
+        if (doc.dataVersion === before) return (await outcome).landed;
+        const ticket = cells.sending(segmentKey(token), {
+          saved: saved ?? storedText,
+          typed: text,
+          entityIds: [token.id],
+          field: 'segment text',
+          what,
+        });
+        outcome.then((o) => cells.settle(ticket, o));
+        return true;
       }
       if (speaker !== storedSpeaker) {
         return shownOrRefused(doc, () => doc.updateAlignmentSpeaker(id, speaker));
       }
       return true;
     },
-    [doc],
+    [doc, cells],
   );
 
   // A typed or nudged boundary. Legal when the segment keeps a positive length,
@@ -1085,6 +1200,7 @@ export function TranscriptList({
               lossFor={lossFor}
               onPlayToggle={handlePlayToggle}
               registerText={registerText}
+              cells={cells}
             />
           ) : (
             <ProposalRow
