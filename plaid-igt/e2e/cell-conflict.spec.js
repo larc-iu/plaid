@@ -1,5 +1,6 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { getFixture } from './fixtureProject.js';
 
 // Luke's ruling Q1: a gloss edit refused because another tab stored another
 // value first. The cell shows the stored value, with the refused one under
@@ -20,6 +21,7 @@ let morphs = [];
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
+  await getFixture(); // builds the fixture project where the database lacks it
   const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
   if (!project) throw new Error('run node e2e/fixtureProject.js first');
   projectId = project.id;

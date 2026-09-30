@@ -1,6 +1,7 @@
 import PlaidClient from '@larc-iu/plaid-client';
 import { randomUUID } from 'node:crypto';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { getFixture } from './fixtureProject.js';
 import { assistantHarness, assistantChromeTests } from '../../plaid-ui/e2e/assistantChrome.js';
 
 // The assistant panel as part of the app's chrome rather than one screen's.
@@ -53,6 +54,7 @@ const seeContent = async (page) =>
 test.beforeAll(async () => {
   ({ userId } = readToken());
   const c = client();
+  await getFixture(); // builds the fixture project where the database lacks it
   const project = (await c.projects.list()).find((p) => p.name === FIXTURE);
   if (!project) throw new Error('run node e2e/fixtureProject.js first');
   projectId = project.id;

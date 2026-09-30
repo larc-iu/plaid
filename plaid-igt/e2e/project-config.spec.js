@@ -21,6 +21,18 @@ let documentId;
 let wordLayerId;
 let ids = {};
 
+// The reader account C2-03 signs in as. Made here when the database lacks it,
+// so a fresh one passes too. On a database that has it, the create is refused
+// and the account is used as it is.
+const READER = { email: 'alpha-reader@x.com', password: 'alpha-pass-1' };
+const ensureReader = async () => {
+  const exists = await client.users.get(READER.email).then(
+    () => true,
+    () => false,
+  );
+  if (!exists) await client.users.create(READER.email, READER.password, false);
+};
+
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
   const name = `project-config ${Date.now()}`;
@@ -88,7 +100,8 @@ test.beforeAll(async () => {
     .find((l) => roleOf(l) === ROLES.BASELINE)
     .tokenLayers.find((l) => l.id === wordLayerId);
   ids.w = words.map((x) => wl.tokens.find((t) => t.begin === x.begin).id);
-  await client.projects.addReader(projectId, 'alpha-reader@x.com');
+  await ensureReader();
+  await client.projects.addReader(projectId, READER.email);
 });
 
 test.afterAll(async () => {
@@ -192,11 +205,11 @@ test('C2-01: the New document dialog needs a name, submits on Enter, and opens t
 });
 
 test('C2-03 + B1-10: a reader gets no Create button and a read-only editor', async ({ page }) => {
-  const { token } = await PlaidClient.login(CORE, 'alpha-reader@x.com', 'alpha-pass-1');
+  const { token } = await PlaidClient.login(CORE, READER.email, READER.password);
   const auth = {
     token,
-    userId: 'alpha-reader@x.com',
-    displayName: 'alpha-reader@x.com',
+    userId: READER.email,
+    displayName: READER.email,
     isAdmin: false,
   };
   await seedAuth(page, auth);

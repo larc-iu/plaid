@@ -1,5 +1,6 @@
 import PlaidClient from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { getFixture } from './fixtureProject.js';
 
 // `/` outside a text box focuses the screen's search box, and inside one it is
 // a slash. Runs against "E2E IGT Fixture" and writes nothing.
@@ -10,6 +11,7 @@ let projectId;
 
 test.beforeAll(async () => {
   const client = new PlaidClient(CORE, readToken().token);
+  await getFixture(); // builds the fixture project where the database lacks it
   const projects = await client.projects.list();
   const fixture = projects.find((p) => p.name === 'E2E IGT Fixture');
   if (!fixture) throw new Error('run node e2e/fixtureProject.js first');

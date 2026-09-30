@@ -3,7 +3,9 @@ import { getFixture, createScratchProject, makeClient } from './fixtureProject.j
 
 // A list opens the way it was left: the sort a reader chose survives a reload,
 // and it is remembered per project rather than for every list at once. Reads
-// "E2E IGT Fixture" and never writes to it.
+// "E2E IGT Fixture" and never writes to it. The order itself is checked on a
+// throwaway project of three documents, since the fixture may hold only one,
+// and one name reads the same in either direction.
 
 const sortKey = (id) => `plaid_igt_list_sort:documents:${id}`;
 
@@ -21,6 +23,10 @@ test.beforeAll(async () => {
     docName: 'Second List Document',
     body: 'Uno dos tres.',
   }));
+  const client = makeClient();
+  for (const name of ['Alpha List Document', 'Zulu List Document']) {
+    await client.documents.create(otherProjectId, name);
+  }
 });
 
 test.afterAll(async () => {
@@ -50,7 +56,7 @@ const names = async (page) =>
 const ascending = (xs) => xs.every((x, i) => i === 0 || xs[i - 1] <= x);
 
 test('a chosen sort survives a reload', async ({ page }) => {
-  await openDocuments(page, projectId);
+  await openDocuments(page, otherProjectId);
 
   await documentHeader(page).click(); // by name, ascending
   expect(ascending(await names(page))).toBe(true);

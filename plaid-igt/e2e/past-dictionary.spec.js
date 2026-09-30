@@ -1,5 +1,6 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { getFixture } from './fixtureProject.js';
 
 // A document viewed as it was in the past reads its vocabulary as it was at
 // the same moment (audit-past-doc-dictionary, ruled b): an entry renamed since
@@ -18,6 +19,7 @@ let wordId;
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
+  await getFixture(); // builds the fixture project where the database lacks it
   const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
   if (!project) throw new Error('run node e2e/fixtureProject.js first');
   projectId = project.id;

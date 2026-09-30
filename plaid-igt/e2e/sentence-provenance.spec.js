@@ -1,5 +1,6 @@
 import PlaidClient, { ROLES, cpLength, stampInferred } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { getFixture } from './fixtureProject.js';
 
 // A machine-made sentence value (a proposed translation) renders with the
 // same provenance styling as cells, is a stop in the unverified review
@@ -18,6 +19,7 @@ let spanId;
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
+  await getFixture(); // builds the fixture project where the database lacks it
   const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
   if (!project) throw new Error('run node e2e/fixtureProject.js first');
   projectId = project.id;

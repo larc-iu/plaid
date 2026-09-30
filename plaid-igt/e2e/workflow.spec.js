@@ -1,5 +1,6 @@
 import PlaidClient, { ROLES } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { getFixture } from './fixtureProject.js';
 
 // TEST_PLAN surrounding-workflow rows driven end to end on one throwaway
 // document: Baseline save (C3-01 append without a confirm, C3-02 destructive
@@ -24,6 +25,7 @@ test.describe.configure({ mode: 'serial' });
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
+  await getFixture(); // builds the fixture project where the database lacks it
   const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
   if (!project) throw new Error('run node e2e/fixtureProject.js first');
   projectId = project.id;

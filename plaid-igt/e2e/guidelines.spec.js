@@ -1,5 +1,6 @@
 import PlaidClient from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { getFixture } from './fixtureProject.js';
 import { guidelinesTests } from '../../plaid-ui/e2e/guidelines.js';
 
 // The Guidelines tab in plaid-igt. The screen is one component in plaid-ui and
@@ -13,6 +14,7 @@ let projectId;
 const client = () => new PlaidClient(CORE, readToken().token);
 
 test.beforeAll(async () => {
+  await getFixture(); // builds the fixture project where the database lacks it
   const project = (await client().projects.list()).find((p) => p.name === FIXTURE);
   if (!project) throw new Error('run node e2e/fixtureProject.js first');
   projectId = project.id;

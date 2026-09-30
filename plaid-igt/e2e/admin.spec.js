@@ -1,20 +1,41 @@
-import PlaidClient from '@larc-iu/plaid-client';
+import { randomUUID } from 'node:crypto';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { getFixture, makeClient } from './fixtureProject.js';
 
 // The admin area, which had no coverage at all until the two bugs below got
 // through: a table that forgot to name itself and so remembered nothing, and
 // an empty list that drew a bar saying "0". Both were found by opening the
 // page and looking, which is not a thing that happens on every change.
 //
-// Writes nothing. Every assertion is about what the server already holds.
+// What the screens need is seeded here, so a fresh database passes too: a
+// project with no documents (it reads "Never" and is a second project to sort
+// and to register on), a probe service registered on two projects while its
+// test runs, and one assistant conversation. Each is found or made, and the
+// service and the conversation are removed again afterwards.
 
+// A project nobody adds a document to, so its last change is "Never".
+const UNTOUCHED = 'E2E Admin Untouched';
+const PROBE = { serviceId: 'e2e:admin-probe', serviceName: 'E2E admin probe' };
+
+let client;
 let fixtureId;
+let untouchedId;
+let conversation; // {userId, keys: [...]}, removed in afterAll
 
 test.beforeAll(async () => {
-  const client = new PlaidClient('http://localhost:8085', readToken().token);
+  client = makeClient();
+  ({ projectId: fixtureId } = await getFixture());
   const projects = await client.projects.list();
-  fixtureId = projects.find((p) => p.name === 'E2E IGT Fixture')?.id;
-  if (!fixtureId) throw new Error('run node e2e/fixtureProject.js first');
+  untouchedId =
+    projects.find((p) => p.name === UNTOUCHED)?.id ?? (await client.projects.create(UNTOUCHED)).id;
+});
+
+test.afterAll(async () => {
+  if (conversation) {
+    for (const k of conversation.keys) {
+      await client.userData.delete(conversation.userId, k).catch(() => {});
+    }
+  }
 });
 
 test.beforeEach(async ({ page }) => {
@@ -128,7 +149,7 @@ test('a blank sorts as the smallest value, not pinned to the bottom', async ({ p
 
   await header.click();
   const first = await lastChange();
-  expect(first, 'the dev database must hold a project nobody has opened').toContain('Never');
+  expect(first, 'the untouched project reads Never').toContain('Never');
   expect(first[0]).toBe('Never');
 
   await header.click();
@@ -151,34 +172,99 @@ test('an empty list says so once, without a bar saying zero', async ({ page }) =
 });
 
 test('services collapse to one row per service, with its projects underneath', async ({ page }) => {
-  await openTab(page, 'services');
-  const rows = page.locator('tbody tr');
-  await expect(rows.first()).toBeVisible({ timeout: 20000 });
+  // One service id registered on two projects is two registrations and one
+  // row. Registered from here for the length of the test, so the row exists
+  // on a database no service has ever connected to.
+  const registrations = [fixtureId, untouchedId].map((projectId) =>
+    client.messages.serve(projectId, PROBE, (_data, helper) => helper.error('not served'), {
+      tasks: [],
+    }),
+  );
+  const onlineOn = async (projectId) =>
+    (await client.messages.discoverServices(projectId)).some(
+      (s) => s.serviceId === PROBE.serviceId && s.online,
+    );
+  try {
+    await expect.poll(() => onlineOn(fixtureId), { timeout: 15000 }).toBe(true);
+    await expect.poll(() => onlineOn(untouchedId), { timeout: 15000 }).toBe(true);
 
-  const expanders = page.getByRole('button', { name: 'Expand' });
-  const count = await expanders.count();
-  // Asserted, not skipped: on a clean database this test used to pass having
-  // exercised nothing, and that is the run where it matters.
-  expect(count, 'the dev database must have a registered service for this test').toBeGreaterThan(0);
+    await openTab(page, 'services');
+    const rows = page.locator('tbody tr');
+    await expect(rows.first()).toBeVisible({ timeout: 20000 });
 
-  // A registration is keyed (project, service id), so the row has to stand for
-  // more than itself: opening it reveals the projects behind the count.
-  const before = await rows.count();
-  await expanders.first().click();
-  await expect(page.locator('tbody td[colspan]').first()).toBeVisible();
-  expect(await rows.count()).toBeGreaterThan(before);
+    const probe = rows.filter({ hasText: PROBE.serviceName });
+    await expect(probe).toHaveCount(1);
+    await expect(probe).toContainText('2 of 2');
+
+    // A registration is keyed (project, service id), so the row has to stand for
+    // more than itself: opening it reveals the projects behind the count.
+    const before = await rows.count();
+    await probe.getByRole('button', { name: 'Expand' }).click();
+    const detail = page.locator('tbody td[colspan]');
+    await expect(detail.first()).toBeVisible();
+    await expect(detail.getByText(UNTOUCHED)).toBeVisible();
+    expect(await rows.count()).toBeGreaterThan(before);
+  } finally {
+    registrations.forEach((r) => r.stop());
+    // Forgotten once the channel is closed (a live one is refused, 409), so
+    // no offline row is left behind on either project.
+    for (const projectId of [fixtureId, untouchedId]) {
+      await expect
+        .poll(
+          () =>
+            client.messages.discardService(projectId, PROBE.serviceId).then(
+              () => true,
+              () => false,
+            ),
+          { timeout: 30000 },
+        )
+        .toBe(true);
+    }
+  }
 });
 
 test('an assistant conversation opens whoever had it', async ({ page }) => {
   // Conversations live in their owner's private store, so this screen is the
   // only place one can be read by anyone else. Opening one has to produce the
   // transcript, not just the row it came from.
+  //
+  // One is seeded the way the assistant service writes one: a sidebar entry
+  // (meta) and a transcript (conv) under the owner's key/value store.
+  const { userId } = readToken();
+  const id = randomUUID();
+  const title = `E2E admin conversation ${id.slice(0, 8)}`;
+  const key = (kind) => `igt:assistant:${fixtureId}:${kind}:${id}`;
+  conversation = { userId, keys: [key('conv'), key('meta')] };
+  await client.userData.put(userId, key('conv'), {
+    messages: [
+      { role: 'user', content: 'How many documents are there?' },
+      { role: 'assistant', content: 'There is one.' },
+    ],
+    display: [
+      { kind: 'user', text: 'How many documents are there?' },
+      { kind: 'assistant', text: 'There is one.', citations: [], status: null, steps: [] },
+    ],
+  });
+  const now = new Date().toISOString();
+  await client.userData.put(userId, key('meta'), {
+    id,
+    title,
+    createdAt: now,
+    updatedAt: now,
+    serviceId: 'igt:assist:e2e',
+    model: 'e2e/model',
+    turns: 1,
+    pending: null,
+  });
+
   await openTab(page, 'assistant');
   const rows = page.locator('tbody tr');
   await expect(page.getByPlaceholder('Search conversations…')).toBeVisible({ timeout: 20000 });
 
   // The only coverage of item 13.3, the admin conversation index, so a skip
-  // here leaves that feature untested and says it passed.
+  // here leaves that feature untested and says it passed. Narrowed to the
+  // seeded one, since a dev database holds everyone's.
+  await page.getByPlaceholder('Search conversations…').fill(title);
   //
   // Polled, not counted once: the toolbar and its search box render before the
   // rows do, and `count()` does not retry, so taking it the moment the
@@ -186,11 +272,11 @@ test('an assistant conversation opens whoever had it', async ({ page }) => {
   await expect
     .poll(() => rows.count(), {
       timeout: 20000,
-      message: 'the dev database must hold an assistant conversation',
+      message: 'the seeded conversation should be listed',
     })
     .toBeGreaterThan(0);
 
-  const title = (await rows.first().locator('td').first().innerText()).trim();
+  await expect(rows.first().locator('td').first()).toHaveText(title);
   await rows.first().locator('button').first().click();
 
   await expect(page.getByRole('button', { name: 'All conversations' })).toBeVisible();

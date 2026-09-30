@@ -1,5 +1,6 @@
 import PlaidClient, { ROLES, cpLength, stampInferred } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { getFixture } from './fixtureProject.js';
 
 // TEST_PLAN A2-13 / A8-02 / B10-02: the Tokenize tab's delete and split
 // confirms count machine-made material (spans, links) exactly like human
@@ -18,6 +19,7 @@ let ids = {};
 
 test.beforeAll(async () => {
   client = new PlaidClient(CORE, readToken().token);
+  await getFixture(); // builds the fixture project where the database lacks it
   const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
   if (!project) throw new Error('run node e2e/fixtureProject.js first');
   projectId = project.id;

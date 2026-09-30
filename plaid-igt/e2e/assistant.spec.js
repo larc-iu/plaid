@@ -1,12 +1,16 @@
-import PlaidClient, { ROLES } from '@larc-iu/plaid-client';
+import PlaidClient, { ROLES, uuidv7 } from '@larc-iu/plaid-client';
 import { randomUUID } from 'node:crypto';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { getFixture } from './fixtureProject.js';
+import { agentUnavailable, startIgtAssistant } from './assistantService.js';
 
 // The Assistant tab, without a model: conversations are records in the
 // user's key/value store that the service writes, so a plan can be seeded
 // straight into one (the ops name real layers, tokens, and spans of the
 // "E2E IGT Fixture" project) and the tab is driven from there. Applying a
-// plan needs an `assist` service online; that test skips when none is.
+// plan needs an `assist` service online: that test starts the real one
+// against a scripted model (assistantService.js), and skips only where the
+// plaid-agent Python env is missing.
 //
 // Covers: the plan card (grouped under the document, the word linked into
 // the editor), Discard, a turn whose request is gone (Retry offered and the
@@ -49,7 +53,9 @@ const seedConversation = async ({
 };
 
 const planFor = (value) => ({
-  id: randomUUID(),
+  // A UUIDv7, as a staged plan's is: an approved plan draws the ids of what
+  // it creates from it.
+  id: uuidv7(),
   summary: '1 field value',
   labels: [`${doc.name} s1.w1 "${doc.surface}": ${pos.name} = "${value}"`],
   ops: [
@@ -116,6 +122,7 @@ const readPos = async () => {
 test.beforeAll(async () => {
   ({ userId } = readToken());
   client = new PlaidClient(CORE, readToken().token);
+  await getFixture(); // builds the fixture project where the database lacks it
   const project = (await client.projects.list()).find((p) => p.name === 'E2E IGT Fixture');
   if (!project) throw new Error('run node e2e/fixtureProject.js first');
   projectId = project.id;
@@ -271,32 +278,59 @@ test('opening a conversation leaves the list in the order it was in', async ({ p
 });
 
 test('approving a plan applies it under the user and settles the card', async ({ page }) => {
-  const services = await client.messages.discoverServices(projectId);
-  // Picked the way the app picks it, THIS app's own: a shared project carries
-  // both apps' assistants, and a conversation belongs to the app it was
-  // started in. Asking only whether a service does `assist` found a
-  // `ud:assist:` one here, which the UI then refuses to use, so the skip
-  // guard said an assistant was online while the screen had none.
-  const assistant = services.find(
-    (s) => s.online && (s.extras?.tasks || []).includes('assist') && s.extras?.app === 'igt',
-  );
-  test.skip(!assistant, 'no IGT assist service online on the fixture project');
-  const value = `E2E-${Date.now()}`;
-  const id = await seedConversation({
-    ...planConversation(value),
+  test.setTimeout(150_000);
+  const unavailable = agentUnavailable();
+  test.skip(!!unavailable, unavailable);
+  const serviceId = 'igt:assist:e2e-fake';
+  const service = await startIgtAssistant({ token: readToken().token, projectId, serviceId });
+  try {
+    await expect
+      .poll(
+        async () =>
+          (await client.messages.discoverServices(projectId)).some(
+            (s) => s.serviceId === serviceId && s.online,
+          ),
+        { timeout: 90_000, message: () => `the assistant never came online:\n${service.log()}` },
+      )
+      .toBe(true);
+    const value = `E2E-${Date.now()}`;
+    const conversation = planConversation(value);
+    // The turn that staged a plan records the assistant that proposed it, and
+    // the service refuses a plan that does not say (its writes are stamped
+    // with that name).
+    conversation.display[1].service = serviceId;
+    const id = await seedConversation(conversation);
     // The service refuses a plan whose assistant is not the one asked; the
-    // conversation names the one online.
-  });
-  await client.userData.put(userId, key('meta', id), {
-    ...(await client.userData.get(userId, key('meta', id))).value,
-    serviceId: assistant.serviceId,
-  });
-  await page.goto(`/#/projects/${projectId}?tab=assistant&conversation=${id}`);
-  await page.getByRole('button', { name: 'Approve and apply' }).click();
-  await expect(page.getByText('Applied', { exact: true })).toBeVisible({ timeout: 30_000 });
-  await expect.poll(async () => (await readPos())?.value).toBe(value);
-  const record = (await client.userData.get(userId, key('conv', id))).value;
-  expect(record.display[1].status).toBe('applied');
-  expect(record.messages.at(-1).content).toMatch(/approved and applied/);
-  expect((await client.userData.get(userId, key('meta', id))).value.pending).toBeNull();
+    // conversation names the one started here.
+    await client.userData.put(userId, key('meta', id), {
+      ...(await client.userData.get(userId, key('meta', id))).value,
+      serviceId,
+    });
+    await page.goto(`/#/projects/${projectId}?tab=assistant&conversation=${id}`);
+    await page.getByRole('button', { name: 'Approve and apply' }).click();
+    await expect(page.getByText('Applied', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect.poll(async () => (await readPos())?.value).toBe(value);
+    const record = (await client.userData.get(userId, key('conv', id))).value;
+    expect(record.display[1].status).toBe('applied');
+    expect(record.messages.at(-1).content).toMatch(/approved and applied/);
+    expect((await client.userData.get(userId, key('meta', id))).value.pending).toBeNull();
+  } finally {
+    await test.info().attach('assistant service log', {
+      body: service.log(),
+      contentType: 'text/plain',
+    });
+    await service.stop();
+    // Forgotten once its channel has closed (a live one is refused, 409), so
+    // no offline assistant is left on the fixture project.
+    await expect
+      .poll(
+        () =>
+          client.messages.discardService(projectId, serviceId).then(
+            () => true,
+            () => false,
+          ),
+        { timeout: 30_000 },
+      )
+      .toBe(true);
+  }
 });

@@ -33,6 +33,7 @@ const SENTENCE_SPANS = [
 ];
 const SECOND_DOCUMENT = 'Chrome Spec Second Document';
 
+let projectName;
 let projectId;
 let documentId;
 let otherDocumentId;
@@ -68,12 +69,8 @@ const tabSeen = (name) => (page) => expect(page.getByRole('tab', { name })).toBe
 // never appear. The sibling spec seeds the same way for the same reason.
 test.beforeAll(async () => {
   ({ userId } = readToken());
-  ({ projectId, documentId } = await seedUdDoc(
-    `Assistant chrome ${Date.now()}`,
-    SENTENCES,
-    WORDS,
-    SENTENCE_SPANS,
-  ));
+  projectName = `Assistant chrome ${Date.now()}`;
+  ({ projectId, documentId } = await seedUdDoc(projectName, SENTENCES, WORDS, SENTENCE_SPANS));
   // A second document to walk to. It needs no annotation of its own: what the
   // tests read there is the breadcrumb and the panel beside it.
   otherDocumentId = (await client().documents.create(projectId, SECOND_DOCUMENT)).id;
@@ -130,7 +127,9 @@ assistantChromeTests({
     shows: 'she sings',
     inserts: 'about s2 ',
   },
-  projectName: () => 'E2E UD Fixture',
+  // This spec's own project, the one the panel is then about. The shared
+  // fixture is not there on a fresh database.
+  projectName: () => projectName,
   ask: {
     // The grid is React and repaints on a resize, so nothing has to be
     // reloaded to read it.

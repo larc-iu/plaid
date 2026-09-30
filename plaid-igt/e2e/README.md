@@ -29,7 +29,13 @@ not clobber each other's and fail with `browserContext.close: ENOENT`.
   `collectClientErrors`), most of them handed on from
   `../../plaid-ui/e2e/appFixtures.js`. Every spec here navigates by relative path,
   so the base URL stays Playwright's own. `fixtureProject.js`: the fixture project
-  builder.
+  builder. Each spec seeds what it needs itself (the fixture through
+  `getFixture()`, and any user, service or conversation), so a fresh database
+  passes too. `PLAID_CORE_URL` points the builder at another core.
+- `assistantService.js`: starts the real IGT assistant (plaid-agent) on one
+  project against a scripted model, for the approve test in
+  `assistant.spec.js`. It needs the plaid-agent Python env
+  (`PLAID_AGENT_PYTHON`) and serves `PLAID_CORE_URL`.
 - `../../plaid-ui/e2e/`: the specs plaid-igt and plaid-ud SHARE, because what
   they cover is one component in that package: `assistantChrome.js`,
   `assistantPanel.js`, `headerBand.js`, plus `appFixtures.js`. They import
