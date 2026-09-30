@@ -38,6 +38,7 @@
             [plaid.sql.metadata :as metadata]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.util.codepoint :as cp]
+            [plaid.util.digest :as digest]
             [plaid.util.storable-text :as storable])
   (:refer-clojure :exclude [get]))
 
@@ -51,13 +52,15 @@
 ;; ============================================================
 
 (defn- row->text
-  "Translate a `texts` row to the namespaced shape. Returns nil on nil input."
+  "Translate a `texts` row to the namespaced shape, with the body's digest
+  (see `plaid.util.digest`). Returns nil on nil input."
   [row]
   (when row
     {:text/id       (:id row)
      :text/body     (:body row)
      :text/document (:document_id row)
-     :text/layer    (:text_layer_id row)}))
+     :text/layer    (:text_layer_id row)
+     :text/digest   (digest/text-digest (:body row))}))
 
 (defn- row->token
   "Local row->token, kept independent of plaid.sql.token to avoid a
@@ -203,16 +206,28 @@
 ;; code-point-indexed ops (it diffs at code-point granularity) and
 ;; `apply-text-edits` shifts code-point token offsets, so no unit conversion is
 ;; needed here.
+(def ^:private text-changed
+  "The error of an edit whose `base` is not the stored body's digest."
+  "The text was changed since it was read.")
+
 (defn- save-plan
   "Work out what a body save writes, from what `db` holds now: the new body,
   the tokens to delete, the new extents of the others, and the tokens that
   survive. Reads only the text row, its tokens and their layers' rows, and
   writes nothing, so `update-body` can run it before it takes the write lock.
   Nil when the text does not exist. Throws what the save should answer when
-  the ops or the new body are refused."
-  [db eid new-body-or-ops]
+  the ops or the new body are refused, and a 409 when `base` is given and
+  is not the stored body's digest.
+
+  `change` is a new body (a string), ops applied as sent (a vector), or
+  `{:edits ops}`, ops from the caret (see `edit-body`)."
+  [db eid change base]
   (when-let [text-row (psc/fetch-by-id db :texts eid)]
+    (when (and base (not= base (digest/text-digest (:body text-row))))
+      (throw (ex-info text-changed {:code 409 :id eid :text-changed true})))
     (let [old-body (:body text-row)
+          edits (when (map? change) (vec (:edits change)))
+          new-body-or-ops (if (map? change) edits change)
           text-map (row->text text-row)
           token-rows (psc/q db {:select [:*]
                                 :from [:tokens]
@@ -239,39 +254,55 @@
           ;; partition and nest under another layer. In a script without
           ;; spaces a sentence, a UMR node or a time-alignment segment (no
           ;; parent) over several words looks like a word.
-          layer-rows (when (and (string? new-body-or-ops) (seq tokens))
-                       (psc/q db {:select [:id :overlap_mode :parent_token_layer_id]
+          ;; A layer whose tokens each spell a stretch of their parent's
+          ;; text (`config.plaid.segmentsParent`, igt's morphemes) loses a
+          ;; token as long as its word when a space is typed inside the word
+          ;; (see ta/fold-whole-words).
+          layer-rows (when (and (or (string? new-body-or-ops) edits) (seq tokens))
+                       (psc/q db {:select [:id :overlap_mode :parent_token_layer_id :config]
                                   :from [:token_layers]
-                                  :where [:and
-                                          [:in :id (vec (distinct (map :token/layer tokens)))]
-                                          [:in :overlap_mode ["partitioning" "non-overlapping"]]]}))
+                                  :where [:in :id (vec (distinct (map :token/layer tokens)))]}))
           partitioning (into #{} (comp (filter #(= "partitioning" (:overlap_mode %))) (map :id)) layer-rows)
           word-layers (into #{}
                             (comp (filter #(and (= "non-overlapping" (:overlap_mode %))
                                                 (some? (:parent_token_layer_id %))))
                                   (map :id))
                             layer-rows)
-          ops (if (string? new-body-or-ops)
+          segments (into #{}
+                         (comp (filter #(true? (some-> (:config %) psc/parse-config (get-in ["plaid" "segmentsParent"]))))
+                               (map :id))
+                         layer-rows)
+          ops (cond
+                edits nil
+                (string? new-body-or-ops)
                 (-> (ta/diff old-body new-body-or-ops)
                     (ta/slide-to-tokens old-body tokens partitioning)
                     (ta/normalize-deletes old-body tokens)
                     (ta/align-to-words old-body tokens word-layers)
                     (ta/pair-replacements old-body tokens)
-                    (ta/fold-whole-words old-body tokens word-layers))
-                (vec new-body-or-ops))
+                    (ta/fold-whole-words old-body tokens word-layers segments))
+                :else (vec new-body-or-ops))
           indexed-old (reduce (fn [m t] (assoc m (:token/id t) t)) {} tokens)
           ;; A diffed body's tokens are then moved off a space a delete
           ;; left them on (see ta/keep-edges-off-spaces): no place for
           ;; one delete keeps two UMR nodes pulling opposite ways off it.
+          ;; Edits from the caret go through the same steps after their
+          ;; own placement (see ta/apply-edits).
           {new-text :text new-tokens :tokens deleted-ids :deleted}
-          (cond-> (ta/apply-text-edits ops text-map tokens)
-            (string? new-body-or-ops) (as-> r (ta/keep-edges-off-spaces old-body tokens r partitioning)))
+          (cond
+            edits (ta/apply-edits old-body tokens edits {:partitioning partitioning
+                                                         :word-layers word-layers
+                                                         :segments segments})
+            (string? new-body-or-ops) (as-> (ta/apply-text-edits ops text-map tokens) r
+                                        (ta/keep-edges-off-spaces old-body tokens r partitioning))
+            :else (ta/apply-text-edits ops text-map tokens))
           new-body (:text/body new-text)
           ;; The steps above only move edits between equivalent places, so
-          ;; a diffed body comes out as sent. Should one of them ever get
-          ;; that wrong, the save fails rather than store a body nobody
-          ;; typed.
-          _ (when (and (string? new-body-or-ops) (not= new-body new-body-or-ops))
+          ;; a diffed body comes out as sent, and edits as they make the body
+          ;; applied in turn. Should one of them ever get that wrong, the
+          ;; save fails rather than store a body nobody typed.
+          _ (when (or (and (string? new-body-or-ops) (not= new-body new-body-or-ops))
+                      (and edits (not= new-body (ta/edit-ops-body edits old-body))))
               (throw (ex-info "The new body could not be applied." {:code 500 :id eid})))
           ;; Checked on the result, so explicit ops' inserted text is
           ;; covered as well as a whole new body.
@@ -329,12 +360,81 @@
         (newer? [:and [:= :project_id project-id] [:= :document_id nil]])
         (newer? [:= :project_id nil]))))
 
+(defn- save!
+  "The write of `update-body` and `edit-body`: `change` as `save-plan` takes
+  it, worked out ahead of the write lock and again under it when a write
+  that could change what it read has committed meanwhile (see
+  `update-body`). The answer carries the operation's id and ts as `:op`, so
+  the route can read what it wrote (see `reshape`)."
+  [db eid change base user-id description]
+  (let [pre (psc/fetch-by-id db :texts eid)
+        project (when pre (project-id db eid))
+        valid? (or (string? change)
+                   (sequential? change)
+                   (and (map? change) (sequential? (:edits change))))
+        ;; Read the newest operation first: whatever commits after it, while
+        ;; the plan below reads, has a later ts and makes the save recompute.
+        ahead (when (and pre project valid? (not (instance? java.sql.Connection db)))
+                (let [ts (last-op-ts db)]
+                  ;; A save the plan refuses is refused again under the lock,
+                  ;; where the error becomes the answer.
+                  (when-let [plan (try (save-plan db eid change base)
+                                       (catch Exception _ nil))]
+                    {:ts ts :plan plan})))
+        op (volatile! nil)
+        result
+        (submit-operation!
+         [tx db {:type :text/update-body
+                 :project project
+                 :document (:document_id pre)
+                 :description (str description eid)
+                 :user user-id}]
+         ;; Validation inside the body (task #47).
+         (when-not valid?
+           (throw (ex-info (if (map? change)
+                             "Text edits must be a list of edit operations."
+                             "Text body must be a string.")
+                           {:body change :code 400})))
+         (when (nil? pre)
+           (throw (ex-info (psc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
+         (vreset! op (assoc (select-keys psaw/*op* [:id :ts]) :document (:document_id pre)))
+         (let [{:keys [new-body new-text-length deleted-ids survivor-updates survivors]}
+               (or (when (and ahead (not (written-since? tx project (:document_id pre) (:ts ahead) (:id psaw/*op*))))
+                     (:plan ahead))
+                   (save-plan tx eid change base)
+                   (throw (ex-info (psc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
+               ;; Use requiring-resolve to keep this file decoupled from
+               ;; plaid.sql.token at load time. (token.clj does not require
+               ;; text.clj today, but if it ever did, deferring resolution
+               ;; here keeps the cycle from biting.)
+               multi-delete! (requiring-resolve 'plaid.sql.token/multi-delete!)
+               compensate-partition-layers!
+               (requiring-resolve 'plaid.sql.token/compensate-partition-layers!)]
+           ;; 1. Cascade-delete tokens that collapsed into a deletion range.
+           (when (seq deleted-ids)
+             (multi-delete! tx deleted-ids))
+           ;; 2. One bulk UPDATE for the surviving tokens whose extent changed.
+           ;;    The audit-skip semantics inside bulk-update-by-id! (pre ==
+           ;;    post) match the per-row helper's behavior.
+           (when (seq survivor-updates)
+             (crud/bulk-update-by-id! tx :tokens survivor-updates))
+           ;; 3. Update the text body.
+           (crud/update-by-id! tx :texts eid {:body new-body})
+           ;; 4. Partitioning-mode gap-fill on the surviving tokens.
+           (compensate-partition-layers! tx survivors new-text-length)
+           eid))]
+    (cond-> result
+      (and (:success result) @op) (assoc :op @op)
+      (and (= 409 (:code result)) (= text-changed (:error result))) (assoc :text-changed true))))
+
 (defn update-body
   "Change the textual content of `eid`, reindexing tokens to match.
 
   `new-body-or-ops` is either a string (the full new body — diffed
   against the current body) or a vector of edit-ops in the shape that
-  `plaid.algos.text/apply-text-edits` accepts.
+  `plaid.algos.text/apply-text-edits` accepts, applied as sent. With
+  `base`, the save applies only when it is the digest of the stored body
+  (see `plaid.util.digest`), and answers 409 with `:text-changed` otherwise.
 
   The diff and the token arithmetic (`save-plan`) run BEFORE the write lock,
   on what the database holds then, which at 50,000 words takes seconds.
@@ -356,56 +456,73 @@
        it sees the final post-edit token positions.
   The audit rows and the document version bump come with them.
 
-  Returns {:success true :extra <text-id>}."
-  [db eid new-body-or-ops user-id]
-  (let [pre (psc/fetch-by-id db :texts eid)
-        project (when pre (project-id db eid))
-        valid? (or (string? new-body-or-ops) (sequential? new-body-or-ops))
-        ;; Read the newest operation first: whatever commits after it, while
-        ;; the plan below reads, has a later ts and makes the save recompute.
-        ahead (when (and pre project valid? (not (instance? java.sql.Connection db)))
-                (let [ts (last-op-ts db)]
-                  ;; A save the plan refuses is refused again under the lock,
-                  ;; where the error becomes the answer.
-                  (when-let [plan (try (save-plan db eid new-body-or-ops)
-                                       (catch Exception _ nil))]
-                    {:ts ts :plan plan})))]
-    (submit-operation!
-     [tx db {:type :text/update-body
-             :project project
-             :document (:document_id pre)
-             :description (str "Update body of text " eid)
-             :user user-id}]
-     ;; Validation inside the body (task #47).
-     (when-not valid?
-       (throw (ex-info "Text body must be a string." {:body new-body-or-ops :code 400})))
-     (when (nil? pre)
-       (throw (ex-info (psc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
-     (let [{:keys [new-body new-text-length deleted-ids survivor-updates survivors]}
-           (or (when (and ahead (not (written-since? tx project (:document_id pre) (:ts ahead) (:id psaw/*op*))))
-                 (:plan ahead))
-               (save-plan tx eid new-body-or-ops)
-               (throw (ex-info (psc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
-           ;; Use requiring-resolve to keep this file decoupled from
-           ;; plaid.sql.token at load time. (token.clj does not require
-           ;; text.clj today, but if it ever did, deferring resolution
-           ;; here keeps the cycle from biting.)
-           multi-delete! (requiring-resolve 'plaid.sql.token/multi-delete!)
-           compensate-partition-layers!
-           (requiring-resolve 'plaid.sql.token/compensate-partition-layers!)]
-       ;; 1. Cascade-delete tokens that collapsed into a deletion range.
-       (when (seq deleted-ids)
-         (multi-delete! tx deleted-ids))
-       ;; 2. One bulk UPDATE for the surviving tokens whose extent changed.
-       ;;    The audit-skip semantics inside bulk-update-by-id! (pre ==
-       ;;    post) match the per-row helper's behavior.
-       (when (seq survivor-updates)
-         (crud/bulk-update-by-id! tx :tokens survivor-updates))
-       ;; 3. Update the text body.
-       (crud/update-by-id! tx :texts eid {:body new-body})
-       ;; 4. Partitioning-mode gap-fill on the surviving tokens.
-       (compensate-partition-layers! tx survivors new-text-length)
-       eid))))
+  Returns {:success true :extra <text-id> :op {:id :ts :document}}."
+  ([db eid new-body-or-ops user-id] (update-body db eid new-body-or-ops user-id nil))
+  ([db eid new-body-or-ops user-id base]
+   (save! db eid new-body-or-ops base user-id "Update body of text ")))
+
+(defn edit-body
+  "Change the textual content of `eid` by `edits`, ops made at the caret
+  (running code-point coordinates, each op's index in the body the ops
+  before it left, in the shapes `update-body` takes). The ops are composed
+  into their net change, and each pure insert or delete stands where it was
+  made, while a stretch both taken and typed over is read as a whole-body
+  save reads that change (see `plaid.algos.text/apply-edits`). The tokens
+  then follow the rules a whole-body save follows.
+
+  With `base`, the edit applies only when it is the digest of the stored
+  body, and answers 409 with `:text-changed` otherwise: the edit's places
+  are places in that body. The core never moves them onto another. Without
+  it the edit applies to whatever is stored, for a caller that holds the
+  document's lock. Same operation type as `update-body`, so History and
+  restore read it as a body save. Returns what `update-body` returns."
+  [db eid {:keys [edits base]} user-id]
+  (save! db eid {:edits edits} base user-id "Edit body of text "))
+
+(defn reshape
+  "What a body save wrote besides the body, for the apps to patch a read
+  from: the extents of the tokens it moved, the token lists of the spans
+  and vocabulary links it trimmed, and every row the cascade deleted, read
+  from the audit rows of operation `op` (`{:id :ts :document}` as
+  `update-body` answers it) and of the layer rules applied right after it in its
+  transaction (see `plaid.sql.constraints.layer/finish!`). Ids are plain;
+  extents are code points."
+  [db op]
+  (let [;; the operations right after it that apply layer rules: those
+        ;; run in its transaction, before any other writer's
+        after (when (:document op)
+                (->> (psc/q db {:select [:id :op_type]
+                                :from [:operations]
+                                :where [:and [:= :document_id (:document op)] [:> :ts (:ts op)]]
+                                :order-by [[:ts :asc]]
+                                :limit 50})
+                     (take-while #(= "layer/apply-constraints" (str (:op_type %))))
+                     (map :id)))
+        rows (psc/q db {:select [:target_table :target_id :change_type :post_image]
+                        :from [:audit_writes]
+                        :where [:in :op_id (into [(:id op)] after)]
+                        :order-by [[:ts :asc] [:seq :asc]]})
+        ;; the last image of each row, and whether it went
+        last-of (reduce (fn [m {:keys [target_table target_id change_type post_image]}]
+                          (assoc m [target_table target_id]
+                                 {:deleted? (= "delete" change_type)
+                                  :post (some-> post_image psc/read-json)}))
+                        {}
+                        rows)
+        ordered (distinct (map (juxt :target_table :target_id) rows))
+        of (fn [table] (filter #(= table (first %)) ordered))
+        gone (fn [table] (vec (keep (fn [k] (when (:deleted? (last-of k)) (second k))) (of table))))
+        live (fn [table f] (vec (keep (fn [k] (let [{:keys [deleted? post]} (last-of k)]
+                                                (when (and (not deleted?) post) (f (second k) post))))
+                                      (of table))))
+        get* (fn [m k] (if (contains? m k) (clojure.core/get m k) (clojure.core/get m (keyword k))))]
+    {:tokens (live "tokens" (fn [id p] {:id id :begin (get* p "begin") :end (get* p "end_")}))
+     :spans (live "spans" (fn [id p] (when (some? (get* p "tokens")) {:id id :tokens (vec (get* p "tokens"))})))
+     :vocab-links (live "vocab_links" (fn [id p] (when (some? (get* p "tokens")) {:id id :tokens (vec (get* p "tokens"))})))
+     :deleted {:tokens (gone "tokens")
+               :spans (gone "spans")
+               :relations (gone "relations")
+               :vocab-links (gone "vocab_links")}}))
 
 ;; ============================================================
 ;; Delete

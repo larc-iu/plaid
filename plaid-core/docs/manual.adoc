@@ -937,8 +937,59 @@ A text object looks something like this:
 
 [,js]
 ----
-{ id: "9cfafcc6", document: "01d01a27", body: "Fido barks" }
+{ id: "9cfafcc6", document: "01d01a27", body: "Fido barks", digest: "4d7e1a…" }
 ----
+
+`digest` identifies the body: it is the SHA-256 of the body's UTF-8 bytes, in lowercase hex.
+Every read of a text carries it, both `GET /texts/{id}` and a document read with its body.
+
+=== Changing a text's body
+
+`PATCH /texts/{id}` changes the body in one of two forms, and the tokens over the text follow the change.
+
+* `body`: the whole new body. Plaid compares it with the stored body to find what changed, and moves, resizes or deletes tokens to match.
+* `edits`: the changes an editor made, in order, each at the place it was made. Use this form from an editor that knows where the cursor was.
+
+`edits` is a list of edit operations.
+Indices are code points, and each operation's index is in the body as the operations before it left it:
+
+[,js]
+----
+{ type: "insert",  index: 4, value: "s" }             // type "s" at 4
+{ type: "delete",  index: 9, value: 1 }               // delete 1 code point at 9
+{ type: "replace", index: 0, length: 3, value: "dog" } // put "dog" in place of 3 code points at 0
+----
+
+Only the net change counts: typing a word one letter at a time and inserting it at once are the same edit, and a letter deleted and typed back is no change.
+An insert or a delete stays exactly where it was made.
+A stretch that was both deleted and typed over is read the way a whole new body is read, so a word typed over keeps its tokens and what hangs off them.
+
+Send `base` with `edits`: the `digest` of the body the edits were made on.
+The edits apply only when the stored body is still that body.
+Otherwise the answer is `409` with `text-changed: true` and the stored `digest`, and nothing is written.
+An edit with `base` needs no `document-version`.
+Without `base`, the edits apply to whatever body is stored.
+`base` may also be sent with `body`.
+
+[,js]
+----
+PATCH /texts/9cfafcc6
+{ edits: [ { type: "insert", index: 10, value: "!" } ], base: "4d7e1a…" }
+----
+
+The answer is the text with its new `digest`, and `reshape`: what the change did to the rest of the document.
+
+[,js]
+----
+{ id: "9cfafcc6", body: "Fido barks!", digest: "b31c09…",
+  reshape: { tokens: [], spans: [], "vocab-links": [],
+             deleted: { tokens: [], spans: [], relations: [], "vocab-links": [] } } }
+----
+
+`reshape.tokens` lists the tokens whose extent changed, `spans` and `vocab-links` those whose token lists changed, and `deleted` the ids of everything the change deleted.
+An editor can update its own copy of the document from it instead of reading the document again.
+
+A list of edit operations may also be sent as `body`. It is then applied exactly as sent, with no reading of the change, the form for a program that computes its own positions.
 
 == Tokens
 

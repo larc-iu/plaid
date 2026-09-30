@@ -68,7 +68,19 @@
                                :body text}
                               {:status 404
                                :body {:error "Text not found"}})))}
-         :patch {:summary (str "Update a text's <body>body</body>. A diff is computed between the new and old "
+         :patch {:summary (str "Change a text's body, in one of two forms."
+                               "\n\n"
+                               "<body>edits</body> (with <body>base</body>): the edits made at the caret, as a list of "
+                               "edit directives (below) applied in order, each index in the body the ones before it "
+                               "left. Only their net change counts. A pure insert or delete stays exactly where it "
+                               "was made, and a stretch both deleted and typed over is read as a whole-body update "
+                               "reads the same change. The tokens then follow the rules a whole-body update follows. "
+                               "<body>base</body> is the <body>digest</body> of the text the edits were made on, as "
+                               "every read of a text gives it: the edit applies only to that body, and answers 409 "
+                               "with <body>text-changed</body> true and the stored <body>digest</body> otherwise. "
+                               "An edit with <body>base</body> needs no document version."
+                               "\n\n"
+                               "<body>body</body>: the whole new body. A diff is computed between the new and old "
                                "bodies, and a best effort is made to minimize Levenshtein distance between the two. "
                                "Token indices are updated so that tokens remain intact. Tokens which fall within "
                                "a range of deleted text are either shrunk appropriately if there is partial overlap "
@@ -80,7 +92,15 @@
                                "  {type: \"replace\", index: 5, length: 3, value: \"xy\"} (swap 3 chars at index 5 for \"xy\")\n"
                                "A replace differs from delete+insert in one way: a token covering the whole "
                                "replaced range is resized to keep it rather than deleted, so a word can be "
-                               "respelled in place without losing its annotations. Indices are code points.")
+                               "respelled in place without losing its annotations. Indices are code points. A list "
+                               "under <body>body</body> is applied exactly as sent. <body>base</body> may be sent "
+                               "with either form of <body>body</body> too."
+                               "\n\n"
+                               "The answer is the text with its new <body>digest</body>, and <body>reshape</body>: "
+                               "the tokens whose extent the update changed (<body>id</body>, <body>begin</body>, "
+                               "<body>end</body>), the spans and vocabulary links whose token lists it changed "
+                               "(<body>id</body>, <body>tokens</body>), and under <body>deleted</body> the ids of "
+                               "the tokens, spans, relations and vocabulary links it deleted.")
                  :middleware [[pra/wrap-writer-required get-project-id]
                               [prm/wrap-document-version get-document-id]]
                  :parameters {:query [:map [:document-version {:optional true} :int]]
@@ -91,14 +111,33 @@
                               ;;                                       [:index int?]
                               ;;                                      [:value [:or string? int?]]]]]]
                               :body any?}
-                 :handler (fn [{{{:keys [text-id]} :path {:keys [body]} :body} :parameters db :db user-id :user/id}]
+                 :handler (fn [{{{:keys [text-id]} :path params :body} :parameters db :db user-id :user/id}]
                             (let [doc-id (:text/document (txt/get db text-id))
-                                  {:keys [success code error]} (txt/update-body db text-id body user-id)]
-                              (if success
+                                  {:keys [body edits base]} (when (map? params) params)
+                                  {:keys [success code error op text-changed]}
+                                  (cond
+                                    (not (map? params))
+                                    {:code 400 :error "The request body must be a map with body or edits."}
+                                    (and (contains? params :body) (contains? params :edits))
+                                    {:code 400 :error "Send either body or edits, not both."}
+                                    (and (some? base) (not (string? base)))
+                                    {:code 400 :error "base must be a string."}
+                                    (contains? params :edits)
+                                    (txt/edit-body db text-id {:edits edits :base base} user-id)
+                                    :else
+                                    (txt/update-body db text-id body user-id base))]
+                              (cond
+                                success
                                 (prm/assoc-document-version-in-header
                                  {:status 200
-                                  :body (txt/get db text-id)}
+                                  :body (assoc (txt/get db text-id) :reshape (txt/reshape db op))}
                                  db doc-id)
+                                text-changed
+                                {:status 409
+                                 :body {:error error
+                                        :text-changed true
+                                        :digest (:text/digest (txt/get db text-id))}}
+                                :else
                                 {:status (or code 500)
                                  :body {:error (or error "Internal server error")}})))}
          :delete {:summary "Delete a text and all dependent data."

@@ -17,7 +17,8 @@
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.sql.metadata :as metadata]
-            [plaid.sql.token-layer :as token-layer]))
+            [plaid.sql.token-layer :as token-layer]
+            [plaid.util.digest :as digest]))
 
 (def chunk-size 4000)
 
@@ -277,7 +278,8 @@
              :text-layer/text (when text-row
                                 (attach-metadata {:text/id (:id text-row)
                                                   :text/document (:document_id text-row)
-                                                  :text/body (:body text-row)}
+                                                  :text/body (:body text-row)
+                                                  :text/digest (digest/text-digest (:body text-row))}
                                                  text-row))
              :text-layer/token-layers (->> (get token-layers-by-text-layer (:id txtl) [])
                                            (sort-by :order_idx)

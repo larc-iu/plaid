@@ -101,11 +101,13 @@
      (create-token admin-request (:n layers) text 4 7))})
 
 (defn- save-with-write
-  "Save `new-body` over the setup's text, running `write` in the middle of
+  "Save `new-body` over the setup's text (or send `save`, a function of the
+  setup), running `write` in the middle of
   the save: after it read the newest operation and before it reads the text
   (`:before`), or after it worked the save out (`:after`). Returns the
   save's response, the write's, and the connection each plan read from."
-  [ctx write at]
+  ([ctx write at] (save-with-write ctx write at #(update-text admin-request (:text %) new-body)))
+  ([ctx write at save]
   (let [plan-save @#'st/save-plan
         calls (atom [])
         write-res (atom nil)
@@ -113,18 +115,18 @@
         run-write! #(do (reset! writing? true)
                         (reset! write-res (write ctx))
                         (reset! writing? false))]
-    (with-redefs [st/save-plan (fn [db eid body]
+    (with-redefs [st/save-plan (fn [db eid body base]
                                  (if @writing?
-                                   (plan-save db eid body)
+                                   (plan-save db eid body base)
                                    (let [first? (empty? @calls)
                                          _ (swap! calls conj (instance? java.sql.Connection db))
                                          _ (when (and first? (= at :before)) (run-write!))
-                                         r (plan-save db eid body)]
-                                     (when (and first? (= at :after)) (run-write!))
+                                         r (try (plan-save db eid body base)
+                                                (finally (when (and first? (= at :after)) (run-write!))))]
                                      r)))]
-      {:save (update-text admin-request (:text ctx) new-body)
+      {:save (save ctx)
        :write @write-res
-       :calls @calls})))
+       :calls @calls}))))
 
 (deftest a-write-between-the-reads-and-the-lock-makes-the-save-work-it-out-again
   (doseq [[k write] writes
@@ -172,9 +174,9 @@
         ctx (setup "Batch")
         plan-save @#'st/save-plan
         calls (atom [])
-        res (with-redefs [st/save-plan (fn [db eid body]
+        res (with-redefs [st/save-plan (fn [db eid body base]
                                          (swap! calls conj (instance? java.sql.Connection db))
-                                         (plan-save db eid body))]
+                                         (plan-save db eid body base))]
               (api-call admin-request {:method :post :path "/api/v1/batch"
                                        :body [{:path (str "/api/v1/tokens/" (nth (:nodes ctx) 1))
                                                :method "patch" :body {:begin 4 :end 11}}
@@ -208,6 +210,8 @@
         _ (ok "body save" (update-text req text new-body))
         _ (ok "body ops" (api-call req {:method :patch :path (str "/api/v1/texts/" text)
                                         :body {:body [{:type "insert" :index 0 :value "x"}]}}))
+        _ (ok "body edits" (api-call req {:method :patch :path (str "/api/v1/texts/" text)
+                                          :body {:edits [{:type "delete" :index 0 :value 1}]}}))
         _ (ok "layer rename" (api-call req {:method :patch :path (str "/api/v1/token-layers/" (:n layers))
                                             :body {:name "Nodes2"}}))
         _ (ok "layer shift" (api-call req {:method :post :path (str "/api/v1/token-layers/" (:n layers) "/shift")
@@ -238,3 +242,39 @@
                     project)]
     (is (= #{"texts" "tokens" "token_layers"} (set (map :t audited))) "every table was written")
     (is (empty? stray))))
+
+(def ^:private caret-edits
+  "`new-body` as edits at the caret over `old-body`."
+  [{:type "insert" :index 0 :value "oh, "}
+   {:type "replace" :index 8 :length 3 :value "cow"}
+   {:type "replace" :index 19 :length 3 :value "a"}
+   {:type "insert" :index 37 :value " far"}])
+
+(defn- edit-with-base [text base]
+  (api-call admin-request {:method :patch :path (str "/api/v1/texts/" text) :body {:edits caret-edits :base base}}))
+
+(deftest an-edit-is-worked-out-before-the-lock-and-again-when-a-write-came-between
+  (is (= new-body (plaid.algos.text/edit-ops-body (mapv #(update % :type keyword) caret-edits) old-body)))
+  (doseq [[k write] (dissoc writes :body-save)
+          at [:before :after]]
+    (testing (str k " " at)
+      (let [twin (setup (str "Edit twin " (name k) (name at)))
+            _ (is (< (:status (write twin)) 300))
+            _ (assert-ok (edit-with-base (:text twin) (-> (get-text admin-request (:text twin)) :body :text/digest)))
+            ctx (setup (str "Edit raced " (name k) (name at)))
+            base (-> (get-text admin-request (:text ctx)) :body :text/digest)
+            {:keys [save write calls]} (save-with-write ctx write at #(edit-with-base (:text %) base))]
+        (assert-ok save)
+        (is (< (:status write) 300))
+        (is (= [false true] calls))
+        (is (= (snapshot twin) (snapshot ctx)))))))
+
+(deftest an-edit-whose-body-changed-before-the-lock-is-refused
+  (doseq [at [:before :after]]
+    (let [ctx (setup (str "Edit refused " (name at)))
+          base (-> (get-text admin-request (:text ctx)) :body :text/digest)
+          {:keys [save write]} (save-with-write ctx (:body-save writes) at #(edit-with-base (:text %) base))]
+      (is (< (:status write) 300))
+      (is (= 409 (:status save)))
+      (is (true? (-> save :body :text-changed)))
+      (is (= "the cat sat.\nthe dog ran.\n" (-> (get-text admin-request (:text ctx)) :body :text/body))))))
