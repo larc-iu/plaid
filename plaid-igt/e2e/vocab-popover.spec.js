@@ -152,8 +152,8 @@ test('B5-01/02/14: "+ Create" trims edge punctuation, creates + links, and repla
   await expect(createRow(page)).not.toContainText('derechos.');
   await createRow(page).dblclick();
   await expect(chip(page, ids.w[W.derechos])).toHaveText(/derechos/);
-  // The chip shows before the writes land, so wait for the server to have the
-  // link (sent after the entry it points at).
+  // The chip shows before the write lands, so wait for the server to have the
+  // link (sent in one batch with the entry it points at).
   await expect.poll(async () => (await linksTo(ids.w[W.derechos])).length).toBe(1);
   const items = (await client.vocabLayers.get(lexB.id, true)).items;
   const made = items.find((it) => it.form === 'derechos');
@@ -166,8 +166,9 @@ test('B5-01/02/14: "+ Create" trims edge punctuation, creates + links, and repla
   await open(page, ids.w[W.derechos], lexB.name);
   const seen = writes(page);
   await createRow(page).dblclick();
-  await expect.poll(() => seen.length, { timeout: 5000 }).toBe(2);
-  expect(seen).toEqual(['POST /api/v1/vocab-items', 'POST /api/v1/batch']);
+  // The entry, the old link's delete and the new link go in one batch.
+  await expect.poll(() => seen.length, { timeout: 5000 }).toBe(1);
+  expect(seen).toEqual(['POST /api/v1/batch']);
   await expect
     .poll(async () => {
       links = await linksTo(ids.w[W.derechos]);
@@ -176,6 +177,11 @@ test('B5-01/02/14: "+ Create" trims edge punctuation, creates + links, and repla
     .toBe(true);
   expect(links.length).toBe(1);
   expect(links[0].vocabItem.id).not.toBe(made.id);
+  const homonyms = (await client.vocabLayers.get(lexB.id, true)).items.filter(
+    (it) => it.form === 'derechos',
+  );
+  expect(homonyms.map((it) => it.id)).toContain(links[0].vocabItem.id);
+  expect(seen).toEqual(['POST /api/v1/batch']);
 });
 
 test('B5-04..09: create-row forms per token shape', async ({ page }) => {

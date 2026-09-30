@@ -119,7 +119,9 @@ test('search click-through focuses the hit word', async ({ page }) => {
     .toBe(ids.w[2]);
 });
 
-test('a failed save keeps the typed value in the cell and the focus on it', async ({ page }) => {
+test('a failed save keeps the typed value in its cell, and focus stays where Enter moved it', async ({
+  page,
+}) => {
   await openAnalyze(page);
   await page.route('**/api/v1/spans**', (route) => route.fulfill({ status: 503, body: '' }));
   await page.route('**/api/v1/batch**', (route) => route.fulfill({ status: 503, body: '' }));
@@ -134,10 +136,21 @@ test('a failed save keeps the typed value in the cell and the focus on it', asyn
     page.locator('[data-sonner-toast]').filter({ hasText: /Failed to reach the server/ }),
   ).toBeVisible({ timeout: 15000 });
   await expect(cell).toHaveValue('OFFLINE');
-  await expect(cell).toBeFocused();
+  await expect(cell).toHaveClass(/igt-field--unsent/);
+  // The refusal does not take focus back from the next cell: letters typed
+  // there when it lands would go onto the end of OFFLINE.
+  await expect(cell).not.toBeFocused();
+  expect(
+    await page.evaluate(() => {
+      const a = document.activeElement;
+      return a?.dataset?.tier === 'ma:Gloss' ? 'next gloss' : (a?.tagName ?? null);
+    }),
+  ).toBe('next gloss');
   await page.unroute('**/api/v1/spans**');
   await page.unroute('**/api/v1/batch**');
-  // Enter now retries and succeeds.
+  // Back in the cell, Enter sends it again and it lands.
+  await cell.click();
+  await expect(cell).toHaveValue('OFFLINE');
   await page.keyboard.press('Enter');
   await expect
     .poll(async () => {
