@@ -63,7 +63,8 @@
   (if (:success result)
     (on-success result)
     {:status (or (:code result) 500)
-     :body   {:error (or (:error result) "Internal server error")}}))
+     :body   (merge {:error (or (:error result) "Internal server error")}
+                    (:error-body result))}))
 
 (def guideline-routes
   [["/projects/:id/guidelines"
@@ -91,20 +92,24 @@
                            "NOT required to be unique: a client that cares warns about a title "
                            "already in use rather than refusing the write. <body>body</body> is "
                            "Markdown and may be empty. A <body>pinned</body> guideline is one the "
-                           "assistant is given in full on every turn.")
+                           "assistant is given in full on every turn. <body>id</body>, optional, is the new "
+                           "guideline's id, a UUIDv7 the client minted (else the server mints one). An id used "
+                           "before is refused with 409 and <body>id-taken</body>.")
              :middleware [[pra/wrap-writer-required get-project-id]]
              :parameters {:body [:map
+                                 [:id {:optional true} :uuid]
                                  [:title :string]
                                  [:body {:optional true} :string]
                                  [:pinned {:optional true} boolean?]]}
              :handler (fn [{{{:keys [id]} :path
-                             {:keys [title body pinned]} :body} :parameters
+                             {:keys [title body pinned] new-id :id} :body} :parameters
                             db :db user-id :user/id}]
                         (from-result
                          (pgl/create db id
-                                     {:guideline/title  title
-                                      :guideline/body   body
-                                      :guideline/pinned pinned}
+                                     (cond-> {:guideline/title  title
+                                              :guideline/body   body
+                                              :guideline/pinned pinned}
+                                       (some? new-id) (assoc :guideline/id new-id))
                                      user-id)
                          (fn [result] {:status 201 :body {:id (:extra result)}})))}}]]
 

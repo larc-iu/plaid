@@ -6,6 +6,9 @@
             ;; http-server or tests) so test JVMs don't register the defstate
             ;; and start spawning backup threads.
             [plaid.server.backup]
+            ;; Deletes stored Idempotency-Key answers past retention. Required
+            ;; here for the same reason as the backup scheduler.
+            [plaid.server.idempotency-sweep]
             ;; First-run extraction of the bundled Python services. Required
             ;; ONLY here (never from http-server or tests) so test JVMs don't
             ;; register the defstate.

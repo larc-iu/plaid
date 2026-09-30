@@ -70,23 +70,26 @@
                              "\nOffsets are 0-based indices in Unicode CODE POINTS (not UTF-16 code units or bytes): a supplementary-plane character such as an emoji or an SMP script counts as one."
                              "\n<body>begin</body>: the inclusive code-point offset at which this token begins in the body of the text specified by <body>text</body>"
                              "\n<body>end</body>: the exclusive code-point offset at which this token ends in the body of the text specified by <body>text</body>"
-                             "\n<body>precedence</body>: used for tokens with the same <body>begin</body> value in order to indicate their preferred linear order.")
+                             "\n<body>precedence</body>: used for tokens with the same <body>begin</body> value in order to indicate their preferred linear order."
+                             "\n<body>id</body>: optional, the new token's id, a UUIDv7 the client minted (else the server mints one). An id used before, even by a token since deleted, is refused with 409 and <body>id-taken</body>.")
                :middleware [[pra/wrap-writer-required get-project-id]
                             [prm/wrap-document-version get-document-id]
                             metadata/wrap-inline-metadata-shape-guard]
                :parameters {:query [:map [:document-version {:optional true} :int]]
                             :body [:map
+                                   [:id {:optional true} :uuid]
                                    [:token-layer-id :uuid]
                                    [:text :uuid]
                                    [:begin int?]
                                    [:end int?]
                                    [:precedence {:optional true} int?]
                                    [:metadata {:optional true} [:map-of string? any?]]]}
-               :handler (fn [{{{:keys [token-layer-id text begin end precedence metadata]} :body} :parameters db :db user-id :user/id :as request}]
+               :handler (fn [{{{:keys [id token-layer-id text begin end precedence metadata]} :body} :parameters db :db user-id :user/id :as request}]
                           (let [attrs (cond-> {:token/layer token-layer-id
                                                :token/text text
                                                :token/begin begin
                                                :token/end end}
+                                        (some? id) (assoc :token/id id)
                                         (some? precedence) (assoc :token/precedence precedence))
                                 doc-id (get-document-id request)
                                 result (tok/create db attrs user-id metadata)]
@@ -94,7 +97,7 @@
                               (prm/assoc-document-version-in-header
                                {:status 201 :body {:id (:extra result)}}
                                db doc-id)
-                              {:status (or (:code result) 500) :body {:error (:error result)}})))}}]
+                              {:status (or (:code result) 500) :body (prm/error-body result)})))}}]
 
    ["/bulk" {:conflicting true
              :post {:summary (str "Create multiple tokens in a single operation. Provide an array of objects whose keys "
@@ -104,13 +107,15 @@
                                   "<body>begin</body>, the inclusive Unicode code-point offset at which the token begins\n"
                                   "<body>end</body>, the exclusive Unicode code-point offset at which the token ends\n"
                                   "<body>precedence</body>, optional, an integer controlling which orders appear first in linear order when two or more tokens have the same <body>begin</body>\n"
-                                  "<body>metadata</body>, an optional map of metadata")
+                                  "<body>metadata</body>, an optional map of metadata\n"
+                                  "<body>id</body>, optional, the new token's id, a UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 and <body>id-taken</body>, and one named twice with 400.")
                     :middleware [[pra/wrap-writer-required bulk-get-project-id]
                                  [prm/wrap-document-version bulk-get-document-id]
                                  metadata/wrap-inline-metadata-shape-guard]
                     :parameters {:query [:map [:document-version {:optional true} :int]]
                                  :body [:sequential
                                         [:map
+                                         [:id {:optional true} :uuid]
                                          [:token-layer-id :uuid]
                                          [:text :uuid]
                                          [:begin int?]
@@ -119,11 +124,12 @@
                                          [:metadata {:optional true} [:map-of string? any?]]]]}
                     :handler (fn [{{tokens :body} :parameters db :db user-id :user/id :as request}]
                                (let [tokens-attrs (mapv (fn [token-data]
-                                                          (let [{:keys [token-layer-id text begin end precedence metadata]} token-data
+                                                          (let [{:keys [id token-layer-id text begin end precedence metadata]} token-data
                                                                 attrs (cond-> {:token/layer token-layer-id
                                                                                :token/text text
                                                                                :token/begin begin
                                                                                :token/end end}
+                                                                        (some? id) (assoc :token/id id)
                                                                         (some? precedence) (assoc :token/precedence precedence))]
                                                             (if metadata
                                                               (assoc attrs :metadata metadata)
@@ -135,7 +141,7 @@
                                    (prm/assoc-document-version-in-header
                                     {:status 201 :body {:ids (:extra result)}}
                                     db doc-id)
-                                   {:status (or (:code result) 500) :body {:error (:error result)}})))}
+                                   {:status (or (:code result) 500) :body (prm/error-body result)})))}
              :patch {:summary (str "Patch the metadata of many tokens in a single operation. Provide an array of objects whose "
                                    "keys are:\n<body>id</body>, the token's id\n"
                                    "<body>metadata</body>, a list of metadata ops, as for PATCH on one entity's metadata\n"
@@ -255,23 +261,27 @@
                            "layer ids, deletes in the same operation every relation of those layers that had both "
                            "ends inside the token and now has one on each side of the split (an end's place is its "
                            "span's first token), for relations that must stay inside one token, such as a "
-                           "dependency tree inside its sentence.")
+                           "dependency tree inside its sentence. <body>id</body>, optional, is the new right token's id, a "
+                           "UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 "
+                           "and <body>id-taken</body>.")
              :middleware [[pra/wrap-writer-required get-project-id]
                           [prm/wrap-document-version get-document-id]]
              :parameters {:query [:map [:document-version {:optional true} :int]]
                           :body [:map
+                                 [:id {:optional true} :uuid]
                                  [:position int?]
                                  [:drop-crossing-relations {:optional true} [:sequential :uuid]]]}
-             :handler (fn [{{{:keys [token-id]} :path {:keys [position drop-crossing-relations]} :body} :parameters db :db user-id :user/id :as request}]
+             :handler (fn [{{{:keys [token-id]} :path {:keys [id position drop-crossing-relations]} :body} :parameters db :db user-id :user/id :as request}]
                         (let [doc-id (get-document-id request)
-                              {:keys [success code error extra]}
+                              {:keys [success code extra] :as result}
                               (tok/split db token-id position user-id
-                                         {:drop-crossing-relations drop-crossing-relations})]
+                                         {:drop-crossing-relations drop-crossing-relations
+                                          :id id})]
                           (if success
                             (prm/assoc-document-version-in-header
                              {:status 201 :body {:id extra}}
                              db doc-id)
-                            {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]
+                            {:status (or code 500) :body (prm/error-body result)})))}}]
 
     ["/merge"
      {:post {:summary (str "Merge two tokens. The left token (smaller begin) survives with the combined extent; "

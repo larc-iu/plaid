@@ -428,8 +428,9 @@
 (defn create
   "Create a new project. `attrs` includes :project/name (required), optional
   :config, and optional :project/maintainers (a vector of user-ids to grant the
-  maintainer role — the REST handler passes the creating user). Returns
-  {:success true :extra <new-id>}.
+  maintainer role — the REST handler passes the creating user), and
+  optional :project/id (a client's UUIDv7, else the server mints one).
+  Returns {:success true :extra <new-id>}.
 
   Audit shape: ONE audit_writes row against `:projects` with change_type
   :insert, whose post-image is the projects row augmented with the
@@ -440,7 +441,7 @@
   creator wouldn't be reconstructed as a maintainer."
   [db attrs user-id]
   (let [{:project/keys [name maintainers]} attrs
-        new-id (psc/new-uuid)
+        new-id (or (:project/id attrs) (psc/new-uuid))
         config (clojure.core/get attrs :config {})]
     (submit-operation! [tx db {:type :project/create
                                :project new-id
@@ -450,6 +451,7 @@
                        ;; Validation inside the body so submit-operation*'s
                        ;; outer catch surfaces a structured 4xx (task #47).
                        (psc/assert-valid-name! name)
+                       (psc/claim-ids! tx :projects "project" [(:project/id attrs)])
                        (psc/execute! tx {:insert-into :projects
                                          :values [{:id new-id
                                                    :name name

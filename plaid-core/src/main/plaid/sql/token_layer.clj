@@ -132,7 +132,8 @@
 (defn create
   "Create a new token layer in `text-layer-id`. `attrs` may include
   :token-layer/name, :token-layer/overlap-mode (defaults :any),
-  :token-layer/parent-token-layer, and :config.
+  :token-layer/parent-token-layer, :config, and :token-layer/id (a
+  client's UUIDv7 for the new layer, else the server mints one).
 
   `order_idx` is resolved by a scalar-subquery inside the INSERT itself
   (see `psc/next-order-idx-expr`) — atomic against concurrent creates
@@ -141,7 +142,7 @@
   [db attrs text-layer-id user-id]
   (let [{:token-layer/keys [name]} attrs
         overlap-mode-kw (or (:token-layer/overlap-mode attrs) :any)
-        new-id (psc/new-uuid)
+        new-id (or (:token-layer/id attrs) (psc/new-uuid))
         config (clojure.core/get attrs :config {})
         parent-tl-id (:token-layer/parent-token-layer attrs)]
     (submit-operation! [tx db {:type :token-layer/create
@@ -155,6 +156,7 @@
                        ;; Validation inside the body (task #47) so name + overlap-mode
                        ;; rejections produce {:success false :code 400}.
                        (psc/assert-valid-name! name)
+                       (psc/claim-ids! tx :token_layers "token layer" [(:token-layer/id attrs)])
                        (when-not (valid-overlap-modes overlap-mode-kw)
                          (throw (ex-info (str "Invalid overlap-mode: " overlap-mode-kw
                                               ". Must be one of: "

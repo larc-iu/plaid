@@ -181,7 +181,8 @@
                                         {:entries (map ->wire entries)
                                          :next-cursor next-cursor}))))))}
 
-     :post {:summary (str "Mint an invite and return its code ONCE — the code is never stored "
+     :post {:plaid/idempotency false
+            :summary (str "Mint an invite and return its code ONCE — the code is never stored "
                           "and can never be shown again. Build the link client-side as "
                           "<body>&lt;app-url&gt;#/invite/&lt;code&gt;</body>.\n\n"
                           "EVERY field is optional. An empty body mints a single-use signup "

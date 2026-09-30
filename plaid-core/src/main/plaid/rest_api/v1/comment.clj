@@ -32,6 +32,7 @@
             [plaid.rest-api.v1.pagination :as pagination]
             [plaid.server.events :as events]
             [plaid.sql.comment :as pcm]
+            [plaid.sql.operation :as op]
             [plaid.sql.user :as user]
             [plaid.sql.vocab-layer :as vocab]
             [reitit.coercion.malli]))
@@ -146,18 +147,22 @@
 
   A comment on a vocabulary entry has no project stream to go on (streams
   are per project, a vocabulary belongs to none), so nothing is published:
-  a vocabulary's threads are re-read when they are opened."
+  a vocabulary's threads are re-read when they are opened.
+
+  Published once the change commits: inside a batch, or a write sent with an
+  Idempotency-Key, the transaction is still open here and may roll back."
   [action {:comment/keys [id project-id document-id entity-type entity-id author-id]}]
   (when project-id
-    (events/publish-message! project-id
-                             {:type        "comment"
-                              :action      action
-                              :comment-id  id
-                              :document-id document-id
-                              :entity-type entity-type
-                              :entity-id   entity-id
-                              :author-id   author-id}
-                             author-id)))
+    (op/after-commit!
+     #(events/publish-message! project-id
+                               {:type        "comment"
+                                :action      action
+                                :comment-id  id
+                                :document-id document-id
+                                :entity-type entity-type
+                                :entity-id   entity-id
+                                :author-id   author-id}
+                               author-id))))
 
 ;; ============================================================
 ;; Routes
@@ -255,9 +260,12 @@
                            "the authenticated caller. <code>anchor-label</code> is an optional "
                            "caption saying what the comment is about (at most 200 characters), "
                            "shown once the anchor has been deleted. Comments are not audited and "
-                           "do not bump the document version.")
+                           "do not bump the document version. <body>id</body>, optional, is the new comment's "
+                           "id, a UUIDv7 the client minted (else the server mints one). An id already used is "
+                           "refused with 409 and <body>id-taken</body>.")
              :middleware [[wrap-owner-writer-required body-owner]]
              :parameters {:body [:map
+                                 [:id {:optional true} :uuid]
                                  [:entity-type entity-type-schema]
                                  [:entity-id uuid?]
                                  [:body string?]
@@ -269,7 +277,7 @@
                             {:status 201 :body created})
                           (catch clojure.lang.ExceptionInfo e
                             {:status (or (:code (ex-data e)) 500)
-                             :body {:error (ex-message e)}})))}}]
+                             :body (merge {:error (ex-message e)} (:plaid/body (ex-data e)))})))}}]
 
     ["/:comment-id"
      {:parameters {:path [:map [:comment-id :uuid]]}}

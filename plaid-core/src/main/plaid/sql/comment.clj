@@ -268,11 +268,13 @@
   shape.
 
   Throws `{:code 400}` for an uncommentable entity type or a bad body or
-  label, and `{:code 404}` when the anchor entity does not exist. The caller
+  label, and `{:code 404}` when the anchor entity does not exist. `id`
+  names the comment's id (a client's UUIDv7), else the server mints one,
+  and an id already used is a 409 with `id-taken`. The caller
   is responsible for having checked that `author-id` may write to the
   resolved owner — `resolve-anchor` is also what the REST auth middleware
   uses to find it."
-  [db {:keys [entity-type entity-id body anchor-label]} author-id]
+  [db {:keys [id entity-type entity-id body anchor-label]} author-id]
   (when-not (commentable-types entity-type)
     (throw (ex-info (str "Entity type '" entity-type "' cannot carry comments. "
                          "Commentable types: "
@@ -284,8 +286,10 @@
     (when (and (nil? project-id) (nil? vocab-layer-id))
       (throw (ex-info (psc/err-msg-not-found (clojure.string/capitalize entity-type) entity-id)
                       {:code 404 :id entity-id})))
+    ;; Comments are not audited, so only a live comment's id is found.
+    (psc/claim-ids! db :comments "comment" [id])
     (let [now (psc/now-iso)
-          row {:id             (psc/new-uuid)
+          row {:id             (or id (psc/new-uuid))
                :project_id     project-id
                :document_id    document-id
                :vocab_layer_id vocab-layer-id

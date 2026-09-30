@@ -181,11 +181,14 @@
   the noisy :insert + :update pair we'd otherwise emit when metadata is
   present (task #59).
 
+  `:span/id` names the new span's id (a client's UUIDv7), else the server
+  mints one.
+
   Returns {:success true :extra <new-id>}."
   ([db attrs user-id] (create db attrs user-id nil))
   ([db attrs user-id metadata]
    (let [{:span/keys [layer tokens value]} attrs
-         new-id (psc/new-uuid)]
+         new-id (or (:span/id attrs) (psc/new-uuid))]
      (submit-operation!
       [tx db {:type :span/create
               :project (when layer
@@ -197,9 +200,7 @@
               :user user-id}]
       ;; Validation inside the body (task #47).
       (validate-atomic-value! value)
-      (when (psc/fetch-by-id tx :spans new-id)
-        (throw (ex-info (psc/err-msg-already-exists "Span" new-id)
-                        {:id new-id :code 409})))
+      (psc/claim-ids! tx :spans "span" [(:span/id attrs)])
       (let [token-rows (fetch-tokens-by-ids tx tokens)
             _ (check-tokens! tx layer tokens token-rows)
             doc-id (:document_id (first token-rows))]
@@ -370,6 +371,7 @@
      (check-spans-consistency! attrs-vec)
      (doseq [a attrs-vec]
        (validate-atomic-value! (:span/value a)))
+     (psc/claim-ids! tx :spans "span" (map :span/id attrs-vec))
      (let [layer-row (psc/fetch-by-id tx :span_layers layer-id)]
        (when (nil? layer-row)
          (throw (ex-info (psc/err-msg-not-found "Span layer" layer-id)
@@ -384,7 +386,7 @@
                     (fn [a]
                       (let [tokens (:span/tokens a)
                             token-rows-for-span (mapv #(clojure.core/get token-by-id %) tokens)
-                            new-id (psc/new-uuid)]
+                            new-id (or (:span/id a) (psc/new-uuid))]
                         (check-tokens! tx layer-id tokens token-rows-for-span)
                         {:id new-id
                          :tokens tokens

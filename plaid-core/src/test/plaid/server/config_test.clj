@@ -48,8 +48,9 @@
     (is (= [:get :put :post :patch :delete :options]
            (get-in cfg [:plaid.server.middleware/cors-config :access-control-allow-methods])))
     (is (= [] (get-in cfg [:plaid.server.middleware/cors-config :access-control-allow-origin])))
-    (is (= ["Authorization" "Content-Type"]
-           (get-in cfg [:plaid.server.middleware/cors-config :access-control-allow-headers])))))
+    (is (= ["Authorization" "Content-Type" "Idempotency-Key"]
+           (get-in cfg [:plaid.server.middleware/cors-config :access-control-allow-headers])))
+    (is (= 24 (get-in cfg [:plaid.idempotency :retention-hours])))))
 
 (deftest filesystem-overlay-merges
   (let [f (temp-toml "[server]\nport = 9999\n\n[logging]\nlevel = \"debug\"\n")]

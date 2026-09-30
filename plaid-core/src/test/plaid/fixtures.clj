@@ -97,6 +97,8 @@
    ;; audit_retention: the prune high-water marker. A test that sets it
    ;; (cold-rebuild refusal coverage) must not leak it into later tests.
    "audit_retention"
+   ;; idempotency_keys: before the users wipe (user_id → users).
+   "idempotency_keys"
    ;; api_tokens: after operations (operations.token_id → api_tokens) and
    ;; before the users wipe below (api_tokens.user_id → users).
    "api_tokens"

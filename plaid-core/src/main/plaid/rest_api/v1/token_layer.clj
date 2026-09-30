@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.token-layer
   (:require [plaid.rest-api.v1.layer :refer [layer-routes]]
+            [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
             [plaid.sql.text-layer :as txtl]
             [plaid.sql.token-layer :as tokl]))
@@ -49,14 +50,18 @@
                          "(partitioning is reserved for root layers that tile the whole text) — e.g. words "
                          "(non-overlapping, parent=sentences) within sentences (partitioning). Structural "
                          "operations on a parent token cascade to the tokens nested in it: see the token "
-                         "delete/split/merge/shift endpoints.")
+                         "delete/split/merge/shift endpoints."
+                         "\n"
+                         "\n<body>id</body>, optional, is the new token layer's id, a UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 and <body>id-taken</body>.")
            :parameters {:body [:map
+                               [:id {:optional true} :uuid]
                                [:text-layer-id :uuid]
                                [:name :string]
                                [:overlap-mode {:optional true} [:enum "any" "non-overlapping" "partitioning"]]
                                [:parent-token-layer-id {:optional true} :uuid]]}
-           :handler (fn [{{{:keys [name text-layer-id overlap-mode parent-token-layer-id]} :body} :parameters db :db user-id :user/id}]
+           :handler (fn [{{{:keys [id name text-layer-id overlap-mode parent-token-layer-id]} :body} :parameters db :db user-id :user/id}]
                       (let [attrs (cond-> {:token-layer/name name}
+                                    (some? id) (assoc :token-layer/id id)
                                     overlap-mode (assoc :token-layer/overlap-mode (keyword overlap-mode))
                                     parent-token-layer-id (assoc :token-layer/parent-token-layer parent-token-layer-id))
                             result (tokl/create db attrs text-layer-id user-id)]
@@ -64,4 +69,4 @@
                           {:status 201
                            :body   {:id (:extra result)}}
                           {:status (or (:code result) 500)
-                           :body   {:error (:error result)}})))}}))
+                           :body   (prm/error-body result)})))}}))

@@ -113,6 +113,8 @@
 
   attrs must include :vocab-item/layer and :vocab-item/form.
   Optional metadata-map maps key->value for entity_metadata rows.
+  `:vocab-item/id` names the new item's id (a client's UUIDv7), else the
+  server mints one.
 
   Returns {:success true :extra <new-id>}."
   ([db attrs user-id]
@@ -121,7 +123,7 @@
    (create db attrs user-id metadata-map nil))
   ([db attrs user-id metadata-map doc-id]
    (let [{:vocab-item/keys [layer form]} attrs
-         new-id (psc/new-uuid)
+         new-id (or (:vocab-item/id attrs) (psc/new-uuid))
          row {:id new-id
               :form form
               :vocab_layer_id layer}]
@@ -132,6 +134,7 @@
                                 :user user-id}]
                         (assert-document-version! tx doc-id)
                         (storable/assert-storable! "Form" form)
+                        (psc/claim-ids! tx :vocab_items "vocabulary item" [(:vocab-item/id attrs)])
                         (when (nil? (psc/fetch-by-id tx :vocab_layers layer))
                           (throw (ex-info (psc/err-msg-not-found "Vocab layer" layer)
                                           {:code 400 :id layer})))
@@ -282,7 +285,8 @@
 
 (defn bulk-create
   "Bulk-create vocab items in a single operation. Each entry in `attrs-vec`
-  requires :vocab-item/layer and :vocab-item/form and optionally :metadata.
+  requires :vocab-item/layer and :vocab-item/form and optionally :metadata
+  and :vocab-item/id (a client's UUIDv7 for the new item).
   Entries may reference DIFFERENT vocab layers.
 
   The audit shape mirrors single `create`: ONE synthetic :insert per item
@@ -303,6 +307,7 @@
                       (when (empty? attrs-vec)
                         (throw (ex-info "Bulk create requires at least one vocab item" {:code 400})))
                       (doseq [a attrs-vec] (storable/assert-storable! "Form" (:vocab-item/form a)))
+                      (psc/claim-ids! tx :vocab_items "vocabulary item" (map :vocab-item/id attrs-vec))
                       (let [layer-ids (->> attrs-vec (map :vocab-item/layer) distinct vec)
                             existing-layers (set (->> (psc/fetch-ids tx :vocab_layers layer-ids)
                                                       (map :id)))]
@@ -311,7 +316,7 @@
                             (throw (ex-info (psc/err-msg-not-found "Vocab layer" lid)
                                             {:code 400 :id lid}))))
                         (let [records (mapv (fn [a]
-                                              {:id (psc/new-uuid)
+                                              {:id (or (:vocab-item/id a) (psc/new-uuid))
                                                :layer (:vocab-item/layer a)
                                                :form (:vocab-item/form a)
                                                :metadata (:metadata a)})

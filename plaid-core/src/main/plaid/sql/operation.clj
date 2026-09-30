@@ -589,9 +589,14 @@
         ;; preserved server-side via the `log/error` above. 4xx flows
         ;; (validators throwing structured app errors) keep the message
         ;; — they're caller-actionable by design.
-        {:success false
-         :error (if (>= code 500) "Internal error" (ex-message e))
-         :code code}))
+        (cond-> {:success false
+                 :error (if (>= code 500) "Internal error" (ex-message e))
+                 :code code}
+          ;; Fields a refusal adds to the answer's body beside its message
+          ;; (`id-taken` on a create naming a used id). See
+          ;; `plaid.rest-api.v1.middleware/error-body`.
+          (and (< code 500) (:plaid/body (ex-data e)))
+          (assoc :error-body (:plaid/body (ex-data e))))))
     ;; SQLite busy / locked → 503 so clients see a retry-friendly signal
     ;; (instead of a generic 500 that looks like a server bug). Fires
     ;; only after busy_timeout has elapsed (~5s of contention) — at

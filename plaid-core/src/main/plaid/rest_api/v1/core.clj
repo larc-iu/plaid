@@ -32,6 +32,7 @@
             [plaid.rest-api.v1.audit :refer [audit-routes]]
             [plaid.rest-api.v1.operation-group :refer [operation-group-routes]]
             [plaid.rest-api.v1.batch :refer [batch-routes]]
+            [plaid.rest-api.v1.idempotency :as idempotency]
             [plaid.rest-api.v1.vocab-layer :as vocab-layer :refer [vocab-layer-routes]]
             [plaid.rest-api.v1.vocab-item :refer [vocab-item-routes]]
             [plaid.rest-api.v1.vocab-link :refer [vocab-link-routes]]
@@ -251,6 +252,12 @@
                                        ;; `?group-id=` (logical-operation
                                        ;; grouping). Also per batch sub-op.
                                        prm/wrap-operation-group
+                                       ;; After authentication and body decoding,
+                                       ;; before every route's own gates: a
+                                       ;; replayed answer must not meet a
+                                       ;; document-version its first send moved
+                                       ;; past. See its namespace docstring.
+                                       idempotency/wrap-idempotency-key
                                        openapi/openapi-feature]}
                    ;; Innermost on every route, after the route's own gates
                    ;; have run: a scoped token gets through only where one of

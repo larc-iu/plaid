@@ -107,6 +107,13 @@
           {:status 400 :body {:error (or (ex-message e) "Malformed request body.")}}
           (throw e))))))
 
+(defn error-body
+  "The response body for a failed `submit-operation*` result: its message,
+  plus the fields its refusal added (`:plaid/body` in the ex-data, such as
+  `id-taken` on a create that names an id already used)."
+  [result]
+  (merge {:error (:error result)} (:error-body result)))
+
 (defn assoc-document-versions-in-header
   "Set X-Document-Versions on the response to the current version of every
   document in `doc-ids`. Matches the v2 header name + shape (JSON map of
@@ -251,8 +258,9 @@
 
 (defn- access-record
   "The structured form of one access line, for the admin Logs screen. Holds
-  what the text line holds plus the fields that only fit in a table."
-  [request identity status elapsed thrown]
+  what the text line holds plus the fields that only fit in a table.
+  `replayed` is a write answered from its Idempotency-Key's stored answer."
+  [request identity status elapsed thrown replayed]
   {:method (method-name (:request-method request))
    :path   (:uri request)
    :query  (redact-query-string (:query-string request))
@@ -261,15 +269,17 @@
    :user   (:user identity)
    :ip     (:remote-addr request)
    :token  (:token identity)
+   :replayed (boolean replayed)
    :error  (when thrown (.getName (class thrown)))})
 
 (defn- access-line
   "One line per request, in the order an operator reads it: what was asked
   for, how it went, and who asked. `user=-` is an unauthenticated request,
   and `token=` appears only when a named API token signed it."
-  [{:keys [method path query ms user ip token]} status-text]
+  [{:keys [method path query ms user ip token replayed]} status-text]
   (str method " " path (when query (str "?" query))
        " " status-text
+       (when replayed " replayed")
        " " ms "ms"
        " user=" (or user "-")
        " ip=" (or ip "-")
@@ -342,7 +352,8 @@
                            @thrown (str ":throw " (.getName (class @thrown)))
                            (some? @response) (:status @response)
                            :else "???")
-                  record (access-record request @identity status elapsed @thrown)]
+                  record (access-record request @identity status elapsed @thrown
+                                        (get-in @response [:headers "Idempotent-Replayed"]))]
               (if (get request log-buffer/sub-request-key)
                 (log/debug (access-line record status))
                 (log/with-context+ {log-buffer/context-key record}

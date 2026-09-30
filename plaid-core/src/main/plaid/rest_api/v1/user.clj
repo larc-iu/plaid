@@ -161,7 +161,8 @@
                            {:status 404 :body {:error "User has no profile picture"}}
                            {:status 404 :body {:error "User not found"}})))}
 
-      :put {:summary (str "Upload a profile picture for a user. Your own, or anyone's if you are an "
+      :put {:plaid/idempotency false
+            :summary (str "Upload a profile picture for a user. Your own, or anyone's if you are an "
                           "admin. The image is decoded, center-cropped to a square, scaled to the "
                           "configured edge length, and re-encoded server-side, so camera metadata is "
                           "dropped and EXIF orientation is applied rather than carried. Accepts PNG, "

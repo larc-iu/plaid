@@ -173,7 +173,8 @@
                                   (update :headers merge cache {"ETag" etag}))))
                           (error-response result))))}
 
-     :put {:summary "Upload a media file for a document. Uses Apache Tika for content validation."
+     :put {:plaid/idempotency false
+           :summary "Upload a media file for a document. Uses Apache Tika for content validation."
            :middleware [[pra/wrap-writer-required get-project-id-from-document]]
            :parameters {:path [:map [:document-id :uuid]]}
            :openapi {:requestBody {:content {"multipart/form-data"

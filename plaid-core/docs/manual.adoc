@@ -1533,6 +1533,92 @@ A `value` is set only when the key is present (`null` sets a null value), and an
 The entries may lie in several documents of one project; every document touched has its version bumped.
 An id that does not exist refuses the whole update, so an update never silently skips an entry.
 
+== Retrying a write
+
+A write's answer can be lost after the server stored it: the connection drops, a proxy answers 502 or 504, the laptop sleeps.
+Sending the write again must then not store it twice.
+Plaid gives you two tools for this, and both clients use them on every write.
+
+=== Ids you mint
+
+Every create that answers an id takes an optional `id` in its body: projects, documents (and a document's copy), texts, the five kinds of layer, tokens (and the token a split makes), spans, relations, vocab items, vocab links, guidelines and comments.
+In a bulk create each item may carry its own `id`, and items with and without one may be mixed.
+The rows inside a copied document always get ids from the server.
+
+The id must be a UUIDv7 (RFC 9562) whose time lies after 2020 and at most an hour ahead of the server's clock, otherwise the create is refused with 400.
+Rows are read in id order, so an id of another version, or one stamped far in the past or future, would sort before or after everyone else's rows for good.
+One id named twice in one bulk create is a 400.
+
+An id that was used before is refused with 409, and the body says so:
+
+[,json]
+----
+{"error": "A span with id 0199... already exists.", "id-taken": true, "id": "0199..."}
+----
+
+That holds for an id whose row was since deleted too ("existed" in the message), so a create sent again late never brings back a row someone deleted meanwhile.
+A comment has no history, so only a comment that still exists holds its id.
+Tell `id-taken` apart from a version conflict by that field, never by the status alone.
+
+With the id known before the create is sent, a later write in the same batch can name it directly, and `b.ref()` is only needed for ids the server mints.
+
+Both clients mint these ids: `uuidv7()` in JavaScript and `uuid7()` in Python.
+Each create method takes the id as an option, `{ id }` as the last argument in JavaScript and `id=` in Python:
+
+[,js]
+----
+const id = uuidv7();
+await client.spans.create(layerId, [tokenId], "NOUN", undefined, undefined, { id });
+----
+
+[,python]
+----
+span_id = uuid7()
+client.spans.create(layer_id, [token_id], "NOUN", id=span_id)
+----
+
+=== The Idempotency-Key header
+
+Every other write, and every create too, may carry an `Idempotency-Key` header of 8 to 128 letters, digits or `. _ : -`.
+The server keeps the answer to a write sent with a key for 24 hours (`[idempotency] retention_hours` in `config.toml`), scoped to the user who sent it.
+The same key sent again by the same user for the same request is answered with that stored answer: the same status and body, the same `X-Document-Versions`, and `Idempotent-Replayed: true`.
+Nothing is written again, nothing is announced on the project's stream, and no history entry is added.
+The replay comes before every other check, including the `document-version` one, so a strict resend of a write that landed is not refused as stale.
+
+Two sends are the same request when they have the same method, path, body and query parameters.
+`group-id`, `group-message`, `group-kind`, `group-ref` and `audit-message` only label a write and are left out, while `document-version` counts.
+The same key for a different request is refused with 422 and `"idempotency-key-reused": true`.
+Only a success is kept: a write refused for any reason (a version conflict, a lock, a bad request, a busy database) wrote nothing, and sending it again runs it again.
+
+A `/batch` takes one key for the whole batch.
+The key is refused with 400 on the routes a batch cannot carry, or whose answer is a secret: the lock routes, uploads (media and profile pictures), private user data, login and logout, minting an API token or an invite, `/admin`, and the service routes.
+A GET ignores it.
+
+=== What the clients do
+
+Both clients send a key on every write that is not a signal (`outOfBand`), an upload (`noBatch`), or a call that mints a secret.
+A queued write has none of its own: its batch request has one, and a batch the client splits past 1,000 operations sends one key per part.
+When a keyed write gets no answer (no response at all, 502 or 504), the client sends it again under the same key, up to three times after about 1, 3 and 9 seconds, unless the browser says it is offline.
+The error that finally escapes carries the key (`idempotencyKey`, `idempotency_key`), so a caller that sends the write again under it later is answered from the first send if it landed.
+
+A caller that runs an operation again from the top can make it send the same keys.
+`client.keySeed()` (`key_seed()` in Python) gives a seed, and an operation opened with it numbers its writes, so the nth write sent inside it takes the key `<seed>.<n>` on every run, with the `document-version` the first run stamped:
+
+[,js]
+----
+const keys = client.keySeed();
+const send = () => client.withOperation("Gloss word", async () => { ... }, { keys });
+await send();   // and if its answer was lost, later:
+await send();   // the writes that landed are replayed, the rest run
+----
+
+[,python]
+----
+keys = client.key_seed()
+with client.operation("Gloss word", keys=keys):
+    ...
+----
+
 == Trust
 
 For all constraints which you might attempt to enforce using the three mechanisms described above, there is, of course, nothing stopping a malicious user from circumventing them and submitting changes which invalidate your formalism-specific data integrity constraints.

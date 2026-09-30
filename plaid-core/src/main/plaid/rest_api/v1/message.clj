@@ -640,7 +640,8 @@
    ;; Message endpoint for sending arbitrary messages to project subscribers
    ;; Heartbeat confirmation endpoint
    ["/heartbeat"
-    {:post {:summary "INTERNAL, do not use directly."
+    {:plaid/idempotency false
+     :post {:summary "INTERNAL, do not use directly."
             :middleware [[pra/wrap-reader-required get-project-id]]
             :parameters {:body [:map [:client-id :string]]}
             :handler (fn [{{{:keys [id]} :path
@@ -674,7 +675,8 @@
    ;; channel registry. Live entries win on metadata and carry :online true;
    ;; the rest are offline with a :last-seen-at stamp. Synchronous read.
    ["/services"
-    {:get {:summary (str "List the services seen on a project: currently connected ones "
+    {:plaid/idempotency false
+     :get {:summary (str "List the services seen on a project: currently connected ones "
                          "(online true) plus previously-seen offline ones with a last-seen time.")
            :middleware [[pra/wrap-reader-required get-project-id]]
            :handler (fn [{{{:keys [id]} :path} :parameters db :db}]
@@ -702,7 +704,8 @@
 
    ;; Registry hygiene: forget a previously-seen (offline) service.
    ["/services/:service-id"
-    {:parameters {:path [:map [:id :uuid] [:service-id :string]]}
+    {:plaid/idempotency false
+     :parameters {:path [:map [:id :uuid] [:service-id :string]]}
      :delete {:summary "Forget a previously-seen service. 409 if it is currently connected."
               :middleware [[pra/wrap-maintainer-required get-project-id]]
               :handler (fn [{{{:keys [id service-id]} :path} :parameters db :db}]
@@ -717,7 +720,8 @@
    ;; the GET stream registers the service for discovery (metadata rides the
    ;; query string); closing it deregisters.
    ["/services/:service-id/requests"
-    {:parameters {:path [:map [:id :uuid] [:service-id :string]]}
+    {:plaid/idempotency false
+     :parameters {:path [:map [:id :uuid] [:service-id :string]]}
      :get {:summary "Service: open the inbound work-request stream (SSE); this registers the service."
            :middleware [[pra/wrap-writer-required get-project-id]]
            :parameters {:query [:map
@@ -740,7 +744,8 @@
    ;; A request the client made earlier: rejoin its stream, or ask the
    ;; service to stop it. Only the user who submitted it (or an admin).
    ["/service-requests/:request-id"
-    {:parameters {:path [:map [:id :uuid] [:request-id :string]]}
+    {:plaid/idempotency false
+     :parameters {:path [:map [:id :uuid] [:request-id :string]]}
      :get {:summary (str "Client: rejoin the stream of a request made earlier (progress, then the "
                          "result; or the result at once if it already finished). 404 unless the "
                          "request is yours and still known.")
@@ -754,7 +759,8 @@
    ;; Service reports progress/result/error for an in-flight request; the server
    ;; relays it to the waiting requester.
    ["/service-requests/:request-id/events"
-    {:parameters {:path [:map [:id :uuid] [:request-id :string]]}
+    {:plaid/idempotency false
+     :parameters {:path [:map [:id :uuid] [:request-id :string]]}
      :post {:summary "Service: report progress/result/error for an in-flight request."
             :middleware [[pra/wrap-writer-required get-project-id]]
             :parameters {:body [:map

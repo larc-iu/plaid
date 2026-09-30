@@ -163,7 +163,19 @@ allowed_origins = []
 allowed_methods = ["get", "put", "post", "patch", "delete", "options"]
 
 # Request headers permitted for cross-origin requests.
-allowed_headers = ["Authorization", "Content-Type"]
+# Idempotency-Key is added when missing: every write the clients send
+# carries one.
+allowed_headers = ["Authorization", "Content-Type", "Idempotency-Key"]
+
+# -----------------------------------------------------------------------------
+# Idempotent writes
+# -----------------------------------------------------------------------------
+# A write sent with an Idempotency-Key header keeps its answer, so the same
+# key sent again (a retry after a lost answer) is answered from it instead of
+# writing twice.
+[idempotency]
+# How long (hours) an answer is kept. A retry after this runs again.
+retention_hours = 24
 
 # -----------------------------------------------------------------------------
 # Document locks

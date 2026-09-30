@@ -9,7 +9,8 @@
 
 (def user-data-routes
   ["/users/:user-id/data"
-   {:openapi {:security [{:auth []}]}
+   {:plaid/idempotency false
+    :openapi {:security [{:auth []}]}
     :parameters {:path [:map [:user-id string?]]}
     :middleware [pra/wrap-login-required
                  (self-or-admin "You can only read or change your own private data.")

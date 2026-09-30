@@ -37,7 +37,8 @@
            :parameters {:query (into [:map] pagination/query-params)}
            :handler (fn [{{{:keys [user-id]} :path query :query} :parameters db :db}]
                       (pagination/list-response query (fn [opts] (api-token/list-for-user db user-id opts))))}
-     :post {:summary (str "Mint a named API token for the user. The signed token string is "
+     :post {:plaid/idempotency false
+            :summary (str "Mint a named API token for the user. The signed token string is "
                           "returned ONCE in the response and never again — store it securely. "
                           "API tokens do not expire and survive password changes / logout; "
                           "use DELETE to revoke.")

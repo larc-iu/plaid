@@ -209,11 +209,14 @@
   link with its tokens (and metadata) from one record, avoiding the
   noisy :insert + :update pair (task #59).
 
+  `:vocab-link/id` names the new link's id (a client's UUIDv7), else the
+  server mints one.
+
   Returns {:success true :extra <new-id>}."
   ([db attrs user-id] (create db attrs user-id nil))
   ([db attrs user-id metadata]
    (let [{:vocab-link/keys [vocab-item tokens]} attrs
-         new-id (psc/new-uuid)
+         new-id (or (:vocab-link/id attrs) (psc/new-uuid))
          {:keys [doc-id project-id]} (project-and-doc-from-first-token db (first tokens))]
      (submit-operation!
       [tx db {:type :vocab-link/create
@@ -223,9 +226,7 @@
                                 (when (seq metadata)
                                   (str " with " (count metadata) " metadata keys")))
               :user user-id}]
-      (when (psc/fetch-by-id tx :vocab_links new-id)
-        (throw (ex-info (psc/err-msg-already-exists "Vocab link" new-id)
-                        {:id new-id :code 409})))
+      (psc/claim-ids! tx :vocab_links "vocabulary link" [(:vocab-link/id attrs)])
       (let [token-rows (fetch-tokens-by-ids tx tokens)
             {:keys [doc-id]} (check-vocab-link-invariants!
                               tx vocab-item tokens token-rows)]
@@ -257,7 +258,8 @@
 (defn bulk-create
   "Bulk-create vocab links in a single operation. Each entry in
   `attrs-vec` requires :vocab-link/vocab-item and :vocab-link/tokens
-  (non-empty vector) and optionally :metadata. Unlike `span/bulk-create`
+  (non-empty vector) and optionally :metadata and :vocab-link/id (a
+  client's UUIDv7 for the new link). Unlike `span/bulk-create`
   (one layer per call), entries may reference DIFFERENT vocab items —
   auto-linking links many tokens to many items at once. Every token across
   the whole call must belong to a single document (mirrors the span/token
@@ -282,6 +284,7 @@
      ;; ExceptionInfo to a structured 4xx response.
      (when (empty? attrs-vec)
        (throw (ex-info "Bulk create requires at least one vocab link" {:code 400})))
+     (psc/claim-ids! tx :vocab_links "vocabulary link" (map :vocab-link/id attrs-vec))
      (let [records (mapv
                     (fn [a]
                       (let [vocab-item (:vocab-link/vocab-item a)
@@ -289,7 +292,7 @@
                             token-rows (fetch-tokens-by-ids tx tokens)
                             {:keys [doc-id]} (check-vocab-link-invariants!
                                               tx vocab-item tokens token-rows)]
-                        {:id (psc/new-uuid)
+                        {:id (or (:vocab-link/id a) (psc/new-uuid))
                          :vocab-item vocab-item
                          :tokens tokens
                          :doc-id doc-id

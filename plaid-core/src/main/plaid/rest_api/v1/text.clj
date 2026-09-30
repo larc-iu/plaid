@@ -30,20 +30,23 @@
                              "\n"
                              "\n<body>text-layer-id</body>: the text's associated layer."
                              "\n<body>document-id</body>: the text's associated document."
-                             "\n<body>body</body>: the string which is the content of this text.")
+                             "\n<body>body</body>: the string which is the content of this text."
+                             "\n<body>id</body>: optional, the new text's id, a UUIDv7 the client minted (else the server mints one). An id used before, even by a text since deleted, is refused with 409 and <body>id-taken</body>.")
                :middleware [[pra/wrap-writer-required get-project-id]
                             [prm/wrap-document-version get-document-id]
                             metadata/wrap-inline-metadata-shape-guard]
                :parameters {:query [:map [:document-version {:optional true} :int]]
                             :body [:map
+                                   [:id {:optional true} :uuid]
                                    [:text-layer-id :uuid]
                                    [:document-id :uuid]
                                    [:body string?]
                                    [:metadata {:optional true} [:map-of string? any?]]]}
-               :handler (fn [{{{:keys [text-layer-id document-id body metadata]} :body} :parameters db :db user-id :user/id}]
-                          (let [attrs {:text/layer text-layer-id
-                                       :text/document document-id
-                                       :text/body body}
+               :handler (fn [{{{:keys [id text-layer-id document-id body metadata]} :body} :parameters db :db user-id :user/id}]
+                          (let [attrs (cond-> {:text/layer text-layer-id
+                                               :text/document document-id
+                                               :text/body body}
+                                        (some? id) (assoc :text/id id))
                                 result (txt/create db attrs user-id metadata)]
                             (if (:success result)
                               (prm/assoc-document-version-in-header
@@ -51,7 +54,7 @@
                                 :body {:id (:extra result)}}
                                db document-id)
                               {:status (or (:code result) 500)
-                               :body {:error (:error result)}})))}}]
+                               :body (prm/error-body result)})))}}]
 
    ["/:text-id"
     {:parameters {:path [:map [:text-id :uuid]]}}

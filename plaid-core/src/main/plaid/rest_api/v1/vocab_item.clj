@@ -107,32 +107,38 @@
 
    [""
     {:post {:summary (str "Create a new vocab item. An entry belongs to no document: <query>document-version</query> "
-                          "is checked against <query>document-id</query>, and refused without it outside a batch.")
+                          "is checked against <query>document-id</query>, and refused without it outside a batch. "
+                          "<body>id</body>, optional, is the new item's id, a UUIDv7 the client minted (else the server "
+                          "mints one). An id used before, even by an item since deleted, is refused with 409 and "
+                          "<body>id-taken</body>.")
             :middleware [[pra/wrap-vocab-writer-required get-vocab-id-from-layer]
                          metadata/wrap-inline-metadata-shape-guard
                          wrap-entry-document-version]
             :parameters {:query document-query
                          :body [:map
+                                [:id {:optional true} :uuid]
                                 [:vocab-layer-id :uuid]
                                 [:form string?]
                                 [:metadata {:optional true} [:map-of string? any?]]]}
-            :handler (fn [{{{:keys [vocab-layer-id form metadata]} :body {:keys [document-id]} :query} :parameters
+            :handler (fn [{{{:keys [id vocab-layer-id form metadata]} :body {:keys [document-id]} :query} :parameters
                            db :db
                            user-id :user/id :as req}]
-                       (let [attrs {:vocab-item/layer vocab-layer-id
-                                    :vocab-item/form form}
+                       (let [attrs (cond-> {:vocab-item/layer vocab-layer-id
+                                            :vocab-item/form form}
+                                     (some? id) (assoc :vocab-item/id id))
                              result (vocab-item/create db attrs user-id metadata document-id)]
                          (if (:success result)
                            {:status 201
                             :body {:id (:extra result)}}
                            {:status (or (:code result) 500)
-                            :body {:error (:error result)}})))}}]
+                            :body (prm/error-body result)})))}}]
 
    ["/bulk" {:conflicting true
              :post {:summary (str "Create multiple vocab items in a single operation. Provide an array of objects whose keys are:\n"
                                   "<body>vocab-layer-id</body>, the vocab layer to create the item in\n"
                                   "<body>form</body>, the item's form\n"
                                   "<body>metadata</body>, an optional map of metadata\n"
+                                  "<body>id</body>, optional, the new item's id, a UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 and <body>id-taken</body>, and one named twice with 400.\n"
                                   "Entries may target different vocab layers; the user must have write access to each. "
                                   "<query>document-version</query> is checked against <query>document-id</query>, as on a single create.")
                     ;; vocab-WRITER on the first entry's layer is the coarse
@@ -144,21 +150,23 @@
                     :parameters {:query document-query
                                  :body [:sequential
                                         [:map
+                                         [:id {:optional true} :uuid]
                                          [:vocab-layer-id :uuid]
                                          [:form string?]
                                          [:metadata {:optional true} [:map-of string? any?]]]]}
                     :handler (fn [{{items :body {:keys [document-id]} :query} :parameters db :db user-id :user/id}]
                                (or (pra/vocab-layers-refusal db (map :vocab-layer-id items) user-id)
-                                   (let [attrs-vec (mapv (fn [{:keys [vocab-layer-id form metadata]}]
+                                   (let [attrs-vec (mapv (fn [{:keys [id vocab-layer-id form metadata]}]
                                                            (cond-> {:vocab-item/layer vocab-layer-id
                                                                     :vocab-item/form form}
+                                                             (some? id) (assoc :vocab-item/id id)
                                                              metadata (assoc :metadata metadata)))
                                                          items)
                                          result (vocab-item/bulk-create db attrs-vec user-id document-id)]
                                      (if (:success result)
                                        {:status 201 :body {:ids (:extra result)}}
                                        {:status (or (:code result) 500)
-                                        :body {:error (:error result)}}))))}
+                                        :body (prm/error-body result)}))))}
              :patch {:summary (str "Update multiple vocab items in a single operation. Provide an array of objects whose keys are:\n"
                                    "<body>id</body>, the vocab item to update\n"
                                    "<body>form</body>, an optional new form (set only when the key is present)\n"

@@ -418,7 +418,15 @@
         cors-config (or (:plaid.server.middleware/cors-config config)
                         {:access-control-allow-origin []
                          :access-control-allow-methods [:get :put :post :patch :delete :options]
-                         :access-control-allow-headers ["Authorization" "Content-Type"]})
+                         :access-control-allow-headers ["Authorization" "Content-Type" "Idempotency-Key"]})
+        ;; Every write the clients send carries an Idempotency-Key, so a
+        ;; configured list that lacks it would refuse every cross-origin
+        ;; write at the preflight.
+        cors-config (update cors-config :access-control-allow-headers
+                            (fn [headers]
+                              (if (some #(= "idempotency-key" (str/lower-case (str %))) headers)
+                                headers
+                                (conj (vec headers) "Idempotency-Key"))))
         allow-origins (vec (:access-control-allow-origin cors-config))
         ;; Task #118: pull the JSON-body cap from config; default 10MB.
         ;; Multiplied to bytes once at boot so the per-request middleware

@@ -128,11 +128,14 @@
   otherwise emit (task #59). Relations have no junction-table
   tokens, so only `:metadata` is folded.
 
+  `:relation/id` names the new relation's id (a client's UUIDv7), else
+  the server mints one.
+
   Returns {:success true :extra <new-id>}."
   ([db attrs user-id] (create db attrs user-id nil))
   ([db attrs user-id metadata]
    (let [{:relation/keys [layer source target value]} attrs
-         new-id (psc/new-uuid)]
+         new-id (or (:relation/id attrs) (psc/new-uuid))]
      (submit-operation!
       [tx db {:type :relation/create
               :project (when layer
@@ -144,9 +147,7 @@
               :user user-id}]
       ;; Validation inside the body (task #47).
       (validate-atomic-value! value)
-      (when (psc/fetch-by-id tx :relations new-id)
-        (throw (ex-info (psc/err-msg-already-exists "Relation" new-id)
-                        {:id new-id :code 409})))
+      (psc/claim-ids! tx :relations "relation" [(:relation/id attrs)])
       (let [source-row (psc/fetch-by-id tx :spans source)
             target-row (psc/fetch-by-id tx :spans target)
             row {:id new-id
@@ -287,7 +288,8 @@
 (defn bulk-create
   "Bulk-create relations. All entries in `attrs-vec` must share the same
   :relation/layer. Each entry requires :relation/source and
-  :relation/target; :relation/value and :metadata are optional. Returns
+  :relation/target; :relation/value, :metadata and :relation/id (a
+  client's UUIDv7 for the new relation) are optional. Returns
   {:success true :extra <ids>} on success."
   [db attrs-vec user-id]
   (let [layer-id (-> attrs-vec first :relation/layer)
@@ -306,6 +308,7 @@
      (check-relations-consistency! attrs-vec)
      (doseq [a attrs-vec]
        (validate-atomic-value! (:relation/value a)))
+     (psc/claim-ids! tx :relations "relation" (map :relation/id attrs-vec))
      ;; Layer existence (relation-layer is reused by every record).
      (when (nil? (psc/fetch-by-id tx :relation_layers layer-id))
        (throw (ex-info (psc/err-msg-not-found "Relation layer" layer-id)
@@ -323,7 +326,7 @@
                             source-row (clojure.core/get span-by-id source)
                             target-row (clojure.core/get span-by-id target)]
                         (check-relation-invariants! tx layer-id source target source-row target-row)
-                        {:id (psc/new-uuid)
+                        {:id (or (:relation/id a) (psc/new-uuid))
                          :relation_layer_id layer-id
                          :document_id (:document_id source-row)
                          :source_span_id source

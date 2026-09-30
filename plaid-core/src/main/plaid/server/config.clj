@@ -112,6 +112,8 @@
    [["cors" "allowed_methods"]            [:plaid.server.middleware/cors-config :access-control-allow-methods] ->kw-vec]
    [["cors" "allowed_headers"]            [:plaid.server.middleware/cors-config :access-control-allow-headers] ->vec]
 
+   [["idempotency" "retention_hours"]     [:plaid.idempotency :retention-hours]                              identity]
+
    [["locks" "expiration_ms"]             [:plaid.server.locks/config :expiration-ms]                        identity]
 
    [["events" "heartbeat_interval_ms"]    [:plaid.server.events/heartbeat :interval-ms]                      identity]

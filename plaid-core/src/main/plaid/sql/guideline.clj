@@ -121,10 +121,12 @@
 
 (defn create
   "Create a guideline in `project-id`. `attrs` takes `:guideline/title`, and
-  optionally `:guideline/body` and `:guideline/pinned`. Returns the new id."
+  optionally `:guideline/body`, `:guideline/pinned` and `:guideline/id` (a
+  client's UUIDv7 for the new guideline, else the server mints one).
+  Returns the new id."
   [db project-id attrs user-id]
   (let [{:guideline/keys [title body pinned]} attrs
-        new-id (psc/new-uuid)]
+        new-id (or (:guideline/id attrs) (psc/new-uuid))]
     (submit-operation! [tx db {:type        :guideline/create
                                :project     project-id
                                :document    nil
@@ -132,6 +134,7 @@
                                :user        user-id}]
                        (validate-text! "Guideline title" title max-title-length)
                        (validate-body! (or body ""))
+                       (psc/claim-ids! tx :guidelines "guideline" [(:guideline/id attrs)])
                        (when (nil? (psc/fetch-by-id tx :projects project-id))
                          (throw (ex-info (psc/err-msg-not-found "Project" project-id)
                                          {:code 400 :id project-id})))

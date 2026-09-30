@@ -392,13 +392,15 @@
 
   attrs must include :document/name and :document/project. Optional
   metadata-map maps key->value for entity_metadata population.
+  `:document/id` names the new document's id (a client's UUIDv7), else
+  the server mints one.
 
   Returns {:success true :extra <new-id>} on success."
   ([db attrs user-id]
    (create db attrs user-id nil))
   ([db attrs user-id metadata-map]
    (let [{:document/keys [name project]} attrs
-         new-id (psc/new-uuid)
+         new-id (or (:document/id attrs) (psc/new-uuid))
          now (psc/now-iso)]
      (submit-operation! [tx db {:type :document/create
                                 :project project
@@ -416,6 +418,7 @@
                         ;; name produces {:success false :code 400} via the
                         ;; outer catch in submit-operation*.
                         (psc/assert-valid-name! name)
+                        (psc/claim-ids! tx :documents "document" [(:document/id attrs)])
                         (when (nil? (psc/fetch-by-id tx :projects project))
                           (throw (ex-info (psc/err-msg-not-found "Project" project)
                                           {:id project :code 400})))
@@ -531,11 +534,14 @@
   commits, so the response is already out and a failure to copy the file
   is logged and nothing more: the batch's other writes stand and the new
   document simply has no media. Outside a batch the copy runs inline, as
-  it always did, and `:media-error` still reports it."
+  it always did, and `:media-error` still reports it.
+
+  `:id` in the options names the copy's id (a client's UUIDv7), else the
+  server mints one. The rows inside the copy always get server ids."
   ([db src-id new-name user-id]
    (copy db src-id new-name user-id nil))
-  ([db src-id new-name user-id {:keys [include-media?] :or {include-media? true}}]
-   (let [new-id (psc/new-uuid)
+  ([db src-id new-name user-id {:keys [include-media? id] :or {include-media? true}}]
+   (let [new-id (or id (psc/new-uuid))
          now (psc/now-iso)
          ;; The history names the source as a reader knows it, by its name.
          ;; A missing source fails inside the operation, before anything is
@@ -553,6 +559,7 @@
                                     ;; the copy starts where a new document does.
                                     :skip-doc-version-bump? true}]
                             (psc/assert-valid-name! new-name)
+                            (psc/claim-ids! tx :documents "document" [id])
                             (let [src (psc/fetch-by-id tx :documents src-id)]
                               (when (nil? src)
                                 (throw (ex-info (psc/err-msg-not-found "Document" src-id)

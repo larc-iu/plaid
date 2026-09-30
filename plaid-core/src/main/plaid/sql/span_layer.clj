@@ -49,7 +49,8 @@
 ;; ============================================================
 
 (defn create
-  "Create a new span layer in `token-layer-id`.
+  "Create a new span layer in `token-layer-id`. `:span-layer/id` in
+  `attrs` names its id (a client's UUIDv7), else the server mints one.
 
   `order_idx` is resolved by a scalar-subquery inside the INSERT itself
   (see `psc/next-order-idx-expr`) — atomic against concurrent creates
@@ -57,7 +58,7 @@
   `UNIQUE (token_layer_id, order_idx)` constraint on span_layers."
   [db attrs token-layer-id user-id]
   (let [{:span-layer/keys [name]} attrs
-        new-id (psc/new-uuid)
+        new-id (or (:span-layer/id attrs) (psc/new-uuid))
         config (clojure.core/get attrs :config {})]
     (submit-operation! [tx db {:type :span-layer/create
                                :project (clojure.core/get
@@ -69,6 +70,7 @@
                                :user user-id}]
                        ;; Validation inside the body (task #47).
                        (psc/assert-valid-name! name)
+                       (psc/claim-ids! tx :span_layers "span layer" [(:span-layer/id attrs)])
                        (let [tokl (psc/fetch-by-id tx :token_layers token-layer-id)]
                          (when (nil? tokl)
                            (throw (ex-info (psc/err-msg-not-found "Token layer" token-layer-id)

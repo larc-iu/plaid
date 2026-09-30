@@ -49,7 +49,8 @@
 ;; ============================================================
 
 (defn create
-  "Create a new relation layer in `span-layer-id`.
+  "Create a new relation layer in `span-layer-id`. `:relation-layer/id`
+  in `attrs` names its id (a client's UUIDv7), else the server mints one.
 
   `order_idx` is resolved by a scalar-subquery inside the INSERT itself
   (see `psc/next-order-idx-expr`) — atomic against concurrent creates
@@ -57,7 +58,7 @@
   `UNIQUE (span_layer_id, order_idx)` constraint on relation_layers."
   [db attrs span-layer-id user-id]
   (let [{:relation-layer/keys [name]} attrs
-        new-id (psc/new-uuid)
+        new-id (or (:relation-layer/id attrs) (psc/new-uuid))
         config (clojure.core/get attrs :config {})]
     (submit-operation! [tx db {:type :relation-layer/create
                                :project (clojure.core/get
@@ -69,6 +70,7 @@
                                :user user-id}]
                        ;; Validation inside the body (task #47).
                        (psc/assert-valid-name! name)
+                       (psc/claim-ids! tx :relation_layers "relation layer" [(:relation-layer/id attrs)])
                        (let [sl (psc/fetch-by-id tx :span_layers span-layer-id)]
                          (when (nil? sl)
                            (throw (ex-info (psc/err-msg-not-found "Span layer" span-layer-id)

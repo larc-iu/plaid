@@ -153,7 +153,8 @@
 
 (def authentication-routes
   ["/login"
-   {:post {:summary (str "Authenticate with a <body>user-id</body> (the account's email address) and "
+   {:plaid/idempotency false
+    :post {:summary (str "Authenticate with a <body>user-id</body> (the account's email address) and "
                          "<body>password</body> and get a JWT token. The token should be included "
                          "in request headers under \"Authorization: Bearer ...\" in order to prove successful "
                          "authentication to the server.")
@@ -216,7 +217,8 @@
 
 (def logout-routes
   ["/logout"
-   {:post {:summary (str "Invalidate all JWTs for the currently authenticated user by "
+   {:plaid/idempotency false
+    :post {:summary (str "Invalidate all JWTs for the currently authenticated user by "
                          "bumping the per-user password_changes counter (the same "
                          "mechanism a password change uses). Subsequent requests with "
                          "the old token will be rejected with 401.")

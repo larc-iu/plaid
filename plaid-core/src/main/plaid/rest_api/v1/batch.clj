@@ -193,109 +193,131 @@
           {}
           responses))
 
+(def ^:dynamic *pending-key*
+  "Bound by `plaid.rest-api.v1.idempotency/wrap-idempotency-key` around a
+  `/batch` request that carries an Idempotency-Key, to
+  {:check (fn [tx]) :store! (fn [tx response])}. The batch's own
+  transaction runs both, so the key is looked up again under the write lock
+  and stored with the writes, never in a transaction of its own."
+  nil)
+
+(defn- busy-or-500
+  [e what]
+  (if (psd/sqlite-busy? e)
+    (do (log/warn e what "could not acquire write lock (busy/locked)")
+        {:status 503 :body {:error "Database busy, please retry"}})
+    (do (log/error e "Unexpected error in" what)
+        {:status 500 :body {:error "Internal error"}})))
+
+(defn with-atomic-tx
+  "Run `(f tx)` in one write transaction and answer the response it returns.
+  A response with a status of 300 or more rolls every write back and is
+  answered as it is. While `f` runs, audit events and file work wait for the
+  commit (`op/*deferred-events*`, `op/*deferred-files*`), every operation row
+  carries one batch id, and a document's claimed version is checked once
+  (`psaw/*batch-validated-document-versions*`). After the commit the events
+  are published and the file work runs. A write lock that cannot be taken
+  answers 503. `f` may also refuse by throwing
+  `{:plaid.batch/failure response}`.
+
+  The transaction shell of `/batch`, and of a single write sent with an
+  Idempotency-Key, whose stored answer must commit with it."
+  [db f]
+  (let [batch-id (random-uuid)
+        ;; While the tx is open an event would announce a write listeners
+        ;; cannot read back yet, and that may still roll back. Flushed below
+        ;; after the commit, dropped with the buffer on a throw.
+        deferred-events (atom [])
+        ;; A file a write deletes is not brought back by a rollback, so the
+        ;; work waits here for the commit too.
+        deferred-files (atom [])]
+    (try
+      (let [result
+            ;; psd/with-tx* rather than jdbc/with-transaction directly: it
+            ;; checks the connection out itself so a BEGIN that loses the
+            ;; write lock can't return a half-configured connection to the
+            ;; pool. See plaid.sql.datasource/heal-autocommit!.
+            (psd/with-tx [tx db]
+              (binding [op/*current-batch-id* batch-id
+                        op/*deferred-events* deferred-events
+                        op/*deferred-files* deferred-files
+                        psaw/*batch-validated-document-versions* (atom {})]
+                (let [response (f tx)]
+                  (when (>= (:status response) 300)
+                    (log/debug "Transaction" batch-id "refused with" (:status response) ", rolling back")
+                    (throw (ex-info "batch-failed" {:plaid.batch/failure response})))
+                  response)))]
+        ;; Committed. Nothing after this may turn success into a 5xx.
+        (try
+          (op/flush-deferred-events! @deferred-events)
+          (catch Throwable t
+            (log/warn t "post-commit event flush failed:" (ex-message t))))
+        (op/run-deferred-files! @deferred-files)
+        result)
+      (catch clojure.lang.ExceptionInfo e
+        (if-let [failure (:plaid.batch/failure (ex-data e))]
+          failure
+          (busy-or-500 e (str "transaction " batch-id))))
+      ;; BEGIN IMMEDIATE can fail before anything runs (SQLITE_BUSY after
+      ;; busy_timeout), and next.jdbc can wrap that busy in a plain ex-info
+      ;; on a failed rollback. Both are a retryable 503, not a 500.
+      (catch SQLException e
+        (busy-or-500 e (str "transaction " batch-id)))
+      (catch Exception e
+        (busy-or-500 e (str "transaction " batch-id))))))
+
+(defn- run-operations
+  "Run the batch's operations in order on `tx` and answer the batch's
+  response, or throw the first refusal."
+  [request operations tx]
+  (loop [remaining operations responses []]
+    (if (empty? remaining)
+      ;; Collect the union of all sub-responses' X-Document-Versions headers
+      ;; (last-write-wins per doc-id) and surface them on the outer batch
+      ;; response so OCC state isn't silently lost for batch writes.
+      (let [merged (merge-document-versions responses)
+            outer {:status 200 :body responses}]
+        (if (seq merged)
+          (assoc outer :headers {"X-Document-Versions" (json/write-str merged)})
+          outer))
+      (let [spec (first remaining)
+            op-spec (if (contains? spec :refs)
+                      (assoc spec :body (resolve-refs spec responses))
+                      spec)
+            response (process-batch-operation (:rest-handler request) request op-spec tx)
+            status (:status response)]
+        (if (>= status 300)
+          (throw (ex-info "batch-failed"
+                          {:plaid.batch/failure {:status status :body (:body response)}}))
+          (recur (rest remaining) (conj responses response)))))))
+
 (defn atomic-batch-handler
   "Execute multiple API operations atomically. All sub-requests run inside a
   single JDBC transaction; any sub-request returning status >= 300 causes
   the transaction to roll back and the failing response is returned to the
   caller."
-  [{:keys [rest-handler parameters db] :as request}]
-  (let [batch-id (random-uuid)
-        raw-ops (:body parameters)]
+  [{:keys [parameters db] :as request}]
+  (let [raw-ops (:body parameters)]
     (if-let [refused (if (> (count raw-ops) max-batch-ops)
                        {:status 400
                         :body {:error (str "Batch exceeds max of " max-batch-ops
                                            " operations (received " (count raw-ops) ")")}}
                        (lock-operation-refusal raw-ops))]
       refused
-      (let [operations raw-ops
-            ;; Sub-ops' audit events buffer here instead of publishing —
-            ;; while the outer tx is open, an event would announce a
-            ;; write listeners can't read back (and that may roll back
-            ;; entirely). Flushed below AFTER commit; a throw out of
-            ;; with-transaction simply discards the buffer.
-            deferred-events (atom [])
-            ;; A file a sub-op deletes is not brought back by a rollback, so
-            ;; the work waits here for the commit too. Run below, or dropped
-            ;; with the buffer when the batch throws.
-            deferred-files (atom [])]
-        (try
-          (let [result
-                ;; psd/with-tx* rather than jdbc/with-transaction directly: it
-                ;; checks the connection out itself so a BEGIN that loses the
-                ;; write lock can't return a half-configured connection to the
-                ;; pool. See plaid.sql.datasource/heal-autocommit!.
-                (psd/with-tx [tx db]
-                  (binding [op/*current-batch-id* batch-id
-                            op/*deferred-events* deferred-events
-                            op/*deferred-files* deferred-files
-                            psaw/*batch-validated-document-versions* (atom {})]
-                    (loop [remaining operations responses []]
-                      (if (empty? remaining)
-                        ;; The access-log line already covers this HTTP request;
-                        ;; the per-batch op count is granular detail, so debug.
-                        (do (log/debug "Batch" batch-id "ok with" (count responses) "ops")
-                            ;; Collect the union of all sub-responses' X-Document-Versions
-                            ;; headers (last-write-wins per doc-id) and surface them on
-                            ;; the outer batch response so OCC state isn't silently lost
-                            ;; for batch writes.
-                            (let [merged (merge-document-versions responses)
-                                  outer {:status 200 :body responses}]
-                              (if (seq merged)
-                                (assoc outer :headers {"X-Document-Versions" (json/write-str merged)})
-                                outer)))
-                        (let [spec (first remaining)
-                              op-spec (if (contains? spec :refs)
-                                        (assoc spec :body (resolve-refs spec responses))
-                                        spec)
-                              response (process-batch-operation rest-handler request op-spec tx)
-                              status (:status response)]
-                          (if (>= status 300)
-                            (do (log/warn "Batch" batch-id "failed; rolling back via throw")
-                                ;; throwing rolls back the tx; we catch outside and return the failure
-                                (throw (ex-info "batch-failed"
-                                                {:plaid.batch/failure {:status status :body (:body response)}})))
-                            (recur (rest remaining) (conj responses response))))))))]
-            ;; The outer tx is committed once with-transaction returns.
-            ;; Publish the sub-ops' buffered audit events now — listeners
-            ;; that refetch on receipt see committed state. Defensive
-            ;; try/catch: the commit is durable, nothing post-commit may
-            ;; invert success into a 5xx.
-            (try
-              (op/flush-deferred-events! @deferred-events)
-              (catch Throwable t
-                (log/warn t "post-commit batch event flush failed:" (ex-message t))))
-            (op/run-deferred-files! @deferred-files)
-            result)
-          (catch clojure.lang.ExceptionInfo e
-            (if-let [f (:plaid.batch/failure (ex-data e))]
-              {:status (:status f) :body (:body f)}
-              (do (log/error e "Unexpected batch error" batch-id)
-                  {:status 500 :body {:error "Internal error"}})))
-          ;; Outer SQLException catch — BEGIN IMMEDIATE can fail at tx
-          ;; acquisition before any sub-op runs (SQLITE_BUSY after the
-          ;; configured busy_timeout). Surface that as 503 so clients
-          ;; can retry, instead of a generic 500 that looks like a bug.
-          ;; MUST precede the generic Exception catch.
-          (catch SQLException e
-            (if (psd/sqlite-busy? e)
-              (do (log/warn e "Batch" batch-id "could not acquire write lock (busy/locked)")
-                  {:status 503 :body {:error "Database busy, please retry"}})
-              (do (log/error e "Unexpected batch SQL error" batch-id)
-                  {:status 500 :body {:error "Internal error"}})))
-          (catch Exception e
-            ;; Not every busy arrives as a SQLException: next.jdbc wraps a
-            ;; failed BEGIN's rollback attempt in a plain ex-info carrying the
-            ;; real busy underneath, so check the chain here too rather than
-            ;; reporting a retryable contention failure as a 500.
-            (if (psd/sqlite-busy? e)
-              (do (log/warn e "Batch" batch-id "could not acquire write lock (busy/locked)")
-                  {:status 503 :body {:error "Database busy, please retry"}})
-              (do (log/error e "Unexpected batch error" batch-id)
-                  {:status 500 :body {:error "Internal error"}}))))))))
+      (let [pending *pending-key*]
+        (with-atomic-tx
+          db
+          (fn [tx]
+            (or (when pending ((:check pending) tx))
+                (let [response (binding [*pending-key* nil]
+                                 (run-operations request raw-ops tx))]
+                  (when pending ((:store! pending) tx response))
+                  response))))))))
 
 (def batch-routes
   ["/batch"
-   {:post {:summary (str "Execute multiple API operations one after the other. "
+   {:plaid/idempotency :batch
+    :post {:summary (str "Execute multiple API operations one after the other. "
                          "If any operation fails (status >= 300), all changes are rolled back. "
                          "Atomicity is guaranteed. "
                          "On success, returns an array of each response associated with each submitted request in the batch. "

@@ -132,12 +132,15 @@
   exists for the (document, text-layer) pair (the UNIQUE constraint
   enforces this; we pre-check for a clean 409).
 
+  `:text/id` names the new text's id (a client's UUIDv7), else the server
+  mints one.
+
   Returns {:success true :extra <new-id>} on success."
   ([db attrs user-id] (create db attrs user-id nil))
   ([db attrs user-id metadata-map]
    (let [{:text/keys [body document layer]} attrs
          body-str (if (string? body) body "")
-         new-id (psc/new-uuid)
+         new-id (or (:text/id attrs) (psc/new-uuid))
          prj-id (project-id-from-text-layer db layer)]
      (submit-operation!
       [tx db {:type :text/create
@@ -152,6 +155,7 @@
       (when-not (or (nil? body) (string? body))
         (throw (ex-info "Text body must be a string." {:body body :code 400})))
       (storable/assert-storable! "Text body" body-str)
+      (psc/claim-ids! tx :texts "text" [(:text/id attrs)])
       (let [doc-row (psc/fetch-by-id tx :documents document)
             txtl-row (psc/fetch-by-id tx :text_layers layer)]
         (when (nil? doc-row)

@@ -80,16 +80,21 @@
                       (pagination/list-response
                        query
                        (fn [opts] (vocab/get-accessible db user-id opts))))}
-     :post {:summary "Create a new vocab layer. Note: this also registers the user as a maintainer."
-            :parameters {:body {:name string?}}
-            :handler (fn [{{{:keys [name]} :body} :parameters db :db user-id :user/id :as req}]
-                       (let [result (vocab/create db {:vocab/name name
-                                                      :vocab/maintainers [user-id]} user-id)]
+     :post {:summary (str "Create a new vocab layer. Note: this also registers the user as a maintainer. "
+                          "<body>id</body>, optional, is the new vocab layer's id, a UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 and <body>id-taken</body>.")
+            :parameters {:body [:map
+                                [:id {:optional true} :uuid]
+                                [:name string?]]}
+            :handler (fn [{{{:keys [id name]} :body} :parameters db :db user-id :user/id :as req}]
+                       (let [result (vocab/create db (cond-> {:vocab/name name
+                                                              :vocab/maintainers [user-id]}
+                                                       (some? id) (assoc :vocab/id id))
+                                                  user-id)]
                          (if (:success result)
                            {:status 201
                             :body {:id (:extra result)}}
                            {:status (or (:code result) 500)
-                            :body {:error (:error result)}})))}}]
+                            :body (prm/error-body result)})))}}]
 
    ["/:id"
     {:parameters {:path [:map [:id :uuid]]}

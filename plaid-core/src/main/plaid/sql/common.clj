@@ -344,6 +344,76 @@
   (str kind " creation failed: record already exists with id `" id "`"))
 
 ;; ============================================================
+;; Ids a client names for what it creates
+;; ============================================================
+
+(def ^:private earliest-client-ms
+  "2020-01-01T00:00:00Z. A v7 id stamped before this came from a clock that
+  counts seconds rather than milliseconds."
+  1577836800000)
+
+(def ^:private client-ms-ahead
+  "How far past the server clock a client id's time may be. Clock skew of
+  seconds or minutes passes, a clock counting microseconds does not."
+  3600000)
+
+(defn client-id!
+  "Check an id a client named for a row it creates: a UUIDv7 (RFC 9562)
+  whose time is after 2020 and at most an hour ahead of this server. Reads
+  are id-ordered, so a v4 id, or one stamped far in the past or future,
+  would sort before or after everyone's rows for good. Throws a 400."
+  [^UUID id]
+  (let [ms (bit-shift-right (.getMostSignificantBits id) 16)]
+    (cond
+      (not (and (= 7 (.version id)) (= 2 (.variant id))))
+      (throw (ex-info (str "id " id " must be a UUIDv7 (RFC 9562)") {:code 400 :id id}))
+
+      (or (< ms earliest-client-ms)
+          (> ms (+ (System/currentTimeMillis) client-ms-ahead)))
+      (throw (ex-info (str "id " id " must be a UUIDv7 whose time is between 2020 and one hour from now")
+                      {:code 400 :id id}))
+
+      :else id)))
+
+(defn id-taken
+  "The 409 for a create that names an id already used. Its body says
+  `id-taken`, so a client can tell it from a version conflict: a create
+  retried after its first answer was lost sees it when that first send
+  landed."
+  [kind id deleted?]
+  (ex-info (str "A " kind " with id " id (if deleted? " existed" " already exists") ".")
+           {:code 409 :id id :plaid/body {:id-taken true :id (str id)}}))
+
+(declare q1)
+
+(defn claim-ids!
+  "Refuse the create unless every client-named id in `ids` (nils are the
+  server's own and skipped) is a valid, unused one for `table`. Used means
+  a row with it exists, or existed and was deleted (its delete row in the
+  audit log), so a create retried late never brings back a row someone
+  deleted. `kind` names the row in the message (\"span\"). Call inside the
+  create's transaction. Returns nil."
+  [tx table kind ids]
+  (let [ids (vec (remove nil? ids))]
+    (when (seq ids)
+      (when-let [dup (some (fn [[id n]] (when (> n 1) id)) (frequencies ids))]
+        (throw (ex-info (str "id " dup " is named twice in one request") {:code 400 :id dup})))
+      (run! client-id! ids)
+      (let [strs (mapv str ids)]
+        (doseq [chunk (partition-all 500 strs)]
+          (when-let [row (q1 tx {:select [:id] :from [table] :where [:in :id (vec chunk)]})]
+            (throw (id-taken kind (:id row) false)))
+          (when-let [row (q1 tx {:select [:target_id]
+                                 :from [:audit_writes]
+                                 :where [:and
+                                         ;; Inline, so SQLite can match the partial
+                                         ;; index idx_audit_writes_deleted.
+                                         [:= :change_type [:inline "delete"]]
+                                         [:= :target_table (name table)]
+                                         [:in :target_id (vec chunk)]]})]
+            (throw (id-taken kind (:target_id row) true))))))))
+
+;; ============================================================
 ;; Query execution (HoneySQL + next.jdbc)
 ;; ============================================================
 

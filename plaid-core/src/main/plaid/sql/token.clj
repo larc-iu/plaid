@@ -562,8 +562,6 @@
         text-body (:body text-row)
         text-layer-id (:text_layer_id text-row)
         token-layers (when text-layer-id (token-layer-ids-of-text-layer tx text-layer-id))]
-    (when (psc/fetch-by-id tx :tokens id)
-      (throw (ex-info (psc/err-msg-already-exists "Token" id) {:id id :code 409})))
     (when (nil? (psc/fetch-by-id tx :token_layers layer))
       (throw (ex-info (psc/err-msg-not-found "Token layer" layer) {:id layer :code 400})))
     (when (nil? text-row)
@@ -586,10 +584,13 @@
   otherwise emit (task #59). Tokens have no junction-table tokens
   themselves, so only `:metadata` is folded.
 
+  `:token/id` names the new token's id (a client's UUIDv7), else the
+  server mints one.
+
   Returns {:success true :extra <new-id>} on success."
   ([db attrs user-id] (create db attrs user-id nil))
   ([db attrs user-id metadata]
-   (let [new-id (psc/new-uuid)
+   (let [new-id (or (:token/id attrs) (psc/new-uuid))
          {:token/keys [text layer begin end precedence]} attrs
          token {:token/id new-id
                 :token/text text
@@ -609,6 +610,7 @@
                 :user user-id}]
         (let [token-with-doc (assoc token :token/document doc-id)
               row (token->row token-with-doc)]
+          (psc/claim-ids! tx :tokens "token" [(:token/id attrs)])
           (schema-check! tx token-with-doc)
           (tc/enforce! tx :create
                        {:layer layer :doc-id doc-id :begin begin :end end
@@ -757,8 +759,9 @@
 
 (defn bulk-create
   "Bulk-create tokens. All entries in `attrs-vec` must share the same
-  :token/text and :token/layer. Returns {:success true :extra <ids>}
-  on success."
+  :token/text and :token/layer. An entry's `:token/id` names its id (a
+  client's UUIDv7), else the server mints one. Returns
+  {:success true :extra <ids>} on success."
   [db attrs-vec user-id]
   (let [layer-id (-> attrs-vec first :token/layer)
         text-id (-> attrs-vec first :token/text)
@@ -772,6 +775,7 @@
              :user user-id}]
      ;; Cross-row consistency check (throws 400 if attrs disagree on text/layer).
      (check-tokens-consistency! attrs-vec)
+     (psc/claim-ids! tx :tokens "token" (map :token/id attrs-vec))
      (let [text-row (fetch-text tx text-id)]
        (when (nil? (psc/fetch-by-id tx :token_layers layer-id))
          (throw (ex-info (psc/err-msg-not-found "Token layer" layer-id)
@@ -786,7 +790,7 @@
            (throw (ex-info (str "Text layer " text-layer-id " is not linked to token layer " layer-id ".")
                            {:text-layer-id text-layer-id :token-layer-id layer-id :code 400})))
          (let [records (mapv (fn [a]
-                               (let [tid (psc/new-uuid)]
+                               (let [tid (or (:token/id a) (psc/new-uuid))]
                                  {:token/id tid
                                   :token/text text-id
                                   :token/layer layer-id
@@ -937,13 +941,14 @@
   right half is new and inherits only what the layer declared under
   `config.plaid.preserveOnSplit`, besides its place: the text, the layer,
   the document and the precedence, which orders it among the tokens that
-  share its begin. Returns the new (right-half) token id."
-  [tx t position]
+  share its begin. `new-id` names the right half's id, else the server
+  mints one. Returns the new (right-half) token id."
+  [tx t position & [new-id]]
   (let [{:keys [id text_id token_layer_id document_id begin end_ precedence]} t]
     (when-not (and (int? position) (> position begin) (< position end_))
       (throw (ex-info "Split position must be strictly between token begin and end"
                       {:code 400 :position position :begin begin :end end_})))
-    (let [new-id (psc/new-uuid)
+    (let [new-id (or new-id (psc/new-uuid))
           keep-keys (preserved-on-split tx token_layer_id)
           inherited (when (seq keep-keys)
                       (select-keys (metadata/get-metadata tx "token" id) keep-keys))]
@@ -1028,10 +1033,14 @@
   leaves with one end on each side are deleted in the same transaction,
   read from what is stored rather than from the caller's copy. Plaid does
   not decide this for any layer by itself, since some relations (a
-  document-level coreference) cross sentences by design."
+  document-level coreference) cross sentences by design.
+
+  `:id` in `opts` names the id of the token the split makes (a client's
+  UUIDv7), else the server mints one. Tokens a cascade splits below it
+  always get server ids."
   ([db eid position user-id]
    (split db eid position user-id nil))
-  ([db eid position user-id {:keys [drop-crossing-relations]}]
+  ([db eid position user-id {:keys [drop-crossing-relations id]}]
    (let [pre (psc/fetch-by-id db :tokens eid)]
      (submit-operation!
       [tx db {:type :token/split
@@ -1045,7 +1054,8 @@
             {layer :token_layer_id doc-id :document_id begin :begin end :end_ text-id :text_id} t-row
             dlids (tc/descendant-layer-ids tx layer)
             straddlers (tc/straddling-descendant-tokens-in tx dlids doc-id begin end position)
-            new-right-id (split-one! tx t-row position)]
+            _ (psc/claim-ids! tx :tokens "token" [id])
+            new-right-id (split-one! tx t-row position id)]
         (split-straddlers! tx straddlers position)
         (tc/enforce! tx :split
                      {:layer layer :doc-id doc-id

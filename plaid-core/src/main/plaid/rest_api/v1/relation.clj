@@ -85,29 +85,32 @@
                              "\n<body>layer-id</body>: the relation layer"
                              "\n<body>source-id</body>: the source span this relation originates from"
                              "\n<body>target-id</body>: the target span this relation goes to"
-                             "\n<body>value</body>: the label for the relation (must be string, number, boolean, or null).")
+                             "\n<body>value</body>: the label for the relation (must be string, number, boolean, or null)."
+                             "\n<body>id</body>: optional, the new relation's id, a UUIDv7 the client minted (else the server mints one). An id used before, even by a relation since deleted, is refused with 409 and <body>id-taken</body>.")
                :middleware [[pra/wrap-writer-required get-project-id]
                             [prm/wrap-document-version get-document-id]
                             metadata/wrap-inline-metadata-shape-guard]
                :parameters {:query [:map [:document-version {:optional true} :int]]
                             :body [:map
+                                   [:id {:optional true} :uuid]
                                    [:layer-id :uuid]
                                    [:source-id :uuid]
                                    [:target-id :uuid]
                                    [:value schema/atomic-value]
                                    [:metadata {:optional true} [:map-of string? any?]]]}
-               :handler (fn [{{{:keys [layer-id source-id target-id value metadata]} :body} :parameters db :db user-id :user/id :as request}]
-                          (let [attrs {:relation/layer layer-id
-                                       :relation/source source-id
-                                       :relation/target target-id
-                                       :relation/value value}
+               :handler (fn [{{{:keys [id layer-id source-id target-id value metadata]} :body} :parameters db :db user-id :user/id :as request}]
+                          (let [attrs (cond-> {:relation/layer layer-id
+                                               :relation/source source-id
+                                               :relation/target target-id
+                                               :relation/value value}
+                                        (some? id) (assoc :relation/id id))
                                 doc-id (get-document-id request)
                                 result (r/create db attrs user-id metadata)]
                             (if (:success result)
                               (prm/assoc-document-version-in-header
                                {:status 201 :body {:id (:extra result)}}
                                db doc-id)
-                              {:status (or (:code result) 500) :body {:error (:error result)}})))}}]
+                              {:status (or (:code result) 500) :body (prm/error-body result)})))}}]
 
    ["/bulk" {:conflicting true
              :post {:summary (str "Create multiple relations in a single operation. Provide an array of objects whose keys "
@@ -116,13 +119,15 @@
                                   "<body>source</body>, the span id of the relation's source\n"
                                   "<body>target</body>, the span id of the relation's target\n"
                                   "<body>value</body>, the relation's value\n"
-                                  "<body>metadata</body>, an optional map of metadata")
+                                  "<body>metadata</body>, an optional map of metadata\n"
+                                  "<body>id</body>, optional, the new relation's id, a UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 and <body>id-taken</body>, and one named twice with 400.")
                     :middleware [[pra/wrap-writer-required bulk-get-project-id]
                                  [prm/wrap-document-version bulk-get-document-id]
                                  metadata/wrap-inline-metadata-shape-guard]
                     :parameters {:query [:map [:document-version {:optional true} :int]]
                                  :body [:sequential
                                         [:map
+                                         [:id {:optional true} :uuid]
                                          [:relation-layer-id :uuid]
                                          [:source :uuid]
                                          [:target :uuid]
@@ -130,11 +135,12 @@
                                          [:metadata {:optional true} [:map-of string? any?]]]]}
                     :handler (fn [{{relations :body} :parameters db :db user-id :user/id :as request}]
                                (let [relations-attrs (mapv (fn [relation-data]
-                                                             (let [{:keys [relation-layer-id source target value metadata]} relation-data
-                                                                   attrs {:relation/layer relation-layer-id
-                                                                          :relation/source source
-                                                                          :relation/target target
-                                                                          :relation/value value}]
+                                                             (let [{:keys [id relation-layer-id source target value metadata]} relation-data
+                                                                   attrs (cond-> {:relation/layer relation-layer-id
+                                                                                  :relation/source source
+                                                                                  :relation/target target
+                                                                                  :relation/value value}
+                                                                           (some? id) (assoc :relation/id id))]
                                                                (if metadata
                                                                  (assoc attrs :metadata metadata)
                                                                  attrs)))
@@ -146,7 +152,7 @@
                                     {:status 201 :body {:ids (:extra result)}}
                                     db doc-id)
                                    {:status (or (:code result) 500)
-                                    :body {:error (:error result)}})))}
+                                    :body (prm/error-body result)})))}
              :patch {:summary "Update many relations in a single operation. Provide an array of objects whose keys are:\n<body>id</body>, the relation's id\n<body>value</body>, optional: the new value (present with null to set null)\n<body>metadata</body>, optional: a list of metadata ops, as for PATCH on one entity's metadata\nThe relations may lie in several documents of one project; every document touched has its version bumped and its new version is returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted). An unknown id refuses the whole update. <query>document-version</query> names one document, so it is refused when the entries reach more than one."
                      :middleware [[pra/wrap-writer-required bulk-update-get-project-id]
                                   [prm/wrap-document-version bulk-update-get-document-id]

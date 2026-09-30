@@ -217,7 +217,8 @@
 
 (defn create
   "Create a new vocab layer, granting the maintainer role to every user-id in
-  `:vocab/maintainers` (the REST handler passes the creating user). Returns
+  `:vocab/maintainers` (the REST handler passes the creating user).
+  `:vocab/id` names its id (a client's UUIDv7), else the server mints one. Returns
   {:success true :extra <new-id>}.
 
   Audit shape mirrors project/create: ONE :vocab_layers audit row with
@@ -229,7 +230,7 @@
   couldn't manage it (the route summary already promised this registration)."
   [db attrs user-id]
   (let [{:vocab/keys [name maintainers]} attrs
-        new-id (psc/new-uuid)
+        new-id (or (:vocab/id attrs) (psc/new-uuid))
         config (clojure.core/get attrs :config {})]
     (submit-operation! [tx db {:type :vocab/create
                                :project nil
@@ -237,6 +238,7 @@
                                :description (str "Create vocab '" name "'")
                                :user user-id}]
                        (psc/assert-valid-name! name)
+                       (psc/claim-ids! tx :vocab_layers "vocabulary" [(:vocab/id attrs)])
                        ;; Stamped from the op's ts (not a fresh now-iso) so the
                        ;; timestamps agree with the operations row, as documents do.
                        (let [ts (op/op-ts)]

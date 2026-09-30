@@ -100,16 +100,21 @@
 (def document-routes
   ["/documents"
 
-   ["" {:post {:summary "Create a new document in a project. Requires <body>project-id</body> and <body>name</body>."
+   ["" {:post {:summary (str "Create a new document in a project. Requires <body>project-id</body> and <body>name</body>. "
+                             "<body>id</body>, optional, is the new document's id, a UUIDv7 the client minted (else the "
+                             "server mints one). An id used before, even by a document since deleted, is refused with "
+                             "409 and <body>id-taken</body>.")
                :middleware [[pra/wrap-writer-required get-project-id]
                             metadata/wrap-inline-metadata-shape-guard]
                :parameters {:body [:map
+                                   [:id {:optional true} :uuid]
                                    [:project-id :uuid]
                                    [:name :string]
                                    [:metadata {:optional true} [:map-of string? any?]]]}
-               :handler (fn [{{{:keys [project-id name metadata]} :body} :parameters db :db user-id :user/id}]
-                          (let [attrs {:document/project project-id
-                                       :document/name name}
+               :handler (fn [{{{:keys [id project-id name metadata]} :body} :parameters db :db user-id :user/id}]
+                          (let [attrs (cond-> {:document/project project-id
+                                               :document/name name}
+                                        (some? id) (assoc :document/id id))
                                 result (doc/create db attrs user-id metadata)]
                             (if (:success result)
                               (prm/assoc-document-version-in-header
@@ -117,7 +122,7 @@
                                 :body {:id (:extra result)}}
                                db (:extra result))
                               {:status (or (:code result) 500)
-                               :body {:error (:error result)}})))}}]
+                               :body (prm/error-body result)})))}}]
 
    ["/:document-id"
     {:parameters {:path [:map [:document-id :uuid]]}}
@@ -266,27 +271,32 @@
                            "Comments do not travel. The media file does, unless "
                            "<body>include-media</body> is false; if it cannot be copied the response "
                            "carries <body>media-error</body> and the copy is otherwise complete. "
-                           "Requires writer privileges.")
+                           "Requires writer privileges. <body>id</body>, optional, is the copy's id, a UUIDv7 "
+                           "the client minted (else the server mints one). An id used before is refused with 409 "
+                           "and <body>id-taken</body>. The rows inside the copy always get fresh server ids.")
              :middleware [[pra/wrap-writer-required get-project-id]]
              :parameters {:body [:map
+                                 [:id {:optional true} :uuid]
                                  [:name :string]
                                  [:include-media {:optional true} boolean?]]}
              :handler (fn [{{{:keys [document-id]} :path
-                             {:keys [name include-media]} :body} :parameters
+                             {:keys [id name include-media]} :body} :parameters
                             db :db
                             user-id :user/id}]
-                        (let [{:keys [success extra code error]}
+                        (let [{:keys [success extra code] :as result}
                               (doc/copy db document-id name user-id
-                                        {:include-media? (if (some? include-media) include-media true)})]
+                                        {:include-media? (if (some? include-media) include-media true)
+                                         :id id})]
                           (if success
                             (prm/assoc-document-version-in-header
                              {:status 201 :body extra}
                              db (:id extra))
                             {:status (or code 500)
-                             :body {:error (or error "Internal server error")}})))}}]
+                             :body (prm/error-body result)})))}}]
 
     ["/lock"
-     {:get {:summary "Get information about a document lock"
+     {:plaid/idempotency false
+      :get {:summary "Get information about a document lock"
             :middleware [[pra/wrap-reader-required get-project-id] document-required]
             :handler (fn [{{{:keys [document-id]} :path} :parameters}]
                        (if-let [lock-info (locks/get-lock-info document-id)]

@@ -54,7 +54,8 @@
 
 (defn create
   "Create a new text layer in `project-id`. `attrs` includes
-  :text-layer/name (required) and optionally :config. Returns
+  :text-layer/name (required) and optionally :config and :text-layer/id
+  (a client's UUIDv7 for the new layer, else the server mints one). Returns
   {:success true :extra <new-id>}.
 
   `order_idx` is resolved by a scalar-subquery inside the INSERT
@@ -63,7 +64,7 @@
   `UNIQUE (project_id, order_idx)` constraint on text_layers."
   [db attrs project-id user-id]
   (let [{:text-layer/keys [name]} attrs
-        new-id (psc/new-uuid)
+        new-id (or (:text-layer/id attrs) (psc/new-uuid))
         config (clojure.core/get attrs :config {})]
     (submit-operation! [tx db {:type :text-layer/create
                                :project project-id
@@ -72,6 +73,7 @@
                                :user user-id}]
                        ;; Validation inside the body (task #47).
                        (psc/assert-valid-name! name)
+                       (psc/claim-ids! tx :text_layers "text layer" [(:text-layer/id attrs)])
                        (when (nil? (psc/fetch-by-id tx :projects project-id))
                          (throw (ex-info (psc/err-msg-not-found "Project" project-id)
                                          {:id project-id :code 400})))

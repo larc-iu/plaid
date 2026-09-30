@@ -76,7 +76,9 @@
 (def vocab-link-routes
   ["/vocab-links"
    [""
-    {:post {:summary "Create a new vocab link (link between tokens and vocab item)."
+    {:post {:summary (str "Create a new vocab link (link between tokens and vocab item). <body>id</body>, optional, "
+                          "is the new link's id, a UUIDv7 the client minted (else the server mints one). An id used "
+                          "before, even by a link since deleted, is refused with 409 and <body>id-taken</body>.")
             ;; Linking annotates the DOCUMENT, not the vocabulary — the
             ;; vocab itself is untouched. So the gate is project-WRITER
             ;; (below) + vocab-READER (the vocab must be visible to the
@@ -87,14 +89,16 @@
                          metadata/wrap-inline-metadata-shape-guard]
             :parameters {:query [:map [:document-version {:optional true} :int]]
                          :body [:map
+                                [:id {:optional true} :uuid]
                                 [:vocab-item :uuid]
                                 [:tokens [:vector :uuid]]
                                 [:metadata {:optional true} [:map-of string? any?]]]}
-            :handler (fn [{{{:keys [vocab-item tokens metadata]} :body} :parameters
+            :handler (fn [{{{:keys [id vocab-item tokens metadata]} :body} :parameters
                            db :db
                            user-id :user/id :as req}]
-                       (let [attrs {:vocab-link/vocab-item vocab-item
-                                    :vocab-link/tokens tokens}
+                       (let [attrs (cond-> {:vocab-link/vocab-item vocab-item
+                                            :vocab-link/tokens tokens}
+                                     (some? id) (assoc :vocab-link/id id))
                              doc-id (get-document-id-from-tokens req)
                              result (vocab-link/create db attrs user-id metadata)]
                          (if (:success result)
@@ -103,13 +107,14 @@
                              :body {:id (:extra result)}}
                             db doc-id)
                            {:status (or (:code result) 500)
-                            :body {:error (:error result)}})))}}]
+                            :body (prm/error-body result)})))}}]
 
    ["/bulk" {:conflicting true
              :post {:summary (str "Create multiple vocab links in a single operation. Provide an array of objects whose keys are:\n"
                                   "<body>vocab-item</body>, the vocab item to link\n"
                                   "<body>tokens</body>, the IDs of the tokens to link\n"
                                   "<body>metadata</body>, an optional map of metadata\n"
+                                  "<body>id</body>, optional, the new link's id, a UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 and <body>id-taken</body>, and one named twice with 400.\n"
                                   "Entries may reference different vocab items, but all tokens across the call must belong to one document.")
                     ;; project-WRITER gates the document; each distinct vocab
                     ;; layer must also be vocab-READABLE (same as single create,
@@ -121,6 +126,7 @@
                     :parameters {:query [:map [:document-version {:optional true} :int]]
                                  :body [:sequential
                                         [:map
+                                         [:id {:optional true} :uuid]
                                          [:vocab-item :uuid]
                                          [:tokens [:vector :uuid]]
                                          [:metadata {:optional true} [:map-of string? any?]]]]}
@@ -134,9 +140,10 @@
                                  (if (seq unreadable)
                                    {:status 403
                                     :body {:error (str "User " user-id " lacks read access to vocab item(s) " (vec unreadable))}}
-                                   (let [attrs-vec (mapv (fn [{:keys [vocab-item tokens metadata]}]
+                                   (let [attrs-vec (mapv (fn [{:keys [id vocab-item tokens metadata]}]
                                                            (cond-> {:vocab-link/vocab-item vocab-item
                                                                     :vocab-link/tokens tokens}
+                                                             (some? id) (assoc :vocab-link/id id)
                                                              metadata (assoc :metadata metadata)))
                                                          links)
                                          doc-id (bulk-get-document-id req)
@@ -146,7 +153,7 @@
                                         {:status 201 :body {:ids (:extra result)}}
                                         db doc-id)
                                        {:status (or (:code result) 500)
-                                        :body {:error (:error result)}})))))}
+                                        :body (prm/error-body result)})))))}
              :delete {:summary "Delete multiple vocab links in a single operation. Provide an array of IDs."
                       ;; Mirror single delete's gate: project-WRITER + vocab-WRITER
                       ;; on each distinct vocab layer touched.

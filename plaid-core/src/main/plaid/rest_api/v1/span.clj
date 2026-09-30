@@ -85,27 +85,30 @@
                              "All tokens must belong to a single layer which is linked to the span layer indicated by "
                              "<body>span-layer-id</body>."
                              "\n<body>value</body>: the primary value of the span (must be string, number, boolean, or null)."
-                             "\n<body>metadata</body>: optional key-value pairs for additional annotation data.")
+                             "\n<body>metadata</body>: optional key-value pairs for additional annotation data."
+                             "\n<body>id</body>: optional, the new span's id, a UUIDv7 the client minted (else the server mints one). An id used before, even by a span since deleted, is refused with 409 and <body>id-taken</body>.")
                :middleware [[pra/wrap-writer-required get-project-id]
                             [prm/wrap-document-version get-document-id]
                             metadata/wrap-inline-metadata-shape-guard]
                :parameters {:query [:map [:document-version {:optional true} :int]]
                             :body [:map
+                                   [:id {:optional true} :uuid]
                                    [:span-layer-id :uuid]
                                    [:tokens [:vector uuid?]]
                                    [:value schema/atomic-value]
                                    [:metadata {:optional true} [:map-of string? any?]]]}
-               :handler (fn [{{{:keys [span-layer-id tokens value metadata]} :body} :parameters db :db user-id :user/id :as request}]
-                          (let [attrs {:span/layer span-layer-id
-                                       :span/tokens tokens
-                                       :span/value value}
+               :handler (fn [{{{:keys [id span-layer-id tokens value metadata]} :body} :parameters db :db user-id :user/id :as request}]
+                          (let [attrs (cond-> {:span/layer span-layer-id
+                                               :span/tokens tokens
+                                               :span/value value}
+                                        (some? id) (assoc :span/id id))
                                 doc-id (get-document-id request)
                                 result (s/create db attrs user-id metadata)]
                             (if (:success result)
                               (prm/assoc-document-version-in-header
                                {:status 201 :body {:id (:extra result)}}
                                db doc-id)
-                              {:status (or (:code result) 500) :body {:error (:error result)}})))}}]
+                              {:status (or (:code result) 500) :body (prm/error-body result)})))}}]
 
    ["/bulk" {:conflicting true
              :post {:summary (str "Create multiple spans in a single operation. Provide an array of objects whose keys "
@@ -113,23 +116,26 @@
                                   "<body>span-layer-id</body>, the span's layer\n"
                                   "<body>tokens</body>, the IDs of the span's constituent tokens\n"
                                   "<body>value</body>, the relation's value\n"
-                                  "<body>metadata</body>, an optional map of metadata")
+                                  "<body>metadata</body>, an optional map of metadata\n"
+                                  "<body>id</body>, optional, the new span's id, a UUIDv7 the client minted (else the server mints one). An id used before is refused with 409 and <body>id-taken</body>, and one named twice with 400.")
                     :middleware [[pra/wrap-writer-required bulk-get-project-id]
                                  [prm/wrap-document-version bulk-get-document-id]
                                  metadata/wrap-inline-metadata-shape-guard]
                     :parameters {:query [:map [:document-version {:optional true} :int]]
                                  :body [:sequential
                                         [:map
+                                         [:id {:optional true} :uuid]
                                          [:span-layer-id :uuid]
                                          [:tokens [:vector uuid?]]
                                          [:value schema/atomic-value]
                                          [:metadata {:optional true} [:map-of string? any?]]]]}
                     :handler (fn [{{spans :body} :parameters db :db user-id :user/id :as request}]
                                (let [spans-attrs (mapv (fn [span-data]
-                                                         (let [{:keys [span-layer-id tokens value metadata]} span-data
-                                                               attrs {:span/layer span-layer-id
-                                                                      :span/tokens tokens
-                                                                      :span/value value}]
+                                                         (let [{:keys [id span-layer-id tokens value metadata]} span-data
+                                                               attrs (cond-> {:span/layer span-layer-id
+                                                                              :span/tokens tokens
+                                                                              :span/value value}
+                                                                       (some? id) (assoc :span/id id))]
                                                            (if metadata
                                                              (assoc attrs :metadata metadata)
                                                              attrs)))
@@ -140,7 +146,7 @@
                                    (prm/assoc-document-version-in-header
                                     {:status 201 :body {:ids (:extra result)}}
                                     db doc-id)
-                                   {:status (or (:code result) 500) :body {:error (:error result)}})))}
+                                   {:status (or (:code result) 500) :body (prm/error-body result)})))}
              :patch {:summary "Update many spans in a single operation. Provide an array of objects whose keys are:\n<body>id</body>, the span's id\n<body>value</body>, optional: the new value (present with null to set null)\n<body>metadata</body>, optional: a list of metadata ops, as for PATCH on one entity's metadata\nThe spans may lie in several documents of one project; every document touched has its version bumped and its new version is returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted). An unknown id refuses the whole update. <query>document-version</query> names one document, so it is refused when the entries reach more than one."
                      :middleware [[pra/wrap-writer-required bulk-update-get-project-id]
                                   [prm/wrap-document-version bulk-update-get-document-id]

@@ -192,7 +192,8 @@
 
 (def admin-routes
   ["/admin"
-   {:middleware [[pra/wrap-admin-required]]}
+   {:plaid/idempotency false
+    :middleware [[pra/wrap-admin-required]]}
 
    ["/server"
     {:get {:summary (str "Everything about this server in one read: version and JVM uptime, "
