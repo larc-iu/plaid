@@ -18,6 +18,7 @@
 
 import {
   PLAID_NAMESPACE,
+  PLAIN_EDITS_KEY,
   PRESERVE_ON_SPLIT_KEY,
   PROVENANCE_KEYS,
   ROLE_KEY,
@@ -92,6 +93,8 @@ const bootstrap = async (client, projectName) => {
 
     const b6 = await client.batched(async (b) => {
       b.tokenLayers.setConfig(nodeLayerId, UMR_NAMESPACE, UMR_LAYER_FLAGS.nodes, true);
+      // A text edit grows or shrinks a node with its words (PLAIN_EDITS_KEY).
+      b.tokenLayers.setConfig(nodeLayerId, PLAID_NAMESPACE, PLAIN_EDITS_KEY, true);
       b.spanLayers.create(nodeLayerId, LAYER_NAMES.concepts);
     });
     const conceptLayerId = createdId(b6.at(-1));
@@ -160,7 +163,10 @@ export const adoptSubstrate = async (client, layerInfo) => {
     if (!nodeLayerId) {
       const layer = await client.tokenLayers.create(textLayer.id, LAYER_NAMES.nodes, 'any');
       nodeLayerId = createdId(layer);
-      await client.tokenLayers.setConfig(nodeLayerId, UMR_NAMESPACE, UMR_LAYER_FLAGS.nodes, true);
+      await client.batched(async (b) => {
+        b.tokenLayers.setConfig(nodeLayerId, UMR_NAMESPACE, UMR_LAYER_FLAGS.nodes, true);
+        b.tokenLayers.setConfig(nodeLayerId, PLAID_NAMESPACE, PLAIN_EDITS_KEY, true);
+      });
       created = true;
     }
     let conceptLayerId = layerInfo.conceptLayer?.id;

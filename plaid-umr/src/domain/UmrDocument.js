@@ -12,6 +12,8 @@ import {
   MAX_BATCH_OPS,
   mergeMetadata,
   metadataOps,
+  PLAID_NAMESPACE,
+  PLAIN_EDITS_KEY,
   provState,
   PROV_STATES,
   writerPolicy,
@@ -21,6 +23,7 @@ import { pendingId, settledId } from '../../../plaid-ui/src/domain/pendingIds.js
 import { isUnknownOutcome } from '../../../plaid-ui/src/lib/errors.js';
 import { ensureLayerConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
 import { canEditProject, canManageProject } from '../../../plaid-ui/src/domain/permissions.js';
+import { expectStored, isConfigConflict } from '../../../plaid-ui/src/domain/configCells.js';
 import { constraintFindings, wantedConstraints } from './umrConstraints.js';
 import { buildLexicon, vocabLinksByToken } from './vocabLexicon.js';
 import { getUmrLayerInfo, UMR_NAMESPACE, readIlgConfig } from '../utils/umrLayerUtils.js';
@@ -507,12 +510,40 @@ export class UmrDocument extends DocumentModel {
   // NOT stamped, deliberately: a repair that runs on open decides nothing
   // and vouches for nothing, so it leaves provenance exactly as it found it
   // (the same rule igt's morpheme heal follows).
+  // A text edit grows or shrinks a node with the words it stands on and never
+  // splits one, when the node layer says so (`plainEdits`, the text rules in
+  // plaid-core). A project made before the key existed picks it up here, for
+  // a maintainer, in one batch naming what this page read, so a declaration
+  // another page made first stands. A failure is let go: the next open tries
+  // again.
+  async _backfillPlainEdits() {
+    const layer = this.layerInfo.nodeTokenLayer;
+    if (!canManageProject(this._project, this._user) || !layer?.id) return;
+    if (layer.config?.[PLAID_NAMESPACE]?.[PLAIN_EDITS_KEY] === true) return;
+    try {
+      await this._client.batched(async (b) => {
+        b.tokenLayers.setConfig(
+          layer.id,
+          PLAID_NAMESPACE,
+          PLAIN_EDITS_KEY,
+          true,
+          undefined,
+          expectStored(layer, PLAID_NAMESPACE, PLAIN_EDITS_KEY),
+        );
+      });
+    } catch (err) {
+      if (!isConfigConflict(err))
+        console.error('Could not declare plainEdits on the node layer:', err);
+    }
+  }
+
   async _reconcile() {
     // A service holding the document's lock is part way through rewriting
     // it: an anchor it has just made looks like one an interrupted add left,
     // and every write here would be refused (423). The document is repaired
     // the next time it is opened.
     if (await this._lockedByAService()) return { findings: [], deferred: true };
+    await this._backfillPlainEdits();
     let rules;
     try {
       rules = await ensureLayerConstraints(this._client, wantedConstraints(this.layerInfo), {

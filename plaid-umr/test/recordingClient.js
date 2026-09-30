@@ -78,6 +78,10 @@ export function recordingClient() {
       },
       delete: async (relId) => record('relations.delete', relId),
     },
+    tokenLayers: {
+      setConfig: async (layerId, namespace, key, value, message, options) =>
+        record('tokenLayers.setConfig', layerId, namespace, key, value, message, options),
+    },
     documents: {
       get: async () => null,
       // Reads reconcile makes first: nobody holds the lock, and the audit log
@@ -131,6 +135,7 @@ export function recordingClient() {
         tokens: proxy('tokens'),
         spans: proxy('spans'),
         relations: proxy('relations'),
+        tokenLayers: proxy('tokenLayers'),
         ref,
       });
       requests.push({ name: 'batch', args: [queue.length] });
