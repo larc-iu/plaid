@@ -3,7 +3,7 @@
   a retry of a create whose answer was lost lands under the same id or is
   told the id is taken. Every create that answers an id takes one."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
-            [plaid.fixtures :refer [db admin-request with-db with-mount-states with-rest-handler
+            [plaid.fixtures :refer [db admin-request user1-request with-db with-mount-states with-rest-handler
                                     with-admin with-test-users with-clean-db
                                     api-call assert-created]]
             [plaid.sql.common :as psc]
@@ -158,3 +158,29 @@
                              :body {:id link :vocab-item entry :tokens [(:tok2 s)]}}]})]
     (is (= 200 (:status r)))
     (is (= [(str entry) (str link)] (map #(str (get-in % [:body :id])) (:body r))))))
+
+(deftest comments-naming-one-id-at-once
+  ;; REV-idempotency F7: two unkeyed creates naming one id answered 500.
+  (let [s (setup!)]
+    (dotimes [_ 5]
+      (let [id (psc/new-uuid)
+            sends (doall (repeatedly 3 #(future (post "/api/v1/comments"
+                                                      {:id id :entity-type "document"
+                                                       :entity-id (:doc s) :body "same"}))))
+            statuses (sort (map (comp :status deref) sends))]
+        (is (= [201 409 409] statuses))))))
+
+(deftest a-non-member-is-refused-before-the-id-is-looked-at
+  ;; REV-idempotency F8: the route's gates run before the id claim, so a
+  ;; caller with no role on the project learns nothing of an id there. An
+  ;; id-taken for an id in a project the caller cannot read is accepted, since
+  ;; a UUIDv7 id is not guessable.
+  (let [s (setup!)
+        taken (-> (post "/api/v1/spans" {:id (psc/new-uuid) :span-layer-id (:sl s)
+                                         :tokens [(:tok s)] :value "A"})
+                  :body :id)
+        r (api-call user1-request {:method :post :path "/api/v1/spans"
+                                   :body {:id taken :span-layer-id (:sl s)
+                                          :tokens [(:tok s)] :value "B"}})]
+    (is (= 403 (:status r)))
+    (is (nil? (get-in r [:body :id-taken])))))

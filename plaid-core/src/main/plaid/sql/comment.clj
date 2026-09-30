@@ -60,6 +60,7 @@
   (:require [clojure.string]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
+            [plaid.sql.datasource :as psd]
             [plaid.sql.pagination :as pg]
             [plaid.util.codepoint :as cp]
             [plaid.util.storable-text :as storable])
@@ -286,8 +287,6 @@
     (when (and (nil? project-id) (nil? vocab-layer-id))
       (throw (ex-info (psc/err-msg-not-found (clojure.string/capitalize entity-type) entity-id)
                       {:code 404 :id entity-id})))
-    ;; Comments are not audited, so only a live comment's id is found.
-    (psc/claim-ids! db :comments "comment" [id])
     (let [now (psc/now-iso)
           row {:id             (or id (psc/new-uuid))
                :project_id     project-id
@@ -300,10 +299,15 @@
                :body           body
                :created_at     now
                :updated_at     now}]
-      ;; Raw insert, NOT `crud/insert!`: that helper requires a bound
-      ;; operation and writes an audit row, and comments are neither audited
-      ;; nor part of any operation. See the ns docstring.
-      (psc/execute! db {:insert-into :comments :values [row]})
+      ;; The id's check and the insert hold the write lock together, so two
+      ;; creates naming one id at once answer one 201 and one 409.
+      (psd/with-tx [tx db]
+        ;; Comments are not audited, so only a live comment's id is found.
+        (psc/claim-ids! tx :comments "comment" [id])
+        ;; Raw insert, NOT `crud/insert!`: that helper requires a bound
+        ;; operation and writes an audit row, and comments are neither audited
+        ;; nor part of any operation. See the ns docstring.
+        (psc/execute! tx {:insert-into :comments :values [row]}))
       (row->comment row))))
 
 (defn update!
