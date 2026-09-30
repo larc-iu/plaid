@@ -2314,8 +2314,9 @@
   keeps the token on `co`, see `split-off-new-words`). Edits that give a
   token without whitespace a space are folded the same way, inserts alone
   and wherever they begin, so the token goes on one of the new words and
-  not over both (`NY` to `New York`). The reconstructed string is
-  unchanged.
+  not over both (`NY` to `New York`). A space typed inside any morpheme of
+  a word (first, middle or last) folds the word that way, and no morpheme
+  is left cut on a new word (D28). The reconstructed string is unchanged.
 
   `word-layers` is the set of the tokens' layers that hold words: those
   that forbid overlap, are no partition and nest under another layer (see
@@ -2463,8 +2464,9 @@
                         :head-kept (not-any? #(and (:end %) (= b (:start %))) g)}))
         ;; The edits from i on that make up the whole of [b e), or nil.
         group (fn group
-                ([i b e] (group i b e false))
-                ([i b e split?]
+                ([i b e] (group i b e false false))
+                ([i b e split?] (group i b e split? false))
+                ([i b e split? cut-ok?]
                  (let [j (loop [j i]
                            (if (and (< j (count edits)) (<= (reach-of (edits j)) e)
                                     (>= (start-of (edits j)) b))
@@ -2485,14 +2487,20 @@
                                            (and (kinds :delete) (kinds :insert))))
                                   (splits? g b e))
                               ;; A token inside a word (a morpheme) given a space
-                              ;; that no new word can take whole is left to the
-                              ;; word, which goes on one of them (see below).
+                              ;; is left to the word, which folds onto one of
+                              ;; the new words (D28: `unbreakable` as `un` +
+                              ;; `break` + `able` to `unbreakab le` kept `ab`
+                              ;; with the gloss of `able`). Only with `cut-ok?`,
+                              ;; once the word could not fold, does the morpheme
+                              ;; take the replace when one new word can take it
+                              ;; whole.
                               (not (and (not (word-at? b e))
                                         (splits? g b e)
                                         (some #(and (word? %) (not (and (= b (:token/begin %)) (= e (:token/end %)))))
                                               (@covering b e))
-                                        (some #(and (= :replace (:kind %)) (has-ws? (:value %)))
-                                              (split-off-new-words o @near @covering (as-replace g b e)))))
+                                        (or (not cut-ok?)
+                                            (some #(and (= :replace (:kind %)) (has-ws? (:value %)))
+                                                  (split-off-new-words o @near @covering (as-replace g b e))))))
                               ;; A word with tokens inside (its morphemes)
                               ;; takes the replace only when the edits as they
                               ;; are would break it, and when the word then
@@ -2657,6 +2665,15 @@
                           ;; one replaced outright, rather than hold it.
                           (some (fn [{tb :token/begin te :token/end}]
                                   (when-let [g (group i tb te true)] [g tb te]))
+                                (around lo e0))
+                          ;; A word that cannot fold onto one new word (the
+                          ;; one to take it would move text into the sentence
+                          ;; before or past a marker, or the word is the whole
+                          ;; text) leaves the cut morpheme on the new word
+                          ;; holding it, as before D28.
+                          (some (fn [e] (when-let [g (group i b e false true)] [g b e])) (ends-at b))
+                          (some (fn [{tb :token/begin te :token/end}]
+                                  (when-let [g (group i tb te false true)] [g tb te]))
                                 (around lo e0))
                           (some (fn [{tb :token/begin te :token/end}]
                                   (when (clear-before? prev tb)

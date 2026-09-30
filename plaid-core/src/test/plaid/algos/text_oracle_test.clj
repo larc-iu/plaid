@@ -313,37 +313,48 @@
       ;; can neither leave the sentence nor the marker, and when the one
       ;; to take the token is the second, the token stays over both (`x.
       ;; cow y` to `x. a co y`, pinned in text_test).
-      (:space-at-cut :split-word)
-      (let [cands (filter #(if (= kind :space-at-cut)
-                             (:cuts (sent %))
-                             (let [{:keys [w zs ze]} (sent %)]
+      ;; Inside a morpheme of an analyzed word (first, middle or last), the
+      ;; word folds and keeps no morpheme (D28).
+      (:space-at-cut :split-word :split-in-morpheme)
+      (let [inner (fn [{:keys [w cuts]}] (remove (set cuts) (range 1 (count (cps w)))))
+            cands (filter #(case kind
+                             :space-at-cut (:cuts (sent %))
+                             (let [{:keys [w zs ze cuts] :as it} (sent %)]
                                (and (< 1 (count (cps w))) (not zs) (not ze)
-                                    (or (pos? %) (zero? si)))))
+                                    (or (pos? %) (zero? si))
+                                    (or (= kind :split-word) (and cuts (seq (inner it)))))))
                           (range n))]
         (if (empty? cands)
           (edit doc rng [:resp])
           (let [i (nth cands (.nextInt rng (count cands)))
                 {:keys [id w cuts pre post sep] :as it} (sent i)
                 c (cps w)
-                k (if (= kind :space-at-cut)
-                    (nth cuts (.nextInt rng (count cuts)))
-                    (inc (.nextInt rng (dec (count c)))))
+                k (case kind
+                    :space-at-cut (nth cuts (.nextInt rng (count cuts)))
+                    :split-word (inc (.nextInt rng (dec (count c))))
+                    (let [ks (vec (inner it))] (ks (.nextInt rng (count ks)))))
+                respelled? (and (not= kind :space-at-cut) (.nextBoolean rng))
                 left (apply str (subvec c 0 k))
-                right (str (if (and (= kind :split-word) (.nextBoolean rng))
-                             (fresh-word rng 1)
-                             (c k))
+                right (str (if respelled? (fresh-word rng 1) (c k))
                            (apply str (subvec c (inc k))))
+                ;; A space typed inside a morpheme folds the word. With the
+                ;; last letter respelled after it (`dog` to `do Z`), the text
+                ;; reads as that letter deleted and a new word typed, which
+                ;; keeps the analysis, as well.
+                fold (when (and cuts (not (some #{k} cuts))
+                                (not (and respelled? (= k (dec (count c))))))
+                       #{id})
                 split (fn [lid rid]
                         (assoc doc si (-> (subvec sent 0 i)
                                           (conj (assoc it :id lid :w left :post "" :sep " " :cuts nil :new (not= lid id))
                                                 {:id rid :pre "" :w right :post post :sep sep :new (not= rid id)})
                                           (into (subvec sent (inc i))))))]
             [(split id (+ 2000 id))
-             {:resp #{id} :si si
+             {:resp #{id} :si si :fold fold
                             ;; or the right half is the word, and the left half
                             ;; is typed in front of it
               :alts [[(split (+ 2000 id) id)
-                      {:resp #{id} :si si :typed-front {id (inc (count (cps left)))}}]]}])))
+                      {:resp #{id} :si si :fold fold :typed-front {id (inc (count (cps left)))}}]]}])))
       :join (if (< si (dec (count doc)))
               [(-> doc
                    (assoc-in [si (dec n) :sep] " ")
@@ -434,6 +445,7 @@
               w (wt id)]
           (cond
             (nil? w) (when (seq m) (p! "MORPH of deleted " id " left on " (pr-str (map read m))))
+            ((or (:fold info) #{}) id) (when (seq m) (p! "MORPH of folded " id " left on " (pr-str (map read m))))
             (and (not (resp id)) (not (twin? it)))
             (let [c (cps (:w it))
                   want (map (fn [[x y]] (apply str (subvec c x y)))
@@ -564,7 +576,9 @@
      :space-at-morpheme-edge {:seps [" "] :kinds [:space-at-cut]}
      :space-at-morpheme-edge-marked {:seps [" "] :marks 0.4 :nodes 4 :kinds [:space-at-cut]}
      :split-word {:seps [" "] :kinds [:split-word]}
-     :split-word-nodes {:seps [" "] :marks 0.4 :nodes 4 :kinds [:split-word]}}))
+     :split-word-nodes {:seps [" "] :marks 0.4 :nodes 4 :kinds [:split-word]}
+     :split-in-morpheme {:seps [" "] :kinds [:split-in-morpheme]}
+     :split-in-morpheme-nodes {:seps [" "] :marks 0.4 :nodes 4 :kinds [:split-in-morpheme]}}))
 
 ;; ---------------------------------------------------------------- the test
 
@@ -668,3 +682,15 @@
   (is (= [[[:w 0] "hh"] [[:w 1] "pq"]] (body-save "hh pqmrs" "hh pq krs" {1 [3]})))
   (is (= [[[:m 0 0] "花花"] [[:m 0 1] "家犬犬"] [[:w 0] "花花家犬犬"] [[:w 2] "犬猫"]]
          (body-save "花花家犬犬 川川水川 犬猫水山木" "花花家犬犬 犬猫 川山木" {0 [2] 2 [2]}))))
+
+(deftest a-space-typed-inside-any-morpheme-folds-the-word
+  ;; D28: inside the first, middle or last morpheme, the word goes on the new
+  ;; word sharing more letters and keeps no morpheme
+  (is (= [[[:w 0] "hh"] [[:w 1] "unbreakab"]] (body-save "hh unbreakable" "hh unbreakab le" {1 [2 7]})))
+  (is (= [[[:w 0] "hh"] [[:w 1] "nbreakable"]] (body-save "hh unbreakable" "hh u nbreakable" {1 [2 7]})))
+  (is (= [[[:w 0] "hh"] [[:w 1] "reakable"]] (body-save "hh unbreakable" "hh unb reakable" {1 [2 7]})))
+  (is (= [[[:w 0] "hh"] [[:w 1] "mrs"]] (body-save "hh pqmrs" "hh pq mrs" {1 [1]})))
+  (is (= [[[:w 0] "hh"] [[:w 1] "pqm"]] (body-save "hh pqmrs" "hh pqm rs" {1 [4]})))
+  ;; at a morpheme boundary the morphemes stay (N1)
+  (is (= [[[:m 1 1] "break"] [[:m 1 2] "able"] [[:w 0] "hh"] [[:w 1] "breakable"]]
+         (body-save "hh unbreakable" "hh un breakable" {1 [2 7]}))))
