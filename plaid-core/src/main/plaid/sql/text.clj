@@ -256,7 +256,7 @@
           ;; spaces a sentence, a UMR node or a time-alignment segment (no
           ;; parent) over several words looks like a word.
           layer-rows (when (and (or (string? new-body-or-ops) edits) (seq tokens))
-                       (psc/q db {:select [:id :overlap_mode :parent_token_layer_id :config]
+                       (psc/q db {:select [:id :name :overlap_mode :parent_token_layer_id :config]
                                   :from [:token_layers]
                                   :where [:= :text_layer_id (:text_layer_id text-row)]}))
           partitioning (into #{} (comp (filter #(= "partitioning" (:overlap_mode %))) (map :id)) layer-rows)
@@ -407,8 +407,9 @@
                                                                       survivors))
                             [x y] (partition 2 1 (sort-by (juxt :token/begin :token/end) ts))]
                       (when (> (:token/end x) (:token/begin y))
-                        (throw (ex-info (str "The change would leave two tokens of layer " layer
-                                             " over the same text, which the layer does not allow.")
+                        (throw (ex-info (str "The change would leave two tokens of layer \""
+                                             (or (some #(when (= layer (:id %)) (:name %)) layer-rows) layer)
+                                             "\" over the same text, which the layer does not allow.")
                                         {:code 409 :id eid :layer layer}))))
                     survivors)})))
 

@@ -417,3 +417,30 @@
     (let [[nb at] (extents-after "|Hi.|\n/|The| |end.|" [] [(ins 0 "Oh.\n") (del 4 1)])]
       (is (= "Oh.\ni.\nThe end." nb))
       (is (= "i.\n" (at [:s 0]))))))
+
+(deftest side-decides-where-two-rows-meet-in-one-sentence
+  ;; REV5 M1: rows `Hi.` and `Yo.` written together in ONE sentence (igt's
+  ;; Media tab seeds one sentence for every row): text typed at the end of
+  ;; row 1 goes to row 1 with `side: "before"`, and to no word
+  (let [row (fn [id b e] {:token/id id :token/layer :a :token/begin b :token/end e})
+        rows [(row :a0 0 3) (row :a1 3 6) (row :a2 7 11)]
+        run (fn [op] (let [[nb at] (extents-after "|Hi|.|Yo|. /|End|." rows [op])]
+                       [nb (at :a0) (at :a1) (at [:w 0]) (at [:w 1])]))]
+    (is (= ["Hi.xYo. End." "Hi.x" "Yo." "Hi" "Yo"] (run (assoc (ins 3 "x") :side "before"))))
+    (is (= ["Hi. xYo. End." "Hi. x" "Yo." "Hi" "Yo"] (run (assoc (ins 3 " x") :side "before"))))
+    (is (= ["Hi.xYo. End." "Hi." "xYo." "Hi" "xYo"] (run (assoc (ins 3 "x") :side "after"))))))
+
+(deftest a-point-beside-words-that-are-not-plain-stays-a-point
+  ;; REV5 L5: a UMR constant's anchor at 0 on a plain node layer beside words
+  ;; that are not plain stays zero-width, whatever the edit
+  (let [old "Hi. The end."
+        words (mapv (fn [i [b e]] {:token/id [:w i] :token/layer :w :token/begin b :token/end e})
+                    (range) [[0 3] [4 7] [8 12]])
+        nodes [{:token/id :n0 :token/layer :u :token/begin 0 :token/end 3}
+               {:token/id :c :token/layer :u :token/begin 0 :token/end 0}]
+        ops [(ins 12 "x")]
+        rest (ta/apply-edits old words ops {:partitioning #{} :word-layers #{:w}})
+        plain (ta/plain-edits old nodes ops #{} #{:w})
+        r (ta/follow-word-edges (into words nodes) plain rest #(= :w (:token/layer %)) #{:n0 :c})
+        c (some #(when (= :c (:token/id %)) %) (:tokens r))]
+    (is (= [0 0] [(:token/begin c) (:token/end c)]))))

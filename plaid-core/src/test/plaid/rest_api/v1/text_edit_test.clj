@@ -25,7 +25,7 @@
 (defn- setup
   "A document with sentences, words, morphemes and glosses over `body`, the
   words at the runs without spaces, each word one morpheme."
-  [body & {:keys [plain other nodes runs split]}]
+  [body & {:keys [plain other nodes runs split sents]}]
   (let [proj (create-test-project admin-request "EditProj")
         doc (create-test-document admin-request proj "Doc")
         tl (-> (create-text-layer admin-request proj "TL") :body :id)
@@ -50,8 +50,9 @@
                      :body :id))
         glosses (-> (create-span-layer admin-request morphemes "Gloss") :body :id)
         text-id (-> (create-text admin-request tl doc body) :body :id)
-        _ (assert-created (bulk-create-tokens admin-request [{:token-layer-id sentences :text text-id
-                                                              :begin 0 :end (count body)}]))
+        _ (assert-created (bulk-create-tokens admin-request (mapv (fn [[b e]] {:token-layer-id sentences :text text-id
+                                                                               :begin b :end e})
+                                                                  (or sents [[0 (count body)]]))))
         runs (if (= runs :chars)
                (mapv (fn [i] [i (inc i)]) (range (count body)))
                (let [m (re-matcher #"\S+" body)] (loop [out []] (if (.find m) (recur (conj out [(.start m) (.end m)])) out))))
@@ -398,3 +399,22 @@
     (is (= [0 4 "Hi.x"] (extent r1)))
     (is (= [4 4 ""] (extent empty)))
     (is (= [5 13 "The end."] (extent r2)))))
+
+(deftest an-overlap-refusal-names-the-layer
+  ;; REV5 L3: legacy data with an empty segment inside the whitespace after a
+  ;; row; the refusal names the layer by its name
+  (let [{:keys [text]} (setup "Hi.  Yo. End." :plain true :sents [[0 5] [5 9] [9 13]])
+        tl (:text/layer (:body (get-text admin-request text)))
+        rows (-> (create-token-layer-opts admin-request tl "Rows" {:overlap-mode "non-overlapping"}) :body :id)
+        _ (assert-status 204 (api-call admin-request {:method :put
+                                                      :path (str "/api/v1/token-layers/" rows "/config/plaid/plainEdits")
+                                                      :body true}))
+        _ (create-token admin-request rows text 0 3)
+        _ (create-token admin-request rows text 4 4)
+        _ (create-token admin-request rows text 5 8)
+        _ (create-token admin-request rows text 9 13)
+        base (-> (get-text admin-request text) :body :text/digest)
+        r (edit-text text {:edits [{:type "insert" :index 4 :value "x"}] :base base})]
+    (is (= 409 (:status r)))
+    (is (re-find #"layer \"Rows\"" (str (:error (:body r)))) (pr-str (:body r)))
+    (is (not (re-find #"[0-9a-f]{8}-[0-9a-f]{4}-" (str (:body r)))) (pr-str (:body r)))))

@@ -3731,6 +3731,7 @@
         ;; others (sentences, time-alignment segments) follow them.
          deciders (let [ws (filterv #(word-layers (:token/layer %)) wide)]
                     (if (seq ws) ws (filterv #(not (partitioning (:token/layer %))) wide)))
+         decider-layers (into #{} (map :token/layer) deciders)
         ;; What the words have at each gap: one
         ;; ending at its start or inside it, one beginning inside it or at its
         ;; end, one holding it at its end or at its start (the gap reaches
@@ -3763,10 +3764,17 @@
                          (when (and (< a b) (= begin a) (= end b)) (mark! g :exact))))))
                  f)
          flag? (fn [g x] (contains? (aget ^objects flags g) x))
-        ;; an insert's `side`, where two words, or two sentences (words
-        ;; leaving out punctuation), meet at it with no whitespace between,
+        ;; an insert's `side`, where two words, two sentences or two rows
+        ;; (tokens of a layer that forbids overlap beside the words, the words
+        ;; leaving out punctuation) meet at it with no whitespace between,
         ;; else none
-         sentence-starts (into #{} (comp (filter #(partitioning (:token/layer %))) (map :token/begin)) wide)
+         row? (fn [l] (and (contains? exclusive l) (not (partitioning l))
+                           (not (decider-layers l)) (not (contains? children l))))
+         row-ends (into #{} (comp (filter #(row? (:token/layer %))) (map (juxt :token/layer :token/end))) wide)
+         sentence-starts (into #{} (comp (filter #(or (partitioning (:token/layer %))
+                                                      (row-ends [(:token/layer %) (:token/begin %)])))
+                                         (map :token/begin))
+                               wide)
          side-of (fn [g]
                    (let [{:keys [a b]} (info g)]
                      (when (and (= a b) (pos? a) (< a len)
@@ -3825,8 +3833,8 @@
                                      (and (= a b) (by-caret? gb t)) (new-at gb)
                                      ;; the text typed where two words meet
                                      ;; goes whole to the side the caret said
-                                     (and (= a b) (partitioning layer) (= :after (side-of gb))) (new-at gb)
-                                     (and (= a b) (partitioning layer) (= :before (side-of gb))) (+ (new-at gb) n)
+                                     (and (= a b) (or (partitioning layer) (row? layer)) (= :after (side-of gb))) (new-at gb)
+                                     (and (= a b) (or (partitioning layer) (row? layer)) (= :before (side-of gb))) (+ (new-at gb) n)
                                      (= a b) (- (+ (new-at gb) n) (given-after gb))
                                      (>= end b) (+ (new-at gb) (given-before gb))
                                      :else nil)
@@ -3835,6 +3843,8 @@
                               {a2 :a b2 :b n2 :n} (when (>= ge 0) (info ge))
                               ne (cond
                                    (neg? ge) end
+                                   ;; and a row ending there takes it whole
+                                   (and (= a2 b2 end) (row? layer) (= :before (side-of ge))) (+ (new-at ge) n2)
                                    (or (= a2 end) (and (< a2 end) (< end b2)))
                                    (if (< begin a2) (+ (new-at ge) (given-before ge)) nil)
                                    (and (< a2 end) (= end b2))
@@ -3890,7 +3900,7 @@
                             (let [k (cp/cp-count m)]
                              ;; not over a whole word the edit kept (one typed
                              ;; over with the line)
-                              (when-not (some #(and (some (fn [d] (= (:token/layer d) (:token/layer %))) deciders)
+                              (when-not (some #(and (decider-layers (:token/layer %))
                                                     (<= (:token/end %) k))
                                               kept)
                                 k)))))))
@@ -3913,7 +3923,7 @@
          kept (follow-sentences o wide kept heads nw partitioning
                                 (fn [t] (not (or (not (contains? exclusive (:token/layer t)))
                                                  (partitioning (:token/layer t))
-                                                 (some #(= (:token/layer %) (:token/layer t)) deciders)
+                                                 (decider-layers (:token/layer t))
                                                  (contains? children (:token/layer t))))))]
      (cond-> {:text {:text/body new-body}
               ;; a point at the edge of a token of its layer that grew over it
@@ -4014,7 +4024,9 @@
      (->> (update result :tokens
                   (fn [ts]
                     (mapv (fn [{:token/keys [id] :as t}]
-                            (if-let [{:token/keys [begin end]} (when (followers id) (was id))]
+                            (if-let [{:token/keys [begin end]} (when (followers id)
+                                                                 ;; a point (a UMR constant's anchor) stays one
+                                                                 (let [w (was id)] (when (and w (< (:token/begin w) (:token/end w))) w)))]
                               (let [wb (some live (by-begin begin))
                                     we (some live (by-end end))
                                     b (or (:token/begin wb) (:token/begin t))
