@@ -694,3 +694,12 @@
   ;; at a morpheme boundary the morphemes stay (N1)
   (is (= [[[:m 1 1] "break"] [[:m 1 2] "able"] [[:w 0] "hh"] [[:w 1] "breakable"]]
          (body-save "hh unbreakable" "hh un breakable" {1 [2 7]}))))
+
+(deftest a-no-break-space-typed-in-a-word-splits-it-as-a-space-does
+  ;; The diff and the apps take U+00A0, U+2007 and U+202F for spaces
+  ;; (`space?`). The fold took them for letters, and left the word and a
+  ;; morpheme with its gloss over the space (REV-W-TEXT4).
+  (is (= [[[:w 0] "hh"] [[:w 1] "unbreakab"]] (body-save "hh unbreakable" "hh unbreakab\u00a0le" {1 [2 7]})))
+  (is (= [[[:w 0] "hh"] [[:w 1] "nbreakable"]] (body-save "hh unbreakable" "hh u\u202fnbreakable" {1 [2 7]})))
+  (is (= [[[:m 1 1] "break"] [[:m 1 2] "able"] [[:w 0] "hh"] [[:w 1] "breakable"]]
+         (body-save "hh unbreakable" "hh un\u2007breakable" {1 [2 7]}))))

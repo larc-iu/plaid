@@ -836,9 +836,9 @@
         ;; The edge of the text and a space both only separate, so a word
         ;; that comes to stand at the start of the text keeps its place.
         at (fn [i] (if (< -1 i n)
-                     (let [c (aget o i)] (if (Character/isWhitespace (int c)) :apart c))
+                     (let [c (aget o i)] (if (space? c) :apart c))
                      :apart))
-        apart (fn [c] (if (Character/isWhitespace (int c)) :apart c))]
+        apart (fn [c] (if (space? c) :apart c))]
     (if (= :delete (:kind edit))
       (let [{s :start e :end} edit
             sp? (fn [i] (space? (aget o i)))]
@@ -1866,7 +1866,7 @@
   (let [n (alength o)
         {s :start t :end ^String value :value} r
         v (.toArray (.codePoints value))
-        ws? (fn [c] (Character/isWhitespace (int c)))
+        ws? (fn [c] (space? c))
         ;; the new text's words, as [from to) code-point ranges of v
         words (loop [i 0 out []]
                 (let [b (loop [i i] (if (and (< i (alength v)) (ws? (aget v i))) (recur (inc i)) i))
@@ -2354,7 +2354,7 @@
         ^ints o (.toArray (.codePoints ^String old))
         near (delay (tokens-near tokens (count edits0)))
         inside-word? (delay (inside-word-fn o @near word?))
-        ws-runs (delay (run-bounds o #(Character/isWhitespace (int %))))
+        ws-runs (delay (run-bounds o #(space? %)))
         ;; the tokens holding a stretch inside a run without whitespace, for
         ;; `split-off-new-words`
         covering (delay (holders-fn @near @ws-runs (constantly true)))
@@ -2397,9 +2397,9 @@
         ;; No edit of `g` takes a letter one before it takes: only then do
         ;; its edits make one text of [b e) (see `split-at-token-edges`).
         apart? (fn [g] (every? (fn [[x y]] (<= (reach-of x) (start-of y))) (partition 2 1 g)))
-        ws? (fn [c] (Character/isWhitespace (int c)))
+        ws? (fn [c] (space? c))
         has-ws? (fn [^String v] (and v (.anyMatch (.codePoints v) (reify java.util.function.IntPredicate
-                                                                    (test [_ c] (Character/isWhitespace c))))))
+                                                                    (test [_ c] (space? c))))))
         ;; The edits put whitespace between letters of a token that had
         ;; none, so the letters it keeps are in two words now, and its token
         ;; goes on one of them.
