@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-export const FIXTURES_DIR = process.env.PLAID_FIXTURES ?? join(homedir(), '.plaid_fixtures');
+const FIXTURES_DIR = process.env.PLAID_FIXTURES ?? join(homedir(), '.plaid_fixtures');
 
 // A path inside the fixtures folder.
 export const fixture = (...parts) => join(FIXTURES_DIR, ...parts);
