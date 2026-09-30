@@ -170,6 +170,8 @@
         rng (java.util.Random. 20260927)
         groups (vec (repeatedly 3 psc/new-uuid))
         items (atom [(-> (create-vocab-item admin-request vocab "kai") :body :id)])
+        ;; from the seeded rng, so every run makes the same writes
+        pick (fn [xs] (nth xs (.nextInt rng (count xs))))
         call! (fn [g m]
                 (api-call admin-request (cond-> m g (update :path with-group g))))
         write! (fn [g i]
@@ -178,12 +180,12 @@
                                :body {:vocab-layer-id vocab :form (str "w" i)}})
                    ;; a rename bumps the linking document's version: an op
                    ;; with no document of its own that belongs to its feed
-                   1 (call! g {:method :patch :path (str "/api/v1/vocab-items/" (rand-nth @items))
+                   1 (call! g {:method :patch :path (str "/api/v1/vocab-items/" (pick @items))
                                :body {:form (str "r" i)}})
                    2 (call! g {:method :post :path "/api/v1/vocab-links"
-                               :body {:vocab-item (rand-nth @items) :tokens [(nth toks (.nextInt rng 6))]}})
+                               :body {:vocab-item (pick @items) :tokens [(nth toks (.nextInt rng 6))]}})
                    3 (call! g {:method :patch :path (str "/api/v1/documents/" doc) :body {:name (str "d" i)}})
-                   4 (call! g {:method :put :path (str "/api/v1/vocab-items/" (rand-nth @items) "/metadata")
+                   4 (call! g {:method :put :path (str "/api/v1/vocab-items/" (pick @items) "/metadata")
                                :body {"gloss" (str "g" i)}})))]
     (dotimes [i 80]
       (let [roll (.nextInt rng 10)
