@@ -743,8 +743,9 @@
           :insert (recur (rest ops) del (+ ins (cp/cp-count value))
                          (conj out {:kind :insert :at old-pos :value value}))
           :replace (recur (rest ops) (+ del length) (+ ins (cp/cp-count value))
-                          (conj out {:kind :replace :start old-pos :end (+ old-pos length)
-                                     :value value}))))
+                          (conj out (cond-> {:kind :replace :start old-pos :end (+ old-pos length)
+                                             :value value}
+                                      (:drop (first ops)) (assoc :drop (:drop (first ops))))))))
       out)))
 
 (defn- edits->ops
@@ -771,7 +772,8 @@
           :replace (let [n (- (:end e) (:start e))]
                      (recur (rest edits) del-before (conj waiting [(:start e) n])
                             (+ ins (cp/cp-count (:value e)))
-                            (conj out (replace-op running n (:value e)))))))
+                            (conj out (cond-> (replace-op running n (:value e))
+                                        (:drop e) (assoc :drop (:drop e))))))))
       out)))
 
 ;; ---------------------------------------------------------------------------
@@ -1579,9 +1581,12 @@
   nearest, so an edit already at such a place stays there. Edits that touch stay together, since
   `pair-replacements` reads them as one respelling. The reconstructed string
   is unchanged. `partitioning` is the set of the tokens' layers that are
-  partitions (see `slide-cost`)."
+  partitions (see `slide-cost`). `bounds`, when given, holds for each edit
+  (in the order `ops` makes them) the [lo hi] of old text it must stay
+  within, or nil (see `plan-edits`)."
   ([ops old tokens] (slide-to-tokens ops old tokens #{}))
-  ([ops old tokens partitioning]
+  ([ops old tokens partitioning] (slide-to-tokens ops old tokens partitioning nil))
+  ([ops old tokens partitioning bounds]
    (let [partitioning (set partitioning)
          edits (vec (ops->edits ops))
          ^ints o (.toArray (.codePoints ^String old))
@@ -1599,8 +1604,9 @@
                         ;; The edit before may already have moved, towards
                         ;; this one or away from it, and the two must not
                         ;; meet where it now stands.
-                        lo (if prev (inc (reach-of (peek moved))) 0)
-                        hi (if nxt (dec (start-of nxt)) n)]
+                        [glo ghi] (when bounds (get bounds i))
+                        lo (max (if prev (inc (reach-of (peek moved))) 0) (or glo 0))
+                        hi (min (if nxt (dec (start-of nxt)) n) (or ghi n))]
                     (conj moved
                           (if (or (< (start-of e) lo) (> (reach-of e) hi))
                             e
@@ -2250,7 +2256,7 @@
             (recur (inc i) (conj out e))))
         out))))
 
-(declare apply-text-edits fold-whole-words*)
+(declare apply-text-edits apply-text-edits* fold-whole-words*)
 
 (defn- ops-body
   "The text `ops` make of `old`, or nil when one of them does not fit it.
@@ -2324,12 +2330,26 @@
   sentence, a UMR node or a time-alignment segment over several words of a
   script without spaces is never taken for one. Without it any token
   without a space may be a word. Edits leaving only spaces in a word's place
-  are not folded onto it: the word is deleted."
+  are not folded onto it: the word is deleted.
+
+  `segments` is the set of the tokens' layers whose tokens each spell a
+  stretch of their parent token's text (`config.plaid.segmentsParent`, igt's
+  morpheme layers). A token on one with the same extent as a word given a
+  space is that word's one morpheme, and it is deleted with the word's fold,
+  as a word's morphemes are when a space is typed inside one (D28): a space
+  typed inside `pumpkin`, analyzed as one glossed morpheme, leaves the word
+  on the new word sharing more letters and deletes the morpheme. Without it a
+  same-extent token moves with the word, as a ud syntactic word does. The
+  replace carries the ids in `:drop`, and `apply-text-edits` deletes them."
   ([ops old tokens] (fold-whole-words ops old tokens nil))
-  ([ops old tokens word-layers]
+  ([ops old tokens word-layers] (fold-whole-words ops old tokens word-layers nil))
+  ([ops old tokens word-layers segments]
    (let [word? (if (nil? word-layers)
                  (constantly true)
-                 (fn [{:token/keys [layer]}] (contains? word-layers layer)))]
+                 (fn [{:token/keys [layer]}] (contains? word-layers layer)))
+         segment? (if (empty? segments)
+                    (constantly false)
+                    (fn [{:token/keys [layer]}] (contains? segments layer)))]
      ;; The fold must leave the text as it was. On a line retyped almost
      ;; whole, a replace joining two words took letters the next edit also
      ;; took, and the fold gave `forUnveistbr` for `for banister`: the save
@@ -2339,7 +2359,7 @@
      ;; judge is left as it came while the others fold. Should the folded
      ;; ops still not give the same text, or the fold throw elsewhere, all
      ;; the ops stay as they came, as a last guard.
-     (let [folded (try (fold-whole-words* ops old tokens word?)
+     (let [folded (try (fold-whole-words* ops old tokens word? segment?)
                        (catch clojure.lang.ExceptionInfo _ ops)
                        (catch IndexOutOfBoundsException _ ops))
            body #(ops-body % old)]
@@ -2349,7 +2369,7 @@
          ops)))))
 
 (defn- fold-whole-words*
-  [ops old tokens word?]
+  [ops old tokens word? segment?]
   (let [edits0 (vec (ops->edits ops))
         ^ints o (.toArray (.codePoints ^String old))
         near (delay (tokens-near tokens (count edits0)))
@@ -2454,6 +2474,12 @@
                            ;; the old word's last letter came through
                            tail-kept (not-any? #(= e (:end %)) g)]
                        {:kind :replace :start b :end e :value v
+                        ;; a word given a space loses its one morpheme (see
+                        ;; `fold-whole-words`)
+                        :drop (when (splits? g b e)
+                                (seq (keep (fn [{tb :token/begin te :token/end :as t}]
+                                             (when (and (= b tb) (= e te) (segment? t)) (:token/id t)))
+                                           (@near b e))))
                         :tail-kept tail-kept
                         ;; where it is in the new text: before what is typed after it
                         :tail-at (when tail-kept
@@ -2714,9 +2740,18 @@
   deletes. The token sat at the edge of each delete, where a delete keeps it;
   one replace over both would hold it strictly inside, and delete it. Joining
   two lines while dropping a quote after the newline deleted an unaligned UMR
-  node that way."
+  node that way.
+
+  `apart`, when given, is a function of an old-body position giving the
+  stretch it belongs to (see `plan-edits`): a delete and an insert with kept
+  text between them are folded only when they belong to the same one. Edits
+  made at the caret are where they were made, and two of them with text
+  between are two edits (`dance` with a letter deleted inside and one typed
+  after it keeps the typed one outside the word, as typing at a word's end
+  does)."
   ([ops old] (pair-replacements ops old []))
-  ([ops old tokens]
+  ([ops old tokens] (pair-replacements ops old tokens nil))
+  ([ops old tokens apart]
    (let [^ints o (.toArray (.codePoints ^String old))
          whole (alength o)
          ;; Tokens are looked up by position: a long text pasted over by
@@ -2782,6 +2817,7 @@
                over-kept? (and (seq run)
                                (not touching?)
                                (not apart?)
+                               (or (nil? apart) (= (apart start) (apart old-index)))
                                (< gap-start old-index)
                                (= #{(if (= :delete (:type op)) :insert :delete)}
                                   (kind-of run))
@@ -2933,6 +2969,21 @@
   applied a run of such ops at a time: one op out of that order among the
   7,000 a long line retyped gave cost a minute applied in turn."
   [ops text tokens]
+  (if-let [drops (seq (mapcat :drop ops))]
+    ;; the tokens a fold deletes with a word given a space (see
+    ;; `fold-whole-words`)
+    (let [drops (set drops)
+          r (apply-text-edits (mapv #(dissoc % :drop) ops) text tokens)
+          gone (filterv #(contains? drops (:token/id %)) (:tokens r))]
+      (if (empty? gone)
+        r
+        (assoc r
+               :tokens (filterv #(not (contains? drops (:token/id %))) (:tokens r))
+               :deleted (into (:deleted r) (map :token/id) gone))))
+    (apply-text-edits* ops text tokens)))
+
+(defn- apply-text-edits*
+  [ops text tokens]
   (let [ops (vec (take-while some? ops))
         ^String body (:text/body text)
         ^ints o (.toArray (.codePoints body))
@@ -3026,3 +3077,242 @@
         {:text (assoc text :text/body new-body)
          :tokens (into [] (keep second) results)
          :deleted (into [] (keep (fn [[t t']] (when-not t' (:token/id t)))) results)}))))
+
+;; ---------------------------------------------------------------------------
+;; Edits from the caret
+;;
+;; An editor that knows where each change was made sends the changes as ops
+;; (`PATCH /texts/:id` with `edits`). Nothing is guessed about where a pure
+;; insert or a pure delete stands: the caret said. Only a stretch that both
+;; loses text and gets text typed in its place (a selection typed over, a
+;; paste over a selection) is read as a whole-body save reads the same
+;; change, confined to that stretch. The ops then go through the same steps
+;; a whole-body save does after it has placed its edits, so the two agree on
+;; what an edit at a known place does to the tokens.
+
+(defn compose-edits
+  "The net change `ops` make to `old`, as gaps in old-body code points,
+  `[{:start a :end b :value v}]`: between two runs of old text that came
+  through, [a b) of `old` went and `v` stands there now. In old-body order,
+  never touching, each an insert (a = b), a delete (v empty) or both. A gap
+  whose `v` is the text it took is left out (a letter deleted and typed
+  back).
+
+  `ops` are running-coordinate ops, applied in order (each op's index is in
+  the body the ops before it left), as `apply-text-edits` takes them. Each
+  is checked against that body, and a malformed or out-of-bounds one throws
+  the 400 `apply-text-edit` would. Old text an op deletes is gone even when
+  the same letters are typed back later, so the gaps depend only on what
+  came through, never on the order or the grouping of the keystrokes. So a
+  zero-width token strictly inside a stretch deleted a letter at a time is
+  deleted as it is by one delete of the stretch: two words joined by
+  deleting the letters and the space between them are one word, and a
+  marker of the edge of either has no edge left to mark."
+  [ops ^String old]
+  (let [n (cp/cp-count old)
+        ;; the new text as segments: [:old a b] for old text that came
+        ;; through, [:new s k] for k typed code points
+        seg-len (fn [[kind x y]] (if (= kind :old) (- y x) y))
+        cut (fn [[kind x y :as seg] k]
+              ;; the segment's first k code points and the rest
+              (if (= kind :old)
+                [[:old x (+ x k)] [:old (+ x k) y]]
+                [[:new (cp/cp-subs x 0 k) k] [:new (cp/cp-subs x k) (- y k)]]))
+        split-at (fn [segs p]
+                   ;; segs before new position p, and from it
+                   (loop [i 0 at 0]
+                     (if (< i (count segs))
+                       (let [seg (segs i) l (seg-len seg)]
+                         (cond
+                           (<= (+ at l) p) (recur (inc i) (+ at l))
+                           (= at p) [(subvec segs 0 i) (subvec segs i)]
+                           :else (let [[x y] (cut seg (- p at))]
+                                   [(conj (subvec segs 0 i) x) (into [y] (subvec segs (inc i)))])))
+                       [segs []])))
+        join (fn [out seg]
+               (let [prev (peek out)]
+                 (cond
+                   (zero? (seg-len seg)) out
+                   (and prev (= :new (first prev) (first seg)))
+                   (conj (pop out) [:new (str (second prev) (second seg)) (+ (nth prev 2) (nth seg 2))])
+                   (and prev (= :old (first prev) (first seg)) (= (nth prev 2) (second seg)))
+                   (conj (pop out) [:old (second prev) (nth seg 2)])
+                   :else (conj out seg))))
+        segs (reduce
+              (fn [segs op]
+                (let [len (reduce + 0 (map seg-len segs))
+                      type (check-op! op len)
+                      {:keys [index value length]} op
+                      k (case type :insert 0 :delete value :replace length)
+                      v (if (= type :delete) "" value)
+                      [before rest] (split-at segs index)
+                      [_ after] (split-at rest k)]
+                  (reduce join (reduce join [] before)
+                          (cons [:new v (cp/cp-count v)] after))))
+              (if (pos? n) [[:old 0 n]] [])
+              ops)
+        ;; the gaps between the runs of old text that came through
+        gaps (loop [segs segs pos 0 typed (StringBuilder.) out []]
+               (let [[kind x y :as seg] (first segs)
+                     flush (fn [a]
+                             (let [v (str typed)]
+                               (if (or (< pos a) (pos? (count v)))
+                                 (conj out {:start pos :end a :value v})
+                                 out)))]
+                 (cond
+                   (nil? seg) (flush n)
+                   (= kind :new) (recur (rest segs) pos (.append typed ^String x) out)
+                   :else (recur (rest segs) y (StringBuilder.) (flush x)))))
+        same? (fn [{:keys [start end value]}]
+                (and (< start end) (= value (cp/cp-subs old start end))))]
+    (into [] (remove same?) gaps)))
+
+(defn- gap-edits
+  "`gap` as old-coordinate edits: an insert, a delete, or both, as `diff`
+  gives a stretch sharing nothing."
+  [{:keys [start end value]}]
+  (cond-> []
+    (< start end) (conj {:kind :delete :start start :end end})
+    (seq value) (conj {:kind :insert :at start :value value})))
+
+(defn plan-edits
+  "Ops for the gaps `compose-edits` made of an edit of `old`, placed and
+  ready for `pair-replacements` and the steps after it, as a diffed body's
+  are after `align-to-words`: `{:ops ops :stretch f}`, the ops inserts and
+  deletes only, in running coordinates, and `f` giving for an old position
+  an op stands at the gap it was made for (`pair-replacements`' `apart`).
+
+  A pure insert or a pure delete stands where it was made: never slid,
+  snapped or aligned. A gap that both takes text and types text is read as
+  a whole-body save reads the same change: its old and new text are diffed,
+  and the edits slid to the tokens (`slide-to-tokens`), snapped
+  (`normalize-deletes`) and aligned by words (`align-to-words`), so a
+  selection typed over keeps what a respelling keeps. Those steps only move
+  an edit to an equal place, and one may go past the gap's edge (`sat tat`
+  typed over with `tX` deletes ` sat` and respells `tat`), but never up to
+  another gap: each stays in the old text between the gaps beside it. When
+  one would, or the stretch would come out as other text, the gap stays one
+  delete and one insert. `partitioning` and `word-layers`
+  are as `update-body` gives them to those steps."
+  [^String old tokens gaps partitioning word-layers]
+  (let [o (.toArray (.codePoints old))
+        gaps (vec gaps)
+        pure? (fn [{:keys [start end value]}] (or (= start end) (empty? value)))
+        start-of (fn [e] (or (:start e) (:at e)))
+        reach-of (fn [e] (or (:end e) (:at e)))
+        ;; the edits a gap's own diff gives, in old coordinates
+        diffed (fn [{:keys [start end value]}]
+                 (mapv (fn [e] (cond-> e
+                                 (:start e) (update :start + start)
+                                 (:end e) (update :end + start)
+                                 (:at e) (update :at + start)))
+                       (ops->edits (diff (String. ^ints o (int start) (int (- end start))) value))))
+        n (alength o)
+        ;; the old text a gap's edits may stand in: up to the gaps beside it,
+        ;; never touching them
+        window (fn [i] [(if (zero? i) 0 (inc (:end (gaps (dec i)))))
+                        (if (= i (dec (count gaps))) n (dec (:start (gaps (inc i)))))])
+        ;; the placed edits of the gaps in `idx`, or the gaps among them
+        ;; whose edits left their window
+        place (fn [idx]
+                (let [per (mapv (fn [i] [i (diffed (gaps i))]) idx)
+                      edits (vec (mapcat second per))
+                      bounds (vec (mapcat (fn [[i es]] (repeat (count es) (window i))) per))
+                      placed (if (empty? edits)
+                               []
+                               (-> (edits->ops edits)
+                                   (slide-to-tokens old tokens partitioning bounds)
+                                   (normalize-deletes old tokens)
+                                   (align-to-words old tokens word-layers)
+                                   ops->edits
+                                   vec))
+                      ;; each placed edit's gap, or nil when it lies in none
+                      owner (fn [e]
+                              (some (fn [i] (let [[lo hi] (window i)]
+                                              (when (and (<= lo (start-of e)) (<= (reach-of e) hi)) i)))
+                                    idx))
+                      owned (group-by owner placed)
+                      stray (get owned nil)
+                      bad (into #{}
+                                (concat
+                                 (for [i idx
+                                       :let [{:keys [start end value]} (gaps i)
+                                             [lo hi] (window i)]
+                                       :when (not= (edits-text o [{:kind :replace :start start :end end :value value}] lo hi)
+                                                   (edits-text o (get owned i) lo hi))]
+                                   i)
+                                 ;; an edit outside every window: the gaps beside it
+                                 (for [e stray
+                                       i idx
+                                       :let [[lo hi] (window i)]
+                                       :when (and (<= (start-of e) (inc hi)) (<= (dec lo) (reach-of e)))]
+                                   i)
+                                 ;; the edits of two gaps meeting between them
+                                 (for [[x y] (partition 2 1 placed)
+                                       :let [i (owner x) j (owner y)]
+                                       :when (and i j (not= i j) (>= (reach-of x) (start-of y)))
+                                       k [i j]]
+                                   k)))
+                      bad (if (and (seq stray) (empty? bad)) (set idx) bad)]
+                  (if (seq bad) {:bad bad} {:edits (mapv (fn [e] (assoc e ::gap (owner e))) placed)})))
+        ;; Placing again without the gaps that went wrong, until none does.
+        [placed fallback] (loop [idx (vec (remove #(pure? (gaps %)) (range (count gaps)))) fallback #{}]
+                            (let [{:keys [bad edits]} (if (seq idx) (place idx) {:edits []})]
+                              (if bad
+                                (recur (vec (remove bad idx)) (into fallback bad))
+                                [edits fallback])))
+        fixed (into [] (mapcat (fn [i] (when (or (pure? (gaps i)) (fallback i))
+                                         (map #(assoc % ::gap i) (gap-edits (gaps i))))))
+                    (range (count gaps)))
+        ;; gaps never share a place, and each gap's edits keep their order
+        edits (vec (sort-by start-of (into (vec placed) fixed)))
+        starts (long-array (map start-of edits))]
+    {:ops (edits->ops edits)
+     ;; the gap an old position an edit stands at belongs to
+     :stretch (fn [p]
+                (let [i (dec (loop [a 0 b (alength starts)]
+                               (if (< a b)
+                                 (let [m (quot (+ a b) 2)]
+                                   (if (<= (aget starts m) (long p)) (recur (inc m) b) (recur a m)))
+                                 a)))]
+                  (loop [i i]
+                    (when (<= 0 i)
+                      (let [e (edits i)]
+                        (if (<= (start-of e) p (reach-of e)) (::gap e) (recur (dec i))))))))}))
+
+(defn edit-ops-body
+  "The text `ops` (running coordinates, applied in turn) make of `old`, or
+  nil when one does not fit it."
+  [ops ^String old]
+  (ops-body ops old))
+
+(defn apply-edits
+  "What an edit of `old` by `ops` (running coordinates, see `compose-edits`)
+  does to it and to `tokens`, as `apply-text-edits` gives it: the ops made
+  into gaps (`compose-edits`), placed (`plan-edits`), and then read by the
+  steps a whole-body save runs after placing its edits (`pair-replacements`,
+  `fold-whole-words`, `apply-text-edits`, `keep-edges-off-spaces`), with the
+  layer sets `update-body` gives them."
+  [^String old tokens ops {:keys [partitioning word-layers segments]}]
+  (let [{:keys [ops stretch]} (plan-edits old tokens (compose-edits ops old) partitioning word-layers)]
+    (-> ops
+        (pair-replacements old tokens stretch)
+        (fold-whole-words old tokens word-layers segments)
+        (apply-text-edits {:text/body old} tokens)
+        (as-> r (keep-edges-off-spaces old tokens r partitioning)))))
+
+(defn gap-ops
+  "Running ops for `gaps` (old-body order, never touching, see
+  `compose-edits`): an insert, a delete, or a replace each."
+  [gaps]
+  (loop [gaps gaps shift 0 out []]
+    (if-let [{:keys [start end value]} (first gaps)]
+      (let [i (+ start shift)
+            k (- end start)
+            n (cp/cp-count value)]
+        (recur (rest gaps) (+ shift (- n k))
+               (conj out (cond
+                           (zero? k) (insert-op i value)
+                           (zero? n) (delete-op i k)
+                           :else (replace-op i k value)))))
+      out)))

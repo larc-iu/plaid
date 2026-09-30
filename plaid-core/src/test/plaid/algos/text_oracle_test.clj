@@ -59,14 +59,17 @@
     (vec (for [si (range nsent)]
            (let [n (+ 2 (.nextInt rng 4))]
              (vec (for [i (range n)]
-                    (let [w (pick vocab)
+                    (let [w (pick (:vocab opts vocab))
                           k (count (cps w))]
                       {:id (swap! id inc)
                        :pre (if (< (.nextDouble rng) 0.1) (pick (:pres opts [""])) "")
                        :w w
-                       :cuts (when (and (> k 1) (< (.nextDouble rng) 0.4))
-                               (vec (sort (distinct (repeatedly (inc (.nextInt rng 2))
-                                                                #(inc (.nextInt rng (dec k))))))))
+                       :cuts (or (when (and (> k 1) (< (.nextDouble rng) 0.4))
+                                   (vec (sort (distinct (repeatedly (inc (.nextInt rng 2))
+                                                                    #(inc (.nextInt rng (dec k))))))))
+                                 ;; one morpheme over the whole word
+                                 (when (and (:one-morph opts) (< (.nextDouble rng) (:one-morph opts)))
+                                   []))
                        :zs (< (.nextDouble rng) (:marks opts 0))
                        :ze (< (.nextDouble rng) (:marks opts 0))
                        :post (if (< (.nextDouble rng) 0.3) (pick puncts) "")
@@ -169,12 +172,13 @@
     (case kind
       :resp (let [i (.nextInt rng n)
                   [_ w'] (respell rng (:w (sent i)))]
-              [(assoc-in doc [si i :w] w') {:resp #{(:id (sent i))}}])
+              [(assoc-in doc [si i :w] w') {:resp #{(:id (sent i))} :kind :resp :si si :i i}])
       :del (if (< n 2)
              (edit doc rng [:resp])
              (let [k (inc (.nextInt rng (min 3 (dec n))))
                    i (.nextInt rng (- n k -1))]
-               [(delete-items doc si i (+ i k)) {:del (set (map :id (subvec sent i (+ i k)))) :si si}]))
+               [(delete-items doc si i (+ i k)) {:del (set (map :id (subvec sent i (+ i k)))) :si si
+                                                 :kind :del :i i :j (+ i k)}]))
       :del+resp (if (< n 3)
                   (edit doc rng [:resp])
                   (let [k (inc (.nextInt rng (min 2 (- n 2))))
@@ -187,6 +191,7 @@
                         dels (subvec sent i (+ i k))]
                     [(delete-items (assoc-in doc [si r :w] w') si i (+ i k))
                      {:resp #{rid} :del (set (map :id dels)) :si si
+                      :kind :del+resp :i i :j (+ i k) :r r
                       ;; replaced whole, the new word may be the one meant for
                       ;; any of these, and each reading is judged. Respelled
                       ;; in part, it may be the one meant for a deleted word
@@ -215,17 +220,19 @@
                                 (assoc-in [i :sep] " ")
                                 (conj (assoc item :sep (:sep (sent i))))
                                 (into (subvec sent (inc i)))))
-              {:ins true}])
+              {:ins true :kind :ins :si si :i i :neww (:w item)}])
       ;; a respelling with a space typed in front of the word
       :resp+space (let [i (.nextInt rng n)
                         [_ w'] (respell rng (:w (sent i)))
                         id (:id (sent i))
                         doc (assoc-in doc [si i :w] w')]
                     (cond
-                      (pos? i) [(update-in doc [si (dec i) :sep] str " ") {:resp #{id} :typed-front {id 1}}]
+                      (pos? i) [(update-in doc [si (dec i) :sep] str " ")
+                                {:resp #{id} :typed-front {id 1} :kind :resp+space :si si :i i :space true}]
                       (zero? si)
-                      [(update-in doc [0 0 :pre] #(str " " %)) {:resp #{id} :typed-front {id 1}}]
-                      :else [doc {:resp #{id}}]))
+                      [(update-in doc [0 0 :pre] #(str " " %))
+                       {:resp #{id} :typed-front {id 1} :kind :resp+space :si si :i i :space true}]
+                      :else [doc {:resp #{id} :kind :resp+space :si si :i i}]))
       ;; a respelling with a new word typed after it
       :resp+ins (let [i (.nextInt rng n)
                       [_ w'] (respell rng (:w (sent i)))
@@ -235,7 +242,7 @@
                                      (assoc-in [i :sep] " ")
                                      (conj item)
                                      (into (subvec sent (inc i)))))
-                   {:resp #{(:id (sent i))} :ins true}])
+                   {:resp #{(:id (sent i))} :ins true :kind :resp+ins :si si :i i :neww (:w item)}])
       ;; Two words beside each other made one by deleting the space between
       ;; them and letters of both: `a big dog` to `a bog`. It is one word
       ;; respelled and the other deleted, either way round, and the new word
@@ -248,11 +255,14 @@
                       (edit doc rng [:resp])
                       (let [ca (cps (:w a))
                             cb (cps (:w b))
-                            w (str (apply str (take (inc (.nextInt rng (dec (count ca)))) ca))
-                                   (apply str (take-last (inc (.nextInt rng (dec (count cb)))) cb)))
+                            ka (inc (.nextInt rng (dec (count ca))))
+                            kb (inc (.nextInt rng (dec (count cb))))
+                            w (str (apply str (take ka ca))
+                                   (apply str (take-last kb cb)))
                             joined (assoc a :w w :post (:post b) :sep (:sep b) :cuts nil)]
                         [(assoc doc si (-> (subvec sent 0 i) (conj joined) (into (subvec sent (+ i 2)))))
-                         {:resp #{(:id a)} :del #{(:id b)} :si si :amb #{} :group [(:id a) (:id b)]}])))
+                         {:resp #{(:id a)} :del #{(:id b)} :si si :amb #{} :group [(:id a) (:id b)]
+                          :kind :join-words :i i :ka ka :kb kb}])))
       ;; The same with one word left whole: the space and letters of the
       ;; other go (`the kaki` to `theki`, `the kaki` to `thkaki`). It is one
       ;; word too (D22).
@@ -266,12 +276,14 @@
                           (edit doc rng [:resp])
                           (let [ca (cps (:w a))
                                 cb (cps (:w b))
-                                w (if left-whole?
-                                    (str (:w a) (apply str (take-last (inc (.nextInt rng (dec (count cb)))) cb)))
-                                    (str (apply str (take (inc (.nextInt rng (dec (count ca)))) ca)) (:w b)))
+                                [ka kb] (if left-whole?
+                                          [(count ca) (inc (.nextInt rng (dec (count cb))))]
+                                          [(inc (.nextInt rng (dec (count ca)))) (count cb)])
+                                w (str (apply str (take ka ca)) (apply str (take-last kb cb)))
                                 joined (assoc a :w w :post (:post b) :sep (:sep b) :cuts nil)]
                             [(assoc doc si (-> (subvec sent 0 i) (conj joined) (into (subvec sent (+ i 2)))))
-                             {:resp #{(:id a)} :del #{(:id b)} :si si :amb #{} :group [(:id a) (:id b)]}])))
+                             {:resp #{(:id a)} :del #{(:id b)} :si si :amb #{} :group [(:id a) (:id b)]
+                              :kind :join-words :i i :ka ka :kb kb}])))
       ;; Only the space between two words deleted: two words written
       ;; together, each keeping its token (D22).
       :join-space (let [i (when (> n 1) (.nextInt rng (dec n)))
@@ -279,7 +291,7 @@
                         b (some-> i inc sent)]
                     (if (or (nil? i) (not= " " (:sep a)))
                       (edit doc rng [:resp])
-                      [(assoc-in doc [si i :sep] "") {}]))
+                      [(assoc-in doc [si i :sep] "") {:kind :join-space :si si :i i}]))
       ;; Three words made one, keeping letters of the middle one, so the
       ;; diff deletes twice: `a big dog ran` to `a bon`. One token.
       :join-three (let [i (when (> n 2) (.nextInt rng (- n 2)))
@@ -293,9 +305,11 @@
                             cc (cps (:w c))
                             p (.nextInt rng (count cb))
                             q (+ p 1 (.nextInt rng (- (count cb) p)))
-                            w (str (apply str (take (inc (.nextInt rng (dec (count ca)))) ca))
+                            ka (inc (.nextInt rng (dec (count ca))))
+                            kc (inc (.nextInt rng (dec (count cc))))
+                            w (str (apply str (take ka ca))
                                    (apply str (subvec cb p q))
-                                   (apply str (take-last (inc (.nextInt rng (dec (count cc)))) cc)))
+                                   (apply str (take-last kc cc)))
                             joined (assoc a :w w :post (:post c) :sep (:sep c) :cuts nil)]
                         ;; a whole word inside the new one reads as that word kept,
                         ;; the others cut to its sides (`tat tat sat` to `ttat`)
@@ -303,7 +317,8 @@
                           (edit doc rng [:resp])
                           [(assoc doc si (-> (subvec sent 0 i) (conj joined) (into (subvec sent (+ i 3)))))
                            {:resp #{(:id a)} :del #{(:id b) (:id c)} :si si :amb #{}
-                            :group [(:id a) (:id b) (:id c)]}]))))
+                            :group [(:id a) (:id b) (:id c)]
+                            :kind :join-three :i i :ka ka :p p :q q :kc kc}]))))
       ;; A space typed where two morphemes of a word meet: the word goes on
       ;; one of the two new words, either, with its morphemes there, and the
       ;; other is a new word.
@@ -315,10 +330,13 @@
       ;; cow y` to `x. a co y`, pinned in text_test).
       ;; Inside a morpheme of an analyzed word (first, middle or last), the
       ;; word folds and keeps no morpheme (D28).
-      (:space-at-cut :split-word :split-in-morpheme)
+      ;; `:split-any` also at a sentence start and beside a marker, for
+      ;; edits from the caret
+      (:space-at-cut :split-word :split-in-morpheme :split-any)
       (let [inner (fn [{:keys [w cuts]}] (remove (set cuts) (range 1 (count (cps w)))))
             cands (filter #(case kind
-                             :space-at-cut (:cuts (sent %))
+                             :space-at-cut (seq (:cuts (sent %)))
+                             :split-any (< 1 (count (cps (:w (sent %)))))
                              (let [{:keys [w zs ze cuts] :as it} (sent %)]
                                (and (< 1 (count (cps w))) (not zs) (not ze)
                                     (or (pos? %) (zero? si))
@@ -331,11 +349,12 @@
                 c (cps w)
                 k (case kind
                     :space-at-cut (nth cuts (.nextInt rng (count cuts)))
-                    :split-word (inc (.nextInt rng (dec (count c))))
+                    (:split-word :split-any) (inc (.nextInt rng (dec (count c))))
                     (let [ks (vec (inner it))] (ks (.nextInt rng (count ks)))))
                 respelled? (and (not= kind :space-at-cut) (.nextBoolean rng))
                 left (apply str (subvec c 0 k))
-                right (str (if respelled? (fresh-word rng 1) (c k))
+                x (when respelled? (fresh-word rng 1))
+                right (str (or x (c k))
                            (apply str (subvec c (inc k))))
                 ;; A space typed inside a morpheme folds the word. With the
                 ;; last letter respelled after it (`dog` to `do Z`), the text
@@ -350,16 +369,42 @@
                                                 {:id rid :pre "" :w right :post post :sep sep :new (not= rid id)})
                                           (into (subvec sent (inc i))))))]
             [(split id (+ 2000 id))
-             {:resp #{id} :si si :fold fold
+             {:resp #{id} :si si :fold fold :kind :split :i i :k k :x x
                             ;; or the right half is the word, and the left half
                             ;; is typed in front of it
               :alts [[(split (+ 2000 id) id)
                       {:resp #{id} :si si :fold fold :typed-front {id (inc (count (cps left)))}}]]}])))
+      ;; The space between two words deleted and one typed inside a
+      ;; morpheme of the second (`vow pumpkin` to `vowpum pkin`): the first
+      ;; keeps its token, and the second folds (L3).
+      :move-space
+      (let [inner (fn [{:keys [w cuts]}] (when cuts (remove (set cuts) (range 1 (count (cps w))))))
+            cands (filter (fn [i] (let [a (sent i) b (get sent (inc i))]
+                                    (and b (= " " (:sep a)) (empty? (:post a)) (empty? (:pre b))
+                                         (not (:zs b)) (not (:ze b)) (seq (inner b)))))
+                          (range n))]
+        (if (empty? cands)
+          (edit doc rng [:resp])
+          (let [i (nth cands (.nextInt rng (count cands)))
+                a (sent i)
+                {bid :id :as b} (sent (inc i))
+                c (cps (:w b))
+                ks (vec (inner b))
+                k (ks (.nextInt rng (count ks)))
+                split (fn [lid rid]
+                        (assoc doc si (-> (subvec sent 0 i)
+                                          (conj (assoc a :sep "")
+                                                {:id lid :pre "" :w (apply str (subvec c 0 k)) :post "" :sep " "}
+                                                (assoc b :id rid :w (apply str (subvec c k)) :cuts nil))
+                                          (into (subvec sent (+ i 2))))))]
+            [(split (+ 2000 bid) bid)
+             {:resp #{bid} :si si :fold #{bid} :kind :move-space :i i :k k
+              :alts [[(split bid (+ 2000 bid)) {:resp #{bid} :si si :fold #{bid}}]]}])))
       :join (if (< si (dec (count doc)))
               [(-> doc
                    (assoc-in [si (dec n) :sep] " ")
                    (as-> d (into (conj (subvec d 0 si) (into (d si) (d (inc si)))) (subvec d (+ si 2)))))
-               {:join si}]
+               {:join si :kind :join :si si}]
               (edit doc rng [:resp])))))
 
 ;; ---------------------------------------------------------------- the oracle
@@ -505,7 +550,7 @@
                            (update :amb (fn [ids] (if (contains? ids r) (swap ids) ids)))
                            (update :del (fn [ids] (-> ids (disj c) (conj r)))))))))
 
-(defn- run-case [{:keys [old new tokens info] :as c}]
+(defn- run-case [{:keys [old new tokens info opts] :as c}]
   (let [result (-> (ta/diff old new)
                    (ta/slide-to-tokens old tokens #{:s})
                    (ta/normalize-deletes old tokens)
@@ -513,7 +558,7 @@
                    (ta/pair-replacements old tokens)
                    ;; the words and the punctuation tokens are the word
                    ;; layers (overlap forbidden, no partition, a parent)
-                   (ta/fold-whole-words old tokens #{:w :p})
+                   (ta/fold-whole-words old tokens #{:w :p} (:segments opts))
                    (ta/apply-text-edits {:text/body old} tokens)
                    (as-> r (ta/keep-edges-off-spaces old tokens r #{:s})))
         ps (problems c result)]
@@ -578,7 +623,12 @@
      :split-word {:seps [" "] :kinds [:split-word]}
      :split-word-nodes {:seps [" "] :marks 0.4 :nodes 4 :kinds [:split-word]}
      :split-in-morpheme {:seps [" "] :kinds [:split-in-morpheme]}
-     :split-in-morpheme-nodes {:seps [" "] :marks 0.4 :nodes 4 :kinds [:split-in-morpheme]}}))
+     :split-in-morpheme-nodes {:seps [" "] :marks 0.4 :nodes 4 :kinds [:split-in-morpheme]}
+     ;; Words analyzed as one morpheme over the whole word, on a layer
+     ;; declaring `segmentsParent`: a space typed inside one drops the
+     ;; morpheme, as inside any morpheme (D28).
+     :one-morpheme-cut {:seps [" "] :one-morph 0.6 :segments #{:m}
+                        :kinds [:split-in-morpheme :split-word :resp :del+resp :join-words]}}))
 
 ;; ---------------------------------------------------------------- the test
 
@@ -703,3 +753,248 @@
   (is (= [[[:w 0] "hh"] [[:w 1] "nbreakable"]] (body-save "hh unbreakable" "hh u\u202fnbreakable" {1 [2 7]})))
   (is (= [[[:m 1 1] "break"] [[:m 1 2] "able"] [[:w 0] "hh"] [[:w 1] "breakable"]]
          (body-save "hh unbreakable" "hh un\u2007breakable" {1 [2 7]}))))
+
+;; ---------------------------------------------------------------- edits from the caret
+
+(defn- trimmed
+  "[p s]: how many code points `a` and `b` share at the start, and then at
+  the end."
+  [a b]
+  (let [a (cps a) b (cps b)
+        m (min (count a) (count b))
+        p (count (take-while true? (map = a b)))
+        s (count (take-while true? (map = (rseq a) (rseq b))))]
+    [p (min s (- m p))]))
+
+(defn- merge-gaps
+  "Gaps in old-body order with those that touch made one."
+  [gaps]
+  (reduce (fn [out {:keys [start end value] :as g}]
+            (let [prev (peek out)]
+              (if (and prev (= (:end prev) start))
+                (conj (pop out) (assoc prev :end end :value (str (:value prev) value)))
+                (conj out g))))
+          []
+          (sort-by :start gaps)))
+
+(defn- intended-gaps
+  "The gaps the user's edit makes, read `:words` (each changed word selected
+  and typed over, a deleted run selected and deleted with one separator, a
+  new word typed with its separator) or `:keys` (only the letters that
+  changed: Backspace over them and the new ones typed, a join by deleting
+  the space and the letters between, a split by a typed space)."
+  [{:keys [doc new-doc info]} reading]
+  (let [{words :words} (layout doc)
+        items (into {} (for [s new-doc it s] [(:id it) it]))
+        {:keys [kind si i j r k x ka kb p q kc]} info
+        sent (when si (doc si))
+        at (fn [idx] (words (:id (sent idx))))
+        resp (fn [idx]
+               (let [{:keys [id w]} (sent idx)
+                     w' (:w (items id))
+                     {:keys [b e]} (words id)]
+                 (when (not= w w')
+                   (if (= reading :words)
+                     [{:start b :end e :value w'}]
+                     (let [[p s] (trimmed w w')
+                           c' (cps w')]
+                       [{:start (+ b p) :end (- e s) :value (apply str (subvec c' p (- (count c') s)))}])))))
+        del (fn [i j]
+              (if (< j (count sent))
+                [{:start (:pb (at i)) :end (:pb (at j)) :value ""}]
+                [{:start (:qe (at (dec i))) :end (:qe (at (dec j))) :value ""}]))
+        ins (fn [i v] [{:start (:qe (at i)) :end (:qe (at i)) :value (str " " v)}])]
+    (merge-gaps
+     (case kind
+       :resp (resp i)
+       :del (del i j)
+       :del+resp (concat (del i j) (resp r))
+       :ins (ins i (:neww info))
+       :resp+space (concat (when (:space info) [{:start (:pb (at i)) :end (:pb (at i)) :value " "}]) (resp i))
+       :resp+ins (concat (resp i) (ins i (:neww info)))
+       :join-words (let [a (at i) b (at (inc i))]
+                     (if (= reading :words)
+                       [{:start (:b a) :end (:e b) :value (:w (items (:id (sent i))))}]
+                       [{:start (+ (:b a) ka) :end (- (:e b) kb) :value ""}]))
+       :join-space [{:start (:qe (at i)) :end (:pb (at (inc i))) :value ""}]
+       :join-three (let [a (at i) b (at (inc i)) c (at (+ i 2))]
+                     (if (= reading :words)
+                       [{:start (:b a) :end (:e c) :value (:w (items (:id (sent i))))}]
+                       [{:start (+ (:b a) ka) :end (+ (:b b) p) :value ""}
+                        {:start (+ (:b b) q) :end (- (:e c) kc) :value ""}]))
+       :split (let [{:keys [b e]} (at i)
+                    it (sent i)
+                    c (cps (:w it))]
+                (if (= reading :words)
+                  [{:start b :end e :value (str (apply str (subvec c 0 k)) " " (or x (c k))
+                                                (apply str (subvec c (inc k))))}]
+                  [{:start (+ b k) :end (+ b k (if x 1 0)) :value (str " " x)}]))
+       :move-space (let [a (at i) b (at (inc i))]
+                     (if (= reading :words)
+                       (let [c (cps (:w (sent (inc i))))]
+                         [{:start (:b a) :end (:e b)
+                           :value (str (:w (sent i)) (apply str (subvec c 0 k)) " " (apply str (subvec c k)))}])
+                       [{:start (:qe a) :end (:pb b) :value ""}
+                        {:start (+ (:b b) k) :end (+ (:b b) k) :value " "}]))
+       :join (let [last-item (peek sent)
+                   e (:qe (words (:id last-item)))]
+               [{:start e :end (+ e (cp/cp-count (:sep last-item))) :value " "}])))))
+
+(defn- gaps->keystrokes
+  "Running ops typing `gaps` as a person would: from the last change to the
+  first, Backspace from the end of each over its old letters, then its new
+  ones typed one at a time."
+  [gaps]
+  (vec (mapcat (fn [{:keys [start end value]}]
+                 (concat (for [pos (range (dec end) (dec start) -1)] {:type :delete :index pos :value 1})
+                         (map-indexed (fn [n c] {:type :insert :index (+ start n) :value c}) (cps value))))
+               (reverse gaps))))
+
+(defn- gaps->replaces
+  "Running ops typing `gaps` as one replace each, a selection typed over."
+  [gaps]
+  (mapv (fn [{:keys [start end value]}] {:type :replace :index start :length (- end start) :value value})
+        (reverse gaps)))
+
+(defn- edit-chain
+  "What `edit-body` does with `ops` on `old` and `tokens`."
+  [old tokens ops opts]
+  (ta/apply-edits old tokens ops {:partitioning #{:s} :word-layers #{:w :p} :segments (:segments opts)}))
+
+(defn- judged
+  "`problems`, with the readings the text cannot settle tried as `run-case` does."
+  [{:keys [info] :as c} result]
+  (let [ps (problems c result)]
+    (if (and (seq ps) (or (some #(empty? (problems (reading c %) result)) (rest (:group info)))
+                          (some (fn [[d i]] (empty? (problems (assoc c :new-doc d :info i) result))) (:alts info))))
+      []
+      ps)))
+
+(defn- run-case-edits
+  "The problems of the case typed as `reading` (see `intended-gaps`), and
+  the gaps. Throws when the gaps do not make the case's new body."
+  [{:keys [old new tokens opts] :as c} reading]
+  (let [gaps (intended-gaps c reading)
+        ops (if (= reading :words) (gaps->replaces gaps) (gaps->keystrokes gaps))]
+    (when (not= new (ta/edit-ops-body ops old))
+      (throw (ex-info "reading does not make the new body" {:case (select-keys c [:seed :old :new :info]) :gaps gaps})))
+    (judged c (edit-chain old tokens ops opts))))
+
+(def ^:private edit-configs
+  "The whole-body configs, and the residue the edit path was made for."
+  (merge configs
+         {:l2-identical-words {:seps [" "] :vocab ["bb"] :kinds [:join-space :resp :del :ins]}
+          :l3-space-moved-into-morpheme {:seps [" "] :kinds [:move-space]}
+          :l3-space-moved-marked {:seps [" "] :marks 0.4 :nodes 4 :kinds [:move-space]}
+          ;; A space typed in a word at a sentence start or beside a marker,
+          ;; where the second new word should take the token: it stays over
+          ;; both, the edit path as the whole-body save (`x. cow y` to `x. a
+          ;; co y` in text_test). Text put in front of the word would go to
+          ;; the sentence before, or behind the marker. Held to no more
+          ;; failures than the whole-body save.
+          :split-at-sentence-start {:seps [" "] :kinds [:split-any] :limit true}
+          :split-beside-marker {:seps [" "] :marks 0.5 :nodes 4 :kinds [:split-any] :limit true}
+          :one-morpheme-moved-space {:seps [" "] :one-morph 0.6 :segments #{:m} :kinds [:move-space]}}))
+
+(def ^:private old-seeds
+  "Seeds that once failed a whole-body save for a choice of place the text
+  left open, run again in every config."
+  [958 971 1023 1100])
+
+(deftest an-edit-from-the-caret-leaves-every-token-where-the-user-meant
+  (doseq [[k opts] (sort edit-configs)]
+    (testing (name k)
+      (let [n (:cases opts cases-per-config)
+            cases (map #(gen-case % opts) (concat (range n) old-seeds))
+            counts (reduce (fn [m c]
+                             (let [whole (seq (run-case c))
+                                   words (run-case-edits c :words)
+                                   keys (run-case-edits c :keys)]
+                               (when-not (:limit opts)
+                                 (is (empty? keys)
+                                     (str "keys, seed " (:seed c) ": " (pr-str (:old c)) " -> " (pr-str (:new c))
+                                          " " (pr-str (intended-gaps c :keys)) " " (pr-str keys))))
+                               (cond-> m
+                                 whole (update :whole inc)
+                                 (seq words) (update :words conj (:seed c))
+                                 (seq keys) (update :keys conj (:seed c)))))
+                           {:whole 0 :words [] :keys []}
+                           cases)]
+        (when (:limit opts)
+          (is (<= (count (:keys counts)) (:whole counts))
+              (str "typed at the caret, " (count (:keys counts)) " cases fail where a whole-body save fails "
+                   (:whole counts) ": " (pr-str (take 10 (:keys counts))))))
+        (is (<= (count (:words counts)) (:whole counts))
+            (str "typed over word by word, " (count (:words counts)) " cases fail where a whole-body save fails "
+                 (:whole counts) ": " (pr-str (take 10 (:words counts)))))))))
+
+(defn- random-ops
+  "A seeded stream of keystroke ops over `old`: letters typed, Backspace and
+  Delete, a word deleted, a selection typed over, a paste, a cut."
+  [^java.util.Random rng ^String old k]
+  (loop [body old i 0 out []]
+    (if (= i k)
+      out
+      (let [n (cp/cp-count body)
+            pos (.nextInt rng (inc n))
+            op (case (.nextInt rng 6)
+                 0 {:type :insert :index pos :value (nth ["a" "Q" " " "é" "𐌰" "́" "ta"] (.nextInt rng 7))}
+                 1 (if (pos? pos) {:type :delete :index (dec pos) :value 1} {:type :insert :index 0 :value "x"})
+                 2 (if (< pos n) {:type :delete :index pos :value 1} {:type :insert :index pos :value " "})
+                 3 (let [len (min (- n pos) (.nextInt rng 6))] {:type :delete :index pos :value len})
+                 4 (let [len (min (- n pos) (.nextInt rng 6))]
+                     {:type :replace :index pos :length len :value (nth ["dog" "" "Ж a" "cat"] (.nextInt rng 4))})
+                 5 {:type :insert :index pos :value (nth ["the cat " "a\nb" "你好"] (.nextInt rng 3))})]
+        (recur (ta/edit-ops-body [op] body) (inc i) (conj out op))))))
+
+(deftest an-edit-depends-only-on-the-change-it-makes
+  ;; Keystrokes and their composed form give the same body and the same
+  ;; tokens: what the server does depends on the gaps alone.
+  (let [rng (java.util.Random. 20260930)
+        opts-list (vals (sort edit-configs))]
+    (dotimes [i 10000]
+      (let [opts (nth opts-list (mod i (count opts-list)))
+            {:keys [old tokens]} (gen-case (.nextInt rng 100000) opts)
+            ops (random-ops rng old (inc (.nextInt rng 12)))
+            gaps (ta/compose-edits ops old)
+            composed (ta/gap-ops gaps)
+            body (ta/edit-ops-body ops old)]
+        (is (= body (ta/edit-ops-body composed old)) (pr-str old ops gaps))
+        (is (= gaps (ta/compose-edits composed old)) (pr-str old ops gaps))
+        (when (zero? (mod i 5))
+          (let [raw (edit-chain old tokens ops opts)
+                pre (edit-chain old tokens composed opts)
+                view (fn [r] [(:text/body (:text r)) (set (map (juxt :token/id :token/begin :token/end) (:tokens r)))
+                              (set (:deleted r))])]
+            (is (= body (:text/body (:text raw))))
+            (is (= (view raw) (view pre)) (pr-str old ops))))))))
+
+(deftest one-typed-over-stretch-is-read-as-a-whole-body-save-reads-it
+  ;; The update-body differential: an edit that types over the stretch a
+  ;; whole-body save's diff finds changed gives the whole-body save's
+  ;; tokens. Cases whose change is a pure insert or delete are not such an
+  ;; edit (those stand where the caret put them), and are counted.
+  (let [pure (atom 0) same (atom 0)]
+    (doseq [[_ opts] (sort edit-configs)
+            seed (range 200)
+            :let [{:keys [old new tokens]} (gen-case seed opts)
+                  o (cps old) n (cps new)
+                  p (count (take-while true? (map = o n)))
+                  s (min (count (take-while true? (map = (rseq o) (rseq n)))) (- (min (count o) (count n)) p))
+                  gap {:start p :end (- (count o) s) :value (apply str (subvec n p (- (count n) s)))}]
+            :when (not= old new)]
+      (if (or (= (:start gap) (:end gap)) (empty? (:value gap)))
+        (swap! pure inc)
+        (let [whole (-> (ta/diff old new)
+                        (ta/slide-to-tokens old tokens #{:s})
+                        (ta/normalize-deletes old tokens)
+                        (ta/align-to-words old tokens #{:w :p})
+                        (ta/pair-replacements old tokens)
+                        (ta/fold-whole-words old tokens #{:w :p} (:segments opts))
+                        (ta/apply-text-edits {:text/body old} tokens)
+                        (as-> r (ta/keep-edges-off-spaces old tokens r #{:s})))
+              edit (edit-chain old tokens (ta/gap-ops [gap]) opts)
+              view (fn [r] [(:text/body (:text r)) (set (map (juxt :token/id :token/begin :token/end) (:tokens r)))])]
+          (swap! same inc)
+          (is (= (view whole) (view edit)) (str (pr-str old) " -> " (pr-str new))))))
+    (is (< 1000 @same) (str @same " typed over, " @pure " pure"))))
