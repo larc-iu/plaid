@@ -147,11 +147,12 @@ Each change is saved where you typed it.
 Existing sentences, words, and annotations are kept and adjusted to fit the new text.
 A change inside a word, or touching it with no space between, changes that word, and it keeps its analysis.
 A space typed inside a word leaves one word with a space in it. Split it on the Tokenize tab to make two words.
+On a project whose words are shared with an app that splits a word at a typed space, a space typed inside a word splits it there: the word and its analysis stay on the part holding most of its letters, and the rest is untokenized text.
 Deleting the space between two words keeps them two words. Merge them on the Tokenize tab to make one.
 New text with a space between it and every word is in no word. The Tokenize tab makes words of it.
 A word goes, along with its annotations, only when all its text is deleted.
-Text typed right before a sentence's first character joins that sentence, and text typed right after a sentence's last character joins that one.
-A line added at the end joins the last sentence. Move the sentence break on the Tokenize tab.
+Text typed right before a sentence's first character joins that sentence, unless it holds a line break: a line added in front of a sentence joins the sentence before, so splitting it off leaves the sentence its translation.
+Text typed right after a sentence's last character joins that one. Move a sentence break on the Tokenize tab.
 
 When someone else saved the baseline after you pressed **Edit text**, **Save changes** puts your changes onto their text.
 When you both changed the same passage, the save is refused, `Changed elsewhere in the same passage.` shows under the box, and your text stays in the box.
