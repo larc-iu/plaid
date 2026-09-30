@@ -103,21 +103,31 @@
 (defn repair-constraints
   "Apply the remedies of the remediable types in `constraints` to the
   layer's stored data, one `layer/repair-constraints` operation per
-  document, all in one transaction. Answers what was repaired and the
-  violations left (of the types with no remedy)."
-  [db kind id constraints user-id]
+  document, all in one transaction, or in `document` alone. A document
+  another holds the lock on is left as it is. Answers what was repaired, the
+  documents left for a lock, and the violations left (of the types with no
+  remedy, and in the documents left)."
+  [db kind id constraints user-id & {:keys [document]}]
   (let [out (atom nil)
+        project (project-of db kind id)
         result (submit-operation!
                 [tx db {:type :layer/repair-constraints
-                        :project (project-of db kind id)
+                        :project project
                         :document nil
                         :description (str "Repair layer rules on " (nouns kind) " " id)
                         :user user-id}]
                 (let [row (layer-row! tx kind id)
                       cs (lc/validate-list tx kind row constraints)
                       layer (lc/layer-record-by-id tx kind id)
-                      {:keys [repaired remaining]} (lc/repair-layer! tx user-id layer nil cs)]
+                      _ (when (and document
+                                   (not= (str project)
+                                         (str (:project_id (psc/fetch-by-id tx :documents document)))))
+                          (throw (ex-info (str "Document " document " is not in this layer's project.")
+                                          {:code 400})))
+                      {:keys [repaired locked remaining]} (lc/repair-layer! tx user-id layer nil cs
+                                                                            :document document)]
                   (reset! out {:repaired repaired
+                               :locked locked
                                :violations (mapv lc/wire (take lc/max-listed remaining))
                                :violation-count (count remaining)})))]
     (if (:success result)

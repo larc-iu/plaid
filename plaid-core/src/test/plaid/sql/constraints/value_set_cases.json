@@ -1,0 +1,78 @@
+{
+  "about": "What a value-set allows, whitespace included: a part is trimmed of exactly what JavaScript's String.prototype.trim trims (Unicode White_Space and the BOM, not U+0085, U+180E, U+200B or U+001C to U+001F). plaid-core, plaid-client-js and plaid-client-py each run this table.",
+  "constraints": {
+    "tags": {
+      "type": "value-set",
+      "values": [
+        "N",
+        "V",
+        "1SG",
+        "NOM"
+      ],
+      "delimiters": ".",
+      "parts": "all"
+    },
+    "deprels": {
+      "type": "value-set",
+      "values": [
+        "nsubj",
+        "obj"
+      ],
+      "delimiters": ":",
+      "parts": "first"
+    },
+    "whole": {
+      "type": "value-set",
+      "values": [
+        "a b"
+      ],
+      "delimiters": "",
+      "parts": "all"
+    },
+    "spaced": {
+      "type": "value-set",
+      "values": [
+        "N",
+        "V"
+      ],
+      "delimiters": " ",
+      "parts": "all"
+    }
+  },
+  "cases": [
+    {"constraint":"tags","value":"N","allowed":true},
+    {"constraint":"tags","value":"XYZ","allowed":false},
+    {"constraint":"tags","value":null,"allowed":true},
+    {"constraint":"tags","value":"","allowed":true},
+    {"constraint":"tags","value":" ","allowed":true},
+    {"constraint":"tags","value":"\u00a0","allowed":true},
+    {"constraint":"tags","value":"\u3000\u2028","allowed":true},
+    {"constraint":"tags","value":3,"allowed":false},
+    {"constraint":"tags","value":"N\u00a0","allowed":true},
+    {"constraint":"tags","value":"\u00a0N","allowed":true},
+    {"constraint":"tags","value":"\ufeffN","allowed":true},
+    {"constraint":"tags","value":"N\u2028","allowed":true},
+    {"constraint":"tags","value":"N\t\n","allowed":true},
+    {"constraint":"tags","value":"1SG.NOM","allowed":true},
+    {"constraint":"tags","value":"1SG.\u202fNOM","allowed":true},
+    {"constraint":"tags","value":"1SG.\u2007NOM","allowed":true},
+    {"constraint":"tags","value":"1SG.\u3000NOM\u205f","allowed":true},
+    {"constraint":"tags","value":"1SG..NOM","allowed":false},
+    {"constraint":"tags","value":"1SG.\u00a0.NOM","allowed":false},
+    {"constraint":"tags","value":"1SG.ACC","allowed":false},
+    {"constraint":"tags","value":"N\u0085","allowed":false},
+    {"constraint":"tags","value":"N\u200b","allowed":false},
+    {"constraint":"tags","value":"N\u180e","allowed":false},
+    {"constraint":"tags","value":"N\u001f","allowed":false},
+    {"constraint":"tags","value":"\u001c","allowed":false},
+    {"constraint":"deprels","value":"nsubj:pass","allowed":true},
+    {"constraint":"deprels","value":"nsubj\u00a0:pass","allowed":true},
+    {"constraint":"deprels","value":"\u00a0obj","allowed":true},
+    {"constraint":"deprels","value":"det","allowed":false},
+    {"constraint":"deprels","value":"\u00a0","allowed":true},
+    {"constraint":"whole","value":"a b\u00a0","allowed":true},
+    {"constraint":"whole","value":"a\u00a0b","allowed":false},
+    {"constraint":"spaced","value":"N V","allowed":true},
+    {"constraint":"spaced","value":"N  V","allowed":false}
+  ]
+}

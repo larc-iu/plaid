@@ -34,7 +34,9 @@
   Core reads one metadata family here, provenance (`prov`, `provConfirmed`),
   which Plaid itself owns: an unverified machine value is exempt from
   value-set. So is a value written by an import (an operation group of kind
-  `import`), since importers keep off-list values and warn."
+  `import`), since importers keep off-list values and warn, and a value a
+  document copy or a restore from history writes, since those write back
+  values already stored."
   (:require [clojure.string :as str]
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
@@ -42,6 +44,7 @@
             [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op]
             [plaid.sql.token :as token]
+            [plaid.server.locks :as locks]
             [taoensso.timbre :as log])
   (:import (clojure.lang ExceptionInfo)
            (java.util UUID)))
@@ -293,7 +296,11 @@
                              (assoc info :id uid)
                              (-> info (assoc :id uid) (update :layer u) (update :doc u)))]
                   (if-let [prev (get m k)]
-                    (assoc! m k (merge-with (fn [a b] (if (map? a) (merge-with into a b) b)) prev info))
+                    (assoc! m k (merge-with (fn [a b]
+                                              (cond (map? a) (merge-with into a b)
+                                                    (set? a) (into a b)
+                                                    :else b))
+                                            prev info))
                     (assoc! m k info))))
               (transient {}) notes)))
 
@@ -596,10 +603,22 @@
                                    (notes-of ctx "tokens" al))
                              (when (not= al tl)
                                (keep (fn [n] (when (or (:deleted? n) (seq (get-in n [:kinds :extent]))) (:doc n)))
-                                     (notes-of ctx "tokens" tl)))
-                             (keep (fn [n] (when (seq (get-in n [:kinds :tokens])) (:doc n)))
-                                   (notes-of ctx "spans" sl))))
-            rel-cands (->> (live-with ctx "relations" lid [:edge])
+                                     (notes-of ctx "tokens" tl)))))
+            ;; A span that was there before and moved to other tokens: its
+            ;; relations are checked one by one. A new span has none yet (one
+            ;; made for it is noted as a relation write), and a deleted one
+            ;; took its relations with it.
+            moved (keep (fn [n] (when (and (not (:deleted? n)) (some? (:pre n))
+                                           (seq (get-in n [:kinds :tokens])))
+                                  (:id n)))
+                        (notes-of ctx "spans" sl))
+            moved-rels (when (seq moved)
+                         (q-chunks tx (fn [ch] {:select [:id :document_id] :from :relations
+                                                :where [:and [:= :relation_layer_id lid]
+                                                        [:or [:in :source_span_id ch] [:in :target_span_id ch]]]})
+                                   moved))
+            rel-cands (->> (concat (live-with ctx "relations" lid [:edge])
+                                   (map (fn [r] {:id (u (:id r)) :doc (u (:document_id r))}) moved-rels))
                            (remove #(token-docs (:doc %)))
                            (group-by :doc))]
         (concat
@@ -607,7 +626,7 @@
          (mapcat (fn [[doc ns]]
                    (let [rels (q-chunks tx (fn [ch] {:select [:id :source_span_id :target_span_id]
                                                      :from :relations :where [:in :id ch]})
-                                        (map :id ns))
+                                        (distinct (map :id ns)))
                          place-of (places tx (mapcat (juxt :source_span_id :target_span_id) rels))
                          anc-rows (fn [place]
                                     (when (some? place)
@@ -659,10 +678,24 @@
 ;; value-set
 ;; ============================================================
 
+(def ^:private js-space
+  "What JavaScript's String.prototype.trim trims: Unicode White_Space (the
+  space separators, tab, line tabulation, form feed and the line
+  terminators) and the byte order mark. Not U+0085 or U+180E, and not
+  U+001C to U+001F, which Java's isWhitespace counts. The apps trim with
+  JavaScript, so a value they read as listed is read so here too."
+  "[\\t\\n\\u000B\\f\\r \\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF]")
+
+(def ^:private js-trim-re (re-pattern (str "^" js-space "+|" js-space "+$")))
+
+(defn- js-trim [^String s] (str/replace s js-trim-re ""))
+
+(defn- js-blank? [^String s] (= "" (js-trim s)))
+
 (defn- split-parts
   "`v` split on every code point of `delimiters`, empty parts kept."
   [^String v ^String delimiters]
-  (if (str/blank? delimiters)
+  (if (empty? delimiters)
     [v]
     (let [ds (set (iterator-seq (.iterator (.boxed (.codePoints delimiters)))))
           sb (StringBuilder.)
@@ -680,19 +713,24 @@
   (let [delimiters (get params "delimiters" "")
         first? (= "first" (get params "parts" "all"))
         allowed (if first?
-                  (set (map #(str/trim (first (split-parts % delimiters))) (get params "values")))
+                  (set (map #(js-trim (first (split-parts % delimiters))) (get params "values")))
                   (set (get params "values")))]
     (fn [v]
       (cond
         (nil? v) nil
         (not (string? v)) {:parts []}
-        (str/blank? v) nil
-        first? (let [p (str/trim (first (split-parts v delimiters)))]
+        (js-blank? v) nil
+        first? (let [p (js-trim (first (split-parts v delimiters)))]
                  (when-not (contains? allowed p) {:parts [p]}))
-        :else (let [bad (vec (keep (fn [p] (let [p (str/trim p)]
+        :else (let [bad (vec (keep (fn [p] (let [p (js-trim p)]
                                              (when-not (and (seq p) (contains? allowed p)) p)))
                                    (split-parts v delimiters)))]
                 (when (seq bad) {:parts bad}))))))
+
+(defn value-allowed?
+  "Whether the value-set constraint `params` (string keys) allows `v`."
+  [params v]
+  (nil? ((value-checker params) v)))
 
 (defn- machine-unverified-ids
   "The ids among `ids` whose metadata marks an unverified machine value:
@@ -715,7 +753,7 @@
 (defn- import-groups
   "The ids among `group-ids` of operation groups of kind import."
   [tx group-ids]
-  (let [ids (remove nil? group-ids)]
+  (let [ids (remove #(or (nil? %) (keyword? %)) group-ids)]
     (if (empty? ids)
       #{}
       (set (map (comp u :id)
@@ -723,13 +761,19 @@
                                        :where [:and [:in :id ch] [:= :kind "import"]]})
                           ids))))))
 
+(def ^:private reproducing-op-types
+  "Operations that write back values already stored, whose values keep an
+  import's exemption: a document copy and a restore from history."
+  #{"document/copy" "document/restore"})
+
 (defn- import-set-ids
   "The ids among `rows` (id, value as stored) whose current value was set
-  by a write in an operation group of kind import, read from the audit log:
-  the oldest write of the newest run of writes that left the value as it is."
+  by a write in an operation group of kind import, or by a copy or a
+  restore, read from the audit log: the oldest write of the newest run of
+  writes that left the value as it is."
   [tx table rows]
   (let [current (into {} (map (fn [r] [(u (:id r)) (:value r)])) rows)
-        audit (q-chunks tx (fn [ch] {:select [:aw.target_id :aw.post_image :og.kind]
+        audit (q-chunks tx (fn [ch] {:select [:aw.target_id :aw.post_image :og.kind :o.op_type]
                                      :from [[:audit_writes :aw]]
                                      :join [[:operations :o] [:= :o.id :aw.op_id]]
                                      :left-join [[:operation_groups :og] [:= :og.id :o.group_id]]
@@ -744,7 +788,9 @@
                                                  (= cur (:value img))))
                                        rs)
                        setter (last run)]
-                   (when (= "import" (:kind setter)) id))))
+                   (when (or (= "import" (:kind setter))
+                             (reproducing-op-types (:op_type setter)))
+                     id))))
          set)))
 
 (defn- check-value-set [{:keys [tx mode] :as ctx} {:keys [layer params] :as c}]
@@ -768,7 +814,11 @@
                        (let [groups-of (into {} (map (fn [n] [(:id n) (:value-groups n)])) cands)
                              imports (import-groups tx (mapcat :value-groups cands))]
                          (set (keep (fn [[id gs]]
-                                      (when (and (seq gs) (every? #(and % (contains? imports (u %))) gs)) id))
+                                      (when (and (seq gs)
+                                                 (every? #(or (= :reproduced %)
+                                                              (and % (contains? imports (u %))))
+                                                         gs))
+                                        id))
                                     groups-of))))]
         (for [r failing
               :let [id (u (:id r))]
@@ -1046,13 +1096,15 @@
   [keep-value others join-with]
   (cond
     (and (some? keep-value) (not (string? keep-value))) keep-value
-    :else (let [strings (distinct (filter #(and (string? %) (not (str/blank? %)))
+    :else (let [strings (distinct (filter #(and (string? %) (not (js-blank? %)))
                                           (cons keep-value others)))]
             (if (seq strings) (str/join join-with strings) keep-value))))
 
 (defn- remedy-single-span! [tx ctx {:keys [params layer] :as _c} vs counts]
   (let [join-with (get params "join-with" " | ")
-        value-checks (for [[_ cs] (:constraints layer) c cs
+        ;; The value-sets stored on the layer, and in a repair those of the
+        ;; list about to be declared too.
+        value-checks (for [c (concat (mapcat val (:constraints layer)) (:declaring ctx))
                            :when (= "value-set" (get c "type"))]
                        (value-checker c))
         deleted (volatile! #{})
@@ -1269,15 +1321,24 @@
 (defn repair-layer!
   "Apply the remedies of the remediable types in `constraints` to every
   violation in the stored data of `layer`, one `layer/repair-constraints`
-  operation per document. The one kept is the smallest id, the others follow
-  in id order. Returns {:repaired [...] :remaining [violations]}."
-  [tx user layer ns constraints]
+  operation per document, or in `document` alone. The one kept is the
+  smallest id, the others follow in id order. A join is checked against the
+  value-sets stored on the layer and those of `constraints`. A document
+  another holds the lock on is left as it is and named under `:locked`.
+  Returns {:repaired [...] :locked [...] :remaining [violations]}."
+  [tx user layer ns constraints & {:keys [document]}]
   (let [cs (layer-instances layer ns constraints)
         fixable (filter #(remediable (:type %)) cs)
-        vs (check-all {:tx tx :mode :all} fixable)
+        scope (cond-> {:tx tx :mode :all} document (assoc :only-doc (u document)))
+        vs (check-all scope fixable)
         docs (sort-by str (distinct (map :document vs)))
-        ctx {:tx tx :mode :all :repair? true}
+        held (into {} (keep (fn [doc]
+                              (let [r (locks/check-document-locks [(u doc)] user)]
+                                (when (map? r) [doc (:user-id r)]))))
+                   docs)
+        ctx (assoc scope :repair? true :declaring constraints)
         repaired (vec (for [doc docs
+                            :when (not (contains? held doc))
                             :let [{:keys [counts]} (remedy-document! tx user fixable doc ctx
                                                                      :layer/repair-constraints)]
                             [t entries] (group-by (comp first key) counts)]
@@ -1286,4 +1347,6 @@
                          :deleted (reduce + 0 (keep (fn [[[_ _ verb _] n]] (when (= "deleted" verb) n)) entries))
                          :joined (reduce + 0 (keep (fn [[[_ _ verb _] n]] (when (= "joined" verb) n)) entries))}))]
     {:repaired repaired
-     :remaining (check-all {:tx tx :mode :all} cs)}))
+     :locked (vec (for [[doc holder] (sort-by (comp str key) held)]
+                    {:document (str doc) :locked-by holder}))
+     :remaining (check-all scope cs)}))

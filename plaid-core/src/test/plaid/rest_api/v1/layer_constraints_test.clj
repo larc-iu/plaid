@@ -159,17 +159,18 @@
         (assert-status 200 r)
         (is (= 2 (-> r :body :violation-count)))
         (is (= #{"single-span" "value-set"} (set (map :constraint (-> r :body :violations)))))))
-    (testing "repair joins the doubled spans into the smallest id"
+    (testing "repair keeps the smallest id, and joins no value the list being declared refuses"
       (let [r (call admin-request :post (str "/api/v1/span-layers/" lemma "/constraints/repair")
                     {:constraints [{:type "single-span"} {:type "value-set" :values ["x" "y" "z"]}]})
             keep (first (sort [sa extra]))
             gone (first (remove #{keep} [sa extra]))]
         (assert-status 200 r)
-        (is (= [{:document doc :constraint "single-span" :deleted 1 :joined 1}] (-> r :body :repaired)))
+        (is (= [{:document doc :constraint "single-span" :deleted 1 :joined 0}] (-> r :body :repaired)))
+        (is (= "x" (some-> (psc/fetch-by-id db :spans keep) :value psc/read-json)))
         (is (nil? (psc/fetch-by-id db :spans gone)))
         (is (some? (psc/fetch-by-id db :spans keep)))
-        (testing "value-set has no remedy, so its violation remains listed"
-          (is (= 1 (-> r :body :violation-count))))
+        (testing "the kept value is listed, so no violation is left"
+          (is (= 0 (-> r :body :violation-count))))
         (is (= 1 (count (psc/q db {:select [:id] :from :operations
                                    :where [:and [:= :op_type "layer/repair-constraints"] [:= :document_id doc]]}))))))
     (assert-status 200 (put admin-request "span" lemma "igt" {:constraints [{:type "single-span"}]}))))

@@ -1962,7 +1962,15 @@ Passing `expected`, the list you read for that namespace (`None` or `null` when 
 Two more routes help before declaring:
 
 * `check_constraints` (`POST .../constraints/check`) lists the violations a list would meet, and writes nothing.
-* `repair_constraints` (`POST .../constraints/repair`) applies the remedies described below to every violation in the layer's stored data, as one operation per document (`layer/repair-constraints`), and lists what is left of the types that have no remedy.
+* `repair_constraints` (`POST .../constraints/repair`) applies the remedies described below to every violation in the layer's stored data, as one operation per document (`layer/repair-constraints`), and lists what is left.
+  A join is made only when the value-sets stored on the layer and those of the list being repaired allow the joined value.
+
+A repair leaves a document another user holds the lock on as it is, and lists it under `locked`, as `{document, locked-by}`.
+Its violations stay in the list of what is left, so declaring the rules waits for a repair after the lock is released.
+
+Repairing a whole layer needs maintainer privileges.
+Passing `document` (`repair_constraints(layer_id, constraints, document=doc_id)`, or `repairConstraints(layerId, constraints, undefined, { document })` in JavaScript) repairs that document alone, and a writer may ask.
+An app uses this when a writer opens a document on a layer that holds none of its rules yet.
 
 === When a write breaks a rule
 
@@ -2005,12 +2013,16 @@ A batch that moves several relations should therefore send every delete before a
 
 === Values a list does not govern
 
-Two kinds of write keep a value outside a `value-set` list:
+Three kinds of write keep a value outside a `value-set` list:
 
 * An **unverified machine value**: a span or relation whose metadata has `prov` other than `contributed` and no `provConfirmed: true` (see <<Provenance>>). Confirming such a value is refused when the value is not listed.
 * A write in an **import**: an operation of kind `import` (see <<Kinds of operation>>). Importers keep what the source says and report what is off the list.
+* A **document copy** or a **restore** from history. Both write back values that were already stored.
 
 A value kept this way does not stop the list from being declared again later, and any later edit of it is checked.
+
+A part of a value is compared with the list after trimming exactly what JavaScript's `String.prototype.trim` trims: Unicode white space, including the no-break spaces, and the byte order mark.
+`valueSetAllows(constraint, value)` in JavaScript and `value_set_allows(constraint, value)` in Python read a value the same way.
 
 == References in Metadata
 

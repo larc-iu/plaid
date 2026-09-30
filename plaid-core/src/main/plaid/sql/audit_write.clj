@@ -94,6 +94,12 @@
       (string? t) (first (clojure.string/split t #"/" 2))
       :else nil)))
 
+(def ^:private reproducing-op-types
+  "Operations that write back values already stored: a document copy and a
+  restore from history. A value they write keeps the value-set exemption an
+  import gave it (`plaid.sql.constraints.layer`)."
+  #{:document/copy :document/restore})
+
 (defn- prov-state
   "The provenance keys of an image's folded :metadata, or ::unknown when the
   image carries no metadata fold."
@@ -110,8 +116,10 @@
   token list), and the op kinds that changed what each constraint reads:
   a token's extent, a span's or link's token list, a relation's endpoints,
   a span's or relation's value (or its provenance, which decides whether
-  the value is exempt). The op kind is the op type's namespace, which is how
-  `finish!` tells a write on the row's own kind from a structural one."
+  the value is exempt), and the operation group of each value write, or
+  `:reproduced` for a copy or a restore. The op kind is the op type's
+  namespace, which is how `finish!` tells a write on the row's own kind from
+  a structural one."
   [op table-name id change pre post]
   (when-let [pending *pending*]
     (let [kind (op-kind op)
@@ -161,7 +169,8 @@
                    (seq cats)
                    (update :kinds (fn [m] (reduce (fn [m c] (update m c (fnil conj #{}) kind)) m cats)))
                    (contains? cats :value)
-                   (update :value-groups (fnil conj #{}) group))))))))
+                   (update :value-groups (fnil conj #{})
+                           (if (reproducing-op-types (:type op)) :reproduced group)))))))))
 
 (defn- note!
   [op target-table target-id change-type pre-image post-image]

@@ -45,6 +45,7 @@
   project the maintainer gate checks."
   [kind id-key project-fn]
   (let [maintainer [[pra/wrap-maintainer-required project-fn]]
+        writer [[pra/wrap-writer-required project-fn]]
         id-of (fn [request] (get-in request [:parameters :path id-key]))]
     ["/constraints"
      ["/check"
@@ -64,15 +65,23 @@
       {:conflicting true
        :post {:summary (str "Apply the remedies of the given constraints' remediable types (coextensive, "
                             "single-span, single-link, same-ancestor) to every violation in this layer's stored "
-                            "data, one operation per document. Body {constraints}. Answers {repaired, violations, "
-                            "violation-count}, the violations being those of types with no remedy.")
-              :middleware maintainer
-              :parameters {:body [:map [:constraints constraint-list]]}
-              :handler (fn [{{{:keys [constraints]} :body} :parameters db :db user-id :user/id :as request}]
-                         (let [result (slc/repair-constraints db kind (id-of request) constraints user-id)]
-                           (if (:success result)
-                             {:status 200 :body (:extra result)}
-                             (failure result))))}}]
+                            "data, one operation per document. Body {constraints, document?}. With document, only "
+                            "that document is repaired, and a writer may ask. Without it, maintainers only. A "
+                            "document another user holds the lock on is left as it is and listed under locked, "
+                            "as {document, locked-by}. Answers {repaired, locked, violations, violation-count}, "
+                            "the violations being those left: of types with no remedy, and in documents left.")
+              :middleware writer
+              :parameters {:body [:map
+                                  [:constraints constraint-list]
+                                  [:document {:optional true} :uuid]]}
+              :handler (fn [{{{:keys [constraints document]} :body} :parameters db :db user-id :user/id :as request}]
+                         (if (and (nil? document) (not (pra/privileged? request :project/maintainers project-fn)))
+                           {:status 403 :body {:error "Repairing a whole layer requires maintainer privileges."}}
+                           (let [result (slc/repair-constraints db kind (id-of request) constraints user-id
+                                                                :document document)]
+                             (if (:success result)
+                               {:status 200 :body (:extra result)}
+                               (failure result)))))}}]
      ["/:namespace"
       {:conflicting true
        :parameters {:path [:map [:namespace string?]]}
