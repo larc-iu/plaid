@@ -11,8 +11,8 @@
 // validator whose schema or program is missing is reported as skipped, never
 // as a pass, and as a failure when PLAID_VALIDATORS_REQUIRED is set, which the
 // nightly gate does so a check it counts on cannot quietly stop running.
-// pycldf comes from the mamba base environment (PLAID_PYTHON names another
-// interpreter).
+// pycldf comes from the base Python environment, ~/.mambaforge or ~/.miniforge3
+// (PLAID_PYTHON names another interpreter).
 
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -27,7 +27,13 @@ const run = promisify(execFile);
 const SCHEMA_DIR =
   process.env.PLAID_SCHEMA_DIR || join(dirname(fileURLToPath(import.meta.url)), 'schemas');
 const MISSING = process.env.PLAID_VALIDATORS_REQUIRED ? 'fail' : 'skip';
-const PYTHON = process.env.PLAID_PYTHON || `${process.env.HOME}/.mambaforge/bin/python3`;
+const PYTHON =
+  process.env.PLAID_PYTHON ||
+  [
+    `${process.env.HOME}/.mambaforge/bin/python3`,
+    `${process.env.HOME}/.miniforge3/bin/python3`,
+  ].find((path) => existsSync(path)) ||
+  'python3';
 
 const schemaPath = (name) => {
   const path = join(SCHEMA_DIR, name);
