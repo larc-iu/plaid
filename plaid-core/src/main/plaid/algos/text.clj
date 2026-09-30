@@ -2001,7 +2001,14 @@
   the replace as it was left `c` and `og` a token each. With a space typed
   it stays as it is. A delete reaching into two words joins them the same
   way (`a big dog` to `a bog` keeps `big` on `bog`, where the delete left
-  `b` and `og` a token each), and is otherwise left as it is. The edits in
+  `b` and `og` a token each), and is otherwise left as it is. So does one
+  that takes the space after a word it leaves whole and letters of the next
+  (`the kaki` to `theki`), or the space before one and letters of the word
+  before (`the kaki` to `thkaki`), when a letter stands at both edges; with
+  only the space gone (`a big dog` to `a bigdog`) the two keep a token each.
+  An edit after it that takes the space after the joined word and reaches
+  into the next word, or up to it with letters taken, joins that word too
+  (`a big dog ran` to `a bon`). The edits in
   the letters of the two words that the join types back become part of it:
   those of the word it deletes, taken
   from the end of `out` or the start of `later` (the edits after `r`), and
@@ -2070,73 +2077,149 @@
                   (if (= at p)
                     [{:kind :insert :at p :value value} {:kind :delete :start p :end q}]
                     [{:kind :delete :start p :end q} {:kind :insert :at q :value value}])
-                  :else [{:kind :replace :start p :end q :value value}]))]
-    (cond
-      (and (not delete?) (seq into-next) (empty? into-prev))
-      (let [b (reduce max (map :token/begin into-next))
-            k (loop [k n] (if (and (pos? k) (not (ws? (dec k)))) (recur (dec k)) k))]
-        [(-> out (into (piece s b (sub 0 k) s)) (into (piece b t (sub k n) t))) 0])
+                  :else [{:kind :replace :start p :end q :value value}]))
+        walk-left (fn [p] (loop [p p] (if (edge? p) p (recur (dec p)))))
+        walk-right (fn [p] (loop [p p] (if (edge? p) p (recur (inc p)))))
+        spaced? (fn [^String v] (and v (.anyMatch (.codePoints v) (reify java.util.function.IntPredicate
+                                                                    (test [_ c] (space? c))))))
+        ;; A word's token begins or ends at p, with a letter (or a digit, or
+        ;; a mark) there: a punctuation mark at a word's edge keeps the
+        ;; words apart (`big, dog` to `big,og`).
+        letter? (fn [i] (let [c (aget o (int i))] (or (Character/isLetterOrDigit c) (combining-mark? c))))
+        word-from? (fn [p] (and (letter? p) (some #(and (width? %) (word? %) (= p (:token/begin %))) (near p p))))
+        word-to? (fn [p] (and (letter? (dec p)) (some #(and (width? %) (word? %) (= p (:token/end %))) (near p p))))
+        ;; A replace reaching into a word at one end may take the space
+        ;; after a word it leaves whole at the other (`the kaki` to
+        ;; `theki`), or the space before one (`the kaki` to `thkaki`). No
+        ;; space is left between the two, and the one it reaches into lost
+        ;; letters, so they are one word, joined as below. With letters of
+        ;; neither gone (`a big dog` to `a bigdog`), nothing reaches in and
+        ;; two words written together keep a token each. An edit touching
+        ;; that end is left to itself.
+        prev-edge? (and (empty? prev-in) (seq next-in) (pos? s) (o-space? s) (not (o-space? (dec s)))
+                        (word-to? s)
+                        (not (some-> (peek out) edit-reach (>= s))))
+        next-edge? (and (empty? next-in) (seq prev-in) (< t (alength o)) (o-space? (dec t)) (not (o-space? t))
+                        (word-from? t)
+                        (not (some-> (first later) edit-start (<= t))))
+        ;; Reaching into a word at each end with no space typed, the replace
+        ;; makes the two words one, and one of them takes it whole: the one
+        ;; sharing more letters with it, the first on a tie. The other is
+        ;; deleted, with the words between, and the letters the kept one
+        ;; loses by that are typed back. `tat the` to `tZe` keeps `the` on
+        ;; `tZe`, where the replace alone left `tat` on `t` and `the` on `e`.
+        ;;
+        ;; The letters of the two words beyond the replace, [pb s) and [t ne),
+        ;; are typed back, so edits beside it in them are made on what is typed
+        ;; back instead, and are part of the join. Left beside it they would
+        ;; take letters the join takes too, and the fold could not judge the
+        ;; edits (a 500) or would make another text of them.
+        join (fn []
+               (let [pb (walk-left (if prev-edge? (dec s) s))
+                     a (walk-right s)
+                     ;; the edits made before and after the replace within the two
+                     ;; words, and those reaching out of them
+                     [kept before] (loop [out out before ()]
+                                     (let [x (peek out)]
+                                       (if (and x (> (edit-reach x) pb))
+                                         (recur (pop out) (cons x before))
+                                         [out before])))
+                     ;; An edit reaching out of the word is cut at its edge: what it
+                     ;; types and takes inside the word is part of the join, and the
+                     ;; letters it takes beyond the word are deleted.
+                     [outside-before before] (let [x (first before)]
+                                               (if (and x (< (edit-start x) pb))
+                                                 [[{:kind :delete :start (edit-start x) :end pb}]
+                                                  (cons (assoc x :start pb) (rest before))]
+                                                 [[] before]))
+                     ;; An edit after the replace that takes the space after the
+                     ;; last word, with letters of it or of the next, and
+                     ;; reaches into the next or up to one it leaves whole,
+                     ;; joins that word too: `a big dog ran` to `a bon` is
+                     ;; `ig d` and `g ra` deleted, one new word. The last word
+                     ;; is then the one it reaches, from q.
+                     [after q ne outside-after]
+                     (loop [q t ne (walk-right (if next-edge? (inc t) t))]
+                       (let [after (vec (take-while #(< (edit-start %) ne) later))
+                             x (peek after)
+                             out? (and x (> (edit-reach x) ne))
+                             ;; the edit reaching out of the word, or one
+                             ;; starting at its end
+                             y (if out?
+                                 x
+                                 (let [y (get later (count after))]
+                                   (when (and y (= ne (edit-start y)) (< ne (alength o)) (o-space? ne)
+                                              (letter? (dec ne))
+                                              (not (every? o-space? (range ne (edit-reach y)))))
+                                     y)))
+                             rr (some-> y edit-reach)
+                             later-after (count (take-while #(< (edit-start %) (or rr ne)) later))
+                             ne' (when (and y (< ne rr (alength o)) (not (o-space? rr)))
+                                   (walk-right (if (edge? rr) (inc rr) rr)))
+                             bq (when ne' (walk-left rr))]
+                         (cond
+                           (and ne'
+                                (or (not (edge? rr)) (and (o-space? (dec rr)) (letter? rr)))
+                                (some #(and (width? %) (word? %) (= bq (:token/begin %)) (< rr (:token/end %)))
+                                      (near bq bq))
+                                (not-any? #(spaced? (:value %)) (take-while #(< (edit-start %) ne') later))
+                                (not (some-> (get later later-after) edit-start (<= rr))))
+                           (recur rr ne')
 
-      (and (not delete?) (seq into-prev) (empty? into-next))
-      (let [a (reduce min (map :token/end into-prev))
-            k (loop [k 0] (if (and (< k n) (not (ws? k))) (recur (inc k)) k))]
-        [(-> out (into (piece s a (sub 0 k) s)) (into (piece a t (sub k n) t))) 0])
+                           out?
+                           [(conj (pop after) (assoc x :end ne)) q ne [{:kind :delete :start ne :end (edit-reach x)}]]
 
-      ;; Reaching into a word at each end with no space typed, the replace
-      ;; makes the two words one, and one of them takes it whole: the one
-      ;; sharing more letters with it, the first on a tie. The other is
-      ;; deleted, with the words between, and the letters the kept one
-      ;; loses by that are typed back. `tat the` to `tZe` keeps `the` on
-      ;; `tZe`, where the replace alone left `tat` on `t` and `the` on `e`.
-      ;;
-      ;; The letters of the two words beyond the replace, [pb s) and [t ne),
-      ;; are typed back, so edits beside it in them are made on what is typed
-      ;; back instead, and are part of the join. Left beside it they would
-      ;; take letters the join takes too, and the fold could not judge the
-      ;; edits (a 500) or would make another text of them.
-      (and (seq prev-in) (seq next-in) (or delete? (pos? n)) (not-any? ws? (range n)))
-      (let [pb (loop [p s] (if (edge? p) p (recur (dec p))))
-            a (loop [p s] (if (edge? p) p (recur (inc p))))
-            b (loop [p t] (if (edge? p) p (recur (dec p))))
-            ne (loop [p t] (if (edge? p) p (recur (inc p))))
-            ;; the edits made before and after the replace within the two
-            ;; words, and those reaching out of them
-            [kept before] (loop [out out before ()]
-                            (let [x (peek out)]
-                              (if (and x (> (edit-reach x) pb))
-                                (recur (pop out) (cons x before))
-                                [out before])))
-            after (vec (take-while #(< (edit-start %) ne) later))
-            ;; An edit reaching out of the word is cut at its edge: what it
-            ;; types and takes inside the word is part of the join, and the
-            ;; letters it takes beyond the word are deleted.
-            [outside-before before] (let [x (first before)]
-                                      (if (and x (< (edit-start x) pb))
-                                        [[{:kind :delete :start (edit-start x) :end pb}]
-                                         (cons (assoc x :start pb) (rest before))]
-                                        [[] before]))
-            [after outside-after] (let [x (peek after)]
-                                    (if (and x (> (edit-reach x) ne))
-                                      [(conj (pop after) (assoc x :end ne))
-                                       [{:kind :delete :start ne :end (edit-reach x)}]]
-                                      [after []]))
-            head (edits-text o before pb s)
-            tail (edits-text o after t ne)
-            word (.toArray (.codePoints (str head value tail)))
-            shares (fn [p q] (lcs-length (java.util.Arrays/copyOfRange o (int p) (int q)) word))]
-        (if (>= (shares pb a) (shares b ne))
-          [(-> out
-               (conj {:kind :replace :start s :end a :value (str value tail)}
-                     {:kind :delete :start a :end ne})
-               (into outside-after))
-           (count after)]
-          [(-> kept
-               (into outside-before)
-               (conj {:kind :delete :start pb :end b}
-                     {:kind :replace :start b :end t :value (str head value)}))
-           0]))
+                           :else [after q ne []])))
+                     b (walk-left q)
+                     word (edits-text o (concat before [r] after) pb ne)
+                     word-cps (.toArray (.codePoints word))
+                     shares (fn [p q] (lcs-length (java.util.Arrays/copyOfRange o (int p) (int q)) word-cps))]
+                 (cond
+                   ;; a word joined at its edge, or on to the next word, is one
+                   ;; word only without a space
+                   (and (or prev-edge? next-edge? (not= q t)) (spaced? word)) nil
+                   ;; and when no edit after it reaches out of its last word,
+                   ;; since that one may join the next word itself
+                   (and (or prev-edge? next-edge?) (seq outside-after)) nil
 
-      :else [(conj out r) 0])))
+                   ;; The first word takes it, from the replace's start, or
+                   ;; from its last letter when the replace begins after it.
+                   (>= (shares pb a) (shares b ne))
+                   (let [x (if (< s a) s (dec a))]
+                     [(-> out
+                          (conj {:kind :replace :start x :end a :value (edits-text o (cons r after) x ne)}
+                                {:kind :delete :start a :end ne})
+                          (into outside-after))
+                      (count after)])
+
+                   ;; The last word takes it, up to where the edits reaching
+                   ;; into it end, or its first letter when they end before it.
+                   :else
+                   (let [absorbed (vec (take-while #(< (edit-start %) b) after))
+                         reach (edit-reach (or (peek absorbed) r))
+                         y (if (> reach b) reach (inc b))]
+                     [(-> kept
+                          (into outside-before)
+                          (conj {:kind :delete :start pb :end b}
+                                {:kind :replace :start b :end y
+                                 :value (edits-text o (concat before [r] absorbed) pb y)}))
+                      (count absorbed)]))))]
+    (or (when (and (or (and (seq prev-in) (seq next-in)) prev-edge? next-edge?)
+                   (or delete? (pos? n))
+                   (not-any? ws? (range n)))
+          (join))
+        (cond
+          (and (not delete?) (seq into-next) (empty? into-prev))
+          (let [b (reduce max (map :token/begin into-next))
+                k (loop [k n] (if (and (pos? k) (not (ws? (dec k)))) (recur (dec k)) k))]
+            [(-> out (into (piece s b (sub 0 k) s)) (into (piece b t (sub k n) t))) 0])
+
+          (and (not delete?) (seq into-prev) (empty? into-next))
+          (let [a (reduce min (map :token/end into-prev))
+                k (loop [k 0] (if (and (< k n) (not (ws? k))) (recur (inc k)) k))]
+            [(-> out (into (piece s a (sub 0 k) s)) (into (piece a t (sub k n) t))) 0])
+
+          :else [(conj out r) 0]))))
 
 (defn- split-all-at-token-edges
   "`edits` with each replace, and each delete joining two words, cut by
@@ -2364,40 +2447,52 @@
                                                         g))))
                         :head-kept (not-any? #(and (:end %) (= b (:start %))) g)}))
         ;; The edits from i on that make up the whole of [b e), or nil.
-        group (fn [i b e]
-                (let [j (loop [j i]
-                          (if (and (< j (count edits)) (<= (reach-of (edits j)) e)
-                                   (>= (start-of (edits j)) b))
-                            (recur (inc j))
-                            j))
-                      g (subvec edits i j)
-                      kinds (set (map :kind g))]
-                  (when (and (seq g)
-                             (apart? g)
-                             (clear-after? j e)
-                             ;; spaces alone are no word to fold onto: a word
-                             ;; they take the place of is deleted
-                             (not (every? space? (.toArray (.codePoints ^String (new-text g b e)))))
-                             (or (and (> (count g) 1)
-                                      (= b (start-of (first g)))
-                                      (= e (reduce max (map reach-of g)))
-                                      (or (kinds :replace)
-                                          (and (kinds :delete) (kinds :insert))))
-                                 (splits? g b e))
-                             ;; A word with tokens inside (its morphemes)
-                             ;; takes the replace only when the edits as they
-                             ;; are would break it, and when the word then
-                             ;; lands on one new word: kept apart from a word
-                             ;; typed beside it (`cow` to `at co` at a
-                             ;; sentence start keeps the word and `co` on
-                             ;; `co`, as the edits leave them).
-                             (or (not (inside? b e))
-                                 (and (word-at? b e)
-                                      (not-any? #(ws? (aget o %)) (range b e))
-                                      (broken? g b e)
-                                      (not-any? #(and (= :replace (:kind %)) (has-ws? (:value %)))
-                                                (split-off-new-words o @near @covering (as-replace g b e))))))
-                    g)))
+        group (fn group
+                ([i b e] (group i b e false))
+                ([i b e split?]
+                 (let [j (loop [j i]
+                           (if (and (< j (count edits)) (<= (reach-of (edits j)) e)
+                                    (>= (start-of (edits j)) b))
+                             (recur (inc j))
+                             j))
+                       g (subvec edits i j)
+                       kinds (set (map :kind g))]
+                   (when (and (seq g)
+                              (apart? g)
+                              (clear-after? j e)
+                              ;; spaces alone are no word to fold onto: a word
+                              ;; they take the place of is deleted
+                              (not (every? space? (.toArray (.codePoints ^String (new-text g b e)))))
+                              (or (and (> (count g) 1)
+                                       (= b (start-of (first g)))
+                                       (= e (reduce max (map reach-of g)))
+                                       (or (kinds :replace)
+                                           (and (kinds :delete) (kinds :insert))))
+                                  (splits? g b e))
+                              ;; A token inside a word (a morpheme) given a space
+                              ;; that no new word can take whole is left to the
+                              ;; word, which goes on one of them (see below).
+                              (not (and (not (word-at? b e))
+                                        (splits? g b e)
+                                        (some #(and (word? %) (not (and (= b (:token/begin %)) (= e (:token/end %)))))
+                                              (@covering b e))
+                                        (some #(and (= :replace (:kind %)) (has-ws? (:value %)))
+                                              (split-off-new-words o @near @covering (as-replace g b e)))))
+                              ;; A word with tokens inside (its morphemes)
+                              ;; takes the replace only when the edits as they
+                              ;; are would break it, and when the word then
+                              ;; lands on one new word: kept apart from a word
+                              ;; typed beside it (`cow` to `at co` at a
+                              ;; sentence start keeps the word and `co` on
+                              ;; `co`, as the edits leave them). With `split?`
+                              ;; a word given a space is broken too.
+                              (or (not (inside? b e))
+                                  (and (word-at? b e)
+                                       (not-any? #(ws? (aget o %)) (range b e))
+                                       (or (broken? g b e) (and split? (splits? g b e)))
+                                       (not-any? #(and (= :replace (:kind %)) (has-ws? (:value %)))
+                                                 (split-off-new-words o @near @covering (as-replace g b e))))))
+                     g))))
         ;; Whether every letter of [b e) lies in one of `ts`.
         covered? (fn [ts b e]
                    (loop [p b
@@ -2474,20 +2569,79 @@
                           (filter (fn [{tb :token/begin te :token/end}]
                                     (and (<= B tb) (< tb p) (< p te)
                                          (not (and (zero? tb) (= te whole))))))
-                          (sort-by :token/begin)))))]
+                          (sort-by :token/begin)))))
+        ;; The edits from i on within the word over [b e) (with tokens
+        ;; inside it, its morphemes), when they give it spaces only where
+        ;; two of those meet and break none of them, as the edits that put
+        ;; the word on one of the new words with its tokens there, and the
+        ;; others outside it, with the edits it takes in. `pqmrs` as `pq` +
+        ;; `mrs` to `pq mrs` left one word over the space. The word goes on the new word that shares
+        ;; the most letters with it, the first on a tie, as a word without
+        ;; morphemes does, and the morphemes of the others are deleted.
+        split-between (fn [i b e]
+                        (let [j (loop [j i]
+                                  (if (and (< j (count edits)) (<= (reach-of (edits j)) e)
+                                           (>= (start-of (edits j)) b))
+                                    (recur (inc j))
+                                    j))
+                              g (subvec edits i j)
+                              cut? (fn [x] (has-ws? (:value x)))
+                              cuts (sort (distinct (map :at (filter cut? g))))]
+                          (when (and (seq cuts)
+                                     (apart? g)
+                                     (clear-after? j e)
+                                     (word-at? b e)
+                                     (inside? b e)
+                                     (not-any? #(ws? (aget o %)) (range b e))
+                                     (every? (fn [x] (if (cut? x)
+                                                       (and (= :insert (:kind x)) (< b (:at x) e)
+                                                            (@inside-word? (:at x))
+                                                            (every? space? (.toArray (.codePoints ^String (:value x)))))
+                                                       (not (some #(= % (:at x)) cuts))))
+                                             g)
+                                     (not (broken? g b e)))
+                            (let [segs (partition 2 1 (concat [b] cuts [e]))
+                                  within (fn [[x y]] (filterv #(and (not (cut? %)) (<= x (start-of %)) (<= (reach-of %) y)) g))
+                                  word (java.util.Arrays/copyOfRange o (int b) (int e))
+                                  score (fn [[x y :as seg]]
+                                          (lcs-length word (.toArray (.codePoints ^String (new-text (within seg) x y)))))
+                                  ;; Text put in front of the word goes to a sentence
+                                  ;; ending there, so the first new word keeps it then.
+                                  segs (if (some #(and (< (:token/begin %) b) (= b (:token/end %))) (@near b b))
+                                         (take 1 segs)
+                                         segs)
+                                  best (reduce max (map score segs))
+                                  [x y :as seg] (first (filter #(= best (score %)) segs))
+                                  before (filterv #(<= (reach-of %) x) g)
+                                  after (filterv #(>= (start-of %) y) g)]
+                              [g (cond-> []
+                                   (< b x) (conj {:kind :insert :at b :value (new-text before b x)}
+                                                 {:kind :delete :start b :end x})
+                                   true (into (within seg))
+                                   (< y e) (conj {:kind :delete :start y :end e}
+                                                 {:kind :insert :at e :value (new-text after y e)}))]))))]
     (loop [i 0 out [] folded? false]
       (if (< i (count edits))
         (let [e0 (edits i)
               b (start-of e0)
               prev (peek out)
-              lo (if prev (inc (reach-of prev)) 0)
+              ;; a word may begin where a delete before it ends
+              lo (cond (nil? prev) 0 (:end prev) (reach-of prev) :else (inc (reach-of prev)))
               ;; Edits the fold cannot judge stay as they came, and only
               ;; they: the other words of the text still fold.
               g-e (when (clear-before? prev b)
                     (try
                       (or (some (fn [e] (when-let [g (group i b e)] [g b e])) (ends-at b))
                           (some (fn [{tb :token/begin te :token/end}]
-                                  (when-let [g (group i tb te)] [g tb te]))
+                                  (if-let [g (group i tb te)]
+                                    [g tb te]
+                                    (when-let [[g x] (split-between i tb te)]
+                                      [g tb te x])))
+                                (around lo e0))
+                          ;; A word given a space some other way folds as
+                          ;; one replaced outright, rather than hold it.
+                          (some (fn [{tb :token/begin te :token/end}]
+                                  (when-let [g (group i tb te true)] [g tb te]))
                                 (around lo e0))
                           (some (fn [{tb :token/begin te :token/end}]
                                   (when (clear-before? prev tb)
@@ -2495,9 +2649,9 @@
                                 (holding e0)))
                       (catch clojure.lang.ExceptionInfo _ nil)
                       (catch IndexOutOfBoundsException _ nil)))]
-          (if-let [[g b e] g-e]
+          (if-let [[g b e split] g-e]
             (recur (+ i (count g))
-                   (conj out (as-replace g b e))
+                   (if split (into out split) (conj out (as-replace g b e)))
                    true)
             (recur (inc i) (conj out e0) folded?)))
         ;; A word typed beside the replaced letters stays out of them,

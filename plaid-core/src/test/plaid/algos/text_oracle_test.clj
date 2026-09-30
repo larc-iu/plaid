@@ -253,6 +253,97 @@
                             joined (assoc a :w w :post (:post b) :sep (:sep b) :cuts nil)]
                         [(assoc doc si (-> (subvec sent 0 i) (conj joined) (into (subvec sent (+ i 2)))))
                          {:resp #{(:id a)} :del #{(:id b)} :si si :amb #{} :group [(:id a) (:id b)]}])))
+      ;; The same with one word left whole: the space and letters of the
+      ;; other go (`the kaki` to `theki`, `the kaki` to `thkaki`). It is one
+      ;; word too (D22).
+      :join-one-whole (let [i (when (> n 1) (.nextInt rng (dec n)))
+                            a (some-> i sent)
+                            b (some-> i inc sent)
+                            left-whole? (.nextBoolean rng)
+                            cut (if left-whole? b a)]
+                        (if (or (nil? i) (not= " " (:sep a)) (seq (:post a)) (seq (:pre b))
+                                (< (count (cps (:w cut))) 2))
+                          (edit doc rng [:resp])
+                          (let [ca (cps (:w a))
+                                cb (cps (:w b))
+                                w (if left-whole?
+                                    (str (:w a) (apply str (take-last (inc (.nextInt rng (dec (count cb)))) cb)))
+                                    (str (apply str (take (inc (.nextInt rng (dec (count ca)))) ca)) (:w b)))
+                                joined (assoc a :w w :post (:post b) :sep (:sep b) :cuts nil)]
+                            [(assoc doc si (-> (subvec sent 0 i) (conj joined) (into (subvec sent (+ i 2)))))
+                             {:resp #{(:id a)} :del #{(:id b)} :si si :amb #{} :group [(:id a) (:id b)]}])))
+      ;; Only the space between two words deleted: two words written
+      ;; together, each keeping its token (D22).
+      :join-space (let [i (when (> n 1) (.nextInt rng (dec n)))
+                        a (some-> i sent)
+                        b (some-> i inc sent)]
+                    (if (or (nil? i) (not= " " (:sep a)))
+                      (edit doc rng [:resp])
+                      [(assoc-in doc [si i :sep] "") {}]))
+      ;; Three words made one, keeping letters of the middle one, so the
+      ;; diff deletes twice: `a big dog ran` to `a bon`. One token.
+      :join-three (let [i (when (> n 2) (.nextInt rng (- n 2)))
+                        [a b c] (when i (subvec sent i (+ i 3)))]
+                    (if (or (nil? i) (not= " " (:sep a)) (not= " " (:sep b))
+                            (seq (:post a)) (seq (:pre b)) (seq (:post b)) (seq (:pre c))
+                            (< (count (cps (:w a))) 2) (< (count (cps (:w c))) 2))
+                      (edit doc rng [:resp])
+                      (let [ca (cps (:w a))
+                            cb (cps (:w b))
+                            cc (cps (:w c))
+                            p (.nextInt rng (count cb))
+                            q (+ p 1 (.nextInt rng (- (count cb) p)))
+                            w (str (apply str (take (inc (.nextInt rng (dec (count ca)))) ca))
+                                   (apply str (subvec cb p q))
+                                   (apply str (take-last (inc (.nextInt rng (dec (count cc)))) cc)))
+                            joined (assoc a :w w :post (:post c) :sep (:sep c) :cuts nil)]
+                        ;; a whole word inside the new one reads as that word kept,
+                        ;; the others cut to its sides (`tat tat sat` to `ttat`)
+                        (if (some #(.contains ^String w ^String (:w %)) [a b c])
+                          (edit doc rng [:resp])
+                          [(assoc doc si (-> (subvec sent 0 i) (conj joined) (into (subvec sent (+ i 3)))))
+                           {:resp #{(:id a)} :del #{(:id b) (:id c)} :si si :amb #{}
+                            :group [(:id a) (:id b) (:id c)]}]))))
+      ;; A space typed where two morphemes of a word meet: the word goes on
+      ;; one of the two new words, either, with its morphemes there, and the
+      ;; other is a new word.
+      ;; Anywhere in the word, a letter respelled after the space or not
+      ;; (`pqmrs` to `pq krs`), the same. Not a word starting a sentence
+      ;; after the first or with a marker at an edge: there the new words
+      ;; can neither leave the sentence nor the marker, and when the one
+      ;; to take the token is the second, the token stays over both (`x.
+      ;; cow y` to `x. a co y`, pinned in text_test).
+      (:space-at-cut :split-word)
+      (let [cands (filter #(if (= kind :space-at-cut)
+                             (:cuts (sent %))
+                             (let [{:keys [w zs ze]} (sent %)]
+                               (and (< 1 (count (cps w))) (not zs) (not ze)
+                                    (or (pos? %) (zero? si)))))
+                          (range n))]
+        (if (empty? cands)
+          (edit doc rng [:resp])
+          (let [i (nth cands (.nextInt rng (count cands)))
+                {:keys [id w cuts pre post sep] :as it} (sent i)
+                c (cps w)
+                k (if (= kind :space-at-cut)
+                    (nth cuts (.nextInt rng (count cuts)))
+                    (inc (.nextInt rng (dec (count c)))))
+                left (apply str (subvec c 0 k))
+                right (str (if (and (= kind :split-word) (.nextBoolean rng))
+                             (fresh-word rng 1)
+                             (c k))
+                           (apply str (subvec c (inc k))))
+                split (fn [lid rid]
+                        (assoc doc si (-> (subvec sent 0 i)
+                                          (conj (assoc it :id lid :w left :post "" :sep " " :cuts nil :new (not= lid id))
+                                                {:id rid :pre "" :w right :post post :sep sep :new (not= rid id)})
+                                          (into (subvec sent (inc i))))))]
+            [(split id (+ 2000 id))
+             {:resp #{id} :si si
+                            ;; or the right half is the word, and the left half
+                            ;; is typed in front of it
+              :alts [[(split (+ 2000 id) id)
+                      {:resp #{id} :si si :typed-front {id (inc (count (cps left)))}}]]}])))
       :join (if (< si (dec (count doc)))
               [(-> doc
                    (assoc-in [si (dec n) :sep] " ")
@@ -414,7 +505,8 @@
                    (ta/apply-text-edits {:text/body old} tokens)
                    (as-> r (ta/keep-edges-off-spaces old tokens r #{:s})))
         ps (problems c result)]
-    (if (and (seq ps) (some #(empty? (problems (reading c %) result)) (rest (:group info))))
+    (if (and (seq ps) (or (some #(empty? (problems (reading c %) result)) (rest (:group info)))
+                          (some (fn [[d i]] (empty? (problems (assoc c :new-doc d :info i) result))) (:alts info))))
       []
       ps)))
 
@@ -464,7 +556,15 @@
      :no-spaces-nodes {:seps [""] :nodes 4 :kinds [:resp :del :del+resp] :cases 2000}
      :joins {:seps [" "] :kinds [:join]}
      :joined-words {:seps [" "] :kinds [:join-words]}
-     :joined-words-marked {:seps [" "] :marks 0.4 :nodes 4 :kinds [:join-words]}}))
+     :joined-words-marked {:seps [" "] :marks 0.4 :nodes 4 :kinds [:join-words]}
+     :joined-one-whole {:seps [" "] :kinds [:join-one-whole :join-space]}
+     :joined-one-whole-marked {:seps [" "] :marks 0.4 :nodes 4 :kinds [:join-one-whole :join-space]}
+     :joined-three {:seps [" "] :kinds [:join-three]}
+     :joined-three-marked {:seps [" "] :marks 0.4 :nodes 4 :kinds [:join-three]}
+     :space-at-morpheme-edge {:seps [" "] :kinds [:space-at-cut]}
+     :space-at-morpheme-edge-marked {:seps [" "] :marks 0.4 :nodes 4 :kinds [:space-at-cut]}
+     :split-word {:seps [" "] :kinds [:split-word]}
+     :split-word-nodes {:seps [" "] :marks 0.4 :nodes 4 :kinds [:split-word]}}))
 
 ;; ---------------------------------------------------------------- the test
 
@@ -509,3 +609,62 @@
       (is (= new (:text/body (:text result))))
       (is (= want (sort (map (juxt :token/begin :token/end) (:tokens result))))
           (str (pr-str old) " -> " (pr-str new))))))
+
+(defn- words-and-morphemes
+  "Word tokens on the runs of `s` without spaces, and morphemes of the words
+  given in `cuts` (word index to the code points each cut stands after)."
+  [s cuts]
+  (let [m (re-matcher #"\S+" s)
+        ws (loop [out []] (if (.find m) (recur (conj out [(.start m) (.end m)])) out))]
+    (vec (concat
+          (map-indexed (fn [i [b e]] {:token/id [:w i] :token/layer :w :token/begin b :token/end e}) ws)
+          (for [[i cs] cuts
+                :let [[b e] (ws i)]
+                [j [x y]] (map-indexed vector (partition 2 1 (concat [0] cs [(- e b)])))]
+            {:token/id [:m i j] :token/layer :m :token/begin (+ b x) :token/end (+ b y)})))))
+
+(defn- body-save
+  "The words and morphemes after `old` is saved as `new`, as [id text]."
+  [old new cuts]
+  (let [tokens (words-and-morphemes old cuts)
+        result (-> (ta/diff old new)
+                   (ta/slide-to-tokens old tokens #{})
+                   (ta/normalize-deletes old tokens)
+                   (ta/align-to-words old tokens #{:w})
+                   (ta/pair-replacements old tokens)
+                   (ta/fold-whole-words old tokens #{:w})
+                   (ta/apply-text-edits {:text/body old} tokens))
+        body (:text/body (:text result))]
+    (is (= new body))
+    (->> (:tokens result)
+         (sort-by (juxt :token/layer :token/begin))
+         (mapv (fn [{:token/keys [id begin end]}] [id (cp/cp-subs body begin end)])))))
+
+(deftest a-join-that-leaves-one-word-whole-leaves-one-token
+  ;; D22: the space and letters of one word gone
+  (is (= [[[:w 0] "theki"] [[:w 2] "ran"]] (body-save "the kaki ran" "theki ran" {})))
+  (is (= [[[:w 1] "thkaki"] [[:w 2] "ran"]] (body-save "the kaki ran" "thkaki ran" {})))
+  (is (= [[[:w 0] "a"] [[:w 1] "catQat"]] (body-save "a cat mat" "a catQat" {})))
+  ;; only the space: two words written together keep a token each
+  (is (= [[[:w 0] "a"] [[:w 1] "big"] [[:w 2] "dog"]] (body-save "a big dog" "a bigdog" {})))
+  (is (= [[[:w 0] "the"] [[:w 2] "dog"] [[:w 3] "x"]] (body-save "the cat dog x" "thedog x" {})))
+  ;; a punctuation mark at the edge keeps the words apart
+  (is (= [[[:w 0] "a"] [[:w 1] "big,"] [[:w 2] "og"] [[:w 3] "ran"]]
+         (body-save "a big, dog ran" "a big,og ran" {}))))
+
+(deftest a-join-over-three-words-leaves-one-token
+  ;; REV-W-TEXT2 R1: a middle word's letter survives, so the diff deletes twice
+  (is (= [[[:w 0] "a"] [[:w 1] "bon"] [[:w 4] "home"]] (body-save "a big dog ran home" "a bon home" {})))
+  (is (= [[[:w 0] "a"] [[:w 3] "bodom"] [[:w 4] "home"]] (body-save "a bi dog random home" "a bodom home" {})))
+  (is (= [[[:w 0] "a"] [[:w 1] "kitsats"]] (body-save "a kitten sat on mats" "a kitsats" {})))
+  (is (= [[[:w 0] "one"] [[:w 1] "bdn"]] (body-save "one big dog ran" "one bdn" {}))))
+
+(deftest a-space-typed-in-an-analyzed-word-leaves-no-token-over-it
+  ;; REV-W-TEXT2 N1: between two morphemes, the word and its morphemes go on
+  ;; the new word sharing more letters
+  (is (= [[[:m 1 1] "mrs"] [[:w 0] "hh"] [[:w 1] "mrs"]] (body-save "hh pqmrs" "hh pq mrs" {1 [2]})))
+  (is (= [[[:m 1 0] "pqm"] [[:w 0] "hh"] [[:w 1] "pqm"]] (body-save "hh pqmrs" "hh pqm rs" {1 [3]})))
+  ;; inside a morpheme, respelled after the space: the word folds
+  (is (= [[[:w 0] "hh"] [[:w 1] "pq"]] (body-save "hh pqmrs" "hh pq krs" {1 [3]})))
+  (is (= [[[:m 0 0] "花花"] [[:m 0 1] "家犬犬"] [[:w 0] "花花家犬犬"] [[:w 2] "犬猫"]]
+         (body-save "花花家犬犬 川川水川 犬猫水山木" "花花家犬犬 犬猫 川山木" {0 [2] 2 [2]}))))
