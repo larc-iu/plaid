@@ -3,7 +3,7 @@ import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { type, focus, blur } from '../../../test/keyboard.js';
 import { EditableCell } from './EditableCell.jsx';
 import { EditorSessionContext } from './editorSession.js';
-import { UnsentValues } from './unsentValues.js';
+import { testCells } from '../../../test/cells.js';
 import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 
 // A value that was not saved (refused, or queued behind a refused edit and so
@@ -13,16 +13,25 @@ import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 
 vi.mock('../../../utils/feedback.jsx', () => ({ notifyWarning: vi.fn() }));
 
-const session = (onAnnotationUpdate) => ({
-  isReadOnly: false,
-  onAnnotationUpdate,
-  unsent: new UnsentValues(),
-  vocab: {},
-  validators: {},
-  descriptions: {},
-});
+// The document is what the cell was last drawn with (`cellWith`).
+const session = (onAnnotationUpdate) => {
+  const s = {
+    isReadOnly: false,
+    onAnnotationUpdate,
+    now: '',
+    vocab: {},
+    validators: {},
+    descriptions: {},
+  };
+  s.cells = testCells({ read: () => s.now });
+  return s;
+};
 
-const cellWith = (s, value) => (
+const cellWith = (s, value) => {
+  s.now = value;
+  return cellFor(s, value);
+};
+const cellFor = (s, value) => (
   <EditorSessionContext.Provider value={s}>
     <EditableCell
       value={value}
@@ -48,7 +57,7 @@ async function refused({ refetchFirst }) {
   // The optimistic patch shows it.
   await view.rerender(cellWith(s, 'wolf'));
   if (refetchFirst) await view.rerender(cellWith(s, ''));
-  await view.step(async () => answer(false));
+  await view.step(async () => answer({ landed: false }));
   if (!refetchFirst) await view.rerender(cellWith(s, ''));
   return { ...view, s, input, onAnnotationUpdate };
 }
@@ -63,7 +72,7 @@ describe('a value that was not saved', () => {
       // A later render with the stored value unchanged keeps it.
       await rerender(cellWith(s, ''));
       expect(input.value).toBe('wolf');
-      onAnnotationUpdate.mockImplementation(() => Promise.resolve(true));
+      onAnnotationUpdate.mockImplementation(() => Promise.resolve({ landed: true }));
       await step(async () => focus(input));
       await step(async () => blur(input));
       expect(onAnnotationUpdate).toHaveBeenLastCalledWith('t1', 'lemma', 'wolf');
@@ -91,7 +100,7 @@ describe('a value that was not saved', () => {
     // Drawn away while still focused (no blur), it goes back to wait.
     await unmount();
     expect(hasUnsavedDraft()).toBe('An annotation you have typed');
-    s.unsent.clear();
+    s.cells.clear();
   });
 
   it('stops asking when the stored value moves on, or the grid lets go', async () => {
@@ -104,7 +113,7 @@ describe('a value that was not saved', () => {
     await second.unmount();
     // The cell going is a page turned: the value waits for it.
     expect(hasUnsavedDraft()).toBe('An annotation you have typed');
-    second.s.unsent.clear();
+    second.s.cells.clear();
     expect(hasUnsavedDraft()).toBe(null);
   });
 });
@@ -124,7 +133,7 @@ describe('a value that was not saved, on a page turned away from', () => {
     const again = await drawAgain(first.s, '');
     expect(again.input.value).toBe('wolf');
     expect(hasUnsavedDraft()).toBe('An annotation you have typed');
-    first.onAnnotationUpdate.mockImplementation(() => Promise.resolve(true));
+    first.onAnnotationUpdate.mockImplementation(() => Promise.resolve({ landed: true }));
     await again.step(async () => focus(again.input));
     expect(hasUnsavedDraft()).toBe(null);
     await again.step(async () => blur(again.input));
@@ -144,13 +153,13 @@ describe('a value that was not saved, on a page turned away from', () => {
     await view.step(async () => blur(input));
     await view.rerender(cellWith(s, 'wolf'));
     await view.unmount();
-    answer(false);
+    answer({ landed: false });
     await new Promise((r) => setTimeout(r, 0));
     expect(hasUnsavedDraft()).toBe('An annotation you have typed');
     const again = await drawAgain(s, '');
     expect(again.input.value).toBe('wolf');
     await again.unmount();
-    s.unsent.clear();
+    s.cells.clear();
   });
 
   it('gives way when the stored value moved on while away', async () => {
@@ -160,29 +169,6 @@ describe('a value that was not saved, on a page turned away from', () => {
     expect(again.input.value).toBe('cat');
     expect(hasUnsavedDraft()).toBe(null);
     await again.unmount();
-  });
-
-  it('is let go by the grid once its stored value moves on or its token is gone', async () => {
-    const unsent = new UnsentValues();
-    unsent.put('t1', 'lemma', 'wolf', '');
-    unsent.put('t2', 'upos', 'NOUN', 'VERB');
-    unsent.put('t3', 'xpos', 'NN', '');
-    const stored = { 't1:lemma': '', 't2:upos': 'ADJ' };
-    unsent.prune((tokenId, field) => stored[`${tokenId}:${field}`]);
-    expect(unsent.get('t1', 'lemma')).toEqual({ typed: 'wolf', saved: '' });
-    expect(unsent.get('t2', 'upos')).toBe(null);
-    expect(unsent.get('t3', 'xpos')).toBe(null);
-    expect(hasUnsavedDraft()).toBe('An annotation you have typed');
-    unsent.clear();
-    expect(hasUnsavedDraft()).toBe(null);
-  });
-
-  it('keeps the value the first edit was typed over when a second is put back behind it', () => {
-    const unsent = new UnsentValues();
-    unsent.put('t1', 'lemma', 'wolf', '');
-    unsent.put('t1', 'lemma', 'wolves', 'wolf');
-    expect(unsent.get('t1', 'lemma')).toEqual({ typed: 'wolves', saved: '' });
-    unsent.clear();
   });
 });
 
@@ -194,7 +180,7 @@ describe('closing the tab', () => {
   };
 
   it('asks while a focused cell holds something typed, and not once it is left', async () => {
-    const onAnnotationUpdate = vi.fn(() => Promise.resolve(true));
+    const onAnnotationUpdate = vi.fn(() => Promise.resolve({ landed: true }));
     const s = session(onAnnotationUpdate);
     const view = await renderComponent(cellWith(s, 'dog'));
     const input = all(view.container, 'input')[0];
@@ -209,7 +195,7 @@ describe('closing the tab', () => {
   });
 
   it('does not ask for a focused cell typed back to what is stored', async () => {
-    const s = session(vi.fn(() => Promise.resolve(true)));
+    const s = session(vi.fn(() => Promise.resolve({ landed: true })));
     const view = await renderComponent(cellWith(s, 'dog'));
     const input = all(view.container, 'input')[0];
     await view.step(async () => focus(input));
@@ -235,7 +221,7 @@ describe('closing the tab', () => {
     expect(closeAsks()).toBe(false);
     await step(async () => type(input, 'wolf'));
     expect(closeAsks()).toBe(true);
-    onAnnotationUpdate.mockImplementation(() => Promise.resolve(true));
+    onAnnotationUpdate.mockImplementation(() => Promise.resolve({ landed: true }));
     await step(async () => blur(input));
     expect(closeAsks()).toBe(false);
     await unmount();

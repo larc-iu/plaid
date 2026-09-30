@@ -3,7 +3,7 @@ import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { type, focus, blur } from '../../../test/keyboard.js';
 import { EditableCell } from './EditableCell.jsx';
 import { EditorSessionContext } from './editorSession.js';
-import { UnsentValues } from './unsentValues.js';
+import { testCells } from '../../../test/cells.js';
 import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 
 // One annotator edits a cell twice while the first edit is still on its way,
@@ -17,7 +17,7 @@ vi.mock('../../../utils/feedback.jsx', () => ({ notifyWarning: vi.fn() }));
 
 const stores = [];
 afterEach(() => {
-  for (const unsent of stores.splice(0)) unsent.clear();
+  for (const cells of stores.splice(0)) cells.clear();
 });
 
 const cellWith = (s, value) => (
@@ -41,14 +41,12 @@ async function twoEdits() {
   const onAnnotationUpdate = vi.fn(() => new Promise((r) => answers.push(r)));
   const stored = new Map([['t1:lemma', 'mat']]);
   const heard = [];
-  const unsent = new UnsentValues((tokenId, field) => stored.get(`${tokenId}:${field}`), {
-    onConflict: (...args) => heard.push(args),
-  });
-  stores.push(unsent);
+  const cells = testCells({ read: (key) => stored.get(key), heard });
+  stores.push(cells);
   const s = {
     isReadOnly: false,
     onAnnotationUpdate,
-    unsent,
+    cells,
     vocab: {},
     validators: {},
     descriptions: {},
@@ -79,11 +77,11 @@ describe('two edits of one cell by one annotator, the first refused', () => {
     const run = await twoEdits();
     // The refetch shows the second edit again on top of the stored `mat`.
     await run.refetched('matB');
-    await run.answer(0, false);
+    await run.answer(0, { landed: false });
     expect(run.heard).toEqual([]);
     expect(noteOf(run.view)).toBe(null);
     expect(run.input.value).toBe('matB');
-    await run.answer(1, true);
+    await run.answer(1, { landed: true });
     expect(noteOf(run.view)).toBe(null);
     expect(run.input.value).toBe('matB');
     await run.view.unmount();
@@ -92,9 +90,9 @@ describe('two edits of one cell by one annotator, the first refused', () => {
   it('both refused with nothing changed on the server: the second comes back, unsaved', async () => {
     const run = await twoEdits();
     await run.refetched('matB');
-    await run.answer(0, false);
+    await run.answer(0, { landed: false });
     await run.refetched('mat');
-    await run.answer(1, false);
+    await run.answer(1, { landed: false });
     expect(run.heard).toEqual([]);
     expect(noteOf(run.view)).toBe(null);
     expect(run.input.value).toBe('matB');
@@ -104,20 +102,34 @@ describe('two edits of one cell by one annotator, the first refused', () => {
 
   it('the first stored and the second refused: the second comes back, unsaved', async () => {
     const run = await twoEdits();
-    await run.answer(0, true);
+    await run.answer(0, { landed: true });
     await run.refetched('matA');
-    await run.answer(1, false);
+    await run.answer(1, { landed: false });
     expect(run.heard).toEqual([]);
     expect(noteOf(run.view)).toBe(null);
     expect(run.input.value).toBe('matB');
     await run.view.unmount();
   });
 
+  // Unified with plaid-igt (cell engine, `mine`): a value this page sent and
+  // the server stored unheard is this annotator's, never another's.
+  it('the first stored unheard and the second refused: no note, the second comes back', async () => {
+    const run = await twoEdits();
+    await run.answer(0, { landed: false, status: 502, readBack: false });
+    await run.refetched('matA');
+    await run.answer(1, { landed: false, status: 409, readBack: true });
+    expect(run.heard).toEqual([]);
+    expect(noteOf(run.view)).toBe(null);
+    expect(run.input.value).toBe('matB');
+    expect(hasUnsavedDraft()).toBe('An annotation you have typed');
+    await run.view.unmount();
+  });
+
   it('both refused over another annotator’s value: the note holds the newer of the two', async () => {
     const run = await twoEdits();
     await run.refetched('matX');
-    await run.answer(0, false);
-    await run.answer(1, false);
+    await run.answer(0, { landed: false });
+    await run.answer(1, { landed: false });
     expect(noteOf(run.view)?.textContent).toBe('Yours: matB · Enter to keep yours');
     expect(run.input.value).toBe('matX');
     expect(run.heard.length).toBe(1);
@@ -132,8 +144,8 @@ describe('the note under a cell that lost a conflict', () => {
   it('describes the cell and takes the sentence’s direction for where it hangs', async () => {
     const run = await twoEdits();
     await run.refetched('matX');
-    await run.answer(0, false);
-    await run.answer(1, false);
+    await run.answer(0, { landed: false });
+    await run.answer(1, { landed: false });
     const note = noteOf(run.view);
     expect(note.id).toBeTruthy();
     expect(run.input.getAttribute('aria-describedby')).toBe(note.id);

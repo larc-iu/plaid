@@ -7,6 +7,8 @@
 // newest change by another user that wrote one of the cell's entities (its
 // span or token), else the newest change by another user at all.
 
+import { settledId } from '../domain/pendingIds.js';
+
 const RECENT = 50;
 
 /**
@@ -44,3 +46,42 @@ export const changedTo = (who, stored) =>
  */
 export const KEPT_IN_CELL =
   'Changed elsewhere. Your value is kept in its cell, and leaving the cell sends it again.';
+
+/** The toast for a refused cell edit whose row is gone: nothing to put it back into. */
+const NOT_SAVED = (typed) => `Not saved: ${typed}`;
+
+/**
+ * The words of the note under a cell that lost a conflict, "Yours: X · Enter
+ * to keep yours", in three parts so the value can sit in its own `<bdi>`.
+ */
+export const conflictNoteParts = (typed) => ({
+  before: 'Yours: ',
+  value: typed || '(none)',
+  after: ' · Enter to keep yours',
+});
+
+/**
+ * The cell engine's `announce` (domain/cells/CellEngine.js), as toasts:
+ * `warn(message)` for a conflict, once the audit log has said who, and
+ * `error(message, title)` for a value kept in its cell or lost. `client`,
+ * `documentId` and `me` are read when a toast is due, so they may be getters.
+ */
+export const announceCells = (context) => (event) => {
+  if (event.kind === 'conflict') {
+    const ids = (event.entityIds ?? []).filter(Boolean).map(settledId);
+    Promise.resolve()
+      .then(() => whoChanged(context.client, context.documentId, ids, context.me))
+      .catch(() => null)
+      .then((who) =>
+        context.warn(
+          event.recut != null
+            ? recutTo(who, event.recut.text, event.recut.unit)
+            : changedTo(who, event.stored),
+        ),
+      );
+  } else if (event.kind === 'keptInCell') {
+    context.error(KEPT_IN_CELL, `Failed to update ${event.field}`);
+  } else if (event.kind === 'lost') {
+    context.error(NOT_SAVED(event.typed), 'Changed elsewhere');
+  }
+};

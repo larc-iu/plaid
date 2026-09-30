@@ -3,7 +3,7 @@ import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { type, focus, blur } from '../../../test/keyboard.js';
 import { EditableCell } from './EditableCell.jsx';
 import { EditorSessionContext } from './editorSession.js';
-import { UnsentValues } from './unsentValues.js';
+import { testCells } from '../../../test/cells.js';
 import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import { notifyError, notifyWarning } from '../../../utils/feedback.jsx';
 
@@ -22,7 +22,7 @@ beforeEach(() => {
   vi.mocked(notifyError).mockClear();
 });
 afterEach(() => {
-  for (const unsent of stores.splice(0)) unsent.clear();
+  for (const cells of stores.splice(0)) cells.clear();
 });
 
 const cellWith = (s, value) => (
@@ -46,14 +46,17 @@ async function setup() {
   const onAnnotationUpdate = vi.fn(() => new Promise((r) => answers.push(r)));
   const stored = new Map([['t1:lemma', 'mat']]);
   const heard = [];
-  const unsent = new UnsentValues((tokenId, field) => stored.get(`${tokenId}:${field}`), {
-    onConflict: (...args) => heard.push(args),
+  const cells = testCells({
+    read: (key) => stored.get(key),
+    heard,
+    warn: notifyWarning,
+    error: notifyError,
   });
-  stores.push(unsent);
+  stores.push(cells);
   const s = {
     isReadOnly: false,
     onAnnotationUpdate,
-    unsent,
+    cells,
     vocab: {},
     validators: {},
     descriptions: {},
@@ -76,7 +79,7 @@ async function setup() {
   return { view, input, heard, edit, refetched, answer };
 }
 
-const lost = { refused: true, status: 0, error: new Error('lost'), readBack: true };
+const lost = { landed: false, status: 0, error: new Error('lost'), readBack: true };
 
 describe('an edit that landed with its answer lost', () => {
   it('is not put back, and nothing is asked on leaving', async () => {
@@ -97,7 +100,7 @@ describe('an edit that landed with its answer lost', () => {
     await run.answer(0, lost);
     await run.edit('matB');
     await run.refetched('matA');
-    await run.answer(1, { refused: true, status: 500, error: new Error('boom'), readBack: true });
+    await run.answer(1, { landed: false, status: 500, error: new Error('boom'), readBack: true });
     expect(run.heard).toEqual([]);
     expect(noteOf(run.view)).toBe(null);
     expect(notifyWarning).not.toHaveBeenCalled();
@@ -120,7 +123,7 @@ describe('a conflict that is not the cell’s own', () => {
     const run = await setup();
     await run.edit('matA');
     await run.refetched('mat');
-    await run.answer(0, { refused: true, status: 409, error: new Error('409'), readBack: true });
+    await run.answer(0, { landed: false, status: 409, error: new Error('409'), readBack: true });
     expect(noteOf(run.view)).toBe(null);
     expect(run.input.value).toBe('matA');
     expect(notifyError).toHaveBeenCalledWith(

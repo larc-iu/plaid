@@ -126,12 +126,26 @@ export class CellEngine {
     if (!quiet) this._listeners.forEach((fn) => fn());
   }
 
+  /** The key a record for `key` is kept under. */
+  canonical(key) {
+    return this._canonical(key);
+  }
+
   _viewOf(key) {
     return this._view ? this._view(key, this._canonical(key)) : null;
   }
 
+  // The app's readers are asked with the key as the server knows it now.
   _readNow(key) {
-    return this._read ? this._read(key) : undefined;
+    return this._read ? this._read(this._canonical(key)) : undefined;
+  }
+
+  _shapeNow(key) {
+    return this._shape?.(this._canonical(key)) ?? null;
+  }
+
+  _recutSince(snapshot, key) {
+    return this._recut?.(snapshot, this._canonical(key)) ?? null;
   }
 
   /** The conflict standing on the cell, `{ typed, stored, recut }`, or null. */
@@ -193,7 +207,7 @@ export class CellEngine {
    * turned from the keyboard) goes back to wait for the cell.
    */
   release(key, typed, saved) {
-    this._put(key, { typed, saved, shape: this._shape?.(key) ?? null, field: null });
+    this._put(key, { typed, saved, shape: this._shapeNow(key), field: null });
     this._changed(key);
   }
 
@@ -223,7 +237,7 @@ export class CellEngine {
       flight,
       n: flight.latest,
       typed,
-      shape: this._shape?.(key) ?? null,
+      shape: this._shapeNow(key),
       entityIds,
       field,
       what,
@@ -291,7 +305,7 @@ export class CellEngine {
       return { kind: 'conflict', typed, stored, recut: null, status };
     }
     const final = this._final.has(status);
-    const recut = final ? null : (this._recut?.(ticket.shape, key) ?? null);
+    const recut = final ? null : this._recutSince(ticket.shape, key);
     if (recut != null) {
       this.conflict(key, typed, stored, recut, ticket.entityIds);
       return { kind: 'conflict', typed, stored, recut, status };
@@ -341,7 +355,9 @@ export class CellEngine {
     this._conflicts.set(k, { key, typed, stored, recut });
     this._viewOf(key)?.showStored?.(stored, { conflict: true });
     this._changed(key, quiet);
-    const ids = [...(entityIds ?? []), ...(this._entityIds?.(key) ?? [])].filter(Boolean);
+    const ids = [...(entityIds ?? []), ...(this._entityIds?.(this._canonical(key)) ?? [])].filter(
+      Boolean,
+    );
     this._announce?.({ kind: 'conflict', key, typed, stored, recut, entityIds: ids });
   }
 
@@ -374,7 +390,7 @@ export class CellEngine {
     let changed = false;
     for (const [k, u] of [...this._unsent]) {
       const now = this._readNow(u.key);
-      const recut = now === undefined ? null : (this._recut?.(u.shape, u.key) ?? null);
+      const recut = now === undefined ? null : this._recutSince(u.shape, u.key);
       if (recut != null) {
         this._conflict(u.key, u.typed, now, recut, null, true);
         changed = true;

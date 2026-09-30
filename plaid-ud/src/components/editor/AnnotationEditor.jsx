@@ -4,10 +4,9 @@ import { needsReview } from '@larc-iu/plaid-client';
 import { ParseDialog } from './services/ParseDialog.jsx';
 import { SentenceRow } from './annotation/SentenceRow.jsx';
 import { EditorSessionContext } from './annotation/editorSession.js';
-import { UnsentValues } from './annotation/unsentValues.js';
-import { whoChanged, changedTo, recutTo } from '@ui/lib/cellConflict.js';
-import { writeCell } from './annotation/conflictNotice.js';
-import { notifyWarning } from '../../utils/feedback.jsx';
+import { announceCells } from '@ui/lib/cellConflict.js';
+import { useCellEngine } from '@ui/hooks/useCellEngine.js';
+import { notifyWarning, notifyError } from '../../utils/feedback.jsx';
 import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
@@ -232,7 +231,8 @@ export const AnnotationEditor = () => {
   // re-renders (isSaving/error emits), so the memoized sentence/cell subtree
   // isn't re-rendered mid-edit — otherwise focus jitters during the save.
   const handleAnnotationUpdate = useCallback(
-    (tokenId, field, value) => (doc ? writeCell(doc, tokenId, field, value) : undefined),
+    (tokenId, field, value) =>
+      doc ? doc.cellWrite(() => doc.updateAnnotation(tokenId, field, value)) : undefined,
     [doc],
   );
   const handleFeatureDelete = useCallback((spanId) => doc?.deleteFeature(spanId), [doc]);
@@ -297,64 +297,74 @@ export const AnnotationEditor = () => {
     [project?.config],
   );
 
-  // Values put back after they were not saved, for the whole grid, so one on a
-  // page the reader has turned away from waits for its cell and still counts
-  // as typed and not saved. Let go of with the grid, and each one once its
-  // token is gone. One per document: another document is another grid.
-  //
-  // A value refused over one someone else has stored since is a conflict
-  // (see unsentValues.js), and a toast names who changed it and to what.
-  const conflictContext = useRef(null);
-  conflictContext.current = { client: getClient(), documentId, me: user?.id };
-  const unsent = useMemo(() => {
-    const tokenData = (tokenId) => {
-      for (const sentence of doc?.sentences || []) {
-        for (const data of sentence.tokens || []) {
-          if (String(data.token?.id) === String(tokenId)) return data;
+  // What becomes of a cell's refused edit, for the whole grid (plaid-ui
+  // cells/CellEngine.js), so a value put back on a page the reader has turned
+  // away from waits for its cell and still counts as typed and not saved. A
+  // value refused over one someone else has stored since is a conflict, and a
+  // toast names who changed it and to what. One per document: another
+  // document is another grid. A cell's key is `<token id>:<field>`, and a
+  // token id may hold a colon (`pending:<n>`), a field never does.
+  // Read when an answer comes, which can be before this component has drawn
+  // the document it answers about, so it goes by the document's own version.
+  const tokenData = useMemo(() => {
+    let version = -1;
+    let byId = new Map();
+    return (tokenId) => {
+      if (!doc) return undefined;
+      if (doc.dataVersion !== version) {
+        version = doc.dataVersion;
+        byId = new Map();
+        for (const sentence of doc.sentences || []) {
+          for (const data of sentence.tokens || []) byId.set(String(data.token?.id), data);
         }
       }
-      return undefined;
+      return byId.get(String(tokenId));
     };
-    return new UnsentValues(
-      (tokenId, field) => {
-        const data = tokenData(tokenId);
-        return data ? data[field]?.value || '' : undefined;
-      },
-      {
-        onConflict: (tokenId, field, stored, _typed, recut) => {
-          const { client, documentId: id, me } = conflictContext.current;
-          const spanId = tokenData(tokenId)?.[field]?.id;
-          whoChanged(client, id, [spanId], me)
-            .catch(() => null)
-            .then((who) =>
-              notifyWarning(recut != null ? recutTo(who, recut) : changedTo(who, stored)),
-            );
-        },
-        // A word split or joined since a value was typed for it: its text, or
-        // how much of it the token covers, changed.
-        tokenShape: (tokenId) => {
-          const data = tokenData(tokenId);
-          if (!data) return undefined;
-          const { begin, end } = data.token;
-          return { key: `${data.wordForm}\u0000${end - begin}`, text: data.wordForm };
-        },
-      },
-    );
   }, [doc]);
-  useEffect(() => () => unsent.clear(), [unsent]);
+  const cellOf = (key) => {
+    const at = key.lastIndexOf(':');
+    return { data: tokenData(key.slice(0, at)), field: key.slice(at + 1) };
+  };
+  // A word split or joined since a value was typed for it: its text, or how
+  // much of it the token covers, changed.
+  const shapeOf = (data) => `${data.wordForm}\u0000${data.token.end - data.token.begin}`;
+  const conflictContext = useRef(null);
+  conflictContext.current = { client: getClient(), documentId, me: user?.id };
+  const cells = useCellEngine(doc, {
+    read: (key) => {
+      const { data, field } = cellOf(key);
+      return data ? data[field]?.value || '' : undefined;
+    },
+    shape: (key) => {
+      const { data } = cellOf(key);
+      return data ? shapeOf(data) : null;
+    },
+    recut: (snapshot, key) => {
+      const { data } = cellOf(key);
+      return snapshot != null && data && shapeOf(data) !== snapshot
+        ? { unit: 'word', text: data.wordForm }
+        : null;
+    },
+    entityIds: (key) => {
+      const { data, field } = cellOf(key);
+      return [data?.[field]?.id];
+    },
+    announce: announceCells({
+      get client() {
+        return conflictContext.current.client;
+      },
+      get documentId() {
+        return conflictContext.current.documentId;
+      },
+      get me() {
+        return conflictContext.current.me;
+      },
+      warn: (message) => notifyWarning(message),
+      error: (message, title) => notifyError(message, title),
+    }),
+  });
   // The question they ask before leaving is the app's confirm.
   useUnsavedGuard();
-  useEffect(() => {
-    if (!unsent.size || !doc) return;
-    const stored = new Map();
-    for (const sentence of doc.sentences || []) {
-      for (const data of sentence.tokens || []) stored.set(String(data.token?.id), data);
-    }
-    unsent.prune((tokenId, field) => {
-      const data = stored.get(String(tokenId));
-      return data ? data[field]?.value || '' : undefined;
-    });
-  }, [unsent, doc, dataVersion]);
 
   // Everything the grid reads that is the same for every sentence in it. One
   // object, so a row's own props are the sentence and where it sits, and a cell
@@ -385,7 +395,7 @@ export const AnnotationEditor = () => {
       onAskAssistant:
         isViewingHistorical || !assistantAvailable || !roomToDock ? undefined : askAssistant,
       onToggleField: handleToggleField,
-      unsent,
+      cells,
       comments: isViewingHistorical ? null : comments,
       canComment,
       canDeleteAnyComment,
@@ -422,7 +432,7 @@ export const AnnotationEditor = () => {
       roomToDock,
       askAssistant,
       handleToggleField,
-      unsent,
+      cells,
       comments,
       canComment,
       canDeleteAnyComment,

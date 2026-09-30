@@ -3,9 +3,8 @@ import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { type, focus, blur, press } from '../../../test/keyboard.js';
 import { EditableCell } from './EditableCell.jsx';
 import { EditorSessionContext } from './editorSession.js';
-import { UnsentValues } from './unsentValues.js';
+import { testCells } from '../../../test/cells.js';
 import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
-import { writeCell } from './conflictNotice.js';
 
 // An edit refused because someone else changed the same cell first (a 409 on
 // a stale document, V3 H3-1, V1-S2, H6-5). The refetch that follows the
@@ -26,24 +25,30 @@ vi.mock('../../../utils/feedback.jsx', () => feedback);
 
 const VOCAB = { upos: ['NOUN', 'VERB', 'ADV', 'PROPN'], xpos: ['NNB', 'NNC', 'NN'] };
 
-// The grid's stored values, which the fix may read through `UnsentValues`
-// (the same reader `prune` gets). `undefined` for a token no longer there.
-// Every store a test makes is let go of after it, so no test's leave question
-// is read by the next.
+// The grid's stored values, which the cell engine reads (`undefined` for a
+// token no longer there). Every engine a test makes is let go of after it, so
+// no test's leave question is read by the next.
 const stores = [];
-const made = (unsent) => {
-  stores.push(unsent);
-  return unsent;
+const made = (cells) => {
+  stores.push(cells);
+  return cells;
 };
 afterEach(() => {
-  for (const unsent of stores.splice(0)) unsent.clear();
+  for (const cells of stores.splice(0)) cells.clear();
   feedback.notifyError.mockReset();
+  feedback.notifyWarning.mockReset();
 });
 
 const makeSession = (onAnnotationUpdate, stored) => ({
   isReadOnly: false,
   onAnnotationUpdate,
-  unsent: made(new UnsentValues((tokenId, field) => stored.get(`${tokenId}:${field}`))),
+  cells: made(
+    testCells({
+      read: (key) => stored.get(key),
+      warn: feedback.notifyWarning,
+      error: feedback.notifyError,
+    }),
+  ),
   vocab: VOCAB,
   validators: {},
   descriptions: {},
@@ -85,7 +90,7 @@ async function lostTo({
   refocused = false,
   away = false,
   gone = false,
-  refusal = false,
+  refusal = { landed: false },
   refetches = true,
 }) {
   let answer;
@@ -124,7 +129,7 @@ async function lostTo({
     view = await renderComponent(cellWith(s, field, winner));
     input = inputOf(view);
   }
-  onAnnotationUpdate.mockImplementation(() => Promise.resolve(true));
+  onAnnotationUpdate.mockImplementation(() => Promise.resolve({ landed: true }));
   return { view, input, s, stored, onAnnotationUpdate };
 }
 
@@ -162,7 +167,7 @@ describe('an edit refused because someone else changed the cell first', () => {
         // Leaving without a word keeps the note.
         expect(noteOf(run.view)).not.toBe(null);
         await run.view.unmount();
-        run.s.unsent.clear();
+        run.s.cells.clear();
       });
     }
 
@@ -173,7 +178,7 @@ describe('an edit refused because someone else changed the cell first', () => {
       await run.view.step(async () => blur(run.input));
       expect(run.onAnnotationUpdate).toHaveBeenCalledTimes(1);
       await run.view.unmount();
-      run.s.unsent.clear();
+      run.s.cells.clear();
     });
 
     it(`${c.field}: paged away when the answer comes, leaving it once drawn again does not write it`, async () => {
@@ -181,7 +186,7 @@ describe('an edit refused because someone else changed the cell first', () => {
       showsTheirs(run, c);
       await leaveSendsNothing(run);
       await run.view.unmount();
-      run.s.unsent.clear();
+      run.s.cells.clear();
     });
   }
 
@@ -220,6 +225,44 @@ describe('an edit refused because someone else changed the cell first', () => {
     await run.view.unmount();
   });
 
+  // Unified with plaid-igt: the first keystroke lets the note go.
+  it('the note goes at the first keystroke typed over theirs', async () => {
+    const run = await lostTo(CASES[0]);
+    await run.view.step(async () => focus(run.input));
+    await run.view.step(async () => type(run.input, 's'));
+    expect(noteOf(run.view)).toBe(null);
+    expect(run.input.classList.contains('editable-field--conflict')).toBe(false);
+    await run.view.unmount();
+  });
+
+  // Unified with plaid-igt: newer text typed into the focused cell when the
+  // refusal of the older edit lands wins, silently, and leaving sends it.
+  it('newer typing in the focused cell when the refusal lands wins, with no note', async () => {
+    let answer;
+    const onAnnotationUpdate = vi.fn(() => new Promise((r) => (answer = r)));
+    const stored = new Map([['t1:lemma', 'sit']]);
+    const s = makeSession(onAnnotationUpdate, stored);
+    const view = await renderComponent(cellWith(s, 'lemma', 'sit'));
+    const input = inputOf(view);
+    await view.step(async () => focus(input));
+    await view.step(async () => type(input, 'sitC'));
+    await view.step(async () => blur(input));
+    stored.set('t1:lemma', 'sitC');
+    await view.rerender(cellWith(s, 'lemma', 'sitC'));
+    await view.step(async () => focus(input));
+    await view.step(async () => type(input, 'sitD'));
+    stored.set('t1:lemma', 'sitB');
+    await view.rerender(cellWith(s, 'lemma', 'sitB'));
+    await view.step(async () => answer({ landed: false, status: 409, readBack: true }));
+    expect(noteOf(view)).toBe(null);
+    expect(input.value).toBe('sitD');
+    expect(feedback.notifyWarning).not.toHaveBeenCalled();
+    onAnnotationUpdate.mockImplementation(() => Promise.resolve({ landed: true }));
+    await view.step(async () => blur(input));
+    expect(onAnnotationUpdate).toHaveBeenLastCalledWith('t1', 'lemma', 'sitD');
+    await view.unmount();
+  });
+
   it('the note goes when the stored value moves on again', async () => {
     const run = await lostTo(CASES[0]);
     run.stored.set('t1:lemma', 'sitD');
@@ -231,11 +274,20 @@ describe('an edit refused because someone else changed the cell first', () => {
 
   it('names the change to whoever listens for conflicts', async () => {
     const heard = [];
-    const unsent = made(
-      new UnsentValues(() => 'sitB', { onConflict: (...args) => heard.push(args) }),
-    );
-    unsent.put('t1', 'lemma', 'sitC', 'sit');
-    expect(heard).toEqual([['t1', 'lemma', 'sitB', 'sitC', null]]);
+    const cells = made(testCells({ read: () => 'sitB', heard }));
+    const ticket = cells.sending('t1:lemma', { saved: 'sit', typed: 'sitC' });
+    cells.settle(ticket, { landed: false, status: 409, readBack: true });
+    expect(heard).toMatchObject([{ key: 't1:lemma', stored: 'sitB', typed: 'sitC', recut: null }]);
+  });
+
+  // Unified with plaid-igt: a 409 for a word that is gone names what was lost.
+  it('says what was not saved when its word is gone', async () => {
+    await lostTo({
+      ...CASES[0],
+      gone: true,
+      refusal: { landed: false, status: 409, readBack: true },
+    });
+    expect(feedback.notifyError).toHaveBeenCalledWith('Not saved: sitC', 'Changed elsewhere');
   });
 
   it('does not leave a question about leaving for a word that is gone', async () => {
@@ -248,7 +300,7 @@ describe('an edit refused because someone else changed the cell first', () => {
     expect(run.input.value).toBe('sitB');
     expect(hasUnsavedDraft()).toBe(null);
     await run.view.unmount();
-    run.s.unsent.clear();
+    run.s.cells.clear();
   });
 
   // V3-a: the grid lets go of what waits on its next save. A cell that still
@@ -257,13 +309,11 @@ describe('an edit refused because someone else changed the cell first', () => {
     for (const order of ['refetch-first', 'answer-first']) {
       const run = await lostTo({ ...CASES[0], order });
       // The grid's prune on the next save anywhere in the document.
-      await run.view.step(async () =>
-        run.s.unsent.prune((tokenId, field) => run.stored.get(`${tokenId}:${field}`)),
-      );
+      await run.view.step(async () => run.s.cells.reconcile());
       const shown = run.input.value;
       if (shown !== 'sitB') expect(hasUnsavedDraft()).not.toBe(null);
       await run.view.unmount();
-      run.s.unsent.clear();
+      run.s.cells.clear();
     }
   });
 });
@@ -278,7 +328,7 @@ describe('an edit refused for good', () => {
         before: 'the',
         typed: 'THE',
         winner: 'the',
-        refusal: { refused: true, status },
+        refusal: { landed: false, status },
       });
       expect(run.input.value).toBe('the');
       expect(hasUnsavedDraft()).toBe(null);
@@ -295,7 +345,7 @@ describe('an edit refused for good', () => {
       winner: 'the',
       order: 'answer-first',
       refetches: false,
-      refusal: { refused: true, status: 403 },
+      refusal: { landed: false, status: 403 },
     });
     expect(run.input.value).toBe('the');
     expect(hasUnsavedDraft()).toBe(null);
@@ -303,7 +353,7 @@ describe('an edit refused for good', () => {
   });
 
   it('still turns into a conflict when someone else changed the cell (a 403 read as changed)', async () => {
-    const run = await lostTo({ ...CASES[0], refusal: { refused: true, status: 403 } });
+    const run = await lostTo({ ...CASES[0], refusal: { landed: false, status: 403 } });
     showsTheirs(run, CASES[0]);
     await run.view.unmount();
   });
@@ -321,58 +371,14 @@ describe('an edit refused with the cell unchanged on the server', () => {
     await run.view.step(async () => blur(run.input));
     expect(run.onAnnotationUpdate).toHaveBeenLastCalledWith('t1', 'lemma', 'sitC');
     await run.view.unmount();
-    run.s.unsent.clear();
-  });
-});
-
-// The same rule held by the grid's store itself, for every way in.
-describe('UnsentValues and the value stored now', () => {
-  const store = (stored) =>
-    made(new UnsentValues((tokenId, field) => stored[`${tokenId}:${field}`]));
-
-  it('holds nothing put back over a value someone else has since stored', () => {
-    const unsent = store({ 't1:lemma': 'sitB' });
-    unsent.put('t1', 'lemma', 'sitC', 'sit');
-    expect(unsent.get('t1', 'lemma')).toBe(null);
-    expect(hasUnsavedDraft()).toBe(null);
-    unsent.clear();
-  });
-
-  it('holds nothing put back for a token that is gone', () => {
-    const unsent = store({});
-    unsent.put('t1', 'lemma', 'sitC', 'sit');
-    expect(unsent.get('t1', 'lemma')).toBe(null);
-    expect(hasUnsavedDraft()).toBe(null);
-    unsent.clear();
-  });
-
-  it('holds a value put back while the stored value is still the one it was typed over', () => {
-    const unsent = store({ 't1:lemma': 'sit' });
-    unsent.put('t1', 'lemma', 'sitC', 'sit');
-    expect(unsent.get('t1', 'lemma')).toEqual({ typed: 'sitC', saved: 'sit' });
-    unsent.clear();
-  });
-
-  it('tells a drawn cell when the grid lets go of its value', () => {
-    const unsent = store({ 't1:lemma': 'sit' });
-    const heard = [];
-    unsent.listen('t1', 'lemma', (put) => {
-      heard.push(put);
-      return false;
-    });
-    unsent.put('t1', 'lemma', 'sitC', 'sit');
-    unsent.prune(() => 'sitB');
-    expect(unsent.get('t1', 'lemma')).toBe(null);
-    // The cell heard the put, and then that it was let go.
-    expect(heard.length).toBe(2);
-    unsent.clear();
+    run.s.cells.clear();
   });
 });
 
 // The document leaves a conflict (409) on a cell write to the cell, so there
 // is one toast, not the document's "Redo your edit" beside the cell's own.
 describe('the toast for a refused cell edit', () => {
-  const conflict409 = { refused: true, status: 409, error: { status: 409 } };
+  const conflict409 = { landed: false, status: 409, error: { status: 409 } };
 
   it("is the cell's alone when the cell lost to another user", async () => {
     const run = await lostTo({ ...CASES[0], refusal: conflict409 });
@@ -396,52 +402,5 @@ describe('the toast for a refused cell edit', () => {
       'Failed to update lemma',
     );
     await run.view.unmount();
-  });
-});
-
-describe('writeCell', () => {
-  const fakeDoc = (answer, cause) => {
-    const doc = {
-      scoped: false,
-      errorCause: cause,
-      handlesConflicts(fn) {
-        this.scoped = true;
-        try {
-          return fn();
-        } finally {
-          this.scoped = false;
-        }
-      },
-      updateAnnotation: vi.fn(function () {
-        // The write is queued inside the scope.
-        expect(doc.scoped).toBe(true);
-        return Promise.resolve(answer);
-      }),
-    };
-    return doc;
-  };
-
-  it('writes inside handlesConflicts and answers what the write did', async () => {
-    const doc = fakeDoc(true);
-    expect(await writeCell(doc, 't1', 'lemma', 'wolf')).toBe(true);
-    expect(doc.updateAnnotation).toHaveBeenCalledWith('t1', 'lemma', 'wolf');
-  });
-
-  it('answers a refusal with its status and error', async () => {
-    const err = new Error('HTTP 409 Document version mismatch');
-    const doc = fakeDoc(false, err);
-    expect(await writeCell(doc, 't1', 'lemma', 'wolf')).toEqual({
-      refused: true,
-      status: 409,
-      error: err,
-      readBack: true,
-    });
-  });
-
-  it('says when the refetch after a refusal was given up', async () => {
-    const err = new Error('HTTP 500');
-    const doc = fakeDoc(false, err);
-    doc.outOfStep = true;
-    expect((await writeCell(doc, 't1', 'lemma', 'wolf')).readBack).toBe(false);
   });
 });

@@ -387,12 +387,16 @@ describe('cell keys', () => {
   it('a pending id and the id the server gave it are one record', () => {
     const pending = pendingId();
     const doc = { [`ma:${pending}:Gloss`]: 'a' };
-    const { engine } = setup({ read: (key) => doc[key] ?? doc[key.replace(pending, 'server-1')] });
+    const { engine } = setup({ read: (key) => doc[key] });
     const t = engine.sending(`ma:${pending}:Gloss`, { saved: 'a', typed: 'b' });
+    // The server answered the create: the document holds the row by its id.
     recordSettled([[pending, 'server-1']]);
-    engine.settle(t, refused(500));
+    doc['ma:server-1:Gloss'] = 'a';
+    delete doc[`ma:${pending}:Gloss`];
+    expect(engine.settle(t, refused(500)).kind).toBe('putBack');
     expect(engine.unsentOf('ma:server-1:Gloss')).toEqual({ typed: 'b', saved: 'a' });
     expect(engine.unsentOf(`ma:${pending}:Gloss`)).toEqual({ typed: 'b', saved: 'a' });
+    expect(engine.reconcile()).toBe(false);
   });
 });
 
