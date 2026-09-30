@@ -60,6 +60,30 @@ describe('SaveStatus', () => {
     await view.unmount();
   });
 
+  // REV4 J5: nothing about the document changes while a send is retried, so
+  // the wording follows the browser's online and offline events.
+  it('changes its wording when the browser goes offline or comes back, with nothing else changing', async () => {
+    const doc = fakeDoc();
+    doc.set({ isSaving: true, isOffline: true });
+    const view = await renderComponent(<SaveStatus doc={doc} />);
+    const status = view.container.querySelector('[role="status"]');
+    expect(status.textContent).toBe("Can't reach the server, retrying");
+    const online = Object.getOwnPropertyDescriptor(window.navigator, 'onLine');
+    let isOnline = false;
+    Object.defineProperty(window.navigator, 'onLine', { configurable: true, get: () => isOnline });
+    try {
+      await view.step(() => window.dispatchEvent(new Event('offline')));
+      expect(status.textContent).toBe('Offline, retrying');
+      isOnline = true;
+      await view.step(() => window.dispatchEvent(new Event('online')));
+      expect(status.textContent).toBe("Can't reach the server, retrying");
+    } finally {
+      if (online) Object.defineProperty(window.navigator, 'onLine', online);
+      else delete window.navigator.onLine;
+    }
+    await view.unmount();
+  });
+
   it('renders nothing without a document', async () => {
     const view = await renderComponent(<SaveStatus doc={null} />);
     expect(view.container.textContent).toBe('');

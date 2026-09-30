@@ -107,6 +107,27 @@ describe('the save-status pill', () => {
     expect(pill().dataset.state).toBe('saved');
   });
 
+  // REV4 J5: the wording follows the browser's online and offline events.
+  it('changes its wording when the browser goes offline or comes back', () => {
+    const doc = mount();
+    saving(doc, true);
+    offline(doc, true);
+    editor._syncStatus();
+    const online = Object.getOwnPropertyDescriptor(window.navigator, 'onLine');
+    let isOnline = false;
+    Object.defineProperty(window.navigator, 'onLine', { configurable: true, get: () => isOnline });
+    try {
+      window.dispatchEvent(new Event('offline'));
+      expect(pill().textContent).toBe('Offline, retrying');
+      isOnline = true;
+      window.dispatchEvent(new Event('online'));
+      expect(pill().textContent).toBe("Can't reach the server, retrying");
+    } finally {
+      if (online) Object.defineProperty(window.navigator, 'onLine', online);
+      else delete window.navigator.onLine;
+    }
+  });
+
   it('follows the queue into the offline state through the document', async () => {
     const doc = mount();
     saving(doc, true);

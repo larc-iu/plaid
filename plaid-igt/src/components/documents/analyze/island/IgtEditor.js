@@ -48,6 +48,7 @@ import { vocabPopover } from './editor/vocabPopover.js';
 import { conflicts } from './editor/conflicts.js';
 import { cellEntityIds, readCell, recutOf, shapeOf } from './editor/cellReader.js';
 import { keys } from '@/lib/keymap.js';
+import { onOnlineChange } from '@ui/lib/retrying.js';
 
 export class IgtEditor {
   constructor(
@@ -148,6 +149,9 @@ export class IgtEditor {
       this._scheduleRender();
     };
     this._unsub = doc.subscribe(this._onChange);
+    // The retrying pill names the browser's network, which changes with
+    // nothing else (retrying.js).
+    this._unsubOnline = onOnlineChange(() => this._paintStatus());
     // Badges and an open thread repaint when a comment lands — including one
     // that arrived from someone else over SSE. Forced, because comments do not
     // touch doc.dataVersion (that is the point of them being separate).
@@ -405,6 +409,8 @@ export class IgtEditor {
     this._altsRoot = null;
     if (this._unsub) this._unsub();
     this._unsub = null;
+    this._unsubOnline?.();
+    this._unsubOnline = null;
     if (this._unsubComments) this._unsubComments();
     this._unsubComments = null;
     this._releaseCommentLive?.();

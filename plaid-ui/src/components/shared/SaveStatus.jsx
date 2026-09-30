@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { retryingText } from '../../lib/retrying.js';
+import { isOnline, onOnlineChange, retryingText } from '../../lib/retrying.js';
 
 const noSubscribe = () => () => {};
 const noSnapshot = () => 0;
@@ -15,6 +15,8 @@ const noSnapshot = () => 0;
  */
 export const SaveStatus = ({ doc }) => {
   useSyncExternalStore(doc?.subscribe ?? noSubscribe, doc?.getSnapshot ?? noSnapshot);
+  // The wording names the browser's network, which changes with nothing else.
+  useSyncExternalStore(onOnlineChange, isOnline);
   if (!doc) return null;
   const offline = doc.isSaving && doc.isOffline;
   return (
