@@ -1376,14 +1376,15 @@ def _entry_links_now(client, project, op) -> List[str]:
 def create_document(client, project, name: str, text: str, metadata: Dict[str, Any], new_id):
     """Document + baseline text + sentence and word tokens, tokenized as the
     editor would (one sentence per line, words split on whitespace and
-    punctuation). Each is made under an id from ``new_id()``. Returns the new
+    punctuation). Each is made under an id from ``new_id()`` (a :class:`Minter`),
+    and one an earlier run of the plan made is taken as made. Returns the new
     document id."""
     doc_id = new_id()
     # No metadata is none sent: a null is refused as a metadata map.
     if metadata:
-        client.documents.create(project.id, name, metadata, id=doc_id)
+        new_id.once(lambda: client.documents.create(project.id, name, metadata, id=doc_id))
     else:
-        client.documents.create(project.id, name, id=doc_id)
+        new_id.once(lambda: client.documents.create(project.id, name, id=doc_id))
     try:
         _seed_text(client, project, doc_id, text, new_id)
     except Exception:
@@ -1407,7 +1408,7 @@ def _seed_text(client, project, doc_id: str, text: str, new_id) -> str:
     batch."""
     from .project import split_sentences, split_words
     text_id = new_id()
-    client.texts.create(project.text_layer_id, doc_id, text, id=text_id)
+    new_id.once(lambda: client.texts.create(project.text_layer_id, doc_id, text, id=text_id))
     lines = split_sentences(text)
     if not lines:
         return text_id
@@ -1418,10 +1419,12 @@ def _seed_text(client, project, doc_id: str, text: str, new_id) -> str:
     words = [{'token_layer_id': project.word_layer_id, 'text': text_id, 'begin': wb, 'end': we,
               'id': new_id()}
              for b, e in lines for wb, we in split_words(text, b, e, project.ignored_cfg)]
-    with client.batched() as batch:
-        batch.tokens.bulk_create(sentences)
-        if words:
-            batch.tokens.bulk_create(words)
+    def tokens():
+        with client.batched() as batch:
+            batch.tokens.bulk_create(sentences)
+            if words:
+                batch.tokens.bulk_create(words)
+    new_id.once(tokens)
     return text_id
 
 
@@ -1495,7 +1498,7 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
     sents = sorted((t['begin'], t['end'], t['id']) for t in (sent_layer or {}).get('tokens') or [])
     if not sents and new_body:
         made = new_id()
-        client.tokens.create(project.sentence_layer_id, text_id, 0, len(new_body), id=made)
+        new_id.once(lambda: client.tokens.create(project.sentence_layer_id, text_id, 0, len(new_body), id=made))
         sents = [(0, len(new_body), made)]
     for p in _line_starts(new_body, b, region_end):
         hit = next((s for s in sents if s[0] < p < s[1]), None)
@@ -1504,7 +1507,7 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
             continue
         sb, se, sid = hit
         made = new_id()
-        client.tokens.split(sid, p, id=made)
+        new_id.once(lambda: client.tokens.split(sid, p, id=made))
         sents.remove(hit)
         sents.extend([(sb, p, sid), (p, se, made)])
         sents.sort()
@@ -1516,7 +1519,7 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
                         'id': new_id()}
                        for wb, we in split_words(new_body, gb, ge, project.ignored_cfg))
     if creates:
-        client.tokens.bulk_create(creates)
+        new_id.once(lambda: client.tokens.bulk_create(creates))
 
 
 def _region_edits(old: str, new: str, at: int) -> List[Dict[str, Any]]:

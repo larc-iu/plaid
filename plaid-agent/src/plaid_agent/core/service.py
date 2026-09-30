@@ -79,8 +79,8 @@ from .conversation import (ConversationStore, MissingConversation, assistant_ite
                            find_plan, partial_note, partial_tally, proposed_changes, prune, record_budget,
                            settle_plan)
 from .opkind import ROW
-from .plan import (DocumentsBusy, PlanError, PlanOutOfDate, ScopeMoved, documents_to_lock, holding,
-                   outcome_unknown)
+from .plan import (DocumentsBusy, PlanError, PlanOutOfDate, ScopeMoved, documents_to_lock, drawable,
+                   forget_held, held_from, holding, outcome_unknown)
 from .web import BACKENDS, WebConfig, session_for, ping as ping_search
 
 
@@ -681,7 +681,9 @@ class BaseAssistantService(BaseService):
         # settled as out of date, not written under the wrong name. Asked here,
         # before the locks, or the lookup failed inside them as a KeyError and
         # the card kept offering an Approve that failed the same way.
-        if not item.get('service'):
+        # Nor can a plan whose id is not a UUIDv7, which the ids of what it
+        # creates are drawn from (`core.plan.Minter`).
+        if not item.get('service') or not drawable(plan_id):
             said = 'This plan was made by an earlier version of the assistant.'
             settled(settle_plan(conv, index, 'stale', f'(note) The plan was not applied: {said} Nothing was written.'))
             response_helper.error(f'Nothing was written. {said} Ask the assistant to plan again.')
@@ -705,10 +707,17 @@ class BaseAssistantService(BaseService):
         # released: a lock that lapsed refuses every later write this client
         # makes while the block runs, the record's too, which would leave the
         # card pending over a plan that stopped partway.
+        def remember():
+            """Write the record as it stands, the approval still pending."""
+            return self._write(store, conv_id, conv,
+                               build_meta(meta, conv_id, conv, self.service_id, model,
+                                          pending=(meta or {}).get('pending'), version=self.version),
+                               request_id)
+
         try:
             with holding(client, self.documents_to_lock(ops, documents)):
                 counts = self._check_and_execute(client, project, ops, documents, plan_id, summary,
-                                                 index, conv, settled, stamp_mode, contributor, store,
+                                                 index, conv, settled, remember, stamp_mode, contributor, store,
                                                  response_helper, conv_id, proposed_by(item),
                                                  item['service'])
         except DocumentsBusy as e:
@@ -753,7 +762,7 @@ class BaseAssistantService(BaseService):
         })
 
     def _check_and_execute(self, client, project, ops, documents, plan_id, summary, index, conv,
-                           settled, stamp_mode, contributor, store,
+                           settled, remember, stamp_mode, contributor, store,
                            response_helper, conv_id, detail, proposer):
         """The staleness check and the writes, under the documents' locks.
         ``detail`` and ``proposer`` are the model and version, and the service
@@ -778,6 +787,7 @@ class BaseAssistantService(BaseService):
         stale = self._stale(client, project, documents)
         if stale:
             return out_of_date(stale)
+        held_from(client, documents, remember)
         response_helper.progress(10, 'Applying changes…')
         # One operation of kind assistant-plan, naming the conversation, the
         # plan and the assistant that proposed it, so the audit log says which
@@ -787,10 +797,11 @@ class BaseAssistantService(BaseService):
         ref = f'conv:{conv_id}/plan:{plan_id}/{source}'
         try:
             # Keyed by the plan's id, and every row it creates is named by an
-            # id drawn from it (`core.plan.Minter`): applied again, it sends
-            # the same writes, each answered from its first send or refused as
-            # a taken id, so nothing is made twice. The stamps start empty on
-            # each run, so a write refused last time claims the version now.
+            # id drawn from it (`core.plan.Minter`). Applied again, from the
+            # versions its first run held (`held_from`), it sends the same
+            # requests: one that landed is answered from its first send, and a
+            # create whose key is gone is refused as a taken id, which the
+            # executor takes as made. Nothing is made twice.
             keys = {'seed': plan_id, 'stamps': {}}
             with client.operation(label, kind='assistant-plan', ref=ref, keys=keys) as operation:
                 # Each op names its row on the card, so a plan that stops
@@ -832,6 +843,9 @@ class BaseAssistantService(BaseService):
             def failed(e=e):
                 why = 'the server did not answer' if e.unknown else _failure(client, documents, e)
                 if not written:
+                    # Nothing landed, so the next approval holds the versions
+                    # the documents have then.
+                    forget_held(documents)
                     settled()
                     response_helper.error(f'Failed to apply the plan: {why}. Nothing was written.')
                     return
@@ -867,6 +881,7 @@ class BaseAssistantService(BaseService):
             return failed
         except ValueError as e:
             def rejected(e=e):
+                forget_held(documents)
                 settled()
                 response_helper.error(f'The plan was rejected before anything was written: {e}')
             return rejected

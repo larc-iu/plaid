@@ -214,7 +214,12 @@ def test_the_igt_links_name_the_morpheme_and_the_entry_the_plan_made():
 class _Server:
     """The core's rule on a create naming an id: a used id is refused 409
     ``id-taken``, and a batch holding one is refused whole. ``lose`` is how
-    many sends commit and lose their answer."""
+    many sends commit and lose their answer.
+
+    The fake keeps no Idempotency-Keys, so every resend meets the id rule:
+    the case of a key past its 24 hours, or a batch of comments alone, which
+    takes a key of its own. Within the day the core answers a resent keyed
+    request from its first send instead."""
 
     def __init__(self, monkeypatch):
         self.made = []   # every id a committed create made, in order
@@ -263,6 +268,8 @@ class _Server:
 def test_a_plan_whose_answer_was_lost_applied_again_makes_each_row_once(app, monkeypatch):
     make, run = RUNS[app]
     seed = uuid7()
+    whole = make()
+    run(whole, seed)
     client = make()
     server = _Server(monkeypatch)
     server.lose = 1
@@ -271,12 +278,49 @@ def test_a_plan_whose_answer_was_lost_applied_again_makes_each_row_once(app, mon
     assert caught.value.unknown
     made = list(server.made)
     assert made
-    # Applied again, as a service that restarted before the record said so would.
-    with pytest.raises(core_plan.PlanError) as again:
-        run(client, seed)
-    assert again.value.__cause__.response_data['error'] == 'id-taken'
+    # Applied again, as a service that restarted before the record said so
+    # would: what the first run made is taken as made, and the rest is written.
+    run(client, seed)
     assert len(set(server.made)) == len(server.made), 'no row was made twice'
     assert server.made[:len(made)] == made
+    assert set(server.made) == {i for _, ids in _creates(whole) for i in ids}, 'the whole plan'
+
+
+@pytest.mark.parametrize('app', sorted(RUNS))
+def test_a_plan_applied_whole_and_applied_again_makes_nothing_more(app, monkeypatch):
+    """Every create of the second run, batched or made on the client (a new
+    document and its text), is refused as taken and taken as made."""
+    make, run = RUNS[app]
+    seed = uuid7()
+    client = make()
+    server = _Server(monkeypatch)
+    run(client, seed)
+    made = list(server.made)
+    run(client, seed)
+    assert server.made == made
+
+
+def test_a_plan_past_the_budget_finishes_when_applied_again(monkeypatch):
+    """The first batch committed and its answer was lost, so the later ones
+    were never sent. Applied again, the first is taken as made and the rest
+    are written (M6: it said "Nothing was written" and could never finish)."""
+    from test_one_change_per_batch import _budget
+    from plaid_agent.igt.plan import execute_plan
+    from plaid_agent.igt.project import load_project
+    _budget(monkeypatch, 1)
+    ops = [{'kind': 'add_guideline', 'title': t, 'body': 'b', 'label': ''} for t in ('One', 'Two', 'Three')]
+    seed = uuid7()
+    client = FakeClient()
+    server = _Server(monkeypatch)
+    server.lose = 1
+    with pytest.raises(core_plan.PlanError):
+        execute_plan(client, ops, source='s', label='l', project=load_project(client, 'p1'), seed=seed)
+    assert len(server.made) == 1
+    counts = execute_plan(client, ops, source='s', label='l', project=load_project(client, 'p1'), seed=seed)
+    assert counts == {'guidelines': 3}
+    assert len(server.made) == 3 == len(set(server.made))
+    assert sorted(r['title'] for r in client.guideline_rows) == ['Glossing', 'One', 'Orthography',
+                                                                 'Three', 'Translations', 'Two']
 
 
 def test_approving_keys_the_writes_and_draws_the_ids_from_the_plans_id(monkeypatch):
@@ -305,7 +349,8 @@ def test_approving_keys_the_writes_and_draws_the_ids_from_the_plans_id(monkeypat
 def test_an_approval_run_again_after_a_restart_makes_nothing_twice(app, monkeypatch):
     """The first approval commits and loses its answer. The service restarts
     before the record says what happened, so the card still offers Approve,
-    and the user approves again: the same creates go out and are refused."""
+    and the user approves again: the same creates go out, are refused as
+    taken, and the plan settles as applied."""
     spec = sbs.APPS[app]()
     client = spec['client']()
     tool = {'igt': ('set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'fish'}),
@@ -330,8 +375,88 @@ def test_an_approval_run_again_after_a_restart_makes_nothing_twice(app, monkeypa
     helper = sbs._approve(spec, client, plan)
     assert len(set(server.made)) == len(server.made), 'no row was made twice'
     assert server.made == made
-    [said] = helper.errors
-    assert 'Nothing was written' in said
+    assert not helper.errors, helper.errors
+    [done] = helper.done
+    assert done['kind'] == 'applied' and done['message'].startswith('Applied'), done
+    conv, _ = sbs.ConversationStore(client, 'u@x', spec['pid'], spec['app']).load('c1')
+    assert conv['display'][1]['status'] == 'applied'
+
+
+@pytest.mark.parametrize('app', sorted(sbs.APPS))
+def test_an_approval_run_again_claims_the_versions_its_first_run_held(app, monkeypatch):
+    """A keyed request names the document version it claims, so a run again
+    that claimed the version the document has now was another request, which
+    the core refuses with 422 instead of answering it from its first send. The
+    first run writes the versions it holds onto the plan before it sends, and
+    a run again holds the documents at them."""
+    spec = sbs.APPS[app]()
+    client = spec['client']()
+    plan, _ = sbs._plan(spec, client)
+    record = {}
+    real = core_plan.Batcher.flush
+
+    def lost(self):
+        # The service stops here: the batch committed, the record as it is.
+        real(self)
+        record.update(copy.deepcopy(_user_data(client)))
+        raise la._lost()
+
+    monkeypatch.setattr(core_plan.Batcher, 'flush', lost)
+    first = len(client.stamps)
+    sbs._approve(spec, client, plan)
+    claimed = [v for _, _, v in client.stamps[first:]]
+    assert claimed and record
+    monkeypatch.setattr(core_plan.Batcher, 'flush', real)
+    # What the batch did to the document: its version moved on.
+    client._documents[spec['did']]['version'] += 1
+    _user_data(client).clear()
+    _user_data(client).update(record)
+    again = len(client.stamps)
+    helper = sbs._approve(spec, client, plan)
+    assert not helper.errors, helper.errors
+    assert [v for _, _, v in client.stamps[again:]][:len(claimed)] == claimed
+
+
+def test_a_run_that_wrote_nothing_leaves_the_next_to_hold_the_versions_then(monkeypatch):
+    """A refused run wrote nothing, so there is nothing to repeat: an
+    approval after an edit claims the version the edit left."""
+    spec = sbs.APPS['igt']()
+    client = spec['client']()
+    plan, _ = sbs._plan(spec, client)
+    real = core_plan.Batcher.flush
+
+    def refused(self):
+        raise PlaidAPIError('HTTP 500 boom', status=500, method='POST')
+
+    monkeypatch.setattr(core_plan.Batcher, 'flush', refused)
+    helper = sbs._approve(spec, client, plan)
+    assert 'Nothing was written' in helper.errors[0]
+    monkeypatch.setattr(core_plan.Batcher, 'flush', real)
+    client._documents[spec['did']]['version'] += 1
+    now = client._documents[spec['did']]['version']
+    at = len(client.stamps)
+    helper = sbs._approve(spec, client, plan)
+    assert not helper.errors, helper.errors
+    assert {v for _, _, v in client.stamps[at:]} == {now}
+
+
+def test_a_plan_whose_id_is_not_a_uuidv7_is_settled_as_out_of_date():
+    """A plan staged before its id was a UUIDv7 has no ids to draw. It is
+    settled as out of date with a plain word, never left pending."""
+    spec = sbs.APPS['igt']()
+    client = spec['client']()
+    plan, store = sbs._plan(spec, client)
+    conv, meta = store.load('c1')
+    old = uuid.uuid4().hex
+    conv['display'][1]['plan']['id'] = old
+    meta['pending']['plan_id'] = old
+    store.save('c1', conv, meta)
+    helper = sbs._approve(spec, client, {**plan, 'id': old})
+    assert helper.errors == ['Nothing was written. This plan was made by an earlier version of the '
+                             'assistant. Ask the assistant to plan again.']
+    conv, meta = store.load('c1')
+    assert conv['display'][1]['status'] == 'stale' and not meta.get('pending')
+    assert not client.writes
 
 
 def _user_data(client):

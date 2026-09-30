@@ -85,6 +85,10 @@ class Minter:
     after the seed, one step of its 12-bit counter each, so the ids sort in
     the order they were drawn and are dated when the plan was staged. Its 62
     random bits are a hash of the seed and n.
+
+    A create refused ``id-taken`` for one of these ids was made by an earlier
+    run of the same plan (:meth:`made`): the row it names exists, and the
+    plan goes on past it.
     """
 
     def __init__(self, seed: str):
@@ -96,13 +100,83 @@ class Minter:
         # The millisecond and the counter within it, as one number to count on from.
         self._at = ((top >> 16) << 12) | (top & 0xFFF)
         self._n = 0
+        self._drawn: set = set()
 
     def __call__(self) -> str:
         n, self._n = self._n, self._n + 1
         at = self._at + 1 + n
         rand = int.from_bytes(hashlib.sha256(f'{self.seed}/{n}'.encode()).digest()[:8], 'big') >> 2
         value = ((at >> 12) << 80) | (0x7 << 76) | ((at & 0xFFF) << 64) | (0b10 << 62) | rand
-        return str(uuid.UUID(int=value))
+        made = str(uuid.UUID(int=value))
+        self._drawn.add(made)
+        return made
+
+    def made(self, error) -> bool:
+        """Whether ``error`` refuses a create because an id this plan drew is
+        taken: an earlier run of the plan made that row. Its answer was lost,
+        or the service stopped before the record said so, and the key that
+        would have replayed it is gone or was never the plan's (a batch of
+        comments alone takes one of its own)."""
+        data = getattr(error, 'response_data', None)
+        return (isinstance(error, PlaidAPIError) and error.status == 409 and isinstance(data, dict)
+                and data.get('error') == 'id-taken' and data.get('id') in self._drawn)
+
+    def once(self, create):
+        """Run ``create()``, a write made on the client that makes rows under
+        ids this plan drew. Refused because an earlier run made them, it is
+        taken as made and answers None."""
+        try:
+            return create()
+        except PlaidAPIError as e:
+            if self.made(e):
+                return None
+            raise
+
+
+def drawable(plan_id) -> bool:
+    """Whether a plan's id is one its ids can be drawn from (a UUIDv7)."""
+    try:
+        return uuid.UUID(str(plan_id)).version == 7
+    except ValueError:
+        return False
+
+
+# The version a document had when the first run of a plan took hold of it,
+# kept on the plan's record of that document.
+HELD_FROM = 'held_from'
+
+
+def held_from(client, documents: List[Dict[str, Any]], remember) -> None:
+    """Hold each document the plan holds (``holding``) at the version its
+    first run held it at, so a run again sends the requests the first run sent
+    (the document version is part of a keyed request) and the ones that landed
+    are answered from their first send. Each answer moves the version on as
+    it did the first time.
+
+    The first run records the versions on the plan's ``documents`` (compacted
+    away once the plan is settled) and writes the record with ``remember()``
+    before anything is sent, so a service that stops partway leaves them for
+    the next approval."""
+    held = getattr(client, HELD_DOCUMENTS, None) or {client.strict_mode_document_id} - {None}
+    fresh = False
+    for d in documents or []:
+        if not isinstance(d, dict) or d.get('id') not in held:
+            continue
+        if d.get(HELD_FROM) is not None:
+            client.document_versions[d['id']] = d[HELD_FROM]
+        elif client.document_versions.get(d['id']) is not None:
+            d[HELD_FROM] = client.document_versions[d['id']]
+            fresh = True
+    if fresh:
+        remember()
+
+
+def forget_held(documents: List[Dict[str, Any]]) -> None:
+    """A run that wrote nothing leaves no versions to repeat: the next one
+    holds the documents as they are then."""
+    for d in documents or []:
+        if isinstance(d, dict):
+            d.pop(HELD_FROM, None)
 
 
 class Batcher:
@@ -261,7 +335,16 @@ class Batcher:
         batch, self._batch = self._batch, None
         if batch is None:
             return
-        res = batch.submit()
+        try:
+            res = batch.submit()
+        except PlaidAPIError as e:
+            if not self.new_id.made(e):
+                raise
+            # An earlier run of this plan committed this very batch: the same
+            # plan draws the same ids and cuts the same batches, and a batch
+            # is written whole or not at all, so one row of it made means all
+            # of it was. It counts as written, and the plan goes on.
+            res = [None] * self._pending
         self.results.extend(res or [])
         self._pending = 0
         self._weight = 0
