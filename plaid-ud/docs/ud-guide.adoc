@@ -125,6 +125,7 @@ The **Text Editor** tab is where raw text becomes tokens.
 
 Paste or type your text into the editor, one sentence per line.
 Use **Save** to save edits to the raw text without re-tokenizing.
+Each change is saved where you typed it.
 
 When someone else saved the text after you started editing it, your save puts your changes onto their text.
 When you both changed the same passage, the save is refused and the editor says `Changed elsewhere in the same passage.` **Discard changes** then shows the saved text, and you make the edit again.
@@ -134,6 +135,7 @@ Tokens already made follow an edit of the saved text.
 Deleting only the space between two words keeps them two words.
 Deleting the space and letters of either makes one word, which keeps the annotations of the word it shares more letters with.
 Typing a space inside an annotated word keeps its annotations on one of the two new words.
+A word typed in front of a sentence's first word joins the sentence before it.
 
 There are two ways to turn saved text into tokens, and both are runs (see <<_services>>):
 
@@ -148,7 +150,7 @@ Clearing takes the annotations on those tokens with them, and cannot be undone.
 
 After tokenizing, the text is shown with each token as a clickable chip:
 
-* A **green** border marks the **first token of each sentence**. Click any token to toggle whether a sentence starts there. This is how you fix sentence boundaries.
+* A **green** border marks the **first token of each sentence**. Click any token to toggle whether a sentence starts there. This is how you fix sentence boundaries. Splitting a sentence removes the dependency relations that would cross the new boundary, wherever the split is made.
 * A **teal** chip marks a **multi-word token** (a token that contains more than one word).
 
 Hover over a token to open its panel, where you can:
@@ -294,10 +296,9 @@ If a prediction is already correct, you don't have to retype it:
 == Saving
 
 A cell is saved when you leave it, and a relation when you draw or change it. There is no save button.
-An edit made while the connection is down is sent once it is back, and the page reads **Offline, retrying** meanwhile.
-One that reached the server just before the connection dropped is found there, and is not sent twice.
-When the server does not answer a save, a message headed **Not confirmed** says that the change may or may not have been saved.
-The document is then read again a little later, and a value that was saved shows as saved.
+A save that gets no answer, because the connection is down or the server does not reply, is sent again until the server answers, and the edits made after it wait their turn.
+Meanwhile the page reads **Offline, retrying**, or **Can't reach the server, retrying** while the browser is online, and closing the tab asks first.
+A save that reached the server before its answer was lost is not saved twice.
 
 Two people can have one document open, and neither page shows the other's edits as they are made.
 An edit is refused when someone else changed the same kind of annotation in the document since the page loaded (a lemma, a head, the words), even on another word.
@@ -307,7 +308,9 @@ When someone else changed the same cell first, the cell shows their value, with 
 A message names the change, such as `b changed this to NOUN.`
 **Enter** in the cell saves yours, **Escape** or typing another value drops it, and leaving the cell saves nothing.
 The same happens when the word was split or joined by someone else before your value was saved.
+When the word is gone by the time your value is refused, a message says `Not saved:` and the value.
 A value refused because of a change elsewhere in the document stays in its cell, and leaving the cell again sends it.
+The message reads `Changed elsewhere. Your value is in its cell, not saved.`
 Any other edit that is refused says `Changed elsewhere. Now showing the latest version. Redo your edit.`, and the document shows the other person's change.
 
 A repair is made when a document that needs one is opened.
@@ -591,7 +594,9 @@ Where a project wants the list to be binding, the switch beneath it makes it so.
 * **Dependency relations**: the BASE relation must be on the list. A subtype is judged by its base, so `nsubj:pass` is allowed wherever `nsubj` is, and a project does not have to list every subtype its language uses.
 * **Features**: the key must be in the inventory and the value in that key's list. A key listed with no values accepts any value.
 
-A closed list is enforced where a person types: the annotation cells and the Grew rewrite preview. It is deliberately **not** enforced on an import, a parser, the assistant or the API, which all write whatever they produce. Off-list machine output is a signal, and refusing it at the door would hide it.
+A closed list is enforced where a person types: the annotation cells and the Grew rewrite preview. A closed UPOS, XPOS or relation list is also enforced by the server, on every write. A value off the list is refused, even from a page opened before the list was closed, and the cell shows the stored value again with a message naming the value. An approved assistant plan and a script are refused the same way. Three kinds of value are kept anyway: values brought in by an import, values a document copy or a restore writes back, and a parser's predictions nobody has accepted yet. Accepting such a value is refused while it is off the list. Off-list machine output is a signal, and refusing it at the door would hide it. A closed feature inventory is enforced only where a person types. Spaces at either end of a value, no-break spaces included, are ignored when it is checked.
+
+Closing a list, or removing a value from a closed one, is refused while any other value in the project's annotations is off it, and the message names one of them. Change them first, or add them to the list.
 
 === What a value is for
 
@@ -619,7 +624,7 @@ While a thread is open, comments from other people appear as they are written.
 
 Maintainers get a **Validation** tab: every value the project has stored that its own vocabularies do not list, with how many times it occurs.
 
-It exists because a closed list is enforced where a person types and nowhere else. A parser, an import, the assistant or a script writes what it produces whatever the list says, and refusing those at the door would hide them. This is where you see what got in.
+It exists because an open list takes any value, and a closed one still keeps values from an import, a copy or a restore, and a parser's predictions nobody has accepted (see <<_suggestions_or_rules>>). A closed feature inventory holds only where a person types. This is where you see what got in.
 
 Each value opens to the sentences it occurs in, and each of those is a link straight to that sentence in the editor. Features open the same way, on the whole `Key=Value` pair.
 

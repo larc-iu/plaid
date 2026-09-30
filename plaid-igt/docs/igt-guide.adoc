@@ -143,16 +143,16 @@ On the first save each line becomes a sentence.
 You can move sentence breaks afterwards on the Tokenize tab.
 
 You can edit the baseline later too.
+Each change is saved where you typed it.
 Existing sentences, words, and annotations are kept and adjusted to fit the new text.
 Words inside text you delete go with it, along with their annotations.
 Deleting only the space between two words keeps them two words.
 Deleting the space and letters of either makes one word, which keeps the analysis of the word it shares more letters with.
-Typing a space where two morphemes meet keeps the word and those morphemes on one of the two new words.
-Typing a space inside a morpheme keeps the word on one of the new words and removes its morphemes.
-A line added later joins the sentence before it. Split it on the Tokenize tab.
+A space typed inside a word splits it: the word stays on one of the two halves, and its morphemes are removed with their glosses.
+A line added later joins the sentence before it, and so does a word typed in front of a sentence's first word. Move the sentence break on the Tokenize tab.
 
 When someone else saved the baseline after you pressed **Edit text**, **Save changes** puts your changes onto their text.
-When you both changed the same passage, the save is refused and your text stays in the box.
+When you both changed the same passage, the save is refused, `Changed elsewhere in the same passage.` shows under the box, and your text stays in the box.
 **Cancel** then shows the saved text, and you make the edit again.
 The save is also refused when the text has passages that read the same and your change could be in either of them.
 
@@ -188,6 +188,10 @@ Every segment is a row you can edit:
 * **Shift+Space** pauses and resumes the segment you are in without leaving the row. If playback is somewhere else, the segment starts over.
 * **Shift+←** and **Shift+→** move playback one second, in a row or out of one.
 * **Space** plays and pauses the whole recording when you are not typing in a box.
+
+When someone else changed a segment's text while you were editing it, the row shows their text with yours under it: **Yours: X · Enter to keep yours**.
+**Enter** saves yours over theirs, **Esc** or typing lets yours go, and leaving the row then saves nothing.
+When the segment is gone, a message says `Not saved:` and your text.
 
 A segment's start and end times are boxes of digits in its row.
 Type into the box under the caret, or step it with **↑** and **↓**: milliseconds by 10, or by 100 with Shift.
@@ -345,10 +349,9 @@ A value that a field's tagset refuses is underlined in red, and a closed tagset 
 === Saving
 
 A value is saved when you leave its cell, and there is no save button.
-An edit made while the connection is down is sent once it is back, and the save status reads **Offline, retrying** meanwhile.
-One that reached the server just before the connection dropped is found there, and is not sent twice.
-When the server does not answer a save, a message headed **Not confirmed** says that the change may or may not have been saved.
-The document is then read again a little later, and a value that was saved shows as saved.
+A save that gets no answer, because the connection is down or the server does not reply, is sent again until the server answers, and the edits made after it wait their turn.
+Meanwhile the save status reads **Offline, retrying**, or **Can't reach the server, retrying** while the browser is online, and closing the tab asks first.
+A save that reached the server before its answer was lost is not saved twice.
 
 Two people can have one document open, and neither page shows the other's edits as they are made.
 An edit that reaches the server after someone else changed the document is handled this way:
@@ -364,6 +367,8 @@ The same happens when someone else split, joined or respelled the word, re-segme
 The message then names the word, morpheme or sentence as it reads now, such as `b changed this word to si.`
 
 A value refused because of a change elsewhere in the document stays in its cell with an amber edge, and leaving the cell again sends it.
+The message reads `Changed elsewhere. Your value is in its cell, not saved.`
+A value refused while its sentence is on another page of the grid waits for that page: it is in its cell, or noted under it, when you come back.
 Leaving the document first asks, naming the cell.
 
 == Comments
@@ -714,14 +719,26 @@ In a governed cell the list opens on its own and offers the part under the caret
 A value can carry a description, shown beside it in the list.
 **Add values used in this project** fills a new tagset with the values a field already uses, so an existing corpus comes under a tagset without retyping anything.
 
-A tagset is enforced as you type and in Bulk Edit, and nowhere else.
+A tagset is enforced as you type and in Bulk Edit.
 A tagset another maintainer closes or opens applies in a document you have open once you come back to its browser tab, or the document is read again.
-An import, a service, the Assistant, or a script writes past it.
+
+A **Closed** tagset is also enforced by the server, on every write.
+A value outside it is refused, even from a page opened before the tagset was closed, and the cell shows the stored value again with a message naming the value.
+An approved Assistant plan and a script are refused the same way.
+Three kinds of value are kept anyway: values brought in by an import, values a document copy or a restore writes back, and a service's values nobody has confirmed yet.
+Confirming such a value is refused while it is outside the tagset.
+Spaces at either end of a value or of its parts, no-break spaces included, are ignored when it is checked.
+
+Closing a tagset, or removing a value from a closed one, is refused while any other value in the project's annotations is outside it.
+The message says how many values in which fields are not in the tagset, and names them.
+Change them first, or add them to the tagset.
+
+A **Closed, plus lexical glosses** tagset is enforced as you type and in Bulk Edit only, and an import, a service, the Assistant, or a script writes past it.
 The project's **Validation** tab (maintainers) closes that gap.
 It lists, for each governed field, every value in the project that its tagset refuses, with a count, and offers the remedies: **Add to tagset**, **Fix in Bulk Edit**, or open each occurrence and correct it by hand.
 It also looks for zero morphs spelled some other way than ∅ (see <<_typing_special_characters>>).
 
-NOTE: The Assistant and the LLM glossing service read a governed field's tagset before proposing values, so they use its spellings. Nothing they write is refused, though. A model's off-list output can be a useful signal that the tagset is missing something, and the Validation tab is where you will see it.
+NOTE: The Assistant and the LLM glossing service read a governed field's tagset before proposing values, so they use its spellings. A service's proposals are not refused, even outside a closed tagset. A model's off-list output can be a useful signal that the tagset is missing something, and the Validation tab is where you will see it.
 
 = Guidelines
 
