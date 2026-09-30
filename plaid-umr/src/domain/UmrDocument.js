@@ -908,18 +908,22 @@ export class UmrDocument extends DocumentModel {
   // leave the node the user was told had failed. Tokens already gone (404)
   // leave nothing to undo. Only for an edit whose later steps put its own new
   // entities on the pieces: a node add and a re-anchor are one batch each,
-  // and have nothing to undo.
+  // and have nothing to undo. The error thrown carries `anchorsRemoved`: true
+  // when the pieces, and whatever stood on them, are known to be gone.
   async _undoPiecesOnFailure(tokens, ids, work) {
     try {
       return await work();
     } catch (error) {
       const made = tokens.map((t) => ids.get(t.id)).filter(Boolean);
+      let removed = true;
       if (made.length) {
         await this._unversioned(() => this._client.tokens.bulkDelete(made)).catch((err) => {
           if (err?.status === 404) return;
+          removed = false;
           console.warn('Could not remove the anchors of an edit that failed:', err);
         });
       }
+      if (error && typeof error === 'object') error.anchorsRemoved = removed;
       throw error;
     }
   }
@@ -2804,7 +2808,10 @@ export class UmrDocument extends DocumentModel {
           const partly = stage !== 'changes' || error?.committed > 0;
           if (!partly) throw error;
           if (isUnknownOutcome(error)) this._readLater();
-          const unsure = stage !== 'nodes' && isUnknownOutcome(error);
+          // A node request whose answer was lost may have stored the nodes:
+          // they are not saved only once their anchors were removed again.
+          const unsure =
+            isUnknownOutcome(error) && (stage !== 'nodes' || error?.anchorsRemoved !== true);
           throw Object.assign(new Error(partlyApplied(stage, newNodes.length > 0, unsure)), {
             cause: error,
           });

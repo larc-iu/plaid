@@ -200,3 +200,28 @@ test('past one request, a first request that failed after some of it was saved s
   );
   release();
 });
+
+// REV-W-LAST: a node request whose answer was lost may have stored the nodes.
+// Only the anchor delete that follows takes them away again, and it is best
+// effort: when it fails too (the connection is gone), the nodes may stand,
+// and the message may not say they were not saved.
+test('past one request, a node request whose answer was lost is not saved only when its anchors were removed', async () => {
+  for (const [undo, missing] of [
+    ['works', 'Not saved'],
+    ['fails', 'Not confirmed'],
+  ]) {
+    const { doc, client, errors, text, release } = await big();
+    failBatch(client, 2, lost());
+    if (undo === 'fails') client.tokens.bulkDelete = async () => Promise.reject(lost());
+    assert.equal(await doc.applyPenman(1, text), false);
+    assert.equal(errors.length, 1);
+    assert.match(
+      errors[0].msg,
+      new RegExp(
+        `Partly applied\\. Saved: deletions and changes\\. ${missing}: new nodes and edges\\.`,
+      ),
+      `the anchor delete ${undo}`,
+    );
+    release();
+  }
+});
