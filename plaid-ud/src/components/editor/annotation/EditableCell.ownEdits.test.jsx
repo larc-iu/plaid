@@ -111,20 +111,6 @@ describe('two edits of one cell by one annotator, the first refused', () => {
     await run.view.unmount();
   });
 
-  // Unified with plaid-igt (cell engine, `mine`): a value this page sent and
-  // the server stored unheard is this annotator's, never another's.
-  it('the first stored unheard and the second refused: no note, the second comes back', async () => {
-    const run = await twoEdits();
-    await run.answer(0, { landed: false, status: 502, readBack: false });
-    await run.refetched('matA');
-    await run.answer(1, { landed: false, status: 409, readBack: true });
-    expect(run.heard).toEqual([]);
-    expect(noteOf(run.view)).toBe(null);
-    expect(run.input.value).toBe('matB');
-    expect(hasUnsavedDraft()).toBe('An annotation you have typed');
-    await run.view.unmount();
-  });
-
   it('both refused over another annotator’s value: the note holds the newer of the two', async () => {
     const run = await twoEdits();
     await run.refetched('matX');

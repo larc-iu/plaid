@@ -31,9 +31,9 @@ import { setUnsavedDraft } from '../../hooks/useUnsavedDraft.js';
 // shows, so a cell not drawn right now (another page) is decided the same way
 // as a drawn one.
 //
-// With idempotent writes a lost answer comes back as landed, and the
-// `landedUnheard` branch and most of `mine` stop firing. They stay correct
-// and cheap. Once no outcome that reaches `settle` is `uncertain`, they can go.
+// A lost answer is sent again under its Idempotency-Key until it is answered
+// (plaid-ui WriteQueue), so it comes back as landed. `landedUnheard` is for a
+// refusal whose read-back holds the typed value: someone stored the same.
 
 const WHAT = 'An annotation you have typed';
 const SEVERAL = 'annotations you have typed';
@@ -96,10 +96,9 @@ export class CellEngine {
     this._unsent = new Map();
     // canonical key -> { key, typed, stored, recut }.
     this._conflicts = new Map();
-    // canonical key -> { base, open, latest, mine }: the edits of the cell
-    // still on their way. `base` is what the server held before them, and
-    // moves on when one lands. `mine` is every value they sent: one of them
-    // stored unheard (a lost answer) is this page's own, never another user's.
+    // canonical key -> { base, open, latest }: the edits of the cell still on
+    // their way. `base` is what the server held before them, and moves on
+    // when one lands.
     this._flights = new Map();
     // canonical key -> a value a refusal put back into its focused cell
     // (`takeUp`): older than the refusal after it, so not typing since.
@@ -223,12 +222,11 @@ export class CellEngine {
     const k = this._canonical(key);
     let flight = this._flights.get(k);
     if (!flight) {
-      flight = { base: saved, open: 0, latest: 0, mine: new Set() };
+      flight = { base: saved, open: 0, latest: 0 };
       this._flights.set(k, flight);
     }
     flight.open += 1;
     flight.latest += 1;
-    flight.mine.add(typed);
     const conflicted = this._conflicts.delete(k);
     const waiting = this._take(k) != null;
     const putBack = this._putBacks.delete(k);
@@ -260,7 +258,6 @@ export class CellEngine {
     flight.open -= 1;
     const superseded = n !== flight.latest;
     const base = flight.base;
-    const mine = flight.mine;
     if (outcome.landed) flight.base = typed;
     if (!flight.open && this._flights.get(k) === flight) this._flights.delete(k);
     if (outcome.landed) {
@@ -302,7 +299,7 @@ export class CellEngine {
     }
     // Still showing the edit itself: the read after the refusal did not come.
     const stored = now === typed ? base : now;
-    if (stored !== base && !mine.has(stored)) {
+    if (stored !== base) {
       this.conflict(key, typed, stored, null, ticket.entityIds);
       return { kind: 'conflict', typed, stored, recut: null, status };
     }

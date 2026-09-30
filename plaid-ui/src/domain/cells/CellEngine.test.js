@@ -144,18 +144,6 @@ describe('a refused edit', () => {
     expect(hasUnsavedDraft()).toBe(null);
   });
 
-  it('over a value this page stored unheard is no conflict (mine)', () => {
-    // The first edit landed with its answer lost, the second is refused.
-    const { engine, heard } = setup({ stored: { k: 'a' } });
-    const t1 = engine.sending('k', { saved: '', typed: 'a' });
-    const t2 = engine.sending('k', { saved: 'a', typed: 'ab' });
-    expect(engine.settle(t1, refused(502, false)).kind).toBe('superseded');
-    expect(engine.settle(t2, refused()).kind).toBe('putBack');
-    expect(engine.conflictOf('k')).toBe(null);
-    expect(engine.unsentOf('k')).toEqual({ typed: 'ab', saved: 'a' });
-    expect(heard.map((e) => e.kind)).toEqual(['keptInCell']);
-  });
-
   it('whose word was re-cut meanwhile is a conflict with the word as it reads now', () => {
     const { engine, heard, shapes } = setup({ stored: { k: '' }, shapes: { k: 'sing' } });
     const t = engine.sending('k', { saved: '', typed: 'SING' });

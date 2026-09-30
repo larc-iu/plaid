@@ -138,19 +138,6 @@ describe('a cell edited again while its first save was out', () => {
     });
   }
 
-  it('puts the newer value back, not a conflict, when the first landed unheard and the second was refused', async () => {
-    const { server, release } = mount(['lost', 500]);
-    const c = await editTwice();
-    await release();
-    await settle();
-
-    expect(server.value).toBe('A');
-    expect(note('ma:m-1:Gloss')).toBeNull();
-    expect(notifyWarning).not.toHaveBeenCalled();
-    expect(c.value).toBe('B');
-    expect(editor._cells.unsentOf(c.dataset.cellKey)?.typed).toBe('B');
-  });
-
   it("is still a conflict when another user's value is what the server holds", async () => {
     const { server, release } = mount([409, 409]);
     const c = await editTwice();
@@ -275,7 +262,7 @@ describe('a conflict that is not the cell’s own', () => {
     expect(note('ma:m-1:Gloss')).toBeNull();
     expect(c.value).toBe('hound');
     expect(notifyError).toHaveBeenCalledWith(
-      'Changed elsewhere. Your value is kept in its cell, and leaving the cell sends it again.',
+      'Changed elsewhere. Your value is in its cell, not saved.',
       'Failed to update Gloss',
     );
   });
