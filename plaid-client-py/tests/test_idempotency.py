@@ -528,3 +528,73 @@ def test_a_replayed_list_answer_is_marked():
     answer = client._request('POST', '/api/v1/batch', body=[])
     assert was_replayed(answer)
     assert answer == [{'id': 'a'}]
+
+
+# A batch's results are marked as a single answer's are. A batch past the cap
+# goes as several requests, each answered on its own: the combined results are
+# marked when any request was replayed, since then some of the batch stored
+# nothing new.
+def test_a_replayed_batchs_results_are_marked():
+    client = PlaidClient('http://x', 'tok', **FAST)
+
+    def answer(request, n):
+        if n == 0:
+            return requests_lib.ConnectionError('reset')
+        return _Resp(200, [{'status': 200, 'headers': {}, 'body': {'id': 's'}}],
+                     {'Idempotent-Replayed': 'true'})
+
+    _stub_server(client, answer)
+    with client.batched() as b:
+        b.spans.update('s', 'V')
+    assert was_replayed(b.results)
+    assert b.results == [{'status': 200, 'headers': {}, 'body': {'id': 's'}}]
+    assert isinstance(b.results, list)
+
+
+def test_a_fresh_batchs_results_are_not_marked():
+    client = PlaidClient('http://x', 'tok', **FAST)
+    _stub_server(client, lambda r, n: _Resp(200, [{'status': 200, 'headers': {}, 'body': {}}]))
+    b = client.batch()
+    b.spans.update('s', 'V')
+    assert not was_replayed(b.submit())
+
+
+def _split_answer(replayed_when):
+    def answer(r, n):
+        headers = {'Idempotent-Replayed': 'true'} if replayed_when(r) else {}
+        return _Resp(200, [{'status': 200, 'headers': {}, 'body': {}} for _ in r['body']], headers)
+    return answer
+
+
+def test_a_split_batch_is_marked_when_any_request_was_replayed():
+    client = PlaidClient('http://x', 'tok', **FAST)
+    _stub_server(client, _split_answer(lambda r: len(r['body']) == 1))
+    with client.batched() as b:
+        for i in range(MAX_BATCH_OPS + 1):
+            b.spans.update(f's{i}', i)
+    assert len(b.results) == MAX_BATCH_OPS + 1
+    assert was_replayed(b.results)
+
+    _stub_server(client, _split_answer(lambda r: False))
+    with client.batched() as b:
+        for i in range(MAX_BATCH_OPS + 1):
+            b.spans.update(f's{i}', i)
+    assert not was_replayed(b.results)
+
+
+def test_what_a_failed_split_batch_saved_is_marked_when_a_saved_request_was_replayed():
+    client = PlaidClient('http://x', 'tok', **FAST)
+
+    def answer(r, n):
+        if len(r['body']) == 1:
+            return _Resp(409, {'error': 'conflict'})
+        return _split_answer(lambda r: True)(r, n)
+
+    _stub_server(client, answer)
+    b = client.batch()
+    for i in range(MAX_BATCH_OPS + 1):
+        b.spans.update(f's{i}', i)
+    with pytest.raises(PlaidAPIError) as caught:
+        b.submit()
+    assert caught.value.committed == MAX_BATCH_OPS
+    assert was_replayed(caught.value.committed_results)

@@ -28,6 +28,7 @@ import { recorderFor } from "./events.js";
 import { withDocumentLock } from "./documentLock.js";
 import { createSSEConnection } from "./sse.js";
 import { makeBatchRef, rebaseRefs } from "./batchRef.js";
+import { markReplayed, wasReplayed } from "./replayed.js";
 import {
   discoverServices,
   discardService,
@@ -196,6 +197,11 @@ async function submitBatch(batch) {
   // were saved) and `committedResults` (their results, in queue order), so a
   // caller can tell a partial write from a batch that saved nothing. The
   // failed request itself counts as unsaved, even when its answer was lost.
+  //
+  // Each request's results are marked replayed when that request was (see
+  // replayed.js), and the combined results when any request was: then some of
+  // the batch stored nothing new, which is what a caller reading the mark
+  // needs to know. The same holds for `committedResults`.
   const results = [];
   try {
     await sendChunks(client, url, ops, stamps, results, groups);
@@ -253,7 +259,9 @@ async function sendChunks(client, url, ops, stamps, results, groups = []) {
     // its path now carries it.
     const j = stamps.slice(i, i + chunk.length).findIndex(Boolean);
     record(j < 0 ? null : claimedVersion(chunk[j].path));
-    results.push(...(await client._postBatch(url, chunk, { key })));
+    const answered = await client._postBatch(url, chunk, { key });
+    results.push(...answered);
+    if (wasReplayed(answered)) markReplayed(results);
     // The server took the chunk, so each operation it joined exists.
     for (let j = i; j < i + chunk.length; j++) {
       if (groups[j]) groups[j].written = true;
@@ -3895,10 +3903,11 @@ class PlaidClient {
         }
       }
 
-      return results.map((result) => ({
+      const out = results.map((result) => ({
         ...result,
         body: transformResponse(result.body),
       }));
+      return replayed ? markReplayed(out) : out;
     } catch (error) {
       if (error.status !== undefined) throw error;
       throw Object.assign(makeNetworkError(error, url, "POST"), {

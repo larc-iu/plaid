@@ -1670,6 +1670,7 @@ An answer the server replayed (`Idempotent-Replayed: true`) is marked, whether t
 In JavaScript the mark is `replayed: true`, not enumerable, on the answer object or array. In Python the answer is a `dict` or `list` subclass whose `replayed` is `True`.
 Either way the answer reads, compares and serializes as an unmarked one would.
 Only an answer with a JSON object or list body carries the mark. An empty or text answer does not.
+A batch's results are marked when its request was replayed. A batch past the server's cap goes as several requests, and its results are marked when any of them was replayed, since then some of the batch stored nothing new. The same holds for `committedResults` (`committed_results`) when a later request fails.
 
 A caller that runs an operation again from the top can make it send the same keys.
 `client.keySeed()` (`key_seed()` in Python) gives a seed, and an operation opened with it numbers its writes, so the nth write sent inside it takes the key `<seed>.<n>` on every run, with the `document-version` the first run stamped:

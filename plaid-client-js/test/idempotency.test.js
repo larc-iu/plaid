@@ -579,3 +579,108 @@ test("a replayed list answer is marked, and a batch's too", async () => {
   assert.equal(wasReplayed(answer), true);
   assert.equal(answer.length, 1);
 });
+
+// A batch's results are marked as a single answer's are. A batch past the cap
+// goes as several requests, each answered on its own: each request's results
+// are marked when that request was replayed, and the combined results when
+// any request was, since then some of the batch stored nothing new.
+test("a replayed batch's results are marked", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  const { restore } = stubServer((r, n) =>
+    n === 0
+      ? new TypeError("fetch failed")
+      : response(
+          200,
+          [{ status: 200, headers: {}, body: { id: "s" } }],
+          { "idempotent-replayed": "true" },
+        ),
+  );
+  let results;
+  try {
+    results = await client.batched((b) => b.spans.update("s", "V"));
+  } finally {
+    restore();
+  }
+  assert.equal(wasReplayed(results), true);
+  assert.deepEqual(results, [{ status: 200, headers: {}, body: { id: "s" } }]);
+  assert.equal(JSON.stringify(Object.keys(results)), '["0"]');
+});
+
+test("a fresh batch's results are not marked", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  const { restore } = stubServer(() =>
+    response(200, [{ status: 200, headers: {}, body: {} }]),
+  );
+  let results;
+  try {
+    results = await client.batched((b) => b.spans.update("s", "V"));
+  } finally {
+    restore();
+  }
+  assert.equal(wasReplayed(results), false);
+});
+
+test("a split batch is marked when any request was replayed, and so is each replayed request", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  const answers = (r, replayed) =>
+    response(
+      200,
+      r.body.map(() => ({ status: 200, headers: {}, body: {} })),
+      replayed ? { "idempotent-replayed": "true" } : {},
+    );
+  const chunkMarks = [];
+  const post = client._postBatch.bind(client);
+  client._postBatch = async (...args) => {
+    const out = await post(...args);
+    chunkMarks.push(wasReplayed(out));
+    return out;
+  };
+  const { restore } = stubServer((r) => answers(r, r.body.length === 1));
+  let results;
+  try {
+    results = await client.batched((b) => {
+      for (let i = 0; i < MAX_BATCH_OPS + 1; i += 1) b.spans.update(`s${i}`, i);
+    });
+  } finally {
+    restore();
+  }
+  assert.deepEqual(chunkMarks, [false, true]);
+  assert.equal(results.length, MAX_BATCH_OPS + 1);
+  assert.equal(wasReplayed(results), true);
+
+  const none = stubServer((r) => answers(r, false));
+  let fresh;
+  try {
+    fresh = await client.batched((b) => {
+      for (let i = 0; i < MAX_BATCH_OPS + 1; i += 1) b.spans.update(`s${i}`, i);
+    });
+  } finally {
+    none.restore();
+  }
+  assert.equal(wasReplayed(fresh), false);
+});
+
+test("what a failed split batch saved is marked when a saved request was replayed", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  const { restore } = stubServer((r) =>
+    r.body.length === 1
+      ? response(409, { error: "conflict" })
+      : response(
+          200,
+          r.body.map(() => ({ status: 200, headers: {}, body: {} })),
+          { "idempotent-replayed": "true" },
+        ),
+  );
+  let caught;
+  try {
+    await client.batched((b) => {
+      for (let i = 0; i < MAX_BATCH_OPS + 1; i += 1) b.spans.update(`s${i}`, i);
+    });
+  } catch (e) {
+    caught = e;
+  } finally {
+    restore();
+  }
+  assert.equal(caught.committed, MAX_BATCH_OPS);
+  assert.equal(wasReplayed(caught.committedResults), true);
+});

@@ -22,6 +22,7 @@ from plaid_client.http import (
     IDEMPOTENCY_HEADER, DEFAULT_TIMEOUT_S, DEFAULT_BATCH_TIMEOUT_S,
 )
 from plaid_client.ids import uuid7
+from plaid_client.replayed import mark_replayed, was_replayed
 from plaid_client.transforms import transform_response
 from plaid_client.sse import SSEConnection
 
@@ -4110,6 +4111,10 @@ class PlaidClient:
         # results, in queue order), so a caller can tell a partial write from
         # a batch that saved nothing. The failed request itself counts as
         # unsaved, even when its answer was lost.
+        # The results are marked replayed (see replayed.py) when any request
+        # was: then some of the batch stored nothing new, which is what a
+        # caller reading the mark needs to know. The same holds for
+        # ``committed_results``.
         results_out: list[Any] = []
         try:
             headers = {
@@ -4218,6 +4223,8 @@ class PlaidClient:
                 results_out.extend({**r, 'body': transform_response(r.get('body'))}
                                    if isinstance(r, dict) else r
                                    for r in results)
+                if replayed and not was_replayed(results_out):
+                    results_out = mark_replayed(results_out)
             return results_out
         except PlaidAPIError as e:
             e.committed = len(results_out)
