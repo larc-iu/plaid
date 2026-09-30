@@ -1,15 +1,139 @@
-/* What the apps share in CSS: the provenance tokens and marks, the warning
-   and success colours, the gutter the assistant dock takes, and the room the
-   sticky app header takes at the top of the window.
+/* What the apps share in CSS: the theme (the shadcn tokens, taken from the
+   mark's cloth), the typeface language data is set in, the provenance tokens
+   and marks, the warning and success colours, the gutter the assistant dock
+   takes, and the room the sticky app header takes at the top of the window.
 
-   The shadcn design tokens themselves stay per app (each app's own index.css),
-   since a dictionary reader and an annotation editor are allowed to look
-   different. What must NOT differ is provenance: the same violet has to mean
-   "a machine proposed this" in every app, or a project open in two of them
-   reads as two different corpora.
+   An app may still restate a shadcn token in its own index.css, which loads
+   after this file. None does: the apps are one product, and a project open
+   in two of them should look like one corpus. What must NEVER differ is
+   provenance: the same violet has to mean "a machine proposed this" in every
+   app.
 
-   Values are plaid-igt's, which set the convention. Import this file once from
-   the app's own entry, above its own tokens. */
+   Import this file once from the app's own entry, above its own styles. */
+
+/* Charis SIL, for language data: the text of a document, its annotations,
+   vocabulary forms. It covers Latin, Cyrillic and Greek with the IPA and the
+   stacked diacritics field linguists use. The files are SIL's complete web
+   fonts, not subsets, so a base letter and its combining marks always come
+   from one font. A character Charis lacks (any other script) falls through to
+   the next family in `--plaid-font-text` and then to the system's own fonts,
+   as it did before, so nothing becomes a box that was not one already. A face
+   downloads only once a page uses it. Licence: fonts/charis/OFL.txt. */
+@font-face {
+  font-family: 'Charis Plaid';
+  src: url('./fonts/charis/Charis-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Charis Plaid';
+  src: url('./fonts/charis/Charis-Italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Charis Plaid';
+  src: url('./fonts/charis/Charis-SemiBold.woff2') format('woff2');
+  font-weight: 500 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Charis Plaid';
+  src: url('./fonts/charis/Charis-SemiBoldItalic.woff2') format('woff2');
+  font-weight: 500 600;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Charis Plaid';
+  src: url('./fonts/charis/Charis-Bold.woff2') format('woff2');
+  font-weight: 700 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Charis Plaid';
+  src: url('./fonts/charis/Charis-BoldItalic.woff2') format('woff2');
+  font-weight: 700 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* The theme. The mark is a slate ground with oxblood and sage bands and a
+   bone overcheck (PlaidMarks.jsx), and the chrome takes its neutrals from
+   that cloth: a bone page, white cards lifted off it, warm grey rules, and
+   slate ink for the primary. Blue is left to the annotation surfaces, where
+   it means word scope or selection. Oxblood and sage are for the brand's own
+   surfaces only: oxblood on a button would read as destructive, and sage as
+   the sentence scope. */
+:root {
+  --background: 40 23% 98%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 217 33% 17%;
+  --primary-foreground: 40 23% 97%;
+  --secondary: 40 14% 93%;
+  --secondary-foreground: 217 33% 17%;
+  --muted: 40 14% 93%;
+  --muted-foreground: 25 6% 40%;
+  --accent: 40 14% 92%;
+  --accent-foreground: 217 33% 17%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 30 8% 88%;
+  --input: 30 8% 84%;
+  --ring: 217 33% 35%;
+  --radius: 0.5rem;
+
+  /* The mark's four colours, for the brand's own surfaces. */
+  --plaid-slate: #1e293b;
+  --plaid-oxblood: #7f1d1d;
+  --plaid-sage: #4d7c0f;
+  --plaid-bone: #d6d3d1;
+
+  /* Language data, with the system's serif behind Charis for the scripts it
+     does not cover. */
+  --plaid-font-text: 'Charis Plaid', 'Charis SIL', 'Noto Serif', ui-serif, Georgia, serif;
+}
+
+/* The page on the theme's ground. A bare border's colour is the preset's
+   `borderColor.DEFAULT`, which preflight applies. */
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+/* The selvedge: the cloth's colours as a thin woven edge along the top of
+   the app header. Drawn over the header's own box, so the header's height
+   (`--plaid-sticky-top`) does not change. The period is the mark's: oxblood,
+   slate, sage, slate, a bone thread. */
+.plaid-selvedge::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--plaid-oxblood) 0 18px,
+    var(--plaid-slate) 18px 22px,
+    var(--plaid-sage) 22px 30px,
+    var(--plaid-slate) 30px 34px,
+    var(--plaid-bone) 34px 35px,
+    var(--plaid-slate) 35px 40px
+  );
+  pointer-events: none;
+}
+
+/* Language data, where an app draws it outside a surface of its own. */
+.plaid-text {
+  font-family: var(--plaid-font-text);
+}
 
 :root {
   /* Machine-made material, until a person confirms it. */

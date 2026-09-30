@@ -103,7 +103,7 @@ export const AnalyzeIsland = () => {
   }, [canWrite, canManage]);
 
   return (
-    <div className="igt-analyze-mount" style={{ paddingTop: 16 }}>
+    <div className="igt-analyze-mount">
       {!doc && (
         <div style={{ padding: 24, color: 'hsl(var(--muted-foreground))' }}>
           Loading interlinear editor…

@@ -83,7 +83,7 @@ export const ProjectTabStrip = ({
           a heading that stays with the chrome: an Arabic name reads right to
           left and still starts at the left edge under the breadcrumb. The
           minimum height holds the tabs still while the project loads. */}
-      <h1 className="mb-3 min-h-9 truncate text-3xl font-bold tracking-tight">
+      <h1 className="mb-3 min-h-9 truncate font-text text-[1.75rem] font-bold leading-tight">
         <span dir="auto">{project?.name}</span>
       </h1>
 

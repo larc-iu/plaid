@@ -84,7 +84,7 @@ const Shell = ({ adapter, keymap, nav = [], guideHref, adminTo, isAssistantRoute
           {/* Sticky in every app: the band is how a reader leaves a long
               document, and plaid-igt's document bar sits right under it. The
               assistant dock is fixed at z-30, below this. */}
-          <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+          <header className="plaid-selvedge sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
             {/* `h-14`, the same band in every app, which is also what the
                 assistant panel's own header measures itself against. The band
                 has to line up with the container below it. One row at every

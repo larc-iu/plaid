@@ -103,7 +103,7 @@ export const DocumentTabStrip = ({
           left edge under the breadcrumb. */}
       <h1
         className={cn(
-          'mb-3 break-words text-3xl font-bold tracking-tight',
+          'mb-2 break-words font-text text-[1.75rem] font-bold leading-tight',
           !name && 'text-muted-foreground',
           inset,
         )}
@@ -118,7 +118,7 @@ export const DocumentTabStrip = ({
         className={cn(
           'flex flex-wrap items-center gap-x-6 gap-y-2',
           sticky &&
-            'sticky top-[var(--plaid-sticky-top,0px)] z-30 mb-4 border-b bg-background/95 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80',
+            'sticky top-[var(--plaid-sticky-top,0px)] z-30 mb-2 border-b bg-background/95 pt-1 backdrop-blur supports-[backdrop-filter]:bg-background/80',
           inset,
         )}
       >
@@ -128,7 +128,9 @@ export const DocumentTabStrip = ({
           guard={guard}
           className="min-w-0"
         >
-          <TabsList>
+          {/* Pinned, the row's own rule is the tabs' rule: a second one under
+              the list drew two lines a few pixels apart. */}
+          <TabsList className={sticky ? 'border-b-0' : undefined}>
             {tabs.map((t) => (
               <TabsTrigger key={t.value} value={t.value} {...target(t.value)}>
                 {t.label}

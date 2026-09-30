@@ -8,9 +8,9 @@ import { fileURLToPath } from 'node:url';
 // drifted: plaid-dict was missing the accordion keyframes the other two had, so
 // a shared component that animated in one app did not in another.
 //
-// The shadcn TOKENS themselves stay per app, in each `index.css`. A dictionary
-// reader and an annotation editor are allowed to look different; what has to
-// agree is the NAMES they answer to, which is what this file fixes. Plugins
+// The shadcn TOKENS' values are in plaid-ui's own `index.css`, which an app may
+// restate after it. What has to agree is the NAMES they answer to, which is
+// what this file fixes. Plugins
 // stay per app too, since they are the app's own dependencies.
 //
 // Spread it as a preset, and list the package's sources alongside the app's:
@@ -76,6 +76,12 @@ export default {
         popover: { DEFAULT: 'hsl(var(--popover))', foreground: 'hsl(var(--popover-foreground))' },
         card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
       },
+      // The colour of a bare `border`, which preflight sets on every element.
+      // Here rather than in a base rule, since preflight comes after plaid-ui's
+      // index.css and would win.
+      borderColor: { DEFAULT: 'hsl(var(--border))' },
+      // `font-text`, for language data outside a surface with its own CSS.
+      fontFamily: { text: 'var(--plaid-font-text)' },
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',

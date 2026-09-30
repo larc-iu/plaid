@@ -2200,3 +2200,18 @@
   color: var(--igt-hint);
   margin-right: 2px;
 }
+
+/* ---- language data in the book face ---- */
+/* Every value a person types or reads as language (word forms, the entry a
+   form links to, every field, a gap's text, the forms in the vocabulary and
+   alternatives lists) is set in plaid-ui's data face, Charis. The labels,
+   openers, badges and joiners around them stay in the interface face. Last in
+   the file, since several of these rules reset `font: inherit` above. */
+.igt-vocab__face,
+.igt-vocab__hint,
+.igt-field,
+.igt-gap-form,
+.igt-vocab-pop__form,
+.igt-alts__value {
+  font-family: var(--plaid-font-text);
+}
