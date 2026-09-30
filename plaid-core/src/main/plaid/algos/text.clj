@@ -2422,6 +2422,12 @@
                          (let [cs (.toArray (.codePoints ^String (:value x)))
                                c (when (pos? (alength cs)) (aget cs (if before? (dec (alength cs)) 0)))]
                            (and c (not (Character/isLetterOrDigit (int c))) (not (combining-mark? c))))))
+        ;; an insert meeting a word that begins where it stands with a space
+        ;; or a punctuation mark: text typed in front of the word
+        front-text? (fn [x] (and (= :insert (:kind x))
+                                 (punct-at? x (:at x) true)
+                                 (some #(and (word? %) (< (:token/begin %) (:token/end %)) (= (:at x) (:token/begin %)))
+                                       (@near (:at x) (:at x)))))
         clear-before? (fn [prev b] (or (nil? prev) (< (reach-of prev) b) (= (:end prev) b)
                                        (punct-at? prev b true)))
         clear-after? (fn [j e] (or (= j (count edits)) (> (start-of (edits j)) e)
@@ -2542,7 +2548,6 @@
                        g (subvec edits i j)
                        kinds (set (map :kind g))]
                    (when (and (seq g)
-                              (not (punct-at? (first g) b true))
                               (apart? g)
                               (clear-after? j e)
                               ;; spaces alone are no word to fold onto: a word
@@ -2717,11 +2722,18 @@
         (let [e0 (edits i)
               b (start-of e0)
               prev (peek out)
-              ;; a word may begin where a delete before it ends
-              lo (cond (nil? prev) 0 (:end prev) (reach-of prev) :else (inc (reach-of prev)))
+              ;; a word may begin where a delete before it ends, or where
+              ;; text typed in front of it with a space or a punctuation mark
+              ;; stands (X1)
+              lo (cond (nil? prev) 0
+                       (:end prev) (reach-of prev)
+                       (front-text? prev) (reach-of prev)
+                       :else (inc (reach-of prev)))
               ;; Edits the fold cannot judge stay as they came, and only
-              ;; they: the other words of the text still fold.
-              g-e (when (clear-before? prev b)
+              ;; they: the other words of the text still fold. Text typed in
+              ;; front of a word, meeting it with a space or a punctuation
+              ;; mark, is left out of the word's group and stays as it came.
+              g-e (when (and (clear-before? prev b) (not (front-text? e0)))
                     (try
                       (or (some (fn [e] (when-let [g (group i b e)] [g b e])) (ends-at b))
                           (some (fn [{tb :token/begin te :token/end}]
@@ -2761,7 +2773,7 @@
                                    (let [k (loop [k 0]
                                              (let [j (- i k 1)
                                                    x (when (<= 0 j) (nth out (- (count out) k 1) nil))]
-                                               (if (and x (= x (edits j)) (<= tb (start-of x)))
+                                               (if (and x (= x (edits j)) (<= tb (start-of x)) (not (front-text? x)))
                                                  (recur (inc k))
                                                  k)))]
                                      (when (pos? k)
@@ -2881,7 +2893,10 @@
                apart? (and (= :delete (:type op))
                            (some #(= :delete (:type %)) run)
                            (contains? pinned old-index))
-               touching? (and (seq run) (= (:index op) at) (not apart?))
+               same-stretch? (fn [] (or (nil? apart)
+                                        (let [a (::gap (first run)) b (::gap op)]
+                                          (if (and a b) (= a b) (= (apart start) (apart old-index))))))
+               touching? (and (seq run) (= (:index op) at) (not apart?) (same-stretch?))
                ;; The run is all of one kind and this op is the other: the
                ;; kept text between them is part of one respelling when a
                ;; token holds the lot with room to spare.
@@ -2890,7 +2905,7 @@
                over-kept? (and (seq run)
                                (not touching?)
                                (not apart?)
-                               (or (nil? apart) (= (apart start) (apart old-index)))
+                               (same-stretch?)
                                (< gap-start old-index)
                                (= #{(if (= :delete (:type op)) :insert :delete)}
                                   (kind-of run))
@@ -3359,9 +3374,10 @@
                                          (map #(assoc % ::gap i) (gap-edits (gaps i))))))
                     (range (count gaps)))
         ;; gaps never share a place, and each gap's edits keep their order
-        edits (vec (sort-by start-of (into (vec placed) fixed)))
+        edits (vec (sort-by (juxt start-of ::gap) (into (vec placed) fixed)))
         starts (long-array (map start-of edits))]
-    {:ops (edits->ops edits)
+    ;; each op carries its gap, for `pair-replacements`' `apart`
+    {:ops (mapv (fn [op e] (assoc op ::gap (::gap e))) (edits->ops edits) edits)
      ;; the gap an old position an edit stands at belongs to
      :stretch (fn [p]
                 (let [i (dec (loop [a 0 b (alength starts)]
@@ -3414,6 +3430,40 @@
                                         (not (and (= (:start h) (:end h) end) (not (word-text? (:value h))))))
                                t))
                            tokens)))
+        ;; A stretch of a word's edge letters typed over with text that
+        ;; leaves the word with a space or a punctuation mark (`walkdd`, the
+        ;; last `d` Backspaced and ` home` typed): the letters' part is a
+        ;; change of the word and the rest is text typed beside it, as when
+        ;; typed at the caret after the word (F1).
+        cps-of (fn [^String v] (vec (.toArray (.codePoints v))))
+        letter? (fn [c] (or (Character/isLetterOrDigit (int c)) (combining-mark? c)))
+        str-of (fn [cs] (let [sb (StringBuilder.)] (doseq [c cs] (.appendCodePoint sb (int c))) (str sb)))
+        split-edge (fn [{:keys [start end value] :as g}]
+                     (let [w (when (< start end)
+                               (some (fn [{:token/keys [begin end] :as t}]
+                                       (when (and (word? t) (< begin end) (<= begin start) (<= (:end g) end)
+                                                  ;; one edge, not the whole word typed over
+                                                  (not= (= end (:end g)) (= begin start))
+                                                  (not-any? #(space? (aget o %)) (range begin end)))
+                                         t))
+                                     tokens))
+                           cs (cps-of value)]
+                       (cond
+                         (nil? w) [g]
+                         ;; at the end: letters, then the rest
+                         (= (:end g) (:token/end w))
+                         (let [k (count (take-while letter? cs))]
+                           (if (< k (count cs))
+                             [{:start start :end end :value (str-of (subvec cs 0 k))}
+                              {:start end :end end :value (str-of (subvec cs k))}]
+                             [g]))
+                         ;; at the start: the rest, then letters
+                         :else
+                         (let [k (count (take-while letter? (rseq cs)))]
+                           (if (and (< k (count cs)) (seq cs))
+                             [{:start start :end start :value (str-of (subvec cs 0 (- (count cs) k)))}
+                              {:start start :end end :value (str-of (subvec cs (- (count cs) k)))}]
+                             [g])))))
         ;; runs of gaps inside one word, each with its word
         runs (reduce (fn [out h]
                        (let [{run :gaps} (peek out)
@@ -3422,7 +3472,7 @@
                            (conj (pop out) {:gaps (conj run h) :word w})
                            (conj out {:gaps [h]}))))
                      []
-                     (compose-edits ops old))
+                     (mapcat split-edge (compose-edits ops old)))
         letter-at (fn [i] (String. o (int i) 1))
         has-space? (fn [^String v] (.anyMatch (.codePoints v) (reify java.util.function.IntPredicate
                                                                 (test [_ c] (space? c)))))

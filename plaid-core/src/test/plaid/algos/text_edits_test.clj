@@ -192,3 +192,30 @@
     (is (= ["the man walked, to" [[0 "the"] [[:m 0] "the"] [1 "man"] [[:m 1] "man"]
                                   [2 "walked"] [[:m 2] "walked"] [3 "to"] [[:m 3] "to"]]]
            (edit [(ins 12 "e") (ins 14 ",")])))))
+
+(deftest a-space-typed-in-a-word-with-text-typed-in-front-still-folds-it
+  ;; X1: the front text stays outside, and the word folds as a lone space
+  ;; folds it, dropping its one morpheme (D28, the one-morpheme ruling)
+  (let [run (fn [old ops]
+              (let [r (ta/apply-edits old (one-morpheme old) ops {:partitioning #{} :word-layers #{:w} :segments #{:m}})
+                    body (:text/body (:text r))]
+                [body (->> (:tokens r) (sort-by (juxt :token/begin (comp str :token/id)))
+                           (mapv (fn [{:token/keys [id begin end]}] [id (subs body begin end)])))]))]
+    (is (= ["a Q c at x" [[0 "a"] [[:m 0] "a"] [1 "at"] [2 "x"] [[:m 2] "x"]]]
+           (run "a cat x" [(ins 3 " ") (ins 2 "Q ")])))
+    (is (= ["a (pum pkin x" [[0 "a"] [[:m 0] "a"] [1 "pkin"] [2 "x"] [[:m 2] "x"]]]
+           (run "a pumpkin x" [(ins 5 " ") (ins 2 "(")])))))
+
+(deftest a-words-edge-letter-typed-over-with-a-new-word-keeps-the-analysis
+  ;; F1: `walkdd`, the last `d` Backspaced and ` home` typed; the mirror in
+  ;; front; and a comma
+  (let [run (fn [old ops]
+              (let [r (ta/apply-edits old (one-morpheme old) ops {:partitioning #{} :word-layers #{:w} :segments #{:m}})
+                    body (:text/body (:text r))]
+                [body (sort (keep (fn [{:token/keys [id begin end]}] (when (vector? id) [id (subs body begin end)])) (:tokens r)))]))]
+    (is (= ["the walkd home x" [[[:m 0] "the"] [[:m 1] "walkd"] [[:m 2] "x"]]]
+           (run "the walkdd x" [(del 9 1) (ins 9 " home")])))
+    (is (= ["the slowly walkd x" [[[:m 0] "the"] [[:m 1] "walkd"] [[:m 2] "x"]]]
+           (run "the wwalkd x" [(del 4 1) (ins 4 "slowly ")])))
+    (is (= ["the walkd, x" [[[:m 0] "the"] [[:m 1] "walkd"] [[:m 2] "x"]]]
+           (run "the walkdd x" [(del 9 1) (ins 9 ",")])))))
