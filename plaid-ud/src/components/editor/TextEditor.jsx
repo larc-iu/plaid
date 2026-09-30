@@ -98,6 +98,10 @@ export const TextEditor = () => {
   const editLog = useEditLog();
   const { log } = editLog;
   const textContent = log.body;
+  // The box's text as it is stored, where every `\r` the stored body holds
+  // is kept (the box shows `\r\n` as `\n`). Token offsets and the measure of
+  // what is unsaved are in this form.
+  const rawText = log.raw;
   // What a save on its way has sent, split off the log (`send`). The edits
   // typed meanwhile are logged over the body it makes.
   const [sending, setSending] = useState(null);
@@ -116,7 +120,7 @@ export const TextEditor = () => {
     setMirrored({ documentId, body: serverText });
     const sameDocument = mirrored.documentId === documentId;
     if (!sameDocument || !sending) {
-      if (sameDocument && log.body !== log.base) editLog.rebase(serverText, serverDigest);
+      if (sameDocument && log.raw !== log.base) editLog.rebase(serverText, serverDigest);
       else editLog.reset(serverText, serverDigest);
     }
   }
@@ -154,12 +158,12 @@ export const TextEditor = () => {
     });
     setSending(null);
     const text = doc.layerInfo.textLayer?.text;
+    const read = text?.body ?? '';
     if (!ok || stored == null) {
       // Not saved: the sent edits go back in the box's log, in front of what
       // was typed since, and onto the stored body if it has moved on.
       const back = editLog.unsend(sent);
-      const now = text?.body ?? '';
-      if (now && now !== back.base) editLog.rebase(now, text?.digest ?? null);
+      if (read && read !== back.base) editLog.rebase(read, text?.digest ?? null);
       return;
     }
     setLastSaved(new Date());
@@ -194,7 +198,7 @@ export const TextEditor = () => {
 
   const handleWordCreate = async (begin, end) => {
     if (!doc) return;
-    await doc.createWord(begin, end, textContent);
+    await doc.createWord(begin, end, rawText);
   };
 
   // What goes with a token's words, as the question before it goes names it.
@@ -270,7 +274,7 @@ export const TextEditor = () => {
   // load and that copy the two differ, and a draft that comes and goes in one
   // tick adds and takes out a history entry under the router.
   useUnsavedDraft(
-    canEditProject(project, user) && (sending || textContent !== log.base)
+    canEditProject(project, user) && (sending || rawText !== log.base)
       ? 'The text you have typed'
       : null,
   );
@@ -280,11 +284,10 @@ export const TextEditor = () => {
   // the same render as they do. It is what the box's text is measured against
   // for "Unsaved changes", and what the token view moves them from.
   const originalTokenizedText = hasTokens ? serverText : '';
-  const isTextDirty = Boolean(originalTokenizedText) && textContent !== originalTokenizedText;
+  const isTextDirty = Boolean(originalTokenizedText) && rawText !== originalTokenizedText;
   // Typed over a body that has changed since, and not put onto it: the two
   // changed the same passage.
-  const behind =
-    !sending && textContent !== log.base && Boolean(serverText) && log.base !== serverText;
+  const behind = !sending && rawText !== log.base && Boolean(serverText) && log.base !== serverText;
   const hasText = Boolean(layerInfo.textLayer?.text?.body);
   const saving = doc.isSaving;
 
@@ -362,7 +365,7 @@ export const TextEditor = () => {
             {!readOnly && (
               <Button
                 onClick={handleSaveText}
-                disabled={saving || !textContent.trim() || textContent === log.base}
+                disabled={saving || !textContent.trim() || rawText === log.base}
               >
                 Save
               </Button>
@@ -371,7 +374,7 @@ export const TextEditor = () => {
             {canEdit && (
               <TokenizeDialog
                 tokenize={services.tokenize}
-                text={textContent}
+                text={rawText}
                 writeLockHeld={writeLockHeld}
                 blockedHint={
                   !textContent.trim()
@@ -426,7 +429,7 @@ export const TextEditor = () => {
         <div className="min-w-0 rounded-md border bg-muted/40 p-4">
           <h4 className="mb-4 text-base font-semibold">Tokens</h4>
           <TokenVisualizer
-            text={textContent}
+            text={rawText}
             originalText={originalTokenizedText}
             sentenceTokens={sentenceTokens}
             wordTokens={wordTokens}

@@ -31,7 +31,7 @@ import {
 import { SUPPRESS_KEY, isSuppressor, suppressorFor } from './enhancedGraph.js';
 import { notSetUp } from '../../../plaid-ui/src/domain/setupGuard.js';
 import { pendingId, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
-import { statusOf } from '../../../plaid-ui/src/lib/errors.js';
+import { isUnknownOutcome, statusOf } from '../../../plaid-ui/src/lib/errors.js';
 import { expectStored, isConfigConflict } from '../../../plaid-ui/src/domain/configCells.js';
 import { rebaseEdits } from '../../../plaid-ui/src/lib/textMerge.js';
 import { editLogGaps } from '../../../plaid-ui/src/lib/editLog.js';
@@ -233,7 +233,9 @@ export class ConlluDocument extends DocumentModel {
   // `log` is the box's edit log (plaid-ui lib/editLog.js), or what
   // `sendEditLog` split off it: `{ base, digest, gaps }`. A string is a whole
   // new body, typed over the stored one (for scripts). `onStored(body,
-  // digest)` hears the body that was stored.
+  // digest)` hears the body that was stored. A save whose answer is lost is
+  // sent again by the queue until it is answered, for as long as the page is
+  // open, so it ends stored or refused.
   //
   // What goes is a plan: the gaps, the body they are over and its digest,
   // and a key seed of its own. It is kept outside the send, so a run of the
@@ -246,6 +248,11 @@ export class ConlluDocument extends DocumentModel {
   // under a new seed. Changes to the same passage, or a move that could be
   // read two ways, are refused and nothing is sent. No plan goes without a
   // digest.
+  //
+  // A plan sent again after a lost answer may be answered from its key with
+  // the body its first send stored, and another user may have saved since.
+  // The text is read then, and the document with it when the stored text
+  // is not the one answered.
   async saveText(log, { onStored = null } = {}) {
     const label = 'Failed to save text';
     if (!this._canWrite(label)) return false;
@@ -269,66 +276,90 @@ export class ConlluDocument extends DocumentModel {
       gaps: typedGaps,
       keys: null,
       ready: false,
+      // Sent, with its answer lost: a send of it again may be answered from
+      // its key.
+      lost: false,
     };
     return this._queueWrite(
       label,
-      async () => {
-        if (!text?.id) {
-          const body = gapsBody(typedBase, typedGaps);
-          await this._client.texts.create(textLayer.id, this.id, body);
-          onStored?.(body, null);
-          return;
-        }
-        for (let attempt = 0; ; attempt += 1) {
-          if (!plan.ready) {
-            if (!(await this._planText(text.id, plan))) {
-              const now = this._storedText(text.id);
-              onStored?.(now.body, now.digest);
-              return;
-            }
-          }
-          let answer;
-          try {
-            answer = await this._client.withOperation(
-              label,
-              () =>
-                this._client.texts.edit(text.id, gapsToOps(plan.gaps), undefined, {
-                  base: plan.digest,
-                }),
-              { keys: plan.keys },
-            );
-          } catch (err) {
-            if (isKeyReused(err)) {
-              // A request under this plan's key has landed, as some other
-              // request than this one: what is stored is what the save did.
-              await this._reloadInSend();
-              const now = this._storedText(text.id);
-              onStored?.(now.body, now.digest);
-              return;
-            }
-            const textChanged = statusOf(err) === 409 && err?.responseData?.['text-changed'];
-            // A lost answer goes to the queue, which runs this again with the
-            // plan as it is.
-            if (!textChanged || attempt >= 2) throw err;
-            await this._reloadInSend();
-            plan.ready = false;
-            continue;
-          }
-          if (typeof answer?.body === 'string') {
-            this._applyRawPatch((raw) => {
-              Object.assign(raw, applyReshape(raw, text.id, answer));
-            });
-          } else {
-            await this._reloadInSend();
-          }
+      () => this._sendText(text, textLayer, plan, label, onStored),
+      undefined,
+      { reload: !text?.id },
+    );
+  }
+
+  // The send of saveText, run by the queue, and again by it after a lost
+  // answer with `plan` as that run left it.
+  async _sendText(text, textLayer, plan, label, onStored) {
+    if (!text?.id) {
+      const body = gapsBody(plan.base, plan.gaps);
+      await this._client.texts.create(textLayer.id, this.id, body);
+      onStored?.(body, null);
+      return;
+    }
+    for (let attempt = 0; ; attempt += 1) {
+      if (!plan.ready) {
+        plan.lost = false;
+        if (!(await this._planText(text.id, plan))) {
           const now = this._storedText(text.id);
           onStored?.(now.body, now.digest);
           return;
         }
-      },
-      undefined,
-      { reload: !text?.id },
-    );
+      }
+      let answer;
+      try {
+        answer = await this._client.withOperation(
+          label,
+          () =>
+            this._client.texts.edit(text.id, gapsToOps(plan.gaps), undefined, {
+              base: plan.digest,
+            }),
+          { keys: plan.keys },
+        );
+      } catch (err) {
+        if (isKeyReused(err)) {
+          // A request under this plan's key has landed, as some other
+          // request than this one. The stored text is what the save did
+          // when it holds the change, and the save is refused otherwise.
+          await this._reloadInSend();
+          const now = this._storedText(text.id);
+          if (now.body !== gapsBody(plan.base, plan.gaps)) {
+            throw new Error(TEXT_CONFLICT, { cause: err });
+          }
+          onStored?.(now.body, now.digest);
+          return;
+        }
+        // A lost answer goes to the queue, which runs this again with the
+        // plan as it is.
+        if (isUnknownOutcome(err)) plan.lost = true;
+        const textChanged = statusOf(err) === 409 && err?.responseData?.['text-changed'];
+        if (!textChanged || attempt >= 2) throw err;
+        await this._reloadInSend();
+        plan.ready = false;
+        continue;
+      }
+      if (typeof answer?.body === 'string') {
+        this._applyRawPatch((raw) => {
+          Object.assign(raw, applyReshape(raw, text.id, answer));
+        });
+        // Maybe answered from its key, with the body its first send stored.
+        // The save has landed either way, so a read that fails leaves the
+        // answer on screen.
+        if (plan.lost) {
+          try {
+            const stored = await this._client.texts.get(text.id);
+            if (stored?.digest !== answer.digest) await this._reloadInSend();
+          } catch (err) {
+            console.error('Reading the text after a resent save failed:', err);
+          }
+        }
+      } else {
+        await this._reloadInSend();
+      }
+      const now = this._storedText(text.id);
+      onStored?.(now.body, now.digest);
+      return;
+    }
   }
 
   // Makes `plan` (see saveText) ready to send on the text as last read: its

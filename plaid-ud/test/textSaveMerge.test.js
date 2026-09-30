@@ -85,7 +85,7 @@ function withKeys(client) {
 function setup({ input = INPUT, body = 'the big dog ran', stored, onEdit, afterEdit } = {}) {
   const raw = withBody(rawDocFromConllu(input, 'text-doc'), body);
   const base = textOf(raw).body;
-  const server = { body: stored ?? base, digest: undefined, reads: 0 };
+  const server = { body: stored ?? base, digest: undefined, reads: 0, textReads: 0 };
   const sent = [];
   const keys = [];
   const replayed = [];
@@ -140,6 +140,11 @@ function setup({ input = INPUT, body = 'the big dog ran', stored, onEdit, afterE
       },
     },
   });
+  // The text alone, as stored now.
+  client.texts.get = async (id) => {
+    server.textReads += 1;
+    return { id, body: server.body, digest: digestOf(server.body) };
+  };
   const doc = new ConlluDocument({ raw, client });
   // The queue sends a lost answer's edit again at once.
   doc._writes._retryDelay = () => 0;
@@ -219,6 +224,51 @@ test('a save whose answer was lost goes again as the same request under the same
   assert.equal(stored, `${base} home`);
   assert.equal(doc.body, `${base} home`);
   assert.ok(!doc.error);
+  // The stored text is the one answered, so the document is not read.
+  assert.equal(server.textReads, 1);
+  assert.equal(server.reads, 0);
+});
+
+test('a resent save that landed is saved when the text cannot be read after it', async () => {
+  const { doc, base, server } = setup({
+    onEdit: (_c, n) => (n === 1 ? lostAnswer() : null),
+  });
+  doc._client.texts.get = async () => {
+    throw Object.assign(new Error('HTTP 500'), { status: 500, method: 'GET' });
+  };
+  const logged = console.error;
+  console.error = () => {};
+  let stored = null;
+  try {
+    const ok = await doc.saveText(edited(base, `${base} home`), { onStored: (b) => (stored = b) });
+    assert.equal(ok, true);
+  } finally {
+    console.error = logged;
+  }
+  assert.equal(server.body, `${base} home`);
+  assert.equal(stored, `${base} home`);
+  assert.ok(!doc.error);
+});
+
+test('a save whose answer was lost twice after it landed is stored once and answered from its key', async () => {
+  const { doc, base, sent, keys, replayed, server } = setup();
+  const edit = doc._client.texts.edit;
+  let answers = 0;
+  doc._client.texts.edit = async (...args) => {
+    const out = await edit(...args);
+    answers += 1;
+    if (answers <= 2) throw lostAnswer();
+    return out;
+  };
+  let stored = null;
+  const ok = await doc.saveText(edited(base, `${base} home`), { onStored: (b) => (stored = b) });
+  assert.equal(ok, true);
+  assert.equal(sent.length, 3);
+  assert.deepEqual(new Set(keys).size, 1);
+  assert.deepEqual(replayed, [keys[0], keys[0]]);
+  assert.equal(server.body, `${base} home`);
+  assert.equal(stored, `${base} home`);
+  assert.ok(!doc.error);
 });
 
 test('a save whose answer was lost and which did not land is sent again under the same key', async () => {
@@ -261,7 +311,10 @@ test('a landed save whose answer was lost is not moved onto a text saved after i
   assert.deepEqual(sent[1], sent[0]);
   assert.equal(keys[1], keys[0]);
   assert.deepEqual(replayed, [keys[0]]);
-  assert.equal(stored, 'I saw the dog');
+  // The replay answered with the body the first send stored. The text is read
+  // again and shows what is stored now (REV2-edit-ops U1).
+  assert.equal(stored, 'I saw the dog ran');
+  assert.equal(doc.body, 'I saw the dog ran');
 });
 
 // REV-edit-ops R10: a 409 moves the edits onto the new text as a new request
@@ -287,7 +340,8 @@ test('after a 409 and then a lost answer, the moved request goes again under its
   assert.equal(keys[2], keys[1]);
   assert.notEqual(seedOf(keys[1]), seedOf(keys[0]));
   assert.deepEqual(replayed, [keys[1]]);
-  assert.equal(stored, 'I saw the dog.');
+  assert.equal(stored, 'I saw the dog. It ran.');
+  assert.equal(doc.body, 'I saw the dog. It ran.');
 });
 
 test('a key refused as used for another request reads the text back and keeps what is stored', async () => {
@@ -309,6 +363,66 @@ test('a key refused as used for another request reads the text back and keeps wh
   assert.equal(stored, `${base} home`);
   assert.equal(doc.body, `${base} home`);
   assert.ok(!doc.error);
+});
+
+// REV2-edit-ops K1: what the reused key stored is some other request's, and
+// the stored text does not hold this save's change.
+test('a key refused as used for another request, over a text without the change, is refused', async () => {
+  const { doc, base, sent, server } = setup();
+  doc._client.texts.edit = async (id, ops, _m, { base: digest } = {}) => {
+    sent.push({ id, ops, digest });
+    throw Object.assign(new Error('HTTP 422 key reused'), {
+      status: 422,
+      method: 'PATCH',
+      responseData: { error: 'idempotency-key-reused' },
+    });
+  };
+  let stored = null;
+  const ok = await doc.saveText(edited(base, `${base} home`), {
+    onStored: (b) => (stored = b),
+  });
+  assert.equal(ok, false);
+  assert.equal(stored, null);
+  assert.equal(server.body, base);
+  assert.match(doc.error, /same passage was changed elsewhere/);
+});
+
+// REV2-edit-ops G1, after REV4 J1: a lost answer is sent again for as long
+// as the page is open, the screen gone or not, and the save lands once.
+test('a save whose answer is lost after the screen has gone is sent again until it lands, once', async () => {
+  const { doc, base, sent, keys, replayed, server } = setup();
+  const edit = doc._client.texts.edit;
+  let answers = 0;
+  doc._client.texts.edit = async (...args) => {
+    const out = await edit(...args);
+    answers += 1;
+    if (answers <= 2) throw lostAnswer();
+    return out;
+  };
+  doc._writes.letGo();
+  let stored = null;
+  const ok = await doc.saveText(edited(base, `${base} home`), { onStored: (b) => (stored = b) });
+  assert.equal(ok, true);
+  assert.equal(sent.length, 3);
+  assert.equal(new Set(keys).size, 1);
+  assert.deepEqual(replayed, [keys[0], keys[0]]);
+  assert.equal(server.body, `${base} home`);
+  assert.equal(stored, `${base} home`);
+  assert.ok(!doc.error);
+});
+
+// REV-edit-ops R15: a body holding `\r` keeps it, and the log's stored form
+// is what was stored.
+test('a save over a body holding \\r keeps every \\r', async () => {
+  const body = 'the big\r\ndog ran';
+  const { doc, server } = setup({ body });
+  let log = startEditLog(body, digestOf(body));
+  log = recordEdit(log, log.body, { start: 7, end: 7 }, 'the bigs\ndog ran', 8);
+  assert.equal(log.raw, 'the bigs\r\ndog ran');
+  let stored = null;
+  assert.equal(await doc.saveText(log, { onStored: (b) => (stored = b) }), true);
+  assert.equal(server.body, 'the bigs\r\ndog ran');
+  assert.equal(stored, log.raw);
 });
 
 // REV-edit-ops R4, the ud side: an edit without `base` has no precondition,

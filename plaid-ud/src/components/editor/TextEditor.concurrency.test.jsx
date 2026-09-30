@@ -24,6 +24,7 @@ vi.mock('./services/ParseDialog.jsx', () => ({ ParseDialog: () => null }));
 vi.mock('./services/TokenizeDialog.jsx', () => ({ TokenizeDialog: () => null }));
 
 const { TextEditor } = await import('./TextEditor.jsx');
+const { hasUnsavedDraft } = await import('@ui/hooks/useUnsavedDraft.js');
 
 const makeDoc = (body, over = {}) => ({
   id: 'd1',
@@ -226,6 +227,63 @@ describe('the Text Editor with another user saving the same text', () => {
     await view.rerender(tree());
     expect(visualized.props.originalText).toBe('The dog ran home.');
     expect(visualized.props.text).toBe('The dog ran home.');
+    await view.unmount();
+  });
+});
+
+// REV2-edit-ops C1: a stored body can hold `\r\n`, which the box shows as
+// `\n`. Unchanged, it is saved, and the token view works on it.
+describe('the Text Editor on a body holding \\r', () => {
+  const BODY = 'The dog ran.\r\nIt slept.';
+  const words = [
+    { id: 'w1', begin: 0, end: 3 },
+    { id: 'w2', begin: 14, end: 16 },
+  ];
+
+  it('shows nothing to save until something is typed', async () => {
+    setDoc(makeDoc(BODY, { words }));
+    const view = await renderComponent(tree());
+    const box = view.container.querySelector('textarea');
+    expect(box.value).toBe('The dog ran.\nIt slept.');
+    expect(button(view.container, 'Save').disabled).toBe(true);
+    expect(view.container.textContent).not.toContain('Unsaved changes');
+    expect(hasUnsavedDraft()).toBe(null);
+    await view.step(() => typeAtEnd(box, ' Then it woke.'));
+    expect(button(view.container, 'Save').disabled).toBe(false);
+    expect(view.container.textContent).toContain('Unsaved changes');
+    expect(hasUnsavedDraft()).not.toBe(null);
+    await view.unmount();
+  });
+
+  it('hands the token view the stored text, so its tokens can be edited', async () => {
+    setDoc(makeDoc(BODY, { words }));
+    const view = await renderComponent(tree());
+    expect(visualized.props.text).toBe(BODY);
+    expect(visualized.props.originalText).toBe(BODY);
+    await view.unmount();
+  });
+
+  it('makes a word at its place in the stored text', async () => {
+    const doc = makeDoc(BODY, { words, createWord: vi.fn(async () => true) });
+    setDoc(doc);
+    const view = await renderComponent(tree());
+    await view.step(() => visualized.props.onWordCreate(17, 23));
+    expect(doc.createWord).toHaveBeenCalledWith(17, 23, BODY);
+    await view.unmount();
+  });
+
+  it('keeps every \\r in what a save sends', async () => {
+    const doc = makeDoc(BODY);
+    setDoc(doc);
+    const view = await renderComponent(tree());
+    const box = view.container.querySelector('textarea');
+    await view.step(() => typeAtEnd(box, ' Then it woke.'));
+    await view.step(() => button(view.container, 'Save').click());
+    expect(doc.saveText.mock.calls[0][0]).toEqual({
+      base: BODY,
+      digest: `digest:${BODY}`,
+      gaps: [{ start: 23, end: 23, value: ' Then it woke.' }],
+    });
     await view.unmount();
   });
 });
