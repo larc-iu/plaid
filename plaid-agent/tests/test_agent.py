@@ -180,6 +180,63 @@ def test_streaming_hands_out_the_text_so_far_and_rebuilds_the_response(monkeypat
     assert out.rebuilt == 4 and out.messages == [{'role': 'user', 'content': 'hi'}]
 
 
+def _real_chunk(**delta):
+    from litellm.types.utils import Delta, ModelResponseStream, StreamingChoices
+    return ModelResponseStream(id='c', model='m', choices=[StreamingChoices(index=0, delta=Delta(role='assistant', **delta))])
+
+
+def _tool_chunk():
+    from litellm.types.utils import ChatCompletionDeltaToolCall, Function
+    return _real_chunk(tool_calls=[ChatCompletionDeltaToolCall(
+        id='call_1', index=0, type='function', function=Function(name='concordance', arguments='{}'))])
+
+
+def _stream(monkeypatch, chunks):
+    monkeypatch.setattr(agent, 'STREAM_INTERVAL_S', 0)
+    monkeypatch.setattr(agent.litellm, 'completion', lambda **kw: iter(chunks))
+    texts = []
+    out = agent._complete(agent.ModelConfig(model='m'), {'model': 'm', 'messages': []}, texts.append)
+    return out.choices[0].message, texts
+
+
+@pytest.mark.parametrize('between', [
+    lambda: _tool_chunk(),
+    lambda: _real_chunk(reasoning_content='The user wants thok.'),
+], ids=['tool call', 'reasoning'])
+def test_two_text_runs_in_one_stream_are_kept_apart(monkeypatch, between):
+    """litellm's chunk builder joins every content piece of a stream as it
+    is, so a text run, a tool call or a reasoning block, then another text
+    run read as one sentence: "segment those?Here's what I found"."""
+    msg, texts = _stream(monkeypatch, [
+        _real_chunk(content='Would you like me to '), _real_chunk(content='segment those?'),
+        between(),
+        _real_chunk(content="Here's what "), _real_chunk(content='I found for thok:'),
+    ])
+    want = "Would you like me to segment those?\n\nHere's what I found for thok:"
+    assert msg.content == want
+    assert texts[-1] == want, 'the streamed text is the one kept'
+
+
+def test_the_tool_call_and_the_reasoning_survive_the_rebuild(monkeypatch):
+    msg, _ = _stream(monkeypatch, [
+        _real_chunk(content='A.'), _real_chunk(reasoning_content='hmm'), _real_chunk(content='B.'), _tool_chunk(),
+    ])
+    assert msg.content == 'A.\n\nB.'
+    assert [c.function.name for c in msg.tool_calls] == ['concordance']
+    assert msg.reasoning_content == 'hmm'
+
+
+def test_no_separator_where_the_text_already_breaks_or_nothing_came_before(monkeypatch):
+    msg, _ = _stream(monkeypatch, [
+        _real_chunk(content='Found these:\n'), _tool_chunk(), _real_chunk(content='thok'),
+    ])
+    assert msg.content == 'Found these:\nthok', 'no double separator'
+    msg, _ = _stream(monkeypatch, [
+        _real_chunk(reasoning_content='hmm'), _real_chunk(content='Here'), _real_chunk(content=' it is.'),
+    ])
+    assert msg.content == 'Here it is.', 'reasoning before the first text adds nothing'
+
+
 def test_streaming_is_off_when_configured_and_falls_back_when_the_provider_refuses(monkeypatch):
     calls = []
 

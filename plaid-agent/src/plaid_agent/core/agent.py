@@ -263,11 +263,17 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
     chunks at the end (tool calls included), so the caller reads it as it
     would an unstreamed one. A provider that refuses to stream (an error
     before the first chunk) is asked again without streaming. Once
-    ``abandoned`` is set a stream is closed at its next chunk."""
+    ``abandoned`` is set a stream is closed at its next chunk.
+
+    litellm's chunk builder joins the content pieces as they came, so two
+    text runs with a tool call or a reasoning block between them would read
+    as one ("segment those?Here's what I found"). The text is kept here
+    instead, with a blank line at such a seam unless it already breaks."""
     if not cfg.stream:
         return litellm.completion(**kwargs)
     chunks: List[Any] = []
     text = ''
+    seam = False  # a tool call or reasoning came after the last text piece
     last = 0.0
     try:
         stream = litellm.completion(**kwargs, stream=True)
@@ -283,7 +289,12 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
             choices = getattr(chunk, 'choices', None) or []
             delta = getattr(choices[0], 'delta', None) if choices else None
             piece = getattr(delta, 'content', None) if delta is not None else None
+            if delta is not None and any(getattr(delta, k, None) for k in _NOT_TEXT_DELTAS):
+                seam = True
             if piece:
+                if seam and text and not text[-1].isspace() and not piece[0].isspace():
+                    text += '\n\n'
+                seam = False
                 text += piece
                 now = time.monotonic()
                 if now - last >= STREAM_INTERVAL_S:
@@ -304,7 +315,17 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
         return litellm.completion(**kwargs)
     if text:
         on_text(text)
-    return litellm.stream_chunk_builder(chunks, messages=kwargs.get('messages'))
+    resp = litellm.stream_chunk_builder(chunks, messages=kwargs.get('messages'))
+    choices = getattr(resp, 'choices', None) or []
+    msg = getattr(choices[0], 'message', None) if choices else None
+    if text and msg is not None:
+        msg.content = text
+    return resp
+
+
+# Delta fields that are not the reply's text. Text on either side of one is
+# two runs, not one.
+_NOT_TEXT_DELTAS = ('tool_calls', 'function_call', 'reasoning_content', 'thinking_blocks')
 
 
 def planned_progress(n: int) -> str:
