@@ -214,14 +214,14 @@ class Workspace(BaseWorkspace):
 # line (core/work.py). A value's provenance sits on its span and a dependency's
 # on its relation, which a parsed word holds as ``relation_metadata``.
 
-def _words(ws: 'Workspace', ids) -> List[Any]:
+def _words_by_id(ws: 'Workspace', ids) -> List[Any]:
     wanted = set(ids or [])
     return [w for doc in ws._docs.values() for s in doc.sentences for w in s.words if w.id in wanted]
 
 
 def _words_work(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
     """A token's words, when it is cut again: their values and their heads."""
-    return [x for w in _words(ws, op.get('existing_word_ids'))
+    return [x for w in _words_by_id(ws, op.get('existing_word_ids'))
             for x in [sp.id for sp in w.fields.values()] + [w.relation_id]]
 
 
