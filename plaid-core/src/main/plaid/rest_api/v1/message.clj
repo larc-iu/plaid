@@ -476,7 +476,7 @@
         group-id (handed-group data)
         ;; A service handing on the group it was handed (a service that asks
         ;; another) hands it on as its requester's, in the same project.
-        handed-on (when group-id (events/group-grant group-id user-id requester-token))
+        handed-on (when group-id (events/group-grant group-id user-id requester-token id))
         handed-elsewhere? (and handed-on (not= (str id) (str (:project-id handed-on))))]
     (cond
       existing

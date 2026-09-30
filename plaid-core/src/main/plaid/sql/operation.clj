@@ -132,7 +132,7 @@
   [tx {:keys [group-id user ts project]}]
   (when group-id
     (let [token *scoped-token-key*
-          granted (events/group-grant group-id user token)
+          granted (events/group-grant group-id user token project)
           own? (fn [g] (og/may-join? {:user_id (:owner g) :scoped_token (:owner-token g)} user token))
           elsewhere? (and granted (not= (some-> project str) (some-> (:project-id granted) str)))
           _ (when (and elsewhere? (not (own? granted)))

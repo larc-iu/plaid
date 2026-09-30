@@ -233,3 +233,26 @@
       (is (= 403 (:status r)))
       (is (re-find #"in another project" (str (-> r :body :error))))
       (is (= #{"r1"} (set (keys @events/inflight-requests))) "the service was never asked"))))
+
+;; conc-2026-09-29 REV-W-TAIL: one requester writing in two projects hands
+;; one open operation to a service in each, run by the same account. Each
+;; service's write was checked against whichever of the two grants the
+;; registry found first, so one of the two was refused as another project's.
+(deftest one-operation-handed-into-two-projects-joins-in-each
+  (events/reset-state!)
+  (let [p (world!)
+        q (h/create-test-project admin-request "Join Q")
+        g (random-uuid)]
+    (doseq [u ["user1@example.com" "user2@example.com"]]
+      (call admin-request :post (str "/api/v1/projects/" q "/writers/" u)))
+    (is (= 201 (:status (write-in p user1-request g "requester first"))))
+    (grant! "in-p" {:group-id g :project-id p :owner "user1@example.com" :owner-token nil
+                    :grantee-user "user2@example.com" :grantee-token nil})
+    (grant! "in-q" {:group-id g :project-id q :owner "user1@example.com" :owner-token nil
+                    :grantee-user "user2@example.com" :grantee-token nil})
+    (testing "the service in each project joins with a write in its own project"
+      (is (= 201 (:status (write-in p user2-request g "service in p"))))
+      (is (= 201 (:status (write-in q user2-request g "service in q"))))
+      (is (= #{"user1@example.com"} (set (map :user_id (psc/q fix/db {:select [:user_id]
+                                                                      :from [:operation_groups]
+                                                                      :where [:= :id g]}))))))))

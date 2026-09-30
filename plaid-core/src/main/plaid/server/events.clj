@@ -416,26 +416,31 @@
   nil)
 
 (defn- grant-of
-  [group-id user-id token-key result?]
+  [group-id user-id token-key result? project-id]
   (let [state inflight-requests
         reqs (when (instance? clojure.lang.IDeref state) @state)]
     (when (map? reqs)
-      (some (fn [[_ {:keys [group-grant result]}]]
-              (when (and group-grant
-                         (result? result)
-                         (= group-id (:group-id group-grant))
-                         (= user-id (:grantee-user group-grant))
-                         (= token-key (:grantee-token group-grant)))
-                group-grant))
-            reqs))))
+      (let [grants (keep (fn [[_ {:keys [group-grant result]}]]
+                           (when (and group-grant
+                                      (result? result)
+                                      (= group-id (:group-id group-grant))
+                                      (= user-id (:grantee-user group-grant))
+                                      (= token-key (:grantee-token group-grant)))
+                             group-grant))
+                         reqs)]
+        (or (when project-id
+              (some #(when (= (str project-id) (str (:project-id %))) %) grants))
+            (first grants))))))
 
 (defn group-grant
   "The grant (see `grant-group!`) of an unfinished request that lets
   `user-id`, writing with the scoped token `token-key` (nil for any other
-  credential), into the group `group-id`, or nil. Nil when the request
-  registry is not running (a test that never started it)."
-  [group-id user-id token-key]
-  (grant-of group-id user-id token-key nil?))
+  credential), into the group `group-id`, or nil. When several requests
+  handed the same group, the one made in `project-id` is taken first, so a
+  write is checked against the grant of its own project. Nil when the
+  request registry is not running (a test that never started it)."
+  [group-id user-id token-key project-id]
+  (grant-of group-id user-id token-key nil? project-id))
 
 (defn lapsed-group-grant
   "The grant (see `grant-group!`) that let `user-id` with `token-key` into
@@ -444,7 +449,7 @@
   nil. Only a finished request the registry still keeps is found, so after a
   restart there is none."
   [group-id user-id token-key]
-  (grant-of group-id user-id token-key some?))
+  (grant-of group-id user-id token-key some? nil))
 
 (defn get-request
   "The entry for `request-id`, in flight or recently finished, or nil."
