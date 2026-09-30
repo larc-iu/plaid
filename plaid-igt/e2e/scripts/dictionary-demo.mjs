@@ -17,7 +17,8 @@ import { deriveImportConfig, runImport } from '../../src/import/flex/importEngin
 import { executeProjectSetup } from '../../src/components/projects/setup/executeSetup.js';
 import { fixture } from '../../src/test/fixturesDir.js';
 
-const BACKUP = process.env.PLAID_FWBACKUP || fixture('Sena 3 2018-09-11 1145.fwbackup');
+const BACKUP =
+  process.env.PLAID_FWBACKUP || fixture('fwsamples', 'Sena 3 2026-06-09 1645.fwbackup');
 const docsArg = process.argv.indexOf('--docs');
 const DOCS = docsArg > 0 ? Number(process.argv[docsArg + 1]) : 8;
 

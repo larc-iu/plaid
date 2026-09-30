@@ -8,8 +8,8 @@ import { parseFwdata } from './fwdataParser.js';
 import { buildDocuments } from './buildDocuments.js';
 import { fixture, haveFixture } from '../../test/fixturesDir.js';
 
-const LEZGI = fixture('Lezgi-Qusar dialect 2019-12-12 0934 change_comps.fwbackup');
-const SENA = fixture('Sena 3 2018-09-11 1145.fwbackup');
+const LEZGI = fixture('lezgi.fwbackup');
+const SENA = fixture('fwsamples', 'Sena 3 2026-06-09 1645.fwbackup');
 
 const load = (path) =>
   buildDocuments(parseFwdata(readFwbackup(new Uint8Array(readFileSync(path))).xml));
