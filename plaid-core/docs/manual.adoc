@@ -1198,6 +1198,7 @@ However, some invariants will vary by annotation framework.
 For example, it is quite common to want a span layer's spans to be in one-to-one correspondence with tokens in the parent token layer.
 
 For **token layers**, you can ask Plaid to enforce some commonly needed additional invariants for you, server-side: these are described in <<Token Layer Constraints>> below.
+An app can also declare rules of its own on the layers it uses, such as one head per word or one sentence per relation, which Plaid enforces on every write: see <<layer-constraints>>.
 For everything else, Plaid provides three further mechanisms—**strict mode**, **locking**, and **atomic batches**—which help you coordinate writes from the client so that you can enforce your own data integrity constraints without needing to write any code outside of your client.
 
 == Token Layer Constraints
@@ -1874,8 +1875,9 @@ Suppose that a sentence has been annotated for UD, and that later on, someone op
 From the IGT app's perspective, this is a totally unproblematic change to make.
 However, on the UD side, it is a strict requirement that all dependency relations must _never_ cross sentence boundaries, and this change in the IGT app at the shared sentence tokenization layer has caused an invariant violation in the UD app.
 
-There is no way for Plaid itself to know about this invariant, because it is application-specific.
-Our only option, then, as long as this layer is shared, is to somehow have the UD app deal with this violation the next time that document is opened.
+Plaid cannot know about this invariant by itself, because it is application-specific.
+The UD app can tell it, though, by declaring the rule on its relation layer (see <<layer-constraints>>), and then the split deletes the crossing relations in its own transaction.
+An invariant that no declared rule expresses is left to the UD app to deal with the next time that document is opened.
 
 The discipline that resolves this is easy to state, and in the interest of smooth interoperability, we encourage all app developers to adhere to it:
 
@@ -1892,6 +1894,123 @@ And indeed, in general, some invariant violations in other situations might **re
 It is worth running this same reconciliation not only when a document is first opened, but also whenever a document that is already on screen changes underneath you, for instance in response to a real-time update delivered through <<Real-time Messaging>>.
 Opening the document is the baseline; reconciling on a live update is the very same idea, applied at the moment the substrate comes back into view.
 ====
+
+[[layer-constraints]]
+== Layer Constraints
+
+An app can declare **rules** on the token, span and relation layers it uses, and Plaid enforces them inside every write, whoever makes it.
+A rule declared by the UD app on its dependency layer holds for a split made in the IGT app, for a service, for a script and for a restore alike.
+Stored data always keeps the rules its layers declare.
+
+Each rule is a **constraint** object with a `type` and the type's parameters:
+
+[cols="1,1,3",options="header"]
+|===
+|Type |Layer |Rule
+
+|`max-in-degree`
+|relation
+|A span is the target of at most `max` relations of the layer. A relation from a span to itself counts.
+
+|`acyclic`
+|relation
+|The layer's relations in a document form no cycle. With `self-loops: true` a relation from a span to itself is allowed. Relations whose value is in `except-values` are not counted.
+
+|`same-ancestor`
+|relation
+|Both ends of a relation lie in one token of `token-layer`, such as one sentence. An end's place is the first token of its span. The token layer must be on the same text layer and allow no overlap.
+
+|`single-span`
+|span
+|A token is in at most one span of the layer.
+
+|`value-set`
+|span or relation
+|A value is in the list `values`. With `delimiters` the value is split on each of those characters and every part must be listed, or with `parts: "first"` only the first. An empty value always passes.
+
+|`coextensive`
+|token
+|A token has exactly the extent of a token of its parent layer. Several may share one parent's extent.
+
+|`single-link`
+|token
+|A token is the only token of at most one vocabulary link.
+|===
+
+=== Declaring
+
+Rules are declared per app, under the app's own **namespace**, so two apps sharing a layer never overwrite each other's lists.
+Plaid enforces every namespace's list.
+Declaring needs maintainer privileges.
+
+[source,python]
+----
+client.relation_layers.set_constraints(deps_layer_id, "ud", [
+    {"type": "max-in-degree", "max": 1},
+    {"type": "same-ancestor", "token_layer": sentence_layer_id},
+])
+----
+
+In JavaScript the same call is `client.relationLayers.setConstraints(depsLayerId, "ud", [...])`, and the parameters are camelCase (`tokenLayer`, `selfLoops`).
+On the wire it is `PUT /api/v1/relation-layers/<id>/constraints/ud` with the body `{"constraints": [...]}`, and the same routes exist on token and span layers.
+The answer is the layer's whole map, from namespace to list, which every read of a layer also carries as `constraints`.
+
+A list the layer's stored data already breaks is refused with 422 and the violations, and nothing is stored.
+Passing `expected`, the list you read for that namespace (`None` or `null` when there was none), makes the write refuse with 409 and `constraints-changed` when someone declared since.
+`delete_constraints` (`deleteConstraints`) removes a namespace's list.
+
+Two more routes help before declaring:
+
+* `check_constraints` (`POST .../constraints/check`) lists the violations a list would meet, and writes nothing.
+* `repair_constraints` (`POST .../constraints/repair`) applies the remedies described below to every violation in the layer's stored data, as one operation per document (`layer/repair-constraints`), and lists what is left of the types that have no remedy.
+
+=== When a write breaks a rule
+
+Rules are checked once, at the end of the write's transaction: after a single write, or after the last operation of a batch.
+A batch may pass through a state that breaks a rule, as long as its end does not.
+
+When a write breaks a rule on a row it wrote itself, it is refused with 422 and nothing is stored.
+Creating a second head for a word, a relation across two sentences, or a value outside a closed list is refused this way.
+The body names each violation:
+
+[source,json]
+----
+{
+  "error": "A span is the target of 2 relations of layer \"Deps\" (at most 1 is allowed).",
+  "violations": [
+    {"constraint": "max-in-degree", "namespace": "ud", "layer": "<relation layer id>",
+     "layer-name": "Deps", "document": "<document id>", "at": "<span id>",
+     "ids": ["<relation id>", "<relation id>"]}
+  ],
+  "violation-count": 1
+}
+----
+
+A `value-set` violation also names the `value` and the `parts` not in the list.
+At most 100 violations are listed, and `violation-count` is the total.
+`violationsOf(err)` in JavaScript and `violations_of(err)` in Python read them off a refused write.
+
+When a write breaks a rule on rows it did not write, because it changed what they rest on, Plaid applies the rule's **remedy** in the same transaction instead of refusing the write:
+
+* `same-ancestor`: the relations left crossing are deleted. This is what happens to a dependency tree when another app splits its sentence.
+* `coextensive`: the tokens left without a parent of their extent are deleted, with everything on them. This is what happens to a word's analyses when another app merges two words.
+* `single-span`: of the spans a token merge leaves on one token, the survivor's own span is kept (else the one with the smallest id) and takes the distinct values of the others, joined with `join-with` (`" | "` by default) in text order, and the others are deleted with their relations. A joined value the layer's `value-set` would refuse is not joined.
+* `single-link`: of the single-token links a merge leaves on one token, the survivor's own is kept (else the one with the smallest id) and the others are deleted.
+
+The remedies run as their own operation, `layer/apply-constraints`, in the same batch and group as the write that set them off, so History shows them under it.
+`max-in-degree`, `acyclic` and `value-set` have no remedy: a write elsewhere that would break one, such as a restore that brings back a second head, is refused.
+
+A batch larger than 1,000 operations is sent as several transactions, each checked on its own.
+A batch that moves several relations should therefore send every delete before any create.
+
+=== Values a list does not govern
+
+Two kinds of write keep a value outside a `value-set` list:
+
+* An **unverified machine value**: a span or relation whose metadata has `prov` other than `contributed` and no `provConfirmed: true` (see <<Provenance>>). Confirming such a value is refused when the value is not listed.
+* A write in an **import**: an operation of kind `import` (see <<Kinds of operation>>). Importers keep what the source says and report what is off the list.
+
+A value kept this way does not stop the list from being declared again later, and any later edit of it is checked.
 
 == References in Metadata
 
