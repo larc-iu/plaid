@@ -43,9 +43,11 @@ const SEVERAL = 'annotations you have typed';
 const FINAL = new Set([403, 404]);
 
 // Refusals of the value itself: it breaks a rule the layer declares (a closed
-// value set, a relation's shape). Sending it again is refused again, and it is
-// no one else's change, so the cell shows what is stored and keeps nothing.
-// The document's own toast gives the reason.
+// value set, a relation's shape), and the answer names the rules
+// (`violations`). Sending it again is refused again, and it is no one else's
+// change, so the cell shows what is stored and keeps nothing. The document's
+// own toast gives the reason. Any other 422, such as a reused idempotency
+// key, is a failed write whose value is kept.
 const REJECTED = new Set([422]);
 
 const settlePending = settleKey;
@@ -314,7 +316,7 @@ export class CellEngine {
       this._changed(key);
       return { kind: 'gone', typed, status };
     }
-    if (this._rejected.has(status)) {
+    if (this._rejected.has(status) && Array.isArray(outcome.error?.responseData?.violations)) {
       const shown = now === typed && !outcome.readBack ? base : now;
       view?.showStored?.(shown, { conflict: false });
       this._changed(key);

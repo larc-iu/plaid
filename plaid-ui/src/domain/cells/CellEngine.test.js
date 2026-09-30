@@ -47,6 +47,13 @@ function cellView({ focused = false, typed = null, takes = false } = {}) {
 }
 
 const refused = (status = 409, readBack = true) => ({ landed: false, status, readBack });
+// A 422 whose body names the rules the value breaks.
+const violating = (readBack = true) => ({
+  landed: false,
+  status: 422,
+  readBack,
+  error: { status: 422, responseData: { error: 'x', violations: [{ constraint: 'value-set' }] } },
+});
 
 describe('a refused edit', () => {
   it('lands: nothing held', () => {
@@ -394,7 +401,7 @@ describe('a value the layer refuses (422)', () => {
       const views = { k: cellView() };
       const { engine, heard } = setup({ stored: { k: now }, views });
       const t = engine.sending('k', { saved: 'a', typed: 'OFF' });
-      expect(engine.settle(t, refused(422)).kind).toBe('rejected');
+      expect(engine.settle(t, violating()).kind).toBe('rejected');
       expect(engine.size).toBe(0);
       expect(heard).toEqual([]);
       expect(views.k.shown).toEqual([[now, false]]);
@@ -407,8 +414,24 @@ describe('a value the layer refuses (422)', () => {
     const views = { k: cellView() };
     const { engine } = setup({ stored: { k: 'OFF' }, views });
     const t = engine.sending('k', { saved: 'a', typed: 'OFF' });
-    expect(engine.settle(t, refused(422, false)).kind).toBe('rejected');
+    expect(engine.settle(t, violating(false)).kind).toBe('rejected');
     expect(views.k.shown).toEqual([['a', false]]);
+  });
+
+  it('is only a 422 that names the rules: any other 422 is a failed write that keeps the value', () => {
+    const { engine } = setup({ stored: { k: 'a' } });
+    const t = engine.sending('k', { saved: 'a', typed: 'b' });
+    const reused = {
+      landed: false,
+      status: 422,
+      readBack: true,
+      error: { status: 422, responseData: { error: 'idempotency-key-reused' } },
+    };
+    expect(engine.settle(t, reused).kind).toBe('putBack');
+    expect(engine.unsentOf('k')).toEqual({ typed: 'b', saved: 'a' });
+    engine.clear();
+    const bare = engine.sending('k', { saved: 'a', typed: 'c' });
+    expect(engine.settle(bare, refused(422)).kind).toBe('putBack');
   });
 });
 
