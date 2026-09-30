@@ -162,7 +162,7 @@ describe('the plainEdits back-fill', () => {
     const layers = plainLayers(info);
     expect(layers.length).toBe(3);
     const writes = server.sent.filter((s) => s.key === 'plainEdits');
-    expect(writes.map(({ batch, ...w }) => w)).toEqual(
+    expect(writes.map(({ batch: _batch, ...w }) => w)).toEqual(
       layers.map((l) => ({
         kind: 'token',
         id: l.id,
