@@ -79,6 +79,19 @@
                                       ""
                                       (pick [" " " " " " "  " "\t"]))))
                              [b e]))))]
+        ;; another app's nodes beside the words (a layer with overlap
+        ;; allowed and no parent, as UMR's): over one word, over a run of
+        ;; words, over the whole sentence, overlapping each other
+        (when (:nodes opts)
+          (dotimes [i n]
+            (when (< (.nextDouble rng) 0.5)
+              (conj! toks {:token/id [:u si i] :token/layer :u :token/begin (first (words i)) :token/end (second (words i))}))
+            (when (and (< (inc i) n) (< (.nextDouble rng) 0.3))
+              (let [j (min n (+ i 2 (.nextInt rng 2)))]
+                (conj! toks {:token/id [:un si i j] :token/layer :u
+                             :token/begin (first (words i)) :token/end (second (words (dec j)))}))))
+          (when (< (.nextDouble rng) 0.3)
+            (conj! toks {:token/id [:us si] :token/layer :u :token/begin (first (words 0)) :token/end (second (peek words))})))
         ;; segments over runs of words
         (loop [i 0]
           (when (< i n)
@@ -208,7 +221,10 @@
                     out))
         by-id (into {} (map (juxt :token/id identity)) (:tokens result))
         gone (set (:deleted result))
-        plain #{:w :m :a :x :s}
+        plain #{:w :m :a :x :s :u}
+        ;; the layer whose tokens are the words: UMR's nodes on a text with no
+        ;; plain words
+        wl (if (some #(= :w (:token/layer %)) tokens) :w :u)
         out (transient [])
         bad! (fn [& xs] (conj! out (apply str xs)))
         kept-of (fn [{:token/keys [begin end]}] (filterv #(not (aget in-gap %)) (range begin end)))
@@ -253,7 +269,7 @@
               (when (and (ws? (aget nw (dec ne))) (not (ws? (aget o (dec end)))))
                 (bad! id " ends on whitespace " (pr-str (text-of now))))
               ;; a new letter in a word is inside it, joined to it, or typed over it
-              (when (= layer :w)
+              (when (= layer wl)
                 (let [letters (filterv #(not (ws? (aget o %))) kept)
                       hull (when (seq letters) [(aget newpos (first letters)) (inc (aget newpos (peek letters)))])
                       kept-new (set (map #(aget newpos %) kept))]
@@ -272,12 +288,12 @@
                         (bad! id " took a new letter apart from it at " p " (" (pr-str (text-of now)) ")"))))))))))
       ;; a new letter joined to a word's letters is in a word
       (let [word-at (let [a (boolean-array (alength nw))]
-                      (doseq [t (vals by-id) :when (and (= :w (:token/layer t)) (not (gone (:token/id t))))
+                      (doseq [t (vals by-id) :when (and (= wl (:token/layer t)) (not (gone (:token/id t))))
                               p (range (:token/begin t) (:token/end t))]
                         (aset a p true))
                       a)
             word-letter (let [a (boolean-array (alength nw))]
-                          (doseq [t tokens :when (and (= :w (:token/layer t)) (not (gone (:token/id t))))
+                          (doseq [t tokens :when (and (= wl (:token/layer t)) (not (gone (:token/id t))))
                                   k (kept-of t)]
                             (aset a (aget newpos k) true))
                           a)]
@@ -340,7 +356,11 @@
    :across-words {:carets 2 :reach 40}
    :lamkang-like {:carets 3 :spaced 0.39 :reach 30}
    :written-together {:carets 3 :glue 0.3 :spaced 0.3}
-   :nested-layer {:carets 3 :child 0.7 :spaced 0.3 :glue 0.1}})
+   :nested-layer {:carets 3 :child 0.7 :spaced 0.3 :glue 0.1}
+   ;; UMR's nodes beside the words: the words decide, the nodes follow
+   :nodes-beside-words {:carets 3 :nodes true :spaced 0.3 :glue 0.1}
+   ;; UMR's nodes on a text with no plain words: the nodes decide
+   :nodes-alone {:carets 3 :nodes true :spaced 0.3 :glue 0.1 :nodes-only true}})
 
 (def ^:private cases-per-config 1500)
 
@@ -353,6 +373,7 @@
         (let [rng (java.util.Random. (+ seed (* 7919 (hash cname))))
               {:keys [body tokens]} (gen-doc rng opts)
               gaps (gen-gaps rng body tokens opts)
+              tokens (if (:nodes-only opts) (filterv #(#{:u :s} (:token/layer %)) tokens) tokens)
               new-body (ta/edit-ops-body (ta/gap-ops gaps) body)
               server (ta/plain-edit-gaps body (ta/gap-ops gaps))
               readings {:composed (ta/gap-ops gaps)

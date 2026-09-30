@@ -25,7 +25,7 @@
 (defn- setup
   "A document with sentences, words, morphemes and glosses over `body`, the
   words at the runs without spaces, each word one morpheme."
-  [body & {:keys [plain other]}]
+  [body & {:keys [plain other nodes]}]
   (let [proj (create-test-project admin-request "EditProj")
         doc (create-test-document admin-request proj "Doc")
         tl (-> (create-text-layer admin-request proj "TL") :body :id)
@@ -52,8 +52,18 @@
         ws (mapv (fn [[b e]] (-> (create-token admin-request words text-id b e) :body :id)) runs)
         ms (mapv (fn [[b e]] (-> (create-token admin-request morphemes text-id b e) :body :id)) runs)
         gs (mapv (fn [m] (-> (create-span admin-request glosses [m] "G") :body :id)) ms)
-        os (when others (mapv (fn [[b e]] (-> (create-token admin-request others text-id b e) :body :id)) runs))]
-    {:doc doc :text text-id :words ws :morphemes ms :glosses gs :sentences sentences :others os}))
+        os (when others (mapv (fn [[b e]] (-> (create-token admin-request others text-id b e) :body :id)) runs))
+        ;; UMR's nodes: a layer beside the words, overlap allowed, no parent,
+        ;; `plainEdits` as UMR declares it
+        node-layer (when nodes
+                     (let [l (-> (create-token-layer-opts admin-request tl "Nodes" {:overlap-mode "any"}) :body :id)]
+                       (assert-status 204 (api-call admin-request {:method :put
+                                                                   :path (str "/api/v1/token-layers/" l "/config/plaid/plainEdits")
+                                                                   :body true}))
+                       l))
+        ns (when node-layer (mapv (fn [[b e]] (-> (create-token admin-request node-layer text-id b e) :body :id)) runs))]
+    {:doc doc :text text-id :words ws :morphemes ms :glosses gs :sentences sentences :others os :nodes ns
+     :node-layer node-layer}))
 
 (defn- extent [id]
   (let [t (get-token admin-request id)]
@@ -276,3 +286,36 @@
       (assert-ok (api-call admin-request {:method :patch :path (str "/api/v1/texts/" text) :body {:body "dogsc at eels"}}))
       (is (= [[0 4 "dogs"] [4 8 "c at"] [9 13 "eels"]] (map extent words) (map extent syn)))
       (is (all-there lemmas)))))
+
+(deftest nodes-beside-plain-words-follow-the-words
+  ;; Luke (2026-09-30): UMR declares plainEdits on its node layer. With plain
+  ;; words beside it the words decide and each node stays on its word.
+  (let [{:keys [text words nodes]} (setup "dog cat eel" :plain true :nodes true)
+        digest-of #(-> (get-text admin-request text) :body :text/digest)]
+    (testing "a letter typed at a word's end"
+      (assert-ok (edit-text text {:edits [(ins 3 "s")] :base (digest-of)}))
+      (is (= [0 4 "dogs"] (extent (words 0)) (extent (nodes 0)))))
+    (testing "a space typed inside a word"
+      (assert-ok (edit-text text {:edits [(ins 6 " ")] :base (digest-of)}))
+      (is (= [5 9 "c at"] (extent (words 1)) (extent (nodes 1)))))
+    (testing "a stretch over two words typed over"
+      (assert-ok (edit-text text {:edits [{:type "replace" :index 3 :length 3 :value "X"}] :base (digest-of)}))
+      (is (= "dogX at eel" (-> (get-text admin-request text) :body :text/body)))
+      (is (= [0 4 "dogX"] (extent (words 0)) (extent (nodes 0))))
+      (is (= [5 7 "at"] (extent (words 1)) (extent (nodes 1)))))))
+
+(deftest nodes-on-a-text-with-no-plain-words-decide-for-themselves
+  ;; A UMR-only text: the words keep the other rules, the plain nodes grow and
+  ;; shrink with edits inside or touching them, and are never split.
+  (let [{:keys [text nodes node-layer]} (setup "dog cat eel" :nodes true)
+        over (-> (create-token admin-request node-layer text 0 7) :body :id)
+        digest-of #(-> (get-text admin-request text) :body :text/digest)]
+    (assert-ok (edit-text text {:edits [(ins 3 "s") (ins 6 " ")] :base (digest-of)}))
+    (is (= "dogs c at eel" (-> (get-text admin-request text) :body :text/body)))
+    (is (= [0 4 "dogs"] (extent (nodes 0))))
+    (is (= [5 9 "c at"] (extent (nodes 1))))
+    (is (= [0 9 "dogs c at"] (extent over)))
+    (testing "only a node whose letters are all gone goes"
+      (assert-ok (edit-text text {:edits [(del 9 4)] :base (digest-of)}))
+      (is (nil? (extent (nodes 2))))
+      (is (= [0 9 "dogs c at"] (extent over))))))

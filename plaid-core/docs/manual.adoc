@@ -978,6 +978,9 @@ A token layer whose config sets `plainEdits` to `true` in the `plaid` namespace 
 
 A layer nested under such a layer, at any depth, takes a change the same way, so its tokens keep to their parents' edges.
 This holds for another app's layer on the same words too.
+Where typed text goes is decided by the words: the tokens of such a layer that forbids overlap and has a parent.
+Every other token of a layer with the key, such as a node over several words on a layer beside the words, follows that decision, so a node over a word stays on it.
+When no word layer has the key, those tokens decide for themselves by the same rules, and tokens that overlap each follow them.
 Partition layers over such a layer follow its tokens' edges.
 This holds for `body` and `edits` alike.
 
