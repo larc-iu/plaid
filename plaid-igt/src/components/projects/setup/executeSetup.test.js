@@ -31,6 +31,10 @@ const stub = (project, tokenLayerShapes = {}) => {
   const setConfig = (kind) => async (layerId, ns, key, value) => {
     calls.config.push({ kind, id: layerId, ns, key, value });
   };
+  const setConstraints = (kind) => async (layerId, ns, constraints, _audit, options) => {
+    (calls.constraints ??= []).push({ kind, id: layerId, ns, constraints, options });
+    return { constraints: { [ns]: constraints } };
+  };
   const client = {
     withOperation: (_label, fn) => fn(),
     projects: {
@@ -43,11 +47,13 @@ const stub = (project, tokenLayerShapes = {}) => {
     tokenLayers: {
       create: make('token'),
       setConfig: setConfig('token'),
+      setConstraints: setConstraints('token'),
       get: async (layerId) => tokenLayerShapes[layerId],
     },
     spanLayers: {
       create: make('span'),
       setConfig: setConfig('span'),
+      setConstraints: setConstraints('span'),
       shift: async (layerId, direction) => calls.shifted.push({ id: layerId, direction }),
     },
     vocabLayers: {
@@ -441,6 +447,37 @@ describe('a resumed setup, field order', () => {
     expect(calls.shifted).toEqual([
       { id: glossId, direction: 'up' },
       { id: glossId, direction: 'up' },
+    ]);
+  });
+
+  it('declares the annotation rules on the layers it set up, each over nothing declared', async () => {
+    const { client, calls } = stub(
+      project([{ id: 'sl-gloss', name: 'Gloss', config: { [IGT_NAMESPACE]: { scope: 'Word' } } }]),
+    );
+    const result = await setUp(client);
+    expect(result.failures).toEqual([]);
+    expect(calls.constraints).toEqual([
+      {
+        kind: 'token',
+        id: 'tk-morph',
+        ns: 'igt',
+        constraints: [{ type: 'coextensive' }, { type: 'single-link' }],
+        options: { expected: null },
+      },
+      {
+        kind: 'token',
+        id: 'tk-word',
+        ns: 'igt',
+        constraints: [{ type: 'single-link' }],
+        options: { expected: null },
+      },
+      {
+        kind: 'span',
+        id: 'sl-gloss',
+        ns: 'igt',
+        constraints: [{ type: 'single-span' }],
+        options: { expected: null },
+      },
     ]);
   });
 

@@ -12,6 +12,7 @@ import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { IGT_NAMESPACE } from '@/domain/igtConfig';
 import { governedFields, offTagsetValues, readTagsets } from '@/domain/tagsets';
+import { igtFields, queueFieldDeclarations } from '@/domain/igtConstraints';
 import { ZERO_MORPH, looksLikeZeroMorph } from '@/domain/zeroMorph';
 import { freqQueries, metadataHitsQuery, searchDomains } from '../search/searchQueries.js';
 import { runHitsSearch } from '../search/searchRunner.js';
@@ -258,14 +259,23 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
       const have = new Set(t.values.map((v) => v.value));
       const fresh = parts.filter((v) => v && !have.has(v)).map((value) => ({ value }));
       if (!fresh.length) return fresh;
-      await client.projects.setConfig(
-        projectId,
-        IGT_NAMESPACE,
-        'tagsets',
-        { ...tagsets, [g.tagsetName]: { ...t, values: [...t.values, ...fresh] } },
-        undefined,
-        expectStored(p, IGT_NAMESPACE, 'tagsets'),
-      );
+      const next = { ...tagsets, [g.tagsetName]: { ...t, values: [...t.values, ...fresh] } };
+      // A closed tagset's list is a rule its fields hold on the server, so
+      // the fields it governs take the new list in the same batch.
+      await client.batched((b) => {
+        b.projects.setConfig(
+          projectId,
+          IGT_NAMESPACE,
+          'tagsets',
+          next,
+          undefined,
+          expectStored(p, IGT_NAMESPACE, 'tagsets'),
+        );
+        queueFieldDeclarations(b, igtFields(getIgtLayerInfo(p)), {
+          ...p?.config,
+          [IGT_NAMESPACE]: { ...p?.config?.[IGT_NAMESPACE], tagsets: next },
+        });
+      });
       return fresh;
     };
     try {

@@ -3,7 +3,8 @@ import { TagsetsManager } from './TagsetsManager.jsx';
 import { notifyError } from '@/utils/feedback';
 import { IGT_NAMESPACE, readDocumentMetadata } from '@/domain/igtConfig';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
-import { byTagsetName, governedFields, readTagsets } from '@/domain/tagsets';
+import { byTagsetName, governedFields, readTagsetName, readTagsets } from '@/domain/tagsets';
+import { igtFields, queueFieldDeclarations, tagsetRefusal } from '@/domain/igtConstraints';
 import { loadAttested, mergeAttested } from '../validate/attested.js';
 import { expectStored, isConfigConflict, storedConfig } from '@ui/domain/configCells.js';
 import { useConfigCell } from '@ui/hooks/useConfigCell.js';
@@ -65,15 +66,38 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
   const handleSaveChanges = async (next, meta) => {
     try {
       if (!client) throw new Error('Not authenticated');
+      // A closed tagset's list is a rule its fields hold on the server. The
+      // fields take the new rules in the same batch as the tagsets, so a list
+      // the stored values break is refused whole. A renamed tagset's fields
+      // are read under the new name, which repointFields writes next.
+      const renamed = meta?.renamed;
+      const fields = igtFields(getIgtLayerInfo(project)).map((sl) =>
+        renamed && readTagsetName(sl.config) === renamed.from
+          ? {
+              ...sl,
+              config: {
+                ...sl.config,
+                [IGT_NAMESPACE]: { ...sl.config?.[IGT_NAMESPACE], tagset: renamed.to },
+              },
+            }
+          : sl,
+      );
+      const after = {
+        ...project?.config,
+        [IGT_NAMESPACE]: { ...project?.config?.[IGT_NAMESPACE], tagsets: next },
+      };
       await tagsetsCell.write(async (expected) => {
-        await client.projects.setConfig(projectId, IGT_NAMESPACE, 'tagsets', next, undefined, {
-          expected,
+        await client.batched((b) => {
+          b.projects.setConfig(projectId, IGT_NAMESPACE, 'tagsets', next, undefined, {
+            expected,
+          });
+          queueFieldDeclarations(b, fields, after);
         });
         return next;
       });
     } catch (error) {
       console.error('Failed to save tagsets:', error);
-      notifyError(error, 'Failed to save the tagsets');
+      notifyError(tagsetRefusal(error) ?? error, 'Failed to save the tagsets');
       // Someone else saved since: show what is stored now.
       if (isConfigConflict(error)) {
         Promise.resolve(onProjectUpdate?.()).catch((err) =>

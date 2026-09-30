@@ -787,10 +787,10 @@ describe('word-token structural ops', () => {
     expect(toks[0].vocabItem?.form).toBe('CAT');
   });
 
-  it("mergeTokens keeps the survivor's own vocab link and deletes the reparented one", async () => {
+  it("mergeTokens shows the survivor's own vocab link, as the server's rule keeps it", async () => {
     // Both words are linked (word-level). The server reparents w-2's link onto
-    // w-1, which would leave two links on one token — invisible and un-unlinkable
-    // in the editor — so the merge dedups: the survivor's own link wins.
+    // w-1, and its single-link rule on the word layer keeps the survivor's
+    // own link and deletes the other in the same transaction.
     const raw = buildRawDoc({
       words: [
         { id: 'w-1', begin: 0, end: 3 },
@@ -818,8 +818,10 @@ describe('word-token structural ops', () => {
     const toks = doc.sentences[0].tokens;
     expect(toks).toHaveLength(1);
     expect(toks[0].vocabItem?.form).toBe('THE');
-    const dels = doc.client.calls.filter((c) => c.kind === 'vocabLinks.delete');
-    expect(dels.map((c) => c.args[0])).toEqual(['lk-2']);
+    // The server's single-link rule deletes the reparented link in the
+    // merge's own transaction, so the merge is one batch that deletes nothing.
+    expect(doc.client.calls.filter((c) => c.kind === 'vocabLinks.delete')).toEqual([]);
+    expect(doc.client.calls.filter((c) => c.kind === 'batch.submit')).toHaveLength(1);
     expect(doc.vocabularies.v1.vocabLinks.map((l) => l.id)).toEqual(['lk-1']);
   });
 

@@ -19,11 +19,9 @@ import { readSpeakers, IGT_NAMESPACE } from './igtConfig.js';
 import { readVocabulary } from './vocabCache.js';
 import { statusOf } from '@ui/lib/errors.js';
 import { expectStored, isConfigConflict, sameConfig } from '@ui/domain/configCells.js';
+import { ensureLayerConstraints } from '@ui/lib/layerConstraints.js';
+import { rulesNotInForce, wantedConstraints } from './igtConstraints.js';
 import {
-  planMorphemeReconcile,
-  planSpanDedup,
-  planVocabLinkDedup,
-  applyVocabLinkDedup,
   planMorphTypeSync,
   describeReconcile as describeIgtReconcile,
   planPreserveOnSplit,
@@ -532,20 +530,18 @@ export class IgtDocument extends DocumentModel {
     }
   }
 
-  // Reconcile-on-open: repair IGT invariants another app may have broken while
-  // editing the shared substrate, then validate what remains. Repairs:
-  //  - Morphemes: a morpheme whose extent matches no word is an orphan (e.g.
-  //    left behind when another app merges two words). Heal downward (the word
-  //    tokenization is authoritative) by deleting EVERY orphan, including
-  //    annotated ones (the gloss loss is rare and recoverable via document
-  //    history; a kept orphan was invisible+immortal). A word with no morpheme
-  //    is NOT repaired here: derive synthesizes one and the first write makes
-  //    it real, so there is nothing to write on open (virtualMorpheme.js).
-  //  - Duplicate spans at any scope (word/morpheme/sentence): a token merge
-  //    elsewhere reparents the dying token's spans onto the survivor, leaving
-  //    >1 span per layer — invisible here (derive renders only the first). Heal
-  //    losslessly: concatenate distinct values into the first span and delete
-  //    the rest, so a human can revise the joined value.
+  // Reconcile-on-open: make sure the server holds IGT's layer rules, repair
+  // what the rules leave to an app, then validate what remains.
+  //  - Layer rules (igtConstraints.js), maintainers only: a morpheme matching
+  //    no word, a second annotation in one field on one token, a second
+  //    vocabulary link on one token, a value outside a closed tagset. The
+  //    server applies them inside every write, whoever writes, so what IGT
+  //    used to heal here (an orphan morpheme, a doubled annotation or link
+  //    after another app's word merge) never reaches storage. A project whose
+  //    layers do not hold them yet gets the server's repair of its stored
+  //    data first, then the declaration. A rule the data still breaks (an
+  //    off-list value) is not put in force, and a finding says so.
+  //  - Morph types cached on morphemes that drifted from their lexicon entry.
   // Then run validateIgtDocument over the healed state: residual heal failures
   // and un-healable app-contract violations come back as `findings` for the
   // caller to log + toast. Loud + recoverable. Deliberately NOT via _queueWrite
@@ -676,10 +672,8 @@ export class IgtDocument extends DocumentModel {
 
   async _reconcile() {
     const ZERO = {
-      deleted: 0,
-      deletedAnnotatedOrphans: 0,
-      dedupedSpans: 0,
-      dedupedLinks: 0,
+      rulesDeclared: false,
+      rulesRepaired: false,
       syncedMorphTypes: 0,
       findings: [],
     };
@@ -690,7 +684,7 @@ export class IgtDocument extends DocumentModel {
     let tally = null;
     let landed = false;
     try {
-      const info = this.layerInfo;
+      let info = this.layerInfo;
       // Back-fill, the reconcile contract's second step: a project made before
       // `preserveOnSplit` existed picks it up the next time a maintainer opens
       // a document. It has to be in place BEFORE a split, since provenance lost
@@ -698,33 +692,26 @@ export class IgtDocument extends DocumentModel {
       await this._backfillPreserveOnSplit(info);
       await this._backfillSegmentsParent(info);
       await this._backfillFieldLangs(info);
-      const { orphanMorphemeIds, deletedAnnotatedOrphans } = planMorphemeReconcile(info);
-      const dedupPlans = planSpanDedup(info);
-      const linkPlans = planVocabLinkDedup(this._vocabularies);
+      const rules = await ensureLayerConstraints(
+        this._client,
+        wantedConstraints(info, this._project?.config),
+        { canManage: canManageProject(this._project, this._user) },
+      );
+      // The server's repair changed stored rows this screen shows.
+      if (rules.repaired) {
+        await this._reload();
+        info = this.layerInfo;
+      }
       const typePlans = planMorphTypeSync(this.sentences);
-
-      const morphemeLayer = info.morphemeTokenLayer;
-      const morphemeWork = Boolean(morphemeLayer?.id && orphanMorphemeIds.length);
       tally = {
-        deleted: morphemeWork ? orphanMorphemeIds.length : 0,
-        deletedAnnotatedOrphans,
-        dedupedSpans: dedupPlans.reduce((n, p) => n + p.deleteSpanIds.length, 0),
-        dedupedLinks: linkPlans.reduce((n, p) => n + p.deleteLinks.length, 0),
+        rulesDeclared: rules.changed,
+        rulesRepaired: rules.repaired,
         syncedMorphTypes: typePlans.length,
       };
-      const heals = morphemeWork || dedupPlans.length || linkPlans.length || typePlans.length;
 
-      if (heals) {
+      if (typePlans.length) {
+        // Cached morph types that drifted from their lexicon entry's.
         await this._client.batched(async (b) => {
-          if (morphemeWork) b.tokens.bulkDelete(orphanMorphemeIds);
-          dedupPlans.forEach((p) => {
-            if (p.needsUpdate) b.spans.update(p.keepSpanId, p.mergedValue);
-            p.deleteSpanIds.forEach((id) => b.spans.delete(id));
-          });
-          linkPlans.forEach((p) => {
-            p.deleteLinks.forEach((l) => b.vocabLinks.delete(l.linkId));
-          });
-          // Cached morph types that drifted from their lexicon entry's.
           typePlans.forEach((p) => {
             b.tokens.patchMetadata(p.morphemeId, [
               { op: 'set', path: ['morphType'], value: p.morphType },
@@ -735,51 +722,25 @@ export class IgtDocument extends DocumentModel {
       // Every write has landed: the repair is whole, and a failure from here
       // on leaves only the screen behind it.
       landed = true;
-      if (heals) {
-        const removed = new Set(orphanMorphemeIds);
-
-        this._applyRawPatch((next, infoNext, vocabs) => {
-          if (linkPlans.length) applyVocabLinkDedup(vocabs, linkPlans);
-          if (typePlans.length) {
-            const byId = new Map(typePlans.map((p) => [p.morphemeId, p.morphType]));
-            (infoNext.morphemeTokenLayer?.tokens || []).forEach((m) => {
-              if (byId.has(m.id)) m.metadata = { ...(m.metadata || {}), morphType: byId.get(m.id) };
-            });
-          }
-          if (morphemeWork) {
-            const layer = infoNext.morphemeTokenLayer;
-            if (layer && Array.isArray(layer.tokens)) {
-              layer.tokens = layer.tokens.filter((m) => !removed.has(m.id));
-            }
-          }
-          if (dedupPlans.length) {
-            // Dedup can happen at any scope, so index every span layer by id.
-            const byId = new Map(
-              [
-                ...(infoNext.spanLayers?.word || []),
-                ...(infoNext.spanLayers?.morpheme || []),
-                ...(infoNext.spanLayers?.sentence || []),
-              ].map((sl) => [sl.id, sl]),
-            );
-            dedupPlans.forEach((p) => {
-              const sl = byId.get(p.layerId);
-              if (!sl || !Array.isArray(sl.spans)) return;
-              const dead = new Set(p.deleteSpanIds);
-              sl.spans = sl.spans.filter((s) => !dead.has(s.id));
-              const keep = sl.spans.find((s) => s.id === p.keepSpanId);
-              if (keep && p.needsUpdate) keep.value = p.mergedValue;
-            });
-          }
+      if (typePlans.length) {
+        const byId = new Map(typePlans.map((p) => [p.morphemeId, p.morphType]));
+        this._applyRawPatch((next, infoNext) => {
+          (infoNext.morphemeTokenLayer?.tokens || []).forEach((m) => {
+            if (byId.has(m.id)) m.metadata = { ...(m.metadata || {}), morphType: byId.get(m.id) };
+          });
         });
       }
 
       // Validate AFTER healing — whether or not anything was healed — so a heal
       // that silently failed, or an un-healable app-contract violation, still
       // surfaces. validate is pure + read-only; the caller logs + toasts.
-      const findings = validateIgtDocument(this.layerInfo, this.alignmentTokens, {
-        sentences: this.sentences,
-        vocabularies: this._vocabularies,
-      });
+      const findings = [
+        ...validateIgtDocument(this.layerInfo, this.alignmentTokens, {
+          sentences: this.sentences,
+          vocabularies: this._vocabularies,
+        }),
+        ...rulesNotInForce(rules.pending, info),
+      ];
 
       return { ...tally, findings };
     } catch (err) {

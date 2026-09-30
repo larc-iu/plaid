@@ -8,16 +8,15 @@
 // overlap modes, vocab-link integrity — so re-checking them here would be pure
 // noise. This only covers the APP-LEVEL contracts the server cannot know:
 //
-//   1. Heal-residue tripwires: re-run the heal planners and assert they come
-//      back empty. A non-empty result post-heal means a heal silently failed
-//      (or could not run) — the highest-value signal, and nearly free.
-//   2. Genuinely un-healable contracts where the right repair needs a human
-//      (we cannot pick it unambiguously), so we only warn.
+//   Genuinely un-healable contracts where the right repair needs a human
+//   (we cannot pick it unambiguously), so we only warn. An orphan morpheme or
+//   a doubled annotation cannot be stored any more: the server's layer rules
+//   refuse or repair them in the write that would make one
+//   (igtConstraints.js).
 //
 // Pure function. Returns findings [{severity, code, message, context}]; the
 // caller logs the lot and surfaces one consolidated toast. Never throws.
 
-import { planMorphemeReconcile, planSpanDedup } from './igtReconcile.js';
 import { conflictingPairs } from './alignmentTimes.js';
 import { collectMweLinks } from './mwe.js';
 
@@ -32,37 +31,7 @@ export function validateIgtDocument(
   const add = (severity, code, message, context = {}) =>
     findings.push({ severity, code, message, context });
 
-  // --- (1) Heal-residue tripwires (should all be empty post-reconcile) ---
-  try {
-    // A word with no stored morpheme is not a finding: derive gives it one and
-    // the first write makes it real (virtualMorpheme.js). An orphan still is.
-    const { orphanMorphemeIds } = planMorphemeReconcile(layerInfo);
-    if (orphanMorphemeIds.length) {
-      add(
-        SEVERITY.ERROR,
-        'morpheme-orphan',
-        `${orphanMorphemeIds.length} orphan morpheme(s) (matching no word) remain after auto-repair.`,
-        { ids: orphanMorphemeIds },
-      );
-    }
-    const dedup = planSpanDedup(layerInfo);
-    if (dedup.length) {
-      add(
-        SEVERITY.ERROR,
-        'span-duplicate',
-        `${dedup.length} token(s) still carry duplicate spans in a single layer after auto-repair.`,
-        { tokens: dedup.map((d) => `${d.layerName || d.layerId}@${d.tokenId}`) },
-      );
-    }
-  } catch (err) {
-    add(
-      SEVERITY.ERROR,
-      'residue-check-failed',
-      `Invariant residue check threw: ${err?.message || err}`,
-    );
-  }
-
-  // --- (2) Un-healable app contracts (warn; repair needs a human) ---
+  // --- Un-healable app contracts (warn, a repair needs a human) ---
   // Alignment timing must be non-inverted (timeEnd >= timeBegin). It lives in
   // opaque token metadata the server does not validate, and the repair (swap
   // the bounds vs. clear them) is ambiguous, so we only report it.

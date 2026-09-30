@@ -18,6 +18,7 @@ import { readTagsetName } from '@/domain/tagsets';
 import { readFieldLang, readLanguages } from '@/domain/igtConfig';
 import { notSetUp } from '@ui/domain/setupGuard.js';
 import { fieldChange } from './fieldChange.js';
+import { queueFieldDeclarations, tagsetRefusal } from '@/domain/igtConstraints';
 import { sameConfig, storedConfig } from '@ui/domain/configCells.js';
 
 const PREDEFINED = ['Gloss', 'POS', 'Translation', 'Literal Translation', 'Note'];
@@ -114,7 +115,8 @@ export const FieldsSettings = ({
 
     // Fresh from the server: this creates and deletes layers, so it has to
     // see the ones that exist right now, not the ones the last render saw.
-    const layers = layersOf(await client.projects.get(projectId));
+    const fresh = await client.projects.get(projectId);
+    const layers = layersOf(fresh);
     if (!layers) {
       throw new Error(notSetUp('No baseline text layer found in project'));
     }
@@ -150,7 +152,7 @@ export const FieldsSettings = ({
       layerIds.set(fieldKey(field), spanLayer.id);
     }
 
-    await client.batched((b) => queueRest(b, data, change, layers, layerIds));
+    await client.batched((b) => queueRest(b, data, change, layers, layerIds, fresh?.config));
     // The Tagsets section above reads which fields point at which tagset off
     // the project, and that is what gates its "Add values used in this
     // project" button. Without this, pointing a field at a tagset here left
@@ -166,7 +168,7 @@ export const FieldsSettings = ({
   // each only when the user changed it on this page. A value someone else
   // changed since the page read it refuses the save (409), and so does the
   // server when it changes between this read and the write.
-  const queueRest = (b, data, change, { primary, managed }, layerIds) => {
+  const queueRest = (b, data, change, { primary, managed }, layerIds, projectConfig) => {
     const changedElsewhere = () => Object.assign(new Error('Changed elsewhere'), { status: 409 });
     const shown = new Map(data.previous.fields.map((f) => [fieldKey(f), f]));
     const layerOf = new Map(managed.map((l) => [layerKey(l), l]));
@@ -237,6 +239,26 @@ export const FieldsSettings = ({
           ? b.spanLayers.setConfig(id, IGT_NAMESPACE, 'lang', next, undefined, options)
           : b.spanLayers.deleteConfig(id, IGT_NAMESPACE, 'lang', undefined, options),
     );
+
+    // The rules of each field whose tagset this save sets, a new field's
+    // included: one annotation per token, and a closed tagset's list. In the
+    // same batch, so a tagset the stored values break is refused with them.
+    queueFieldDeclarations(
+      b,
+      change.tagset.map((field) => {
+        const key = fieldKey(field);
+        const layer = layerOf.get(key);
+        const igt = { ...layer?.config?.[IGT_NAMESPACE], scope: field.scope };
+        if (field.tagset) igt.tagset = field.tagset;
+        else delete igt.tagset;
+        return {
+          id: layerIds.get(key),
+          config: { ...layer?.config, [IGT_NAMESPACE]: igt },
+          constraints: layer?.constraints ?? {},
+        };
+      }),
+      projectConfig,
+    );
   };
 
   // Move a field one place among the fields of its scope. Order lives on the
@@ -271,7 +293,7 @@ export const FieldsSettings = ({
   // A refused save or move: say why, and read the project again, so the
   // table shows what the server holds rather than what was asked for.
   const handleError = (error) => {
-    notifyError(error, 'Not saved');
+    notifyError(tagsetRefusal(error) ?? error, 'Not saved');
     Promise.resolve(onProjectUpdate?.()).catch((err) =>
       console.error('Failed to reload the project:', err),
     );

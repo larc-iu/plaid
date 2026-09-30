@@ -11,7 +11,7 @@ import {
 import { mergeMetadata, metadataOps, createdId, createdIds } from '@larc-iu/plaid-client';
 import { survivingProvenance, survivorPatch } from '../tokenReshape.js';
 import { reparentSpans, reparentVocabLinks } from './reparent.js';
-import { planSpanDedup, planVocabLinkDedup, applyVocabLinkDedup } from '../igtReconcile.js';
+import { applyMergeRules } from '../igtConstraints.js';
 import { removeTokensLocally } from '../textEdits.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
@@ -59,17 +59,29 @@ export const tokenMutations = {
     const firstToken = toMerge[0];
     const lastToken = toMerge[toMerge.length - 1];
     const coincident = findCoincidentMorphemeIds(info.morphemeTokenLayer?.tokens || [], toMerge);
-    // The survivor's own pre-merge link wins the link dedup below.
-    const ownLinkIds = new Set(
-      Object.values(this._vocabularies || {}).flatMap((v) =>
-        (v.vocabLinks || [])
-          .filter(
-            (l) =>
-              Array.isArray(l.tokens) && l.tokens.length === 1 && l.tokens[0] === firstToken.id,
-          )
-          .map((l) => l.id),
+    // What the survivor had before the merge, which the server's rules keep
+    // over what the merge moves onto it, and where each moved annotation's
+    // word began, which orders their values in the join.
+    const onlyOn = (tokens, id) => Array.isArray(tokens) && tokens.length === 1 && tokens[0] === id;
+    const own = {
+      spans: new Set(
+        (info.spanLayers?.word || []).flatMap((sl) =>
+          (sl.spans || []).filter((sp) => onlyOn(sp.tokens, firstToken.id)).map((sp) => sp.id),
+        ),
       ),
-    );
+      links: new Set(
+        Object.values(this._vocabularies || {}).flatMap((v) =>
+          (v.vocabLinks || []).filter((l) => onlyOn(l.tokens, firstToken.id)).map((l) => l.id),
+        ),
+      ),
+    };
+    const beginOf = new Map();
+    for (const sl of info.spanLayers?.word || []) {
+      for (const sp of sl.spans || []) {
+        const word = toMerge.find((t) => onlyOn(sp.tokens, t.id));
+        if (word) beginOf.set(sp.id, word.begin);
+      }
+    }
 
     // What the survivor carries: see domain/tokenReshape.js. The server keeps
     // its metadata and discards the rest, so merging a hand-made word with a
@@ -103,35 +115,11 @@ export const tokenMutations = {
       // are correctly left to drop out (orphaned, never rendered).
       reparentSpans(infoNext.spanLayers?.word, removedWordIds, firstToken.id);
       reparentVocabLinks(vocabs, removedWordIds, firstToken.id);
+      // The reparent can leave the survivor two annotations in one field and
+      // two links. The server's layer rules settle them in the merge's own
+      // transaction (igtConstraints.js), and the screen shows the same.
+      applyMergeRules(infoNext, vocabs, firstToken.id, beginOf, own);
     });
-
-    // The reparent above can leave the survivor with >1 span in the same layer
-    // (each merged word's word-scope span now points at it). Dedup at once:
-    // lossless join, identical to reconcile-on-open, so the duplicate never
-    // persists: it was invisible in the editor and silently dropped by a
-    // list-level export until the next Analyze open healed it (and it was what
-    // triggered the "Document repaired" toast on reopen).
-    const dedup = planSpanDedup(this.layerInfo).filter((p) => p.deleteSpanIds.length > 0);
-    if (dedup.length > 0) {
-      this._applyRawPatch((next, infoNext) => {
-        for (const p of dedup) {
-          for (const sl of infoNext.spanLayers?.[p.scope] || []) {
-            if (sl.id !== p.layerId || !Array.isArray(sl.spans)) continue;
-            const dead = new Set(p.deleteSpanIds);
-            sl.spans = sl.spans.filter((s) => !dead.has(s.id));
-            const keep = sl.spans.find((s) => s.id === p.keepSpanId);
-            if (keep && p.needsUpdate) keep.value = p.mergedValue;
-          }
-        }
-      });
-    }
-    // Same for vocab links: the reparent leaves the survivor with one link per
-    // merged word that had one, and the editor shows/unlinks only one. Keep
-    // the survivor's own link (else the earliest merged word's), delete the rest.
-    const linkPlans = planVocabLinkDedup(this._vocabularies, ownLinkIds);
-    if (linkPlans.length > 0) {
-      this._applyRawPatch((next, infoNext, vocabs) => applyVocabLinkDedup(vocabs, linkPlans));
-    }
 
     return this._queueWrite(label, async () => {
       const first = settledId(firstToken.id);
@@ -144,17 +132,6 @@ export const tokenMutations = {
         }
         if (patch) b.tokens.patchMetadata(first, metadataOps(patch));
       });
-      if (dedup.length > 0 || linkPlans.length > 0) {
-        await this._client.batched((b) => {
-          for (const p of dedup) {
-            if (p.needsUpdate) b.spans.update(settledId(p.keepSpanId), p.mergedValue);
-            p.deleteSpanIds.forEach((id) => b.spans.delete(settledId(id)));
-          }
-          for (const p of linkPlans) {
-            p.deleteLinks.forEach((l) => b.vocabLinks.delete(settledId(l.linkId)));
-          }
-        });
-      }
     });
   },
 

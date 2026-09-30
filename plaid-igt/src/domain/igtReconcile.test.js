@@ -2,16 +2,12 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { IgtDocument } from './IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
 import {
-  planMorphemeReconcile,
   planMorphTypeSync,
-  planSpanDedup,
-  planVocabLinkDedup,
   planPreserveOnSplit,
   planFieldLangBackfill,
   planVocabFieldLangBackfill,
   describeReconcile,
 } from './igtReconcile.js';
-import { getIgtLayerInfo } from './layerInfo.js';
 
 const makeDoc = (raw, client) =>
   new IgtDocument({
@@ -29,56 +25,6 @@ const twoWords = [
 const m = (id, begin, end) => ({ id, text: 'text-1', begin, end, precedence: 1, metadata: {} });
 
 beforeEach(() => resetIds());
-
-describe('planMorphemeReconcile', () => {
-  it('leaves a bare word alone (derive gives it a morpheme, nothing is written)', () => {
-    const raw = buildRawDoc({ words: twoWords, morphemes: [m('m-1', 0, 3)] });
-    const plan = planMorphemeReconcile(getIgtLayerInfo(raw));
-    expect(plan.orphanMorphemeIds).toEqual([]);
-  });
-
-  it('flags an orphan morpheme (extent matches no word)', () => {
-    const raw = buildRawDoc({
-      words: twoWords,
-      morphemes: [m('m-1', 0, 3), m('m-2', 4, 7), m('m-orphan', 3, 4)],
-    });
-    const plan = planMorphemeReconcile(getIgtLayerInfo(raw));
-    expect(plan.orphanMorphemeIds).toEqual(['m-orphan']);
-  });
-
-  it('deletes an annotated orphan too, reporting the count', () => {
-    // Annotated orphans used to be kept; now we delete them as well (the gloss
-    // loss is rare + recoverable via document history), and report how many
-    // carried annotations so the caller can warn loudly.
-    const layerInfo = {
-      primaryTokenLayer: { tokens: [{ id: 'w-1', begin: 0, end: 3 }] },
-      morphemeTokenLayer: {
-        tokens: [
-          { id: 'm-1', begin: 0, end: 3 }, // full-width over the word — fine
-          { id: 'm-orphan', begin: 5, end: 8 }, // orphan, annotated below
-        ],
-      },
-      spanLayers: {
-        morpheme: [{ id: 'gloss', spans: [{ id: 's1', tokens: ['m-orphan'], value: 'PST' }] }],
-      },
-    };
-    const plan = planMorphemeReconcile(layerInfo);
-    expect(plan.orphanMorphemeIds).toEqual(['m-orphan']); // deleted now
-    expect(plan.deletedAnnotatedOrphans).toBe(1);
-  });
-
-  it('is empty for a well-formed doc', () => {
-    const plan = planMorphemeReconcile(getIgtLayerInfo(buildRawDoc()));
-    expect(plan.orphanMorphemeIds).toEqual([]);
-  });
-
-  it('is empty when there is no morpheme layer (foreign project not yet adopted)', () => {
-    expect(planMorphemeReconcile({ primaryTokenLayer: { tokens: twoWords } })).toEqual({
-      orphanMorphemeIds: [],
-      deletedAnnotatedOrphans: 0,
-    });
-  });
-});
 
 describe('planMorphTypeSync', () => {
   // derive resolves an entry's type through its headword and hands it over
@@ -112,128 +58,22 @@ describe('planMorphTypeSync', () => {
   });
 });
 
-describe('planSpanDedup', () => {
-  const layerInfoWith = (spans) => ({
-    spanLayers: { sentence: [{ id: 'sl-trans', name: 'Translation', spans }] },
-  });
-
-  it('joins distinct duplicate values into the first span, deletes the rest', () => {
-    const plans = planSpanDedup(
-      layerInfoWith([
-        { id: 's1', tokens: ['snt1'], value: 'left half' },
-        { id: 's2', tokens: ['snt1'], value: 'right half' },
-        { id: 's3', tokens: ['snt2'], value: 'unrelated' },
-      ]),
-    );
-    expect(plans).toEqual([
-      {
-        scope: 'sentence',
-        layerId: 'sl-trans',
-        layerName: 'Translation',
-        tokenId: 'snt1',
-        keepSpanId: 's1',
-        mergedValue: 'left half | right half',
-        needsUpdate: true,
-        deleteSpanIds: ['s2'],
-      },
-    ]);
-  });
-
-  it('collapses identical duplicates without joining', () => {
-    const plans = planSpanDedup(
-      layerInfoWith([
-        { id: 's1', tokens: ['snt1'], value: 'same' },
-        { id: 's2', tokens: ['snt1'], value: 'same' },
-      ]),
-    );
-    expect(plans[0].mergedValue).toBe('same');
-    expect(plans[0].needsUpdate).toBe(false);
-    expect(plans[0].deleteSpanIds).toEqual(['s2']);
-  });
-
-  it('skips empty values when joining', () => {
-    const plans = planSpanDedup(
-      layerInfoWith([
-        { id: 's1', tokens: ['snt1'], value: '' },
-        { id: 's2', tokens: ['snt1'], value: 'only real value' },
-      ]),
-    );
-    expect(plans[0].mergedValue).toBe('only real value');
-    expect(plans[0].needsUpdate).toBe(true);
-  });
-
-  it('dedupes at word and morpheme scope too (derive renders first-wins at every scope)', () => {
-    const plans = planSpanDedup({
-      spanLayers: {
-        word: [
-          {
-            id: 'wsl',
-            name: 'POS',
-            spans: [
-              { id: 'a', tokens: ['w1'], value: 'NOUN' },
-              { id: 'b', tokens: ['w1'], value: 'VERB' },
-            ],
-          },
-        ],
-        morpheme: [
-          {
-            id: 'msl',
-            name: 'Gloss',
-            spans: [
-              { id: 'c', tokens: ['m1'], value: 'cat' },
-              { id: 'd', tokens: ['m1'], value: 'CAT' },
-            ],
-          },
-        ],
-      },
-    });
-    expect(plans.map((p) => p.scope).sort()).toEqual(['morpheme', 'word']);
-    expect(plans.find((p) => p.scope === 'word')).toMatchObject({
-      layerName: 'POS',
-      tokenId: 'w1',
-      keepSpanId: 'a',
-      mergedValue: 'NOUN | VERB',
-      deleteSpanIds: ['b'],
-    });
-    expect(plans.find((p) => p.scope === 'morpheme')).toMatchObject({
-      layerName: 'Gloss',
-      tokenId: 'm1',
-      keepSpanId: 'c',
-      mergedValue: 'cat | CAT',
-      deleteSpanIds: ['d'],
-    });
-  });
-
-  it('leaves singletons and multi-token spans alone', () => {
-    expect(
-      planSpanDedup(
-        layerInfoWith([
-          { id: 's1', tokens: ['snt1'], value: 'fine' },
-          { id: 's2', tokens: ['snt1', 'snt2'], value: 'exotic multi-token span' },
-        ]),
-      ),
-    ).toEqual([]);
-    expect(planSpanDedup({})).toEqual([]);
-  });
-});
-
 describe('describeReconcile', () => {
   it('names each repair, and says nothing when nothing was written', () => {
     expect(describeReconcile({})).toBeNull();
-    expect(describeReconcile({ deleted: 1 })).toBe('Repaired: removed 1 stray morpheme');
-    expect(describeReconcile({ deleted: 2 })).toBe('Repaired: removed 2 stray morphemes');
     expect(describeReconcile({ syncedMorphTypes: 2 })).toBe(
       'Repaired: synced 2 morpheme types from lexicon entries',
     );
-    expect(describeReconcile({ dedupedSpans: 1, dedupedLinks: 3 })).toBe(
-      'Repaired: merged 1 duplicate annotation, removed 3 extra vocabulary links',
+    expect(describeReconcile({ rulesDeclared: true })).toBe(
+      'Repaired: applied the annotation rules',
+    );
+    expect(describeReconcile({ rulesRepaired: true, rulesDeclared: true })).toBe(
+      'Repaired: fixed annotations the annotation rules forbid, applied the annotation rules',
     );
   });
 
-  it('ignores the counts that are not repairs', () => {
-    // deletedAnnotatedOrphans qualifies `deleted`, it is not its own repair, and
-    // findings were not written at all.
-    expect(describeReconcile({ deletedAnnotatedOrphans: 2, findings: [{}] })).toBeNull();
+  it('ignores what is not a repair', () => {
+    expect(describeReconcile({ findings: [{}] })).toBeNull();
   });
 });
 
@@ -245,7 +85,7 @@ describe('IgtDocument.reconcileOnOpen', () => {
 
     const res = await doc.reconcileOnOpen();
 
-    expect(res).toMatchObject({ deleted: 0 });
+    expect(res).toMatchObject({ syncedMorphTypes: 0, rulesDeclared: false });
     expect(client.calls.filter((c) => c.kind.startsWith('tokens.')).length).toBe(0);
     // Still one stored morpheme, and w-2 shows one anyway.
     expect(doc.layerInfo.morphemeTokenLayer.tokens.length).toBe(1);
@@ -255,73 +95,14 @@ describe('IgtDocument.reconcileOnOpen', () => {
     expect(second.morphemes[0]).toMatchObject({ id: 'virtual:w-2', virtual: true });
   });
 
-  it('deletes an orphan morpheme', async () => {
-    const raw = buildRawDoc({
-      words: twoWords,
-      morphemes: [m('m-1', 0, 3), m('m-2', 4, 7), m('m-orphan', 3, 4)],
-    });
-    const client = makeFakeClient();
-    const doc = makeDoc(raw, client);
-
-    const res = await doc.reconcileOnOpen();
-
-    expect(res).toMatchObject({ deleted: 1 });
-    expect(client.calls.filter((c) => c.kind === 'tokens.bulkDelete').length).toBe(1);
-    const ids = doc.layerInfo.morphemeTokenLayer.tokens.map((t) => t.id);
-    expect(ids).not.toContain('m-orphan');
-    expect(ids.length).toBe(2);
-  });
-
   it('no-ops on a well-formed doc (convergent — no batch submitted)', async () => {
     const client = makeFakeClient();
     const doc = makeDoc(buildRawDoc(), client);
 
     const res = await doc.reconcileOnOpen();
 
-    expect(res).toMatchObject({ deleted: 0, findings: [] });
+    expect(res).toMatchObject({ syncedMorphTypes: 0, findings: [] });
     expect(client.calls.filter((c) => c.kind === 'batch.submit').length).toBe(0);
-  });
-
-  it('deletes an annotated orphan morpheme and reports deletedAnnotatedOrphans', async () => {
-    const raw = buildRawDoc({
-      words: twoWords,
-      morphemes: [m('m-1', 0, 3), m('m-2', 4, 7), m('m-orphan', 3, 4)],
-    });
-    // Annotate the orphan; it should still be deleted, the gloss cascading away.
-    raw.textLayers[0].tokenLayers[2].spanLayers[0].spans.push({
-      id: 'g1',
-      tokens: ['m-orphan'],
-      value: 'PST',
-    });
-    const client = makeFakeClient();
-    const doc = makeDoc(raw, client);
-
-    const res = await doc.reconcileOnOpen();
-
-    expect(res).toMatchObject({ deleted: 1, deletedAnnotatedOrphans: 1 });
-    const ids = doc.layerInfo.morphemeTokenLayer.tokens.map((t) => t.id);
-    expect(ids).not.toContain('m-orphan');
-  });
-
-  it('dedupes duplicate morpheme spans (any scope), joining values', async () => {
-    const raw = buildRawDoc();
-    // Two Gloss spans on the same morpheme — invisible + immortal in the editor
-    // (derive renders only the first), so reconcile joins them losslessly.
-    raw.textLayers[0].tokenLayers[2].spanLayers[0].spans.push(
-      { id: 'g-a', tokens: ['m-1'], value: 'the' },
-      { id: 'g-b', tokens: ['m-1'], value: 'THE' },
-    );
-    const client = makeFakeClient();
-    const doc = makeDoc(raw, client);
-
-    const res = await doc.reconcileOnOpen();
-
-    expect(res.dedupedSpans).toBe(1);
-    expect(client.calls.some((c) => c.kind === 'spans.update')).toBe(true);
-    expect(client.calls.some((c) => c.kind === 'spans.delete')).toBe(true);
-    const glossSpans = doc.layerInfo.morphemeTokenLayer.spanLayers[0].spans;
-    expect(glossSpans.length).toBe(1);
-    expect(glossSpans[0].value).toBe('the | THE');
   });
 
   // The prod case of 2026-09-12: an entry was linked, THEN given a morph type
@@ -373,74 +154,113 @@ describe('IgtDocument.reconcileOnOpen', () => {
   });
 });
 
-describe('planVocabLinkDedup', () => {
-  const vocabs = {
-    v1: {
-      id: 'v1',
-      vocabLinks: [
-        { id: 'lk-a', tokens: ['w-1'], vocabItem: { id: 'i1' } },
-        { id: 'lk-b', tokens: ['w-1'], vocabItem: { id: 'i2' } },
-        { id: 'lk-c', tokens: ['w-2'], vocabItem: { id: 'i1' } },
-      ],
-    },
-    v2: { id: 'v2', vocabLinks: [{ id: 'lk-d', tokens: ['w-1'], vocabItem: { id: 'i9' } }] },
-  };
-
-  it('keeps the first link per token across vocabs, deletes the rest', () => {
-    expect(planVocabLinkDedup(vocabs)).toEqual([
-      {
-        tokenId: 'w-1',
-        keepLinkId: 'lk-a',
-        deleteLinks: [
-          { vocabId: 'v1', linkId: 'lk-b' },
-          { vocabId: 'v2', linkId: 'lk-d' },
-        ],
-      },
-    ]);
-  });
-
-  it("prefers a link from preferLinkIds (the merge survivor's own link)", () => {
-    const [plan] = planVocabLinkDedup(vocabs, new Set(['lk-d']));
-    expect(plan.keepLinkId).toBe('lk-d');
-    expect(plan.deleteLinks.map((l) => l.linkId)).toEqual(['lk-a', 'lk-b']);
-  });
-
-  it('is empty when every token has at most one link', () => {
-    expect(
-      planVocabLinkDedup({ v1: { id: 'v1', vocabLinks: vocabs.v1.vocabLinks.slice(2) } }),
-    ).toEqual([]);
-  });
-});
-
-describe('reconcileOnOpen vocab-link dedup', () => {
-  it('removes extra links on a token and reports dedupedLinks', async () => {
-    const raw = buildRawDoc();
-    const client = makeFakeClient();
-    const doc = new IgtDocument({
+describe('reconcileOnOpen and the layer rules', () => {
+  const maintainerDoc = (client, raw = buildRawDoc()) =>
+    new IgtDocument({
       raw,
-      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: {} },
-      vocabularies: {
-        v1: {
-          id: 'v1',
-          name: 'Lexicon',
-          items: [],
-          vocabLinks: [
-            { id: 'lk-1', tokens: ['w-1'], vocabItem: { id: 'i1', form: 'one', metadata: {} } },
-            { id: 'lk-2', tokens: ['w-1'], vocabItem: { id: 'i2', form: 'two', metadata: {} } },
-          ],
-        },
-      },
+      project: { id: 'proj-1', vocabs: [], config: {}, maintainers: ['me'] },
+      user: { id: 'me' },
+      vocabularies: {},
       client,
       projectId: 'proj-1',
     });
 
-    const res = await doc.reconcileOnOpen();
+  it('declares nothing for a user who does not maintain the project', async () => {
+    const client = makeFakeClient();
+    await makeDoc(buildRawDoc(), client).reconcileOnOpen();
+    expect(client.calls.some((c) => c.kind.endsWith('Constraints'))).toBe(false);
+  });
 
-    expect(res.dedupedLinks).toBe(1);
-    const dels = client.calls.filter((c) => c.kind === 'vocabLinks.delete');
-    expect(dels.map((c) => c.args[0])).toEqual(['lk-2']);
-    expect(doc.vocabularies.v1.vocabLinks.map((l) => l.id)).toEqual(['lk-1']);
-    expect(doc.sentences[0].tokens[0].vocabItem?.form).toBe('one');
+  it('repairs, then declares the rules a maintainer opens without', async () => {
+    const client = makeFakeClient();
+    const doc = maintainerDoc(client);
+    const res = await doc.reconcileOnOpen();
+    const k = client.calls.map((c) => c.kind);
+    expect(k.indexOf('tokenLayers.repairConstraints')).toBeGreaterThan(-1);
+    expect(k.indexOf('tokenLayers.setConstraints')).toBeGreaterThan(
+      k.lastIndexOf('spanLayers.repairConstraints'),
+    );
+    const morphemes = client.calls.find(
+      (c) =>
+        c.kind === 'tokenLayers.setConstraints' &&
+        c.args[0] === doc.layerInfo.morphemeTokenLayer.id,
+    );
+    expect(morphemes.args.slice(1, 3)).toEqual([
+      'igt',
+      [{ type: 'coextensive' }, { type: 'single-link' }],
+    ]);
+    expect(morphemes.args[4]).toEqual({ expected: null });
+    expect(res.rulesDeclared).toBe(true);
+    expect(res.rulesRepaired).toBe(false);
+    const relabel = client.calls.find((c) => c.kind === 'operationGroups.update');
+    expect(relabel.args[1]).toBe('Repaired: applied the annotation rules');
+  });
+
+  it('reads the document again when the repair changed it', async () => {
+    const client = makeFakeClient({ repaired: { spanLayers: [{ document: 'd', deleted: 1 }] } });
+    const doc = maintainerDoc(client);
+    let reloads = 0;
+    doc._reload = async () => {
+      reloads += 1;
+    };
+    const res = await doc.reconcileOnOpen();
+    expect(res.rulesRepaired).toBe(true);
+    expect(reloads).toBe(1);
+  });
+
+  it('writes nothing once the layers hold the rules', async () => {
+    const raw = buildRawDoc();
+    const layers = raw.textLayers[0].tokenLayers;
+    for (const tl of layers) {
+      tl.constraints = {
+        igt:
+          tl.config?.plaid?.role === 'morpheme' || tl.name === 'Morphemes'
+            ? [{ type: 'coextensive' }, { type: 'single-link' }]
+            : [{ type: 'single-link' }],
+      };
+      for (const sl of tl.spanLayers || []) sl.constraints = { igt: [{ type: 'single-span' }] };
+    }
+    const client = makeFakeClient();
+    const doc = maintainerDoc(client, raw);
+    const info = doc.layerInfo;
+    info.morphemeTokenLayer.constraints = {
+      igt: [{ type: 'coextensive' }, { type: 'single-link' }],
+    };
+    info.primaryTokenLayer.constraints = { igt: [{ type: 'single-link' }] };
+    await doc.reconcileOnOpen();
+    expect(client.calls.some((c) => c.kind.endsWith('Constraints'))).toBe(false);
+  });
+
+  it('reports a layer whose rules the stored data breaks', async () => {
+    const client = makeFakeClient();
+    const doc = maintainerDoc(client);
+    const glossId = doc.layerInfo.spanLayers.morpheme[0].id;
+    const refused = Object.assign(new Error('HTTP 422'), {
+      status: 422,
+      responseData: {
+        error: 'The value "XYZ" is not allowed',
+        violations: [{ constraint: 'value-set' }],
+        'violation-count': 3,
+      },
+    });
+    const batched = client.batched.bind(client);
+    client.batched = async (fn) => {
+      const out = await batched(fn);
+      if (client.calls.some((c) => c.kind === 'spanLayers.setConstraints' && c.args[0] === glossId))
+        throw refused;
+      return out;
+    };
+    const set = client.spanLayers.setConstraints;
+    client.spanLayers.setConstraints = (id, ...rest) => {
+      if (id === glossId) throw refused;
+      return set(id, ...rest);
+    };
+    const res = await doc.reconcileOnOpen();
+    const finding = res.findings.find((f) => f.code === 'layer-rules-not-in-force');
+    expect(finding).toMatchObject({
+      severity: 'warning',
+      context: { layerId: glossId, violationCount: 3 },
+    });
   });
 });
 

@@ -12,14 +12,6 @@ describe('validateIgtDocument', () => {
     expect(validateIgtDocument(getIgtLayerInfo(buildRawDoc()))).toEqual([]);
   });
 
-  it('flags a residual orphan morpheme (heal tripwire)', () => {
-    const raw = buildRawDoc({
-      morphemes: [morph('m-1', 0, 3), morph('m-2', 4, 7), morph('m-orphan', 3, 4)],
-    });
-    const findings = validateIgtDocument(getIgtLayerInfo(raw));
-    expect(findings.find((f) => f.code === 'morpheme-orphan')).toMatchObject({ severity: 'error' });
-  });
-
   it('does not flag a word with no stored morpheme', () => {
     // A word gets a morpheme from derive whether or not one is stored, so
     // having none stored is the ordinary state of an unanalyzed word, not a
@@ -27,16 +19,6 @@ describe('validateIgtDocument', () => {
     const raw = buildRawDoc({ morphemes: [morph('m-1', 0, 3)] }); // w-2 has no morpheme
     const findings = validateIgtDocument(getIgtLayerInfo(raw));
     expect(findings.find((f) => f.code === 'morpheme-missing')).toBeUndefined();
-  });
-
-  it('flags residual duplicate spans (heal tripwire)', () => {
-    const raw = buildRawDoc();
-    raw.textLayers[0].tokenLayers[2].spanLayers[0].spans.push(
-      { id: 'a', tokens: ['m-1'], value: 'x' },
-      { id: 'b', tokens: ['m-1'], value: 'y' },
-    );
-    const findings = validateIgtDocument(getIgtLayerInfo(raw));
-    expect(findings.find((f) => f.code === 'span-duplicate')).toMatchObject({ severity: 'error' });
   });
 
   it('warns about inverted alignment timing (un-healable — needs a human)', () => {

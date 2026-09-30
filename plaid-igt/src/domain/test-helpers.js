@@ -266,6 +266,23 @@ export function makeFakeClient(opts = {}) {
         })),
         delete: op('texts.delete', () => ({})),
       },
+      // Layer config and layer rules (plaid-core's layer constraints). A
+      // repair answers that it changed nothing, as on a project whose data
+      // keeps every rule.
+      ...Object.fromEntries(
+        ['tokenLayers', 'spanLayers', 'relationLayers'].map((bundle) => [
+          bundle,
+          {
+            setConfig: op(`${bundle}.setConfig`, () => ({})),
+            setConstraints: op(`${bundle}.setConstraints`, () => ({ constraints: {} })),
+            repairConstraints: op(`${bundle}.repairConstraints`, () => ({
+              repaired: opts.repaired?.[bundle] ?? [],
+              violations: [],
+              violationCount: 0,
+            })),
+          },
+        ]),
+      ),
       documents: {
         // A read answers from "the wire" on the client and on a batch alike.
         get: async () => opts.reloadDoc ?? buildRawDoc(),

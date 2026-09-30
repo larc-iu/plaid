@@ -249,12 +249,7 @@ try {
   // here long after reconcileOnOpen stopped returning one, so the check could
   // only ever fail.
   check(
-    heal.deleted === 0 &&
-      heal.deletedAnnotatedOrphans === 0 &&
-      heal.dedupedSpans === 0 &&
-      heal.dedupedLinks === 0 &&
-      heal.syncedMorphTypes === 0 &&
-      (heal.findings ?? []).length === 0,
+    !heal.rulesRepaired && heal.syncedMorphTypes === 0 && (heal.findings ?? []).length === 0,
     'reconcileOnOpen heals nothing',
     JSON.stringify(heal),
   );

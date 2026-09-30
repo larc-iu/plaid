@@ -32,7 +32,25 @@ const makeServer = () => {
         server.config[ns][key] = structuredClone(value);
       },
     },
-    spanLayers: { setConfig: async () => {} },
+    spanLayers: { setConfig: async () => {}, setConstraints: async () => {} },
+    // A batch queues its writes and sends them in turn on submit, a refusal
+    // refusing the batch.
+    async batched(fn) {
+      const ops = [];
+      const queue = (bundle) =>
+        new Proxy(
+          {},
+          {
+            get:
+              (_, method) =>
+              (...args) =>
+                ops.push(() => this[bundle][method](...args)),
+          },
+        );
+      fn({ projects: queue('projects'), spanLayers: queue('spanLayers') });
+      for (const op of ops) await op();
+      return [];
+    },
   };
   return { server, client };
 };

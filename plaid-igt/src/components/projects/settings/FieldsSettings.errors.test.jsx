@@ -45,6 +45,7 @@ const fakeClient = ({ refuseCreate = false } = {}) => {
       setConfig: (...a) => sink('spanLayers.setConfig', a),
       deleteConfig: (...a) => sink('spanLayers.deleteConfig', a),
       delete: (...a) => sink('spanLayers.delete', a),
+      setConstraints: (...a) => sink('spanLayers.setConstraints', a),
     },
   });
   const wire = async (kind, args) => calls.push([kind, ...args]);
