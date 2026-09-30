@@ -511,6 +511,31 @@ describe('phraseTimingFor', () => {
   });
 });
 
+describe('a sentence ending on its separator', () => {
+  // A transcript row's segment covers its text, and the sentence Split at
+  // segments makes holds the space or line break after it too: the phrase
+  // still takes the row's time and speaker. The whitespace at a sentence's
+  // edges is read from its pieces.
+  const sentence = {
+    begin: 0,
+    end: 4,
+    pieces: [
+      { type: 'token', begin: 0, end: 3 },
+      { type: 'gap', begin: 3, end: 4, content: ' ' },
+    ],
+  };
+  const row = { id: 'a', begin: 0, end: 3, metadata: { timeBegin: 1, timeEnd: 2, speaker: 'Ana' } };
+
+  it('takes the row over its text', () => {
+    expect(phraseTimingFor(sentence, [row])).toEqual({ beginMs: 1000, endMs: 2000 });
+    expect(phraseSpeakerFor(sentence, [row])).toBe('Ana');
+  });
+
+  it('never a row over part of its text', () => {
+    expect(phraseTimingFor(sentence, [{ ...row, end: 2 }])).toBeNull();
+  });
+});
+
 describe('phraseSpeakerFor', () => {
   const sentence = { begin: 0, end: 14 };
   const tok = (begin, end, speaker) => ({

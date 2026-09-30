@@ -299,11 +299,30 @@ function punctWordXml(indent, content, options) {
 // there's no unique match (partial overlap, ambiguity) — we never invent
 // alignment. Shared by the timing and speaker projections so both stay
 // truthful in exactly the same cases.
+// A sentence's extent less the whitespace at its edges (the separator a
+// transcript row's sentence holds after the row's text), read from its pieces.
+function textExtent(sentence) {
+  const pieces = sentence.pieces || [];
+  let { begin, end } = sentence;
+  const first = pieces[0];
+  const last = pieces[pieces.length - 1];
+  if (first?.type === 'gap' && typeof first.content === 'string') {
+    begin += [...first.content].length - [...first.content.trimStart()].length;
+  }
+  if (last?.type === 'gap' && typeof last.content === 'string' && last !== first) {
+    end -= [...last.content].length - [...last.content.trimEnd()].length;
+  }
+  return begin < end ? { begin, end } : { begin: sentence.begin, end: sentence.end };
+}
+
 function coveringAlignment(sentence, tokens) {
-  const exact = tokens.filter((t) => t.begin === sentence.begin && t.end === sentence.end);
-  const candidates = exact.length
-    ? exact
-    : tokens.filter((t) => t.begin <= sentence.begin && t.end >= sentence.end);
+  const { begin, end } = textExtent(sentence);
+  const exact = tokens.filter(
+    (t) =>
+      (t.begin === sentence.begin && t.end === sentence.end) ||
+      (t.begin === begin && t.end === end),
+  );
+  const candidates = exact.length ? exact : tokens.filter((t) => t.begin <= begin && t.end >= end);
   return candidates.length === 1 ? candidates[0] : null;
 }
 
