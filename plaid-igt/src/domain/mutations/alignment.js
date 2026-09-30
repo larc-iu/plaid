@@ -238,8 +238,10 @@ const rowGaps = (over, trimmed, edits = null) => {
 // `segment`'s text changed by `gaps` (of its text) into `trimmed`, and the
 // segment over the new text. `{ error }` when the new time or extent would
 // break the order or overlap another segment, else `{ gaps }`, the edits in
-// the body, `extent`, the segment's new one, and `seedLength` as `planCreate`
-// has it.
+// the body, `extent`, the segment's new one, `touching`, the segments written
+// against it with no space between and where they stand after the edit (the
+// text rules can give a neighbour text typed at the row's edge, and the batch
+// puts it back), and `seedLength` as `planCreate` has it.
 const planEdit = (info, segment, gaps, trimmed, timeBegin) => {
   const alignmentTokens = info.alignmentTokenLayer.tokens || [];
   const tokenBegin = segment.begin;
@@ -272,6 +274,13 @@ const planEdit = (info, segment, gaps, trimmed, timeBegin) => {
   return {
     gaps: gaps.map((g) => ({ ...g, start: g.start + tokenBegin, end: g.end + tokenBegin })),
     extent: { begin: tokenBegin, end: newAlignmentEnd },
+    touching: alignmentTokens
+      .filter((t) => t.id !== segment.id && (t.end === tokenBegin || t.begin === tokenEnd))
+      .map((t) =>
+        t.begin >= tokenEnd
+          ? { id: t.id, begin: t.begin + editDelta, end: t.end + editDelta }
+          : { id: t.id, begin: t.begin, end: t.end },
+      ),
     seedLength: sentences.length === 0 && newTextLength > 0 ? newTextLength : null,
   };
 };
@@ -921,7 +930,7 @@ export const alignmentMutations = {
   // is as `_showSegmentWrite` has it, its plan with its own `patch`.
   _showRowEdit(
     label,
-    { textId, segmentId, gaps, extent, typed, seedLength, patch, speaker, replan },
+    { textId, segmentId, gaps, extent, touching, typed, seedLength, patch, speaker, replan },
   ) {
     if (!this._canWrite(label)) return false;
     const info = this.layerInfo;
@@ -930,6 +939,7 @@ export const alignmentMutations = {
     const made = (plan, before = null) => ({
       gaps: plan.gaps,
       extent: plan.extent,
+      touching: plan.touching ?? [],
       patch: plan.patch ?? patch,
       seeded:
         plan.seedLength != null
@@ -948,6 +958,12 @@ export const alignmentMutations = {
         segment.end = m.extent.end;
         segment.metadata = mergeMetadata(segment.metadata, m.patch);
       }
+      for (const n of m.touching) {
+        const t = (infoNext.alignmentTokenLayer?.tokens || []).find(
+          (x) => settledId(x.id) === settledId(n.id),
+        );
+        if (t) Object.assign(t, { begin: n.begin, end: n.end });
+      }
       if (m.seeded) {
         infoNext.sentenceTokenLayer.tokens = [
           { id: m.seeded.id, text: textId, begin: 0, end: m.seeded.end },
@@ -963,6 +979,9 @@ export const alignmentMutations = {
         .batched(async (b) => {
           const patched = Object.keys(m.patch).length > 0;
           b.texts.edit(textId, gapsToOps(m.gaps), undefined, { base, versioned: true });
+          // A segment written against this one keeps its own text first, so
+          // this one can be set over the row's.
+          for (const n of m.touching) b.tokens.update(settledId(n.id), n.begin, n.end);
           b.tokens.update(id, m.extent.begin, m.extent.end);
           at.text = 0;
           if (patched) b.tokens.patchMetadata(id, metadataOps(m.patch));
@@ -976,12 +995,12 @@ export const alignmentMutations = {
                 end: m.seeded.end,
               },
             ]);
-            at.seeded = 2 + (patched ? 1 : 0);
+            at.seeded = 2 + m.touching.length + (patched ? 1 : 0);
           }
         })
         .then((results) => Object.assign(results, { at }));
     };
-    let sent = made({ gaps, extent, seedLength });
+    let sent = made({ gaps, extent, seedLength, touching });
     this._applyRawPatch(show(sent));
     const state = { planned, send: (base) => send(sent, base) };
     return this._queueWrite(label, async () => {
@@ -1038,6 +1057,7 @@ export const alignmentMutations = {
       ...(reshape?.tokens ?? []).map((t) => t.id),
       ...(reshape?.deleted?.tokens ?? []),
       settledId(segmentId),
+      ...(sent.touching ?? []).map((n) => settledId(n.id)),
     ]);
     const guessed = [...sent.changed].some((id) => !named.has(settledId(id)));
     if (!reshape || guessed || this._writes.queued > 1 || text?.body !== answer.body) {
@@ -1053,6 +1073,12 @@ export const alignmentMutations = {
       if (segment) {
         segment.begin = sent.extent.begin;
         segment.end = sent.extent.end;
+      }
+      for (const n of sent.touching ?? []) {
+        const t = (getIgtLayerInfo(next).alignmentTokenLayer?.tokens || []).find(
+          (x) => settledId(x.id) === settledId(n.id),
+        );
+        if (t) Object.assign(t, { begin: n.begin, end: n.end });
       }
     });
   },

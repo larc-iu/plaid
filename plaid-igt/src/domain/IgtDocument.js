@@ -624,21 +624,28 @@ export class IgtDocument extends DocumentModel {
   // tries again.
   async _backfillPlainEdits(info) {
     if (!canManageProject(this._project, this._user)) return;
-    const layers = [info?.primaryTokenLayer, info?.morphemeTokenLayer, info?.alignmentTokenLayer];
-    for (const layer of layers) {
-      if (!layer?.id || layer.config?.[PLAID_NAMESPACE]?.[PLAIN_EDITS_KEY] === true) continue;
-      try {
-        await this._client.tokenLayers.setConfig(
-          layer.id,
-          PLAID_NAMESPACE,
-          PLAIN_EDITS_KEY,
-          true,
-          undefined,
-          expectStored(layer, PLAID_NAMESPACE, PLAIN_EDITS_KEY),
-        );
-      } catch (err) {
-        if (!isConfigConflict(err)) console.error('Could not declare plainEdits on a layer:', err);
-      }
+    const layers = [
+      info?.primaryTokenLayer,
+      info?.morphemeTokenLayer,
+      info?.alignmentTokenLayer,
+    ].filter((l) => l?.id && l.config?.[PLAID_NAMESPACE]?.[PLAIN_EDITS_KEY] !== true);
+    if (layers.length === 0) return;
+    // One batch, so the words are never plain while the morphemes are not.
+    try {
+      await this._client.batched(async (b) => {
+        for (const layer of layers) {
+          b.tokenLayers.setConfig(
+            layer.id,
+            PLAID_NAMESPACE,
+            PLAIN_EDITS_KEY,
+            true,
+            undefined,
+            expectStored(layer, PLAID_NAMESPACE, PLAIN_EDITS_KEY),
+          );
+        }
+      });
+    } catch (err) {
+      if (!isConfigConflict(err)) console.error('Could not declare plainEdits on a layer:', err);
     }
   }
 

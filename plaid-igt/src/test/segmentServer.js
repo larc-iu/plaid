@@ -269,8 +269,16 @@ const writesOn = (raw, { mint, claim }) => {
           error: `${VERSION_MISMATCH} What this request names is no longer in the document.`,
         });
       }
-      if (begin != null) token.begin = begin;
-      if (end != null) token.end = end;
+      const layer = layersOf(raw).find((l) => (l.tokens || []).includes(token));
+      const [b, e] = [begin ?? token.begin, end ?? token.end];
+      if (
+        layer.overlapMode === 'non-overlapping' &&
+        layer.tokens.some((t) => t !== token && t.begin < e && b < t.end)
+      ) {
+        throw refused(409, { error: 'Updated token would overlap another token in the layer.' });
+      }
+      token.begin = b;
+      token.end = e;
       return {};
     },
     'tokens.patchMetadata': (id, ops) => {

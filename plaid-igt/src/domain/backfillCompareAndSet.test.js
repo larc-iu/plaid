@@ -35,7 +35,30 @@ const configServer = (initial) => {
     store[kind][id][ns] ??= {};
     store[kind][id][ns][key] = value;
   };
-  return { store, sent, setConfig };
+  // A batch of config writes, all or nothing, as the core runs one.
+  const batched = async (fn) => {
+    const queued = [];
+    await fn({
+      tokenLayers: { setConfig: (...args) => queued.push(['token', args]) },
+      spanLayers: { setConfig: (...args) => queued.push(['span', args]) },
+    });
+    const batch = sent.length;
+    for (const [kind, [id, ns, key, value, _msg, options]] of queued) {
+      sent.push({ kind, id, key, value, options, batch });
+      const cell = store[kind]?.[id]?.[ns]?.[key];
+      if (options && 'expected' in options && canonical(options.expected) !== canonical(cell)) {
+        throw Object.assign(new Error('Conflict'), { status: 409 });
+      }
+    }
+    for (const [kind, [id, ns, key, value]] of queued) {
+      store[kind] ??= {};
+      store[kind][id] ??= {};
+      store[kind][id][ns] ??= {};
+      store[kind][id][ns][key] = value;
+    }
+    return queued.map(() => ({ status: 200 }));
+  };
+  return { store, sent, setConfig, batched };
 };
 
 const loadedFields = {
@@ -54,6 +77,7 @@ const setup = ({ serverFields = loadedFields, spanLayerLang } = {}) => {
   client.vocabLayers.setConfig = server.setConfig('vocab');
   client.spanLayers = { ...client.spanLayers, setConfig: server.setConfig('span') };
   client.tokenLayers = { ...client.tokenLayers, setConfig: server.setConfig('token') };
+  client.batched = server.batched;
   const doc = new IgtDocument({
     raw: buildRawDoc(),
     project: { id: 'proj-1', vocabs: [{ id: 'voc-1' }], maintainers: ['m@x'] },
@@ -127,17 +151,18 @@ describe('the preserveOnSplit declaration', () => {
 });
 
 describe('the plainEdits back-fill', () => {
-  it('declares it on the word, morpheme and alignment layers, naming what it read, and only when missing', async () => {
+  const plainLayers = (info) =>
+    [info.primaryTokenLayer, info.morphemeTokenLayer, info.alignmentTokenLayer].filter(
+      (l) => l?.id,
+    );
+
+  it('declares it on the word, morpheme and alignment layers in one batch, naming what it read, and only when missing', async () => {
     const { doc, info, server } = setup();
     await doc._backfillPlainEdits(info);
-    const layers = [
-      info.primaryTokenLayer,
-      info.morphemeTokenLayer,
-      info.alignmentTokenLayer,
-    ].filter((l) => l?.id);
-    expect(layers.length).toBeGreaterThanOrEqual(2);
+    const layers = plainLayers(info);
+    expect(layers.length).toBe(3);
     const writes = server.sent.filter((s) => s.key === 'plainEdits');
-    expect(writes).toEqual(
+    expect(writes.map(({ batch, ...w }) => w)).toEqual(
       layers.map((l) => ({
         kind: 'token',
         id: l.id,
@@ -146,16 +171,20 @@ describe('the plainEdits back-fill', () => {
         options: { expected: undefined },
       })),
     );
+    expect(writes.every((w) => w.batch !== undefined)).toBe(true);
+    expect(new Set(writes.map((w) => w.batch)).size).toBe(1);
     for (const l of layers)
       l.config = { ...(l.config || {}), plaid: { ...(l.config?.plaid || {}), plainEdits: true } };
     await doc._backfillPlainEdits(info);
     expect(server.sent.filter((s) => s.key === 'plainEdits')).toHaveLength(layers.length);
   });
 
-  it('lets a declaration another page made first stand', async () => {
+  it('writes none of them when another page declared one first, so no layer is left plain alone', async () => {
     const { doc, info, server } = setup();
     server.store.token[info.morphemeTokenLayer.id] = { plaid: { plainEdits: false } };
     await doc._backfillPlainEdits(info);
     expect(server.store.token[info.morphemeTokenLayer.id].plaid.plainEdits).toBe(false);
+    expect(server.store.token[info.primaryTokenLayer.id]?.plaid?.plainEdits).toBeUndefined();
+    expect(server.store.token[info.alignmentTokenLayer.id]?.plaid?.plainEdits).toBeUndefined();
   });
 });

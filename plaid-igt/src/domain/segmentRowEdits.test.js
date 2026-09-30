@@ -186,6 +186,72 @@ describe('a row edit is saved as the edits typed, and the segment keeps its id (
   });
 });
 
+describe('rows written together (L2)', () => {
+  // A Baseline delete of the space between two rows leaves their segments
+  // touching. Text typed at the front of the second row then joins the first
+  // row's last word, which the text rules give it, and the row's segment is
+  // still set over its own text.
+  const glued = () =>
+    segmentServer(
+      buildRawDoc({
+        body: 'onetwo',
+        words: [
+          { id: 'w-1', begin: 0, end: 3 },
+          { id: 'w-2', begin: 3, end: 6 },
+        ],
+        alignmentTokens: [seg('a-1', 0, 3, 0, 1), seg('a-2', 3, 6, 1, 2)],
+      }),
+    );
+
+  it('text typed at the front of the second row is saved in it, and the first row keeps its text', async () => {
+    const server = glued();
+    const doc = open(server);
+    const errors = [];
+    doc.onError = (message) => errors.push(message);
+    const ok = await doc.editAlignment('a-2', {
+      text: 'xtwo',
+      timeBegin: 1,
+      timeEnd: 2,
+      edits: { over: 'two', gaps: [{ start: 0, end: 0, value: 'x' }] },
+    });
+    await idle(doc);
+    expect(ok).toBe(true);
+    expect(errors).toEqual([]);
+    expect(server.body).toBe('onextwo');
+    expect(textOf(server.stored, 'a-1')).toBe('one');
+    expect(textOf(server.stored, 'a-2')).toBe('xtwo');
+    // the page shows what is stored
+    expect(textOf(doc._raw, 'a-1')).toBe('one');
+    expect(textOf(doc._raw, 'a-2')).toBe('xtwo');
+  });
+
+  it('text typed at the end of the first row is saved in it, and the second row keeps its text', async () => {
+    const server = glued();
+    const doc = open(server);
+    const ok = await doc.editAlignment('a-1', {
+      text: 'one ',
+      timeBegin: 0,
+      timeEnd: 1,
+      edits: { over: 'one', gaps: [{ start: 3, end: 3, value: ' ' }] },
+    });
+    await idle(doc);
+    expect(ok).toBe(true);
+    expect(textOf(server.stored, 'a-2')).toBe('two');
+  });
+
+  it('the second row typed over whole keeps its segment', async () => {
+    const server = glued();
+    const doc = open(server);
+    const ok = await doc.editAlignment('a-2', { text: 'xyz', timeBegin: 1, timeEnd: 2 });
+    await idle(doc);
+    expect(ok).toBe(true);
+    expect(server.segments().map((t) => [t.id, t.begin, t.end])).toEqual([
+      ['a-1', 0, 3],
+      ['a-2', 3, 6],
+    ]);
+  });
+});
+
 describe('a row edit whose resend inside the client is refused (G1-gap)', () => {
   for (const kind of ['an edit', 'a new segment']) {
     it(`${kind} stored by the first send is found stored, with no error and nothing sent again`, async () => {
