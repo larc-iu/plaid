@@ -279,16 +279,23 @@
 ;; ============================================================
 
 (defn- normalize-notes
-  "The collector's map keyed by UUID ids, with layer and document ids as UUIDs."
+  "The collector's map keyed by UUID ids, with layer and document ids as
+  UUIDs. The audit helpers pass UUIDs nearly always, so a row is rebuilt
+  only when one of its ids is a string."
   [notes]
-  (reduce-kv (fn [m [t id] info]
-               (let [k [t (u id)]]
-                 (assoc m k (-> (merge-with (fn [a b] (if (map? a) (merge-with into a b) b))
-                                            (get m k) info)
-                                (assoc :id (u id))
-                                (update :layer u)
-                                (update :doc u)))))
-             {} notes))
+  (persistent!
+   (reduce-kv (fn [m [t id] info]
+                (let [uid (u id)
+                      k [t uid]
+                      info (if (and (identical? uid id)
+                                    (not (string? (:layer info)))
+                                    (not (string? (:doc info))))
+                             (assoc info :id uid)
+                             (-> info (assoc :id uid) (update :layer u) (update :doc u)))]
+                  (if-let [prev (get m k)]
+                    (assoc! m k (merge-with (fn [a b] (if (map? a) (merge-with into a b) b)) prev info))
+                    (assoc! m k info))))
+              (transient {}) notes)))
 
 (defn- notes-of
   "Noted rows of `table` on layer `layer-id`."
@@ -522,47 +529,17 @@
 ;; same-ancestor
 ;; ============================================================
 
-(defn- ancestor-index
-  "A function from a code-point place to the index of the token of layer
-  `al` in `doc` that contains it, or nil. The layer allows no overlap, so a
-  binary search over the tokens sorted by begin is exact."
-  [tx al doc]
-  (let [rows (psc/q tx {:select [:begin :end_] :from :tokens
-                        :where [:and [:= :token_layer_id al] [:= :document_id doc]]
-                        :order-by [:begin]})
-        begins (long-array (map :begin rows))
-        ends (long-array (map :end_ rows))
-        n (alength begins)]
-    (fn [place]
-      (when (some? place)
-        (let [i (java.util.Arrays/binarySearch begins (long place))
-              i (if (neg? i) (- (- i) 2) i)
-              ;; Several tokens may share a begin only when one is empty, so
-              ;; walk back over equal begins to the one that contains it.
-              i (loop [i i]
-                  (if (and (pos? i) (= (aget begins i) (aget begins (dec i))) (<= (aget ends i) place))
-                    (recur (dec i))
-                    i))]
-          (when (and (>= i 0) (< i n) (<= (aget begins i) place) (< place (aget ends i)))
-            i))))))
-
 (defn- places
-  "Span id -> place (the smallest begin of its tokens) for spans whose tokens
-  are on token layer `tl`, either every span of `doc` or the given ones."
-  [tx tl doc span-ids]
-  (let [rows (if span-ids
-               (q-chunks tx (fn [ch] {:select [:st.span_id [[:min :t.begin] :place]]
-                                      :from [[:span_tokens :st]]
-                                      :join [[:tokens :t] [:= :t.id :st.token_id]]
-                                      :where [:in :st.span_id ch]
-                                      :group-by [:st.span_id]})
-                         span-ids)
-               (psc/q tx {:select [:st.span_id [[:min :t.begin] :place]]
-                          :from [[:tokens :t]]
-                          :join [[:span_tokens :st] [:= :st.token_id :t.id]]
-                          :where [:and [:= :t.token_layer_id tl] [:= :t.document_id doc]]
-                          :group-by [:st.span_id]}))]
-    (into {} (map (fn [r] [(u (:span_id r)) (:place r)])) rows)))
+  "Span id -> place (the smallest begin of its tokens) for `span-ids`."
+  [tx span-ids]
+  (into {}
+        (map (fn [r] [(u (:span_id r)) (:place r)]))
+        (q-chunks tx (fn [ch] {:select [:st.span_id [[:min :t.begin] :place]]
+                               :from [[:span_tokens :st]]
+                               :join [[:tokens :t] [:= :t.id :st.token_id]]
+                               :where [:in :st.span_id ch]
+                               :group-by [:st.span_id]})
+                  span-ids)))
 
 (defn- crossing
   "The relations among `rels` whose two places are not in one token."
@@ -573,18 +550,41 @@
               (or (nil? a) (nil? b) (not= a b))))
           rels))
 
+(def ^:private crossing-sql
+  "The relations of a layer in one document whose two places are not in one
+  token of the ancestor layer, worked out in SQLite: a relation layer's
+  spans with their place (the smallest begin of their tokens), the nearest
+  ancestor token starting at or before it by an index seek, whether it
+  reaches past the place, and the relations whose two ends differ. Tens of
+  thousands of index seeks, and only the violations leave the database."
+  (str "WITH place AS ("
+       " SELECT st.span_id AS span_id, min(t.begin) AS p"
+       " FROM spans s JOIN span_tokens st ON st.span_id = s.id JOIN tokens t ON t.id = st.token_id"
+       " WHERE s.span_layer_id = ? AND s.document_id = ? GROUP BY st.span_id),"
+       " cand AS ("
+       " SELECT place.span_id AS span_id, place.p AS p,"
+       " (SELECT a.id FROM tokens a WHERE a.token_layer_id = ? AND a.document_id = ? AND a.begin <= place.p"
+       " ORDER BY a.begin DESC LIMIT 1) AS a"
+       " FROM place),"
+       " anc AS ("
+       " SELECT cand.span_id AS span_id, CASE WHEN tok.end_ > cand.p THEN cand.a END AS a"
+       " FROM cand LEFT JOIN tokens tok ON tok.id = cand.a)"
+       " SELECT r.id AS id FROM relations r"
+       " LEFT JOIN anc s ON s.span_id = r.source_span_id"
+       " LEFT JOIN anc t ON t.span_id = r.target_span_id"
+       " WHERE r.relation_layer_id = ? AND r.document_id = ?"
+       " AND (s.a IS NULL OR t.a IS NULL OR s.a <> t.a)"))
+
+(defn- crossing-in-sql [tx lid sl al doc]
+  (psc/q tx [crossing-sql (str sl) (str doc) (str al) (str doc) (str lid) (str doc)]))
+
 (defn- check-same-ancestor [{:keys [tx mode] :as ctx} {:keys [layer params] :as c}]
   (let [lid (:id layer)
         sl (:span_layer_id layer)
         tl (:token_layer_id layer)
         al (u (get params "token-layer"))
         whole (fn [doc]
-                (let [anc (ancestor-index tx al doc)
-                      place-of (places tx tl doc nil)
-                      rels (psc/q tx {:select [:id :source_span_id :target_span_id]
-                                      :from :relations
-                                      :where [:and [:= :relation_layer_id lid] [:= :document_id doc]]})]
-                  (map #(violation c doc nil [(:id %)]) (crossing anc place-of rels))))]
+                (map #(violation c doc nil [(:id %)]) (crossing-in-sql tx lid sl al doc)))]
     (if (= :all mode)
       (mapcat whole (if-let [d (:only-doc ctx)]
                       [d]
@@ -608,7 +608,7 @@
                    (let [rels (q-chunks tx (fn [ch] {:select [:id :source_span_id :target_span_id]
                                                      :from :relations :where [:in :id ch]})
                                         (map :id ns))
-                         place-of (places tx tl doc (mapcat (juxt :source_span_id :target_span_id) rels))
+                         place-of (places tx (mapcat (juxt :source_span_id :target_span_id) rels))
                          anc-rows (fn [place]
                                     (when (some? place)
                                       (psc/q1 tx {:select [:begin :end_] :from :tokens
