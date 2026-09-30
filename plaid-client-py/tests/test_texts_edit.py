@@ -96,3 +96,12 @@ def test_an_edit_queues_on_a_batch_with_its_base_and_without_a_stamp():
     assert _version(b.operations[0]['path']) is None
     assert _version(b.operations[1]['path']) == '7'
     b.abort()
+
+
+def test_versioned_keeps_the_stamp_on_a_write_with_base():
+    client = _strict_client()
+    b = client.batch()
+    b.texts.edit('t1', EDITS, base='d1', versioned=True)
+    b.texts.update('t1', EDITS, base='d1', versioned=True)
+    assert [_version(op['path']) for op in b.operations] == ['7', '7']
+    b.abort()

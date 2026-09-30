@@ -1074,17 +1074,19 @@ class PlaidClient {
        * A list is applied exactly as sent. With `base` (the `digest` of the
        * body the update was made on, as every read of a text gives it) the
        * update applies only to that body, and is refused with 409 and
-       * `text-changed` otherwise. Strict mode then does not stamp it.
+       * `text-changed` otherwise. Strict mode then does not stamp it, unless
+       * `versioned` is true (a batch whose later writes are stamped needs its
+       * first write stamped too).
        * @param {string} textId - The text ID
        * @param {any} body - The request body
        * @param {string} [auditMessage]
-       * @param {{base?: string}} [options]
+       * @param {{base?: string, versioned?: boolean}} [options]
        */
-      update: (textId, body, auditMessage, { base } = {}) =>
+      update: (textId, body, auditMessage, { base, versioned } = {}) =>
         this._request("PATCH", `/api/v1/texts/${textId}`, {
           auditMessage,
           body: bodyOf({ body, base }),
-          versioned: base === undefined || base === null,
+          versioned: versioned ?? (base === undefined || base === null),
         }),
       /**
        * Change a text's body by the edits made at the caret: a list of edit
@@ -1096,18 +1098,18 @@ class PlaidClient {
        * moved, the spans and vocab links trimmed, the rows deleted). With
        * `base`, the digest of the body the edits were made on, the edit
        * applies only to that body and is refused with 409 and `text-changed`
-       * otherwise, and strict mode does not stamp it.
-       * See composeTextEdits and gapsToOps.
+       * otherwise, and strict mode does not stamp it unless `versioned` is
+       * true. See composeTextEdits and gapsToOps.
        * @param {string} textId - The text ID
        * @param {Array<object>} edits - The edit directives
        * @param {string} [auditMessage]
-       * @param {{base?: string}} [options]
+       * @param {{base?: string, versioned?: boolean}} [options]
        */
-      edit: (textId, edits, auditMessage, { base } = {}) =>
+      edit: (textId, edits, auditMessage, { base, versioned } = {}) =>
         this._request("PATCH", `/api/v1/texts/${textId}`, {
           auditMessage,
           body: bodyOf({ edits, base }),
-          versioned: base === undefined || base === null,
+          versioned: versioned ?? (base === undefined || base === null),
         }),
     };
 

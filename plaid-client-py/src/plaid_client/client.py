@@ -839,7 +839,8 @@ class TextsResource(_Resource):
         """
         return self._request('DELETE', f'/api/v1/texts/{text_id}', audit_message=audit_message)
 
-    def update(self, text_id: str, body: Any, audit_message=None, *, base: str | None = None) -> Any:
+    def update(self, text_id: str, body: Any, audit_message=None, *, base: str | None = None,
+               versioned: bool | None = None) -> Any:
         """Update a text's ``body``.
 
         A diff is computed and token indices are updated so that tokens
@@ -852,13 +853,17 @@ class TextsResource(_Resource):
             base: Optional. The ``digest`` of the body the update was made on,
                 as every read of a text gives it. The update then applies only
                 to that body, and is refused with 409 and ``text_changed``
-                otherwise, and strict mode does not stamp it.
+                otherwise, and strict mode does not stamp it unless ``versioned``
+                is True (a batch whose later writes are stamped needs its first
+                write stamped too).
         """
         return self._request('PATCH', f'/api/v1/texts/{text_id}',
                              body=_body_of(body=body, base=_UNSET if base is None else base),
-                             audit_message=audit_message, versioned=base is None)
+                             audit_message=audit_message,
+                             versioned=(base is None) if versioned is None else versioned)
 
-    def edit(self, text_id: str, edits: list, audit_message=None, *, base: str | None = None) -> Any:
+    def edit(self, text_id: str, edits: list, audit_message=None, *, base: str | None = None,
+             versioned: bool | None = None) -> Any:
         """Change a text's body by the edits made at the caret.
 
         ``edits`` are edit directives as ``update`` takes them (code-point
@@ -879,7 +884,8 @@ class TextsResource(_Resource):
         """
         return self._request('PATCH', f'/api/v1/texts/{text_id}',
                              body=_body_of(edits=edits, base=_UNSET if base is None else base),
-                             audit_message=audit_message, versioned=base is None)
+                             audit_message=audit_message,
+                             versioned=(base is None) if versioned is None else versioned)
 
     def set_metadata(self, text_id: str, body: Any, audit_message=None) -> Any:
         """Replace all metadata for a text.

@@ -349,9 +349,9 @@ interface TextsBundle {
   get(textId: string): Promise<any>;
   delete(textId: string, auditMessage?: string): Promise<any>;
   /** With `base` (a text's `digest`) the update applies only to that body. */
-  update(textId: string, body: any, auditMessage?: string, opts?: { base?: string }): Promise<any>;
+  update(textId: string, body: any, auditMessage?: string, opts?: { base?: string; versioned?: boolean }): Promise<any>;
   /** Edits made at the caret; with `base` they apply only to that body. Answers the text with `digest` and `reshape`. */
-  edit(textId: string, edits: TextEditOp[], auditMessage?: string, opts?: { base?: string }): Promise<any>;
+  edit(textId: string, edits: TextEditOp[], auditMessage?: string, opts?: { base?: string; versioned?: boolean }): Promise<any>;
 }
 
 interface UsersBundle {

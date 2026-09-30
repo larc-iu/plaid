@@ -88,3 +88,12 @@ test("an edit queues on a batch with its base and without a stamp", async () => 
   assert.equal(versionOf(b.operations[1].path), "7");
   b.abort();
 });
+
+test("versioned: true keeps the stamp on a write with base, for a batch whose later writes are stamped", () => {
+  const client = strictClient();
+  const b = client.batch();
+  b.texts.edit("t1", edits, undefined, { base: "d1", versioned: true });
+  b.texts.update("t1", edits, undefined, { base: "d1", versioned: true });
+  assert.deepEqual(b.operations.map((op) => versionOf(op.path)), ["7", "7"]);
+  b.abort();
+});
