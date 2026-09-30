@@ -77,6 +77,7 @@ const stub = () => {
     calls,
     holds,
     client: {
+      withOperation: (_label, fn) => fn(),
       vocabLayers: {
         get: async () => ({ id: 'A', name: 'Ayvale lexicon', config: {}, maintainers: ['u'] }),
         setConfig: write('setConfig'),
@@ -135,6 +136,7 @@ describe('the vocabulary screen', () => {
       },
     };
     const client = {
+      withOperation: (_label, fn) => fn(),
       vocabLayers: {
         get: async () => structuredClone(server),
         setConfig: async (_id, _ns, key, value) => {
@@ -240,6 +242,49 @@ describe('the vocabulary screen', () => {
     await view.unmount();
   });
 
+  // REV4 J3: the settings writes go under operation keys and are sent again,
+  // under them, until they are answered, like every other write.
+  it('sends a rename and a fields write whose answers were lost again, under their keys, until they land', async () => {
+    const { client, calls } = stub();
+    const ops = [];
+    client.keySeed = () => ({ seed: `seed${ops.length}` });
+    client.withOperation = async (label, fn, opts) => {
+      ops.push([label, opts]);
+      return fn();
+    };
+    const lostOnce = (kind, method) => {
+      let failed = false;
+      return async () => {
+        calls.push(kind);
+        if (failed) return;
+        failed = true;
+        throw Object.assign(new Error('Network error: fetch failed'), { status: 0, method });
+      };
+    };
+    client.vocabLayers.setConfig = lostOnce('setConfig', 'PUT');
+    client.vocabLayers.update = lostOnce('update', 'PATCH');
+    feedback.notifyError.mockClear();
+    const view = await mount(client, '/vocabularies/A?tab=settings');
+    await view.step(() => firstInlineSwitch().click());
+    await view.step(() => setValue(nameInput(), 'Beeworth lexicon'));
+    await view.step(async () => {
+      button('Save').click();
+      await settle();
+    });
+    expect(asks()).toBe(true);
+    await view.step(async () => {
+      await new Promise((r) => setTimeout(r, 2300));
+      await settle();
+    });
+    expect(calls).toEqual(['setConfig', 'setConfig', 'update', 'update']);
+    expect(feedback.notifyError).not.toHaveBeenCalled();
+    expect(ops[0][1]).toBe(ops[1][1]);
+    expect(ops[2][1]).toBe(ops[3][1]);
+    expect(ops[0][1]).not.toBe(ops[2][1]);
+    expect(asks()).toBe(false);
+    await view.unmount();
+  });
+
   it('sends a schema write queued behind a refused one', async () => {
     const { client, calls, holds } = stub();
     const refused = deferred();
@@ -298,6 +343,7 @@ describe('the values a vocabulary tagset seed reads', () => {
       { id: 'sa', form: 'sa', metadata: { morphType: 'stem', gloss: 'sbj:3.pfv' } },
     ];
     const client = {
+      withOperation: (_label, fn) => fn(),
       vocabLayers: {
         get: async (_id, withItems) => ({
           ...structuredClone(server),
@@ -350,6 +396,7 @@ describe('the vocabulary schema written from a stale page', () => {
           : x,
       );
     const client = {
+      withOperation: (_label, fn) => fn(),
       vocabLayers: {
         get: async () => structuredClone(server),
         setConfig: async (_id, _ns, key, value, _msg, options) => {

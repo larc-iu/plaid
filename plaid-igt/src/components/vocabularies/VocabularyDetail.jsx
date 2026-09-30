@@ -47,7 +47,7 @@ import {
   statusFieldSeed,
   STATUS_TAGSET,
 } from '@/domain/vocabDictionary';
-import { fieldPruneWrites } from '@/domain/vocabFieldPrune';
+import { sendFieldPrune, sendKeyed } from './vocabSends.js';
 import { readTagsets, byTagsetName, glossReadingOf } from '@/domain/tagsets';
 import { TagsetsManager } from '@/components/projects/settings/TagsetsManager.jsx';
 import {
@@ -66,7 +66,6 @@ import { VocabularyCommentsTab } from './VocabularyCommentsTab';
 import { CommentStore } from '@ui/domain/CommentStore';
 import { useCommentStore } from '@ui/domain/useCommentStore';
 import { canEditProject, canManageVocabulary } from '@ui/domain/permissions.js';
-import { CHUNK } from '@/domain/bulk';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { useSavingGuard } from '@ui/hooks/useSavingGuard.js';
@@ -412,13 +411,19 @@ export const VocabularyDetail = () => {
         setEditedName(name);
         if (name !== vocabulary.name) {
           setVocabulary((v) => ({ ...v, name }));
-          writes.schema.push(() => client.vocabLayers.update(vocabularyId, name), {
-            refused: (err) => {
-              console.error('Error renaming vocabulary:', err);
-              notifyError(err, 'Failed to rename the vocabulary');
+          sendKeyed(
+            writes.schema,
+            client,
+            `Rename vocabulary "${name}"`,
+            () => client.vocabLayers.update(vocabularyId, name),
+            {
+              refused: (err) => {
+                console.error('Error renaming vocabulary:', err);
+                notifyError(err, 'Failed to rename the vocabulary');
+              },
+              resync: resyncSchema,
             },
-            resync: resyncSchema,
-          });
+          );
         }
       }
 
@@ -501,7 +506,10 @@ export const VocabularyDetail = () => {
   const saveFields = (updatedFields) => {
     setFields(updatedFields);
     if (isNewVocabulary) return Promise.resolve(true);
-    return writes.schema.push(
+    return sendKeyed(
+      writes.schema,
+      client,
+      'Change the fields',
       async () => {
         const value = fieldsToConfig(updatedFields);
         await fieldsCell.write(async (expected) => {
@@ -579,24 +587,17 @@ export const VocabularyDetail = () => {
    * Takes its turn behind the entry writes, and reads the entries in it.
    * Resolves to whether it landed.
    */
+  // A refusal is told to the person by the caller, with what is left to do.
   const pruneFieldValues = (after, label) =>
-    writes.entries.push(
-      async () => {
-        const { items = [] } = await client.vocabLayers.get(vocabularyId, true);
-        const updates = fieldPruneWrites(items, after);
-        if (!updates.length) return;
-        await client.withOperation(`Change "${label}"`, async () => {
-          for (let i = 0; i < updates.length; i += CHUNK) {
-            await client.vocabItems.bulkUpdate(updates.slice(i, i + CHUNK));
-          }
-        });
-      },
-      {
-        shown: false,
-        refused: (err) =>
-          console.error('Error rewriting entry values after a field type change:', err),
-      },
-    );
+    sendFieldPrune({
+      queue: writes.entries,
+      client,
+      vocabularyId,
+      after,
+      label,
+      refused: (err) =>
+        console.error('Error rewriting entry values after a field type change:', err),
+    });
 
   const handleSetType = async (fieldName, key) => {
     const choice = TYPE_CHOICES.find((c) => c.key === key);
@@ -693,7 +694,10 @@ export const VocabularyDetail = () => {
   // re-read shows the fields as the server holds them.
   const handleSaveTagsets = async (next, meta) => {
     setDraftTagsets(next);
-    const tagsetsLanded = writes.schema.push(
+    const tagsetsLanded = sendKeyed(
+      writes.schema,
+      client,
+      'Change the tagsets',
       () =>
         tagsetsCell.write(async (expected) => {
           await client.vocabLayers.setConfig(
