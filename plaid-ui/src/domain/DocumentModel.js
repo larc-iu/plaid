@@ -125,6 +125,8 @@ export class DocumentModel {
     this._operation = null;
     this._conflictHandled = false;
     this._byEntity = false;
+    // The writes a `cellWrite` queues, each with its refusal once it has one.
+    this._cellScope = null;
     this._lateReads = new Set();
     // The document before the first patch of the edit being made, until its
     // write is queued (`_queueWrite`), and whether any of its patches changed
@@ -363,6 +365,40 @@ export class DocumentModel {
   }
 
   /**
+   * Run `fn`, a grid cell's write, inside `handlesConflicts`, and answer what
+   * became of it: `{ landed: true, value }`, where `value` is what `fn`
+   * answered, or `{ landed: false, status, error, readBack, uncertain }`.
+   * `error` is the refusal of a write `fn` queued, its own and not a later
+   * write's. `readBack` says the document was read again after the refusal,
+   * so what it holds is what the server holds, and `uncertain` that the
+   * write may have landed with its answer lost. The cell engine
+   * (cells/CellEngine.js) takes it from here.
+   */
+  cellWrite(fn) {
+    const outer = this._cellScope;
+    const scope = [];
+    this._cellScope = scope;
+    let answer;
+    try {
+      answer = this.handlesConflicts(fn);
+    } finally {
+      this._cellScope = outer;
+    }
+    return Promise.resolve(answer).then((value) => {
+      const failed = scope.find((w) => w.error);
+      if (value !== false && !failed) return { landed: true, value };
+      const error = failed?.error ?? null;
+      return {
+        landed: false,
+        status: statusOf(error) ?? null,
+        error,
+        readBack: !this.outOfStep,
+        uncertain: error ? isUnknownOutcome(error) : false,
+      };
+    });
+  }
+
+  /**
    * Run `fn`, whose writes are values on a token that leave its extent as it
    * is (igt's glosses), and opt them in to the rule by entity when one is
    * refused because the document moved on: it goes again by itself when
@@ -539,6 +575,8 @@ export class DocumentModel {
     this._patchBase = null;
     this._patchesBeside = false;
     if (!this._canWrite(label)) return Promise.resolve(false);
+    const cell = this._cellScope ? { error: null } : null;
+    this._cellScope?.push(cell);
     this._unsent.push(unsent);
     let conflict = false;
     let resend = false;
@@ -580,6 +618,7 @@ export class DocumentModel {
           // A conflict, or what the edit names was deleted meanwhile: either
           // way someone else changed the document.
           conflict = isChangedElsewhere(err);
+          if (cell) cell.error = err;
           // The rows it made are not on the server, whatever the refusal.
           for (const id of this._summary(unsent)?.created ?? []) this._refusedIds.add(id);
           this._writeFailed(label, err, conflictHandled && statusOf(err) === 409);
