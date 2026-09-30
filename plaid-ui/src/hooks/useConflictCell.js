@@ -81,7 +81,9 @@ export function useConflictCell(engine, key, { stored, editingRef, typedRef, set
     }
     cells.reconcile();
     setConflict(cells.conflictOf(key));
-    if (!editingRef.current) showRef.current(cells.display(key, now));
+    // A focused cell nobody typed in follows too, or leaving it would write
+    // the value it showed back over the new one.
+    if (untouched()) showRef.current(cells.display(key, now));
     // Keyed on the stored value alone: the engine and key are the same for as
     // long as the cell is drawn.
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -420,3 +420,51 @@ describe('the toast for a refused cell edit', () => {
     await run.view.unmount();
   });
 });
+
+// REV-cell-engine F2: a focused cell nobody typed in follows the stored value,
+// so leaving it writes nothing back over the new one.
+describe('a focused cell nobody typed in, when the stored value moves', () => {
+  it('shows the new value, and leaving sends nothing', async () => {
+    const onAnnotationUpdate = vi.fn(() => Promise.resolve({ landed: true }));
+    const stored = new Map([['t1:lemma', 'sit']]);
+    const s = makeSession(onAnnotationUpdate, stored);
+    const view = await renderComponent(cellWith(s, 'lemma', 'sit'));
+    const input = inputOf(view);
+    await view.step(async () => focus(input));
+    stored.set('t1:lemma', 'sitZ');
+    await view.rerender(cellWith(s, 'lemma', 'sitZ'));
+    expect(input.value).toBe('sitZ');
+    await view.step(async () => blur(input));
+    expect(onAnnotationUpdate).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  it('after a conflict let go by a third change, shows that change and sends nothing', async () => {
+    const run = await lostTo(CASES[0]);
+    run.onAnnotationUpdate.mockClear();
+    await run.view.step(async () => focus(run.input));
+    run.stored.set('t1:lemma', 'sitZ');
+    await run.view.rerender(cellWith(run.s, 'lemma', 'sitZ'));
+    expect(noteOf(run.view)).toBe(null);
+    expect(run.input.value).toBe('sitZ');
+    await run.view.step(async () => blur(run.input));
+    expect(run.onAnnotationUpdate).not.toHaveBeenCalled();
+    await run.view.unmount();
+  });
+
+  it('keeps what was typed in it', async () => {
+    const onAnnotationUpdate = vi.fn(() => Promise.resolve({ landed: true }));
+    const stored = new Map([['t1:lemma', 'sit']]);
+    const s = makeSession(onAnnotationUpdate, stored);
+    const view = await renderComponent(cellWith(s, 'lemma', 'sit'));
+    const input = inputOf(view);
+    await view.step(async () => focus(input));
+    await view.step(async () => type(input, 'sat'));
+    stored.set('t1:lemma', 'sitZ');
+    await view.rerender(cellWith(s, 'lemma', 'sitZ'));
+    expect(input.value).toBe('sat');
+    await view.step(async () => blur(input));
+    expect(onAnnotationUpdate).toHaveBeenLastCalledWith('t1', 'lemma', 'sat');
+    await view.unmount();
+  });
+});
