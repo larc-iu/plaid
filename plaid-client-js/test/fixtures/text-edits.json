@@ -1,0 +1,763 @@
+[
+  {
+    "name": "typing a word as five inserts",
+    "body": "",
+    "ops": [
+      {
+        "type": "insert",
+        "index": 0,
+        "value": "h"
+      },
+      {
+        "type": "insert",
+        "index": 1,
+        "value": "e"
+      },
+      {
+        "type": "insert",
+        "index": 2,
+        "value": "l"
+      },
+      {
+        "type": "insert",
+        "index": 3,
+        "value": "l"
+      },
+      {
+        "type": "insert",
+        "index": 4,
+        "value": "o"
+      }
+    ],
+    "gaps": [
+      {
+        "start": 0,
+        "end": 0,
+        "value": "hello"
+      }
+    ],
+    "result": "hello"
+  },
+  {
+    "name": "typing a word as one insert",
+    "body": "say ",
+    "ops": [
+      {
+        "type": "insert",
+        "index": 4,
+        "value": "hello"
+      }
+    ],
+    "gaps": [
+      {
+        "start": 4,
+        "end": 4,
+        "value": "hello"
+      }
+    ],
+    "result": "say hello"
+  },
+  {
+    "name": "typing a word as a replace of nothing",
+    "body": "",
+    "ops": [
+      {
+        "type": "replace",
+        "index": 0,
+        "length": 0,
+        "value": "hello"
+      }
+    ],
+    "gaps": [
+      {
+        "start": 0,
+        "end": 0,
+        "value": "hello"
+      }
+    ],
+    "result": "hello"
+  },
+  {
+    "name": "typing inside a word",
+    "body": "the cat",
+    "ops": [
+      {
+        "type": "insert",
+        "index": 5,
+        "value": "o"
+      },
+      {
+        "type": "insert",
+        "index": 6,
+        "value": "o"
+      }
+    ],
+    "gaps": [
+      {
+        "start": 5,
+        "end": 5,
+        "value": "oo"
+      }
+    ],
+    "result": "the cooat"
+  },
+  {
+    "name": "backspace three times over a word and typing another",
+    "body": "cat",
+    "ops": [
+      {
+        "type": "delete",
+        "index": 2,
+        "value": 1
+      },
+      {
+        "type": "delete",
+        "index": 1,
+        "value": 1
+      },
+      {
+        "type": "delete",
+        "index": 0,
+        "value": 1
+      },
+      {
+        "type": "insert",
+        "index": 0,
+        "value": "d"
+      },
+      {
+        "type": "insert",
+        "index": 1,
+        "value": "o"
+      },
+      {
+        "type": "insert",
+        "index": 2,
+        "value": "g"
+      }
+    ],
+    "gaps": [
+      {
+        "start": 0,
+        "end": 3,
+        "value": "dog"
+      }
+    ],
+    "result": "dog"
+  },
+  {
+    "name": "backspace one letter and typing another",
+    "body": "the cat sat",
+    "ops": [
+      {
+        "type": "delete",
+        "index": 6,
+        "value": 1
+      },
+      {
+        "type": "insert",
+        "index": 6,
+        "value": "r"
+      }
+    ],
+    "gaps": [
+      {
+        "start": 6,
+        "end": 7,
+        "value": "r"
+      }
+    ],
+    "result": "the car sat"
+  },
+  {
+    "name": "text typed then deleted vanishes",
+    "body": "the dog",
+    "ops": [
+      {
+        "type": "insert",
+        "index": 4,
+        "value": "big "
+      },
+      {
+        "type": "delete",
+        "index": 4,
+        "value": 4
+      }
+    ],
+    "gaps": [],
+    "result": "the dog"
+  },
+  {
+    "name": "a typo typed and fixed leaves only the rest",
+    "body": "the dog",
+    "ops": [
+      {
+        "type": "insert",
+        "index": 4,
+        "value": "bix"
+      },
+      {
+        "type": "delete",
+        "index": 6,
+        "value": 1
+      },
+      {
+        "type": "insert",
+        "index": 6,
+        "value": "g "
+      }
+    ],
+    "gaps": [
+      {
+        "start": 4,
+        "end": 4,
+        "value": "big "
+      }
+    ],
+    "result": "the big dog"
+  },
+  {
+    "name": "a letter deleted and typed back is no change",
+    "body": "cat",
+    "ops": [
+      {
+        "type": "delete",
+        "index": 2,
+        "value": 1
+      },
+      {
+        "type": "insert",
+        "index": 2,
+        "value": "t"
+      }
+    ],
+    "gaps": [],
+    "result": "cat"
+  },
+  {
+    "name": "a word deleted and typed back is no change",
+    "body": "ab",
+    "ops": [
+      {
+        "type": "delete",
+        "index": 0,
+        "value": 2
+      },
+      {
+        "type": "insert",
+        "index": 0,
+        "value": "ab"
+      }
+    ],
+    "gaps": [],
+    "result": "ab"
+  },
+  {
+    "name": "a replace with the same text is no change",
+    "body": "the cat",
+    "ops": [
+      {
+        "type": "replace",
+        "index": 4,
+        "length": 3,
+        "value": "cat"
+      }
+    ],
+    "gaps": [],
+    "result": "the cat"
+  },
+  {
+    "name": "ops out of position order",
+    "body": "a b c",
+    "ops": [
+      {
+        "type": "insert",
+        "index": 5,
+        "value": "!"
+      },
+      {
+        "type": "insert",
+        "index": 0,
+        "value": ">"
+      }
+    ],
+    "gaps": [
+      {
+        "start": 0,
+        "end": 0,
+        "value": ">"
+      },
+      {
+        "start": 5,
+        "end": 5,
+        "value": "!"
+      }
+    ],
+    "result": ">a b c!"
+  },
+  {
+    "name": "a later op before an earlier one",
+    "body": "one two three",
+    "ops": [
+      {
+        "type": "replace",
+        "index": 8,
+        "length": 5,
+        "value": "3"
+      },
+      {
+        "type": "delete",
+        "index": 0,
+        "value": 4
+      }
+    ],
+    "gaps": [
+      {
+        "start": 0,
+        "end": 4,
+        "value": ""
+      },
+      {
+        "start": 8,
+        "end": 13,
+        "value": "3"
+      }
+    ],
+    "result": "two 3"
+  },
+  {
+    "name": "a delete spanning typed and old text",
+    "body": "cat sat",
+    "ops": [
+      {
+        "type": "insert",
+        "index": 3,
+        "value": "s"
+      },
+      {
+        "type": "delete",
+        "index": 2,
+        "value": 4
+      }
+    ],
+    "gaps": [
+      {
+        "start": 2,
+        "end": 5,
+        "value": ""
+      }
+    ],
+    "result": "caat"
+  },
+  {
+    "name": "a delete spanning old text on both sides of typed text",
+    "body": "ab cd",
+    "ops": [
+      {
+        "type": "insert",
+        "index": 2,
+        "value": "XY"
+      },
+      {
+        "type": "delete",
+        "index": 1,
+        "value": 5
+      }
+    ],
+    "gaps": [
+      {
+        "start": 1,
+        "end": 4,
+        "value": ""
+      }
+    ],
+    "result": "ad"
+  },
+  {
+    "name": "two deletes that meet are one gap",
+    "body": "abcd",
+    "ops": [
+      {
+        "type": "delete",
+        "index": 1,
+        "value": 1
+      },
+      {
+        "type": "delete",
+        "index": 1,
+        "value": 1
+      }
+    ],
+    "gaps": [
+      {
+        "start": 1,
+        "end": 3,
+        "value": ""
+      }
+    ],
+    "result": "ad"
+  },
+  {
+    "name": "a delete then an insert at the same place is one replace",
+    "body": "abcd",
+    "ops": [
+      {
+        "type": "delete",
+        "index": 1,
+        "value": 1
+      },
+      {
+        "type": "insert",
+        "index": 1,
+        "value": "X"
+      }
+    ],
+    "gaps": [
+      {
+        "start": 1,
+        "end": 2,
+        "value": "X"
+      }
+    ],
+    "result": "aXcd"
+  },
+  {
+    "name": "a letter moved is two gaps with a kept letter between",
+    "body": "aa",
+    "ops": [
+      {
+        "type": "delete",
+        "index": 0,
+        "value": 1
+      },
+      {
+        "type": "insert",
+        "index": 1,
+        "value": "a"
+      }
+    ],
+    "gaps": [
+      {
+        "start": 0,
+        "end": 1,
+        "value": ""
+      },
+      {
+        "start": 2,
+        "end": 2,
+        "value": "a"
+      }
+    ],
+    "result": "aa"
+  },
+  {
+    "name": "a gap is not trimmed to what changed",
+    "body": "cat",
+    "ops": [
+      {
+        "type": "replace",
+        "index": 0,
+        "length": 3,
+        "value": "cats"
+      }
+    ],
+    "gaps": [
+      {
+        "start": 0,
+        "end": 3,
+        "value": "cats"
+      }
+    ],
+    "result": "cats"
+  },
+  {
+    "name": "a replace inside typed text",
+    "body": "the cat sat",
+    "ops": [
+      {
+        "type": "replace",
+        "index": 4,
+        "length": 3,
+        "value": "dog"
+      },
+      {
+        "type": "replace",
+        "index": 5,
+        "length": 1,
+        "value": "i"
+      }
+    ],
+    "gaps": [
+      {
+        "start": 4,
+        "end": 7,
+        "value": "dig"
+      }
+    ],
+    "result": "the dig sat"
+  },
+  {
+    "name": "a replace spanning typed and old text",
+    "body": "abc def",
+    "ops": [
+      {
+        "type": "insert",
+        "index": 3,
+        "value": "XY"
+      },
+      {
+        "type": "replace",
+        "index": 4,
+        "length": 3,
+        "value": "Z"
+      }
+    ],
+    "gaps": [
+      {
+        "start": 3,
+        "end": 5,
+        "value": "XZ"
+      }
+    ],
+    "result": "abcXZef"
+  },
+  {
+    "name": "astral letters typed between astral letters",
+    "body": "𐌰𐌱",
+    "ops": [
+      {
+        "type": "insert",
+        "index": 1,
+        "value": "𐌲"
+      }
+    ],
+    "gaps": [
+      {
+        "start": 1,
+        "end": 1,
+        "value": "𐌲"
+      }
+    ],
+    "result": "𐌰𐌲𐌱"
+  },
+  {
+    "name": "an astral letter deleted",
+    "body": "a😀b",
+    "ops": [
+      {
+        "type": "delete",
+        "index": 1,
+        "value": 1
+      }
+    ],
+    "gaps": [
+      {
+        "start": 1,
+        "end": 2,
+        "value": ""
+      }
+    ],
+    "result": "ab"
+  },
+  {
+    "name": "astral letters replaced by code point",
+    "body": "𐌰𐌱𐌲 x",
+    "ops": [
+      {
+        "type": "replace",
+        "index": 1,
+        "length": 2,
+        "value": "𐌳"
+      },
+      {
+        "type": "insert",
+        "index": 4,
+        "value": "y"
+      }
+    ],
+    "gaps": [
+      {
+        "start": 1,
+        "end": 3,
+        "value": "𐌳"
+      },
+      {
+        "start": 5,
+        "end": 5,
+        "value": "y"
+      }
+    ],
+    "result": "𐌰𐌳 xy"
+  },
+  {
+    "name": "backspace over an astral letter and typing it back",
+    "body": "𐌰𐌱",
+    "ops": [
+      {
+        "type": "delete",
+        "index": 1,
+        "value": 1
+      },
+      {
+        "type": "insert",
+        "index": 1,
+        "value": "𐌱"
+      }
+    ],
+    "gaps": [],
+    "result": "𐌰𐌱"
+  },
+  {
+    "name": "a combining mark typed after a letter",
+    "body": "cafe",
+    "ops": [
+      {
+        "type": "insert",
+        "index": 4,
+        "value": "́"
+      }
+    ],
+    "gaps": [
+      {
+        "start": 4,
+        "end": 4,
+        "value": "́"
+      }
+    ],
+    "result": "café"
+  },
+  {
+    "name": "a combining mark deleted on its own",
+    "body": "éx",
+    "ops": [
+      {
+        "type": "delete",
+        "index": 1,
+        "value": 1
+      }
+    ],
+    "gaps": [
+      {
+        "start": 1,
+        "end": 2,
+        "value": ""
+      }
+    ],
+    "result": "ex"
+  },
+  {
+    "name": "a letter with its mark retyped as a precomposed letter",
+    "body": "éx",
+    "ops": [
+      {
+        "type": "delete",
+        "index": 0,
+        "value": 2
+      },
+      {
+        "type": "insert",
+        "index": 0,
+        "value": "é"
+      }
+    ],
+    "gaps": [
+      {
+        "start": 0,
+        "end": 2,
+        "value": "é"
+      }
+    ],
+    "result": "éx"
+  },
+  {
+    "name": "no ops",
+    "body": "abc",
+    "ops": [],
+    "gaps": [],
+    "result": "abc"
+  },
+  {
+    "name": "no ops on an empty body",
+    "body": "",
+    "ops": [],
+    "gaps": [],
+    "result": ""
+  },
+  {
+    "name": "an empty insert and an empty delete",
+    "body": "abc",
+    "ops": [
+      {
+        "type": "insert",
+        "index": 1,
+        "value": ""
+      },
+      {
+        "type": "delete",
+        "index": 2,
+        "value": 0
+      },
+      {
+        "type": "replace",
+        "index": 0,
+        "length": 0,
+        "value": ""
+      }
+    ],
+    "gaps": [],
+    "result": "abc"
+  },
+  {
+    "name": "everything deleted",
+    "body": "the cat",
+    "ops": [
+      {
+        "type": "delete",
+        "index": 0,
+        "value": 7
+      }
+    ],
+    "gaps": [
+      {
+        "start": 0,
+        "end": 7,
+        "value": ""
+      }
+    ],
+    "result": ""
+  },
+  {
+    "name": "everything deleted and new text typed",
+    "body": "old",
+    "ops": [
+      {
+        "type": "delete",
+        "index": 0,
+        "value": 3
+      },
+      {
+        "type": "insert",
+        "index": 0,
+        "value": "n"
+      },
+      {
+        "type": "insert",
+        "index": 1,
+        "value": "e"
+      },
+      {
+        "type": "insert",
+        "index": 2,
+        "value": "w"
+      }
+    ],
+    "gaps": [
+      {
+        "start": 0,
+        "end": 3,
+        "value": "new"
+      }
+    ],
+    "result": "new"
+  }
+]

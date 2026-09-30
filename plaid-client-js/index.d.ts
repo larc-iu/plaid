@@ -1602,6 +1602,25 @@ export function cpToUtf16(s: string, cp: number): number;
 /** Like indexOf, but the result and `fromCp` are code-point indices; -1 if absent. */
 export function cpIndexOf(s: string, sub: string, fromCp?: number): number;
 
+// --- Text edit operations (code points, running coordinates) ---------------
+/** One op as `PATCH /texts/:id` takes it; each index is in the body the ops before it left. */
+export type TextEditOp =
+  | { type: "insert"; index: number; value: string }
+  | { type: "delete"; index: number; value: number }
+  | { type: "replace"; index: number; length: number; value: string };
+/** Old-body code points [start, end) give way to `value`. */
+export interface TextGap {
+  start: number;
+  end: number;
+  value: string;
+}
+/** The net change of `ops` on `body` as gaps: sorted, never touching, no-op gaps dropped. Throws on a bad op. */
+export function composeTextEdits(body: string, ops: TextEditOp[]): TextGap[];
+/** Gaps as running ops: insert, delete or replace. */
+export function gapsToOps(gaps: TextGap[]): TextEditOp[];
+/** `body` with `ops` applied in turn. Throws on a bad op. */
+export function applyTextOps(body: string, ops: TextEditOp[]): string;
+
 // --- Shared layer-role vocabulary (cross-app interoperability) --------------
 // Substrate layers are tagged with a role at `config.plaid.role` (a scalar) so
 // that different apps can share a project. See the manual, "Layer Interoperability".

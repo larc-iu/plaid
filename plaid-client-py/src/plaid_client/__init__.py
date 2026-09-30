@@ -55,6 +55,7 @@ from plaid_client.roles import (
     read_role,
     find_by_role,
 )
+from plaid_client.text_edits import compose_text_edits, gaps_to_ops, apply_text_ops
 
 __all__ = [
     "created_id",
@@ -107,4 +108,7 @@ __all__ = [
     "ROLES",
     "read_role",
     "find_by_role",
+    "compose_text_edits",
+    "gaps_to_ops",
+    "apply_text_ops",
 ]
