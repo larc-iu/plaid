@@ -62,13 +62,13 @@ def test_a_plan_segments_a_word_and_links_each_new_morpheme():
     assert counts == {'analyses': 1, 'lexicon links': 2}
     created = [p for kind, p in c.batches[0] if kind == 'tokens.create']
     assert [p['kwargs']['metadata']['form'] for p in created] == ['akun', 'a']
-    # Each names its morpheme by a ref to the create in the same batch, and
+    # Each names its morpheme by the id it is made under, in the same batch, and
     # is verified, as everything an approved plan writes is.
     [batch] = c.batches
-    made = [i for i, (kind, _) in enumerate(batch) if kind == 'tokens.create']
+    made = [p['kwargs']['id'] for kind, p in batch if kind == 'tokens.create']
     links = _links(c)
-    assert [(item, tokens) for item, tokens, _ in links] == [('vi-gam', [{'$ref': made[0]}]),
-                                                             ('vi-erg', [{'$ref': made[1]}])]
+    assert [(item, tokens) for item, tokens, _ in links] == [('vi-gam', [made[0]]),
+                                                             ('vi-erg', [made[1]])]
     for _, _, stamp in links:
         assert stamp == {**VERIFIED, 'provSource': 'service:igt:assist:x'}
 
@@ -101,9 +101,9 @@ def test_the_kept_first_morpheme_is_linked_by_its_id_and_the_rest_once_minted():
     c = FakeClient()
     execute_plan(c, w.plan_payload()['ops'], source='s', label='l')
     [batch] = c.batches
-    made = [i for i, (kind, _) in enumerate(batch) if kind == 'tokens.create']
+    made = [p['kwargs']['id'] for kind, p in batch if kind == 'tokens.create']
     assert [(item, tokens) for item, tokens, _ in _links(c)] == [('vi-gam', ['m-4a']),
-                                                                 ('vi-gam', [{'$ref': made[1]}])]
+                                                                 ('vi-gam', [made[1]])]
 
 
 def test_a_link_by_place_replaces_one_planned_on_the_same_kept_morpheme():
@@ -191,11 +191,12 @@ def test_a_link_to_a_new_entry_on_a_new_morpheme_waits_for_both():
     c = FakeClient()
     execute_plan(c, w.plan_payload()['ops'], source='s', label='l')
     [(item, tokens, _)] = _links(c)
-    # Both by refs to creates in the same batch: the entry's and the morpheme's.
+    # Both by the ids they are made under, in the same batch: the entry's and
+    # the morpheme's.
     [batch] = c.batches
-    kinds = [k for k, _ in batch]
-    assert item == {'$ref': kinds.index('vocab_items.create')}
-    assert tokens == [{'$ref': kinds.index('tokens.create')}]
+    made = {k: p['kwargs']['id'] for k, p in reversed(batch) if k in ('vocab_items.create', 'tokens.create')}
+    assert item == made['vocab_items.create']
+    assert tokens == [made['tokens.create']]
 
 
 def test_approval_refuses_a_link_whose_analysis_the_plan_does_not_hold_before_writing():

@@ -520,7 +520,7 @@ def write_schemas() -> List[Dict[str, Any]]:
 
 def _apply_add(ctx, op) -> int:
     ctx.b.add(lambda batch: batch.guidelines.create(
-        ctx.project.id, op['title'], body=op.get('body') or ''))
+        ctx.project.id, op['title'], body=op.get('body') or '', id=ctx.b.new_id()))
     return 1
 
 

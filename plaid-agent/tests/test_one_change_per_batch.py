@@ -61,7 +61,7 @@ def test_a_change_past_the_servers_cap_is_cut_there():
 
 
 def _budget(monkeypatch, n):
-    monkeypatch.setattr(core_plan.TrackingBatcher.__init__, '__defaults__', (n, None))
+    monkeypatch.setattr(core_plan.TrackingBatcher.__init__, '__defaults__', (n, None, None))
 
 
 def _nth_send_fails(monkeypatch, n):
@@ -104,8 +104,8 @@ def test_an_igt_analysis_is_whole_in_its_batch_and_counts_once_it_stood(monkeypa
         execute_plan(c, ops, source='s', label='l')
     assert caught.value.written == [0]
     [first] = c.batches
-    creates = [i for i, (kind, _) in enumerate(first) if kind == 'tokens.create']
-    glossed = sorted(p['args'][1][0]['$ref'] for kind, p in first if kind == 'spans.create')
+    creates = sorted(p['kwargs']['id'] for kind, p in first if kind == 'tokens.create')
+    glossed = sorted(p['args'][1][0] for kind, p in first if kind == 'spans.create')
     assert len(creates) == 3 and glossed == creates, 'every morpheme of the first word, each glossed'
 
 

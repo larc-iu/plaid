@@ -18,7 +18,7 @@ import pytest
 
 import test_stale_by_sentence as sbs
 from test_plan_record import _staged, _stored
-from test_service_flow import Helper, _request, _seed, _seed_plan, _service
+from test_service_flow import PLAN1, Helper, _request, _seed, _seed_plan, _service
 
 from plaid_agent.core import service as service_mod
 from plaid_agent.core.agent import TurnCancelled, TurnResult
@@ -222,7 +222,7 @@ def test_a_plan_proposed_by_one_model_keeps_its_name_when_another_applies_it():
     conv['display'][1]['model'], conv['display'][1]['version'] = 'first/model', '0.0.0+aaaaaaaa'
     store.save('c1', conv, meta)
     svc = _service()   # answers as fake/model
-    svc.process_request(_request(client, approve={'plan_id': 'plan1'}), Helper(request_id='r9'))
+    svc.process_request(_request(client, approve={'plan_id': PLAN1}), Helper(request_id='r9'))
     [(_, _, _, stamp)] = [c['args'] for c in client.payloads('spans.create')]
     assert stamp['provDetail'] == {'model': 'first/model', 'version': '0.0.0+aaaaaaaa'}
     assert stamp['provConfirmed'] is True
@@ -235,7 +235,7 @@ def test_a_contributors_approval_keeps_the_proposal_as_a_guess():
     client = FakeClient()
     _seed_plan(client)
     svc = _service()
-    svc.process_request(_request(client, approve={'plan_id': 'plan1', 'contributed_by': 'u@x'}),
+    svc.process_request(_request(client, approve={'plan_id': PLAN1, 'contributed_by': 'u@x'}),
                         Helper(request_id='r9'))
     [(_, _, _, stamp)] = [c['args'] for c in client.payloads('spans.create')]
     assert stamp['prov'] == 'contributed' and stamp['provSource'] == 'user:u@x'
@@ -246,7 +246,7 @@ def test_a_plan_recorded_as_human_made_names_no_model():
     from fixtures import FakeClient
     client = FakeClient()
     _seed_plan(client)
-    _service().process_request(_request(client, approve={'plan_id': 'plan1', 'as_human': True}),
+    _service().process_request(_request(client, approve={'plan_id': PLAN1, 'as_human': True}),
                                Helper(request_id='r9'))
     [(_, _, _, stamp)] = [c['args'] for c in client.payloads('spans.create')]
     assert not stamp

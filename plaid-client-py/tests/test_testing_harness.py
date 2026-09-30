@@ -157,6 +157,20 @@ def test_a_write_queued_on_a_batch_answers_as_the_real_batch_does():
     assert c.spans.create('L', ['t'], 'now') == {'id': 'spans-3'}
 
 
+def test_a_create_given_its_id_answers_that_id_and_records_it():
+    # An importer or a plan names the ids of what it creates (idempotent
+    # writes): the fake answers them, a bulk entry's too, and records each.
+    c = _project_client()
+    b = c.batch()
+    b.tokens.bulk_create([{'begin': 0, 'id': 'mine-1'}, {'begin': 1}])
+    b.guidelines.create('p', 'New', body='b', id='mine-2')
+    out = b.submit()
+    assert out[0]['body']['ids'][0] == 'mine-1' and out[0]['body']['ids'][1] != 'mine-1'
+    assert out[1]['body']['id'] == 'mine-2'
+    assert c.batches[0][1] == ('guidelines.create', {'args': ('p', 'New'),
+                                                     'kwargs': {'body': 'b', 'id': 'mine-2'}})
+
+
 def test_a_batch_queues_until_it_submits_and_answers_per_op():
     c = _project_client()
     b = c.batch()

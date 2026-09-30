@@ -87,13 +87,13 @@ from typing import Any, Dict, List, Optional
 from ..core import guidelines as _guidelines
 from ..core import opkind as ok
 from ..core.opkind import OpKind
-from plaid_client import PlaidAPIError, metadata_ops
+from plaid_client import PlaidAPIError, metadata_ops, uuid7
 
 from plaid_client.service import requester_message
 
-from ..core.plan import (CLEAR_PROV, CONFIRM, PlanError, PlanOutOfDate, Stamps,  # noqa: F401 - PlanError is re-exported
+from ..core.plan import (CLEAR_PROV, CONFIRM, Minter, PlanError, PlanOutOfDate, Stamps,  # noqa: F401 - PlanError is re-exported
                          TrackingBatcher, apply_add_comment, apply_restore_document, applying,
-                         check_reach, created_id, expand_ops)
+                         check_reach, expand_ops)
 from .vocab import parent_of
 
 # How a kind tags what it does to the shape of the text. RESHAPES is every
@@ -132,12 +132,13 @@ class Context:
         self.notes = notes
         self.b = b
         self.pending_links: List[tuple] = []   # ([token_id, ...], new_entry_key, document)
-        # Each analysed word's new chain, slot by slot: ('id', the reused first
-        # morpheme) or ('idx', the result index of the created one). A link to
-        # a morpheme the plan creates is written from it in the second pass.
-        self.chains: Dict[str, List[tuple]] = {}
+        # Each analysed word's new chain: the id of each of its morphemes, the
+        # reused first one's or the one the plan creates. A link to a morpheme
+        # the plan creates is written from it.
+        self.chains: Dict[str, List[str]] = {}
         self.planned_links: List[Dict[str, Any]] = []
-        self.entry_idx: Dict[str, int] = {}
+        # The id of each entry the plan creates, by its key.
+        self.entry_ids: Dict[str, str] = {}
         self.respells: Dict[str, List[tuple]] = {}
         self.pending_deletes: List[Dict[str, Any]] = []  # delete_entry ops, once their links are gone
         self.pending_merges: List[tuple] = []  # (kept entry, entry merged into it), after the links
@@ -178,7 +179,8 @@ def _apply_set_span(ctx: Context, op) -> int:
     elif span_id:
         ctx.b.update('spans', span_id, value=value, metadata=metadata_ops(ctx.restamp()))
     elif value != '':
-        ctx.b.add(lambda batch, o=op, v=value: batch.spans.create(o['layer_id'], [o['token_id']], v, ctx.stamp()))
+        ctx.b.add(lambda batch, o=op, v=value: batch.spans.create(o['layer_id'], [o['token_id']], v, ctx.stamp(),
+                                                                  id=ctx.b.new_id()))
     else:
         return 0  # nothing to clear
     return 1
@@ -197,7 +199,7 @@ def _apply_set_analysis(ctx: Context, op) -> int:
         for sid in m0.get('span_ids') or []:
             ctx.drop('spans', sid)
         first = morphemes[0]
-        slots = [('id', m0['id'])]
+        slots = [m0['id']]
         b.add(lambda batch, mid=m0['id'], f=first: batch.tokens.patch_metadata(
             mid, metadata_ops({'form': f['form'], 'morphType': f.get('morph_type'), **ctx.restamp()})))
         # Keep the chain's numbering contiguous from 1 whatever the
@@ -206,7 +208,7 @@ def _apply_set_analysis(ctx: Context, op) -> int:
         for fv in first.get('fields') or []:
             if fv.get('value') not in (None, ''):
                 b.add(lambda batch, mid=m0['id'], fv=fv: batch.spans.create(
-                    fv['layer_id'], [mid], fv['value'], ctx.stamp()))
+                    fv['layer_id'], [mid], fv['value'], ctx.stamp(), id=b.new_id()))
         rest = list(enumerate(morphemes))[1:]
     else:
         slots = []
@@ -215,17 +217,16 @@ def _apply_set_analysis(ctx: Context, op) -> int:
         meta = {'form': m['form'], **ctx.stamp()}
         if m.get('morph_type'):
             meta['morphType'] = m['morph_type']
-        idx = b.add(lambda batch, j=j, meta=meta: batch.tokens.create(
-            layer, text_id, begin, end, precedence=j + 1, metadata=meta))
-        slots.append(('idx', idx))
-        # Its glosses name it by a ref, in the same batch: the analysis is
-        # one change, written whole or not at all.
+        made = b.new_id()
+        b.add(lambda batch, j=j, meta=meta, i=made: batch.tokens.create(
+            layer, text_id, begin, end, precedence=j + 1, metadata=meta, id=i))
+        slots.append(made)
+        # Its glosses name it, in the same batch: the analysis is one change,
+        # written whole or not at all.
         for fv in m.get('fields') or []:
             if fv.get('value') not in (None, ''):
-                b.add(lambda batch, i=idx, fv=fv: batch.spans.create(
-                    fv['layer_id'], [_made(b, batch, i, 'a created morpheme came back without an id; '
-                                                        'its gloss was not written')],
-                    fv['value'], ctx.stamp()))
+                b.add(lambda batch, i=made, fv=fv: batch.spans.create(
+                    fv['layer_id'], [i], fv['value'], ctx.stamp(), id=b.new_id()))
     ctx.chains[op['word_id']] = slots
     return 1
 
@@ -241,28 +242,19 @@ def _apply_respell(ctx: Context, op) -> int:
     return 1
 
 
-def _made(b, batch, idx, what):
-    """The id the op at result index ``idx`` creates, for a write queued on
-    ``batch`` (a ref when it is in the same batch), or ``what`` raised."""
-    made_id = b.refer(batch, idx) if idx is not None else None
-    if not made_id:
-        raise RuntimeError(what)
-    return made_id
-
-
 def _link_new_entry(ctx: Context, tokens: List[str], key: str) -> None:
-    ctx.b.add(lambda batch, i=ctx.entry_idx.get(key), t=tokens: batch.vocab_links.create(
-        _made(ctx.b, batch, i, 'a created lexicon entry came back without an id; a link to it '
-                               'was not written'), t, ctx.stamp()))
+    ctx.b.add(lambda batch, e=ctx.entry_ids[key], t=tokens: batch.vocab_links.create(
+        e, t, ctx.stamp(), id=ctx.b.new_id()))
 
 
 def _link(ctx: Context, op, tokens: List[str]) -> int:
     if op.get('existing_link_id'):
         ctx.drop('vocab_links', op['existing_link_id'])
     if op.get('item_id'):
-        ctx.b.add(lambda batch, o=op, t=tokens: batch.vocab_links.create(o['item_id'], t, ctx.stamp()))
-    elif op.get('new_entry_key') in ctx.entry_idx:
-        # The entry is an earlier change of the plan: named by a ref.
+        ctx.b.add(lambda batch, o=op, t=tokens: batch.vocab_links.create(o['item_id'], t, ctx.stamp(),
+                                                                          id=ctx.b.new_id()))
+    elif op.get('new_entry_key') in ctx.entry_ids:
+        # The entry is an earlier change of the plan, named by its id.
         _link_new_entry(ctx, tokens, op['new_entry_key'])
     elif op.get('new_entry_key'):
         # A later one: written in the second pass, once it is queued.
@@ -279,29 +271,19 @@ def _link_planned_morpheme(ctx: Context, op) -> None:
     k = op['morpheme_index']
     if not 1 <= k <= len(slots):
         raise RuntimeError('a link names a morpheme its analysis did not create, so it was not written')
-    how, at = slots[k - 1]
-    b = ctx.b
-
-    def morpheme(batch, how=how, at=at):
-        return at if how == 'id' else _made(
-            b, batch, at, 'a created morpheme came back without an id, so its link was not written')
-
-    def entry(batch, o=op):
-        return o.get('item_id') or _made(
-            b, batch, ctx.entry_idx.get(o.get('new_entry_key')),
-            'a created lexicon entry came back without an id, so a link to it was not written')
+    entry = op.get('item_id') or ctx.entry_ids[op['new_entry_key']]
     ctx.drop('vocab_links', op.get('existing_link_id'))
-    b.add(lambda batch, e=entry, m=morpheme: batch.vocab_links.create(
-        e(batch), [m(batch)], ctx.stamp()))
+    ctx.b.add(lambda batch, e=entry, m=slots[k - 1]: batch.vocab_links.create(
+        e, [m], ctx.stamp(), id=ctx.b.new_id()))
 
 
 def _apply_link(ctx: Context, op) -> int:
     if op.get('analysis_word_id'):
         # A morpheme the plan's own analysis creates. Its analysis and the
-        # entry it names are earlier changes: written now, naming them by
-        # refs. Otherwise in the second pass, once they are queued.
+        # entry it names are earlier changes: written now, naming their ids.
+        # Otherwise in the second pass, once they are queued.
         if (op['analysis_word_id'] in ctx.chains
-                and (op.get('item_id') or op.get('new_entry_key') in ctx.entry_idx)):
+                and (op.get('item_id') or op.get('new_entry_key') in ctx.entry_ids)):
             _link_planned_morpheme(ctx, op)
         else:
             ctx.planned_links.append(op)
@@ -332,8 +314,9 @@ def _apply_set_morph_type(ctx: Context, op) -> int:
 
 
 def _apply_create_entry(ctx: Context, op) -> int:
-    ctx.entry_idx[op['key']] = ctx.b.add(lambda batch, o=op: batch.vocab_items.create(
-        o['vocab_id'], o['form'], {**(o.get('metadata') or {}), **ctx.stamp()}))
+    made = ctx.entry_ids[op['key']] = ctx.b.new_id()
+    ctx.b.add(lambda batch, o=op, i=made: batch.vocab_items.create(
+        o['vocab_id'], o['form'], {**(o.get('metadata') or {}), **ctx.stamp()}, id=i))
     return 1
 
 
@@ -403,7 +386,7 @@ def _apply_set_morpheme_form(ctx: Context, op) -> int:
 def _apply_split_word(ctx: Context, op) -> int:
     if op.get('morpheme_ids'):
         ctx.b.add(lambda batch, o=op: batch.tokens.bulk_delete(list(o['morpheme_ids'])))
-    ctx.b.add(lambda batch, o=op: batch.tokens.split(o['word_id'], o['position']))
+    ctx.b.add(lambda batch, o=op: batch.tokens.split(o['word_id'], o['position'], id=ctx.b.new_id()))
     return 1
 
 
@@ -442,7 +425,7 @@ def _apply_delete_word(ctx: Context, op) -> int:
 
 
 def _apply_split_sentence(ctx: Context, op) -> int:
-    ctx.b.add(lambda batch, o=op: batch.tokens.split(o['sentence_id'], o['position']))
+    ctx.b.add(lambda batch, o=op: batch.tokens.split(o['sentence_id'], o['position'], id=ctx.b.new_id()))
     return 1
 
 
@@ -1182,7 +1165,8 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
 
 def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, project=None,
                  stamp_mode: str = 'verified', contributor: str = None,
-                 requester: Optional[str] = None, detail: Optional[Dict[str, Any]] = None) -> Dict[str, int]:
+                 requester: Optional[str] = None, detail: Optional[Dict[str, Any]] = None,
+                 seed: Optional[str] = None) -> Dict[str, int]:
     """Apply ``ops`` with ``client`` under one operation labelled ``label``.
     Returns per-kind counts of what was applied (plus ``notes`` for anything
     dropped). ``project`` (an IgtProject) is needed only by document-creating
@@ -1193,8 +1177,12 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     worked out again here leaves out what that user may not change, as its
     preview did. Raises :class:`PlanError` with the applied count if a later
     batch fails: batches are atomic individually, the plan as a whole is not.
-    ``detail`` is what the writes' provDetail names (see :class:`Stamps`)."""
+    ``detail`` is what the writes' provDetail names (see :class:`Stamps`).
+    ``seed`` is the plan's id: every row the plan creates is named by an id
+    drawn from it (:class:`Minter`), so applying the same plan again names
+    the same rows. Without one they are drawn from a fresh id."""
     stamps = Stamps(stamp_mode, source, contributor, detail)
+    ids = Minter(seed or uuid7())
     ops = expand_ops(ops)
     validate_ops(ops)
     ops = resolve_scopes(client, project, ops, requester)
@@ -1203,7 +1191,7 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     counts: Counter = Counter()
     return applying(ops, lambda tracker: _execute(client, ops, label=label, project=project,
                                                   counts=counts, notes=notes, stamps=stamps,
-                                                  tracker=tracker))
+                                                  tracker=tracker, ids=ids))
 
 
 def resolve_scopes(client, project, ops: List[Dict[str, Any]],
@@ -1230,14 +1218,15 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]],
                           check=lambda op, found: check_reach(op, found, lambda o: o.get('doc')))
 
 
-def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, tracker=None) -> Dict[str, int]:
+def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, tracker=None,
+             ids: Optional[Minter] = None) -> Dict[str, int]:
     # An unknown kind, one that should have been resolved away, or one staged
     # for a pass this executor does not run refuses before the first batch
     # opens rather than being written as nothing under a label saying it was
     # applied.
     ok.check_applicable(KIND, ops, STAGES)
     with client.operation(label):
-        ctx = Context(client, project, stamps, counts, notes, TrackingBatcher(client, tracker=tracker))
+        ctx = Context(client, project, stamps, counts, notes, TrackingBatcher(client, tracker=tracker, ids=ids))
         b = ctx.b
         b.expect(ops)
         # Seeded with what goes without a delete call of its own, so a single
@@ -1270,8 +1259,7 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
             b.flush()
 
         # Second pass: what names a change the plan makes after it (a link to
-        # an entry or a morpheme created later on), by a ref to it when it is
-        # in the same batch (``Batcher.refer``).
+        # an entry or a morpheme created later on), by the id it is made under.
         for tokens, key, document in ctx.pending_links:
             with b.writing_for(document):
                 _link_new_entry(ctx, tokens, key)
@@ -1321,7 +1309,7 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
             if project is None:
                 raise ValueError('edit_text needs the project')
             with b.on_client(op['document_id']):
-                _write_text_edit(client, project, op)
+                _write_text_edit(client, project, op, b.new_id)
             b.finish(op)
         # Whole-token replaces keep the token (and its morphemes, which share
         # its extent) and shift everything after it.
@@ -1341,7 +1329,8 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
             # `holding`): claimed for the new one they would all be refused.
             held, client.strict_mode_document_id = client.strict_mode_document_id, None
             try:
-                create_document(client, project, op['name'], op['text'], op.get('metadata') or {})
+                create_document(client, project, op['name'], op['text'], op.get('metadata') or {},
+                                b.new_id)
             finally:
                 client.strict_mode_document_id = held
             b.finish(op)
@@ -1384,16 +1373,19 @@ def _entry_links_now(client, project, op) -> List[str]:
     return [row[0] for row in (res or {}).get('results') or []]
 
 
-def create_document(client, project, name: str, text: str, metadata: Dict[str, Any]):
+def create_document(client, project, name: str, text: str, metadata: Dict[str, Any], new_id):
     """Document + baseline text + sentence and word tokens, tokenized as the
     editor would (one sentence per line, words split on whitespace and
-    punctuation). Returns the new document id."""
+    punctuation). Each is made under an id from ``new_id()``. Returns the new
+    document id."""
+    doc_id = new_id()
     # No metadata is none sent: a null is refused as a metadata map.
-    doc = (client.documents.create(project.id, name, metadata) if metadata
-           else client.documents.create(project.id, name))
-    doc_id = doc['id']
+    if metadata:
+        client.documents.create(project.id, name, metadata, id=doc_id)
+    else:
+        client.documents.create(project.id, name, id=doc_id)
     try:
-        _seed_text(client, project, doc_id, text)
+        _seed_text(client, project, doc_id, text, new_id)
     except Exception:
         # No orphan half-document: best effort, the original error is what matters.
         try:
@@ -1404,7 +1396,7 @@ def create_document(client, project, name: str, text: str, metadata: Dict[str, A
     return doc_id
 
 
-def _seed_text(client, project, doc_id: str, text: str) -> str:
+def _seed_text(client, project, doc_id: str, text: str, new_id) -> str:
     """A document's first text, with sentence and word tokens. Returns the text id.
 
     The sentence layer is a partition, which the server takes only whole: the
@@ -1414,16 +1406,17 @@ def _seed_text(client, project, doc_id: str, text: str) -> str:
     create is one layer, so the sentences and the words are two, in one
     batch."""
     from .project import split_sentences, split_words
-    t = client.texts.create(project.text_layer_id, doc_id, text)
-    text_id = t['id']
+    text_id = new_id()
+    client.texts.create(project.text_layer_id, doc_id, text, id=text_id)
     lines = split_sentences(text)
     if not lines:
         return text_id
     starts = [0] + [b for b, _ in lines[1:]]
     ends = starts[1:] + [len(text)]
-    sentences = [{'token_layer_id': project.sentence_layer_id, 'text': text_id, 'begin': b, 'end': e}
-                 for b, e in zip(starts, ends)]
-    words = [{'token_layer_id': project.word_layer_id, 'text': text_id, 'begin': wb, 'end': we}
+    sentences = [{'token_layer_id': project.sentence_layer_id, 'text': text_id, 'begin': b, 'end': e,
+                  'id': new_id()} for b, e in zip(starts, ends)]
+    words = [{'token_layer_id': project.word_layer_id, 'text': text_id, 'begin': wb, 'end': we,
+              'id': new_id()}
              for b, e in lines for wb, we in split_words(text, b, e, project.ignored_cfg)]
     with client.batched() as batch:
         batch.tokens.bulk_create(sentences)
@@ -1471,18 +1464,19 @@ def _gaps(ranges: List[tuple], begin: int, end: int) -> List[tuple]:
     return out
 
 
-def _write_text_edit(client, project, op: Dict[str, Any]) -> None:
+def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
     """Replace body[begin:end] (verified to still read ``old``) with ``new``
     as edits at their place (``texts.edit`` with the digest of the body read),
     so no word outside the region can be taken for the one changed, then give
     the edited region the sentence boundaries its line starts call for and
     word tokens for whatever text in it is untokenized, as the editor's
-    baseline save plus its tokenizer would."""
+    baseline save plus its tokenizer would. What it creates is made under ids
+    from ``new_id()``."""
     from .project import find_layer
     from .project import split_words
     doc_id, text_id, new = op['document_id'], op.get('text_id'), op['new']
     if not text_id:
-        _seed_text(client, project, doc_id, new)
+        _seed_text(client, project, doc_id, new, new_id)
         return
     raw = client.documents.get(doc_id, include_body=True)
     tl, _ = find_layer(raw.get('text_layers'), project.word_layer_id)
@@ -1500,23 +1494,26 @@ def _write_text_edit(client, project, op: Dict[str, Any]) -> None:
     _, word_layer = find_layer(raw.get('text_layers'), project.word_layer_id)
     sents = sorted((t['begin'], t['end'], t['id']) for t in (sent_layer or {}).get('tokens') or [])
     if not sents and new_body:
-        r = client.tokens.create(project.sentence_layer_id, text_id, 0, len(new_body))
-        sents = [(0, len(new_body), r['id'])]
+        made = new_id()
+        client.tokens.create(project.sentence_layer_id, text_id, 0, len(new_body), id=made)
+        sents = [(0, len(new_body), made)]
     for p in _line_starts(new_body, b, region_end):
         hit = next((s for s in sents if s[0] < p < s[1]), None)
         # Only a boundary that leaves text on both sides: never a blank sentence.
         if hit is None or not new_body[hit[0]:p].strip() or not new_body[p:hit[1]].strip():
             continue
         sb, se, sid = hit
-        r = client.tokens.split(sid, p)
+        made = new_id()
+        client.tokens.split(sid, p, id=made)
         sents.remove(hit)
-        sents.extend([(sb, p, sid), (p, se, r['id'])])
+        sents.extend([(sb, p, sid), (p, se, made)])
         sents.sort()
     words = [(t['begin'], t['end']) for t in (word_layer or {}).get('tokens') or []]
     creates = []
     for gb, ge in _gaps(words, b, region_end):
         # A gap never straddles a sentence boundary (those sit after whitespace).
-        creates.extend({'token_layer_id': project.word_layer_id, 'text': text_id, 'begin': wb, 'end': we}
+        creates.extend({'token_layer_id': project.word_layer_id, 'text': text_id, 'begin': wb, 'end': we,
+                        'id': new_id()}
                        for wb, we in split_words(new_body, gb, ge, project.ignored_cfg))
     if creates:
         client.tokens.bulk_create(creates)

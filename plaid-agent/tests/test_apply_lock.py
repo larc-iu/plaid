@@ -169,13 +169,14 @@ def test_an_open_between_the_batches_leaves_the_plans_new_node_alone(monkeypatch
     assert helper.done and helper.done[-1]['kind'] == 'applied', helper.errors
     assert state['refused'] == 1 and state['deleted'] == []
     # The concept span stands on the anchor made beside it in the same batch.
-    assert [p['args'][1] for p in client.payloads('spans.create')] == [[{'$ref': 0, 'index': 0}]]
+    [[anchor]] = client.payloads('tokens.bulk_create')
+    assert [p['args'][1] for p in client.payloads('spans.create')] == [[anchor['id']]]
 
 
 def test_no_batch_leaves_an_anchor_without_its_node_for_an_open_to_take(monkeypatch):
     """What the lock guards against here cannot arise from the anchors any
     more: a new node's anchor and its concept span go in one batch, the span
-    naming the anchor by a ref, so between two batches there is no anchor
+    naming the anchor by its id, so between two batches there is no anchor
     without a node for a repair on open to take. Without it, a lost answer
     or a failure after the anchors' batch left them for the next person's
     open to delete under their name (conc-2026-09-29 F-PY leftover)."""
@@ -185,9 +186,9 @@ def test_no_batch_leaves_an_anchor_without_its_node_for_an_open_to_take(monkeypa
     helper = sbs._approve(spec, client, plan)
     assert helper.done and helper.done[-1]['kind'] == 'applied', helper.errors
     for batch in client.batches:
-        anchors = [i for i, (kind, _) in enumerate(batch) if kind == 'tokens.bulk_create']
+        anchors = [row['id'] for kind, p in batch if kind == 'tokens.bulk_create' for row in p]
         spans = [p for kind, p in batch if kind == 'spans.create']
-        assert sorted(ref.op for p in spans for ref in p['args'][1]) == anchors
+        assert sorted(t for p in spans for t in p['args'][1]) == sorted(anchors)
 
 
 def test_a_document_that_cannot_be_found_is_left_to_the_staleness_check(spec):

@@ -274,9 +274,9 @@ def test_a_umr_plan_whose_first_batch_answer_was_lost_leaves_no_anchor_alone(mon
     assert done['message'] == (f'Partly applied: 0 of {len(kinds)} changes written. '
                                'The server did not answer for the rest.')
     [first] = client.batches
-    anchors = [i for i, (kind, _) in enumerate(first) if kind == 'tokens.bulk_create']
+    anchors = [row['id'] for kind, p in first if kind == 'tokens.bulk_create' for row in p]
     spans = [p for kind, p in first if kind == 'spans.create']
-    assert anchors and sorted(ref.op for p in spans for ref in p['args'][1]) == anchors
+    assert anchors and sorted(t for p in spans for t in p['args'][1]) == sorted(anchors)
     assert client.payloads('tokens.bulk_delete') == []
 
 
@@ -309,7 +309,7 @@ def test_an_igt_change_finished_in_the_second_batch_is_not_written_when_it_fails
 
 def test_a_ud_head_and_the_lemma_it_hangs_on_go_in_one_batch():
     """A head on a word with no lemma needs a lemma span first. The relation
-    names it by a ref in the same batch, so a failure never leaves the lemma
+    names it by its id in the same batch, so a failure never leaves the lemma
     without the head, which took a second batch before."""
     from plaid_agent.ud.plan import execute_plan
     spec = APPS['ud']()
@@ -431,16 +431,17 @@ def test_a_write_made_on_the_client_under_two_held_documents_carries_no_stamp():
     assert [(kind, doc) for kind, doc, _ in c.stamps] == [('spans.update', 'd1')]
 
 
-def test_a_ref_to_an_op_an_earlier_batch_holds_is_the_id_it_answered():
+def test_a_write_names_the_id_of_a_create_whichever_batch_holds_it():
     """A plan past the batch's budget goes in several batches, and a write
-    naming an op the budget flushed away gets the id that op answered."""
+    naming a row the plan creates names the id the plan made it under, in the
+    create's batch or a later one."""
     from fixtures import FakeClient as IgtClient
     c = IgtClient()
     b = core_plan.Batcher(c, budget=2)
-    at = b.add(lambda batch: batch.spans.create('L', ['t'], 'x'))
-    got = []
-    b.add(lambda batch: got.append(b.refer(batch, at)))   # same batch: a ref
-    b.add(lambda batch: got.append(b.refer(batch, at)))   # the budget flushed it: the id
+    made = b.new_id()
+    b.add(lambda batch: batch.spans.create('L', ['t'], 'x', id=made))
+    b.add(lambda batch: batch.spans.patch_metadata(made, []))    # same batch
+    b.add(lambda batch: batch.spans.patch_metadata(made, []))    # the budget flushed the create
     b.flush()
-    assert got[0] == {'$ref': 0}
-    assert got[1] == 'spans-1'   # what the fake's first create answered
+    assert [len(batch) for batch in c.batches] == [2, 1]
+    assert [p for kind, p in c.calls if kind == 'spans.patch_metadata'] == [(made, []), (made, [])]

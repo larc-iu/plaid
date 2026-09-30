@@ -153,9 +153,13 @@ def test_a_missing_conversation_is_an_error_that_names_the_app():
     assert helper.errors == ['Missing conversation_id']
 
 
+# A plan's id is a UUIDv7: the ids of what it creates are drawn from it.
+PLAN1 = '01920000-0000-7000-8000-000000000001'
+
+
 def _seed_plan(client, status=None, request_id='r9'):
     store = ConversationStore(client, 'u@x', 'p1', 'igt')
-    plan = {'id': 'plan1', 'summary': '1 field value', 'labels': ['Text 1 s1.w2 "gam": Gloss = "fish"'],
+    plan = {'id': PLAN1, 'summary': '1 field value', 'labels': ['Text 1 s1.w2 "gam": Gloss = "fish"'],
             'ops': [{'kind': 'set_span', 'layer_id': 'sl-gloss', 'token_id': 'w-2', 'span_id': None, 'value': 'fish',
                      'label': 'Text 1 s1.w2 "gam": Gloss = "fish"'}],
             'documents': [{'id': 'd1', 'name': 'Text 1', 'version': 7}]}
@@ -164,7 +168,7 @@ def _seed_plan(client, status=None, request_id='r9'):
     conv = {'messages': [{'role': 'user', 'content': 'gloss gam'}, {'role': 'assistant', 'content': 'I can gloss it.'}],
             'display': [user_item('gloss gam'), item]}
     meta = build_meta(None, 'c1', conv, 'igt:assist:fake', 'fake/model',
-                      pending={'kind': 'apply', 'request_id': request_id, 'plan_id': 'plan1'})
+                      pending={'kind': 'apply', 'request_id': request_id, 'plan_id': PLAN1})
     store.save('c1', conv, meta)
     return store
 
@@ -174,7 +178,7 @@ def test_approving_applies_the_plan_from_the_record_and_settles_it():
     store = _seed_plan(client)
     helper = Helper(request_id='r9')
     svc = _service()
-    svc.process_request(_request(client, approve={'plan_id': 'plan1', 'as_human': True}), helper)
+    svc.process_request(_request(client, approve={'plan_id': PLAN1, 'as_human': True}), helper)
     assert not helper.errors, helper.errors
     assert helper.done[0]['kind'] == 'applied' and helper.done[0]['applied'] == 1
     assert client.payloads('spans.create'), 'the span was written'
@@ -184,7 +188,7 @@ def test_approving_applies_the_plan_from_the_record_and_settles_it():
     assert meta['pending'] is None
     # Approving again writes nothing twice.
     helper2 = Helper(request_id='r10')
-    svc.process_request(_request(client, approve={'plan_id': 'plan1'}), helper2)
+    svc.process_request(_request(client, approve={'plan_id': PLAN1}), helper2)
     assert helper2.done[0]['duplicate'] is True
     assert len(client.payloads('spans.create')) == 1
 
@@ -195,10 +199,10 @@ def test_an_applied_plan_is_one_operation_of_kind_assistant_plan():
     # the assistant that made it.
     client = FakeClient()
     _seed_plan(client)
-    _service().process_request(_request(client, approve={'plan_id': 'plan1'}), Helper(request_id='r9'))
+    _service().process_request(_request(client, approve={'plan_id': PLAN1}), Helper(request_id='r9'))
     assert client.operations[0].startswith('Assistant: ')
     assert client.operation_tags[0] == {'kind': 'assistant-plan',
-                                        'ref': 'conv:c1/plan:plan1/service:igt:assist:fake'}
+                                        'ref': f'conv:c1/plan:{PLAN1}/service:igt:assist:fake'}
 
 
 def test_a_stale_plan_is_refused_and_settled_as_out_of_date():
@@ -206,7 +210,7 @@ def test_a_stale_plan_is_refused_and_settled_as_out_of_date():
     store = _seed_plan(client)
     client._documents['d1']['version'] = 8
     helper = Helper(request_id='r9')
-    _service().process_request(_request(client, approve={'plan_id': 'plan1'}), helper)
+    _service().process_request(_request(client, approve={'plan_id': PLAN1}), helper)
     assert helper.errors and 'has changed since the plan was made' in helper.errors[0]
     assert not client.payloads('spans.create')
     conv, meta = store.load('c1')
@@ -223,7 +227,7 @@ def test_a_settled_plan_is_not_applied(status, expected):
     client = FakeClient()
     _seed_plan(client, status=status)
     helper = Helper(request_id='r9')
-    _service().process_request(_request(client, approve={'plan_id': 'plan1'}), helper)
+    _service().process_request(_request(client, approve={'plan_id': PLAN1}), helper)
     assert helper.errors == [expected]
     assert not client.payloads('spans.create')
 

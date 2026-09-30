@@ -137,11 +137,12 @@ def test_execute_set_analysis_replaces_chain_and_glosses_new_morphemes_in_its_tu
     assert first[4][0] == 'spans.create' and first[4][1]['args'][:3] == (MGLOSS, ['m-4a'], 'fish')  # m0 glossed in pass one
     assert first[5][0] == 'tokens.create' and first[5][1]['args'] == (MORPH_LAYER, TEXT_ID, 18, 24)
     made = first[5][1]['kwargs']
+    morpheme = made['id']
     assert made['precedence'] == 2 and made['metadata']['form'] == 'ar' and 'morphType' not in made['metadata']
-    # The created morpheme is glossed right after it, by a ref to its create,
-    # in the same batch, and the empty gloss is skipped.
+    # The created morpheme is glossed right after it, by the id the plan
+    # made it under, in the same batch, and the empty gloss is skipped.
     kind, gloss = first[6]
-    assert kind == 'spans.create' and gloss['args'][:3] == (MGLOSS, [{'$ref': 5}], 'PL')
+    assert kind == 'spans.create' and gloss['args'][:3] == (MGLOSS, [morpheme], 'PL')
     assert first[7][1]['kwargs']['precedence'] == 3 and first[7][1]['kwargs']['metadata']['morphType'] == 'suffix'
     assert len(first) == 8 and len(c.batches) == 1
 
@@ -157,9 +158,9 @@ def test_execute_set_analysis_on_word_without_morphemes_creates_all():
     creates = [p for kind, p in c.batches[0] if kind == 'tokens.create']
     assert [p['kwargs']['precedence'] for p in creates] == [1, 2]
     [batch] = c.batches
-    made = [i for i, (kind, _) in enumerate(batch) if kind == 'tokens.create']
+    made = [p['kwargs']['id'] for kind, p in batch if kind == 'tokens.create']
     glosses = [p['args'][1] for kind, p in batch if kind == 'spans.create']
-    assert glosses == [[{'$ref': i}] for i in made]
+    assert glosses == [[i] for i in made]
 
 
 def test_execute_links_entries_orthography_and_respells_last():
@@ -181,9 +182,9 @@ def test_execute_links_entries_orthography_and_respells_last():
     entry = b0[0][1]['args']
     assert b0[0][0] == 'vocab_items.create' and entry == (VOCAB, 'akun', {'gloss': 'see', **entry[2]})
     assert entry[2]['prov'] == 'inferred'
-    # The link to the new entry names it by a ref to its create, in the same
-    # batch, in its own turn.
-    assert b0[1][0] == 'vocab_links.create' and b0[1][1]['args'][:2] == ({'$ref': 0}, ['w-3'])
+    # The link to the new entry names the id the plan made it under, in the
+    # same batch, in its own turn.
+    assert b0[1][0] == 'vocab_links.create' and b0[1][1]['args'][:2] == (b0[0][1]['kwargs']['id'], ['w-3'])
     assert b0[2] == ('vocab_links.delete', 'l-1')
     assert b0[3][0] == 'vocab_links.create' and b0[3][1]['args'][:2] == ('vi-erg', ['w-1'])
     assert b0[4] == ('vocab_links.delete', 'l-2')
@@ -572,9 +573,10 @@ def test_execute_creates_documents_tokenized_like_the_editor():
     counts = execute_plan(c, ops, source='s', label='l', project=project)
     assert counts == {'document metadata values': 1, 'new documents': 1}
     assert ('documents.patch_metadata', ('d1', [{'op': 'delete', 'path': ['Date']}])) in c.writes
-    assert c.payloads('documents.create') == [{'args': ('p1', 'Text 2', {'Date': '2022'}), 'kwargs': {}}]
-    # The fake answers the document create with its first id, the text create with its second.
-    assert c.payloads('texts.create')[0]['args'] == ('tl', 'documents-1', 'Ali-di gam, akuna!\n  Gam-ar.\n')
+    [made] = c.payloads('documents.create')
+    assert made['args'] == ('p1', 'Text 2', {'Date': '2022'})
+    # The text names the document by the id the plan made it under.
+    assert c.payloads('texts.create')[0]['args'] == ('tl', made['kwargs']['id'], 'Ali-di gam, akuna!\n  Gam-ar.\n')
     # One batch, two bulk creates: the server takes one layer per bulk create,
     # and the sentence layer only as a whole partition of the text, which the
     # fake refuses otherwise (conc-2026-09-29 REV-F-PY R3).
@@ -589,7 +591,8 @@ def test_execute_creates_documents_tokenized_like_the_editor():
     assert [text[t['begin']:t['end']] for t in sentences] == ['Ali-di gam, akuna!\n  ', 'Gam-ar.\n']
     # '-' is punctuation, so it splits words (no whitelist in the fixture); ',' and '!' stay in gaps
     assert [text[t['begin']:t['end']] for t in words] == ['Ali', 'di', 'gam', 'akuna', 'Gam', 'ar']
-    assert all(t['text'] == 'texts-2' for t in sentences + words)
+    [text] = c.payloads('texts.create')
+    assert all(t['text'] == text['kwargs']['id'] for t in sentences + words)
 
 
 def test_execute_lexicon_and_document_ops():
@@ -773,4 +776,5 @@ def test_a_new_document_with_no_metadata_sends_none():
     c = FakeClient()
     ops = [{'kind': 'create_document', 'name': 'Text 2', 'text': 'Gam-ar.\n', 'metadata': {}, 'label': ''}]
     execute_plan(c, ops, source='s', label='l', project=load_project(c, 'p1'))
-    assert c.payloads('documents.create') == [{'args': ('p1', 'Text 2'), 'kwargs': {}}]
+    [made] = c.payloads('documents.create')
+    assert made['args'] == ('p1', 'Text 2') and set(made['kwargs']) == {'id'}

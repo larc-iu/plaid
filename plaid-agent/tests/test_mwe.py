@@ -151,9 +151,10 @@ def test_execute_link_phrase_and_pending_entries():
     assert counts == {'new lexicon entries': 1, 'multi-word expressions': 2}
     first = c.batches[0]
     assert first[1] == ('vocab_links.delete', MWE_LINK)
-    # The entry made at the head of the same batch, by a ref to its create,
+    # The entry made at the head of the same batch, by the id it is made under,
     # in the expression's own turn.
-    assert first[2][0] == 'vocab_links.create' and first[2][1]['args'][:2] == ({'$ref': 0}, ['w-2', 'w-3'])
+    entry = first[0][1]['kwargs']['id']
+    assert first[2][0] == 'vocab_links.create' and first[2][1]['args'][:2] == (entry, ['w-2', 'w-3'])
     assert first[3][0] == 'vocab_links.create' and first[3][1]['args'][:2] == ('vi-ali', ['w-1', 'w-2'])
     assert len(c.batches) == 1
     # A member deleted elsewhere in the plan refuses the expression, as a

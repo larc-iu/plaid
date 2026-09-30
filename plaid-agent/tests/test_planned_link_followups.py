@@ -310,9 +310,9 @@ def test_set_morpheme_form_on_a_planned_morpheme_carries_its_planned_link():
     c = FakeClient()
     execute_plan(c, w.plan_payload()['ops'], source='s', label='l')
     [batch] = c.batches
-    made = [i for i, (kind, _) in enumerate(batch) if kind == 'tokens.create']
-    assert [(item, tokens) for item, tokens, _ in _links(c)] == [('vi-gam', [{'$ref': made[0]}]),
-                                                                 ('vi-erg', [{'$ref': made[1]}])]
+    made = [p['kwargs']['id'] for kind, p in batch if kind == 'tokens.create']
+    assert [(item, tokens) for item, tokens, _ in _links(c)] == [('vi-gam', [made[0]]),
+                                                                 ('vi-erg', [made[1]])]
 
 
 def test_set_morpheme_past_the_end_of_the_planned_analysis_is_refused():

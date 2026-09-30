@@ -506,7 +506,8 @@ class Resource:
                 raise _refusal(_root(self._client), 400, f'A {self._name} bulk create needs '
                                'at least one entry', sent.method, sent.path)
             self._check_bulk_create(ops, sent)
-            ids = [writer.new_id(self._name) for _ in ops]
+            # An entry given the id to make it under answers that id.
+            ids = [op.get('id') or writer.new_id(self._name) for op in ops]
             return ops, {'body': {'ids': ids}}, {'ids': ids}
         if method == 'bulk_update':
             items = list(arguments['body'])
@@ -1311,8 +1312,11 @@ class FakeClient:
             def effect():
                 rows.append(row)
                 return {'id': new}
+            kwargs = {'body': body or ''}
+            if id is not None:
+                kwargs['id'] = id
             return self._write('guidelines.create', f'/api/v1/projects/{project_id}/guidelines',
-                               {'args': (project_id, title), 'kwargs': {'body': body or ''}},
+                               {'args': (project_id, title), 'kwargs': kwargs},
                                {'body': {'id': new}}, effect)
 
         def update(self, guideline_id, *, title=None, body=None, pinned=None,

@@ -6,22 +6,22 @@ and the provenance an approval writes. What is here is the ops themselves,
 each declared once in :data:`KIND` (see :mod:`plaid_agent.core.opkind`).
 
 **One batch.** A node is its anchor token and the concept span over it, the
-span naming the anchor by a ref to the id its create answers (``batch.ref``),
+span naming the anchor by the id the plan makes it under (``Batcher.new_id``),
 and an edge or a triple names a new node's span the same way, so a plan is
 written whole or not at all. Only a plan past the batch's budget goes in
-several, and a ref to an op an earlier batch holds becomes the id it answered.
+several, and a write in a later one names the same id.
 """
 
 import re
 from collections import Counter
 from typing import Any, Dict, List, Optional, Tuple
 
-from plaid_client import metadata_ops
+from plaid_client import metadata_ops, uuid7
 
 from ..core import guidelines as _guidelines
 from ..core import opkind as ok
 from ..core.opkind import OpKind
-from ..core.plan import (PlanError, Resolution, Stamps, TrackingBatcher, applying,
+from ..core.plan import (Minter, PlanError, Resolution, Stamps, TrackingBatcher, applying,
                          docs_of_op, expand_ops)
 from .project import load_document, node_ref, with_attribute
 
@@ -54,20 +54,17 @@ class Context:
         self.counts = counts
         self.notes = notes
         self.b = b
-        # (document, variable) -> the result index of the new node's concept
-        # span.
-        self.span_at: Dict[tuple, Any] = {}
+        # (document, variable) -> the id of the new node's concept span.
+        self.span_at: Dict[tuple, str] = {}
 
-    def end_of(self, op: Dict[str, Any], side: str, batch):
-        """One end of an edge or a triple, for a write queued on ``batch``:
-        the span it already has, or the one this plan is creating for that
-        variable, by a ref when it is in the same batch."""
+    def end_of(self, op: Dict[str, Any], side: str):
+        """One end of an edge or a triple: the span it already has, or the
+        one this plan is creating for that variable."""
         known = op.get(f'{side}_span_id')
         if known:
             return known
         var = op.get(f'{side}_var')
-        at = self.span_at.get((op['document_id'], var))
-        found = self.b.refer(batch, at) if isinstance(at, int) else at
+        found = self.span_at.get((op['document_id'], var))
         if not found:
             raise ValueError(f'{op.get("label") or "an edge"}: no node {var} to hang it on')
         return found
@@ -117,7 +114,7 @@ def _apply_set_edge_order(ctx: Context, op) -> int:
 
 def _apply_create_node(ctx: Context, op) -> int:
     """The anchor token and the concept span over it, in one batch: the span
-    names the anchor by a ref to the id its create answers. Written in two
+    names the anchor by the id the plan makes it under. Written in two
     batches, a failure or a lost answer between them left anchors with no
     node, which the editor's repair deleted on someone's next open, under
     their name.
@@ -143,21 +140,23 @@ def _apply_create_node(ctx: Context, op) -> int:
     if op.get('sentence_id') and not op.get('constant'):
         meta['sentence'] = op['sentence_id']
 
+    anchor, span = ctx.b.new_id(), ctx.b.new_id()
+
     def queue(batch, o=op, a=begin, z=end, m=meta):
         batch.tokens.bulk_create([{'token_layer_id': o['node_layer_id'], 'text': o['text_id'],
-                                   'begin': a, 'end': z}])
-        batch.spans.create(o['concept_layer_id'], [batch.ref(-1, 0)], o.get('concept') or '',
-                           {**ctx.stamp(), UMR: m})
+                                   'begin': a, 'end': z, 'id': anchor}])
+        batch.spans.create(o['concept_layer_id'], [anchor], o.get('concept') or '',
+                           {**ctx.stamp(), UMR: m}, id=span)
 
-    at = ctx.b.add(queue, weight=2, count=2)
-    ctx.span_at[(op['document_id'], op['var'])] = at + 1
+    ctx.b.add(queue, weight=2, count=2)
+    ctx.span_at[(op['document_id'], op['var'])] = span
     return 1
 
 
 def _apply_create_edge(ctx: Context, op) -> int:
     ctx.b.add(lambda batch, o=op: batch.relations.create(
-        o['relation_layer_id'], ctx.end_of(o, 'source', batch), ctx.end_of(o, 'target', batch),
-        o['role'], {**ctx.stamp(), UMR: {'order': o.get('order') or 0}}))
+        o['relation_layer_id'], ctx.end_of(o, 'source'), ctx.end_of(o, 'target'),
+        o['role'], {**ctx.stamp(), UMR: {'order': o.get('order') or 0}}, id=ctx.b.new_id()))
     return 1
 
 
@@ -166,8 +165,8 @@ def _apply_create_triple(ctx: Context, op) -> int:
     if op.get('sentences'):
         meta['sentences'] = list(op['sentences'])
     ctx.b.add(lambda batch, o=op, m=meta: batch.relations.create(
-        o['document_graph_layer_id'], ctx.end_of(o, 'source', batch),
-        ctx.end_of(o, 'target', batch), o['rel'], {**ctx.stamp(), UMR: m}))
+        o['document_graph_layer_id'], ctx.end_of(o, 'source'),
+        ctx.end_of(o, 'target'), o['rel'], {**ctx.stamp(), UMR: m}, id=ctx.b.new_id()))
     return 1
 
 
@@ -483,12 +482,16 @@ def normalize_ops(ops: List[Dict[str, Any]]):
 
 def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, project=None,
                  stamp_mode: str = 'verified', contributor: str = None,
-                 detail: Optional[Dict[str, Any]] = None) -> Dict[str, int]:
+                 detail: Optional[Dict[str, Any]] = None, seed: Optional[str] = None) -> Dict[str, int]:
     """Apply ``ops`` with ``client`` under one operation labelled ``label``.
     Per-kind counts of what was applied, plus ``notes``. ``detail`` is what
-    the writes' provDetail names (see :class:`Stamps`). Raises
-    :class:`PlanError` with the applied count if a later batch fails."""
+    the writes' provDetail names (see :class:`Stamps`). ``seed`` is the
+    plan's id: every row the plan creates is named by an id drawn from it
+    (:class:`Minter`), so applying the same plan again names the same rows.
+    Without one they are drawn from a fresh id. Raises :class:`PlanError`
+    with the applied count if a later batch fails."""
     stamps = Stamps(stamp_mode, source, contributor, detail)
+    ids = Minter(seed or uuid7())
     ops = expand_ops(ops)
     validate_ops(ops)
     ops, notes = resolve_scopes(client, project, ops)
@@ -496,7 +499,8 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     notes += superseded
     counts: Counter = Counter()
     return applying(ops, lambda tracker: _execute(client, project, ops, label=label, counts=counts,
-                                                  notes=notes, stamps=stamps, tracker=tracker))
+                                                  notes=notes, stamps=stamps, tracker=tracker,
+                                                  ids=ids))
 
 
 def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
@@ -539,19 +543,19 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
 
 
 def _execute(client, project, ops, *, label, counts, notes, stamps: Stamps,
-             tracker=None) -> Dict[str, int]:
+             tracker=None, ids: Optional[Minter] = None) -> Dict[str, int]:
     # An unknown kind, one that should have been resolved away, or one staged
     # for a pass that does not exist refuses before any pass runs, rather than
     # being written as nothing under a label saying it was applied.
     ok.check_applicable(KIND, ops, STAGES, first=0)
     with client.operation(label):
         ctx = Context(client, project, ops, stamps, counts, notes,
-                      TrackingBatcher(client, tracker=tracker))
+                      TrackingBatcher(client, tracker=tracker, ids=ids))
         b = ctx.b
         b.expect(ops)
 
         # Deletes, values, metadata and every new node, then the relations,
-        # which name a new node's span by a ref to it: one batch, unless the
+        # which name a new node's span by its id: one batch, unless the
         # plan is past the batch's budget. Each op's writes are in one batch,
         # and it is finished as soon as they are queued, so a card row counts
         # as written once the batch holding them stood, whichever later batch

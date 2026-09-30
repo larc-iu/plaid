@@ -24,11 +24,11 @@ from typing import Any, Dict, List, Optional
 from ..core import guidelines as _guidelines
 from ..core import opkind as ok
 from ..core.opkind import OpKind
-from plaid_client import metadata_ops
+from plaid_client import metadata_ops, uuid7
 
 from .project import LEMMA_FROM_FORM
 
-from ..core.plan import (CONFIRM, PlanError, Resolution, Stamps, TrackingBatcher, check_reach,
+from ..core.plan import (CONFIRM, Minter, PlanError, Resolution, Stamps, TrackingBatcher, check_reach,
                          apply_add_comment, apply_restore_document, applying,
                          docs_of_op, expand_ops)
 from .project import load_document, word_ref
@@ -88,15 +88,15 @@ class Context:
         self.notes = notes
         self.b = b
         self.restores: List[Dict[str, Any]] = []
-        # A word's lemma span, by word id, or an int result index for one this
-        # plan is creating.
-        self.lemma_at: Dict[str, Any] = {}
+        # A word's lemma span, by word id: the one it has or the id of the
+        # one this plan creates.
+        self.lemma_at: Dict[str, str] = {}
         # What this plan is ALREADY creating, by (layer, word). A relation
         # needs a lemma span to hang off, and if the same plan sets that
         # word's lemma there must not be two: the second create wins the read
         # and the value the user approved becomes invisible to every tool.
         # Keyed in the first pass and consulted in the second.
-        self.creating: Dict[tuple, int] = {}
+        self.creating: Dict[tuple, str] = {}
         # How many of the plan's ops certainly remove each id, for
         # `removed_by_others`.
         self._removals: Counter = Counter()
@@ -109,17 +109,6 @@ class Context:
         delete of one of those by id is then a 404 that fails the batch."""
         mine = entity_id in ok.removed_ids(KIND, [op], only_certain=True)
         return self._removals[entity_id] > mine
-
-    def lemma_span(self, word_id, batch):
-        """A word's lemma span for a write queued on ``batch``: its id, or a
-        ref to the one this plan creates in the same batch."""
-        at = self.lemma_at.get(word_id)
-        if isinstance(at, int):
-            sid = self.b.refer(batch, at)
-            if not sid:
-                raise ValueError(f'could not create the lemma a dependency needs on {word_id}')
-            return sid
-        return at
 
 
 # --- what each kind does -----------------------------------------------------------
@@ -139,8 +128,9 @@ def _apply_set_span(ctx: Context, op) -> int:
     elif span_id:
         ctx.b.update('spans', span_id, value=value, metadata=metadata_ops(ctx.restamp()))
     elif value != '':
-        ctx.creating[(op['layer_id'], op['token_id'])] = ctx.b.add(
-            lambda batch, o=op, v=value: batch.spans.create(o['layer_id'], [o['token_id']], v, ctx.stamp()))
+        made = ctx.creating[(op['layer_id'], op['token_id'])] = ctx.b.new_id()
+        ctx.b.add(lambda batch, o=op, v=value, i=made: batch.spans.create(
+            o['layer_id'], [o['token_id']], v, ctx.stamp(), id=i))
     else:
         return 0  # nothing to clear
     return 1
@@ -161,10 +151,10 @@ def _apply_confirm(ctx: Context, op) -> int:
 
 def _apply_set_words(ctx: Context, op) -> int:
     from .shape import apply_set_words, finish_set_words
-    # The words, then their Form and Lemma spans by refs to them: one change,
-    # in one batch.
-    apply_set_words(op, ctx.b, ctx.stamp)
-    finish_set_words(op, ctx.b, ctx.stamp)
+    # The words, then their Form and Lemma spans naming them: one change, in
+    # one batch.
+    words = apply_set_words(op, ctx.b, ctx.stamp)
+    finish_set_words(op, words, ctx.b, ctx.stamp)
     return 1
 
 
@@ -229,9 +219,9 @@ def _seed_lemmas(ctx: Context, op) -> None:
             # seeded from the form.
             ctx.lemma_at[wid] = planned
             continue
-        ctx.lemma_at[wid] = ctx.b.add(
-            lambda batch, o=op, w=wid, f=form: batch.spans.create(
-                o['lemma_layer_id'], [w], f, dict(LEMMA_FROM_FORM)))
+        made = ctx.lemma_at[wid] = ctx.b.new_id()
+        ctx.b.add(lambda batch, o=op, w=wid, f=form, i=made: batch.spans.create(
+            o['lemma_layer_id'], [w], f, dict(LEMMA_FROM_FORM), id=i))
 
 
 def _unhead_set_head(ctx: Context, op) -> None:
@@ -248,11 +238,11 @@ def _apply_set_head(ctx: Context, op) -> int:
     _seed_lemmas(ctx, op)
     # One head per word: the old relation went in the pass before
     # (``_unhead_set_head``), so no batch boundary finds the word twice
-    # headed. Its ends are the words' lemma spans, by a ref to one this plan
-    # creates in the same batch.
+    # headed. Its ends are the words' lemma spans, one this plan creates
+    # named by its id.
     ctx.b.add(lambda batch, o=op: batch.relations.create(
-        o['relation_layer_id'], ctx.lemma_span(o['head_id'], batch),
-        ctx.lemma_span(o['word_id'], batch), o['deprel'], ctx.stamp() or None))
+        o['relation_layer_id'], ctx.lemma_at[o['head_id']], ctx.lemma_at[o['word_id']], o['deprel'],
+        ctx.stamp() or None, id=ctx.b.new_id()))
     return 1
 
 
@@ -626,12 +616,16 @@ def normalize_ops(ops: List[Dict[str, Any]]):
 
 def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, project=None,
                  stamp_mode: str = 'verified', contributor: str = None,
-                 detail: Optional[Dict[str, Any]] = None) -> Dict[str, int]:
+                 detail: Optional[Dict[str, Any]] = None, seed: Optional[str] = None) -> Dict[str, int]:
     """Apply ``ops`` with ``client`` under one operation labelled ``label``.
     Per-kind counts of what was applied, plus ``notes``. ``detail`` is what
-    the writes' provDetail names (see :class:`Stamps`). Raises
-    :class:`PlanError` with the applied count if a later batch fails."""
+    the writes' provDetail names (see :class:`Stamps`). ``seed`` is the
+    plan's id: every row the plan creates is named by an id drawn from it
+    (:class:`Minter`), so applying the same plan again names the same rows.
+    Without one they are drawn from a fresh id. Raises :class:`PlanError`
+    with the applied count if a later batch fails."""
     stamps = Stamps(stamp_mode, source, contributor, detail)
+    ids = Minter(seed or uuid7())
     ops = expand_ops(ops)
     validate_ops(ops)
     ops, notes = resolve_scopes(client, project, ops)
@@ -639,7 +633,8 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     notes += superseded
     counts: Counter = Counter()
     return applying(ops, lambda tracker: _execute(client, ops, label=label, counts=counts,
-                                                  notes=notes, stamps=stamps, tracker=tracker))
+                                                  notes=notes, stamps=stamps, tracker=tracker,
+                                                  ids=ids))
 
 
 def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
@@ -709,14 +704,15 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
                                                               lambda o: o.get('document_id'))), notes
 
 
-def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None) -> Dict[str, int]:
+def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None,
+             ids: Optional[Minter] = None) -> Dict[str, int]:
     # An unknown plan operation kind, one that should have been resolved away,
     # or one staged for a pass below that does not exist refuses before any
     # pass runs rather than being written as nothing under a label saying it
     # was applied.
     ok.check_applicable(KIND, ops, STAGES, first=0)
     with client.operation(label):
-        ctx = Context(client, ops, stamps, counts, notes, TrackingBatcher(client, tracker=tracker))
+        ctx = Context(client, ops, stamps, counts, notes, TrackingBatcher(client, tracker=tracker, ids=ids))
         b = ctx.b
         b.expect(ops)
 
@@ -737,9 +733,8 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
                 with b.writing_for(op):
                     unhead(ctx, op)
         # --- pass 3: the heads, each with the lemma spans its relation hangs
-        # off. They name what pass 1 creates by a ref to it, in the same
-        # batch, so a plan under the batch's budget is written whole or not
-        # at all ---
+        # off. They name what pass 1 creates by its id, in the same batch, so
+        # a plan under the batch's budget is written whole or not at all ---
         ok.run_stage(KIND, ctx, ops, IDS, finish=lambda op: True)
         b.flush()
 

@@ -147,7 +147,8 @@ def test_a_created_node_is_written_with_its_span_and_its_relation_in_one_batch(c
     log = applied(client, ws)
     assert [kind for kind, _ in log] == ['tokens.bulk_create', 'spans.create', 'relations.create']
     # The anchor, its span and the relation in one batch, each naming the
-    # one before it by a ref, so the plan is written whole or not at all.
+    # one before it by the id it is made under, so the plan is written whole
+    # or not at all.
     assert [len(b) for b in client.batches] == [3]
     # The anchor covers the whole sentence, not a point at its start: core
     # deletes a zero-width token a text edit spans, and the node would go
@@ -157,12 +158,13 @@ def test_a_created_node_is_written_with_its_span_and_its_relation_in_one_batch(c
     assert (token['begin'], token['end']) == (s1.begin, s1.end)
     [span] = [p['args'] for p in client.payloads('spans.create')]
     assert span[0] == 'm-concept' and span[2] == 'yard'
-    assert span[1] == [{'$ref': 0, 'index': 0}]   # the token made beside it
+    assert span[1] == [token['id']]   # the token made beside it
     # Unaligned, so it records its sentence.
     assert span[3]['umr'] == {
         'var': 's1y', 'attrs': [], 'sentence': ws.doc('Story').sentences[0].id}
     [relation] = [p['args'] for p in client.payloads('relations.create')]
-    assert relation[:4] == ('m-rel', 'mc-b', {'$ref': 1}, ':place')   # the span made beside it
+    [made] = client.payloads('spans.create')
+    assert relation[:4] == ('m-rel', 'mc-b', made['kwargs']['id'], ':place')   # the span made beside it
 
 
 def test_a_concept_change_is_one_span_update_carrying_the_approval_stamp(client, ws):

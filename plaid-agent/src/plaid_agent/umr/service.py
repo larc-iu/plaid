@@ -75,9 +75,11 @@ class AssistantService(BaseAssistantService):
     def execute_plan(self, client, ops: List[Dict[str, Any]], *, source: str, label: str, project,
                      stamp_mode: str, contributor: Optional[str],
                      requester: Optional[str] = None,
-                     detail: Optional[Dict[str, Any]] = None) -> Dict[str, int]:
+                     detail: Optional[Dict[str, Any]] = None,
+                     seed: Optional[str] = None) -> Dict[str, int]:
         return execute_plan(client, ops, source=source, label=label, project=project,
-                            stamp_mode=stamp_mode, contributor=contributor, detail=detail)
+                            stamp_mode=stamp_mode, contributor=contributor, detail=detail,
+                            seed=seed)
 
     def summarize(self, ops: List[Dict[str, Any]]) -> str:
         return summarize(ops)

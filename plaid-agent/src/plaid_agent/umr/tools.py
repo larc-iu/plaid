@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from ..core import docload, fingerprint as fp, opkind
 from ..core.args import sentence_number
+from plaid_client import uuid7
 from plaid_client.workflows.umr import (concept_problem,
                                         new_variable_problem, parse_attribute_line,
                                         relation_form_problem, triple_sentence_number,
@@ -321,7 +322,7 @@ class Workspace(BaseWorkspace):
         # one (the summary still counts what they stand for).
         ops = compact_ops(self.mark_replaced_work(copy.deepcopy(self.ops)),
                           opkind.compact_spec(KIND))
-        return {'id': uuid.uuid4().hex, 'summary': summarize(self.ops),
+        return {'id': uuid7(), 'summary': summarize(self.ops),
                 'labels': [op['label'] for op in ops], 'ops': ops,
                 'changes': describe_changes(self, ops),
                 'documents': self.touched_documents()}

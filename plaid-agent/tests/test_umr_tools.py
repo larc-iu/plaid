@@ -146,12 +146,13 @@ def test_a_constant_no_triple_has_used_yet_is_made_with_it(client, ws):
     assert [op['kind'] for op in ws.ops] == ['create_node', 'create_triple']
     execute_plan(client, ws.plan_payload()['ops'], source='t', label='L', project=ws.project,
                  stamp_mode='human', contributor=None)
-    span = client.payloads('spans.create')[0]['args']
+    made = client.payloads('spans.create')[0]
+    span = made['args']
     assert span[2] == 'author'
     assert span[3]['umr'] == {'var': 'author', 'attrs': [], 'constant': True}
     relation = client.payloads('relations.create')[0]['args']
-    # The span made beside it in the same batch, named by a ref.
-    assert relation[1] == {'$ref': 1} and relation[2] == 'mc-b'
+    # The span made beside it in the same batch, named by its id.
+    assert relation[1] == made['kwargs']['id'] and relation[2] == 'mc-b'
     assert len(client.batches) == 1
 
 

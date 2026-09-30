@@ -17,7 +17,7 @@ for the same gesture. Divergence here would mean two ways of building a
 multi-word token that a later read cannot tell apart.
 """
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 
 from .project import LEMMA_FROM_FORM, Token, UdDoc, Word, resolve
@@ -85,10 +85,11 @@ def t_set_words(ws: Workspace, document: str = None, ref: str = None, forms=None
     return out
 
 
-def apply_set_words(op: Dict[str, Any], b, stamp) -> None:
-    """The reshape's words themselves, and the token's own form. The spans on
-    the new words name them by refs to this bulk create (``finish_set_words``,
-    which the executor calls right after, in the same change).
+def apply_set_words(op: Dict[str, Any], b, stamp) -> List[str]:
+    """The reshape's words themselves, and the token's own form. Returns the
+    ids the words are made under, which the spans on them name
+    (``finish_set_words``, which the executor calls right after, in the same
+    change).
     """
     forms, surface = op['forms'], op.get('surface') or ''
     if op.get('existing_word_ids'):
@@ -96,11 +97,12 @@ def apply_set_words(op: Dict[str, Any], b, stamp) -> None:
     # The words carry the plan's provenance, as a parser's syntactic words
     # carry its own (the substrate token above them carries none).
     prov = stamp()
-    idx = b.add(lambda batch, o=op: batch.tokens.bulk_create([
+    words = [b.new_id() for _ in forms]
+    b.add(lambda batch, o=op: batch.tokens.bulk_create([
         {'token_layer_id': o['word_layer_id'], 'text': o['text_id'],
-         'begin': o['begin'], 'end': o['end'], 'precedence': i,
+         'begin': o['begin'], 'end': o['end'], 'precedence': i, 'id': word,
          **({'metadata': dict(prov)} if prov else {})}
-        for i, _ in enumerate(o['forms'])]))
+        for i, word in enumerate(words)]))
     # A multi-word token records its own surface, the way the editor does, so
     # an export knows what to print on the range line. A token back down to one
     # word drops it again.
@@ -110,29 +112,21 @@ def apply_set_words(op: Dict[str, Any], b, stamp) -> None:
     else:
         b.add(lambda batch, i=op['token_id']: batch.tokens.patch_metadata(
             i, [{'op': 'delete', 'path': ['form']}]))
-    op['_created_at'] = idx
+    return words
 
 
-def finish_set_words(op: Dict[str, Any], b, stamp) -> None:
+def finish_set_words(op: Dict[str, Any], words: List[str], b, stamp) -> None:
     """The Form and Lemma spans on the words ``set_words`` creates, each
-    naming its word by a ref to the bulk create, in the same batch."""
-    at = op.get('_created_at')
+    naming its word by the id it is made under, in the same batch."""
     forms, surface = op['forms'], op.get('surface') or ''
-
-    def word(batch, k):
-        token_id = b.refer(batch, at, k)
-        if not token_id:
-            raise ValueError(f'the words of {op.get("surface")!r} were not all created')
-        return token_id
-
-    for k, form in enumerate(forms):
+    for word, form in zip(words, forms):
         # A Form span exists only where the form is not the token's own text:
         # one word spelled like its token needs none, and reads fall back to
         # the text. Every word gets a lemma, seeded from its form.
         if len(forms) > 1 or form != surface:
-            b.add(lambda batch, o=op, k=k, v=form: batch.spans.bulk_create(
-                [{'span_layer_id': o['form_layer_id'], 'tokens': [word(batch, k)], 'value': v,
-                  'metadata': stamp() or None}]))
-        b.add(lambda batch, o=op, k=k, v=form: batch.spans.bulk_create(
-            [{'span_layer_id': o['lemma_layer_id'], 'tokens': [word(batch, k)], 'value': v,
-              'metadata': dict(LEMMA_FROM_FORM)}]))
+            b.add(lambda batch, o=op, w=word, v=form, i=b.new_id(): batch.spans.bulk_create(
+                [{'span_layer_id': o['form_layer_id'], 'tokens': [w], 'value': v,
+                  'metadata': stamp() or None, 'id': i}]))
+        b.add(lambda batch, o=op, w=word, v=form, i=b.new_id(): batch.spans.bulk_create(
+            [{'span_layer_id': o['lemma_layer_id'], 'tokens': [w], 'value': v,
+              'metadata': dict(LEMMA_FROM_FORM), 'id': i}]))

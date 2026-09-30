@@ -482,13 +482,13 @@ def test_a_head_on_an_unannotated_word_makes_its_lemma_first(ws):
                           stamp_mode='verified')
     assert counts == {'dependencies': 1}
     # One batch: the lemma spans first, and the relation between them names
-    # them by refs to their creates.
+    # them by the ids they are made under.
     [batch] = ws.client.batches
     made = [p for kind, p in batch if kind == 'spans.create']
     assert [p['args'][2] for p in made] == ['.', 'Corre']     # valued with the FORM
     kind, rel = batch[-1]
     assert kind == 'relations.create' and rel['args'][3] == 'punct'
-    assert (rel['args'][1], rel['args'][2]) == ({'$ref': 1}, {'$ref': 0})
+    assert (rel['args'][1], rel['args'][2]) == (made[1]['kwargs']['id'], made[0]['kwargs']['id'])
 
 
 def test_replacing_a_head_deletes_the_old_relation_in_the_same_batch(ws):
@@ -911,10 +911,10 @@ def test_applying_a_reshape_remakes_the_words_then_their_spans(ws):
     # The multi-word token records its own surface, the way the editor does.
     assert batch[2][1][1] == [{'op': 'set', 'path': ['form'], 'value': 'Corre'}]
     # Then a Form and a Lemma span per word, in the same batch, each naming its
-    # word by a ref to the bulk create.
+    # word by the id it is made under.
     assert kinds[3:] == ['spans.bulk_create'] * 4
-    assert [p[0]['tokens'] for _, p in batch[3:]] == [[{'$ref': 1, 'index': k}]
-                                                      for k in (0, 0, 1, 1)]
+    words = [row['id'] for row in batch[1][1]]
+    assert [p[0]['tokens'] for _, p in batch[3:]] == [[words[k]] for k in (0, 0, 1, 1)]
 
 
 def test_collapsing_to_one_word_drops_the_tokens_form(ws):

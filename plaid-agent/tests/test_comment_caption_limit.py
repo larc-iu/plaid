@@ -17,7 +17,7 @@ def _posted(op):
     calls = []
     batch = SimpleNamespace(comments=SimpleNamespace(
         create=lambda *a, **kw: calls.append((a, kw))))
-    ctx = SimpleNamespace(b=SimpleNamespace(add=lambda fn: fn(batch)))
+    ctx = SimpleNamespace(b=SimpleNamespace(add=lambda fn: fn(batch), new_id=lambda: 'c-1'))
     apply_add_comment(ctx, op)
     return calls[0][1]['anchor_label']
 

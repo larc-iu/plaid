@@ -111,11 +111,19 @@ def test_execute_shape_ops_in_order():
     # the merge's own transaction, and a delete of one it already took would
     # fail the batch. `spans` and `links` are what the card says.
     assert c.batches[0] == [
-        ('tokens.bulk_delete', ['m-1a', 'm-1b']), ('tokens.split', ('w-1', 3)),
+        ('tokens.bulk_delete', ['m-1a', 'm-1b']), ('tokens.split', _split('w-1', 3, c)),
         ('tokens.bulk_delete', ['m-2']), ('tokens.merge', ('w-2', 'w-3')), ('tokens.merge', ('w-2', 'w-x')),
         ('tokens.delete', 'w-4'),
-        ('tokens.split', ('s-1', 7)),
+        ('tokens.split', _split('s-1', 7, c)),
         ('tokens.merge', ('s-1', 's-2'))]
+
+
+def _split(token_id, at, client):
+    """A split as the fake records it, with the id the plan made the right
+    half under."""
+    [made] = [p['kwargs']['id'] for k, p in client.calls
+              if k == 'tokens.split' and p['args'] == (token_id, at)]
+    return {'args': (token_id, at), 'kwargs': {'id': made}}
 
 
 def test_the_card_says_what_the_servers_merge_keeps():
@@ -398,15 +406,19 @@ def test_execute_append_splits_the_gap_filled_sentence_and_tokenizes_words():
     c = FakeClient()
     _TextServer(c)
     project = load_project(c, 'p1')
-    # tokens.split must report the new right id and mimic the server locally
-    def split(sid, pos):
+    # tokens.split makes the new right half under the id it is given, and
+    # mimics the server locally
+    made = []
+
+    def split(sid, pos, id=None):
         for t in c._documents['d1']['text_layers'][0]['token_layers'][0]['tokens']:
             if t['id'] == sid:
-                new = {'id': f'{sid}-r', 'begin': pos, 'end': t['end']}
+                new = {'id': id, 'begin': pos, 'end': t['end']}
                 t['end'] = pos
                 c._documents['d1']['text_layers'][0]['token_layers'][0]['tokens'].append(new)
                 c.record('tokens.split', (sid, pos))
-                return {'id': new['id']}
+                made.append(id)
+                return {'id': id}
         raise AssertionError(sid)
     c.tokens.split = split
     op = {'kind': 'edit_text', 'document_id': 'd1', 'text_id': 'text1', 'sentence_id': None, 'begin': 25, 'end': 25,
@@ -417,7 +429,8 @@ def test_execute_append_splits_the_gap_filled_sentence_and_tokenizes_words():
     assert ('texts.edit', ('text1', [{'type': 'insert', 'index': 25, 'value': '\nGam akuna.\n\n  Ali gam.'}])) in c.writes
     assert c._documents['d1']['text_layers'][0]['text']['body'] == body
     splits = c.payloads('tokens.split')
-    assert splits == [('s-2', 26), ('s-2-r', 40)]   # the last sentence was gap-filled over the new text, then split per line
+    # The last sentence was gap-filled over the new text, then split per line.
+    assert splits == [('s-2', 26), (made[0], 40)] and all(made)
     bulk = c.payloads('tokens.bulk_create')[0]
     assert [(body[t['begin']:t['end']], t['token_layer_id']) for t in bulk] == \
         [('Gam', 'tk-word'), ('akuna', 'tk-word'), ('Ali', 'tk-word'), ('gam', 'tk-word')]

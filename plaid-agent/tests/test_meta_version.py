@@ -10,7 +10,7 @@ also rewrites the entry, keeps it (the service advertises it in its extras).
 from types import SimpleNamespace
 
 from test_agent import service_args
-from test_service_flow import Helper, _request, _seed, _seed_plan, _service
+from test_service_flow import PLAN1, Helper, _request, _seed, _seed_plan, _service
 
 from plaid_agent.core import agent
 from plaid_agent.core import service as service_mod
@@ -45,7 +45,7 @@ def test_applying_a_plan_writes_the_version_into_the_entry():
     store = _seed_plan(client)
     svc = _service()
     helper = Helper(request_id='r9')
-    svc.process_request(_request(client, approve={'plan_id': 'plan1', 'as_human': True}), helper)
+    svc.process_request(_request(client, approve={'plan_id': PLAN1, 'as_human': True}), helper)
     assert not helper.errors, helper.errors
     _, meta = store.load('c1')
     assert meta['version'] == svc.version

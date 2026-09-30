@@ -163,7 +163,7 @@ def _split_drops_both_layers(client, ws):
     the batch."""
     [split] = client.payloads('tokens.split')
     args = split['args'] if isinstance(split, dict) else split
-    assert not (isinstance(split, dict) and split.get('kwargs'))
+    assert set(split['kwargs']) == {'id'}, 'nothing but the id the right half is made under'
     assert list(args[:2]) == [ws.ops[-1]['sentence_id'], ws.ops[-1]['char_pos']]
     assert client.payloads('relations.delete') == []
 

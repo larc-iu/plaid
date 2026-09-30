@@ -258,12 +258,15 @@ class BaseAssistantService(BaseService):
     def execute_plan(self, client, ops: List[Dict[str, Any]], *, source: str, label: str, project,
                      stamp_mode: str, contributor: Optional[str],
                      requester: Optional[str] = None,
-                     detail: Optional[Dict[str, Any]] = None) -> Dict[str, int]:
+                     detail: Optional[Dict[str, Any]] = None,
+                     seed: Optional[str] = None) -> Dict[str, int]:
         """Apply an approved plan. Per-kind counts of what was applied, plus
         ``notes`` for anything dropped. ``requester`` is the user the plan
         acts for, for a change the plan works out again at approval.
         ``detail`` is the provDetail of what the plan writes (the model and
-        version of the turn that proposed it, see ``core.plan.Stamps``). Raises
+        version of the turn that proposed it, see ``core.plan.Stamps``).
+        ``seed`` is the plan's id, which the ids of the rows it creates are
+        drawn from (``core.plan.Minter``). Raises
         :class:`plaid_agent.core.plan.PlanError` if a batch fails part-way."""
         raise NotImplementedError
 
@@ -783,7 +786,13 @@ class BaseAssistantService(BaseService):
         source = service_source(proposer)
         ref = f'conv:{conv_id}/plan:{plan_id}/{source}'
         try:
-            with client.operation(label, kind='assistant-plan', ref=ref) as operation:
+            # Keyed by the plan's id, and every row it creates is named by an
+            # id drawn from it (`core.plan.Minter`): applied again, it sends
+            # the same writes, each answered from its first send or refused as
+            # a taken id, so nothing is made twice. The stamps start empty on
+            # each run, so a write refused last time claims the version now.
+            keys = {'seed': plan_id, 'stamps': {}}
+            with client.operation(label, kind='assistant-plan', ref=ref, keys=keys) as operation:
                 # Each op names its row on the card, so a plan that stops
                 # partway can say which changes were written.
                 try:
@@ -791,7 +800,8 @@ class BaseAssistantService(BaseService):
                                                source=source,
                                                label=label, project=project,
                                                stamp_mode=stamp_mode, contributor=contributor,
-                                               requester=store.user_id, detail=detail)
+                                               requester=store.user_id, detail=detail,
+                                               seed=plan_id)
                 except PlanError as e:
                     # History names what was written, not the whole plan.
                     if e.wrote:

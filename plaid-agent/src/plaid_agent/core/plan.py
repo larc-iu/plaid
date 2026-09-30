@@ -15,14 +15,16 @@ ops with a :class:`TrackingBatcher` and a :class:`Stamps`, and lets
 :class:`PlanError` out.
 """
 
+import hashlib
 import json
 import logging
 import unicodedata
+import uuid
 from contextlib import ExitStack, contextmanager
 from typing import Any, Dict, Iterable, List, Optional
 
-# created_id is plaid_client's reader of a create response, which the plans take from here.
-from plaid_client import DocumentLockLost, PlaidAPIError, created_id, created_ids, metadata_ops  # noqa: F401
+# created_id is plaid_client's reader of a create response, kept here for a plan that reads one.
+from plaid_client import DocumentLockLost, PlaidAPIError, created_id, metadata_ops, uuid7  # noqa: F401
 from plaid_client.client import MAX_BATCH_OPS
 from plaid_client.service import locked_for_writes
 
@@ -72,6 +74,37 @@ def reserve(staged: int, n: int, note: str = '', cap: int = PLAN_MAX_OPS) -> Non
             + (f' {note}' if note else ''))
 
 
+class Minter:
+    """The ids an applied plan creates its rows under, drawn in order from a
+    seed: the plan's own id, a UUIDv7 minted when the plan was staged.
+
+    Applying the same plan again draws the same ids in the same order, so a
+    create whose first send landed (its answer lost, the service restarted)
+    is answered from that send under its Idempotency-Key, or refused as
+    ``id-taken``, and never makes a second row. The nth id is a UUIDv7 just
+    after the seed, one step of its 12-bit counter each, so the ids sort in
+    the order they were drawn and are dated when the plan was staged. Its 62
+    random bits are a hash of the seed and n.
+    """
+
+    def __init__(self, seed: str):
+        u = uuid.UUID(seed)
+        if u.version != 7:
+            raise ValueError(f'a plan draws its ids from a UUIDv7, not {seed!r}')
+        self.seed = str(u)
+        top = u.int >> 64
+        # The millisecond and the counter within it, as one number to count on from.
+        self._at = ((top >> 16) << 12) | (top & 0xFFF)
+        self._n = 0
+
+    def __call__(self) -> str:
+        n, self._n = self._n, self._n + 1
+        at = self._at + 1 + n
+        rand = int.from_bytes(hashlib.sha256(f'{self.seed}/{n}'.encode()).digest()[:8], 'big') >> 2
+        value = ((at >> 12) << 80) | (0x7 << 76) | ((at & 0xFFF) << 64) | (0b10 << 62) | rand
+        return str(uuid.UUID(int=value))
+
+
 class Batcher:
     """Queue client calls into atomic batches of at most ``budget`` ops,
     flushing as the budget fills. ``add`` takes ``fn(batch)`` and calls it with
@@ -94,11 +127,17 @@ class Batcher:
     for, which the executor names with :meth:`writing_for` around each op.
     A write made outside one carries none. Updates are kept per document, so
     one bulk update never reaches two of them.
+
+    Every create names the id of its row, drawn from ``new_id``, and a later
+    write names that id, in the same batch or another: nothing waits on a
+    create's answer.
     """
 
-    def __init__(self, client, budget: int = BATCH_OP_BUDGET):
+    def __init__(self, client, budget: int = BATCH_OP_BUDGET, ids: Optional[Minter] = None):
         self.client = client
         self.budget = budget
+        #: the id of the next row the plan creates (see :class:`Minter`)
+        self.new_id = ids or Minter(uuid7())
         self.results: List[Any] = []
         self._pending = 0   # sub-ops in the open batch (result indexes)
         self._weight = 0    # what the open batch stands for, against the budget
@@ -192,18 +231,6 @@ class Batcher:
             self.flush()
         return idx
 
-    def refer(self, batch, idx: int, index: Optional[int] = None):
-        """The id the op at result index ``idx`` creates (with ``index``, the
-        k-th id of a bulk create), for a write queued on ``batch`` inside
-        ``add``: a ref when that op is in the open batch, so the two go in one
-        transaction, else what its result carries, or None."""
-        if idx >= len(self.results):
-            return batch.ref(idx - len(self.results), index)
-        if index is None:
-            return created_id(self.results[idx])
-        ids = created_ids(self.results[idx])
-        return ids[index] if index < len(ids) else None
-
     def update(self, resource: str, entity_id: str, value: Any = _UNSET,
                metadata: Optional[List[Dict[str, Any]]] = None) -> None:
         """Queue a value and/or metadata ops (see ``plaid_client.metadata_ops``)
@@ -269,8 +296,9 @@ class TrackingBatcher(Batcher):
     sub-op counts for every entity it carried.
     """
 
-    def __init__(self, client, budget: int = BATCH_OP_BUDGET, tracker: Optional[Tracker] = None):
-        super().__init__(client, budget)
+    def __init__(self, client, budget: int = BATCH_OP_BUDGET, tracker: Optional[Tracker] = None,
+                 ids: Optional[Minter] = None):
+        super().__init__(client, budget, ids)
         self.applied = 0
         #: batches that committed
         self.flushed = 0
@@ -652,7 +680,7 @@ def apply_add_comment(ctx, op) -> int:
     The caption is shortened to the server's ceiling here, for every app."""
     label = clip_caption((op.get('anchor_label') or '').strip()).strip() or None
     ctx.b.add(lambda batch, o=op: batch.comments.create(o['entity_type'], o['entity_id'], o['body'],
-                                                        anchor_label=label))
+                                                        anchor_label=label, id=ctx.b.new_id()))
     return 1
 
 

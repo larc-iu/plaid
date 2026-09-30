@@ -120,7 +120,9 @@ def test_add_comment_plans_with_the_editors_captions_and_posts_on_approval():
     assert [d['id'] for d in w.plan_payload()['documents']] == ['d1']
     counts = execute_plan(c, ops[:3], source='s', label='l')
     assert counts == {'comments': 3}
-    assert {'args': ('token', 'w-2', 'fish or net?'), 'kwargs': {'anchor_label': 'gam, sentence 1'}} in c.payloads('comments.create')
+    posted = [(p['args'], p['kwargs']['anchor_label']) for p in c.payloads('comments.create')]
+    assert (('token', 'w-2', 'fish or net?'), 'gam, sentence 1') in posted
+    assert all(p['kwargs']['id'] for p in c.payloads('comments.create')), 'each under the id the plan names'
 
 
 def test_a_comment_on_something_the_plan_deletes_refuses_rather_than_failing_the_batch():

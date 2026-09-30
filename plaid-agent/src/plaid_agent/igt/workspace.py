@@ -15,9 +15,10 @@ text the way the editor does.
 
 import copy
 import re
-import uuid
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
+
+from plaid_client import uuid7
 
 from ..core import docload, opkind
 from ..core.plan import change_of, docs_of_op, labelled
@@ -598,7 +599,7 @@ class Workspace(BaseWorkspace):
             docs = set((op.get('items') or {}).get('doc') or []) if op.get('compact') else set()
             if len(docs) == 1:
                 op['doc'] = docs.pop()
-        return {'id': uuid.uuid4().hex, 'summary': summarize(self.ops),
+        return {'id': uuid7(), 'summary': summarize(self.ops),
                 'labels': [op['label'] for op in ops], 'ops': ops,
                 'changes': describe_changes(self, ops),
                 'documents': self.touched_documents()}

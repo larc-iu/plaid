@@ -223,7 +223,7 @@ def apply_split_sentence(op: Dict[str, Any], b, stamp) -> None:
     A delete of them here would find them gone and fail the batch.
     ``relation_ids`` and ``suppressor_ids`` are what the card counts.
     """
-    b.add(lambda batch, o=op: batch.tokens.split(o['sentence_id'], o['char_pos']))
+    b.add(lambda batch, o=op: batch.tokens.split(o['sentence_id'], o['char_pos'], id=b.new_id()))
 
 
 def apply_merge_sentences(op: Dict[str, Any], b, stamp) -> None:

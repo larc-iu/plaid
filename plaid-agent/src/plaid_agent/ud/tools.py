@@ -10,8 +10,9 @@ Everything is addressed positionally (``s3.w2``), never by id: see
 """
 
 import copy
-import uuid
 from typing import Any, Dict, List, Optional
+
+from plaid_client import uuid7
 
 from ..core import docload, opkind
 from ..core.args import whole
@@ -202,7 +203,7 @@ class Workspace(BaseWorkspace):
         # what the user approves later. Large groups of like ops are stored
         # as one (the summary still counts what they stand for).
         ops = compact_ops(self.mark_replaced_work(copy.deepcopy(self.ops)), compact_spec(self))
-        return {'id': uuid.uuid4().hex, 'summary': summarize(self.ops),
+        return {'id': uuid7(), 'summary': summarize(self.ops),
                 'labels': [op['label'] for op in ops], 'ops': ops,
                 'changes': describe_changes(self, ops),
                 'documents': self.touched_documents()}
