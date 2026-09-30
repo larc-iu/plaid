@@ -129,9 +129,6 @@ export function applyTextEditsLocally(raw, textId, ops, vocabs = null) {
     }
   }
   textLayer.text.body = body;
-  // The digest the server gave describes the body before these edits. Its
-  // answer to them brings the new one (mutations/alignment.js `_heardText`).
-  if ('digest' in textLayer.text) textLayer.text.digest = null;
 
   const newLength = cpLength(body);
   for (const layer of tokenLayers) {

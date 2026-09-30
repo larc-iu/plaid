@@ -43,7 +43,7 @@ export function DocumentBaseline() {
   }, []);
 
   const handleTextChange = (e) => {
-    ops.handleTextChange(e);
+    ops.updateEditedText(e.target.value);
     autoGrow();
   };
 
@@ -73,7 +73,6 @@ export function DocumentBaseline() {
                   id="baseline-text"
                   compose
                   value={ops.editedText}
-                  {...ops.editLogHandlers}
                   onChange={handleTextChange}
                   placeholder="Type or paste the text"
                   spellCheck={false}

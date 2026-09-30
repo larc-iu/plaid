@@ -48,7 +48,6 @@ export const fakeDocument = (over = {}) => {
     uploadMedia: vi.fn(async () => true),
     deleteMedia: vi.fn(async () => true),
     saveBaselineText: vi.fn(async () => true),
-    editBaselineText: vi.fn(async () => true),
     deleteAlignment: vi.fn(async () => true),
     updateAlignmentBounds: vi.fn(async () => true),
     _reload: vi.fn(async () => {}),

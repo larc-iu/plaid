@@ -20,13 +20,6 @@ function makeDoc({ body, tokens }) {
       return () => listeners.delete(fn);
     },
     getSnapshot: () => 0,
-    // A row's text write answers its outcome, as DocumentModel's does.
-    cellWrite: (fn) =>
-      Promise.resolve(fn()).then((value) =>
-        value === false
-          ? { landed: false, status: null, error: null, readBack: true, uncertain: false }
-          : { landed: true, value },
-      ),
     editAlignment: vi.fn(async () => true),
     updateAlignmentSpeaker: vi.fn(async () => true),
     updateAlignmentBounds: vi.fn(async () => true),
