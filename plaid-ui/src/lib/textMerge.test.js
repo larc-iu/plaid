@@ -12,9 +12,13 @@ const apply = (units, hunks) => {
 };
 
 // A small seeded generator, so a failure names the case that made it.
+// Mulberry32, whose period is 2^32: a linear congruential one repeated its
+// cases about every 1,000 draws.
 const rng = (seed) => () => {
-  seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-  return seed / 0x7fffffff;
+  seed = (seed + 0x6d2b79f5) | 0;
+  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 };
 const WORDS = ['the', 'dog', 'ran', 'kai', 'na', '𐌰𐌱', 'é', 'é', '.', ',', 'ǃxóõ', '猫'];
 const SEPS = [' ', ' ', '\n', '  '];
@@ -154,6 +158,52 @@ describe('mergeText', () => {
     const mine = 'la la la ta ta ta\nna ta ta na\nla\nna la na la\nla la na na la la';
     const theirs = 'la la la ta ta ta\nna ta ta la na\nla\nna na la';
     expect(mergeText(base, mine, theirs)).toEqual({ conflict: true });
+  });
+
+  it('keeps two deletions that share the separator between them', () => {
+    // each deletes one of two lines, or one of two words
+    expect(mergeText('L0 x\nL1 y\nL2 z', 'L0 x\nL2 z', 'L1 y\nL2 z')).toEqual({ text: 'L2 z' });
+    expect(mergeText('L0 x\nL1 y\nL2 z', 'L1 y\nL2 z', 'L0 x\nL2 z')).toEqual({ text: 'L2 z' });
+    expect(mergeText('dog, cat bird', 'cat bird', 'dog, bird')).toEqual({ text: 'bird' });
+    expect(mergeText('dog, cat bird', 'dog, bird', 'cat bird')).toEqual({ text: 'bird' });
+  });
+
+  it('keeps a deleted line and a word put at the end of the line before', () => {
+    expect(mergeText('L0 x\nL1 y\nL2 z', 'L0 x Q\nL1 y\nL2 z', 'L0 x\nL2 z')).toEqual({
+      text: 'L0 x Q\nL2 z',
+    });
+    expect(mergeText('L0 x\nL1 y\nL2 z', 'L0 x\nL2 z', 'L0 x Q\nL1 y\nL2 z')).toEqual({
+      text: 'L0 x Q\nL2 z',
+    });
+  });
+
+  it('is a conflict when a word is put at the end of a line the other side deleted', () => {
+    // A deletes line 3 and adds W to line 2, B deletes line 2.
+    const base = 'L1 a\nL2 b\nL3 c\nL4';
+    expect(mergeText(base, 'L1 a\nL2 b W\nL4', 'L1 a\nL3 c\nL4')).toEqual({ conflict: true });
+    expect(mergeText(base, 'L1 a\nL3 c\nL4', 'L1 a\nL2 b W\nL4')).toEqual({ conflict: true });
+  });
+
+  it('is a conflict when one side joins two lines that read alike and the other edited one', () => {
+    // The shortest diff of `theirs` takes `ran away\nthe dog ran` out and puts
+    // `of` in: one line of the parts of two, where the line `mine` changed
+    // may be either.
+    const base = [
+      'the dog ran away',
+      'the dog ran away',
+      'the dog ran away',
+      'the dog ran home',
+      'the dog ran away',
+    ].join('\n');
+    const mine = base.replace('away\nthe dog ran away\nthe dog', 'away\nthe dog away\ndog');
+    const theirs = [
+      'the dog ran away',
+      'the dog ran away',
+      'the dog of home',
+      'the dog ran away',
+    ].join('\n');
+    expect(mergeText(base, mine, theirs)).toEqual({ conflict: true });
+    expect(mergeText(base, theirs, mine)).toEqual({ conflict: true });
   });
 
   it('keeps a deleted line and an edit to a line that reads differently', () => {
