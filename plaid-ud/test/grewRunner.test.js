@@ -464,3 +464,16 @@ test('applySummary: a document whose outcome is unknown may have changed', () =>
     'Stopped at doc1: Could not reach the server. doc1 may have changed.',
   );
 });
+
+test('apply: every relation delete goes before an edge is moved or made, so no request ends on a word with two heads', async () => {
+  const { client, project, layerInfo } = setup();
+  // "a" loses its head and takes "the"'s instead. The diff meets the moved
+  // edge (the's, line 1) before the dropped one (a's, line 4), and the batch
+  // still drops a's head first.
+  const grs = parseGrs(`pattern { T [form="the"]; A [form="a"]; e: C -[det]-> A }
+    commands { del_edge e; shift_in T ==> A } strat main { rule }`);
+  const plan = await planRewrite(client, { project, user: null, layerInfo, grs });
+  await applyRewrite(client, { rows: plan.rows, docs: plan.docs, label: 'Rewrite' });
+  const ops = client.batches.flat().filter((op) => op.startsWith('relations.'));
+  assert.deepEqual(ops, ['relations.delete', 'relations.setTarget']);
+});

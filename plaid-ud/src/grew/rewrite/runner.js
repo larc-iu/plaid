@@ -362,10 +362,22 @@ async function applyToDocument(client, docId, doc, rows) {
   });
 }
 
+// The order the writes go in: every relation delete before any relation is
+// made or moved, so no request of a batch split past MAX_BATCH_OPS ends on a
+// word with two heads, which the server's one-head rule refuses. Relation
+// deletes also come before span deletes, which take their relations with
+// them.
+const WRITE_ORDER = { deleteRelation: 0, deleteSpan: 1, setSource: 2, setTarget: 2 };
+const inWriteOrder = (main) =>
+  main
+    .map((w, i) => [w, i])
+    .sort(([a, i], [b, j]) => (WRITE_ORDER[a.op] ?? 3) - (WRITE_ORDER[b.op] ?? 3) || i - j)
+    .map(([w]) => w);
+
 // Every span and relation write. A person's edit of a machine or contributed
 // value carries the writer's stamp, in the same batch as the value.
 function queueMain(b, main, writer, createStamp, lemmaOf) {
-  for (const w of main) {
+  for (const w of inWriteOrder(main)) {
     switch (w.op) {
       case 'updateSpan': {
         b.spans.update(w.id, w.value);
