@@ -103,13 +103,16 @@ export const pendingMutations = {
       const metadataOf = (c) => (Object.keys(c.metadata || {}).length ? c.metadata : undefined);
       if (creates.length === 1) {
         const [c] = creates;
-        b.tokens.create(layerId, textId, c.begin, c.end, c.precedence, metadataOf(c));
+        b.tokens.create(layerId, textId, c.begin, c.end, c.precedence, metadataOf(c), undefined, {
+          id: c.id,
+        });
         const ref = b.ref();
         refs.set(c.id, ref);
         at.set(c.id, [ref.$ref, null]);
       } else {
         b.tokens.bulkCreate(
           creates.map((c) => ({
+            id: c.id,
             tokenLayerId: layerId,
             text: textId,
             begin: c.begin,
@@ -153,12 +156,15 @@ export const pendingMutations = {
         c.end,
         c.precedence,
         metadataOf(c),
+        undefined,
+        { id: c.id },
       );
       ids.set(c.id, createdId(result));
       return;
     }
     const result = await this._client.tokens.bulkCreate(
       creates.map((c) => ({
+        id: c.id,
         tokenLayerId: layerId,
         text: textId,
         begin: c.begin,

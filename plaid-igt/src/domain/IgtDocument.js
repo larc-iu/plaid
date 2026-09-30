@@ -913,7 +913,7 @@ export class IgtDocument extends DocumentModel {
       const id = settledId(tokenId);
       const results = await this._client.batched(async (b) => {
         if (coincident.length > 0) b.tokens.bulkDelete(coincident.map(settledId));
-        b.tokens.split(id, rightBegin);
+        b.tokens.split(id, rightBegin, undefined, { id: rightId });
         if (leftEnd < rightBegin) b.tokens.update(id, undefined, leftEnd);
       });
       // The body of `tokens.split` is `{ id: <new right id> }`.

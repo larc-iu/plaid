@@ -299,7 +299,7 @@ describe('gathering words into a multi-word expression', () => {
     click(create);
     await settle();
     const item = client.calls.find((c) => c.kind === 'vocabItems.create');
-    expect(item.args).toEqual(['v1', 'cat down', { morphType: 'phrase' }]);
+    expect(item.args.slice(0, 3)).toEqual(['v1', 'cat down', { morphType: 'phrase' }]);
     expect(doc.sentences[0].mwes[0].item.form).toBe('cat down');
   });
 

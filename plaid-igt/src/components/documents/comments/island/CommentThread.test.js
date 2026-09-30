@@ -1,3 +1,4 @@
+import { newId } from '@ui/domain/pendingIds.js';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from 'lit-html';
 import { commentThread } from './CommentThread.js';
@@ -114,7 +115,7 @@ describe('commentThread rendering', () => {
   });
 
   it('dims a comment that has not been acknowledged and offers it no actions', () => {
-    draw({ comments: [comment({ id: 'pending:1' })], canDeleteAny: true });
+    draw({ comments: [comment({ id: newId() })], canDeleteAny: true });
 
     expect(host.querySelectorAll('.igt-cmt__row--pending').length).toBe(1);
     expect(text('.igt-cmt__time')).toEqual(['sending…']);

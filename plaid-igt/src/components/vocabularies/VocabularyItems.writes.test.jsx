@@ -449,7 +449,7 @@ describe('Bulk Add and Replace', () => {
     mounted = view;
     await replaceEdit(view);
     await bulkAdd(view);
-    expect(opts).toEqual([
+    expect(opts.map(({ kind, ref }) => ({ kind, ref }))).toEqual([
       { kind: 'bulk-edit', ref: 'action:vocab-replace' },
       { kind: 'import', ref: 'format:table' },
     ]);
@@ -654,53 +654,29 @@ describe('a refused entry write', () => {
     expect(feedback.notifySuccess).not.toHaveBeenCalled();
   });
 
-  it('reads the entries again before offering Create again, when the answer to a create was lost', async () => {
-    const entries = [{ id: 'a', form: 'uno' }];
-    const { client, calls, holds } = stub(entries);
+  it('sends a create whose answer was lost again, under the same id, until it is answered', async () => {
+    const { client, calls, holds } = stub([{ id: 'a', form: 'uno' }]);
     const lost = deferred();
     holds.push(lost);
-    // The server made the entry, but its answer never came back.
-    client.vocabLayers.get = async () => ({
-      id: 'v1',
-      name: 'Lexicon',
-      config: {},
-      items: structuredClone(entries),
-    });
-    const view = (mounted = await mount(client, '/vocabularies/v1?item=new'));
+    const writes = new WriteQueue({ retryDelay: () => 0 });
+    const view = (mounted = await mount(client, '/vocabularies/v1?item=new', writes));
     await view.step(() => setValue(formInput(), 'seis'));
     await view.step(() => button('Create').click());
     await view.step(async () => {
-      entries.push({ id: 'made-1', form: 'seis' });
       lost.reject(
-        Object.assign(new Error('Request timed out at http://x/api/v1/vocab-layers/v1/items'), {
+        Object.assign(new Error('Request timed out at http://x/api/v1/vocab-items'), {
           status: 0,
           method: 'POST',
         }),
       );
       await settle();
     });
-    expect(calls.map(([kind]) => kind)).toEqual(['create']);
-    // The entry it made is open, not a form that would make a second one.
+    expect(calls.map(([kind]) => kind)).toEqual(['create', 'create']);
+    const idOf = (call) => call.at(-1)?.id;
+    expect(idOf(calls[0])).toMatch(/^[0-9a-f-]{36}$/);
+    expect(idOf(calls[1])).toBe(idOf(calls[0]));
     expect(button('Create')).toBeUndefined();
-    expect(formInput().value).toBe('seis');
-    expect(link('seis').getAttribute('href')).toContain('item=made-1');
-  });
-
-  it('offers Create again when the entries read after a lost answer do not hold it', async () => {
-    const { client, holds } = stub([{ id: 'a', form: 'uno' }]);
-    const lost = deferred();
-    holds.push(lost);
-    const view = (mounted = await mount(client, '/vocabularies/v1?item=new'));
-    await view.step(() => setValue(formInput(), 'seis'));
-    await view.step(() => button('Create').click());
-    await view.step(async () => {
-      lost.reject(
-        Object.assign(new Error('Network error: Failed to fetch'), { status: 0, method: 'POST' }),
-      );
-      await settle();
-    });
-    expect(formInput().value).toBe('seis');
-    expect(button('Create').disabled).toBe(false);
+    expect(feedback.notifyError).not.toHaveBeenCalled();
   });
 
   it('reads the entries again until the read lands, and asks before the tab closes until then', async () => {

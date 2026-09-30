@@ -254,9 +254,12 @@ describe('the kind of operation a document writes under', () => {
       await doc._queueWrite('Failed to adopt', async () => {}, 'Adopt', { kind: 'guess-adoption' }),
     ).toBe(true);
     expect(await doc._queueWrite('Failed to rename', async () => {}, 'Rename')).toBe(true);
-    expect(opts).toEqual([
-      ['Adopt', { kind: 'guess-adoption' }],
-      ['Rename', {}],
+    expect(opts.map(([label, o]) => [label, o.kind])).toEqual([
+      ['Adopt', 'guess-adoption'],
+      ['Rename', undefined],
     ]);
+    // Each write is its own operation, whose id every attempt of it joins.
+    expect(opts[0][1].id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(opts[1][1].id).not.toBe(opts[0][1].id);
   });
 });

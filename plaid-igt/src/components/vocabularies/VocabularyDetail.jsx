@@ -72,7 +72,7 @@ import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { useSavingGuard } from '@ui/hooks/useSavingGuard.js';
 import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
 import { vocabWriteQueue } from './vocabWriteQueue.js';
-import { findLostCreate } from '@ui/lib/lostCreate.js';
+import { createOnce } from '@ui/lib/createOnce.js';
 import { useTabParam } from '@/hooks/useTabParam';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { Notice } from '@ui/components/shared/Notice.jsx';
@@ -106,6 +106,7 @@ export const VocabularyDetail = () => {
   // The layer a failed creation already made, so pressing Create again
   // finishes it instead of leaving an unreachable second one behind.
   const createdRef = useRef(null);
+  const mintRef = useRef(null);
   // A save in flight, so a second click cannot start another one.
   const [saving, setSaving] = useState(false);
   const confirm = useConfirm();
@@ -376,19 +377,11 @@ export const VocabularyDetail = () => {
               createdRef.current = { ...savedVocabulary, name };
             }
           } else {
-            const before = await client.vocabLayers.list();
-            try {
-              savedVocabulary = await client.vocabLayers.create(name);
-            } catch (err) {
-              // The answer was lost: finish the vocabulary the create made, if
-              // it made one, so Create cannot make a second.
-              savedVocabulary = await findLostCreate(err, {
-                before,
-                reread: () => client.vocabLayers.list(),
-                isIt: (v) => v.name === name,
-              });
-              if (!savedVocabulary) throw err;
-            }
+            // Create names the id it makes and keeps it across presses, so
+            // one after an answer that never came cannot make a second.
+            savedVocabulary = await createOnce(mintRef, (id) =>
+              client.vocabLayers.create(name, undefined, { id }),
+            );
             createdRef.current = { ...savedVocabulary, name };
           }
           if (needsStatusTagset) {

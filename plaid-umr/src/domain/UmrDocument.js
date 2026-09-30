@@ -76,8 +76,8 @@ const umrOf = (entity) => entity?.metadata?.[UMR_NAMESPACE] || {};
 // the first landed: `stage` is the request that failed ('changes' when it was
 // one of the first's own requests), `withNodes` whether the apply makes nodes,
 // and `unsure` whether that request's answer was lost.
-const partlyApplied = (stage, withNodes, unsure) => {
-  const missing = unsure ? 'Not confirmed' : 'Not saved';
+const partlyApplied = (stage, withNodes) => {
+  const missing = 'Not saved';
   if (stage === 'changes')
     return `Partly applied. Saved: some deletions and changes. ${missing}: the rest.`;
   if (stage === 'nodes')
@@ -914,6 +914,10 @@ export class UmrDocument extends DocumentModel {
     try {
       return await work();
     } catch (error) {
+      // An answer that was lost is not a failure: the edit is sent again from
+      // the top under the same keys, and the pieces it made are what the
+      // resend finishes.
+      if (isUnknownOutcome(error)) throw error;
       const made = tokens.map((t) => ids.get(t.id)).filter(Boolean);
       let removed = true;
       if (made.length) {
@@ -2806,13 +2810,11 @@ export class UmrDocument extends DocumentModel {
           }
         } catch (error) {
           const partly = stage !== 'changes' || error?.committed > 0;
-          if (!partly) throw error;
-          if (isUnknownOutcome(error)) this._readLater();
-          // A node request whose answer was lost may have stored the nodes:
-          // they are not saved only once their anchors were removed again.
-          const unsure =
-            isUnknownOutcome(error) && (stage !== 'nodes' || error?.anchorsRemoved !== true);
-          throw Object.assign(new Error(partlyApplied(stage, newNodes.length > 0, unsure)), {
+          // A lost answer is sent again from the top, under the same keys: the
+          // requests that landed are answered from what they stored, and the
+          // rest run (DocumentModel's `_queueWrite`).
+          if (!partly || isUnknownOutcome(error)) throw error;
+          throw Object.assign(new Error(partlyApplied(stage, newNodes.length > 0)), {
             cause: error,
           });
         }

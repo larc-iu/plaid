@@ -114,6 +114,8 @@ export const morphemeMutations = {
             r.end,
             r.precedence,
             Object.keys(r.metadata).length ? r.metadata : undefined,
+            undefined,
+            { id: r.id },
           ),
         );
       });
@@ -246,6 +248,8 @@ export const morphemeMutations = {
             target.end,
             target.precedence,
             Object.keys(firstMeta || {}).length ? firstMeta : undefined,
+            undefined,
+            { id: target.id },
           );
         } else {
           // patch, not set: form edits must not clobber other metadata keys
@@ -261,7 +265,16 @@ export const morphemeMutations = {
           );
         });
         rest.forEach((r) => {
-          b.tokens.create(morphemeLayer.id, textId, r.begin, r.end, r.precedence, r.metadata);
+          b.tokens.create(
+            morphemeLayer.id,
+            textId,
+            r.begin,
+            r.end,
+            r.precedence,
+            r.metadata,
+            undefined,
+            { id: r.id },
+          );
         });
       });
       // The target's patch or create, the shifts, then the creates.

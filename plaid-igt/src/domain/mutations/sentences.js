@@ -85,7 +85,9 @@ export const sentenceMutations = {
       const serverId = (id) => ids.get(id) || settledId(id);
       // One request a split: each needs the id the one before it made.
       for (const s of splits) {
-        const result = await this._client.tokens.split(serverId(s.leftId), s.charPos);
+        const result = await this._client.tokens.split(serverId(s.leftId), s.charPos, undefined, {
+          id: s.rightId,
+        });
         ids.set(s.rightId, createdId(result));
       }
       const patches = splits.flatMap((s) => [

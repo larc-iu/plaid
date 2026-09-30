@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { humanizeError, isUnknownOutcome } from '@ui/lib/errors.js';
-import { findLostCreate } from '@ui/lib/lostCreate.js';
+import { createOnce } from '@ui/lib/createOnce.js';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
@@ -14,10 +14,12 @@ import {
   DialogFooter,
 } from '@ui/components/ui/dialog';
 
-export const DocumentForm = ({ projectId, documents, isOpen, onClose }) => {
+export const DocumentForm = ({ projectId, isOpen, onClose }) => {
   const [documentName, setDocumentName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // The id the create names, kept across presses of Create (createOnce.js).
+  const mint = useRef(null);
   const { getClient } = useAuth();
   const navigate = useNavigate();
 
@@ -35,19 +37,9 @@ export const DocumentForm = ({ projectId, documents, isOpen, onClose }) => {
 
     try {
       const client = getClient();
-      let created;
-      try {
-        created = await client.documents.create(projectId, name);
-      } catch (err) {
-        // The answer was lost: open the document the create made, if it made
-        // one, so Create cannot make a second.
-        created = await findLostCreate(err, {
-          before: documents,
-          reread: () => client.projects.listDocuments(projectId),
-          isIt: (d) => d.name === name,
-        });
-        if (!created) throw err;
-      }
+      const created = await createOnce(mint, (id) =>
+        client.documents.create(projectId, name, undefined, undefined, { id }),
+      );
       // A new document has no tokens yet, so the Annotate tab would just say
       // "tokenize first" — open it directly in the Text Editor instead. We stay
       // in the loading state through navigation: this list route (and the dialog

@@ -94,6 +94,8 @@ const sendSpan = async (doc, layerId, plan, ids) => {
       [serverId(plan.token)],
       plan.value,
       plan.stamp || undefined,
+      undefined,
+      { id: plan.id },
     );
     ids.set(plan.id, createdId(result));
   }
@@ -145,6 +147,8 @@ const makeSpanUpdater = (scope) =>
               [morphemes.tokenRef(plan.token)],
               plan.value,
               plan.stamp || undefined,
+              undefined,
+              { id: plan.id },
             );
             spanAt = b.ref().$ref;
           });

@@ -8,7 +8,7 @@ import {
   useReducer,
 } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
-import { createdId, isReviewed } from '@larc-iu/plaid-client';
+import { createdId, isReviewed, uuidv7 } from '@larc-iu/plaid-client';
 import { useAuth } from '@/contexts/AuthContext';
 import { canEditProject } from '@ui/domain/permissions.js';
 import { AlertTriangle, History } from 'lucide-react';
@@ -566,15 +566,26 @@ export const VocabularyItems = ({
   // edit at once does. A refusal is toasted, unless `answered(err)` says the
   // write's own `refused` shows it. `resync` stands in for the entries'
   // refetch, for a save that needs to see what it brought back.
-  const sendInTurn = (label, write, failure, { refused, answered, resync: reread = resync } = {}) =>
-    writes.push(() => client.withOperation(label, write), {
+  // A write whose answer was lost goes again until it is answered, under the
+  // same operation and Idempotency-Key seed (the client's `keySeed`), so what
+  // landed the first time is answered from what it stored and written once.
+  const sendInTurn = (
+    label,
+    write,
+    failure,
+    { refused, answered, resync: reread = resync } = {},
+  ) => {
+    const once = { id: uuidv7(), keys: client.keySeed?.() };
+    return writes.push(() => client.withOperation(label, write, once), {
       refused: async (err) => {
         console.error(`${label}:`, err);
         if (!answered?.(err)) notifyError(err, failure);
         await (refused || unseedUnlessTyped)(err);
       },
       resync: reread,
+      resendWhenBack: isUnknownOutcome,
     });
+  };
 
   // Bulk Add and Replace: a run of writes planned against the entries as
   // shown, which can hold a save still on its way. The run takes its turn
@@ -583,12 +594,14 @@ export const VocabularyItems = ({
   // ref (see the client's beginOperation).
   const sendPlanned = async (label, write, tags) => {
     let error = null;
-    const landed = await writes.push(() => client.withOperation(label, write, tags), {
+    const once = { ...tags, id: uuidv7(), keys: client.keySeed?.() };
+    const landed = await writes.push(() => client.withOperation(label, write, once), {
       refused: (err) => {
         error = err;
         unseedUnlessTyped();
       },
       resync,
+      resendWhenBack: isUnknownOutcome,
     });
     return { landed, error };
   };
@@ -849,12 +862,6 @@ export const VocabularyItems = ({
         };
         goItem(NEW_ID, { replace: true }, parent);
       };
-      // A create whose answer was lost may have made the entry. The entries
-      // are read again first, and Create is offered again only when the
-      // entry is not among them, so pressing it cannot make a second one.
-      const alreadyThere = new Set(items.map((i) => i.id));
-      let reread = null;
-      let unsure = null;
       sendInTurn(
         `Add entry "${form}"`,
         async () => {
@@ -863,6 +870,8 @@ export const VocabularyItems = ({
             vocabularyId,
             form,
             Object.keys(meta).length ? meta : undefined,
+            undefined,
+            { id },
           );
           settleEntries(new Map([[id, createdId(created)]]));
         },
@@ -870,28 +879,17 @@ export const VocabularyItems = ({
         {
           // The pending id names nothing now. Still open, it goes back to the
           // new-entry form.
-          refused: (err) => {
+          refused: () => {
             const stillOpen = selectedIdRef.current === id || creatingRef.current === id;
             if (creatingRef.current === id) creatingRef.current = null;
             if (!stillOpen) {
               unseedUnlessTyped();
               return;
             }
-            if (isUnknownOutcome(err)) unsure = draftRef.current;
-            else backToNew(draftRef.current);
-          },
-          resync: async () => {
-            reread = await fetchItems({ quiet: true, inTurn: true });
+            backToNew(draftRef.current);
           },
         },
-      ).then(() => {
-        // Only while nothing else has been opened since.
-        const here = selectedIdRef.current;
-        if (!unsure || (here !== id && here !== NEW_ID)) return;
-        const made = (reread || []).find((i) => i.form === form && !alreadyThere.has(i.id));
-        if (made) goItem(made.id, { replace: true });
-        else backToNew(unsure);
-      });
+      );
       return;
     }
     const item = selectedItem;
@@ -1145,6 +1143,8 @@ export const VocabularyItems = ({
           vocabularyId,
           it.form,
           Object.keys(meta).length ? meta : undefined,
+          undefined,
+          { id: headId },
         );
         settleEntries(new Map([[headId, createdId(created)]]));
         await bulkRepoint([{ id, metadata: senseMeta }], new Map([[id, it.metadata]]));

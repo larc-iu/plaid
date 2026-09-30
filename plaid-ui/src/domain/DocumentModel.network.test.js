@@ -4,24 +4,47 @@ import { DocumentModel } from './DocumentModel.js';
 // A document's writes on a bad network and against other people's edits
 // (the concurrency campaign of 2026-09-29): a write that never left the
 // browser goes again when the network is back (H5-4), a write whose answer
-// was lost is looked for again later (D2), a write to something another user
-// deleted is a change elsewhere (D3), and a screen can name what an edit
-// changed in History (D14).
+// was lost is sent again under the same Idempotency-Keys until it is
+// answered, and lands once (idempotent writes, 2026-09-30), a write to
+// something another user deleted is a change elsewhere (D3), and a screen can
+// name what an edit changed in History (D14).
 
 const flush = async () => {
   for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
 };
 
 // A server with one value per key and a version. A strict write stamped with
-// an old version is refused 409, as plaid-core does.
+// an old version is refused 409, as plaid-core does. A write carries the
+// Idempotency-Key the client gives the nth write of an operation opened with
+// a key seed (`<seed>.<n>`), with the version its first attempt claimed, and
+// one whose key landed before is answered from it and writes nothing.
 function fakeServer() {
-  const server = { values: {}, version: 1, reads: 0, labels: [], fail: [] };
+  const server = {
+    values: {},
+    version: 1,
+    reads: 0,
+    labels: [],
+    fail: [],
+    keys: [],
+    groups: [],
+    stored: new Map(),
+    writes: 0,
+  };
+  let seeds = 0;
+  let open = null;
   const client = {
     strictModeDocumentId: 'd1',
     documentVersions: { d1: 1 },
-    withOperation: async (label, fn) => {
+    keySeed: () => ({ seed: `seed${++seeds}`, stamps: new Map() }),
+    withOperation: async (label, fn, { id, keys } = {}) => {
       server.labels.push(label);
-      return fn(() => {});
+      server.groups.push(id);
+      open = { keys, n: 0 };
+      try {
+        return await fn(() => {});
+      } finally {
+        open = null;
+      }
     },
     documents: {
       get: async () => {
@@ -31,12 +54,28 @@ function fakeServer() {
       },
     },
     write: async (key, value) => {
-      const stamp = client.strictModeDocumentId === 'd1' ? client.documentVersions.d1 : null;
+      let stamp = client.strictModeDocumentId === 'd1' ? client.documentVersions.d1 : null;
+      let idem = null;
+      if (open?.keys) {
+        const n = open.n++;
+        idem = `${open.keys.seed}.${n}`;
+        if (open.keys.stamps.has(n)) stamp = open.keys.stamps.get(n);
+        else open.keys.stamps.set(n, stamp);
+      }
+      server.keys.push(idem);
+      if (idem && server.stored.has(idem)) {
+        const version = server.stored.get(idem);
+        const held = client.documentVersions.d1;
+        client.documentVersions = { ...client.documentVersions, d1: Math.max(held, version) };
+        return;
+      }
       const failure = server.fail.shift();
       if (failure) {
         if (failure.landed) {
           server.values[key] = value;
           server.version += 1;
+          server.writes += 1;
+          if (idem) server.stored.set(idem, server.version);
         }
         throw failure.error();
       }
@@ -48,6 +87,8 @@ function fakeServer() {
       }
       server.values[key] = value;
       server.version += 1;
+      server.writes += 1;
+      if (idem) server.stored.set(idem, server.version);
       client.documentVersions = { ...client.documentVersions, d1: server.version };
     },
   };
@@ -103,19 +144,21 @@ describe('a write made offline', () => {
 
   // REV-F-NET D-6: the resend was refused as a conflict with the edit's own
   // write, and the page said "Changed elsewhere. Redo your edit." about an
-  // edit that was saved.
+  // edit that was saved. Now the resend carries the first send's key and is
+  // answered from it.
   it('is not sent twice when it did land after all, and counts as saved', async () => {
     const { server, doc, errors } = open();
     doc._writes._retryDelay = () => 0;
     server.fail.push({ error: offline, landed: true });
     const saved = doc.set('gloss', 'DOG');
-    // The server refuses the resend, since the version moved: the read after
-    // it holds the edit, so it has landed.
     expect(await saved).toBe(true);
     await flush();
     expect(server.version).toBe(2);
+    expect(server.writes).toBe(1);
+    expect(server.keys[0]).toBe(server.keys[1]);
     expect(errors).toEqual([]);
     expect(doc.raw.values).toEqual({ gloss: 'DOG' });
+    expect(doc.isSaving).toBe(false);
   });
 
   it('is still refused when the read after the refusal holds something else there', async () => {
@@ -134,80 +177,84 @@ describe('a write made offline', () => {
     expect(doc.raw.values).toEqual({ gloss: 'CAT' });
   });
 
-  it('is refused as before outside strict mode, where the server cannot check a resend', async () => {
+  it('is sent again outside strict mode too, since its key makes a resend safe', async () => {
     const { server, client, doc, errors } = open();
     client.strictModeDocumentId = null;
-    server.fail.push({ error: offline });
-    expect(await doc.set('gloss', 'DOG')).toBe(false);
-    expect(errors).toHaveLength(1);
+    doc._writes._retryDelay = () => 0;
+    server.fail.push({ error: offline, landed: true });
+    expect(await doc.set('gloss', 'DOG')).toBe(true);
+    expect(server.writes).toBe(1);
+    expect(errors).toEqual([]);
   });
 });
 
 describe('a write whose answer was lost', () => {
-  it('reads the document again 30 s and 90 s later while a screen shows it', async () => {
-    vi.useFakeTimers();
-    const { server, doc } = open();
-    const release = doc.hold();
-    server.fail.push({ error: lost });
-    const saved = doc.set('gloss', 'DOG');
-    await vi.advanceTimersByTimeAsync(10);
-    expect(await saved).toBe(false);
-    const after = server.reads;
-    // The late write lands after the refetch that followed the failure.
-    server.values.gloss = 'DOG';
-    server.version += 1;
-    await vi.advanceTimersByTimeAsync(30000);
-    expect(server.reads).toBe(after + 1);
-    expect(doc.raw.values).toEqual({ gloss: 'DOG' });
-    await vi.advanceTimersByTimeAsync(60000);
-    expect(server.reads).toBe(after + 2);
-    release();
-  });
-
-  it('calls the later reads off once no screen shows the document', async () => {
-    vi.useFakeTimers();
-    const { server, doc } = open();
-    const release = doc.hold();
-    server.fail.push({ error: lost });
-    await doc.set('gloss', 'DOG');
-    await vi.advanceTimersByTimeAsync(0);
-    expect(doc._lateReads.size).toBe(2);
-    release();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(doc._lateReads.size).toBe(0);
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('does not read again once no screen shows the document', async () => {
-    vi.useFakeTimers();
-    const { server, doc } = open();
-    server.fail.push({ error: lost });
-    const saved = doc.set('gloss', 'DOG');
-    await vi.advanceTimersByTimeAsync(10);
-    expect(await saved).toBe(false);
-    const after = server.reads;
-    await vi.advanceTimersByTimeAsync(100000);
-    expect(server.reads).toBe(after);
-  });
-
-  it('counts a 502 as lost', async () => {
-    vi.useFakeTimers();
-    const { server, doc } = open();
-    const release = doc.hold();
-    server.fail.push({
-      error: () =>
+  for (const [what, error] of [
+    ['no response', lost],
+    [
+      'a 502',
+      () =>
         Object.assign(new Error('HTTP 502 Unable to read error response'), {
           status: 502,
           method: 'PATCH',
         }),
-      landed: true,
+    ],
+    [
+      'a 504',
+      () => Object.assign(new Error('HTTP 504 Gateway timeout'), { status: 504, method: 'PATCH' }),
+    ],
+  ]) {
+    it(`(${what}) stays saving, is sent again under the same keys, and lands once`, async () => {
+      const { server, doc, errors } = open();
+      doc._writes._retryDelay = () => 60000;
+      server.fail.push({ error, landed: true });
+      const saved = doc.set('gloss', 'DOG');
+      await flush();
+      expect(doc.isSaving).toBe(true);
+      expect(doc.isOffline).toBe(true);
+      window.dispatchEvent(new Event('online'));
+      expect(await saved).toBe(true);
+      expect(server.writes).toBe(1);
+      expect(server.keys).toHaveLength(2);
+      expect(server.keys[0]).toBe(server.keys[1]);
+      expect(errors).toEqual([]);
+      expect(doc.raw.values).toEqual({ gloss: 'DOG' });
     });
-    doc.set('gloss', 'DOG');
-    await vi.advanceTimersByTimeAsync(10);
-    const after = server.reads;
-    await vi.advanceTimersByTimeAsync(30000);
-    expect(server.reads).toBe(after + 1);
+  }
+
+  it('one that never landed is sent again on the version its first attempt claimed, and lands', async () => {
+    const { server, doc, errors } = open();
+    doc._writes._retryDelay = () => 0;
+    server.fail.push({ error: lost });
+    expect(await doc.set('gloss', 'DOG')).toBe(true);
+    expect(server.writes).toBe(1);
+    expect(errors).toEqual([]);
+    expect(server.values).toEqual({ gloss: 'DOG' });
+  });
+
+  it('every attempt of one edit joins the same operation, and the next edit its own', async () => {
+    const { server, doc } = open();
+    doc._writes._retryDelay = () => 0;
+    server.fail.push({ error: lost, landed: true });
+    await doc.set('gloss', 'DOG');
+    await doc.set('pos', 'N');
+    expect(server.groups[0]).toBe(server.groups[1]);
+    expect(server.groups[2]).not.toBe(server.groups[0]);
+    expect(server.keys[2]).not.toBe(server.keys[0]);
+  });
+
+  it('once no screen shows the document it is tried once more, then refused', async () => {
+    const { server, doc, errors } = open();
+    doc._writes._retryDelay = () => 60000;
+    const release = doc.hold();
+    server.fail.push({ error: lost }, { error: lost });
+    const saved = doc.set('gloss', 'DOG');
+    await flush();
     release();
+    await flush();
+    expect(await saved).toBe(false);
+    expect(server.keys).toHaveLength(2);
+    expect(errors).toHaveLength(1);
   });
 });
 

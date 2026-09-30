@@ -3,6 +3,7 @@
 // virtual one to a pending one to the server's, and the popover used to close
 // by itself when the save landed, before the refreshed list was ever seen
 // (REV-W-IGT2 O1).
+import { isPendingId } from '@ui/domain/pendingIds.js';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { IgtEditor } from './IgtEditor.js';
 import { IgtDocument } from '@/domain/IgtDocument.js';
@@ -73,7 +74,7 @@ describe('the lexicon popover on a word whose first gloss is being saved', () =>
     const saving = doc.updateMorphemeSpan('virtual:w-2', 'Gloss', 'CAT');
     await settle();
     const pending = morphemeOf(doc).id;
-    expect(pending).toMatch(/^pending:/);
+    expect(isPendingId(pending)).toBe(true);
     host
       .querySelector(`button[data-vocab-opener="${pending}"]`)
       .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -83,7 +84,8 @@ describe('the lexicon popover on a word whose first gloss is being saved', () =>
     await saving;
     await settle();
     const real = morphemeOf(doc).id;
-    expect(real).not.toMatch(/^(pending|virtual):/);
+    expect(isPendingId(real)).toBe(false);
+    expect(real).not.toMatch(/^virtual:/);
     expect(popover()).not.toBeNull();
     expect(host.querySelector(`[data-pop-opener="vocab:${real}"]`)).not.toBeNull();
   });

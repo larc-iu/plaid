@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AudioLines, ChevronRight, PenLine, Plus } from 'lucide-react';
 import { DocumentTable } from '@ui/components/shared/DocumentTable.jsx';
@@ -17,7 +17,7 @@ import {
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { findBaselineTextLayer } from '@/domain/igtConfig';
 import { isUnknownOutcome } from '@ui/lib/errors.js';
-import { findLostCreate } from '@ui/lib/lostCreate.js';
+import { createOnce } from '@ui/lib/createOnce.js';
 
 export const DocumentList = ({
   documents,
@@ -35,6 +35,8 @@ export const DocumentList = ({
   const [choosing, setChoosing] = useState(false);
   const [documentName, setDocumentName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  // The id the create names, kept across presses of Create (createOnce.js).
+  const mint = useRef(null);
   const navigate = useNavigate();
 
   const handleCreateDocument = async () => {
@@ -46,19 +48,9 @@ export const DocumentList = ({
     const name = documentName.trim();
     try {
       if (!client) throw new Error('Authentication required');
-      let newDocument;
-      try {
-        newDocument = await client.documents.create(projectId, name);
-      } catch (error) {
-        // The answer was lost: go on with the document the create made, if it
-        // made one, so Create cannot make a second.
-        newDocument = await findLostCreate(error, {
-          before: documents,
-          reread: () => client.projects.listDocuments(projectId),
-          isIt: (d) => d.name === name,
-        });
-        if (!newDocument) throw error;
-      }
+      const newDocument = await createOnce(mint, (id) =>
+        client.documents.create(projectId, name, undefined, undefined, { id }),
+      );
       const projectData = await client.projects.get(projectId);
       const primaryTextLayer = findBaselineTextLayer(projectData?.textLayers);
       if (primaryTextLayer) {

@@ -2,7 +2,11 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { CommentStore } from './CommentStore.js';
 
 // A comment post whose answer was lost (V5, H5-1): posted again it was stored
-// twice. And a Comments tab opened after comments were made elsewhere (H7-4).
+// twice. A post names the id of the comment it makes, and the client sends a
+// write whose answer was lost again under the same key, so it lands once.
+// When even that gives up, posting the same words again names the same id,
+// and a post that had landed is answered 409 `id-taken` and kept. And a
+// Comments tab opened after comments were made elsewhere (H7-4).
 
 const ME = 'me@example.com';
 let seq = 0;
@@ -19,8 +23,8 @@ const row = (over = {}) => ({
   ...over,
 });
 
-// A server whose `create` stores the comment and then loses the answer when
-// told to.
+// A server whose `create` stores the comment under the id it names, refuses
+// an id used before with 409 `id-taken`, and loses the answer when told to.
 const fakeClient = () => {
   const state = { rows: [], loseNext: null };
   return {
@@ -34,11 +38,19 @@ const fakeClient = () => {
             (!f.entityId || r.entityId === f.entityId),
         ),
       ),
-      create: vi.fn(async (entityType, entityId, body) => {
+      get: vi.fn(async (id) => state.rows.find((r) => r.id === id)),
+      create: vi.fn(async (entityType, entityId, body, { id } = {}) => {
+        if (state.rows.some((r) => r.id === id)) {
+          throw Object.assign(new Error('HTTP 409 id-taken'), {
+            status: 409,
+            method: 'POST',
+            responseData: { error: 'id-taken', 'id-taken': true, id },
+          });
+        }
         const lose = state.loseNext;
         state.loseNext = null;
         if (lose?.stored !== false) {
-          state.rows.push(row({ entityType, entityId, body }));
+          state.rows.push(row({ id, entityType, entityId, body }));
         }
         if (lose) throw lose.error();
         return state.rows.at(-1);
@@ -69,61 +81,45 @@ afterEach(() => {
 
 describe('a post whose answer was lost', () => {
   for (const status of [0, 502]) {
-    it(`keeps the comment when it was stored (status ${status}), so it is not posted twice`, async () => {
+    it(`(status ${status}) posted again names the same id, and the one stored is kept`, async () => {
       const client = fakeClient();
       const { store, errors } = open(client);
       await store.load();
       client.state.loseNext = { error: lost(status) };
+      expect(await store.post('token', 't1', 'Is this right?')).toBe(null);
+      expect(errors).toHaveLength(1);
       const posted = await store.post('token', 't1', 'Is this right?');
       expect(posted?.body).toBe('Is this right?');
-      expect(errors).toEqual([]);
+      const ids = client.comments.create.mock.calls.map((c) => c[3].id);
+      expect(ids[0]).toBe(ids[1]);
       expect(store.threadFor('t1').map((c) => c.body)).toEqual(['Is this right?']);
       expect(client.state.rows).toHaveLength(1);
     });
   }
 
-  it('does not take an earlier comment with the same words for it', async () => {
-    const client = fakeClient();
-    client.state.rows.push(row({ body: 'Is this right?' }));
-    const { store, errors } = open(client);
-    await store.load();
-    client.state.loseNext = { error: lost(0), stored: false };
-    expect(await store.post('token', 't1', 'Is this right?')).toBe(null);
-    expect(errors).toHaveLength(1);
-  });
-
-  it('is put back when it was not stored, and shows once it lands late', async () => {
-    vi.useFakeTimers();
-    const client = fakeClient();
-    const { store, errors } = open(client);
-    store.subscribe(() => {});
-    await store.load();
-    client.state.loseNext = { error: lost(0), stored: false };
-    expect(await store.post('token', 't1', 'Late')).toBe(null);
-    expect(errors).toHaveLength(1);
-    expect(store.threadFor('t1')).toEqual([]);
-    client.state.rows.push(row({ body: 'Late' }));
-    await vi.advanceTimersByTimeAsync(30000);
-    expect(store.threadFor('t1').map((c) => c.body)).toEqual(['Late']);
-  });
-
-  // REV-F-NET D-8: the reads at 30 s and 90 s went out after the document
-  // was closed, for a store nobody showed.
-  it('is not read again once no screen shows the store', async () => {
-    vi.useFakeTimers();
+  it('posted again after it was not stored, it is stored once', async () => {
     const client = fakeClient();
     const { store } = open(client);
-    const unsubscribe = store.subscribe(() => {});
     await store.load();
     client.state.loseNext = { error: lost(0), stored: false };
     expect(await store.post('token', 't1', 'Late')).toBe(null);
-    const reads = client.comments.list.mock.calls.length;
-    unsubscribe();
-    await vi.advanceTimersByTimeAsync(90000);
-    expect(client.comments.list.mock.calls.length).toBe(reads);
+    expect(store.threadFor('t1')).toEqual([]);
+    expect((await store.post('token', 't1', 'Late'))?.body).toBe('Late');
+    expect(client.state.rows).toHaveLength(1);
   });
 
-  it('is not looked for after a refusal, whose outcome is known', async () => {
+  it('other words are another comment, under another id', async () => {
+    const client = fakeClient();
+    const { store } = open(client);
+    await store.load();
+    client.state.loseNext = { error: lost(0), stored: false };
+    await store.post('token', 't1', 'One');
+    await store.post('token', 't1', 'Two');
+    const ids = client.comments.create.mock.calls.map((c) => c[3].id);
+    expect(ids[0]).not.toBe(ids[1]);
+  });
+
+  it('is not read again after a refusal, whose outcome is known', async () => {
     const client = fakeClient();
     const { store } = open(client);
     await store.load();

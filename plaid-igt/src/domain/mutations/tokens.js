@@ -202,7 +202,16 @@ export const tokenMutations = {
     const id = pendingId();
     this._applyRawPatch((next, infoNext) => pushWords(infoNext, text.id, [{ id, begin, end }]));
     return this._queueWrite(label, async () => {
-      const result = await this._client.tokens.create(primaryTokenLayer.id, text.id, begin, end);
+      const result = await this._client.tokens.create(
+        primaryTokenLayer.id,
+        text.id,
+        begin,
+        end,
+        undefined,
+        undefined,
+        undefined,
+        { id },
+      );
       this._settle(new Map([[id, createdId(result)]]));
     });
   },
@@ -241,6 +250,7 @@ export const tokenMutations = {
     const send = async () => {
       const result = await this._client.tokens.bulkCreate(
         words.map((w) => ({
+          id: w.id,
           tokenLayerId: primaryTokenLayer.id,
           text: text.id,
           begin: w.begin,

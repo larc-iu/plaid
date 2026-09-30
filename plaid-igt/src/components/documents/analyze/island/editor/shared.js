@@ -2,7 +2,7 @@ import { html, nothing } from 'lit-html';
 import { directive, Directive, PartType } from 'lit-html/directive.js';
 import { PROV, provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { keys } from '@/lib/keymap.js';
-import { isPendingId, settledId, stableKey } from '@ui/domain/pendingIds.js';
+import { isPendingId, settleKey, stableKey } from '@ui/domain/pendingIds.js';
 
 // Whether two cell keys name the same cell of the same row: the same key, or
 // the same row under the id the server gave it (a pending id settles), or the
@@ -15,7 +15,7 @@ import { isPendingId, settledId, stableKey } from '@ui/domain/pendingIds.js';
 export const sameCell = (a, b) => {
   if (a === b) return true;
   if (a == null || b == null) return false;
-  const norm = (k) => k.replace(/pending:\d+/g, (p) => settledId(p));
+  const norm = settleKey;
   const na = norm(a);
   const nb = norm(b);
   if (na === nb) return true;

@@ -171,29 +171,44 @@ describe('a writer', () => {
     expect(client.guidelines.create).toHaveBeenCalledWith('p1', 'Alpha', {
       body: '',
       pinned: false,
+      id: expect.stringMatching(/^[0-9a-f-]{36}$/),
     });
     await unmount();
   });
 
   // A create whose answer was lost may have made the guideline. The list is
   // read again, and the one it made is opened, so Save cannot make a second.
-  it('opens the guideline a create made when its answer was lost', async () => {
+  it('names the same id on a second Save after a lost answer, and opens what the first made', async () => {
     const lost = Object.assign(new Error('Request timed out at http://x/api/v1/guidelines'), {
       status: 0,
       method: 'POST',
     });
-    const made = { id: 'g9', title: 'Glossing', pinned: false, bodyChars: 0 };
-    const client = fakeClient({ create: vi.fn().mockRejectedValueOnce(lost) });
+    const taken = (id) =>
+      Object.assign(new Error('HTTP 409 id-taken'), {
+        status: 409,
+        method: 'POST',
+        responseData: { error: 'id-taken', 'id-taken': true, id },
+      });
+    const create = vi
+      .fn()
+      .mockRejectedValueOnce(lost)
+      .mockImplementationOnce(async (_p, _t, { id }) => Promise.reject(taken(id)));
+    const client = fakeClient({ create });
     const { container, step, unmount } = await mount({ canWrite: true, client });
     await step(() => byText(container, 'button', 'New').click());
     await step(() => typeInto(container.querySelector('#guideline-title'), 'Glossing'));
+    await step(() => byText(container, 'button', 'Save').click());
+    expect(container.querySelector('#guideline-title')).not.toBe(null);
+    const id = create.mock.calls[0][2].id;
+    const made = { id, title: 'Glossing', pinned: false, bodyChars: 0 };
     client.guidelines.list.mockResolvedValue([...INDEX, made]);
     await step(() => byText(container, 'button', 'Save').click());
 
-    expect(client.guidelines.create).toHaveBeenCalledTimes(1);
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(create.mock.calls[1][2].id).toBe(id);
     expect(container.querySelector('#guideline-title')).toBe(null);
     expect(rowTitles(container)).toContain('Glossing');
-    expect(client.guidelines.get).toHaveBeenCalledWith('g9');
+    expect(client.guidelines.get).toHaveBeenCalledWith(id);
     await unmount();
   });
 

@@ -536,6 +536,7 @@ export const analysisCopyMutations = {
       if (extra.length) {
         b.tokens.bulkCreate(
           extra.map((m) => ({
+            id: m.id,
             tokenLayerId: morphemeLayer.id,
             text: textId,
             begin: m.begin,
@@ -556,6 +557,7 @@ export const analysisCopyMutations = {
       if (links.length) {
         b.vocabLinks.bulkCreate(
           links.map((l) => ({
+            id: l.id,
             vocabItem: settledId(l.snapshot.id),
             tokens: [tokenRef(l.tokenId)],
             metadata: l.metadata,
@@ -566,6 +568,7 @@ export const analysisCopyMutations = {
       for (const [layerId, specs] of byLayer) {
         b.spans.bulkCreate(
           specs.map((s) => ({
+            id: s.id,
             spanLayerId: layerId,
             tokens: [tokenRef(s.tokenId)],
             value: s.value,
@@ -912,6 +915,8 @@ export const analysisCopyMutations = {
               [morphemes.tokenRef(w.targetId)],
               w.value,
               w.metadata || undefined,
+              undefined,
+              { id: w.id },
             ),
           );
         });

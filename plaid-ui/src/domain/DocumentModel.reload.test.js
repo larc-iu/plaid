@@ -373,10 +373,13 @@ describe('a refetch and the edits around it', () => {
     const refused = deferred();
     server.writes.push(refused);
     const a = doc.set('a', 'AAA');
-    const lost = Object.assign(new Error('Request timed out'), { status: 0, method: 'POST' });
+    const lost = Object.assign(new Error('HTTP 500 Internal error'), {
+      status: 500,
+      method: 'POST',
+    });
     refused.reject(lost);
     expect(await a).toBe(false);
-    expect(doc.error).toBe('Failed to set a: Request timed out');
+    expect(doc.error).toBe('Failed to set a: HTTP 500 Internal error');
     expect(doc.errorCause).toBe(lost);
     doc.setError('Something else');
     expect(doc.errorCause).toBe(null);

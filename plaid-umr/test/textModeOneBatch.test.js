@@ -94,10 +94,21 @@ test('a Text mode apply that makes nodes and edges is one request, naming them b
   release();
 });
 
-for (const [what, error] of [
-  ['refused', refused],
-  ['answer lost', lost],
-]) {
+// A lost answer is not a failure: the apply is sent again from the top under
+// the same Idempotency-Keys until it is answered (DocumentModel's queue), so
+// what landed is answered from what it stored and the rest runs.
+test('a Text mode apply whose answer was lost is sent again and applies', async () => {
+  const { doc, client, errors, release } = load();
+  doc._writes._retryDelay = () => 0;
+  failBatch(client, 1, lost());
+  const text = reshaped(doc);
+  const plan = doc.planPenman(1, text);
+  assert.equal(await doc.applyPenman(1, text), plan.changes);
+  assert.equal(errors.length, 0);
+  release();
+});
+
+for (const [what, error] of [['refused', refused]]) {
   test(`a Text mode apply that fails (${what}) sends nothing after it and says it failed`, async () => {
     const { doc, client, calls, requests, errors, release } = load();
     failBatch(client, 1, error());
@@ -161,11 +172,8 @@ test('past one request, a failed node request deletes its anchors without a vers
   release();
 });
 
-test('past one request, a failed edge request says the nodes stand, and a lost answer is not confirmed', async () => {
-  for (const [error, missing] of [
-    [refused, 'Not saved'],
-    [lost, 'Not confirmed'],
-  ]) {
+test('past one request, a failed edge request says the nodes stand', async () => {
+  for (const [error, missing] of [[refused, 'Not saved']]) {
     const { doc, client, calls, errors, text, release } = await big();
     failBatch(client, 3, error());
     assert.equal(await doc.applyPenman(1, text), false);
@@ -202,26 +210,14 @@ test('past one request, a first request that failed after some of it was saved s
 });
 
 // REV-W-LAST: a node request whose answer was lost may have stored the nodes.
-// Only the anchor delete that follows takes them away again, and it is best
-// effort: when it fails too (the connection is gone), the nodes may stand,
-// and the message may not say they were not saved.
-test('past one request, a node request whose answer was lost is not saved only when its anchors were removed', async () => {
-  for (const [undo, missing] of [
-    ['works', 'Not saved'],
-    ['fails', 'Not confirmed'],
-  ]) {
-    const { doc, client, errors, text, release } = await big();
-    failBatch(client, 2, lost());
-    if (undo === 'fails') client.tokens.bulkDelete = async () => Promise.reject(lost());
-    assert.equal(await doc.applyPenman(1, text), false);
-    assert.equal(errors.length, 1);
-    assert.match(
-      errors[0].msg,
-      new RegExp(
-        `Partly applied\\. Saved: deletions and changes\\. ${missing}: new nodes and edges\\.`,
-      ),
-      `the anchor delete ${undo}`,
-    );
-    release();
-  }
+// It is sent again under its key, so the nodes stand once, and their anchors
+// are never taken away under them.
+test('past one request, a node request whose answer was lost is sent again, and its anchors stay', async () => {
+  const { doc, client, calls, errors, text, release } = await big();
+  doc._writes._retryDelay = () => 0;
+  failBatch(client, 2, lost());
+  assert.ok(await doc.applyPenman(1, text));
+  assert.equal(calls.filter((c) => c.name === 'tokens.bulkDelete').length, 0);
+  assert.equal(errors.length, 0);
+  release();
 });

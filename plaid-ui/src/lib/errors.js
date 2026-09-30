@@ -83,10 +83,23 @@ export const isGone = (error) => {
   return GONE_403.test(msg.trim());
 };
 
+// A create refused because the id it names was used before (409 with
+// `error: "id-taken"`): the page minted the id, so the create it sent earlier
+// landed and its answer was lost. What was made is there under that id.
+export const isIdTaken = (error) =>
+  statusOf(error) === 409 &&
+  (error?.responseData?.error === 'id-taken' || error?.responseData?.['id-taken'] === true);
+
+// A write refused because its Idempotency-Key was sent before with another
+// request (422 with `error: "idempotency-key-reused"`).
+const isKeyReused = (error) =>
+  statusOf(error) === 422 && error?.responseData?.error === 'idempotency-key-reused';
+
 // A write refused because the document changed under it: a conflict (409),
 // or what it names is gone. Either way the screen refetches and shows what
-// is there now.
-export const isChangedElsewhere = (error) => statusOf(error) === 409 || isGone(error);
+// is there now. A taken id is not that: it is the page's own create.
+export const isChangedElsewhere = (error) =>
+  (statusOf(error) === 409 && !isIdTaken(error)) || isGone(error);
 
 export const UNKNOWN_OUTCOME_TITLE = 'Not confirmed';
 const GONE = 'Changed or removed by someone else.';
@@ -113,6 +126,8 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
   if (isUnreachable(error)) return UNREACHABLE;
   if (isGone(error)) return GONE;
   if (isLockLost(error)) return 'The lock on this document lapsed.';
+  if (isIdTaken(error)) return 'This was saved already.';
+  if (isKeyReused(error)) return 'This change was not sent: try it again.';
   // An edit that names a row by the id it was shown under before the server
   // made it (pendingIds.js): the create it waited on was refused.
   if (statusOf(error) === 400 && /\bshould be a uuid\b/i.test(String(error?.message ?? error))) {

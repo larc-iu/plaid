@@ -140,12 +140,13 @@ describe('saveBaselineText and the sentence partition', () => {
     ]);
   });
 
-  it('a save whose answer was lost and that did not land is reported, not seeded', async () => {
+  it('a save whose answer was lost and that did not land is sent again until it is answered', async () => {
     const raw = buildRawDoc({ body: 'old', sentences: [{ id: 's-1', begin: 0, end: 3 }] });
     const client = scriptedClient({ reads: [raw], answers: [httpError(0)] });
     const doc = makeDoc({ raw, client });
-    expect(await doc.saveBaselineText('new\nlines')).toBe(false);
-    expect(client.calls.some((c) => c.kind === 'tokens.bulkCreate')).toBe(false);
+    doc._writes._retryDelay = () => 0;
+    expect(await doc.saveBaselineText('new\nlines')).toBe(true);
+    expect(updates(client)).toEqual(['new\nlines', 'new\nlines']);
   });
 });
 

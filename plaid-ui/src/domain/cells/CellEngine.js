@@ -1,4 +1,4 @@
-import { settledId } from '../pendingIds.js';
+import { settleKey } from '../pendingIds.js';
 import { setUnsavedDraft } from '../../hooks/useUnsavedDraft.js';
 
 // What becomes of a grid cell's edit that the server refused, one copy for
@@ -48,7 +48,7 @@ const FINAL = new Set([403, 404]);
 // The document's own toast gives the reason.
 const REJECTED = new Set([422]);
 
-const settlePending = (key) => String(key ?? '').replace(/pending:\d+/g, (p) => settledId(p));
+const settlePending = settleKey;
 
 export class CellEngine {
   /**

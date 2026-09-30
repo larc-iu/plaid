@@ -4,6 +4,7 @@
 // so the page does not carry this text until a rule runs.
 
 import s0 from '../../../plaid-client-js/src/provenance.js?raw';
+import s24 from '../../../plaid-client-js/src/ids.js?raw';
 import s1 from './affixMarkers.js?raw';
 import s2 from './analysisMemory.js?raw';
 import s3 from './autoLink.js?raw';
@@ -26,6 +27,7 @@ import s21 from '@ui/domain/pendingIds.js?raw';
 import s23 from '@ui/domain/setupGuard.js?raw';
 
 export const SOURCE_TEXTS = {
+  'plaid-client-js/src/ids.js': s24,
   'plaid-client-js/src/provenance.js': s0,
   'plaid-igt/src/domain/affixMarkers.js': s1,
   'plaid-igt/src/domain/analysisMemory.js': s2,

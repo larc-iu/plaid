@@ -13,7 +13,7 @@ import { useLatestCall } from '../../hooks/useLatestCall.js';
 import { pageKey, LIST_PAGE_SIZE, usePagedList } from '../../hooks/usePagedList.js';
 import { collationKey, compareText, textIncludes } from '../../domain/collation.js';
 import { humanizeError, isUnknownOutcome, statusOf } from '../../lib/errors.js';
-import { findLostCreate } from '../../lib/lostCreate.js';
+import { createOnce } from '../../lib/createOnce.js';
 import { lazyNamed } from '../../lib/lazyNamed.js';
 import { notifyError, notifySuccess } from '../../lib/notify.js';
 import { useGuidelineCaps } from './guidelineCaps.js';
@@ -48,6 +48,8 @@ const blankDraft = () => ({
   body: '',
   pinned: false,
   base: { title: '', body: '' },
+  // The id the create names, kept across presses of Save (createOnce.js).
+  mint: { current: null },
 });
 
 /** One row in the list. */
@@ -204,22 +206,15 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
           expectedUpdatedAt: overwrite ? undefined : draft.updatedAt,
         });
       } else {
-        let created;
-        try {
-          created = await client.guidelines.create(projectId, title, {
+        // The draft keeps the id of what it makes across presses, so Save
+        // after an answer that never came cannot make a second.
+        const created = await createOnce(draft.mint, (id) =>
+          client.guidelines.create(projectId, title, {
             body: draft.body,
             pinned: draft.pinned,
-          });
-        } catch (error) {
-          // The answer was lost: open the guideline the create made, if it
-          // made one, so Save cannot make a second.
-          created = await findLostCreate(error, {
-            before: entries,
-            reread: () => client.guidelines.list(projectId),
-            isIt: (g) => g.title === title,
-          });
-          if (!created) throw error;
-        }
+            id,
+          }),
+        );
         setSelectedId(created.id);
       }
       setDraft(null);

@@ -303,6 +303,8 @@ export const vocabMutations = {
           settledId(vocabItemId),
           [morphemes.tokenRef(targetTokenId)],
           stamp || undefined,
+          undefined,
+          { id: linkId },
         );
         linkAt = b.ref().$ref;
         if (patchType) {
@@ -417,6 +419,7 @@ export const vocabMutations = {
     if (!plan.links.length) return () => {};
     b.vocabLinks.bulkCreate(
       plan.links.map((l) => ({
+        id: l.id,
         vocabItem: itemRef,
         tokens: [tokenRef(l.token)],
         ...(plan.stamp ? { metadata: plan.stamp } : {}),
@@ -572,6 +575,8 @@ export const vocabMutations = {
         settledId(vocabItemId),
         tokens.map(settledId),
         stamp || undefined,
+        undefined,
+        { id: linkId },
       );
       this._settle(new Map([[linkId, createdId(result)]]));
     });
@@ -618,11 +623,11 @@ export const vocabMutations = {
     return this._queueWrite(label, async () => {
       let itemAt;
       const results = await this._client.batched(async (b) => {
-        b.vocabItems.create(vocabId, form, metadataArg);
+        b.vocabItems.create(vocabId, form, metadataArg, undefined, { id: newItem.id });
         const itemRef = b.ref();
         itemAt = itemRef.$ref;
         if (replaceLinkId) b.vocabLinks.delete(settledId(replaceLinkId));
-        b.vocabLinks.create(itemRef, tokens.map(settledId), stamp);
+        b.vocabLinks.create(itemRef, tokens.map(settledId), stamp, undefined, { id: linkId });
       });
       this._settle(
         new Map([
@@ -671,7 +676,9 @@ export const vocabMutations = {
     return this._queueWrite(label, async () => {
       const results = await this._client.batched(async (b) => {
         b.vocabLinks.delete(settledId(prior.id));
-        b.vocabLinks.create(settledId(vocabItemId), tokens.map(settledId), stamp);
+        b.vocabLinks.create(settledId(vocabItemId), tokens.map(settledId), stamp, undefined, {
+          id: newLinkId,
+        });
       });
       this._settle(new Map([[newLinkId, createdId(results[results.length - 1])]]));
     });
@@ -712,7 +719,13 @@ export const vocabMutations = {
     return this._queueWrite(label, async () => {
       const results = await this._client.batched(async (b) => {
         b.vocabLinks.delete(settledId(prior.id));
-        b.vocabLinks.create(settledId(itemId), tokens.map(settledId), metadata || undefined);
+        b.vocabLinks.create(
+          settledId(itemId),
+          tokens.map(settledId),
+          metadata || undefined,
+          undefined,
+          { id: newLinkId },
+        );
       });
       this._settle(new Map([[newLinkId, createdId(results[results.length - 1])]]));
     });
@@ -878,11 +891,13 @@ export const vocabMutations = {
       let linkAt;
       const results = await this._client.batched(async (b) => {
         morphemes = this._queueMorphemes(b, [...creates, ...others.creates]);
-        b.vocabItems.create(vocabId, form, metadataArg);
+        b.vocabItems.create(vocabId, form, metadataArg, undefined, { id: newItem.id });
         const itemRef = b.ref();
         itemAt = itemRef.$ref;
         if (priorLink) b.vocabLinks.delete(settledId(priorLink.id));
-        b.vocabLinks.create(itemRef, [morphemes.tokenRef(targetTokenId)], stamp);
+        b.vocabLinks.create(itemRef, [morphemes.tokenRef(targetTokenId)], stamp, undefined, {
+          id: linkId,
+        });
         linkAt = b.ref().$ref;
         if (patchType) {
           b.tokens.patchMetadata(settledId(targetTokenId), [

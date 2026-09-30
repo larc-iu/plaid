@@ -42,14 +42,17 @@
 // the save-status pills watch, so closing the tab asks while anything is
 // still on its way.
 //
-// A send that failed before anything of it reached the server (the browser
-// was offline) goes again once the network is back, when the caller's
-// `resendWhenBack(err)` says so, instead of being refused. Meanwhile
-// `isOffline` is true. Only a caller whose sends the server can check
-// (a document version) asks for it: a resend that did land after all is then
-// refused as a conflict rather than written twice. Once the queue is let go,
-// the wait ends at once: the send is tried one more time, and refused if it
-// fails again, so nothing waits on a network no screen is watching for.
+// A send whose answer never came (no response, a 502 or 504 from a proxy)
+// goes again, when the caller's `resendWhenBack(err)` says so, instead of
+// being refused, and again, waiting a little longer each time and at once
+// when the browser says the network is back, until the server answers.
+// Meanwhile `isOffline` is true, so "Saving" and the close-tab question stay
+// on. A caller asks for it when its sends are keyed (an Idempotency-Key per
+// request, the same on every attempt): the requests of an attempt that
+// landed are answered from what they stored and write nothing twice. Once
+// the queue is let go, the wait ends at once: the send is tried one more
+// time, and refused if it fails again, so nothing waits on a network no
+// screen is watching for.
 //
 // Once the page is being unloaded (`pagehide`), no send starts. Leaving the
 // page aborts the send in flight, and the one behind it would otherwise go
@@ -215,8 +218,8 @@ export class WriteQueue {
    * Queue `send`. Resolves true when it landed, false when it was refused.
    * `refused(err)` reports a refusal. For a write that showed something,
    * `resync()` refetches what it showed. `resendWhenBack(err)` says whether a
-   * failed send may go again once the network is back: true only when none
-   * of it reached the server.
+   * failed send goes again until it is answered: true for a lost answer to a
+   * send whose requests are keyed, so a resend writes nothing twice.
    */
   push(send, { refused = null, resync = null, shown = true, resendWhenBack = null } = {}) {
     const entry = { shown };
@@ -267,7 +270,7 @@ export class WriteQueue {
           if (attempt) this._setOffline(false);
           throw err;
         }
-        console.error('A write could not be sent, and goes again once back online:', err);
+        console.error('A write got no answer, and goes again until it does:', err);
         this._setOffline(true);
         await this._untilOnline(this._retryDelay(attempt));
         await untilShown();

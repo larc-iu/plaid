@@ -1,24 +1,43 @@
 // A row the server has not made yet, shown at once.
 //
 // Every edit is optimistic, creates included: the row goes into the local
-// document under a PENDING id before the round trip, and once the server
-// answers, `settleIds` puts the server's ids in its place.
+// document under an id this page mints (`newId`, a UUIDv7) before the round
+// trip, and a create sends that id, so the server makes the row under it and
+// a create sent again after a lost answer lands once. Until its create lands
+// the id is PENDING (`isPendingId`).
 //
-// Two things can still hold a pending id after that: a later edit, made while
-// this one was in flight, whose server call is queued behind it; and the
-// screen (an open label editor, a selected word). `settledId` turns such an id
-// into the server's, and `stableKey` turns a server id back into the pending
-// one it replaced, so a React key made from it does not change and remount
-// what is on screen when the ids swap.
+// A row the server makes under an id of its own (a create that sends none, a
+// text save that reshapes tokens, a copy) gets the server's ids when it
+// answers: `settleIds` puts them in place of the ids shown. Two things can
+// still hold an old id after that: a later edit, made while this one was in
+// flight, whose server call is queued behind it, and the screen (an open
+// label editor, a selected word). `settledId` turns such an id into the
+// server's, and `stableKey` turns a server id back into the one it replaced,
+// so a React key made from it does not change and remount what is on screen
+// when the ids swap. For a row created under the id this page minted, both
+// are the identity.
+//
+// Imports only the client's ids.js, which imports nothing, so the node suites
+// can reach this file by relative path.
 
-let pendingSeq = 0;
+import { uuidv7 } from '../../../plaid-client-js/src/ids.js';
+
+// Ids minted here whose create has not landed.
+const minted = new Set();
 const serverIdOf = new Map();
 const pendingIdOf = new Map();
 
-// The prefix cannot collide with a server UUID.
-export const pendingId = () => `pending:${++pendingSeq}`;
+/** A fresh id for a row this page creates, pending until its create lands. */
+export const newId = () => {
+  const id = uuidv7();
+  minted.add(id);
+  return id;
+};
 
-export const isPendingId = (id) => typeof id === 'string' && id.startsWith('pending:');
+/** The same as `newId`, under the name the apps used first. */
+export const pendingId = newId;
+
+export const isPendingId = (id) => typeof id === 'string' && minted.has(id);
 
 // The id the server knows this row by, once it has answered. Any other id is
 // returned as it is.
@@ -27,9 +46,25 @@ export const settledId = (id) => serverIdOf.get(id) ?? id;
 // The id a row was first shown under, for a React key.
 export const stableKey = (id) => pendingIdOf.get(id) ?? id;
 
+const ID_IN_TEXT = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+/** `key` (a string naming rows by id, such as a cell key) with every id settled. */
+export const settleKey = (key) => String(key ?? '').replace(ID_IN_TEXT, (id) => settledId(id));
+
+/** Whether `key` names a row whose create has not landed. */
+export const namesPendingId = (key) =>
+  (String(key ?? '').match(ID_IN_TEXT) ?? []).some((id) => minted.has(id));
+
+/**
+ * The creates that minted these ids landed (a map or list of pending id to
+ * the server's id): they are no longer pending. A pair whose server id
+ * differs is remembered for `settledId` and `stableKey`.
+ */
 export function recordSettled(ids) {
   for (const [pending, server] of ids) {
     if (!server) continue;
+    minted.delete(pending);
+    if (server === pending) continue;
     serverIdOf.set(pending, server);
     pendingIdOf.set(server, pending);
   }

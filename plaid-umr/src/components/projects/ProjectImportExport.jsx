@@ -15,12 +15,8 @@ const prepareImport = async ({ client, project, projectId }) => {
   // passed in: otherwise the importer re-reads the project per document.
   const layerInfo = getUmrLayerInfo(project);
   let existingDocs = [];
-  // The documents there before each import, for a create whose answer was
-  // lost to find the one it made. Unknown when the list could not be read.
-  let before = null;
   try {
     existingDocs = await client.projects.listDocuments(projectId);
-    before = [...existingDocs];
   } catch (err) {
     console.error('Could not list the documents before importing:', err);
   }
@@ -54,7 +50,7 @@ const prepareImport = async ({ client, project, projectId }) => {
     try {
       result = await client.withOperation(
         `Import UMR document "${name}"`,
-        () => importUmrDocument(client, projectId, name, text, layerInfo, { into, before }),
+        () => importUmrDocument(client, projectId, name, text, layerInfo, { into }),
         IMPORT_KIND,
       );
       if (target.note) result = asNew(target.note)(result);
@@ -65,13 +61,12 @@ const prepareImport = async ({ client, project, projectId }) => {
       result = asNew(err.message)(
         await client.withOperation(
           `Import UMR document "${name}"`,
-          () => importUmrDocument(client, projectId, name, text, layerInfo, { before }),
+          () => importUmrDocument(client, projectId, name, text, layerInfo),
           IMPORT_KIND,
         ),
       );
     }
     const { warnings, attached } = result;
-    if (before && !attached) before.push(result.document);
     push({
       key: `${index}`,
       name,

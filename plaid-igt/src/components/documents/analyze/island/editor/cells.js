@@ -12,7 +12,7 @@ import { readFieldLang, readVocabFields } from '@/domain/igtConfig';
 import { notifyError, notifyInfo } from '@/utils/feedback';
 import { arrowStep, caretAtArrowEdge } from '@ui/lib/bidi.js';
 import { keys } from '@/lib/keymap.js';
-import { settledId } from '@ui/domain/pendingIds.js';
+import { namesPendingId, settleKey } from '@ui/domain/pendingIds.js';
 import { cellByKey, morphFormOf, sameCell } from './shared.js';
 import { readCell } from './cellReader.js';
 
@@ -543,7 +543,7 @@ export const cells = {
     el.igtDisplaced = null;
     this._syncCellClasses(el, el.value, el.igtTagset ?? null);
     el.blur();
-    const key = d.key.replace(/pending:\d+/g, (p) => settledId(p));
+    const key = settleKey(d.key);
     const home = cellByKey(this.container, key);
     if (home && home !== el) {
       const stored = readCell(this.doc, key) ?? '';
@@ -560,7 +560,7 @@ export const cells = {
       this._syncCellClasses(home, d.typed, home.igtTagset ?? null);
       return;
     }
-    if (/pending:\d+/.test(key)) return;
+    if (namesPendingId(key)) return;
     notifyError(`Not saved: ${d.typed}`, 'Changed elsewhere');
   },
 

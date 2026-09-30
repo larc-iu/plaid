@@ -12,30 +12,22 @@
 // document read. Nothing in here goes through `client.withOperation`.
 
 import { clipText } from '../lib/text.js';
-import { isUnknownOutcome } from '../lib/errors.js';
+import { isIdTaken, isUnknownOutcome } from '../lib/errors.js';
+import { isPendingId, newId, recordSettled } from './pendingIds.js';
 
 // Comments sort oldest-first by (createdAt, id), matching the server's keyset
 // order so a locally-inserted comment and a re-fetched page agree.
 const byCreated = (a, b) =>
   a.createdAt === b.createdAt ? (a.id < b.id ? -1 : 1) : a.createdAt < b.createdAt ? -1 : 1;
 
-// An id for an optimistic comment that has not been acknowledged yet. Prefixed
-// so it can never collide with a server UUID, and so `pendingId?.startsWith`
-// is enough to recognize one.
-let tempSeq = 0;
-
 // How often an open live stream is checked for having been closed by the
 // server, and the `readyState` a closed one reports.
 const LIVE_CHECK_MS = 5000;
 const CLOSED = 2;
 
-// When a thread is read again after a post whose answer was lost: a request
-// the client gave up on is not stopped, and may land after the first look.
-const LATE_READS_MS = [30000, 90000];
-
-const tempId = () => `pending:${++tempSeq}`;
-export const isPending = (comment) =>
-  typeof comment?.id === 'string' && comment.id.startsWith('pending:');
+// An optimistic comment is shown under the id its post names (pendingIds.js),
+// pending until the post lands.
+export const isPending = (comment) => isPendingId(comment?.id);
 
 /**
  * A composer's text after a refused post: what was posted, back in front of
@@ -88,6 +80,9 @@ export class CommentStore {
     this._documentId = documentId;
     this._vocabId = vocabId;
     this._currentUserId = currentUserId;
+    // The id of a post whose answer was lost, by what it posted, so posting
+    // the same words again names the same id and cannot store them twice.
+    this._unconfirmed = new Map();
 
     this._byEntity = new Map(); // entityId -> Comment[] (oldest first)
     this._byId = new Map(); // commentId -> Comment
@@ -349,12 +344,11 @@ export class CommentStore {
     // The server's ceiling is 200 code points. A UTF-16 slice could cut an
     // emoji in half, and the server refuses the lone surrogate that leaves.
     const caption = clipText(String(anchorLabel ?? '').trim(), 200).trim() || null;
-    // The thread as it was, so a comment the post made can be told from one
-    // that was there already.
-    const before = new Set(this.threadFor(entityId).map((c) => c.id));
+    const said = `${entityType}\n${entityId}\n${text}`;
+    const id = this._unconfirmed.get(said) ?? newId();
 
     const optimistic = {
-      id: tempId(),
+      id,
       projectId: this._projectId,
       documentId: this._documentId,
       vocabLayerId: this._vocabId,
@@ -376,38 +370,41 @@ export class CommentStore {
         entityType,
         entityId,
         text,
-        caption ? { anchorLabel: caption } : {},
+        caption ? { anchorLabel: caption, id } : { id },
       );
-      // Swap the placeholder for the server's row rather than re-fetching: the
-      // response is the authoritative comment, ids and timestamps included.
-      this._forget(optimistic.id);
-      this._insert(created);
-      this._byEntity.get(created.entityId)?.sort(byCreated);
-      this._emit();
-      // The author's own name may not be cached yet: `_resolveAuthors` runs on
-      // load, and on load there were no comments of theirs to resolve.
-      this._authorsPromise = this._resolveAuthors();
-      return created;
+      return this._posted(said, id, created);
     } catch (err) {
-      this._forget(optimistic.id);
-      // The answer was lost, so the comment may be stored. Posting it again
-      // would store it twice, so the thread is read first, and the comment
-      // is kept when it is there.
-      if (isUnknownOutcome(err)) {
-        const landed = await this._findPosted(entityType, entityId, text, before);
-        if (landed) {
-          this._insert(landed);
-          this._byEntity.get(landed.entityId)?.sort(byCreated);
-          this._emit();
-          this._authorsPromise = this._resolveAuthors();
-          return landed;
+      this._forget(id);
+      // The same words posted before under this id, whose answer was lost:
+      // that post landed, and it is the comment.
+      if (isIdTaken(err)) {
+        try {
+          return this._posted(said, id, await this._client.comments.get(id));
+        } catch (readErr) {
+          console.error('Could not read a comment that was posted already:', readErr);
         }
-        this._readThreadLater(entityType, entityId);
       }
+      // No answer came even after the client's own resends. Posting the same
+      // words again names the same id, so it cannot store them twice.
+      if (isUnknownOutcome(err)) this._unconfirmed.set(said, id);
       this._fail('Failed to post comment', err);
       this._emit();
       return null;
     }
+  }
+
+  // The server's row for a post, in place of the one shown while it went.
+  _posted(said, id, created) {
+    this._unconfirmed.delete(said);
+    recordSettled([[id, created.id]]);
+    this._forget(id);
+    this._insert(created);
+    this._byEntity.get(created.entityId)?.sort(byCreated);
+    this._emit();
+    // The author's own name may not be cached yet: `_resolveAuthors` runs on
+    // load, and on load there were no comments of theirs to resolve.
+    this._authorsPromise = this._resolveAuthors();
+    return created;
   }
 
   // The thread on `entityId` as the server has it now.
@@ -425,37 +422,6 @@ export class CommentStore {
     for (const c of [...thread].sort(byCreated)) this._insert(c);
     this._emit();
     this._authorsPromise = this._resolveAuthors();
-  }
-
-  // A comment by this user with this text that was not in the thread before
-  // the post, or null (also when the thread cannot be read).
-  async _findPosted(entityType, entityId, text, before) {
-    try {
-      const thread = await this._readThread(entityType, entityId);
-      return (
-        thread.find(
-          (c) => !before.has(c.id) && c.authorId === this._currentUserId && c.body === text,
-        ) ?? null
-      );
-    } catch (readErr) {
-      console.error('Could not read the thread again after a lost answer:', readErr);
-      return null;
-    }
-  }
-
-  // Read the thread again later, so a post that lands late shows. Only while
-  // a screen still shows this store (subscribes to it): once the document is
-  // closed, nobody would see what the read finds.
-  _readThreadLater(entityType, entityId) {
-    for (const ms of LATE_READS_MS) {
-      setTimeout(() => {
-        if (this._listeners.size === 0) return;
-        this._readThread(entityType, entityId).then(
-          (thread) => this._replaceThread(entityId, thread),
-          (err) => console.error('Failed to read the thread again:', err),
-        );
-      }, ms);
-    }
   }
 
   /**

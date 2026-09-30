@@ -2432,7 +2432,7 @@ describe('multi-word expressions', () => {
       expect.arrayContaining(['vocabItems.create', 'vocabLinks.create']),
     );
     const itemCall = client.calls.find((c) => c.kind === 'vocabItems.create');
-    expect(itemCall.args).toEqual(['v1', 'cat down', { morphType: 'phrase' }]);
+    expect(itemCall.args.slice(0, 3)).toEqual(['v1', 'cat down', { morphType: 'phrase' }]);
     const s = doc.sentences[0];
     expect(s.mwes[0].item.form).toBe('cat down');
     expect(s.mwes[0].item.metadata.morphType).toBe('phrase');

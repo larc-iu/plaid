@@ -34,19 +34,14 @@ const rowHref = (projectId, documentId, { wordCount, hasWordLayer, wordsLoading 
 
 // The list is handed to the form so a create whose answer was lost can find
 // the document it made among the ones that were not there before.
-const NewDocument = ({ projectId, documents }) => {
+const NewDocument = ({ projectId }) => {
   const [open, setOpen] = useState(false);
   return (
     <>
       <Button onClick={() => setOpen(true)}>
         <Plus className="h-4 w-4" /> New document
       </Button>
-      <DocumentForm
-        projectId={projectId}
-        documents={documents}
-        isOpen={open}
-        onClose={() => setOpen(false)}
-      />
+      <DocumentForm projectId={projectId} isOpen={open} onClose={() => setOpen(false)} />
     </>
   );
 };

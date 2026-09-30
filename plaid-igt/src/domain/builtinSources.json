@@ -1,5 +1,6 @@
 {
   "analysis-copy": [
+    "plaid-client-js/src/ids.js",
     "plaid-client-js/src/provenance.js",
     "plaid-igt/src/domain/affixMarkers.js",
     "plaid-igt/src/domain/analysisMemory.js",
@@ -21,6 +22,7 @@
     "plaid-ui/src/domain/setupGuard.js"
   ],
   "precedent": [
+    "plaid-client-js/src/ids.js",
     "plaid-client-js/src/provenance.js",
     "plaid-igt/src/domain/affixMarkers.js",
     "plaid-igt/src/domain/autoLink.js",

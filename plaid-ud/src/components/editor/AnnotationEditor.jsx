@@ -302,8 +302,8 @@ export const AnnotationEditor = () => {
   // away from waits for its cell and still counts as typed and not saved. A
   // value refused over one someone else has stored since is a conflict, and a
   // toast names who changed it and to what. One per document: another
-  // document is another grid. A cell's key is `<token id>:<field>`, and a
-  // token id may hold a colon (`pending:<n>`), a field never does.
+  // document is another grid. A cell's key is `<token id>:<field>`, split at
+  // its last colon.
   // Read when an answer comes, which can be before this component has drawn
   // the document it answers about, so it goes by the document's own version.
   const tokenData = useMemo(() => {

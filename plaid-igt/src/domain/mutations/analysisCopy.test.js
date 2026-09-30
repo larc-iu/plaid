@@ -108,12 +108,12 @@ describe('bulkReplaceAnalyses', () => {
     const applyKinds = apply.map((c) => c.kind);
     expect(applyKinds).toEqual(['vocabLinks.bulkCreate', 'spans.bulkCreate', 'spans.bulkCreate']);
     expect(apply.find((c) => c.kind === 'vocabLinks.bulkCreate').args[0]).toEqual([
-      { vocabItem: 'i-kat', tokens: ['m-2'], metadata: {} },
+      { id: expect.any(String), vocabItem: 'i-kat', tokens: ['m-2'], metadata: {} },
     ]);
     const spanSpecs = apply.filter((c) => c.kind === 'spans.bulkCreate').flatMap((c) => c.args[0]);
     expect(spanSpecs).toEqual([
-      { spanLayerId: 'msl-0', tokens: ['m-2'], value: 'cat', metadata: {} },
-      { spanLayerId: 'wsl-0', tokens: ['w-2'], value: 'N', metadata: {} },
+      { id: expect.any(String), spanLayerId: 'msl-0', tokens: ['m-2'], value: 'cat', metadata: {} },
+      { id: expect.any(String), spanLayerId: 'wsl-0', tokens: ['w-2'], value: 'N', metadata: {} },
     ]);
     // The first morpheme's form equals the word surface, so no metadata patch,
     // and the analysis has one slot, so no morpheme is created.
@@ -170,7 +170,7 @@ describe('bulkReplaceAnalyses', () => {
     expect(await doc.applyAnalysisToWords(['w-2'], targetAnalysis)).toBe(1);
     expect(client.calls[0]).toEqual({ kind: 'beginOperation', args: ['Analyze words'] });
     expect(client.calls.find((c) => c.kind === 'vocabLinks.bulkCreate').args[0]).toEqual([
-      { vocabItem: 'i-kat', tokens: ['m-2'], metadata: {} },
+      { id: expect.any(String), vocabItem: 'i-kat', tokens: ['m-2'], metadata: {} },
     ]);
 
     const busy = clientFor();

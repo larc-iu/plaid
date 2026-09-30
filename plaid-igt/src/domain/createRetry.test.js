@@ -147,7 +147,7 @@ describe('linking an existing entry to a word nobody has analyzed', () => {
     expect(await doc.linkVocab('virtual:w-1', 'vi-1')).toBe(true);
     expect(calls(client, 'batch.submit')).toHaveLength(1);
     const [link] = calls(client, 'vocabLinks.create');
-    expect(link.args).toEqual(['vi-1', [{ $ref: 0 }], undefined]);
+    expect(link.args.slice(0, 3)).toEqual(['vi-1', [{ $ref: 0 }], undefined]);
     expect(word(doc, 0).morphemes[0].vocabItem?.id).toBe('vi-1');
   });
 

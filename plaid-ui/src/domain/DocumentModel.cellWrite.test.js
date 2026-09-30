@@ -90,12 +90,25 @@ describe('cellWrite', () => {
     expect(errors.map((e) => e.err.status)).toEqual([500]);
   });
 
-  it('says a write whose answer was lost may have landed', async () => {
+  it('says a write whose answer was lost may have landed, once no screen waits for it', async () => {
     const { server, doc } = open();
-    server.fail.push(failing(502));
-    const outcome = await doc.cellWrite(() => doc.set('gloss', 'DOG'));
+    server.fail.push(failing(502), failing(502));
+    const release = doc.hold();
+    const pending = doc.cellWrite(() => doc.set('gloss', 'DOG'));
+    await new Promise((r) => setTimeout(r, 0));
+    release();
+    const outcome = await pending;
     expect(outcome).toMatchObject({ landed: false, status: 502, uncertain: true });
-    doc.hold()();
+  });
+
+  it('sends a write whose answer was lost again until it is answered', async () => {
+    const { server, doc } = open();
+    doc._writes._retryDelay = () => 0;
+    server.fail.push(failing(502));
+    expect(await doc.cellWrite(() => doc.set('gloss', 'DOG'))).toEqual({
+      landed: true,
+      value: true,
+    });
   });
 
   it('says when what the document holds may not be what the server holds', async () => {

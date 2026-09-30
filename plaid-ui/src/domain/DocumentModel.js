@@ -22,8 +22,8 @@ import {
   withTextDirection,
 } from './textDirection.js';
 import { WriteQueue } from './WriteQueue.js';
-import { recordSettled, settleIds } from './pendingIds.js';
-import { footprintOf, landed, pendingIdsOf, resendable } from './rebase.js';
+import { newId, recordSettled, settleIds } from './pendingIds.js';
+import { footprintOf, pendingIdsOf, resendable } from './rebase.js';
 
 const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
 
@@ -51,11 +51,6 @@ const dependencyError = () =>
     ),
     { status: 400 },
   );
-
-// When the document is read again after a write whose answer was lost: the
-// write may still land after the read that followed the failure (a request
-// the client gave up on is not stopped), and nothing else would show it.
-const LATE_READS_MS = [30000, 90000];
 
 // How many waiting edits keep the document they were made on, for telling
 // whether a change elsewhere touched them (rebase.js). One past that is
@@ -120,14 +115,12 @@ export class DocumentModel {
     this._unsent = [];
     // How many screens show this document right now (`hold`).
     this._holds = 0;
-    // The History label a screen gave the writes it is making (`labelled`),
-    // and the timers of the reads after a lost answer (`_readLater`).
+    // The History label a screen gave the writes it is making (`labelled`).
     this._operation = null;
     this._conflictHandled = false;
     this._byEntity = false;
     // The writes a `cellWrite` queues, each with its refusal once it has one.
     this._cellScope = null;
-    this._lateReads = new Set();
     // The document before the first patch of the edit being made, until its
     // write is queued (`_queueWrite`), and whether any of its patches changed
     // what the subclass keeps beside the document (`_changesBeside`).
@@ -306,8 +299,7 @@ export class DocumentModel {
    *
    * The release takes effect a moment later, so a screen that lets go and
    * holds again at once (StrictMode, a remount) is not let go at all. Held
-   * again after a refetch was left undone, the document refetches. The reads
-   * after a lost answer (`_readLater`) are called off with it.
+   * again after a refetch was left undone, the document refetches.
    */
   hold() {
     this._holds += 1;
@@ -322,8 +314,6 @@ export class DocumentModel {
       setTimeout(() => {
         if (this._holds !== 0) return;
         this._writes.letGo();
-        this._lateReads.forEach(clearTimeout);
-        this._lateReads.clear();
       }, 0);
     };
   }
@@ -540,6 +530,14 @@ export class DocumentModel {
   // Every write goes through here, one at a time, so nothing is ever sent
   // beside a send or a refetch: a rename made while an edit is saving is sent
   // after it, and a copy holds the edits made before it.
+  //
+  // An edit whose answer was lost (no response, 502, 504) is sent again until
+  // the server answers (WriteQueue's `resendWhenBack`). Every attempt runs
+  // under the same operation id and the same Idempotency-Key seed (the
+  // client's `keySeed`), so the requests of the first attempt that landed
+  // are answered from what they stored and write nothing twice, and the rest
+  // run. The rebase resend after a real conflict is a new write on a new
+  // version, and takes a new seed.
   _queueWrite(
     label,
     send,
@@ -569,6 +567,10 @@ export class DocumentModel {
       recheck,
       // Opted in to the rule by entity (`resendsByEntity`).
       byEntity: this._byEntity,
+      // The logical operation every attempt of it joins, and the seed of
+      // their Idempotency-Keys.
+      groupId: newId(),
+      keys: this._client?.keySeed?.() ?? null,
     };
     if (unsent.base) unsent.made = this._raw;
     this._patches = [];
@@ -579,7 +581,13 @@ export class DocumentModel {
     this._cellScope?.push(cell);
     this._unsent.push(unsent);
     let conflict = false;
-    let resend = false;
+    const run = () =>
+      this._client.withOperation(operation, send, {
+        kind,
+        ref,
+        id: unsent.groupId,
+        keys: unsent.keys,
+      });
     return this._writes.push(
       async () => {
         this._unsent = this._unsent.filter((u) => u !== unsent);
@@ -591,29 +599,23 @@ export class DocumentModel {
         if (this._namesRefused(unsent)) throw dependencyError();
         const before = this._checkedVersion();
         try {
-          await this._client.withOperation(operation, send, { kind, ref });
+          await run();
         } catch (err) {
-          // Offline before any of it reached the server: the version it
-          // claims has not moved, so going again once back online is safe. If
-          // it did land after all, the server refuses the second as a
-          // conflict.
-          const nothingLanded = before != null && this._checkedVersion() === before;
-          resend = err?.offline === true && nothingLanded;
           // Refused because the document moved on, with none of it written:
-          // when it is there already (a resend of a write whose first answer
-          // was lost), it has landed. When what changed does not touch it, it
-          // goes again, once, on the new version.
+          // when what changed does not touch it, it goes again, once, on the
+          // new version, as a new write.
+          const nothingLanded = before != null && this._checkedVersion() === before;
           const next =
             statusOf(err) === 409 && nothingLanded ? await this._afterConflict(unsent) : null;
-          if (next === 'resend') {
-            await this._client.withOperation(operation, send, { kind, ref });
-          } else if (next !== 'landed') throw err;
+          if (next !== 'resend') throw err;
+          unsent.keys = this._client?.keySeed?.() ?? null;
+          await run();
         }
         if (reload) this._writes.reloadWhenDrained = true;
       },
       {
         shown,
-        resendWhenBack: () => resend,
+        resendWhenBack: (err) => isUnknownOutcome(err),
         refused: (err) => {
           // A conflict, or what the edit names was deleted meanwhile: either
           // way someone else changed the document.
@@ -622,7 +624,6 @@ export class DocumentModel {
           // The rows it made are not on the server, whatever the refusal.
           for (const id of this._summary(unsent)?.created ?? []) this._refusedIds.add(id);
           this._writeFailed(label, err, conflictHandled && statusOf(err) === 409);
-          if (isUnknownOutcome(err)) this._readLater();
         },
         resync: () => (unsent.stale ? undefined : this._reloadAfterFailure(conflict)),
       },
@@ -630,10 +631,6 @@ export class DocumentModel {
   }
 
   // After a refusal for a changed document: read it.
-  // - When what `unsent` writes is on the server already (its first send
-  //   landed and the answer was lost, and this was the send again), show
-  //   what was read with the edits waiting behind it, put the server's ids
-  //   in place of the rows it made, and answer 'landed'.
   // - When nothing that changed touches it (rebase.js) and its `recheck`
   //   holds, show it again on top of what was read, with the edits waiting
   //   behind it, and answer 'resend' so it is sent again.
@@ -641,22 +638,12 @@ export class DocumentModel {
   //   its course.
   async _afterConflict(unsent) {
     if (!unsent.base || unsent.beside) return null;
-    const summary = this._summary(unsent);
     let updated;
     try {
       updated = await this._fetch();
     } catch (err) {
       console.error('Reading the document after a refusal failed:', err);
       return null;
-    }
-    const ids = landed(unsent.origin ?? unsent.base, summary.made, updated);
-    if (ids) {
-      await this._adoptReload(updated);
-      this._settle(ids);
-      // The edits waiting behind it go on this version too.
-      this._keepUntouched(updated);
-      this._showUnsent(updated, { recheck: true });
-      return 'landed';
     }
     if (!this._untouched(unsent, updated)) return null;
     // What the subclass keeps beside the document is read again first, so
@@ -744,22 +731,6 @@ export class DocumentModel {
     const client = this._client;
     if (!client || client.strictModeDocumentId !== this.id) return null;
     return client.documentVersions?.[this.id] ?? null;
-  }
-
-  // A write's answer was lost, and the write may land after the refetch that
-  // followed. Read the document again later, while a screen still shows it,
-  // so what landed shows. A later loss starts the count again.
-  _readLater() {
-    this._lateReads.forEach(clearTimeout);
-    this._lateReads.clear();
-    for (const ms of LATE_READS_MS) {
-      const timer = setTimeout(() => {
-        this._lateReads.delete(timer);
-        if (this._holds === 0) return;
-        this._reload().catch((err) => console.error('Reading the document again failed:', err));
-      }, ms);
-      this._lateReads.add(timer);
-    }
   }
 
   // What a patch producer is handed beside the clone of `_raw` (a fresh layer

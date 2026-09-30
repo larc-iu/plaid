@@ -634,9 +634,12 @@ describe('captions', () => {
     await posting;
     expect(client.comments.create).toHaveBeenCalledWith('token', 't1', 'hi', {
       anchorLabel: 'cat, sentence 1',
+      id: expect.any(String),
     });
     await store.post('token', 't1', 'bare');
-    expect(client.comments.create).toHaveBeenLastCalledWith('token', 't1', 'bare', {});
+    expect(client.comments.create).toHaveBeenLastCalledWith('token', 't1', 'bare', {
+      id: expect.any(String),
+    });
   });
 });
 
@@ -675,6 +678,7 @@ describe('vocabulary scope', () => {
     await posting;
     expect(client.comments.create).toHaveBeenCalledWith('vocab-item', 'i1', 'is this a noun?', {
       anchorLabel: 'gam, house',
+      id: expect.any(String),
     });
   });
 

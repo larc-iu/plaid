@@ -7,8 +7,8 @@ import { morphFormOf } from './shared.js';
 //
 // A cell key is `<kind>:<id>:<field>`, or `mf:<id>` for a morpheme's form:
 // `or` a word's orthography, `wa` a word's annotation, `ma` a morpheme's,
-// `sa` a sentence's. The id may itself hold a colon (`virtual:<word>`,
-// `pending:<n>`), and so may the field. Each value is read with the same
+// `sa` a sentence's. The id may itself hold a colon (`virtual:<word>`), and so
+// may the field. Each value is read with the same
 // accessor the grid draws it with (grid.js), over the same sentences, words
 // and morphemes, so an unanalyzed word's morpheme is there by the same
 // derivation.
@@ -16,7 +16,7 @@ import { morphFormOf } from './shared.js';
 // The row a cell key names.
 const rowOfKey = (key) => {
   const rest = (key ?? '').slice(key.indexOf(':') + 1);
-  return /^(virtual:[^:]+|pending:\d+|[^:]+)/.exec(rest)?.[1] ?? '';
+  return /^(virtual:[^:]+|[^:]+)/.exec(rest)?.[1] ?? '';
 };
 
 const partsOf = (key) => {
