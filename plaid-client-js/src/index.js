@@ -4142,19 +4142,26 @@ function constraintMethods(client, kind) {
      * Apply the remedies of the given constraints' remediable types
      * (coextensive, single-span, single-link, same-ancestor) to every
      * violation in this layer's stored data, one operation per document.
+     * With `document`, only that document is repaired, and a writer may
+     * ask. A document another user holds the lock on is left as it is and
+     * listed under `locked`.
      * @param {string} layerId - The layer ID
      * @param {Array<object>} constraints - The list to repair for
      * @param {string} [auditMessage] - Audit message for this write
-     * @returns {Promise<{repaired: Array<object>, violations: Array<object>, violationCount: number}>}
+     * @param {{document?: string}} [options]
+     * @returns {Promise<{repaired: Array<object>, locked: Array<{document: string, lockedBy: string}>, violations: Array<object>, violationCount: number}>}
      */
-    repairConstraints: (layerId, constraints, auditMessage) =>
-      client._request("POST", `${base(layerId)}/repair`, { auditMessage, body: { constraints } }),
+    repairConstraints: (layerId, constraints, auditMessage, options) =>
+      client._request("POST", `${base(layerId)}/repair`, {
+        auditMessage,
+        body: options?.document ? { constraints, document: options.document } : { constraints },
+      }),
   };
 }
 
 export default PlaidClient;
 export { PlaidClient };
-export { CONSTRAINT_TYPES, violationsOf } from "./constraints.js";
+export { CONSTRAINT_TYPES, valueSetAllows, violationsOf } from "./constraints.js";
 
 // Unicode code-point helpers for text offsets (token begin/end are code-point
 // indices). See ./codepoint.js.

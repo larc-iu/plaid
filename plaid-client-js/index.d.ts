@@ -332,8 +332,10 @@ interface SpanLayersBundle {
     layerId: string,
     constraints: LayerConstraint[],
     auditMessage?: string,
+    options?: { document?: string },
   ): Promise<{
     repaired: { document: string; constraint: string; deleted: number; joined: number }[];
+    locked: { document: string; lockedBy: string }[];
     violations: ConstraintViolation[];
     violationCount: number;
   }>;
@@ -1040,8 +1042,10 @@ interface TokenLayersBundle {
     layerId: string,
     constraints: LayerConstraint[],
     auditMessage?: string,
+    options?: { document?: string },
   ): Promise<{
     repaired: { document: string; constraint: string; deleted: number; joined: number }[];
+    locked: { document: string; lockedBy: string }[];
     violations: ConstraintViolation[];
     violationCount: number;
   }>;
@@ -1418,8 +1422,10 @@ interface RelationLayersBundle {
     layerId: string,
     constraints: LayerConstraint[],
     auditMessage?: string,
+    options?: { document?: string },
   ): Promise<{
     repaired: { document: string; constraint: string; deleted: number; joined: number }[];
+    locked: { document: string; lockedBy: string }[];
     violations: ConstraintViolation[];
     violationCount: number;
   }>;
@@ -1997,3 +2003,7 @@ export interface ConstraintViolation {
 export const CONSTRAINT_TYPES: readonly string[];
 /** The camelCased violations of a write refused by a layer constraint, or null. */
 export function violationsOf(err: any): ConstraintViolation[] | null;
+export function valueSetAllows(
+  constraint: { values: string[]; delimiters?: string; parts?: "all" | "first" },
+  value: any,
+): boolean;

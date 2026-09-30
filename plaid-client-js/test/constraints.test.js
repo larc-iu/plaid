@@ -4,7 +4,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PlaidClient, CONSTRAINT_TYPES, violationsOf } from "../src/index.js";
+import { readFileSync } from "node:fs";
+import { PlaidClient, CONSTRAINT_TYPES, valueSetAllows, violationsOf } from "../src/index.js";
 
 function queued(fn) {
   const client = new PlaidClient("http://localhost:0", "dummy-token");
@@ -83,4 +84,33 @@ test("violationsOf reads a 422's violations, camelCased", () => {
 test("CONSTRAINT_TYPES lists the seven types", () => {
   assert.equal(CONSTRAINT_TYPES.length, 7);
   assert.ok(CONSTRAINT_TYPES.includes("same-ancestor"));
+});
+
+for (const bundle of Object.keys(BUNDLES)) {
+  test(`${bundle}.repairConstraints names one document when given`, () => {
+    const [op] = queued((b) =>
+      b[bundle].repairConstraints("L1", [{ type: "single-span" }], undefined, { document: "D1" }),
+    );
+    assert.deepEqual(op.body, { constraints: [{ type: "single-span" }], document: "D1" });
+    const [whole] = queued((b) => b[bundle].repairConstraints("L1", [{ type: "single-span" }]));
+    assert.deepEqual(whole.body, { constraints: [{ type: "single-span" }] });
+  });
+}
+
+// The case table plaid-core and plaid-client-py run too.
+const VALUE_SET_CASES = JSON.parse(
+  readFileSync(
+    new URL("../../plaid-core/src/test/plaid/sql/constraints/value_set_cases.json", import.meta.url),
+    "utf8",
+  ),
+);
+
+test("valueSetAllows reads a value as the server does, trimming what trim() trims", () => {
+  for (const { constraint, value, allowed } of VALUE_SET_CASES.cases) {
+    assert.equal(
+      valueSetAllows(VALUE_SET_CASES.constraints[constraint], value),
+      allowed,
+      `${constraint} ${JSON.stringify(value)}`,
+    );
+  }
 });

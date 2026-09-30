@@ -532,7 +532,7 @@ class Resource:
             answer = {'violations': [], 'violation_count': 0}
             return _payload(args, kwargs), {'body': answer}, answer
         if method == 'repair_constraints':
-            answer = {'repaired': [], 'violations': [], 'violation_count': 0}
+            answer = {'repaired': [], 'locked': [], 'violations': [], 'violation_count': 0}
             return _payload(args, kwargs), {'body': answer}, answer
         return _payload(args, kwargs), {'body': {}}, {}
 

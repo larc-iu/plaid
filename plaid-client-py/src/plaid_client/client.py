@@ -126,18 +126,26 @@ class _ConstraintMethods:
         return self._request('POST', f'{self._constraints_path(layer_id)}/check',
                              body={'constraints': constraints})
 
-    def repair_constraints(self, layer_id: str, constraints: list, audit_message=None) -> Any:
+    def repair_constraints(self, layer_id: str, constraints: list, audit_message=None,
+                           document: str = None) -> Any:
         """Apply the remedies of the given constraints' remediable types
         (coextensive, single-span, single-link, same-ancestor) to every
         violation in this layer's stored data, one operation per document.
-        Answers ``{'repaired', 'violations', 'violation_count'}``.
+        With ``document``, only that document is repaired, and a writer may
+        ask. A document another user holds the lock on is left as it is and
+        listed under ``locked``. Answers ``{'repaired', 'locked',
+        'violations', 'violation_count'}``.
 
         Args:
             layer_id: The layer ID
             constraints: The list to repair for
+            document: The one document to repair, or None for every one
         """
+        body = {'constraints': constraints}
+        if document:
+            body['document'] = document
         return self._request('POST', f'{self._constraints_path(layer_id)}/repair',
-                             body={'constraints': constraints}, audit_message=audit_message)
+                             body=body, audit_message=audit_message)
 
 
 _UNSET_MESSAGE = object()

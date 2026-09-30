@@ -39,3 +39,46 @@ export function constraintsBody(constraints, options) {
   }
   return body;
 }
+
+// What String.prototype.trim trims. The server trims a value-set's parts the
+// same way, so a value read as listed here is read so there.
+const splitParts = (value, delimiters) => {
+  const set = new Set([...(delimiters || "")]);
+  if (!set.size) return [value];
+  const out = [];
+  let part = "";
+  for (const ch of value) {
+    if (set.has(ch)) {
+      out.push(part);
+      part = "";
+    } else {
+      part += ch;
+    }
+  }
+  out.push(part);
+  return out;
+};
+
+/**
+ * Whether a value-set constraint ({values, delimiters?, parts?}) allows
+ * `value` as the server reads it: null and blank values pass, a non-string
+ * does not, and every part split on a delimiter (or only the first, with
+ * `parts: "first"`), trimmed, must be listed.
+ * @param {{values: string[], delimiters?: string, parts?: "all"|"first"}} constraint
+ * @param {any} value
+ * @returns {boolean}
+ */
+export function valueSetAllows(constraint, value) {
+  if (value == null) return true;
+  if (typeof value !== "string") return false;
+  if (value.trim() === "") return true;
+  const delimiters = constraint?.delimiters || "";
+  const values = constraint?.values || [];
+  const parts = splitParts(value, delimiters);
+  if (constraint?.parts === "first") {
+    const firsts = new Set(values.map((v) => splitParts(v, delimiters)[0].trim()));
+    return firsts.has(parts[0].trim());
+  }
+  const allowed = new Set(values);
+  return parts.every((p) => p.trim() !== "" && allowed.has(p.trim()));
+}

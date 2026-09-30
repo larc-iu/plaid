@@ -4,14 +4,16 @@ The server's side is plaid-core's layer-constraints-test, the JS side
 ``plaid-client-js/test/constraints.test.js``. Network-free: a batch queues
 the op exactly as it would go out."""
 
+import json
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from plaid_client import CONSTRAINT_TYPES, PlaidAPIError, PlaidClient, violations_of
+from plaid_client import CONSTRAINT_TYPES, PlaidAPIError, PlaidClient, value_set_allows, violations_of
 from plaid_client.testing import FakeClient
 
 BUNDLES = {'token_layers': 'token-layers', 'span_layers': 'span-layers', 'relation_layers': 'relation-layers'}
@@ -97,3 +99,25 @@ def test_the_fake_records_the_four_methods():
     kinds = [k for k, _ in fake.calls]
     assert kinds == ['span_layers.set_constraints', 'span_layers.check_constraints',
                      'token_layers.repair_constraints', 'relation_layers.delete_constraints']
+
+
+@pytest.mark.parametrize('bundle', BUNDLES)
+def test_repair_names_one_document_when_given(bundle):
+    [op] = _queued(lambda b: getattr(b, bundle).repair_constraints(
+        'L1', [{'type': 'single-span'}], document='D1'))
+    assert op['body'] == {'constraints': [{'type': 'single-span'}], 'document': 'D1'}
+    [whole] = _queued(lambda b: getattr(b, bundle).repair_constraints('L1', [{'type': 'single-span'}]))
+    assert whole['body'] == {'constraints': [{'type': 'single-span'}]}
+
+
+# The case table plaid-core and plaid-client-js run too.
+VALUE_SET_CASES = json.loads(
+    (Path(__file__).resolve().parents[2] / 'plaid-core' / 'src' / 'test' / 'plaid' / 'sql'
+     / 'constraints' / 'value_set_cases.json').read_text(encoding='utf-8'))
+
+
+@pytest.mark.parametrize('case', VALUE_SET_CASES['cases'],
+                         ids=lambda c: f"{c['constraint']}-{c['value']!r}")
+def test_value_set_allows_reads_a_value_as_the_server_does(case):
+    constraint = VALUE_SET_CASES['constraints'][case['constraint']]
+    assert value_set_allows(constraint, case['value']) is case['allowed']

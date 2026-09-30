@@ -28,6 +28,7 @@ for (const b of ['projects', 'textLayers', 'tokenLayers', 'spanLayers', 'relatio
 for (const b of ['tokenLayers', 'spanLayers', 'relationLayers']) {
   ARGS_BEFORE_AUDIT_MESSAGE[`${b}.setConstraints`] = 3;
   ARGS_BEFORE_AUDIT_MESSAGE[`${b}.deleteConstraints`] = 2;
+  ARGS_BEFORE_AUDIT_MESSAGE[`${b}.repairConstraints`] = 2;
 }
 // Reads that travel as a POST take no audit message.
 const READ_POSTS = new Set(['tokenLayers.checkConstraints', 'spanLayers.checkConstraints', 'relationLayers.checkConstraints']);
