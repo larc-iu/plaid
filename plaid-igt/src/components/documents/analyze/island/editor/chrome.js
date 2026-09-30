@@ -8,18 +8,19 @@ import { humanizeError } from '@/utils/feedback';
 import { provTitle } from './shared.js';
 import { keys } from '@/lib/keymap.js';
 import { NOT_SET_UP } from '@ui/domain/setupGuard.js';
+import { retryingText } from '@ui/lib/retrying.js';
 
 // The grid's frame: the page template, the pager and toolbar, the legend,
 // the tooltips' wording, and one sentence's block.
 // An action's chord as keycaps, in whatever the person has bound it to.
 const kbd = (id) => keys.caps(id).map((cap, i) => html`${i ? '+' : ''}<kbd>${cap}</kbd>`);
 
-// What the save-status pill says in each state. `offline`: a refused edit's
-// refetch is waiting for the server to be reachable again.
+// What the save-status pill says in each state. `offline`: a write or a
+// refetch is being sent again until the server answers.
 const STATUS_TEXT = {
-  saving: 'Saving…',
-  offline: 'Offline, retrying',
-  saved: 'Saved ✓',
+  saving: () => 'Saving…',
+  offline: retryingText,
+  saved: () => 'Saved ✓',
 };
 
 export const chrome = {
@@ -161,7 +162,7 @@ export const chrome = {
   _statusPill() {
     const state = this._statusState || 'idle';
     return html`<span class="igt-status" role="status" aria-live="polite" data-state=${state}
-      >${STATUS_TEXT[state] ?? ''}</span
+      >${STATUS_TEXT[state]?.() ?? ''}</span
     >`;
   },
 

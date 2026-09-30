@@ -654,6 +654,66 @@ describe('a refused entry write', () => {
     expect(feedback.notifySuccess).not.toHaveBeenCalled();
   });
 
+  it('sends a refused new entry again under the id it was first sent with, until its text changes', async () => {
+    const { client, calls, holds } = stub([{ id: 'a', form: 'uno' }]);
+    const options = [];
+    client.withOperation = (_label, fn, opts) => {
+      options.push(opts);
+      return fn(() => {});
+    };
+    const refuse = async (view) => {
+      const refused = deferred();
+      holds.push(refused);
+      await view.step(() => button('Create').click());
+      await view.step(async () => {
+        refused.reject(new Error('refused'));
+        await settle();
+      });
+    };
+    const view = (mounted = await mount(client, '/vocabularies/v1?item=new'));
+    await view.step(() => setValue(formInput(), 'nuevo'));
+    await refuse(view);
+    await refuse(view);
+    const idOf = (call) => call.at(-1)?.id;
+    expect(idOf(calls[1])).toBe(idOf(calls[0]));
+    // An id-taken answer for this id is the entry made by a press before.
+    expect([...options[1].minted]).toEqual([idOf(calls[0])]);
+    await view.step(() => setValue(formInput(), 'nueva'));
+    await view.step(async () => {
+      button('Create').click();
+      await settle();
+    });
+    expect(calls.map(([kind]) => kind)).toEqual(['create', 'create', 'create']);
+    expect(idOf(calls[2])).not.toBe(idOf(calls[0]));
+  });
+
+  it('sends a new entry under a fresh id once the form was closed and opened again', async () => {
+    const { client, calls, holds } = stub([{ id: 'a', form: 'uno' }]);
+    const refused = deferred();
+    holds.push(refused);
+    const view = (mounted = await mount(client, '/vocabularies/v1?item=new'));
+    await view.step(() => setValue(formInput(), 'nuevo'));
+    await view.step(() => button('Create').click());
+    await view.step(async () => {
+      refused.reject(new Error('refused'));
+      await settle();
+    });
+    await view.step(() => button('Cancel').click());
+    await view.step(() =>
+      all(document.body, 'a')
+        .find((a) => a.textContent.trim() === 'New')
+        .click(),
+    );
+    await view.step(() => setValue(formInput(), 'nuevo'));
+    await view.step(async () => {
+      button('Create').click();
+      await settle();
+    });
+    const idOf = (call) => call.at(-1)?.id;
+    expect(calls.map(([kind]) => kind)).toEqual(['create', 'create']);
+    expect(idOf(calls[1])).not.toBe(idOf(calls[0]));
+  });
+
   it('sends a create whose answer was lost again, under the same id, until it is answered', async () => {
     const { client, calls, holds } = stub([{ id: 'a', form: 'uno' }]);
     const lost = deferred();

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { PlaidClient } from '../../../plaid-client-js/src/index.js';
 import { DocumentModel } from './DocumentModel.js';
-import { newId } from './pendingIds.js';
+import { isPendingId, newId } from './pendingIds.js';
 
 // A document's edits over the real client, against a fetch that answers as
 // plaid-core does with Idempotency-Keys: a key whose request landed is
@@ -139,66 +139,43 @@ describe('a create that landed and is then refused id-taken', () => {
   });
 });
 
-// REV2 G1, G6: the queue gives a send up only on a proxy's 502 or 504, after
-// its resend window. The edit keeps its keys and ids, and the next edit sends
-// it again first: when it landed late it is answered from its key, and the
-// edit planned without it (a create of the same row) is refused as a conflict
-// rather than making a second row.
-describe('an edit given up on a 502 that then lands late', () => {
-  for (const settle of [true, false]) {
-    it(`is sent again under its keys before the next edit, and the row is made once (settle ${settle})`, async () => {
-      const { state, doc, errors } = open();
-      doc._writes._resendForMs = 0;
-      state.gateway = 1;
-      const first = doc.create('dog', { settle });
-      expect(await first.ok).toBe(false);
-      expect(errors).toHaveLength(1);
-      await state.landHeld();
-      expect(state.rows.size).toBe(1);
-      // The page's retry: the same value again, planned as a new create.
-      const retry = doc.create('dog', { settle });
-      expect(await retry.ok).toBe(false);
-      expect([...state.rows.values()]).toEqual(['dog']);
-      expect(doc.raw.rows.map((r) => r.value)).toEqual(['dog']);
-      expect(state.keys.filter((k) => k === state.keys[0]).length).toBeGreaterThan(1);
-    });
-  }
-
-  it('a connection refused is resent past the window until the server answers', async () => {
-    const { state, doc, errors } = open();
-    doc._writes._resendForMs = 0;
-    state.lose = 0;
-    let refusals = 3;
-    const real = globalThis.fetch;
-    globalThis.fetch = async (url, opts) => {
-      if (opts.method !== 'GET' && refusals > 0) {
-        refusals -= 1;
-        throw new TypeError('fetch failed: connect ECONNREFUSED');
-      }
-      return real(url, opts);
-    };
-    const { ok } = doc.create('dog');
-    expect(await ok).toBe(true);
+// REV3 (the ruling after the third review): no send is given up while the
+// page is open. A proxy's 502 on every attempt keeps the edit saving, the
+// edits made meanwhile queue behind it, and once the server answers they all
+// land in order under their own keys, each once.
+describe('edits made while a proxy answers 502', () => {
+  it('stay saving, and land in order once the server answers', async () => {
+    const { state, client, doc, errors } = open();
+    doc._writes._retryDelay = () => 5;
+    state.gateway = 1000;
+    const a = doc.create('A');
+    const b = doc.create('B');
+    const c = doc.create('C');
+    for (let i = 0; i < 20; i += 1) await new Promise((r) => setTimeout(r, 5));
+    expect(doc.isSaving).toBe(true);
+    expect(doc.isOffline).toBe(true);
+    expect(state.rows.size).toBe(0);
+    state.gateway = 0;
+    expect(await a.ok).toBe(true);
+    expect(await b.ok).toBe(true);
+    expect(await c.ok).toBe(true);
+    expect([...state.rows.values()]).toEqual(['A', 'B', 'C']);
     expect(errors).toEqual([]);
-    expect(state.rows.size).toBe(1);
+    expect(doc.isOffline).toBe(false);
+    expect(client.operationGroup).toBe(null);
   });
-});
 
-// REV2 G2: a row that lands after the read that followed its refusal, and
-// comes back on another read, is made: the next edit of it is sent.
-describe('a given-up create that comes back on a later read', () => {
-  it('is settled by that read, and an edit of it is sent', async () => {
+  it('a create whose first send lands late is answered from its key, and made once', async () => {
     const { state, doc, errors } = open();
-    doc._writes._resendForMs = 0;
-    state.gateway = 1;
-    const { id, ok } = doc.create('dog');
-    expect(await ok).toBe(false);
+    doc._writes._retryDelay = () => 5;
+    state.gateway = 1000;
+    const first = doc.create('dog');
+    for (let i = 0; i < 10; i += 1) await new Promise((r) => setTimeout(r, 5));
+    state.gateway = 0;
     await state.landHeld();
-    await doc.reload();
-    expect(doc.raw.rows.map((r) => r.id)).toEqual([id]);
-    expect(await doc.set(id, 'hound')).toBe(true);
-    expect(state.rows.get(id)).toBe('hound');
-    expect(errors).toHaveLength(1);
+    expect(await first.ok).toBe(true);
+    expect([...state.rows.values()]).toEqual(['dog']);
+    expect(errors).toEqual([]);
   });
 });
 
@@ -224,5 +201,25 @@ describe('an edit whose batch is refused id-taken for a row it made', () => {
     expect(errors).toHaveLength(1);
     expect(await doc.set(id, 'V')).toBe(true);
     expect(state.rows.get(id)).toBe('V');
+  });
+});
+
+describe('an edit whose batch is refused id-taken for a row deleted since', () => {
+  it('does not take the row for made', async () => {
+    const { doc, errors } = open();
+    const id = newId();
+    doc._applyRawPatch((raw) => {
+      raw.rows = [...raw.rows, { id, value: 'N' }];
+    });
+    const ok = await doc._queueWrite('Failed to gloss', async () => {
+      throw Object.assign(new Error('HTTP 409 id-taken'), {
+        status: 409,
+        method: 'POST',
+        responseData: { error: 'id-taken', 'id-taken': true, id, deleted: true },
+      });
+    });
+    expect(ok).toBe(false);
+    expect(errors).toHaveLength(1);
+    expect(isPendingId(id)).toBe(true);
   });
 });

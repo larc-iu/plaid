@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { retryingText } from '../../lib/retrying.js';
 
 const noSubscribe = () => () => {};
 const noSnapshot = () => 0;
@@ -7,7 +8,7 @@ const noSnapshot = () => 0;
  * The save status over an open document, for the apps whose editors show no
  * save pill of their own (plaid-ud, plaid-umr). An edit is on screen before it
  * is sent, so a save on its way says nothing. What it does say is that a
- * refused edit's refetch is waiting for the connection to come back
+ * write or a refetch is being sent again until the server answers
  * (DocumentModel `isOffline`), while editing goes on.
  *
  * Always a live region, empty or not, so a screen reader hears it appear.
@@ -27,7 +28,7 @@ export const SaveStatus = ({ doc }) => {
           : undefined
       }
     >
-      {offline ? 'Offline, retrying' : ''}
+      {offline ? retryingText() : ''}
     </span>
   );
 };

@@ -44,8 +44,15 @@ describe('SaveStatus', () => {
     const view = await renderComponent(<SaveStatus doc={doc} />);
     await view.step(() => doc.set({ isSaving: true, isOffline: true }));
     const status = view.container.querySelector('[role="status"]');
-    expect(status.textContent).toBe('Offline, retrying');
+    expect(status.textContent).toBe("Can't reach the server, retrying");
     expect(status.dataset.state).toBe('offline');
+    // The browser says it has no network.
+    const online = Object.getOwnPropertyDescriptor(window.navigator, 'onLine');
+    Object.defineProperty(window.navigator, 'onLine', { configurable: true, get: () => false });
+    await view.step(() => doc.set({ isOffline: true }));
+    expect(status.textContent).toBe('Offline, retrying');
+    if (online) Object.defineProperty(window.navigator, 'onLine', online);
+    else delete window.navigator.onLine;
     await view.step(() => doc.set({ isOffline: false }));
     expect(status.textContent).toBe('');
     await view.step(() => doc.set({ isSaving: false }));

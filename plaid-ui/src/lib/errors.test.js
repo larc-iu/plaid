@@ -37,6 +37,15 @@ describe('reading a status', () => {
 });
 
 describe('what a person is told', () => {
+  it('tells a create whose row is there from one whose row was deleted since', () => {
+    const taken = (deleted) =>
+      Object.assign(httpError(409, 'id-taken'), {
+        responseData: { error: 'id-taken', 'id-taken': true, id: 'x', deleted },
+      });
+    expect(humanizeError(taken(false))).toBe('This was saved already.');
+    expect(humanizeError(taken(true))).toBe('This was deleted.');
+  });
+
   it('says the same sentence for a status whether or not the object carries it', () => {
     const withObject = humanizeError(httpError(403));
     const withMessage = humanizeError(httpError(403).message);

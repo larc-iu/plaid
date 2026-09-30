@@ -5,7 +5,9 @@
 // never came sends the same id. The client already sends a write again under
 // the same Idempotency-Key when its answer is lost. When even that gave up,
 // the next press is answered 409 `id-taken` if the first landed, and that
-// press opens what the first made instead of making a second.
+// press opens what the first made instead of making a second. When what the
+// first made was deleted since (`deleted` in that answer), there is nothing to
+// open, and the press makes it again under a new id.
 //
 // `ref` is where the form keeps the id between presses (a React ref, or any
 // `{ current }`). `create(id)` makes the row under `id` and resolves to it.
@@ -26,6 +28,10 @@ export async function createOnce(ref, create) {
     made = await create(id);
   } catch (err) {
     if (!isIdTaken(err)) throw err;
+    if (err.responseData?.deleted) {
+      ref.current = uuidv7();
+      return createOnce(ref, create);
+    }
     made = { id };
   }
   ref.current = null;

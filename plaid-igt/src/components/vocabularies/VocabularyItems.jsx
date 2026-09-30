@@ -573,9 +573,9 @@ export const VocabularyItems = ({
     label,
     write,
     failure,
-    { refused, answered, resync: reread = resync } = {},
+    { refused, answered, resync: reread = resync, minted } = {},
   ) => {
-    const once = { id: uuidv7(), keys: client.keySeed?.() };
+    const once = { id: uuidv7(), keys: client.keySeed?.(), ...(minted ? { minted } : {}) };
     return writes.push(() => client.withOperation(label, write, once), {
       refused: async (err) => {
         console.error(`${label}:`, err);
@@ -612,6 +612,19 @@ export const VocabularyItems = ({
   draftRef.current = draft;
   // A refused new entry's draft, held until the form it goes back to opens.
   const refusedNewRef = useRef(null);
+  // The id the new-entry form's Create sent, with what it sent. Create pressed
+  // again with the same entry sends it under the same id, so an entry a press
+  // before made after all is answered as made and not made twice. Dropped when
+  // the entry lands, when the text changes, and when the form is left.
+  const newMintRef = useRef(null);
+  if (
+    newMintRef.current &&
+    selectedId !== NEW_ID &&
+    selectedId !== newMintRef.current.id &&
+    creatingRef.current !== newMintRef.current.id
+  ) {
+    newMintRef.current = null;
+  }
 
   // A reference that points at an entry no longer here (deleted through the
   // API, or by another app) is cleared on the first load by someone who can
@@ -740,6 +753,7 @@ export const VocabularyItems = ({
 
   const cancelEdit = () => {
     if (isNew) {
+      newMintRef.current = null;
       // Replace: cancelling a draft undoes the step that opened it, so Back
       // should not walk into the abandoned form.
       goItem(null, { replace: true });
@@ -842,7 +856,9 @@ export const VocabularyItems = ({
     });
     if (isNew) {
       const withPlace = liveNewParent ? withParentSet(tree, { metadata }, liveNewParent) : metadata;
-      const id = pendingId();
+      const sent = JSON.stringify([form, liveNewParent, withPlace]);
+      if (newMintRef.current?.sent !== sent) newMintRef.current = { id: pendingId(), sent };
+      const { id } = newMintRef.current;
       const parent = liveNewParent;
       const parentForm = parent ? (tree.byId.get(parent)?.form ?? '') : '';
       setItems((prev) => [...prev, saved(id, withPlace)]);
@@ -873,10 +889,12 @@ export const VocabularyItems = ({
             undefined,
             { id },
           );
+          if (newMintRef.current?.id === id) newMintRef.current = null;
           settleEntries(new Map([[id, createdId(created)]]));
         },
         'Failed to save the entry',
         {
+          minted: [id],
           // The pending id names nothing now. Still open, it goes back to the
           // new-entry form.
           refused: () => {

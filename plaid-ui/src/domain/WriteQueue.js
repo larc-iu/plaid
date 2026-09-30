@@ -49,13 +49,11 @@
 // Meanwhile `isOffline` is true, so "Saving" and the close-tab question stay
 // on. A caller asks for it when its sends are keyed (an Idempotency-Key per
 // request, the same on every attempt): the requests of an attempt that
-// landed are answered from what they stored and write nothing twice. While
-// the network or the server is away the wait has no end, but a send a proxy
-// keeps answering 502 or 504 is given up after `resendForMs` (two minutes)
-// and refused like any other, so one bad send cannot hold every edit behind
-// it. The caller keeps it (DocumentModel `_givenUp`) and sends it again under
-// the same keys before its next edit. Once
-// the queue is let go, the wait ends at once: the send is tried one more
+// landed are answered from what they stored and write nothing twice. The
+// wait has no end while the page is open: a proxy's 502 or 504 is the
+// server's fault as much as a connection refused, and the edits behind the
+// send wait their turn and land in order once it is answered. Once the queue
+// is let go, the wait ends at once: the send is tried one more
 // time, and refused if it fails again, so nothing waits on a network no
 // screen is watching for.
 //
@@ -72,12 +70,9 @@ import { isUnreachable, statusOf } from '../lib/errors.js';
 // Refetch failures that no retry can mend: signed out, no access, or gone.
 const FINAL_STATUSES = new Set([401, 403, 404]);
 
-// How long to wait before retrying a refetch: 1 s, 2 s, 4 s, then every 15 s.
-const backoff = (attempt) => Math.min(1000 * 2 ** attempt, 15000);
-
-// How long a send a proxy keeps answering 502 or 504 is sent again before it
-// is refused.
-const RESEND_FOR_MS = 120000;
+// How long to wait before a send or a refetch goes again: 1 s, 2 s, 4 s and
+// so on, then every 30 s.
+const backoff = (attempt) => Math.min(1000 * 2 ** attempt, 30000);
 
 // How many tries a refetch gets when it fails for a reason other than the
 // network.
@@ -117,7 +112,6 @@ export class WriteQueue {
     retryDelay = backoff,
     onOutOfStep = null,
     onOfflineChange = null,
-    resendForMs = RESEND_FOR_MS,
   } = {}) {
     this._tail = Promise.resolve();
     // Sends waiting or in flight.
@@ -136,7 +130,6 @@ export class WriteQueue {
     this._retryDelay = retryDelay;
     this._onOutOfStep = onOutOfStep;
     this._onOfflineChange = onOfflineChange;
-    this._resendForMs = resendForMs;
     this._offline = false;
     // Whether `onOutOfStep` has been told since a refetch last landed.
     this._outOfStep = false;
@@ -271,19 +264,13 @@ export class WriteQueue {
   // Run `send`, and again each time it fails in a way `resendWhenBack` allows,
   // once the network is back. `isOffline` holds while it waits.
   async _sendUntilBack(send, resendWhenBack) {
-    const started = Date.now();
     for (let attempt = 0; ; attempt += 1) {
       try {
         await send();
         if (attempt) this._setOffline(false);
         return;
       } catch (err) {
-        // Only an answer a proxy gave (502, 504) runs the window out. A
-        // connection refused or reset, or no answer at all, is resent for as
-        // long as it takes: the server may be restarting.
-        const answered = err?.status === 502 || err?.status === 504;
-        const outOfTime = answered && Date.now() - started >= this._resendForMs;
-        if (!resendWhenBack?.(err) || (attempt && this._letGo) || outOfTime) {
+        if (!resendWhenBack?.(err) || (attempt && this._letGo)) {
           if (attempt) this._setOffline(false);
           throw err;
         }

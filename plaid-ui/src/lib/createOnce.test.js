@@ -2,11 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { createOnce } from './createOnce.js';
 
 const lost = () => Object.assign(new Error('HTTP 504'), { status: 504, method: 'POST' });
-const taken = (id) =>
+const taken = (id, deleted = false) =>
   Object.assign(new Error('HTTP 409 id-taken'), {
     status: 409,
     method: 'POST',
-    responseData: { error: 'id-taken', 'id-taken': true, id },
+    responseData: { error: 'id-taken', 'id-taken': true, id, deleted },
   });
 
 describe('createOnce', () => {
@@ -25,6 +25,26 @@ describe('createOnce', () => {
     });
     expect(sent[0]).toBe(sent[1]);
     expect(made).toEqual({ id: sent[0] });
+    expect(ref.current).toBe(null);
+  });
+
+  it('makes it again under a new id when what the first press made was deleted since', async () => {
+    const ref = { current: null };
+    const sent = [];
+    await expect(
+      createOnce(ref, async (id) => {
+        sent.push(id);
+        throw lost();
+      }),
+    ).rejects.toThrow('504');
+    const made = await createOnce(ref, async (id) => {
+      sent.push(id);
+      if (id === sent[0]) throw taken(id, true);
+      return { id, name: 'A' };
+    });
+    expect(sent.length).toBe(3);
+    expect(sent[2]).not.toBe(sent[0]);
+    expect(made).toEqual({ id: sent[2], name: 'A' });
     expect(ref.current).toBe(null);
   });
 

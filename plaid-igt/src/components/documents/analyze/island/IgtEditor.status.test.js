@@ -95,9 +95,9 @@ describe('the save-status pill', () => {
     offline(doc, true);
     editor._syncStatus();
     expect(pill().dataset.state).toBe('offline');
-    expect(pill().textContent).toBe('Offline, retrying');
+    expect(pill().textContent).toBe("Can't reach the server, retrying");
     editor._render(true);
-    expect(pill().textContent).toBe('Offline, retrying');
+    expect(pill().textContent).toBe("Can't reach the server, retrying");
 
     offline(doc, false);
     editor._syncStatus();

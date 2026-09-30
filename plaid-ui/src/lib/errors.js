@@ -85,7 +85,8 @@ export const isGone = (error) => {
 
 // A create refused because the id it names was used before (409 with
 // `error: "id-taken"`): the page minted the id, so the create it sent earlier
-// landed and its answer was lost. What was made is there under that id.
+// landed and its answer was lost. What was made is there under that id,
+// unless `deleted` says it was deleted since.
 export const isIdTaken = (error) =>
   statusOf(error) === 409 &&
   (error?.responseData?.error === 'id-taken' || error?.responseData?.['id-taken'] === true);
@@ -133,7 +134,9 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
   if (isUnreachable(error)) return UNREACHABLE;
   if (isGone(error)) return GONE;
   if (isLockLost(error)) return 'The lock on this document lapsed.';
-  if (isIdTaken(error)) return 'This was saved already.';
+  if (isIdTaken(error)) {
+    return error.responseData?.deleted ? 'This was deleted.' : 'This was saved already.';
+  }
   if (isKeyReused(error)) return 'This change was not sent: try it again.';
   // The server words the first violation by layer name, never by app.
   if (isConstraintViolation(error)) {

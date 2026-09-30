@@ -144,55 +144,60 @@ describe('leaving the page', () => {
   });
 });
 
-// REV-idempotency F9: a send the server side keeps failing to answer (a
-// proxy's 502 on every attempt) was sent again forever, holding every edit
-// behind it.
-describe('a send that never gets an answer while the browser is online', () => {
+// REV3: a send the server side keeps failing to answer (a proxy's 502 on
+// every attempt, no answer at all) is sent again for as long as the page is
+// open. The edits behind it wait, and land in order once it is answered.
+describe('a send that never gets an answer', () => {
   const gateway = () => Object.assign(new Error('HTTP 502 Bad gateway'), { status: 502 });
 
-  it('is given up after the resend window and refused, and the edits behind it go', async () => {
+  it('is sent again past any window, and the edits behind it land after it', async () => {
     vi.useFakeTimers();
-    const q = new WriteQueue({ retryDelay: () => 15000, resendForMs: 120000 });
+    const q = new WriteQueue();
     let attempts = 0;
-    const refused = [];
+    const order = [];
     const first = q.push(
       async () => {
         attempts += 1;
-        throw gateway();
-      },
-      { resendWhenBack: () => true, refused: (err) => refused.push(err.status) },
-    );
-    const behind = q.push(async () => {});
-    await vi.advanceTimersByTimeAsync(200000);
-    expect(await first).toBe(false);
-    expect(await behind).toBe(true);
-    expect(refused).toEqual([502]);
-    expect(attempts).toBeGreaterThan(5);
-    expect(attempts).toBeLessThan(12);
-    expect(q.isOffline).toBe(false);
-  });
-
-  // REV2 G6: a connection refused or reset never reached the server, which
-  // may be restarting: it is sent again for as long as it takes.
-  it('keeps resending a send that got no answer at all, past the window', async () => {
-    vi.useFakeTimers();
-    const q = new WriteQueue({ retryDelay: () => 15000, resendForMs: 120000 });
-    let attempts = 0;
-    const sent = q.push(
-      async () => {
-        attempts += 1;
-        if (attempts < 30) throw Object.assign(new Error('fetch failed'), { status: 0 });
+        if (attempts < 40) throw gateway();
+        order.push('first');
       },
       { resendWhenBack: () => true },
     );
-    await vi.advanceTimersByTimeAsync(600000);
-    expect(await sent).toBe(true);
-    expect(attempts).toBe(30);
+    const behind = q.push(async () => {
+      order.push('behind');
+    });
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(q.isSaving).toBe(true);
+    expect(q.isOffline).toBe(true);
+    await vi.advanceTimersByTimeAsync(1200000);
+    expect(await first).toBe(true);
+    expect(await behind).toBe(true);
+    expect(order).toEqual(['first', 'behind']);
+    expect(q.isOffline).toBe(false);
+  });
+
+  it('waits at most 30 s between attempts', async () => {
+    vi.useFakeTimers();
+    const q = new WriteQueue();
+    let attempts = 0;
+    q.push(
+      async () => {
+        attempts += 1;
+        throw Object.assign(new Error('fetch failed'), { status: 0 });
+      },
+      { resendWhenBack: () => true },
+    );
+    await vi.advanceTimersByTimeAsync(120000);
+    const before = attempts;
+    await vi.advanceTimersByTimeAsync(300000);
+    expect(attempts - before).toBeGreaterThanOrEqual(10);
+    q.letGo();
+    await vi.advanceTimersByTimeAsync(1000);
   });
 
   it('keeps waiting while the browser says it is offline', async () => {
     vi.useFakeTimers();
-    const q = new WriteQueue({ retryDelay: () => 15000, resendForMs: 120000 });
+    const q = new WriteQueue({ retryDelay: () => 15000 });
     let attempts = 0;
     const sent = q.push(
       async () => {
