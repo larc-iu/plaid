@@ -8,7 +8,9 @@
 
 import {
   applyMetadataOps,
+  applyTextOps,
   cpLength,
+  gapsToOps,
   isReservedMetadataKey,
   metadataOps,
 } from '@larc-iu/plaid-client';
@@ -16,7 +18,10 @@ import { lineSentenceRanges } from '../../utils/tokenizationUtils.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
 import { statusOf } from '@ui/lib/errors.js';
 import { pendingId } from '@ui/domain/pendingIds.js';
-import { mergeText } from '@ui/lib/textMerge.js';
+import { mergeText, rebaseEdits } from '@ui/lib/textMerge.js';
+import { applyReshape } from '@ui/domain/textReshape.js';
+import { getIgtLayerInfo } from '../layerInfo.js';
+import { isKeyReused, underKeys } from './alignment.js';
 
 // One sentence per line of a freshly saved text. The server keeps the
 // partition in step with later edits; the Tokenize tab moves the breaks.
@@ -25,6 +30,28 @@ const sentenceSeed = (tokenLayerId, text, body) =>
 
 // What a save whose draft cannot be put onto the stored text is refused with.
 const BASELINE_CONFLICT = 'The same passage was changed elsewhere. Cancel and redo the edit.';
+
+// What a save is refused with when the server gives no digest for the text:
+// an edit never goes without one.
+const NO_DIGEST = 'The saved text could not be read. Reload the page and save again.';
+
+// The vocabulary links igt keeps beside the document (`vocabs`, a patch's
+// mutable copy), brought up to date from a text edit's `reshape` as the
+// document's own are (applyReshape): deleted links dropped, and a link whose
+// tokens changed given its new ones.
+function reshapeVocabLinks(vocabs, reshape) {
+  const gone = new Set(reshape?.deleted?.vocabLinks ?? []);
+  const moved = new Map((reshape?.vocabLinks ?? []).map((link) => [link.id, link.tokens]));
+  if (!gone.size && !moved.size) return;
+  for (const vocab of Object.values(vocabs || {})) {
+    if (!Array.isArray(vocab?.vocabLinks)) continue;
+    vocab.vocabLinks = vocab.vocabLinks
+      .filter((link) => !gone.has(link.id))
+      .map((link) =>
+        Array.isArray(moved.get(link.id)) ? { ...link, tokens: moved.get(link.id) } : link,
+      );
+  }
+}
 
 export const documentMutations = {
   // Baseline-text edit. The server's text update does all the heavy lifting
@@ -102,6 +129,144 @@ export const documentMutations = {
         }
       }
     });
+  },
+
+  // The Baseline tab's save: the edits typed in the box, as gaps of `base`
+  // (`{ start, end, value }` in code points, see plaid-ui's editLog.js), and
+  // `digest`, the digest of `base` the server issued, or null when it was not
+  // known. They go to the server as edits at the caret with the digest of the
+  // text they apply to (texts.edit), so an insert or a delete stands exactly
+  // where it was typed and only a stretch typed over is read as a whole-body
+  // save reads it. The answer says what the edit did to the tokens, and the
+  // document is patched from it instead of read again.
+  //
+  // When the stored body is no longer `base` (someone saved meanwhile, or the
+  // server refused the digest), the gaps are moved onto the stored body with
+  // `rebaseEdits` and sent with its digest. Changes to the same passage are
+  // refused, with the draft left in the tab. An edit never goes without the
+  // digest it applies to.
+  async editBaselineText({ base, digest, gaps }) {
+    const info = this.layerInfo;
+    const primaryTextLayer = info.primaryTextLayer;
+    if (!primaryTextLayer) {
+      this.setError(notSetUp('No primary text layer found'));
+      return false;
+    }
+    if (!info.sentenceTokenLayer?.id) {
+      this.setError(notSetUp('No sentence layer found'));
+      return false;
+    }
+    // A text not made yet has no edits to send: it is created whole.
+    if (!primaryTextLayer.text?.id) {
+      return this.saveBaselineText(applyTextOps(base, gapsToOps(gaps)), base);
+    }
+    const textId = primaryTextLayer.text.id;
+    // What is sent, kept here and not in the send: a send run again after its
+    // answer was lost sends exactly the request that was lost, under the same
+    // keys, and is answered from what it stored. `keys` is null until the
+    // plan is made on the stored text (`_planBaselineEdit`), and a plan made
+    // again after a refusal takes new ones.
+    const plan = { base, digest, gaps, seed: false, keys: null };
+    return this._queueWrite('Failed to save baseline text', async () => {
+      if (await this._sendBaselineEdit(textId, plan)) await this._reloadInSend();
+      // An edit that took every sentence with it leaves a text with none, so
+      // the partition is seeded again, one sentence per line.
+      const body = this.body;
+      const sentencesAfter = this.layerInfo.sentenceTokenLayer?.tokens || [];
+      if (cpLength(body) > 0 && sentencesAfter.length === 0) {
+        await this._client.tokens.bulkCreate(
+          sentenceSeed(this.layerInfo.sentenceTokenLayer.id, textId, body),
+        );
+        await this._reloadInSend();
+      }
+    });
+  },
+
+  // The edit half of `editBaselineText`, from inside its send. A text with no
+  // sentences gets its partition in the same batch as the edit, measured on
+  // the body the edit makes. A lost answer is sent again by the queue: the
+  // plan is sent again as it was, under its keys, and answered from what the
+  // first send stored. Answers whether the document is to be read (the batch
+  // with the sentences is not patched from its answer).
+  async _sendBaselineEdit(textId, plan) {
+    for (let attempt = 0; ; attempt += 1) {
+      if (!plan.keys) await this._planBaselineEdit(plan, await this._storedText());
+      const ops = gapsToOps(plan.gaps);
+      const body = applyTextOps(plan.base, ops);
+      try {
+        await underKeys(this._client, plan.keys, async () => {
+          if (plan.seed) {
+            // The sentences after it are stamped with the version from
+            // before the batch, so the edit is stamped too, and checked first.
+            const sentenceLayerId = this.layerInfo.sentenceTokenLayer.id;
+            await this._client.batched(async (b) => {
+              b.texts.edit(textId, ops, undefined, { base: plan.digest, versioned: true });
+              b.tokens.bulkCreate(sentenceSeed(sentenceLayerId, textId, body));
+            });
+            return;
+          }
+          const answer = await this._client.texts.edit(textId, ops, undefined, {
+            base: plan.digest,
+          });
+          this._applyRawPatch((next, infoNext, vocabs) => {
+            Object.assign(next, applyReshape(next, textId, answer));
+            reshapeVocabLinks(vocabs, answer?.reshape);
+          });
+        });
+        return plan.seed;
+      } catch (err) {
+        // Its key was sent before with another request: an earlier run of
+        // this save landed with its answer lost. Read what is stored.
+        if (isKeyReused(err)) {
+          const stored = await this._readStoredText();
+          if (stored.body === body) return false;
+          throw new Error(BASELINE_CONFLICT, { cause: err });
+        }
+        if (statusOf(err) === 409 && attempt < 2) {
+          await this._planBaselineEdit(plan, await this._readStoredText());
+          continue;
+        }
+        throw err;
+      }
+    }
+  },
+
+  // The body stored and its digest, from the copy on screen when it knows the
+  // digest of what it shows, else read.
+  async _storedText() {
+    const digest = this.layerInfo.primaryTextLayer?.text?.digest ?? null;
+    return digest ? { body: this.body, digest } : this._readStoredText();
+  },
+
+  // The document read, from inside a send, and put on screen with the edits
+  // queued behind shown on top (as `_reloadInSend` does). Answers the body
+  // stored and its digest, as read: the screen may show more on top of it.
+  async _readStoredText() {
+    const updated = await this._fetch();
+    await this._adoptReload(updated);
+    this._showUnsent(updated);
+    if (this._writes.queued > 1) this._writes.reloadWhenDrained = true;
+    const text = getIgtLayerInfo(updated).primaryTextLayer?.text;
+    return { body: text?.body ?? '', digest: text?.digest ?? null };
+  },
+
+  // `plan` made on `stored` (`{ body, digest }`): its gaps moved onto the
+  // stored body when that is no longer its base (a conflict throws), the
+  // digest of the stored body, whether the text needs its first sentences,
+  // and new keys. Throws rather than let an edit go without a digest.
+  _planBaselineEdit(plan, stored) {
+    if (!stored.digest) throw new Error(NO_DIGEST);
+    if (stored.body !== plan.base) {
+      const moved = rebaseEdits(plan.base, plan.gaps, stored.body);
+      if (moved.conflict) throw new Error(BASELINE_CONFLICT);
+      plan.gaps = moved.gaps;
+      plan.base = stored.body;
+    }
+    plan.digest = stored.digest;
+    const body = applyTextOps(plan.base, gapsToOps(plan.gaps));
+    plan.seed =
+      cpLength(body) > 0 && (this.layerInfo.sentenceTokenLayer?.tokens || []).length === 0;
+    plan.keys = this._client.keySeed?.() ?? null;
   },
 
   // The update half of `saveBaselineText`, from inside its send. Answers the

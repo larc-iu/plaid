@@ -1,12 +1,22 @@
 import { useState } from 'react';
+import { applyTextOps, gapsToOps } from '@larc-iu/plaid-client';
 import { useDocumentCtx, useUnsavedDraft } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
+import { useEditLog } from '@ui/hooks/useEditLog.js';
 import { notifySuccess } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 
-// Baseline tab operations, backed by the shared IgtDocument. The save itself
-// (texts.update with server-side token shifting, plus the create/seed paths)
-// lives in doc.saveBaselineText; the hook just owns the local editing state.
+// Baseline tab operations, backed by the shared IgtDocument. The box keeps
+// its changes as edits made at the caret (plaid-ui's useEditLog), and the
+// save (doc.editBaselineText) sends them as such, so each stands where it was
+// typed. The hook owns the local editing state.
+//
+// The box stays open while a save is on its way. The log is split at the
+// send: what is typed meanwhile is kept as edits of the text sent. When the
+// save lands with nothing typed since, the tab leaves edit mode. Otherwise it
+// stays in it, over the text stored, with what was typed since moved onto
+// that text (or kept as typed when it cannot be). A save that fails puts its
+// edits back in front of what was typed since.
 export const useBaselineOperations = () => {
   const { doc } = useDocumentCtx();
   useDocumentModel(doc);
@@ -18,28 +28,36 @@ export const useBaselineOperations = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editedText, setEditedText] = useState('');
-  // The body the draft was typed over. A save merges the draft's changes onto
-  // the body stored by then (see saveBaselineText), so a passage someone else
+  // The body the draft was typed over. A save moves the draft's changes onto
+  // the body stored by then (see editBaselineText), so a passage someone else
   // saved meanwhile is not put back as it was here.
   const [base, setBase] = useState('');
+  const editLog = useEditLog();
 
   const handleEdit = () => {
     setEditedText(body);
     setBase(body);
+    editLog.reset(body, primaryTextLayer?.text?.digest ?? null);
     setIsEditing(true);
   };
 
   const handleCancel = () => {
     setEditedText('');
     setBase('');
+    editLog.reset('');
     setIsEditing(false);
   };
 
+  // `text` as the box shows it: every line break a `\n`.
+  const shown = (text) => text.replace(/\r\n?/g, '\n');
+
   const handleSave = async () => {
     // Editing the baseline of an already-tokenized doc can delete or mis-align
-    // existing tokens (and their annotations) in the changed/removed regions —
-    // the server re-diffs the text. A pure append (new text starts with the
-    // current body) leaves existing tokens untouched, so only confirm otherwise.
+    // existing tokens (and their annotations) in the changed/removed regions.
+    // Text added at the end of the body leaves existing tokens untouched, so
+    // only confirm otherwise. Read from the text, since a box filled whole
+    // (a paste over everything) is one edit over the whole body even when it
+    // only adds to the end.
     const tokenized = (doc.layerInfo?.primaryTokenLayer?.tokens || []).length > 0;
     const risky = tokenized && editedText !== base && !editedText.startsWith(base);
     if (
@@ -57,22 +75,44 @@ export const useBaselineOperations = () => {
       return;
     }
     setSaving(true);
-    const ok = await doc.saveBaselineText(editedText, base);
+    const sent = editLog.send();
+    // What was sent, as the base of what is typed while it is on its way.
+    setBase(shown(applyTextOps(sent.base, gapsToOps(sent.gaps))));
+    const ok = await doc.editBaselineText(sent);
     setSaving(false);
-    if (ok) {
-      notifySuccess('Baseline text saved');
-      setIsEditing(false);
+    if (!ok) {
+      editLog.unsend(sent);
+      setBase(base);
+      return;
     }
+    notifySuccess('Baseline text saved');
+    if (editLog.gaps().length === 0) {
+      handleCancel();
+      return;
+    }
+    // Typed while the save was on its way: moved onto the text stored now,
+    // which holds what was sent and what anyone else saved meanwhile.
+    const stored = doc.body || '';
+    const storedDigest = doc.layerInfo?.primaryTextLayer?.text?.digest ?? null;
+    const moved = editLog.rebase(stored, storedDigest);
+    if (moved.conflict) return;
+    setBase(shown(stored));
+    setEditedText(moved.body);
   };
 
   // Leaving the tab with text typed and not saved asks first: this tab holds
-  // a whole document's baseline, and it used to go without a word. Not while
-  // the save is on its way: it lands whether or not the tab is left.
-  useUnsavedDraft(
-    isEditing && !saving && editedText !== base ? 'The baseline text you have typed' : null,
-  );
+  // a whole document's baseline, and it used to go without a word. What a
+  // save on its way sends is not asked about: it lands whether or not the tab
+  // is left. What was typed since is.
+  useUnsavedDraft(isEditing && editedText !== base ? 'The baseline text you have typed' : null);
 
   const updateEditedText = (text) => setEditedText(text);
+  // The box's change, with the selection before it (editLogHandlers) and the
+  // caret after it, kept as an edit.
+  const handleTextChange = (event) => {
+    editLog.onChange(event);
+    setEditedText(event.target.value);
+  };
 
   return {
     document: doc.document,
@@ -87,5 +127,7 @@ export const useBaselineOperations = () => {
     handleCancel,
     handleSave,
     updateEditedText,
+    handleTextChange,
+    editLogHandlers: editLog.handlers,
   };
 };
