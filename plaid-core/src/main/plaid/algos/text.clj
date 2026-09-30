@@ -3430,40 +3430,6 @@
                                         (not (and (= (:start h) (:end h) end) (not (word-text? (:value h))))))
                                t))
                            tokens)))
-        ;; A stretch of a word's edge letters typed over with text that
-        ;; leaves the word with a space or a punctuation mark (`walkdd`, the
-        ;; last `d` Backspaced and ` home` typed): the letters' part is a
-        ;; change of the word and the rest is text typed beside it, as when
-        ;; typed at the caret after the word (F1).
-        cps-of (fn [^String v] (vec (.toArray (.codePoints v))))
-        letter? (fn [c] (or (Character/isLetterOrDigit (int c)) (combining-mark? c)))
-        str-of (fn [cs] (let [sb (StringBuilder.)] (doseq [c cs] (.appendCodePoint sb (int c))) (str sb)))
-        split-edge (fn [{:keys [start end value] :as g}]
-                     (let [w (when (< start end)
-                               (some (fn [{:token/keys [begin end] :as t}]
-                                       (when (and (word? t) (< begin end) (<= begin start) (<= (:end g) end)
-                                                  ;; one edge, not the whole word typed over
-                                                  (not= (= end (:end g)) (= begin start))
-                                                  (not-any? #(space? (aget o %)) (range begin end)))
-                                         t))
-                                     tokens))
-                           cs (cps-of value)]
-                       (cond
-                         (nil? w) [g]
-                         ;; at the end: letters, then the rest
-                         (= (:end g) (:token/end w))
-                         (let [k (count (take-while letter? cs))]
-                           (if (< k (count cs))
-                             [{:start start :end end :value (str-of (subvec cs 0 k))}
-                              {:start end :end end :value (str-of (subvec cs k))}]
-                             [g]))
-                         ;; at the start: the rest, then letters
-                         :else
-                         (let [k (count (take-while letter? (rseq cs)))]
-                           (if (and (< k (count cs)) (seq cs))
-                             [{:start start :end start :value (str-of (subvec cs 0 (- (count cs) k)))}
-                              {:start start :end end :value (str-of (subvec cs (- (count cs) k)))}]
-                             [g])))))
         ;; runs of gaps inside one word, each with its word
         runs (reduce (fn [out h]
                        (let [{run :gaps} (peek out)
@@ -3472,7 +3438,7 @@
                            (conj (pop out) {:gaps (conj run h) :word w})
                            (conj out {:gaps [h]}))))
                      []
-                     (mapcat split-edge (compose-edits ops old)))
+                     (compose-edits ops old))
         letter-at (fn [i] (String. o (int i) 1))
         has-space? (fn [^String v] (.anyMatch (.codePoints v) (reify java.util.function.IntPredicate
                                                                 (test [_ c] (space? c)))))

@@ -465,17 +465,12 @@
             i (when (seq cands) (nth cands (.nextInt rng (count cands))))
             {:keys [id w sep] :as it} (when i (sent i))
             c (when i (cps w))
+            a (when i (inc (.nextInt rng (- (count c) 2))))
             ;; Not in front of a sentence's first word: text typed where two
             ;; sentences meet goes to the sentence before, a rule of the
             ;; partition both paths share (see the report).
             where (when i (let [w (nth [:before :after :comma] (.nextInt rng 3))]
                             (if (and (= w :before) (zero? i) (pos? si)) :after w)))
-            ;; the letter deleted inside the word, or at the edge where the
-            ;; new text is typed (F1: `walkdd`, the last `d` Backspaced and
-            ;; ` home` typed)
-            a (when i (if (.nextBoolean rng)
-                        (if (= where :before) 0 (dec (count c)))
-                        (inc (.nextInt rng (- (count c) 2)))))
             neww (when i (fresh-word rng (inc (.nextInt rng 3))))]
         (if (nil? i)
           (edit doc rng [:resp])
@@ -547,6 +542,47 @@
               :alts [[(split (+ 2000 id) id)
                       {:resp #{id} :si si :fold fold
                        :typed-front {id (inc (count (cps left)))}}]]}])))
+      ;; A space typed inside a word by Backspacing the letters after it and
+      ;; typing them back behind the space (`thecat`, `cat` Backspaced and
+      ;; ` cat` typed), or the letters before it typed back in front of the
+      ;; space (`Iwent` to `I went`): the same as a lone space typed there,
+      ;; so the word goes on one half and folds by D28 (Y1).
+      :split-retyped
+      (let [[d info] (edit doc rng [:split-word])]
+        (cond
+          (not= :split (:kind info)) [d info]
+          (:x info) (edit doc rng [:split-retyped])
+          :else [d (assoc info :retype (if (.nextBoolean rng) :end :front))]))
+      ;; A hyphen or an apostrophe typed inside a word by Backspacing the
+      ;; letters after it and typing them back behind it (`wellknown` to
+      ;; `well-known`), or the letters before it typed back in front of it,
+      ;; or an edge letter typed over with a joiner and letters (`Johnn` to
+      ;; `John's`): the word is respelled and stays one word (Y2, E1+).
+      :joiner
+      (let [cands (filter (fn [i] (let [{:keys [w zs ze pre post]} (sent i)]
+                                    (and (<= 2 (count (cps w))) (not zs) (not ze) (empty? pre) (empty? post))))
+                          (range n))]
+        (if (empty? cands)
+          (edit doc rng [:resp])
+          (let [i (nth cands (.nextInt rng (count cands)))
+                {:keys [id w cuts]} (sent i)
+                c (cps w)
+                m (count c)
+                j (nth ["-" "'" "’"] (.nextInt rng 3))
+                k (inc (.nextInt rng (dec m)))
+                left (apply str (subvec c 0 k))
+                right (apply str (subvec c k))
+                clitic (fresh-word rng (inc (.nextInt rng 2)))
+                mode (nth [:end :front :clitic] (.nextInt rng 3))
+                [w' gap] (case mode
+                           :end [(str left j right) [k m (str j right)]]
+                           :front [(str left j right) [0 k (str left j)]]
+                           :clitic [(str (apply str (subvec c 0 (dec m))) j clitic) [(dec m) m (str j clitic)]])]
+            [(assoc-in doc [si i :w] w')
+             ;; typed where two morphemes meet, the joiner stands between
+             ;; them and they keep their letters
+             {:resp #{id} :kind :joiner :si si :i i :caret-gaps [gap] :typed w'
+              :joined (when (and (not= mode :clitic) (some #{k} cuts)) {id j})}])))
       :join (if (< si (dec (count doc)))
               [(-> doc
                    (assoc-in [si (dec n) :sep] " ")
@@ -639,11 +675,15 @@
             (nil? w) (when (seq m) (p! "MORPH of deleted " id " left on " (pr-str (map read m))))
             ((or (:fold info) #{}) id) (when (seq m) (p! "MORPH of folded " id " left on " (pr-str (map read m))))
             (and ((or (:keep info) #{}) id) (empty? m)) (p! "MORPH of " id " dropped")
-            (and (not (resp id)) (not (twin? it)))
+            (and (or (not (resp id)) (get-in info [:joined id])) (not (twin? it)))
             (let [c (cps (:w it))
                   want (map (fn [[x y]] (apply str (subvec c x y)))
                             (partition 2 1 (concat [0] (:cuts it) [(count c)])))]
-              (when (not= want (map read m)) (p! "MORPH " id " " (pr-str want) " got " (pr-str (map read m)))))
+              (when (not= want (map read m)) (p! "MORPH " id " " (pr-str want) " got " (pr-str (map read m))))
+              (when-let [j (get-in info [:joined id])]
+                (when-not (= (frequencies (map (fn [[a b]] (cp/cp-subs body (:token/end a) (:token/begin b))) (partition 2 1 m)))
+                             (merge {j 1} (when (< 2 (count m)) {"" (- (count m) 2)})))
+                  (p! "MORPH " id " not joined by " (pr-str j) " on " (pr-str (read w))))))
             (seq m)
             (let [spans (map ext m)]
               (when-not (and (= (:token/begin w) (ffirst spans))
@@ -976,7 +1016,10 @@
                 (if (= reading :words)
                   [{:start b :end e :value (str (apply str (subvec c 0 k)) " " (or x (c k))
                                                 (apply str (subvec c (inc k))))}]
-                  [{:start (+ b k) :end (+ b k (if x 1 0)) :value (str " " x)}]))
+                  (case (:retype info)
+                    :end [{:start (+ b k) :end e :value (str " " (apply str (subvec c k)))}]
+                    :front [{:start b :end (+ b k) :value (str (apply str (subvec c 0 k)) " ")}]
+                    [{:start (+ b k) :end (+ b k (if x 1 0)) :value (str " " x)}])))
        :move-space (let [a (at i) b (at (inc i))]
                      (if (= reading :words)
                        (let [c (cps (:w (sent (inc i))))]
@@ -984,10 +1027,10 @@
                            :value (str (:w (sent i)) (apply str (subvec c 0 k)) " " (apply str (subvec c k)))}])
                        [{:start (:qe a) :end (:pb b) :value ""}
                         {:start (+ (:b b) k) :end (+ (:b b) k) :value " "}]))
-       (:two-carets :typo+edge :split+edge) (let [{:keys [b e]} (at i)]
-                                              (if (= reading :words)
-                                                [{:start b :end e :value (:typed info)}]
-                                                (map (fn [[x y v]] {:start (+ b x) :end (+ b y) :value v}) (:caret-gaps info))))
+       (:two-carets :typo+edge :split+edge :joiner) (let [{:keys [b e]} (at i)]
+                                                      (if (= reading :words)
+                                                        [{:start b :end e :value (:typed info)}]
+                                                        (map (fn [[x y v]] {:start (+ b x) :end (+ b y) :value v}) (:caret-gaps info))))
        :join (let [last-item (peek sent)
                    e (:qe (words (:id last-item)))]
                [{:start e :end (+ e (cp/cp-count (:sep last-item))) :value " "}])))))
@@ -1075,6 +1118,14 @@
           :split-and-edge {:seps [" "] :kinds [:split+edge]}
           :split-and-edge-one-morpheme {:seps [" "] :one-morph 0.6 :segments #{:m} :kinds [:split+edge]}
           :split-and-edge-nodes {:seps [" "] :nodes 4 :kinds [:split+edge]}
+;; a word's letters Backspaced and typed back behind a space (Y1), or
+          ;; behind a hyphen or an apostrophe (Y2, E1+)
+          :split-retyped {:seps [" "] :kinds [:split-retyped]}
+          :split-retyped-one-morpheme {:seps [" "] :one-morph 0.6 :segments #{:m} :kinds [:split-retyped]}
+          :split-retyped-nodes {:seps [" "] :marks 0.4 :nodes 4 :kinds [:split-retyped]}
+          :joiner-typed {:seps [" "] :kinds [:joiner]}
+          :joiner-typed-one-morpheme {:seps [" "] :one-morph 0.6 :segments #{:m} :kinds [:joiner]}
+          :joiner-typed-nodes {:seps [" "] :marks 0.4 :nodes 4 :kinds [:joiner]}
           :one-morpheme-moved-space {:seps [" "] :one-morph 0.6 :segments #{:m} :kinds [:move-space]}}))
 
 (def ^:private old-seeds
@@ -1199,15 +1250,8 @@
   ;; tokens, whenever the whole-body save's placed edits lie inside that
   ;; stretch (the edit path keeps them there). Cases whose change is a pure
   ;; insert or delete are not such an edit (those stand where the caret put
-  ;; them), and the others are counted. So are the stretches over a word's
-  ;; edge letters typed over with text leaving the word with a space or a
-  ;; punctuation mark (F1): the edit path reads the letters' part as a change
-  ;; of the word and the rest as text typed beside it, where the whole-body
-  ;; save drops the word's analysis.
-  (let [pure (atom 0) same (atom 0) outside (atom 0) edge (atom 0)
-        letter? (fn [c] (let [t (Character/getType (int c))]
-                          (or (Character/isLetterOrDigit (int c))
-                              (#{Character/NON_SPACING_MARK Character/COMBINING_SPACING_MARK Character/ENCLOSING_MARK} t))))]
+  ;; them), and the others are counted.
+  (let [pure (atom 0) same (atom 0) outside (atom 0)]
     (doseq [[_ opts] (sort edit-configs)
             seed (range 200)
             :let [{:keys [old new tokens]} (gen-case seed opts)
@@ -1227,13 +1271,6 @@
                                    (<= (or (:end e) (:at e)) (:end gap))))
                       (#'ta/ops->edits placed)))
         (swap! outside inc)
-        (and (not-every? letter? (.toArray (.codePoints ^String (:value gap))))
-             (some (fn [{:token/keys [layer begin end]}]
-                     (and (#{:w :p} layer) (< begin end)
-                          (<= begin (:start gap)) (<= (:end gap) end)
-                          (not= (= begin (:start gap)) (= end (:end gap)))))
-                   tokens))
-        (swap! edge inc)
         :else
         (let [whole (-> (ta/diff old new)
                         (ta/slide-to-tokens old tokens #{:s})
@@ -1247,4 +1284,4 @@
               view (fn [r] [(:text/body (:text r)) (set (map (juxt :token/id :token/begin :token/end) (:tokens r)))])]
           (swap! same inc)
           (is (= (view whole) (view edit)) (str (pr-str old) " -> " (pr-str new))))))
-    (is (< 1000 @same) (str @same " typed over, " @pure " pure, " @outside " placed outside, " @edge " at a word's edge"))))
+    (is (< 1000 @same) (str @same " typed over, " @pure " pure, " @outside " placed outside"))))

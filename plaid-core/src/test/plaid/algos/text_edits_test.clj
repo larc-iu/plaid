@@ -206,16 +206,20 @@
     (is (= ["a (pum pkin x" [[0 "a"] [[:m 0] "a"] [1 "pkin"] [2 "x"] [[:m 2] "x"]]]
            (run "a pumpkin x" [(ins 5 " ") (ins 2 "(")])))))
 
-(deftest a-words-edge-letter-typed-over-with-a-new-word-keeps-the-analysis
-  ;; F1: `walkdd`, the last `d` Backspaced and ` home` typed; the mirror in
-  ;; front; and a comma
+(deftest a-words-letters-typed-back-behind-a-space-or-a-joiner-read-as-typed-inside-it
+  ;; Y1: the letters after the space (or before it) Backspaced and typed back
+  ;; with it are a space typed inside the word, which folds by D28 and the
+  ;; one-morpheme ruling. Y2, E1+: behind a hyphen or an apostrophe, the word
+  ;; is respelled and stays one word.
   (let [run (fn [old ops]
               (let [r (ta/apply-edits old (one-morpheme old) ops {:partitioning #{} :word-layers #{:w} :segments #{:m}})
                     body (:text/body (:text r))]
-                [body (sort (keep (fn [{:token/keys [id begin end]}] (when (vector? id) [id (subs body begin end)])) (:tokens r)))]))]
-    (is (= ["the walkd home x" [[[:m 0] "the"] [[:m 1] "walkd"] [[:m 2] "x"]]]
-           (run "the walkdd x" [(del 9 1) (ins 9 " home")])))
-    (is (= ["the slowly walkd x" [[[:m 0] "the"] [[:m 1] "walkd"] [[:m 2] "x"]]]
-           (run "the wwalkd x" [(del 4 1) (ins 4 "slowly ")])))
-    (is (= ["the walkd, x" [[[:m 0] "the"] [[:m 1] "walkd"] [[:m 2] "x"]]]
-           (run "the walkdd x" [(del 9 1) (ins 9 ",")])))))
+                [body (sort-by str (map (fn [{:token/keys [id begin end]}] [id (subs body begin end)]) (:tokens r)))]))]
+    (is (= ["a the cat x" [[0 "a"] [1 "the"] [2 "x"] [[:m 0] "a"] [[:m 2] "x"]]]
+           (run "a thecat x" [(rep 5 3 " cat")])))
+    (is (= ["so I went home" [[0 "so"] [1 "went"] [2 "home"] [[:m 0] "so"] [[:m 2] "home"]]]
+           (run "so Iwent home" [(rep 3 1 "I ")])))
+    (is (= ["a well-known x" [[0 "a"] [1 "well-known"] [2 "x"] [[:m 0] "a"] [[:m 1] "well-known"] [[:m 2] "x"]]]
+           (run "a wellknown x" [(rep 6 5 "-known")])))
+    (is (= ["said John's x" [[0 "said"] [1 "John's"] [2 "x"] [[:m 0] "said"] [[:m 1] "John's"] [[:m 2] "x"]]]
+           (run "said Johnn x" [(rep 9 1 "'s")])))))
