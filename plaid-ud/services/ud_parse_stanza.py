@@ -1,7 +1,6 @@
 import contextlib
 import json
 import stanza
-import traceback
 from plaid_client import (BaseService, TASKS, Param, ROLES, find_by_role,
                           stamp_inferred, is_protected, service_source)
 from plaid_client.service import (batch_body_budget, locked_for_writes, machine_detail,
@@ -676,307 +675,301 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
         # successful step was, even if Python's stdout is block-buffered.
         print(msg, flush=True)
 
-    try:
-        log(f"Starting parse for document {document_id}")
+    log(f"Starting parse for document {document_id}")
 
-        # Resolve layers FIRST — the parse mode depends on what exists.
-        log("Fetching document with layers…")
-        progress.report(ParseProgress.FETCH, 0.0, "Reading the document…")
-        full_document = client.documents.get(document_id, include_body=True)
-        log("  …document fetched")
-        # Resolve the substrate by its cross-app role tag (config.plaid.role),
-        # never by position: find_by_role returns None rather than guessing, so
-        # a missing/mistagged baseline fails loudly instead of parsing the wrong
-        # text layer. The parse runs on (and offsets into) THIS baseline body —
-        # parsing one string while offsetting into another would corrupt tokens.
-        text_layers = full_document["text_layers"]
-        text_layer = find_by_role(text_layers, ROLES.BASELINE)
-        if not text_layer:
-            raise setup_incomplete("no baseline-role text layer")
-        text_id = text_layer["text"]["id"]
-        body = text_layer["text"]["body"]
-        if not (body or "").strip():
-            raise RuntimeError("The document has no text.")
+    # Resolve layers FIRST — the parse mode depends on what exists.
+    log("Fetching document with layers…")
+    progress.report(ParseProgress.FETCH, 0.0, "Reading the document…")
+    full_document = client.documents.get(document_id, include_body=True)
+    log("  …document fetched")
+    # Resolve the substrate by its cross-app role tag (config.plaid.role),
+    # never by position: find_by_role returns None rather than guessing, so
+    # a missing/mistagged baseline fails loudly instead of parsing the wrong
+    # text layer. The parse runs on (and offsets into) THIS baseline body —
+    # parsing one string while offsetting into another would corrupt tokens.
+    text_layers = full_document["text_layers"]
+    text_layer = find_by_role(text_layers, ROLES.BASELINE)
+    if not text_layer:
+        raise setup_incomplete("no baseline-role text layer")
+    text_id = text_layer["text"]["id"]
+    body = text_layer["text"]["body"]
+    if not (body or "").strip():
+        raise RuntimeError("The document has no text.")
 
-        # Substrate token layers are bound by their shared role (config.plaid.role),
-        # NOT by the per-app ud.* flags. UD's "Morphemes" layer carries role
-        # "syntactic-word" (it holds CoNLL-U syntactic words), not "morpheme".
-        token_layers = text_layer.get("token_layers", [])
-        sentence_layer = find_by_role(token_layers, ROLES.SENTENCE)
-        word_layer = find_by_role(token_layers, ROLES.WORD)
-        morpheme_layer = find_by_role(token_layers, ROLES.SYNTACTIC_WORD)
+    # Substrate token layers are bound by their shared role (config.plaid.role),
+    # NOT by the per-app ud.* flags. UD's "Morphemes" layer carries role
+    # "syntactic-word" (it holds CoNLL-U syntactic words), not "morpheme".
+    token_layers = text_layer.get("token_layers", [])
+    sentence_layer = find_by_role(token_layers, ROLES.SENTENCE)
+    word_layer = find_by_role(token_layers, ROLES.WORD)
+    morpheme_layer = find_by_role(token_layers, ROLES.SYNTACTIC_WORD)
 
-        if not (sentence_layer and word_layer and morpheme_layer):
-            raise setup_incomplete("no sentence, word or syntactic-word token layer")
+    if not (sentence_layer and word_layer and morpheme_layer):
+        raise setup_incomplete("no sentence, word or syntactic-word token layer")
 
-        span_layers = morpheme_layer.get("span_layers", [])
-        form_layer = span_layer_by_ud_config(span_layers, "form", "Form")
-        lemma_layer = span_layer_by_ud_config(span_layers, "lemma", "Lemma")
-        upos_layer = span_layer_by_ud_config(span_layers, "upos", "UPOS")
-        xpos_layer = span_layer_by_ud_config(span_layers, "xpos", "XPOS")
-        features_layer = span_layer_by_ud_config(span_layers, "features", "Features")
+    span_layers = morpheme_layer.get("span_layers", [])
+    form_layer = span_layer_by_ud_config(span_layers, "form", "Form")
+    lemma_layer = span_layer_by_ud_config(span_layers, "lemma", "Lemma")
+    upos_layer = span_layer_by_ud_config(span_layers, "upos", "UPOS")
+    xpos_layer = span_layer_by_ud_config(span_layers, "xpos", "XPOS")
+    features_layer = span_layer_by_ud_config(span_layers, "features", "Features")
 
-        existing_sentences = sorted(sentence_layer.get("tokens") or [], key=lambda t: t["begin"])
-        existing_words = sorted(word_layer.get("tokens") or [], key=lambda t: (t["begin"], t["end"]))
-        existing_morphemes = morpheme_layer.get("tokens", []) or []
-        log(f"Existing tokens: {len(existing_sentences)} sentences, "
-            f"{len(existing_words)} words, {len(existing_morphemes)} syntactic words")
-        progress.report(ParseProgress.FETCH, 1.0, "Reading the document…")
+    existing_sentences = sorted(sentence_layer.get("tokens") or [], key=lambda t: t["begin"])
+    existing_words = sorted(word_layer.get("tokens") or [], key=lambda t: (t["begin"], t["end"]))
+    existing_morphemes = morpheme_layer.get("tokens", []) or []
+    log(f"Existing tokens: {len(existing_sentences)} sentences, "
+        f"{len(existing_words)} words, {len(existing_morphemes)} syntactic words")
+    progress.report(ParseProgress.FETCH, 1.0, "Reading the document…")
 
-        preserve = bool(existing_sentences and existing_words)
+    preserve = bool(existing_sentences and existing_words)
 
-        if preserve:
-            # ----- SUBSTRATE-PRESERVING mode (sentence-selective) -----------
-            # Re-parse only sentences that carry NO human-made/verified UD
-            # annotation; sentences a human has reviewed/edited are left exactly
-            # as they are. This is the "click Parse again" path — it refreshes
-            # the machine-only and not-yet-parsed sentences without disturbing
-            # your work. `overwrite` re-parses every sentence regardless.
+    if preserve:
+        # ----- SUBSTRATE-PRESERVING mode (sentence-selective) -----------
+        # Re-parse only sentences that carry NO human-made/verified UD
+        # annotation; sentences a human has reviewed/edited are left exactly
+        # as they are. This is the "click Parse again" path — it refreshes
+        # the machine-only and not-yet-parsed sentences without disturbing
+        # your work. `overwrite` re-parses every sentence regardless.
 
-            # Group the existing words under their containing sentences (the
-            # sentence layer is partitioning, so containment is well-defined);
-            # keep the sentence object alongside for per-sentence decisions.
-            sent_groups = []  # [(sentence_token, [word_tokens])]
-            for sent in existing_sentences:
-                ws = [w for w in existing_words
-                      if sent["begin"] <= w["begin"] and w["end"] <= sent["end"]]
-                sent_groups.append((sent, ws))
-            grouped_count = sum(len(ws) for _, ws in sent_groups)
-            if grouped_count != len(existing_words):
-                log(f"  WARNING: {len(existing_words) - grouped_count} word token(s) "
-                    f"fall outside the sentence partition; they get no syntactic word")
+        # Group the existing words under their containing sentences (the
+        # sentence layer is partitioning, so containment is well-defined);
+        # keep the sentence object alongside for per-sentence decisions.
+        sent_groups = []  # [(sentence_token, [word_tokens])]
+        for sent in existing_sentences:
+            ws = [w for w in existing_words
+                  if sent["begin"] <= w["begin"] and w["end"] <= sent["end"]]
+            sent_groups.append((sent, ws))
+        grouped_count = sum(len(ws) for _, ws in sent_groups)
+        if grouped_count != len(existing_words):
+            log(f"  WARNING: {len(existing_words) - grouped_count} word token(s) "
+                f"fall outside the sentence partition; they get no syntactic word")
 
-            morph_to_sent = morpheme_sentence_index(sent_groups, existing_morphemes)
-            protected_idxs = protected_sentence_indexes(morpheme_layer, lemma_layer, morph_to_sent)
+        morph_to_sent = morpheme_sentence_index(sent_groups, existing_morphemes)
+        protected_idxs = protected_sentence_indexes(morpheme_layer, lemma_layer, morph_to_sent)
 
-            # A sentence with text and no words (a from-scratch parse that
-            # stopped after writing the sentences) is tokenized here, on its
-            # own, and its words are written with its parse. Left out, it was
-            # skipped by every later Parse, which reported success.
-            unworded = [idx for idx, (sent, ws) in enumerate(sent_groups)
-                        if not ws and body[sent["begin"]:sent["end"]].strip()]
-            new_words = set()
-            if unworded:
-                log(f"  {len(unworded)} sentence(s) have no words; tokenizing them")
-                progress.report(ParseProgress.LOAD, 0.0, f"Loading the {language} models…")
-                with progress.heartbeat(ParseProgress.LOAD, 0.0, f"Loading the {language} models…"):
-                    tokenizer = pipeline_provider.get(language)
-                for n, idx in enumerate(unworded):
-                    progress.report(ParseProgress.PARSE, n / len(unworded),
-                                    f"Finding the words of sentence {n + 1} of {len(unworded)}…")
-                    sent = sent_groups[idx][0]
-                    ws = sentence_words(tokenizer, body, sent["begin"], sent["end"])
-                    sent_groups[idx] = (sent, ws)
-                    new_words.add(idx)
-
-            # Sentences to (re)parse: those with words and — unless overwrite —
-            # no human annotations. Carry the original index for clear errors.
-            reparse = [(idx, sent, ws) for idx, (sent, ws) in enumerate(sent_groups)
-                       if ws and (overwrite or idx not in protected_idxs)]
-            reparse_idxs = {idx for idx, _, _ in reparse}
-            skipped_idxs = protected_idxs - reparse_idxs
-            log(f"Sentence-selective parse: {len(reparse)} sentence(s) to (re)parse; "
-                f"{len(skipped_idxs)} with human annotations "
-                + ("re-parsed anyway (overwrite on)" if overwrite else "left untouched"))
-
-            if not reparse:
-                log("Nothing to (re)parse — every sentence with words has human annotations.")
-                return {"mode": "preserve", "parsed_sentences": 0,
-                        "skipped_sentences": len(skipped_idxs)}
-
-            log("Preserving existing tokenization; parsing pretokenized…")
-            # The first parse in a language downloads its models, which is the
-            # longest silent stretch this service has. Name it before it starts.
+        # A sentence with text and no words (a from-scratch parse that
+        # stopped after writing the sentences) is tokenized here, on its
+        # own, and its words are written with its parse. Left out, it was
+        # skipped by every later Parse, which reported success.
+        unworded = [idx for idx, (sent, ws) in enumerate(sent_groups)
+                    if not ws and body[sent["begin"]:sent["end"]].strip()]
+        new_words = set()
+        if unworded:
+            log(f"  {len(unworded)} sentence(s) have no words; tokenizing them")
             progress.report(ParseProgress.LOAD, 0.0, f"Loading the {language} models…")
             with progress.heartbeat(ParseProgress.LOAD, 0.0, f"Loading the {language} models…"):
-                pipeline = pipeline_provider.get(language, pretokenized=True)
+                tokenizer = pipeline_provider.get(language)
+            for n, idx in enumerate(unworded):
+                progress.report(ParseProgress.PARSE, n / len(unworded),
+                                f"Finding the words of sentence {n + 1} of {len(unworded)}…")
+                sent = sent_groups[idx][0]
+                ws = sentence_words(tokenizer, body, sent["begin"], sent["end"])
+                sent_groups[idx] = (sent, ws)
+                new_words.add(idx)
 
-            # Parse in groups rather than handing Stanza every sentence at
-            # once: the bar then moves through a long document, and `report`
-            # is a cancellation checkpoint, so a stop lands between groups:
-            # before any write, leaving the document untouched.
-            sentences_data = []
-            total = len(reparse)
-            for start in range(0, total, SENTENCE_GROUP):
-                group = reparse[start:start + SENTENCE_GROUP]
-                progress.report(ParseProgress.PARSE, start / total,
-                                f"Parsing sentence {start + 1} of {total}…")
-                stanza_doc = pipeline([[body[w["begin"]:w["end"]] for w in ws]
-                                       for _, _, ws in group])
-                sentences_data.extend(stanza_doc.to_dict())
+        # Sentences to (re)parse: those with words and — unless overwrite —
+        # no human annotations. Carry the original index for clear errors.
+        reparse = [(idx, sent, ws) for idx, (sent, ws) in enumerate(sent_groups)
+                   if ws and (overwrite or idx not in protected_idxs)]
+        reparse_idxs = {idx for idx, _, _ in reparse}
+        skipped_idxs = protected_idxs - reparse_idxs
+        log(f"Sentence-selective parse: {len(reparse)} sentence(s) to (re)parse; "
+            f"{len(skipped_idxs)} with human annotations "
+            + ("re-parsed anyway (overwrite on)" if overwrite else "left untouched"))
 
-            # The syntactic-word tokens of the RE-PARSED sentences go (which
-            # cascades their UD spans/relations); skipped sentences keep
-            # theirs. PLANNED here and carried out in the write phase below,
-            # each sentence's delete in the batch that writes its new parse, so
-            # a stop during the parse leaves the document exactly as it was.
-            r_of_orig = {orig_idx: r_idx for r_idx, (orig_idx, _, _) in enumerate(reparse)}
-            units = [SentenceWrites() for _ in reparse]
-            for m in existing_morphemes:
-                r_idx = r_of_orig.get(morph_to_sent.get(m["id"]))
-                if r_idx is not None:
-                    units[r_idx].deletes.append(m["id"])
+        if not reparse:
+            log("Nothing to (re)parse — every sentence with words has human annotations.")
+            return {"mode": "preserve", "parsed_sentences": 0,
+                    "skipped_sentences": len(skipped_idxs)}
+
+        log("Preserving existing tokenization; parsing pretokenized…")
+        # The first parse in a language downloads its models, which is the
+        # longest silent stretch this service has. Name it before it starts.
+        progress.report(ParseProgress.LOAD, 0.0, f"Loading the {language} models…")
+        with progress.heartbeat(ParseProgress.LOAD, 0.0, f"Loading the {language} models…"):
+            pipeline = pipeline_provider.get(language, pretokenized=True)
+
+        # Parse in groups rather than handing Stanza every sentence at
+        # once: the bar then moves through a long document, and `report`
+        # is a cancellation checkpoint, so a stop lands between groups:
+        # before any write, leaving the document untouched.
+        sentences_data = []
+        total = len(reparse)
+        for start in range(0, total, SENTENCE_GROUP):
+            group = reparse[start:start + SENTENCE_GROUP]
+            progress.report(ParseProgress.PARSE, start / total,
+                            f"Parsing sentence {start + 1} of {total}…")
+            stanza_doc = pipeline([[body[w["begin"]:w["end"]] for w in ws]
+                                   for _, _, ws in group])
+            sentences_data.extend(stanza_doc.to_dict())
+
+        # The syntactic-word tokens of the RE-PARSED sentences go (which
+        # cascades their UD spans/relations); skipped sentences keep
+        # theirs. PLANNED here and carried out in the write phase below,
+        # each sentence's delete in the batch that writes its new parse, so
+        # a stop during the parse leaves the document exactly as it was.
+        r_of_orig = {orig_idx: r_idx for r_idx, (orig_idx, _, _) in enumerate(reparse)}
+        units = [SentenceWrites() for _ in reparse]
+        for m in existing_morphemes:
+            r_idx = r_of_orig.get(morph_to_sent.get(m["id"]))
+            if r_idx is not None:
+                units[r_idx].deletes.append(m["id"])
+        head_deletes = []
+
+        sentence_ops = []  # substrate preserved
+        # `r_idx` is the index INTO `sentences_data` (the re-parsed
+        # subset), so the shared span/relation code below stays consistent.
+        for r_idx, ((orig_idx, sent, ws), sentence_data) in enumerate(zip(reparse, sentences_data)):
+            rows = [td for td in sentence_data if not isinstance(td["id"], tuple)]
+            if len(rows) != len(ws):
+                # A misalignment would hang annotations on the wrong
+                # words — fail loudly rather than guess.
+                raise RuntimeError(
+                    f"Pretokenized parse returned {len(rows)} words for a "
+                    f"{len(ws)}-word sentence (original index {orig_idx}); aborting")
+            if orig_idx in new_words:
+                units[r_idx].words = [make_bulk_token(word_layer["id"], text_id, w["begin"], w["end"])
+                                      for w in ws]
+            for w, row in zip(ws, rows):
+                op = make_bulk_token(morpheme_layer["id"], text_id,
+                                     w["begin"], w["end"], metadata=dict(frag))
+                op["precedence"] = 0
+                units[r_idx].add_morpheme(op, row, body[w["begin"]:w["end"]])
+        parse_summary = {"mode": "preserve", "parsed_sentences": len(reparse),
+                         "skipped_sentences": len(skipped_idxs)}
+    else:
+        # ----- FULL-REPLACE mode -----------------------------------------
+        # The sentence cascade destroys EVERYTHING under the text layer —
+        # other apps' layers included — so the guard walks the whole tree.
+        protected, breakdown = count_protected_annotations(token_layers)
+        if protected and not overwrite:
+            raise RuntimeError(format_protected_error(
+                protected, breakdown,
+                "on this document (they may belong to other apps sharing the project)"))
+        if protected:
+            log(f"Overwrite enabled: replacing {protected} protected annotation(s)")
+
+        log("Tokenizing + parsing from scratch…")
+        progress.report(ParseProgress.LOAD, 0.0, f"Loading the {language} models…")
+        with progress.heartbeat(ParseProgress.LOAD, 0.0, f"Loading the {language} models…"):
+            pipeline = pipeline_provider.get(language)
+        # Stanza decides the sentence boundaries here, so the body cannot
+        # be split into groups without changing where the sentences fall.
+        # This is one call and one quiet stretch; the requester's elapsed
+        # clock is what carries it, so say what is happening first.
+        progress.report(ParseProgress.PARSE, 0.0,
+                        f"Parsing {len(body)} characters…")
+        with progress.heartbeat(ParseProgress.PARSE, 0.0, f"Parsing {len(body)} characters…"):
+            stanza_doc = pipeline(body)
+        sentences_data = stanza_doc.to_dict()
+        log(f"Parsed {len(sentences_data)} sentences")
+        progress.report(ParseProgress.PARSE, 1.0,
+                        f"Parsed {len(sentences_data)} sentences…")
+        parse_summary = {"mode": "full", "parsed_sentences": len(sentences_data),
+                         "skipped_sentences": 0}
+
+        # Reset: plan the delete of pre-existing tokens, leaning on
+        # server-side cascade for the normal case. Deleting sentences
+        # cascades to their words + morphemes server-side in one shot. The
+        # lower elif branches only kick in for half-parsed states (sentences
+        # absent but lower layers left over from a botched mid-flight
+        # parse). Doing this top-down rather than bottom-up matters a lot
+        # for perf: an explicit bottom-up cycle for a 285-word doc ran ~30s
+        # server-side (each word delete runs constraint queries
+        # individually), while a single-sentence cascade collapses that into
+        # one server-side transaction. (preserve=False means at most one
+        # branch fires.) Carried out in the write phase below.
+        if existing_sentences:
+            head_deletes = [t["id"] for t in existing_sentences]
+            log(f"  Will delete {len(head_deletes)} sentences (cascades to words + morphemes)")
+        elif existing_words:
+            head_deletes = [t["id"] for t in existing_words]
+            log(f"  Will delete {len(head_deletes)} orphan words (no sentences to cascade from)")
+        elif existing_morphemes:
+            head_deletes = [t["id"] for t in existing_morphemes]
+            log(f"  Will delete {len(head_deletes)} orphan morphemes")
+        else:
             head_deletes = []
 
-            sentence_ops = []  # substrate preserved
-            # `r_idx` is the index INTO `sentences_data` (the re-parsed
-            # subset), so the shared span/relation code below stays consistent.
-            for r_idx, ((orig_idx, sent, ws), sentence_data) in enumerate(zip(reparse, sentences_data)):
-                rows = [td for td in sentence_data if not isinstance(td["id"], tuple)]
-                if len(rows) != len(ws):
-                    # A misalignment would hang annotations on the wrong
-                    # words — fail loudly rather than guess.
-                    raise RuntimeError(
-                        f"Pretokenized parse returned {len(rows)} words for a "
-                        f"{len(ws)}-word sentence (original index {orig_idx}); aborting")
-                if orig_idx in new_words:
-                    units[r_idx].words = [make_bulk_token(word_layer["id"], text_id, w["begin"], w["end"])
-                                          for w in ws]
-                for w, row in zip(ws, rows):
-                    op = make_bulk_token(morpheme_layer["id"], text_id,
-                                         w["begin"], w["end"], metadata=dict(frag))
-                    op["precedence"] = 0
-                    units[r_idx].add_morpheme(op, row, body[w["begin"]:w["end"]])
-            parse_summary = {"mode": "preserve", "parsed_sentences": len(reparse),
-                             "skipped_sentences": len(skipped_idxs)}
-        else:
-            # ----- FULL-REPLACE mode -----------------------------------------
-            # The sentence cascade destroys EVERYTHING under the text layer —
-            # other apps' layers included — so the guard walks the whole tree.
-            protected, breakdown = count_protected_annotations(token_layers)
-            if protected and not overwrite:
-                raise RuntimeError(format_protected_error(
-                    protected, breakdown,
-                    "on this document (they may belong to other apps sharing the project)"))
-            if protected:
-                log(f"Overwrite enabled: replacing {protected} protected annotation(s)")
+        # 1. Sentence tokens: a gap-free partition of [0, len(body)). Sentence i
+        #    runs from its first token to the start of sentence i+1, so inter-
+        #    sentence whitespace stays with the preceding sentence; sentence 0
+        #    starts at 0 and the last sentence ends at len(body).
+        n_sents = len(stanza_doc.sentences)
+        starts = [0 if i == 0 else sent.tokens[0].start_char
+                  for i, sent in enumerate(stanza_doc.sentences)]
+        sentence_ops = []
+        for i in range(n_sents):
+            begin = starts[i]
+            end = starts[i + 1] if i + 1 < n_sents else len(body)
+            op = make_bulk_token(sentence_layer["id"], text_id, begin, end)
+            # Preserve the Stanza-recovered sentence text on the sentence token so
+            # the exporter can round-trip it (e.g. when surface forms differ from
+            # the body slice — contractions, normalized punctuation). Sentence
+            # and word tokens are substrate and carry no provenance stamp: the
+            # run's service-run operation names what made them.
+            op["metadata"] = {"text": stanza_doc.sentences[i].text}
+            sentence_ops.append(op)
 
-            log("Tokenizing + parsing from scratch…")
-            progress.report(ParseProgress.LOAD, 0.0, f"Loading the {language} models…")
-            with progress.heartbeat(ParseProgress.LOAD, 0.0, f"Loading the {language} models…"):
-                pipeline = pipeline_provider.get(language)
-            # Stanza decides the sentence boundaries here, so the body cannot
-            # be split into groups without changing where the sentences fall.
-            # This is one call and one quiet stretch; the requester's elapsed
-            # clock is what carries it, so say what is happening first.
-            progress.report(ParseProgress.PARSE, 0.0,
-                            f"Parsing {len(body)} characters…")
-            with progress.heartbeat(ParseProgress.PARSE, 0.0, f"Parsing {len(body)} characters…"):
-                stanza_doc = pipeline(body)
-            sentences_data = stanza_doc.to_dict()
-            log(f"Parsed {len(sentences_data)} sentences")
-            progress.report(ParseProgress.PARSE, 1.0,
-                            f"Parsed {len(sentences_data)} sentences…")
-            parse_summary = {"mode": "full", "parsed_sentences": len(sentences_data),
-                             "skipped_sentences": 0}
-
-            # Reset: plan the delete of pre-existing tokens, leaning on
-            # server-side cascade for the normal case. Deleting sentences
-            # cascades to their words + morphemes server-side in one shot. The
-            # lower elif branches only kick in for half-parsed states (sentences
-            # absent but lower layers left over from a botched mid-flight
-            # parse). Doing this top-down rather than bottom-up matters a lot
-            # for perf: an explicit bottom-up cycle for a 285-word doc ran ~30s
-            # server-side (each word delete runs constraint queries
-            # individually), while a single-sentence cascade collapses that into
-            # one server-side transaction. (preserve=False means at most one
-            # branch fires.) Carried out in the write phase below.
-            if existing_sentences:
-                head_deletes = [t["id"] for t in existing_sentences]
-                log(f"  Will delete {len(head_deletes)} sentences (cascades to words + morphemes)")
-            elif existing_words:
-                head_deletes = [t["id"] for t in existing_words]
-                log(f"  Will delete {len(head_deletes)} orphan words (no sentences to cascade from)")
-            elif existing_morphemes:
-                head_deletes = [t["id"] for t in existing_morphemes]
-                log(f"  Will delete {len(head_deletes)} orphan morphemes")
-            else:
-                head_deletes = []
-
-            # 1. Sentence tokens: a gap-free partition of [0, len(body)). Sentence i
-            #    runs from its first token to the start of sentence i+1, so inter-
-            #    sentence whitespace stays with the preceding sentence; sentence 0
-            #    starts at 0 and the last sentence ends at len(body).
-            n_sents = len(stanza_doc.sentences)
-            starts = [0 if i == 0 else sent.tokens[0].start_char
-                      for i, sent in enumerate(stanza_doc.sentences)]
-            sentence_ops = []
-            for i in range(n_sents):
-                begin = starts[i]
-                end = starts[i + 1] if i + 1 < n_sents else len(body)
-                op = make_bulk_token(sentence_layer["id"], text_id, begin, end)
-                # Preserve the Stanza-recovered sentence text on the sentence token so
-                # the exporter can round-trip it (e.g. when surface forms differ from
-                # the body slice — contractions, normalized punctuation). Sentence
-                # and word tokens are substrate and carry no provenance stamp: the
-                # run's service-run operation names what made them.
-                op["metadata"] = {"text": stanza_doc.sentences[i].text}
-                sentence_ops.append(op)
-
-            # 2/3. Word and morpheme tokens. Each surface token is a word; each
-            #      integer-id syntactic word is a morpheme that inhabits the FULL
-            #      width of its word (multiword-token components share the extent).
-            units = [SentenceWrites() for _ in sentences_data]
-            for sent_idx, sentence_data in enumerate(sentences_data):
-                unit = units[sent_idx]
-                i = 0
-                while i < len(sentence_data):
-                    td = sentence_data[i]
-                    if isinstance(td["id"], tuple):
-                        start_id, end_id = td["id"]
-                        count = end_id - start_id + 1
-                        wb, we = td["start_char"], td["end_char"]
-                        # Persist the MWT surface form on the word token's
-                        # metadata so the exporter can round-trip it. (1:1 words
-                        # leave metadata clean; the body substring is canonical.)
-                        # Unstamped, as substrate.
-                        word_meta = {}
-                        if td.get("text") and td["text"] != body[wb:we]:
-                            word_meta["form"] = td["text"]
-                        if td.get("misc"):
-                            word_meta["misc"] = td["misc"]
-                        unit.words.append(make_bulk_token(
-                            word_layer["id"], text_id, wb, we, metadata=word_meta
-                        ))
-                        members = sentence_data[i + 1:i + 1 + count]
-                        for prec, member in enumerate(members):
-                            op = make_bulk_token(morpheme_layer["id"], text_id, wb, we,
-                                                 metadata=dict(frag))
-                            op["precedence"] = prec
-                            unit.add_morpheme(op, member, body[wb:we])
-                        i += 1 + count
-                    else:
-                        wb, we = td["start_char"], td["end_char"]
-                        unit.words.append(make_bulk_token(word_layer["id"], text_id, wb, we))
+        # 2/3. Word and morpheme tokens. Each surface token is a word; each
+        #      integer-id syntactic word is a morpheme that inhabits the FULL
+        #      width of its word (multiword-token components share the extent).
+        units = [SentenceWrites() for _ in sentences_data]
+        for sent_idx, sentence_data in enumerate(sentences_data):
+            unit = units[sent_idx]
+            i = 0
+            while i < len(sentence_data):
+                td = sentence_data[i]
+                if isinstance(td["id"], tuple):
+                    start_id, end_id = td["id"]
+                    count = end_id - start_id + 1
+                    wb, we = td["start_char"], td["end_char"]
+                    # Persist the MWT surface form on the word token's
+                    # metadata so the exporter can round-trip it. (1:1 words
+                    # leave metadata clean; the body substring is canonical.)
+                    # Unstamped, as substrate.
+                    word_meta = {}
+                    if td.get("text") and td["text"] != body[wb:we]:
+                        word_meta["form"] = td["text"]
+                    if td.get("misc"):
+                        word_meta["misc"] = td["misc"]
+                    unit.words.append(make_bulk_token(
+                        word_layer["id"], text_id, wb, we, metadata=word_meta
+                    ))
+                    members = sentence_data[i + 1:i + 1 + count]
+                    for prec, member in enumerate(members):
                         op = make_bulk_token(morpheme_layer["id"], text_id, wb, we,
                                              metadata=dict(frag))
-                        op["precedence"] = 0
-                        unit.add_morpheme(op, td, body[wb:we])
-                        i += 1
+                        op["precedence"] = prec
+                        unit.add_morpheme(op, member, body[wb:we])
+                    i += 1 + count
+                else:
+                    wb, we = td["start_char"], td["end_char"]
+                    unit.words.append(make_bulk_token(word_layer["id"], text_id, wb, we))
+                    op = make_bulk_token(morpheme_layer["id"], text_id, wb, we,
+                                         metadata=dict(frag))
+                    op["precedence"] = 0
+                    unit.add_morpheme(op, td, body[wb:we])
+                    i += 1
 
-        # ----- the writes ---------------------------------------------------
-        # One stretch that must finish once begun. A stop asked for while the
-        # document was being read or parsed has already landed, before anything
-        # was touched; one that arrives from here on is held off until the
-        # document is whole again. The caller's final report belongs inside a
-        # critical block too: a checkpoint after the last write would throw a
-        # finished parse away and call it stopped.
-        layers = UdLayers(form_layer, lemma_layer, upos_layer, xpos_layer, features_layer,
-                          relation_layer_by_ud_config(lemma_layer, "dependency"))
-        for unit, sentence_data in zip(units, sentences_data):
-            unit.plan_annotations(sentence_data, layers, frag)
-        log(f"Planned {len(sentence_ops)} sentences, "
-            f"{sum(len(u.words) for u in units)} words, "
-            f"{sum(len(u.morphemes) for u in units)} syntactic words")
-        with progress.critical():
-            write_parse(client, head_deletes, sentence_ops, units, layers, progress, log)
-            log(f"Successfully parsed document {document_id}")
-        return parse_summary
-
-    except Exception as e:
-        print(f"Error parsing document {document_id}: {e}", flush=True)
-        traceback.print_exc()
-        raise e
+    # ----- the writes ---------------------------------------------------
+    # One stretch that must finish once begun. A stop asked for while the
+    # document was being read or parsed has already landed, before anything
+    # was touched; one that arrives from here on is held off until the
+    # document is whole again. The caller's final report belongs inside a
+    # critical block too: a checkpoint after the last write would throw a
+    # finished parse away and call it stopped.
+    layers = UdLayers(form_layer, lemma_layer, upos_layer, xpos_layer, features_layer,
+                      relation_layer_by_ud_config(lemma_layer, "dependency"))
+    for unit, sentence_data in zip(units, sentences_data):
+        unit.plan_annotations(sentence_data, layers, frag)
+    log(f"Planned {len(sentence_ops)} sentences, "
+        f"{sum(len(u.words) for u in units)} words, "
+        f"{sum(len(u.morphemes) for u in units)} syntactic words")
+    with progress.critical():
+        write_parse(client, head_deletes, sentence_ops, units, layers, progress, log)
+        log(f"Successfully parsed document {document_id}")
+    return parse_summary
 
 
 class StanzaParserService(BaseService):

@@ -865,3 +865,24 @@ def test_a_failure_after_the_sentences_says_what_was_written():
     assert error.startswith(f'Stanza parser: The {count} sentences were written, and the words of '
                             f'{len(worded)} of them, none parsed. Parse again to finish. ')
     assert 'plaid.internal' not in error
+
+
+def test_a_write_refused_because_the_request_ended_is_logged_once_without_a_traceback(capsys):
+    # conc-2026-09-29 REV-W-TAIL: the harness says in one line that the
+    # request had ended (the channel dropped or the server restarted), but
+    # the parser printed its own error and traceback above it first, naming
+    # another user or token.
+    said = ('Operation group g1 was handed to this service by a request that has ended, '
+            'so this write cannot join it.')
+    service = _service(fails={'tokens.bulk_create': PlaidAPIError(
+        f'HTTP 403 {said}', status=403, url='http://plaid.internal:8085/api/v1/batch',
+        method='POST', response_data={'error': said})})
+    service.client.begin_operation = lambda *a, **k: None
+    service.client.end_operation = lambda *a, **k: None
+    helper = servicetest.run(service, {**REQUEST, 'operation_group': {'id': 'g1'}})
+
+    assert len(helper.errors) == 1
+    out = capsys.readouterr()
+    assert 'the request had already ended when this service wrote' in out.out
+    assert 'Traceback' not in out.out + out.err
+    assert 'Error parsing document' not in out.out
