@@ -20,7 +20,8 @@
 //
 //   node --import ../plaid-igt/e2e/live/aliases.mjs e2e/live/igt-roundtrip.mjs [--keep]
 //
-// It reads ~/Downloads/lezgi.flextext (not checked in). The project is
+// It reads lezgi.flextext from the fixtures folder (fixturesDir.mjs), or the
+// file LEZGI names (not checked in). The project is
 // deleted at the end unless --keep is given.
 
 import { readFileSync, existsSync } from 'node:fs';
@@ -43,13 +44,14 @@ import { UmrDocument } from '../../src/domain/UmrDocument.js';
 import { adoptSubstrate } from '../../src/domain/umrProjectSetup.js';
 import { getUmrLayerInfo } from '../../src/utils/umrLayerUtils.js';
 import { parseUmrFile } from '../../src/domain/format/umrFile.js';
+import { fixture } from './fixturesDir.mjs';
 
 const KEEP = process.argv.includes('--keep');
-const FILE = process.env.LEZGI || '/home/luke/Downloads/lezgi.flextext';
+const FILE = process.env.LEZGI || fixture('lezgi.flextext');
 const SENTENCES = 8;
 
 if (!existsSync(FILE)) {
-  console.log(`skipped: ${FILE} is not here`);
+  console.log(`skipped: ${FILE} is missing (set LEZGI or PLAID_FIXTURES)`);
   process.exit(0);
 }
 

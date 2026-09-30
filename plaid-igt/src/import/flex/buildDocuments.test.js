@@ -1,13 +1,15 @@
-// Alignment tests against the real sample backups (skipped when absent).
+// Alignment tests against the real sample backups in the fixtures folder
+// (src/test/fixturesDir.js), skipped when absent.
 import { describe, it, expect, beforeAll } from 'vitest';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { cpSlice, cpLength } from '@larc-iu/plaid-client';
 import { readFwbackup } from './fwbackup.js';
 import { parseFwdata } from './fwdataParser.js';
 import { buildDocuments } from './buildDocuments.js';
+import { fixture, haveFixture } from '../../test/fixturesDir.js';
 
-const LEZGI = '/home/luke/local/plaid/Lezgi-Qusar dialect 2019-12-12 0934 change_comps.fwbackup';
-const SENA = '/home/luke/Downloads/Sena 3 2018-09-11 1145.fwbackup';
+const LEZGI = fixture('Lezgi-Qusar dialect 2019-12-12 0934 change_comps.fwbackup');
+const SENA = fixture('Sena 3 2018-09-11 1145.fwbackup');
 
 const load = (path) =>
   buildDocuments(parseFwdata(readFwbackup(new Uint8Array(readFileSync(path))).xml));
@@ -32,7 +34,7 @@ function expectInvariants(doc) {
   }
 }
 
-describe.skipIf(!existsSync(LEZGI))('buildDocuments — Lezgi sample', () => {
+describe.skipIf(!haveFixture(LEZGI))('buildDocuments — Lezgi sample', () => {
   let result;
   beforeAll(() => {
     result = load(LEZGI);
@@ -97,7 +99,7 @@ describe.skipIf(!existsSync(LEZGI))('buildDocuments — Lezgi sample', () => {
   });
 });
 
-describe.skipIf(!existsSync(SENA))('buildDocuments — Sena 3 sample', () => {
+describe.skipIf(!haveFixture(SENA))('buildDocuments — Sena 3 sample', () => {
   let result;
   beforeAll(() => {
     result = load(SENA);

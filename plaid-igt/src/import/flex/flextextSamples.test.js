@@ -1,20 +1,23 @@
 // Real .flextext files, checked against the .fwbackup they came from. The 14
-// texts in ~/Downloads/lezgi.flextext (FieldWorks' own export, September 2022)
-// are all in ~/Downloads/fwbackup/lezgi.fwbackup (July 2022) under the same
+// texts in lezgi.flextext (FieldWorks' own export, September 2022) are all in
+// fwbackup/lezgi.fwbackup (July 2022), both in the fixtures folder, under the same
 // guids, so the backup import is an oracle for the .flextext one: the same
 // words, the same text up to its spacing, and every gloss and analysis the
 // backup has. The .flextext is the later of the two, and holds analyses made
 // in between, which is why the comparison runs one way. Skipped when either
 // file is absent (CI).
 import { describe, it, expect, beforeAll } from 'vitest';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { parseFlextextFiles } from './flextextParser.js';
 import { readFwbackup } from './fwbackup.js';
 import { parseFwdata } from './fwdataParser.js';
 import { buildDocuments } from './buildDocuments.js';
+import { fixture, haveFixture } from '../../test/fixturesDir.js';
 
-const FLEXTEXT = '/home/luke/Downloads/lezgi.flextext';
-const BACKUP = '/home/luke/Downloads/fwbackup/lezgi.fwbackup';
+const FLEXTEXT = fixture('lezgi.flextext');
+const BACKUP = fixture('fwbackup', 'lezgi.fwbackup');
+// Both are checked, so a run missing both names both.
+const missing = [FLEXTEXT, BACKUP].map((p) => haveFixture(p)).includes(false);
 
 const surfaces = (doc) => doc.words.map((w) => doc.body.slice(w.begin, w.end));
 const morphs = (w) => {
@@ -31,7 +34,7 @@ const morphs = (w) => {
   return JSON.stringify(bare ? [] : list);
 };
 
-describe.skipIf(!existsSync(FLEXTEXT) || !existsSync(BACKUP))('lezgi.flextext', () => {
+describe.skipIf(missing)('lezgi.flextext', () => {
   // Read in beforeAll, as every other sample test in this directory does:
   // `skipIf` skips the TESTS, but vitest still runs the describe body to
   // collect them, so a read out here throws on a machine without the files

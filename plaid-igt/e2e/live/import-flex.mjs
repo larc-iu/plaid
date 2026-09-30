@@ -17,8 +17,9 @@ import { buildDocuments } from '../../src/import/flex/buildDocuments.js';
 import { deriveImportConfig, runImport } from '../../src/import/flex/importEngine.js';
 import { executeProjectSetup } from '../../src/components/projects/setup/executeSetup.js';
 import { IgtDocument } from '../../src/domain/IgtDocument.js';
+import { fixture } from '../../src/test/fixturesDir.js';
 
-const BACKUP = process.env.PLAID_FWBACKUP || '/home/luke/Downloads/fwbackup/lezgi.fwbackup';
+const BACKUP = process.env.PLAID_FWBACKUP || fixture('fwbackup', 'lezgi.fwbackup');
 const KEEP = process.argv.includes('--keep');
 const SMALL = process.argv.includes('--small');
 

@@ -5,7 +5,8 @@
 //
 //   node --import ./e2e/live/aliases.mjs e2e/live/import-flextext.mjs [--keep] [files…]
 //
-// With no files it reads ~/Downloads/lezgi.flextext (FieldWorks' own export).
+// With no files it reads lezgi.flextext (FieldWorks' own export) from the
+// fixtures folder (src/test/fixturesDir.js).
 // The project is deleted at the end unless --keep is given.
 
 import { readFileSync } from 'node:fs';
@@ -17,11 +18,12 @@ import { buildDocuments } from '../../src/import/flex/buildDocuments.js';
 import { deriveImportConfig, runImport } from '../../src/import/flex/importEngine.js';
 import { executeProjectSetup } from '../../src/components/projects/setup/executeSetup.js';
 import { IgtDocument } from '../../src/domain/IgtDocument.js';
+import { fixture } from '../../src/test/fixturesDir.js';
 
 const args = process.argv.slice(2);
 const KEEP = args.includes('--keep');
 const paths = args.filter((a) => !a.startsWith('--'));
-const FILES = paths.length ? paths : ['/home/luke/Downloads/lezgi.flextext'];
+const FILES = paths.length ? paths : [fixture('lezgi.flextext')];
 
 const failures = [];
 const check = (cond, label, detail = '') => {

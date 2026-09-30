@@ -1,18 +1,20 @@
-// Format-drift sweep: parse + align + re-export EVERY .fwbackup in ~/Downloads/fwsamples
+// Format-drift sweep: parse + align + re-export EVERY .fwbackup in fwsamples/
 // (official SIL sample projects spanning format versions 7000068→7000072,
 // downloaded from https://software.sil.org/fieldworks/download/sample-projects/)
 // and assert the structural invariants hold. Drop any new backup into that
-// directory and it joins the sweep. Skipped when the directory is absent (CI).
+// directory and it joins the sweep. The directory is in the fixtures folder
+// (src/test/fixturesDir.js). Skipped when it is absent (CI).
 import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { applyMetadataOps, cpLength } from '@larc-iu/plaid-client';
 import { readFwbackup } from './fwbackup.js';
 import { parseFwdata } from './fwdataParser.js';
 import { buildDocuments } from './buildDocuments.js';
 import { deriveImportConfig, importLexicon } from './importEngine.js';
 import { buildLiftLexicon } from '../../export/lift.js';
+import { fixture, haveFixture } from '../../test/fixturesDir.js';
 
-const DIR = '/home/luke/Downloads/fwsamples';
+const DIR = fixture('fwsamples');
 
 // Captures what importLexicon would create, so the sweep can push a real FLEx
 // lexicon straight back out as LIFT without a server.
@@ -73,7 +75,7 @@ function lexiconCapture() {
 const BAD_XML_CHAR = new RegExp(
   '[' + '\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\uFFFE\\uFFFF' + ']',
 );
-const samples = existsSync(DIR)
+const samples = haveFixture(DIR)
   ? readdirSync(DIR).filter((f) => f.toLowerCase().endsWith('.fwbackup'))
   : [];
 

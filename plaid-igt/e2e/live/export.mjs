@@ -21,8 +21,9 @@ import { executeProjectSetup } from '../../src/components/projects/setup/execute
 import { discoverExportLayers } from '../../src/export/exportLayers.js';
 import { newPreset } from '../../src/export/presets.js';
 import { runExport } from '../../src/export/runExport.js';
+import { fixture } from '../../src/test/fixturesDir.js';
 
-const BACKUP = '/home/luke/Downloads/fwbackup/lezgi.fwbackup';
+const BACKUP = fixture('fwbackup', 'lezgi.fwbackup');
 const KEEP = process.argv.includes('--keep');
 
 const failures = [];

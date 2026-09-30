@@ -27,11 +27,12 @@
 
 import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { fixture } from '../../src/test/fixturesDir.js';
 import { coreForRun } from './core.mjs';
 import { importParsed, parseBackup } from './flexImport.mjs';
 import { snapshotProject } from './snapshot.mjs';
 
-const DEFAULT_DIR = '/home/luke/Downloads/fwsamples';
+const DEFAULT_DIR = fixture('fwsamples');
 
 const arg = (name, fallback = null) => {
   const i = process.argv.indexOf(name);

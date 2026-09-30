@@ -55,8 +55,9 @@ import { runExport } from '../../src/export/runExport.js';
 import { readNativeArchive } from '../../src/import/native/readArchive.js';
 import { stripAttribution } from '../../src/import/native/commentAttribution.js';
 import { deriveSetupData, runNativeImport } from '../../src/import/native/importEngine.js';
+import { fixture } from '../../src/test/fixturesDir.js';
 
-const BACKUP = '/home/luke/Downloads/fwbackup/lezgi.fwbackup';
+const BACKUP = fixture('fwbackup', 'lezgi.fwbackup');
 const KEEP = process.argv.includes('--keep');
 
 // Key order is not a difference (deepEqual never treated it as one), so the

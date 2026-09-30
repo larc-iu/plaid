@@ -1,24 +1,22 @@
 // Parser tests against the real sample backups. The samples are large local
 // files outside the repo, so every suite is skipped when they're absent
-// (CI won't have them) — same convention as the bugbash harness.
+// (CI won't have them) — same convention as the bugbash harness. They live in
+// the fixtures folder (src/test/fixturesDir.js).
 import { describe, it, expect, beforeAll } from 'vitest';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { readFwbackup } from './fwbackup.js';
 import { parseFwdata, pickEn } from './fwdataParser.js';
+import { fixture, haveFixture } from '../../test/fixturesDir.js';
 
-const LEZGI_NAME = 'Lezgi-Qusar dialect 2019-12-12 0934 change_comps.fwbackup';
-const LEZGI =
-  [`/home/luke/local/plaid/${LEZGI_NAME}`, `/home/luke/Downloads/${LEZGI_NAME}`].find((p) =>
-    existsSync(p),
-  ) ?? `/home/luke/Downloads/${LEZGI_NAME}`;
-const SENA = '/home/luke/Downloads/Sena 3 2018-09-11 1145.fwbackup';
+const LEZGI = fixture('Lezgi-Qusar dialect 2019-12-12 0934 change_comps.fwbackup');
+const SENA = fixture('Sena 3 2018-09-11 1145.fwbackup');
 
 const load = (path) => {
   const { name, xml } = readFwbackup(new Uint8Array(readFileSync(path)));
   return { name, ir: parseFwdata(xml) };
 };
 
-describe.skipIf(!existsSync(LEZGI))('parseFwdata — Lezgi sample', () => {
+describe.skipIf(!haveFixture(LEZGI))('parseFwdata — Lezgi sample', () => {
   let name, ir;
   beforeAll(() => ({ name, ir } = load(LEZGI)));
 
@@ -133,7 +131,7 @@ describe.skipIf(!existsSync(LEZGI))('parseFwdata — Lezgi sample', () => {
   });
 });
 
-describe.skipIf(!existsSync(SENA))('parseFwdata — Sena 3 sample (newer format)', () => {
+describe.skipIf(!haveFixture(SENA))('parseFwdata — Sena 3 sample (newer format)', () => {
   let ir;
   beforeAll(() => ({ ir } = load(SENA)));
 

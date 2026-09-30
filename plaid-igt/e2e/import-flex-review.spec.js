@@ -1,18 +1,22 @@
-import { existsSync } from 'node:fs';
 import { test, expect, seedAuth } from './fixtures.js';
+import { fixture, haveFixture } from '../src/test/fixturesDir.js';
 
 // The FLEx import review screen: upload the Lezgi backup, check the Lexicon
 // card (new lexicon with an editable name, or an existing one the user
 // maintains) and the opt-in Lexicon fields card. Nothing is imported; the
-// backup is a large local file, so the suite is skipped where it is absent.
-// Point PLAID_FWBACKUP at your own copy to run it elsewhere (same override the
-// .mjs FLEx scripts take).
+// backup is a large local file, fwbackup/lezgi.fwbackup in the fixtures folder
+// (src/test/fixturesDir.js), so the suite is skipped where it is absent. Point
+// PLAID_FWBACKUP at another copy to use that one (same override the .mjs FLEx
+// scripts take).
 
-const BACKUP = process.env.PLAID_FWBACKUP || '/home/luke/Downloads/fwbackup/lezgi.fwbackup';
+const BACKUP = process.env.PLAID_FWBACKUP || fixture('fwbackup', 'lezgi.fwbackup');
 
 test.describe.configure({ timeout: 180_000 });
 
-test.skip(!existsSync(BACKUP), 'Lezgi backup not on this machine');
+test.skip(
+  !haveFixture(BACKUP, 'PLAID_FWBACKUP or PLAID_FIXTURES'),
+  'Lezgi backup not on this machine',
+);
 
 test('review screen: lexicon destination + opt-in lexicon fields', async ({ page }) => {
   await page.goto('about:blank');

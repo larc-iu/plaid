@@ -27,6 +27,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fixture } from '../../src/test/fixturesDir.js';
 import { zipSync } from 'fflate';
 import { attribute, diffSnapshots } from '../../src/test/fidelity/compare.js';
 import { expectRoundTrip } from '../../src/test/fidelity/expect/index.js';
@@ -42,7 +43,7 @@ import { canonicalExport, diffExports } from './fixedPoint.mjs';
 import { snapshotProject } from './snapshot.mjs';
 
 const LISTS = { native: nativeList, cldf: cldfList, elan: elanList };
-const DEFAULT_DIR = '/home/luke/Downloads/fwsamples';
+const DEFAULT_DIR = fixture('fwsamples');
 // Only the archive has to come back whole from a real corpus (user,
 // 2026-09-17: round trips other than the native one may have warts). The other
 // formats are still run, and what they lose is still printed, but their lists
