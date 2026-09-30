@@ -346,15 +346,26 @@ def settle_plan(conv: Dict[str, Any], index: int, status: Optional[str], note: O
     return {'messages': messages, 'display': display}
 
 
-def partial_note(labels: Sequence[str], written: Sequence[int], unknown: bool, why: str) -> str:
+def partial_note(labels: Sequence[str], written: Sequence[int], unknown: bool, why: str,
+                 parts: Optional[Dict[int, Tuple[int, int]]] = None) -> str:
     """What the model is told of a plan that stopped partway (Luke's ruling
     Q4, 2026-09-29): how many of its changes were written, which, and which
     were not, so the next turn plans only what is missing. ``labels`` are the
-    card's rows, ``written`` the rows written in full."""
+    card's rows, ``written`` the rows written in full, and ``parts`` for a
+    row that folds many changes and was written in part, how many of how
+    many."""
     done = set(written)
+    parts = parts or {}
+
+    def name(i):
+        label = labels[i] or f'change {i + 1}'
+        if i in parts:
+            k, n = parts[i]
+            label += f' ({k} of {n} written)'
+        return label
 
     def listed(rows):
-        shown = [labels[i] or f'change {i + 1}' for i in rows[:PARTIAL_LISTED]]
+        shown = [name(i) for i in rows[:PARTIAL_LISTED]]
         more = len(rows) - len(shown)
         return '; '.join(shown) + (f'; and {more} more' if more > 0 else '')
     yes = [i for i in range(len(labels)) if i in done]

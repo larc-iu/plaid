@@ -825,13 +825,20 @@ class BaseAssistantService(BaseService):
                 # and one change can be several.
                 done = list(e.written or [])
                 labels = [op.get('label') or '' for op in ops]
-                note = partial_note(labels, done, e.unknown, why)
+                # A row that folds many changes ("dep on 600 words") counts
+                # each of them, written or not, so a row cut short by the
+                # failure says "400 of 600", not "0 of 1".
+                sizes = [int(op.get('count') or 1) if op.get('compact') else 1 for op in ops]
+                parts = {i: n for i, n in (e.members or {}).items() if 0 <= i < len(ops) and i not in done}
+                written_n = sum(sizes[i] for i in done if 0 <= i < len(ops)) + sum(parts.values())
+                note = partial_note(labels, done, e.unknown, why,
+                                    parts={i: (n, sizes[i]) for i, n in parts.items()})
                 fields = {'written': done, **({'unknown': True} if e.unknown else {})}
-                said = (f'Partly applied: {len(done)} of {len(ops)} changes written. '
+                said = (f'Partly applied: {written_n} of {sum(sizes)} changes written. '
                         + ('The server did not answer for the rest.' if e.unknown else _sentence(why)))
                 if not settled(settle_plan(conv, index, 'partial', note, **fields)):
                     said += ' This conversation was changed elsewhere and does not show it.'
-                response_helper.complete({'kind': 'applied', 'partial': True, 'applied': len(done),
+                response_helper.complete({'kind': 'applied', 'partial': True, 'applied': written_n,
                                           'counts': [], 'message': said})
             return failed
         except ValueError as e:

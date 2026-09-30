@@ -59,6 +59,12 @@ RESOLVED = 'resolved'
 # approval, carried through expansion and resolution, and never written.
 ROW = '_row'
 
+# Beside ROW on each member of a row that folds many changes into one
+# ("dep on 600 words", see ``core.plan.compact_ops``): the member's index in
+# the row, so a plan that stops partway can say how many of the row's changes
+# were written. Put on by ``core.plan.expand_ops``, and never written.
+MEMBER = '_member'
+
 
 @dataclass(frozen=True)
 class OpKind:
@@ -252,7 +258,8 @@ def resolve_ops(reg: Mapping[str, OpKind], ctx: Any, ops: Iterable[Dict[str, Any
         if fn is None:
             out.append(op)
             continue
-        resolved = [({**o, ROW: op[ROW]} if ROW in op else o) for o in fn(ctx, op)]
+        resolved = [({**o, **{k: op[k] for k in (ROW, MEMBER) if k in op}} if ROW in op else o)
+                    for o in fn(ctx, op)]
         if check is not None:
             check(op, resolved)
         out.extend(o for o in resolved if keep is None or keep(o))

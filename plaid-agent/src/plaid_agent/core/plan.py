@@ -26,7 +26,7 @@ from plaid_client import DocumentLockLost, PlaidAPIError, created_id, created_id
 from plaid_client.client import MAX_BATCH_OPS
 from plaid_client.service import locked_for_writes
 
-from .opkind import ROW
+from .opkind import MEMBER, ROW
 from plaid_client.services import UNKNOWN_OUTCOME, requester_message
 from plaid_client.provenance import (confirmed_inferred, stamp_contributed, PROV_KEY, PROV_SOURCE_KEY,
                                      PROV_CONFIRMED_KEY, PROV_PROB_KEY, PROV_DETAIL_KEY)
@@ -277,6 +277,9 @@ class TrackingBatcher(Batcher):
         # Card row (see ``opkind.ROW``): [ops from it, ops finished, batches
         # that must commit before all their writes stand].
         self._rows: Dict[Any, List[int]] = {}
+        # The same for each member of a folded row (``opkind.MEMBER``), keyed
+        # (row, member).
+        self._members: Dict[Any, List[int]] = {}
         if tracker is not None:
             tracker.batcher = self
 
@@ -305,19 +308,38 @@ class TrackingBatcher(Batcher):
         for op in ops:
             if op.get(ROW) is not None:
                 self._rows.setdefault(op[ROW], [0, 0, 0])[0] += 1
+                if op.get(MEMBER) is not None:
+                    self._members.setdefault((op[ROW], op[MEMBER]), [0, 0, 0])[0] += 1
 
     def finish(self, op: Dict[str, Any]) -> None:
         row = self._rows.get(op.get(ROW))
         if row is None:
             return
         queued = self._batch is not None or any(self._bulk.values())
-        row[1] += 1
-        row[2] = max(row[2], self.flushed + (1 if queued else 0))
+        need = self.flushed + (1 if queued else 0)
+        member = self._members.get((op.get(ROW), op.get(MEMBER)))
+        for counts in (row, member) if member is not None else (row,):
+            counts[1] += 1
+            counts[2] = max(counts[2], need)
+
+    def _stands(self, counts: List[int]) -> bool:
+        n, done, need = counts
+        return done == n and need <= self.flushed
 
     def written_rows(self) -> List[Any]:
         """The card rows every write of which stands."""
-        return sorted(r for r, (n, done, need) in self._rows.items()
-                      if done == n and need <= self.flushed)
+        return sorted(r for r, counts in self._rows.items() if self._stands(counts))
+
+    def written_members(self) -> Dict[Any, int]:
+        """For each card row that folds many changes, how many of them stand
+        in full, where that is some and not all (a row written whole is in
+        :meth:`written_rows`)."""
+        out: Dict[Any, int] = {}
+        for (row, _), counts in self._members.items():
+            if self._stands(counts):
+                out[row] = out.get(row, 0) + 1
+        whole = set(self.written_rows())
+        return {r: n for r, n in out.items() if r not in whole}
 
 
 def outcome_unknown(error) -> bool:
@@ -341,7 +363,7 @@ class PlanError(Exception):
     """
 
     def __init__(self, message: str, applied: int, total: int, unknown: bool = False,
-                 written: Optional[List[Any]] = None):
+                 written: Optional[List[Any]] = None, members: Optional[Dict[Any, int]] = None):
         super().__init__(message)
         self.applied = applied
         self.total = total
@@ -349,6 +371,9 @@ class PlanError(Exception):
         self.unknown = unknown
         #: The card rows written in full (``TrackingBatcher.written_rows``).
         self.written = written
+        #: Of each folded row not written in full, how many of its changes
+        #: were (``TrackingBatcher.written_members``).
+        self.members = members
 
 
 def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
@@ -363,18 +388,23 @@ def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
 
     def written():
         return tracker.batcher.written_rows() if tracker.batcher is not None else []
+
+    def members():
+        return tracker.batcher.written_members() if tracker.batcher is not None else {}
     try:
         return run(tracker)
     except PlanError as e:
         if e.written is None:
             e.written = written()
+        if e.members is None:
+            e.members = members()
         raise
     except PlanOutOfDate as e:
         # Found out of date by a write the server refused: settled as out of
         # date when nothing stands, as partly applied when something does.
         if not tracker.applied:
             raise
-        raise PlanError(' '.join(e.reasons), tracker.applied, len(ops), False, written()) from e
+        raise PlanError(' '.join(e.reasons), tracker.applied, len(ops), False, written(), members()) from e
     except Exception as e:  # noqa: BLE001 - every failure becomes one the user can read
         applied = getattr(e, '_applied', None)
         unknown = bool(getattr(e, '_unknown', False)) or outcome_unknown(e)
@@ -382,7 +412,7 @@ def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
         # class or the server's address.
         if isinstance(e, PlaidAPIError):
             raise PlanError(requester_message(e), applied if applied is not None else tracker.applied,
-                            len(ops), unknown, written()) from e
+                            len(ops), unknown, written(), members()) from e
         # The one message in the package that keeps a Python class name. This
         # one reaches the USER, after batches have already committed, and an
         # exception carrying no message of its own would otherwise leave them
@@ -391,7 +421,7 @@ def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:
         # the log.
         raise PlanError(f'{type(e).__name__}: {e}',
                         applied if applied is not None else tracker.applied, len(ops), unknown,
-                        written()) from e
+                        written(), members()) from e
 
 
 class Stamps:
@@ -565,7 +595,10 @@ def expand_ops(ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         items = op.get('items') or {}
         fixed = {k: v for k, v in op.items() if k not in ('items', 'count', 'compact')}
         for i in range(int(op.get('count') or 0)):
-            out.append({**fixed, **{k: vals[i] for k, vals in items.items()}})
+            # A member of a card row knows which, so a plan that stops partway
+            # can count the row's changes that were written.
+            out.append({**fixed, **{k: vals[i] for k, vals in items.items()},
+                        **({MEMBER: i} if ROW in fixed else {})})
     return out
 
 
