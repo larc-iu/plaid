@@ -1163,6 +1163,21 @@
 ;; The end of a transaction
 ;; ============================================================
 
+(defn- shared-batch-id!
+  "The batch id the remedies' operations share with the write that caused
+  them. Inside a batch it is the batch's. A single operation has none, so
+  it gets one here, on its own row too: History reads a batch as one step
+  and never shows the instant between a write and its remedies, when the
+  rules were broken."
+  [tx]
+  (or op/*current-batch-id*
+      (when-let [op-id (:id psaw/*op*)]
+        (or (:batch_id (psc/q1 tx {:select [:batch_id] :from :operations :where [:= :id op-id]}))
+            (let [bid (random-uuid)]
+              (psc/execute! tx {:update :operations :set {:batch_id bid} :where [:= :id op-id]})
+              bid)))
+      (random-uuid)))
+
 (defn finish!
   "Check the layer constraints the transaction's writes could break, at its
   end, inside it. Refuses (throws a 422 `refusal`) when a violation is
@@ -1191,10 +1206,12 @@
                  (when (seq refused)
                    (throw (refusal tx refused)))
                  (let [by-doc (group-by :document vs)
-                       bumped (into #{} (mapcat (fn [doc]
-                                                  (:documents (remedy-document! tx user cs doc ctx
-                                                                                :layer/apply-constraints))))
-                                    (sort-by str (keys by-doc)))
+                       batch-id (shared-batch-id! tx)
+                       bumped (binding [op/*current-batch-id* batch-id]
+                                (into #{} (mapcat (fn [doc]
+                                                    (:documents (remedy-document! tx user cs doc ctx
+                                                                                  :layer/apply-constraints))))
+                                      (sort-by str (keys by-doc))))
                        left (check-all (make-ctx tx @pending) cs)]
                    (when (seq left)
                      (log/error "Layer rules left violations after their remedies:" (pr-str (map wire left)))

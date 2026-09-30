@@ -276,7 +276,12 @@
         (is (= group (str (:group_id (first ops)))) "History folds it under the merge")
         (is (re-find #"Applied layer rules: 1 span of \"Lemma\" deleted, 1 span of \"Lemma\" joined"
                      (:description (first ops)))))
-      (is (= (+ v 2) (version doc)) "the merge and the rules each bump the document"))))
+      (is (= (+ v 2) (version doc)) "the merge and the rules each bump the document")
+      (let [merge-op (first (ops-of doc "token/merge"))
+            rules-op (first (ops-of doc "layer/apply-constraints"))]
+        (is (some? (:batch_id merge-op)))
+        (is (= (str (:batch_id merge-op)) (str (:batch_id rules-op)))
+            "History reads the merge and its rules as one step")))))
 
 (deftest single-span-join-respects-a-value-set
   (let [{:keys [lemma tok] :as s} (setup!)]
