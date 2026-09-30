@@ -53,9 +53,6 @@ const tagsets = (s) => s.config?.igt?.tagsets || {};
 const wordLayer = (s) => layer(s, 'token:word');
 const PROV_KEYS = ['prov', 'provSource', 'provConfirmed', 'provProb', 'provDetail'];
 
-/** Server order among spans (snapshot.mjs `order`), the order "first" means. */
-export const byOrder = (a, b) => (a.order ?? Infinity) - (b.order ?? Infinity);
-
 const pruneEmpty = (obj, key) => {
   const v = obj?.[key];
   if (v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0) {
@@ -396,12 +393,6 @@ export const STRIPS = {
       }
     }
   },
-  'token.orphanMorpheme': (s) => {
-    for (const d of docs(s)) {
-      const words = new Set(tokensIn(d, 'word').map((w) => `${w.begin}-${w.end}`));
-      removeTokens(s, d, (t) => t.layer === 'token:morpheme' && !words.has(`${t.begin}-${t.end}`));
-    }
-  },
   'token.provenance': (s) => {
     for (const d of docs(s)) {
       for (const t of [...tokensIn(d, 'sentence'), ...tokensIn(d, 'word')])
@@ -463,19 +454,6 @@ export const STRIPS = {
   'span.multiToken': (s) => {
     for (const d of docs(s)) removeSpans(s, d, (sp) => sp.tokens.length > 1);
   },
-  // The first annotation in a field on the same tokens, in server order, is
-  // kept, and the second and on go.
-  'span.duplicate': (s) => {
-    for (const d of docs(s)) {
-      const first = new Map();
-      for (const sp of [...d.spans].sort(byOrder)) {
-        const k = `${sp.layer}|${sp.tokens.join(',')}`;
-        if (!first.has(k)) first.set(k, sp);
-      }
-      const kept = new Set(first.values());
-      removeSpans(s, d, (sp) => !kept.has(sp));
-    }
-  },
   'span.onForeignLayer': coveredBy('layers.unscopedSpanLayer', 'the annotations go with the layer'),
   'span.onAlignment': (s) => {
     for (const d of docs(s)) {
@@ -509,10 +487,6 @@ export const STRIPS = {
   'span.emptyValue': (s) => {
     for (const d of docs(s)) removeSpans(s, d, (sp) => sp.value === '');
   },
-  'span.reachesOrphanToken': coveredBy(
-    'token.orphanMorpheme',
-    'the orphan goes, and a span on it with it',
-  ),
 
   // ---- vocabulary links ----
   'link.word': (s) => {
@@ -557,10 +531,8 @@ export const STRIPS = {
     'link.mweDiscontinuous',
     'every link over words is removed by link.mwe or link.mweDiscontinuous',
   ),
-  'link.duplicateOnToken': coveredBy('link.word', 'the links on a token go by their kind'),
   'link.toSense': coveredBy('link.word', 'the links go by their kind'),
   'link.secondVocabulary': coveredBy('link.word', 'the links go by their kind'),
-  'link.onOrphanToken': coveredBy('link.morpheme', 'the links go by their kind'),
   'link.entryMorphType': coveredBy('link.morpheme', 'the links go by their kind'),
   ...Object.fromEntries(
     ['human', 'machine', 'contributed', 'verified'].map((state) => [

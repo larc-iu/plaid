@@ -7,8 +7,10 @@
 // shapes only proves that an exporter agrees with the fixture's author, which
 // is the failure this campaign exists to stop. The raw client is used only for
 // what no screen makes: data an importer, a service or another app writes, and
-// the unusual shapes a format still has to survive (a duplicate annotation, a
-// morpheme matching no word, overlapping speech).
+// the unusual shapes a format still has to survive (an annotation over several
+// words, overlapping speech). A shape the project's layer rules refuse, such as
+// a second annotation in a field on one word or a morpheme matching no word,
+// cannot be stored, so it is not built.
 //
 // Four projects:
 //   Kitchen sink            everything that fits in one project
@@ -364,7 +366,7 @@ async function makeEntries(client, lexiconId, affixId) {
   // A headword that only holds its senses.
   e.casa = await create(lexiconId, 'casa', { morphType: 'stem' });
   e.casaHouse = await create(lexiconId, 'casa', { parent: e.casa, gloss: 'house' });
-  e.mir = await create(lexiconId, 'mir-', { gloss: 'look', morphType: 'stem' });
+  e.parar = await create(lexiconId, 'parar', { gloss: 'stop', morphType: 'stem' });
   e.past = await create(affixId, '-ó', { gloss: 'PST', morphType: 'suffix' });
   return e;
 }
@@ -578,33 +580,10 @@ async function buildStory(ctx) {
     metadataOps(stampInferred('polygloss')),
   );
 
-  // A morpheme whose extent matches no word.
-  const mira = rangeOf(body, 'mira');
-  const orphanMorpheme = await client.tokens
-    .bulkCreate([
-      {
-        tokenLayerId: byRole('morpheme').id,
-        text: textId,
-        begin: mira.begin,
-        end: mira.end - 1,
-        precedence: 1,
-        metadata: { form: 'mir' },
-      },
-    ])
-    .then(idOf);
-
-  // Annotations: multi-token, duplicate, empty, provenance extras, extra metadata.
+  // Annotations: multi-token, empty, provenance extras, extra metadata.
   const wordGloss = span('word', 'Gloss').id;
   await client.spans.create(wordGloss, [wordId('los'), wordId('perros')], 'the dogs');
-  // Sharing one token with the span above, but not all of them.
-  await client.spans.create(wordGloss, [wordId('los')], 'the');
-  // One annotation over a real morpheme and the one matching no word.
-  await client.spans.create(
-    span('morpheme', 'Gloss').id,
-    [word(doc, 'gato').morphemes[0].id, orphanMorpheme],
-    'cat-look',
-  );
-  await client.spans.create(wordGloss, [wordId('ladra')], 'yelps', {
+  await client.spans.create(wordGloss, [wordId('Dio')], 'gave', {
     prov: 'inferred',
     provSource: 'polygloss',
     provProb: 0.4,
@@ -618,7 +597,7 @@ async function buildStory(ctx) {
   await client.spans.setMetadata(verified, { ...stampInferred('polygloss'), provConfirmed: true });
 
   // Links: discontinuous and cross-sentence expressions, a link on a whole
-  // sentence, a second link on one token, a link into the second vocabulary.
+  // sentence, a machine link with every provenance detail.
   await client.vocabLinks.create(e.darVuelta, [wordId('Dio'), wordId('vuelta')]);
   await client.vocabLinks.create(
     e.across,
@@ -632,11 +611,11 @@ async function buildStory(ctx) {
     provProb: 0.61,
     provDetail: { candidates: 3 },
   });
-  await client.vocabLinks.create(e.ladrarAlt, [wordId('ladra')]);
-  // A link on a segment, and one on the morpheme matching no word. (Core refuses
-  // a link whose tokens are in two token layers.)
+  // A link on a segment.
   await client.vocabLinks.create(e.vuelta, [overlap]);
-  await client.vocabLinks.create(e.mir, [orphanMorpheme]);
+  // A link on a morpheme with no morph type of its own, to an entry that has
+  // one, as an importer writes it.
+  await client.vocabLinks.create(e.parar, [word(doc, 'parar∅').morphemes[0].id]);
 
   // The contributor's work: a word gloss and a link, stamped contributed.
   const asContributor = await reload(contributor.client, projectId, docId, { id: contributor.id });

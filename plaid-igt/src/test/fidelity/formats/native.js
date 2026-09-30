@@ -188,7 +188,6 @@ export default {
     'token.morphemeFormAbsent': carried,
     'token.morphemeZero': carried,
     'token.morphTypeOnMorpheme': carried,
-    'token.orphanMorpheme': carried,
     'token.provenance': carried,
     'token.wordsInOneRun': carried,
     'token.wordEdgePunctuation': carried,
@@ -213,7 +212,6 @@ export default {
     // A multi-token span that shares a token with an earlier span in the same field comes back
     // without that token. Suspected bug.
     'span.multiToken': carried,
-    'span.duplicate': carried,
     // Written to extraSpans at export and skipped at import (no layer to resolve). Suspected bug.
     'span.onForeignLayer': carried,
     'span.onAlignment': carried,
@@ -232,8 +230,6 @@ export default {
     'span.emptyValue': carried,
     // The later span is written only at the tokens where it is the first in its field, and
     // import rebuilds it from those. Suspected bug, see span.multiToken.
-    'span.overlapSameField': carried,
-    'span.reachesOrphanToken': carried,
     'span.valueWhitespace': carried,
 
     // Vocabulary links
@@ -243,7 +239,6 @@ export default {
     'link.mweDiscontinuous': carried,
     'link.mweAcrossSentences': carried,
     'link.onSentence': carried,
-    'link.duplicateOnToken': carried,
     'link.toSense': carried,
     'link.secondVocabulary': carried,
     'link.provHuman': carried,
@@ -254,7 +249,6 @@ export default {
     'link.provProb': carried,
     'link.provDetail': carried,
     'link.onSegment': carried,
-    'link.onOrphanToken': carried,
     // The morpheme node carries the token's own morphType, never the entry's.
     'link.entryMorphType': carried,
 

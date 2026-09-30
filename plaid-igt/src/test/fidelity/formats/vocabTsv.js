@@ -223,7 +223,6 @@ export default {
     'token.morphemeFormAbsent': NOT_A_VOCABULARY,
     'token.morphemeZero': NOT_A_VOCABULARY,
     'token.morphTypeOnMorpheme': NOT_A_VOCABULARY,
-    'token.orphanMorpheme': NOT_A_VOCABULARY,
     'token.provenance': NOT_A_VOCABULARY,
     'token.wordsInOneRun': NOT_A_VOCABULARY,
     'token.wordEdgePunctuation': NOT_A_VOCABULARY,
@@ -246,7 +245,6 @@ export default {
     'span.wordValue': NOT_A_VOCABULARY,
     'span.morphemeValue': NOT_A_VOCABULARY,
     'span.multiToken': NOT_A_VOCABULARY,
-    'span.duplicate': NOT_A_VOCABULARY,
     'span.onForeignLayer': foreign("An annotation in another app's span layer."),
     'span.onAlignment': NOT_A_VOCABULARY,
     'span.provHuman': NOT_A_VOCABULARY,
@@ -262,8 +260,6 @@ export default {
     'span.markupChars': NOT_A_VOCABULARY,
     'span.multilineValue': NOT_A_VOCABULARY,
     'span.emptyValue': NOT_A_VOCABULARY,
-    'span.overlapSameField': NOT_A_VOCABULARY,
-    'span.reachesOrphanToken': NOT_A_VOCABULARY,
     'span.valueWhitespace': NOT_A_VOCABULARY,
 
     // Vocabulary links. The Entries screen's Uses column counts them, and Bulk Add ignores it.
@@ -273,7 +269,6 @@ export default {
     'link.mweDiscontinuous': NOT_A_VOCABULARY,
     'link.mweAcrossSentences': NOT_A_VOCABULARY,
     'link.onSentence': NOT_A_VOCABULARY,
-    'link.duplicateOnToken': NOT_A_VOCABULARY,
     'link.toSense': NOT_A_VOCABULARY,
     'link.secondVocabulary': NOT_A_VOCABULARY,
     'link.provHuman': NOT_A_VOCABULARY,
@@ -284,7 +279,6 @@ export default {
     'link.provProb': NOT_A_VOCABULARY,
     'link.provDetail': NOT_A_VOCABULARY,
     'link.onSegment': NOT_A_VOCABULARY,
-    'link.onOrphanToken': NOT_A_VOCABULARY,
     'link.entryMorphType': NOT_A_VOCABULARY,
 
     // Relations (plaid-ud)

@@ -34,7 +34,7 @@ import {
   tokensIn,
 } from './snap.js';
 import { MEDIA_FILE_FIELD } from '../../../domain/igtConfig.js';
-import { byOrder, coveredBy, isIgnored } from './strips.js';
+import { coveredBy, isIgnored } from './strips.js';
 
 // ---- reading a snapshot ------------------------------------------------------------
 
@@ -70,42 +70,27 @@ const sourceDoc = (ctx, d) => docs(ctx.source).find((x) => x.key === d.key) ?? d
 
 // ---- strips the shared ones do not describe for ELAN ----------------------------------
 
-// Each token is written with the first annotation of a field covering it, first
-// in the order the server lists them (the snapshot's `order`), and what is
-// written comes back as one single-token annotation per token. A multi-token
-// annotation is kept on each token it is first on, as a new row, and goes from
-// the rest.
-function firstAnnotationPerToken(s) {
+// An annotation over several tokens is written on each of them, and comes back as
+// one single-token annotation per token, each a new row. Two annotations of one
+// field never share a token (the field's single-span rule), so no token has a
+// second annotation to choose between.
+function splitPerToken(s) {
   for (const d of docs(s)) {
-    const byLayer = new Map();
-    for (const sp of d.spans) {
-      if (!byLayer.has(sp.layer)) byLayer.set(sp.layer, []);
-      byLayer.get(sp.layer).push(sp);
-    }
-    const gone = new Set();
     const split = [];
-    for (const spans of byLayer.values()) {
-      const first = new Map();
-      for (const sp of [...spans].sort(byOrder)) {
-        for (const t of sp.tokens) if (!first.has(t)) first.set(t, sp);
-      }
-      for (const sp of spans) {
-        const mine = sp.tokens.filter((t) => first.get(t) === sp);
-        if (sp.tokens.length === 1 && mine.length === 1) continue;
-        gone.add(sp.key);
-        for (const t of mine) {
-          split.push({
-            key: newKey('span'),
-            order: sp.order,
-            layer: sp.layer,
-            tokens: [t],
-            value: sp.value,
-            metadata: structuredClone(sp.metadata),
-          });
-        }
+    for (const sp of d.spans) {
+      if (sp.tokens.length < 2) continue;
+      for (const t of sp.tokens) {
+        split.push({
+          key: newKey('span'),
+          order: sp.order,
+          layer: sp.layer,
+          tokens: [t],
+          value: sp.value,
+          metadata: structuredClone(sp.metadata),
+        });
       }
     }
-    removeSpans(s, d, (sp) => gone.has(sp.key));
+    removeSpans(s, d, (sp) => sp.tokens.length > 1);
     d.spans.push(...split);
   }
 }
@@ -136,26 +121,6 @@ const strips = {
     'layers.fieldTagset',
     'a value is only off-tagset while a tagset governs its field',
   ),
-  // The orphan morpheme goes, but an annotation reaching it from a real morpheme
-  // stays on that morpheme (span.reachesOrphanToken), so the orphan is taken off
-  // such an annotation first and span.multiToken decides what is written of the
-  // rest. The shared strip would take the whole annotation with the orphan.
-  'token.orphanMorpheme': (s) => {
-    for (const d of docs(s)) {
-      const words = new Set(tokensIn(d, 'word').map((w) => `${w.begin}-${w.end}`));
-      const orphans = new Set(
-        tokensIn(d, 'morpheme')
-          .filter((m) => !words.has(`${m.begin}-${m.end}`))
-          .map((m) => m.key),
-      );
-      for (const sp of d.spans) {
-        if (sp.tokens.some((k) => orphans.has(k)) && sp.tokens.some((k) => !orphans.has(k))) {
-          sp.tokens = sp.tokens.filter((k) => !orphans.has(k));
-        }
-      }
-      removeTokens(s, d, (t) => orphans.has(t.key));
-    }
-  },
   'token.procliticBeforeMorpheme': coveredBy(
     'token.morphTypeOnMorpheme',
     'a proclitic is a morph type, and token.morphTypeOnMorpheme takes every morph type off both sides',
@@ -184,12 +149,7 @@ const strips = {
     }
   },
 
-  'span.multiToken': firstAnnotationPerToken,
-  'span.overlapSameField': firstAnnotationPerToken,
-  'span.reachesOrphanToken': coveredBy(
-    'token.orphanMorpheme',
-    'the orphan is taken off the annotation, and span.multiToken writes what is left',
-  ),
+  'span.multiToken': splitPerToken,
   // The value stays as it is. What made it several tags is the tagset, which
   // project.tagsetDelimiters takes away.
   'span.delimitedValue': coveredBy(
@@ -419,8 +379,8 @@ const spanSteps = [
   {
     keys: ['span.sentenceValue', 'span.wordValue', 'span.morphemeValue', 'span.valueWhitespace'],
     // Every annotation value comes back trimmed, and one left empty does not
-    // come back. Which annotation on a token is written at all was settled by
-    // span.multiToken and span.overlapSameField among the strips.
+    // come back. span.multiToken among the strips split an annotation over
+    // several tokens into one per token.
     apply(expected) {
       for (const d of docs(expected)) {
         for (const sp of d.spans) sp.value = trimmed(sp.value);

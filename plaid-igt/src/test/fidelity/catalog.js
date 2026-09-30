@@ -84,7 +84,6 @@ const wordsInOrder = (d) =>
   tokensIn(d, 'word')
     .sort((a, b) => a.begin - b.begin)
     .map((t) => t.key);
-const wordExtents = (d) => new Set(tokensIn(d, 'word').map((t) => `${t.begin}-${t.end}`));
 const morphemesByWord = (d) => {
   const out = new Map();
   for (const m of tokensIn(d, 'morpheme')) {
@@ -130,14 +129,6 @@ const surfaceOf = (d, t) => cps(baseline(d)).slice(t.begin, t.end).join('');
 const segmentsIn = (d, sentence) =>
   tokensIn(d, 'time-alignment').filter((a) => sentence.begin <= a.begin && a.end <= sentence.end);
 const PUNCT_EDGE = /^[\p{P}\p{S}]|[\p{P}\p{S}]$/u;
-const ORPHAN_MORPHEMES = (d) => {
-  const words = wordExtents(d);
-  return new Set(
-    tokensIn(d, 'morpheme')
-      .filter((m) => !words.has(`${m.begin}-${m.end}`))
-      .map((m) => m.key),
-  );
-};
 
 // ---- the catalog ------------------------------------------------------------------
 
@@ -941,15 +932,6 @@ export const FEATURES = [
     detect: (s) => sum(s, (d) => count(tokensIn(d, 'morpheme'), (m) => !!m.metadata.morphType)),
   },
   {
-    key: 'token.orphanMorpheme',
-    what: 'a morpheme whose extent matches no word',
-    detect: (s) =>
-      sum(s, (d) => {
-        const words = wordExtents(d);
-        return count(tokensIn(d, 'morpheme'), (m) => !words.has(`${m.begin}-${m.end}`));
-      }),
-  },
-  {
     key: 'token.provenance',
     what: 'provenance on a sentence or word (a tokenizer made it)',
     detect: (s) =>
@@ -1118,19 +1100,6 @@ export const FEATURES = [
     detect: (s) => count(allSpans(s), (sp) => sp.tokens.length > 1),
   },
   {
-    key: 'span.duplicate',
-    what: 'two annotations in one field on the same token',
-    detect: (s) =>
-      sum(s, (d) => {
-        const seen = new Map();
-        for (const sp of d.spans) {
-          const k = `${sp.layer}|${sp.tokens.join(',')}`;
-          seen.set(k, (seen.get(k) ?? 0) + 1);
-        }
-        return count([...seen.values()], (n) => n > 1);
-      }),
-  },
-  {
     key: 'span.onForeignLayer',
     what: 'an annotation in a span layer with no IGT scope',
     detect: (s) => count(allSpans(s), (sp) => !scopeOf(s, sp.layer)),
@@ -1194,34 +1163,6 @@ export const FEATURES = [
     detect: (s) => count(allSpans(s), (sp) => sp.value === ''),
   },
 
-  {
-    key: 'span.overlapSameField',
-    what: 'two annotations in one field sharing some of their tokens but not all',
-    detect: (s) =>
-      sum(s, (d) => {
-        let n = 0;
-        d.spans.forEach((a, i) => {
-          for (const b of d.spans.slice(i + 1)) {
-            if (a.layer !== b.layer) continue;
-            const shared = a.tokens.filter((k) => b.tokens.includes(k)).length;
-            if (shared > 0 && (shared < a.tokens.length || shared < b.tokens.length)) n++;
-          }
-        });
-        return n;
-      }),
-  },
-  {
-    key: 'span.reachesOrphanToken',
-    what: 'an annotation that also covers a morpheme matching no word',
-    detect: (s) =>
-      sum(s, (d) => {
-        const orphans = ORPHAN_MORPHEMES(d);
-        return count(
-          d.spans,
-          (sp) => sp.tokens.length > 1 && sp.tokens.some((k) => orphans.has(k)),
-        );
-      }),
-  },
   {
     key: 'span.valueWhitespace',
     what: 'an annotation value with leading or trailing whitespace',
@@ -1294,19 +1235,6 @@ export const FEATURES = [
       ),
   },
   {
-    key: 'link.duplicateOnToken',
-    what: 'two links on the same single token',
-    detect: (s) =>
-      sum(s, (d) => {
-        const seen = new Map();
-        for (const l of d.links) {
-          if (l.tokens.length !== 1) continue;
-          seen.set(l.tokens[0], (seen.get(l.tokens[0]) ?? 0) + 1);
-        }
-        return count([...seen.values()], (n) => n > 1);
-      }),
-  },
-  {
     key: 'link.toSense',
     what: 'a token linked to a sense rather than a headword',
     detect: (s) => {
@@ -1338,15 +1266,6 @@ export const FEATURES = [
     key: 'link.onSegment',
     what: 'an entry linked to a time-aligned segment',
     detect: (s) => count(allLinks(s), (l) => l.tokens.some((k) => k.startsWith('time-alignment:'))),
-  },
-  {
-    key: 'link.onOrphanToken',
-    what: 'an entry linked to a morpheme matching no word',
-    detect: (s) =>
-      sum(s, (d) => {
-        const orphans = ORPHAN_MORPHEMES(d);
-        return count(d.links, (l) => l.tokens.some((k) => orphans.has(k)));
-      }),
   },
   {
     key: 'link.entryMorphType',

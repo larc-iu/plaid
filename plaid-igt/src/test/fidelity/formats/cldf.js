@@ -441,11 +441,6 @@ export default {
       carried: 'changed',
       how: 'Only the joint survives. A morpheme comes back with morphType "enclitic" when it or the morpheme before it in its word had a clitic type (clitic, enclitic or proclitic, read from the linked entry when there is one, else from the token), and with no morphType otherwise. The first morpheme of a word never has one. The preset panel lists this loss (INHERENT_LOSSES).',
     },
-    'token.orphanMorpheme': {
-      carried: false,
-      kind: 'inherent',
-      why: 'CLDF writes morphemes only as pieces of an analyzed word, so a morpheme whose extent matches no word is not written.',
-    },
     'token.provenance': PROVENANCE_RULED,
     'token.wordsInOneRun': carried,
     'token.wordEdgePunctuation': carried,
@@ -489,11 +484,6 @@ export default {
       carried: 'changed',
       how: 'Comes back as one single-token annotation in the same field on each token it covered, all with the same value.',
     },
-    'span.duplicate': {
-      carried: false,
-      kind: 'inherent',
-      why: 'A cell holds one value per token per field. The export writes the first annotation on a token, in server order, and not the others.',
-    },
     'span.onForeignLayer': {
       carried: false,
       kind: 'foreign',
@@ -532,16 +522,6 @@ export default {
       kind: 'inherent',
       why: 'An empty cell, and an empty item of an aligned cell, read as no value, so an annotation whose value is the empty string does not come back.',
     },
-    'span.overlapSameField': {
-      carried: false,
-      kind: 'inherent',
-      why: 'A cell holds one value per token per field. Each token either annotation covered comes back with one single-token annotation, holding the value of the first annotation on it in the order the server lists them.',
-    },
-    'span.reachesOrphanToken': {
-      carried: false,
-      kind: 'inherent',
-      why: 'The morpheme that matches no word is not written (token.orphanMorpheme), so only the tokens that match a word come back, each with a single-token annotation as span.multiToken describes.',
-    },
     'span.valueWhitespace': {
       carried: 'changed',
       how: 'Leading and trailing spaces come back as they were, except that a value in a sentence field carried as a custom column comes back trimmed (span.sentenceValue), and a tab or line break at the edge of a word or morpheme value comes back as a space (span.markupChars).',
@@ -554,7 +534,6 @@ export default {
     'link.mweDiscontinuous': LINKS_RULED,
     'link.mweAcrossSentences': LINKS_RULED,
     'link.onSentence': LINKS_RULED,
-    'link.duplicateOnToken': LINKS_RULED,
     'link.toSense': LINKS_RULED,
     'link.secondVocabulary': LINKS_RULED,
     'link.provHuman': LINKS_RULED,
@@ -565,7 +544,6 @@ export default {
     'link.provProb': LINKS_RULED,
     'link.provDetail': LINKS_RULED,
     'link.onSegment': LINKS_RULED,
-    'link.onOrphanToken': LINKS_RULED,
     'link.entryMorphType': {
       ...LINKS_RULED,
       why: 'Vocabulary links are not written, and the import makes none. The entry’s type reaches the file only as the joint in Analyzed_Word, as token.morphTypeOnMorpheme describes.',

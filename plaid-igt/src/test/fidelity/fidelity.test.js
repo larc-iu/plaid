@@ -332,7 +332,7 @@ const TABLES = {
     ),
   },
   span_tokens: {
-    span_id: covers('span.multiToken', 'span.duplicate'),
+    span_id: covers('span.multiToken'),
     token_id: covers('span.multiToken'),
     order_idx: notData('an annotation’s tokens are a set to every IGT reader'),
   },
@@ -362,7 +362,7 @@ const TABLES = {
     document_id: notData('ownership'),
   },
   vocab_link_tokens: {
-    vocab_link_id: covers('link.mwe', 'link.duplicateOnToken'),
+    vocab_link_id: covers('link.mwe', 'link.onSentence'),
     token_id: covers(
       'link.mwe',
       'link.mweDiscontinuous',

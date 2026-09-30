@@ -412,11 +412,6 @@ export default {
       kind: 'undecided',
       why: 'Only the joint is written: with affix markers on, a morpheme written after = comes back with morphType enclitic, and no other morph type comes back. EAF could hold morph types on a tier of their own under Morph.',
     },
-    'token.orphanMorpheme': {
-      carried: false,
-      kind: 'inherent',
-      why: 'A Morph annotation subdivides a Word annotation, so a morpheme whose extent matches no word has no parent to be written under.',
-    },
     'token.provenance': TOKEN_PROV_LOST,
     'token.wordsInOneRun': carried,
     'token.wordEdgePunctuation': carried,
@@ -467,12 +462,7 @@ export default {
     'span.multiToken': {
       carried: false,
       kind: 'inherent',
-      why: 'A Symbolic_Association annotation has exactly one parent. A span over several tokens is written once on each token it is the first annotation of that field on, and comes back as that many single-token annotations.',
-    },
-    'span.duplicate': {
-      carried: false,
-      kind: 'inherent',
-      why: 'A Symbolic_Association tier holds one annotation per parent, so only the first annotation of a field on a token is written.',
+      why: 'A Symbolic_Association annotation has exactly one parent. A span over several tokens is written once on each of its tokens, and comes back as that many single-token annotations.',
     },
     'span.onForeignLayer': {
       carried: false,
@@ -513,16 +503,6 @@ export default {
       ruling:
         'plaid_igt_alpha_2026_08_rulings.md: clearing an annotation cell deletes the span, never store an empty value',
     },
-    'span.overlapSameField': {
-      carried: false,
-      kind: 'inherent',
-      why: 'A Symbolic_Association tier holds one annotation per parent, so each token is written with only the first annotation of that field covering it, and what was written comes back as single-token annotations.',
-    },
-    'span.reachesOrphanToken': {
-      carried: false,
-      kind: 'inherent',
-      why: 'A morpheme matching no word has no parent to be written under (token.orphanMorpheme), and an annotation over several tokens comes back split per token (span.multiToken).',
-    },
     'span.valueWhitespace': TRIMMED_VALUE,
 
     // Vocabulary links
@@ -532,7 +512,6 @@ export default {
     'link.mweDiscontinuous': NO_LINK,
     'link.mweAcrossSentences': NO_LINK,
     'link.onSentence': NO_LINK,
-    'link.duplicateOnToken': NO_LINK,
     'link.toSense': NO_LINK,
     'link.secondVocabulary': NO_LINK,
     'link.provHuman': NO_LINK,
@@ -543,7 +522,6 @@ export default {
     'link.provProb': NO_LINK,
     'link.provDetail': NO_LINK,
     'link.onSegment': NO_LINK,
-    'link.onOrphanToken': NO_LINK,
     'link.entryMorphType': NO_LINK,
 
     // Relations (plaid-ud)

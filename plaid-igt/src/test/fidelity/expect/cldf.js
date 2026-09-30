@@ -13,12 +13,6 @@
 // preset the round trip exports with, which drivers.mjs builds the way the
 // Export presets screen does. The preset is an input to the round trip, not
 // behavior under test, so `bindings` asks the preset code for it.
-//
-// Three entries of the list turn on server order (span.duplicate,
-// span.overlapSameField and the annotation span.reachesOrphanToken leaves
-// behind): a cell holds the first annotation on a token in the order the server
-// lists them. The snapshot records that order on each span (`order`), and so
-// does every row split off one here.
 
 import { defaultCldfOptions } from '../../../export/cldf.js';
 import {
@@ -41,7 +35,6 @@ import {
   wordsWithMorphemes,
 } from './snap.js';
 import { DEFAULT_IGNORED_TOKENS, isTokenIgnored } from '../../../domain/igtConfig.js';
-import { byOrder, coveredBy } from './strips.js';
 
 // ---- reading ---------------------------------------------------------------------
 
@@ -161,7 +154,7 @@ const newMorpheme = (word, precedence, form) => ({
   metadata: { form },
 });
 
-// ---- one value per token per field -----------------------------------------------
+// ---- one annotation per token --------------------------------------------------
 
 /** Replace each multi-token annotation matching `pred` with one per token. */
 function splitAnnotations(s, d, pred) {
@@ -181,24 +174,6 @@ function splitAnnotations(s, d, pred) {
       });
     }
   }
-}
-
-/**
- * Keep one single-token annotation per field on each of `tokens`, the first in
- * server order (see the header).
- */
-function oneValuePerToken(s, d, tokens) {
-  const groups = new Map();
-  for (const sp of d.spans) {
-    if (sp.tokens.length !== 1 || !tokens.has(sp.tokens[0])) continue;
-    const k = `${sp.layer}|${sp.tokens[0]}`;
-    groups.set(k, [...(groups.get(k) || []), sp]);
-  }
-  const drop = new Set();
-  for (const group of groups.values()) {
-    for (const sp of [...group].sort(byOrder).slice(1)) drop.add(sp);
-  }
-  removeSpans(s, d, (sp) => drop.has(sp));
 }
 
 // ---- the text rebuild ------------------------------------------------------------
@@ -284,58 +259,6 @@ export default {
           if (isTokenIgnored(text, DEFAULT_IGNORED_TOKENS)) continue;
           text.split(/[-=]/).forEach((form, i) => d.tokens.push(newMorpheme(word, i + 1, form)));
         }
-      }
-    },
-
-    // The morpheme matching no word goes, and an annotation reaching it stays
-    // on the tokens that do match a word. Where that leaves two annotations in
-    // a field on one token, the cell holds the first.
-    'token.orphanMorpheme': (s) => {
-      for (const d of docs(s)) {
-        const words = new Set(tokensIn(d, 'word').map((w) => `${w.begin}-${w.end}`));
-        const orphans = new Set(
-          tokensIn(d, 'morpheme')
-            .filter((m) => !words.has(`${m.begin}-${m.end}`))
-            .map((m) => m.key),
-        );
-        if (!orphans.size) continue;
-        const trimmed = new Set();
-        for (const sp of d.spans) {
-          const kept = sp.tokens.filter((k) => !orphans.has(k));
-          if (!kept.length || kept.length === sp.tokens.length) continue;
-          sp.tokens = kept;
-          trimmed.add(sp);
-        }
-        removeTokens(s, d, (t) => orphans.has(t.key));
-        const reached = new Set([...trimmed].flatMap((sp) => sp.tokens));
-        splitAnnotations(s, d, (sp) => trimmed.has(sp));
-        oneValuePerToken(s, d, reached);
-      }
-    },
-    'span.reachesOrphanToken': coveredBy(
-      'token.orphanMorpheme',
-      'the orphan goes from the annotation, which stays on the tokens that match a word',
-    ),
-
-    // Both annotations come apart into one per token, and a token they share
-    // keeps the first.
-    'span.overlapSameField': (s) => {
-      for (const d of docs(s)) {
-        const involved = new Set();
-        d.spans.forEach((a, i) => {
-          for (const b of d.spans.slice(i + 1)) {
-            if (a.layer !== b.layer) continue;
-            const shared = a.tokens.filter((k) => b.tokens.includes(k)).length;
-            if (shared > 0 && (shared < a.tokens.length || shared < b.tokens.length)) {
-              involved.add(a);
-              involved.add(b);
-            }
-          }
-        });
-        if (!involved.size) continue;
-        const tokens = new Set([...involved].flatMap((sp) => sp.tokens));
-        splitAnnotations(s, d, (sp) => involved.has(sp));
-        oneValuePerToken(s, d, tokens);
       }
     },
 
@@ -683,15 +606,10 @@ export default {
     },
     {
       keys: ['span.multiToken'],
-      // One annotation per token, all with the value.
+      // One annotation per token, all with the value. Two annotations of one
+      // field never share a token (the field's single-span rule).
       apply(expected) {
-        for (const d of docs(expected)) {
-          const tokens = new Set(
-            d.spans.filter((sp) => sp.tokens.length > 1).flatMap((sp) => sp.tokens),
-          );
-          splitAnnotations(expected, d, () => true);
-          oneValuePerToken(expected, d, tokens);
-        }
+        for (const d of docs(expected)) splitAnnotations(expected, d, () => true);
       },
     },
     {

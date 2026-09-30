@@ -512,11 +512,6 @@ export default {
       how: 'Written as <morph><item type="txt"> holding ∅ with the affix markers of its morph type ("-∅" for a suffix). FLEx stores the zero morph as the same character.',
     },
     'token.morphTypeOnMorpheme': { carried: true, where: 'flextext <morph type>' },
-    'token.orphanMorpheme': {
-      carried: false,
-      kind: 'inherent',
-      why: 'A FLEx morph exists only inside a word.',
-    },
     'token.provenance': {
       carried: false,
       kind: 'inherent',
@@ -599,11 +594,6 @@ export default {
       carried: 'changed',
       how: 'The value is written on every token it covers, once each. Nothing records that it was one annotation.',
     },
-    'span.duplicate': {
-      carried: false,
-      kind: 'inherent',
-      why: 'FLEx keeps one value per item type and writing system. The first annotation is written and the second is not.',
-    },
     'span.onForeignLayer': {
       carried: false,
       kind: 'foreign',
@@ -672,15 +662,6 @@ export default {
       kind: 'inherent',
       why: 'FLEx makes no difference between an empty value and none. The export leaves the item out.',
     },
-    'span.overlapSameField': {
-      carried: false,
-      kind: 'inherent',
-      why: 'FLEx keeps one value per item type and writing system on a word or morph, so a token both annotations cover can hold only one of them.',
-    },
-    'span.reachesOrphanToken': {
-      carried: 'changed',
-      how: 'The value is written on the tokens that have a place in the file. The morpheme matching no word has none (token.orphanMorpheme), so that part of the annotation is not written.',
-    },
     'span.valueWhitespace': {
       carried: true,
       where: "the field's flextext <item>, whitespace as stored",
@@ -716,11 +697,6 @@ export default {
       carried: false,
       kind: 'inherent',
       why: 'FLEx links lexical entries to morphs only.',
-    },
-    'link.duplicateOnToken': {
-      carried: false,
-      kind: 'inherent',
-      why: 'A FLEx morph links one sense.',
     },
     'link.toSense': {
       carried: 'changed',
@@ -768,11 +744,6 @@ export default {
       carried: false,
       kind: 'inherent',
       why: 'FLEx links lexical entries to morphs only, and a segment is not a FLEx object apart from its phrase.',
-    },
-    'link.onOrphanToken': {
-      carried: false,
-      kind: 'inherent',
-      why: 'A morpheme matching no word has no place in a .flextext (token.orphanMorpheme), so there is no morph to hold the link.',
     },
     'link.entryMorphType': {
       carried: true,

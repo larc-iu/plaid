@@ -28,10 +28,6 @@ const GUIDELINES = ruled(
   'Guidelines go into the native archive only.',
   'runExport.js: "The project\'s annotation manual, on the same terms as comments: the native archive only." plaid_guidelines.md, 2026-09-15.',
 );
-const ORPHANS = ruled(
-  'A morpheme whose extent matches no word has no word column to print under, and the derived view never places it.',
-  'plaid_data_integrity_validators.md: every orphan morpheme is deleted when the editor opens the document (the delete-all-orphans policy).',
-);
 const ENTRY_TIER = undecided(
   "No line names the entry a word or morpheme is linked to, and nothing marks a multi-word expression. A plain-text interlinear could print such a line, as .flextext carries each morph's entry, and nothing says it should not.",
 );
@@ -306,7 +302,6 @@ export default {
       carried: 'changed',
       how: "A morph type shows only through the joint beside the morpheme: = when either neighbour is a clitic, - otherwise. A linked entry's morph type is used in place of the morpheme's own. Stems, prefixes, suffixes and the rest read alike.",
     },
-    'token.orphanMorpheme': ORPHANS,
     'token.provenance': PROVENANCE,
     'token.wordsInOneRun': {
       carried: 'changed',
@@ -372,10 +367,6 @@ export default {
       carried: 'changed',
       how: 'The value is printed under every token the annotation covers, once per token, as if each had its own.',
     },
-    'span.duplicate': ruled(
-      'The derived view shows the first annotation in a field on a token, so a second one on the same token is not printed.',
-      'plaid_data_integrity_validators.md and igtReconcile.js planLayerSpanDedup: two annotations in one field on one token are a state the editor heals on open, joining the values with " | " into the first.',
-    ),
     'span.onForeignLayer': foreign("An annotation in another app's span layer."),
     'span.onAlignment': inherent(
       'The file is laid out by sentence, and an annotation on a segment has no sentence line to sit on.',
@@ -409,10 +400,6 @@ export default {
     'span.emptyValue': inherent(
       'An empty value prints as an empty cell, and an empty sentence field is left out, the same as no annotation.',
     ),
-    'span.overlapSameField': inherent(
-      'A cell holds one value per token per field. On the tokens two annotations share, the first one is printed and the other is not.',
-    ),
-    'span.reachesOrphanToken': ORPHANS,
     'span.valueWhitespace': inherent(
       'Space at the edge of a cell cannot be told from the padding that aligns the columns, and line ends are trimmed.',
     ),
@@ -424,7 +411,6 @@ export default {
     'link.mweDiscontinuous': ENTRY_TIER,
     'link.mweAcrossSentences': ENTRY_TIER,
     'link.onSentence': ENTRY_TIER,
-    'link.duplicateOnToken': ENTRY_TIER,
     'link.toSense': ENTRY_TIER,
     'link.secondVocabulary': ENTRY_TIER,
     'link.provHuman': PROVENANCE,
@@ -437,7 +423,6 @@ export default {
     'link.onSegment': inherent(
       'A segment has no lines of its own in a file laid out by sentence, so nothing could name the entry linked to it.',
     ),
-    'link.onOrphanToken': ORPHANS,
     // SUSPECTED BUG: runExport.js loads the vocabularies for plain text only when it writes the
     // TSVs into a zip. A single document, or a zip without them, gets the document GET's bare
     // embedded items, so the joints fall back to the morpheme's own morph type.
