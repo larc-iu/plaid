@@ -24,7 +24,7 @@ from plaid_agent.umr import prompt as umr_prompt  # noqa: E402
 # app fills is not compared and everything around it is.
 SHARED = [shared.PLAN_CONTRACT, shared.PROJECT_SHAPE, shared.HOW_TO_WORK, shared.FIND_FIRST,
           shared.STAGE_NOW, shared.ONE_TURN, shared.FINAL_MESSAGE, shared.READ_BUDGET,
-          shared.BE_CONCISE, shared.CITE_EVIDENCE]
+          shared.BE_CONCISE, shared.ATTACH_FILES, shared.CITE_EVIDENCE]
 
 
 def _fragments(template: str):
@@ -51,6 +51,19 @@ def test_every_prompt_says_every_shared_paragraph_word_for_word():
         for piece in _fragments(template):
             for app, text in built.items():
                 assert piece in text, f'{app}: {piece[:60]}'
+
+
+def test_every_prompt_says_a_file_can_be_attached_when_none_is():
+    """The note and the file tools come only with a file. Without this line a
+    model asked whether it can take a CSV answered that it cannot accept file
+    uploads, with the paperclip beside the question."""
+    from plaid_agent.core.filetools import NOTE_MARK
+    own = {'igt': '.flextext, .eaf, .lift', 'ud': '.conllu', 'umr': '.umr'}
+    for app, text in _built().items():
+        assert 'paperclip in the composer' in text, app
+        assert f"the app's own formats ({own[app]})" in text, app
+        assert 'import screen' in text, app
+        assert NOTE_MARK not in text, app
 
 
 def test_every_apps_run_code_section_is_the_same_but_for_what_it_loads():

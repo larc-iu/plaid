@@ -56,6 +56,7 @@ questions rather than passing verdicts, so read the sentences before proposing a
 worklist counts what is unfinished per document, which is where to start a session.
 {read_budget}
 {be_concise}
+{attach_files}
 {cite_evidence}
 - SAY HOW AN EXAMPLE SHOULD BE DRAWN, with view= on the tag. An example is drawn either as a dependency \
 tree or as its CoNLL-U rows, and eight columns is a lot to read in a narrow panel when the point is about the \
@@ -90,6 +91,7 @@ SYSTEM = shared.filled(_SYSTEM, {
     'final_message': shared.final_message('words'),
     'read_budget': shared.read_budget('search, frequency_list, worklist or check_consistency'),
     'be_concise': shared.be_concise(),
+    'attach_files': shared.attach_files('.conllu'),
     'cite_evidence': shared.cite_evidence(
         refs=_CITE_REFS, shown_as='sentence', never_paste='CoNLL-U rows', example=_CITE_EXAMPLE),
 })

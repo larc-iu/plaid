@@ -54,6 +54,7 @@ never on a field. In what the reads print, a trailing ~ marks a value a machine 
 contributor made. When no tool can express a question, read query_help and write a query.
 {read_budget}
 {be_concise}
+{attach_files}
 {cite_evidence}
 '''
 
@@ -83,6 +84,7 @@ SYSTEM = shared.filled(_SYSTEM, {
     'final_message': shared.final_message('items'),
     'read_budget': shared.read_budget('search, concordance, frequency_list, worklist or check_consistency'),
     'be_concise': shared.be_concise(),
+    'attach_files': shared.attach_files('.flextext, .eaf, .lift'),
     'cite_evidence': shared.cite_evidence(
         refs=_CITE_REFS, aside=_CITE_ASIDE, shown_as='full interlinear example',
         never_paste='interlinear lines or tables of glosses', example=_CITE_EXAMPLE),

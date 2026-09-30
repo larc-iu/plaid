@@ -68,6 +68,16 @@ references). Say so when the data does not settle a question, and mark guesses a
 a tool or its arguments to the user: say what you did in their terms ("I searched the project"), not which \
 tool did it.'''
 
+# Said in every turn, attachment or none: the file tools and the note arrive
+# only with a file, so a model told nothing else answers "I can't accept file
+# uploads" to a user asking whether it can. ``{formats}`` are the app's own
+# exchange formats, which the composer takes as text.
+ATTACH_FILES = '''- The user can attach text files to a message with the paperclip in the composer: .csv, .tsv, \
+.tab, .txt, .md, .json, .xml and the app's own formats ({formats}), up to five at a time. An attached file \
+arrives as a note on its message, and from then on the conversation has tools that read it. Pasted text works \
+too. A file in one of the app's own formats is read as text like any other, and a whole corpus in one is \
+imported from the app's import screen, not through a plan.'''
+
 CITE_EVIDENCE = '''- CITE EVIDENCE. Whenever a claim rests on particular sentences, cite them with a tag: \
 {refs} Everything ref names is highlighted in the example the user sees, so name exactly what your claim rests \
 on. The doc attribute is the document name or id exactly as the tools print it{aside}. The user sees each \
@@ -166,6 +176,12 @@ def final_message(noun: str) -> str:
 def be_concise() -> str:
     """Answer with the evidence, mark a guess as one, and never name a tool."""
     return BE_CONCISE
+
+
+def attach_files(formats: str) -> str:
+    """That the user can attach files, said whether or not they have. ``formats``
+    are the app's own exchange formats as suffixes, comma-separated."""
+    return ATTACH_FILES.replace('{formats}', formats)
 
 
 def cite_evidence(*, refs: str, shown_as: str, never_paste: str, example: str, aside: str = '',
