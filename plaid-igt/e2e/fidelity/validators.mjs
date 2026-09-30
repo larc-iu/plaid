@@ -4,6 +4,7 @@
 //   .flextext   xmllint against FieldWorks' FlexInterlinear.xsd
 //   .lift       xmllint against the LIFT 0.13 RelaxNG
 //   CLDF        pycldf validate, over the unpacked dataset
+//   LaTeX book  compiled with LuaLaTeX (latexmk), over the unpacked bundle
 //   .json       parsed
 //
 // The schemas are unmodified third-party copies in ./schemas (sources and
@@ -13,6 +14,11 @@
 // nightly gate does so a check it counts on cannot quietly stop running.
 // pycldf comes from the base Python environment, ~/.mambaforge or ~/.miniforge3
 // (PLAID_PYTHON names another interpreter).
+//
+// LuaLaTeX comes from a TeX Live, found on PATH or in PLAID_TEX_BIN (a
+// directory). A TeX Live is a large install, so a missing one is a skip even
+// under PLAID_VALIDATORS_REQUIRED, and a failure only under
+// PLAID_LATEX_REQUIRED, which the nightly sets after installing one.
 
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -85,6 +91,10 @@ export async function validateExport(dir, label, format, exported) {
   const scratch = join(dir, label.replace(/[^a-z0-9]+/gi, '-'));
   await mkdir(scratch, { recursive: true });
   if (format === 'cldf') out.push(await validateCldf(scratch, label, files));
+  if (format === 'latex') {
+    out.push(await validateLatex(scratch, label, files));
+    return out.filter(Boolean);
+  }
   for (const file of files) {
     const one = await validateFile(scratch, label, file);
     if (one) out.push(one);
@@ -145,4 +155,48 @@ async function validateCldf(dir, label, files) {
   return result.ok && !result.output
     ? { label: at, state: 'ok', detail: '' }
     : { label: at, state: 'fail', detail: clip(result.output) };
+}
+
+const TEX_BIN = process.env.PLAID_TEX_BIN || null;
+const TEX_MISSING = process.env.PLAID_LATEX_REQUIRED ? 'fail' : 'skip';
+
+/**
+ * A LaTeX book unpacked with its paths and compiled the way its README says,
+ * `latexmk -lualatex main.tex`, stopping at the first error. Any error is a
+ * failure. A missing font is not: the fallback list names Noto fonts for
+ * every script the texts use, and a machine without one still compiles.
+ */
+async function validateLatex(dir, label, files) {
+  const bookDir = join(dir, 'latex');
+  for (const f of files) {
+    const path = join(bookDir, f.path);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, f.bytes);
+  }
+  const at = `${label} LaTeX (lualatex)`;
+  if (!files.some((f) => f.path === 'main.tex')) {
+    return { label: at, state: 'fail', detail: 'the bundle has no main.tex' };
+  }
+  const latexmk = TEX_BIN ? join(TEX_BIN, 'latexmk') : 'latexmk';
+  const env = TEX_BIN ? { ...process.env, PATH: `${TEX_BIN}:${process.env.PATH}` } : process.env;
+  try {
+    await run(
+      latexmk,
+      ['-lualatex', '-interaction=nonstopmode', '-halt-on-error', '-cd', join(bookDir, 'main.tex')],
+      { maxBuffer: 64 * 1024 * 1024, env, timeout: 10 * 60 * 1000 },
+    );
+    return existsSync(join(bookDir, 'main.pdf'))
+      ? { label: at, state: 'ok', detail: '' }
+      : { label: at, state: 'fail', detail: 'no main.pdf' };
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      return { label: at, state: TEX_MISSING, detail: 'latexmk (TeX Live) is not installed' };
+    }
+    const log = `${err.stdout || ''}`
+      .split('\n')
+      .filter((l) => l.startsWith('!') || /^l\.\d+/.test(l))
+      .slice(0, 8)
+      .join('\n        ');
+    return { label: at, state: 'fail', detail: log || clip(`${err.stderr || err.message}`) };
+  }
 }

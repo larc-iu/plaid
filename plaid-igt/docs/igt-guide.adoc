@@ -37,7 +37,7 @@ Key features include:
 * **Transcription.** Attach audio or video to a document and transcribe it one time-aligned segment at a time, with playback speed control and a speaker label on each segment. The transcript is the text that is then analyzed.
 * **Interlinear analysis.** Divide the text into sentences, words, and morphemes, and annotate them with the fields your project defines: glosses, parts of speech, free translations, and others.
 * **Vocabulary linking.** Words and morphemes may be linked to entries in a shared vocabulary. A linked entry supplies its gloss wherever the form occurs, so a word is analyzed consistently across the corpus. Homonyms, affixes and clitics, and multi-word expressions are supported.
-* **Import and export.** Import a FieldWorks (FLEx) backup or interlinear texts, ELAN files, or a CLDF dataset. Export to FLEx (`.flextext` with a LIFT lexicon), ELAN (`.eaf`), CLDF, or plain text, or copy a sentence as LaTeX.
+* **Import and export.** Import a FieldWorks (FLEx) backup or interlinear texts, ELAN files, or a CLDF dataset. Export to FLEx (`.flextext` with a LIFT lexicon), ELAN (`.eaf`), CLDF, plain text, or a LaTeX book, or copy a sentence as LaTeX.
 * **Collaboration.** A project is shared with its members, each of which may have reader, writer, or maintainer privileges. A central database lets all users see the latest state of the data, with no import/export required.
 * **Audited edits.** Every change is recorded in an audit log with its author, and any document can be viewed as it was at an earlier time.
 * **Pluggable AI assistance.** A connected AI model can transcribe a recording, draft translations, or propose segmentations and glosses. Machine output is marked until a person confirms it, and human work is never overwritten.
@@ -1008,7 +1008,7 @@ A preset fixes a format and which orthographies, fields, and options it includes
 Maintainers create presets on the project's **Export** tab.
 Anyone can run one from there or from a document's Export tab, choosing a scope: this document, selected documents, or the whole project.
 
-Five formats are supported:
+Six formats are supported:
 
 * **Plain text**: an aligned, human-readable interlinear rendering.
 Its **Word line** setting prints the words as written, segmented into morphemes, or both, one above the other.
@@ -1026,6 +1026,8 @@ Whatever the preset is set to, a CLDF export leaves behind the vocabulary links 
 The preset lists these under the columns it is dropping, so the loss is on screen before the export runs.
 * **ELAN** (`.eaf`): one annotation file per document, bundled into a `.zip` with its recording when it has one. A recording is saved under the name in the document's **Media file** field when it has one, and under the document's name otherwise.
 **Segment words into morphemes** decides whether the tier tree reaches below the word, **Show affix markers on morphemes** writes them as `-ka` rather than `ka`, **One tier set per speaker** gives each speaker their own tiers, and **Include media files** puts the recording in the `.zip`.
+* **LaTeX book** (`.zip`): LaTeX source for a book of the texts, ready to upload to Overleaf.
+See <<_latex_book>>.
 * **Plaid IGT JSON** (`.zip`): a lossless archive you can import again later.
 
 A FLEx preset also carries the writing-system tags FieldWorks will see: one for the baseline text, one for each alternate orthography, and one for glosses and translations.
@@ -1040,6 +1042,41 @@ Each field goes out under its own language where that is known.
 A field imported from FLEx knows it, whatever it is called: an import records the writing system each field's values are in, so a project glossed in three languages exports all three correctly without anything being set here.
 Failing that, a field whose name ends in a tag, such as `Gloss (nl)`, goes out under that tag, and a field with neither goes out under the tag for glosses and translations.
 The box beside each field overrides all of it.
+
+[[_latex_book]]
+=== LaTeX book
+
+A LaTeX book export turns the documents in its scope into a book of interlinear texts: a title, a table of contents, a list of abbreviations, and one chapter per document in the project's order.
+Each sentence is a numbered example with the lines the Analyze tab shows, in the same order: the words, each orthography, each word field, the morphemes, each morpheme field, then the free translation.
+The preset chooses which orthographies and fields appear.
+A line with nothing in it in a sentence is left out, and so is the morpheme line when no word in the sentence is segmented.
+The first sentence field with a value is the free translation, printed in quotes.
+Any other sentence field follows under its name.
+**Document metadata** lists each document's metadata under its chapter heading.
+
+Glosses written in capitals, such as `PL` or `1SG`, are set in small caps.
+The list of abbreviations names every one the texts use, with the description its tagset gives it, or the meaning from the Leipzig Glossing Rules.
+An abbreviation with neither is listed with a blank to fill in.
+A document written right to left is set right to left.
+
+The `.zip` holds:
+
+* `main.tex`: the book, with a marked place for front matter such as a title page, preface, and acknowledgments.
+* `abbreviations.tex`: the list of abbreviations.
+* `texts/`: one file per document.
+* `latexmkrc` and `README.txt`: the compiler setting and how to compile.
+
+To make the book on Overleaf:
+
+. Choose **New Project > Upload Project**, and choose the `.zip`.
+. Set **Menu > Compiler** to **LuaLaTeX**.
+. Recompile.
+
+The book uses the Charis SIL font, with a Noto font for any other script the texts are written in.
+Both come with Overleaf.
+The look of each line, such as italic words, is set by the `+\Plaid...+` commands at the top of `main.tex`.
+A long book can take longer to compile than a free Overleaf account allows.
+`+\includeonly+` in `main.tex` compiles a few chapters at a time.
 
 To grab a single sentence instead, use **Copy as IGT** in the Analyze tab.
 

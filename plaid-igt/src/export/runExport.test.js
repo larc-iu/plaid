@@ -1336,3 +1336,53 @@ describe('runExport — elan .eaf', () => {
     expect(Object.keys(entries).sort()).toEqual(['documents/Alpha.eaf', 'documents/Beta.eaf']);
   });
 });
+
+describe('runExport: LaTeX book', () => {
+  const latexPreset = () => newPreset('latex', discoverExportLayers(PROJECT), 'l');
+  const text = (entries, path) => new TextDecoder().decode(entries[path]);
+
+  it('zips a book with a chapter per document, included in the order of the run', async () => {
+    const docs = [rawDoc('d1', 'Alpha', 'hi yo'), rawDoc('d2', 'Alpha', 'ba')];
+    const client = stubClient({ docs });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: latexPreset(),
+      scope: { type: 'project' },
+    });
+    expect(result.filename).toBe('My Project Test-latex.zip');
+    const entries = await unzipBlob(result.blob);
+    expect(Object.keys(entries).sort()).toEqual([
+      'README.txt',
+      'abbreviations.tex',
+      'latexmkrc',
+      'main.tex',
+      'texts/001-alpha.tex',
+      'texts/002-alpha.tex',
+    ]);
+    const main = text(entries, 'main.tex');
+    expect(main).toContain('\\title{My Project: Test}');
+    expect(main.indexOf('\\include{texts/001-alpha}')).toBeLessThan(
+      main.indexOf('\\include{texts/002-alpha}'),
+    );
+    expect(text(entries, 'texts/001-alpha.tex')).toContain(
+      '\\gla \\PlaidWord{hi} \\PlaidWord{yo} //',
+    );
+    // No vocabulary is read: the book has no place for one.
+    expect(client.calls.some((c) => c[0] === 'vocabLayers.get')).toBe(false);
+  });
+
+  it('zips even at document scope, titled after the document', async () => {
+    const client = stubClient({ docs: [rawDoc('d1', 'Solo', 'hi')] });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: latexPreset(),
+      scope: { type: 'document', id: 'd1' },
+    });
+    expect(result.filename).toBe('Solo-latex.zip');
+    const entries = await unzipBlob(result.blob);
+    expect(text(entries, 'main.tex')).toContain('\\title{Solo}');
+    expect(text(entries, 'texts/001-solo.tex')).toContain('\\chapter{Solo}');
+  });
+});

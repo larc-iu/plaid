@@ -2,7 +2,7 @@
 // sink run through the format's OWN validator, not ours.
 //
 //   node --import ./e2e/live/aliases.mjs e2e/fidelity/validate.mjs \
-//     [--format plaintext,flextext,cldf,elan,plaid-igt-json] [--keep] [--out <dir>]
+//     [--format plaintext,flextext,cldf,elan,latex,plaid-igt-json] [--keep] [--out <dir>]
 //
 // The round trip asks whether we can read back what we wrote. This asks the
 // other question: would ELAN open it, would FieldWorks import it, would pycldf
@@ -24,7 +24,7 @@ const arg = (name, fallback = null) => {
   const i = process.argv.indexOf(name);
   return i === -1 ? fallback : process.argv[i + 1];
 };
-const formats = (arg('--format') ?? 'plaintext,flextext,cldf,elan,plaid-igt-json').split(',');
+const formats = (arg('--format') ?? 'plaintext,flextext,cldf,elan,latex,plaid-igt-json').split(',');
 const keep = process.argv.includes('--keep');
 const outDir = arg('--out');
 

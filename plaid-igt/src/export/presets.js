@@ -7,12 +7,14 @@ import { statusOf } from '@ui/lib/errors.js';
 import { IGT_NAMESPACE } from '../domain/igtConfig.js';
 import { defaultCldfOptions } from './cldf.js';
 import { defaultElanOptions } from './elan.js';
+import { defaultLatexOptions } from './latexBook.js';
 
 export const EXPORT_FORMATS = [
   { id: 'plaintext', label: 'Plain text', ext: 'txt', defaultName: 'Plain text' },
   { id: 'flextext', label: 'FLEx (.flextext + .lift)', ext: 'flextext', defaultName: 'FLEx' },
   { id: 'cldf', label: 'CLDF TextCorpus (.zip dataset)', ext: 'csv', defaultName: 'CLDF' },
   { id: 'elan', label: 'ELAN annotation file (.eaf)', ext: 'eaf', defaultName: 'ELAN' },
+  { id: 'latex', label: 'LaTeX book (.zip for Overleaf)', ext: 'tex', defaultName: 'LaTeX' },
   {
     id: 'plaid-igt-json',
     label: 'Plaid IGT JSON (lossless .zip archive)',
@@ -133,6 +135,10 @@ export function newPreset(format, layers, name = 'New preset', languages = null)
   if (format === 'elan') {
     // Media rides along in the zip so the .eaf's MEDIA_URL resolves next to it.
     return { ...base, options: { ...defaultElanOptions(layers), includeMedia: true } };
+  }
+  if (format === 'latex') {
+    // A book of every document in the run, so the TSV flag does not apply.
+    return { ...base, options: defaultLatexOptions(layers) };
   }
   if (format === 'flextext') {
     return {

@@ -9,6 +9,7 @@
 // document's sentences folded into a single examples.csv) always produce a
 // zip. 'flextext' folds the whole scope into ONE .flextext and pairs it with
 // the lexicon as LIFT, so it is a zip whenever there is a lexicon to pair.
+// 'latex' is one book, a chapter per document (latexBook.js), always a zip.
 //
 // UI-free and stub-client-testable. Per-document failures become entries in
 // `warnings`, not an aborted run; cancellation throws ExportCancelled.
@@ -34,6 +35,7 @@ import { buildContextRows } from '../components/projects/search/searchRunner.js'
 import { buildEafDocument } from './elan.js';
 import { serializeVocabTsv } from './vocabTsv.js';
 import { buildCldfDataset } from './cldf.js';
+import { buildLatexBook, formatChapter } from './latexBook.js';
 import {
   buildProjectFile,
   serializeVocabularyNative,
@@ -258,6 +260,7 @@ export async function runExport({
   const isCldf = preset.format === 'cldf';
   const isElan = preset.format === 'elan';
   const isFlex = preset.format === 'flextext';
+  const isLatex = preset.format === 'latex';
   // The FLEx target is both files: the texts as .flextext and the lexicon as
   // LIFT, which is the only one of the two that can carry a lexicon at all.
   const wantLexicon = isFlex && preset.options?.lexicon !== false;
@@ -294,7 +297,7 @@ export async function runExport({
   // Document scope downloads the bare file; project/multi-doc scopes always
   // produce a zip — and the native archive is a zip at every scope. A CLDF
   // dataset is a set of files by definition, so it is always a zip too.
-  let wantZip = isNative || isCldf || scope.type !== 'document';
+  let wantZip = isNative || isCldf || isLatex || scope.type !== 'document';
 
   // Vocabularies are fetched for the TSVs (opt-in) or the native archive
   // (always — links reference items by id), and snapshotted BEFORE the
@@ -302,7 +305,8 @@ export async function runExport({
   // it's given (folding in raw-embedded links), so sharing this one with the
   // documents would grow it synthetic empty entries for failed vocabs.
   // The FLEx target says the lexicon in LIFT, so the TSV dump does not apply.
-  const wantVocabTsvs = !isNative && !isCldf && !isFlex && !!preset.includeVocabularies && wantZip;
+  const wantVocabTsvs =
+    !isNative && !isCldf && !isFlex && !isLatex && !!preset.includeVocabularies && wantZip;
   // CLDF turns the vocabularies into EntryTable/SenseTable, so it needs them
   // loaded whenever its dictionary option is on.
   const wantCldfDictionary = isCldf && preset.options?.dictionary !== false;
@@ -477,26 +481,28 @@ export async function runExport({
         // per-document loop only collects them here.
         data: isCldf
           ? null
-          : isNative
-            ? toJson(
-                serializeDocumentNative(igtDoc, {
-                  mediaFile,
-                  comments: docComments,
-                  onWarning: (msg) => warnings.push(`"${name}": ${msg}`),
-                }),
-              )
-            : serializeXmlCounted(
-                () =>
-                  serializeDoc(igtDoc, preset, layers, {
-                    exportedAt,
+          : isLatex
+            ? formatChapter(igtDoc, intersectSelection(preset.options || {}, layers))
+            : isNative
+              ? toJson(
+                  serializeDocumentNative(igtDoc, {
+                    mediaFile,
+                    comments: docComments,
                     onWarning: (msg) => warnings.push(`"${name}": ${msg}`),
-                    // A bundled .eaf lands in documents/ and its media in
-                    // media/, so the href that resolves climbs one level.
-                    mediaHref: mediaFile ? `../${mediaFile}` : null,
-                    mediaType,
                   }),
-                () => warnings.push(`"${name}": invisible control characters left out`),
-              ),
+                )
+              : serializeXmlCounted(
+                  () =>
+                    serializeDoc(igtDoc, preset, layers, {
+                      exportedAt,
+                      onWarning: (msg) => warnings.push(`"${name}": ${msg}`),
+                      // A bundled .eaf lands in documents/ and its media in
+                      // media/, so the href that resolves climbs one level.
+                      mediaHref: mediaFile ? `../${mediaFile}` : null,
+                      mediaType,
+                    }),
+                  () => warnings.push(`"${name}": invisible control characters left out`),
+                ),
         // Only CLDF reads the documents again, all at once. Every other
         // format is done with each one here, and 400 of them held to the
         // end were 400 MB.
@@ -611,6 +617,25 @@ export async function runExport({
     return {
       filename: docFiles[0].name,
       blob: new Blob([docFiles[0].data], { type: mime }),
+      warnings,
+    };
+  }
+
+  // LaTeX: one book, a chapter per document in the order of the run.
+  if (isLatex) {
+    checkStop();
+    return {
+      filename: `${stem}-latex.zip`,
+      blob: await assembleZip(
+        buildLatexBook({
+          title:
+            scope.type !== 'project' && docFiles.length === 1
+              ? docFiles[0].docName
+              : project.name || 'Texts',
+          texts: docFiles.map((f) => ({ name: f.docName, tex: f.data })),
+          projectConfig: project.config,
+        }),
+      ),
       warnings,
     };
   }

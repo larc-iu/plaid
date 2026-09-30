@@ -5,7 +5,7 @@ import { breaksMorphemeAlignment, wordLineOf } from '@/export/plainTextDoc';
 
 // One checkbox group per discovered tier bucket (rendered only when the
 // project actually has layers in that bucket).
-const CheckGroup = ({ title, names, selected, onChange }) => {
+export const CheckGroup = ({ title, names, selected, onChange }) => {
   if (!names.length) return null;
   const has = (n) => selected.includes(n);
   const toggle = (n, on) => onChange(on ? [...selected, n] : selected.filter((x) => x !== n));
@@ -24,7 +24,7 @@ const CheckGroup = ({ title, names, selected, onChange }) => {
   );
 };
 
-const Toggle = ({ label, checked, onChange }) => (
+export const Toggle = ({ label, checked, onChange }) => (
   <label className="flex cursor-pointer items-center justify-between gap-2 text-sm">
     <span>{label}</span>
     <Switch checked={checked} onCheckedChange={onChange} />

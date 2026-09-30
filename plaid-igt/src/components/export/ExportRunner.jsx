@@ -22,6 +22,9 @@ const ZIP_NOTES = {
   cldf:
     'This format always produces a .zip dataset (one CSV per CLDF component table) whatever the ' +
     'scope. Whether the lexicon is included is set in the preset.',
+  latex:
+    'This format always produces a .zip of LaTeX source, one chapter per document, whatever the ' +
+    'scope.',
   flextext:
     'This format produces one .flextext for the whole run. With the lexicon included (set in the ' +
     'preset) it becomes a .zip pairing that file with the lexicon as LIFT.',
@@ -182,8 +185,8 @@ export const ExportRunner = ({
       ) : presets.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           This project has no export presets yet. A preset fixes the format (plain text, FLEx, CLDF,
-          ELAN, or a lossless Plaid IGT archive) and which fields to include. A maintainer creates
-          one under Manage export presets.
+          ELAN, a LaTeX book, or a lossless Plaid IGT archive) and which fields to include. A
+          maintainer creates one under Manage export presets.
         </p>
       ) : (
         <>

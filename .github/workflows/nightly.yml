@@ -105,16 +105,22 @@ jobs:
       #
       # pycldf is what `validate.mjs` hands a CLDF export to, and xmllint
       # checks EAF, FlexInterlinear and LIFT against the schemas vendored in
-      # plaid-igt/e2e/fidelity/schemas. PLAID_VALIDATORS_REQUIRED turns a
-      # missing validator into a failure, so a check the gate counts on
-      # cannot quietly become a skip.
+      # plaid-igt/e2e/fidelity/schemas. The LaTeX book is compiled with
+      # LuaLaTeX, from the TeX Live packages below (expex is in
+      # texlive-humanities) with the fonts its preamble looks for.
+      # PLAID_VALIDATORS_REQUIRED turns a missing validator into a failure,
+      # so a check the gate counts on cannot quietly become a skip, and
+      # PLAID_LATEX_REQUIRED does the same for the TeX engine.
       - name: Install the fidelity validators
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libxml2-utils
+          sudo apt-get install -y --no-install-recommends libxml2-utils \
+            texlive-luatex texlive-latex-recommended texlive-humanities latexmk \
+            fonts-sil-charis fonts-noto-core
           pip install pycldf
       - name: Run the fidelity round trips
         env:
           PLAID_PYTHON: python3
           PLAID_VALIDATORS_REQUIRED: '1'
+          PLAID_LATEX_REQUIRED: '1'
         run: bb fidelity

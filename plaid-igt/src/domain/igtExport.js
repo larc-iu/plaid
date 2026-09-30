@@ -20,6 +20,7 @@
 
 import { canNameWord, joinMorphemes } from './affixMarkers.js';
 import { boundByPieces, lexicalFlagsOf } from './tagsets.js';
+import { isTexSpecial, texEscape, texLine } from './tex.js';
 
 export const COPY_FORMATS = [
   { id: 'plain', label: 'Plain text (aligned)' },
@@ -61,7 +62,7 @@ export const joinMorphemeTexts = (morphemes, texts) =>
 // one value per word field. morphPieces holds, per morph field, each
 // morpheme's gloss and whether it can never name the word, which is how the
 // LaTeX small caps read the joined gloss (texGloss).
-function wordCells(token, { morphFields, wordFields }) {
+export function wordCells(token, { morphFields, wordFields }) {
   const morphemes = token.morphemes || [];
   const bound = morphemes.map(
     (m) => !canNameWord(m.morphType ?? m.metadata?.morphType, morphFormOf(m)),
@@ -168,23 +169,6 @@ export function formatTsv(sentence, fields) {
 }
 
 // ---- LaTeX ----------------------------------------------------------------
-const LATEX_SPECIALS = {
-  '\\': '\\textbackslash{}',
-  '&': '\\&',
-  '%': '\\%',
-  $: '\\$',
-  '#': '\\#',
-  _: '\\_',
-  '{': '\\{',
-  '}': '\\}',
-  '~': '\\textasciitilde{}',
-  '^': '\\textasciicircum{}',
-};
-const texEscape = (s) => [...(s ?? '')].map((ch) => LATEX_SPECIALS[ch] ?? ch).join('');
-// A macro argument cannot hold a paragraph break, so a value set in one is
-// one line with single spaces.
-const texLine = (s) => (s ?? '').replace(/\s+/gu, ' ').trim();
-
 // A gloss as a paper sets it: each grammatical abbreviation in small caps,
 // written in lowercase because \textsc only changes lowercase letters and
 // \textsc{NOM} prints as full capitals. "1SG.NOM" gives \textsc{1sg}.\textsc{nom}.
@@ -201,7 +185,7 @@ const HAS_LETTER_RE = /\p{L}/u;
 // plus a combining dot above everywhere but a Turkish locale, and the dot
 // would then print over a small-caps i. It is set as a plain i.
 const smallCapsText = (part) => part.replace(/\u0130/g, 'i').toLowerCase();
-const texGloss = (s, pieces) => {
+export const texGloss = (s, pieces) => {
   const matches = [...s.matchAll(GLOSS_PART_RE)];
   const lexical = lexicalFlagsOf(
     s,
@@ -229,15 +213,17 @@ const texGloss = (s, pieces) => {
 // ExPex also stops ("Extra \else") or misaligns the line when a \gla word is
 // one escaped special alone (\{, \_, \$, \textbackslash{}), braced or not, so
 // a cell that opens with a special opens with an empty group, which it prints
-// as nothing.
-const texWord = (render) => (s) => {
+// as nothing. A \gla word that is one of + @ [ ] alone is ExPex markup (a
+// bracket, a skipped gloss), so such a cell opens with one too.
+const EXPEX_MARKUP_WORD = /^[+@[\]]$/;
+export const texWord = (render) => (s) => {
   const text = texLine(s);
   if (text === '') return '{}';
-  const lead = LATEX_SPECIALS[text[0]] ? '{}' : '';
+  const lead = isTexSpecial(text[0]) || EXPEX_MARKUP_WORD.test(text) ? '{}' : '';
   const body = lead + render(text);
   return text.includes(' ') || text.includes('//') ? `{${body}}` : body;
 };
-const texCell = texWord(texEscape);
+export const texCell = texWord(texEscape);
 // A gloss line's cells, each read by its morpheme pieces when it has them
 // (a word field's line has none, and each cell is one word's gloss).
 const texGlossCells = (line, n) =>

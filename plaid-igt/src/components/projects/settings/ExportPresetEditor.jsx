@@ -17,6 +17,7 @@ import { CldfOptions } from '@/components/export/CldfOptions.jsx';
 import { FlextextOptions } from '@/components/export/FlextextOptions.jsx';
 import { ElanOptions } from '@/components/export/ElanOptions.jsx';
 import { NativeOptions } from '@/components/export/NativeOptions.jsx';
+import { LatexOptions } from '@/components/export/LatexOptions.jsx';
 
 const formatLabel = (id) => EXPORT_FORMATS.find((f) => f.id === id)?.label ?? id;
 
@@ -192,6 +193,12 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
             layers={layers}
             onChange={(options) => update({ options })}
           />
+        ) : draft.format === 'latex' ? (
+          <LatexOptions
+            options={draft.options || {}}
+            layers={layers}
+            onChange={(options) => update({ options })}
+          />
         ) : draft.format === 'plaid-igt-json' ? (
           <NativeOptions
             options={draft.options || {}}
@@ -218,6 +225,11 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
           <p className="border-t pt-3 text-xs text-muted-foreground">
             One .eaf per document. A document with media is bundled into a .zip alongside it, so the
             file ELAN opens finds its recording.
+          </p>
+        ) : draft.format === 'latex' ? (
+          <p className="border-t pt-3 text-xs text-muted-foreground">
+            A .zip of LaTeX source for Overleaf: main.tex with a table of contents, one chapter per
+            document, and a list of abbreviations. It compiles with LuaLaTeX.
           </p>
         ) : draft.format === 'flextext' ? (
           <p className="border-t pt-3 text-xs text-muted-foreground">

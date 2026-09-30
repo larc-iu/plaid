@@ -205,6 +205,20 @@ describe('formatExpex', () => {
   });
 });
 
+describe('ExPex markup words', () => {
+  it('keeps a lone + @ [ or ] a word, not a bracket', () => {
+    const sent = {
+      annotations: {},
+      tokens: ['[', 'a', ']', '+', '@'].map((content) => ({
+        content,
+        annotations: {},
+        morphemes: [],
+      })),
+    };
+    expect(formatExpex(sent, FIELDS)).toContain('\\gla {}[ a {}] {}+ {}@ //');
+  });
+});
+
 describe('LaTeX gloss small caps', () => {
   // One word per gloss, so each case reads as the gloss line alone.
   const glossed = (...glosses) => ({
