@@ -8,6 +8,7 @@ import {
   recordEdit,
   sendEditLog,
   settleEditLog,
+  storedHolds,
   startEditLog,
   unsendEditLog,
 } from './editLog.js';
@@ -136,6 +137,39 @@ describe('inferEdit', () => {
     });
     // no selection known at all
     expect(inferEdit('ab', null, 'axb', null)).toEqual({ type: 'insert', index: 1, value: 'x' });
+  });
+
+  it('puts an insert the caret does not place at a word edge rather than inside the next word (F2)', () => {
+    // ` to` typed after `went`, or `to ` before `the`: never `o t` inside `the`
+    expect(inferEdit('I went the store', null, 'I went to the store', null)).toEqual({
+      type: 'insert',
+      index: 7,
+      value: 'to ',
+    });
+    // ` الصغير` after `الولد`, where the next word also starts with `ال`
+    expect(inferEdit('الولد البيت', null, 'الولد الصغير البيت', null)).toEqual({
+      type: 'insert',
+      index: 6,
+      value: 'الصغير ',
+    });
+    // a word typed before a word it is the start of
+    expect(inferEdit('a cat attack', null, 'a cat at attack', null)).toEqual({
+      type: 'insert',
+      index: 6,
+      value: 'at ',
+    });
+    // a delete that could take the end of one word and the start of the next
+    expect(inferEdit('go to the park', null, 'go the park', null)).toEqual({
+      type: 'delete',
+      index: 3,
+      value: 3,
+    });
+    // inside a word with nothing to choose, as found
+    expect(inferEdit('the dg ran', null, 'the dog ran', null)).toEqual({
+      type: 'insert',
+      index: 5,
+      value: 'o',
+    });
   });
 
   it('never splits an astral letter in the fallback', () => {
@@ -358,5 +392,25 @@ describe('a body with carriage returns', () => {
     expect(moved.base).toBe('one\r\ntwo\r\nthree!');
     expect(editLogBody(moved)).toBe('ones\ntwo\nthree!');
     expect(editLogGaps(moved)).toEqual([{ start: 3, end: 3, value: 's' }]);
+  });
+});
+
+describe('storedHolds', () => {
+  const ins = (start, value) => ({ start, end: start, value });
+  it('holds a change the stored text is, or holds with another change beside it', () => {
+    expect(storedHolds('the cat sat', [ins(3, ' big')], 'the big cat sat')).toBe(true);
+    expect(
+      storedHolds('the cat sat on the mat', [ins(3, ' big')], 'the big cat sat on the rug'),
+    ).toBe(true);
+    expect(storedHolds('the the cat', [{ start: 0, end: 4, value: '' }], 'the cat')).toBe(true);
+    expect(storedHolds('the cat', [ins(3, ' the')], 'the the cat')).toBe(true);
+  });
+
+  it('does not hold a change the stored text lacks, or one it cannot be told apart from', () => {
+    expect(storedHolds('the cat sat', [ins(3, ' big')], 'the cat sat')).toBe(false);
+    expect(storedHolds('the cat sat', [ins(3, ' big')], 'the cat sat down')).toBe(false);
+    expect(storedHolds('he walkd home', [ins(7, 'e')], 'he walks home')).toBe(false);
+    // `the` typed twice where one is stored
+    expect(storedHolds('the cat', [ins(3, ' the the')], 'the the cat')).toBe(false);
   });
 });

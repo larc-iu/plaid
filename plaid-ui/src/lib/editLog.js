@@ -48,7 +48,48 @@ function trimmedChange(prev, next) {
     suf += 1;
   }
   if (splitsPair(prev, prev.length - suf) || splitsPair(next, next.length - suf)) suf -= 1;
-  return { s, e: prev.length - suf, t: next.length - suf };
+  return atWordEdge(prev, next, { s, e: prev.length - suf, t: next.length - suf });
+}
+
+const WORD = /[\p{L}\p{M}\p{N}]/u;
+// Whether the letter ending at, or starting at, UTF-16 index `i` of `str` is
+// part of a word.
+const wordBefore = (str, i) => {
+  if (i <= 0) return false;
+  const back = isLow(str.charCodeAt(i - 1)) && i > 1 ? 2 : 1;
+  return WORD.test(String.fromCodePoint(str.codePointAt(i - back)));
+};
+const wordAfter = (str, i) => i < str.length && WORD.test(String.fromCodePoint(str.codePointAt(i)));
+
+// A pure insert or delete beside text that repeats its own could stand at
+// several places, all making `next`: `o t` into `the` or `to ` before it.
+// `trimmedChange` finds the last. The first of them, going back from there,
+// that splits no word is taken instead, and the last when every one does.
+function atWordEdge(prev, next, change) {
+  const { s, e, t } = change;
+  const insert = s === e && t > s;
+  const remove = t === s && e > s;
+  if (!insert && !remove) return change;
+  const text = insert ? next.slice(s, t) : prev.slice(s, e);
+  const clean = (at, value) =>
+    insert
+      ? !(wordBefore(prev, at) && wordAfter(value, 0)) &&
+        !(wordBefore(value, value.length) && wordAfter(prev, at))
+      : !(wordBefore(prev, at) && wordAfter(prev, at)) &&
+        !(wordBefore(prev, at + value.length) && wordAfter(prev, at + value.length));
+  let at = s;
+  let value = text;
+  for (;;) {
+    const end = at + value.length;
+    const whole = !splitsPair(prev, at) && !splitsPair(insert ? next : prev, end);
+    if (whole && clean(at, value)) {
+      return insert ? { s: at, e: at, t: end } : { s: at, e: end, t: at };
+    }
+    // one unit back: the unit before it the same as its last
+    if (at === 0 || prev[at - 1] !== value[value.length - 1]) return change;
+    value = prev[at - 1] + value.slice(0, -1);
+    at -= 1;
+  }
 }
 
 // The change read from the caret: the text after it is what followed the old
@@ -197,4 +238,33 @@ export function rebaseEditLog(log, stored, storedDigest = null) {
   const ops = gapsToOps(result.gaps);
   const raw = applyTextOps(stored, ops);
   return { base: stored, digest: storedDigest, ops, raw, body: shown(raw) };
+}
+
+// The gaps that take the text `gaps` make of `base` back to `base`, in code
+// points of that text.
+function undoGaps(base, gaps) {
+  const chars = [...base];
+  let shift = 0;
+  return gaps.map((g) => {
+    const start = g.start + shift;
+    const length = cpLength(g.value);
+    shift += length - (g.end - g.start);
+    return { start, end: start + length, value: chars.slice(g.start, g.end).join('') };
+  });
+}
+
+/**
+ * Whether `stored` holds the change `gaps` make of `base`, whatever else
+ * others changed beside it. It does when it is the text they make, when every
+ * change of theirs is in it already (`rebaseEdits` leaves none to make), or
+ * when taking the change back out can be moved onto it (what changed since
+ * lies apart from the change). False when that cannot be told.
+ */
+export function storedHolds(base, gaps, stored) {
+  const mine = applyTextOps(base, gapsToOps(gaps));
+  if (stored === mine) return true;
+  const moved = rebaseEdits(base, gaps, stored);
+  if (!moved.conflict && moved.gaps.length === 0) return true;
+  const back = rebaseEdits(mine, undoGaps(base, gaps), stored);
+  return !back.conflict && back.gaps.length > 0;
 }
