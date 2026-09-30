@@ -89,6 +89,8 @@ const noteOf = (root, n) => {
   return id ? root.querySelector(`#${id}`)?.textContent : null;
 };
 const writes = (server) => server.sent.length;
+// The lasting lines of row edits whose segment is gone.
+const unsavedOf = (root) => all(root, 'ul[aria-label="Not saved"] li').map((li) => li.textContent);
 
 async function mount(server) {
   const doc = open(server);
@@ -125,7 +127,7 @@ describe('a transcript row whose edit lost to another change of its segment', ()
   it('shows the stored text, the refused one under it, and a toast naming the change', async () => {
     const server = segmentServer(RAW());
     const { r, drain } = await mount(server);
-    server.otherEdits('a-2', 'deux');
+    server.otherRetypes('a-2', 'deux');
     await typeAndEnter(r, 2, 'dos');
     await drain();
 
@@ -140,7 +142,7 @@ describe('a transcript row whose edit lost to another change of its segment', ()
   it('leaving the row sends nothing, and Enter sends the refused text once over the stored one', async () => {
     const server = segmentServer(RAW());
     const { r, drain } = await mount(server);
-    server.otherEdits('a-2', 'deux');
+    server.otherRetypes('a-2', 'deux');
     await typeAndEnter(r, 2, 'dos');
     await drain();
     const before = writes(server);
@@ -173,10 +175,10 @@ describe('a transcript row whose edit lost to another change of its segment', ()
   it('Escape lets the refused text go, and so does typing', async () => {
     const server = segmentServer(RAW());
     const { r, drain } = await mount(server);
-    server.otherEdits('a-2', 'deux');
+    server.otherRetypes('a-2', 'deux');
     await typeAndEnter(r, 2, 'dos');
     await drain();
-    server.otherEdits('a-3', 'trois');
+    server.otherRetypes('a-3', 'trois');
     await typeAndEnter(r, 3, 'tres');
     await drain();
     expect(noteOf(r.container, 2)).toBe('Yours: dos · Enter to keep yours');
@@ -261,7 +263,7 @@ describe('a transcript row whose edit lost to another change of its segment', ()
     );
     const { r, drain } = await mount(server);
     expect([row(r.container, 2).value, row(r.container, 3).value]).toEqual(['two', 'three']);
-    server.otherEdits('a-2', 'deux');
+    server.otherRetypes('a-2', 'deux');
     await typeAndEnter(r, 2, 'dos');
     await drain();
     expect(row(r.container, 2).value).toBe('deux');
@@ -317,6 +319,7 @@ describe('a refused row edit whose segment cannot be told apart (second review)'
     expect(row(r.container, 2).value).toBe('tres');
     expect(noteOf(r.container, 2)).toBe(null);
     expect(toasts.error.map((t) => t.message)).toEqual(['Not saved: dos']);
+    expect(unsavedOf(r.container)).toEqual(['Not saved, 0:01.000 to 0:02.000: dos']);
     const before = writes(server);
     await r.step(() => row(r.container, 2).focus());
     await r.step(async () => {
@@ -333,8 +336,8 @@ describe('a refused row edit whose segment cannot be told apart (second review)'
   it('its text and its end changed elsewhere: the row shows the stored text with yours under it (T1)', async () => {
     const server = segmentServer(RAW());
     const { r, drain } = await mount(server);
-    const theirs = server.otherEdits('a-3', 'tres!');
-    server.otherRelabels(theirs, { timeEnd: 2.7 }, 'c');
+    server.otherRetypes('a-3', 'tres!');
+    server.otherRelabels('a-3', { timeEnd: 2.7 }, 'c');
     await typeAndEnter(r, 3, 'MINE3');
     await drain();
 
@@ -350,6 +353,131 @@ describe('a refused row edit whose segment cannot be told apart (second review)'
     await drain();
     expect(server.body).toBe('one two MINE3');
     expect(server.segments()[2].metadata.timeEnd).toBe(2.7);
+    await r.unmount();
+  });
+});
+
+describe('a refused row edit whose segment is gone (B1, F5)', () => {
+  const speaking = (id, begin, end, metadata) => ({ id, text: 'text-1', begin, end, metadata });
+  const alignLayer = (server) =>
+    server.stored.textLayers[0].tokenLayers.find((l) => l.id === 'alignL');
+  const twoSpeakers = () =>
+    segmentServer(
+      buildRawDoc({
+        body: 'one two three',
+        words: [],
+        morphemes: [],
+        alignmentTokens: [
+          seg('a-1', 0, 3, 0, 1),
+          speaking('a-2', 4, 7, { timeBegin: 1, timeEnd: 2, speaker: 'A' }),
+          speaking('a-3', 8, 13, { timeBegin: 2, timeEnd: 3, speaker: 'B' }),
+        ],
+      }),
+    );
+
+  it('made again elsewhere: no note on any row, a lasting line with the text, and Enter sends nothing', async () => {
+    const server = segmentServer(RAW());
+    const { r, drain } = await mount(server);
+    server.otherEdits('a-2', 'deux');
+    await typeAndEnter(r, 2, 'dos');
+    await drain();
+
+    expect(row(r.container, 2).value).toBe('deux');
+    expect(noteOf(r.container, 2)).toBe(null);
+    expect(toasts.error.map((t) => t.message)).toEqual(['Not saved: dos']);
+    expect(unsavedOf(r.container)).toEqual(['Not saved, 0:01.000 to 0:02.000: dos']);
+
+    const before = writes(server);
+    await r.step(() => row(r.container, 2).focus());
+    await r.step(async () => {
+      press(row(r.container, 2), 'Enter');
+      await settle();
+    });
+    await drain();
+    expect(writes(server)).toBe(before);
+    expect(server.body).toBe('one deux three');
+    await r.unmount();
+  });
+
+  it('the line goes when dismissed', async () => {
+    const server = segmentServer(RAW());
+    const { r, drain } = await mount(server);
+    server.otherEdits('a-2', 'deux');
+    await typeAndEnter(r, 2, 'dos');
+    await drain();
+    const dismiss = r.container.querySelector('ul[aria-label="Not saved"] button');
+    expect(dismiss.getAttribute('aria-label')).toBe('Dismiss');
+    await r.step(() => dismiss.click());
+    expect(unsavedOf(r.container)).toEqual([]);
+    await r.unmount();
+  });
+
+  it('deleted, and a new segment of its speaker made over part of its time: Enter there keeps it (B1)', async () => {
+    const server = twoSpeakers();
+    const { r, drain } = await mount(server);
+    alignLayer(server).tokens = alignLayer(server).tokens.filter((t) => t.id !== 'a-2');
+    server.otherSaves([
+      { type: 'delete', index: 4, value: 3 },
+      { type: 'insert', index: 4, value: 'nuevo' },
+    ]);
+    alignLayer(server).tokens.splice(1, 0, {
+      id: 'b-new',
+      text: 'text-1',
+      begin: 4,
+      end: 9,
+      metadata: { timeBegin: 1.2, timeEnd: 1.8, speaker: 'A' },
+    });
+    await typeAndEnter(r, 2, 'dos');
+    await drain();
+
+    expect(row(r.container, 2).value).toBe('nuevo');
+    expect(noteOf(r.container, 2)).toBe(null);
+    expect(toasts.warn).toEqual([]);
+    expect(unsavedOf(r.container)).toEqual(['Not saved, 0:01.000 to 0:02.000: dos']);
+    const before = writes(server);
+    await r.step(() => row(r.container, 2).focus());
+    await r.step(async () => {
+      press(row(r.container, 2), 'Enter');
+      await settle();
+    });
+    await drain();
+    expect(writes(server)).toBe(before);
+    expect(server.body).toBe('one nuevo three');
+    await r.unmount();
+  });
+
+  it('its token deleted and a new overlapping segment of its speaker at the end: nothing written over it (B2)', async () => {
+    const server = twoSpeakers();
+    const { r, drain } = await mount(server);
+    alignLayer(server).tokens = alignLayer(server).tokens.filter((t) => t.id !== 'a-2');
+    server.otherSaves([{ type: 'insert', index: 13, value: ' later' }]);
+    alignLayer(server).tokens.push({
+      id: 'b-new',
+      text: 'text-1',
+      begin: 14,
+      end: 19,
+      metadata: { timeBegin: 1.9, timeEnd: 3, speaker: 'A' },
+    });
+    await typeAndEnter(r, 2, 'dos');
+    await drain();
+
+    expect(all(r.container, 'textarea[aria-label^="Segment "]').map((t) => t.value)).toEqual([
+      'one',
+      'later',
+      'three',
+    ]);
+    expect(unsavedOf(r.container)).toEqual(['Not saved, 0:01.000 to 0:02.000: dos']);
+    for (const n of [2, 3]) {
+      const before = writes(server);
+      await r.step(() => row(r.container, n).focus());
+      await r.step(async () => {
+        press(row(r.container, n), 'Enter');
+        await settle();
+      });
+      await drain();
+      expect(writes(server)).toBe(before);
+    }
+    expect(server.body).toBe('one two three later');
     await r.unmount();
   });
 });

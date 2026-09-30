@@ -116,7 +116,7 @@ describe('refused because the body changed', () => {
   it('an edit of a segment someone else changed is refused with both texts, and nothing more is sent', async () => {
     const server = segmentServer(RAW());
     const doc = open(server);
-    server.otherEdits('a-2', 'deux');
+    server.otherRetypes('a-2', 'deux');
     const outcome = await doc.cellWrite(() =>
       doc.editAlignment('a-2', { text: 'dos', timeBegin: 1, timeEnd: 2 }),
     );
@@ -250,7 +250,7 @@ describe('made again after a refusal', () => {
     expect(errors).toEqual([]);
   });
 
-  it('two speakers over one time span: a change to one is not the other', async () => {
+  it('two speakers over one time span: neither is taken for the other when one is made again', async () => {
     const speaking = (id, begin, end, speaker) => ({
       id,
       text: 'text-1',
@@ -276,10 +276,13 @@ describe('made again after a refusal', () => {
       doc.editAlignment('a-2', { text: 'dos', timeBegin: 1, timeEnd: 2, speaker: 'A' }),
     );
     await idle(doc);
-    expect(outcome.error.conflict).toEqual({ stored: 'deux', mine: 'dos' });
-    // The row the conflict belongs to is the segment made again elsewhere.
-    expect(doc.segmentOrigin(theirs)).toBe('a-2');
+    // The segment made again elsewhere is another segment: the edit is
+    // refused as its own row's, and written onto neither.
+    expect(outcome.error.conflict).toEqual({ stored: null, mine: 'dos' });
+    expect(doc.segmentOrigin(theirs)).toBe(theirs);
     expect(doc.segmentOrigin('a-3')).toBe('a-3');
+    expect(server.body).toBe('one deux three');
+    expect(server.answers()).toEqual([409]);
   });
 
   it('astral text: a segment made again at its new place, then deleted with its text', async () => {

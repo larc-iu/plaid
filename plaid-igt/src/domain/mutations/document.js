@@ -13,12 +13,14 @@ import {
   gapsToOps,
   isReservedMetadataKey,
   metadataOps,
+  wasReplayed,
 } from '@larc-iu/plaid-client';
 import { lineSentenceRanges } from '../../utils/tokenizationUtils.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
-import { statusOf } from '@ui/lib/errors.js';
+import { isUnknownOutcome, statusOf } from '@ui/lib/errors.js';
 import { pendingId } from '@ui/domain/pendingIds.js';
 import { mergeText, rebaseEdits } from '@ui/lib/textMerge.js';
+import { storedHolds } from '@ui/lib/editLog.js';
 import { applyReshape } from '@ui/domain/textReshape.js';
 import { getIgtLayerInfo } from '../layerInfo.js';
 import { isKeyReused, underKeys } from './alignment.js';
@@ -210,21 +212,23 @@ export const documentMutations = {
   // first send stored. Answers whether the document is to be read: the batch
   // with the sentences is not patched from its answer, and an answer to a
   // request sent before under the same keys may be the first one's, replayed,
-  // with the body as it was then. `plan.landed` is set once the edit is
+  // with the body as it was then, and so may one the client replayed inside
+  // its own resend (`wasReplayed`). `plan.landed` is set once the edit is
   // stored.
   async _sendBaselineEdit(textId, plan) {
     for (let attempt = 0; ; attempt += 1) {
       if (!plan.keys) await this._planBaselineEdit(plan, await this._storedText());
       const ops = gapsToOps(plan.gaps);
-      const body = applyTextOps(plan.base, ops);
       const again = plan.sentUnder === plan.keys && plan.keys != null;
       plan.sentUnder = plan.keys;
+      let replayed = false;
       try {
         await underKeys(this._client, plan.keys, async () => {
           if (plan.seed) {
             // The sentences after it are stamped with the version from
             // before the batch, so the edit is stamped too, and checked first.
             const sentenceLayerId = this.layerInfo.sentenceTokenLayer.id;
+            const body = applyTextOps(plan.base, ops);
             await this._client.batched(async (b) => {
               b.texts.edit(textId, ops, undefined, { base: plan.digest, versioned: true });
               b.tokens.bulkCreate(sentenceSeed(sentenceLayerId, textId, body));
@@ -240,16 +244,28 @@ export const documentMutations = {
             Object.assign(next, applyReshape(next, textId, answer));
             reshapeVocabLinks(vocabs, answer?.reshape);
           });
+          replayed = wasReplayed(answer);
         });
-        return plan.seed || again;
+        return plan.seed || again || replayed;
       } catch (err) {
-        // Its key was sent before with another request: an earlier run of
-        // this save landed with its answer lost. Read what is stored.
-        if (isKeyReused(err)) {
+        // Its key was sent before with another request (an earlier run of
+        // this save landed with its answer lost), or this is a run again of
+        // a send whose answer was lost, refused now: the first may have
+        // landed whatever this answer says. It has when the text stored holds
+        // its change, someone else's saved since or not.
+        const reused = isKeyReused(err);
+        if (reused || (again && !isUnknownOutcome(err))) {
           const stored = await this._readStoredText();
-          plan.landed = stored.body === body;
-          if (plan.landed) return false;
-          throw new Error(BASELINE_CONFLICT, { cause: err });
+          if (storedHolds(plan.base, plan.gaps, stored.body)) {
+            plan.landed = true;
+            return false;
+          }
+          if (reused) throw new Error(BASELINE_CONFLICT, { cause: err });
+          if (statusOf(err) === 409 && attempt < 2) {
+            await this._planBaselineEdit(plan, stored);
+            continue;
+          }
+          throw err;
         }
         if (statusOf(err) === 409 && attempt < 2) {
           await this._planBaselineEdit(plan, await this._readStoredText());

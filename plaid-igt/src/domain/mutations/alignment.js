@@ -35,6 +35,7 @@ import {
   metadataOps,
   createdId,
   createdIds,
+  wasReplayed,
 } from '@larc-iu/plaid-client';
 import { pendingId, settledId, stableKey } from '@ui/domain/pendingIds.js';
 import { isChangedElsewhere, statusOf } from '@ui/lib/errors.js';
@@ -273,73 +274,29 @@ const planDeleteText = (body, segment) => {
   return numDeleted > 0 ? [{ type: 'delete', index, value: numDeleted }] : [];
 };
 
-const timesOf = (t) => [t.metadata?.timeBegin ?? 0, t.metadata?.timeEnd ?? 0];
-
 // The ids of the segments `info` holds, settled.
 const segmentIds = (info) =>
   new Set((info.alignmentTokenLayer?.tokens || []).map((t) => settledId(t.id)));
 
-const speakerOf = (t) => t.metadata?.speaker ?? null;
-
-// The segments `info` holds, by settled id, each as `{ times, speaker }`: what
-// `segmentNow` knows of them when a write is made.
-const segmentsAt = (info) =>
-  new Map(
-    (info.alignmentTokenLayer?.tokens || []).map((t) => [
-      settledId(t.id),
-      { times: timesOf(t), speaker: speakerOf(t) },
-    ]),
-  );
-
-// Whether two segments, `{ times, speaker }` each, could be one segment: one
-// speaker, and times that overlap (or are the same, for a segment of no length).
-const sameVoice = (a, b) => {
-  const [b1, e1] = a.times;
-  const [b2, e2] = b.times;
-  const overlap = (b1 < e2 && b2 < e1) || (b1 === b2 && e1 === e2);
-  return a.speaker === b.speaker && overlap;
-};
-
-// The segment a write names, as the document `info` holds it now: by its id
-// (settled, since the write may have been made while it was pending), else
-// its successor, what another writer's edit of its text leaves (an edit makes
-// the token again, and the times may have been moved since too). `known` is
-// `segmentsAt` when the write was made. The successor is the one segment not
-// among them, of the same speaker, over times that overlap the planned ones,
-// and it is taken only when no other segment known then could be what it
-// was made again from. So a segment of another speaker, or one that more
-// than one could have become, is never taken for it. `{ segment, same }`,
-// `same` false when it is the successor, and `segment` null when there is
-// none.
-const segmentNow = (info, id, known) => {
-  const tokens = info.alignmentTokenLayer?.tokens || [];
-  const byId = tokens.find((t) => settledId(t.id) === settledId(id));
-  if (byId) return { segment: byId, same: true };
-  const own = settledId(id);
-  const planned = known.get(own);
-  const none = { segment: null, same: false };
-  if (!planned) return none;
-  const made = tokens
-    .filter((t) => !known.has(settledId(t.id)))
-    .map((t) => ({ token: t, times: timesOf(t), speaker: speakerOf(t) }))
-    .filter((c) => sameVoice(planned, c));
-  if (made.length !== 1) return none;
-  const [successor] = made;
-  const rivals = [...known].filter(([k, s]) => k !== own && sameVoice(s, successor));
-  return rivals.length ? none : { segment: successor.token, same: false };
-};
+// The segment a write names, as the document `info` holds it now: by its id,
+// settled, since the write may have been made while it was pending. Null when
+// it is gone. A segment someone else made is never taken for it, whatever its
+// speaker and times: a write goes only onto the segment it was made on.
+const segmentNow = (info, id) =>
+  (info.alignmentTokenLayer?.tokens || []).find((t) => settledId(t.id) === settledId(id)) ?? null;
 
 // The entity rule for a write over one segment's text, on the document as
 // read after a refusal: the segment is still there and still holds `over`,
 // the text the write was made over, and the write goes again on `segment`.
-// The segment, or its successor, holding `mine` already is the write landed
-// (its answer lost, or someone typed the same): `{ landed: true }`.
-// Otherwise the conflict to refuse with, `{ stored, mine }`, `stored` null
-// when the segment is gone. `segment` is the segment found, if any.
-const segmentConflict = (info, id, known, over, mine) => {
-  const { segment, same } = segmentNow(info, id, known);
-  const stored = segment ? cpSlice(bodyOf(info), segment.begin, segment.end) : null;
-  if (same && stored === over) return { segment };
+// The segment holding `mine` already is the write landed (someone typed the
+// same): `{ landed: true }`. Otherwise the conflict to refuse with, `{ stored,
+// mine }`, `stored` null when the segment is gone. `segment` is the segment
+// found, if any.
+const segmentConflict = (info, id, over, mine) => {
+  const segment = segmentNow(info, id);
+  if (!segment) return { conflict: { stored: null, mine }, segment };
+  const stored = cpSlice(bodyOf(info), segment.begin, segment.end);
+  if (stored === over) return { segment };
   if (mine && stored === mine) return { landed: true, segment };
   return { conflict: { stored, mine }, segment };
 };
@@ -347,22 +304,35 @@ const segmentConflict = (info, id, known, over, mine) => {
 // What a transcript row writes of a segment's metadata beside its text.
 const ROW_KEYS = ['timeBegin', 'timeEnd', 'speaker'];
 
+// A row key of segment metadata `m` as the row reads and sends it: a
+// missing start is 0, a missing end is the start, and a blank speaker is none.
+const rowValue = (m, key) => {
+  const begin = m?.timeBegin ?? 0;
+  if (key === 'timeBegin') return begin;
+  if (key === 'timeEnd') return m?.timeEnd ?? begin;
+  return m?.[key] || null;
+};
+
+// Two values of a row key the same: times within a millisecond.
+const sameRowValue = (key, a, b) => (key === 'speaker' ? a === b : Math.abs(a - b) < 0.001);
+
 // The metadata a segment made again after a refusal goes with: `mine`, the
 // metadata the write was planned with, except for each of the row's keys it
 // did not change from `was` (the segment's when the write was made), which
 // takes the value stored now, `now`. So a speaker or a time someone else set
 // meanwhile stays, and one this write set is written. Null when both changed
-// the same key to different values: the write is refused as a conflict.
+// the same key to different values: the write is refused as a conflict. The
+// values are compared as the row reads them (`rowValue`).
 const replannedMetadata = (mine, was = {}, now = {}) => {
   const out = { ...mine };
   for (const key of ROW_KEYS) {
-    const [ours, before, stored] = [mine[key] ?? null, was[key] ?? null, now[key] ?? null];
-    if (ours !== before) {
-      if (stored !== before && stored !== ours) return null;
+    const [ours, before, stored] = [mine, was, now].map((m) => rowValue(m, key));
+    if (!sameRowValue(key, ours, before)) {
+      if (!sameRowValue(key, stored, before) && !sameRowValue(key, stored, ours)) return null;
       continue;
     }
-    if (stored == null) delete out[key];
-    else out[key] = stored;
+    if (now?.[key] == null || now[key] === '') delete out[key];
+    else out[key] = now[key];
   }
   return out;
 };
@@ -488,14 +458,12 @@ export const alignmentMutations = {
 
     // What the edit replaces, for the entity rule when it is refused.
     const over = cpSlice(this.body, existingAlignment.begin, existingAlignment.end);
-    const known = segmentsAt(info);
     // Made again over the segment as stored, whose speaker and times are the
     // ones stored now except where this edit changed them: someone else's
     // relabel of the segment is a change to another field of it, and stays.
     // The same field changed on both sides is a conflict.
     const replan = (fresh) => {
-      const found = segmentConflict(fresh, existingAlignmentId, known, over, trimmed);
-      if (found.segment) this._segmentFrom(found.segment.id, existingAlignmentId);
+      const found = segmentConflict(fresh, existingAlignmentId, over, trimmed);
       if (!found.segment || found.conflict || found.landed) return found;
       const metadata = replannedMetadata(meta, existingAlignment.metadata, found.segment.metadata);
       if (!metadata) return { conflict: { stored: over, mine: trimmed } };
@@ -620,7 +588,6 @@ export const alignmentMutations = {
     const textOps = planDeleteText(this.body, existingAlignment);
     // What the delete takes, for the entity rule when it is refused.
     const over = cpSlice(this.body, existingAlignment.begin, existingAlignment.end);
-    const known = segmentsAt(info);
     const planned = this._plannedText();
 
     // The segment is deleted in its own right, then its text. It used to go
@@ -651,7 +618,7 @@ export const alignmentMutations = {
         // Sent again only over the segment as it was: a text changed
         // meanwhile is refused, and the row comes back with it.
         replan: (fresh, updated) => {
-          const found = segmentConflict(fresh, alignmentId, known, over, '');
+          const found = segmentConflict(fresh, alignmentId, over, '');
           if (found.conflict) return { conflict: found.conflict };
           const { segment } = found;
           const ops = planDeleteText(bodyOf(fresh), segment);
@@ -665,9 +632,10 @@ export const alignmentMutations = {
         landed: (fresh) => !segmentIds(fresh).has(settledId(alignmentId)),
       });
       this._heardText(textId, results?.[1]?.body);
-      // A replayed answer carries the body as it was: what is stored is read
-      // once the queue has drained.
-      if (state.again) this._writes.reloadWhenDrained = true;
+      // A replayed answer (this send run again, or the client's own resend)
+      // carries the body as it was: what is stored is read once the queue has
+      // drained.
+      if (state.again || wasReplayed(results)) this._writes.reloadWhenDrained = true;
     });
   },
 
@@ -892,9 +860,10 @@ export const alignmentMutations = {
         await this._reloadInSend(); // the batch answered without the ids the patch needs
       } else {
         this._settle(ids);
-        // A replayed answer carries the body as it was when the write first
-        // landed: what is stored now is read once the queue has drained.
-        if (state.again) this._writes.reloadWhenDrained = true;
+        // A replayed answer (this send run again, or the client's own resend)
+        // carries the body as it was when the write first landed: what is
+        // stored now is read once the queue has drained.
+        if (state.again || wasReplayed(results)) this._writes.reloadWhenDrained = true;
       }
       await this._rememberSpeaker(speaker);
     });

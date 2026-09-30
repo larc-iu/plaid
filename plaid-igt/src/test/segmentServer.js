@@ -16,6 +16,9 @@
 //   as plaid-client numbers them. A write answered 2xx is kept under its key:
 //   the same request sent again under it is answered from what it stored,
 //   another request under it is refused 422 `idempotency-key-reused`.
+// - A write whose answer the client's own resend gets (`replayNext`) is
+//   stored, and answered from what it stored, marked as replayed, as
+//   plaid-client marks it (`wasReplayed`).
 // - A create that names its id is made under it, and refused 409 `id-taken`
 //   when a row had that id.
 // - A batch is atomic: when one of its writes is refused, nothing of it is
@@ -37,6 +40,15 @@ const layerOf = (raw, id) => layersOf(raw).find((l) => l.id === id);
 const refused = (status, data) =>
   Object.assign(new Error(`HTTP ${status} ${data.error}`), { status, responseData: data });
 const VERSION_MISMATCH = 'Document version mismatch.';
+
+// `value` marked as an answer replayed from its key's first send, as
+// plaid-client marks it.
+const markReplayed = (value) => {
+  if (value !== null && typeof value === 'object') {
+    Object.defineProperty(value, 'replayed', { value: true, enumerable: false });
+  }
+  return value;
+};
 
 // Every id the stored document holds.
 const idsIn = (raw) => {
@@ -196,6 +208,9 @@ export function segmentServer(raw) {
   const refusals = [];
   // Writes applied whose answer is then lost (status 0).
   let lose = 0;
+  // Writes applied whose answer the client's own resend gets, replayed: what
+  // to run between the first send and the resend, for each.
+  const replays = [];
   // Idempotency-Key -> { fingerprint, results }.
   const keyed = new Map();
 
@@ -287,6 +302,14 @@ export function segmentServer(raw) {
         throw Object.assign(new Error('Network error'), { status: 0, method: 'POST' });
       }
       held = version;
+      if (replays.length) {
+        const between = replays.shift();
+        entry.answer = 'replayed in the client';
+        between?.();
+        const replayed = structuredClone(results);
+        for (const r of replayed) markReplayed(r.body);
+        return markReplayed(replayed);
+      }
       entry.answer = 200;
       return results;
     } catch (err) {
@@ -359,6 +382,12 @@ export function segmentServer(raw) {
     loseNext: (count = 1) => {
       lose += count;
     },
+    // Store the next write, run `between()` (another user's write, say), and
+    // answer the write as the client's own resend is answered: from what it
+    // stored, marked as replayed.
+    replayNext: (between = null) => {
+      replays.push(between);
+    },
     // Another user's edit of the segment `id`'s text, as the Media tab makes
     // it: the text replaced and the segment made again over the same time.
     otherEdits(id, value, user = 'b') {
@@ -381,6 +410,22 @@ export function segmentServer(raw) {
           ops: [{ description: `Delete token ${id}` }, { description: `Create token ${made}` }],
         };
       });
+    },
+    // Another user's Baseline save that retypes the segment `id`'s text as
+    // `value` in place: typed inside it and what it replaces deleted around
+    // that, so the segment keeps its id, as a save by edits does.
+    otherRetypes(id, value, user = 'b') {
+      const segment = layerOf(stored, 'alignL').tokens.find((t) => t.id === id);
+      const length = segment.end - segment.begin;
+      const typed = [...value].length;
+      return this.otherSaves(
+        [
+          { type: 'insert', index: segment.begin + 1, value },
+          { type: 'delete', index: segment.begin + 1 + typed, value: length - 1 },
+          { type: 'delete', index: segment.begin, value: 1 },
+        ],
+        user,
+      );
     },
     // Another user's change of the segment `id`'s speaker or times: token
     // metadata, the body as it was.

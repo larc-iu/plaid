@@ -43,11 +43,12 @@ import { shownOrRefused } from './shownOrRefused.js';
 // its edit loses to someone else's change of the same segment, the row shows
 // the stored text with "Yours: X · Enter to keep yours" under it, leaving the
 // row sends nothing, Enter sends yours over the stored text, and Escape or
-// typing lets it go. The cell is named by the segment, not its token: an
-// edit of the text makes the token again, so the row that lost and the row
-// that shows the winner's text are different tokens of one segment
-// (IgtDocument `segmentOrigin`). Two speakers over one time span are two
-// cells.
+// typing lets it go. The cell is named by the segment, not its token: a row
+// edit makes the token again, so a row's queued edits name tokens this page
+// made from it (IgtDocument `segmentOrigin`). A segment deleted or made again
+// elsewhere is another segment, and an edit refused over it has no row: its
+// text is listed above the rows, with its times, until dismissed. Two
+// speakers over one time span are two cells.
 //
 // Play/pause inside a row is Shift+Space: the one modifier every platform
 // leaves alone in a text box (Ctrl+Space and Cmd+Space belong to macOS,
@@ -926,6 +927,11 @@ export function TranscriptList({
     }),
   });
 
+  // Row edits refused after their segment was deleted or made again
+  // elsewhere, with no row to hold them: `{ id, typed, timeBegin, timeEnd }`.
+  const [unsaved, setUnsaved] = useState(EMPTY);
+  const unsavedSeq = useRef(0);
+
   const handleCommit = useCallback(
     async (id, { text, speaker, saved, what }) => {
       const token = doc.alignmentTokens.find((t) => t.id === id);
@@ -953,7 +959,14 @@ export function TranscriptList({
           field: 'segment text',
           what,
         });
-        outcome.then((o) => cells.settle(ticket, o));
+        const times = { timeBegin: timeBeginOf(token), timeEnd: timeEndOf(token) };
+        outcome.then((o) => {
+          // Refused, and its segment is gone: the text stays on screen until
+          // dismissed.
+          if (cells.settle(ticket, o).kind === 'gone') {
+            setUnsaved((list) => [...list, { id: ++unsavedSeq.current, typed: text, ...times }]);
+          }
+        });
         return true;
       }
       if (speaker !== storedSpeaker) {
@@ -1138,6 +1151,31 @@ export function TranscriptList({
           )}
         </div>
       </div>
+
+      {unsaved.length > 0 && (
+        <ul className="mb-2 flex flex-col gap-1" aria-label="Not saved">
+          {unsaved.map((u) => (
+            <li
+              key={u.id}
+              className="flex items-start gap-2 rounded-md border border-amber-500 px-2 py-1 text-xs text-amber-700 dark:text-amber-400"
+            >
+              <span className="min-w-0 flex-1 select-text">
+                Not saved, {formatTime(u.timeBegin)} to {formatTime(u.timeEnd)}:{' '}
+                <bdi className="whitespace-pre-wrap">{u.typed}</bdi>
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 shrink-0"
+                aria-label="Dismiss"
+                onClick={() => setUnsaved((list) => list.filter((x) => x.id !== u.id))}
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {!readOnly && (
         <datalist id={SPEAKER_LIST_ID}>

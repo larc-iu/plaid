@@ -428,6 +428,106 @@ describe('editBaselineText: what became of a save', () => {
     expect(doc.body).toBe('the cats');
   });
 
+  // Stored with its answer lost, then the resend refused without reaching the
+  // server (`refusal`), or answered 422 because `between` saved over it.
+  const resentAndRefused = (server, { refusal = null, between = null }) => {
+    server.loseNext(1);
+    const edit = server.client.texts.edit;
+    let calls = 0;
+    server.client.texts.edit = async (...args) => {
+      calls += 1;
+      if (calls === 2) {
+        between?.();
+        if (refusal) throw refusal;
+      }
+      return edit(...args);
+    };
+  };
+  const insertBig = {
+    base: 'the cat sat on a mat',
+    digest: digestOf('the cat sat on a mat'),
+    gaps: [{ start: 3, end: 3, value: ' big' }],
+  };
+
+  for (const status of [403, 500]) {
+    it(`landed, its resend refused ${status}: read back, and landed (G1-gap)`, async () => {
+      const server = serve('the cat sat on a mat');
+      const doc = open(server);
+      resentAndRefused(server, {
+        refusal: Object.assign(new Error(`HTTP ${status}`), { status, method: 'PATCH' }),
+      });
+      const outcome = {};
+      expect(await doc.editBaselineText(insertBig, outcome)).toBe(true);
+      expect(server.body).toBe('the big cat sat on a mat');
+      expect(doc.body).toBe(server.body);
+    });
+  }
+
+  it('not landed, its resend refused 500: not landed, and the refusal stands', async () => {
+    const server = serve('the cat sat on a mat');
+    const doc = open(server);
+    // The first send refused 500 without reaching the server: nothing stored.
+    server.refuseNext(500, 'boom');
+    const outcome = {};
+    expect(await doc.editBaselineText(insertBig, outcome)).toBe(false);
+    expect(outcome.landed).toBe(false);
+    expect(server.body).toBe('the cat sat on a mat');
+  });
+
+  it('landed, then someone else saved, and its resend refused 422: stored holds it, so landed (G1-gap)', async () => {
+    const server = serve('the cat sat on a mat');
+    const doc = open(server);
+    // The resend differs from the first send (the other save moved the
+    // version), so its key is refused as reused.
+    resentAndRefused(server, {
+      between: () =>
+        server.otherSaves([
+          { type: 'delete', index: 21, value: 3 },
+          { type: 'insert', index: 21, value: 'rug' },
+        ]),
+      refusal: Object.assign(new Error('HTTP 422'), {
+        status: 422,
+        responseData: { error: 'idempotency-key-reused' },
+      }),
+    });
+    const outcome = {};
+    expect(await doc.editBaselineText(insertBig, outcome)).toBe(true);
+    expect(server.body).toBe('the big cat sat on a rug');
+    expect(doc.body).toBe(server.body);
+  });
+
+  it('a key reused whose stored text lacks the save: refused as a conflict, not landed', async () => {
+    const server = serve('the cat sat on a mat');
+    const doc = open(server);
+    const edit = server.client.texts.edit;
+    server.client.texts.edit = async () => {
+      server.otherSaves([
+        { type: 'delete', index: 17, value: 3 },
+        { type: 'insert', index: 17, value: 'rug' },
+      ]);
+      throw Object.assign(new Error('HTTP 422'), {
+        status: 422,
+        responseData: { error: 'idempotency-key-reused' },
+      });
+    };
+    const outcome = {};
+    expect(await doc.editBaselineText(insertBig, outcome)).toBe(false);
+    expect(outcome).toEqual({ landed: false, conflict: true });
+    server.client.texts.edit = edit;
+    expect(server.body).toBe('the cat sat on a rug');
+  });
+
+  it('replayed inside the client’s own resend after someone else saved: the text stored is shown (U1-client)', async () => {
+    const server = serve('the cat');
+    const doc = open(server);
+    server.replayNext(() => server.otherSaves([{ type: 'insert', index: 0, value: 'a ' }]));
+    expect(await doc.editBaselineText(append)).toBe(true);
+    expect(server.answers()).toEqual(['replayed in the client']);
+    expect(server.body).toBe('a the cats');
+    expect(doc.body).toBe('a the cats');
+    expect(doc.layerInfo.primaryTextLayer.text.digest).toBe(server.digest);
+  });
+
   it('refused because the same passage changed: said to be a conflict, not landed (U3)', async () => {
     const server = serve('the cat');
     const doc = open(server);
