@@ -242,9 +242,15 @@ export function describeUmrReconcile({
   unlinked = 0,
   recordsMoved = 0,
   triplesMoved = 0,
+  rulesDeclared = false,
+  rulesRepaired = false,
 } = {}) {
   const nodes = (n) => `${n} unaligned node${n === 1 ? '' : 's'}`;
   const parts = [];
+  // The rule on UMR relations (umrConstraints.js): core deletes what breaks
+  // it, then holds it.
+  if (rulesRepaired) parts.push('removed relations that crossed sentences');
+  if (rulesDeclared) parts.push('set up the rule that a relation stays inside its sentence');
   if (strays)
     parts.push(`removed ${count(strays, 'empty node', 'empty nodes')} an interrupted add left`);
   if (unanchored.length) {

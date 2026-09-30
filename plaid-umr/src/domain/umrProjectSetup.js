@@ -25,6 +25,7 @@ import {
   createdId,
 } from '@larc-iu/plaid-client';
 import { UMR_NAMESPACE, UMR_LAYER_FLAGS } from '../utils/umrLayerUtils.js';
+import { relationRules } from './umrConstraints.js';
 
 // Provenance survives a split made by any app on this substrate. See the
 // manual's "Metadata Preserved Across a Split".
@@ -32,6 +33,17 @@ const declarePreserveOnSplit = (batch, layerId) =>
   batch.tokenLayers.setConfig(layerId, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, [
     ...PROVENANCE_KEYS,
   ]);
+
+// A relation of the sentence graph stays inside its sentence (umrConstraints.js).
+// The layer is new and empty, so the declaration cannot be refused.
+const declareRelationRules = (batch, relationLayerId, sentenceLayerId) =>
+  batch.relationLayers.setConstraints(
+    relationLayerId,
+    UMR_NAMESPACE,
+    relationRules(sentenceLayerId),
+    undefined,
+    { expected: null },
+  );
 
 // Layer names as the layer list shows them.
 const LAYER_NAMES = {
@@ -93,6 +105,7 @@ const bootstrap = async (client, projectName) => {
 
     await client.batched(async (b) => {
       b.relationLayers.setConfig(relationLayerId, UMR_NAMESPACE, UMR_LAYER_FLAGS.relations, true);
+      declareRelationRules(b, relationLayerId, sentenceLayerId);
       b.relationLayers.setConfig(
         documentGraphLayerId,
         UMR_NAMESPACE,
@@ -164,12 +177,12 @@ export const adoptSubstrate = async (client, layerInfo) => {
     }
     if (!layerInfo.relationLayer) {
       const layer = await client.relationLayers.create(conceptLayerId, LAYER_NAMES.relations);
-      await client.relationLayers.setConfig(
-        createdId(layer),
-        UMR_NAMESPACE,
-        UMR_LAYER_FLAGS.relations,
-        true,
-      );
+      const relationLayerId = createdId(layer);
+      const sentenceLayerId = layerInfo.sentenceTokenLayer?.id;
+      await client.batched(async (b) => {
+        b.relationLayers.setConfig(relationLayerId, UMR_NAMESPACE, UMR_LAYER_FLAGS.relations, true);
+        if (sentenceLayerId) declareRelationRules(b, relationLayerId, sentenceLayerId);
+      });
       created = true;
     }
     if (!layerInfo.documentGraphLayer) {

@@ -19,6 +19,9 @@ import {
 import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
 import { pendingId, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
 import { isUnknownOutcome } from '../../../plaid-ui/src/lib/errors.js';
+import { ensureLayerConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
+import { canManageProject } from '../../../plaid-ui/src/domain/permissions.js';
+import { constraintFindings, wantedConstraints } from './umrConstraints.js';
 import { buildLexicon, vocabLinksByToken } from './vocabLexicon.js';
 import { getUmrLayerInfo, UMR_NAMESPACE, readIlgConfig } from '../utils/umrLayerUtils.js';
 import { resolveIlg, ilgLinesFor } from './ilg.js';
@@ -495,6 +498,12 @@ export class UmrDocument extends DocumentModel {
   //   triple between two constants takes the numbers its sentences have now.
   // - A node picked from a vocabulary entry that was deleted forgets it.
   //
+  // First, for a maintainer, the rule core holds on UMR relations (a relation
+  // stays inside its sentence, umrConstraints.js) is declared when the layer
+  // does not hold it yet, after core deletes the relations that break it,
+  // project-wide. Data that keeps it from being declared is reported as a
+  // finding. The document is read again when core deleted anything.
+  //
   // NOT stamped, deliberately: a repair that runs on open decides nothing
   // and vouches for nothing, so it leaves provenance exactly as it found it
   // (the same rule igt's morpheme heal follows).
@@ -504,6 +513,27 @@ export class UmrDocument extends DocumentModel {
     // and every write here would be refused (423). The document is repaired
     // the next time it is opened.
     if (await this._lockedByAService()) return { findings: [], deferred: true };
+    let rules;
+    try {
+      rules = await ensureLayerConstraints(this._client, wantedConstraints(this.layerInfo), {
+        canManage: canManageProject(this._project, this._user),
+      });
+    } catch (error) {
+      if (error?.status === 423) return { findings: [], deferred: true, interrupted: true };
+      return { findings: [], error };
+    }
+    const ruled = { findings: constraintFindings(rules.pending, this.layerInfo) };
+    if (rules.changed) ruled.rulesDeclared = true;
+    if (rules.repaired) ruled.rulesRepaired = true;
+    // A declaration follows core's repair of the whole project, which may
+    // have deleted relations of this document.
+    if (rules.repaired || rules.changed) {
+      try {
+        await this._reload();
+      } catch (refreshError) {
+        return { ...ruled, refreshError };
+      }
+    }
     const graph = this.graph;
     const { remove, rebind, resize, unanchor } = planUnalignedHeal(graph, UMR_NAMESPACE);
     const strays = await this._leftoverTokens(planStrayTokens(this.layerInfo));
@@ -539,12 +569,12 @@ export class UmrDocument extends DocumentModel {
       !recordMoves.length &&
       !tripleNumbers.length &&
       !unlink.length;
-    if (nothing) return { findings: [] };
+    if (nothing) return ruled;
     const unanchored = new Set(unanchor.map((u) => u.nodeId));
     // A node that lost its word is named as it is called from now on.
     const renamed = new Map(renumber.map((r) => [r.nodeId, r.to]));
     const tally = {
-      findings: [],
+      ...ruled,
       removed: remove.length,
       rebound: rebind.length,
       resized: resize.filter((r) => !unanchored.has(r.nodeId)).length,
@@ -1079,12 +1109,14 @@ export class UmrDocument extends DocumentModel {
       {
         // Sent again on a later version, it must still stand where it was
         // put: the same words, a variable nobody took meanwhile, the root
-        // only of a sentence still without nodes, and its parent there.
+        // only of a sentence still without nodes, and its parent still
+        // there. An edge to a parent now in another sentence core refuses
+        // (the rule on UMR relations, umrConstraints.js).
         recheck: (fresh) => {
           if (!this._sameWords(fresh, sentence, wordIds)) return false;
           if (fresh.takenVariables().has(variable)) return false;
           if (meta.root && fresh.sentence(sentenceIndex).nodes.length) return false;
-          return !parent || fresh.node(parent.id)?.sentence === sentenceIndex;
+          return !parent || !!fresh.node(parent.id);
         },
       },
     );
@@ -1443,17 +1475,13 @@ export class UmrDocument extends DocumentModel {
       },
       `Add ${role} from ${source.var} to ${target.var}`,
       {
-        // Sent again on a later version: both ends still there, in one
-        // sentence, and no cycle through what others added meanwhile.
+        // Sent again on a later version: both ends still there and no cycle
+        // through what others added meanwhile. Ends now in two sentences core
+        // refuses (the rule on UMR relations, umrConstraints.js).
         recheck: (fresh) => {
           const from = fresh.node(source.id);
           const to = fresh.node(target.id);
-          return (
-            !!from &&
-            !!to &&
-            from.sentence === to.sentence &&
-            !fresh.wouldCycle(from.id, to.id, role)
-          );
+          return !!from && !!to && !fresh.wouldCycle(from.id, to.id, role);
         },
       },
     );
@@ -1658,7 +1686,6 @@ export class UmrDocument extends DocumentModel {
             !!from &&
             !!to &&
             settledId(now.source) === settledId(edge.source) &&
-            from.sentence === to.sentence &&
             !fresh.wouldCycle(from.id, to.id, edge.role)
           );
         },
