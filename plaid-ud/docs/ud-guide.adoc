@@ -130,6 +130,11 @@ When someone else saved the text after you started editing it, your save puts yo
 When you both changed the same passage, the save is refused and the editor says `Changed elsewhere in the same passage.` **Discard changes** then shows the saved text, and you make the edit again.
 The save is also refused when the text has passages that read the same and your change could be in either of them.
 
+Tokens already made follow an edit of the saved text.
+Deleting only the space between two words keeps them two words.
+Deleting the space and letters of either makes one word, which keeps the annotations of the word it shares more letters with.
+Typing a space inside an annotated word keeps its annotations on one of the two new words.
+
 There are two ways to turn saved text into tokens, and both are runs (see <<_services>>):
 
 * **Tokenize** segments the text into sentences and tokens. The built-in method uses your project's tokenizer locale, falling back to the project's language (both set in <<_settings,project settings>>, and language-agnostic when neither is set). It makes one sentence of each line of the text. Each word gets a lemma copied from its form, marked as machine-made, which **Parse** replaces. You add the other annotations and the dependency tree yourself in the Annotate tab.
@@ -376,6 +381,7 @@ Approving a plan on a document that a parser run is writing to is refused with n
 
 A plan that stops partway reads **Partly applied**, with how many of its changes were written, and the changes not written are dimmed.
 Ask the assistant to finish it.
+A parse the assistant started that stops partway reads **Partly applied** too, with the number of sentences parsed. Ask the assistant to parse again to finish.
 
 A reply lands whether or not the page stays open: leave the tab, reload, or close the browser, and the answer is there when the conversation is next opened.
 **Stop** ends a turn early, even while the model is still working on its answer.

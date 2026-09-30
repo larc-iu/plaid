@@ -145,6 +145,10 @@ You can move sentence breaks afterwards on the Tokenize tab.
 You can edit the baseline later too.
 Existing sentences, words, and annotations are kept and adjusted to fit the new text.
 Words inside text you delete go with it, along with their annotations.
+Deleting only the space between two words keeps them two words.
+Deleting the space and letters of either makes one word, which keeps the analysis of the word it shares more letters with.
+Typing a space where two morphemes meet keeps the word and those morphemes on one of the two new words.
+Typing a space inside a morpheme keeps the word on one of the new words and removes its morphemes.
 A line added later joins the sentence before it. Split it on the Tokenize tab.
 
 When someone else saved the baseline after you pressed **Edit text**, **Save changes** puts your changes onto their text.
@@ -356,7 +360,8 @@ An edit that reaches the server after someone else changed the document is handl
 When someone else changed the same cell first, the cell shows their value with an amber edge, and yours under it: **Yours: X · Enter to keep yours**.
 A message names the change, such as `b changed this to DOG.`
 **Enter** writes your value over theirs, **Escape** or typing another value lets yours go, and leaving the cell sends nothing.
-The same happens when the word was split or joined, or its morpheme re-segmented, by someone else before your value was saved. The message then names the word as it reads now, such as `b changed this word to si.`
+The same happens when someone else split, joined or respelled the word, re-segmented its morpheme, or split, joined or respelled the sentence of a sentence field, before your value was saved.
+The message then names the word, morpheme or sentence as it reads now, such as `b changed this word to si.`
 
 A value refused because of a change elsewhere in the document stays in its cell with an amber edge, and leaving the cell again sends it.
 Leaving the document first asks, naming the cell.
