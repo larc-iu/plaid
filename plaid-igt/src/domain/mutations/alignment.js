@@ -898,7 +898,7 @@ export const alignmentMutations = {
 
   // Send a write over one segment's text. `state` is what is sent, kept by
   // the caller outside its send, so a send run again after its answer was lost
-  // (the queue's resend, or a given-up edit sent before the next) sends exactly
+  // (the queue sends it again until it is answered) sends exactly
   // the request that was lost, under the same keys, and is answered from what
   // it stored:
   // - `planned`: the body the write was planned on and its digest.
