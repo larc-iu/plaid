@@ -78,7 +78,13 @@ export const TextEditor = () => {
     attempt();
     return () => {
       if (frame) cancelAnimationFrame(frame);
-      if (flashTimer) clearTimeout(flashTimer);
+      // A cleanup before the outline faded (StrictMode's second run on mount)
+      // leaves the id unanswered, so the next run outlines it again with a
+      // timer of its own. Kept answered, the outline would stay for good.
+      if (flashTimer) {
+        clearTimeout(flashTimer);
+        scrolledForRef.current = null;
+      }
     };
   }, [sentParam]);
 
