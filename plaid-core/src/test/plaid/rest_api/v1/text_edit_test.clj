@@ -110,6 +110,7 @@
     (assert-bad-request (edit-text text {:edits "x"}))
     (assert-bad-request (edit-text text {:edits [] :body "x"}))
     (assert-bad-request (edit-text text {:edits [] :base 7}))
+    (assert-bad-request (edit-text text {:edits [{:type "insert" :index 0 :value "x" :side "left"}]}))
     (is (= "a b" (-> (get-text admin-request text) :body :text/body)))))
 
 (deftest a-restating-edit-bumps-the-version-and-reads-as-a-body-save
@@ -354,3 +355,13 @@
     (testing "a deleted space keeps both words"
       (assert-ok (edit-text text {:edits [(del 1 1)] :base (digest-of)}))
       (is (= [[0 1 "a"] [1 6 "walkd"]] [(extent (words 0)) (extent (words 1))])))))
+
+(deftest a-node-is-never-deleted-while-its-word-stays
+  ;; REV2 M3: words on the other rules, nodes plain. `cat eel` typed over as
+  ;; `one` leaves the word `eel` on `one`, and its node with it.
+  (let [{:keys [text words nodes]} (setup "dog cat eel fox." :nodes true)
+        base (-> (get-text admin-request text) :body :text/digest)]
+    (assert-ok (edit-text text {:edits [{:type "replace" :index 4 :length 7 :value "one"}] :base base}))
+    (doseq [[w n] (map vector words nodes)]
+      (when (extent w)
+        (is (= (extent w) (extent n)) (str "word " (extent w) " node " (extent n)))))))

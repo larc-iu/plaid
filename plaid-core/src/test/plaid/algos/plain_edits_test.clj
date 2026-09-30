@@ -216,3 +216,73 @@
           "a boundary inside the run: the sentence before"))
     (testing "a whole-body save knows no caret: the sentence before"
       (is (= ["Hi. New " "The end."] (sents "|Hi.| /|The| |end.|" nil "Hi. New The end."))))))
+
+(deftest a-split-cuts-only-at-the-whitespace-typed
+  ;; REV2 M1: a word that already held a space is cut only at the space the
+  ;; edit typed, and goes on the part holding most of its old letters
+  (let [split {:split-on-space true}]
+    (is (= ["si nh viên x" "nh viên" "x"] (edit-with "|sinh viên| |x|" [(ins 2 " ")] split)))
+    (is (= ["sinh v iên x" "sinh v" "x"] (edit-with "|sinh viên| |x|" [(ins 6 " ")] split)))
+    (is (= ["tlaak naa x" "tlaak naa" "x"] (edit-with "|tlaak naa| |x|" [] split)))))
+
+(deftest a-split-keeps-what-stood-inside-the-word-on-its-half
+  ;; REV2 L2: a token strictly inside the split word is kept, cut to the half
+  ;; the word goes on, and one wholly on the other half goes; REV2 L1: a token
+  ;; over several words that ended with the split word ends where it does
+  (let [{:keys [body tokens]} (doc "|dog| |cat|")
+        tokens (conj tokens
+                     {:token/id :at :token/layer :y :token/begin 5 :token/end 7}
+                     {:token/id :c :token/layer :y :token/begin 4 :token/end 5}
+                     {:token/id :dc :token/layer :u :token/begin 0 :token/end 7})
+        r (ta/plain-edits body tokens [(ins 5 " ")] #{:s} #{:w} {:split-on-space true})
+        at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
+    (is (= "dog c at" (:text/body (:text r))))
+    (is (= [6 8] (at [:w 1])))
+    (is (= [6 8] (at :at)))
+    (is (nil? (at :c)))
+    (is (= [0 8] (at :dc)))
+    (let [r (ta/plain-edits body tokens [(ins 6 " ")] #{:s} #{:w} {:split-on-space true})
+          at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
+      (is (= "dog ca t" (:text/body (:text r))))
+      (is (= [4 6] (at [:w 1])))
+      (is (= [0 6] (at :dc)) "the node ends where its last word does")
+      (is (= [5 6] (at :at)) "cut to the half"))))
+
+(deftest text-typed-where-two-words-meet-goes-to-the-side-the-caret-says
+  ;; REV2 M2: an insert saying `side` goes to that side where two tokens meet
+  ;; with no space
+  (is (= ["onextwo" "one" "xtwo"] (edit "|one||two|" [(assoc (ins 3 "x") :side "after")])))
+  (is (= ["onextwo" "onex" "two"] (edit "|one||two|" [(assoc (ins 3 "x") :side "before")])))
+  (is (= ["onextwo" "onex" "two"] (edit "|one||two|" [(ins 3 "x")])) "no side: the word before"))
+
+(deftest a-line-typed-before-a-sentence-goes-to-the-sentence-before
+  ;; REV2 H1: a line break in the text typed before a sentence keeps it off
+  ;; that sentence, so the line split off later is a sentence of its own and
+  ;; the old sentence keeps its translation; sentences never begin on
+  ;; whitespace they did not have
+  (let [sents (fn [s ops]
+                (let [{:keys [body tokens]} (doc s)
+                      r (ta/plain-edits body tokens ops #{:s} #{:w})
+                      nb (:text/body (:text r))
+                      ss (sort-by first (keep #(when (= :s (:token/layer %)) [(:token/begin %) (:token/end %)]) (:tokens r)))
+                      ss (map-indexed (fn [i [b e]] [(if (zero? i) 0 b) (if (= i (dec (count ss))) (cp/cp-count nb) (first (nth ss (inc i))))]) ss)]
+                  (mapv (fn [[b e]] (cp/cp-subs nb b e)) ss)))]
+    (is (= ["Hi.\nOh.\n" "The end."] (sents "|Hi.|\n/|The| |end.|" [(ins 4 "Oh.\n")])))
+    (is (= ["Hi.\n" "Oh The end."] (sents "|Hi.|\n/|The| |end.|" [(ins 4 "Oh ")])))
+    (is (= ["Hi.  " "Q你好"] (sents "|Hi.| /|你好|" [(ins 4 " Q")]))
+        "the space typed before stays with the sentence before")))
+
+(deftest a-segment-that-begins-with-its-sentence-takes-what-the-sentence-takes
+  ;; REV2 M5: `Oh ` typed before `The`, the second sentence's first word,
+  ;; joins that sentence, and the time-alignment segment over it too, so the
+  ;; segment still covers its sentence (the exports' timing and speaker); a
+  ;; node over the first word alone stays with the word
+  (let [{:keys [body tokens]} (doc "|Hi.| /|The| |end.|")
+        tokens (conj tokens
+                     {:token/id :seg :token/layer :a :token/begin 4 :token/end 12}
+                     {:token/id :node :token/layer :u :token/begin 4 :token/end 7})
+        r (ta/plain-edits body tokens [(ins 4 "Oh ")] #{:s} #{:w})
+        at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
+    (is (= "Hi. Oh The end." (:text/body (:text r))))
+    (is (= [4 15] (at [:s 1]) (at :seg)))
+    (is (= [7 10] (at [:w 1]) (at :node)))))

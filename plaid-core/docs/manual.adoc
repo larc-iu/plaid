@@ -983,11 +983,24 @@ Every other token of a layer with the key, such as a node over several words on 
 When the text's word layers do not have the key, they and the sentences take the change by the other rules, and a token of a layer with the key follows its words at their edges, so a node over a word stays on it.
 An edge of such a token that stands at no word's edge, or whose word is deleted, takes the change the plain way.
 Partition layers over such a layer follow its tokens' edges.
-Text typed between two sentences that no token takes goes by where it was typed: right after a sentence's last character it joins that sentence, and right before the next sentence's first character it joins the next one.
-In the middle of a longer run of whitespace, or in a `body` save, which says nothing of where the text was typed, it joins the sentence before.
+Text typed between two sentences that no token takes goes by where it was typed: right before the next sentence's first character it joins that sentence, unless it holds a line break.
+Otherwise, right after a sentence's last character, in the middle of a longer run of whitespace, or in a `body` save, which says nothing of where the text was typed, it joins the sentence before.
+A token of a layer with the key that begins with that sentence and runs over more than its first word, such as a time-alignment segment, takes the text with it, so it keeps covering its sentence.
+A sentence never begins or ends on whitespace it did not begin or end on.
 
-A word layer whose config also sets `splitOnSpace` to `true` (`SPLIT_ON_SPACE_KEY`) takes a change the same way, but a space typed inside one of its tokens splits it.
-The token goes on the part sharing more letters with it, the first on a tie, with the tokens as long as it, and the tokens inside it are deleted.
+Where two tokens meet with no whitespace between them, an insert may say which of them its text belongs to with `side`: `"before"` for the token that ends there, `"after"` for the one that begins there.
+Without it the text goes to the token before.
+
+[,js]
+----
+{ type: "insert", index: 7, value: "x", side: "after" }   // typed at the front of the token at 7
+----
+
+A word layer whose config also sets `splitOnSpace` to `true` (`SPLIT_ON_SPACE_KEY`) takes a change the same way, but a space typed inside one of its tokens splits it there.
+Spaces the token already had do not split it.
+The token goes on the part holding the most of its old letters, the first on a tie, with the tokens as long as it.
+A token inside it is cut to that part, and one wholly on the other part is deleted.
+A token over several words that began or ended with it begins or ends where the token now does.
 The key holds for every word of the text, so on a word layer two apps share, one app's key decides for both.
 This holds for `body` and `edits` alike.
 

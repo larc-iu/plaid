@@ -333,16 +333,16 @@
             :else (ta/apply-text-edits ops text-map tokens))
           {new-text :text new-tokens :tokens deleted-ids :deleted}
           (if plain-result
-            (let [rest-ids (into #{} (map :token/id) tokens-rest)]
+            (let [rest-ids (into #{} (map :token/id) tokens-rest)
+                  plain-result (if (and (empty? plain-words) rest-result)
+                                 (ta/follow-word-edges tokens plain-result rest-result
+                                                       #(contains? word-layers (:token/layer %))
+                                                       (into #{} (map :token/id) plain-tokens))
+                                 plain-result)]
               (when (and rest-result (not= (:text/body (:text rest-result)) (:text/body (:text plain-result))))
                 (throw (ex-info "The new body could not be applied." {:code 500 :id eid})))
               {:text (:text plain-result)
-               :tokens (into (:tokens (if (and (empty? plain-words) rest-result)
-                                        (ta/follow-word-edges tokens plain-result rest-result
-                                                              #(contains? word-layers (:token/layer %))
-                                                              (into #{} (map :token/id) plain-tokens))
-                                        plain-result))
-                             (filter #(rest-ids (:token/id %))) (:tokens rest-result))
+               :tokens (into (:tokens plain-result) (filter #(rest-ids (:token/id %))) (:tokens rest-result))
                :deleted (into (vec (:deleted plain-result)) (filter rest-ids) (:deleted rest-result))})
             rest-result)
           new-body (:text/body new-text)
