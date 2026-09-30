@@ -258,8 +258,11 @@ function joinsLines(units, lineOf, h, own) {
 // `cat sat\nthe ` out of `the cat sat\nthe dog` is the line `the cat sat`.
 function onWholeLines(units, lineOf, h, own) {
   if (!pureDelete(h) || breaks(units.slice(h.start, h.end)) === 0) return h;
+  // The last line has no break of its own, and goes with the one before it.
   const whole = (s, e) =>
-    (s === 0 || breaks([units[s - 1]]) > 0) && (e === units.length || breaks([units[e - 1]]) > 0);
+    ((s === 0 || breaks([units[s - 1]]) > 0) &&
+      (e === units.length || breaks([units[e - 1]]) > 0)) ||
+    (e === units.length && breaks([units[s]]) > 0 && breaks([units[e - 1]]) === 0);
   for (let k = 0; k <= 64; k += 1) {
     for (const by of k === 0 ? [0] : [-k, k]) {
       const s = h.start + by;

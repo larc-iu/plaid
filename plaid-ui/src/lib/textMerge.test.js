@@ -151,6 +151,18 @@ describe('mergeText', () => {
     expect(mergeText(base, theirs, mine)).toEqual({ conflict: true });
   });
 
+  it('is a conflict when one of two last lines that read the same is deleted and the other edited', () => {
+    // The deleted line may be the last, which has no line break of its own
+    // and goes with the one before it.
+    const base = 'the dog ran\nthe dog ran';
+    const theirs = 'the dog ran\nthe cat ran';
+    expect(mergeText(base, 'the dog ran', theirs)).toEqual({ conflict: true });
+    expect(mergeText(base, theirs, 'the dog ran')).toEqual({ conflict: true });
+    expect(mergeText(`a b\n${base}`, 'a b\nthe dog ran', `a b\n${theirs}`)).toEqual({
+      conflict: true,
+    });
+  });
+
   it('is a conflict when a side made of repeated words has more than one shortest diff', () => {
     // The shortest diff of `theirs` scatters over lines 2 to 5, and `mine`'s
     // insertion in line 4 fits between its pieces.
