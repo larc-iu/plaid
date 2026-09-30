@@ -111,7 +111,6 @@ export const ImportNativeProject = () => {
           items={[
             { label: 'Projects', to: '/projects', fixed: true },
             { label: 'New project', to: '/projects/new', fixed: true },
-            { label: 'Import archive', fixed: true },
           ]}
         />
 

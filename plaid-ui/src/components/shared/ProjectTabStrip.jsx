@@ -74,10 +74,7 @@ export const ProjectTabStrip = ({
     <div className="mb-6">
       <Breadcrumb
         className="mb-2"
-        items={[
-          { label: 'Projects', to: appRoutes().projects, fixed: true },
-          { label: project?.name || 'Loading…' },
-        ]}
+        items={[{ label: 'Projects', to: appRoutes().projects, fixed: true }]}
       />
       {/* The name is data in any script, so it takes its own direction inside
           a heading that stays with the chrome: an Arabic name reads right to

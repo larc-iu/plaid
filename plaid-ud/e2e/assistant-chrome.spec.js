@@ -60,7 +60,6 @@ const seedConversation = (title, text, updatedAt) => {
   return chrome.seedConversation({ id, title, text, updatedAt });
 };
 
-const crumbs = (page) => page.getByRole('navigation', { name: 'Breadcrumb' });
 const tabSeen = (name) => (page) => expect(page.getByRole('tab', { name })).toBeVisible();
 
 // A project of its own, with ONE TOKENIZED DOCUMENT. Not the shared "E2E UD
@@ -108,7 +107,8 @@ assistantChromeTests({
     path: () => `/#/projects/${projectId}/documents/${otherDocumentId}/annotate`,
     // It has no annotation of its own, so what says it has arrived is the
     // breadcrumb.
-    seen: (page) => expect(crumbs(page)).toContainText(SECOND_DOCUMENT),
+    seen: (page) =>
+      expect(page.getByRole('heading', { level: 1, name: SECOND_DOCUMENT })).toBeVisible(),
   },
   projectScreen: documentsTab,
   elsewhere: searchTab,

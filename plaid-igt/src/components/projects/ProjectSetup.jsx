@@ -147,17 +147,15 @@ export const ProjectSetup = () => {
               ? [
                   { label: 'Projects', to: '/projects', fixed: true },
                   { label: 'New project', to: '/projects/new', fixed: true },
-                  { label: 'Start from scratch', fixed: true },
                 ]
-              : [
-                  { label: 'Projects', to: '/projects', fixed: true },
-                  { label: 'Project setup', fixed: true },
-                ]
+              : [{ label: 'Projects', to: '/projects', fixed: true }]
           }
         />
 
         <div>
-          <h1 className="text-2xl font-bold">{isNewProject ? 'New project' : 'Project setup'}</h1>
+          <h1 className="text-2xl font-bold">
+            {isNewProject ? 'Start from scratch' : 'Project setup'}
+          </h1>
           <p className="text-sm text-muted-foreground">
             {isNewProject
               ? 'Set up a new Plaid IGT project.'

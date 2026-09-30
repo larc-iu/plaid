@@ -157,7 +157,6 @@ export const ImportElanProject = () => {
           items={[
             { label: 'Projects', to: '/projects', fixed: true },
             { label: 'New project', to: '/projects/new', fixed: true },
-            { label: 'Import ELAN', fixed: true },
           ]}
         />
 

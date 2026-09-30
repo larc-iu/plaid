@@ -352,7 +352,6 @@ export const ImportElanDocuments = () => {
           items={[
             { label: 'Projects', to: '/projects', fixed: true },
             { label: project?.name ?? 'Project', to: projectHref },
-            { label: 'Add ELAN documents', fixed: true },
           ]}
         />
 

@@ -1035,14 +1035,7 @@ export const VocabularyDetail = () => {
         selectedEntry={history.selected}
       />
       <div className="flex flex-col gap-6">
-        <Breadcrumb
-          items={[
-            { label: 'Vocabularies', to: '/vocabularies', fixed: true },
-            isNewVocabulary
-              ? { label: 'New vocabulary', fixed: true }
-              : { label: vocabulary?.name || 'Loading…' },
-          ]}
-        />
+        <Breadcrumb items={[{ label: 'Vocabularies', to: '/vocabularies', fixed: true }]} />
 
         {!isNewVocabulary && (
           <div className="flex flex-col gap-4">

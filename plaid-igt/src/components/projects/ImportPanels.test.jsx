@@ -45,7 +45,7 @@ describe('the import wizards’ notices', () => {
 });
 
 describe('the new project chooser', () => {
-  it('uses the shared breadcrumb, its own page dark and not a link', async () => {
+  it('uses the shared breadcrumb, which leads back to Projects', async () => {
     const view = await renderComponent(
       <MemoryRouter>
         <NewProjectChooser />
@@ -55,7 +55,6 @@ describe('the new project chooser', () => {
     expect(all(nav, 'a').map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
       ['Projects', '/projects'],
     ]);
-    expect(nav.querySelector('[aria-current="page"]').textContent).toBe('New project');
     await view.unmount();
   });
 });

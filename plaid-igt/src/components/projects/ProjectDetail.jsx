@@ -260,10 +260,7 @@ export const ProjectDetail = () => {
   // tabs, which would each lead somewhere empty.
   const notice = (children) => (
     <div className={FORM_PAGE_WIDTH}>
-      <Breadcrumb
-        className="mb-2"
-        items={[{ label: 'Projects', to: '/projects', fixed: true }, { label: project.name }]}
-      />
+      <Breadcrumb className="mb-2" items={[{ label: 'Projects', to: '/projects', fixed: true }]} />
       {/* The name takes its own direction inside a heading that stays with
           the chrome, as the tab strip's does. */}
       <h1 className="truncate text-3xl font-bold tracking-tight">

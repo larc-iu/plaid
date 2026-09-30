@@ -200,7 +200,7 @@ describe('the project page header', () => {
     expect(heading(view.container)).toBe('Ayvale');
     const crumb = view.container.querySelector('nav[aria-label="Breadcrumb"]');
     expect(crumb.querySelector('a').getAttribute('href')).toBe('/projects');
-    expect(crumb.querySelector('[aria-current="page"]').textContent).toBe('Ayvale');
+    expect(crumb.textContent).not.toContain('Ayvale');
 
     const drawn = tabs(view.container);
     expect(drawn.map((t) => t.name)).toEqual([

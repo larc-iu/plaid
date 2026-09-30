@@ -32,9 +32,8 @@ describe('DocumentTabStrip', () => {
   it('draws the breadcrumb and every tab as a link', async () => {
     await mount({ document: { name: 'One' } });
     const crumbs = view.container.querySelector('nav[aria-label="Breadcrumb"]');
-    expect(texts(crumbs, 'li:not([aria-hidden])')).toEqual(['Projects', 'Ay', 'One']);
-    // The document is the page the reader is on: named, not linked.
-    expect(crumbs.querySelector('[aria-current="page"]').textContent).toBe('One');
+    // The trail ends at the project: the heading names the document.
+    expect(texts(crumbs, 'li:not([aria-hidden])')).toEqual(['Projects', 'Ay']);
     expect(all(crumbs, 'a').map((a) => a.textContent)).toEqual(['Projects', 'Ay']);
     expect(texts(view.container, '[role="tab"]')).toEqual(['Text', 'Details']);
     // The tab standing on this path is the one that is on.
@@ -47,7 +46,8 @@ describe('DocumentTabStrip', () => {
   it('says Loading… for a project and a document not read yet', async () => {
     await mount({ project: null, document: null });
     const crumbs = view.container.querySelector('nav[aria-label="Breadcrumb"]');
-    expect(texts(crumbs, 'li:not([aria-hidden])')).toEqual(['Projects', 'Loading…', 'Loading…']);
+    expect(texts(crumbs, 'li:not([aria-hidden])')).toEqual(['Projects', 'Loading…']);
+    expect(view.container.querySelector('h1').textContent).toBe('Loading…');
   });
 
   it('draws the status at the end of the breadcrumb row', async () => {

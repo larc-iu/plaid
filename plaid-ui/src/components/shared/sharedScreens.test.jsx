@@ -255,8 +255,9 @@ describe('the shared chrome', () => {
     // the left edge under the breadcrumb, and the name inside it takes its own.
     expect(h1.hasAttribute('dir')).toBe(false);
     expect(h1.querySelector('[dir="auto"]').textContent).toBe('مشروع');
-    // The current page closes the trail, dark and not a link.
-    expect(view.container.querySelector('[aria-current="page"]').tagName).toBe('SPAN');
+    // The trail ends above the project, which the heading names.
+    const crumbs = view.container.querySelector('nav[aria-label="Breadcrumb"]');
+    expect(crumbs.textContent).not.toContain('مشروع');
   });
 
   it('ProjectTabStrip takes the active tab from an app that keeps it off the path', async () => {

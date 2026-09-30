@@ -161,7 +161,6 @@ export const ImportCldfProject = () => {
           items={[
             { label: 'Projects', to: '/projects', fixed: true },
             { label: 'New project', to: '/projects/new', fixed: true },
-            { label: 'Import CLDF', fixed: true },
           ]}
         />
 

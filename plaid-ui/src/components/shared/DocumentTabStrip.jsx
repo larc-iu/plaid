@@ -92,7 +92,6 @@ export const DocumentTabStrip = ({
           items={[
             { label: 'Projects', to: routes.projects, fixed: true },
             { label: project?.name || 'Loading…', to: routes.documents(projectId) },
-            { label: name || 'Loading…' },
           ]}
         />
         {status && <span className="ms-auto shrink-0">{status}</span>}

@@ -3,8 +3,9 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { renderComponent, all, texts } from '../../test/renderComponent.jsx';
 import { Breadcrumb } from './Breadcrumb.jsx';
 
-// The trail at the top of a page: grey links, the current page dark and not a
-// link, and every label free to take its own direction.
+// The way back from a page: the places above it as grey links, each followed
+// by a slash, and every label free to take its own direction. The page itself
+// is its heading's, not the trail's.
 
 const Where = () => <p data-testid="at">{useLocation().pathname}</p>;
 
@@ -23,7 +24,6 @@ const at = () => view.container.querySelector('[data-testid="at"]').textContent;
 const TRAIL = [
   { label: 'Projects', to: '/projects' },
   { label: 'Ay', to: '/projects/p1/documents' },
-  { label: 'One', to: '/projects/p1/documents/d1' },
 ];
 
 afterEach(async () => {
@@ -32,18 +32,18 @@ afterEach(async () => {
 });
 
 describe('Breadcrumb', () => {
-  it('draws the trail in order, the separators hidden from a screen reader', async () => {
+  it('draws the trail in order, a slash after each place, hidden from a screen reader', async () => {
     await mount(TRAIL);
     const nav = view.container.querySelector('nav');
     expect(nav.getAttribute('aria-label')).toBe('Breadcrumb');
-    expect(texts(view.container, 'li:not([aria-hidden])')).toEqual(['Projects', 'Ay', 'One']);
+    expect(texts(view.container, 'li:not([aria-hidden])')).toEqual(['Projects', 'Ay']);
     expect(all(view.container, 'li[aria-hidden="true"]').map((n) => n.textContent)).toEqual([
       '/',
       '/',
     ]);
   });
 
-  it('makes every item but the last a real link to its place', async () => {
+  it('makes every place a real grey link, and names no current page', async () => {
     await mount(TRAIL);
     const links = all(view.container, 'a');
     expect(links.map((a) => a.textContent)).toEqual(['Projects', 'Ay']);
@@ -51,19 +51,19 @@ describe('Breadcrumb', () => {
       '/projects',
       '/projects/p1/documents',
     ]);
-  });
-
-  it('shows the current page dark and unlinked, even when it was given a place', async () => {
-    await mount(TRAIL);
-    const current = view.container.querySelector('[aria-current="page"]');
-    expect(current.tagName).toBe('SPAN');
-    expect(current.textContent).toBe('One');
-    expect(current.className).toContain('text-foreground');
-    expect(current.closest('a')).toBeNull();
-    for (const a of all(view.container, 'a')) {
+    for (const a of links) {
       expect(a.className).toContain('text-muted-foreground');
       expect(a.className).toContain('hover:underline');
     }
+    expect(view.container.querySelector('[aria-current]')).toBeNull();
+  });
+
+  it('shows a place with nowhere to go yet as plain grey text', async () => {
+    await mount([{ label: 'Projects', to: '/projects' }, { label: 'Loading…' }]);
+    expect(all(view.container, 'a').map((a) => a.textContent)).toEqual(['Projects']);
+    const loading = all(view.container, 'li:not([aria-hidden]) span')[0];
+    expect(loading.textContent).toBe('Loading…');
+    expect(loading.className).toContain('text-muted-foreground');
   });
 
   it('follows a plain click, and leaves a modified one to the browser', async () => {
@@ -90,7 +90,7 @@ describe('Breadcrumb', () => {
       { label: 'مشروع', to: '/projects/p1/documents' },
       { label: 'نص أول' },
     ]);
-    const labels = [...all(view.container, 'a'), view.container.querySelector('[aria-current]')];
+    const labels = all(view.container, 'li:not([aria-hidden]) > *');
     expect(labels.map((n) => n.getAttribute('dir'))).toEqual(['auto', 'auto', 'auto']);
     // The chrome is not language data: no direction on the trail or its list.
     expect(view.container.querySelector('nav').hasAttribute('dir')).toBe(false);
@@ -119,9 +119,9 @@ describe('Breadcrumb', () => {
     expect(view.container.querySelector('ol').className).toContain('flex-wrap');
   });
 
-  it('shows a lone item as the current page', async () => {
+  it('draws a lone place as a link with its slash', async () => {
     await mount([{ label: 'Projects', to: '/projects' }]);
-    expect(all(view.container, 'a')).toEqual([]);
-    expect(view.container.querySelector('[aria-current="page"]').textContent).toBe('Projects');
+    expect(all(view.container, 'a').map((a) => a.textContent)).toEqual(['Projects']);
+    expect(all(view.container, 'li[aria-hidden="true"]')).toHaveLength(1);
   });
 });
