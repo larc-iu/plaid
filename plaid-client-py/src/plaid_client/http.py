@@ -7,6 +7,7 @@ import time
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlencode, quote
 
+from plaid_client.ids import uuid7
 from plaid_client.transforms import transform_request, transform_response
 
 logger = logging.getLogger(__name__)
@@ -102,6 +103,9 @@ class PlaidAPIError(Exception):
             the ones before the failure stay saved). None for anything else.
         committed_results: For a failed batch submit, the saved operations'
             results in queue order. None for anything else.
+        idempotency_key: The Idempotency-Key a keyed write went out with,
+            so a later resend under it is answered from the first send if
+            that landed. None for a call that carried none.
     """
 
     def __init__(self, message, status=0, url='', method='', response_data=None,
@@ -115,6 +119,7 @@ class PlaidAPIError(Exception):
         self.original_error = original_error
         self.committed = None
         self.committed_results = None
+        self.idempotency_key = None
 
 
 def retry_while_busy(attempt, retries=BUSY_RETRIES, base_delay=BUSY_BACKOFF_S):
@@ -131,6 +136,121 @@ def retry_while_busy(attempt, retries=BUSY_RETRIES, base_delay=BUSY_BACKOFF_S):
             if getattr(e, 'status', None) != 503 or i >= retries:
                 raise
             time.sleep(base_delay * 2 ** i * (0.5 + random.random()))
+
+
+# ---------------------------------------------------------------------------
+# The Idempotency-Key.
+#
+# Every write that is not a signal (``out_of_band``), an upload (``no_batch``)
+# or a call that mints a secret (``no_idempotency``) goes out with an
+# ``Idempotency-Key`` header, and so does every batch request (a queued op has
+# none: its batch request carries one). The server keeps the answer to a keyed
+# write for a day, and the same key sent again for the same request is
+# answered from it with ``Idempotent-Replayed: true``, writing nothing. So a
+# write whose answer was lost (no response, 502, 504) can be sent again
+# safely: it lands once. ``make_request`` and ``PlaidClient._post_batch`` do
+# that three times themselves (``retry_unknown``), and the error that escapes
+# carries the key as ``idempotency_key``.
+#
+# Inside a logical operation opened with ``keys`` (``client.key_seed()``), the
+# nth keyed request that joins it takes the key ``<seed>.<n>`` and, from its
+# first run, a pinned strict-mode stamp, so running the operation again from
+# the top sends byte for byte the requests the first run sent: those that
+# landed are replayed and the rest run. A request that does not join the
+# operation mints its own key.
+# ---------------------------------------------------------------------------
+
+IDEMPOTENCY_HEADER = 'Idempotency-Key'
+REPLAYED_HEADER = 'Idempotent-Replayed'
+
+# Delays (seconds) before sending a keyed write again when its answer was lost.
+UNKNOWN_RETRY_DELAYS_S = (1.0, 3.0, 9.0)
+
+# What ``next_idempotency_key`` answers as the pin when nothing is pinned
+# (None is a pin: the first run claimed no version).
+NO_PIN = object()
+
+
+def is_unknown_outcome(error):
+    """Whether ``error`` leaves the outcome unknown: no response came
+    (status 0), or a proxy answered for the server (502, 504). The write may
+    have landed."""
+    return getattr(error, 'status', None) in (0, 502, 504)
+
+
+def retry_unknown(attempt, delays=None):
+    """Run ``attempt``, sending it again after each delay in ``delays``
+    (seconds, default ``UNKNOWN_RETRY_DELAYS_S``) while it fails with an
+    unknown outcome. Only for a keyed write, whose resend is answered from the
+    first send when that one landed. Full jitter, as ``retry_while_busy``."""
+    delays = UNKNOWN_RETRY_DELAYS_S if delays is None else delays
+    for i in itertools.count():
+        try:
+            return attempt()
+        except PlaidAPIError as e:
+            if not is_unknown_outcome(e) or i >= len(delays):
+                raise
+            time.sleep(delays[i] * (0.5 + random.random()))
+
+
+def next_idempotency_key(client, joins):
+    """The key for the next keyed request, and the strict-mode stamp it must
+    claim when an earlier run of its operation already sent it. ``joins`` says
+    whether the request joins the open logical operation.
+
+    Returns ``(key, pin, record)``: ``pin`` is ``NO_PIN`` when nothing is
+    pinned, and ``record(version)`` pins what this request claimed, the first
+    time."""
+    group = getattr(client, '_operation_group', None)
+    keys = group.get('keys') if joins and group is not None else None
+    if not keys:
+        return uuid7(), NO_PIN, lambda version: None
+    n = group['key_count']
+    group['key_count'] += 1
+    stamps = keys['stamps']
+    pinned = n in stamps
+
+    def record(version):
+        if not pinned:
+            stamps[n] = version
+
+    return f"{keys['seed']}.{n}", (stamps[n] if pinned else NO_PIN), record
+
+
+def joins_operation(client, method, out_of_band=False, no_operation=False):
+    """Whether a write joins the open logical operation (see
+    ``prepare_request``)."""
+    return (getattr(client, '_operation_group', None) is not None and method != 'GET'
+            and not out_of_band and not no_operation)
+
+
+def takes_idempotency_key(method, out_of_band=False, no_batch=False, no_idempotency=False):
+    """Whether a call made on the client goes out with an Idempotency-Key."""
+    return method != 'GET' and not out_of_band and not no_batch and not no_idempotency
+
+
+def _is_number(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def merge_versions(held, learned, replayed=False):
+    """``held`` with ``learned`` merged in, as a new dict. A replayed answer
+    only raises a version: it is what the document was right after the first
+    send."""
+    merged = dict(held)
+    if not replayed:
+        merged.update(learned)
+        return merged
+    for doc_id, version in learned.items():
+        current = merged.get(doc_id)
+        if not (_is_number(current) and _is_number(version) and current >= version):
+            merged[doc_id] = version
+    return merged
+
+
+def is_replayed(response_headers):
+    """Whether an answer was replayed from a keyed write's first send."""
+    return (response_headers or {}).get(REPLAYED_HEADER) == 'true'
 
 
 def short_error(error):
@@ -213,6 +333,10 @@ def extract_document_versions(client, response_headers, response_body=None, hist
     claim next, so the body is ignored and only the header (always the live
     version) is learned from.
     """
+    # A replayed answer (see the Idempotency-Key note above) carries the
+    # versions right after the first send, and this client may have read
+    # newer ones since. Keep the higher of each.
+    replayed = is_replayed(response_headers)
     # Past fifty documents the server leaves the list out and says how many
     # it left out. Any version held may be one of them, so all are
     # forgotten, and make_request reads the strict-mode document's again
@@ -225,7 +349,8 @@ def extract_document_versions(client, response_headers, response_body=None, hist
         try:
             versions_map = json.loads(header)
             if isinstance(versions_map, dict):
-                client.document_versions.update(versions_map)
+                client.document_versions.update(
+                    merge_versions(client.document_versions, versions_map, replayed))
         except (json.JSONDecodeError, TypeError):
             logger.warning('Failed to parse document versions header')
 
@@ -233,7 +358,8 @@ def extract_document_versions(client, response_headers, response_body=None, hist
         doc_id = response_body.get('document/id')
         doc_version = response_body.get('document/version')
         if doc_id and doc_version:
-            client.document_versions[doc_id] = doc_version
+            client.document_versions.update(
+                merge_versions(client.document_versions, {doc_id: doc_version}, replayed))
 
 
 def _omitted_strict_document(client):
@@ -423,7 +549,7 @@ class _ProgressBody:
 
 def prepare_request(client, method, path, *, body=None, raw_body=None, form_data=False,
                     query_params=None, out_of_band=False, no_operation=False,
-                    audit_message=None):
+                    audit_message=None, pinned_version=NO_PIN):
     """Everything a request is before it goes anywhere: the URL with its query
     params and the stamps strict mode, a per-call audit message and an open
     logical operation add, plus the transformed body. Shared by the wire path
@@ -432,9 +558,14 @@ def prepare_request(client, method, path, *, body=None, raw_body=None, form_data
     write, queued or not, and ``stamped_document`` names the document it
     stamped for (None when it stamped nothing). ``stamped_group`` is the open
     logical operation the write joined (None for none), for the caller to
-    mark written once the server has taken the request.
+    mark written once the server has taken the request. ``stamped_version``
+    is the version the stamp claims (None for none).
 
-    Returns ``(url, request_body, stamped_document, stamped_group)``.
+    A resend of an operation's request claims what its first run claimed
+    (``pinned_version``, None for no claim), so the two are the same request.
+
+    Returns ``(url, request_body, stamped_document, stamped_group,
+    stamped_version)``.
     """
     url = f'{client.base_url}{path}'
 
@@ -478,13 +609,16 @@ def prepare_request(client, method, path, *, body=None, raw_body=None, form_data
     # service's progress, a query) is no write of the document and carries
     # none.
     stamped_document = None
+    stamped_version = None
     if client.strict_mode_document_id and method != 'GET' and not out_of_band:
         doc_id = client.strict_mode_document_id
-        doc_version = client.document_versions.get(doc_id)
+        doc_version = (pinned_version if pinned_version is not NO_PIN
+                       else client.document_versions.get(doc_id))
         if doc_version:
             separator = '&' if '?' in url else '?'
             url += f'{separator}document-version={quote(str(doc_version), safe="")}'
             stamped_document = doc_id
+            stamped_version = doc_version
 
     # Per-call custom audit-log message, stamped on the one write it was
     # given to.
@@ -515,7 +649,7 @@ def prepare_request(client, method, path, *, body=None, raw_body=None, form_data
             url += f'&group-ref={quote(str(group["ref"]), safe="")}'
         stamped_group = group
 
-    return url, request_body, stamped_document, stamped_group
+    return url, request_body, stamped_document, stamped_group, stamped_version
 
 
 def restamp_document_version(path, version):
@@ -690,7 +824,7 @@ def queue_request(batch, method, path, *, no_batch=False, out_of_band=False, **k
     prep = {k: v for k, v in kwargs.items()
             if k in ('body', 'raw_body', 'form_data', 'query_params', 'no_operation',
                      'audit_message')}
-    url, request_body, stamped_document, stamped_group = prepare_request(
+    url, request_body, stamped_document, stamped_group, _ = prepare_request(
         batch.client, method, path, **prep)
     operation = {
         'path': url.replace(batch.client.base_url, ''),
@@ -710,7 +844,7 @@ def queue_request(batch, method, path, *, no_batch=False, out_of_band=False, **k
 
 def make_request(client, method, path, *, body=None, raw_body=None, form_data=False,
                  query_params=None, no_batch=False, out_of_band=False,
-                 no_operation=False, skip_response_transform=False,
+                 no_operation=False, no_idempotency=False, skip_response_transform=False,
                  no_auth=False, binary_response=False, audit_message=None,
                  timeout=_UNSET, on_upload_progress=None,
                  _learning_omitted_version=False):
@@ -737,6 +871,10 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         no_operation: If True, the call never joins an open logical operation
             but still queues on a batch like a write. For a broadcast message,
             which is never audited.
+        no_idempotency: If True, the write goes out with no Idempotency-Key
+            (see the note above ``retry_unknown``). For a call whose answer is
+            a secret the server never keeps (an API token, an invite code), so
+            it refuses a key.
         skip_response_transform: Return raw parsed JSON (no transform_response).
         no_auth: Skip Authorization header.
         binary_response: Return raw bytes instead of JSON/text.
@@ -748,16 +886,24 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
     """
     if method != 'GET' and _omitted_strict_document(client):
         _learn_omitted_version(client)
-    url, request_body, _, stamped_group = prepare_request(
+    keyed = takes_idempotency_key(method, out_of_band, no_batch, no_idempotency)
+    key, pin, record = (next_idempotency_key(
+        client, joins_operation(client, method, out_of_band, no_operation))
+        if keyed else (None, NO_PIN, None))
+    url, request_body, _, stamped_group, stamped_version = prepare_request(
         client, method, path, body=body, raw_body=raw_body, form_data=form_data,
         query_params=query_params, out_of_band=out_of_band, no_operation=no_operation,
-        audit_message=audit_message)
+        audit_message=audit_message, pinned_version=pin)
+    if keyed:
+        record(stamped_version)
 
     headers = {}
     if not no_auth:
         headers['Authorization'] = f'Bearer {client.token}'
     if not form_data:
         headers['Content-Type'] = 'application/json'
+    if keyed:
+        headers[IDEMPOTENCY_HEADER] = key
 
     kwargs = {'method': method, 'url': url, 'headers': headers,
               'timeout': (timeout if timeout is not _UNSET
@@ -801,7 +947,14 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
             raise build_api_error(resp, url, method)
         return resp
 
-    response = retry_while_busy(attempt)
+    try:
+        response = (retry_unknown(lambda: retry_while_busy(attempt),
+                                  getattr(client, 'retry_delays', None))
+                    if keyed else retry_while_busy(attempt))
+    except PlaidAPIError as e:
+        if keyed:
+            e.idempotency_key = key
+        raise
     # The server took it, so the operation's group exists.
     if stamped_group is not None:
         stamped_group['written'] = True

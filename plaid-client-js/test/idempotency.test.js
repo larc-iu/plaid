@@ -1,0 +1,335 @@
+// Idempotent writes: every write that is not a signal, an upload or a secret
+// goes out with an Idempotency-Key, a write whose answer was lost is sent
+// again under the same key, and a create can name its own id. See the
+// Idempotency-Key note in src/http.js and the manual, "Retrying a write".
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { PlaidClient, MAX_BATCH_OPS, uuidv7 } from "../src/index.js";
+import { retryUnknown, isUnknownOutcome } from "../src/http.js";
+
+const KEY = "idempotency-key";
+
+function headerOf(opts, name) {
+  const headers = opts?.headers || {};
+  const found = Object.keys(headers).find((k) => k.toLowerCase() === name);
+  return found ? headers[found] : undefined;
+}
+
+function response(status, body = {}, headers = {}) {
+  const all = { "content-type": "application/json", ...headers };
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: String(status),
+    headers: { get: (name) => all[name.toLowerCase()] ?? null },
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  };
+}
+
+// Records every request and answers with `answer(request, n)`, a response or
+// an Error to throw (a lost answer).
+function stubServer(answer = () => response(200, { id: "x" })) {
+  const requests = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, opts = {}) => {
+    const request = {
+      url: String(url),
+      method: opts.method,
+      key: headerOf(opts, KEY),
+      body: opts.body ? JSON.parse(opts.body) : undefined,
+    };
+    requests.push(request);
+    const r = await answer(request, requests.length - 1);
+    if (r instanceof Error) throw r;
+    return r;
+  };
+  return { requests, restore: () => (globalThis.fetch = real) };
+}
+
+const fast = { retryDelaysMs: [0, 0, 0] };
+
+test("every write carries a key, a read does not", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  const { requests, restore } = stubServer();
+  try {
+    await client.spans.create("L", ["t"], "N");
+    await client.spans.update("s", "V");
+    await client.documents.get("d");
+  } finally {
+    restore();
+  }
+  assert.ok(requests[0].key);
+  assert.ok(requests[1].key);
+  assert.notEqual(requests[0].key, requests[1].key);
+  assert.equal(requests[2].key, undefined);
+});
+
+test("signals, uploads and minted secrets carry none", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  const { requests, restore } = stubServer(() =>
+    response(200, { "lock-id": "l", id: "x", token: "t", code: "c" }),
+  );
+  try {
+    await client.documents.acquireLock("d");
+    await client.apiTokens.create("u@x", "name");
+    await client.invites.create();
+    await client._request("PUT", "/api/v1/users/u/data/k", {
+      body: { a: 1 },
+      noBatch: true,
+    });
+  } finally {
+    restore();
+  }
+  assert.deepEqual(
+    requests.map((r) => r.key),
+    [undefined, undefined, undefined, undefined],
+  );
+});
+
+test("a queued op has no key of its own, its batch request has one", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  const { requests, restore } = stubServer((r) =>
+    response(
+      200,
+      r.body.map(() => ({ status: 201, headers: {}, body: { id: "x" } })),
+    ),
+  );
+  try {
+    await client.batched((b) => {
+      b.spans.create("L", ["t"], "A");
+      b.spans.create("L", ["t"], "B");
+    });
+  } finally {
+    restore();
+  }
+  assert.equal(requests.length, 1);
+  assert.ok(requests[0].key);
+  assert.ok(requests[0].body.every((op) => !("headers" in op)));
+});
+
+for (const lost of [
+  ["no response", () => new TypeError("fetch failed")],
+  ["502", () => response(502, { error: "Bad gateway" })],
+  ["504", () => response(504, { error: "Gateway timeout" })],
+]) {
+  test(`a write whose answer is lost (${lost[0]}) is sent again under the same key`, async () => {
+    const client = new PlaidClient("http://x", "tok", fast);
+    const { requests, restore } = stubServer((_, n) =>
+      n < 2 ? lost[1]() : response(201, { id: "s1" }),
+    );
+    let result;
+    try {
+      result = await client.spans.create("L", ["t"], "N");
+    } finally {
+      restore();
+    }
+    assert.equal(result.id, "s1");
+    assert.equal(requests.length, 3);
+    assert.equal(new Set(requests.map((r) => r.key)).size, 1);
+    assert.deepEqual(requests[0].body, requests[2].body);
+  });
+}
+
+test("three resends, then the error escapes with the key", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  const { requests, restore } = stubServer(() => response(502, {}));
+  try {
+    await assert.rejects(client.spans.update("s", "V"), (e) => {
+      assert.equal(e.status, 502);
+      assert.equal(e.idempotencyKey, requests[0].key);
+      return true;
+    });
+  } finally {
+    restore();
+  }
+  assert.equal(requests.length, 4);
+});
+
+test("a refusal is not resent, and a read is never resent", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  const { requests, restore } = stubServer((r) =>
+    r.method === "GET" ? response(502, {}) : response(409, { error: "no" }),
+  );
+  try {
+    await assert.rejects(client.spans.update("s", "V"), (e) => e.status === 409);
+    await assert.rejects(client.documents.get("d"), (e) => e.status === 502);
+  } finally {
+    restore();
+  }
+  assert.equal(requests.length, 2);
+});
+
+test("retryUnknown does not resend when the browser says it is offline", async () => {
+  let attempts = 0;
+  await assert.rejects(
+    retryUnknown(
+      async () => {
+        attempts += 1;
+        throw Object.assign(new Error("offline"), { status: 0, offline: true });
+      },
+      { delaysMs: [0, 0, 0] },
+    ),
+  );
+  assert.equal(attempts, 1);
+  assert.ok(isUnknownOutcome({ status: 0 }));
+  assert.ok(!isUnknownOutcome({ status: 500 }));
+});
+
+test("a batch past the cap takes one key per request, and a lost second request is resent alone", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  let lostOnce = false;
+  const { requests, restore } = stubServer((r) => {
+    if (r.body.length === 1 && !lostOnce) {
+      lostOnce = true;
+      return response(504, {});
+    }
+    return response(
+      200,
+      r.body.map(() => ({ status: 200, headers: {}, body: {} })),
+    );
+  });
+  try {
+    await client.batched((b) => {
+      for (let i = 0; i < MAX_BATCH_OPS + 1; i += 1) b.spans.update(`s${i}`, i);
+    });
+  } finally {
+    restore();
+  }
+  assert.equal(requests.length, 3);
+  assert.equal(requests[0].body.length, MAX_BATCH_OPS);
+  assert.notEqual(requests[0].key, requests[1].key);
+  assert.equal(requests[1].key, requests[2].key);
+});
+
+test("inside an operation with keys, the nth write takes <seed>.<n> and its first claim", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  client.enterStrictMode("d1");
+  client.documentVersions = { d1: 5 };
+  const keys = client.keySeed();
+  const id = uuidv7();
+  const { requests, restore } = stubServer(() =>
+    response(200, { id: "x" }, { "x-document-versions": '{"d1": 6}' }),
+  );
+  const run = () =>
+    client.withOperation(
+      "Gloss",
+      async () => {
+        await client.spans.update("s1", "A");
+        // A comment beside the edit is outside its numbering.
+        await client._request("POST", "/api/v1/projects/p/message", {
+          body: { m: 1 },
+          noOperation: true,
+        });
+        await client.spans.update("s2", "B");
+      },
+      { keys, id },
+    );
+  try {
+    await run();
+    await run();
+  } finally {
+    restore();
+  }
+  const keysOf = (rs) => rs.map((r) => r.key);
+  assert.equal(requests[0].key, `${keys.seed}.0`);
+  assert.equal(requests[2].key, `${keys.seed}.1`);
+  assert.ok(!requests[1].key.startsWith(keys.seed));
+  // The second run sends the same keys and the same claims as the first,
+  // although the client has since learned version 6.
+  assert.deepEqual(keysOf([requests[3], requests[5]]), keysOf([requests[0], requests[2]]));
+  assert.equal(requests[3].url, requests[0].url);
+  assert.equal(requests[5].url, requests[2].url);
+  assert.match(requests[0].url, /document-version=5/);
+  assert.match(requests[2].url, /document-version=6/);
+});
+
+test("a replayed answer only raises a version the client holds", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  client.documentVersions = { d1: 9, d2: 1 };
+  const { restore } = stubServer(() =>
+    response(
+      200,
+      { id: "x" },
+      {
+        "x-document-versions": '{"d1": 7, "d2": 3}',
+        "idempotent-replayed": "true",
+      },
+    ),
+  );
+  try {
+    await client.spans.update("s", "V");
+  } finally {
+    restore();
+  }
+  assert.deepEqual(client.documentVersions, { d1: 9, d2: 3 });
+});
+
+test("a replayed batch only raises a version too", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  client.documentVersions = { d1: 9 };
+  const { restore } = stubServer(() =>
+    response(
+      200,
+      [{ status: 200, headers: { "X-Document-Versions": '{"d1": 7}' }, body: {} }],
+      { "idempotent-replayed": "true" },
+    ),
+  );
+  try {
+    await client.batched((b) => b.spans.update("s", "V"));
+  } finally {
+    restore();
+  }
+  assert.equal(client.documentVersions.d1, 9);
+});
+
+test("uuidv7: version, variant, and order within one millisecond", () => {
+  const ids = Array.from({ length: 4096 + 10 }, () => uuidv7());
+  for (const id of ids.slice(0, 5)) {
+    assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  }
+  const sorted = [...ids].sort();
+  assert.deepEqual(sorted, ids);
+  assert.equal(new Set(ids).size, ids.length);
+  const ms = parseInt(ids[0].replace(/-/g, "").slice(0, 12), 16);
+  assert.ok(Math.abs(ms - Date.now()) < 5000);
+});
+
+// Every create that answers an id takes the id to use. A new create method
+// belongs in this table.
+const creates = [
+  ["projects.create", (c, o) => c.projects.create("P", undefined, o)],
+  ["documents.create", (c, o) => c.documents.create("p", "D", undefined, undefined, o)],
+  ["documents.copy", (c, o) => c.documents.copy("d", "C", o)],
+  ["texts.create", (c, o) => c.texts.create("tl", "d", "x", undefined, undefined, o)],
+  ["textLayers.create", (c, o) => c.textLayers.create("p", "T", undefined, o)],
+  ["tokenLayers.create", (c, o) => c.tokenLayers.create("tl", "W", undefined, undefined, undefined, o)],
+  ["spanLayers.create", (c, o) => c.spanLayers.create("tk", "S", undefined, o)],
+  ["relationLayers.create", (c, o) => c.relationLayers.create("sl", "R", undefined, o)],
+  ["vocabLayers.create", (c, o) => c.vocabLayers.create("V", undefined, o)],
+  ["tokens.create", (c, o) => c.tokens.create("tk", "t", 0, 1, undefined, undefined, undefined, o)],
+  ["tokens.split", (c, o) => c.tokens.split("t", 1, undefined, o)],
+  ["spans.create", (c, o) => c.spans.create("sl", ["t"], "N", undefined, undefined, o)],
+  ["relations.create", (c, o) => c.relations.create("rl", "a", "b", "r", undefined, undefined, o)],
+  ["vocabItems.create", (c, o) => c.vocabItems.create("v", "dog", undefined, undefined, o)],
+  ["vocabLinks.create", (c, o) => c.vocabLinks.create("i", ["t"], undefined, undefined, o)],
+  ["guidelines.create", (c, o) => c.guidelines.create("p", "G", o)],
+  ["comments.create", (c, o) => c.comments.create("document", "d", "hi", o)],
+];
+
+for (const [name, call] of creates) {
+  test(`${name} sends the id it is given`, async () => {
+    const client = new PlaidClient("http://x", "tok", fast);
+    const id = uuidv7();
+    const { requests, restore } = stubServer(() => response(201, { id }));
+    try {
+      await call(client, { id });
+      await call(client, {});
+    } finally {
+      restore();
+    }
+    assert.equal(requests[0].body.id, id);
+    assert.equal("id" in requests[1].body, false);
+  });
+}

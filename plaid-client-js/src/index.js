@@ -13,9 +13,15 @@ import {
   makeNetworkError,
   timeoutSignal,
   retryWhileBusy,
+  retryUnknown,
+  nextIdempotencyKey,
+  mergeVersions,
+  IDEMPOTENCY_HEADER,
+  REPLAYED_HEADER,
   DEFAULT_TIMEOUT_MS,
   DEFAULT_BATCH_TIMEOUT_MS,
 } from "./http.js";
+import { uuidv7 } from "./ids.js";
 import { listAll, listPage, iterPages } from "./pagination.js";
 import { recorderFor } from "./events.js";
 import { withDocumentLock } from "./documentLock.js";
@@ -202,6 +208,12 @@ async function submitBatch(batch) {
   return results;
 }
 
+/** The document-version an op's path claims, as a number, or null. */
+function claimedVersion(path) {
+  const v = new URLSearchParams(path.split("?")[1] ?? "").get("document-version");
+  return v == null ? null : Number(v);
+}
+
 async function sendChunks(client, url, ops, stamps, results, groups = []) {
   // Every chunk's refs are checked before the first request goes, so a batch
   // whose refs cannot resolve writes nothing.
@@ -218,18 +230,29 @@ async function sendChunks(client, url, ops, stamps, results, groups = []) {
   for (let c = 0; c < chunks.length; c++) {
     const i = c * MAX_BATCH_OPS;
     let chunk = chunks[c];
-    if (i > 0) {
+    // One Idempotency-Key per request, minted as the request is formed, so a
+    // resend of this chunk is answered from its first send when that landed.
+    // Inside an operation opened with keys, a chunk whose ops joined it takes
+    // the operation's next key and claims the version its first run claimed.
+    const joins = groups
+      .slice(i, i + chunk.length)
+      .some((g) => g && g === client.operationGroup);
+    const { key, pin, record } = nextIdempotencyKey(client, joins);
+    const claim = (docId) =>
+      pin !== undefined ? pin : client.documentVersions[docId];
+    if (i > 0 || pin !== undefined) {
       chunk = chunk.map((op, j) => {
         const docId = stamps[i + j];
         if (!docId) return op;
-        const path = restampDocumentVersion(
-          op.path,
-          client.documentVersions[docId],
-        );
+        const path = restampDocumentVersion(op.path, claim(docId));
         return { ...op, path };
       });
     }
-    results.push(...(await client._postBatch(url, chunk)));
+    // Pin what the chunk actually claims: the first stamped op's version as
+    // its path now carries it.
+    const j = stamps.slice(i, i + chunk.length).findIndex(Boolean);
+    record(j < 0 ? null : claimedVersion(chunk[j].path));
+    results.push(...(await client._postBatch(url, chunk, { key })));
     // The server took the chunk, so each operation it joined exists.
     for (let j = i; j < i + chunk.length; j++) {
       if (groups[j]) groups[j].written = true;
@@ -271,6 +294,9 @@ class PlaidClient {
         : options.timeout !== undefined
           ? options.timeout
           : DEFAULT_BATCH_TIMEOUT_MS;
+    // Delays (ms) before sending a keyed write again when its answer was lost
+    // (no response, 502, 504). See the Idempotency-Key note in http.js.
+    this.retryDelaysMs = options.retryDelaysMs;
     this.documentVersions = {};
     // The server's clock minus this machine's, in ms, from the last response
     // with a Date header (null before one). See serverNow().
@@ -283,7 +309,7 @@ class PlaidClient {
     // The open logical operation (audit-log group), or null. While set, every
     // write is stamped with `?group-id=` (+ `group-message`) so the audit log
     // folds them into ONE expandable entry. See beginOperation / withOperation.
-    // Shape: { id, message, depth, written, refined }.
+    // Shape: { id, message, depth, written, refined, keys, keyCount }.
     this.operationGroup = null;
     // Optional callback fired once (per client) when any request returns HTTP
     // 401 — i.e. the token is missing/expired/invalid. Apps use it to discard
@@ -319,10 +345,10 @@ class PlaidClient {
        * @param {Array} tokens - The tokens to link
        * @param {any} [metadata] - Metadata for the link. Omit to leave unset; pass null to send JSON null.
        */
-      create: (vocabItem, tokens, metadata, auditMessage) =>
+      create: (vocabItem, tokens, metadata, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/vocab-links", {
           auditMessage,
-          body: bodyOf({ "vocab-item": vocabItem, tokens, metadata }),
+          body: bodyOf({ id, "vocab-item": vocabItem, tokens, metadata }),
         }),
       /**
        * Create multiple vocab links in a single operation. Entries may
@@ -577,10 +603,10 @@ class PlaidClient {
        * Create a new vocab layer. Note: this also registers the user as a maintainer.
        * @param {string} name - The name
        */
-      create: (name, auditMessage) =>
+      create: (name, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/vocab-layers", {
           auditMessage,
-          body: bodyOf({ name }),
+          body: bodyOf({ id, name }),
         }),
       /**
        * Assign a user as a maintainer for this vocab layer.
@@ -689,10 +715,19 @@ class PlaidClient {
        * @param {any} value - The value
        * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
        */
-      create: (layerId, sourceId, targetId, value, metadata, auditMessage) =>
+      create: (
+        layerId,
+        sourceId,
+        targetId,
+        value,
+        metadata,
+        auditMessage,
+        { id } = {},
+      ) =>
         this._request("POST", "/api/v1/relations", {
           auditMessage,
           body: bodyOf({
+            id,
             "layer-id": layerId,
             "source-id": sourceId,
             "target-id": targetId,
@@ -788,10 +823,10 @@ class PlaidClient {
        * @param {string} tokenLayerId - The token layer ID
        * @param {string} name - The name
        */
-      create: (tokenLayerId, name, auditMessage) =>
+      create: (tokenLayerId, name, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/span-layers", {
           auditMessage,
-          body: bodyOf({ "token-layer-id": tokenLayerId, name }),
+          body: bodyOf({ id, "token-layer-id": tokenLayerId, name }),
         }),
       /**
        * Shift a span layer's display order.
@@ -824,10 +859,11 @@ class PlaidClient {
        * @param {any} value - The value
        * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
        */
-      create: (spanLayerId, tokens, value, metadata, auditMessage) =>
+      create: (spanLayerId, tokens, value, metadata, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/spans", {
           auditMessage,
           body: bodyOf({
+            id,
             "span-layer-id": spanLayerId,
             tokens,
             value,
@@ -996,10 +1032,18 @@ class PlaidClient {
        * @param {string} body - The request body
        * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
        */
-      create: (textLayerId, documentId, body, metadata, auditMessage) =>
+      create: (
+        textLayerId,
+        documentId,
+        body,
+        metadata,
+        auditMessage,
+        { id } = {},
+      ) =>
         this._request("POST", "/api/v1/texts", {
           auditMessage,
           body: bodyOf({
+            id,
             "text-layer-id": textLayerId,
             "document-id": documentId,
             body,
@@ -1399,6 +1443,8 @@ class PlaidClient {
         this._request("POST", `/api/v1/users/${userId}/tokens`, {
           auditMessage,
           body: bodyOf({ name }),
+          // The answer is the secret, which the server never keeps.
+          noIdempotency: true,
         }),
       /**
        * Revoke a named API token (soft-revoke; idempotent).
@@ -1493,6 +1539,8 @@ class PlaidClient {
       ) =>
         this._request("POST", "/api/v1/invites", {
           auditMessage,
+          // The answer is the code, which the server never keeps.
+          noIdempotency: true,
           body: bodyOf({
             "project-id": projectId,
             "project-role": projectRole,
@@ -1769,10 +1817,12 @@ class PlaidClient {
         overlapMode,
         parentTokenLayerId,
         auditMessage,
+        { id } = {},
       ) =>
         this._request("POST", "/api/v1/token-layers", {
           auditMessage,
           body: bodyOf({
+            id,
             "text-layer-id": textLayerId,
             name,
             "overlap-mode": overlapMode,
@@ -2128,10 +2178,10 @@ class PlaidClient {
        * @param {string} name - The name
        * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
        */
-      create: (projectId, name, metadata, auditMessage) =>
+      create: (projectId, name, metadata, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/documents", {
           auditMessage,
-          body: bodyOf({ "project-id": projectId, name, metadata }),
+          body: bodyOf({ id, "project-id": projectId, name, metadata }),
         }),
       /**
        * Copy a document and everything in it into a new document of the same
@@ -2147,10 +2197,10 @@ class PlaidClient {
        *   file behind
        * @param {string} [auditMessage] - Custom audit message for this operation
        */
-      copy: (documentId, name, { includeMedia } = {}, auditMessage) =>
+      copy: (documentId, name, { includeMedia, id } = {}, auditMessage) =>
         this._request("POST", `/api/v1/documents/${documentId}/copy`, {
           auditMessage,
-          body: bodyOf({ name, "include-media": includeMedia }),
+          body: bodyOf({ id, name, "include-media": includeMedia }),
         }),
     };
 
@@ -2418,10 +2468,10 @@ class PlaidClient {
        * Create a new project. Note: this also registers the user as a maintainer.
        * @param {string} name - The name
        */
-      create: (name, auditMessage) =>
+      create: (name, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/projects", {
           auditMessage,
-          body: bodyOf({ name }),
+          body: bodyOf({ id, name }),
         }),
     };
 
@@ -2495,10 +2545,10 @@ class PlaidClient {
        * @param {string} projectId - The project ID
        * @param {string} name - The name
        */
-      create: (projectId, name, auditMessage) =>
+      create: (projectId, name, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/text-layers", {
           auditMessage,
-          body: bodyOf({ "project-id": projectId, name }),
+          body: bodyOf({ id, "project-id": projectId, name }),
         }),
     };
 
@@ -2537,10 +2587,10 @@ class PlaidClient {
        * @param {string} form - The vocab item form
        * @param {any} [metadata] - Metadata map. Omit to leave unset; pass null to send JSON null.
        */
-      create: (vocabLayerId, form, metadata, auditMessage) =>
+      create: (vocabLayerId, form, metadata, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/vocab-items", {
           auditMessage,
-          body: bodyOf({ "vocab-layer-id": vocabLayerId, form, metadata }),
+          body: bodyOf({ id, "vocab-layer-id": vocabLayerId, form, metadata }),
         }),
       /**
        * Create multiple vocab items in a single operation. Entries may target
@@ -2648,10 +2698,10 @@ class PlaidClient {
        * @param {string} spanLayerId - The span layer ID
        * @param {string} name - The name
        */
-      create: (spanLayerId, name, auditMessage) =>
+      create: (spanLayerId, name, auditMessage, { id } = {}) =>
         this._request("POST", "/api/v1/relation-layers", {
           auditMessage,
-          body: bodyOf({ "span-layer-id": spanLayerId, name }),
+          body: bodyOf({ id, "span-layer-id": spanLayerId, name }),
         }),
       /**
        * Set a configuration value for a layer in an editor namespace.
@@ -2736,10 +2786,12 @@ class PlaidClient {
         precedence,
         metadata,
         auditMessage,
+        { id } = {},
       ) =>
         this._request("POST", "/api/v1/tokens", {
           auditMessage,
           body: bodyOf({
+            id,
             "token-layer-id": tokenLayerId,
             text,
             begin,
@@ -2811,10 +2863,15 @@ class PlaidClient {
        *   that had both ends inside the token and now has one on each side is
        *   deleted in the same operation, read from what is stored.
        */
-      split: (tokenId, position, auditMessage, { dropCrossingRelations } = {}) =>
+      split: (
+        tokenId,
+        position,
+        auditMessage,
+        { dropCrossingRelations, id } = {},
+      ) =>
         this._request("POST", `/api/v1/tokens/${tokenId}/split`, {
           auditMessage,
-          body: bodyOf({ position, dropCrossingRelations }),
+          body: bodyOf({ id, position, dropCrossingRelations }),
         }),
       /**
        * Merge two tokens. The left token (smaller begin) survives with the combined
@@ -3103,9 +3160,10 @@ class PlaidClient {
        * @param {object} [opts]
        * @param {string} [opts.anchorLabel] - What the comment is about, in words (at most 200 characters)
        */
-      create: (entityType, entityId, body, { anchorLabel } = {}) =>
+      create: (entityType, entityId, body, { anchorLabel, id } = {}) =>
         this._request("POST", "/api/v1/comments", {
           body: bodyOf({
+            id,
             "entity-type": entityType,
             "entity-id": entityId,
             body,
@@ -3382,10 +3440,10 @@ class PlaidClient {
        * @param {string} [opts.body] - The Markdown text (up to 20000 characters; may be empty)
        * @param {boolean} [opts.pinned] - Send this one to the assistant in full on every turn
        */
-      create: (projectId, title, { body, pinned } = {}, auditMessage) =>
+      create: (projectId, title, { body, pinned, id } = {}, auditMessage) =>
         this._request("POST", `/api/v1/projects/${projectId}/guidelines`, {
           auditMessage,
-          body: bodyOf({ title, body, pinned }),
+          body: bodyOf({ id, title, body, pinned }),
         }),
       /**
        * Read one guideline, Markdown body included.
@@ -3523,11 +3581,18 @@ class PlaidClient {
    * are recorded from the first write like the label, and a nested operation
    * keeps the outer one's.
    *
+   * `keys` (from `keySeed()`) makes a run of the operation send the same
+   * requests as an earlier run with the same keys: the nth keyed request that
+   * joins it takes the Idempotency-Key `<seed>.<n>` and the document-version
+   * its first run claimed, so a request that landed is answered from its
+   * first send and writes nothing again. The count starts at 0 at each
+   * outermost begin. A nested operation joins the outer one's keys.
+   *
    * @param {string} message - Human label for the operation.
-   * @param {object} [opts] - Optional `{ id, kind, ref }`. `id` adopts an existing group id instead of minting one (a service joining the requester's operation; `requestService` propagates an open operation to the service automatically). `kind` and `ref` are described above.
+   * @param {object} [opts] - Optional `{ id, kind, ref, keys }`. `id` adopts an existing group id instead of minting one (a service joining the requester's operation; `requestService` propagates an open operation to the service automatically). `kind`, `ref` and `keys` are described above.
    * @returns {string} The operation's group id.
    */
-  beginOperation(message, { id, kind, ref } = {}) {
+  beginOperation(message, { id, kind, ref, keys } = {}) {
     if (this.operationGroup) {
       this.operationGroup.depth += 1;
       return this.operationGroup.id;
@@ -3540,8 +3605,20 @@ class PlaidClient {
       depth: 1,
       written: false,
       refined: undefined,
+      keys: keys || null,
+      keyCount: 0,
     };
     return this.operationGroup.id;
+  }
+
+  /**
+   * A seed for the Idempotency-Keys of a logical operation that may be run
+   * again from the top (see beginOperation's `keys`). Keep it with the work
+   * it belongs to and pass it to every run.
+   * @returns {{seed: string, stamps: Map<number, number|null>}}
+   */
+  keySeed() {
+    return { seed: uuidv7(), stamps: new Map() };
   }
 
   /**
@@ -3589,11 +3666,11 @@ class PlaidClient {
    *
    * @param {string} message - Human label for the operation.
    * @param {function} fn - The work to run; receives `setMessage(msg)` to refine the label once the outcome is known.
-   * @param {object} [opts] - Optional `{ kind, ref }`, as for beginOperation.
+   * @param {object} [opts] - Optional `{ kind, ref, id, keys }`, as for beginOperation.
    * @returns {Promise<any>} Whatever `fn` resolves to.
    */
-  async withOperation(message, fn, { kind, ref } = {}) {
-    this.beginOperation(message, { kind, ref });
+  async withOperation(message, fn, { kind, ref, id, keys } = {}) {
+    this.beginOperation(message, { kind, ref, id, keys });
     const group = this.operationGroup;
     const setMessage = (msg) => {
       if (group.depth === 1) group.refined = msg;
@@ -3647,14 +3724,17 @@ class PlaidClient {
   /**
    * POST one batch request (at most MAX_BATCH_OPS operations). Resolves to
    * one `{ status, headers, body }` per operation, with only the body
-   * recased: the headers keep the server's spelling.
+   * recased: the headers keep the server's spelling. `key` is the request's
+   * Idempotency-Key: a batch whose answer is lost (no response, 502, 504) is
+   * sent again under it, and answered from the first send if that landed.
    */
-  async _postBatch(url, body) {
+  async _postBatch(url, body, { key = uuidv7() } = {}) {
     const fetchOptions = {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.token}`,
         "Content-Type": "application/json",
+        [IDEMPOTENCY_HEADER]: key,
       },
       body: JSON.stringify(body),
     };
@@ -3663,17 +3743,26 @@ class PlaidClient {
       // Retry a 503: the batch is atomic, so a refused one wrote nothing and
       // repeating it is safe. A fresh timeout signal per attempt — an
       // AbortSignal.timeout stays aborted once it fires.
-      const response = await retryWhileBusy(async () => {
+      const attempt = async () => {
         const signal = timeoutSignal(this.batchTimeout);
-        const res = await fetch(
-          url,
-          signal ? { ...fetchOptions, signal } : fetchOptions,
-        );
+        let res;
+        try {
+          res = await fetch(
+            url,
+            signal ? { ...fetchOptions, signal } : fetchOptions,
+          );
+        } catch (e) {
+          throw makeNetworkError(e, url, "POST");
+        }
         if (!res.ok) {
           throw makeHttpError(res, await parseErrorBody(res), url, "POST");
         }
         return res;
+      };
+      const response = await retryUnknown(() => retryWhileBusy(attempt), {
+        delaysMs: this.retryDelaysMs,
       }).catch((error) => {
+        error.idempotencyKey = key;
         // 401 means the token is missing, expired or invalid: fire the app's
         // auth-error handler once, exactly as makeRequest does.
         if (
@@ -3692,6 +3781,8 @@ class PlaidClient {
       });
 
       const results = await response.json();
+      // A replayed batch carries the versions right after its first send.
+      const replayed = response.headers?.get?.(REPLAYED_HEADER) === "true";
 
       // Extract document versions from each batch response
       for (const result of results) {
@@ -3702,10 +3793,11 @@ class PlaidClient {
             );
             if (typeof versionsMap === "object" && versionsMap !== null) {
               // Clone once per response, then merge — not once per entry.
-              this.documentVersions = {
-                ...this.documentVersions,
-                ...versionsMap,
-              };
+              this.documentVersions = mergeVersions(
+                this.documentVersions,
+                versionsMap,
+                replayed,
+              );
             }
           } catch (e) {
             console.warn(
@@ -3721,8 +3813,10 @@ class PlaidClient {
         body: transformResponse(result.body),
       }));
     } catch (error) {
-      if (error.status) throw error;
-      throw makeNetworkError(error, url, "POST");
+      if (error.status !== undefined) throw error;
+      throw Object.assign(makeNetworkError(error, url, "POST"), {
+        idempotencyKey: key,
+      });
     }
   }
 
@@ -3928,6 +4022,7 @@ export {
   cpToUtf16,
   cpIndexOf,
 } from "./codepoint.js";
+export { composeTextEdits, gapsToOps, applyTextOps } from "./textEdits.js";
 export {
   PLAID_NAMESPACE,
   ROLE_KEY,
@@ -4004,4 +4099,7 @@ export {
 // The ids a create or bulk create answered with, off the call or its batch
 // result. See ./created.js.
 export { createdId, createdIds } from "./created.js";
+// UUIDv7 ids for what a client creates. See ./ids.js and the manual,
+// "Retrying a write".
+export { uuidv7 } from "./ids.js";
 export { MAX_BATCH_OPS };

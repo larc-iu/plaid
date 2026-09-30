@@ -63,6 +63,7 @@ from urllib.parse import quote
 from plaid_client import client as _client
 from plaid_client.document_lock import DocumentLock
 from plaid_client.http import BatchRef, PlaidAPIError
+from plaid_client.ids import uuid7
 from plaid_client.metadata_ops import apply_metadata_ops
 from plaid_client.services import CancelScope, requester_message
 from plaid_client.transforms import transform_request, transform_response
@@ -491,7 +492,8 @@ class Resource:
         """What a write records, what a batch's results carry for it, and
         what it answers made on the client."""
         if method == 'create':
-            new = writer.new_id(self._name)
+            # A create given the id to make it under answers that id.
+            new = arguments.get('id') or writer.new_id(self._name)
             if self._name == 'texts':
                 _root(self._client).text_bodies[new] = arguments.get('body') or ''
             return {'args': args, 'kwargs': kwargs}, {'body': {'id': new}}, {'id': new}
@@ -520,7 +522,7 @@ class Resource:
             answer = {**entity, 'metadata': metadata}
             return payload, {'body': answer}, answer
         if method in ('copy', 'split'):
-            new = writer.new_id(self._name)
+            new = arguments.get('id') or writer.new_id(self._name)
             return _payload(args, kwargs), {'body': {'id': new}}, {'id': new}
         return _payload(args, kwargs), {'body': {}}, {}
 
@@ -983,13 +985,18 @@ class FakeClient:
             raise
         batch.submit()
 
+    def key_seed(self):
+        """The real client's seed for an operation's Idempotency-Keys. The
+        fake sends no headers, so ``keys`` is accepted and ignored."""
+        return {'seed': uuid7(), 'stamps': {}}
+
     @contextlib.contextmanager
-    def operation(self, message, *, kind=None, ref=None):
+    def operation(self, message, *, kind=None, ref=None, group_id=None, keys=None):
         self.operations.append(message)
         self.operation_tags.append({'kind': kind, 'ref': ref})
         self.operation_labels.append(message)
         self.record('operation', message)
-        op = _Operation(f'op-{len(self.operations)}', self.operation_labels,
+        op = _Operation(group_id or f'op-{len(self.operations)}', self.operation_labels,
                         len(self.operations) - 1, self._operation_depth == 0)
         self._operation_depth += 1
         try:
@@ -1210,14 +1217,16 @@ class FakeClient:
                     and (not entity_type or r.get('entity_type') == entity_type)
                     and (not entity_id or r.get('entity_id') == entity_id)]
 
-        def create(self, entity_type, entity_id, body, *, anchor_label=None):
+        def create(self, entity_type, entity_id, body, *, anchor_label=None, id=None):
             writer = self._writer
             on_batch = isinstance(writer, _Batch)
             if on_batch:
                 writer.check_open('/api/v1/comments')
-            new = writer.new_id('comments')
+            new = id or writer.new_id('comments')
             writer.fail_if_asked('comments.create')
             kwargs = {} if anchor_label is None else {'anchor_label': anchor_label}
+            if id is not None:
+                kwargs['id'] = id
             comment = {'id': new, 'entity_type': entity_type, 'entity_id': entity_id,
                        'body': body, 'anchor_label': anchor_label, 'edited': False}
             writer.record('comments.create',
@@ -1279,8 +1288,9 @@ class FakeClient:
         def get(self, guideline_id):
             return dict(self._row(guideline_id, 'GET'))
 
-        def create(self, project_id, title, *, body=None, pinned=None, audit_message=None):
-            new = self._writer.new_id('guidelines')
+        def create(self, project_id, title, *, body=None, pinned=None, audit_message=None,
+                   id=None):
+            new = id or self._writer.new_id('guidelines')
             now = _now_iso()
             row = {'id': new, 'project': project_id, 'title': title, 'body': body or '',
                    'pinned': bool(pinned), 'created_at': now, 'updated_at': now}

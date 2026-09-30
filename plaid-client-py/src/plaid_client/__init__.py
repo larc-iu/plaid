@@ -41,6 +41,7 @@ from plaid_client.provenance import (
     WriterPolicy,
 )
 from plaid_client.created import created_id, created_ids
+from plaid_client.ids import uuid7
 from plaid_client.metadata_ops import (
     metadata_ops,
     apply_metadata_ops,
@@ -60,6 +61,7 @@ from plaid_client.text_edits import compose_text_edits, gaps_to_ops, apply_text_
 __all__ = [
     "created_id",
     "created_ids",
+    "uuid7",
     "PlaidClient",
     "PlaidAPIError",
     "DOCUMENT_LOCK_TTL_S",

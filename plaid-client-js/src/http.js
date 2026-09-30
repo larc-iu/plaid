@@ -1,5 +1,6 @@
 import { transformRequest, transformResponse } from "./transforms.js";
 import { takeRefs } from "./batchRef.js";
+import { uuidv7 } from "./ids.js";
 
 // ---------------------------------------------------------------------------
 // Batches: which calls a batch carries, and which go over the wire anyway.
@@ -92,6 +93,10 @@ export function extractDocumentVersions(
   responseBody = null,
   { historical = false } = {},
 ) {
+  // A replayed answer (see the Idempotency-Key note below) carries the
+  // versions right after the first send, and this page may have read newer
+  // ones since. Keep the higher of each.
+  const replayed = responseHeaders.get(REPLAYED_HEADER) === "true";
   // Past fifty documents the server leaves the list out and says how many it
   // left out. Any version held may be one of them, so all are forgotten, and
   // makeRequest reads the strict-mode document's again (learnOmittedVersion).
@@ -105,10 +110,11 @@ export function extractDocumentVersions(
       const versionsMap = JSON.parse(docVersionsHeader);
       if (typeof versionsMap === "object" && versionsMap !== null) {
         // Clone once, then assign — cloning inside the loop is O(n²) and pointless.
-        client.documentVersions = {
-          ...client.documentVersions,
-          ...versionsMap,
-        };
+        client.documentVersions = mergeVersions(
+          client.documentVersions,
+          versionsMap,
+          replayed,
+        );
       }
     } catch (e) {
       console.warn("Failed to parse document versions header:", e);
@@ -117,11 +123,29 @@ export function extractDocumentVersions(
 
   if (!historical && responseBody && typeof responseBody === "object") {
     if (responseBody["document/id"] && responseBody["document/version"]) {
-      client.documentVersions = { ...client.documentVersions };
-      client.documentVersions[responseBody["document/id"]] =
-        responseBody["document/version"];
+      client.documentVersions = mergeVersions(
+        client.documentVersions,
+        { [responseBody["document/id"]]: responseBody["document/version"] },
+        replayed,
+      );
     }
   }
+}
+
+/**
+ * `held` with `learned` merged in. A replayed answer only raises a version:
+ * it is what the document was right after the first send.
+ */
+export function mergeVersions(held, learned, replayed = false) {
+  if (!replayed) return { ...held, ...learned };
+  const merged = { ...held };
+  for (const [docId, version] of Object.entries(learned)) {
+    const current = merged[docId];
+    if (!(typeof current === "number" && current >= version)) {
+      merged[docId] = version;
+    }
+  }
+  return merged;
 }
 
 /**
@@ -210,6 +234,91 @@ export async function retryWhileBusy(
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// The Idempotency-Key.
+//
+// Every write that is not a signal (`outOfBand`), an upload (`noBatch`) or a
+// call that mints a secret (`noIdempotency`) goes out with an
+// `Idempotency-Key` header, and so does every batch request (a queued op has
+// none: its batch request carries one). The server keeps the answer to a
+// keyed write for a day, and the same key sent again for the same request is
+// answered from it with `Idempotent-Replayed: true`, writing nothing. So a
+// write whose answer was lost (no response, 502, 504) can be sent again
+// safely: it lands once. `makeRequest` and `_postBatch` do that three times
+// themselves (retryUnknown), and the error that escapes carries the key as
+// `idempotencyKey`.
+//
+// Inside a logical operation opened with `keys` (client.keySeed()), the nth
+// keyed request that joins it takes the key `<seed>.<n>` and, from its first
+// run, a pinned strict-mode stamp, so running the operation again from the
+// top sends byte for byte the requests the first run sent: those that landed
+// are replayed and the rest run. A request that does not join the operation
+// mints its own key.
+// ---------------------------------------------------------------------------
+
+export const IDEMPOTENCY_HEADER = "Idempotency-Key";
+export const REPLAYED_HEADER = "Idempotent-Replayed";
+
+// Delays before sending a keyed write again when its answer was lost.
+export const UNKNOWN_RETRY_DELAYS_MS = [1000, 3000, 9000];
+
+/**
+ * Whether `error` leaves the outcome unknown: no response came (status 0),
+ * or a proxy answered for the server (502, 504). The write may have landed.
+ */
+export function isUnknownOutcome(error) {
+  const status = error?.status;
+  return status === 0 || status === 502 || status === 504;
+}
+
+/**
+ * Run `attempt`, sending it again after each delay in `delaysMs` while it
+ * fails with an unknown outcome. Only for a keyed write, whose resend is
+ * answered from the first send when that one landed. Not when the browser
+ * says it is offline: then the request never left, and the caller waits for
+ * the network instead. Full jitter, as retryWhileBusy.
+ */
+export async function retryUnknown(
+  attempt,
+  { delaysMs = UNKNOWN_RETRY_DELAYS_MS, onRetry } = {},
+) {
+  for (let i = 0; ; i += 1) {
+    try {
+      return await attempt();
+    } catch (error) {
+      if (!isUnknownOutcome(error) || error.offline || i >= delaysMs.length) {
+        throw error;
+      }
+      const delay = Math.round(delaysMs[i] * (0.5 + Math.random()));
+      onRetry?.({ attempt: i + 1, retries: delaysMs.length, delay, error });
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
+/**
+ * The key for the next keyed request, and the strict-mode stamp it must
+ * claim when an earlier run of its operation already sent it. `joins` says
+ * whether the request joins the open logical operation.
+ * Returns `{ key, pin, record }`: `pin` is undefined when nothing is pinned,
+ * and `record(version)` pins what this request claimed, the first time.
+ */
+export function nextIdempotencyKey(client, joins) {
+  const group = client.operationGroup;
+  const keys = joins ? group?.keys : null;
+  if (!keys) return { key: uuidv7(), pin: undefined, record: () => {} };
+  const n = group.keyCount;
+  group.keyCount += 1;
+  const pinned = keys.stamps.has(n);
+  return {
+    key: `${keys.seed}.${n}`,
+    pin: pinned ? keys.stamps.get(n) : undefined,
+    record: (version) => {
+      if (!pinned) keys.stamps.set(n, version ?? null);
+    },
+  };
 }
 
 /**
@@ -341,6 +450,7 @@ export function prepareRequest(client, method, path, options = {}) {
     outOfBand,
     noOperation,
     auditMessage,
+    pinnedVersion,
   } = options;
 
   // A write must not go out on a lock that lapsed. `documents.locked()`
@@ -392,14 +502,21 @@ export function prepareRequest(client, method, path, options = {}) {
   // into several requests can restamp its later ones (see submitBatch). An
   // out-of-band signal (a lock, a service's progress, a query) is no write of
   // the document and carries none.
+  // A resend of an operation's request claims what its first run claimed
+  // (`pinnedVersion`, null for no claim), so the two are the same request.
   let stampedDocument = null;
+  let stampedVersion = null;
   if (client.strictModeDocumentId && method !== "GET" && !outOfBand) {
     const docId = client.strictModeDocumentId;
-    if (client.documentVersions[docId]) {
-      const docVersion = client.documentVersions[docId];
+    const docVersion =
+      pinnedVersion !== undefined
+        ? pinnedVersion
+        : client.documentVersions[docId];
+    if (docVersion) {
       const separator = url.includes("?") ? "&" : "?";
       url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
       stampedDocument = docId;
+      stampedVersion = docVersion;
     }
   }
 
@@ -440,7 +557,31 @@ export function prepareRequest(client, method, path, options = {}) {
     stampedGroup = group;
   }
 
-  return { url, requestBody, stampedDocument, stampedGroup };
+  return { url, requestBody, stampedDocument, stampedVersion, stampedGroup };
+}
+
+/**
+ * Whether a write joins the open logical operation (see prepareRequest).
+ */
+export function joinsOperation(client, method, options = {}) {
+  return Boolean(
+    client.operationGroup &&
+      method !== "GET" &&
+      !options.outOfBand &&
+      !options.noOperation,
+  );
+}
+
+/**
+ * Whether a call made on the client goes out with an Idempotency-Key.
+ */
+export function takesIdempotencyKey(method, options = {}) {
+  return (
+    method !== "GET" &&
+    !options.outOfBand &&
+    !options.noBatch &&
+    !options.noIdempotency
+  );
 }
 
 /**
@@ -590,12 +731,17 @@ export async function makeRequest(client, method, path, options = {}) {
   if (method !== "GET" && omittedStrictDocument(client)) {
     await learnOmittedVersion(client);
   }
-  const { url, requestBody, stampedGroup } = prepareRequest(
+  const keyed = takesIdempotencyKey(method, options);
+  const { key, pin, record } = keyed
+    ? nextIdempotencyKey(client, joinsOperation(client, method, options))
+    : {};
+  const { url, requestBody, stampedGroup, stampedVersion } = prepareRequest(
     client,
     method,
     path,
-    options,
+    keyed ? { ...options, pinnedVersion: pin } : options,
   );
+  if (keyed) record(stampedVersion);
 
   // Build fetch options
   const headers = {};
@@ -605,6 +751,7 @@ export async function makeRequest(client, method, path, options = {}) {
   if (!formData) {
     headers["Content-Type"] = "application/json";
   }
+  if (keyed) headers[IDEMPOTENCY_HEADER] = key;
 
   const fetchOptions = { method, headers };
   if (requestBody !== undefined) {
@@ -625,16 +772,31 @@ export async function makeRequest(client, method, path, options = {}) {
     return fetch(url, signal ? { ...fetchOptions, signal } : fetchOptions);
   };
 
+  // One attempt: a 503, and for a keyed write a 502 or 504, surfaces as a
+  // throw so the retries below can see it. Other failures are thrown from
+  // the checks after it.
+  const attempt = async () => {
+    let res;
+    try {
+      res = await send();
+    } catch (e) {
+      throw makeNetworkError(e, url, method);
+    }
+    if (
+      res.status === 503 ||
+      (keyed && (res.status === 502 || res.status === 504))
+    ) {
+      throw makeHttpError(res, await parseErrorBody(res), url, method);
+    }
+    return res;
+  };
+
   try {
-    const response = await retryWhileBusy(async () => {
-      const res = await send();
-      // Surface a 503 as a throw so retryWhileBusy can see it; other failures
-      // are re-thrown from here and handled by the caller below.
-      if (res.status === 503) {
-        throw makeHttpError(res, await parseErrorBody(res), url, method);
-      }
-      return res;
-    });
+    const response = keyed
+      ? await retryUnknown(() => retryWhileBusy(attempt), {
+          delaysMs: client.retryDelaysMs,
+        })
+      : await retryWhileBusy(attempt);
     noteServerClock(client, response.headers);
 
     if (!response.ok) {
@@ -689,9 +851,9 @@ export async function makeRequest(client, method, path, options = {}) {
       return await response.text();
     }
   } catch (error) {
-    if (error.status !== undefined) {
-      throw error;
-    }
-    throw makeNetworkError(error, url, method);
+    const escaped =
+      error.status !== undefined ? error : makeNetworkError(error, url, method);
+    if (keyed) escaped.idempotencyKey = key;
+    throw escaped;
   }
 }

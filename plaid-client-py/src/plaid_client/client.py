@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import time
+import urllib.parse
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -17,8 +18,10 @@ from plaid_client.http import (
     PlaidAPIError, make_request, queue_request, extract_document_versions,
     restamp_document_version, BatchRef, make_batch_ref, rebase_refs, _unsendable,
     list_all, list_page, iter_pages, build_api_error, retry_while_busy,
-    DEFAULT_TIMEOUT_S, DEFAULT_BATCH_TIMEOUT_S,
+    retry_unknown, next_idempotency_key, merge_versions, is_replayed, NO_PIN,
+    IDEMPOTENCY_HEADER, DEFAULT_TIMEOUT_S, DEFAULT_BATCH_TIMEOUT_S,
 )
+from plaid_client.ids import uuid7
 from plaid_client.transforms import transform_response
 from plaid_client.sse import SSEConnection
 
@@ -116,7 +119,8 @@ class _Resource:
 
 
 class VocabLinksResource(_Resource):
-    def create(self, vocab_item: str, tokens: list, metadata: Any = _UNSET, audit_message=None) -> Any:
+    def create(self, vocab_item: str, tokens: list, metadata: Any = _UNSET, audit_message=None,
+               *, id: str | None = None) -> Any:
         """Create a new vocab link between tokens and a vocab item.
 
         Args:
@@ -124,9 +128,13 @@ class VocabLinksResource(_Resource):
             tokens: The tokens to link
             metadata: Metadata for the link. Omit to leave unset; pass ``None``
                 to send JSON null.
+            id: Optional. The id to create it under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), so a create sent again after
+                its answer was lost lands once (409 with ``id_taken`` when the
+                id was used before).
         """
         return self._request('POST', '/api/v1/vocab-links',
-                             body=_body_of(vocab_item=vocab_item, tokens=tokens, metadata=metadata), audit_message=audit_message)
+                             body=_body_of(id=_UNSET if id is None else id, vocab_item=vocab_item, tokens=tokens, metadata=metadata), audit_message=audit_message)
 
     def bulk_create(self, body: list, audit_message=None) -> dict:
         """Create multiple vocab links in a single operation.
@@ -395,16 +403,20 @@ class VocabLayersResource(_Resource):
         return iter_pages(self._client, '/api/v1/vocab-layers',
                           page_size=page_size)
 
-    def create(self, name: str, audit_message=None) -> Any:
+    def create(self, name: str, audit_message=None, *, id: str | None = None) -> Any:
         """Create a new vocab layer.
 
         Also registers the current user as a maintainer.
 
         Args:
             name: The name
+            id: Optional. The id to create it under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), so a create sent again after
+                its answer was lost lands once (409 with ``id_taken`` when the
+                id was used before).
         """
         return self._request('POST', '/api/v1/vocab-layers',
-                             body=_body_of(name=name), audit_message=audit_message)
+                             body=_body_of(id=_UNSET if id is None else id, name=name), audit_message=audit_message)
 
     def add_maintainer(self, id: str, user_id: str, audit_message=None) -> Any:
         """Assign a user as a maintainer for this vocab layer.
@@ -509,7 +521,7 @@ class RelationsResource(_Resource):
                              body=_body_of(value=value), audit_message=audit_message)
 
     def create(self, layer_id: str, source_id: str, target_id: str, value: Any,
-               metadata: Any = _UNSET, audit_message=None) -> Any:
+               metadata: Any = _UNSET, audit_message=None, *, id: str | None = None) -> Any:
         """Create a new relation.
 
         A relation is a directed edge between two spans with a value, useful
@@ -522,9 +534,13 @@ class RelationsResource(_Resource):
             value: The value
             metadata: Metadata map. Omit to leave unset; pass ``None`` to send
                 JSON null.
+            id: Optional. The id to create it under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), so a create sent again after
+                its answer was lost lands once (409 with ``id_taken`` when the
+                id was used before).
         """
         return self._request('POST', '/api/v1/relations',
-                             body=_body_of(layer_id=layer_id, source_id=source_id,
+                             body=_body_of(id=_UNSET if id is None else id, layer_id=layer_id, source_id=source_id,
                                            target_id=target_id, value=value, metadata=metadata), audit_message=audit_message)
 
     def bulk_create(self, body: list, audit_message=None) -> dict:
@@ -633,15 +649,20 @@ class SpanLayersResource(_Resource):
         return self._request('POST', f'/api/v1/span-layers/{span_layer_id}/shift',
                              body=_body_of(direction=direction), audit_message=audit_message)
 
-    def create(self, token_layer_id: str, name: str, audit_message=None) -> Any:
+    def create(self, token_layer_id: str, name: str, audit_message=None, *,
+               id: str | None = None) -> Any:
         """Create a new span layer.
 
         Args:
             token_layer_id: The token layer ID
             name: The name
+            id: Optional. The id to create it under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), so a create sent again after
+                its answer was lost lands once (409 with ``id_taken`` when the
+                id was used before).
         """
         return self._request('POST', '/api/v1/span-layers',
-                             body=_body_of(token_layer_id=token_layer_id, name=name), audit_message=audit_message)
+                             body=_body_of(id=_UNSET if id is None else id, token_layer_id=token_layer_id, name=name), audit_message=audit_message)
 
 
 class SpansResource(_Resource):
@@ -717,7 +738,8 @@ class SpansResource(_Resource):
         return self._request('PATCH', f'/api/v1/spans/{span_id}',
                              body=_body_of(value=value), audit_message=audit_message)
 
-    def create(self, span_layer_id: str, tokens: list, value: Any, metadata: Any = _UNSET, audit_message=None) -> Any:
+    def create(self, span_layer_id: str, tokens: list, value: Any, metadata: Any = _UNSET,
+               audit_message=None, *, id: str | None = None) -> Any:
         """Create a new span.
 
         A span holds a primary atomic value and optional metadata, and must
@@ -729,9 +751,13 @@ class SpansResource(_Resource):
             value: The value
             metadata: Metadata map. Omit to leave unset; pass ``None`` to send
                 JSON null.
+            id: Optional. The id to create it under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), so a create sent again after
+                its answer was lost lands once (409 with ``id_taken`` when the
+                id was used before).
         """
         return self._request('POST', '/api/v1/spans',
-                             body=_body_of(span_layer_id=span_layer_id, tokens=tokens,
+                             body=_body_of(id=_UNSET if id is None else id, span_layer_id=span_layer_id, tokens=tokens,
                                            value=value, metadata=metadata), audit_message=audit_message)
 
     def bulk_create(self, body: list, audit_message=None) -> dict:
@@ -777,7 +803,7 @@ class SpansResource(_Resource):
 
 class TextsResource(_Resource):
     def create(self, text_layer_id: str, document_id: str, body: str,
-               metadata: Any = _UNSET, audit_message=None) -> Any:
+               metadata: Any = _UNSET, audit_message=None, *, id: str | None = None) -> Any:
         """Create a new text in a document's text layer.
 
         A text is a container for one long string in ``body`` for a given layer.
@@ -788,9 +814,13 @@ class TextsResource(_Resource):
             body: The request body
             metadata: Metadata map. Omit to leave unset; pass ``None`` to send
                 JSON null.
+            id: Optional. The id to create it under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), so a create sent again after
+                its answer was lost lands once (409 with ``id_taken`` when the
+                id was used before).
         """
         return self._request('POST', '/api/v1/texts',
-                             body=_body_of(text_layer_id=text_layer_id, document_id=document_id,
+                             body=_body_of(id=_UNSET if id is None else id, text_layer_id=text_layer_id, document_id=document_id,
                                            body=body, metadata=metadata), audit_message=audit_message)
 
     def get(self, text_id: str) -> Any:
@@ -814,7 +844,7 @@ class TextsResource(_Resource):
 
         A diff is computed and token indices are updated so that tokens
         remain intact. Alternatively, ``body`` can be a list of edit
-        directives.
+        directives, applied exactly as sent.
 
         Args:
             text_id: The text ID
@@ -1124,8 +1154,10 @@ class ApiTokensResource(_Resource):
         Returns:
             A dict with ``id``, ``name`` and ``token``.
         """
+        # no_idempotency: the answer is the secret, which the server never keeps.
         return self._request('POST', f'/api/v1/users/{user_id}/tokens',
-                             body=_body_of(name=name), audit_message=audit_message)
+                             body=_body_of(name=name), audit_message=audit_message,
+                             no_idempotency=True)
 
     def revoke(self, user_id: str, token_id: str, audit_message=None) -> Any:
         """Revoke a named API token (soft-revoke; idempotent).
@@ -1242,7 +1274,7 @@ class CommentsResource(_Resource):
     caption passed when it was posted."""
 
     def create(self, entity_type: str, entity_id: str, body: str, *,
-               anchor_label: str | None = None) -> Any:
+               anchor_label: str | None = None, id: str | None = None) -> Any:
         """Post a comment on an entity.
 
         Args:
@@ -1252,9 +1284,13 @@ class CommentsResource(_Resource):
             body: The comment text (1..10000 characters)
             anchor_label: What the comment is about, in words (at most 200
                 characters); shown once the anchor has been deleted
+            id: Optional. The id to create it under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), so a create sent again after
+                its answer was lost lands once (409 with ``id_taken`` when the
+                id was used before).
         """
         return self._request('POST', '/api/v1/comments',
-                             body=_body_of(entity_type=entity_type, entity_id=entity_id, body=body,
+                             body=_body_of(id=_UNSET if id is None else id, entity_type=entity_type, entity_id=entity_id, body=body,
                                            anchor_label=_UNSET if anchor_label is None else anchor_label))
 
     def get(self, comment_id: str) -> Any:
@@ -1411,7 +1447,7 @@ class GuidelinesResource(_Resource):
 
     def create(self, project_id: str, title: str, *,
                body: str | None = None, pinned: bool | None = None,
-               audit_message=None) -> Any:
+               audit_message=None, id: str | None = None) -> Any:
         """Create a guideline in a project.
 
         Args:
@@ -1420,9 +1456,13 @@ class GuidelinesResource(_Resource):
             body: The Markdown text (up to 20000 characters; may be empty)
             pinned: Send this one to the assistant in full on every turn
             audit_message: Message recorded on the operation
+            id: Optional. The id to create it under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), so a create sent again after
+                its answer was lost lands once (409 with ``id_taken`` when the
+                id was used before).
         """
         return self._request('POST', f'/api/v1/projects/{project_id}/guidelines',
-                             body=_body_of(title=title,
+                             body=_body_of(id=_UNSET if id is None else id, title=title,
                                            body=_UNSET if body is None else body,
                                            pinned=_UNSET if pinned is None else pinned),
                              audit_message=audit_message)
@@ -1600,7 +1640,9 @@ class InvitesResource(_Resource):
                              body=_body_of(project_id=project_id, project_role=project_role,
                                            grant_admin=grant_admin, target_user_id=target_user_id,
                                            max_uses=max_uses, ttl_days=ttl_days, note=note),
-                             audit_message=audit_message)
+                             audit_message=audit_message,
+                             # The answer is the code, which the server never keeps.
+                             no_idempotency=True)
 
     def revoke(self, invite_id: str, audit_message=None) -> Any:
         """Revoke an invite, killing the link immediately.
@@ -1681,7 +1723,8 @@ class TokenLayersResource(_Resource):
                              body=_body_of(direction=direction), audit_message=audit_message)
 
     def create(self, text_layer_id: str, name: str, *, overlap_mode: Any = _UNSET,
-               parent_token_layer_id: Any = _UNSET, audit_message=None) -> Any:
+               parent_token_layer_id: Any = _UNSET, audit_message=None,
+               id: str | None = None) -> Any:
         """Create a new token layer.
 
         ``overlap_mode`` sets a per-layer, immutable invariant on the layer's
@@ -1707,9 +1750,14 @@ class TokenLayersResource(_Resource):
                 leave unset; pass ``None`` to send JSON null.
             parent_token_layer_id: Optional immutable parent token layer. Omit
                 to leave unset; pass ``None`` to send JSON null.
+            id: Optional. The id to create it under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), so a create sent again after
+                its answer was lost lands once (409 with ``id_taken`` when the
+                id was used before).
         """
         return self._request('POST', '/api/v1/token-layers',
-                             body=_body_of(text_layer_id=text_layer_id, name=name,
+                             body=_body_of(id=_UNSET if id is None else id,
+                                           text_layer_id=text_layer_id, name=name,
                                            overlap_mode=overlap_mode,
                                            parent_token_layer_id=parent_token_layer_id), audit_message=audit_message)
 
@@ -2005,7 +2053,8 @@ class DocumentsResource(_Resource):
         return self._request('PATCH', f'/api/v1/documents/{document_id}',
                              body=_body_of(name=name), audit_message=audit_message)
 
-    def create(self, project_id: str, name: str, metadata: Any = _UNSET, audit_message=None) -> Any:
+    def create(self, project_id: str, name: str, metadata: Any = _UNSET, audit_message=None,
+               *, id: str | None = None) -> Any:
         """Create a new document in a project.
 
         Args:
@@ -2013,9 +2062,13 @@ class DocumentsResource(_Resource):
             name: The name
             metadata: Metadata map. Omit to leave unset; pass ``None`` to send
                 JSON null.
+            id: Optional. The id to create it under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), so a create sent again after
+                its answer was lost lands once (409 with ``id_taken`` when the
+                id was used before).
         """
         return self._request('POST', '/api/v1/documents',
-                             body=_body_of(project_id=project_id, name=name, metadata=metadata), audit_message=audit_message)
+                             body=_body_of(id=_UNSET if id is None else id, project_id=project_id, name=name, metadata=metadata), audit_message=audit_message)
 
     def set_metadata(self, document_id: str, body: Any, audit_message=None) -> Any:
         """Replace all metadata for a document.
@@ -2123,7 +2176,7 @@ class DocumentsResource(_Resource):
                              audit_message=audit_message)
 
     def copy(self, document_id: str, name: str, *, include_media: Any = _UNSET,
-             audit_message: str | None = None) -> Any:
+             audit_message: str | None = None, id: str | None = None) -> Any:
         """Copy a document and everything in it, as one operation.
 
         The copy lands in the same project, sharing the source's layers and
@@ -2139,9 +2192,13 @@ class DocumentsResource(_Resource):
             include_media: Omit to take the media file along; False leaves it
                 behind
             audit_message: Custom audit message for this operation
+            id: Optional. The id to create the copy under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), so a create sent again after
+                its answer was lost lands once (409 with ``id_taken`` when the
+                id was used before).
         """
         return self._request('POST', f'/api/v1/documents/{document_id}/copy',
-                             body=_body_of(name=name, include_media=include_media),
+                             body=_body_of(id=_UNSET if id is None else id, name=name, include_media=include_media),
                              audit_message=audit_message)
 
 
@@ -2318,16 +2375,20 @@ class MessagesResource(_Resource):
 
 
 class ProjectsResource(_Resource):
-    def create(self, name: str, audit_message=None) -> Any:
+    def create(self, name: str, audit_message=None, *, id: str | None = None) -> Any:
         """Create a new project.
 
         Also registers the current user as a maintainer.
 
         Args:
             name: The name
+            id: Optional. The id to create it under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), so a create sent again after
+                its answer was lost lands once (409 with ``id_taken`` when the
+                id was used before).
         """
         return self._request('POST', '/api/v1/projects',
-                             body=_body_of(name=name), audit_message=audit_message)
+                             body=_body_of(id=_UNSET if id is None else id, name=name), audit_message=audit_message)
 
     def list(self) -> Any:
         """List all projects accessible to the current user.
@@ -2663,19 +2724,25 @@ class TextLayersResource(_Resource):
         return self._request('POST', f'/api/v1/text-layers/{text_layer_id}/shift',
                              body=_body_of(direction=direction), audit_message=audit_message)
 
-    def create(self, project_id: str, name: str, audit_message=None) -> Any:
+    def create(self, project_id: str, name: str, audit_message=None, *,
+               id: str | None = None) -> Any:
         """Create a new text layer for a project.
 
         Args:
             project_id: The project ID
             name: The name
+            id: Optional. The id to create it under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), so a create sent again after
+                its answer was lost lands once (409 with ``id_taken`` when the
+                id was used before).
         """
         return self._request('POST', '/api/v1/text-layers',
-                             body=_body_of(project_id=project_id, name=name), audit_message=audit_message)
+                             body=_body_of(id=_UNSET if id is None else id, project_id=project_id, name=name), audit_message=audit_message)
 
 
 class VocabItemsResource(_Resource):
-    def create(self, vocab_layer_id: str, form: str, metadata: Any = _UNSET, audit_message=None) -> Any:
+    def create(self, vocab_layer_id: str, form: str, metadata: Any = _UNSET, audit_message=None,
+               *, id: str | None = None) -> Any:
         """Create a new vocab item.
 
         Args:
@@ -2683,9 +2750,13 @@ class VocabItemsResource(_Resource):
             form: The vocab item form
             metadata: Metadata map. Omit to leave unset; pass ``None`` to send
                 JSON null.
+            id: Optional. The id to create it under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), so a create sent again after
+                its answer was lost lands once (409 with ``id_taken`` when the
+                id was used before).
         """
         return self._request('POST', '/api/v1/vocab-items',
-                             body=_body_of(vocab_layer_id=vocab_layer_id, form=form, metadata=metadata), audit_message=audit_message)
+                             body=_body_of(id=_UNSET if id is None else id, vocab_layer_id=vocab_layer_id, form=form, metadata=metadata), audit_message=audit_message)
 
     def bulk_create(self, body: list, audit_message=None) -> dict:
         """Create multiple vocab items in a single operation.
@@ -2898,15 +2969,20 @@ class RelationLayersResource(_Resource):
         return self._request('POST', f'/api/v1/relation-layers/{relation_layer_id}/shift',
                              body=_body_of(direction=direction), audit_message=audit_message)
 
-    def create(self, span_layer_id: str, name: str, audit_message=None) -> Any:
+    def create(self, span_layer_id: str, name: str, audit_message=None, *,
+               id: str | None = None) -> Any:
         """Create a new relation layer.
 
         Args:
             span_layer_id: The span layer ID
             name: The name
+            id: Optional. The id to create it under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), so a create sent again after
+                its answer was lost lands once (409 with ``id_taken`` when the
+                id was used before).
         """
         return self._request('POST', '/api/v1/relation-layers',
-                             body=_body_of(span_layer_id=span_layer_id, name=name), audit_message=audit_message)
+                             body=_body_of(id=_UNSET if id is None else id, span_layer_id=span_layer_id, name=name), audit_message=audit_message)
 
 
 class TokensResource(_Resource):
@@ -2987,7 +3063,8 @@ class TokensResource(_Resource):
                              body=_body_of(begin=begin, end=end, precedence=precedence), audit_message=audit_message)
 
     def create(self, token_layer_id: str, text: str, begin: int, end: int, *,
-               precedence: Any = _UNSET, metadata: Any = _UNSET, audit_message=None) -> Any:
+               precedence: Any = _UNSET, metadata: Any = _UNSET, audit_message=None,
+               id: str | None = None) -> Any:
         """Create a new token in a token layer.
 
         Tokens define text substrings using ``begin`` and ``end`` offsets.
@@ -3008,9 +3085,13 @@ class TokensResource(_Resource):
                 to send JSON null.
             metadata: Metadata map. Omit to leave unset; pass ``None`` to send
                 JSON null.
+            id: Optional. The id to create it under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), so a create sent again after
+                its answer was lost lands once (409 with ``id_taken`` when the
+                id was used before).
         """
         return self._request('POST', '/api/v1/tokens',
-                             body=_body_of(token_layer_id=token_layer_id, text=text,
+                             body=_body_of(id=_UNSET if id is None else id, token_layer_id=token_layer_id, text=text,
                                            begin=begin, end=end, precedence=precedence,
                                            metadata=metadata), audit_message=audit_message)
 
@@ -3052,7 +3133,7 @@ class TokensResource(_Resource):
         return self._request('PATCH', '/api/v1/tokens/bulk', body=body, audit_message=audit_message)
 
     def split(self, token_id: str, position: int, audit_message=None,
-              drop_crossing_relations: Any = _UNSET) -> Any:
+              drop_crossing_relations: Any = _UNSET, *, id: str | None = None) -> Any:
         """Split a token at a Unicode code-point offset.
 
         The original token becomes the left half (keeping its ID, spans, and
@@ -3067,9 +3148,13 @@ class TokensResource(_Resource):
                 tree). Every relation of those layers that had both ends inside
                 the token and now has one on each side is deleted in the same
                 operation, read from what is stored.
+            id: Optional. The id to create the right half under, a UUIDv7 this client
+                minted (``plaid_client.uuid7()``), so a create sent again after
+                its answer was lost lands once (409 with ``id_taken`` when the
+                id was used before).
         """
         return self._request('POST', f'/api/v1/tokens/{token_id}/split',
-                             body=_body_of(position=position, drop_crossing_relations=drop_crossing_relations),
+                             body=_body_of(id=_UNSET if id is None else id, position=position, drop_crossing_relations=drop_crossing_relations),
                              audit_message=audit_message)
 
     def merge(self, token_id: str, other_token_id: str, audit_message=None) -> Any:
@@ -3520,9 +3605,16 @@ def _install_resources(target):
     target.operation_groups = OperationGroupsResource(target)
 
 
+def _claimed_version(path):
+    """The document-version an op's path claims, as an int, or None."""
+    query = path.split('?', 1)[1] if '?' in path else ''
+    values = urllib.parse.parse_qs(query).get('document-version')
+    return int(values[0]) if values else None
+
+
 class PlaidClient:
     def __init__(self, base_url: str, token: str, timeout: float | None = DEFAULT_TIMEOUT_S,
-                 batch_timeout: float | None = _UNSET):
+                 batch_timeout: float | None = _UNSET, retry_delays: list[float] | None = None):
         """Create a new PlaidClient instance.
 
         Args:
@@ -3535,6 +3627,9 @@ class PlaidClient:
                 aborting one does NOT stop the server, which keeps running the
                 transaction and holding the single SQLite write lock. Defaults
                 to ``timeout`` when that was given explicitly and this was not.
+            retry_delays: Delays in seconds before sending a keyed write again
+                when its answer was lost (no response, 502 or 504). Default
+                ``[1.0, 3.0, 9.0]``. See the Idempotency-Key note in http.py.
         """
         self.base_url = base_url.rstrip('/')
         self.token = token
@@ -3545,6 +3640,9 @@ class PlaidClient:
             self.batch_timeout = timeout
         else:
             self.batch_timeout = DEFAULT_BATCH_TIMEOUT_S
+        # Delays (seconds) before sending a keyed write again when its answer
+        # was lost (no response, 502, 504). None for the default.
+        self.retry_delays = None if retry_delays is None else list(retry_delays)
         self.document_versions: dict[str, str] = {}
         # The server's clock minus this machine's, in seconds, from the last
         # response with a Date header (None before one). See server_now().
@@ -3557,7 +3655,8 @@ class PlaidClient:
         # The open logical operation (audit-log group), or None. While set, every
         # write is stamped with ``?group-id=`` (+ ``group-message``) so the audit
         # log folds them into ONE expandable entry. See begin_operation /
-        # operation(). Shape: {'id', 'message', 'kind', 'ref', 'depth', 'written', 'refined'}.
+        # operation(). Shape: {'id', 'message', 'kind', 'ref', 'depth', 'written', 'refined',
+        # 'keys', 'key_count'}.
         self._operation_group: dict | None = None
         self.session = req_lib.Session()
 
@@ -3635,7 +3734,8 @@ class PlaidClient:
         self.strict_mode_document_id = None
 
     def begin_operation(self, message: str | None, *, group_id: str | None = None,
-                        kind: str | None = None, ref: str | None = None) -> str:
+                        kind: str | None = None, ref: str | None = None,
+                        keys: dict | None = None) -> str:
         """Begin a LOGICAL OPERATION: a user-meaningful action ("Merge
         morphemes", "Re-transcribe") implemented as many low-level writes,
         possibly across several batches and even a service round-trip. Until
@@ -3671,6 +3771,14 @@ class PlaidClient:
         operation"). Both are recorded from the first write like the label,
         and a nested operation keeps the outer one's.
 
+        ``keys`` (from ``key_seed()``) makes a run of the operation send the
+        same requests as an earlier run with the same keys: the nth keyed
+        request that joins it takes the Idempotency-Key ``<seed>.<n>`` and the
+        document-version its first run claimed, so a request that landed is
+        answered from its first send and writes nothing again. The count
+        starts at 0 at each outermost begin. A nested operation joins the
+        outer one's keys.
+
         Prefer the ``operation()`` context manager; this is the manual form.
 
         Args:
@@ -3680,6 +3788,7 @@ class PlaidClient:
                 this automatically from the propagated ``operation_group`` field).
             kind: Optional. What kind of operation this is (see above).
             ref: Optional. What the operation refers to (see above).
+            keys: Optional. A seed from ``key_seed()`` (see above).
 
         Returns:
             The operation's group id.
@@ -3695,8 +3804,22 @@ class PlaidClient:
             'depth': 1,
             'written': False,
             'refined': _UNSET_MESSAGE,
+            'keys': keys or None,
+            'key_count': 0,
         }
         return self._operation_group['id']
+
+    def key_seed(self) -> dict:
+        """A seed for the Idempotency-Keys of a logical operation that may be
+        run again from the top (see ``begin_operation``'s ``keys``). Keep it
+        with the work it belongs to and pass it to every run.
+
+        Returns:
+            ``{'seed': <UUIDv7>, 'stamps': {}}``, where ``stamps`` comes to
+            map each request's number to the version it claimed (None for
+            none).
+        """
+        return {'seed': uuid7(), 'stamps': {}}
 
     def end_operation(self, message: str | None | object = _UNSET_MESSAGE) -> None:
         """End the current logical operation. With no argument this is purely
@@ -3727,7 +3850,8 @@ class PlaidClient:
                     raise
 
     @contextmanager
-    def operation(self, message: str, *, kind: str | None = None, ref: str | None = None):
+    def operation(self, message: str, *, kind: str | None = None, ref: str | None = None,
+                  group_id: str | None = None, keys: dict | None = None):
         """Run the block as one logical operation (see ``begin_operation``),
         ending it when the block exits — including on exception. The yielded
         object's ``set_message(msg)`` refines the label once the outcome is
@@ -3753,8 +3877,10 @@ class PlaidClient:
             message: Human label for the operation (shown as the audit-log entry).
             kind: Optional. What kind of operation this is.
             ref: Optional. What the operation refers to.
+            group_id: Optional. Adopt an existing group id (see ``begin_operation``).
+            keys: Optional. A seed from ``key_seed()`` (see ``begin_operation``).
         """
-        self.begin_operation(message, kind=kind, ref=ref)
+        self.begin_operation(message, group_id=group_id, kind=kind, ref=ref, keys=keys)
         group = self._operation_group
         ctx = _OperationContext(group)
         try:
@@ -3806,7 +3932,14 @@ class PlaidClient:
         ``stamped_documents`` names, index for index, the document each op's
         strict-mode stamp is for (None for none), and ``stamped_groups`` the
         logical operation each joined (None for none), marked written once
-        the request holding it is taken."""
+        the request holding it is taken.
+
+        Each request goes with an Idempotency-Key of its own, minted as the
+        request is formed. A request whose answer is lost (no response, 502,
+        504) is sent again under it, and answered from the first send if that
+        landed. Inside an operation opened with ``keys``, a request whose ops
+        joined it takes the operation's next key and claims the version its
+        first run claimed."""
         url = f'{self.base_url}/api/v1/batch'
         # Each request is atomic, the whole is not: a failure leaves the
         # requests before it saved. The error says so, as ``committed`` (how
@@ -3838,29 +3971,70 @@ class PlaidClient:
                        if start > 0 and 'refs' in op else op
                        for op in ops[start:start + MAX_BATCH_OPS]]
                       for start in range(0, len(ops), MAX_BATCH_OPS)]
+            groups = stamped_groups or [None] * len(ops)
             for start, body in zip(range(0, len(ops), MAX_BATCH_OPS), chunks):
-                if start > 0:
+                chunk_stamps = stamps[start:start + MAX_BATCH_OPS]
+                # One Idempotency-Key per request, minted as the request is
+                # formed. Inside an operation opened with keys, a request
+                # whose ops joined it takes the operation's next key and
+                # claims the version its first run claimed.
+                group = self._operation_group
+                joins = group is not None and any(
+                    g is group for g in groups[start:start + MAX_BATCH_OPS])
+                key, pin, record = next_idempotency_key(self, joins)
+
+                def claim(doc_id, pin=pin):
+                    return pin if pin is not NO_PIN else self.document_versions.get(doc_id)
+
+                if start > 0 or pin is not NO_PIN:
                     body = [
-                        {**op, 'path': restamp_document_version(
-                            op['path'], self.document_versions.get(doc_id))}
+                        {**op, 'path': restamp_document_version(op['path'], claim(doc_id))}
                         if doc_id else op
-                        for op, doc_id in zip(body, stamps[start:start + MAX_BATCH_OPS])
+                        for op, doc_id in zip(body, chunk_stamps)
                     ]
+                # Pin what the request actually claims: the first stamped
+                # op's version as its path now carries it.
+                stamped = next((op for op, d in zip(body, chunk_stamps) if d), None)
+                record(_claimed_version(stamped['path']) if stamped else None)
+                request_headers = {**headers, IDEMPOTENCY_HEADER: key}
 
                 # Retry a 503: the batch is atomic, so a refused one wrote
                 # nothing and repeating it is safe. The batch timeout is its
                 # own, longer budget — giving up here does not stop the
                 # server's transaction.
-                def attempt(body=body):
-                    resp = self.session.post(url, headers=headers,
-                                             data=json.dumps(body, default=_unsendable),
-                                             timeout=self.batch_timeout)
+                # Retry a 503: the batch is atomic, so a refused one wrote
+                # nothing. And send it again under its key when the answer
+                # was lost (no response, 502, 504): a resend of one that
+                # landed is answered from its first send.
+                # Encoded once, before anything goes: a body that cannot be
+                # sent is the caller's mistake, never an unknown outcome.
+                data = json.dumps(body, default=_unsendable)
+
+                def attempt(data=data, request_headers=request_headers):
+                    try:
+                        resp = self.session.post(url, headers=request_headers, data=data,
+                                                 timeout=self.batch_timeout)
+                    except PlaidAPIError:
+                        raise
+                    except Exception as e:
+                        if type(e).__name__ in ('Timeout', 'ConnectTimeout', 'ReadTimeout'):
+                            raise PlaidAPIError(f'Request timed out at {url}', url=url,
+                                                method='POST', original_error=e) from e
+                        raise PlaidAPIError(f'Network error: {e} at {url}', url=url,
+                                            method='POST', original_error=e) from e
                     if not resp.ok:
                         raise build_api_error(resp, url, 'POST')
                     return resp
 
-                response = retry_while_busy(attempt)
+                try:
+                    response = retry_unknown(lambda: retry_while_busy(attempt),
+                                             self.retry_delays)
+                except PlaidAPIError as e:
+                    e.idempotency_key = key
+                    raise
                 results = response.json()
+                # A replayed batch carries the versions right after its first send.
+                replayed = is_replayed(getattr(response, 'headers', None))
                 # The server took the request, so each operation it joined exists.
                 for group in (stamped_groups or [])[start:start + MAX_BATCH_OPS]:
                     if group is not None:
@@ -3873,7 +4047,8 @@ class PlaidClient:
                             try:
                                 versions_map = json.loads(dv_header)
                                 if isinstance(versions_map, dict):
-                                    self.document_versions.update(versions_map)
+                                    self.document_versions.update(merge_versions(
+                                        self.document_versions, versions_map, replayed))
                             except (json.JSONDecodeError, TypeError):
                                 pass
 

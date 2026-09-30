@@ -159,6 +159,7 @@ interface VocabLinksBundle {
     tokens: any[],
     metadata?: any,
     auditMessage?: string,
+    opts?: { id?: string },
   ): Promise<any>;
   bulkCreate(body: any[], auditMessage?: string): Promise<{ ids: string[] }>;
   bulkDelete(body: any[], auditMessage?: string): Promise<void>;
@@ -224,7 +225,7 @@ interface VocabLayersBundle {
   list(): Promise<any[]>;
   listPage(opts?: { limit?: number; cursor?: string }): Promise<Page>;
   iterPages(opts?: { pageSize?: number }): AsyncGenerator<any[]>;
-  create(name: string, auditMessage?: string): Promise<any>;
+  create(name: string, auditMessage?: string, opts?: { id?: string }): Promise<any>;
   addMaintainer(
     id: string,
     userId: string,
@@ -269,6 +270,7 @@ interface RelationsBundle {
     value: any,
     metadata?: any,
     auditMessage?: string,
+    opts?: { id?: string },
   ): Promise<any>;
   bulkCreate(body: any[], auditMessage?: string): Promise<{ ids: string[] }>;
   bulkDelete(body: any[], auditMessage?: string): Promise<void>;
@@ -302,6 +304,7 @@ interface SpanLayersBundle {
     tokenLayerId: string,
     name: string,
     auditMessage?: string,
+    opts?: { id?: string },
   ): Promise<any>;
   shift(
     spanLayerId: string,
@@ -318,6 +321,7 @@ interface SpansBundle {
     value: any,
     metadata?: any,
     auditMessage?: string,
+    opts?: { id?: string },
   ): Promise<any>;
   get(spanId: string): Promise<any>;
   delete(spanId: string, auditMessage?: string): Promise<any>;
@@ -340,6 +344,7 @@ interface TextsBundle {
     body: string,
     metadata?: any,
     auditMessage?: string,
+    opts?: { id?: string },
   ): Promise<any>;
   get(textId: string): Promise<any>;
   delete(textId: string, auditMessage?: string): Promise<any>;
@@ -452,7 +457,7 @@ interface GuidelinesBundle {
   create(
     projectId: string,
     title: string,
-    opts?: { body?: string; pinned?: boolean },
+    opts?: { body?: string; pinned?: boolean; id?: string },
     auditMessage?: string,
   ): Promise<{ id: string }>;
   get(id: string): Promise<Guideline>;
@@ -570,7 +575,7 @@ interface CommentsBundle {
     entityType: CommentableType,
     entityId: string,
     body: string,
-    opts?: { anchorLabel?: string },
+    opts?: { anchorLabel?: string; id?: string },
   ): Promise<Comment>;
   get(id: string): Promise<Comment>;
   update(id: string, body: string): Promise<Comment>;
@@ -961,6 +966,7 @@ interface TokenLayersBundle {
     overlapMode?: string,
     parentTokenLayerId?: string,
     auditMessage?: string,
+    opts?: { id?: string },
   ): Promise<any>;
   setConfig(
     tokenLayerId: string,
@@ -1087,12 +1093,13 @@ interface DocumentsBundle {
     name: string,
     metadata?: any,
     auditMessage?: string,
+    opts?: { id?: string },
   ): Promise<any>;
   /** Copy a document and everything in it into a new document of the same project. */
   copy(
     documentId: string,
     name: string,
-    options?: { includeMedia?: boolean },
+    options?: { includeMedia?: boolean; id?: string },
     auditMessage?: string,
   ): Promise<{ id: string; mediaError?: string }>;
   restore(
@@ -1239,7 +1246,7 @@ interface ProjectsBundle {
   list(): Promise<any[]>;
   listPage(opts?: { limit?: number; cursor?: string }): Promise<Page>;
   iterPages(opts?: { pageSize?: number }): AsyncGenerator<any[]>;
-  create(name: string, auditMessage?: string): Promise<any>;
+  create(name: string, auditMessage?: string, opts?: { id?: string }): Promise<any>;
 }
 
 interface TextLayersBundle {
@@ -1270,7 +1277,7 @@ interface TextLayersBundle {
     direction: string,
     auditMessage?: string,
   ): Promise<any>;
-  create(projectId: string, name: string, auditMessage?: string): Promise<any>;
+  create(projectId: string, name: string, auditMessage?: string, opts?: { id?: string }): Promise<any>;
 }
 
 interface VocabItemsBundle {
@@ -1282,6 +1289,7 @@ interface VocabItemsBundle {
     form: string,
     metadata?: any,
     auditMessage?: string,
+    opts?: { id?: string },
   ): Promise<any>;
   bulkCreate(body: any[], auditMessage?: string): Promise<{ ids: string[] }>;
   bulkDelete(body: any[], auditMessage?: string): Promise<void>;
@@ -1310,6 +1318,7 @@ interface RelationLayersBundle {
     spanLayerId: string,
     name: string,
     auditMessage?: string,
+    opts?: { id?: string },
   ): Promise<any>;
   setConfig(
     relationLayerId: string,
@@ -1344,6 +1353,7 @@ interface TokensBundle {
     precedence?: number | null,
     metadata?: any,
     auditMessage?: string,
+    opts?: { id?: string },
   ): Promise<any>;
   get(tokenId: string): Promise<any>;
   delete(tokenId: string, auditMessage?: string): Promise<any>;
@@ -1361,7 +1371,7 @@ interface TokensBundle {
     tokenId: string,
     position: number,
     auditMessage?: string,
-    options?: { dropCrossingRelations?: string[] },
+    options?: { dropCrossingRelations?: string[]; id?: string },
   ): Promise<any>;
   merge(
     tokenId: string,
@@ -1393,6 +1403,11 @@ interface PlaidClientOptions {
    * write lock. Defaults to `timeout` when that is given and this is not.
    */
   batchTimeout?: number | null;
+  /**
+   * Delays in ms before sending a keyed write again when its answer was lost
+   * (no response, 502 or 504). Default [1000, 3000, 9000].
+   */
+  retryDelaysMs?: number[];
   /**
    * Fired once when a request returns HTTP 401 (missing/expired/invalid token).
    * Use it to discard the stored token and route back to login. 403 (forbidden)
@@ -1498,6 +1513,7 @@ export declare class PlaidClient {
   token: string;
   timeout: number | null;
   batchTimeout: number | null;
+  retryDelaysMs: number[] | undefined;
   /** The document strict mode is entered for, or null. */
   readonly strictModeDocumentId: string | null;
   /** The DocumentLockLost of the open `locked()` block whose lock lapsed, or null. Cleared when that block exits. */
@@ -1545,13 +1561,15 @@ export declare class PlaidClient {
   } | null;
   beginOperation(
     message: string,
-    opts?: { id?: string; kind?: OperationKind; ref?: string },
+    opts?: { id?: string; kind?: OperationKind; ref?: string; keys?: KeySeed },
   ): string;
+  /** A seed for the Idempotency-Keys of an operation that may be run again (see beginOperation's `keys`). */
+  keySeed(): KeySeed;
   endOperation(message?: string): Promise<void>;
   withOperation<T>(
     message: string,
     fn: (setMessage: (msg: string) => void) => Promise<T> | T,
-    opts?: { kind?: OperationKind; ref?: string },
+    opts?: { kind?: OperationKind; ref?: string; id?: string; keys?: KeySeed },
   ): Promise<T>;
   operationGroups: OperationGroupsBundle;
 
@@ -1783,6 +1801,13 @@ export function mergeMetadata(
 
 // --- Create responses ---------------------------------------------------------
 /** The id a single create answered with, read off the call's response or its batch result (`{status, body}`). Undefined when it gave none. */
+/** Idempotency-Key seed for an operation run more than once (client.keySeed()). */
+export interface KeySeed {
+  seed: string;
+  stamps: Map<number, number | null>;
+}
+/** A fresh UUIDv7, for the id of something a client creates. */
+export function uuidv7(): string;
 export function createdId(result: any): string | undefined;
 /** The ids a bulk create answered with, in input order, read off the call's response or its batch result. Empty when it gave none. */
 export function createdIds(result: any): string[];

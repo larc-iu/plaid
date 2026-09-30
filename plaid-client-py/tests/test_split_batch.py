@@ -111,7 +111,8 @@ def _submit_failing(op_count, ok_requests, status):
     import pytest
     import requests as requests_lib
 
-    client = PlaidClient('http://x', 'tok')
+    # A lost answer is sent again under its key, at once here.
+    client = PlaidClient('http://x', 'tok', retry_delays=[0, 0, 0])
     sent = []
 
     class _Session:
