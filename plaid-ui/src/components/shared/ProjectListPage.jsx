@@ -107,7 +107,7 @@ export const ProjectListPage = ({ wordLayerId, seedLayerId, newProject, form: Ne
       sort: (p) => p.name?.toLowerCase() ?? '',
       cell: (p) => (
         <div className="flex min-w-0 items-center gap-2">
-          <ProjectTartan projectId={p.id} size={16} className="shrink-0" />
+          <ProjectTartan project={p} size={16} className="shrink-0" />
           <div className="truncate font-medium" title={p.name}>
             {p.name}
           </div>

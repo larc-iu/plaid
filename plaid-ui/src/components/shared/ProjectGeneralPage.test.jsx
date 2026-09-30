@@ -68,12 +68,18 @@ describe('ProjectGeneralPage', () => {
         </div>
       ),
     });
-    expect(cards(view.container)).toEqual(['Name', 'Language', 'Tokenizer locale', 'Delete']);
+    expect(cards(view.container)).toEqual([
+      'Name',
+      'Language',
+      'Tokenizer locale',
+      'Project plaid',
+      'Delete',
+    ]);
   });
 
   it('leaves out Language when the app keeps none', async () => {
     await mount();
-    expect(cards(view.container)).toEqual(['Name', 'Delete']);
+    expect(cards(view.container)).toEqual(['Name', 'Project plaid', 'Delete']);
   });
 
   it('enables the name Save only for a changed, non-empty name', async () => {
@@ -141,6 +147,52 @@ describe('ProjectGeneralPage', () => {
     expect(view.container.textContent).toContain('Saved: en');
   });
 
+  describe('Project plaid', () => {
+    const box = (root) =>
+      all(root, 'label')
+        .find((l) => l.textContent.includes("Show the project's plaid"))
+        ?.querySelector('input[type="checkbox"]');
+
+    it('is on when nothing is stored, and shows a stored off', async () => {
+      await mount();
+      expect(box(view.container).checked).toBe(true);
+      await view.unmount();
+      await mount({ project: { id: 'p1', name: 'Texts', config: { plaid: { tartan: false } } } });
+      expect(box(view.container).checked).toBe(false);
+    });
+
+    it('turns off on a click, against what it read, and refreshes the project', async () => {
+      const onSaved = vi.fn();
+      await mount({ onSaved });
+      await view.step(() => box(view.container).click());
+      expect(box(view.container).checked).toBe(false);
+      expect(client.projects.setConfig).toHaveBeenCalledWith(
+        'p1',
+        'plaid',
+        'tartan',
+        false,
+        undefined,
+        { expected: undefined },
+      );
+      expect(onSaved).toHaveBeenCalledTimes(1);
+    });
+
+    it('puts the switch back when the save fails', async () => {
+      client.projects.setConfig = vi.fn(async () => {
+        throw new Error('down');
+      });
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        await mount();
+        await view.step(() => box(view.container).click());
+        expect(box(view.container).checked).toBe(true);
+        expect(notify.notifyError).toHaveBeenCalled();
+      } finally {
+        error.mockRestore();
+      }
+    });
+  });
+
   describe('Research', () => {
     const box = (root) =>
       all(root, 'label')
@@ -156,7 +208,7 @@ describe('ProjectGeneralPage', () => {
       expect(box(view.container)).toBeUndefined();
       await view.unmount();
       await mount({ research: true });
-      expect(cards(view.container)).toEqual(['Name', 'Research', 'Delete']);
+      expect(cards(view.container)).toEqual(['Name', 'Research', 'Project plaid', 'Delete']);
       expect(view.container.textContent).toContain(
         'Records when a suggestion is shown to a member, accepted or replaced, and when an assistant plan is expanded.',
       );

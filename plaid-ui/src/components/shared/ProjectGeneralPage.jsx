@@ -8,6 +8,8 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { DeleteProjectCard } from './DeleteProjectCard.jsx';
+import { ProjectTartan } from './ProjectTartan.jsx';
+import { showsTartan } from '../../domain/projectTartan.js';
 
 /**
  * A project's General settings, the same page in every app: its name, the
@@ -27,6 +29,8 @@ import { DeleteProjectCard } from './DeleteProjectCard.jsx';
  *   heading, and `note(savedTag)` an optional line under the field about what
  *   the SAVED tag does.
  * - `children`: the app's own sections, drawn between Language and Delete.
+ * The Tartan card, in every app, turns the project's tartan on and off
+ * (`config.plaid.tartan`, see domain/projectTartan.js showsTartan).
  * - `research`: when true, a Research card with the project's telemetry
  *   switch (`config.plaid.research.telemetry`, the core manual's "Research
  *   telemetry"), drawn after the app's sections. Only the apps that record
@@ -105,6 +109,8 @@ export const ProjectGeneralPage = ({
 
       {research && <ResearchCard project={project} onSaved={onSaved} />}
 
+      <TartanCard project={project} onSaved={onSaved} />
+
       <DeleteProjectCard project={project} />
     </div>
   );
@@ -159,6 +165,64 @@ const LanguageCard = ({ onSaved, saved, save, description, note }) => {
           </Button>
         </form>
         {note && <p className="text-sm text-muted-foreground">{note(saved)}</p>}
+      </CardContent>
+    </Card>
+  );
+};
+
+// The project's tartan switch, as the research switch below: a checkbox that
+// saves on its own, shown at once and put back if the save fails. Off is
+// stored as false, and on as true, since absent already means on.
+const TartanCard = ({ project, onSaved }) => {
+  const { getClient } = useAuth();
+  const saved = showsTartan(project);
+  const [on, setOn] = useState(saved);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => setOn(saved), [saved]);
+
+  const toggle = async (next) => {
+    setOn(next);
+    setSaving(true);
+    try {
+      await getClient().projects.setConfig(
+        project.id,
+        'plaid',
+        'tartan',
+        next,
+        undefined,
+        expectStored(project, 'plaid', 'tartan'),
+      );
+      await onSaved?.();
+    } catch (err) {
+      console.error('Failed to save the project plaid setting:', err);
+      setOn(!next);
+      notifyError(humanizeError(err, 'Failed to save the project plaid setting.'));
+      if (isConfigConflict(err)) onSaved?.();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Project plaid</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="h-4 w-4 cursor-pointer accent-primary disabled:cursor-not-allowed"
+            checked={on}
+            disabled={saving}
+            onChange={(e) => toggle(e.target.checked)}
+          />
+          {on && <ProjectTartan project={{ id: project.id }} size={16} className="shrink-0" />}
+          Show the project's plaid
+        </label>
+        <p className="text-sm text-muted-foreground">
+          Beside the project's name and in the browser tab.
+        </p>
       </CardContent>
     </Card>
   );

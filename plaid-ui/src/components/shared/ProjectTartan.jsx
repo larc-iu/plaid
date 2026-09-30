@@ -1,13 +1,15 @@
 import { useId } from 'react';
-import { TARTAN_CUT, tartanRects } from '../../domain/projectTartan.js';
+import { TARTAN_CUT, showsTartan, tartanRects } from '../../domain/projectTartan.js';
 
 /**
  * A project's tartan (domain/projectTartan.js), beside its name. Decorative:
  * the name next to it is what a screen reader reads. `size` is the rendered
- * size in px, which decides how much of the sett is drawn.
+ * size in px, which decides how much of the sett is drawn. Nothing while the
+ * project loads, or when its settings turn tartans off (showsTartan).
  */
-export const ProjectTartan = ({ projectId, size = 14, className }) => {
+export const ProjectTartan = ({ project, size = 14, className }) => {
   const clip = useId();
+  if (!showsTartan(project)) return null;
   return (
     <svg
       viewBox="0 0 24 24"
@@ -23,7 +25,7 @@ export const ProjectTartan = ({ projectId, size = 14, className }) => {
         </clipPath>
       </defs>
       <g clipPath={`url(#${clip})`}>
-        {tartanRects(projectId, size).map((r, i) => (
+        {tartanRects(project.id, size).map((r, i) => (
           <rect
             key={i}
             x={r.x}

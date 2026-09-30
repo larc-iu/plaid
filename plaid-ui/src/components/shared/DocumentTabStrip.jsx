@@ -6,6 +6,7 @@ import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { Breadcrumb } from './Breadcrumb.jsx';
 import { ProjectTartan } from './ProjectTartan.jsx';
 import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
+import { useProjectFavicon } from '../../hooks/useProjectFavicon.js';
 
 /**
  * The header over an open document, in every app: the breadcrumb, a heading
@@ -64,6 +65,7 @@ export const DocumentTabStrip = ({
   const guard = useUnsavedGuard();
   const routes = appRoutes();
   const rowRef = useRef(null);
+  useProjectFavicon(project);
 
   // `document` here is the Plaid document, so the page is `window.document`.
   useLayoutEffect(() => {
@@ -95,7 +97,7 @@ export const DocumentTabStrip = ({
             {
               label: project?.name || 'Loading…',
               to: routes.documents(projectId),
-              icon: <ProjectTartan projectId={projectId} size={14} />,
+              icon: <ProjectTartan project={project} size={14} />,
             },
           ]}
         />

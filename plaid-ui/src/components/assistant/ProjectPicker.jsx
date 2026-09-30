@@ -75,7 +75,7 @@ export const ProjectPicker = ({ client, onPick, onHide }) => {
               className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
               title={p.name}
             >
-              <ProjectTartan projectId={p.id} size={16} className="shrink-0" />
+              <ProjectTartan project={p} size={16} className="shrink-0" />
               <span className="min-w-0 truncate">{p.name}</span>
             </button>
           ))

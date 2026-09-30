@@ -8,6 +8,7 @@ import { Breadcrumb } from './Breadcrumb.jsx';
 import { ProjectTartan } from './ProjectTartan.jsx';
 import { useAssistantSubject } from '../assistant/subject.js';
 import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
+import { useProjectFavicon } from '../../hooks/useProjectFavicon.js';
 
 /**
  * The breadcrumb and tab row every project-level screen wears, mirroring the
@@ -46,6 +47,7 @@ export const ProjectTabStrip = ({
   // A screen under these tabs may hold typed text (a guideline being written),
   // and a tab is a way out of it like any link.
   const guard = useUnsavedGuard();
+  useProjectFavicon(project);
 
   // The panel is about the PROJECT here. No subject of its own: what a reader
   // is looking at on these screens is the project at large, and naming a screen
@@ -82,7 +84,7 @@ export const ProjectTabStrip = ({
           left and still starts at the left edge under the breadcrumb. The
           minimum height holds the tabs still while the project loads. */}
       <h1 className="mb-3 flex min-h-9 items-center gap-3 font-text text-[1.75rem] font-bold leading-tight">
-        <ProjectTartan projectId={projectId} size={32} className="shrink-0" />
+        <ProjectTartan project={project} size={32} className="shrink-0" />
         <span dir="auto" className="min-w-0 truncate">
           {project?.name}
         </span>

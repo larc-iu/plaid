@@ -265,7 +265,7 @@ export const ProjectDetail = () => {
       {/* The name takes its own direction inside a heading that stays with
           the chrome, as the tab strip's does. */}
       <h1 className="flex items-center gap-3 font-text text-[1.75rem] font-bold leading-tight">
-        <ProjectTartan projectId={projectId} size={32} className="shrink-0" />
+        <ProjectTartan project={project} size={32} className="shrink-0" />
         <span dir="auto" className="min-w-0 truncate">
           {project.name}
         </span>

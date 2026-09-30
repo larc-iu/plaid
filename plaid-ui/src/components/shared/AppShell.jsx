@@ -12,7 +12,6 @@ import { useAssistantScope } from '../assistant/subject.js';
 import { adminUrl } from '../../domain/siblingApps.js';
 import { useUserKeymap } from '../../hooks/useUserKeymap.js';
 import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
-import { useProjectFavicon } from '../../hooks/useProjectFavicon.js';
 
 // The app shell, and the one place the assistant panel is mounted.
 //
@@ -67,7 +66,6 @@ const Shell = ({ adapter, keymap, nav = [], guideHref, adminTo, isAssistantRoute
   // its left edge, so the page's left edge does not move between tabs.
   const path = location.pathname;
   const isDocument = routes.at.document(path);
-  useProjectFavicon(path);
   const assistantRoute = isAssistantRoute ? isAssistantRoute(location) : routes.at.assistant(path);
 
   return (

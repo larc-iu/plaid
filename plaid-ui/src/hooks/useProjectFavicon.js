@@ -1,14 +1,11 @@
 import { useEffect } from 'react';
-import { TARTAN_CUT, tartanRects } from '../domain/projectTartan.js';
+import { TARTAN_CUT, showsTartan, tartanRects } from '../domain/projectTartan.js';
 
 // Inside a project, the browser tab wears the project's tartan in place of
 // Plaid's mark, so tabs open on different projects tell apart at a glance.
-// Every app routes a project as /projects/<id>/..., and a document lives
-// under its project, so the id is read off the path. Anywhere else the tab
-// has the mark the page was served with.
-
-const PROJECT_IN_PATH =
-  /\/projects\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/|$)/i;
+// Called by the tab strips over a project's and a document's pages, which
+// hold the project. Anywhere else, or with tartans off in the project's
+// settings, the tab keeps the mark the page was served with.
 
 const iconOf = (projectId) => {
   const rects = tartanRects(projectId, 16)
@@ -21,8 +18,8 @@ const iconOf = (projectId) => {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 };
 
-export const useProjectFavicon = (pathname) => {
-  const projectId = PROJECT_IN_PATH.exec(pathname)?.[1] ?? null;
+export const useProjectFavicon = (project) => {
+  const projectId = showsTartan(project) ? project.id : null;
   useEffect(() => {
     const link = document.querySelector('link[rel="icon"]');
     if (!link || !projectId) return undefined;

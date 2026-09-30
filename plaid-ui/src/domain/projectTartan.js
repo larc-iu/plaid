@@ -128,3 +128,10 @@ export const tartanRects = (id, size) => {
     out.push({ x: EDGE, y: r.at, w: SPAN, h: r.w, color: r.color, opacity: 0.5 });
   return out;
 };
+
+/**
+ * Whether a project wears its tartan: every project does unless its General
+ * settings turned it off (`config.plaid.tartan` false), and a project not yet
+ * loaded does not, so a project that has it off never shows it for a moment.
+ */
+export const showsTartan = (project) => !!project?.id && project.config?.plaid?.tartan !== false;

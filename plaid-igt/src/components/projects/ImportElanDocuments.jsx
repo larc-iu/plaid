@@ -355,7 +355,7 @@ export const ImportElanDocuments = () => {
             {
               label: project?.name ?? 'Project',
               to: projectHref,
-              icon: <ProjectTartan projectId={projectId} size={14} />,
+              icon: <ProjectTartan project={project} size={14} />,
             },
           ]}
         />

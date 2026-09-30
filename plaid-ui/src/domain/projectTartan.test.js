@@ -45,3 +45,14 @@ describe('project tartans', () => {
     }
   });
 });
+
+import { showsTartan } from './projectTartan.js';
+
+describe('showsTartan', () => {
+  it('shows a loaded project’s tartan unless its settings turned it off', () => {
+    expect(showsTartan({ id: 'p1' })).toBe(true);
+    expect(showsTartan({ id: 'p1', config: { plaid: { tartan: true } } })).toBe(true);
+    expect(showsTartan({ id: 'p1', config: { plaid: { tartan: false } } })).toBe(false);
+    expect(showsTartan(null)).toBe(false);
+  });
+});

@@ -4,10 +4,10 @@ import { renderComponent } from '../test/renderComponent.jsx';
 import { useProjectFavicon } from './useProjectFavicon.js';
 
 // Inside a project the tab wears the project's tartan, and it gets the mark
-// back on the way out.
+// back on the way out, or keeps it when the project has tartans off.
 
-const At = ({ path }) => {
-  useProjectFavicon(path);
+const In = ({ project }) => {
+  useProjectFavicon(project);
   return null;
 };
 
@@ -23,16 +23,21 @@ afterEach(() => link.remove());
 
 describe('useProjectFavicon', () => {
   it('shows the project’s tartan inside a project, and the mark again after', async () => {
-    const view = await renderComponent(<At path={`/projects/${ID}/documents/x`} />);
+    const view = await renderComponent(<In project={{ id: ID, config: {} }} />);
     expect(link.getAttribute('href')).toMatch(/^data:image\/svg\+xml,/);
     expect(decodeURIComponent(link.getAttribute('href'))).toContain('<clipPath');
     await view.unmount();
     expect(link.getAttribute('href')).toBe('/plaid.svg');
   });
 
-  it('leaves the mark outside a project', async () => {
-    const view = await renderComponent(<At path="/projects" />);
+  it('keeps the mark while the project loads, and when its tartan is off', async () => {
+    const loading = await renderComponent(<In project={null} />);
     expect(link.getAttribute('href')).toBe('/plaid.svg');
-    await view.unmount();
+    await loading.unmount();
+    const off = await renderComponent(
+      <In project={{ id: ID, config: { plaid: { tartan: false } } }} />,
+    );
+    expect(link.getAttribute('href')).toBe('/plaid.svg');
+    await off.unmount();
   });
 });
