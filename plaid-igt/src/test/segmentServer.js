@@ -126,7 +126,7 @@ function plainEditLocally(raw, textId, gaps, vocabs) {
   const layers = textLayer.tokenLayers || [];
   const words = layers.find((l) => l.config?.plaid?.role === ROLES.WORD)?.tokens || [];
   const gone = new Set();
-  for (const { start: a, end: b, value } of [...gaps].reverse()) {
+  for (const { start: a, end: b, value, side } of [...gaps].reverse()) {
     const v = [...value];
     const n = v.length;
     let lead = 0;
@@ -147,20 +147,24 @@ function plainEditLocally(raw, textId, gaps, vocabs) {
     );
     const [toBefore, toAfter] = exact
       ? [0, 0]
-      : lead < n
-        ? [
-            beforeOk && (before || holdsEnd) ? lead : 0,
-            afterOk && (after || holdsStart) ? trail : 0,
-          ]
-        : holdsEnd
-          ? [beforeOk ? n : 0, 0]
-          : holdsStart
-            ? [0, afterOk ? n : 0]
-            : beforeOk && before
-              ? [n, 0]
-              : afterOk && after
-                ? [0, n]
-                : [0, 0];
+      : side === 'after'
+        ? [0, afterOk ? (lead === n ? n : trail) : 0]
+        : side === 'before'
+          ? [beforeOk ? (lead === n ? n : lead) : 0, 0]
+          : lead < n
+            ? [
+                beforeOk && (before || holdsEnd) ? lead : 0,
+                afterOk && (after || holdsStart) ? trail : 0,
+              ]
+            : holdsEnd
+              ? [beforeOk ? n : 0, 0]
+              : holdsStart
+                ? [0, afterOk ? n : 0]
+                : beforeOk && before
+                  ? [n, 0]
+                  : afterOk && after
+                    ? [0, n]
+                    : [0, 0];
     const next = [...cps.slice(0, a), ...v, ...cps.slice(b)];
     const delta = n - (b - a);
     for (const layer of layers) {
@@ -224,7 +228,10 @@ const writesOn = (raw, { mint, claim }) => {
     'texts.edit': (textId, ops, auditMessage, { base } = {}) => {
       checkBase(base);
       const before = structuredClone(raw);
-      plainEditLocally(raw, textId, composeTextEdits(textOf(raw).body, ops), vocabsIn(raw));
+      // The side an op was typed on stays with its gap (one gap per op here).
+      const gaps = composeTextEdits(textOf(raw).body, ops);
+      if (gaps.length === ops.length) gaps.forEach((g, i) => ops[i].side && (g.side = ops[i].side));
+      plainEditLocally(raw, textId, gaps, vocabsIn(raw));
       const text = textOf(raw);
       text.digest = digestOf(text.body);
       return { id: textId, body: text.body, digest: text.digest, reshape: reshapeOf(before, raw) };

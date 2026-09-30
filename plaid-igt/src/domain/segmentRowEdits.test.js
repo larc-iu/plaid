@@ -87,7 +87,7 @@ describe('a row edit is saved as the edits typed, and the segment keeps its id (
 
     const [write] = textWrites(server);
     expect(write.kind).toBe('texts.edit');
-    expect(write.args[1]).toEqual([{ type: 'insert', index: 7, value: '!' }]);
+    expect(write.args[1]).toEqual([{ type: 'insert', index: 7, value: '!', side: 'before' }]);
     expect(write.args[3].base).toBe(read);
     expect(server.body).toBe('one two! three');
     // The same segment, over the new text, and nothing made again.
@@ -123,7 +123,9 @@ describe('a row edit is saved as the edits typed, and the segment keeps its id (
     const doc = open(server);
     await doc.editAlignment('a-3', { text: 'three more', timeBegin: 2, timeEnd: 3 });
     await idle(doc);
-    expect(textWrites(server)[0].args[1]).toEqual([{ type: 'insert', index: 13, value: ' more' }]);
+    expect(textWrites(server)[0].args[1]).toEqual([
+      { type: 'insert', index: 13, value: ' more', side: 'before' },
+    ]);
     expect(textOf(server.stored, 'a-3')).toBe('three more');
 
     await doc.editAlignment('a-1', {
@@ -188,9 +190,9 @@ describe('a row edit is saved as the edits typed, and the segment keeps its id (
 
 describe('rows written together (L2)', () => {
   // A Baseline delete of the space between two rows leaves their segments
-  // touching. Text typed at the front of the second row then joins the first
-  // row's last word, which the text rules give it, and the row's segment is
-  // still set over its own text.
+  // touching. Text typed at the front of the second row says it was typed on
+  // the second row's side, so its word and morpheme take it, and the first
+  // row's are left as they were (REV2 M2). No segment is put back.
   const glued = () =>
     segmentServer(
       buildRawDoc({
@@ -223,6 +225,18 @@ describe('rows written together (L2)', () => {
     // the page shows what is stored
     expect(textOf(doc._raw, 'a-1')).toBe('one');
     expect(textOf(doc._raw, 'a-2')).toBe('xtwo');
+    // the word and the morpheme of the second row take the letter
+    const read = (layerId) =>
+      layer(server.stored, layerId).tokens.map((t) =>
+        [...server.body].slice(t.begin, t.end).join(''),
+      );
+    expect(read('wordL')).toEqual(['one', 'xtwo']);
+    expect(read('morphL')).toEqual(['one', 'xtwo']);
+    const sent = server.sent.flatMap((w) => (w.kind === 'batch' ? w.ops : [w]));
+    expect(sent.find((w) => w.kind === 'texts.edit').args[1]).toEqual([
+      { type: 'insert', index: 3, value: 'x', side: 'after' },
+    ]);
+    expect(sent.filter((w) => w.kind === 'tokens.update').map((w) => w.args[0])).toEqual(['a-2']);
   });
 
   it('text typed at the end of the first row is saved in it, and the second row keeps its text', async () => {
