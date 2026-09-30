@@ -586,60 +586,123 @@ function trimGaps(text, gaps) {
   return out;
 }
 
-// Our changes, given per reading by `oursFor`, put onto the other side's
-// changes read each of the three ways. Returns `{ gaps }` in code points of
-// `stored`, or null when a reading refuses or two readings give different
-// texts. `strict` refuses any change of ours touching one of theirs. Without
-// it, the pairs refused are the ones `mergeText` refuses.
-function putOnto(ctx, oursFor, strict) {
-  const { units, at, lineOf, theirUnits, stored } = ctx;
-  let answer = null;
-  for (const read of READINGS) {
-    const own = oursFor(read).map((h, _, all) => {
-      const moved = onWholeLines(units, lineOf, h, all);
-      return moved === h ? h : { ...moved, gaps: h.gaps, moved: true };
-    });
-    const [spaced, other] = spaceApart(
-      units,
-      lineOf,
-      own,
-      read(units, theirUnits).map((h, _, all) => onWholeLines(units, lineOf, h, all)),
-    );
-    const ours = spaced.map((h, i) =>
-      h === own[i] ? h : { ...h, gaps: own[i].gaps, moved: true },
-    );
-    if (
-      mixesEditedLines(units, lineOf, ours, other) ||
-      mixesEditedLines(units, lineOf, other, ours)
-    ) {
-      return null;
+// Past this many cells of a window's table, the whole text is taken as a
+// place the changes could stand.
+const MAX_WINDOW_CELLS = 250000;
+
+// Where the changes that turn `a` into `b` could stand, over every shortest
+// way to make `b` (a unit taken out or put in costs one): each unit that some
+// such way takes out, or that two such ways keep as different units of `b`,
+// as [i, i + 1], and each place some such way puts a unit in, as [i, i]. A
+// change beside a unit that reads like its own may stand on either side of
+// it, and a run of such units lets it stand anywhere along the run: `the `
+// deleted from `the the dog` is either `the `. And `la la la` to
+// `the la la the` is the first `la` made `the` and `the` put at the end, or
+// `the` put in front and the last `la` made `the`: the middle `la` is kept
+// either way, but as another unit of `b`, so a change to it has no one place.
+function changeZone(a, b) {
+  const hunks = hunksOf(a, b);
+  // windows over runs of hunks, each with the places found in it
+  const groups = [];
+  let i = 0;
+  while (i < hunks.length) {
+    let first = i;
+    let margin = 4;
+    for (;;) {
+      // The window over hunks[first..j], `margin` units past their ends. It
+      // takes in an earlier window it would reach into, so the units between
+      // its hunks and its edges are the same in `a` and `b`.
+      while (
+        groups.length &&
+        hunks[groups[groups.length - 1].j].end > hunks[first].start - margin
+      ) {
+        first = groups.pop().first;
+      }
+      let j = first;
+      while (j + 1 < hunks.length && hunks[j + 1].start - margin <= hunks[j].end + margin) j += 1;
+      const lo = Math.max(0, hunks[first].start - margin);
+      const hi = Math.min(a.length, hunks[j].end + margin);
+      const bLo = hunks[first].bStart - (hunks[first].start - lo);
+      const bHi = hunks[j].bEnd + (hi - hunks[j].end);
+      if ((hi - lo + 1) * (bHi - bLo + 1) > MAX_WINDOW_CELLS) return [[0, a.length]];
+      const zone = windowZone(a, b, lo, hi, bLo, bHi);
+      // A way that reaches the window's edge may go on past it.
+      const edge = (x) => (x[0] <= lo + 1 && lo > 0) || (x[1] >= hi - 1 && hi < a.length);
+      if (!zone.some(edge)) {
+        groups.push({ first, j, zone });
+        i = j + 1;
+        break;
+      }
+      margin *= 2;
     }
-    // A change the two sides both made is in `stored` already.
-    const kept = [];
-    for (const h of ours) {
-      const touched = other.filter((q) => touch(h, q));
-      if (touched.length === 0) kept.push(h);
-      else if (touched.some((q) => sameHunk(h, q))) continue;
-      else if (strict) return null;
-      else kept.push(h);
+  }
+  return groups.flatMap((g) => g.zone);
+}
+
+// `changeZone` of a[lo, hi) and b[bLo, bHi), in units of `a`.
+function windowZone(a, b, lo, hi, bLo, bHi) {
+  const n = hi - lo;
+  const m = bHi - bLo;
+  const w = m + 1;
+  const same = (i, j) => a[lo + i] === b[bLo + j];
+  // cost from the start to (i, j), and from (i, j) to the end
+  const from = new Int32Array((n + 1) * w);
+  const to = new Int32Array((n + 1) * w);
+  for (let i = 0; i <= n; i += 1) {
+    for (let j = 0; j <= m; j += 1) {
+      if (i === 0 && j === 0) continue;
+      let c = Infinity;
+      if (i > 0) c = from[(i - 1) * w + j] + 1;
+      if (j > 0) c = Math.min(c, from[i * w + j - 1] + 1);
+      if (i > 0 && j > 0 && same(i - 1, j - 1)) c = Math.min(c, from[(i - 1) * w + j - 1]);
+      from[i * w + j] = c;
     }
-    const text = applyBoth(units, ours, other);
-    if (text === null || (answer && answer.text !== text)) return null;
-    const gaps = [];
-    for (const h of kept) {
-      const shift = other
-        .filter((q) => q.end <= h.start)
-        .reduce((k, q) => k + cpCount(q.insert.join('')) - (at[q.end] - at[q.start]), 0);
-      const put = h.moved ? [{ start: at[h.start], end: at[h.end], value: '' }] : h.gaps;
-      for (const g of put) {
-        gaps.push({ start: g.start + shift, end: g.end + shift, value: g.value });
+  }
+  for (let i = n; i >= 0; i -= 1) {
+    for (let j = m; j >= 0; j -= 1) {
+      if (i === n && j === m) continue;
+      let c = Infinity;
+      if (i < n) c = to[(i + 1) * w + j] + 1;
+      if (j < m) c = Math.min(c, to[i * w + j + 1] + 1);
+      if (i < n && j < m && same(i, j)) c = Math.min(c, to[(i + 1) * w + j + 1]);
+      to[i * w + j] = c;
+    }
+  }
+  const best = from[n * w + m];
+  const zone = [];
+  // for each unit, the unit of `b` it stays as in some shortest way, or -2
+  // when it stays as more than one, or some way takes it out
+  const keptAs = new Int32Array(n).fill(-1);
+  for (let i = 0; i <= n; i += 1) {
+    for (let j = 0; j <= m; j += 1) {
+      const f = from[i * w + j];
+      if (i < n && f + 1 + to[(i + 1) * w + j] === best) keptAs[i] = -2;
+      if (j < m && f + 1 + to[i * w + j + 1] === best) zone.push([lo + i, lo + i]);
+      if (i < n && j < m && same(i, j) && f + to[(i + 1) * w + j + 1] === best) {
+        keptAs[i] = keptAs[i] === -1 || keptAs[i] === j ? j : -2;
       }
     }
-    if (applyGaps(stored, gaps) !== text) return null;
-    answer = answer ?? { text, gaps };
   }
-  return { gaps: answer.gaps };
+  keptAs.forEach((j, i) => {
+    if (j < 0) zone.push([lo + i, lo + i + 1]);
+  });
+  return zone;
 }
+
+// Ranges [lo, hi] put together where they overlap or meet, in order.
+function joinRanges(ranges) {
+  const sorted = [...ranges].sort((x, y) => x[0] - y[0] || x[1] - y[1]);
+  const out = [];
+  for (const [lo, hi] of sorted) {
+    const last = out[out.length - 1];
+    if (last && lo <= last[1]) last[1] = Math.max(last[1], hi);
+    else out.push([lo, hi]);
+  }
+  return out;
+}
+
+// Whether two ranges [lo, hi] overlap or meet.
+const near = (p, q) => p[0] <= q[1] && q[0] <= p[1];
 
 /**
  * Move our gaps, made on `base`, onto `stored`, which is `base` as someone
@@ -648,45 +711,81 @@ function putOnto(ctx, oursFor, strict) {
  * gives them). Returns `{ gaps }` in code points of `stored`, or
  * `{ conflict: true }`.
  *
- * Where our changes stand is known, so only the other side's changes are read
- * from a diff, the three ways `mergeText` reads them, and each of our changes
- * moves by the other side's changes before it. A change of ours that touches
- * a unit the other side changed is a conflict, and so is a text on which the
- * readings of the other side disagree. A deletion of ours may stand on whole
- * lines, or take the separator beside it, as in `mergeText`, since the text
- * it takes is the same.
- *
- * When our changes where they stand touch the other side's but the same text
- * could have been made elsewhere (a line break typed before a line break,
- * where one typed after it reads the same), our side is read from the text as
- * `mergeText` reads it, so this merges every pair `mergeText` merges.
+ * Only a move that cannot be read two ways is made, and a conflict leaves the
+ * draft to the app. Each side's changes are taken at every place they could
+ * stand: each shortest way to make its text (`changeZone`), the three ways
+ * `mergeText` reads them, and ours also as typed, since a change typed beside
+ * an identical word could as well have been typed at the other. A change of
+ * ours at a place that overlaps or meets a place of the other side's is a
+ * conflict. The one exception is the same change made on both sides where
+ * neither side's changes could stand anywhere else near it: it is in `stored`
+ * already, and ours is dropped. A change of ours that is kept moves by the
+ * other side's changes before it, as typed.
  */
 export function rebaseEdits(base, gaps, stored) {
   base = String(base ?? '');
   stored = String(stored ?? '');
   if (stored === base) return { gaps };
   const mine = applyGaps(base, gaps);
-  if (mine === base || mine === stored) return { gaps: [] };
+  if (mine === base) return { gaps: [] };
+  const conflict = { conflict: true };
   const units = textUnits(base);
-  const ctx = {
-    units,
-    at: unitStarts(units),
-    lineOf: lineOfUnits(units),
-    theirUnits: textUnits(stored),
-    stored,
-  };
-  const exact = exactHunks(units, ctx.at, trimGaps(base, gaps), mine);
-  const placed = exact && putOnto(ctx, () => exact, true);
-  if (placed) return placed;
+  const at = unitStarts(units);
+  const lineOf = lineOfUnits(units);
+  const exact = exactHunks(units, at, trimGaps(base, gaps), mine);
+  if (!exact) return conflict;
   const mineUnits = textUnits(mine);
-  const read = putOnto(
-    ctx,
-    (reading) =>
-      reading(units, mineUnits).map((h) => ({
-        ...h,
-        gaps: [{ start: ctx.at[h.start], end: ctx.at[h.end], value: h.insert.join('') }],
-      })),
-    false,
-  );
-  return read ?? { conflict: true };
+  const theirUnits = textUnits(stored);
+  const ourReadings = [exact, ...READINGS.map((read) => read(units, mineUnits))];
+  const theirReadings = READINGS.map((read) => read(units, theirUnits));
+  for (const ours of ourReadings) {
+    for (const other of theirReadings) {
+      if (
+        mixesEditedLines(units, lineOf, ours, other) ||
+        mixesEditedLines(units, lineOf, other, ours)
+      ) {
+        return conflict;
+      }
+    }
+  }
+  const places = (readings, zone) =>
+    joinRanges([...zone, ...readings.flat().map((h) => [h.start, h.end])]);
+  const ourPlaces = places(ourReadings, changeZone(units, mineUnits));
+  const theirPlaces = places(theirReadings, changeZone(units, theirUnits));
+  // Our changes the other side made too, each standing in one place only.
+  const made = new Set();
+  for (const p of ourPlaces) {
+    const met = theirPlaces.filter((q) => near(p, q));
+    if (met.length === 0) continue;
+    const h = exact.find((x) => x.start === p[0] && x.end === p[1]);
+    const once =
+      h &&
+      met.length === 1 &&
+      met[0][0] === p[0] &&
+      met[0][1] === p[1] &&
+      [...ourReadings, ...theirReadings].every((r) => r.some((x) => sameHunk(x, h)));
+    if (!once) return conflict;
+    made.add(h);
+  }
+  // Each reading of each side gives the same text.
+  let text = null;
+  for (const ours of ourReadings) {
+    for (const other of theirReadings) {
+      const merged = applyBoth(units, ours, other);
+      if (merged === null || (text !== null && merged !== text)) return conflict;
+      text = merged;
+    }
+  }
+  const other = theirReadings[0];
+  const moved = [];
+  for (const h of exact) {
+    if (made.has(h)) continue;
+    const shift = other
+      .filter((q) => q.end <= h.start)
+      .reduce((k, q) => k + cpCount(q.insert.join('')) - (at[q.end] - at[q.start]), 0);
+    for (const g of h.gaps) {
+      moved.push({ start: g.start + shift, end: g.end + shift, value: g.value });
+    }
+  }
+  return applyGaps(stored, moved) === text ? { gaps: moved } : conflict;
 }
