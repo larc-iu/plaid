@@ -475,8 +475,9 @@
         requester-token (-> req :auth/token-scope :token-key)
         group-id (handed-group data)
         ;; A service handing on the group it was handed (a service that asks
-        ;; another) hands it on as its requester's.
-        handed-on (when group-id (events/group-grant group-id user-id requester-token))]
+        ;; another) hands it on as its requester's, in the same project.
+        handed-on (when group-id (events/group-grant group-id user-id requester-token))
+        handed-elsewhere? (and handed-on (not= (str id) (str (:project-id handed-on))))]
     (cond
       existing
       (if (request-visible? existing req id)
@@ -503,11 +504,20 @@
       (do (drop-service-channel! (assoc entry :project-id id))
           {:status 503 :body {:error (str "No live service '" service-id "' on this project")}})
 
+      ;; A grant covers one project (D27), so it is not handed on into another.
+      (and handed-elsewhere? (not (og/joinable? db group-id user-id requester-token)))
+      {:status 403 :body {:error (str "Operation group " group-id " was handed to this service by a request "
+                                      "in project " (:project-id handed-on) ", so this request cannot hand "
+                                      "it to a service in another project.")}}
+
       ;; The service's writes go under the group it is handed, so handing
       ;; one is joining it (`og/may-join?`).
       (and group-id (not handed-on) (not (og/joinable? db group-id user-id requester-token)))
-      {:status 403 :body {:error (str "Operation group " group-id " was started by another user or "
-                                      "token, so this request cannot hand it to a service.")}}
+      {:status 403 :body {:error (if (events/lapsed-group-grant group-id user-id requester-token)
+                                   (str "Operation group " group-id " was handed to this service by a "
+                                        "request that has ended, so this request cannot hand it on.")
+                                   (str "Operation group " group-id " was started by another user or "
+                                        "token, so this request cannot hand it to a service."))}}
 
       :else
       (let [request-id (or request-id (str (java.util.UUID/randomUUID)))
@@ -539,8 +549,11 @@
                 (events/grant-group!
                  request-id
                  {:group-id group-id
-                  :owner (if handed-on (:owner handed-on) user-id)
-                  :owner-token (if handed-on (:owner-token handed-on) requester-token)
+                  :project-id id
+                  :owner (if (and handed-on (not handed-elsewhere?)) (:owner handed-on) user-id)
+                  :owner-token (if (and handed-on (not handed-elsewhere?))
+                                 (:owner-token handed-on)
+                                 requester-token)
                   :grantee-user (if delegating? user-id service-user-id)
                   :grantee-token (when delegating?
                                    (some-> delegated-token (jwt/unsign secret-key) :jti))}))

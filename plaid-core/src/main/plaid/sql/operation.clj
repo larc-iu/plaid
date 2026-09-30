@@ -121,12 +121,29 @@
   into it and relabel it. Anything else is refused with 403 and the whole
   op rolls back, so no caller can put their writes under another caller's
   History entry. Checked after the insert, under the write lock, so the
-  row it reads is the one that stands."
-  [tx {:keys [group-id user ts]}]
+  row it reads is the one that stands.
+
+  A grant covers only writes in the project its request was made in (D27).
+  A write elsewhere, or with no project (a vocabulary, a user), is refused
+  unless the writer may join the group on its own. The refusal says why:
+  another project, a request that has ended (its service answered, or the
+  server failed it when the service's channel dropped), or another caller's
+  group."
+  [tx {:keys [group-id user ts project]}]
   (when group-id
-    (let [grant (events/group-grant group-id user *scoped-token-key*)
+    (let [token *scoped-token-key*
+          granted (events/group-grant group-id user token)
+          own? (fn [g] (og/may-join? {:user_id (:owner g) :scoped_token (:owner-token g)} user token))
+          elsewhere? (and granted (not= (some-> project str) (some-> (:project-id granted) str)))
+          _ (when (and elsewhere? (not (own? granted)))
+              (throw (ex-info (str "Operation group " group-id " was handed to this service by a request in "
+                                   "project " (:project-id granted) ", so a write "
+                                   (if project (str "in project " project) "outside that project")
+                                   " cannot join it.")
+                              {:code 403 :group-id group-id})))
+          grant (when-not elsewhere? granted)
           owner (if grant (:owner grant) user)
-          owner-token (if grant (:owner-token grant) *scoped-token-key*)]
+          owner-token (if grant (:owner-token grant) token)]
       (psc/execute! tx {:insert-into :operation_groups
                         :values [{:id group-id
                                   :message *current-group-message*
@@ -141,8 +158,11 @@
                                           :from [:operation_groups]
                                           :where [:= :id group-id]})
                               owner owner-token)
-        (throw (ex-info (str "Operation group " group-id " was started by another user or token, "
-                             "so this write cannot join it.")
+        (throw (ex-info (if (events/lapsed-group-grant group-id user token)
+                          (str "Operation group " group-id " was handed to this service by a request "
+                               "that has ended, so this write cannot join it.")
+                          (str "Operation group " group-id " was started by another user or token, "
+                               "so this write cannot join it."))
                         {:code 403 :group-id group-id}))))))
 
 (defn- check-locks!

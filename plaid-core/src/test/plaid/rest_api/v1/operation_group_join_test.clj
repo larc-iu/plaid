@@ -107,9 +107,9 @@
         g (random-uuid)
         fresh (random-uuid)]
     (is (= 201 (:status (write-in p user1-request g "requester first"))))
-    (grant! "r1" {:group-id g :owner "user1@example.com" :owner-token nil
+    (grant! "r1" {:group-id g :project-id p :owner "user1@example.com" :owner-token nil
                   :grantee-user "user2@example.com" :grantee-token nil})
-    (grant! "r2" {:group-id fresh :owner "user1@example.com" :owner-token nil
+    (grant! "r2" {:group-id fresh :project-id p :owner "user1@example.com" :owner-token nil
                   :grantee-user "user2@example.com" :grantee-token nil})
     (testing "the service's account joins the handed group"
       (is (= 201 (:status (write-in p user2-request g "service")))))
@@ -135,7 +135,7 @@
         service-d (auth/issue-delegated-token! fix/db "fake-secret" "user1@example.com" [p])
         other-d (auth/issue-delegated-token! fix/db "fake-secret" "user1@example.com" [p])
         g (random-uuid)]
-    (grant! "r1" {:group-id g :owner "user1@example.com" :owner-token (jti requester-d)
+    (grant! "r1" {:group-id g :project-id p :owner "user1@example.com" :owner-token (jti requester-d)
                   :grantee-user "user1@example.com" :grantee-token (jti service-d)})
     (testing "the service's token starts the group as the requesting token's"
       (is (= 201 (:status (write-in p (as service-d) g "service first"))))
@@ -161,3 +161,75 @@
                   {:operation-group {:id (str g) :message "Work"}})]
       (is (= 403 (:status r)))
       (is (empty? @events/inflight-requests) "the service was never asked"))))
+
+;; D27 (conc-2026-09-29 REV-W-AUDIT D-1): a grant covers only writes in the
+;; project its request was made in. Before, the service wrote into another
+;; project under the requester's group, and the requester's relabel then
+;; showed in that project's History.
+(deftest a-grant-covers-only-the-project-its-request-was-made-in
+  (events/reset-state!)
+  (let [p (world!)
+        q (h/create-test-project admin-request "Join Q")
+        g (random-uuid)
+        own (random-uuid)]
+    (call admin-request :post (str "/api/v1/projects/" q "/writers/user2@example.com"))
+    (is (= 201 (:status (write-in p user1-request g "requester first"))))
+    (grant! "r1" {:group-id g :project-id p :owner "user1@example.com" :owner-token nil
+                  :grantee-user "user2@example.com" :grantee-token nil})
+    (testing "the service joins the group in the request's project"
+      (is (= 201 (:status (write-in p user2-request g "service in p")))))
+    (testing "and not in another project, where it writes nothing"
+      (let [r (write-in q user2-request g "service in q")]
+        (is (= 403 (:status r)))
+        (is (re-find #"was handed to this service by a request in project" (str (-> r :body :error))))
+        (is (= 0 (docs-named "service in q")))))
+    (testing "nor with a write that is in no project"
+      (is (= 201 (:status (call user2-request :post "/api/v1/vocab-layers" {:name "Lex alone"})))
+          "the same write outside the group lands")
+      (let [r (call user2-request :post (str "/api/v1/vocab-layers?group-id=" g) {:name "Lex under g"})]
+        (is (= 403 (:status r)))
+        (is (= 0 (count (psc/q fix/db {:select [:id] :from [:vocab_layers]
+                                       :where [:= :name "Lex under g"]}))))))
+    (testing "a grantee writing into its own group elsewhere is not held to the grant"
+      (is (= 201 (:status (write-in q user2-request own "own first"))))
+      (grant! "r2" {:group-id own :project-id p :owner "user2@example.com" :owner-token nil
+                    :grantee-user "user2@example.com" :grantee-token nil})
+      (is (= 201 (:status (write-in q user2-request own "own in q")))))))
+
+(deftest a-write-after-its-request-ended-is-told-so
+  (events/reset-state!)
+  (let [p (world!)
+        g (random-uuid)
+        other (random-uuid)]
+    (is (= 201 (:status (write-in p user1-request g "requester first"))))
+    (is (= 201 (:status (write-in p user1-request other "requester other"))))
+    (grant! "r1" {:group-id g :project-id p :owner "user1@example.com" :owner-token nil
+                  :grantee-user "user2@example.com" :grantee-token nil})
+    (events/finish-request! "r1" "error" {:error "Service disconnected"})
+    (let [r (write-in p user2-request g "late")]
+      (is (= 403 (:status r)))
+      (is (re-find #"by a request that has ended" (str (-> r :body :error)))))
+    (testing "a group it was never handed is another caller's"
+      (let [r (write-in p user2-request other "never handed")]
+        (is (= 403 (:status r)))
+        (is (re-find #"started by another user or token" (str (-> r :body :error))))))))
+
+(deftest a-grant-is-not-handed-on-into-another-project
+  (events/reset-state!)
+  (let [p (world!)
+        q (h/create-test-project admin-request "Join Q")
+        g (random-uuid)]
+    (call admin-request :post (str "/api/v1/projects/" q "/writers/user2@example.com"))
+    (is (= 201 (:status (write-in p user1-request g "requester first"))))
+    (grant! "r1" {:group-id g :project-id p :owner "user1@example.com" :owner-token nil
+                  :grantee-user "user2@example.com" :grantee-token nil})
+    (events/register-service-channel!
+     (parse-uuid (str q)) "svc" (Object.)
+     {:service-name "S" :db fix/db
+      :token-id (:id (auth/issue-api-token! fix/db "fake-secret" "admin@example.com" "svc" "admin@example.com"))}
+     "admin@example.com")
+    (let [r (call user2-request :post (str "/api/v1/projects/" q "/services/svc/requests")
+                  {:operation-group {:id (str g) :message "Work"}})]
+      (is (= 403 (:status r)))
+      (is (re-find #"in another project" (str (-> r :body :error))))
+      (is (= #{"r1"} (set (keys @events/inflight-requests))) "the service was never asked"))))

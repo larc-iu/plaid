@@ -400,11 +400,12 @@
 (defn grant-group!
   "Let the service answering `request-id` write into the requester's
   operation group while the request is unfinished. `grant` is
-  `{:group-id <uuid> :owner <requester's user id> :owner-token <requester's
-  scoped token key or nil> :grantee-user <user id> :grantee-token <scoped
-  token key or nil>}`: the grantee is the account holding the service
-  channel, or for a delegating service the token minted for this request.
-  The service's writes are checked against the owner, and a group they
+  `{:group-id <uuid> :project-id <the request's project> :owner <requester's
+  user id> :owner-token <requester's scoped token key or nil> :grantee-user
+  <user id> :grantee-token <scoped token key or nil>}`: the grantee is the
+  account holding the service channel, or for a delegating service the token
+  minted for this request. Only the service's writes in `:project-id` join
+  the group (D27). They are checked against the owner, and a group they
   create is the owner's (see `plaid.sql.operation/ensure-group-row!`)."
   [request-id grant]
   (swap! inflight-requests
@@ -414,23 +415,36 @@
              reqs)))
   nil)
 
+(defn- grant-of
+  [group-id user-id token-key result?]
+  (let [state inflight-requests
+        reqs (when (instance? clojure.lang.IDeref state) @state)]
+    (when (map? reqs)
+      (some (fn [[_ {:keys [group-grant result]}]]
+              (when (and group-grant
+                         (result? result)
+                         (= group-id (:group-id group-grant))
+                         (= user-id (:grantee-user group-grant))
+                         (= token-key (:grantee-token group-grant)))
+                group-grant))
+            reqs))))
+
 (defn group-grant
   "The grant (see `grant-group!`) of an unfinished request that lets
   `user-id`, writing with the scoped token `token-key` (nil for any other
   credential), into the group `group-id`, or nil. Nil when the request
   registry is not running (a test that never started it)."
   [group-id user-id token-key]
-  (let [state inflight-requests
-        reqs (when (instance? clojure.lang.IDeref state) @state)]
-    (when (map? reqs)
-      (some (fn [[_ {:keys [group-grant result]}]]
-              (when (and group-grant
-                         (nil? result)
-                         (= group-id (:group-id group-grant))
-                         (= user-id (:grantee-user group-grant))
-                         (= token-key (:grantee-token group-grant)))
-                group-grant))
-            reqs))))
+  (grant-of group-id user-id token-key nil?))
+
+(defn lapsed-group-grant
+  "The grant (see `grant-group!`) that let `user-id` with `token-key` into
+  the group `group-id` for a request that has since finished (its service
+  answered, or the server failed it when the service's channel dropped), or
+  nil. Only a finished request the registry still keeps is found, so after a
+  restart there is none."
+  [group-id user-id token-key]
+  (grant-of group-id user-id token-key some?))
 
 (defn get-request
   "The entry for `request-id`, in flight or recently finished, or nil."
