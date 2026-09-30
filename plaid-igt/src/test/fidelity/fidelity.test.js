@@ -257,6 +257,7 @@ const TABLES = {
     parent_token_layer_id: notData('fixed by role'),
     order_idx: notData('fixed by setup'),
     config: notData('checked key by key below'),
+    constraints: notData('rules the app declares from the layer roles on open, not project data'),
   },
   span_layers: {
     id: notData('identity'),
@@ -270,6 +271,7 @@ const TABLES = {
     project_id: notData('ownership'),
     order_idx: covers('layers.fieldOrder'),
     config: notData('checked key by key below'),
+    constraints: notData('rules the app declares from the layer roles on open, not project data'),
   },
   relation_layers: {
     id: notData('identity'),
@@ -278,6 +280,7 @@ const TABLES = {
     project_id: notData('ownership'),
     order_idx: covers('layers.relationLayer'),
     config: covers('layers.relationLayer'),
+    constraints: notData('rules the app declares from the layer roles on open, not project data'),
   },
   texts: {
     id: notData('identity'),
