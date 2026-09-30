@@ -332,6 +332,21 @@
                           eb (if (< t k) (aget mb t) nn)
                           out (if (or (< pa ea) (< pb eb)) (conj out [pa ea pb eb]) out)]
                       (if (< t k) (recur (inc t) (inc ea) (inc eb) out) out)))))
+        ;; Two changed stretches with only a space kept between them are
+        ;; diffed as one, when the character diff can take them. `a b` to
+        ;; `ab` keeps a space either side of `b` by words, and keeping the
+        ;; one after `a` reads `b` as deleted and typed again after `a`,
+        ;; which deleted `b`'s token and everything on it.
+        hunks (if (= level :word)
+                (reduce (fn [out [os oe ns ne :as h]]
+                          (let [[pos poe pns] (peek out)]
+                            (if (and pos (= (inc poe) os)
+                                     (space? (aget o (int (at-o poe))))
+                                     (<= (+ (- (at-o oe) (at-o pos)) (- (at-n ne) (at-n pns))) hunk-limit))
+                              (conj (pop out) [pos oe pns ne])
+                              (conj out h))))
+                        [] hunks)
+                hunks)
         down (fn [os oe ns ne]
                (local-diff (sub-cps o (at-o os) (at-o oe)) (sub-cps n (at-n ns) (at-n ne))
                            (next-level level)))

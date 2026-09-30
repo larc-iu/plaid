@@ -2469,3 +2469,31 @@
         ms (/ (- (System/nanoTime) t0) 1e6)]
     (is (= new (:text/body (:text (apply-all folded old tokens)))))
     (is (< ms 1500) (str ms " ms"))))
+
+(deftest a-space-deleted-in-a-long-changed-stretch-keeps-both-words
+  ;; A line of 120 words, one save that types a space in the second word and
+  ;; in the last but one and deletes the space between two words in the
+  ;; middle. The stretch between the first and last change is past
+  ;; `hunk-limit`, so it is diffed by words, and the word diff kept the space
+  ;; after the first of the two words: the second came out deleted and typed
+  ;; again after the first, and its token went with everything on it.
+  (let [w (fn [i] (str "w" (Integer/toString i 36) "q"))
+        words (mapv w (range 120))
+        old (str/join " " words)
+        split (fn [s] (str (subs s 0 2) " " (subs s 2)))
+        new (-> (str/join " " (map-indexed (fn [i s] (if (#{1 118} i) (split s) s)) words))
+                (str/replace (str (w 60) " " (w 61)) (str (w 60) (w 61)))
+                (str/replace (str (w 80) " " (w 81)) (str (subs (w 80) 0 3) (subs (w 81) 1))))
+        starts (vec (reductions + 0 (map #(inc (count %)) words)))
+        tokens (mapv (fn [i] (tok i (starts i) (+ (starts i) (count (words i))))) (range 120))
+        at (fn [s] (cp/cp-count (subs new 0 (str/index-of new s))))
+        {:keys [text tokens]} (body-edit old new tokens)
+        by-id (into {} (map (juxt :token/id identity)) tokens)
+        read (fn [i] (when-let [{:token/keys [begin end]} (by-id i)] [begin end]))]
+    (is (= new (:text/body text)))
+    (is (= [(at (w 60)) (+ (at (w 60)) 4)] (read 60)))
+    (is (= [(+ (at (w 60)) 4) (+ (at (w 60)) 8)] (read 61)))
+    (testing "a join losing letters leaves one token on the new word"
+      (let [j (str (subs (w 80) 0 3) (subs (w 81) 1))]
+        (is (= 1 (count (filter #(and (by-id %) (< (:token/begin (by-id %)) (+ (at j) 6)) (> (:token/end (by-id %)) (at j))) [80 81]))))
+        (is (some #(= [(at j) (+ (at j) 6)] (read %)) [80 81]))))))
