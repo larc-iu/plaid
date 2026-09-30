@@ -198,7 +198,9 @@ export class CellEngine {
   focus(key) {
     const u = this._take(this._canonical(key));
     if (!u) return null;
-    this._changed(key);
+    // The cell's own act, and it shows the value already: nothing to redraw,
+    // and a redraw from inside a focus handler would race the cell's baseline.
+    this._changed(key, true);
     return { typed: u.typed, saved: u.saved };
   }
 

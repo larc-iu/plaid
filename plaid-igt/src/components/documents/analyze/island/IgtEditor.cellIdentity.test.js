@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { IgtEditor } from './IgtEditor.js';
+import { expectIndexMatchesDom } from './editor/cellParity.js';
 import { IgtDocument } from '@/domain/IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
 import { notifyError } from '@/utils/feedback';
@@ -69,6 +70,8 @@ beforeEach(() => {
   vi.mocked(notifyError).mockClear();
 });
 afterEach(() => {
+  // What the cell engine reads under each cell is what the grid drew there.
+  expectIndexMatchesDom(editor);
   editor?.destroy();
   host?.remove();
   editor = null;
@@ -129,7 +132,12 @@ describe('a gloss being typed when a refetch puts another morpheme in its column
   it('keeps a value put back unsent off the morpheme its input is reused for', async () => {
     const { doc, client, serve } = mount([morph('m-1', 1, 'th'), morph('m-2', 2, 'e')]);
     const c = cell('ma:m-2:Gloss');
-    editor._restoreUnsent(c, 'PST', '');
+    // Refused and put back while focus is in another cell.
+    cell('ma:m-1:Gloss').focus();
+    const ticket = editor._cells.sending('ma:m-2:Gloss', { saved: '', typed: 'PST' });
+    editor._cells.settle(ticket, { landed: false, status: 500, readBack: true });
+    await settle();
+    expect(c.value).toBe('PST');
     // m-2 gone, a morpheme with the same (empty) gloss in its place.
     serve([morph('m-1', 1, 'th'), morph('m-9', 2, 'he')]);
     await doc.reload();

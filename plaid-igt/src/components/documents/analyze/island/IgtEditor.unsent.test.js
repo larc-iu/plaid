@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { IgtEditor } from './IgtEditor.js';
+import { expectIndexMatchesDom } from './editor/cellParity.js';
 import { IgtDocument } from '@/domain/IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
 import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
@@ -85,6 +86,8 @@ async function refuseFirst(doc, client, more) {
 
 beforeEach(() => resetIds());
 afterEach(() => {
+  // What the cell engine reads under each cell is what the grid drew there.
+  expectIndexMatchesDom(editor);
   editor?.destroy();
   host?.remove();
   editor = null;
@@ -354,6 +357,51 @@ describe('a value put back unsaved, on a page the reader leaves', () => {
     await refuse();
     await settle(30);
     expect(hasUnsavedDraft()).toBe(null);
+  });
+
+  // Unified with plaid-ud (the cell engine reads the document, not the
+  // cell): a refusal answering while the page is away, over a word someone
+  // split meanwhile, is a conflict found at once and kept for its page, not a
+  // "Not saved" toast with the value gone.
+  it('is a conflict kept for its page when its word was re-cut while away', async () => {
+    const { doc, refuse } = mountPaged();
+    const a = cell('ma:m-1:Gloss');
+    focus(a);
+    type(a, 'AAA');
+    a.blur();
+    editor._setPage(1);
+    await settle();
+    const split = buildRawDoc({
+      sentences: [
+        { id: 's-1', begin: 0, end: 3 },
+        { id: 's-2', begin: 4, end: 7 },
+      ],
+      words: [
+        { id: 'w-1', begin: 0, end: 2 },
+        { id: 'w-3', begin: 2, end: 3 },
+        { id: 'w-2', begin: 4, end: 7 },
+      ],
+      morphemes: [
+        { id: 'm-1', begin: 0, end: 2, precedence: 1, metadata: {} },
+        { id: 'm-3', begin: 2, end: 3, precedence: 1, metadata: {} },
+        { id: 'm-2', begin: 4, end: 7, precedence: 1, metadata: {} },
+      ],
+    });
+    doc.client.documents.get = async () => JSON.parse(JSON.stringify(split));
+    await refuse();
+    await settle(30);
+    expect(hasUnsavedDraft()).toBe(null);
+    expect(editor._cells.conflictOf('ma:m-1:Gloss')).toMatchObject({
+      typed: 'AAA',
+      recut: { unit: 'word', text: 'th' },
+    });
+    editor._setPage(0);
+    await settle();
+    const back = cell('ma:m-1:Gloss');
+    expect(back.value).toBe('');
+    expect(back.closest('.igt-cell__face')?.querySelector('.igt-field-conflict')?.textContent).toBe(
+      'Yours: AAA · Enter to keep yours',
+    );
   });
 
   it('gives way when the stored value moved on while its page was away', async () => {

@@ -13,17 +13,12 @@ import { notifyError, notifyInfo } from '@/utils/feedback';
 import { arrowStep, caretAtArrowEdge } from '@ui/lib/bidi.js';
 import { keys } from '@/lib/keymap.js';
 import { settledId } from '@ui/domain/pendingIds.js';
-import { statusOf } from '@ui/lib/errors.js';
-import { KEPT_IN_CELL } from '@ui/lib/cellConflict.js';
 import { cellByKey, morphFormOf, sameCell } from './shared.js';
-import { rowOfKey } from './conflicts.js';
+import { readCell } from './cellReader.js';
 
 // An annotation cell's life: focus, typing, commit, the keyboard chords that
 // move between cells, and the sentence fields' own handlers.
 
-// Refusals that sending the same edit again cannot mend: no longer a writer,
-// or what it names is gone.
-const REFUSED_FOR_GOOD = new Set([403, 404]);
 export const cells = {
   _onFieldFocus(e) {
     this._rememberForTokenize(e.target);
@@ -48,13 +43,14 @@ export const cells = {
   },
 
   // What a cell's edit is measured against from here on: the value it was
-  // focused with, or for a value put back unsent (see _restoreUnsent) the
-  // stored value under it, so that leaving the cell sends it again and Escape
-  // takes it back.
+  // focused with, or for a value put back unsent (the cell engine) the stored
+  // value under it, so that leaving the cell sends it again and Escape takes
+  // it back. Focus takes the value up, so it is no longer waiting: the mark
+  // goes now, and the next render agrees.
   _stampOrig(el) {
-    el.dataset.orig = el.igtUnsent ? el.igtUnsent.saved : el.value;
-    el.igtUnsent = null;
-    el.classList.remove('igt-field--unsent');
+    const taken = this._cells.focus(el.dataset.cellKey);
+    el.dataset.orig = taken ? taken.saved : el.value;
+    if (taken) el.classList.remove('igt-field--unsent');
     // Which cell the edit is made in. A commit goes to whatever the input is
     // bound to when it leaves, so a render that reuses the input for another
     // row's cell has to know (uncontrolledValue in shared.js).
@@ -121,7 +117,7 @@ export const cells = {
     const synthetic = this._syntheticInput;
     this._syntheticInput = false;
     // Typing another value lets a lost conflict's value go (conflicts.js).
-    if (!synthetic) this._dropConflict(e.target);
+    if (!synthetic) this._cells.dismiss(key);
     const open = !!this._alts && this._alts.cellKey === key;
     if (!synthetic && !open && e.target.dataset.hasTagset) this._openAlts(e.target);
     if (this._alts && this._alts.cellKey === key) {
@@ -490,214 +486,47 @@ export const cells = {
     const filled = value !== '';
     el.classList.toggle('igt-field--filled', filled);
     el.classList.toggle('igt-field--empty', !filled);
-    // A value put back unsent looks it (H1-8): uncontrolledValue and the
-    // focus handler take the class off with `igtUnsent`.
-    el.classList.toggle('igt-field--unsent', !!el.igtUnsent);
     if (tagset) el.classList.toggle('igt-field--invalid', validateValue(value, tagset).length > 0);
   },
 
-  // Run a cell commit; when it FAILS (server unreachable, conflict…) the doc
-  // reloads and re-renders, which used to drop focus to <body> and leave the
-  // user to click back. Put the typed value back into the same cell, so
-  // nothing typed is lost.
+  // Run a cell commit. When it is refused (server unreachable, a conflict) the
+  // document reads itself again and re-renders, and the cell engine decides
+  // what the cell shows (plaid-ui cells/CellEngine.js): the typed value put
+  // back to be sent again, the other user's value with this one under it, or
+  // what is stored after a refusal that sending again cannot mend. A cell on
+  // a page not drawn is decided the same way, and waits for its page.
   //
-  // The cell is refocused, so Enter retries (E2: focus is never lost), only
-  // when focus is still in this cell or dropped to the body. Focus resting in
-  // another cell stays there, typed into or not: the person may be typing into
-  // it the moment the refusal lands, and taking focus back sent those letters
-  // after the refused value, into the refused cell ("DOG" refused, "CHASE"
-  // typed in the next word, "DOGCHASE" stored on the first). Taking focus from
-  // a cell with typed text also commits it, and two cells whose saves keep
-  // failing would take focus from each other and resend forever. Otherwise
-  // the value goes back without focus (_restoreUnsent).
+  // Put back into its cell, the value takes focus with it (E2: focus is never
+  // lost) only when focus is still in this cell or dropped to the body. Focus
+  // resting in another cell stays there, typed into or not: the person may be
+  // typing into it the moment the refusal lands, and taking focus back sent
+  // those letters after the refused value, into the refused cell ("DOG"
+  // refused, "CHASE" typed in the next word, "DOGCHASE" stored on the first).
+  // Taking focus from a cell with typed text also commits it, and two cells
+  // whose saves keep failing would take focus from each other and resend
+  // forever (plaid-ui domCells.js).
+  //
+  // A conflict is this cell's to report, so the document raises no toast of
+  // its own for one (DocumentModel.cellWrite).
   _runKeepingFocus(el, typed, fn) {
     const key = el.dataset.cellKey;
-    // The stored value as of this commit: what Escape must revert to and what
-    // a retry is measured against. Read now rather than after the failure,
-    // when the cell may have been refocused (and restamped) in the meantime.
-    const saved = el.dataset.orig ?? '';
-    const what = el.igtWhat ?? null;
-    // The word the value was typed for, as it reads now: a refusal that
-    // finds it split or joined meanwhile does not send the value again.
-    const shape = this._cellShape(el);
-    // What the server held under the cell before this page's edits of it
-    // that have not landed: two edits made one over the other behind a
-    // refusal are both over it. An edit that lands moves it on. `mine` is
-    // every value those edits sent: one of them stored unheard (a lost
-    // answer) is this page's own, never another user's.
-    let base = this._editBases.get(key);
-    if (!base) this._editBases.set(key, (base = { value: saved, pending: 0, mine: new Set() }));
-    base.pending += 1;
-    base.mine.add(typed);
-    // A conflict is this cell's to report (conflicts.js), so the document
-    // raises no toast of its own for one.
-    Promise.resolve(this.doc.handlesConflicts(fn)).then((ok) => {
-      base.pending -= 1;
-      if (base.pending === 0) this._editBases.delete(key);
-      if (ok !== false) {
-        base.value = typed;
-        return;
-      }
-      if (!key) return;
-      // A later edit of the same cell is still out: its value is the newer
-      // one, the one on screen, and it reports its own outcome. This one is
-      // neither put back nor a conflict (as plaid-ud's 490ca14a).
-      if (base.pending > 0) return;
-      const status = statusOf(this.doc.errorCause);
-      const cell = cellByKey(this.container, key);
-      // Not drawn (the reader paged away): kept until its page is drawn again,
-      // which tells a conflict from a value to send again (_syncUnsentDrafts).
-      if (!cell) {
-        if (REFUSED_FOR_GOOD.has(status)) return;
-        // Gone from the document (another user deleted or merged the word):
-        // there is no cell to put it back into, and this cell took the
-        // conflict from the document, so it says so.
-        if (
-          (status === 409 && !this._shownIds().has(rowOfKey(key))) ||
-          this._recutSince(shape) != null
-        ) {
-          notifyError(`Not saved: ${typed}`, 'Changed elsewhere');
-          return;
-        }
-        this._keepUnsent(key, typed, base.value, what);
-        return;
-      }
-      const active = document.activeElement;
-      // Typed into again since this edit was committed: that text is newer,
-      // and leaving the cell sends it. A value an earlier refusal put back
-      // here (`igtPutBack`) is older than this one.
-      if (
-        active === cell &&
-        cell.value !== typed &&
-        cell.value !== (cell.dataset.orig ?? '') &&
-        cell.value !== cell.igtPutBack
-      ) {
-        return;
-      }
-      // What the server holds under the cell now, as the refetch drew it. A
-      // cell still drawn with the typed value was not redrawn (a refetch that
-      // gave up), and says nothing.
-      const drawn = cell.igtUnsent ? cell.igtUnsent.saved : (cell.igtRendered ?? cell.value);
-      // The refetch landed and holds the typed value: the edit is stored (its
-      // answer was lost on the way back), or someone stored the same. Nothing
-      // is put back, so nothing is asked about on leaving, and a later edit
-      // of the cell is measured against it.
-      if (drawn === typed && !cell.igtUnsent && !this.doc.outOfStep) {
-        if (active === cell && cell.value === typed) cell.dataset.orig = typed;
-        return;
-      }
-      const stored = drawn === typed ? base.value : drawn;
-      // Someone else changed the cell first: theirs shows, with this one under
-      // it (Luke's ruling Q1).
-      if (stored !== base.value && !base.mine.has(stored)) {
-        this._enterConflict(cell, typed, stored);
-        return;
-      }
-      // Someone else split or joined the word: the cell is still there (the
-      // word keeps its id on its left half, or on the joined word), but the
-      // value was typed for a word that is gone. It is shown the same way,
-      // and leaving the cell sends nothing.
-      const recut = REFUSED_FOR_GOOD.has(status) ? null : this._recutSince(shape);
-      if (recut != null) {
-        this._enterConflict(cell, typed, stored, recut);
-        return;
-      }
-      // Refused where sending again cannot mend it (no longer a writer, the
-      // project or the row gone): the cell shows what is stored.
-      // Refused as a conflict that is not this cell's: another change came
-      // first elsewhere. Said as it is, and the value goes back to be sent
-      // again.
-      if (status === 409) {
-        const field = (cell.dataset.tier ?? '').split(':').slice(1).join(':') || 'morpheme form';
-        notifyError(KEPT_IN_CELL, `Failed to update ${field}`);
-      }
-      if (REFUSED_FOR_GOOD.has(status)) {
-        cell.igtUnsent = null;
-        cell.value = stored;
-        if (active === cell) cell.dataset.orig = stored;
-        this._syncCellClasses(cell, stored, cell.igtTagset ?? null);
-        return;
-      }
-      if (active && active !== document.body && active !== cell) {
-        this._restoreUnsent(cell, typed, stored);
-        return;
-      }
-      // Focus first (the focus handler stamps dataset.orig from whatever the
-      // reload put in the cell), then restore what was typed over it.
-      cell.focus();
-      cell.value = typed;
-      cell.igtPutBack = typed;
-      cell.dataset.orig = stored;
-      this._syncCellClasses(cell, typed, cell.igtTagset ?? null);
+    if (!key) {
+      this.doc.cellWrite(fn);
+      return;
+    }
+    const ticket = this._cells.sending(key, {
+      // The stored value as of this commit: what Escape reverts to and what a
+      // retry is measured against.
+      saved: el.dataset.orig ?? '',
+      typed,
+      entityIds: el.igtEntityIds ?? [],
+      field: (el.dataset.tier ?? '').split(':').slice(1).join(':') || 'morpheme form',
+      // The leave question's name for the cell ("Gloss of "dogs" in sentence 3").
+      what: el.igtWhat ?? null,
     });
-  },
-
-  // The word a cell is on and the text of it, and of the cell's morpheme for
-  // a morpheme's cell. For a sentence's cell, the sentence and its text.
-  _cellShape(el) {
-    const wordId = el?.closest?.('[data-word-col]')?.dataset.wordCol;
-    if (!wordId) {
-      const sentenceId = el?.dataset?.cellKey?.startsWith('sa:')
-        ? rowOfKey(el.dataset.cellKey)
-        : null;
-      const sentence = sentenceId ? this._sentenceTextNow(sentenceId) : null;
-      return sentence == null ? null : { sentenceId, sentence };
-    }
-    const rowId = rowOfKey(el.dataset.cellKey);
-    const now = this._shapeNow(wordId, rowId);
-    return now && { wordId, rowId, ...now };
-  },
-
-  _shapeNow(wordId, rowId) {
-    const word = this.doc.tokenLookup?.get(settledId(wordId));
-    if (!word) return null;
-    const morpheme =
-      rowId && rowId !== wordId
-        ? (word.morphemes || []).find((m) => settledId(m.id) === settledId(rowId))
-        : null;
-    // A morpheme is re-segmented in its form, the text its cell shows, and
-    // keeps its id and extent ("sing" to si-ng leaves "si" on the same token).
-    return { word: word.content, morpheme: morpheme ? morphFormOf(morpheme) : null };
-  },
-
-  // The text of a sentence as it reads now, or null when it is gone.
-  _sentenceTextNow(sentenceId) {
-    const sentence = this.doc.sentenceLookup?.get(settledId(sentenceId));
-    const body = this.doc.layerInfo?.primaryTextLayer?.text?.body;
-    if (!sentence || typeof body !== 'string') return null;
-    return [...body].slice(sentence.begin, sentence.end).join('').trim();
-  },
-
-  // What the cell is on now, as `{ unit, text }`, when the word under `shape`
-  // was split or joined since (its text changed), or its morpheme
-  // re-segmented (its form changed), or its sentence split, joined or
-  // respelled, else null.
-  _recutSince(shape) {
-    if (!shape) return null;
-    // A sentence split, joined or respelled: its text changed.
-    if (shape.sentenceId) {
-      const text = this._sentenceTextNow(shape.sentenceId);
-      return text != null && text !== shape.sentence ? { unit: 'sentence', text } : null;
-    }
-    const now = this._shapeNow(shape.wordId, shape.rowId);
-    if (!now) return null;
-    if (now.word !== shape.word) return { unit: 'word', text: now.word };
-    if (shape.morpheme != null && now.morpheme != null && now.morpheme !== shape.morpheme) {
-      return { unit: 'morpheme', text: now.morpheme };
-    }
-    return null;
-  },
-
-  // Put a value that was not saved back into a cell that does not have focus.
-  // `igtUnsent` keeps it there through later renders while the stored value
-  // is still `saved` (uncontrolledValue in shared.js), and makes focusing the
-  // cell measure the edit against `saved` (_stampOrig), so leaving it sends
-  // the value again.
-  //
-  // Leaving the document asks about it while it stands (_syncUnsentDrafts).
-  _restoreUnsent(cell, typed, saved) {
-    this._putBackInto(cell, typed, saved);
-    this._syncUnsentDrafts();
+    this.doc.cellWrite(fn).then((outcome) => {
+      if (!this._destroyed) this._cells.settle(ticket, outcome);
+    });
   },
 
   // Text typed into a cell whose input a render has since reused for another
@@ -717,16 +546,15 @@ export const cells = {
     const key = d.key.replace(/pending:\d+/g, (p) => settledId(p));
     const home = cellByKey(this.container, key);
     if (home && home !== el) {
-      const stored = home.igtRendered ?? home.value;
+      const stored = readCell(this.doc, key) ?? '';
       if (stored !== d.saved) {
-        this._enterConflict(home, d.typed, stored);
+        this._cells.conflict(key, d.typed, stored);
         return;
       }
       // Focus first (the focus handler stamps dataset.orig from the stored
       // value), then the text, so leaving the cell sends it.
       home.focus();
       home.value = d.typed;
-      home.igtPutBack = d.typed;
       home.dataset.orig = d.saved;
       home.setSelectionRange?.(d.typed.length, d.typed.length);
       this._syncCellClasses(home, d.typed, home.igtTagset ?? null);
@@ -742,12 +570,6 @@ export const cells = {
   // row the edit was not made in.
   _stillFocusedCell(el) {
     return el.igtFocusKey == null || sameCell(el.igtFocusKey, el.dataset.cellKey);
-  },
-
-  _putBackInto(cell, typed, saved) {
-    cell.igtUnsent = { typed, saved, key: cell.dataset.cellKey };
-    cell.value = typed;
-    this._syncCellClasses(cell, typed, cell.igtTagset ?? null);
   },
 
   /**

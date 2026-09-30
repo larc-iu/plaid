@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { IgtEditor } from './IgtEditor.js';
+import { expectIndexMatchesDom } from './editor/cellParity.js';
 import { IgtDocument } from '@/domain/IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
 import { notifyInfo } from '@/utils/feedback';
@@ -104,6 +105,8 @@ beforeEach(() => {
   vi.mocked(notifyInfo).mockClear();
 });
 afterEach(() => {
+  // What the cell engine reads under each cell is what the grid drew there.
+  expectIndexMatchesDom(editor);
   editor?.destroy();
   host?.remove();
   editor = null;
@@ -783,7 +786,7 @@ describe('a save refused after the user moved on to the next cell', () => {
     expect(b.value).toBe('');
     // The refused value is back in its own cell, unsent.
     expect(a.value).toBe('DOG');
-    expect(a.igtUnsent).toBeTruthy();
+    expect(editor._cells.unsentOf(a.dataset.cellKey)).toBeTruthy();
     type(b, 'CHASE');
     b.blur();
     await settle();
@@ -863,10 +866,10 @@ describe('an edit made behind a refused one', () => {
     client.spans.create = create;
     expect(document.activeElement).toBe(c);
     expect(a.value).toBe('AAA');
-    expect(a.igtUnsent).toBeTruthy();
+    expect(editor._cells.unsentOf(a.dataset.cellKey)).toBeTruthy();
     expect(sent).toHaveLength(1);
     expect(sent[0]).toContain('BBB');
-    expect(b.igtUnsent).toBeFalsy();
+    expect(editor._cells.unsentOf(b.dataset.cellKey)).toBeNull();
     expect(doc.isSaving).toBe(false);
   });
 });

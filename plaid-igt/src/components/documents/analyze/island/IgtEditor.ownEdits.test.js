@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { IgtEditor } from './IgtEditor.js';
+import { expectIndexMatchesDom } from './editor/cellParity.js';
 import { IgtDocument } from '@/domain/IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
 import { notifyError, notifyWarning } from '@/utils/feedback';
@@ -105,6 +106,8 @@ beforeEach(() => {
   vi.mocked(notifyError).mockClear();
 });
 afterEach(() => {
+  // What the cell engine reads under each cell is what the grid drew there.
+  expectIndexMatchesDom(editor);
   editor?.destroy();
   host?.remove();
   editor = null;
@@ -145,7 +148,7 @@ describe('a cell edited again while its first save was out', () => {
     expect(note('ma:m-1:Gloss')).toBeNull();
     expect(notifyWarning).not.toHaveBeenCalled();
     expect(c.value).toBe('B');
-    expect(c.igtUnsent?.typed).toBe('B');
+    expect(editor._cells.unsentOf(c.dataset.cellKey)?.typed).toBe('B');
   });
 
   it("is still a conflict when another user's value is what the server holds", async () => {
@@ -212,7 +215,7 @@ describe('an edit that landed with its answer lost', () => {
 
     expect(server.value).toBe('A');
     expect(c.value).toBe('A');
-    expect(c.igtUnsent ?? null).toBeNull();
+    expect(editor._cells.unsentOf(c.dataset.cellKey)).toBeNull();
     expect(c.classList.contains('igt-field--unsent')).toBe(false);
     expect(note('ma:m-1:Gloss')).toBeNull();
   });
@@ -234,7 +237,7 @@ describe('an edit that landed with its answer lost', () => {
     expect(note('ma:m-1:Gloss')).toBeNull();
     expect(notifyWarning).not.toHaveBeenCalled();
     expect(cell('ma:m-1:Gloss').value).toBe('B');
-    expect(cell('ma:m-1:Gloss').igtUnsent?.saved).toBe('A');
+    expect(editor._cells.unsentOf('ma:m-1:Gloss')?.saved).toBe('A');
     void c;
   });
 
@@ -253,7 +256,7 @@ describe('an edit that landed with its answer lost', () => {
 
     expect(server.value).toBe('dog');
     expect(c.value).toBe('A');
-    expect(c.igtUnsent?.saved).toBe('dog');
+    expect(editor._cells.unsentOf(c.dataset.cellKey)?.saved).toBe('dog');
     expect(c.classList.contains('igt-field--unsent')).toBe(true);
     expect(note('ma:m-1:Gloss')).toBeNull();
   });

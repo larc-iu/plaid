@@ -15,7 +15,7 @@ const RECENT = 50;
  * The display name of whoever last changed one of `entityIds` in the
  * document, else of whoever last changed anything in it but `me`, or null.
  */
-export async function whoChanged(client, documentId, entityIds, me) {
+async function whoChanged(client, documentId, entityIds, me) {
   const ids = (entityIds ?? []).filter(Boolean);
   const page = await client.documents.auditPage(documentId, { order: 'desc', limit: RECENT });
   const others = (page?.entries ?? []).filter((e) => e.user?.id && e.user.id !== me);

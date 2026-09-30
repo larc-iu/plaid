@@ -1774,7 +1774,7 @@
 }
 
 /* An edit of yours that is not saved: a value put back after its save was
-   refused (cells.js _restoreUnsent), or one that lost to another user's edit
+   refused (the cell engine, cells.js), or one that lost to another user's edit
    of the same cell, which then shows theirs with yours noted under it
    (conflicts.js). The amber of plaid-ud's conflicted cell. */
 .igt-field.igt-field--unsent,

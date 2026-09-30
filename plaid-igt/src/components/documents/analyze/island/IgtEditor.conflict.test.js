@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { IgtEditor } from './IgtEditor.js';
+import { expectIndexMatchesDom } from './editor/cellParity.js';
 import { IgtDocument } from '@/domain/IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
 import { notifyError, notifyWarning } from '@/utils/feedback';
@@ -93,6 +94,8 @@ beforeEach(() => {
   vi.mocked(notifyError).mockClear();
 });
 afterEach(() => {
+  // What the cell engine reads under each cell is what the grid drew there.
+  expectIndexMatchesDom(editor);
   editor?.destroy();
   host?.remove();
   editor = null;
@@ -175,7 +178,7 @@ describe('a cell edit that lost to another user', () => {
     // holding "DEF".
     const restore = refuseWith(client, theirs('the.DEF'));
     const c = cell('ma:m-1:Gloss');
-    editor._conflicts.clear();
+    editor._cells.clear();
     c.focus();
     type(c, 'x');
     type(c, '');
@@ -250,7 +253,7 @@ describe('who reports a conflict', () => {
     expect(notifyWarning).not.toHaveBeenCalled();
     expect(notifyError).toHaveBeenCalledTimes(1);
     expect(vi.mocked(notifyError).mock.calls[0][1]).toBe('Failed to update Gloss');
-    expect(c.igtUnsent).toBeTruthy();
+    expect(editor._cells.unsentOf('ma:m-1:Gloss')).toBeTruthy();
   });
 });
 
@@ -266,7 +269,7 @@ describe('a cell edit refused where sending again cannot mend it', () => {
     await settle();
     restore();
     expect(c.value).toBe('');
-    expect(c.igtUnsent).toBeFalsy();
+    expect(editor._cells.unsentOf('ma:m-1:Gloss')).toBeNull();
     expect(note('ma:m-1:Gloss')).toBeNull();
     expect(hasUnsavedDraft()).toBe(null);
   });
@@ -301,7 +304,7 @@ describe('a value put back unsent (nobody else changed the cell)', () => {
     other.focus();
     await settle();
     restore();
-    expect(c.igtUnsent).toBeTruthy();
+    expect(editor._cells.unsentOf('ma:m-1:Gloss')).toBeTruthy();
     client.documents.get = async () => theirs('dog.PL');
     await doc.reload();
     await settle();

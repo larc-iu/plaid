@@ -293,9 +293,13 @@ export const grid = {
   },
 
   _morphCol(morph, word, siblings, ctx, index) {
-    const value = morphFormOf(morph);
-    const filled = value !== '';
     const formKey = `mf:${morph.id}`;
+    const value = morphFormOf(morph);
+    // What the form cell shows at rest (the cell engine, as in _field).
+    const shown = this._cells.display(formKey, value);
+    const filled = shown !== '';
+    const conflict = !this.readOnly && !!this._cells.conflictOf(formKey);
+    const unsent = !this.readOnly && !!this._cells.unsentOf(formKey);
     const formWhat =
       siblings.length <= 1
         ? this._cellWhat('Morpheme form', `"${word.content}"`, index)
@@ -316,9 +320,9 @@ export const grid = {
             html`<input
               class="igt-field igt-morph-field ${filled
                 ? 'igt-field--filled'
-                : 'igt-field--empty'} ${provClass('igt-field', prov)} ${this._conflictOf(formKey)
+                : 'igt-field--empty'} ${provClass('igt-field', prov)} ${conflict
                 ? 'igt-field--conflict'
-                : ''}"
+                : ''} ${unsent ? 'igt-field--unsent' : ''}"
               data-cell-key=${formKey}
               data-tier=${cellTier('mf', null)}
               data-word=${word.id}
@@ -331,13 +335,13 @@ export const grid = {
                 : filled
                   ? value
                   : nothing}
-              size=${this._fieldSize(value)}
+              size=${this._fieldSize(shown)}
               spellcheck="false"
               dir="auto"
               ?disabled=${this.readOnly}
               .igtWhat=${formWhat}
               .igtEntityIds=${[morph.id]}
-              ${uncontrolledValue(value)}
+              ${uncontrolledValue(shown, value)}
               @focus=${this._onMorphFormFocus}
               @mousedown=${this._onCellMouseDown}
               @mouseup=${this._onCellMouseUp}

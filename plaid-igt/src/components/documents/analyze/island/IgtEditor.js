@@ -19,7 +19,10 @@ import { tagsetEnforces, validateValue } from '@/domain/tagsets';
 import { handleComposeBeforeInput } from '@/lib/composeInput';
 import { isVirtualMorphemeId, virtualMorphemeWordId } from '@/domain/virtualMorpheme.js';
 import { precedentFetchedAt } from '@/domain/precedentCache';
-import { setUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
+import { CellEngine } from '@ui/domain/cells/CellEngine.js';
+import { domCells } from '@ui/domain/cells/domCells.js';
+import { announceCells } from '@ui/lib/cellConflict.js';
+import { notifyError, notifyWarning } from '@/utils/feedback';
 import {
   cellByKey,
   cellTier,
@@ -42,7 +45,8 @@ import { assistant } from './editor/assistant.js';
 import { rows } from './editor/rows.js';
 import { grid } from './editor/grid.js';
 import { vocabPopover } from './editor/vocabPopover.js';
-import { conflicts, rowOfKey } from './editor/conflicts.js';
+import { conflicts } from './editor/conflicts.js';
+import { cellEntityIds, readCell, recutOf, shapeOf } from './editor/cellReader.js';
 import { keys } from '@/lib/keymap.js';
 
 export class IgtEditor {
@@ -199,16 +203,32 @@ export class IgtEditor {
       e.returnValue = '';
     };
     window.addEventListener('beforeunload', this._onBeforeUnload);
-    // The values put back unsent, by cell key, each registered with the leave
-    // question (_syncUnsentDrafts). Focusing one takes it up again.
-    this._unsent = new Map();
-    // Cell edits that lost to another user's, by cell key (conflicts.js),
-    // and per cell key what the server held before this page's edits of it
-    // that have not landed (cells.js _runKeepingFocus).
-    this._conflicts = new Map();
-    this._editBases = new Map();
-    this._onFocusIn = () => queueMicrotask(() => this._syncUnsentDrafts());
-    this.container.addEventListener('focusin', this._onFocusIn);
+    // What becomes of a cell's refused edit (plaid-ui cells/CellEngine.js,
+    // Luke's ruling Q1): put back unsent to be sent again, or a conflict with
+    // another user's value (conflicts.js). What is stored under a cell is read
+    // from the document (cellReader.js), so a cell on a page not drawn is
+    // decided like a drawn one. The template draws the engine's state: the
+    // value at rest, the unsent mark, the note.
+    this._cells = new CellEngine({
+      read: (key) => readCell(this.doc, key),
+      shape: (key) => shapeOf(this.doc, key),
+      recut: (snapshot) => recutOf(this.doc, snapshot),
+      entityIds: (key) => cellEntityIds(this.doc, key),
+      view: domCells({
+        find: (key, canonical) =>
+          cellByKey(this.container, key) ?? cellByKey(this.container, canonical),
+        putBackOf: (key) => this._cells.putBackOf(key),
+        shown: (el, value) => this._syncCellClasses(el, value, el.igtTagset ?? null),
+      }),
+      announce: announceCells({
+        client: doc.client,
+        documentId: doc.id,
+        me: doc._user?.id,
+        warn: (message) => notifyWarning(message),
+        error: (message, title) => notifyError(message, title),
+      }),
+    });
+    this._unsubCells = this._cells.subscribe(() => this._render(true));
     this._onAssistantFocus = this._onAssistantFocus.bind(this);
     window.addEventListener('igt:focus-sentence', this._onAssistantFocus);
     this._onDockWidth = this._onDockWidth.bind(this);
@@ -393,8 +413,8 @@ export class IgtEditor {
     window.removeEventListener('scroll', this._onWinChange, true);
     window.removeEventListener('resize', this._onWinChange);
     window.removeEventListener('beforeunload', this._onBeforeUnload);
-    this.container.removeEventListener('focusin', this._onFocusIn);
-    this._syncUnsentDrafts();
+    this._unsubCells?.();
+    this._cells.clear();
     window.removeEventListener('igt:focus-sentence', this._onAssistantFocus);
     window.removeEventListener('resize', this._onDockWidth);
     document.removeEventListener('visibilitychange', this._onVisibility);
@@ -417,114 +437,14 @@ export class IgtEditor {
   }
 
   // A focused cell whose value differs from what it was focused with (typed
-  // but not yet committed by blur or Enter), or any cell holding a value put
-  // back after it was not saved (cells.js _restoreUnsent). A save still on its
-  // way is useSavingGuard's question, which DocumentDetail asks for the
-  // document.
+  // but not yet committed by blur or Enter), or any value put back after it
+  // was not saved, drawn or not (the cell engine). A save still on its way is
+  // useSavingGuard's question, which DocumentDetail asks for the document.
   _hasUnsavedWork() {
-    if (this._unsent.size) return true;
-    for (const cell of this.container.querySelectorAll('.igt-field')) {
-      if (cell.igtUnsent) return true;
-    }
+    if (this._cells.hasUnsent) return true;
     const el = document.activeElement;
     if (!el || !this.container.contains(el) || !el.classList?.contains('igt-field')) return false;
     return (el.value ?? '') !== (el.dataset.orig ?? '');
-  }
-
-  // Every value put back unsent (cells.js _restoreUnsent) is a draft for the
-  // leave question, so an in-app link or Back asks about it as closing the tab
-  // does. One registration per cell, so the question counts them.
-  //
-  // The value lives on the cell (`igtUnsent`), and `_unsent` keeps it by cell
-  // key as well, because paging throws the cell away: while its page is not
-  // drawn the value is still unsaved and still asked about, and once the page
-  // is drawn again it goes back into the new cell, if the stored value is still
-  // the one it was typed over. It drops out when its cell is focused (leaving
-  // the cell sends it), when the stored value moves on (uncontrolledValue), and
-  // with the island.
-  _syncUnsentDrafts() {
-    const conflicted = [];
-    if (!this._destroyed) {
-      for (const cell of this.container.querySelectorAll('.igt-field')) {
-        if (cell.igtUnsent) this._noteUnsent(cell.dataset.cellKey, cell.igtUnsent, cell);
-      }
-    }
-    let ids = null;
-    for (const [key, entry] of this._unsent) {
-      const cell = this._destroyed ? null : cellByKey(this.container, key, '.igt-field');
-      let keep = !this._destroyed;
-      if (keep && !cell) {
-        // Not drawn: on another page, or gone from the document (a refused
-        // split takes its new morphemes with it), and then there is no cell
-        // to take it back and nothing to ask about.
-        ids ??= this._shownIds();
-        keep = ids.has(rowOfKey(key));
-      }
-      if (keep && cell && !cell.igtUnsent) {
-        // The cell it was put into let it go: focused (leaving it sends the
-        // value), or the stored value moved on, which is someone else's
-        // change and a conflict (conflicts.js). A cell drawn afresh takes it
-        // back while the stored value is still the one it was typed over,
-        // and meets a conflict otherwise.
-        const stored = cell.igtRendered ?? cell.value ?? '';
-        const lost = cell.igtLostTo;
-        cell.igtLostTo = null;
-        keep = false;
-        if (lost) {
-          conflicted.push([cell, entry.typed, lost.stored]);
-        } else if (cell !== entry.cell && document.activeElement !== cell) {
-          if (stored === entry.saved) {
-            keep = true;
-            this._putBackInto(cell, entry.typed, entry.saved);
-            entry.cell = cell;
-          } else if (stored !== entry.typed) {
-            conflicted.push([cell, entry.typed, stored]);
-          }
-        }
-      }
-      if (keep) continue;
-      this._unsent.delete(key);
-      setUnsavedDraft(entry, null);
-    }
-    for (const [cell, typed, stored] of conflicted) this._enterConflict(cell, typed, stored);
-  }
-
-  // Every sentence, word and morpheme id in the document, on any page: what a
-  // cell key names.
-  _shownIds() {
-    const ids = new Set();
-    for (const sentence of this.doc.sentences || []) {
-      ids.add(sentence.id);
-      for (const token of sentence.tokens || []) {
-        ids.add(token.id);
-        for (const morph of token.morphemes || []) ids.add(morph.id);
-      }
-    }
-    return ids;
-  }
-
-  // Remember a value put back unsent, for a cell not drawn right now.
-  // `what` names the cell for the leave question ("Gloss of "dogs" in
-  // sentence 3"), as the cell had it when the edit was made.
-  _keepUnsent(key, typed, saved, what = null) {
-    const entry = this._unsent.get(key);
-    this._noteUnsent(key, { typed, saved: entry?.saved ?? saved }, null, what ?? entry?.what);
-    this._syncUnsentDrafts();
-  }
-
-  _noteUnsent(key, { typed, saved }, cell, what = cell?.igtWhat ?? null) {
-    let entry = this._unsent.get(key);
-    if (!entry) {
-      entry = {};
-      this._unsent.set(key, entry);
-    }
-    // Registered again when the name changes, so the question names the cell.
-    const name = what ?? entry.what ?? null;
-    if (!entry.registered || name !== entry.what) {
-      setUnsavedDraft(entry, name ?? 'An annotation you have typed', 'annotations you have typed');
-      entry.registered = true;
-    }
-    Object.assign(entry, { typed, saved, cell, what: name });
   }
 
   _scheduleRender() {
@@ -598,10 +518,14 @@ export class IgtEditor {
       Object.keys(this.doc.vocabularies || {}).length > 0,
     );
     this._followPopover();
+    // What the engine holds is gone over against new data first, so the
+    // template draws it as it stands (a value put back whose stored value
+    // moved on is a conflict now). Only new data: a render the engine asked
+    // for draws what it holds, and a document that could not be read again
+    // after a refusal still shows the refused value, which is not stored.
+    if (dataChanged) this._cells.reconcile({ quiet: true });
     render(this._template(), this.container);
     this._rehomeDisplaced();
-    this._syncConflicts();
-    this._syncUnsentDrafts();
     // The pill lives in a nested root the template above does not write, so a
     // fresh toolbar comes back empty until this puts it back.
     this._paintStatus();
@@ -726,17 +650,22 @@ export class IgtEditor {
     tagset = null,
     badge = null,
   }) {
+    // What is stored, and what the cell shows at rest: a value put back after
+    // it was not saved while `stored` is still the one it was typed over
+    // (the cell engine), else what is stored.
     const v = value ?? '';
-    const filled = v !== '';
+    const shown = this._cells.display(key, v);
+    const filled = shown !== '';
     // Lost to another user's edit (conflicts.js): theirs shows, ours is noted.
-    const conflict = !this.readOnly && !!this._conflictOf(key);
+    const conflict = !this.readOnly && !!this._cells.conflictOf(key);
+    const unsent = !this.readOnly && !!this._cells.unsentOf(key);
     // The kind is the first segment of the key and is always one of a fixed
     // few literals; everything after it may hold a colon (see cellTier).
     const tier = cellTier(key.split(':', 1)[0], fieldName);
     // What is wrong with what is already in the cell. A closed field refuses
     // to commit these (see _commitField); an open one only flags a stray
     // delimiter. Either way the cell says so rather than looking fine.
-    const violations = tagset ? validateValue(v, tagset) : [];
+    const violations = tagset ? validateValue(shown, tagset) : [];
     // A guess renders as a styled placeholder: the input VALUE stays empty, so
     // nothing persists unless explicitly confirmed (Enter/Tab — see
     // _maybeConfirmGuess) and stats/jump still see the cell as empty.
@@ -762,7 +691,9 @@ export class IgtEditor {
             : 'igt-field--empty'} ${violations.length ? 'igt-field--invalid' : ''} ${provClass(
             'igt-field',
             ps,
-          )} ${conflict ? 'igt-field--conflict' : ''} ${extraClass}"
+          )} ${conflict ? 'igt-field--conflict' : ''} ${unsent
+            ? 'igt-field--unsent'
+            : ''} ${extraClass}"
           data-cell-key=${key}
           data-tier=${tier}
           data-has-tagset=${tagset ? '1' : nothing}
@@ -785,7 +716,7 @@ export class IgtEditor {
           .igtTagset=${tagset}
           .igtWhat=${what}
           .igtEntityIds=${entityIds}
-          ${uncontrolledValue(v)}
+          ${uncontrolledValue(shown, v)}
           @focus=${this._onFieldFocus}
           @input=${this._onSentenceInput}
           @keydown=${this._sentenceKeydown}
@@ -838,7 +769,9 @@ export class IgtEditor {
         : ''} ${violations.length ? 'igt-field--invalid' : ''} ${provClass(
         'igt-field',
         p,
-      )} ${conflict ? 'igt-field--conflict' : ''} ${extraClass}"
+      )} ${conflict ? 'igt-field--conflict' : ''} ${unsent
+        ? 'igt-field--unsent'
+        : ''} ${extraClass}"
       data-cell-key=${key}
       data-tier=${tier}
       data-has-tagset=${tagset ? '1' : nothing}
@@ -857,11 +790,11 @@ export class IgtEditor {
       .igtWhat=${what}
       .igtEntityIds=${entityIds}
       placeholder=${g ? g.value : nothing}
-      size=${this._fieldSize(g ? g.value : v)}
+      size=${this._fieldSize(g ? g.value : shown)}
       spellcheck="false"
       dir="auto"
       ?disabled=${this.readOnly}
-      ${uncontrolledValue(v)}
+      ${uncontrolledValue(shown, v)}
       @focus=${this._onFieldFocus}
       @mousedown=${this._onCellMouseDown}
       @mouseup=${this._onCellMouseUp}

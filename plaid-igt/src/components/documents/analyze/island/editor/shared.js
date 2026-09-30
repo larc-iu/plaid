@@ -71,7 +71,10 @@ class UncontrolledValueDirective extends Directive {
       throw new Error('uncontrolledValue must be used as an element directive');
     }
   }
-  update(part, [value]) {
+  // `value` is what the cell shows at rest, and `stored` what is stored under
+  // it when that differs (a value put back after it was not saved, which the
+  // cell engine holds and the template passes in).
+  update(part, [value, stored = value]) {
     const el = part.element;
     const v = value ?? '';
     // Reused for another row's cell (see sameCell): nothing held for the one
@@ -81,12 +84,9 @@ class UncontrolledValueDirective extends Directive {
     // this directive in every template, so the key read here is the new one.
     const key = el.dataset.cellKey;
     // What is stored under the cell as of this render, whatever the input
-    // shows: what a refused edit is weighed against (cells.js).
-    el.igtRendered = v;
-    if (el.igtUnsent && !sameCell(el.igtUnsent.key, key)) {
-      el.igtUnsent = null;
-      el.classList.remove('igt-field--unsent');
-    }
+    // shows. The cell engine reads the document instead (cellReader.js), and
+    // the component tests hold the two to agreeing.
+    el.igtRendered = stored ?? '';
     if (el.igtFocusKey != null) {
       if (!sameCell(el.igtFocusKey, key)) {
         if (document.activeElement === el && el.value !== (el.dataset.orig ?? '')) {
@@ -98,16 +98,6 @@ class UncontrolledValueDirective extends Directive {
         return this.render(value);
       }
       el.igtFocusKey = key;
-    }
-    // A value put back after it was not saved (cells.js _restoreUnsent) stays
-    // on screen until the stored value moves on from the one it was typed over.
-    // Once it moves on, someone else changed the cell: a conflict, which the
-    // editor takes up from `igtLostTo` after the render (_syncUnsentDrafts).
-    if (el?.igtUnsent) {
-      if (v === el.igtUnsent.saved) return this.render(value);
-      if (v !== el.igtUnsent.typed) el.igtLostTo = { stored: v };
-      el.igtUnsent = null;
-      el.classList.remove('igt-field--unsent');
     }
     if (el && el.value !== v) {
       if (document.activeElement !== el) {

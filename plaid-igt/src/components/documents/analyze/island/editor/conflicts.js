@@ -1,8 +1,5 @@
 import { html, nothing } from 'lit-html';
-import { settledId } from '@ui/domain/pendingIds.js';
-import { cellByKey } from './shared.js';
-import { notifyWarning } from '@/utils/feedback';
-import { changedTo, recutTo, whoChanged } from '@ui/lib/cellConflict.js';
+import { conflictNoteParts } from '@ui/lib/cellConflict.js';
 
 // A cell edit refused because another user changed the cell first (Luke's
 // ruling Q1, 2026-09-29, the same in plaid-ud). The cell shows the stored
@@ -13,80 +10,31 @@ import { changedTo, recutTo, whoChanged } from '@ui/lib/cellConflict.js';
 // its page is not drawn, and it is not asked about on leaving the document.
 // A toast names the change: "b changed this to DOG."
 //
-// Kept by cell key, with any pending id in it as the server knows it, in
-// `this._conflicts`: `{ typed, stored }`.
-
-// A cell key with its pending ids settled, so a conflict follows its row
-// across the swap.
-const conflictKey = (key) => (key ?? '').replace(/pending:\d+/g, (p) => settledId(p));
+// The cell engine holds it (`this._cells`, plaid-ui cells/CellEngine.js).
+// This is the drawing and the keys.
 
 // An element id for the note of the cell `key` names: no white space, which
 // an id list cannot hold.
-const noteId = (key) => `igt-conflict-${encodeURIComponent(conflictKey(key))}`;
-
-// The row a cell key names: `<kind>:<id>` for a morpheme form,
-// `<kind>:<id>:<field>` for the rest, where the id may itself hold a colon
-// (`virtual:<word>`, `pending:<n>`) and so may the field.
-export const rowOfKey = (key) => {
-  const rest = (key ?? '').slice(key.indexOf(':') + 1);
-  return /^(virtual:[^:]+|pending:\d+|[^:]+)/.exec(rest)?.[1] ?? '';
-};
+const noteId = (cells, key) => `igt-conflict-${encodeURIComponent(cells.canonical(key))}`;
 
 export const conflicts = {
-  _conflictOf(key) {
-    return this._conflicts.get(conflictKey(key)) ?? null;
-  },
-
   // The note under a cell that lost a conflict, or nothing. It has no `dir`
   // of its own: it hangs from the start of its cell, which is the right edge
   // in a right-to-left sentence, and "Yours" would make it left to right. The
   // words are left to right and the value takes its own direction.
   _conflictNote(key) {
-    const c = this.readOnly ? null : this._conflictOf(key);
+    const c = this.readOnly ? null : this._cells.conflictOf(key);
     if (!c) return nothing;
-    return html`<span class="igt-field-conflict" role="status" id=${noteId(key)}
-      ><span dir="ltr">Yours: <bdi>${c.typed || '(none)'}</bdi> · Enter to keep yours</span></span
+    const { before, value, after } = conflictNoteParts(c.typed);
+    return html`<span class="igt-field-conflict" role="status" id=${noteId(this._cells, key)}
+      ><span dir="ltr">${before}<bdi>${value}</bdi>${after}</span></span
     >`;
   },
 
   // The id of a cell's conflict note, for the cell's aria-describedby, so a
   // screen reader arriving in the cell reads the note. Nothing when none.
   _conflictDescribedBy(key) {
-    return !this.readOnly && this._conflictOf(key) ? noteId(key) : nothing;
-  },
-
-  // A refused edit of `cell` lost to `stored`, another user's value: the cell
-  // shows theirs, with `typed` under it, and focus stays where it is unless it
-  // was in this cell or nowhere.
-  // `recut`: `{ unit, text }`, the word or morpheme the cell is on as it
-  // reads now, when the conflict is that the word was split or joined, or
-  // the morpheme re-segmented, since the edit was typed.
-  _enterConflict(cell, typed, stored, recut = null) {
-    const key = cell.dataset.cellKey;
-    this._conflicts.set(conflictKey(key), { typed, stored });
-    cell.igtUnsent = null;
-    cell.value = stored;
-    cell.dataset.orig = stored;
-    this._syncCellClasses(cell, stored, cell.igtTagset ?? null);
-    const active = document.activeElement;
-    if (!active || active === document.body || active === cell) cell.focus();
-    this._render(true);
-    this._sayWhoChanged(cell, stored, recut);
-  },
-
-  // The toast, once the document's audit log has said who: the newest change
-  // by another user that wrote this cell's span or token, else the newest
-  // change by another user at all.
-  _sayWhoChanged(cell, stored, recut = null) {
-    const ids = (cell.igtEntityIds ?? []).filter(Boolean).map(settledId);
-    Promise.resolve()
-      .then(() => whoChanged(this.doc.client, this.doc.id, ids, this.doc._user?.id))
-      .catch(() => null)
-      .then((name) =>
-        notifyWarning(
-          recut != null ? recutTo(name, recut.text, recut.unit) : changedTo(name, stored),
-        ),
-      );
+    return !this.readOnly && this._cells.conflictOf(key) ? noteId(this._cells, key) : nothing;
   },
 
   // Keys a cell that lost a conflict answers before anything else does. Plain
@@ -94,44 +42,20 @@ export const conflicts = {
   // the handler go on, which commits it and moves on. Escape lets it go.
   _conflictKeys(e) {
     const el = e.target;
-    const key = conflictKey(el?.dataset?.cellKey);
-    const c = this._conflicts.get(key);
+    const key = el?.dataset?.cellKey;
+    const c = key == null ? null : this._cells.conflictOf(key);
     if (!c) return;
     if (e.key === 'Escape') {
-      this._dropConflict(el);
+      this._cells.dismiss(key);
       return;
     }
     if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
     if (el.value !== (el.dataset.orig ?? '')) return;
-    this._conflicts.delete(key);
+    // The value goes in before the engine lets the conflict go, so the render
+    // that follows finds the cell typed into and leaves it be.
     el.value = c.typed;
     this._syncInput(el);
-    this._render(true);
-  },
-
-  // Typing another value, or Escape, lets a conflict go.
-  _dropConflict(el) {
-    if (this._conflicts.delete(conflictKey(el?.dataset?.cellKey))) this._render(true);
-  },
-
-  // After a render: a conflict whose stored value has changed again, or
-  // whose row is gone from the document, is let go. One whose cell is not
-  // drawn (another page) stays.
-  _syncConflicts() {
-    if (!this._conflicts.size) return;
-    let ids = null;
-    let gone = false;
-    for (const [key, c] of this._conflicts) {
-      const cell = cellByKey(this.container, key, '.igt-field');
-      if (cell) {
-        if ((cell.igtRendered ?? cell.value) !== c.stored) gone = this._conflicts.delete(key);
-        continue;
-      }
-      ids ??= this._shownIds();
-      if (!ids.has(rowOfKey(key))) this._conflicts.delete(key);
-    }
-    // The render just made drew the note of one let go.
-    if (gone) this._render(true);
+    this._cells.keepYours(key);
   },
 };
 
