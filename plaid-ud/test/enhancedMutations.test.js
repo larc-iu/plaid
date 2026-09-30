@@ -375,9 +375,12 @@ test('a sentence split asks the server to drop the edges it cuts, basic and enha
   // One split, naming both dependency layers. The server drops what crosses,
   // from what it has stored, in the split's own transaction.
   assert.equal(splits.length, 1);
-  assert.deepEqual(splits[0][3], {
+  const { id: rightId, ...splitOptions } = splits[0][3];
+  assert.deepEqual(splitOptions, {
     dropCrossingRelations: [doc.layerInfo.relationLayer.id, doc.layerInfo.enhancedRelationLayer.id],
   });
+  // The right half is made under the id it was shown under.
+  assert.equal(typeof rightId, 'string');
   assert.deepEqual(deleted, []);
   assert.deepEqual(doc.layerInfo.enhancedRelationLayer.relations, []);
   // The basic conj(come, leave) crossed too, as it always has.
@@ -483,4 +486,36 @@ test('reconcile leaves the layers alone for anyone else, and where the layer exi
   await maintainer._reconcile();
 
   assert.deepEqual(calls, []);
+});
+
+test('an enhanced edge and the suppressor it lays are created under the ids they were shown under', async () => {
+  const sent = [];
+  const client = withOps({
+    relations: {
+      create: async (layerId, source, target, value, metadata, auditMessage, opts) => {
+        sent.push({ value, id: opts?.id });
+        return { id: opts?.id };
+      },
+    },
+  });
+  const doc = new ConlluDocument({ raw: rawDocFromConllu(INPUT, 'e', { enhanced: true }), client });
+  const lemma = (value) => doc.layerInfo.lemmaLayer.spans.find((s) => s.value === value).id;
+  const shown = [];
+  const write = doc.createEnhancedRelation(lemma('come'), lemma('she'), 'nsubj:pass');
+  shown.push(...doc.layerInfo.enhancedRelationLayer.relations.map((r) => r.id));
+  const id = await write;
+
+  assert.deepEqual(
+    sent.map((s) => s.value),
+    [null, 'nsubj:pass'],
+  );
+  assert.deepEqual(
+    sent.map((s) => s.id),
+    shown,
+  );
+  assert.equal(id, shown[1]);
+  assert.deepEqual(
+    doc.layerInfo.enhancedRelationLayer.relations.map((r) => r.id),
+    shown,
+  );
 });

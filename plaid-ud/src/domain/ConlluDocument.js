@@ -396,7 +396,13 @@ export class ConlluDocument extends DocumentModel {
       const record = (rows, created) =>
         rows.forEach((row, i) => created?.[i] && ids.set(row.id, created[i]));
       const bulk = (layer, rows) =>
-        rows.map(({ begin, end }) => ({ tokenLayerId: layer.id, text: text.id, begin, end }));
+        rows.map(({ id, begin, end }) => ({
+          id,
+          tokenLayerId: layer.id,
+          text: text.id,
+          begin,
+          end,
+        }));
       const results = await this._client.batched(async (b) => {
         b.tokens.bulkCreate(bulk(sentenceTokenLayer, sentences));
         if (words.length > 0) {
@@ -416,6 +422,7 @@ export class ConlluDocument extends DocumentModel {
       if (lemmas.length) {
         const created = await this._client.spans.bulkCreate(
           lemmas.map((span) => ({
+            id: span.id,
             spanLayerId: lemmaLayer.id,
             tokens: [ids.get(span.tokens[0])],
             value: span.value,
@@ -533,6 +540,7 @@ export class ConlluDocument extends DocumentModel {
     return this._queueWrite(label, async () => {
       const res = await this._client.tokens.split(settledId(containing.id), charPos, undefined, {
         dropCrossingRelations: relationLayerIds,
+        id: rightId,
       });
       this._settle(new Map([[rightId, createdId(res)]]));
     });
@@ -853,7 +861,8 @@ export class ConlluDocument extends DocumentModel {
       const setResults = await this._client.batched(async (b) => {
         if (existing.length) b.tokens.bulkDelete(existing.map((m) => settledId(m.id)));
         b.tokens.bulkCreate(
-          morphemes.map(({ begin, end, precedence }) => ({
+          morphemes.map(({ id, begin, end, precedence }) => ({
+            id,
             tokenLayerId: morphemeTokenLayer.id,
             text: text.id,
             begin,
@@ -872,6 +881,7 @@ export class ConlluDocument extends DocumentModel {
       // batch because these ops reference morpheme ids produced above.)
       const ops = (spanLayer, spans) =>
         spans.map((s) => ({
+          id: s.id,
           spanLayerId: spanLayer.id,
           tokens: [ids.get(s.tokens[0])],
           value: s.value,
@@ -974,6 +984,8 @@ export class ConlluDocument extends DocumentModel {
               [settledId(step.morpheme.id)],
               step.value,
               step.stamp || undefined,
+              undefined,
+              { id: step.id },
             );
             at += 1;
           }
@@ -1129,11 +1141,21 @@ export class ConlluDocument extends DocumentModel {
       const res = await this._client.batched(async (b) => {
         if (sentence) {
           b.tokens.bulkCreate([
-            { tokenLayerId: sentenceTokenLayer.id, text: text.id, begin: 0, end: fullLen },
+            {
+              id: sentence.id,
+              tokenLayerId: sentenceTokenLayer.id,
+              text: text.id,
+              begin: 0,
+              end: fullLen,
+            },
           ]);
         }
-        b.tokens.bulkCreate([{ tokenLayerId: wordTokenLayer.id, text: text.id, begin, end }]);
-        b.tokens.bulkCreate([{ tokenLayerId: morphemeTokenLayer.id, text: text.id, begin, end }]);
+        b.tokens.bulkCreate([
+          { id: wordRow.id, tokenLayerId: wordTokenLayer.id, text: text.id, begin, end },
+        ]);
+        b.tokens.bulkCreate([
+          { id: morpheme.id, tokenLayerId: morphemeTokenLayer.id, text: text.id, begin, end },
+        ]);
       });
       if (sentence) ids.set(sentence.id, createdIds(res[0])[0]);
       ids.set(wordRow.id, createdIds(res[res.length - 2])[0]);
@@ -1146,6 +1168,7 @@ export class ConlluDocument extends DocumentModel {
       if (lemma && morphemeId) {
         const lr = await this._client.spans.bulkCreate([
           {
+            id: lemma.id,
             spanLayerId: lemmaLayer.id,
             tokens: [morphemeId],
             value: lemma.value,
@@ -1273,6 +1296,8 @@ export class ConlluDocument extends DocumentModel {
           [settledId(tokenId)],
           pair,
           stamp || undefined,
+          undefined,
+          { id: newSpanId },
         );
         this._settle(new Map([[newSpanId, createdId(spanResult)]]));
       });
@@ -1362,6 +1387,8 @@ export class ConlluDocument extends DocumentModel {
         [settledId(tokenId)],
         value,
         stamp || undefined,
+        undefined,
+        { id: newSpanId },
       );
       this._settle(new Map([[newSpanId, createdId(spanResult)]]));
     });
@@ -1436,6 +1463,8 @@ export class ConlluDocument extends DocumentModel {
         span.tokens.map(settledId),
         span.value,
         span.metadata || undefined,
+        undefined,
+        { id: span.id },
       );
       ids.set(span.id, createdId(created));
     }
@@ -1549,6 +1578,8 @@ export class ConlluDocument extends DocumentModel {
           serverId(resolvedTargetId),
           finalDeprel,
           relStamp || undefined,
+          undefined,
+          { id: relationId },
         );
       });
       ids.set(relationId, createdId(batchResults[batchResults.length - 1]));
@@ -1635,6 +1666,8 @@ export class ConlluDocument extends DocumentModel {
             serverId(target),
             null,
             { [SUPPRESS_KEY]: true },
+            undefined,
+            { id: suppressorId },
           );
         }
         b.relations.create(
@@ -1643,6 +1676,8 @@ export class ConlluDocument extends DocumentModel {
           serverId(target),
           value,
           stamp || undefined,
+          undefined,
+          { id: edgeId },
         );
       });
       if (suppressorId) ids.set(suppressorId, createdId(results[0]));
@@ -1698,6 +1733,8 @@ export class ConlluDocument extends DocumentModel {
         settledId(basic.target),
         null,
         { [SUPPRESS_KEY]: true },
+        undefined,
+        { id },
       );
       this._settle(new Map([[id, createdId(created)]]));
     });
