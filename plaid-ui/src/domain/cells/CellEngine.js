@@ -103,6 +103,12 @@ export class CellEngine {
     // canonical key -> a value a refusal put back into its focused cell
     // (`takeUp`): older than the refusal after it, so not typing since.
     this._putBacks = new Map();
+    // canonical key -> { key, typed, saved }: a value the focused cell took
+    // up (`focus`, `takeUp`), until the cell sends it or is left. Another
+    // value stored under it meanwhile makes it a conflict (`reconcile`).
+    this._taken = new Map();
+    // View calls `reconcile({ deferViews: true })` held back for `flushViews`.
+    this._deferred = null;
     this._listeners = new Set();
   }
 
@@ -173,6 +179,13 @@ export class CellEngine {
     return u && stored === u.saved ? u.typed : stored;
   }
 
+  // A drawn cell told something now, or after `flushViews` while a
+  // `reconcile({ deferViews: true })` holds them back.
+  _tellView(key, fn) {
+    if (this._deferred) this._deferred.push([key, fn]);
+    else fn(this._viewOf(key));
+  }
+
   _take(k) {
     const u = this._unsent.get(k);
     if (!u) return null;
@@ -195,8 +208,10 @@ export class CellEngine {
    * cell sends it. Answers `{ typed, saved }`, or null.
    */
   focus(key) {
-    const u = this._take(this._canonical(key));
+    const k = this._canonical(key);
+    const u = this._take(k);
     if (!u) return null;
+    this._taken.set(k, { key, typed: u.typed, saved: u.saved });
     // The cell's own act, and it shows the value already: nothing to redraw,
     // and a redraw from inside a focus handler would race the cell's baseline.
     this._changed(key, true);
@@ -208,8 +223,23 @@ export class CellEngine {
    * turned from the keyboard) goes back to wait for the cell.
    */
   release(key, typed, saved) {
+    this._taken.delete(this._canonical(key));
     this._put(key, { typed, saved, shape: this._shapeNow(key), field: null });
     this._changed(key);
+  }
+
+  /** The value the focused cell took up, `{ typed, saved }`, or null. */
+  takenOf(key) {
+    const t = this._taken.get(this._canonical(key));
+    return t ? { typed: t.typed, saved: t.saved } : null;
+  }
+
+  /** The cell was left: what it took up is its own input's now, or gone. */
+  leave(key) {
+    const k = this._canonical(key);
+    const t = this._taken.get(k);
+    this._taken.delete(k);
+    return t ? { typed: t.typed, saved: t.saved } : null;
   }
 
   /**
@@ -230,6 +260,7 @@ export class CellEngine {
     const conflicted = this._conflicts.delete(k);
     const waiting = this._take(k) != null;
     const putBack = this._putBacks.delete(k);
+    this._taken.delete(k);
     if (conflicted || waiting || putBack) this._changed(key);
     return {
       key,
@@ -319,6 +350,7 @@ export class CellEngine {
     if (status === 409) this._announce?.({ kind: 'keptInCell', key, field: ticket.field });
     if (view?.takeUp?.({ typed, saved: stored })) {
       this._putBacks.set(k, typed);
+      this._taken.set(k, { key, typed, saved: stored });
       this._changed(key);
       return { kind: 'takenUp', typed, stored, status };
     }
@@ -346,13 +378,14 @@ export class CellEngine {
     const k = this._canonical(key);
     this._take(k);
     this._putBacks.delete(k);
+    this._taken.delete(k);
     if (typed === stored) {
       this._conflicts.delete(k);
       this._changed(key, quiet);
       return;
     }
     this._conflicts.set(k, { key, typed, stored, recut });
-    this._viewOf(key)?.showStored?.(stored, { conflict: true });
+    this._tellView(key, (view) => view?.showStored?.(stored, { conflict: true, typed }));
     this._changed(key, quiet);
     const ids = [...(entityIds ?? []), ...(this._entityIds?.(this._canonical(key)) ?? [])].filter(
       Boolean,
@@ -382,11 +415,23 @@ export class CellEngine {
    * be sent again whose stored value moved on, or whose word was re-cut,
    * turns into a conflict. One whose stored value is now the typed one, or
    * whose row is gone, is let go. A conflict whose stored value moved on
-   * again is let go. `quiet` tells no subscriber (the caller is drawing).
-   * Answers whether anything changed.
+   * again is let go. A value the focused cell took up whose stored value
+   * moved on turns into a conflict too. `quiet` tells no subscriber (the
+   * caller is drawing), and `deferViews` holds what the drawn cells are told
+   * until `flushViews`, for a caller that draws the new state first (a cell
+   * found before the drawing may be another row's after it). Answers whether
+   * anything changed.
    */
-  reconcile({ quiet = false } = {}) {
+  reconcile({ quiet = false, deferViews = false } = {}) {
+    if (deferViews) this._deferred ??= [];
     let changed = false;
+    for (const [k, t] of [...this._taken]) {
+      const now = this._readNow(t.key);
+      if (now === t.saved) continue;
+      this._taken.delete(k);
+      changed = true;
+      if (now !== undefined) this._conflict(t.key, t.typed, now, null, null, true);
+    }
     for (const [k, u] of [...this._unsent]) {
       const now = this._readNow(u.key);
       const recut = now === undefined ? null : this._recutSince(u.shape, u.key);
@@ -399,7 +444,7 @@ export class CellEngine {
       changed = true;
       if (now === undefined || now === u.typed) {
         this._take(k);
-        this._viewOf(u.key)?.update?.();
+        this._tellView(u.key, (view) => view?.update?.());
       } else {
         this._conflict(u.key, u.typed, now, null, null, true);
       }
@@ -407,11 +452,18 @@ export class CellEngine {
     for (const [k, c] of [...this._conflicts]) {
       if (this._readNow(c.key) === c.stored) continue;
       this._conflicts.delete(k);
-      this._viewOf(c.key)?.update?.();
+      this._tellView(c.key, (view) => view?.update?.());
       changed = true;
     }
     if (changed && !quiet) this._listeners.forEach((fn) => fn());
     return changed;
+  }
+
+  /** Tell the drawn cells what a `reconcile({ deferViews: true })` held back. */
+  flushViews() {
+    const held = this._deferred ?? [];
+    this._deferred = null;
+    for (const [key, fn] of held) fn(this._viewOf(key));
   }
 
   /** Let go of everything: the grid is gone. */
@@ -420,5 +472,7 @@ export class CellEngine {
     this._conflicts.clear();
     this._flights.clear();
     this._putBacks.clear();
+    this._taken.clear();
+    this._deferred = null;
   }
 }

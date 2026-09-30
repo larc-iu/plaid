@@ -411,3 +411,66 @@ describe('a value the layer refuses (422)', () => {
     expect(views.k.shown).toEqual([['a', false]]);
   });
 });
+
+describe('a value taken up by focus (REV-cell-engine F3)', () => {
+  const takenUp = (opts = {}) => {
+    const s = setup({ stored: { k: 'a' }, ...opts });
+    s.engine.settle(s.engine.sending('k', { saved: 'a', typed: 'b' }), refused(500));
+    s.engine.focus('k');
+    return s;
+  };
+
+  it('turns into a conflict when another value is stored under it, and the cell hears it', () => {
+    const views = { k: cellView({ focused: true }) };
+    const { engine, stored, heard } = takenUp({ views });
+    stored.k = 'theirs';
+    expect(engine.reconcile()).toBe(true);
+    expect(engine.takenOf('k')).toBe(null);
+    expect(engine.conflictOf('k')).toMatchObject({ typed: 'b', stored: 'theirs' });
+    expect(views.k.shown.at(-1)).toEqual(['theirs', true]);
+    expect(heard.map((e) => e.kind)).toEqual(['conflict']);
+  });
+
+  it('stays while the stored value is the one it was typed over', () => {
+    const { engine } = takenUp();
+    expect(engine.reconcile()).toBe(false);
+    expect(engine.takenOf('k')).toEqual({ typed: 'b', saved: 'a' });
+  });
+
+  it('is let go when the cell is left or sends it', () => {
+    const { engine, stored } = takenUp();
+    expect(engine.leave('k')).toEqual({ typed: 'b', saved: 'a' });
+    stored.k = 'theirs';
+    expect(engine.reconcile()).toBe(false);
+    const second = takenUp();
+    second.engine.sending('k', { saved: 'a', typed: 'b' });
+    expect(second.engine.takenOf('k')).toBe(null);
+  });
+
+  it('is recorded when a refusal puts a value back into its focused cell', () => {
+    const views = { k: cellView({ focused: true, takes: true }) };
+    const { engine } = setup({ stored: { k: 'a' }, views });
+    engine.settle(engine.sending('k', { saved: 'a', typed: 'b' }), refused(409));
+    expect(engine.takenOf('k')).toEqual({ typed: 'b', saved: 'a' });
+  });
+});
+
+describe('views held back for the drawing (REV-cell-engine F1)', () => {
+  it('reconcile({ deferViews: true }) tells the cells only at flushViews, and finds them then', () => {
+    const early = cellView();
+    const late = cellView();
+    const views = { k: early };
+    const { engine, stored } = setup({ stored: { k: 'a' }, views });
+    engine.settle(engine.sending('k', { saved: 'a', typed: 'b' }), refused(500));
+    stored.k = 'theirs';
+    engine.reconcile({ quiet: true, deferViews: true });
+    expect(engine.conflictOf('k')).not.toBe(null);
+    const before = early.shown.length;
+    views.k = late;
+    engine.flushViews();
+    expect(early.shown.length).toBe(before);
+    expect(late.shown).toEqual([['theirs', true]]);
+    engine.flushViews();
+    expect(late.shown.length).toBe(1);
+  });
+});

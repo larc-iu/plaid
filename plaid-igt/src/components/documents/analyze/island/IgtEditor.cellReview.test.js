@@ -87,6 +87,97 @@ afterEach(() => {
   host = null;
 });
 
+describe('a waiting value that turns into a conflict as its morpheme column shifts', () => {
+  it('takes focus to its own cell, never to the morpheme drawn where it was', async () => {
+    const two = () =>
+      buildRawDoc({
+        morphemes: [
+          { id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: { form: 'th' } },
+          { id: 'm-5', begin: 0, end: 3, precedence: 2, metadata: { form: 'e' } },
+          { id: 'm-2', begin: 4, end: 7, precedence: 1, metadata: {} },
+        ],
+      });
+    const { client, doc } = mount(two());
+    const restore = refuseWith(client, two(), 500);
+    const c = cell('ma:m-5:Gloss');
+    c.focus();
+    type(c, 'hound');
+    cell('ma:m-2:Gloss').focus();
+    await settle();
+    restore();
+    expect(editor._cells.unsentOf('ma:m-5:Gloss')).toBeTruthy();
+    document.activeElement.blur();
+    // b splits "th" (a new morpheme m-8 before m-5) and glosses m-5 CAT.
+    const served = withGloss(
+      buildRawDoc({
+        morphemes: [
+          { id: 'm-1', begin: 0, end: 3, precedence: 1, metadata: { form: 't' } },
+          { id: 'm-8', begin: 0, end: 3, precedence: 2, metadata: { form: 'h' } },
+          { id: 'm-5', begin: 0, end: 3, precedence: 3, metadata: { form: 'e' } },
+          { id: 'm-2', begin: 4, end: 7, precedence: 1, metadata: {} },
+        ],
+      }),
+      'm-5',
+      'CAT',
+    );
+    client.documents.get = async () => JSON.parse(JSON.stringify(served));
+    await doc.reload();
+    await settle();
+    expect(note('ma:m-5:Gloss')?.textContent).toBe('Yours: hound · Enter to keep yours');
+    const active = document.activeElement;
+    expect(active?.dataset?.cellKey).toBe('ma:m-5:Gloss');
+    expect(active.value).toBe('CAT');
+    type(active, 'zzz');
+    active.blur();
+    await settle();
+    expect(writes(client).filter(([, tokens]) => tokens?.[0] === 'm-8')).toEqual([]);
+  });
+});
+
+describe('a value taken up by focus when another user stores the cell', () => {
+  it('shows theirs with the note, and leaving sends nothing', async () => {
+    const { client, doc } = mount();
+    const restore = refuseWith(client, buildRawDoc({}), 500);
+    const c = cell('ma:m-1:Gloss');
+    c.focus();
+    type(c, 'hound');
+    cell('ma:m-2:Gloss').focus();
+    await settle();
+    restore();
+    c.focus();
+    expect(c.value).toBe('hound');
+    client.documents.get = async () => withGloss(buildRawDoc({}), 'm-1', 'dog.PL');
+    await doc.reload();
+    await settle();
+    expect(c.value).toBe('dog.PL');
+    expect(note('ma:m-1:Gloss')?.textContent).toBe('Yours: hound · Enter to keep yours');
+    const before = writes(client).length;
+    c.blur();
+    await settle();
+    expect(writes(client).slice(before)).toEqual([]);
+  });
+
+  it('keeps newer typing, which leaving sends', async () => {
+    const { client, doc } = mount();
+    const restore = refuseWith(client, buildRawDoc({}), 500);
+    const c = cell('ma:m-1:Gloss');
+    c.focus();
+    type(c, 'hound');
+    cell('ma:m-2:Gloss').focus();
+    await settle();
+    restore();
+    c.focus();
+    type(c, 'hounds');
+    client.documents.get = async () => withGloss(buildRawDoc({}), 'm-1', 'dog.PL');
+    await doc.reload();
+    await settle();
+    expect(c.value).toBe('hounds');
+    c.blur();
+    await settle();
+    expect(writes(client).at(-1)).toEqual(['span-b', 'hounds']);
+  });
+});
+
 describe('a value refused while its page is not drawn', () => {
   let pageSize;
   beforeEach(() => {

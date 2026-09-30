@@ -381,8 +381,10 @@ export const morphForm = {
 
   // `label(value)` is the History label of the write (see _editLabel).
   _commitMorphForm(e, morphId, label = null) {
-    if (this.readOnly) return;
     const el = e.target;
+    // Leaving the cell: what focus took up is the input's own now (cell engine).
+    this._cells.leave(el.igtFocusKey ?? el.dataset.cellKey);
+    if (this.readOnly) return;
     if (el.dataset.suppressCommit) {
       delete el.dataset.suppressCommit;
       return;

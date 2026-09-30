@@ -364,8 +364,10 @@ export const cells = {
   // adoptions per guess source stay countable); a typed value carries none
   // (apply(value, null)).
   _commitField(e, apply, tagset = null) {
-    if (this.readOnly) return;
     const el = e.target;
+    // Leaving the cell: what focus took up is the input's own now (cell engine).
+    this._cells.leave(el.igtFocusKey ?? el.dataset.cellKey);
+    if (this.readOnly) return;
     this._closeAlts(); // leaving the cell dismisses its alternatives list
     if (el.dataset.suppressCommit) {
       delete el.dataset.suppressCommit;

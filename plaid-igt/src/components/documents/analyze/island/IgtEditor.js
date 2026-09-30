@@ -523,9 +523,13 @@ export class IgtEditor {
     // moved on is a conflict now). Only new data: a render the engine asked
     // for draws what it holds, and a document that could not be read again
     // after a refusal still shows the refused value, which is not stored.
-    if (dataChanged) this._cells.reconcile({ quiet: true });
+    // What the drawn cells are told (a conflict's value and focus) waits for
+    // the drawing: lit reuses a morpheme's input by position, so the input
+    // found before it may hold another morpheme after it.
+    if (dataChanged) this._cells.reconcile({ quiet: true, deferViews: true });
     render(this._template(), this.container);
     this._rehomeDisplaced();
+    this._cells.flushViews();
     // The pill lives in a nested root the template above does not write, so a
     // fresh toolbar comes back empty until this puts it back.
     this._paintStatus();

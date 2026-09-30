@@ -25,9 +25,6 @@ export function useConflictCell(engine, key, { stored, editingRef, typedRef, set
   );
   const cells = engine ?? loose;
   const [conflict, setConflict] = useState(() => cells.conflictOf(key));
-  // A value put back while the cell was away, `{ typed, saved }`, once focus
-  // has taken it up. Leaving the cell sends it.
-  const takenRef = useRef(null);
   const untouched = () => !editingRef.current || !typedRef.current;
 
   useEffect(
@@ -35,16 +32,13 @@ export function useConflictCell(engine, key, { stored, editingRef, typedRef, set
       drawCell(cells, key, {
         focused: () => editingRef.current,
         typedSince: () => editingRef.current && typedRef.current,
-        takeUp: ({ typed, saved }) => {
+        takeUp: ({ typed }) => {
           if (!editingRef.current) return false;
-          takenRef.current = { typed, saved: takenRef.current?.saved ?? saved };
           showRef.current(typed);
           return true;
         },
         showStored: (value) => {
-          if (!untouched()) return;
-          takenRef.current = null;
-          showRef.current(value);
+          if (untouched()) showRef.current(value);
         },
         update: () => {
           setConflict(cells.conflictOf(key));
@@ -61,29 +55,27 @@ export function useConflictCell(engine, key, { stored, editingRef, typedRef, set
   // value goes back to wait for the cell to be drawn again.
   useEffect(
     () => () => {
-      const taken = takenRef.current;
+      const taken = cells.takenOf(key);
       if (taken && editingRef.current) cells.release(key, taken.typed, taken.saved);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [cells, key],
   );
 
-  // The stored value moved (a save, a reload, another annotator). A value
-  // taken up over one that is no longer stored is a conflict. The rest is
-  // the engine's to go over, and the cell shows what it holds now unless
+  // The stored value moved (a save, a reload, another annotator). The engine
+  // goes over what it holds (a value taken up over one that is no longer
+  // stored is a conflict), and the cell shows what it holds now unless
   // someone is typing in it.
   useEffect(() => {
     const now = stored ?? '';
-    const taken = takenRef.current;
-    if (taken && now !== taken.saved) {
-      takenRef.current = null;
-      cells.conflict(key, taken.typed, now);
-    }
     cells.reconcile();
     setConflict(cells.conflictOf(key));
     // A focused cell nobody typed in follows too, or leaving it would write
     // the value it showed back over the new one.
-    if (untouched()) showRef.current(cells.display(key, now));
+    if (untouched()) {
+      const taken = cells.takenOf(key);
+      showRef.current(taken && now === taken.saved ? taken.typed : cells.display(key, now));
+    }
     // Keyed on the stored value alone: the engine and key are the same for as
     // long as the cell is drawn.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -91,12 +83,9 @@ export function useConflictCell(engine, key, { stored, editingRef, typedRef, set
 
   return {
     conflict,
-    /** What the cell shows when first drawn. */
-    initial: () => cells.display(key, stored ?? ''),
     /** Focus: a value waiting for the cell is taken up. */
     onFocus: () => {
-      const taken = cells.focus(key);
-      if (taken) takenRef.current = taken;
+      cells.focus(key);
     },
     /** A typed keystroke lets a conflict go. */
     onTyped: () => {
@@ -104,7 +93,7 @@ export function useConflictCell(engine, key, { stored, editingRef, typedRef, set
     },
     /** Escape lets a conflict go, and a value taken up. */
     onEscape: () => {
-      takenRef.current = null;
+      cells.leave(key);
       if (cells.dismiss(key)) setConflict(null);
     },
     /** Enter with nothing typed on a cell that lost: the refused value, or null. */
@@ -114,11 +103,7 @@ export function useConflictCell(engine, key, { stored, editingRef, typedRef, set
       return typed;
     },
     /** Leaving the cell: answers the value taken up on focus, or null. */
-    leave: () => {
-      const taken = takenRef.current;
-      takenRef.current = null;
-      return taken;
-    },
+    leave: () => cells.leave(key),
     /**
      * Send `typed`, typed over `saved`. `write()` answers the write's outcome
      * (DocumentModel.cellWrite). The engine decides what the cell shows if

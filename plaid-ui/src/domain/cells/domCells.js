@@ -45,7 +45,13 @@ export const domCells =
         shown(el, typed);
         return true;
       },
-      showStored: (value, { conflict = false } = {}) => {
+      showStored: (value, { conflict = false, typed = null } = {}) => {
+        // Typed into since `typed` (the value that lost) was shown: that is
+        // newer, and leaving the cell sends it.
+        const focused = document.activeElement === el;
+        if (conflict && focused && typed != null) {
+          if (el.value !== typed && el.value !== (el.dataset.orig ?? '')) return;
+        }
         el.value = value;
         if (conflict || document.activeElement === el) el.dataset.orig = value;
         shown(el, value);

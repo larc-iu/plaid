@@ -87,3 +87,17 @@ describe('domCells', () => {
     expect(document.activeElement).toBe(a);
   });
 });
+
+describe('a conflict shown in a focused cell', () => {
+  it('leaves newer typing alone, and replaces the value that lost', () => {
+    const { a, view } = grid();
+    a.focus();
+    a.dataset.orig = '';
+    a.value = 'newer';
+    view('a').showStored('theirs', { conflict: true, typed: 'mine' });
+    expect(a.value).toBe('newer');
+    a.value = 'mine';
+    view('a').showStored('theirs', { conflict: true, typed: 'mine' });
+    expect(a.value).toBe('theirs');
+  });
+});
