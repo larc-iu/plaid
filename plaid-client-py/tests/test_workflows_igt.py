@@ -235,9 +235,12 @@ def test_word_state_on_hand_built_words():
     assert word_state(_word('abc', ms, morph_spans={'m0': [('g', {'metadata': VERIFIED})]})) == 'protected'
     # a contributor's work is a person's work: protected from machine writers
     assert word_state(_word('abc', ms, morph_spans={'m0': [('g', {'metadata': CONTRIBUTED})]})) == 'protected'
-    # a human word-level span or morpheme link protects even a default morpheme
-    assert word_state(_word('abc', [m0], spans=[('pos', {'metadata': None})])) == 'protected'
+    # a human morpheme link protects even a default morpheme
     assert word_state(_word('abc', [m0], morph_links={'m0': [{'metadata': {}}]})) == 'protected'
+    # word-scope spans and links are never written over, so they protect nothing
+    human_word = dict(spans=[('wgloss', {'metadata': None})], links=[{'metadata': {}}])
+    assert word_state(_word('abc', [m0], **human_word)) == 'unanalyzed'
+    assert word_state(_word('abc', ms, **human_word)) == 'machine'
 
 
 # --- tagsets ---------------------------------------------------------------------------

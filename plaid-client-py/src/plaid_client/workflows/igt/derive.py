@@ -172,18 +172,17 @@ def word_state(w):
     """'unanalyzed' | 'machine' | 'protected' | 'nomorph' (no morpheme token to
     write into — healed by the editor on open; skipped here).
 
-    Every span, link and non-default morpheme on the word votes with its
-    provenance state; a word is 'machine' only when every vote is
-    machine-unverified, 'protected' as soon as one piece is human-made,
-    contributed or verified."""
+    Only what a write replaces votes: every non-default morpheme and every
+    span and link on a morpheme, each with its provenance state. Word-scope
+    spans and links (a word gloss, a word POS, a word's lexicon link) are
+    left as they are by :func:`write_analyses`, so they protect nothing. A
+    word is 'machine' only when every vote is machine-unverified,
+    'protected' as soon as one piece is human-made, contributed or
+    verified."""
     ms = w['morphs']
     if not ms:
         return 'nomorph'
     votes = []
-    for sp_layer, sp in w['spans']:
-        votes.append(prov_state(sp.get('metadata')))
-    for link in w['links']:
-        votes.append(prov_state(link.get('metadata')))
     for m in ms:
         meta = m.get('metadata') or {}
         form = meta.get('form')

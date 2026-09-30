@@ -21,8 +21,10 @@ exposes no probabilities, so no `provProb` / `valueProbs` are written.
 Write contract (the provenance convention):
   * unanalyzed words are always written;
   * words whose analysis is entirely machine-made and unverified are REPLACED;
-  * words with any human-made or human-verified piece are skipped unless the
-    `overwrite` parameter is set.
+  * words with any human-made or human-verified piece of morpheme analysis
+    (a segmentation, or a span or link on a morpheme) are skipped unless the
+    `overwrite` parameter is set. Word-scope fields such as a word gloss are
+    never written, so they protect nothing.
 
 The model's output is whitespace-aligned to the input words only when it
 behaves. The bookkeeping and mending live in `plaid_client.workflows.igt`

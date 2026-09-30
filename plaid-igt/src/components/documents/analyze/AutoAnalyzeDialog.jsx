@@ -335,7 +335,10 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
           wrote = true;
         }
         const prot = result?.skipped?.protected ?? 0;
-        if (prot) parts.push(`left ${plural(prot, 'human-analyzed word')} alone`);
+        if (prot)
+          parts.push(
+            `left ${plural(prot, 'word')} with a person’s morphemes or morpheme glosses alone (“Overwrite human-edited annotations” replaces them)`,
+          );
         noteFailures(result, 'analyze');
         noteMissing(result?.translationFieldMissing, 'sentence', 'translations');
       }
