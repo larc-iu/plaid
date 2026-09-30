@@ -255,7 +255,13 @@ describe('sending and rebasing a log', () => {
       digest: 'd0',
       gaps: [{ start: 7, end: 7, value: 's' }],
     });
-    expect(rest).toEqual({ base: 'the dogs', digest: null, ops: [], body: 'the dogs' });
+    expect(rest).toEqual({
+      base: 'the dogs',
+      digest: null,
+      ops: [],
+      raw: 'the dogs',
+      body: 'the dogs',
+    });
     let after = recordEdit(rest, 'the dogs', { start: 0, end: 3 }, 'a dogs', 1);
     expect(editLogGaps(after)).toEqual([{ start: 0, end: 3, value: 'a' }]);
     // landed: the rest's base is what is stored now
@@ -279,8 +285,78 @@ describe('sending and rebasing a log', () => {
       base: 'a dog ran',
       digest: 'd1',
       ops: [{ type: 'insert', index: 5, value: 's' }],
+      raw: 'a dogs ran',
       body: 'a dogs ran',
     });
     expect(rebaseEditLog(log, 'the cat ran', 'd1')).toEqual({ conflict: true });
+  });
+});
+
+describe('a body with carriage returns', () => {
+  // The box shows `\n` for each `\r\n` and lone `\r`, and the gaps are in the
+  // stored body's code points.
+  const crlf = 'one\r\ntwo\r\nthree';
+
+  it('shows each line break as a newline, and keeps the stored base', () => {
+    const log = startEditLog(crlf, 'd0');
+    expect(log.base).toBe(crlf);
+    expect(editLogBody(log)).toBe('one\ntwo\nthree');
+    expect(editLogIsEmpty(log)).toBe(true);
+  });
+
+  it('sends a letter typed at the end as one insert at the stored end', () => {
+    let log = startEditLog(crlf, 'd0');
+    log = recordEdit(log, 'one\ntwo\nthree', { start: 13, end: 13 }, 'one\ntwo\nthreex', 14);
+    expect(editLogBody(log)).toBe('one\ntwo\nthreex');
+    expect(editLogGaps(log)).toEqual([{ start: 15, end: 15, value: 'x' }]);
+    expect(applyTextOps(log.base, log.ops)).toBe('one\r\ntwo\r\nthreex');
+  });
+
+  it('deletes the whole stored line break a deleted newline stands for', () => {
+    let log = startEditLog(crlf, 'd0');
+    // Backspace at the start of `two`
+    log = recordEdit(log, 'one\ntwo\nthree', { start: 4, end: 4 }, 'onetwo\nthree', 3);
+    expect(editLogGaps(log)).toEqual([{ start: 3, end: 5, value: '' }]);
+    expect(applyTextOps(log.base, log.ops)).toBe('onetwo\r\nthree');
+    // and a lone `\r`
+    log = startEditLog('one\rtwo', 'd0');
+    log = recordEdit(log, 'one\ntwo', { start: 4, end: 4 }, 'onetwo', 3);
+    expect(editLogGaps(log)).toEqual([{ start: 3, end: 4, value: '' }]);
+  });
+
+  it('sends a typed newline as typed, and keeps every carriage return the user did not delete', () => {
+    let log = startEditLog(crlf, 'd0');
+    log = recordEdit(log, 'one\ntwo\nthree', { start: 5, end: 5 }, 'one\ntw\no\nthree', 6);
+    expect(editLogBody(log)).toBe('one\ntw\no\nthree');
+    expect(editLogGaps(log)).toEqual([{ start: 7, end: 7, value: '\n' }]);
+    expect(applyTextOps(log.base, log.ops)).toBe('one\r\ntw\no\r\nthree');
+    // a newline typed right after a lone `\r` keeps it a line break of its own
+    log = startEditLog('a\rb', 'd0');
+    log = recordEdit(log, 'a\nb', { start: 2, end: 2 }, 'a\n\nb', 3);
+    expect(editLogBody(log)).toBe('a\n\nb');
+    const stored = applyTextOps(log.base, log.ops);
+    expect(stored.replace(/\r\n?/g, '\n')).toBe('a\n\nb');
+    expect(stored.startsWith('a\r')).toBe(true);
+    // a letter deleted between a lone `\r` and a `\n` leaves two line breaks
+    log = startEditLog('a\rx\nb', 'd0');
+    log = recordEdit(log, 'a\nx\nb', { start: 3, end: 3 }, 'a\n\nb', 2);
+    const joined = applyTextOps(log.base, log.ops);
+    expect(joined.replace(/\r\n?/g, '\n')).toBe('a\n\nb');
+    expect(joined.startsWith('a\r')).toBe(true);
+  });
+
+  it('sends, rebases and unsends over the stored text', () => {
+    let log = startEditLog(crlf, 'd0');
+    log = recordEdit(log, 'one\ntwo\nthree', { start: 3, end: 3 }, 'ones\ntwo\nthree', 4);
+    const { sent, rest } = sendEditLog(log);
+    expect(sent.gaps).toEqual([{ start: 3, end: 3, value: 's' }]);
+    expect(rest.base).toBe('ones\r\ntwo\r\nthree');
+    expect(editLogBody(rest)).toBe('ones\ntwo\nthree');
+    const back = unsendEditLog(sent, rest);
+    expect(editLogBody(back)).toBe('ones\ntwo\nthree');
+    const moved = rebaseEditLog(log, 'one\r\ntwo\r\nthree!', 'd1');
+    expect(moved.base).toBe('one\r\ntwo\r\nthree!');
+    expect(editLogBody(moved)).toBe('ones\ntwo\nthree!');
+    expect(editLogGaps(moved)).toEqual([{ start: 3, end: 3, value: 's' }]);
   });
 });

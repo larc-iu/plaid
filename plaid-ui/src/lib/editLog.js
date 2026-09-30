@@ -4,10 +4,16 @@
 // selection before it and the value and the caret after it, which is what a
 // browser reports reliably for every kind of input.
 //
-// A log is `{ base, digest, ops, body }`: the ops, applied in turn to `base`,
-// make `body`, which is what the box shows. `digest` is the server's digest
-// of `base`, or null when it is not known yet. Ops are in code points, as the
-// server counts, while DOM selections are UTF-16 and are converted here.
+// A log is `{ base, digest, ops, raw, body }`: the ops, applied in turn to
+// `base`, make `raw`, and `body` is `raw` as the box shows it. `digest` is the
+// server's digest of `base`, or null when it is not known yet. Ops are in code
+// points of the stored text, as the server counts, while DOM selections are
+// UTF-16 of the box's value and are converted here.
+//
+// A box's value has every line break as `\n`, so a `\r\n` or lone `\r` of the
+// stored text is one `\n` in `body`. A change of the box is put onto `raw` at
+// the place it stands for: a deleted `\n` deletes the whole stored break, and
+// typed text goes in as typed, so no `\r` goes that the user did not delete.
 //
 // Dependency-free apart from plaid-client's pure modules, reached by path, so
 // plaid-ud's node suite can load it.
@@ -79,9 +85,40 @@ export function inferEdit(prev, prevSel, next, caretAfter) {
   return { type: 'replace', index, length, value };
 }
 
+// `text` as a text box shows it: every `\r\n` and lone `\r` a `\n`.
+const shown = (text) => (text.includes('\r') ? text.replace(/\r\n?/g, '\n') : text);
+
 /** A log of no edits over `base`, whose digest is `digest` (null if not known). */
 export function startEditLog(base, digest = null) {
-  return { base, digest, ops: [], body: base };
+  return { base, digest, ops: [], raw: base, body: shown(base) };
+}
+
+// `op`, a change of the box's value `shown(raw)`, as a change of `raw`. Each
+// code point of the box stands for one of `raw`, or for a `\r\n`. A `\n`
+// typed right after a lone `\r` would make one line break of the two the box
+// shows, so the `\r` is then given the `\n` of a `\r\n`.
+function onRaw(raw, op) {
+  if (!raw.includes('\r')) return op;
+  const chars = [...raw];
+  const at = [];
+  for (let i = 0; i < chars.length; i += 1) {
+    at.push(i);
+    if (chars[i] === '\r' && chars[i + 1] === '\n') i += 1;
+  }
+  at.push(chars.length);
+  const [length, typed] =
+    op.type === 'insert'
+      ? [0, op.value]
+      : op.type === 'delete'
+        ? [op.value, '']
+        : [op.length, op.value];
+  const start = at[op.index];
+  const end = at[op.index + length];
+  const joins = chars[start - 1] === '\r' && (typed || chars[end] || '')[0] === '\n';
+  const value = joins ? `\n${typed}` : typed;
+  if (end === start) return { type: 'insert', index: start, value };
+  if (value === '') return { type: 'delete', index: start, value: end - start };
+  return { type: 'replace', index: start, length: end - start, value };
 }
 
 // Past this many ops, a log keeps its net change instead of every keystroke.
@@ -93,27 +130,31 @@ const COMPACT_AT = 128;
  * change is read from the body instead, so the log still makes `next`.
  */
 export function recordEdit(log, prev, prevSel, next, caretAfter) {
-  const op =
+  next = shown(next);
+  const change =
     prev === log.body
       ? inferEdit(prev, prevSel, next, caretAfter)
       : inferEdit(log.body, null, next, null);
-  if (!op) return log;
+  if (!change) return log;
+  const op = onRaw(log.raw, change);
   let ops = [...log.ops, op];
   if (ops.length > COMPACT_AT) ops = gapsToOps(composeTextEdits(log.base, ops));
-  const out = { ...log, ops, body: next };
-  if (DEV) assertEditLog(out, op, log.body);
+  // with no `\r` in it, the stored text is the box's
+  const raw = log.raw.includes('\r') ? applyTextOps(log.raw, [op]) : next;
+  const out = { ...log, ops, raw, body: next };
+  if (DEV) assertEditLog(out, op);
   return out;
 }
 
-// Development check of the invariant, one step at a time: the new op turns
-// the old body into the new one, so the ops applied in turn make the body.
-function assertEditLog(log, op, before) {
-  if (applyTextOps(before, [op]) !== log.body) {
+// Development check of the invariant, one step at a time: the box shows the
+// text the ops make.
+function assertEditLog(log, op) {
+  if (shown(log.raw) !== log.body) {
     throw new Error(`editLog: ${JSON.stringify(op)} does not make the box's text`);
   }
 }
 
-/** The text the log makes: its base with its ops applied. */
+/** The text the log makes, as the box shows it. */
 export const editLogBody = (log) => log.body;
 
 /** The log's net change, as gaps of its base (see plaid-client `composeTextEdits`). */
@@ -132,7 +173,7 @@ export const editLogIsEmpty = (log) => editLogGaps(log).length === 0;
 export function sendEditLog(log) {
   return {
     sent: { base: log.base, digest: log.digest, gaps: editLogGaps(log) },
-    rest: startEditLog(log.body, null),
+    rest: startEditLog(log.raw, null),
   };
 }
 
@@ -142,7 +183,7 @@ export const settleEditLog = (rest, digest) => ({ ...rest, digest });
 /** The sent gaps and the edits made since, as one log over the sent base again. */
 export function unsendEditLog(sent, rest) {
   const ops = [...gapsToOps(sent.gaps), ...rest.ops];
-  return { base: sent.base, digest: sent.digest, ops, body: rest.body };
+  return { base: sent.base, digest: sent.digest, ops, raw: rest.raw, body: rest.body };
 }
 
 /**
@@ -154,5 +195,6 @@ export function rebaseEditLog(log, stored, storedDigest = null) {
   const result = rebaseEdits(log.base, editLogGaps(log), stored);
   if (result.conflict) return { conflict: true };
   const ops = gapsToOps(result.gaps);
-  return { base: stored, digest: storedDigest, ops, body: applyTextOps(stored, ops) };
+  const raw = applyTextOps(stored, ops);
+  return { base: stored, digest: storedDigest, ops, raw, body: shown(raw) };
 }

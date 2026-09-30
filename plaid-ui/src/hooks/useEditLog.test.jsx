@@ -69,7 +69,7 @@ describe('useEditLog', () => {
     expect(api.log.base).toBe('a dog sat');
 
     await view.step(() => api.reset('new', 'd9'));
-    expect(api.log).toEqual({ base: 'new', digest: 'd9', ops: [], body: 'new' });
+    expect(api.log).toEqual({ base: 'new', digest: 'd9', ops: [], raw: 'new', body: 'new' });
     await view.unmount();
   });
 });
