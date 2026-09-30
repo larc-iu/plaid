@@ -100,8 +100,8 @@ export function recordingClient() {
       return fn(() => {});
     },
     // `b.ref(n, index)` stands for the id op n of the batch makes (the ids[index]
-    // of a bulk create), as the real batch's does, and is filled in when the
-    // op that names it runs.
+    // of a bulk create), as the real batch's does, and is filled in, at any
+    // depth of the op's arguments, when the op that names it runs.
     batched: async (fn) => {
       const queue = [];
       const out = [];
@@ -111,6 +111,9 @@ export function recordingClient() {
           return v.index === undefined ? body?.id : body?.ids?.[v.index];
         }
         if (Array.isArray(v)) return v.map(fill);
+        if (v && Object.getPrototypeOf(v) === Object.prototype) {
+          return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fill(x)]));
+        }
         return v;
       };
       const proxy = (group) =>

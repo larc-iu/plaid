@@ -5,8 +5,7 @@
 // these used to send after a failure is gone with them: for a re-anchor
 // whose answer was lost it deleted another user's node and its edges
 // (58e3996e), and for an add it needed to go without the version claim
-// (V4 H4-2). Text mode, whose writes can be too many ops for one request,
-// still undoes its anchors, without the claim.
+// (V4 H4-2). Text mode is one batch too (textModeOneBatch.test.js).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -149,29 +148,5 @@ test('a triple on a constant no triple has used yet is one request', async () =>
   assert.equal(span.args[2], constant);
   assert.match(span.args[1][0], /^new/);
   assert.match(triple.args[1], /^new/);
-  release();
-});
-
-// Text mode makes its anchors in one request and the nodes on them in the
-// next. When the second fails, the anchors are deleted again without the
-// version claim: the first request's answer may have been lost after the
-// server stored it, and a claimed delete would be refused and leave them
-// (V4 H4-2).
-test('Text mode whose nodes failed deletes the anchors it made without a version claim', async () => {
-  const { doc, client, calls, stamps, release } = load();
-  const batched = client.batched;
-  let n = 0;
-  client.batched = async (fn) => {
-    n += 1;
-    if (n === 2) throw refused();
-    return batched(fn);
-  };
-  const text = doc
-    .penmanOf(1)
-    .replace('(s1l / landslide-01', '(s1l / landslide-01 :mod (s1zz / big)');
-  await doc.applyPenman(1, text);
-  assert.equal(calls.filter((c) => c.name === 'tokens.bulkDelete').length, 1);
-  assert.deepEqual(stamps, [null]);
-  assert.equal(client.strictModeDocumentId, 'doc-1');
   release();
 });

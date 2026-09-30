@@ -333,9 +333,9 @@ test('the plan names what a deletion takes that the text does not show', () => {
 
 // The cost of an Apply. It used to be about three round trips per node, in
 // series, holding the document's write lock: a graph pasted from another
-// tool took seconds with "applying" on screen. Three batches now, whatever
-// the graph's size.
-test('a 30-node apply is three requests, not ninety', async () => {
+// tool took seconds with "applying" on screen. One batch now, the nodes and
+// edges naming what it makes by ref (textModeOneBatch.test.js).
+test('a 30-node apply is one request, not ninety', async () => {
   const { doc, calls, requests } = load();
   const children = Array.from(
     { length: 30 },
@@ -348,9 +348,9 @@ test('a 30-node apply is three requests, not ninety', async () => {
   assert.equal(await doc.applyPenman(1, text), plan.changes);
   assert.deepEqual(
     requests.map((r) => r.name),
-    ['batch', 'batch', 'batch'],
+    ['batch'],
   );
-  // One anchor, one node and one edge per new node, carried by those three.
+  // One anchor, one node and one edge per new node, carried by it.
   assert.equal(opsOf(calls, 'tokens.bulkCreate').length, 30);
   assert.equal(opsOf(calls, 'spans.bulkCreate').length, 30);
   assert.equal(opsOf(calls, 'relations.bulkCreate').length, 30);

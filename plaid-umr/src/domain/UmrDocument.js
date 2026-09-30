@@ -9,6 +9,7 @@ import {
   createdId,
   createdIds,
   isReviewed,
+  MAX_BATCH_OPS,
   mergeMetadata,
   metadataOps,
   provState,
@@ -17,6 +18,7 @@ import {
 } from '@larc-iu/plaid-client';
 import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
 import { pendingId, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
+import { isUnknownOutcome } from '../../../plaid-ui/src/lib/errors.js';
 import { buildLexicon, vocabLinksByToken } from './vocabLexicon.js';
 import { getUmrLayerInfo, UMR_NAMESPACE, readIlgConfig } from '../utils/umrLayerUtils.js';
 import { resolveIlg, ilgLinesFor } from './ilg.js';
@@ -69,6 +71,20 @@ const VARIABLE = /^s[0-9]+\p{Ll}+[0-9]*$/u;
 const DOC_GRAPH_VARIABLE = /^s[0-9]+s0$/;
 
 const umrOf = (entity) => entity?.metadata?.[UMR_NAMESPACE] || {};
+
+// What stands when a Text mode apply sent in several requests failed after
+// the first landed: `stage` is the request that failed ('changes' when it was
+// one of the first's own requests), `withNodes` whether the apply makes nodes,
+// and `unsure` whether that request's answer was lost.
+const partlyApplied = (stage, withNodes, unsure) => {
+  const missing = unsure ? 'Not confirmed' : 'Not saved';
+  if (stage === 'changes')
+    return `Partly applied. Saved: some deletions and changes. ${missing}: the rest.`;
+  if (stage === 'nodes')
+    return `Partly applied. Saved: deletions and changes. ${missing}: new nodes and edges.`;
+  const saved = withNodes ? 'deletions, changes and new nodes' : 'deletions and changes';
+  return `Partly applied. Saved: ${saved}. ${missing}: new edges.`;
+};
 
 // How long a bare anchor token is taken to be an add still under way rather
 // than one an interrupted add left (_leftoverTokens). An add's requests
@@ -876,8 +892,8 @@ export class UmrDocument extends DocumentModel {
   }
 
   // A send that makes anchor pieces and then needs more requests to stand
-  // nodes on them (Text mode, whose batches can be too many ops for one
-  // request, so it cannot name its pieces by ref). When a later step fails,
+  // nodes on them (a Text mode apply past one request's ops, whose later
+  // requests cannot name its pieces by ref). When a later step fails,
   // the pieces it made are deleted again, and a node already on them with
   // them (the server's cascade), inside the same operation, so no token
   // nobody can see is left and History holds no add that half happened. Best
@@ -2431,12 +2447,13 @@ export class UmrDocument extends DocumentModel {
 
   /**
    * Apply a PENMAN text to a sentence as ONE operation. The whole plan shows
-   * at once, new nodes and edges under pending ids, and is sent in THREE
-   * requests: everything that needs no id made along the way (the renames,
-   * the deletions, the concept, attribute, order and root changes, and the
-   * new nodes' anchors), then the new nodes, then the new edges. The importer
-   * writes in the same three passes, and for the same reason: an op cannot
-   * use an id made in its own batch. A new node is unaligned until anchored
+   * at once, new nodes and edges under pending ids, and is sent as one batch:
+   * everything that needs no id made along the way (the renames, the
+   * deletions, the concept, attribute, order and root changes, and the new
+   * nodes' anchors), then the new nodes on their anchors by ref, then the new
+   * edges on their nodes by ref. It lands whole or not at all. Only an apply
+   * past one batch's ops goes as three requests in that order, and a failure
+   * after the first says what stands. A new node is unaligned until anchored
    * on the canvas. Resolves to the number of changes, or false.
    *
    * It was a round trip per node, edge and patch, in series, under the
@@ -2642,11 +2659,10 @@ export class UmrDocument extends DocumentModel {
       label,
       async () => {
         const ids = new Map();
-        const serverId = (id) => ids.get(id) || settledId(id);
         const pieces = newNodes.flatMap((n) => n.pieces);
-        // Pass 1. The anchors go LAST in it, so their ids are the batch's
-        // last result.
-        const firstPass = await client.batched(async (b) => {
+        const nodeAt = new Map(newNodes.map((n, i) => [n.id, i]));
+        // What changes or removes what is there, then the new nodes' anchors.
+        const queueChanges = (b) => {
           spanOps.forEach(([id, ops]) => b.spans.patchMetadata(settledId(id), ops));
           if (deletedTokens.length) b.tokens.bulkDelete(deletedTokens.map(settledId));
           for (const edgeId of plan.edgesDelete) b.relations.delete(settledId(edgeId));
@@ -2655,74 +2671,143 @@ export class UmrDocument extends DocumentModel {
             if (stampOps.length) b.spans.patchMetadata(settledId(id), stampOps);
           });
           relationOps.forEach(([id, ops]) => b.relations.patchMetadata(settledId(id), ops));
-          if (pieces.length) {
-            b.tokens.bulkCreate(
-              pieces.map((p) => ({
-                tokenLayerId: info.nodeTokenLayer.id,
-                text: info.textLayer.text.id,
-                begin: p.begin,
-                end: p.end,
+          if (!pieces.length) return null;
+          b.tokens.bulkCreate(
+            pieces.map((p) => ({
+              tokenLayerId: info.nodeTokenLayer.id,
+              text: info.textLayer.text.id,
+              begin: p.begin,
+              end: p.end,
+            })),
+          );
+          return b.ref().$ref;
+        };
+        // The new nodes, each on its pieces: `pieceId(k)` names the k-th of
+        // `pieces`, by ref in the batch that makes it or by the id it got.
+        const queueNodes = (b, pieceId) => {
+          let k = 0;
+          b.spans.bulkCreate(
+            newNodes.map((n) => ({
+              spanLayerId: info.conceptLayer.id,
+              tokens: n.pieces.map(() => pieceId(k++)),
+              value: n.value,
+              metadata: n.metadata,
+            })),
+          );
+          return b.ref().$ref;
+        };
+        // The new edges, the held relations made real, and the sentences
+        // that held them, together: a held relation leaves its sentence only
+        // as it is made. `nodeId` names either end.
+        const queueEdges = (b, nodeId) => {
+          const bulk = (list, layerId) => {
+            b.relations.bulkCreate(
+              list.map((e) => ({
+                relationLayerId: layerId,
+                source: nodeId(e.source),
+                target: nodeId(e.target),
+                value: e.value,
+                metadata: e.metadata,
               })),
             );
-          }
-        });
-        const pieceIds = pieces.length ? createdIds(firstPass.at(-1)) : [];
-        if (pieceIds.length !== pieces.length) {
-          throw new Error(
-            `The server returned ${pieceIds.length} anchor ids for ${pieces.length} anchors.`,
-          );
-        }
-        pieces.forEach((p, i) => ids.set(p.id, pieceIds[i]));
-
-        // Pass 2. The new nodes, on the anchors pass 1 made. Should it fail,
-        // those anchors are removed again: nobody could see or delete them.
-        if (newNodes.length) {
-          const secondPass = await this._undoPiecesOnFailure(pieces, ids, () =>
-            client.batched(async (b) => {
-              b.spans.bulkCreate(
-                newNodes.map((n) => ({
-                  spanLayerId: info.conceptLayer.id,
-                  tokens: n.pieces.map((p) => ids.get(p.id)),
-                  value: n.value,
-                  metadata: n.metadata,
-                })),
-              );
-            }),
-          );
-          const spanIds = createdIds(secondPass.at(-1));
-          if (spanIds.length !== newNodes.length) {
+            return b.ref().$ref;
+          };
+          const at = {
+            edges: newEdges.length ? bulk(newEdges, info.relationLayer.id) : null,
+            triples: heldTriples.length ? bulk(heldTriples, info.documentGraphLayer.id) : null,
+          };
+          sentenceOps.forEach(([id, ops]) => b.tokens.patchMetadata(settledId(id), ops));
+          return at;
+        };
+        // The server's ids for `list`, the rows op `at` of `results` made.
+        const adopt = (results, at, list, what) => {
+          if (at == null) return;
+          const made = createdIds(results[at]);
+          if (made.length !== list.length) {
             throw new Error(
-              `The server returned ${spanIds.length} node ids for ${newNodes.length} nodes.`,
+              `The server returned ${made.length} ${what} ids for ${list.length} ${what}s.`,
             );
           }
-          newNodes.forEach((n, i) => ids.set(n.id, spanIds[i]));
+          list.forEach((x, i) => ids.set(x.id, made[i]));
+        };
+        const adoptEdges = (results, at) => {
+          adopt(results, at.edges, newEdges, 'edge');
+          adopt(results, at.triples, heldTriples, 'relation');
+        };
+
+        // One request whenever the apply fits in one, the nodes naming their
+        // pieces and the edges their nodes by ref: it lands whole or not at
+        // all.
+        const opCount =
+          spanOps.length +
+          (deletedTokens.length ? 1 : 0) +
+          plan.edgesDelete.length +
+          spanValues.reduce((sum, [, , stampOps]) => sum + (stampOps.length ? 2 : 1), 0) +
+          relationOps.length +
+          (pieces.length ? 1 : 0) +
+          (newNodes.length ? 1 : 0) +
+          (newEdges.length ? 1 : 0) +
+          (heldTriples.length ? 1 : 0) +
+          sentenceOps.length;
+        if (opCount <= MAX_BATCH_OPS) {
+          let at = {};
+          const results = await client.batched((b) => {
+            const pieceOp = queueChanges(b);
+            const nodeOp = newNodes.length ? queueNodes(b, (k) => b.ref(pieceOp, k)) : null;
+            at = {
+              pieceOp,
+              nodeOp,
+              ...queueEdges(b, (id) =>
+                nodeAt.has(id) ? b.ref(nodeOp, nodeAt.get(id)) : settledId(id),
+              ),
+            };
+          });
+          adopt(results, at.pieceOp, pieces, 'anchor');
+          adopt(results, at.nodeOp, newNodes, 'node');
+          adoptEdges(results, at);
+          this._settle(ids);
+          return;
         }
 
-        // Pass 3. The new edges, the held relations made real, and the
-        // sentences that held them, together: a held relation leaves its
-        // sentence only as it is made.
-        if (newEdges.length || heldTriples.length || sentenceOps.length) {
-          const thirdPass = await client.batched(async (b) => {
-            const bulk = (list, layerId) =>
-              b.relations.bulkCreate(
-                list.map((e) => ({
-                  relationLayerId: layerId,
-                  source: serverId(e.source),
-                  target: serverId(e.target),
-                  value: e.value,
-                  metadata: e.metadata,
-                })),
-              );
-            if (newEdges.length) bulk(newEdges, info.relationLayer.id);
-            if (heldTriples.length) bulk(heldTriples, info.documentGraphLayer.id);
-            sentenceOps.forEach(([id, ops]) => b.tokens.patchMetadata(settledId(id), ops));
+        // Past one request's ops, it goes in three, and the refs cannot
+        // cross from one to the next. A failure after the first says what
+        // stands.
+        const serverId = (id) => ids.get(id) || settledId(id);
+        let stage = 'changes';
+        try {
+          let pieceOp = null;
+          const firstPass = await client.batched((b) => {
+            pieceOp = queueChanges(b);
           });
-          const edgeIds = newEdges.length ? createdIds(thirdPass[0]) : [];
-          newEdges.forEach((e, i) => edgeIds[i] && ids.set(e.id, edgeIds[i]));
-          const tripleIds = heldTriples.length
-            ? createdIds(thirdPass[newEdges.length ? 1 : 0])
-            : [];
-          heldTriples.forEach((t, i) => tripleIds[i] && ids.set(t.id, tripleIds[i]));
+          stage = 'nodes';
+          adopt(firstPass, pieceOp, pieces, 'anchor');
+          // Should the nodes fail, their anchors are removed again: nobody
+          // could see or delete them.
+          if (newNodes.length) {
+            let nodeOp = null;
+            const secondPass = await this._undoPiecesOnFailure(pieces, ids, () =>
+              client.batched((b) => {
+                nodeOp = queueNodes(b, (k) => ids.get(pieces[k].id));
+              }),
+            );
+            adopt(secondPass, nodeOp, newNodes, 'node');
+          }
+          stage = 'edges';
+          if (newEdges.length || heldTriples.length || sentenceOps.length) {
+            let at = {};
+            const thirdPass = await client.batched((b) => {
+              at = queueEdges(b, serverId);
+            });
+            adoptEdges(thirdPass, at);
+          }
+        } catch (error) {
+          const partly = stage !== 'changes' || error?.committed > 0;
+          if (!partly) throw error;
+          if (isUnknownOutcome(error)) this._readLater();
+          const unsure = stage !== 'nodes' && isUnknownOutcome(error);
+          throw Object.assign(new Error(partlyApplied(stage, newNodes.length > 0, unsure)), {
+            cause: error,
+          });
         }
         this._settle(ids);
       },
