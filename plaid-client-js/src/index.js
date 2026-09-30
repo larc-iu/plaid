@@ -22,6 +22,7 @@ import {
   DEFAULT_BATCH_TIMEOUT_MS,
 } from "./http.js";
 import { uuidv7 } from "./ids.js";
+import { constraintsBody } from "./constraints.js";
 import { listAll, listPage, iterPages } from "./pagination.js";
 import { recorderFor } from "./events.js";
 import { withDocumentLock } from "./documentLock.js";
@@ -794,6 +795,7 @@ class PlaidClient {
           `/api/v1/span-layers/${spanLayerId}/config/${namespace}/${configKey}`,
           configRequest(auditMessage, undefined, options, true),
         ),
+      ...constraintMethods(this, "span-layers"),
       /**
        * Get a span layer by ID.
        * @param {string} spanLayerId - The span layer ID
@@ -1891,6 +1893,7 @@ class PlaidClient {
           `/api/v1/token-layers/${tokenLayerId}/config/${namespace}/${configKey}`,
           configRequest(auditMessage, undefined, options, true),
         ),
+      ...constraintMethods(this, "token-layers"),
       /**
        * Get a token layer by ID.
        * @param {string} tokenLayerId - The token layer ID
@@ -2765,6 +2768,7 @@ class PlaidClient {
           `/api/v1/relation-layers/${relationLayerId}/config/${namespace}/${configKey}`,
           configRequest(auditMessage, undefined, options, true),
         ),
+      ...constraintMethods(this, "relation-layers"),
       /**
        * Get a relation layer by ID.
        * @param {string} relationLayerId - The relation layer ID
@@ -4041,8 +4045,71 @@ function configRequest(auditMessage, value, options, isDelete = false) {
   };
 }
 
+/**
+ * The four layer-constraint methods of a layer bundle, on `/api/v1/<kind>`.
+ * See constraints.js and the core manual, "Layer constraints".
+ */
+function constraintMethods(client, kind) {
+  const base = (layerId) => `/api/v1/${kind}/${layerId}/constraints`;
+  return {
+    /**
+     * Declare an app namespace's constraints on this layer, replacing that
+     * namespace's list. Refused with 422 and the violations when the layer's
+     * stored data breaks them (see violationsOf).
+     * @param {string} layerId - The layer ID
+     * @param {string} namespace - The declaring app's namespace, e.g. "igt"
+     * @param {Array<object>} constraints - e.g. [{type: "single-span"}, {type: "value-set", values: ["N"]}]
+     * @param {string} [auditMessage] - Audit message for this write
+     * @param {{expected?: Array<object>|null}} [options] - `expected`: the list read for this
+     *   namespace (null when it was absent). The write is then refused with a 409 when the stored
+     *   list differs.
+     * @returns {Promise<{constraints: object}>} the layer's whole constraint map
+     */
+    setConstraints: (layerId, namespace, constraints, auditMessage, options) =>
+      client._request("PUT", `${base(layerId)}/${namespace}`, {
+        auditMessage,
+        body: constraintsBody(constraints, options),
+      }),
+    /**
+     * Remove an app namespace's constraints from this layer.
+     * @param {string} layerId - The layer ID
+     * @param {string} namespace - The declaring app's namespace
+     * @param {string} [auditMessage] - Audit message for this write
+     * @param {{expected?: Array<object>|null}} [options] - `expected`, as on setConstraints.
+     */
+    deleteConstraints: (layerId, namespace, auditMessage, options) => {
+      const body = constraintsBody(undefined, options);
+      return client._request("DELETE", `${base(layerId)}/${namespace}`, {
+        auditMessage,
+        ...(Object.keys(body).length ? { body } : {}),
+      });
+    },
+    /**
+     * The violations the given constraints would meet in this layer's stored
+     * data. Writes nothing.
+     * @param {string} layerId - The layer ID
+     * @param {Array<object>} constraints - The list to check
+     * @returns {Promise<{violations: Array<object>, violationCount: number}>}
+     */
+    checkConstraints: (layerId, constraints) =>
+      client._request("POST", `${base(layerId)}/check`, { body: { constraints } }),
+    /**
+     * Apply the remedies of the given constraints' remediable types
+     * (coextensive, single-span, single-link, same-ancestor) to every
+     * violation in this layer's stored data, one operation per document.
+     * @param {string} layerId - The layer ID
+     * @param {Array<object>} constraints - The list to repair for
+     * @param {string} [auditMessage] - Audit message for this write
+     * @returns {Promise<{repaired: Array<object>, violations: Array<object>, violationCount: number}>}
+     */
+    repairConstraints: (layerId, constraints, auditMessage) =>
+      client._request("POST", `${base(layerId)}/repair`, { auditMessage, body: { constraints } }),
+  };
+}
+
 export default PlaidClient;
 export { PlaidClient };
+export { CONSTRAINT_TYPES, violationsOf } from "./constraints.js";
 
 // Unicode code-point helpers for text offsets (token begin/end are code-point
 // indices). See ./codepoint.js.

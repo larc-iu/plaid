@@ -24,6 +24,13 @@ for (const b of ['projects', 'textLayers', 'tokenLayers', 'spanLayers', 'relatio
   ARGS_BEFORE_AUDIT_MESSAGE[`${b}.setConfig`] = 4;
   ARGS_BEFORE_AUDIT_MESSAGE[`${b}.deleteConfig`] = 3;
 }
+// The constraint writes take an options object after `auditMessage` too.
+for (const b of ['tokenLayers', 'spanLayers', 'relationLayers']) {
+  ARGS_BEFORE_AUDIT_MESSAGE[`${b}.setConstraints`] = 3;
+  ARGS_BEFORE_AUDIT_MESSAGE[`${b}.deleteConstraints`] = 2;
+}
+// Reads that travel as a POST take no audit message.
+const READ_POSTS = new Set(['tokenLayers.checkConstraints', 'spanLayers.checkConstraints', 'relationLayers.checkConstraints']);
 // CRUD bundles whose writes hit document state. `messages`/services are
 // real-time/registry (not audit-logged) and use streaming transports.
 const BUNDLES = [
@@ -62,7 +69,7 @@ test('every CRUD write method threads a per-call auditMessage', async () => {
     const bundle = client[b];
     if (!bundle) continue;
     for (const [m, fn] of Object.entries(bundle)) {
-      if (typeof fn === 'function') await probe(`${b}.${m}`, fn);
+      if (typeof fn === 'function' && !READ_POSTS.has(`${b}.${m}`)) await probe(`${b}.${m}`, fn);
     }
   }
   // `query` is a read that travels as a POST, so it takes no audit message.

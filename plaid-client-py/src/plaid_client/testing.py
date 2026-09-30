@@ -406,6 +406,9 @@ _REAL_RESOURCES = {
     'vocab_links': _client.VocabLinksResource,
     'vocab_items': _client.VocabItemsResource,
     'documents': _client.DocumentsResource,
+    'token_layers': _client.TokenLayersResource,
+    'span_layers': _client.SpanLayersResource,
+    'relation_layers': _client.RelationLayersResource,
 }
 
 #: the keys a bulk update entry may carry, and the ones it must, per resource
@@ -524,6 +527,13 @@ class Resource:
         if method in ('copy', 'split'):
             new = arguments.get('id') or writer.new_id(self._name)
             return _payload(args, kwargs), {'body': {'id': new}}, {'id': new}
+        if method == 'check_constraints':
+            # The fake holds no layer data, so nothing breaks a rule.
+            answer = {'violations': [], 'violation_count': 0}
+            return _payload(args, kwargs), {'body': answer}, answer
+        if method == 'repair_constraints':
+            answer = {'repaired': [], 'violations': [], 'violation_count': 0}
+            return _payload(args, kwargs), {'body': answer}, answer
         return _payload(args, kwargs), {'body': {}}, {}
 
     #: the key naming the one layer every entry of a bulk create must share
@@ -741,7 +751,8 @@ class FakeClient:
     """
 
     #: resources a caller may write through, each recording under its own name.
-    RESOURCES = ('tokens', 'spans', 'relations', 'texts', 'vocab_links', 'vocab_items')
+    RESOURCES = ('tokens', 'spans', 'relations', 'texts', 'vocab_links', 'vocab_items',
+                 'token_layers', 'span_layers', 'relation_layers')
 
     def __init__(self, documents, fails=None, *, project=None, audit=None, guidelines=None,
                  comments=None, restore_summary=None, projects=None, services=None,

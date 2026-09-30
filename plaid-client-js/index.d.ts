@@ -311,6 +311,32 @@ interface SpanLayersBundle {
     direction: string,
     auditMessage?: string,
   ): Promise<any>;
+  setConstraints(
+    layerId: string,
+    namespace: string,
+    constraints: LayerConstraint[],
+    auditMessage?: string,
+    options?: ConstraintWriteOptions,
+  ): Promise<{ constraints: Record<string, LayerConstraint[]> }>;
+  deleteConstraints(
+    layerId: string,
+    namespace: string,
+    auditMessage?: string,
+    options?: ConstraintWriteOptions,
+  ): Promise<any>;
+  checkConstraints(
+    layerId: string,
+    constraints: LayerConstraint[],
+  ): Promise<{ violations: ConstraintViolation[]; violationCount: number }>;
+  repairConstraints(
+    layerId: string,
+    constraints: LayerConstraint[],
+    auditMessage?: string,
+  ): Promise<{
+    repaired: { document: string; constraint: string; deleted: number; joined: number }[];
+    violations: ConstraintViolation[];
+    violationCount: number;
+  }>;
 }
 
 interface SpansBundle {
@@ -993,6 +1019,32 @@ interface TokenLayersBundle {
     name: string,
     auditMessage?: string,
   ): Promise<any>;
+  setConstraints(
+    layerId: string,
+    namespace: string,
+    constraints: LayerConstraint[],
+    auditMessage?: string,
+    options?: ConstraintWriteOptions,
+  ): Promise<{ constraints: Record<string, LayerConstraint[]> }>;
+  deleteConstraints(
+    layerId: string,
+    namespace: string,
+    auditMessage?: string,
+    options?: ConstraintWriteOptions,
+  ): Promise<any>;
+  checkConstraints(
+    layerId: string,
+    constraints: LayerConstraint[],
+  ): Promise<{ violations: ConstraintViolation[]; violationCount: number }>;
+  repairConstraints(
+    layerId: string,
+    constraints: LayerConstraint[],
+    auditMessage?: string,
+  ): Promise<{
+    repaired: { document: string; constraint: string; deleted: number; joined: number }[];
+    violations: ConstraintViolation[];
+    violationCount: number;
+  }>;
 }
 
 /** Handle passed to a `documents.locked()` block. */
@@ -1345,6 +1397,32 @@ interface RelationLayersBundle {
     name: string,
     auditMessage?: string,
   ): Promise<any>;
+  setConstraints(
+    layerId: string,
+    namespace: string,
+    constraints: LayerConstraint[],
+    auditMessage?: string,
+    options?: ConstraintWriteOptions,
+  ): Promise<{ constraints: Record<string, LayerConstraint[]> }>;
+  deleteConstraints(
+    layerId: string,
+    namespace: string,
+    auditMessage?: string,
+    options?: ConstraintWriteOptions,
+  ): Promise<any>;
+  checkConstraints(
+    layerId: string,
+    constraints: LayerConstraint[],
+  ): Promise<{ violations: ConstraintViolation[]; violationCount: number }>;
+  repairConstraints(
+    layerId: string,
+    constraints: LayerConstraint[],
+    auditMessage?: string,
+  ): Promise<{
+    repaired: { document: string; constraint: string; deleted: number; joined: number }[];
+    violations: ConstraintViolation[];
+    violationCount: number;
+  }>;
 }
 
 interface TokensBundle {
@@ -1885,3 +1963,37 @@ export function writerPolicy(contributorId?: string | null): {
   /** The same test over a provState. */
   readonly reviewableState: (state: string) => boolean;
 };
+
+// --- Layer constraints -------------------------------------------------------
+/** A constraint an app declares on a layer, e.g. {type: "value-set", values: ["N"]}. */
+export interface LayerConstraint {
+  type:
+    | "max-in-degree"
+    | "acyclic"
+    | "same-ancestor"
+    | "single-span"
+    | "value-set"
+    | "coextensive"
+    | "single-link";
+  [param: string]: any;
+}
+/** `expected`: the list read for the namespace, null when it was absent. */
+export interface ConstraintWriteOptions {
+  expected?: LayerConstraint[] | null;
+}
+/** One violation a 422 lists. */
+export interface ConstraintViolation {
+  constraint: string;
+  namespace: string | null;
+  layer: string;
+  layerName: string;
+  document: string | null;
+  at: string | null;
+  ids: string[];
+  value?: any;
+  parts?: string[];
+}
+/** The constraint types. */
+export const CONSTRAINT_TYPES: readonly string[];
+/** The camelCased violations of a write refused by a layer constraint, or null. */
+export function violationsOf(err: any): ConstraintViolation[] | null;

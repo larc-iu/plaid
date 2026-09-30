@@ -66,6 +66,80 @@ def _config_request(audit_message, value, expected):
     return opts
 
 
+def _constraints_body(constraints, expected):
+    body = {} if constraints is _UNSET else {'constraints': constraints}
+    if expected is not _UNSET:
+        body['expected'] = expected
+    return body
+
+
+class _ConstraintMethods:
+    """The four layer-constraint methods of a layer resource, on
+    ``/api/v1/<_kind>``. See ``plaid_client.constraints`` and the core manual,
+    "Layer constraints"."""
+
+    _kind = None
+
+    def _constraints_path(self, layer_id):
+        return f'/api/v1/{self._kind}/{layer_id}/constraints'
+
+    def set_constraints(self, layer_id: str, namespace: str, constraints: list, audit_message=None,
+                        expected: Any = _UNSET) -> Any:
+        """Declare an app namespace's constraints on this layer, replacing that
+        namespace's list. Refused with 422 and the violations when the layer's
+        stored data breaks them (see ``violations_of``).
+
+        Args:
+            layer_id: The layer ID
+            namespace: The declaring app's namespace, e.g. ``'igt'``
+            constraints: e.g. ``[{'type': 'single-span'}, {'type': 'value-set', 'values': ['N']}]``
+            expected: The list read for this namespace (``None`` when it was absent). When given,
+                the write is refused with a 409 when the stored list differs.
+
+        Returns the layer's whole constraint map as ``{'constraints': {...}}``.
+        """
+        return self._request('PUT', f'{self._constraints_path(layer_id)}/{namespace}',
+                             body=_constraints_body(constraints, expected), audit_message=audit_message)
+
+    def delete_constraints(self, layer_id: str, namespace: str, audit_message=None,
+                           expected: Any = _UNSET) -> Any:
+        """Remove an app namespace's constraints from this layer.
+
+        Args:
+            layer_id: The layer ID
+            namespace: The declaring app's namespace
+            expected: As on ``set_constraints``.
+        """
+        body = _constraints_body(_UNSET, expected)
+        kwargs = {'body': body} if body else {}
+        return self._request('DELETE', f'{self._constraints_path(layer_id)}/{namespace}',
+                             audit_message=audit_message, **kwargs)
+
+    def check_constraints(self, layer_id: str, constraints: list) -> Any:
+        """The violations the given constraints would meet in this layer's
+        stored data, as ``{'violations', 'violation_count'}``. Writes nothing.
+
+        Args:
+            layer_id: The layer ID
+            constraints: The list to check
+        """
+        return self._request('POST', f'{self._constraints_path(layer_id)}/check',
+                             body={'constraints': constraints})
+
+    def repair_constraints(self, layer_id: str, constraints: list, audit_message=None) -> Any:
+        """Apply the remedies of the given constraints' remediable types
+        (coextensive, single-span, single-link, same-ancestor) to every
+        violation in this layer's stored data, one operation per document.
+        Answers ``{'repaired', 'violations', 'violation_count'}``.
+
+        Args:
+            layer_id: The layer ID
+            constraints: The list to repair for
+        """
+        return self._request('POST', f'{self._constraints_path(layer_id)}/repair',
+                             body={'constraints': constraints}, audit_message=audit_message)
+
+
 _UNSET_MESSAGE = object()
 
 
@@ -584,7 +658,9 @@ class RelationsResource(_Resource):
         return self._request('PATCH', '/api/v1/relations/bulk', body=body, audit_message=audit_message)
 
 
-class SpanLayersResource(_Resource):
+class SpanLayersResource(_ConstraintMethods, _Resource):
+    _kind = 'span-layers'
+
     def get(self, span_layer_id: str) -> Any:
         """Get a span layer by ID.
 
@@ -1691,7 +1767,9 @@ class InvitesResource(_Resource):
                              audit_message=audit_message)
 
 
-class TokenLayersResource(_Resource):
+class TokenLayersResource(_ConstraintMethods, _Resource):
+    _kind = 'token-layers'
+
     def get(self, token_layer_id: str) -> Any:
         """Get a token layer by ID.
 
@@ -2938,7 +3016,9 @@ class VocabItemsResource(_Resource):
                              raw_body=body, audit_message=audit_message)
 
 
-class RelationLayersResource(_Resource):
+class RelationLayersResource(_ConstraintMethods, _Resource):
+    _kind = 'relation-layers'
+
     def get(self, relation_layer_id: str) -> Any:
         """Get a relation layer by ID.
 
