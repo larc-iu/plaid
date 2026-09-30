@@ -110,13 +110,16 @@
                    (pick (:sentence-seps opts [" " "\n" ". "])))))
           (let [e (if (and (:bound-early opts) (< (.nextDouble rng) (:bound-early opts))) before @pos)]
             (vreset! nstart e)
-            (conj! toks {:token/id [:s si] :token/layer :s :token/begin sb0 :token/end e})))))
+            (conj! toks {:token/id [:s si] :token/layer :s :token/begin sb0 :token/end e})
+            ;; a time-alignment segment over the whole sentence (a transcript row)
+            (when (:sentence-segments opts)
+              (conj! toks {:token/id [:as si] :token/layer :ss :token/begin sb0 :token/end e}))))))
     (let [tokens (persistent! toks)
           body (str sb)
           ;; the last sentence ends at the end of the text
           n (cp/cp-count body)]
       {:body body
-       :tokens (mapv #(if (and (= :s (:token/layer %)) (= (:token/id %) [:s (dec nsent)]))
+       :tokens (mapv #(if (#{[:s (dec nsent)] [:as (dec nsent)]} (:token/id %))
                         (assoc % :token/end n) %)
                      tokens)})))
 
@@ -248,7 +251,11 @@
     (when (not= expected new-body) (bad! "body " (pr-str new-body) " not " (pr-str expected)))
     (when (= expected new-body)
       (doseq [{:token/keys [id layer begin end] :as t} tokens
-              :when (and (plain layer) (< begin end))]
+              :when (and (plain layer) (< begin end)
+                         ;; a token over a sentence follows it (REV3)
+                         (or (= :s layer)
+                             (not-any? #(and (= :s (:token/layer %)) (= begin (:token/begin %)) (= end (:token/end %)))
+                                       tokens)))]
         (let [kept (kept-of t)
               cov (covering t)
               ;; no letter of it left, and none typed inside it
@@ -372,7 +379,7 @@
 
 (def ^:private cases-per-config 1500)
 
-(defn- run [old tokens ops] (ta/plain-edits old tokens ops #{:s} #{:w}))
+(defn- run [old tokens ops] (ta/plain-edits old tokens ops #{:s} #{:w} {:children #{:m :x}}))
 
 (deftest a-plain-layer-takes-every-edit-the-plain-way
   (doseq [[cname opts] configs]
@@ -391,7 +398,7 @@
                   ps (problems body tokens server r)]
               (when (seq ps) (swap! fails conj {:config cname :seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))
           (let [bgaps (ta/plain-body-gaps body new-body tokens #{:s})
-                r (ta/plain-body body new-body tokens #{:s} #{:w})
+                r (ta/plain-body body new-body tokens #{:s} #{:w} {:children #{:m :x}})
                 ps (problems body tokens bgaps r)]
             (when (seq ps) (swap! fails conj {:config cname :seed seed :reading :whole-body :old body :gaps bgaps :problems (take 3 ps)})))))
       (when (System/getenv "PLAIN_ORACLE_DEBUG")
@@ -502,6 +509,10 @@
                 a)
         p (into {} (map (juxt :token/id identity)) (:tokens plain))
         q (into {} (map (juxt :token/id identity)) (:tokens split))
+        sentence-now (into {} (map (juxt :token/id (juxt :token/begin :token/end)))
+                           (gap-fill (into (filterv #(= :s (:token/layer %)) (:tokens split))
+                                           (map-indexed #(assoc %2 :token/id [::head %1]) (:heads split)))
+                                     (alength nw)))
         moved (into {}
                     (keep (fn [{:token/keys [id layer begin end]}]
                             (when-let [t (and (= :w layer) (p id))]
@@ -521,9 +532,15 @@
     (when (not= (:text split) (:text plain)) (conj! out "body"))
     (doseq [{:token/keys [id layer begin end]} tokens
             :let [t (p id)
+                  ;; a token over a sentence follows the sentence (REV3)
+                  over (when (and t (not (#{:s :w :m :x} layer)))
+                         (some #(when (and (= :s (:token/layer %)) (= begin (:token/begin %)) (= end (:token/end %)))
+                                  (:token/id %))
+                               tokens))
                   inside (some (fn [[[wb we] xy]] (when (and (<= wb begin) (<= end we) (not (and (= wb begin) (= we end)))) xy)) moved)
                   want (cond
                          (or (nil? t) (= :s layer)) t
+                         over (let [[b e] (sentence-now over)] (assoc t :token/begin b :token/end e))
                          (moved [begin end]) (let [[x y] (moved [begin end])] (assoc t :token/begin x :token/end y))
                          inside (let [[x y] inside
                                       b (max x (:token/begin t)) e (min y (:token/end t))]
@@ -547,16 +564,16 @@
             new-body (ta/edit-ops-body (ta/gap-ops gaps) body)
             server (ta/plain-edit-gaps body (ta/gap-ops gaps))]
         (doseq [[rname plain split sgaps] [[:composed
-                                            (ta/plain-edits body tokens (ta/gap-ops gaps) #{:s} #{:w})
-                                            (ta/plain-edits body tokens (ta/gap-ops gaps) #{:s} #{:w} {:split-on-space true})
+                                            (ta/plain-edits body tokens (ta/gap-ops gaps) #{:s} #{:w} {:children #{:m :x}})
+                                            (ta/plain-edits body tokens (ta/gap-ops gaps) #{:s} #{:w} {:split-on-space true :children #{:m :x}})
                                             server]
                                            [:keys-right-to-left
-                                            (ta/plain-edits body tokens (keystrokes gaps true) #{:s} #{:w})
-                                            (ta/plain-edits body tokens (keystrokes gaps true) #{:s} #{:w} {:split-on-space true})
+                                            (ta/plain-edits body tokens (keystrokes gaps true) #{:s} #{:w} {:children #{:m :x}})
+                                            (ta/plain-edits body tokens (keystrokes gaps true) #{:s} #{:w} {:split-on-space true :children #{:m :x}})
                                             server]
                                            [:whole-body
-                                            (ta/plain-body body new-body tokens #{:s} #{:w})
-                                            (ta/plain-body body new-body tokens #{:s} #{:w} {:split-on-space true})
+                                            (ta/plain-body body new-body tokens #{:s} #{:w} {:children #{:m :x}})
+                                            (ta/plain-body body new-body tokens #{:s} #{:w} {:split-on-space true :children #{:m :x}})
                                             (ta/plain-body-gaps body new-body tokens #{:s})]]]
           (let [ps (split-problems body tokens sgaps plain split)]
             (when (seq ps) (swap! fails conj {:seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))))
@@ -564,27 +581,72 @@
 
 ;; ---------------------------------------------------------------- sentence starts by the caret
 
-(deftest text-typed-where-two-sentences-meet-goes-by-the-caret
-  ;; Luke (2026-09-30), REV2 H1: no word taking it, text typed right before
-  ;; the next sentence's first letter joins that sentence unless it holds a
-  ;; line break, right after a sentence's last letter or in a longer run of
-  ;; whitespace the sentence before. Sentences never begin on whitespace they
-  ;; did not have. Every other rule judged as ever.
+;; REV3: a token over a sentence follows it, a node over several words keeps
+;; to its words, and a line typed before the first sentence is a sentence
+(defn- follow-checks [^String old tokens server r]
+  (let [o (cps old)
+        nb (:text/body (:text r))
+        by-id (into {} (map (juxt :token/id identity)) (:tokens r))
+        heads (:heads r)
+        filled (into {} (map (juxt :token/id (juxt :token/begin :token/end)))
+                     (gap-fill (into (filterv #(= :s (:token/layer %)) (:tokens r))
+                                     (map #(assoc % :token/id ::head) heads))
+                               (cp/cp-count nb)))
+        sents (filter #(= :s (:token/layer %)) tokens)
+        words (filter #(= :w (:token/layer %)) tokens)
+        out (transient [])]
+    ;; segments over sentences
+    (doseq [{:token/keys [id begin end]} tokens :when (#{:as :us} (first id))
+            :let [st (some #(when (and (= begin (:token/begin %)) (= end (:token/end %))) %) sents)
+                  want (some-> st :token/id filled)
+                  got (some-> (by-id id) ((juxt :token/begin :token/end)))]
+            :when (and want got (not= want got))]
+      (conj! out (str id " at " got ", its sentence at " want)))
+    ;; nodes over several words, not over a sentence, keep to their words
+    (doseq [{:token/keys [id begin end]} tokens :when (= :un (first id))
+            :let [n (by-id id)
+                  wb (some #(when (= begin (:token/begin %)) (by-id (:token/id %))) words)
+                  we (some #(when (= end (:token/end %)) (by-id (:token/id %))) words)]
+            :when (and n (not-any? #(and (= begin (:token/begin %)) (= end (:token/end %))) sents))]
+      (when (and wb (not= (:token/begin wb) (:token/begin n)))
+        (conj! out (str id " begins at " (:token/begin n) ", its first word at " (:token/begin wb))))
+      (when (and we (not= (:token/end we) (:token/end n)))
+        (conj! out (str id " ends at " (:token/end n) ", its last word at " (:token/end we)))))
+    ;; a line typed before the first sentence
+    (when-let [{:keys [start end value]} (first server)]
+      (when (and (= 0 start end) (some #(zero? (:token/begin %)) sents))
+        (when-let [m (last (re-seq #"[\s\S]*[\n\r\u0085\u2028\u2029]" value))]
+          (let [k (cp/cp-count m) s0 (by-id [:s 0])]
+            (when (and s0 (not= [0 k] (some-> (first heads) ((juxt :token/begin :token/end)))))
+              (conj! out (str "no sentence made over the line typed first: " (pr-str heads))))))))
+    (persistent! out)))
 
-  (let [opts {:carets 3 :spaced 0.3 :bound-early 0.5 :at-sentences true
+(deftest text-typed-where-two-sentences-meet-goes-by-the-caret
+  ;; Luke (2026-09-30), REV2 H1, REV3: no word taking it, text typed right
+  ;; before the next sentence's first letter joins that sentence unless it
+  ;; holds a line break, right after a sentence's last letter or in a longer
+  ;; run of whitespace the sentence before. A line typed before the first
+  ;; sentence is a sentence of its own. A segment over a sentence follows it,
+  ;; and a node over several words keeps to them. Sentences never begin on
+  ;; whitespace they did not have. Every other rule judged as ever.
+  (let [opts {:carets 3 :spaced 0.3 :bound-early 0.5 :at-sentences true :sentence-segments true :nodes true
               :sentence-seps [" " "  " "\n" ". " " \n "]
-              :typed ["Q" "Oh " "XZ XZ " " Q" "  " "Q\nR" "\n" "-" "Q R"]}
+              :typed ["Q" "Oh " "XZ XZ " " Q" "  " "Q\nR" "\n" "-" "Q R" "Oh.\n"]}
         fails (atom [])]
     (dotimes [seed cases-per-config]
       (let [rng (java.util.Random. (+ seed 777))
             {:keys [body tokens]} (gen-doc rng opts)
             gaps (gen-gaps rng body tokens opts)
+            ;; the start of the text too
+            gaps (if (and (< (.nextDouble rng) 0.2) (seq gaps) (pos? (:start (first gaps))))
+                   (into [{:start 0 :end 0 :value (nth ["Oh " "Oh.\n" "Oh.\nNew " "Q"] (.nextInt rng 4))}] gaps)
+                   gaps)
             o (cps body)
             sents (sort-by :token/begin (filter #(= :s (:token/layer %)) tokens))]
         (doseq [[rname ops] {:composed (ta/gap-ops gaps) :keys-left-to-right (keystrokes gaps false)}]
-          (let [r (ta/plain-edits body tokens ops #{:s} #{:w})
+          (let [r (ta/plain-edits body tokens ops #{:s} #{:w} {:children #{:m :x}})
                 server (ta/plain-edit-gaps body ops)
-                ps (vec (problems body tokens server r))
+                ps (vec (remove #(re-find #"^\[:as " %) (problems body tokens server r)))
                 nb (:text/body (:text r))
                 ss (gap-fill (filterv #(= :s (:token/layer %)) (:tokens r)) (cp/cp-count nb))
                 shift (fn [g] (reduce + 0 (map #(- (cp/cp-count (:value %)) (- (:end %) (:start %)))
@@ -605,42 +667,18 @@
                                      (when (and (< lead-ws (cp/cp-count v)) (not= want got))
                                        (str "text typed at " a " went to " got ", not " want))))))
                          server)
-                ;; REV2 M5: a segment that began with its sentence still does
-                by-id (into {} (map (juxt :token/id identity)) (:tokens r))
-                ps (into ps
-                         (keep (fn [{:token/keys [id layer begin] :as seg0}]
-                                 (when (and (= :a layer)
-                                            ;; text typed right before its sentence's first letter
-                                            (some (fn [{a :start b :end v :value}]
-                                                    (and (= a b begin) (pos? a) (< a (alength o))
-                                                         (ws? (aget o (dec a))) (not (ws? (aget o a)))
-                                                         (not (re-find #"[\n\r\u0085\u2028\u2029]" v))))
-                                                  server))
-                                   (when-let [st (some #(when (and (= begin (:token/begin %))
-                                                                   ;; over more than the first word
-                                                                   (not-any? (fn [w] (and (= :w (:token/layer w)) (= begin (:token/begin w))
-                                                                                          (= (:token/end seg0) (:token/end w))))
-                                                                             tokens))
-                                                          %)
-                                                       sents)]
-                                     (let [seg (by-id id)
-                                           s* (some #(when (= (:token/id %) (:token/id st)) %) ss)]
-                                       (when (and seg s* (not= (:token/begin seg) (:token/begin s*))
-                                                  ;; unless the sentence's first word went
-                                                  (some #(and (= :w (:token/layer %)) (= begin (:token/begin %))
-                                                              (by-id (:token/id %)))
-                                                        tokens))
-                                         (str id " begins at " (:token/begin seg) ", its sentence at " (:token/begin s*))))))))
-                         tokens)]
+                ps (into ps (follow-checks body tokens server r))]
             (when (seq ps) (swap! fails conj {:seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))))
     (is (empty? @fails) (str (count @fails) " " (pr-str (take 3 @fails))))))
 
 ;; ---------------------------------------------------------------- the side the caret is on
 
 (deftest text-typed-where-two-words-meet-goes-to-the-side-it-says
-  ;; REV2 M2: letters typed where two words meet with no space, the insert
-  ;; saying `side`, go into the word on that side, with what hangs off it;
-  ;; with no side, into the word before. Every other rule judged as ever.
+  ;; REV2 M2, REV3 N6 N7: letters typed where two words meet with no space,
+  ;; the insert saying `side`, go into the word on that side, with what hangs
+  ;; off it and its sentence; with no side, into the word before. A side
+  ;; where the words do not meet counts for nothing. Every other rule judged
+  ;; as ever.
   (let [opts {:carets 3 :spaced 0.2 :glue 0.6}
         fails (atom [])]
     (dotimes [seed cases-per-config]
@@ -648,19 +686,42 @@
             {:keys [body tokens]} (gen-doc rng opts)
             o (cps body)
             words (sort-by :token/begin (filter #(= :w (:token/layer %)) tokens))
-            meets (vec (keep (fn [[x y]] (when (= (:token/end x) (:token/begin y)) [x y])) (partition 2 1 words)))]
-        (when (seq meets)
-          (let [[x y] (nth meets (.nextInt rng (count meets)))
-                a (:token/begin y)
+            meets (vec (keep (fn [[x y]] (when (= (:token/end x) (:token/begin y)) [x y])) (partition 2 1 words)))
+            apart (vec (keep (fn [[x y]] (when (< (:token/end x) (:token/begin y)) [x y])) (partition 2 1 words)))
+            glued? (and (seq meets) (or (empty? apart) (< (.nextDouble rng) 0.7)))]
+        (when (or (seq meets) (seq apart))
+          (let [[x y] (if glued? (nth meets (.nextInt rng (count meets))) (nth apart (.nextInt rng (count apart))))
+                a (if (or glued? (.nextBoolean rng)) (:token/begin y) (:token/end x))
                 side (nth [nil "before" "after"] (.nextInt rng 3))
-                v (nth ["Q" "XZ" "Ж𐍂"] (.nextInt rng 3))
+                v (nth ["Q" "XZ" "Ж𐍂" "x " "x y"] (.nextInt rng 5))
                 op (cond-> {:type :insert :index a :value v} side (assoc :side side))
-                r (ta/plain-edits body tokens [op] #{:s} #{:w})
-                ps (vec (problems body tokens [(cond-> {:start a :end a :value v} side (assoc :side (keyword side)))] r))
+                r (ta/plain-edits body tokens [op] #{:s} #{:w} {:children #{:m :x}})
+                r0 (ta/plain-edits body tokens [(dissoc op :side)] #{:s} #{:w} {:children #{:m :x}})
+                eff (when glued? side)
+                ;; the part of sided text away from its side belongs to
+                ;; the side's row, not to the word it touches
+                ps (vec (cond->> (problems body tokens [(cond-> {:start a :end a :value v} side (assoc :side (keyword side)))] r)
+                          eff (remove #(re-find #"joined to a word is in none" %))))
                 at (fn [id] (some #(when (= id (:token/id %)) %) (:tokens r)))
-                want (if (= side "after") (:token/id y) (:token/id x))
-                got (some #(when (and (<= (:token/begin %) a) (< a (:token/end %)) (= :w (:token/layer %))) (:token/id %)) (:tokens r))
-                ps (cond-> ps (not= want got) (conj (str "typed " (pr-str v) " side " side " went to " got ", not " want)))
+                ext (fn [res] (set (map (juxt :token/id :token/begin :token/end) (:tokens res))))
+                ps (cond-> ps
+                     (and (not eff) (not= (ext r) (ext r0)))
+                     (conj (str "side " side " where the words do not meet changed the outcome")))
+                ps (if (and glued? (not (re-find #"\s" v)))
+                     (let [want (if (= eff "after") (:token/id y) (:token/id x))
+                           got (some #(when (and (<= (:token/begin %) a) (< a (:token/end %)) (= :w (:token/layer %))) (:token/id %)) (:tokens r))]
+                       (cond-> ps (not= want got) (conj (str "typed " (pr-str v) " side " side " went to " got ", not " want))))
+                     ps)
+                ;; the typed text's first letter is in the sentence of the side's word
+                ps (if glued?
+                     (let [nb (:text/body (:text r))
+                           ss (gap-fill (filterv #(= :s (:token/layer %)) (:tokens r)) (cp/cp-count nb))
+                           sent-of (fn [p] (some #(when (and (<= (:token/begin %) p) (< p (:token/end %))) (:token/id %)) ss))
+                           w (at (if (= eff "after") (:token/id y) (:token/id x)))]
+                       (cond-> ps
+                         (and w (not= (sent-of a) (sent-of (:token/begin w))))
+                         (conj (str "typed " (pr-str v) " side " side " is in sentence " (sent-of a) ", its word in " (sent-of (:token/begin w))))))
+                     ps)
                 ps (cond-> ps (some #(not= ((juxt :token/begin :token/end) (at (:token/id %)))
                                            ((juxt :token/begin :token/end) (at [:w (second (:token/id %))])))
                                     (filter #(= :m (:token/layer %)) tokens))

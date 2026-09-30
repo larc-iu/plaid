@@ -298,7 +298,17 @@
           ;; words share with another app, it holds for the whole text.
           split-on-space (some #(true? (some-> (:config %) psc/parse-config (get-in ["plaid" "splitOnSpace"])))
                                layer-rows)
-          plain-opts {:split-on-space (boolean split-on-space)}
+          ;; the layers nested under the deciding words (morphemes,
+          ;; syntactic words): they keep to their words, never to a sentence
+          children (into #{}
+                         (filter (fn [id] (loop [id (parent-of id) seen #{}]
+                                            (cond (nil? id) false
+                                                  (deciders id) true
+                                                  (seen id) false
+                                                  :else (recur (parent-of id) (conj seen id))))))
+                         (keys parent-of))
+          exclusive (into #{} (comp (filter #(= "non-overlapping" (:overlap_mode %))) (map :id)) layer-rows)
+          plain-opts {:split-on-space (boolean split-on-space) :children children}
           plain-tokens (when (seq plain) (filterv plain? tokens))
           plain-result (when (seq plain)
                          (cond
@@ -331,19 +341,27 @@
             (string? new-body-or-ops) (as-> (ta/apply-text-edits ops text-map tokens) r
                                         (ta/keep-edges-off-spaces old-body tokens r partitioning))
             :else (ta/apply-text-edits ops text-map tokens))
-          {new-text :text new-tokens :tokens deleted-ids :deleted}
+          {new-text :text new-tokens :tokens deleted-ids :deleted heads :heads}
           (if plain-result
             (let [rest-ids (into #{} (map :token/id) tokens-rest)
                   plain-result (if (and (empty? plain-words) rest-result)
-                                 (ta/follow-word-edges tokens plain-result rest-result
-                                                       #(contains? word-layers (:token/layer %))
-                                                       (into #{} (map :token/id) plain-tokens))
+                                 (let [plain-ids (into #{} (map :token/id) plain-tokens)
+                                       r (ta/follow-word-edges tokens plain-result rest-result
+                                                               #(contains? word-layers (:token/layer %))
+                                                               plain-ids exclusive)
+                                       ;; and a token over a sentence follows the sentence
+                                       parts (filterv #(partitioning (:token/layer %)) (:tokens rest-result))
+                                       followed (ta/follow-sentences tokens (into (:tokens r) parts) nil
+                                                                     (cp/cp-count (:text/body (:text r))) partitioning
+                                                                     #(not (children (:token/layer %))))]
+                                   (assoc r :tokens (filterv #(plain-ids (:token/id %)) followed)))
                                  plain-result)]
               (when (and rest-result (not= (:text/body (:text rest-result)) (:text/body (:text plain-result))))
                 (throw (ex-info "The new body could not be applied." {:code 500 :id eid})))
               {:text (:text plain-result)
                :tokens (into (:tokens plain-result) (filter #(rest-ids (:token/id %))) (:tokens rest-result))
-               :deleted (into (vec (:deleted plain-result)) (filter rest-ids) (:deleted rest-result))})
+               :deleted (into (vec (:deleted plain-result)) (filter rest-ids) (:deleted rest-result))
+               :heads (:heads plain-result)})
             rest-result)
           new-body (:text/body new-text)
           ;; The steps above only move edits between equivalent places, so
@@ -374,7 +392,18 @@
                                             [id {:begin begin :end_ end}])))))
                               (sort-by (fn [[_ {:keys [begin]}]] begin))
                               vec)
-       :survivors (into [] (remove #(contains? deleted-set (:token/id %))) new-tokens)})))
+       ;; the sentences made over a line typed before the first one
+       :heads (mapv #(assoc % :token/id (psc/new-uuid)) heads)
+       :survivors (let [survivors (into [] (remove #(contains? deleted-set (:token/id %))) new-tokens)]
+                    ;; never two tokens of a layer that forbids overlap on one
+                    ;; stretch: should a rule above ever leave them, the save
+                    ;; is refused rather than stored
+                    (doseq [[_ ts] (group-by :token/layer (filter #(and (exclusive (:token/layer %)) (plain (:token/layer %)))
+                                                                  survivors))
+                            [x y] (partition 2 1 (sort-by (juxt :token/begin :token/end) ts))]
+                      (when (> (:token/end x) (:token/begin y))
+                        (throw (ex-info "The new body could not be applied." {:code 500 :id eid}))))
+                    survivors)})))
 
 (defn- last-op-ts
   "The time of the newest operation on the server, or \"\" when there is none.
@@ -447,7 +476,7 @@
          (when (nil? pre)
            (throw (ex-info (psc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
          (vreset! op (assoc (select-keys psaw/*op* [:id :ts]) :document (:document_id pre)))
-         (let [{:keys [new-body new-text-length deleted-ids survivor-updates survivors]}
+         (let [{:keys [new-body new-text-length deleted-ids survivor-updates survivors heads]}
                (or (when (and ahead (not (written-since? tx project (:document_id pre) (:ts ahead) (:id psaw/*op*))))
                      (:plan ahead))
                    (save-plan tx eid change base)
@@ -471,8 +500,12 @@
            ;; transaction wrote, not one read after it.
            (crud/update-by-id! tx :texts eid {:body new-body})
            (vswap! op assoc :body new-body)
-           ;; 4. Partitioning-mode gap-fill on the surviving tokens.
-           (compensate-partition-layers! tx survivors new-text-length)
+           ;; 4. The sentences made over a line typed before the first one,
+           ;; then the partitioning-mode gap-fill on the surviving tokens.
+           (doseq [{:token/keys [id layer begin end]} heads]
+             (crud/insert! tx :tokens {:id id :text_id eid :token_layer_id layer
+                                       :document_id (:document_id pre) :begin begin :end_ end}))
+           (compensate-partition-layers! tx (into survivors heads) new-text-length)
            eid))]
     (cond-> result
       (and (:success result) @op) (assoc :op @op)
@@ -557,18 +590,25 @@
         last-of (reduce (fn [m {:keys [target_table target_id change_type post_image]}]
                           (assoc m [target_table target_id]
                                  {:deleted? (= "delete" change_type)
+                                  :inserted? (or (= "insert" change_type)
+                                                 (:inserted? (clojure.core/get m [target_table target_id])))
                                   :post (some-> post_image psc/read-json)}))
                         {}
                         rows)
         ordered (distinct (map (juxt :target_table :target_id) rows))
         of (fn [table] (filter #(= table (first %)) ordered))
         gone (fn [table] (vec (keep (fn [k] (when (:deleted? (last-of k)) (second k))) (of table))))
-        live (fn [table f] (vec (keep (fn [k] (let [{:keys [deleted? post]} (last-of k)]
-                                                (when (and (not deleted?) post) (f (second k) post))))
+        live (fn [table f] (vec (keep (fn [k] (let [{:keys [deleted? inserted? post]} (last-of k)]
+                                                (when (and (not deleted?) post)
+                                                  (f (second k) (cond-> post inserted? (assoc ::inserted true))))))
                                       (of table))))
         get* (fn [m k] (if (contains? m k) (clojure.core/get m k) (clojure.core/get m (keyword k))))
         contains-key? (fn [m k] (or (contains? m k) (contains? m (keyword k))))]
-    {:tokens (live "tokens" (fn [id p] {:id id :begin (get* p "begin") :end (get* p "end_")}))
+    ;; a token the save made (a sentence over a line typed before the first
+    ;; one) comes with its layer and text, for a read to take it in
+    {:tokens (live "tokens" (fn [id p] (cond-> {:id id :begin (get* p "begin") :end (get* p "end_")}
+                                         (::inserted p)
+                                         (assoc :layer (get* p "token_layer_id") :text (get* p "text_id")))))
      ;; with the value, which a layer rule's remedy may have rewritten
      :spans (live "spans" (fn [id p] (when (or (some? (get* p "tokens")) (contains-key? p "value"))
                                        (cond-> {:id id}

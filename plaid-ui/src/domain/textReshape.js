@@ -107,6 +107,18 @@ export function applyReshape(raw, textId, answer) {
         ? { ...token, begin: extent.begin, end: extent.end }
         : token;
     });
+    // A token the edit made (the core names its layer and text): a sentence
+    // over a line typed before the first one.
+    const have = new Set((layer.tokens ?? []).map((t) => t.id));
+    const made = (reshape.tokens ?? []).filter(
+      (t) => t.layer === layer.id && !have.has(t.id) && !deleted.tokens.has(t.id),
+    );
+    if (made.length) {
+      tokens = [
+        ...(tokens ?? []),
+        ...made.map((t) => ({ id: t.id, text: t.text, begin: t.begin, end: t.end, metadata: {} })),
+      ];
+    }
     if (tokens !== layer.tokens) tokens = [...tokens].sort(tokenOrder);
     const spanLayers = patchRows(layer.spanLayers, new Set(), patchSpanLayer);
     const vocabs = patchRows(layer.vocabs, new Set(), patchVocab);

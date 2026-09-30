@@ -365,3 +365,18 @@
     (doseq [[w n] (map vector words nodes)]
       (when (extent w)
         (is (= (extent w) (extent n)) (str "word " (extent w) " node " (extent n)))))))
+
+(deftest a-line-typed-before-the-first-sentence-is-a-sentence-of-its-own
+  ;; REV3 N1: the first sentence keeps its id and what hangs off it, and the
+  ;; answer names the sentence made
+  (let [{:keys [text sentences]} (setup "Hi.\nThe end." :plain true)
+        base (-> (get-text admin-request text) :body :text/digest)
+        res (edit-text text {:edits [(ins 0 "Oh.\n")] :base base})
+        sents (->> (psc/q db {:select [:id :begin :end_] :from [:tokens]
+                              :where [:and [:= :text_id (str text)] [:= :token_layer_id (str sentences)]]})
+                   (sort-by :begin))]
+    (assert-ok res)
+    (is (= [[0 4] [4 16]] (map (juxt :begin :end_) sents)))
+    (is (some #(and (= (str (:id (first sents))) (str (:id %))) (= 0 (:begin %)) (some? (:layer %)))
+              (-> res :body :reshape :tokens))
+        (pr-str (-> res :body :reshape :tokens)))))

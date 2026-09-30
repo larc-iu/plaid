@@ -229,3 +229,30 @@ describe('applyReshape with a span entry that holds only a value', () => {
     });
   });
 });
+
+describe('a token the edit made', () => {
+  // REV3 N1: a sentence the core made over a line typed before the first
+  // one comes with its layer and text, and the read takes it in
+  it('is added to its layer, in order', () => {
+    const answer = {
+      body: 'Oh.\nthe big dog ran',
+      digest: 'd1',
+      reshape: {
+        tokens: [
+          { id: 'new', begin: 0, end: 4, layer: 'morphs', text: 'text' },
+          { id: 'm1', begin: 16, end: 19 },
+        ],
+      },
+    };
+    const next = applyReshape(read(), 'text', answer);
+    const morphs = next.textLayers[0].tokenLayers.find((l) => l.id === 'morphs');
+    expect(morphs.tokens.map((t) => [t.id, t.begin, t.end])).toEqual([
+      ['new', 0, 4],
+      ['m1', 16, 19],
+    ]);
+    expect(morphs.tokens[0]).toMatchObject({ text: 'text', metadata: {} });
+    // a token already there is not added again
+    const again = applyReshape(next, 'text', answer);
+    expect(again.textLayers[0].tokenLayers.find((l) => l.id === 'morphs').tokens).toHaveLength(2);
+  });
+});

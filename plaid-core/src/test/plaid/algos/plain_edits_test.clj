@@ -229,21 +229,21 @@
   ;; REV2 L2: a token strictly inside the split word is kept, cut to the half
   ;; the word goes on, and one wholly on the other half goes; REV2 L1: a token
   ;; over several words that ended with the split word ends where it does
-  (let [{:keys [body tokens]} (doc "|dog| |cat|")
+  (let [{:keys [body tokens]} (doc "|dog| |cat| |eel|")
         tokens (conj tokens
                      {:token/id :at :token/layer :y :token/begin 5 :token/end 7}
                      {:token/id :c :token/layer :y :token/begin 4 :token/end 5}
                      {:token/id :dc :token/layer :u :token/begin 0 :token/end 7})
         r (ta/plain-edits body tokens [(ins 5 " ")] #{:s} #{:w} {:split-on-space true})
         at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
-    (is (= "dog c at" (:text/body (:text r))))
+    (is (= "dog c at eel" (:text/body (:text r))))
     (is (= [6 8] (at [:w 1])))
     (is (= [6 8] (at :at)))
     (is (nil? (at :c)))
     (is (= [0 8] (at :dc)))
     (let [r (ta/plain-edits body tokens [(ins 6 " ")] #{:s} #{:w} {:split-on-space true})
           at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
-      (is (= "dog ca t" (:text/body (:text r))))
+      (is (= "dog ca t eel" (:text/body (:text r))))
       (is (= [4 6] (at [:w 1])))
       (is (= [0 6] (at :dc)) "the node ends where its last word does")
       (is (= [5 6] (at :at)) "cut to the half"))))
@@ -286,3 +286,77 @@
     (is (= "Hi. Oh The end." (:text/body (:text r))))
     (is (= [4 15] (at [:s 1]) (at :seg)))
     (is (= [7 10] (at [:w 1]) (at :node)))))
+
+(defn- extents-after [s extra ops & [opts]]
+  (let [{:keys [body tokens]} (doc s)
+        r (ta/plain-edits body (into tokens extra) ops #{:s} #{:w} (merge {:children #{:m}} opts))
+        nb (:text/body (:text r))
+        at (fn [id] (some #(when (= id (:token/id %)) (cp/cp-subs nb (:token/begin %) (:token/end %))) (:tokens r)))]
+    [nb at r]))
+
+(deftest a-token-over-a-sentence-follows-the-sentence
+  ;; REV3: a time-alignment segment whose extent is its sentence's takes
+  ;; exactly what the sentence takes: at the text's start (N3), its end (N4),
+  ;; before a sentence (M5), a one-word sentence included, and a word split
+  ;; at its edge (N2)
+  (let [seg (fn [id b e] {:token/id id :token/layer :a :token/begin b :token/end e})]
+    (let [[nb at] (extents-after "|The| |end.| /|Bye.|" [(seg :a0 0 9) (seg :a1 9 13)] [(ins 0 "Oh ")])]
+      (is (= "Oh The end. Bye." nb))
+      (is (= "Oh The end. " (at :a0))))
+    (let [[nb at] (extents-after "|Hi.| /|The| |end.|" [(seg :a1 4 12)] [(ins 12 " Oh")])]
+      (is (= " Oh" (subs nb 12)))
+      (is (= "The end. Oh" (at :a1))))
+    (let [[nb at] (extents-after "|Hi.| /|Yes.|" [(seg :a1 4 8)] [(ins 4 "Oh ")])]
+      (is (= "Oh Yes." (at :a1)))
+      (is (= "Yes." (at [:w 1]) (at [:m 1]))))
+    (let [[nb at] (extents-after "|toi| |la.| /|sinh viên| |hoc.|" [(seg :a1 8 22)] [(ins 10 " ")] {:split-on-space true})]
+      (is (= "si nh viên hoc." (at :a1)))
+      (is (= "nh viên" (at [:w 2]))))))
+
+(deftest a-token-that-is-no-sentence-takes-no-sentence-text
+  ;; REV3 N5: a node over `New York` at a sentence's start, and a sub-word
+  ;; token, keep to their words when `Oh ` is typed before the sentence
+  (let [[_ at] (extents-after "|Hi.| /|New| |York| |is| |big.|"
+                              [{:token/id :ny :token/layer :u :token/begin 4 :token/end 12}
+                               {:token/id :ne :token/layer :u :token/begin 4 :token/end 6}
+                               {:token/id :all :token/layer :u :token/begin 4 :token/end 20}]
+                              [(ins 4 "Oh ")])]
+    (is (= "New York" (at :ny)))
+    (is (= "Ne" (at :ne)))
+    (is (= "Oh New York is big." (at :all)))))
+
+(deftest a-line-typed-before-the-first-sentence-is-a-sentence-of-its-own
+  ;; REV3 N1: nothing before it to join, so the core makes a sentence over it
+  ;; and the first sentence keeps its place (and its translation)
+  (let [[nb at r] (extents-after "|Hi.|\n/|The| |end.|" [] [(ins 0 "Oh.\n")])]
+    (is (= "Oh.\nHi.\nThe end." nb))
+    (is (= "Hi.\n" (at [:s 0])))
+    (is (= [{:token/layer :s :token/begin 0 :token/end 4}] (:heads r))))
+  (let [[_ at r] (extents-after "|Hi.|\n/|The| |end.|" [] [(ins 0 "Oh.\nNew ")])]
+    (is (= "New Hi.\n" (at [:s 0])) "what follows the last line break joins the sentence")
+    (is (= [{:token/layer :s :token/begin 0 :token/end 4}] (:heads r)))))
+
+(deftest side-counts-only-where-two-words-meet
+  ;; REV3 N6: `side` pointing at whitespace or at no token is no side; N7: a
+  ;; sided insert holding a space takes its sentence with it
+  (is (= ["onex two" "onex" "two"] (edit "|one| |two|" [(assoc (ins 3 "x") :side "after")])))
+  (is (= ["one xtwo" "one" "xtwo"] (edit "|one| |two|" [(assoc (ins 4 "x") :side "before")])))
+  (let [[nb at] (extents-after "|one|/|two|" [] [(assoc (ins 3 "x ") :side "after")])]
+    (is (= "onex two" nb))
+    (is (= "x two" (at [:s 1])))
+    (is (= "one" (at [:s 0])))))
+
+(deftest a-put-back-never-stacks-tokens-of-a-layer-that-forbids-overlap
+  ;; REV3 N8: two tokens inside `cat eel`, typed over as `one` while the words
+  ;; take the other rules: one is put back over the word left, not both
+  (let [old "dog cat eel fox."
+        words (mapv (fn [i [b e]] {:token/id [:w i] :token/layer :w :token/begin b :token/end e})
+                    (range) [[0 3] [4 7] [8 11] [12 16]])
+        segs [{:token/id :g1 :token/layer :g :token/begin 8 :token/end 9}
+              {:token/id :g2 :token/layer :g :token/begin 9 :token/end 11}]
+        ops [(rep 4 7 "one")]
+        rest (ta/apply-edits old words ops {:partitioning #{} :word-layers #{:w}})
+        plain (ta/plain-edits old segs ops #{} #{:w})
+        r (ta/follow-word-edges (into words segs) plain rest #(= :w (:token/layer %)) #{:g1 :g2} #{:g})
+        gs (filter #(= :g (:token/layer %)) (:tokens r))]
+    (is (<= (count gs) 1) (pr-str gs))))

@@ -985,11 +985,12 @@ An edge of such a token that stands at no word's edge, or whose word is deleted,
 Partition layers over such a layer follow its tokens' edges.
 Text typed between two sentences that no token takes goes by where it was typed: right before the next sentence's first character it joins that sentence, unless it holds a line break.
 Otherwise, right after a sentence's last character, in the middle of a longer run of whitespace, or in a `body` save, which says nothing of where the text was typed, it joins the sentence before.
-A token of a layer with the key that begins with that sentence and runs over more than its first word, such as a time-alignment segment, takes the text with it, so it keeps covering its sentence.
+Text holding a line break typed before the text's first sentence becomes a sentence of its own, up to its last line break, so the first sentence keeps its place and what hangs off it. The answer's `reshape.tokens` lists that sentence with its `layer` and `text`.
+A token of a layer with the key whose extent is a sentence's (both edges the same), such as a time-alignment segment over its sentence, follows that sentence: it covers whatever the sentence covers after the change.
 A sentence never begins or ends on whitespace it did not begin or end on.
 
-Where two tokens meet with no whitespace between them, an insert may say which of them its text belongs to with `side`: `"before"` for the token that ends there, `"after"` for the one that begins there.
-Without it the text goes to the token before.
+Where two words meet with no whitespace between them, an insert may say which of them its text belongs to with `side`: `"before"` for the word that ends there, `"after"` for the one that begins there, and the sentences follow.
+Without it, or where the words do not meet, the text goes as the other rules say.
 
 [,js]
 ----
