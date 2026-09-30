@@ -69,7 +69,7 @@ export default {
     // Layers
     'layers.orthography': {
       carried: 'changed',
-      how: "An orthography is an unlabeled line of the example, after the words, in the project's order, and only in a sentence where some word has a value in it.",
+      how: "An orthography is an unlabeled line of the example, where the preset's order puts it (after the words by default), and only in a sentence where some word has a value in it.",
     },
     'layers.ignoredTokensPunctuation': inherent(
       'The rule is not written. Its effect shows only as a punctuation word printed with no morphemes.',
@@ -78,24 +78,23 @@ export default {
     'layers.ignoredTokensBlacklist': PROJECT_CONFIG,
     'layers.fieldSentence': {
       carried: 'changed',
-      how: 'The first sentence field with a value in a sentence is its free translation, in quotes and unlabeled. Every other one follows under its name ("Note: ...").',
+      how: 'The first sentence field with a value in a sentence, in the preset\'s order, is its free translation, in quotes and unlabeled. Every other one follows under its name ("Note: ...").',
     },
     'layers.fieldWord': {
       carried: 'changed',
-      how: 'A word field is an unlabeled line of the example, after the orthographies and before the morphemes, as the Analyze tab orders them, and is left out of a sentence where no word has a value in it.',
+      how: "A word field is an unlabeled line of the example, where the preset's order puts it (by default after the orthographies and before the morphemes, as the Analyze tab orders them), and is left out of a sentence where no word has a value in it.",
     },
     'layers.fieldMorpheme': {
       carried: 'changed',
-      how: "A morpheme field is an unlabeled line of the example after the morphemes, each cell the word's morpheme values joined with - and =, and is left out of a sentence where no morpheme has a value in it.",
+      how: "A morpheme field is an unlabeled line of the example, where the preset's order puts it (after the morphemes by default), each cell the word's morpheme values joined with - and =, and is left out of a sentence where no morpheme has a value in it.",
     },
     'layers.fieldSameNameTwoScopes': {
       carried: 'changed',
-      how: 'Both fields print, each on its own unlabeled line, the word field before the morphemes and the morpheme field after them. Nothing on the page names either.',
+      how: "Both fields print, each on its own unlabeled line where the preset's order puts it (by default the word field before the morphemes and the morpheme field after them). Nothing on the page names either.",
     },
     'layers.fieldOrder': {
-      carried: true,
-      where:
-        "the lines of one scope follow the project's field order, since intersectSelection keeps the order of the discovered inventory rather than the preset's",
+      carried: 'changed',
+      how: "The lines follow the preset's own order, which starts as the project's field order and can be changed. A field the preset does not name goes right after the line the project's order puts before it (latexLayout).",
     },
     'layers.fieldLang': PROJECT_CONFIG,
     'layers.fieldTagset': PROJECT_CONFIG,

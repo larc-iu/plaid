@@ -35,7 +35,7 @@ import { buildContextRows } from '../components/projects/search/searchRunner.js'
 import { buildEafDocument } from './elan.js';
 import { serializeVocabTsv } from './vocabTsv.js';
 import { buildCldfDataset } from './cldf.js';
-import { buildLatexBook, formatChapter } from './latexBook.js';
+import { buildLatexBook, formatChapter, latexSelection } from './latexBook.js';
 import {
   buildProjectFile,
   serializeVocabularyNative,
@@ -482,7 +482,7 @@ export async function runExport({
         data: isCldf
           ? null
           : isLatex
-            ? formatChapter(igtDoc, intersectSelection(preset.options || {}, layers))
+            ? formatChapter(igtDoc, latexSelection(preset.options || {}, layers))
             : isNative
               ? toJson(
                   serializeDocumentNative(igtDoc, {

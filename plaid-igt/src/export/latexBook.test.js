@@ -2,9 +2,12 @@ import { describe, it, expect } from 'vitest';
 import {
   buildLatexBook,
   chapterFileName,
+  defaultLatexOptions,
   formatAbbreviations,
   formatChapter,
   formatExample,
+  latexLayout,
+  latexSelection,
   notoFamilyFor,
   scriptCollector,
   smallCapsIn,
@@ -12,13 +15,16 @@ import {
 import { makeFixtureDoc, makeSentence } from './testFixtures.js';
 
 const span = (v) => ({ value: v });
-const SEL = {
+const LAYERS = {
   orthographies: ['Translit'],
   wordFields: ['POS'],
   morphFields: ['Gloss'],
   sentFields: ['Translation', 'Note'],
-  includeHeader: true,
+  hasMorphemes: true,
+  fieldLangs: {},
 };
+const SEL = latexSelection(defaultLatexOptions(LAYERS), LAYERS);
+const NO_ORTHOGRAPHY = { ...SEL, rows: SEL.rows.filter((r) => r.kind !== 'orthography') };
 
 const word = (content, morphemes = [], annotations = {}) => ({
   content,
@@ -50,6 +56,107 @@ const balanced = (tex) => {
   return depth === 0;
 };
 
+describe('latexLayout', () => {
+  const W = { kind: 'words', on: true };
+  const M = { kind: 'morphemes', on: true };
+  const orth = (name, on = true) => ({ kind: 'orthography', name, on });
+  const wf = (name, on = true) => ({ kind: 'wordField', name, on });
+  const mf = (name, on = true) => ({ kind: 'morphemeField', name, on });
+  const L2 = {
+    ...LAYERS,
+    orthographies: ['Latin', 'IPA'],
+    wordFields: ['Gloss', 'POS'],
+    morphFields: ['Gloss', 'Type'],
+  };
+
+  it("starts a new preset with every line on, in the Analyze tab's order", () => {
+    expect(defaultLatexOptions(L2)).toEqual({
+      rows: [W, orth('Latin'), orth('IPA'), wf('Gloss'), wf('POS'), M, mf('Gloss'), mf('Type')],
+      sentenceFields: [
+        { name: 'Translation', on: true },
+        { name: 'Note', on: true },
+      ],
+      includeHeader: true,
+    });
+  });
+
+  it("keeps the preset's order and switches", () => {
+    const rows = [
+      M,
+      mf('Gloss'),
+      W,
+      wf('POS', false),
+      orth('IPA'),
+      orth('Latin'),
+      wf('Gloss'),
+      mf('Type'),
+    ];
+    expect(latexLayout({ rows }, L2).rows).toEqual(rows);
+  });
+
+  it('puts a line the preset does not name right after its neighbour in the default order, and drops lines the project lost', () => {
+    const rows = [M, W, mf('Type'), wf('Gone'), W];
+    expect(latexLayout({ rows }, L2).rows).toEqual([
+      M,
+      mf('Gloss'),
+      W,
+      orth('Latin'),
+      orth('IPA'),
+      wf('Gloss'),
+      wf('POS'),
+      mf('Type'),
+    ]);
+  });
+
+  it('reads a preset saved before the order could be set: its lists say which lines are on', () => {
+    const layout = latexLayout(
+      { orthographies: ['IPA'], wordFields: [], morphFields: ['Gloss'], sentFields: ['Note'] },
+      L2,
+    );
+    expect(layout.rows).toEqual([
+      W,
+      orth('Latin', false),
+      orth('IPA'),
+      wf('Gloss', false),
+      wf('POS', false),
+      M,
+      mf('Gloss'),
+      mf('Type', false),
+    ]);
+    expect(layout.sentenceFields).toEqual([
+      { name: 'Translation', on: false },
+      { name: 'Note', on: true },
+    ]);
+  });
+
+  it('orders the sentence fields too', () => {
+    const sentenceFields = [{ name: 'Note', on: true }];
+    // Translation comes first in the default order, so it goes back in first.
+    expect(latexSelection({ sentenceFields }, L2).sentFields).toEqual(['Translation', 'Note']);
+    const both = [
+      { name: 'Note', on: true },
+      { name: 'Translation', on: true },
+    ];
+    expect(latexSelection({ sentenceFields: both }, L2).sentFields).toEqual([
+      'Note',
+      'Translation',
+    ]);
+  });
+
+  it('prints only the lines that are on, in order', () => {
+    const rows = [M, W, wf('POS', false)];
+    expect(latexSelection({ rows }, L2).rows).toEqual([
+      { kind: 'morphemes' },
+      { kind: 'morphemeField', name: 'Gloss' },
+      { kind: 'morphemeField', name: 'Type' },
+      { kind: 'words' },
+      { kind: 'orthography', name: 'Latin' },
+      { kind: 'orthography', name: 'IPA' },
+      { kind: 'wordField', name: 'Gloss' },
+    ]);
+  });
+});
+
 describe('formatExample', () => {
   it('mirrors the Analyze tab: words, orthography, word field, morphemes, morpheme field, translation', () => {
     const tex = formatExample(makeFixtureDoc().sortedSentences[0], SEL);
@@ -66,6 +173,47 @@ describe('formatExample', () => {
       '\\endgl',
       '\\xe',
     ]);
+  });
+
+  it('prints the lines in any order: morphemes above the words, glosses around a word field', () => {
+    const rows = [
+      { kind: 'morphemes' },
+      { kind: 'words' },
+      { kind: 'morphemeField', name: 'Gloss' },
+      { kind: 'wordField', name: 'POS' },
+      { kind: 'orthography', name: 'Translit' },
+    ];
+    const tex = formatExample(makeFixtureDoc().sortedSentences[0], { ...SEL, rows });
+    expect(lineOf(tex, 'gla')).toEqual(['\\PlaidMorphemes{perro=s} {} {}']);
+    expect(lineOf(tex, 'glb')).toEqual([
+      '\\PlaidWord{perros} \\PlaidWord{corren} \\PlaidWord{.}',
+      '\\PlaidMorphemeField{dog=\\textsc{pl}} {} {}',
+      '\\PlaidWordField{\\textsc{noun}} \\PlaidWordField{\\textsc{verb}} {}',
+      '\\PlaidOrthography{perros-translit} {} {}',
+    ]);
+  });
+
+  it('prints two fields of one scope each on its own line, in the order given', () => {
+    const s = sentenceOf([
+      word(
+        'ab',
+        [
+          ['a', 'x'],
+          ['b', 'y'],
+        ],
+        { POS: span('N'), Gloss: span('g') },
+      ),
+    ]);
+    const rows = [
+      { kind: 'wordField', name: 'Gloss' },
+      { kind: 'morphemeField', name: 'Gloss' },
+      { kind: 'wordField', name: 'POS' },
+    ];
+    expect(lineOf(formatExample(s, { ...SEL, rows }), 'glb')).toEqual([
+      '\\PlaidMorphemeField{x-y}',
+      '\\PlaidWordField{\\textsc{n}}',
+    ]);
+    expect(lineOf(formatExample(s, { ...SEL, rows }), 'gla')).toEqual(['\\PlaidWordField{g}']);
   });
 
   it('sets every other sentence field under its name', () => {
@@ -155,7 +303,7 @@ describe('formatExample', () => {
         Translation: span(n),
         Note: span(n),
       });
-      const tex = formatExample(s, { ...SEL, orthographies: [] }, { speaker: n });
+      const tex = formatExample(s, NO_ORTHOGRAPHY, { speaker: n });
       expect(balanced(tex), n).toBe(true);
       // Every special left in the output is escaped or part of a macro we wrote.
       const bare = tex

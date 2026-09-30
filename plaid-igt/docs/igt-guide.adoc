@@ -1047,8 +1047,12 @@ The box beside each field overrides all of it.
 === LaTeX book
 
 A LaTeX book export turns the documents in its scope into a book of interlinear texts: a title, a table of contents, a list of abbreviations, and one chapter per document in the project's order.
-Each sentence is a numbered example with the lines the Analyze tab shows, in the same order: the words, each orthography, each word field, the morphemes, each morpheme field, then the free translation.
-The preset chooses which orthographies and fields appear.
+Each sentence is a numbered example with the lines the Analyze tab shows: the words, each orthography, each word field, the morphemes, and each morpheme field, then the free translation and the other sentence fields.
+The preset's **Example lines** list turns each line on or off and sets their order with **Move up** and **Move down**.
+It starts in the Analyze tab's order.
+Any order works, such as the morphemes above the words, or a word gloss between the morphemes and their glosses.
+The **Sentence fields** list does the same for the lines under the example.
+A field added to the project later goes next to the line it follows in the Analyze tab.
 A line with nothing in it in a sentence is left out, and so is the morpheme line when no word in the sentence is segmented.
 The first sentence field with a value is the free translation, printed in quotes.
 Any other sentence field follows under its name.
@@ -1075,8 +1079,6 @@ To make the book on Overleaf:
 The book uses the Charis SIL font, with a Noto font for any other script the texts are written in.
 Both come with Overleaf.
 The look of each line, such as italic words, is set by the `+\Plaid...+` commands at the top of `main.tex`.
-A long book can take longer to compile than a free Overleaf account allows.
-`+\includeonly+` in `main.tex` compiles a few chapters at a time.
 
 To grab a single sentence instead, use **Copy as IGT** in the Analyze tab.
 

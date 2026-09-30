@@ -33,14 +33,118 @@ import { readTagsets } from '../domain/tagsets.js';
 import { detectDirection, userMetadata, RTL } from '@ui/domain/textDirection.js';
 import { phraseSpeakerFor } from './flextext.js';
 
-/** The preset options a new LaTeX preset starts with: everything the project has. */
-export const defaultLatexOptions = (layers) => ({
-  orthographies: [...layers.orthographies],
-  wordFields: [...layers.wordFields],
-  morphFields: [...layers.morphFields],
-  sentFields: [...layers.sentFields],
-  includeHeader: true,
+// ---- the preset: which lines, in which order ------------------------------
+
+// The lines an example can have, as the preset stores them: { kind, name? }.
+// `name` is the field's or orthography's name, and absent for the two lines
+// every project has.
+export const ROW_KINDS = Object.freeze({
+  WORDS: 'words',
+  ORTHOGRAPHY: 'orthography',
+  WORD_FIELD: 'wordField',
+  MORPHEMES: 'morphemes',
+  MORPHEME_FIELD: 'morphemeField',
 });
+
+/** Every line the project can show, in the Analyze tab's order. */
+const defaultRows = (layers) => [
+  { kind: ROW_KINDS.WORDS },
+  ...layers.orthographies.map((name) => ({ kind: ROW_KINDS.ORTHOGRAPHY, name })),
+  ...layers.wordFields.map((name) => ({ kind: ROW_KINDS.WORD_FIELD, name })),
+  ...(layers.hasMorphemes ? [{ kind: ROW_KINDS.MORPHEMES }] : []),
+  ...layers.morphFields.map((name) => ({ kind: ROW_KINDS.MORPHEME_FIELD, name })),
+];
+
+const sameRow = (a, b) => a.kind === b.kind && (a.name ?? null) === (b.name ?? null);
+const sameField = (a, b) => a.name === b.name;
+
+/**
+ * `saved` (the preset's own list, in its order) with each entry of
+ * `defaults` it lacks put back where the default order has it: right after
+ * the nearest line before it that is there. Entries the project no longer
+ * has are dropped, and so is a second copy of one.
+ */
+function mergeInDefaultOrder(saved, defaults, same) {
+  const out = [];
+  for (const r of saved) {
+    if (defaults.some((d) => same(d, r)) && !out.some((o) => same(o, r))) out.push(r);
+  }
+  let after = -1;
+  for (const d of defaults) {
+    const at = out.findIndex((o) => same(o, d));
+    if (at !== -1) {
+      after = at;
+      continue;
+    }
+    out.splice(after + 1, 0, d);
+    after += 1;
+  }
+  return out;
+}
+
+/**
+ * The preset's lines as the project has them now: every example line and
+ * every sentence field, each `on` or not, in the preset's order. A line the
+ * preset does not name (one added to the project since, or a preset saved
+ * before the order could be set) goes right after the line the Analyze tab's
+ * order puts before it (mergeInDefaultOrder).
+ * It is on, unless the preset lists the fields it includes by scope
+ * (`orthographies`, `wordFields`, `morphFields`, `sentFields`, as a preset
+ * saved before the order could be set does) and leaves it out.
+ */
+export function latexLayout(options, layers) {
+  const legacy = {
+    [ROW_KINDS.ORTHOGRAPHY]: options?.orthographies,
+    [ROW_KINDS.WORD_FIELD]: options?.wordFields,
+    [ROW_KINDS.MORPHEME_FIELD]: options?.morphFields,
+  };
+  const legacyOn = (list, name) => (Array.isArray(list) ? list.includes(name) : true);
+  const savedRows = (Array.isArray(options?.rows) ? options.rows : [])
+    .filter((r) => r && typeof r.kind === 'string')
+    .map((r) => ({
+      kind: r.kind,
+      ...(r.name != null ? { name: r.name } : {}),
+      on: r.on !== false,
+    }));
+  const rows = mergeInDefaultOrder(
+    savedRows,
+    defaultRows(layers).map((r) => ({
+      ...r,
+      on: r.name == null || legacyOn(legacy[r.kind], r.name),
+    })),
+    sameRow,
+  );
+  const savedFields = (Array.isArray(options?.sentenceFields) ? options.sentenceFields : [])
+    .filter((f) => f && typeof f.name === 'string')
+    .map((f) => ({ name: f.name, on: f.on !== false }));
+  const sentenceFields = mergeInDefaultOrder(
+    savedFields,
+    layers.sentFields.map((name) => ({ name, on: legacyOn(options?.sentFields, name) })),
+    sameField,
+  );
+  return { rows, sentenceFields };
+}
+
+/**
+ * What an export prints: the lines that are on, in order, the sentence
+ * fields that are on, in order, and whether each chapter lists its metadata.
+ */
+export function latexSelection(options, layers) {
+  const { rows, sentenceFields } = latexLayout(options, layers);
+  return {
+    rows: rows
+      .filter((r) => r.on)
+      .map(({ kind, name }) => (name == null ? { kind } : { kind, name })),
+    sentFields: sentenceFields.filter((f) => f.on).map((f) => f.name),
+    includeHeader: options?.includeHeader !== false,
+  };
+}
+
+/** The preset options a new LaTeX preset starts with: every line, in the Analyze tab's order. */
+export const defaultLatexOptions = (layers) => {
+  const { rows, sentenceFields } = latexLayout({}, layers);
+  return { rows, sentenceFields, includeHeader: true };
+};
 
 // ---- one cell -------------------------------------------------------------
 
@@ -147,8 +251,14 @@ const glossCell = (macro, docDir) => (text, pieces) =>
  * shows an uncovered stretch as one inert column. Here each run is its own,
  * so a long untokenized stretch can break across lines like any other.
  */
+const namesOf = (rows, kind) => rows.filter((r) => r.kind === kind).map((r) => r.name);
+
 function sentenceColumns(sentence, selection) {
-  const fields = { morphFields: selection.morphFields, wordFields: selection.wordFields };
+  const fields = {
+    morphFields: namesOf(selection.rows, ROW_KINDS.MORPHEME_FIELD),
+    wordFields: namesOf(selection.rows, ROW_KINDS.WORD_FIELD),
+  };
+  const orthographies = namesOf(selection.rows, ROW_KINDS.ORTHOGRAPHY);
   const pieces = sentence.pieces || (sentence.tokens || []).map((t) => ({ type: 'token', ...t }));
   const columns = [];
   for (const piece of pieces) {
@@ -156,7 +266,7 @@ function sentenceColumns(sentence, selection) {
       const cells = wordCells(piece, fields);
       columns.push({
         word: piece.content ?? '',
-        orthographies: selection.orthographies.map((o) => piece.orthographies?.[o] ?? ''),
+        orthographies: orthographies.map((o) => piece.orthographies?.[o] ?? ''),
         wordLines: cells.wordLines,
         // A word with no morphemes (punctuation the project skips) has none to show.
         segmented: (piece.morphemes || []).length ? cells.segmented : '',
@@ -169,11 +279,11 @@ function sentenceColumns(sentence, selection) {
       if (run === '') continue;
       columns.push({
         word: run,
-        orthographies: selection.orthographies.map(() => ''),
-        wordLines: selection.wordFields.map(() => ''),
+        orthographies: orthographies.map(() => ''),
+        wordLines: fields.wordFields.map(() => ''),
         segmented: '',
-        morphLines: selection.morphFields.map(() => ''),
-        morphPieces: selection.morphFields.map(() => null),
+        morphLines: fields.morphFields.map(() => ''),
+        morphPieces: fields.morphFields.map(() => null),
       });
     }
   }
@@ -183,10 +293,12 @@ function sentenceColumns(sentence, selection) {
 const hasValue = (cells) => cells.some((c) => texLine(c) !== '');
 
 /**
- * The gloss lines of one sentence, each an array of rendered cells. A line
- * with nothing in it in this sentence is left out, and so is the morpheme line
- * when every word in the sentence is its own single morpheme, which would only
- * print the words a second time.
+ * The gloss lines of one sentence in the preset's order, each an array of
+ * rendered cells. ExPex aligns every line to the first one alike, so any line
+ * can come first and a field's line can sit anywhere. A line with nothing in
+ * it in this sentence is left out, and so is the morpheme line when every
+ * word in the sentence is its own single morpheme, which would only print the
+ * words a second time.
  */
 function glossLines(columns, selection, docDir) {
   const lines = [];
@@ -194,33 +306,41 @@ function glossLines(columns, selection, docDir) {
     if (!hasValue(texts)) return;
     lines.push(texts.map((t, i) => render(t, pieces?.[i])));
   };
-  add(
-    columns.map((c) => c.word),
-    plainCell('PlaidWord', docDir),
-  );
-  selection.orthographies.forEach((_, i) =>
-    add(
-      columns.map((c) => c.orthographies[i]),
-      plainCell('PlaidOrthography', docDir),
-    ),
-  );
-  selection.wordFields.forEach((_, i) =>
-    add(
-      columns.map((c) => c.wordLines[i]),
-      glossCell('PlaidWordField', docDir),
-    ),
-  );
-  const segmented = columns.map((c) => c.segmented);
-  if (columns.some((c) => c.segmented !== '' && c.segmented !== c.word)) {
-    add(segmented, plainCell('PlaidMorphemes', docDir));
+  const index = { orthography: 0, wordField: 0, morphemeField: 0 };
+  for (const row of selection.rows) {
+    if (row.kind === ROW_KINDS.WORDS) {
+      add(
+        columns.map((c) => c.word),
+        plainCell('PlaidWord', docDir),
+      );
+    } else if (row.kind === ROW_KINDS.ORTHOGRAPHY) {
+      const i = index.orthography++;
+      add(
+        columns.map((c) => c.orthographies[i]),
+        plainCell('PlaidOrthography', docDir),
+      );
+    } else if (row.kind === ROW_KINDS.WORD_FIELD) {
+      const i = index.wordField++;
+      add(
+        columns.map((c) => c.wordLines[i]),
+        glossCell('PlaidWordField', docDir),
+      );
+    } else if (row.kind === ROW_KINDS.MORPHEMES) {
+      if (columns.some((c) => c.segmented !== '' && c.segmented !== c.word)) {
+        add(
+          columns.map((c) => c.segmented),
+          plainCell('PlaidMorphemes', docDir),
+        );
+      }
+    } else if (row.kind === ROW_KINDS.MORPHEME_FIELD) {
+      const i = index.morphemeField++;
+      add(
+        columns.map((c) => c.morphLines[i]),
+        glossCell('PlaidMorphemeField', docDir),
+        columns.map((c) => c.morphPieces[i]),
+      );
+    }
   }
-  selection.morphFields.forEach((_, i) =>
-    add(
-      columns.map((c) => c.morphLines[i]),
-      glossCell('PlaidMorphemeField', docDir),
-      columns.map((c) => c.morphPieces[i]),
-    ),
-  );
   return lines;
 }
 
@@ -789,9 +909,6 @@ const formatReadme = ({ title, chapterCount }) =>
     'Fonts: Charis SIL, with Noto fonts for other scripts. Both come with',
     'Overleaf. Elsewhere, a character no installed font has is left out, and',
     'the log says so. main.tex names the Noto fonts it looks for.',
-    '',
-    'A long book can take longer to compile than a free Overleaf account',
-    'allows. \\includeonly in main.tex compiles a few chapters at a time.',
     '',
   ].join('\n');
 

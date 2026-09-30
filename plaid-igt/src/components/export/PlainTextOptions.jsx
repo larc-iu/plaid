@@ -5,7 +5,7 @@ import { breaksMorphemeAlignment, wordLineOf } from '@/export/plainTextDoc';
 
 // One checkbox group per discovered tier bucket (rendered only when the
 // project actually has layers in that bucket).
-export const CheckGroup = ({ title, names, selected, onChange }) => {
+const CheckGroup = ({ title, names, selected, onChange }) => {
   if (!names.length) return null;
   const has = (n) => selected.includes(n);
   const toggle = (n, on) => onChange(on ? [...selected, n] : selected.filter((x) => x !== n));
