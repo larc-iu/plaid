@@ -116,6 +116,7 @@ Run `bb tasks` for the full list.
 
 * `clojure -X:dev`: start a REPL, then type `(start)` to bring up the development server. See <http://localhost:8085>
 * `clojure -M:test`: run the tests
+* `clojure -M:test --jobs auto`: run them on several JVMs at once (half the cores, at most 8), balanced by `src/test-runner/test-timings.edn`. `--jobs N` picks the count, `--shard I/N` runs one shard of that split, `--record-timings` rewrites the timings file, and `--slowest K` lists the slowest tests.
 * `clojure -M:outdated`: find outdated dependencies
 * `clojure -X:uberjar`: compile the jar alone (without the SPA bundling `bb build` does)
 * `clojure -M:nrepl`: start an nREPL server

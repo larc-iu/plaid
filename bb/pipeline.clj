@@ -97,7 +97,9 @@
 (defn run-tests! []
   (ensure-repo-root!)
   (step "Run the Clojure test suite (plaid-core)")
-  (p/shell {:dir "plaid-core"} "clojure" "-M:test")
+  ;; One JVM per shard of namespaces, half the cores and at most 8 (so 2 on a
+  ;; 4-core GitHub runner). See plaid-core/src/test-runner/plaid/test_runner.clj.
+  (p/shell {:dir "plaid-core"} "clojure" "-M:test" "--jobs" "auto")
   ;; The JS and Python suites are part of the gate too. They were not, and a
   ;; tag could therefore ship an app whose own tests were red: the Clojure
   ;; suite says nothing about either SPA or about the assistant. Slower, but
