@@ -1,7 +1,6 @@
 (ns plaid.sql.constraints.layer-rules-repair-test
   "The value-set exemption that follows a row through a document copy and a
-  restore, a repair that joins only into a value the list being declared
-  allows, a repair that leaves a document another holds the lock on, a
+  restore, a repair that joins doubled values and deletes none, a repair that leaves a document another holds the lock on, a
   writer's repair of the one document they open, the cost of a span create
   under a relation layer, and the whitespace a value-set trims."
   (:require [clojure.data.json :as json]
@@ -13,7 +12,8 @@
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request user1-request user2-request with-admin with-test-users
                                     api-call assert-status with-clean-db]]
-            [plaid.test-helpers :refer [create-span create-relation add-project-writer add-project-reader]]))
+            [plaid.test-helpers :refer [create-span create-relation add-project-writer add-project-reader
+                                        create-test-project create-test-document]]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
@@ -82,22 +82,53 @@
       (assert-status 200 r))))
 
 ;; ============================================================
-;; Repair joins only into a value the list being declared allows
+;; A repair joins, and deletes no value
 ;; ============================================================
 
-(deftest repair-joins-only-into-a-value-the-new-list-allows
-  (let [{:keys [lemma tok] :as s} (setup!)
+(deftest a-repair-never-deletes-a-value
+  (let [{:keys [lemma tok doc proj] :as s} (setup!)
         cs [{:type "single-span"} {:type "value-set" :values all-words}]]
-    ;; A second Lemma on "cat", stored while the layer declared nothing.
+    (add-project-writer admin-request proj "user1@example.com")
+    ;; A second Lemma on "cat", stored while the layer declared nothing: two
+    ;; listed values on one token.
     (assert-status 201 (create-span admin-request lemma [(tok "cat")] "sat"))
-    (let [r (repair! admin-request lemma cs)]
+    (let [copy-id (-> (copy! doc "D copy") :body :id str)
+          on-cat (fn [d] (->> (psc/q db {:select [:s.value] :from [[:spans :s]]
+                                         :join [[:span_tokens :st] [:= :st.span_id :s.id]
+                                                [:tokens :t] [:= :t.id :st.token_id]]
+                                         :where [:and [:= :s.document_id d] [:= :s.span_layer_id lemma]
+                                                 [:= :t.begin 4]]})
+                              (map (comp psc/read-json :value))))]
+      (testing "a writer's open joins both values in the document opened"
+        (let [r (repair! user1-request lemma cs copy-id)]
+          (assert-status 200 r)
+          (is (= ["cat | sat"] (on-cat copy-id)))
+          (is (= ["value-set"] (distinct (map :constraint (-> r :body :violations)))))))
+      (testing "a maintainer's open joins both values, and the joined value is left for value-set"
+        (let [r (repair! admin-request lemma cs)]
+          (assert-status 200 r)
+          (is (= ["cat | sat"] (on-cat doc)))
+          ;; The joined value in each document, the copy's included.
+          (is (= 2 (-> r :body :violation-count)))
+          (is (= #{["value-set" "cat | sat"]}
+                 (set (map (juxt :constraint :value) (-> r :body :violations)))))))
+      (testing "so value-set is refused and single-span is declared"
+        (assert-status 422 (declare! "span" lemma "igt" cs))
+        (assert-status 200 (declare! "span" lemma "igt" [{:type "single-span"}])))
+      (testing "a merge then joins as the repair did"
+        (assert-status 200 (call admin-request :post (str "/api/v1/tokens/" (tok "Dogs") "/merge")
+                                 {:other-token-id (tok "ran")}))
+        (is (= "Dogs | ran" (span-value ((:span s) "Dogs"))))))))
+
+(deftest a-repair-under-a-stored-value-set-leaves-a-join-it-refuses
+  (let [{:keys [lemma tok] :as s} (setup!)]
+    (assert-status 201 (create-span admin-request lemma [(tok "cat")] "sat"))
+    (assert-status 200 (declare! "span" lemma "ud" [{:type "value-set" :values all-words}]))
+    (let [r (repair! admin-request lemma [{:type "single-span"}])]
       (assert-status 200 r)
-      (is (= 0 (-> r :body :violation-count)) (pr-str (:body r))))
-    (let [left (spans-on (tok "cat"))]
-      (is (= 1 (count left)))
-      (is (contains? (set all-words) (psc/read-json (:value (first left))))
-          "the kept span holds its own listed value, not the joined one"))
-    (assert-status 200 (declare! "span" lemma "igt" cs))
+      (is (= #{"cat" "sat"} (set (map (comp psc/read-json :value) (spans-on (tok "cat")))))
+          "both values stay, and the token is left as it was")
+      (is (= "single-span" (-> r :body :violations first :constraint))))
     (is (some? s))))
 
 ;; ============================================================
@@ -146,8 +177,18 @@
         (assert-status 403 (repair! user1-request lemma cs)))
       (testing "a reader may not repair a document"
         (assert-status 403 (repair! user2-request lemma cs doc)))
-      (testing "a document of another layer's project is refused"
-        (assert-status 400 (repair! user1-request lemma cs (str (random-uuid)))))
+      (testing "an unknown document is a 403 that says it resolved to nothing, and a 404 to an admin"
+        (let [r (repair! user1-request lemma cs (str (random-uuid)))]
+          (assert-status 403 r)
+          (is (true? (-> r :body :unresolved))))
+        (assert-status 404 (repair! admin-request lemma cs (str (random-uuid)))))
+      (testing "a document of another project is a 403, and a 400 to an admin"
+        (let [other (create-test-project admin-request "Other")
+              other-doc (create-test-document admin-request other "O")
+              r (repair! user1-request lemma cs other-doc)]
+          (assert-status 403 r)
+          (is (nil? (-> r :body :unresolved)))
+          (assert-status 400 (repair! admin-request lemma cs other-doc))))
       (let [r (repair! user1-request lemma cs doc)]
         (assert-status 200 r)
         (is (= [(str doc)] (map :document (-> r :body :repaired))))

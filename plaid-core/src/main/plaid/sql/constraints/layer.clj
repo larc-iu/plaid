@@ -1102,9 +1102,10 @@
 
 (defn- remedy-single-span! [tx ctx {:keys [params layer] :as _c} vs counts]
   (let [join-with (get params "join-with" " | ")
-        ;; The value-sets stored on the layer, and in a repair those of the
-        ;; list about to be declared too.
-        value-checks (for [c (concat (mapcat val (:constraints layer)) (:declaring ctx))
+        ;; The value-sets stored on the layer. A repair checks no list it is
+        ;; about to declare: it joins, as the heals before it did, and the
+        ;; joined value is left for that list's value-set to report.
+        value-checks (for [[_ cs] (:constraints layer) c cs
                            :when (= "value-set" (get c "type"))]
                        (value-checker c))
         deleted (volatile! #{})
@@ -1124,14 +1125,18 @@
                                        (comp str :id)
                                        (juxt #(pre-begin tx ctx (:id %)) (comp str :id)))))
                 keep-value (read-value (:value keep))
-                new-value (joined-value keep-value (map (comp read-value :value) others) join-with)
-                new-value (if (some #(% new-value) value-checks) keep-value new-value)]
-            (when (not= new-value keep-value)
-              (crud/update-by-id! tx :spans (:id keep) {:value (psc/write-json new-value)})
-              (swap! counts update ["single-span" :spans "joined" (:name layer)] (fnil + 0) 1))
-            (let [n (delete-spans! tx (map :id others))]
-              (vswap! deleted into (map :id others))
-              (swap! counts update ["single-span" :spans "deleted" (:name layer)] (fnil + 0) (or n 0)))))))))
+                joined (joined-value keep-value (map (comp read-value :value) others) join-with)
+                refused? (some #(% joined) value-checks)]
+            ;; A repair deletes no value: a join a stored value-set refuses
+            ;; leaves the token as it is, and its single-span violation stays.
+            (when-not (and repair? refused?)
+              (let [new-value (if refused? keep-value joined)]
+                (when (not= new-value keep-value)
+                  (crud/update-by-id! tx :spans (:id keep) {:value (psc/write-json new-value)})
+                  (swap! counts update ["single-span" :spans "joined" (:name layer)] (fnil + 0) 1))
+                (let [n (delete-spans! tx (map :id others))]
+                  (vswap! deleted into (map :id others))
+                  (swap! counts update ["single-span" :spans "deleted" (:name layer)] (fnil + 0) (or n 0)))))))))))
 
 (defn- remedy-single-link! [tx ctx {:keys [layer]} vs counts]
   (let [deleted (volatile! #{})
@@ -1322,8 +1327,9 @@
   "Apply the remedies of the remediable types in `constraints` to every
   violation in the stored data of `layer`, one `layer/repair-constraints`
   operation per document, or in `document` alone. The one kept is the
-  smallest id, the others follow in id order. A join is checked against the
-  value-sets stored on the layer and those of `constraints`. A document
+  smallest id, the others follow in id order, and their values are joined
+  into it. A join a value-set stored on the layer refuses leaves that token
+  as it is, so a repair deletes no value. A document
   another holds the lock on is left as it is and named under `:locked`.
   Returns {:repaired [...] :locked [...] :remaining [violations]}."
   [tx user layer ns constraints & {:keys [document]}]
@@ -1336,7 +1342,7 @@
                               (let [r (locks/check-document-locks [(u doc)] user)]
                                 (when (map? r) [doc (:user-id r)]))))
                    docs)
-        ctx (assoc scope :repair? true :declaring constraints)
+        ctx (assoc scope :repair? true)
         repaired (vec (for [doc docs
                             :when (not (contains? held doc))
                             :let [{:keys [counts]} (remedy-document! tx user fixable doc ctx

@@ -3,7 +3,8 @@
   middleware that puts a constraint refusal's violations on the answer."
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.sql.audit-write :as psaw]
-            [plaid.sql.layer-constraints :as slc]))
+            [plaid.sql.layer-constraints :as slc]
+            [plaid.sql.user :as user]))
 
 (defn wrap-constraint-refusal
   "Put the violations of a write refused by a layer constraint on its answer.
@@ -26,6 +27,27 @@
                                     {:violations violations :violation-count violation-count})))
           response)
         response))))
+
+(defn- document-refusal
+  "The answer to a repair naming a document it may not touch, or nil. An
+  unknown id is a 403 with `unresolved`, and a document of another project a
+  403, so a non-member learns nothing of either (the core ruling on unknown
+  ids). An admin is told plainly: 404 and 400."
+  [{:keys [kind id-of request db document]}]
+  (let [admin? (user/admin? (:user/record request))]
+    (case (slc/document-standing db kind (id-of request) document)
+      :unknown (if admin?
+                 {:status 404 :body {:error "Document not found"}}
+                 {:status 403 :body {:error (str "User " (pra/->user-id request)
+                                                 " lacks sufficient privileges to repair document "
+                                                 document)
+                                     :unresolved true}})
+      :elsewhere (if admin?
+                   {:status 400 :body {:error (str "Document " document " is not in this layer's project.")}}
+                   {:status 403 :body {:error (str "User " (pra/->user-id request)
+                                                   " lacks sufficient privileges to repair document "
+                                                   document)}})
+      nil)))
 
 (defn- failure [{:keys [code error error-body]}]
   {:status (or code 500)
@@ -75,13 +97,18 @@
                                   [:constraints constraint-list]
                                   [:document {:optional true} :uuid]]}
               :handler (fn [{{{:keys [constraints document]} :body} :parameters db :db user-id :user/id :as request}]
-                         (if (and (nil? document) (not (pra/privileged? request :project/maintainers project-fn)))
+                         (cond
+                           (and (nil? document) (not (pra/privileged? request :project/maintainers project-fn)))
                            {:status 403 :body {:error "Repairing a whole layer requires maintainer privileges."}}
-                           (let [result (slc/repair-constraints db kind (id-of request) constraints user-id
-                                                                :document document)]
-                             (if (:success result)
-                               {:status 200 :body (:extra result)}
-                               (failure result)))))}}]
+
+                           :else
+                           (or (and document (document-refusal {:kind kind :id-of id-of :request request
+                                                                :db db :document document}))
+                               (let [result (slc/repair-constraints db kind (id-of request) constraints user-id
+                                                                    :document document)]
+                                 (if (:success result)
+                                   {:status 200 :body (:extra result)}
+                                   (failure result))))))}}]
      ["/:namespace"
       {:conflicting true
        :parameters {:path [:map [:namespace string?]]}

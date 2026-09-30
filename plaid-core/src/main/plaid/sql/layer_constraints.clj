@@ -100,6 +100,17 @@
       (select-keys (lc/violation-body db vs) [:violations :violation-count])
       {:violations [] :violation-count 0})))
 
+(defn document-standing
+  "Where `document` stands for a repair of the layer: `:unknown` when no
+  document has that id, `:elsewhere` when it is in another project than the
+  layer's, else nil."
+  [db kind id document]
+  (let [doc (psc/fetch-by-id db :documents document)]
+    (cond
+      (nil? doc) :unknown
+      (not= (str (:project_id doc)) (str (project-of db kind id))) :elsewhere
+      :else nil)))
+
 (defn repair-constraints
   "Apply the remedies of the remediable types in `constraints` to the
   layer's stored data, one `layer/repair-constraints` operation per

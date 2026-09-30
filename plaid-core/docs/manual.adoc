@@ -1602,10 +1602,10 @@ An id that was used before is refused with 409, and the body says so:
 
 [,json]
 ----
-{"error": "id-taken", "id-taken": true, "id": "0199...", "message": "A span with id 0199... already exists."}
+{"error": "id-taken", "id-taken": true, "id": "0199...", "deleted": false, "message": "A span with id 0199... already exists."}
 ----
 
-That holds for an id whose row was since deleted too ("existed" in the message), so a create sent again late never brings back a row someone deleted meanwhile.
+That holds for an id whose row was since deleted too (`"deleted": true`, and "existed" in the message), so a create sent again late never brings back a row someone deleted meanwhile.
 A comment has no history, so only a comment that still exists holds its id.
 Tell `id-taken` apart from a version conflict by the body, never by the status alone.
 
@@ -1963,13 +1963,15 @@ Two more routes help before declaring:
 
 * `check_constraints` (`POST .../constraints/check`) lists the violations a list would meet, and writes nothing.
 * `repair_constraints` (`POST .../constraints/repair`) applies the remedies described below to every violation in the layer's stored data, as one operation per document (`layer/repair-constraints`), and lists what is left.
-  A join is made only when the value-sets stored on the layer and those of the list being repaired allow the joined value.
+  A repair deletes no value: doubled spans are joined as a merge joins them, and a joined value outside the list's `value-set` is listed among what is left.
+  A join a `value-set` already stored on the layer would refuse leaves that token as it is.
 
 A repair leaves a document another user holds the lock on as it is, and lists it under `locked`, as `{document, locked-by}`.
 Its violations stay in the list of what is left, so declaring the rules waits for a repair after the lock is released.
 
 Repairing a whole layer needs maintainer privileges.
 Passing `document` (`repair_constraints(layer_id, constraints, document=doc_id)`, or `repairConstraints(layerId, constraints, undefined, { document })` in JavaScript) repairs that document alone, and a writer may ask.
+A document of another project, or an id no document has, is refused as any id the caller cannot see is (see <<Users and Permissions>>).
 An app uses this when a writer opens a document on a layer that holds none of its rules yet.
 
 === When a write breaks a rule
