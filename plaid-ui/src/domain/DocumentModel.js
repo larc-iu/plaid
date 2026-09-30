@@ -1002,10 +1002,12 @@ export class DocumentModel {
   // still unknown stays for the next edit.
   async _resendGivenUp() {
     let landed = false;
+    const made = [];
     for (const g of [...this._givenUp]) {
       try {
         await g.run();
         landed = true;
+        made.push(...g.created);
         this._givenUp = this._givenUp.filter((x) => x !== g);
       } catch (err) {
         if (isUnknownOutcome(err)) continue;
@@ -1015,6 +1017,10 @@ export class DocumentModel {
     }
     if (!landed) return;
     const updated = await this._fetch();
+    // The rows those edits made are the server's now, whether or not their
+    // sends settled them, so the edits waiting behind read them as a change.
+    const text = JSON.stringify(updated);
+    recordSettled(made.filter((id) => text.includes(id)).map((id) => [id, id]));
     await this._adoptReload(updated);
     this._keepUntouched(updated);
     this._showUnsent(updated, { recheck: true });

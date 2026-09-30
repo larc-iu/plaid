@@ -69,14 +69,15 @@ function server() {
 }
 
 class Doc extends DocumentModel {
-  create(value) {
+  // `settle: false` is a send that leaves its row's id as the page minted it.
+  create(value, { settle = true } = {}) {
     const id = newId();
     this._applyRawPatch((raw) => {
       raw.rows = [...raw.rows, { id, value }];
     });
     const ok = this._queueWrite('Failed to create', async () => {
       const made = await this._client._request('POST', '/api/v1/spans', { body: { id, value } });
-      this._settle(new Map([[id, made.id]]));
+      if (settle) this._settle(new Map([[id, made.id]]));
     });
     return { id, ok };
   }
@@ -144,22 +145,24 @@ describe('a create that landed and is then refused id-taken', () => {
 // edit planned without it (a create of the same row) is refused as a conflict
 // rather than making a second row.
 describe('an edit given up on a 502 that then lands late', () => {
-  it('is sent again under its keys before the next edit, and the row is made once', async () => {
-    const { state, doc, errors } = open();
-    doc._writes._resendForMs = 0;
-    state.gateway = 1;
-    const first = doc.create('dog');
-    expect(await first.ok).toBe(false);
-    expect(errors).toHaveLength(1);
-    await state.landHeld();
-    expect(state.rows.size).toBe(1);
-    // The page's retry: the same value again, planned as a new create.
-    const retry = doc.create('dog');
-    expect(await retry.ok).toBe(false);
-    expect([...state.rows.values()]).toEqual(['dog']);
-    expect(doc.raw.rows.map((r) => r.value)).toEqual(['dog']);
-    expect(state.keys.filter((k) => k === state.keys[0]).length).toBeGreaterThan(1);
-  });
+  for (const settle of [true, false]) {
+    it(`is sent again under its keys before the next edit, and the row is made once (settle ${settle})`, async () => {
+      const { state, doc, errors } = open();
+      doc._writes._resendForMs = 0;
+      state.gateway = 1;
+      const first = doc.create('dog', { settle });
+      expect(await first.ok).toBe(false);
+      expect(errors).toHaveLength(1);
+      await state.landHeld();
+      expect(state.rows.size).toBe(1);
+      // The page's retry: the same value again, planned as a new create.
+      const retry = doc.create('dog', { settle });
+      expect(await retry.ok).toBe(false);
+      expect([...state.rows.values()]).toEqual(['dog']);
+      expect(doc.raw.rows.map((r) => r.value)).toEqual(['dog']);
+      expect(state.keys.filter((k) => k === state.keys[0]).length).toBeGreaterThan(1);
+    });
+  }
 
   it('a connection refused is resent past the window until the server answers', async () => {
     const { state, doc, errors } = open();
