@@ -28,6 +28,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Upload, RefreshCw, Square } from 'lucide-react';
 import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
+import { ProjectTartan } from '@ui/components/shared/ProjectTartan.jsx';
 import { Panel, WarningLog } from './ImportPanels.jsx';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
@@ -351,7 +352,11 @@ export const ImportElanDocuments = () => {
         <Breadcrumb
           items={[
             { label: 'Projects', to: '/projects', fixed: true },
-            { label: project?.name ?? 'Project', to: projectHref },
+            {
+              label: project?.name ?? 'Project',
+              to: projectHref,
+              icon: <ProjectTartan projectId={projectId} size={14} />,
+            },
           ]}
         />
 

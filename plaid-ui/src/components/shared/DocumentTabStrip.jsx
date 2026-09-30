@@ -4,6 +4,7 @@ import { appRoutes } from '../../lib/uiConfig.js';
 import { cn } from '../../lib/utils.js';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { Breadcrumb } from './Breadcrumb.jsx';
+import { ProjectTartan } from './ProjectTartan.jsx';
 import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
 
 /**
@@ -91,7 +92,11 @@ export const DocumentTabStrip = ({
         <Breadcrumb
           items={[
             { label: 'Projects', to: routes.projects, fixed: true },
-            { label: project?.name || 'Loading…', to: routes.documents(projectId) },
+            {
+              label: project?.name || 'Loading…',
+              to: routes.documents(projectId),
+              icon: <ProjectTartan projectId={projectId} size={14} />,
+            },
           ]}
         />
         {status && <span className="ms-auto shrink-0">{status}</span>}

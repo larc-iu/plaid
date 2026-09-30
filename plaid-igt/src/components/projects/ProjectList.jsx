@@ -12,6 +12,7 @@ import { notifyWarning } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { textIncludes } from '@ui/domain/collation.js';
+import { ProjectTartan } from '@ui/components/shared/ProjectTartan.jsx';
 
 // "Words" = the primary token layer (the orthographic word tokens); morphemes
 // are sub-word units and shouldn't inflate the word count.
@@ -85,7 +86,8 @@ export const ProjectList = () => {
       fill: true,
       sort: (p) => p.name?.toLowerCase() ?? '',
       cell: (p) => (
-        <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
+          <ProjectTartan projectId={p.id} size={16} className="shrink-0" />
           <div className="truncate font-medium" title={p.name}>
             {p.name}
           </div>

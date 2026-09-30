@@ -18,6 +18,8 @@ import { cn } from '../../lib/utils.js';
  *   long name gives way before the way back does. A data label counts as no
  *   width when the row decides whether to wrap, so only fixed labels that
  *   cannot all fit on a phone take a second line.
+ * - `icon` on an item: drawn before its label, inside the link (a project's
+ *   tartan).
  * - `className`: added to the `<nav>`, for the margin the page wants.
  *
  * Every item carries `dir="auto"`, since a label is so often data. The trail
@@ -39,6 +41,7 @@ export const Breadcrumb = ({ items, className }) => (
                 dir="auto"
                 className="text-muted-foreground hover:text-foreground hover:underline"
               >
+                {item.icon && <span className="me-1.5 inline-block align-[-2px]">{item.icon}</span>}
                 {item.label}
               </Link>
             ) : (

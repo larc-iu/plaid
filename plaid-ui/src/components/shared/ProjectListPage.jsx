@@ -9,6 +9,7 @@ import { Button } from '../ui/button';
 import { LinkedListPage, CountCell, TimeCell } from './LinkedListPage.jsx';
 import { wordCountsByProject } from '../../domain/layerCounts.js';
 import { textIncludes } from '../../domain/collation.js';
+import { ProjectTartan } from './ProjectTartan.jsx';
 
 /**
  * Every project this reader can see, and the way into a new one.
@@ -105,7 +106,8 @@ export const ProjectListPage = ({ wordLayerId, seedLayerId, newProject, form: Ne
       fill: true,
       sort: (p) => p.name?.toLowerCase() ?? '',
       cell: (p) => (
-        <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
+          <ProjectTartan projectId={p.id} size={16} className="shrink-0" />
           <div className="truncate font-medium" title={p.name}>
             {p.name}
           </div>

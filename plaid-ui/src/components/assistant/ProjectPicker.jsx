@@ -4,6 +4,7 @@ import { humanizeError } from '../../lib/errors.js';
 import { Button } from '../ui/button.jsx';
 import { Loading } from '../shared/Loading.jsx';
 import { AssistantMark } from './PlaidMarks.jsx';
+import { ProjectTartan } from '../shared/ProjectTartan.jsx';
 
 // What the dock shows before any project has been in scope: the reader has just
 // signed in and is looking at a list of projects, so the panel has nothing to be
@@ -71,10 +72,11 @@ export const ProjectPicker = ({ client, onPick, onHide }) => {
               key={p.id}
               type="button"
               onClick={() => onPick(p)}
-              className="w-full truncate rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
               title={p.name}
             >
-              {p.name}
+              <ProjectTartan projectId={p.id} size={16} className="shrink-0" />
+              <span className="min-w-0 truncate">{p.name}</span>
             </button>
           ))
         )}
