@@ -168,6 +168,25 @@ def partly_written(written, total, done, cause) -> RuntimeError:
                         f'{requester_message(cause)}')
 
 
+def _refused_as_ended(error, group_id) -> bool:
+    """Whether ``error``, or an error it was raised from, is the server
+    refusing a write into the operation group ``group_id`` it handed this
+    service: a 403 that names the group and says the request ended, or, when
+    the server restarted and forgot the request, that another caller started
+    it. A refusal for another project is not one of these."""
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        if getattr(error, 'status', None) == 403:
+            data = getattr(error, 'response_data', None) or {}
+            said = str(data.get('error') or data.get('message') or '') if isinstance(data, dict) else ''
+            if str(group_id) in said and ('request that has ended' in said
+                                          or 'started by another user or token' in said):
+                return True
+        error = error.__cause__ or error.__context__
+    return False
+
+
 def _client_version() -> str:
     try:
         return importlib.metadata.version('larc-plaid-client')
@@ -462,9 +481,20 @@ class BaseService(ABC):
             print(f"{self.service_name}: request stopped by the requester")
             response_helper.stopped()
         except Exception as e:
-            import traceback
-            print(f"Error during {self.service_name} processing: {str(e)}")
-            traceback.print_exc()
+            if joined and _refused_as_ended(e, group['id']):
+                # The server keeps a request's hand-off of its operation only
+                # while the request runs. It ended under this service (the
+                # channel dropped and the server failed it, or the server
+                # restarted), so the rest of its writes were refused. After a
+                # restart the server no longer knows the request and names
+                # another caller, which is almost never why here.
+                print(f"{self.service_name}: the request had already ended when this service wrote "
+                      f"(the connection to Plaid dropped or the server restarted), so its writes "
+                      f"from then on were refused. The requester was told it failed.")
+            else:
+                import traceback
+                print(f"Error during {self.service_name} processing: {str(e)}")
+                traceback.print_exc()
             response_helper.error(self.request_error_message(e))
         finally:
             if joined:
