@@ -295,15 +295,17 @@
     [nb at r]))
 
 (deftest a-token-over-a-sentence-follows-the-sentence
-  ;; REV3: a time-alignment segment whose extent is its sentence's takes
-  ;; exactly what the sentence takes: at the text's start (N3), its end (N4),
-  ;; before a sentence (M5), a one-word sentence included, and a word split
-  ;; at its edge (N2)
+  ;; REV3: a time-alignment segment whose extent is its sentence's, less
+  ;; the whitespace at the sentence's edges, takes exactly what the sentence
+  ;; takes: at the text's start (N3), its end (N4), before a sentence (M5), a
+  ;; one-word sentence included, and a word split at its edge (N2)
   (let [seg (fn [id b e] {:token/id id :token/layer :a :token/begin b :token/end e})]
-    (let [[nb at] (extents-after "|The| |end.| /|Bye.|" [(seg :a0 0 9) (seg :a1 9 13)] [(ins 0 "Oh ")])]
+    (let [[nb at] (extents-after "|The| |end.| /|Bye.|" [(seg :a0 0 8) (seg :a1 9 13)] [(ins 0 "Oh ")])]
       (is (= "Oh The end. Bye." nb))
-      (is (= "Oh The end. " (at :a0))))
-    (let [[nb at] (extents-after "|Hi.| /|The| |end.|" [(seg :a1 4 12)] [(ins 12 " Oh")])]
+      (is (= "Oh The end." (at :a0))))
+    (let [[nb at] (extents-after "|Hi.| /|The| |end.|" [(seg :a1 4 12)] [(ins 12 " Oh")])
+          [_ at0] (extents-after "|Hi.| /|The| |end.|" [(seg :a0 0 3)] [(ins 3 " Oh")])]
+      (is (= "Hi. Oh" (at0 :a0)) "text typed after a sentence's last word, the segment with it")
       (is (= " Oh" (subs nb 12)))
       (is (= "The end. Oh" (at :a1))))
     (let [[nb at] (extents-after "|Hi.| /|Yes.|" [(seg :a1 4 8)] [(ins 4 "Oh ")])]

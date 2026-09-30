@@ -113,13 +113,15 @@
             (conj! toks {:token/id [:s si] :token/layer :s :token/begin sb0 :token/end e})
             ;; a time-alignment segment over the whole sentence (a transcript row)
             (when (:sentence-segments opts)
-              (conj! toks {:token/id [:as si] :token/layer :ss :token/begin sb0 :token/end e}))))))
+              ;; less the whitespace at the sentence's edges, as a row is
+              (conj! toks {:token/id [:as si] :token/layer :ss
+                           :token/begin (first (first words)) :token/end (second (peek words))}))))))
     (let [tokens (persistent! toks)
           body (str sb)
           ;; the last sentence ends at the end of the text
           n (cp/cp-count body)]
       {:body body
-       :tokens (mapv #(if (#{[:s (dec nsent)] [:as (dec nsent)]} (:token/id %))
+       :tokens (mapv #(if (= [:s (dec nsent)] (:token/id %))
                         (assoc % :token/end n) %)
                      tokens)})))
 
@@ -198,6 +200,11 @@
                           true (assoc :token/end (if (= i (dec k)) n (max (:token/end t) (:token/begin (sorted (inc i))))))))
                       sorted))))
 
+(defn- trim-ws [^ints cs [b e]]
+  (let [b (loop [x b] (if (and (< x e) (ws? (aget cs x))) (recur (inc x)) x))
+        e (loop [x e] (if (and (> x b) (ws? (aget cs (dec x)))) (recur (dec x)) x))]
+    [b e]))
+
 (defn- problems
   "What is wrong with `result` for `tokens` of `old` and the change `gaps`."
   [^String old tokens gaps {:keys [text] :as result}]
@@ -254,7 +261,8 @@
               :when (and (plain layer) (< begin end)
                          ;; a token over a sentence follows it (REV3)
                          (or (= :s layer)
-                             (not-any? #(and (= :s (:token/layer %)) (= begin (:token/begin %)) (= end (:token/end %)))
+                             (not-any? #(and (= :s (:token/layer %))
+                                             (= [begin end] (trim-ws o [(:token/begin %) (:token/end %)])))
                                        tokens)))]
         (let [kept (kept-of t)
               cov (covering t)
@@ -534,13 +542,13 @@
             :let [t (p id)
                   ;; a token over a sentence follows the sentence (REV3)
                   over (when (and t (not (#{:s :w :m :x} layer)))
-                         (some #(when (and (= :s (:token/layer %)) (= begin (:token/begin %)) (= end (:token/end %)))
+                         (some #(when (and (= :s (:token/layer %)) (= [begin end] (trim-ws o [(:token/begin %) (:token/end %)])))
                                   (:token/id %))
                                tokens))
                   inside (some (fn [[[wb we] xy]] (when (and (<= wb begin) (<= end we) (not (and (= wb begin) (= we end)))) xy)) moved)
                   want (cond
                          (or (nil? t) (= :s layer)) t
-                         over (let [[b e] (sentence-now over)] (assoc t :token/begin b :token/end e))
+                         over (let [[b e] (trim-ws nw (sentence-now over))] (assoc t :token/begin b :token/end e))
                          (moved [begin end]) (let [[x y] (moved [begin end])] (assoc t :token/begin x :token/end y))
                          inside (let [[x y] inside
                                       b (max x (:token/begin t)) e (min y (:token/end t))]
@@ -597,8 +605,8 @@
         out (transient [])]
     ;; segments over sentences
     (doseq [{:token/keys [id begin end]} tokens :when (#{:as :us} (first id))
-            :let [st (some #(when (and (= begin (:token/begin %)) (= end (:token/end %))) %) sents)
-                  want (some-> st :token/id filled)
+            :let [st (some #(when (= [begin end] (trim-ws o [(:token/begin %) (:token/end %)])) %) sents)
+                  want (some->> st :token/id filled (trim-ws (cps nb)))
                   got (some-> (by-id id) ((juxt :token/begin :token/end)))]
             :when (and want got (not= want got))]
       (conj! out (str id " at " got ", its sentence at " want)))
@@ -607,7 +615,7 @@
             :let [n (by-id id)
                   wb (some #(when (= begin (:token/begin %)) (by-id (:token/id %))) words)
                   we (some #(when (= end (:token/end %)) (by-id (:token/id %))) words)]
-            :when (and n (not-any? #(and (= begin (:token/begin %)) (= end (:token/end %))) sents))]
+            :when (and n (not-any? #(= [begin end] (trim-ws o [(:token/begin %) (:token/end %)])) sents))]
       (when (and wb (not= (:token/begin wb) (:token/begin n)))
         (conj! out (str id " begins at " (:token/begin n) ", its first word at " (:token/begin wb))))
       (when (and we (not= (:token/end we) (:token/end n)))

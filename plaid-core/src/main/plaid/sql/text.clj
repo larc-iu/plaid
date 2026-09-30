@@ -351,8 +351,10 @@
                                                                plain-ids exclusive)
                                        ;; and a token over a sentence follows the sentence
                                        parts (filterv #(partitioning (:token/layer %)) (:tokens rest-result))
-                                       followed (ta/follow-sentences tokens (into (:tokens r) parts) nil
-                                                                     (cp/cp-count (:text/body (:text r))) partitioning
+                                       followed (ta/follow-sentences (.toArray (.codePoints ^String old-body))
+                                                                     tokens (into (:tokens r) parts) nil
+                                                                     (.toArray (.codePoints ^String (:text/body (:text r))))
+                                                                     partitioning
                                                                      #(not (children (:token/layer %))))]
                                    (assoc r :tokens (filterv #(plain-ids (:token/id %)) followed)))
                                  plain-result)]

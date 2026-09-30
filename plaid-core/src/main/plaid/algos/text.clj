@@ -3554,14 +3554,21 @@
 
 (defn follow-sentences
   "`kept` (tokens as a text edit left them) with each follower (`follower?`)
-  whose old extent was a sentence's (a token of a layer in `partitioning`,
-  both edges the same) set to that sentence's extent as the partition's
-  gap-fill will leave it (see `compensate-partition-layers!`), whatever
-  text the sentence took. A time-alignment segment over its sentence keeps
-  covering it. `heads` are the sentences to be made at the start of the
-  text (see `apply-plain-gaps`), `n` the new text's length."
-  [old-tokens kept heads n partitioning follower?]
-  (let [was (into {} (map (juxt :token/id identity)) old-tokens)
+  whose old extent was a sentence's (a token of a layer in `partitioning`),
+  less the whitespace at the sentence's edges, set to that sentence's extent
+  as the partition's gap-fill will leave it (see
+  `compensate-partition-layers!`), less the whitespace at its edges,
+  whatever text the sentence took. A time-alignment segment over its
+  sentence keeps covering it. `heads` are the sentences to be made at the
+  start of the text (see `apply-plain-gaps`), `nw` the new text's code
+  points."
+  [^ints o old-tokens kept heads ^ints nw partitioning follower?]
+  (let [n (alength nw)
+        trim (fn [^ints cs [b e]]
+               (let [b (loop [x b] (if (and (< x e) (space? (aget cs x))) (recur (inc x)) x))
+                     e (loop [x e] (if (and (> x b) (space? (aget cs (dec x)))) (recur (dec x)) x))]
+                 [b e]))
+        was (into {} (map (juxt :token/id identity)) old-tokens)
         now (into {} (map (juxt :token/id identity)) kept)
         parts (filter #(partitioning (:token/layer %)) old-tokens)
         ;; each surviving partition token's extent after the gap-fill
@@ -3576,12 +3583,12 @@
                                                   (if (= i (dec c)) n (:token/begin (live (inc i))))]])
                                               live))))
                      (group-by :token/layer parts))
-        by-extent (group-by (juxt :token/begin :token/end) parts)]
+        by-extent (group-by #(trim o [(:token/begin %) (:token/end %)]) parts)]
     (mapv (fn [{:token/keys [id] :as t}]
             (let [{:token/keys [begin end]} (was id)
                   sentence (when (and begin (< begin end) (follower? t))
                              (some #(filled (:token/id %)) (by-extent [begin end])))]
-              (if-let [[b e] sentence]
+              (if-let [[b e] (some->> sentence (trim nw))]
                 (if (< b e) (assoc t :token/begin b :token/end e) t)
                 t)))
           kept)))
@@ -3863,7 +3870,7 @@
                               (when (and (partitioning layer) (= begin (head-length 0)))
                                 {:token/layer layer :token/begin 0 :token/end (head-length 0)}))
                             (filter #(zero? (:token/begin (was-token %))) kept))))
-         kept (follow-sentences wide kept heads (alength nw) partitioning
+         kept (follow-sentences o wide kept heads nw partitioning
                                 (fn [t] (not (or (partitioning (:token/layer t))
                                                  (some #(= (:token/layer %) (:token/layer t)) deciders)
                                                  (contains? children (:token/layer t))))))]
