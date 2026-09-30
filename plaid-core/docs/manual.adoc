@@ -1553,12 +1553,12 @@ An id that was used before is refused with 409, and the body says so:
 
 [,json]
 ----
-{"error": "A span with id 0199... already exists.", "id-taken": true, "id": "0199..."}
+{"error": "id-taken", "id-taken": true, "id": "0199...", "message": "A span with id 0199... already exists."}
 ----
 
 That holds for an id whose row was since deleted too ("existed" in the message), so a create sent again late never brings back a row someone deleted meanwhile.
 A comment has no history, so only a comment that still exists holds its id.
-Tell `id-taken` apart from a version conflict by that field, never by the status alone.
+Tell `id-taken` apart from a version conflict by the body, never by the status alone.
 
 With the id known before the create is sent, a later write in the same batch can name it directly, and `b.ref()` is only needed for ids the server mints.
 
@@ -1587,7 +1587,7 @@ The replay comes before every other check, including the `document-version` one,
 
 Two sends are the same request when they have the same method, path, body and query parameters.
 `group-id`, `group-message`, `group-kind`, `group-ref` and `audit-message` only label a write and are left out, while `document-version` counts.
-The same key for a different request is refused with 422 and `"idempotency-key-reused": true`.
+The same key for a different request is refused with 422, whose `error` is `idempotency-key-reused` (and `"idempotency-key-reused": true`, with the sentence under `message`).
 Only a success is kept: a write refused for any reason (a version conflict, a lock, a bad request, a busy database) wrote nothing, and sending it again runs it again.
 
 A `/batch` takes one key for the whole batch.

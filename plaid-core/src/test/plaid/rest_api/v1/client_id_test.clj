@@ -82,6 +82,7 @@
               _ (assert-created (post (path-of path s) (body-fn s id)))
               r (post (path-of path s) (body-fn s id))]
           (is (= 409 (:status r)))
+          (is (= "id-taken" (get-in r [:body :error])))
           (is (true? (get-in r [:body :id-taken])))
           (is (= (str id) (get-in r [:body :id]))))))))
 
@@ -107,7 +108,7 @@
     (let [r (post "/api/v1/spans" body)]
       (is (= 409 (:status r)))
       (is (true? (get-in r [:body :id-taken])))
-      (is (re-find #"existed" (get-in r [:body :error]))))))
+      (is (re-find #"existed" (get-in r [:body :message]))))))
 
 (deftest bulk-creates
   (let [s (setup!)

@@ -111,6 +111,7 @@
     (testing "another body is refused with 422"
       (let [r (keyed admin-request k :post "/api/v1/spans" (span-body s "M"))]
         (is (= 422 (:status r)))
+        (is (= "idempotency-key-reused" (get-in r [:body :error])))
         (is (true? (get-in r [:body :idempotency-key-reused])))))
     (testing "another document-version is another request"
       (is (= 422 (:status (keyed admin-request k :post

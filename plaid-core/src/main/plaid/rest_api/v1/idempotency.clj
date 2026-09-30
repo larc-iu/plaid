@@ -116,9 +116,10 @@
    :body (some->> body (m/decode muuntaja "application/json"))})
 
 (defn- reused [{:keys [method path]}]
-  (refusal 422 {:error (str "This Idempotency-Key was used for another request ("
-                            method " " path "). Send a new key for a new request.")
-                :idempotency-key-reused true}))
+  (refusal 422 {:error "idempotency-key-reused"
+                :idempotency-key-reused true
+                :message (str "This Idempotency-Key was used for another request ("
+                              method " " path "). Send a new key for a new request.")}))
 
 (defn- answer-from
   "The answer to a key found stored, given this request's fingerprint."
