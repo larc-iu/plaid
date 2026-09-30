@@ -1976,7 +1976,7 @@ The body names each violation:
 [source,json]
 ----
 {
-  "error": "A span is the target of 2 relations of layer \"Deps\" (at most 1 is allowed).",
+  "error": "A span is the target of 2 relations in \"Deps\" (at most 1 is allowed).",
   "violations": [
     {"constraint": "max-in-degree", "namespace": "ud", "layer": "<relation layer id>",
      "layer-name": "Deps", "document": "<document id>", "at": "<span id>",

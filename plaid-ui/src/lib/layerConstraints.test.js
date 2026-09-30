@@ -51,7 +51,7 @@ const refused = (violations) => {
   const e = new Error('HTTP 422');
   e.status = 422;
   e.responseData = {
-    error: 'A span is the target of 2 relations of layer "Deps".',
+    error: 'A span is the target of 2 relations in "Deps".',
     violations,
     'violation-count': violations.length,
   };
@@ -188,7 +188,7 @@ describe('a refusal by a layer rule', () => {
     const e = refused([{ constraint: 'max-in-degree' }]);
     expect(isConstraintViolation(e)).toBe(true);
     expect(isChangedElsewhere(e)).toBe(false);
-    expect(humanizeError(e)).toBe('A span is the target of 2 relations of layer "Deps".');
+    expect(humanizeError(e)).toBe('A span is the target of 2 relations in "Deps".');
     const reused = Object.assign(new Error('HTTP 422'), {
       status: 422,
       responseData: { error: 'idempotency-key-reused' },

@@ -104,7 +104,7 @@
         (is (= "Deps" (-> r :body :violations first :layer-name)))
         (is (= ((:span s) "cat") (-> r :body :violations first :at)))
         (is (= 2 (count (-> r :body :violations first :ids))))
-        (is (re-find #"target of 2 relations of layer \"Deps\"" (-> r :body :error))))
+        (is (re-find #"target of 2 relations in \"Deps\"" (-> r :body :error))))
       (is (= n (count-rows :relations [:= :relation_layer_id deps])) "nothing was written")
       (is (= v (version doc)) "the document version did not move"))
     (testing "a batch is refused at its end, at the top level, and rolls back"
@@ -311,7 +311,7 @@
     (testing "a relation created across the sentences is refused"
       (let [r (rel! s "sat" "Dogs")]
         (assert-status 422 r)
-        (is (re-find #"not in one token of layer \"Sentence\"" (-> r :body :error)))))))
+        (is (re-find #"not in one \"Sentence\"" (-> r :body :error)))))))
 
 (deftest a-relation-crossing-sentences-refuses-the-declaration
   (let [{:keys [deps sl sentence] :as s} (setup!)]
@@ -359,7 +359,7 @@
     (let [r (create-token admin-request swl txt 4 6)]
       (assert-status 422 r)
       (is (= "coextensive" (-> r :body :violations first :constraint)))
-      (is (re-find #"extent of any token of layer \"Word\"" (-> r :body :error))))
+      (is (re-find #"extent of any token of \"Word\"" (-> r :body :error))))
     (testing "several children may share one word's extent"
       (assert-status 201 (create-token admin-request swl txt 4 7)))
     (is (some? s))))

@@ -915,27 +915,31 @@
   (:name (psc/q1 tx {:select [:name] :from (table-of kind) :where [:= :id id]})))
 
 (defn- phrase
-  "The first violation in words that name layers, never apps."
+  "The first violation in words that name layers by their names, never apps,
+  and read on screen as they are."
   [tx {:keys [type layer params] :as v}]
-  (let [ln (str "\"" (:name layer) "\"")]
+  (let [ln (str "\"" (:name layer) "\"")
+        q (fn [x] (str "\"" x "\""))]
     (case type
-      "max-in-degree" (str "A span is the target of " (:count v) " relations of layer " ln
+      "max-in-degree" (str "A span is the target of " (:count v) " relations in " ln
                            " (at most " (get params "max") " " (if (= 1 (get params "max")) "is" "are") " allowed).")
-      "acyclic" (str "Relations of layer " ln " form a cycle.")
-      "same-ancestor" (str "A relation of layer " ln " connects spans that are not in one token of layer \""
-                           (layer-name tx :token (u (get params "token-layer"))) "\".")
-      "single-span" (str "A token is in " (count (:ids v)) " spans of layer " ln " (at most 1 is allowed).")
-      "value-set" (if (string? (:value v))
-                    (str "The value \"" (:value v) "\" is not allowed in layer " ln
-                         (when (seq (:parts v))
-                           (str " (not in its list: " (str/join ", " (map #(str "\"" % "\"") (:parts v))) ")"))
-                         ".")
-                    (str "A value of layer " ln " is not a string, and the layer allows only listed values."))
-      "coextensive" (str "A token of layer " ln " does not have the extent of any token of layer \""
-                         (layer-name tx :token (:parent_token_layer_id layer)) "\".")
-      "single-link" (str "A token of layer " ln " has " (count (:ids v))
+      "acyclic" (str "Relations in " ln " form a cycle.")
+      "same-ancestor" (str "A relation in " ln " connects spans that are not in one "
+                           (q (layer-name tx :token (u (get params "token-layer")))) ".")
+      "single-span" (str "A token has " (count (:ids v)) " values in " ln " (at most 1 is allowed).")
+      "value-set" (let [value (:value v)
+                        parts (:parts v)]
+                    (cond
+                      (not (string? value)) (str "A value in " ln " is not text, and only listed values are allowed.")
+                      (or (empty? parts) (= [value] parts)) (str (q value) " is not in the list of values for " ln ".")
+                      :else (str (q value) " is not allowed in " ln ": "
+                                 (str/join ", " (map q parts))
+                                 (if (= 1 (count parts)) " is" " are") " not in its list of values.")))
+      "coextensive" (str "A token of " ln " does not have the extent of any token of "
+                         (q (layer-name tx :token (:parent_token_layer_id layer))) ".")
+      "single-link" (str "A token of " ln " has " (count (:ids v))
                          " vocabulary links (at most 1 is allowed).")
-      (str "A constraint of layer " ln " is broken."))))
+      (str "A rule of " ln " is broken."))))
 
 (defn wire
   "A violation as an answer lists it."
