@@ -425,3 +425,45 @@ def test_the_fake_client_answers_the_id_it_is_given_and_takes_keys():
         assert fake.tokens.split('t', 1, id='t-right') == {'id': 't-right'}
         assert fake.comments.create('document', 'd1', 'hi', id='c-1')['id'] == 'c-1'
     assert fake.spans.create('sl', ['t'], 'N')['id'] != new_id
+
+
+def test_a_keyed_operation_that_ends_while_a_later_one_is_open_ends_its_own_frame():
+    # REV2 G7: frames are ended by the operation that opened them.
+    client = PlaidClient('http://x', 'tok', **FAST)
+    a = client.key_seed()
+    b = client.key_seed()
+    requests = _stub_server(client)
+    client.begin_operation('A', keys=a)
+    client.spans.update('a0', 'x')
+    inner = client.operation('B', keys=b)
+    inner.__enter__()
+    client.spans.update('b0', 'x')
+    client.end_operation()  # A ends first
+    client.spans.update('b1', 'x')
+    inner.__exit__(None, None, None)
+    client.spans.update('after', 'x')
+    assert [r['key'] for r in requests[:3]] == [
+        f"{a['seed']}.0", f"{b['seed']}.0", f"{b['seed']}.1"]
+    assert not requests[3]['key'].startswith((a['seed'], b['seed']))
+    assert client._operation_group is None
+
+
+def test_an_id_taken_for_an_id_the_operation_minted_answers_as_made_and_the_rest_is_sent():
+    # REV2 G3.
+    client = PlaidClient('http://x', 'tok', **FAST)
+    new_id = uuid7()
+
+    def answer(request, n):
+        if request['method'] == 'POST':
+            return _Resp(409, {'error': 'id-taken', 'id-taken': True, 'id': new_id})
+        return _Resp(200, {})
+
+    requests = _stub_server(client, answer)
+    with client.operation('Gloss', keys=client.key_seed(), minted={new_id}):
+        made = client.spans.create('L', ['t'], 'N', id=new_id)
+        client.spans.update('other', 'NEW')
+    with pytest.raises(PlaidAPIError) as e:
+        client.spans.create('L', ['t'], 'N', id=new_id)
+    assert e.value.status == 409
+    assert made['id'] == new_id
+    assert [r['method'] for r in requests] == ['POST', 'PATCH', 'POST']

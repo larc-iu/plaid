@@ -396,3 +396,83 @@ test("a comment made while an operation is open takes none of its keys and joins
   assert.equal(new URL(requests[1].url).searchParams.get("group-id"), null);
   assert.equal(requests[2].key, `${keys.seed}.1`);
 });
+
+// REV2 G7: a key frame is ended by the call that opened it. Two keyed
+// operations whose runs overlap in time end in either order, and each end
+// takes away its own frame, never the other's.
+test("a keyed operation that ends while a later one is still open ends its own frame", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  const a = client.keySeed();
+  const b = client.keySeed();
+  const { requests, restore } = stubServer();
+  let releaseB;
+  const bHeld = new Promise((r) => (releaseB = r));
+  let bDone;
+  try {
+    await client.withOperation(
+      "A",
+      async () => {
+        await client.spans.update("a0", "x");
+        bDone = client.withOperation(
+          "B",
+          async () => {
+            await client.spans.update("b0", "x");
+            await bHeld;
+            await client.spans.update("b1", "x");
+          },
+          { keys: b },
+        );
+        // A's run goes on only once B's first write is out.
+        await new Promise((r) => setTimeout(r, 0));
+      },
+      { keys: a },
+    );
+    // A has ended. B's frame is still open, and B numbers on under its own.
+    releaseB();
+    await bDone;
+    await client.spans.update("after", "x");
+  } finally {
+    restore();
+  }
+  assert.deepEqual(requests.slice(0, 3).map((r) => r.key), [
+    `${a.seed}.0`,
+    `${b.seed}.0`,
+    `${b.seed}.1`,
+  ]);
+  assert.ok(!requests[3].key.startsWith(a.seed) && !requests[3].key.startsWith(b.seed));
+  assert.equal(client.operationGroup, null);
+});
+
+// REV2 G3: a create refused 409 id-taken for an id the operation itself
+// minted was made by an earlier send of it, so it answers as made and the
+// operation's later writes go on.
+test("an id-taken for an id the operation minted answers as made, and the rest is sent", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  const id = uuidv7();
+  const { requests, restore } = stubServer((r) =>
+    r.method === "POST"
+      ? response(409, { error: "id-taken", "id-taken": true, id })
+      : response(200, {}),
+  );
+  let made;
+  try {
+    await client.withOperation(
+      "Gloss",
+      async () => {
+        made = await client.spans.create("L", ["t"], "N", undefined, undefined, { id });
+        await client.spans.update("other", "NEW");
+      },
+      { keys: client.keySeed(), minted: new Set([id]) },
+    );
+    // Outside such an operation the same refusal is thrown.
+    await assert.rejects(
+      client.spans.create("L", ["t"], "N", undefined, undefined, { id }),
+      (e) => e.status === 409,
+    );
+  } finally {
+    restore();
+  }
+  assert.equal(made.id, id);
+  assert.equal(requests.length, 3);
+  assert.equal(requests[1].method, "PATCH");
+});

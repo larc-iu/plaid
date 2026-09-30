@@ -310,7 +310,8 @@ class PlaidClient {
     // The open logical operation (audit-log group), or null. While set, every
     // write is stamped with `?group-id=` (+ `group-message`) so the audit log
     // folds them into ONE expandable entry. See beginOperation / withOperation.
-    // Shape: { id, message, depth, written, refined, keys, keyCount, keyStack }.
+    // Shape: { id, message, depth, written, refined, frames }, where each of
+    // `frames` is { keys, count, minted, depth, owned } and the last numbers.
     this.operationGroup = null;
     // Optional callback fired once (per client) when any request returns HTTP
     // 401 — i.e. the token is missing/expired/invalid. Apps use it to discard
@@ -3636,18 +3637,21 @@ class PlaidClient {
    * @param {object} [opts] - Optional `{ id, kind, ref, keys }`. `id` adopts an existing group id instead of minting one (a service joining the requester's operation; `requestService` propagates an open operation to the service automatically). `kind`, `ref` and `keys` are described above.
    * @returns {string} The operation's group id.
    */
-  beginOperation(message, { id, kind, ref, keys } = {}) {
+  beginOperation(message, { id, kind, ref, keys, minted } = {}) {
+    const frame = { keys: keys || null, count: 0, minted: minted || null, depth: 1 };
     const open = this.operationGroup;
+    this._openedFrame = null;
     if (open) {
       // A nested operation joins the outer one. When it brings its own key
-      // seed (a queued edit run inside a longer operation), it numbers the
-      // keys until its matching end, then the outer numbering resumes.
-      if (keys) {
-        open.keyStack.push({ keys: open.keys, keyCount: open.keyCount, depth: open.depth });
-        open.keys = keys;
-        open.keyCount = 0;
-      }
+      // seed or ids (a queued edit run inside a longer operation), it numbers
+      // the keys in a frame of its own until it ends, then the frame under it
+      // numbers again.
       open.depth += 1;
+      if (keys || minted) {
+        frame.depth = open.depth;
+        open.frames.push(frame);
+        this._openedFrame = frame;
+      }
       return open.id;
     }
     this.operationGroup = {
@@ -3658,10 +3662,9 @@ class PlaidClient {
       depth: 1,
       written: false,
       refined: undefined,
-      keys: keys || null,
-      keyCount: 0,
-      keyStack: [],
+      frames: [frame],
     };
+    this._openedFrame = frame;
     return this.operationGroup.id;
   }
 
@@ -3688,13 +3691,13 @@ class PlaidClient {
     const group = this.operationGroup;
     if (!group) return;
     if (group.depth > 1) {
-      group.depth -= 1;
-      const saved = group.keyStack.at(-1);
-      if (saved && saved.depth === group.depth) {
-        group.keyStack.pop();
-        group.keys = saved.keys;
-        group.keyCount = saved.keyCount;
+      // A frame begun at this depth by hand (beginOperation) ends here. One
+      // begun by withOperation is ended by that call itself (_dropFrame).
+      const top = group.frames.at(-1);
+      if (group.frames.length > 1 && !top.owned && top.depth === group.depth) {
+        group.frames.pop();
       }
+      group.depth -= 1;
       return;
     }
     this.operationGroup = null;
@@ -3729,9 +3732,13 @@ class PlaidClient {
    * @param {object} [opts] - Optional `{ kind, ref, id, keys }`, as for beginOperation.
    * @returns {Promise<any>} Whatever `fn` resolves to.
    */
-  async withOperation(message, fn, { kind, ref, id, keys } = {}) {
-    this.beginOperation(message, { kind, ref, id, keys });
+  async withOperation(message, fn, { kind, ref, id, keys, minted } = {}) {
+    this.beginOperation(message, { kind, ref, id, keys, minted });
     const group = this.operationGroup;
+    // The key frame this call opened is ended by this call, whatever else
+    // began or ended meanwhile, not by whichever end comes at its depth.
+    const frame = this._openedFrame;
+    if (frame) frame.owned = true;
     const setMessage = (msg) => {
       if (group.depth === 1) group.refined = msg;
     };
@@ -3742,6 +3749,7 @@ class PlaidClient {
       // A relabel the server refuses (a token scoped to projects may not
       // relabel a group, which names none) must not take the place of the
       // error `fn` threw: the caller answers for that one.
+      this._dropFrame(group, frame);
       try {
         await this.endOperation();
       } catch (relabel) {
@@ -3749,8 +3757,16 @@ class PlaidClient {
       }
       throw e;
     }
+    this._dropFrame(group, frame);
     await this.endOperation();
     return result;
+  }
+
+  // End the key frame `frame` of `group`, wherever it is among the frames
+  // open: the frame under it, or the one open over it, numbers from then on.
+  _dropFrame(group, frame) {
+    if (!group || !frame || group.frames[0] === frame) return;
+    group.frames = group.frames.filter((f) => f !== frame);
   }
 
   /**

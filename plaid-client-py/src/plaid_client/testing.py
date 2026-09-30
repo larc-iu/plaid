@@ -1002,7 +1002,7 @@ class FakeClient:
         return {'seed': uuid7(), 'stamps': {}}
 
     @contextlib.contextmanager
-    def operation(self, message, *, kind=None, ref=None, group_id=None, keys=None):
+    def operation(self, message, *, kind=None, ref=None, group_id=None, keys=None, minted=None):
         self.operations.append(message)
         self.operation_tags.append({'kind': kind, 'ref': ref})
         self.operation_labels.append(message)

@@ -3771,7 +3771,7 @@ class PlaidClient:
         # write is stamped with ``?group-id=`` (+ ``group-message``) so the audit
         # log folds them into ONE expandable entry. See begin_operation /
         # operation(). Shape: {'id', 'message', 'kind', 'ref', 'depth', 'written', 'refined',
-        # 'keys', 'key_count', 'key_stack'}.
+        # 'frames'}, each frame {'keys', 'count', 'minted', 'depth', 'owned'}.
         self._operation_group: dict | None = None
         self.session = req_lib.Session()
 
@@ -3850,7 +3850,7 @@ class PlaidClient:
 
     def begin_operation(self, message: str | None, *, group_id: str | None = None,
                         kind: str | None = None, ref: str | None = None,
-                        keys: dict | None = None) -> str:
+                        keys: dict | None = None, minted=None) -> str:
         """Begin a LOGICAL OPERATION: a user-meaningful action ("Merge
         morphemes", "Re-transcribe") implemented as many low-level writes,
         possibly across several batches and even a service round-trip. Until
@@ -3906,23 +3906,26 @@ class PlaidClient:
             kind: Optional. What kind of operation this is (see above).
             ref: Optional. What the operation refers to (see above).
             keys: Optional. A seed from ``key_seed()`` (see above).
+            minted: Optional. The ids this operation mints for what it creates:
+                a create refused 409 id-taken for one of them was made by an
+                earlier send of the operation, and answers as made.
 
         Returns:
             The operation's group id.
         """
+        frame = {'keys': keys or None, 'count': 0, 'minted': minted or None,
+                 'depth': 1, 'owned': False}
         open_group = self._operation_group
+        self._opened_frame = None
         if open_group is not None:
-            # A nested operation that brings its own key seed numbers the
-            # keys until its matching end.
-            if keys:
-                open_group['key_stack'].append({
-                    'keys': open_group['keys'],
-                    'key_count': open_group['key_count'],
-                    'depth': open_group['depth'],
-                })
-                open_group['keys'] = keys
-                open_group['key_count'] = 0
+            # A nested operation that brings its own key seed or ids numbers
+            # the keys in a frame of its own until it ends, then the frame
+            # under it numbers again.
             open_group['depth'] += 1
+            if keys or minted:
+                frame['depth'] = open_group['depth']
+                open_group['frames'].append(frame)
+                self._opened_frame = frame
             return open_group['id']
         self._operation_group = {
             'id': str(group_id) if group_id else str(uuid.uuid4()),
@@ -3932,10 +3935,9 @@ class PlaidClient:
             'depth': 1,
             'written': False,
             'refined': _UNSET_MESSAGE,
-            'keys': keys or None,
-            'key_count': 0,
-            'key_stack': [],
+            'frames': [frame],
         }
+        self._opened_frame = frame
         return self._operation_group['id']
 
     def key_seed(self) -> dict:
@@ -3965,12 +3967,13 @@ class PlaidClient:
         if group is None:
             return
         if group['depth'] > 1:
+            # A frame begun at this depth by hand (begin_operation) ends here.
+            # One begun by operation() is ended by that block itself.
+            frames = group['frames']
+            top = frames[-1]
+            if len(frames) > 1 and not top['owned'] and top['depth'] == group['depth']:
+                frames.pop()
             group['depth'] -= 1
-            stack = group['key_stack']
-            if stack and stack[-1]['depth'] == group['depth']:
-                saved = stack.pop()
-                group['keys'] = saved['keys']
-                group['key_count'] = saved['key_count']
             return
         self._operation_group = None
         refined = message if message is not _UNSET_MESSAGE else group['refined']
@@ -3985,7 +3988,7 @@ class PlaidClient:
 
     @contextmanager
     def operation(self, message: str, *, kind: str | None = None, ref: str | None = None,
-                  group_id: str | None = None, keys: dict | None = None):
+                  group_id: str | None = None, keys: dict | None = None, minted=None):
         """Run the block as one logical operation (see ``begin_operation``),
         ending it when the block exits — including on exception. The yielded
         object's ``set_message(msg)`` refines the label once the outcome is
@@ -4013,13 +4016,22 @@ class PlaidClient:
             ref: Optional. What the operation refers to.
             group_id: Optional. Adopt an existing group id (see ``begin_operation``).
             keys: Optional. A seed from ``key_seed()`` (see ``begin_operation``).
+            minted: Optional. The ids the block mints for what it creates: a
+                create refused 409 id-taken for one of them answers as made.
         """
-        self.begin_operation(message, group_id=group_id, kind=kind, ref=ref, keys=keys)
+        self.begin_operation(message, group_id=group_id, kind=kind, ref=ref, keys=keys,
+                             minted=minted)
         group = self._operation_group
+        # The key frame this block opened is ended by this block, whatever
+        # else began or ended meanwhile.
+        frame = self._opened_frame
+        if frame is not None:
+            frame['owned'] = True
         ctx = _OperationContext(group)
         try:
             yield ctx
         except BaseException:
+            self._drop_frame(group, frame)
             # A relabel the server refuses (a token scoped to projects may not
             # relabel a group, which names none) must not take the place of
             # the error the block raised: the caller answers for that one.
@@ -4028,7 +4040,16 @@ class PlaidClient:
             except PlaidAPIError as e:
                 logging.getLogger(__name__).warning('The operation was not relabelled: %s', e)
             raise
+        self._drop_frame(group, frame)
         self.end_operation()
+
+    @staticmethod
+    def _drop_frame(group, frame):
+        """End the key frame ``frame`` of ``group``, wherever it is among the
+        frames open."""
+        if group is None or frame is None or group['frames'][0] is frame:
+            return
+        group['frames'] = [f for f in group['frames'] if f is not frame]
 
     def batch(self) -> 'PlaidBatch':
         """Open a batch: a view of this client with the same resources, on

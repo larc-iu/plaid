@@ -306,11 +306,11 @@ export async function retryUnknown(
  * and `record(version)` pins what this request claimed, the first time.
  */
 export function nextIdempotencyKey(client, joins) {
-  const group = client.operationGroup;
-  const keys = joins ? group?.keys : null;
+  const frame = joins ? client.operationGroup?.frames.at(-1) : null;
+  const keys = frame?.keys;
   if (!keys) return { key: uuidv7(), pin: undefined, record: () => {} };
-  const n = group.keyCount;
-  group.keyCount += 1;
+  const n = frame.count;
+  frame.count += 1;
   const pinned = keys.stamps.has(n);
   return {
     key: `${keys.seed}.${n}`,
@@ -743,9 +743,12 @@ export async function makeRequest(client, method, path, options = {}) {
     await learnOmittedVersion(client);
   }
   const keyed = takesIdempotencyKey(method, options);
-  const { key, pin, record } = keyed
-    ? nextIdempotencyKey(client, joinsOperation(client, method, options))
-    : {};
+  const joins = joinsOperation(client, method, options);
+  // The ids the joined operation minted for what it creates (withOperation's
+  // `minted`): a create refused 409 id-taken for one of them was made by an
+  // earlier send of this operation, and answers as made.
+  const minted = joins ? client.operationGroup?.frames.at(-1)?.minted : null;
+  const { key, pin, record } = keyed ? nextIdempotencyKey(client, joins) : {};
   const { url, requestBody, stampedGroup, stampedVersion } = prepareRequest(
     client,
     method,
@@ -811,12 +814,16 @@ export async function makeRequest(client, method, path, options = {}) {
     noteServerClock(client, response.headers);
 
     if (!response.ok) {
-      const error = makeHttpError(
-        response,
-        await parseErrorBody(response),
-        url,
-        method,
-      );
+      const errorData = await parseErrorBody(response);
+      if (
+        response.status === 409 &&
+        errorData?.error === "id-taken" &&
+        minted?.has?.(errorData.id)
+      ) {
+        if (stampedGroup) stampedGroup.written = true;
+        return transformResponse({ id: errorData.id });
+      }
+      const error = makeHttpError(response, errorData, url, method);
       // 401 means the token is missing/expired/invalid. Fire the app's auth-error
       // handler once (it discards the token and routes back to login). 403
       // (forbidden — authenticated but not permitted) deliberately does NOT.

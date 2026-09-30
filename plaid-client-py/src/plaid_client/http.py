@@ -202,11 +202,12 @@ def next_idempotency_key(client, joins):
     pinned, and ``record(version)`` pins what this request claimed, the first
     time."""
     group = getattr(client, '_operation_group', None)
-    keys = group.get('keys') if joins and group is not None else None
+    frame = group['frames'][-1] if joins and group is not None else None
+    keys = frame['keys'] if frame is not None else None
     if not keys:
         return uuid7(), NO_PIN, lambda version: None
-    n = group['key_count']
-    group['key_count'] += 1
+    n = frame['count']
+    frame['count'] += 1
     stamps = keys['stamps']
     pinned = n in stamps
 
@@ -891,9 +892,14 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
     if method != 'GET' and _omitted_strict_document(client):
         _learn_omitted_version(client)
     keyed = takes_idempotency_key(method, out_of_band, no_batch, no_idempotency)
-    key, pin, record = (next_idempotency_key(
-        client, joins_operation(client, method, out_of_band, no_operation))
-        if keyed else (None, NO_PIN, None))
+    joins = joins_operation(client, method, out_of_band, no_operation)
+    # The ids the joined operation minted for what it creates (operation()'s
+    # ``minted``): a create refused 409 id-taken for one of them was made by
+    # an earlier send of this operation, and answers as made.
+    group = getattr(client, '_operation_group', None)
+    minted = group['frames'][-1].get('minted') if joins and group is not None else None
+    key, pin, record = (next_idempotency_key(client, joins)
+                        if keyed else (None, NO_PIN, None))
     url, request_body, _, stamped_group, stamped_version = prepare_request(
         client, method, path, body=body, raw_body=raw_body, form_data=form_data,
         query_params=query_params, out_of_band=out_of_band, no_operation=no_operation,
@@ -956,6 +962,12 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
                                   getattr(client, 'retry_delays', None))
                     if keyed else retry_while_busy(attempt))
     except PlaidAPIError as e:
+        data = e.response_data if isinstance(e.response_data, dict) else {}
+        if (e.status == 409 and data.get('error') == 'id-taken'
+                and minted and data.get('id') in minted):
+            if stamped_group is not None:
+                stamped_group['written'] = True
+            return transform_response({'id': data['id']})
         if keyed:
             e.idempotency_key = key
         raise
