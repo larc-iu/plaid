@@ -1,3 +1,4 @@
+import { markReplayed } from "./replayed.js";
 import { transformRequest, transformResponse } from "./transforms.js";
 import { takeRefs } from "./batchRef.js";
 import { uuidv7 } from "./ids.js";
@@ -863,10 +864,10 @@ export async function makeRequest(client, method, path, options = {}) {
         historical: /[?&]as-of=/.test(url),
       });
       if (!learningOmittedVersion) await learnOmittedVersionQuietly(client);
-      if (skipResponseTransform) {
-        return data;
-      }
-      return transformResponse(data);
+      const answer = skipResponseTransform ? data : transformResponse(data);
+      return response.headers.get(REPLAYED_HEADER) === "true"
+        ? markReplayed(answer)
+        : answer;
     } else {
       extractDocumentVersions(client, response.headers);
       if (!learningOmittedVersion) await learnOmittedVersionQuietly(client);

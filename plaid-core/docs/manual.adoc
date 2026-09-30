@@ -1650,6 +1650,12 @@ A queued write has none of its own: its batch request has one, and a batch the c
 When a keyed write gets no answer (no response at all, 502 or 504), the client sends it again under the same key, up to three times after about 1, 3 and 9 seconds, unless the browser says it is offline.
 The error that finally escapes carries the key (`idempotencyKey`, `idempotency_key`), so a caller that sends the write again under it later is answered from the first send if it landed.
 
+An answer the server replayed (`Idempotent-Replayed: true`) is marked, whether the client sent it again on its own or the caller did.
+`wasReplayed(answer)` in JavaScript and `was_replayed(answer)` in Python say whether it was, and so whether the write stored nothing new.
+In JavaScript the mark is `replayed: true`, not enumerable, on the answer object or array. In Python the answer is a `dict` or `list` subclass whose `replayed` is `True`.
+Either way the answer reads, compares and serializes as an unmarked one would.
+Only an answer with a JSON object or list body carries the mark. An empty or text answer does not.
+
 A caller that runs an operation again from the top can make it send the same keys.
 `client.keySeed()` (`key_seed()` in Python) gives a seed, and an operation opened with it numbers its writes, so the nth write sent inside it takes the key `<seed>.<n>` on every run, with the `document-version` the first run stamped:
 

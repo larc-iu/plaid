@@ -43,6 +43,7 @@ from plaid_client.provenance import (
 from plaid_client.constraints import CONSTRAINT_TYPES, value_set_allows, violations_of
 from plaid_client.created import created_id, created_ids
 from plaid_client.ids import uuid7
+from plaid_client.replayed import was_replayed
 from plaid_client.metadata_ops import (
     metadata_ops,
     apply_metadata_ops,
@@ -67,6 +68,7 @@ __all__ = [
     "created_id",
     "created_ids",
     "uuid7",
+    "was_replayed",
     "PlaidClient",
     "PlaidAPIError",
     "DOCUMENT_LOCK_TTL_S",

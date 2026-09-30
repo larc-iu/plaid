@@ -1896,6 +1896,8 @@ export interface KeySeed {
 }
 /** A fresh UUIDv7, for the id of something a client creates. */
 export function uuidv7(): string;
+/** Whether a write's answer was replayed from its Idempotency-Key's first send (`Idempotent-Replayed: true`), so it wrote nothing new. Marked on an object or list answer as a non-enumerable `replayed: true`. */
+export function wasReplayed(answer: unknown): boolean;
 export function createdId(result: any): string | undefined;
 /** The ids a bulk create answered with, in input order, read off the call's response or its batch result. Empty when it gave none. */
 export function createdIds(result: any): string[];

@@ -4260,4 +4260,5 @@ export { createdId, createdIds } from "./created.js";
 // UUIDv7 ids for what a client creates. See ./ids.js and the manual,
 // "Retrying a write".
 export { uuidv7 } from "./ids.js";
+export { wasReplayed } from "./replayed.js";
 export { MAX_BATCH_OPS };

@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PlaidClient, MAX_BATCH_OPS, uuidv7 } from "../src/index.js";
+import { PlaidClient, MAX_BATCH_OPS, uuidv7, wasReplayed } from "../src/index.js";
 import { retryUnknown, isUnknownOutcome } from "../src/http.js";
 
 const KEY = "idempotency-key";
@@ -532,4 +532,50 @@ test("an id-taken for a deleted row is a refusal, even for an id the operation m
   } finally {
     restore();
   }
+});
+
+// A replay inside the client's own resend (the first answer lost, the resend
+// answered from what the first send stored) is marked on the answer, so an
+// app can tell it wrote nothing new. The mark is not enumerable: the answer
+// reads, compares and serializes as before.
+test("an answer replayed from a key's first send is marked replayed", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  const { restore } = stubServer((r, n) =>
+    n === 0
+      ? new TypeError("fetch failed")
+      : response(201, { id: "s1" }, { "idempotent-replayed": "true" }),
+  );
+  let made;
+  let fresh;
+  try {
+    made = await client.spans.create("L", ["t"], "N");
+    restore();
+    const again = stubServer(() => response(201, { id: "s2" }));
+    fresh = await client.spans.create("L", ["t"], "M");
+    again.restore();
+  } finally {
+    restore();
+  }
+  assert.equal(wasReplayed(made), true);
+  assert.equal(made.replayed, true);
+  assert.deepEqual(Object.keys(made), ["id"]);
+  assert.equal(JSON.stringify(made), '{"id":"s1"}');
+  assert.equal(wasReplayed(fresh), false);
+  assert.equal(wasReplayed(null), false);
+  assert.equal(wasReplayed("text"), false);
+});
+
+test("a replayed list answer is marked, and a batch's too", async () => {
+  const client = new PlaidClient("http://x", "tok", fast);
+  const { restore } = stubServer(() =>
+    response(200, [{ id: "a" }], { "idempotent-replayed": "true" }),
+  );
+  let answer;
+  try {
+    answer = await client._request("POST", "/api/v1/batch", { body: [] });
+  } finally {
+    restore();
+  }
+  assert.equal(wasReplayed(answer), true);
+  assert.equal(answer.length, 1);
 });

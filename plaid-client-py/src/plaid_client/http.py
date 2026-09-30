@@ -9,6 +9,7 @@ from urllib.parse import urlencode, quote
 
 from plaid_client.ids import uuid7
 from plaid_client.transforms import transform_request, transform_response
+from plaid_client.replayed import mark_replayed
 
 logger = logging.getLogger(__name__)
 
@@ -994,9 +995,8 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
                                   historical=bool(query_params and query_params.get('as-of')))
         if not _learning_omitted_version:
             _learn_omitted_version_quietly(client)
-        if skip_response_transform:
-            return data
-        return transform_response(data)
+        answer = data if skip_response_transform else transform_response(data)
+        return mark_replayed(answer) if is_replayed(response.headers) else answer
     else:
         extract_document_versions(client, response.headers)
         if not _learning_omitted_version:

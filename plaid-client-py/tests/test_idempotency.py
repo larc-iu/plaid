@@ -15,7 +15,7 @@ from requests.structures import CaseInsensitiveDict
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from plaid_client import uuid7
+from plaid_client import uuid7, was_replayed
 from plaid_client.client import MAX_BATCH_OPS, PlaidClient
 from plaid_client.http import PlaidAPIError, is_unknown_outcome, retry_unknown
 
@@ -496,3 +496,35 @@ def test_an_id_taken_for_a_deleted_row_is_a_refusal_even_for_an_id_the_operation
         with client.operation('Gloss', minted=[new_id]):
             client.spans.create('L', ['t'], 'N', id=new_id)
     assert e.value.status == 409
+
+
+def test_an_answer_replayed_from_a_keys_first_send_is_marked_replayed():
+    # A replay inside the client's own resend is marked on the answer. The
+    # answer is still a dict (or list) that compares and serializes as before.
+    client = PlaidClient('http://x', 'tok', **FAST)
+
+    def answer(request, n):
+        if n == 0:
+            return requests_lib.ConnectionError('reset')
+        return _Resp(201, {'id': 's1'}, {'Idempotent-Replayed': 'true'})
+
+    _stub_server(client, answer)
+    made = client.spans.create('L', ['t'], 'N')
+    assert was_replayed(made)
+    assert made.replayed is True
+    assert made == {'id': 's1'}
+    assert isinstance(made, dict)
+    assert json.dumps(made) == '{"id": "s1"}'
+    _stub_server(client, lambda request, n: _Resp(201, {'id': 's2'}))
+    fresh = client.spans.create('L', ['t'], 'M')
+    assert not was_replayed(fresh)
+    assert not was_replayed(None)
+    assert not was_replayed('text')
+
+
+def test_a_replayed_list_answer_is_marked():
+    client = PlaidClient('http://x', 'tok', **FAST)
+    _stub_server(client, lambda request, n: _Resp(200, [{'id': 'a'}], {'Idempotent-Replayed': 'true'}))
+    answer = client._request('POST', '/api/v1/batch', body=[])
+    assert was_replayed(answer)
+    assert answer == [{'id': 'a'}]
