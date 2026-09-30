@@ -1,12 +1,12 @@
 // The folder of real sample files (FieldWorks backups, a .flextext, the SIL
 // sample projects) that the sample tests and live scripts read. They are too
 // large and not ours to check in, so each developer keeps them in
-// ~/.plaid-fixtures, or wherever PLAID_FIXTURES points.
+// ~/.plaid_fixtures, or wherever PLAID_FIXTURES points.
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-export const FIXTURES_DIR = process.env.PLAID_FIXTURES ?? join(homedir(), '.plaid-fixtures');
+export const FIXTURES_DIR = process.env.PLAID_FIXTURES ?? join(homedir(), '.plaid_fixtures');
 
 // A path inside the fixtures folder.
 export const fixture = (...parts) => join(FIXTURES_DIR, ...parts);

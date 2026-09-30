@@ -4,12 +4,12 @@ import { fixture, haveFixture } from '../src/test/fixturesDir.js';
 // The FLEx import review screen: upload the Lezgi backup, check the Lexicon
 // card (new lexicon with an editable name, or an existing one the user
 // maintains) and the opt-in Lexicon fields card. Nothing is imported; the
-// backup is a large local file, fwbackup/lezgi.fwbackup in the fixtures folder
+// backup is a large local file, lezgi.fwbackup in the fixtures folder
 // (src/test/fixturesDir.js), so the suite is skipped where it is absent. Point
 // PLAID_FWBACKUP at another copy to use that one (same override the .mjs FLEx
 // scripts take).
 
-const BACKUP = process.env.PLAID_FWBACKUP || fixture('fwbackup', 'lezgi.fwbackup');
+const BACKUP = process.env.PLAID_FWBACKUP || fixture('lezgi.fwbackup');
 
 test.describe.configure({ timeout: 180_000 });
 

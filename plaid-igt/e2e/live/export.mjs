@@ -23,7 +23,7 @@ import { newPreset } from '../../src/export/presets.js';
 import { runExport } from '../../src/export/runExport.js';
 import { fixture } from '../../src/test/fixturesDir.js';
 
-const BACKUP = fixture('fwbackup', 'lezgi.fwbackup');
+const BACKUP = fixture('lezgi.fwbackup');
 const KEEP = process.argv.includes('--keep');
 
 const failures = [];

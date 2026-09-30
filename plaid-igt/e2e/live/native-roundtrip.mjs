@@ -57,7 +57,7 @@ import { stripAttribution } from '../../src/import/native/commentAttribution.js'
 import { deriveSetupData, runNativeImport } from '../../src/import/native/importEngine.js';
 import { fixture } from '../../src/test/fixturesDir.js';
 
-const BACKUP = fixture('fwbackup', 'lezgi.fwbackup');
+const BACKUP = fixture('lezgi.fwbackup');
 const KEEP = process.argv.includes('--keep');
 
 // Key order is not a difference (deepEqual never treated it as one), so the

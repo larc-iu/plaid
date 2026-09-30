@@ -19,7 +19,7 @@ import { executeProjectSetup } from '../../src/components/projects/setup/execute
 import { IgtDocument } from '../../src/domain/IgtDocument.js';
 import { fixture } from '../../src/test/fixturesDir.js';
 
-const BACKUP = process.env.PLAID_FWBACKUP || fixture('fwbackup', 'lezgi.fwbackup');
+const BACKUP = process.env.PLAID_FWBACKUP || fixture('lezgi.fwbackup');
 const KEEP = process.argv.includes('--keep');
 const SMALL = process.argv.includes('--small');
 

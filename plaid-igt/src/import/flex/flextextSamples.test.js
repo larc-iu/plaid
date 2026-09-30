@@ -1,6 +1,6 @@
 // Real .flextext files, checked against the .fwbackup they came from. The 14
 // texts in lezgi.flextext (FieldWorks' own export, September 2022) are all in
-// fwbackup/lezgi.fwbackup (July 2022), both in the fixtures folder, under the same
+// lezgi.fwbackup (July 2022), both in the fixtures folder, under the same
 // guids, so the backup import is an oracle for the .flextext one: the same
 // words, the same text up to its spacing, and every gloss and analysis the
 // backup has. The .flextext is the later of the two, and holds analyses made
@@ -15,7 +15,7 @@ import { buildDocuments } from './buildDocuments.js';
 import { fixture, haveFixture } from '../../test/fixturesDir.js';
 
 const FLEXTEXT = fixture('lezgi.flextext');
-const BACKUP = fixture('fwbackup', 'lezgi.fwbackup');
+const BACKUP = fixture('lezgi.fwbackup');
 // Both are checked, so a run missing both names both.
 const missing = [FLEXTEXT, BACKUP].map((p) => haveFixture(p)).includes(false);
 

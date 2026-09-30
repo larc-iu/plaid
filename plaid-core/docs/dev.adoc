@@ -143,7 +143,7 @@ npm run dev
 The dev servers proxy API requests to the development server on port 8085. See each project's `vite.config.js`.
 JavaScript, JSX, and CSS in the apps and plaid-ui are formatted by Prettier, and plaid-core's Clojure by cljfmt, both applied to staged files by the tracked hook in `.githooks/` (enable once per clone with `git config core.hooksPath .githooks`).
 
-The tests and scripts that read real sample files (FieldWorks backups, `.flextext` exports) look for them in `~/.plaid-fixtures`, or in the folder the `PLAID_FIXTURES` environment variable names, and skip with a note when a file is missing.
+The tests and scripts that read real sample files (FieldWorks backups, `.flextext` exports) look for them in `~/.plaid_fixtures`, or in the folder the `PLAID_FIXTURES` environment variable names, and skip with a note when a file is missing.
 
 == Database Access
 
