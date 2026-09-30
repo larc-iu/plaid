@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import PlaidClient from '@larc-iu/plaid-client';
 import { reportIntegrityFindings } from '../lib/integrityToast.js';
 import { humanizeError, isUnknownOutcome, statusOf } from '../lib/errors.js';
 import { notifyError } from '../lib/notify.js';
@@ -41,17 +42,36 @@ const timedOut = (error) =>
   ['TimeoutError', 'AbortError'].includes(error?.originalError?.name) ||
   /\btimed out\b|\btimeout\b/i.test(String(error?.message || ''));
 
-export const repairFailure = (error) => {
+// `reachable` is false when the server did not answer a probe made after the
+// failure (`serverAnswers`): a 502 or a dropped connection then came from a
+// server that is down, not from an answer lost on the way back.
+export const repairFailure = (error, { reachable = true } = {}) => {
   if (statusOf(error) === 409) {
     return 'The document changed while it was being checked. Reload to check it again.';
   }
   if (isUnknownOutcome(error)) {
-    return timedOut(error)
-      ? 'The server did not answer in time. Reload to check the document again.'
-      : "The server's answer was lost. Reload to check the document again.";
+    if (timedOut(error)) {
+      return 'The server did not answer in time. Reload to check the document again.';
+    }
+    return reachable
+      ? "The server's answer was lost. Reload to check the document again."
+      : 'Failed to reach the server. Reload to check the document again.';
   }
   return `${withStop(humanizeError(error))} Reload to check the document again.`;
 };
+
+// Whether the server behind `client` answers now: its unauthenticated limits
+// read, briefly. A client with no address (a test double) counts as up.
+export const SERVER_PROBE_MS = 5000;
+export async function serverAnswers(client) {
+  if (!client?.baseUrl) return true;
+  try {
+    await PlaidClient.info(client.baseUrl, { timeout: SERVER_PROBE_MS });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // The client's batch timeout, set to the repair's while a repair runs on it.
 // Counted per client, since StrictMode's double invoke shares one pass between
@@ -151,7 +171,12 @@ export function useReconcileOnOpen({ doc, asOf, canWrite, enterStrictMode, onFai
         // a timeout or a transport error on a large document.
         if (result.error) {
           console.error('Repair on open failed:', result.error);
-          notifyError(repairFailure(result.error), REPAIR_FAILED);
+          const reachable =
+            !isUnknownOutcome(result.error) ||
+            timedOut(result.error) ||
+            (await serverAnswers(doc.client));
+          if (cancelled) return;
+          notifyError(repairFailure(result.error, { reachable }), REPAIR_FAILED);
           latest.current.onFailed?.(result.error);
           return;
         }

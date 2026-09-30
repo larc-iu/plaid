@@ -364,6 +364,70 @@ describe('the reconcile gate', () => {
     await view.unmount();
   });
 
+  // REV-W-FINAL N1: a 502 or a dropped connection from a server that is down
+  // is told apart by asking the server afterwards.
+  for (const [what, error] of [
+    ['a 502', { status: 502, message: 'HTTP 502 Bad Gateway at http://host/api/v1/batch' }],
+    [
+      'a dropped connection',
+      { status: 0, message: 'Network error: Failed to fetch at http://host/api/v1/batch' },
+    ],
+  ]) {
+    it(`says a repair that got ${what} from a server that is down failed to reach it`, async () => {
+      const fetch = vi.fn(() => Promise.reject(new TypeError('Failed to fetch')));
+      vi.stubGlobal('fetch', fetch);
+      try {
+        const failed = Object.assign(new Error(error.message), {
+          ...error,
+          method: 'POST',
+          url: 'http://host/api/v1/batch',
+        });
+        const doc = makeDoc({ findings: [], error: failed });
+        doc.client = { baseUrl: 'http://host' };
+        view = await renderComponent(<Probe {...base} doc={doc} />);
+        await view.step(async () => {
+          for (let i = 0; i < 10; i++) await Promise.resolve();
+        });
+        expect(fetch).toHaveBeenCalledWith('http://host/api/v1/info', expect.anything());
+        expect(notifyError).toHaveBeenCalledWith(
+          'Failed to reach the server. Reload to check the document again.',
+          'Failed to repair the document',
+        );
+        await view.unmount();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  }
+
+  it('says a repair whose answer was lost from a server that answers afterwards that it was lost', async () => {
+    const fetch = vi.fn(() =>
+      Promise.resolve(new Response(JSON.stringify({ limits: {} }), { status: 200 })),
+    );
+    vi.stubGlobal('fetch', fetch);
+    try {
+      const failed = Object.assign(new Error('HTTP 502 Bad Gateway'), {
+        status: 502,
+        method: 'POST',
+        url: 'http://host/api/v1/batch',
+      });
+      const doc = makeDoc({ findings: [], error: failed });
+      doc.client = { baseUrl: 'http://host' };
+      view = await renderComponent(<Probe {...base} doc={doc} />);
+      await view.step(async () => {
+        for (let i = 0; i < 10; i++) await Promise.resolve();
+      });
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(notifyError).toHaveBeenCalledWith(
+        "The server's answer was lost. Reload to check the document again.",
+        'Failed to repair the document',
+      );
+      await view.unmount();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('gives a big document more time, by the tokens it holds', async () => {
     const client = { batchTimeout: 180000 };
     let during;
