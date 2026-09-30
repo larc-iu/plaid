@@ -363,7 +363,8 @@ class PlanError(Exception):
     """
 
     def __init__(self, message: str, applied: int, total: int, unknown: bool = False,
-                 written: Optional[List[Any]] = None, members: Optional[Dict[Any, int]] = None):
+                 written: Optional[List[Any]] = None, members: Optional[Dict[Any, int]] = None,
+                 partly: Optional[List[Any]] = None):
         super().__init__(message)
         self.applied = applied
         self.total = total
@@ -374,6 +375,15 @@ class PlanError(Exception):
         #: Of each folded row not written in full, how many of its changes
         #: were (``TrackingBatcher.written_members``).
         self.members = members
+        #: The card rows another service wrote in part for the plan (a parse
+        #: that stopped partway), which no batch of the plan's counts. The
+        #: message says how much, in that service's words.
+        self.partly = list(partly or [])
+
+    @property
+    def wrote(self) -> bool:
+        """Whether anything the plan asked for may stand."""
+        return bool(self.applied or self.unknown or self.partly)
 
 
 def applying(ops: List[Dict[str, Any]], run) -> Dict[str, int]:

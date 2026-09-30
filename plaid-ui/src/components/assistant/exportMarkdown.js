@@ -43,13 +43,15 @@ export const replyToMarkdown = (text, citations, ctx) => {
   return `${out}\n\n**Cited examples**\n\n${inline.map((c) => cardToMarkdown(c, ctx)).join('\n\n')}`;
 };
 
-const planToMarkdown = (plan, status, interrupted, written) => {
-  const rows = plan.opCount ?? (plan.labels || []).length;
-  const outcome =
+// A plan that stopped partway says how much was written in the service's own
+// count (`outcome` on the record), which counts each change a folded row
+// stands for, as the card's message did.
+const planToMarkdown = (plan, status, interrupted, outcome) => {
+  const said =
     status === 'applied'
       ? 'Approved and applied.'
       : status === 'partial'
-        ? `Partly applied: ${(written || []).length} of ${rows} changes written.`
+        ? `Partly applied: ${outcome}`
         : status === 'discarded'
           ? 'Discarded.'
           : status === 'stale'
@@ -57,7 +59,7 @@ const planToMarkdown = (plan, status, interrupted, written) => {
             : interrupted
               ? 'Approved, but applying did not finish.'
               : 'Not yet approved.';
-  const lines = [`**Proposed changes:** ${plan.summary || ''} (${outcome})`, ''];
+  const lines = [`**Proposed changes:** ${plan.summary || ''} (${said})`, ''];
   (plan.labels || []).forEach((l, i) => lines.push(`${i + 1}. ${l}`));
   return lines.join('\n');
 };
@@ -93,7 +95,7 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
         const cited = namedCitations(d.citations, projectId, projectNamesAt(display, i));
         out.push(replyToMarkdown(d.text, cited, ctx), '');
       }
-      if (d.plan) out.push(planToMarkdown(d.plan, d.status, !!d.interrupted, d.written), '');
+      if (d.plan) out.push(planToMarkdown(d.plan, d.status, !!d.interrupted, d.outcome), '');
     }
   });
   return (

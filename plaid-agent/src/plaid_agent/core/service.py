@@ -62,6 +62,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlsplit
 
 from plaid_client import BaseService, DocumentLockLost, TASKS, service_source
+from plaid_client.http import PlaidAPIError
 from plaid_client.service import requester_message
 from plaid_client.workflows.llm import add_timeout_argument, provider_secrets
 
@@ -75,7 +76,7 @@ from .agent import (ModelConfig, ModelTooSlow, PING_TIMEOUT_S, Toolkit, TurnCanc
 from .files import Attachments
 from .guidelines import in_context as guidelines_in_context
 from .conversation import (ConversationStore, MissingConversation, assistant_item, build_meta, error_item,
-                           find_plan, partial_note, proposed_changes, prune, record_budget,
+                           find_plan, partial_note, partial_tally, proposed_changes, prune, record_budget,
                            settle_plan)
 from .opkind import ROW
 from .plan import (DocumentsBusy, PlanError, PlanOutOfDate, ScopeMoved, documents_to_lock, holding,
@@ -793,8 +794,14 @@ class BaseAssistantService(BaseService):
                                                requester=store.user_id, detail=detail)
                 except PlanError as e:
                     # History names what was written, not the whole plan.
-                    if e.applied or e.unknown:
-                        operation.set_message(self.partial_label(ops, e.written or [], summary))
+                    if e.wrote:
+                        partly_label = self.partial_label(ops, e.written or [], summary)
+                        operation.set_message(partly_label)
+                        if e.partly and not e.applied and not e.unknown:
+                            # Only another service wrote under the operation
+                            # (a parse), which the client does not count as a
+                            # write of its own, so it would skip the relabel.
+                            _relabel(client, operation.id, partly_label)
                     raise
         except ScopeMoved as e:
             # A corpus-wide change found again reaches documents the plan was
@@ -808,7 +815,7 @@ class BaseAssistantService(BaseService):
             # A write whose answer was lost may have landed, so it counts as
             # written: "Nothing was written" was false, and approving again
             # wrote the plan a second time over the first attempt's leftovers.
-            written = e.applied or e.unknown
+            written = e.wrote
             if written:
                 self._remember_applied(plan_id)
 
@@ -831,10 +838,17 @@ class BaseAssistantService(BaseService):
                 sizes = [int(op.get('count') or 1) if op.get('compact') else 1 for op in ops]
                 parts = {i: n for i, n in (e.members or {}).items() if 0 <= i < len(ops) and i not in done}
                 written_n = sum(sizes[i] for i in done if 0 <= i < len(ops)) + sum(parts.values())
+                # A row another service wrote in part (a parse that stopped
+                # partway) has no count here: its own message says how much.
+                partly = sorted({i for i in e.partly if 0 <= i < len(ops) and i not in done and i not in parts})
                 note = partial_note(labels, done, e.unknown, why,
-                                    parts={i: (n, sizes[i]) for i, n in parts.items()})
-                fields = {'written': done, **({'unknown': True} if e.unknown else {})}
-                said = (f'Partly applied: {written_n} of {sum(sizes)} changes written. '
+                                    parts={i: (n, sizes[i]) for i, n in parts.items()},
+                                    sizes=sizes, partly=partly)
+                # The count as the card says it, kept on the record for
+                # whatever shows the plan later (an exported conversation).
+                outcome = f'{partial_tally(written_n, sum(sizes), len(partly))}.'
+                fields = {'written': done, 'outcome': outcome, **({'unknown': True} if e.unknown else {})}
+                said = (f'Partly applied: {outcome} '
                         + ('The server did not answer for the rest.' if e.unknown else _sentence(why)))
                 if not settled(settle_plan(conv, index, 'partial', note, **fields)):
                     said += ' This conversation was changed elsewhere and does not show it.'
@@ -973,6 +987,16 @@ def _documents_named(client, documents: list, ids: List[str]) -> str:
     if rest:
         shown.append(f'{rest} more')
     return 'documents ' + (shown[0] if len(shown) == 1 else ', '.join(shown[:-1]) + ' and ' + shown[-1])
+
+
+def _relabel(client, group_id: str, label: str) -> None:
+    """Relabel an operation the client itself wrote nothing under. A group
+    nothing was written under does not exist (404), and has nothing to say."""
+    try:
+        client.operation_groups.update(group_id, label)
+    except PlaidAPIError as e:
+        if e.status != 404:
+            raise
 
 
 def _failure(client, documents: list, e: PlanError) -> str:

@@ -84,11 +84,39 @@ describe('a plan that stopped partway', () => {
   it('is exported as partly applied', () => {
     const conv = {
       display: [
-        { kind: 'assistant', text: 'Planned.', plan: three, status: 'partial', written: [1] },
+        {
+          kind: 'assistant',
+          text: 'Planned.',
+          plan: three,
+          status: 'partial',
+          written: [1],
+          outcome: '1 of 3 changes written.',
+        },
       ],
     };
     const md = conversationToMarkdown(conv, { title: 'T' }, { adapter: { ...adapter } });
     expect(md).toContain('(Partly applied: 1 of 3 changes written.)');
+  });
+
+  // conc-2026-09-29 REV-W-AUDIT: a row folding 600 changes, 400 of them
+  // written, was exported as "0 of 1" while the card said "400 of 600".
+  it('is exported with the count of the changes a folded row stands for', () => {
+    const folded = plan([{ label: 'dep on 600 words' }]);
+    const conv = {
+      display: [
+        {
+          kind: 'assistant',
+          text: 'Planned.',
+          plan: folded,
+          status: 'partial',
+          written: [],
+          outcome: '400 of 600 changes written.',
+        },
+      ],
+    };
+    const md = conversationToMarkdown(conv, { title: 'T' }, { adapter: { ...adapter } });
+    expect(md).toContain('(Partly applied: 400 of 600 changes written.)');
+    expect(md).not.toContain('0 of 1');
   });
 });
 

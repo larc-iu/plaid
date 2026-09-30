@@ -247,7 +247,9 @@ def _apply_set_head(ctx: Context, op) -> int:
 def _apply_run_parse(ctx: Context, op) -> int:
     n = 0
     for did in op['document_ids']:
-        _parse(ctx.client, op, did, ctx.notes, ctx.b, len(ctx.ops))
+        # A document parsed before this one stands, so a later failure leaves
+        # the row written in part.
+        _parse(ctx.client, op, did, ctx.notes, ctx.b, len(ctx.ops), parsed_before=n > 0)
         n += 1
     return n
 
@@ -754,25 +756,50 @@ def summarize(ops: List[Dict[str, Any]]) -> str:
     return ok.summarize(KIND, ops, ok.stored_count, common_first=True)
 
 
-def _parse(client, op, document_id: str, notes: List[str], b, total: int) -> None:
+def _parse(client, op, document_id: str, notes: List[str], b, total: int,
+           parsed_before: bool = False) -> None:
     """Ask the project's parser to re-parse one document, and wait.
 
     A plan may write to one document and parse another, so by the time the
     parser answers, earlier batches may already stand. The count comes from
-    the batcher rather than being assumed to be zero."""
+    the batcher rather than being assumed to be zero.
+
+    The parser writes with its own credentials, so none of its writes are in
+    that count. A parser that fails after writing some of its sentences says
+    how many in its own message ("230 of 300 sentences were parsed"), and the
+    document's version says whether it wrote anything at all. Either way the
+    row is written in part (``PlanError.partly``), never "Nothing was
+    written"."""
     from plaid_client.services import request_service
+    before = _version(client, document_id)
     try:
         request_service(client, op['project_id'], op['service_id'],
                         {'document_id': document_id, 'language': op['language'],
                          'overwrite': bool(op.get('overwrite'))},
                         timeout=PARSE_SILENCE_S)
-    except TimeoutError:
-        # The request outlives the call: the parse is probably still running,
-        # so saying it failed would be worse than saying what is true.
-        notes.append(f'the parser stopped reporting on {_doc_name(client, document_id)}, '
-                     f'and may still be running')
     except Exception as e:  # noqa: BLE001 - whatever the service said, the user needs it
-        raise PlanError(f'the parser refused {_doc_name(client, document_id)}: {e}', b.applied, total) from e
+        name = _doc_name(client, document_id)
+        if isinstance(e, TimeoutError) or getattr(e, 'pending', False):
+            # The request outlives the call: the parse is probably still
+            # running, so saying it failed would be worse than saying what is
+            # true. The same when the answer was lost on the way back.
+            notes.append(f'the parser stopped reporting on {name}, and may still be running')
+            return
+        moved = before is not None and _version(client, document_id) != before
+        said = (f'the parser stopped partway through {name}: {e}' if moved
+                else f'the parser refused {name}: {e}')
+        if not (moved or parsed_before):
+            raise PlanError(said, b.applied, total) from e
+        row = op.get(ok.ROW)
+        raise PlanError(said, b.applied, total, partly=[row] if row is not None else []) from e
+
+
+def _version(client, document_id: str) -> Optional[int]:
+    """The document's version, or None when it cannot be read."""
+    try:
+        return client.documents.get(document_id).get('version')
+    except Exception:  # noqa: BLE001 - a missing version only loses the comparison
+        return None
 
 
 def _doc_name(client, document_id: str) -> str:

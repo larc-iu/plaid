@@ -346,22 +346,43 @@ def settle_plan(conv: Dict[str, Any], index: int, status: Optional[str], note: O
     return {'messages': messages, 'display': display}
 
 
+def partial_tally(written_n: int, total: int, partly_n: int = 0, were: bool = False) -> str:
+    """How much of a plan that stopped partway was written, in one clause:
+    "400 of 600 changes written". ``written_n`` counts each change of a folded
+    row, ``partly_n`` the changes another service wrote in part (a parse that
+    stopped partway), which have no count of their own here. ``were`` reads
+    it as a sentence for the model rather than for the card."""
+    verb = 'were written' if were else 'written'
+    if not partly_n:
+        return f'{written_n} of {total} changes {verb}'
+    if not written_n:
+        return f'{partly_n} of {total} changes {verb} in part'
+    return f'{written_n} of {total} changes {verb}, and {partly_n} more in part'
+
+
 def partial_note(labels: Sequence[str], written: Sequence[int], unknown: bool, why: str,
-                 parts: Optional[Dict[int, Tuple[int, int]]] = None) -> str:
+                 parts: Optional[Dict[int, Tuple[int, int]]] = None,
+                 sizes: Optional[Sequence[int]] = None, partly: Sequence[int] = ()) -> str:
     """What the model is told of a plan that stopped partway (Luke's ruling
     Q4, 2026-09-29): how many of its changes were written, which, and which
     were not, so the next turn plans only what is missing. ``labels`` are the
-    card's rows, ``written`` the rows written in full, and ``parts`` for a
-    row that folds many changes and was written in part, how many of how
-    many."""
+    card's rows, ``written`` the rows written in full, ``parts`` for a row
+    that folds many changes and was written in part, how many of how many,
+    ``sizes`` how many changes each row folds (1 when not given), and
+    ``partly`` the rows another service wrote in part. The count leads with
+    changes, as the card does, not rows."""
     done = set(written)
     parts = parts or {}
+    sizes = list(sizes) if sizes is not None else [1] * len(labels)
+    partly = [i for i in partly if i not in done and i not in parts]
 
     def name(i):
         label = labels[i] or f'change {i + 1}'
         if i in parts:
             k, n = parts[i]
             label += f' ({k} of {n} written)'
+        elif i in partly:
+            label += ' (written in part)'
         return label
 
     def listed(rows):
@@ -370,7 +391,9 @@ def partial_note(labels: Sequence[str], written: Sequence[int], unknown: bool, w
         return '; '.join(shown) + (f'; and {more} more' if more > 0 else '')
     yes = [i for i in range(len(labels)) if i in done]
     no = [i for i in range(len(labels)) if i not in done]
-    out = f'(note) Applying stopped partway ({why}): {len(yes)} of {len(labels)} changes were written.'
+    written_n = sum(sizes[i] for i in yes) + sum(k for k, _ in parts.values())
+    out = (f'(note) Applying stopped partway ({why}): '
+           f'{partial_tally(written_n, sum(sizes), len(partly), were=True)}.')
     if yes:
         out += f' Written: {listed(yes)}.'
     # A change of several batches can be partly in the document (its first
