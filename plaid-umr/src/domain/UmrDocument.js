@@ -885,8 +885,9 @@ export class UmrDocument extends DocumentModel {
   //
   // Every edit shows at once and is sent in its turn (DocumentModel's
   // `_queueWrite`): validate, `_canWrite`, patch, queue the send. What an
-  // edit creates goes in under a pending id, and `_settle` puts the server's
-  // ids in its place once it answers. A send names every id through
+  // edit creates goes in under a pending id, which its create sends, so the
+  // server makes the row under that id and a create sent again names the
+  // same rows. `_settle` puts the server's ids in its place once it answers. A send names every id through
   // `settledId`, since an edit made while an earlier one was still queued can
   // hold that one's pending ids. Ids handed in by the canvas are settled on
   // the way in for the same reason.
@@ -905,6 +906,7 @@ export class UmrDocument extends DocumentModel {
     const info = this.layerInfo;
     b.tokens.bulkCreate(
       tokens.map((t) => ({
+        id: t.id,
         tokenLayerId: info.nodeTokenLayer.id,
         text: info.textLayer.text.id,
         begin: t.begin,
@@ -1088,16 +1090,25 @@ export class UmrDocument extends DocumentModel {
         const results = await this._client.batched((b) => {
           const queued = this._queuePieces(b, pieces);
           read = queued.read;
-          b.spans.create(info.conceptLayer.id, queued.refs, concept, {
-            ...stamp,
-            [UMR_NAMESPACE]: meta,
-          });
+          b.spans.create(
+            info.conceptLayer.id,
+            queued.refs,
+            concept,
+            { ...stamp, [UMR_NAMESPACE]: meta },
+            undefined,
+            { id: spanId },
+          );
           spanAt = b.ref().$ref;
           if (parent) {
-            b.relations.create(info.relationLayer.id, settledId(parent.id), b.ref(), role, {
-              ...stamp,
-              [UMR_NAMESPACE]: { order },
-            });
+            b.relations.create(
+              info.relationLayer.id,
+              settledId(parent.id),
+              b.ref(),
+              role,
+              { ...stamp, [UMR_NAMESPACE]: { order } },
+              undefined,
+              { id: edgeId },
+            );
           }
         });
         read(results, ids);
@@ -1470,6 +1481,8 @@ export class UmrDocument extends DocumentModel {
           settledId(target.id),
           role,
           { ...stamp, [UMR_NAMESPACE]: { order } },
+          undefined,
+          { id: edgeId },
         );
         this._settle(new Map([[edgeId, createdId(rel)]]));
       },
@@ -1670,6 +1683,8 @@ export class UmrDocument extends DocumentModel {
             settledId(edge.target),
             edge.role,
             { ...stamp, [UMR_NAMESPACE]: { order } },
+            undefined,
+            { id: newId },
           );
         });
         this._settle(new Map([[newId, createdId(results.at(-1))]]));
@@ -2001,7 +2016,9 @@ export class UmrDocument extends DocumentModel {
   _queueConstant(b, c) {
     const info = this.layerInfo;
     const pieces = this._queuePieces(b, [c.token]);
-    b.spans.create(info.conceptLayer.id, pieces.refs, c.name, c.span.metadata);
+    b.spans.create(info.conceptLayer.id, pieces.refs, c.name, c.span.metadata, undefined, {
+      id: c.span.id,
+    });
     const ref = b.ref();
     return {
       ref,
@@ -2083,10 +2100,15 @@ export class UmrDocument extends DocumentModel {
           };
           const from = end(newSource, sourceId);
           const to = end(newTarget, targetId);
-          b.relations.create(this.layerInfo.documentGraphLayer.id, from, to, rel, {
-            ...stamp,
-            [UMR_NAMESPACE]: meta,
-          });
+          b.relations.create(
+            this.layerInfo.documentGraphLayer.id,
+            from,
+            to,
+            rel,
+            { ...stamp, [UMR_NAMESPACE]: meta },
+            undefined,
+            { id: tripleId },
+          );
           tripleAt = b.ref().$ref;
         });
         reads.forEach((read) => read(results, ids));
@@ -2709,6 +2731,7 @@ export class UmrDocument extends DocumentModel {
           if (!pieces.length) return null;
           b.tokens.bulkCreate(
             pieces.map((p) => ({
+              id: p.id,
               tokenLayerId: info.nodeTokenLayer.id,
               text: info.textLayer.text.id,
               begin: p.begin,
@@ -2723,6 +2746,7 @@ export class UmrDocument extends DocumentModel {
           let k = 0;
           b.spans.bulkCreate(
             newNodes.map((n) => ({
+              id: n.id,
               spanLayerId: info.conceptLayer.id,
               tokens: n.pieces.map(() => pieceId(k++)),
               value: n.value,
@@ -2738,6 +2762,7 @@ export class UmrDocument extends DocumentModel {
           const bulk = (list, layerId) => {
             b.relations.bulkCreate(
               list.map((e) => ({
+                id: e.id,
                 relationLayerId: layerId,
                 source: nodeId(e.source),
                 target: nodeId(e.target),
