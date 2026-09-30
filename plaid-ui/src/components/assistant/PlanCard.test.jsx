@@ -63,7 +63,11 @@ describe('a plan that stopped partway', () => {
   const three = plan([{ label: 'a' }, { label: 'b' }, { label: 'c' }]);
 
   it('says how many of its changes were written, marks them, and offers nothing to approve', async () => {
-    const view = await mount(three, { status: 'partial', written: [0, 2] });
+    const view = await mount(three, {
+      status: 'partial',
+      written: [0, 2],
+      outcome: '2 of 3 changes written.',
+    });
     expect(byText(view.container, 'span, div', 'Partly applied')).not.toBeNull();
     expect(view.container.textContent).toContain('2 of 3 changes written.');
     expect(view.container.textContent).not.toContain('did not answer');
@@ -74,11 +78,41 @@ describe('a plan that stopped partway', () => {
   });
 
   it('says so when the server went quiet on the rest', async () => {
-    const view = await mount(three, { status: 'partial', written: [], unknown: true });
+    const view = await mount(three, {
+      status: 'partial',
+      written: [],
+      unknown: true,
+      outcome: '0 of 3 changes written.',
+    });
     expect(view.container.textContent).toContain(
       '0 of 3 changes written. The server did not answer for the rest.',
     );
     await view.unmount();
+  });
+
+  // conc-2026-09-29 REV-W-TAIL: a reopened conversation counted the card's
+  // rows, so a row folding 600 changes, 400 of them written, read "0 of 1",
+  // and so did a parse that stopped partway, while the toast and the export
+  // gave the service's count.
+  it("says the service's count for a folded row or a parse written in part", async () => {
+    const folded = plan([{ label: 'dep on 600 words' }]);
+    const view = await mount(folded, {
+      status: 'partial',
+      written: [],
+      outcome: '400 of 600 changes written.',
+    });
+    expect(view.container.textContent).toContain('400 of 600 changes written.');
+    expect(view.container.textContent).not.toContain('0 of 1');
+    await view.unmount();
+    const parse = plan([{ label: 'parse 1 document with Stanza parser (en)' }]);
+    const again = await mount(parse, {
+      status: 'partial',
+      written: [],
+      outcome: '1 of 1 changes written in part.',
+    });
+    expect(again.container.textContent).toContain('1 of 1 changes written in part.');
+    expect(again.container.textContent).not.toContain('0 of 1');
+    await again.unmount();
   });
 
   it('is exported as partly applied', () => {

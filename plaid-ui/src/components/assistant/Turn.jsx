@@ -274,6 +274,7 @@ export const Turn = ({
             plan={item.plan}
             status={item.status}
             written={item.written}
+            outcome={item.outcome}
             unknown={!!item.unknown}
             recordedAsHuman={item.asHuman}
             interrupted={interrupted}

@@ -19,9 +19,11 @@ import {
 export const PlanCard = ({
   plan,
   status,
-  // A plan that stopped partway: the rows written in full, and whether the
-  // server went quiet on the rest.
+  // A plan that stopped partway: the rows written in full, how much was
+  // written in the service's own count (a folded row counts each of its
+  // changes), and whether the server went quiet on the rest.
   written,
+  outcome,
   unknown = false,
   recordedAsHuman,
   interrupted,
@@ -113,7 +115,7 @@ export const PlanCard = ({
       {lost && <p className="mt-2 text-xs text-muted-foreground">Applying did not finish.</p>}
       {partial && (
         <p className="mt-2 text-xs text-muted-foreground">
-          {writtenRows.size} of {allRows.length} changes written.
+          {outcome}
           {unknown && ' The server did not answer for the rest.'}
         </p>
       )}
