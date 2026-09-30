@@ -126,29 +126,36 @@ describe('the preserveOnSplit declaration', () => {
   });
 });
 
-describe('the segmentsParent back-fill', () => {
-  it('declares it on the morpheme layer, naming what it read, and only when missing', async () => {
+describe('the plainEdits back-fill', () => {
+  it('declares it on the word, morpheme and alignment layers, naming what it read, and only when missing', async () => {
     const { doc, info, server } = setup();
-    await doc._backfillSegmentsParent(info);
-    const writes = server.sent.filter((s) => s.key === 'segmentsParent');
-    expect(writes).toEqual([
-      {
+    await doc._backfillPlainEdits(info);
+    const layers = [
+      info.primaryTokenLayer,
+      info.morphemeTokenLayer,
+      info.alignmentTokenLayer,
+    ].filter((l) => l?.id);
+    expect(layers.length).toBeGreaterThanOrEqual(2);
+    const writes = server.sent.filter((s) => s.key === 'plainEdits');
+    expect(writes).toEqual(
+      layers.map((l) => ({
         kind: 'token',
-        id: info.morphemeTokenLayer.id,
-        key: 'segmentsParent',
+        id: l.id,
+        key: 'plainEdits',
         value: true,
         options: { expected: undefined },
-      },
-    ]);
-    info.morphemeTokenLayer.config.plaid.segmentsParent = true;
-    await doc._backfillSegmentsParent(info);
-    expect(server.sent.filter((s) => s.key === 'segmentsParent')).toHaveLength(1);
+      })),
+    );
+    for (const l of layers)
+      l.config = { ...(l.config || {}), plaid: { ...(l.config?.plaid || {}), plainEdits: true } };
+    await doc._backfillPlainEdits(info);
+    expect(server.sent.filter((s) => s.key === 'plainEdits')).toHaveLength(layers.length);
   });
 
   it('lets a declaration another page made first stand', async () => {
     const { doc, info, server } = setup();
-    server.store.token[info.morphemeTokenLayer.id] = { plaid: { segmentsParent: false } };
-    await doc._backfillSegmentsParent(info);
-    expect(server.store.token[info.morphemeTokenLayer.id].plaid.segmentsParent).toBe(false);
+    server.store.token[info.morphemeTokenLayer.id] = { plaid: { plainEdits: false } };
+    await doc._backfillPlainEdits(info);
+    expect(server.store.token[info.morphemeTokenLayer.id].plaid.plainEdits).toBe(false);
   });
 });

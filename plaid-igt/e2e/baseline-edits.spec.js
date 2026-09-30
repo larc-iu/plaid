@@ -1,6 +1,6 @@
 import PlaidClient, {
   ROLES,
-  SEGMENTS_PARENT_KEY,
+  PLAIN_EDITS_KEY,
   PLAID_NAMESPACE,
   cpLength,
 } from '@larc-iu/plaid-client';
@@ -8,13 +8,13 @@ import { test, expect, seedAuth, readToken } from './fixtures.js';
 
 // The Baseline tab saves the edits typed in the box as edits at the caret
 // (texts.edit with the digest of the body they were typed over), so each one
-// stands where it was typed. A space typed inside a word analyzed as one
-// morpheme drops the morpheme and its gloss (Luke's ruling), and so does one
-// typed inside a word of several: igt stores each morpheme over the whole
-// word, so no place inside it is a morpheme boundary to the server (D28).
-// Backspace over a space keeps both words. Two tabs editing different passages both land, and the same passage
-// is refused for the second with its draft kept. After each save the screen
-// shows what a reload shows. Throwaway documents in "E2E IGT Fixture".
+// stands where it was typed. igt's word, morpheme and alignment layers take an
+// edit plainly (Luke, 2026-09-30): a space typed inside a word leaves one word
+// holding the space with its morphemes and glosses, letters typed at a word's
+// end join it, and Backspace over a space keeps both words. Two tabs editing
+// different passages both land, and the same passage is refused for the
+// second with its draft kept. After each save the screen shows what a reload
+// shows. Throwaway documents in "E2E IGT Fixture".
 
 const CORE = 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
@@ -34,12 +34,11 @@ test.beforeAll(async () => {
   const full = await client.projects.get(projectId);
   textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
   // what a maintainer's open back-fills, set here so the test does not race it
-  await client.tokenLayers.setConfig(
-    layer(ROLES.MORPHEME).id,
-    PLAID_NAMESPACE,
-    SEGMENTS_PARENT_KEY,
-    true,
-  );
+  for (const role of [ROLES.WORD, ROLES.MORPHEME, ROLES.TIME_ALIGNMENT]) {
+    if (layer(role)) {
+      await client.tokenLayers.setConfig(layer(role).id, PLAID_NAMESPACE, PLAIN_EDITS_KEY, true);
+    }
+  }
 });
 
 test.afterAll(async () => {
@@ -153,7 +152,7 @@ async function showsStored(page, documentId) {
   await expect(page.locator('p.whitespace-pre-wrap')).toHaveText(body);
 }
 
-test('a space typed in a glossed word of one morpheme drops the morpheme and its gloss', async ({
+test('a space typed in a glossed word of one morpheme keeps the word, the morpheme and its gloss', async ({
   page,
 }) => {
   const doc = await makeDocument('uno pumpkin tres');
@@ -164,12 +163,12 @@ test('a space typed in a glossed word of one morpheme drops the morpheme and its
   await save(page);
   await expect.poll(async () => (await stored(doc)).body).toBe('uno pum pkin tres');
   const s = await stored(doc);
-  expect(s.words).toEqual(['pkin', 'tres', 'uno']);
-  expect(s.morphemes).toEqual(['tres:TRES', 'uno:UNO']);
+  expect(s.words).toEqual(['pum pkin', 'tres', 'uno']);
+  expect(s.morphemes).toEqual(['pumpkin:PUMPKIN', 'tres:TRES', 'uno:UNO']);
   await showsStored(page, doc);
 });
 
-test('a space typed in a glossed word of two morphemes drops both and their glosses', async ({
+test('a space typed in a glossed word of two morphemes keeps both and their glosses', async ({
   page,
 }) => {
   const doc = await makeDocument('hh pqmrs', { 1: [2] });
@@ -180,8 +179,27 @@ test('a space typed in a glossed word of two morphemes drops both and their glos
   await save(page);
   await expect.poll(async () => (await stored(doc)).body).toBe('hh pq mrs');
   const s = await stored(doc);
-  expect(s.words).toEqual(['hh', 'mrs']);
-  expect(s.morphemes).toEqual(['hh:HH']);
+  expect(s.words).toEqual(['hh', 'pq mrs']);
+  expect(s.morphemes).toEqual(['hh:HH', 'mrs:MRS', 'pq:PQ']);
+  await showsStored(page, doc);
+});
+
+test('letters typed at the end of a word join it, and a word typed after a space does not', async ({
+  page,
+}) => {
+  const doc = await makeDocument('uno dos tres');
+  await openBaseline(page, doc);
+  await page.getByRole('button', { name: 'Edit text' }).click();
+  await caretAt(page, 3);
+  await page.keyboard.type('s');
+  await caretAt(page, 13);
+  await page.keyboard.type(' cuatro');
+  await save(page);
+  await expect.poll(async () => (await stored(doc)).body).toBe('unos dos tres cuatro');
+  const s = await stored(doc);
+  expect(s.words).toContain('unos');
+  expect(s.words).not.toContain('tres cuatro');
+  expect(s.morphemes).toEqual(expect.arrayContaining(['dos:DOS', 'tres:TRES', 'uno:UNO']));
   await showsStored(page, doc);
 });
 

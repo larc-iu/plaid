@@ -478,7 +478,9 @@ const CONFIG_KEYS = {
   'textLayers plaid.role': notData('structure, how every app finds the layer'),
   'tokenLayers plaid.role': notData('structure, how every app finds the layer'),
   'tokenLayers plaid.preserveOnSplit': notData('written by setup on every token layer'),
-  'tokenLayers plaid.segmentsParent': notData('written by setup on the morpheme layer'),
+  'tokenLayers plaid.plainEdits': notData(
+    'written by setup on the word, morpheme and alignment layers',
+  ),
   'tokenLayers igt.ignoredTokens': covers(
     'layers.ignoredTokensPunctuation',
     'layers.ignoredTokensLetterLike',
@@ -513,7 +515,7 @@ const IDENTIFIERS = {
   namespace: 'igt',
   ROLE_KEY: 'role',
   PRESERVE_ON_SPLIT_KEY: 'preserveOnSplit',
-  SEGMENTS_PARENT_KEY: 'segmentsParent',
+  PLAIN_EDITS_KEY: 'plainEdits',
   REVIEW_KEY: 'review',
   IMPORT_KEY: 'import',
 };

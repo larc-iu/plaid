@@ -6,7 +6,7 @@ import {
   PLAID_NAMESPACE,
   PRESERVE_ON_SPLIT_KEY,
   PROVENANCE_KEYS,
-  SEGMENTS_PARENT_KEY,
+  PLAIN_EDITS_KEY,
   writerPolicy,
   createdId,
 } from '@larc-iu/plaid-client';
@@ -616,28 +616,29 @@ export class IgtDocument extends DocumentModel {
     }
   }
 
-  // A morpheme spells a stretch of its word, and the layer says so, so that
-  // a space typed inside a word analyzed as one morpheme deletes that
-  // morpheme with its gloss, as a space typed inside any morpheme does. A
-  // project made before the key existed picks it up here. Maintainers only,
+  // A text edit grows or shrinks the word, morpheme and time-alignment tokens
+  // it lands in or touches, and never splits, joins or folds them (a word may
+  // hold a space, as a FLEx phrase does), when their layers say so. A project
+  // made before the key existed picks it up here. Maintainers only,
   // compare-and-set on the key alone, and a failure is let go: the next open
   // tries again.
-  async _backfillSegmentsParent(info) {
+  async _backfillPlainEdits(info) {
     if (!canManageProject(this._project, this._user)) return;
-    const layer = info?.morphemeTokenLayer;
-    if (!layer?.id || layer.config?.[PLAID_NAMESPACE]?.[SEGMENTS_PARENT_KEY] === true) return;
-    try {
-      await this._client.tokenLayers.setConfig(
-        layer.id,
-        PLAID_NAMESPACE,
-        SEGMENTS_PARENT_KEY,
-        true,
-        undefined,
-        expectStored(layer, PLAID_NAMESPACE, SEGMENTS_PARENT_KEY),
-      );
-    } catch (err) {
-      if (!isConfigConflict(err))
-        console.error('Could not declare segmentsParent on a layer:', err);
+    const layers = [info?.primaryTokenLayer, info?.morphemeTokenLayer, info?.alignmentTokenLayer];
+    for (const layer of layers) {
+      if (!layer?.id || layer.config?.[PLAID_NAMESPACE]?.[PLAIN_EDITS_KEY] === true) continue;
+      try {
+        await this._client.tokenLayers.setConfig(
+          layer.id,
+          PLAID_NAMESPACE,
+          PLAIN_EDITS_KEY,
+          true,
+          undefined,
+          expectStored(layer, PLAID_NAMESPACE, PLAIN_EDITS_KEY),
+        );
+      } catch (err) {
+        if (!isConfigConflict(err)) console.error('Could not declare plainEdits on a layer:', err);
+      }
     }
   }
 
@@ -714,7 +715,7 @@ export class IgtDocument extends DocumentModel {
       // a document. It has to be in place BEFORE a split, since provenance lost
       // that way leaves nothing for a later pass to find.
       await this._backfillPreserveOnSplit(info);
-      await this._backfillSegmentsParent(info);
+      await this._backfillPlainEdits(info);
       await this._backfillFieldLangs(info);
       const rules = await ensureLayerConstraints(
         this._client,
