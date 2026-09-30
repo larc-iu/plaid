@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@ui/components/ui/button';
 import { Textarea } from '@ui/components/ui/textarea';
 import { cpSlice } from '@larc-iu/plaid-client';
-import { mergeText } from '@ui/lib/textMerge.js';
+import { useEditLog } from '@ui/hooks/useEditLog.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { plural } from '@ui/lib/plural.js';
 import { containsToken } from '../../utils/udLayerUtils.js';
@@ -30,7 +30,6 @@ export const TextEditor = () => {
   const sentParam = searchParams.get('sent');
   const [flashSentId, setFlashSentId] = useState(null);
   const scrolledForRef = useRef(null);
-  const [textContent, setTextContent] = useState('');
   const [lastSaved, setLastSaved] = useState(null);
   const { getClient, user } = useAuth();
   const confirm = useConfirm();
@@ -91,30 +90,36 @@ export const TextEditor = () => {
   useDocumentTitle('Text Editor', doc?.name, project?.name);
 
   const serverText = doc.layerInfo.textLayer?.text?.body || '';
+  const serverDigest = doc.layerInfo.textLayer?.text?.digest ?? null;
+
+  // What was typed in the box, as edits over the stored body they were typed
+  // on (plaid-ui lib/editLog.js). The box shows the body the log makes, and
+  // its base is what a save sends the edits against (ConlluDocument.saveText).
+  const editLog = useEditLog();
+  const { log } = editLog;
+  const textContent = log.body;
+  // What a save on its way has sent, split off the log (`send`). The edits
+  // typed meanwhile are logged over the body it makes.
+  const [sending, setSending] = useState(null);
 
   // Mirror the server's text into the textarea whenever it changes underneath
-  // us: the initial load, a save's refetch, or a service that rewrote the
+  // us: the initial load, a save's answer, or a service that rewrote the
   // body. Keyed on the body itself rather than on the doc instance, so the
   // many emits from ordinary token edits don't stomp on what the user is
-  // typing. `seeded` is the stored body the box's text was typed over (the
-  // base a save merges from, see ConlluDocument.saveText). A draft is kept
-  // across a new body: its changes are put onto it, and when they touch a
-  // passage the new body changed too, the box and its base stay as they were.
-  // Done while rendering, so the box and the tokens change in one render.
-  const [seeded, setSeeded] = useState('');
+  // typing. A draft is kept across a new body: its edits are moved onto it,
+  // and when they touch a passage the new body changed too, the box and its
+  // base stay as they were. While a save is on its way the save settles the
+  // log itself (handleSaveText). Done while rendering, so the box and the
+  // tokens change in one render.
   const [mirrored, setMirrored] = useState({ documentId: null, body: null });
-  if (serverText && (mirrored.documentId !== documentId || mirrored.body !== serverText)) {
+  if (mirrored.documentId !== documentId || (serverText && mirrored.body !== serverText)) {
     setMirrored({ documentId, body: serverText });
-    const draft = mirrored.documentId === documentId && textContent !== seeded;
-    const merged = draft ? mergeText(seeded, textContent, serverText) : { text: serverText };
-    if (!merged.conflict) {
-      setTextContent(merged.text);
-      setSeeded(serverText);
+    const sameDocument = mirrored.documentId === documentId;
+    if (!sameDocument || !sending) {
+      if (sameDocument && log.body !== log.base) editLog.rebase(serverText, serverDigest);
+      else editLog.reset(serverText, serverDigest);
     }
   }
-  // The box's text as of the last render, for a save that resolves later.
-  const textNow = useRef('');
-  textNow.current = textContent;
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -139,34 +144,39 @@ export const TextEditor = () => {
   const handleSaveText = async () => {
     if (!doc) return;
     if (!textContent.trim() || doc.isSaving) return;
-    const sent = textContent;
+    const sent = editLog.send();
+    setSending(sent);
     let stored = null;
     const ok = await doc.saveText(sent, {
-      base: seeded,
-      onStored: (body) => {
-        stored = body;
+      onStored: (body, digest) => {
+        stored = { body, digest };
       },
     });
-    if (!ok || stored == null) return;
+    setSending(null);
+    const text = doc.layerInfo.textLayer?.text;
+    if (!ok || stored == null) {
+      // Not saved: the sent edits go back in the box's log, in front of what
+      // was typed since, and onto the stored body if it has moved on.
+      const back = editLog.unsend(sent);
+      const now = text?.body ?? '';
+      if (now && now !== back.base) editLog.rebase(now, text?.digest ?? null);
+      return;
+    }
     setLastSaved(new Date());
     // What was stored can hold another user's changes merged in. Text typed
     // while the save was on its way is kept, on top of it.
-    const now = textNow.current;
-    const rebased = now === sent ? { text: stored } : mergeText(sent, now, stored);
-    if (rebased.conflict) return;
-    setTextContent(rebased.text);
-    setSeeded(stored);
+    const now = text?.body === stored.body ? text : stored;
+    editLog.rebase(now.body, now.digest ?? null);
   };
 
   // The box's text and its base go back to what is stored.
   const handleDiscard = () => {
-    setTextContent(serverText);
-    setSeeded(serverText);
+    editLog.reset(serverText, serverDigest);
     setLastSaved(null);
   };
 
   const handleTextChange = (e) => {
-    setTextContent(e.target.value);
+    editLog.onChange(e);
     if (lastSaved) setLastSaved(null);
   };
 
@@ -260,7 +270,9 @@ export const TextEditor = () => {
   // load and that copy the two differ, and a draft that comes and goes in one
   // tick adds and takes out a history entry under the router.
   useUnsavedDraft(
-    canEditProject(project, user) && textContent !== seeded ? 'The text you have typed' : null,
+    canEditProject(project, user) && (sending || textContent !== log.base)
+      ? 'The text you have typed'
+      : null,
   );
   const hasTokens = sentenceTokens.length > 0 || wordTokens.length > 0 || morphemeTokens.length > 0;
 
@@ -271,7 +283,8 @@ export const TextEditor = () => {
   const isTextDirty = Boolean(originalTokenizedText) && textContent !== originalTokenizedText;
   // Typed over a body that has changed since, and not put onto it: the two
   // changed the same passage.
-  const behind = textContent !== seeded && Boolean(serverText) && seeded !== serverText;
+  const behind =
+    !sending && textContent !== log.base && Boolean(serverText) && log.base !== serverText;
   const hasText = Boolean(layerInfo.textLayer?.text?.body);
   const saving = doc.isSaving;
 
@@ -337,6 +350,7 @@ export const TextEditor = () => {
             ref={textareaRef}
             value={textContent}
             spellCheck={false}
+            {...editLog.handlers}
             onChange={handleTextChange}
             readOnly={readOnly}
             placeholder="Type or paste the text. One sentence per line."
@@ -348,7 +362,7 @@ export const TextEditor = () => {
             {!readOnly && (
               <Button
                 onClick={handleSaveText}
-                disabled={saving || !textContent.trim() || textContent === seeded}
+                disabled={saving || !textContent.trim() || textContent === log.base}
               >
                 Save
               </Button>

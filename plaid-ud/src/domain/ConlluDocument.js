@@ -12,6 +12,8 @@ import {
   isReservedMetadataKey,
   PRESERVE_ON_SPLIT_KEY,
   PROVENANCE_KEYS,
+  applyTextOps,
+  gapsToOps,
   stampInferred,
   writerPolicy,
 } from '@larc-iu/plaid-client';
@@ -31,7 +33,9 @@ import { notSetUp } from '../../../plaid-ui/src/domain/setupGuard.js';
 import { pendingId, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
 import { statusOf } from '../../../plaid-ui/src/lib/errors.js';
 import { expectStored, isConfigConflict } from '../../../plaid-ui/src/domain/configCells.js';
-import { mergeText } from '../../../plaid-ui/src/lib/textMerge.js';
+import { rebaseEdits } from '../../../plaid-ui/src/lib/textMerge.js';
+import { editLogGaps } from '../../../plaid-ui/src/lib/editLog.js';
+import { applyReshape } from '../../../plaid-ui/src/domain/textReshape.js';
 import { ensureLayerConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
 import { rulesNotInForce, wantedConstraints } from '../utils/udConstraints.js';
 import {
@@ -55,6 +59,17 @@ const LEMMA_FROM_FORM = stampInferred('rule:lemma-from-form');
 
 // What a text save whose draft cannot be put onto the stored text is refused with.
 const TEXT_CONFLICT = 'The same passage was changed elsewhere. Discard changes and redo the edit.';
+
+// What a text save is refused with when the stored text's digest cannot be read.
+const TEXT_UNREAD = 'The saved text could not be read. Try again.';
+
+// A write refused because its Idempotency-Key was used for another request
+// (plaid-ui lib/errors.js keeps its own copy of this test to itself).
+const isKeyReused = (err) =>
+  statusOf(err) === 422 && err?.responseData?.error === 'idempotency-key-reused';
+
+// The body `gaps` make of `base`.
+const gapsBody = (base, gaps) => applyTextOps(base, gapsToOps(gaps));
 
 export class ConlluDocument extends DocumentModel {
   constructor({ raw, client = null, projectId = null, project = null, user = null, asOf = null }) {
@@ -209,48 +224,144 @@ export class ConlluDocument extends DocumentModel {
   // Text-layer operations
   // ============================================================
 
-  // The server works out what a body edit does to the tokens over it
-  // (plaid.algos.text), which this cannot replay. The textarea already shows
-  // the new text, so the document is refetched once the send has landed.
+  // A text save sends the edits made in the box, as the net change over the
+  // body they were typed on (PATCH /texts/:id with `edits` and `base`, the
+  // digest of that body). The server works out what they do to the tokens
+  // over them (plaid.algos.text), which this cannot replay, and answers every
+  // row it changed, which is put on screen in place of a refetch.
   //
-  // `base` is the body the draft was typed over. The draft goes whole, so a
-  // draft typed on a copy someone else has since saved over would put their
-  // passages back as they were. When the stored body is no longer `base`,
-  // the draft's changes are merged onto it (`mergeText`) and the merged text
-  // is sent, and a save refused as out of date (409) is merged again onto
-  // what the refetch read. Changes to the same passage are refused.
-  // `onStored(body)` hears the body that was stored.
-  async saveText(newBody, { base = this.body, onStored = null } = {}) {
+  // `log` is the box's edit log (plaid-ui lib/editLog.js), or what
+  // `sendEditLog` split off it: `{ base, digest, gaps }`. A string is a whole
+  // new body, typed over the stored one (for scripts). `onStored(body,
+  // digest)` hears the body that was stored.
+  //
+  // What goes is a plan: the gaps, the body they are over and its digest,
+  // and a key seed of its own. It is kept outside the send, so a run of the
+  // send after a lost answer (the queue's resend) sends the same request
+  // under the same key, and a request that landed is answered from what it
+  // stored. Our own sent gaps are never moved onto a text read after a lost
+  // answer: that text may hold them already. A plan is made only before its
+  // first send, and again after a 409 `text-changed`, which says the request
+  // did not land: the gaps are moved onto the text read then (`rebaseEdits`)
+  // under a new seed. Changes to the same passage, or a move that could be
+  // read two ways, are refused and nothing is sent. No plan goes without a
+  // digest.
+  async saveText(log, { onStored = null } = {}) {
     const label = 'Failed to save text';
     if (!this._canWrite(label)) return false;
     const { textLayer } = this.layerInfo;
     const text = textLayer?.text;
     if (!text?.id && !textLayer?.id) return false;
+    if (typeof log === 'string') {
+      const stored = text?.id ? this._storedText(text.id) : { body: '', digest: null };
+      log = {
+        base: stored.body,
+        digest: stored.digest,
+        gaps: log === stored.body ? [] : [{ start: 0, end: [...stored.body].length, value: log }],
+      };
+    }
+    const typedBase = log.base ?? '';
+    const typedGaps = log.gaps ?? editLogGaps(log);
+    // Not `ready` until it is made to be sent (`_planText`).
+    const plan = {
+      base: typedBase,
+      digest: log.digest ?? null,
+      gaps: typedGaps,
+      keys: null,
+      ready: false,
+    };
     return this._queueWrite(
       label,
       async () => {
         if (!text?.id) {
-          await this._client.texts.create(textLayer.id, this.id, newBody);
-          onStored?.(newBody);
+          const body = gapsBody(typedBase, typedGaps);
+          await this._client.texts.create(textLayer.id, this.id, body);
+          onStored?.(body, null);
           return;
         }
         for (let attempt = 0; ; attempt += 1) {
-          const merged =
-            this.body === base ? { text: newBody } : mergeText(base, newBody, this.body);
-          if (merged.conflict) throw new Error(TEXT_CONFLICT);
+          if (!plan.ready) {
+            if (!(await this._planText(text.id, plan))) {
+              const now = this._storedText(text.id);
+              onStored?.(now.body, now.digest);
+              return;
+            }
+          }
+          let answer;
           try {
-            await this._client.texts.update(text.id, merged.text);
-            onStored?.(merged.text);
-            return;
+            answer = await this._client.withOperation(
+              label,
+              () =>
+                this._client.texts.edit(text.id, gapsToOps(plan.gaps), undefined, {
+                  base: plan.digest,
+                }),
+              { keys: plan.keys },
+            );
           } catch (err) {
-            if (statusOf(err) !== 409 || attempt >= 2) throw err;
+            if (isKeyReused(err)) {
+              // A request under this plan's key has landed, as some other
+              // request than this one: what is stored is what the save did.
+              await this._reloadInSend();
+              const now = this._storedText(text.id);
+              onStored?.(now.body, now.digest);
+              return;
+            }
+            const textChanged = statusOf(err) === 409 && err?.responseData?.['text-changed'];
+            // A lost answer goes to the queue, which runs this again with the
+            // plan as it is.
+            if (!textChanged || attempt >= 2) throw err;
+            await this._reloadInSend();
+            plan.ready = false;
+            continue;
+          }
+          if (typeof answer?.body === 'string') {
+            this._applyRawPatch((raw) => {
+              Object.assign(raw, applyReshape(raw, text.id, answer));
+            });
+          } else {
             await this._reloadInSend();
           }
+          const now = this._storedText(text.id);
+          onStored?.(now.body, now.digest);
+          return;
         }
       },
       undefined,
-      { reload: true },
+      { reload: !text?.id },
     );
+  }
+
+  // Makes `plan` (see saveText) ready to send on the text as last read: its
+  // gaps moved onto that body when it has moved on, the body's digest, which
+  // is read when not known, and a new key seed. False when it changes
+  // nothing. Throws when the gaps cannot be moved or no digest is known.
+  async _planText(textId, plan) {
+    for (let read = false; ; read = true) {
+      const stored = this._storedText(textId);
+      if (stored.body !== plan.base) {
+        const moved = rebaseEdits(plan.base, plan.gaps, stored.body);
+        if (moved.conflict) throw new Error(TEXT_CONFLICT);
+        plan.base = stored.body;
+        plan.gaps = moved.gaps;
+        plan.digest = stored.digest;
+      }
+      plan.digest ??= stored.digest;
+      if (plan.gaps.length === 0) return false;
+      if (plan.digest != null) break;
+      if (read) throw new Error(TEXT_UNREAD);
+      await this._reloadInSend();
+    }
+    plan.keys = this._client.keySeed?.() ?? null;
+    plan.ready = true;
+    return true;
+  }
+
+  // The body and digest of text `textId` as last read or answered.
+  _storedText(textId) {
+    const text = this.layerInfo.textLayer?.text;
+    return text?.id === textId
+      ? { body: text.body ?? '', digest: text.digest ?? null }
+      : { body: '', digest: null };
   }
 
   // ============================================================
