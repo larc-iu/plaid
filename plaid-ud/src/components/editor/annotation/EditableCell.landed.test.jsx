@@ -127,7 +127,7 @@ describe('a conflict that is not the cell’s own', () => {
     expect(noteOf(run.view)).toBe(null);
     expect(run.input.value).toBe('matA');
     expect(notifyError).toHaveBeenCalledWith(
-      'Changed elsewhere. Your value is kept in its cell, and leaving the cell sends it again.',
+      'Changed elsewhere. Your value is in its cell, not saved.',
       'Failed to update lemma',
     );
     await run.view.unmount();

@@ -41,11 +41,10 @@ export const changedTo = (who, stored) =>
 
 /**
  * The message for a cell edit refused as a conflict that is not the cell's
- * own (another change came first elsewhere), when the value is kept in the
- * cell and leaving the cell sends it again.
+ * own (another change came first elsewhere), when the value waits in its
+ * cell, drawn or not, to be sent again.
  */
-export const KEPT_IN_CELL =
-  'Changed elsewhere. Your value is kept in its cell, and leaving the cell sends it again.';
+export const KEPT_IN_CELL = 'Changed elsewhere. Your value is in its cell, not saved.';
 
 /** The toast for a refused cell edit whose row is gone: nothing to put it back into. */
 const NOT_SAVED = (typed) => `Not saved: ${typed}`;

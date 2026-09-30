@@ -414,7 +414,7 @@ describe('the toast for a refused cell edit', () => {
     expect(run.input.value).toBe('sitC');
     expect(feedback.notifyError).toHaveBeenCalledTimes(1);
     expect(feedback.notifyError).toHaveBeenCalledWith(
-      'Changed elsewhere. Your value is kept in its cell, and leaving the cell sends it again.',
+      'Changed elsewhere. Your value is in its cell, not saved.',
       'Failed to update lemma',
     );
     await run.view.unmount();
