@@ -1473,10 +1473,11 @@ def _gaps(ranges: List[tuple], begin: int, end: int) -> List[tuple]:
 
 def _write_text_edit(client, project, op: Dict[str, Any]) -> None:
     """Replace body[begin:end] (verified to still read ``old``) with ``new``
-    through the server's diffing text update, then give the edited region
-    the sentence boundaries its line starts call for and word tokens for
-    whatever text in it is untokenized, as the editor's baseline save plus
-    its tokenizer would."""
+    as edits at their place (``texts.edit`` with the digest of the body read),
+    so no word outside the region can be taken for the one changed, then give
+    the edited region the sentence boundaries its line starts call for and
+    word tokens for whatever text in it is untokenized, as the editor's
+    baseline save plus its tokenizer would."""
     from .project import find_layer
     from .project import split_words
     doc_id, text_id, new = op['document_id'], op.get('text_id'), op['new']
@@ -1490,7 +1491,8 @@ def _write_text_edit(client, project, op: Dict[str, Any]) -> None:
     if body[b:e] != op['old']:
         raise ValueError(f'the text no longer reads "{op["old"][:40]}" at {b}-{e}; the document changed since the plan was made')
     new_body = body[:b] + new + body[e:]
-    client.texts.update(text_id, new_body)
+    client.texts.edit(text_id, _region_edits(op['old'], new, b), None,
+                      base=((tl or {}).get('text') or {}).get('digest'), versioned=True)
     region_end = b + len(new)
 
     raw = client.documents.get(doc_id, include_body=True)
@@ -1518,6 +1520,19 @@ def _write_text_edit(client, project, op: Dict[str, Any]) -> None:
                        for wb, we in split_words(new_body, gb, ge, project.ignored_cfg))
     if creates:
         client.tokens.bulk_create(creates)
+
+
+def _region_edits(old: str, new: str, at: int) -> List[Dict[str, Any]]:
+    """Running edit ops (code points, as Python strings index) that make
+    ``new`` of ``old``, which stands at ``at`` in the body: each stretch that
+    changed, found by a diff of the region alone, so the letters the two share
+    stay where they were and the words over them keep their tokens."""
+    import difflib
+    from plaid_client import gaps_to_ops
+    gaps = [{'start': at + i1, 'end': at + i2, 'value': new[j1:j2]}
+            for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, old, new, autojunk=False).get_opcodes()
+            if tag != 'equal']
+    return gaps_to_ops(gaps)
 
 
 def summarize(ops: List[Dict[str, Any]]) -> str:

@@ -345,8 +345,22 @@ class _TextServer:
     def __init__(self, c):
         self.c = c
         c.texts.update = self.update  # replaces the fake's recording for this method
+        c.texts.edit = self.edit
+
+    def edit(self, text_id, edits, audit_message=None, *, base=None, versioned=None):
+        from plaid_client import apply_text_ops
+        tl = self.c._documents['d1']['text_layers'][0]
+        assert base is None or base == tl['text'].get('digest')
+        self._apply(apply_text_ops(tl['text']['body'], edits))
+        self.c.record('texts.edit', (text_id, edits))
+        return {'id': text_id}
 
     def update(self, text_id, body):
+        self._apply(body)
+        self.c.record('texts.update', (text_id, body))
+        return {'id': text_id}
+
+    def _apply(self, body):
         raw = self.c._documents['d1']
         tl = raw['text_layers'][0]
         old = tl['text']['body']
@@ -377,8 +391,6 @@ class _TextServer:
                 a['end'] = b2['begin']
             sents[-1]['end'] = len(body)
         tl['text']['body'] = body
-        self.c.record('texts.update', (text_id, body))
-        return {'id': text_id}
 
 
 def test_execute_append_splits_the_gap_filled_sentence_and_tokenizes_words():
@@ -402,7 +414,8 @@ def test_execute_append_splits_the_gap_filled_sentence_and_tokenizes_words():
     counts = execute_plan(c, [op], source='s', label='l', project=project)
     assert counts == {'text edits': 1}
     body = 'Ali-di gam akuna. Gam-ar.\nGam akuna.\n\n  Ali gam.'
-    assert ('texts.update', ('text1', body)) in c.writes
+    assert ('texts.edit', ('text1', [{'type': 'insert', 'index': 25, 'value': '\nGam akuna.\n\n  Ali gam.'}])) in c.writes
+    assert c._documents['d1']['text_layers'][0]['text']['body'] == body
     splits = c.payloads('tokens.split')
     assert splits == [('s-2', 26), ('s-2-r', 40)]   # the last sentence was gap-filled over the new text, then split per line
     bulk = c.payloads('tokens.bulk_create')[0]
@@ -423,7 +436,11 @@ def test_execute_retype_keeps_unchanged_words_and_verifies_the_region():
           'morpheme_ids': ['m-1a', 'm-1b', 'm-2'], 'label': ''}
     execute_plan(c, [op], source='s', label='l', project=project)
     body = 'Ali-di gam gam akuna. Gam-ar.'
-    assert ('texts.update', ('text1', body)) in c.writes
+    # the region's change alone, at its place, never a whole body to diff
+    [edits] = [args[1] for kind, args in c.writes if kind == 'texts.edit']
+    assert len(edits) == 1 and edits[0]['type'] == 'insert' and 6 <= edits[0]['index'] <= 17
+    assert not [kind for kind, _ in c.writes if kind == 'texts.update']
+    assert c._documents['d1']['text_layers'][0]['text']['body'] == body
     assert not c.payloads('tokens.split')  # no newline: no new sentence
     bulk = c.payloads('tokens.bulk_create')[0]
     assert [(t['begin'], t['end']) for t in bulk] == [(11, 14)]  # only the inserted "gam" is new; the rest survived
@@ -496,3 +513,11 @@ def test_a_single_delete_never_repeats_what_a_bulk_already_took():
     singles = c.payloads('tokens.delete')
     assert 'm-1b' not in singles and 'm-1a' not in singles
     assert c.payloads('tokens.bulk_delete') == [['m-1a', 'm-1b']]
+
+
+def test_a_text_edit_is_sent_at_its_place_so_a_twin_word_is_not_taken_for_it():
+    """REV-dumb-edits M1: `ab ab` with the first word deleted went as a whole
+    body, which the server's diff read as the second word deleted."""
+    from plaid_agent.igt.plan import _region_edits
+    assert _region_edits('ab ', '', 0) == [{'type': 'delete', 'index': 0, 'value': 3}]
+    assert _region_edits('cat sat', 'cot sat', 10) == [{'type': 'replace', 'index': 11, 'length': 1, 'value': 'o'}]
