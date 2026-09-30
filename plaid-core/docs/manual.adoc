@@ -1379,10 +1379,10 @@ The acquire answers with a `lockId`, and only that id renews or releases the loc
 A renewal only extends a live lock: once the lock has expired or an admin has dropped it, `renewLock` is refused with HTTP 423 even when nobody holds the document, because another user's edit may have landed in between.
 It is given to the holder alone: `checkLock`, a refused acquire and the admin list of locks name the user who holds the lock, never its id.
 Writes carry no lock id. A write to a locked document passes for the user who holds the lock and renews it. Anyone else's write is refused with HTTP 423.
-
 A lock covers the writes made to the document itself.
 A write made on a project or a vocabulary does not wait for it, even when it changes what a locked document holds: merging or deleting a vocabulary entry moves or removes the document's links to it, and deleting a layer removes what the document has in that layer.
 A holder that must not write over such a change writes in strict mode (see <<Strict Mode>>): after a merge or delete of an entry its document links to, its next write answers 409.
+
 An acquire may name its holder itself: `acquireLock(documentId, auditMessage, newLockId)` (`new_lock_id=` in Python, `?new-lock-id=` on the wire) takes the lock under an id the client minted, such as a fresh UUID.
 Sent again while that holder has the lock, it answers 200 with the same id, so an acquire whose answer was lost can be retried, and released, instead of standing in everyone's way until it expires.
 An id is spent once its holder releases it, even before the acquire arrives: an acquire held up in the network that lands after the release takes nothing and answers 423.
