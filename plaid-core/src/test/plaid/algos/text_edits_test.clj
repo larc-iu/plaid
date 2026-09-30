@@ -189,3 +189,15 @@
            (run "a wellknown x" [(rep 6 5 "-known")])))
     (is (= ["said John's x" [[0 "said"] [1 "John's"] [2 "x"] [[:m 0] "said"] [[:m 1] "John's"] [[:m 2] "x"]]]
            (run "said Johnn x" [(rep 9 1 "'s")])))))
+
+(deftest composing-many-ops-costs-what-they-move
+  ;; A long paste sent as one op per word, and the same typed a letter at a
+  ;; time: 40 s at 16k ops when each op walked the whole text.
+  (let [old (apply str (repeat 20000 "ab "))
+        per-word (vec (for [i (range 20000)] (ins (+ (* 3 i) (* 2 i)) "xy")))
+        t0 (System/nanoTime)
+        gaps (ta/compose-edits per-word old)
+        ms (/ (- (System/nanoTime) t0) 1e6)]
+    (is (= 20000 (count gaps)))
+    (is (= (ta/edit-ops-body per-word old) (ta/edit-ops-body (ta/gap-ops gaps) old)))
+    (is (< ms 5000) (str ms " ms"))))

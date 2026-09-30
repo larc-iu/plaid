@@ -3174,39 +3174,51 @@
               (if (= kind :old)
                 [[:old x (+ x k)] [:old (+ x k) y]]
                 [[:new (cp/cp-subs x 0 k) k] [:new (cp/cp-subs x k) (- y k)]]))
-        split-at (fn [segs p]
-                   ;; segs before new position p, and from it
-                   (loop [i 0 at 0]
-                     (if (< i (count segs))
-                       (let [seg (segs i) l (seg-len seg)]
-                         (cond
-                           (<= (+ at l) p) (recur (inc i) (+ at l))
-                           (= at p) [(subvec segs 0 i) (subvec segs i)]
-                           :else (let [[x y] (cut seg (- p at))]
-                                   [(conj (subvec segs 0 i) x) (into [y] (subvec segs (inc i)))])))
-                       [segs []])))
-        join (fn [out seg]
-               (let [prev (peek out)]
-                 (cond
-                   (zero? (seg-len seg)) out
-                   (and prev (= :new (first prev) (first seg)))
-                   (conj (pop out) [:new (str (second prev) (second seg)) (+ (nth prev 2) (nth seg 2))])
-                   (and prev (= :old (first prev) (first seg)) (= (nth prev 2) (second seg)))
-                   (conj (pop out) [:old (second prev) (nth seg 2)])
-                   :else (conj out seg))))
-        segs (reduce
-              (fn [segs op]
-                (let [len (reduce + 0 (map seg-len segs))
-                      type (check-op! op len)
-                      {:keys [index value length]} op
-                      k (case type :insert 0 :delete value :replace length)
-                      v (if (= type :delete) "" value)
-                      [before rest] (split-at segs index)
-                      [_ after] (split-at rest k)]
-                  (reduce join (reduce join [] before)
-                          (cons [:new v (cp/cp-count v)] after))))
-              (if (pos? n) [[:old 0 n]] [])
-              ops)
+        ;; A finger over the segments: `left` (a vector) before it, `right`
+        ;; (a list) after it, `pos` its place in the new text and `len` the
+        ;; new text's length. Each op moves the finger to its index, cutting a
+        ;; segment there, drops what it deletes from `right` and puts what it
+        ;; types on `left`, so ops near each other (typing, a paste split into
+        ;; many ops) cost what the finger moves, not the whole text.
+        segs (loop [ops (seq ops)
+                    left []
+                    right (if (pos? n) (list [:old 0 n]) ())
+                    pos 0
+                    len n]
+               (if-let [op (first ops)]
+                 (let [type (check-op! op len)
+                       {:keys [index value length]} op
+                       k (case type :insert 0 :delete value :replace length)
+                       v (if (= type :delete) "" value)
+                       vn (cp/cp-count v)
+                       ;; the finger to `index`
+                       [left right] (loop [left left right right pos pos]
+                                      (cond
+                                        (< index pos)
+                                        (let [seg (peek left) l (seg-len seg)]
+                                          (if (<= (- pos l) index)
+                                            (let [[x y] (cut seg (- index (- pos l)))]
+                                              [(conj (pop left) x) (conj right y)])
+                                            (recur (pop left) (conj right seg) (- pos l))))
+                                        (> index pos)
+                                        (let [seg (first right) l (seg-len seg)]
+                                          (if (<= index (+ pos l))
+                                            (let [[x y] (cut seg (- index pos))]
+                                              [(conj left x) (conj (rest right) y)])
+                                            (recur (conj left seg) (rest right) (+ pos l))))
+                                        :else [left right]))
+                       ;; `k` code points dropped after it
+                       right (loop [right right k k]
+                               (if (pos? k)
+                                 (let [seg (first right) l (seg-len seg)]
+                                   (if (<= l k)
+                                     (recur (rest right) (- k l))
+                                     (conj (rest right) (second (cut seg k)))))
+                                 right))]
+                   (recur (next ops) (conj left [:new v vn]) right (+ index vn) (+ (- len k) vn)))
+                 ;; runs of typed or kept text next to each other are read
+                 ;; as one below
+                 (into [] (remove #(zero? (seg-len %))) (concat left right))))
         ;; the gaps between the runs of old text that came through
         gaps (loop [segs segs pos 0 typed (StringBuilder.) out []]
                (let [[kind x y :as seg] (first segs)
