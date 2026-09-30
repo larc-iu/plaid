@@ -145,7 +145,14 @@ export const documentMutations = {
   // `rebaseEdits` and sent with its digest. Changes to the same passage are
   // refused, with the draft left in the tab. An edit never goes without the
   // digest it applies to.
-  async editBaselineText({ base, digest, gaps }) {
+  //
+  // `outcome`, when given, is told what became of a save that failed, for
+  // the tab to know whether its edits are stored: `landed`, the edit is
+  // stored (a step after it failed), and `conflict`, it was refused because
+  // the same passage changed elsewhere. A lost answer is no outcome: the
+  // queue sends the save again until it is answered, for as long as the page
+  // is open.
+  async editBaselineText({ base, digest, gaps }, outcome = {}) {
     const info = this.layerInfo;
     const primaryTextLayer = info.primaryTextLayer;
     if (!primaryTextLayer) {
@@ -166,33 +173,52 @@ export const documentMutations = {
     // keys, and is answered from what it stored. `keys` is null until the
     // plan is made on the stored text (`_planBaselineEdit`), and a plan made
     // again after a refusal takes new ones.
-    const plan = { base, digest, gaps, seed: false, keys: null };
+    const plan = { base, digest, gaps, seed: false, keys: null, sentUnder: null, landed: false };
+    Object.assign(outcome, { landed: false, conflict: false });
     return this._queueWrite('Failed to save baseline text', async () => {
-      if (await this._sendBaselineEdit(textId, plan)) await this._reloadInSend();
-      // An edit that took every sentence with it leaves a text with none, so
-      // the partition is seeded again, one sentence per line.
-      const body = this.body;
-      const sentencesAfter = this.layerInfo.sentenceTokenLayer?.tokens || [];
-      if (cpLength(body) > 0 && sentencesAfter.length === 0) {
-        await this._client.tokens.bulkCreate(
-          sentenceSeed(this.layerInfo.sentenceTokenLayer.id, textId, body),
-        );
-        await this._reloadInSend();
+      Object.assign(outcome, { landed: false, conflict: false });
+      try {
+        await this._saveBaselineEdit(textId, plan);
+      } catch (err) {
+        outcome.landed = plan.landed;
+        outcome.conflict =
+          !plan.landed && (err?.message === BASELINE_CONFLICT || statusOf(err) === 409);
+        throw err;
       }
     });
+  },
+
+  // The send of `editBaselineText`.
+  async _saveBaselineEdit(textId, plan) {
+    if (await this._sendBaselineEdit(textId, plan)) await this._reloadInSend();
+    // An edit that took every sentence with it leaves a text with none, so
+    // the partition is seeded again, one sentence per line.
+    const body = this.body;
+    const sentencesAfter = this.layerInfo.sentenceTokenLayer?.tokens || [];
+    if (cpLength(body) > 0 && sentencesAfter.length === 0) {
+      await this._client.tokens.bulkCreate(
+        sentenceSeed(this.layerInfo.sentenceTokenLayer.id, textId, body),
+      );
+      await this._reloadInSend();
+    }
   },
 
   // The edit half of `editBaselineText`, from inside its send. A text with no
   // sentences gets its partition in the same batch as the edit, measured on
   // the body the edit makes. A lost answer is sent again by the queue: the
   // plan is sent again as it was, under its keys, and answered from what the
-  // first send stored. Answers whether the document is to be read (the batch
-  // with the sentences is not patched from its answer).
+  // first send stored. Answers whether the document is to be read: the batch
+  // with the sentences is not patched from its answer, and an answer to a
+  // request sent before under the same keys may be the first one's, replayed,
+  // with the body as it was then. `plan.landed` is set once the edit is
+  // stored.
   async _sendBaselineEdit(textId, plan) {
     for (let attempt = 0; ; attempt += 1) {
       if (!plan.keys) await this._planBaselineEdit(plan, await this._storedText());
       const ops = gapsToOps(plan.gaps);
       const body = applyTextOps(plan.base, ops);
+      const again = plan.sentUnder === plan.keys && plan.keys != null;
+      plan.sentUnder = plan.keys;
       try {
         await underKeys(this._client, plan.keys, async () => {
           if (plan.seed) {
@@ -203,23 +229,26 @@ export const documentMutations = {
               b.texts.edit(textId, ops, undefined, { base: plan.digest, versioned: true });
               b.tokens.bulkCreate(sentenceSeed(sentenceLayerId, textId, body));
             });
+            plan.landed = true;
             return;
           }
           const answer = await this._client.texts.edit(textId, ops, undefined, {
             base: plan.digest,
           });
+          plan.landed = true;
           this._applyRawPatch((next, infoNext, vocabs) => {
             Object.assign(next, applyReshape(next, textId, answer));
             reshapeVocabLinks(vocabs, answer?.reshape);
           });
         });
-        return plan.seed;
+        return plan.seed || again;
       } catch (err) {
         // Its key was sent before with another request: an earlier run of
         // this save landed with its answer lost. Read what is stored.
         if (isKeyReused(err)) {
           const stored = await this._readStoredText();
-          if (stored.body === body) return false;
+          plan.landed = stored.body === body;
+          if (plan.landed) return false;
           throw new Error(BASELINE_CONFLICT, { cause: err });
         }
         if (statusOf(err) === 409 && attempt < 2) {

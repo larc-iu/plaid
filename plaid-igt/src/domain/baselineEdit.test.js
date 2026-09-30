@@ -337,3 +337,104 @@ describe('editBaselineText against the stored text', () => {
     expect(doc.vocabularies.v1.vocabLinks).toEqual([]);
   });
 });
+
+// The second review of the edit-operation path: what the Baseline tab is told
+// about a save that failed (G1), and the text shown after a replayed answer
+// (U1). Against a server that keeps what it stores.
+describe('editBaselineText: what became of a save', () => {
+  const open = (server) => {
+    const doc = new IgtDocument({
+      raw: structuredClone(server.stored),
+      project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
+      vocabularies: {},
+      client: server.client,
+      projectId: 'proj-1',
+      user: { id: 'a' },
+    });
+    doc._writes._retryDelay = () => 2;
+    doc.onError = () => {};
+    return doc;
+  };
+  const serve = (body) =>
+    segmentServer(
+      buildRawDoc({ body, words: [], morphemes: [], sentences: [{ id: 's-1', begin: 0, end: 7 }] }),
+    );
+  const append = {
+    base: 'the cat',
+    digest: digestOf('the cat'),
+    gaps: [{ start: 7, end: 7, value: 's' }],
+  };
+
+  it('a lost answer replayed after someone else saved: the text stored is shown (U1)', async () => {
+    const server = serve('the cat');
+    const doc = open(server);
+    server.loseNext(1);
+    const edit = server.client.texts.edit;
+    let n = 0;
+    server.client.texts.edit = async (...args) => {
+      n += 1;
+      try {
+        return await edit(...args);
+      } finally {
+        if (n === 1) server.otherSaves([{ type: 'insert', index: 0, value: 'a ' }]);
+      }
+    };
+    expect(await doc.editBaselineText(append)).toBe(true);
+    expect(server.answers()).toEqual(['lost', 'replayed']);
+    expect(server.body).toBe('a the cats');
+    expect(doc.body).toBe('a the cats');
+    expect(doc.layerInfo.primaryTextLayer.text.digest).toBe(server.digest);
+  });
+
+  it('landed, then the read after it failed: said to have landed (G1)', async () => {
+    const server = serve('the cat');
+    const doc = open(server);
+    // The text has no sentences, so the save is read back after it lands.
+    server.stored.textLayers[0].tokenLayers.find((l) => l.id === 'sentL').tokens = [];
+    doc._raw.textLayers[0].tokenLayers.find((l) => l.id === 'sentL').tokens = [];
+    const get = server.client.documents.get;
+    let reads = 0;
+    server.client.documents.get = async (...args) => {
+      reads += 1;
+      if (reads === 1) throw Object.assign(new Error('HTTP 500'), { status: 500, method: 'GET' });
+      return get(...args);
+    };
+    const outcome = {};
+    expect(await doc.editBaselineText(append, outcome)).toBe(false);
+    expect(server.body).toBe('the cats');
+    expect(outcome).toMatchObject({ landed: true });
+  });
+
+  // REV4 J1: letting the document go stops refetches only, so a save whose
+  // answer is lost is sent again after the screen has gone, until it lands.
+  it('its answer lost after the screen has gone: sent again until it lands, once (G1)', async () => {
+    const server = serve('the cat');
+    const doc = open(server);
+    doc._writes.letGo();
+    // Stored with its answer lost, then a proxy 502 that never reaches the
+    // server, then answered from its key.
+    server.loseNext(1);
+    const edit = server.client.texts.edit;
+    let calls = 0;
+    server.client.texts.edit = async (...args) => {
+      calls += 1;
+      if (calls === 2) throw Object.assign(new Error('HTTP 502'), { status: 502, method: 'PATCH' });
+      return edit(...args);
+    };
+    expect(await doc.editBaselineText(append)).toBe(true);
+    expect(calls).toBe(3);
+    expect(server.answers()).toEqual(['lost', 'replayed']);
+    expect(server.body).toBe('the cats');
+    expect(doc.body).toBe('the cats');
+  });
+
+  it('refused because the same passage changed: said to be a conflict, not landed (U3)', async () => {
+    const server = serve('the cat');
+    const doc = open(server);
+    server.otherSaves([{ type: 'insert', index: 7, value: '!' }]);
+    const outcome = {};
+    expect(await doc.editBaselineText(append, outcome)).toBe(false);
+    expect(outcome).toEqual({ landed: false, conflict: true });
+    expect(server.body).toBe('the cat!');
+  });
+});

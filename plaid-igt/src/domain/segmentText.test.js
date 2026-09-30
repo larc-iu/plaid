@@ -200,10 +200,10 @@ describe('made again after a refusal', () => {
     expect(server.body).toBe('one dos three');
   });
 
-  it('writes a speaker this edit set, over the one stored', async () => {
+  it('writes a speaker this edit set, beside a time someone else set', async () => {
     const server = segmentServer(RAW());
     const doc = open(server);
-    server.otherRelabels('a-2', { speaker: 'Maria', timeEnd: 1.8 });
+    server.otherRelabels('a-2', { timeEnd: 1.8 });
     const edit = { text: 'dos', timeBegin: 1, timeEnd: 2, speaker: 'Ana' };
     expect(await doc.editAlignment('a-2', edit)).toBe(true);
     await idle(doc);

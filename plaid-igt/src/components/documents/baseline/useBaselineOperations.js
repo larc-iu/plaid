@@ -15,8 +15,17 @@ import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 // send: what is typed meanwhile is kept as edits of the text sent. When the
 // save lands with nothing typed since, the tab leaves edit mode. Otherwise it
 // stays in it, over the text stored, with what was typed since moved onto
-// that text (or kept as typed when it cannot be). A save that fails puts its
-// edits back in front of what was typed since.
+// that text (or kept as typed when it cannot be). A save that is refused puts
+// its edits back in front of what was typed since. One that landed and then
+// failed at a step after it does not: its edits never come back into the
+// draft, and what was typed since is moved onto the text stored, as after a
+// save that landed. A save whose answer is lost is sent again until it is
+// answered (the document's write queue), so it ends as one or the other.
+//
+// `changedElsewhere` is true while the draft cannot go onto the text stored
+// because the same passage was changed elsewhere: a save refused for it, or
+// text typed during a save that landed that cannot be moved onto it. It lasts
+// until the next save or Cancel.
 export const useBaselineOperations = () => {
   const { doc } = useDocumentCtx();
   useDocumentModel(doc);
@@ -32,6 +41,7 @@ export const useBaselineOperations = () => {
   // the body stored by then (see editBaselineText), so a passage someone else
   // saved meanwhile is not put back as it was here.
   const [base, setBase] = useState('');
+  const [changedElsewhere, setChangedElsewhere] = useState(false);
   const editLog = useEditLog();
 
   const handleEdit = () => {
@@ -42,6 +52,7 @@ export const useBaselineOperations = () => {
   };
 
   const handleCancel = () => {
+    setChangedElsewhere(false);
     setEditedText('');
     setBase('');
     editLog.reset('');
@@ -75,17 +86,20 @@ export const useBaselineOperations = () => {
       return;
     }
     setSaving(true);
+    setChangedElsewhere(false);
     const sent = editLog.send();
     // What was sent, as the base of what is typed while it is on its way.
     setBase(shown(applyTextOps(sent.base, gapsToOps(sent.gaps))));
-    const ok = await doc.editBaselineText(sent);
+    const outcome = {};
+    const ok = await doc.editBaselineText(sent, outcome);
     setSaving(false);
-    if (!ok) {
+    if (!ok && !outcome.landed) {
       editLog.unsend(sent);
       setBase(base);
+      setChangedElsewhere(!!outcome.conflict);
       return;
     }
-    notifySuccess('Baseline text saved');
+    if (ok) notifySuccess('Baseline text saved');
     if (editLog.gaps().length === 0) {
       handleCancel();
       return;
@@ -95,7 +109,10 @@ export const useBaselineOperations = () => {
     const stored = doc.body || '';
     const storedDigest = doc.layerInfo?.primaryTextLayer?.text?.digest ?? null;
     const moved = editLog.rebase(stored, storedDigest);
-    if (moved.conflict) return;
+    if (moved.conflict) {
+      setChangedElsewhere(true);
+      return;
+    }
     setBase(shown(stored));
     setEditedText(moved.body);
   };
@@ -122,6 +139,7 @@ export const useBaselineOperations = () => {
     isEditing,
     saving,
     editedText,
+    changedElsewhere,
 
     handleEdit,
     handleCancel,

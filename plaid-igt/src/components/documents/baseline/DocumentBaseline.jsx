@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Info, Pencil, Save, X } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Label } from '@ui/components/ui/label';
+import { Notice } from '@ui/components/shared/Notice.jsx';
 import { Textarea } from '@ui/components/ui/textarea';
 import { NOT_SET_UP } from '@ui/domain/setupGuard.js';
 import { useBaselineOperations } from './useBaselineOperations.js';
@@ -81,6 +82,11 @@ export function DocumentBaseline() {
                   className="resize-none overflow-auto"
                   required
                 />
+                {ops.changedElsewhere && (
+                  <Notice tone="warning" role="alert">
+                    Changed elsewhere in the same passage.
+                  </Notice>
+                )}
               </div>
 
               {ops.body?.trim() ? (

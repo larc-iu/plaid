@@ -36,11 +36,14 @@ describe('useBaselineOperations', () => {
     // A refetch (a refused save, another tab's write) brings a newer body.
     await h.setInputs({ doc: { ...doc, body: 'the fish' } });
     await act(async () => h.api.handleSave());
-    expect(doc.editBaselineText).toHaveBeenCalledWith({
-      base: 'the big fish',
-      digest: 'd0',
-      gaps: [{ start: 12, end: 12, value: ' swam' }],
-    });
+    expect(doc.editBaselineText).toHaveBeenCalledWith(
+      {
+        base: 'the big fish',
+        digest: 'd0',
+        gaps: [{ start: 12, end: 12, value: ' swam' }],
+      },
+      expect.anything(),
+    );
     h.unmount();
   });
 
@@ -115,11 +118,14 @@ describe('useBaselineOperations', () => {
       expect(hasUnsavedDraft()).toBe('The baseline text you have typed');
       doc.editBaselineText = vi.fn(async () => true);
       await act(async () => h.api.handleSave());
-      expect(doc.editBaselineText).toHaveBeenCalledWith({
-        base: 'one two',
-        digest: 'd1',
-        gaps: [{ start: 7, end: 7, value: ' three' }],
-      });
+      expect(doc.editBaselineText).toHaveBeenCalledWith(
+        {
+          base: 'one two',
+          digest: 'd1',
+          gaps: [{ start: 7, end: 7, value: ' three' }],
+        },
+        expect.anything(),
+      );
       h.unmount();
     });
 
@@ -137,11 +143,14 @@ describe('useBaselineOperations', () => {
       expect(h.api.editedText).toBe('zero one two three');
       doc.editBaselineText = vi.fn(async () => true);
       await act(async () => h.api.handleSave());
-      expect(doc.editBaselineText).toHaveBeenCalledWith({
-        base: 'zero one two',
-        digest: 'd2',
-        gaps: [{ start: 12, end: 12, value: ' three' }],
-      });
+      expect(doc.editBaselineText).toHaveBeenCalledWith(
+        {
+          base: 'zero one two',
+          digest: 'd2',
+          gaps: [{ start: 12, end: 12, value: ' three' }],
+        },
+        expect.anything(),
+      );
       h.unmount();
     });
 
@@ -157,11 +166,126 @@ describe('useBaselineOperations', () => {
       expect(h.api.editedText).toBe('one two three');
       doc.editBaselineText = vi.fn(async () => true);
       await act(async () => h.api.handleSave());
-      expect(doc.editBaselineText).toHaveBeenCalledWith({
-        base: 'one',
-        digest: 'd0',
-        gaps: [{ start: 3, end: 3, value: ' two three' }],
+      expect(doc.editBaselineText).toHaveBeenCalledWith(
+        {
+          base: 'one',
+          digest: 'd0',
+          gaps: [{ start: 3, end: 3, value: ' two three' }],
+        },
+        expect.anything(),
+      );
+      h.unmount();
+    });
+  });
+
+  // The second review of the edit-operation path (G1, U2, U3).
+  describe('a save that failed after it landed, and a conflict', () => {
+    const typeAndSave = async (doc) => {
+      const h = await mountDocumentHook(useBaselineOperations, { doc });
+      await act(async () => h.api.handleEdit());
+      await act(async () =>
+        h.api.editLogHandlers.onKeyDown({ target: { selectionStart: 3, selectionEnd: 3 } }),
+      );
+      await act(async () => h.api.handleTextChange(typed('one two')));
+      let saved;
+      await act(async () => {
+        saved = h.api.handleSave();
       });
+      return { h, saved };
+    };
+    // A save that stored the edit and then failed at a step after it: the
+    // document is read again after it.
+    const failsAfter = (answer) =>
+      vi.fn(async (sent, outcome) => {
+        await answer.promise;
+        doc.body = 'one two';
+        doc.layerInfo.primaryTextLayer.text.digest = 'd1';
+        Object.assign(outcome, { landed: true, conflict: false });
+        return false;
+      });
+    let doc;
+
+    it('landed: the edits sent are not put back in the draft, and what was typed since is kept (G1)', async () => {
+      const answer = deferred();
+      doc = withDigest({ body: 'one' });
+      doc.editBaselineText = failsAfter(answer);
+      const { h, saved } = await typeAndSave(doc);
+      await act(async () => h.api.handleTextChange(typed('one two three')));
+      await act(async () => {
+        answer.resolve();
+        await saved;
+      });
+      expect(h.api.isEditing).toBe(true);
+      expect(h.api.editedText).toBe('one two three');
+      doc.editBaselineText = vi.fn(async () => true);
+      await act(async () => h.api.handleSave());
+      expect(doc.editBaselineText.mock.calls[0][0]).toEqual({
+        base: 'one two',
+        digest: 'd1',
+        gaps: [{ start: 7, end: 7, value: ' three' }],
+      });
+      h.unmount();
+    });
+
+    it('landed, nothing typed since: the box closes with no draft (G1)', async () => {
+      const answer = deferred();
+      doc = withDigest({ body: 'one' });
+      doc.editBaselineText = failsAfter(answer);
+      const { h, saved } = await typeAndSave(doc);
+      await act(async () => {
+        answer.resolve();
+        await saved;
+      });
+      expect(h.api.isEditing).toBe(false);
+      expect(hasUnsavedDraft()).toBe(null);
+      h.unmount();
+    });
+
+    it('refused because the same passage changed: says so until the next save or Cancel (U3)', async () => {
+      doc = withDigest({
+        body: 'one',
+        editBaselineText: vi.fn(async (sent, outcome) => {
+          Object.assign(outcome, { landed: false, conflict: true });
+          return false;
+        }),
+      });
+      const { h, saved } = await typeAndSave(doc);
+      await act(async () => saved);
+      expect(h.api.changedElsewhere).toBe(true);
+      expect(h.api.editedText).toBe('one two');
+      await act(async () => h.api.handleTextChange(typed('one two!')));
+      expect(h.api.changedElsewhere).toBe(true);
+      await act(async () => h.api.handleCancel());
+      expect(h.api.changedElsewhere).toBe(false);
+      h.unmount();
+    });
+
+    it('a failure that is no conflict says nothing lasting', async () => {
+      doc = withDigest({ body: 'one', editBaselineText: vi.fn(async () => false) });
+      const { h, saved } = await typeAndSave(doc);
+      await act(async () => saved);
+      expect(h.api.changedElsewhere).toBe(false);
+      h.unmount();
+    });
+
+    it('landed, with what was typed since not movable onto the text stored: says so (U2)', async () => {
+      const answer = deferred();
+      doc = withDigest({ body: 'one', editBaselineText: vi.fn(() => answer.promise) });
+      const { h, saved } = await typeAndSave(doc);
+      // Typed over the word someone else changes meanwhile.
+      await act(async () =>
+        h.api.editLogHandlers.onKeyDown({ target: { selectionStart: 0, selectionEnd: 3 } }),
+      );
+      await act(async () => h.api.handleTextChange(typed('ONE two', 3)));
+      await act(async () => {
+        doc.body = 'uno two';
+        doc.layerInfo.primaryTextLayer.text.digest = 'd2';
+        answer.resolve(true);
+        await saved;
+      });
+      expect(h.api.isEditing).toBe(true);
+      expect(h.api.editedText).toBe('ONE two');
+      expect(h.api.changedElsewhere).toBe(true);
       h.unmount();
     });
   });

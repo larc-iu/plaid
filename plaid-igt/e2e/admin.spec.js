@@ -91,10 +91,16 @@ test('a chosen order survives leaving the page and coming back', async ({ page }
   const initial = await names();
   expect(initial.length).toBeGreaterThan(1);
 
+  // The chosen order has to differ from the opening one (newest change
+  // first), or remembering it proves nothing. When A to Z reads the same,
+  // Z to A is chosen instead.
   await nameHeader.click();
-  const ascending = await names();
-  // The click has to have done something, or remembering it proves nothing.
-  expect(ascending).not.toEqual(initial);
+  let chosen = await names();
+  if (chosen.join('\n') === initial.join('\n')) {
+    await nameHeader.click();
+    await expect.poll(names).not.toEqual(initial);
+    chosen = await names();
+  }
 
   // Leave the admin area entirely, then return.
   await page.goto('/#/projects');
@@ -106,8 +112,8 @@ test('a chosen order survives leaving the page and coming back', async ({ page }
   // meanwhile. What must hold is the order of the names in both readings.
   const after = await names();
   const inBoth = (a, b) => a.filter((n) => b.includes(n));
-  expect(inBoth(after, ascending)).toEqual(inBoth(ascending, after));
-  expect(inBoth(after, ascending).length).toBeGreaterThan(1);
+  expect(inBoth(after, chosen)).toEqual(inBoth(chosen, after));
+  expect(inBoth(after, chosen).length).toBeGreaterThan(1);
 });
 
 test('a blank sorts as the smallest value, not pinned to the bottom', async ({ page }) => {

@@ -275,40 +275,69 @@ const planDeleteText = (body, segment) => {
 
 const timesOf = (t) => [t.metadata?.timeBegin ?? 0, t.metadata?.timeEnd ?? 0];
 
-// The ids of the segments `info` holds, settled, for `segmentNow`.
+// The ids of the segments `info` holds, settled.
 const segmentIds = (info) =>
   new Set((info.alignmentTokenLayer?.tokens || []).map((t) => settledId(t.id)));
 
+const speakerOf = (t) => t.metadata?.speaker ?? null;
+
+// The segments `info` holds, by settled id, each as `{ times, speaker }`: what
+// `segmentNow` knows of them when a write is made.
+const segmentsAt = (info) =>
+  new Map(
+    (info.alignmentTokenLayer?.tokens || []).map((t) => [
+      settledId(t.id),
+      { times: timesOf(t), speaker: speakerOf(t) },
+    ]),
+  );
+
+// Whether two segments, `{ times, speaker }` each, could be one segment: one
+// speaker, and times that overlap (or are the same, for a segment of no length).
+const sameVoice = (a, b) => {
+  const [b1, e1] = a.times;
+  const [b2, e2] = b.times;
+  const overlap = (b1 < e2 && b2 < e1) || (b1 === b2 && e1 === e2);
+  return a.speaker === b.speaker && overlap;
+};
+
 // The segment a write names, as the document `info` holds it now: by its id
-// (settled, since the write may have been made while it was pending), else the
-// one new segment over the same time span, which is what another writer's
-// edit of its text leaves (an edit makes the token again). `known` holds the
-// segments there when the write was made: one of them is its own segment, not
-// this one made again, so two speakers over one span are never taken for each
-// other. `{ segment, same }`, `same` false when it is only the one over the
-// same time, and `segment` null when there is no one such segment.
-const segmentNow = (info, id, times, known) => {
+// (settled, since the write may have been made while it was pending), else
+// its successor, what another writer's edit of its text leaves (an edit makes
+// the token again, and the times may have been moved since too). `known` is
+// `segmentsAt` when the write was made. The successor is the one segment not
+// among them, of the same speaker, over times that overlap the planned ones,
+// and it is taken only when no other segment known then could be what it
+// was made again from. So a segment of another speaker, or one that more
+// than one could have become, is never taken for it. `{ segment, same }`,
+// `same` false when it is the successor, and `segment` null when there is
+// none.
+const segmentNow = (info, id, known) => {
   const tokens = info.alignmentTokenLayer?.tokens || [];
   const byId = tokens.find((t) => settledId(t.id) === settledId(id));
   if (byId) return { segment: byId, same: true };
-  const had = new Set([...known].map(settledId));
-  const [begin, end] = times;
-  const byTime = tokens.filter((t) => {
-    const [b, e] = timesOf(t);
-    return b === begin && e === end && !had.has(settledId(t.id));
-  });
-  return { segment: byTime.length === 1 ? byTime[0] : null, same: false };
+  const own = settledId(id);
+  const planned = known.get(own);
+  const none = { segment: null, same: false };
+  if (!planned) return none;
+  const made = tokens
+    .filter((t) => !known.has(settledId(t.id)))
+    .map((t) => ({ token: t, times: timesOf(t), speaker: speakerOf(t) }))
+    .filter((c) => sameVoice(planned, c));
+  if (made.length !== 1) return none;
+  const [successor] = made;
+  const rivals = [...known].filter(([k, s]) => k !== own && sameVoice(s, successor));
+  return rivals.length ? none : { segment: successor.token, same: false };
 };
 
 // The entity rule for a write over one segment's text, on the document as
 // read after a refusal: the segment is still there and still holds `over`,
 // the text the write was made over, and the write goes again on `segment`.
-// A segment over the same time that holds `mine` already is the write landed
+// The segment, or its successor, holding `mine` already is the write landed
 // (its answer lost, or someone typed the same): `{ landed: true }`.
 // Otherwise the conflict to refuse with, `{ stored, mine }`, `stored` null
 // when the segment is gone. `segment` is the segment found, if any.
-const segmentConflict = (info, id, times, known, over, mine) => {
-  const { segment, same } = segmentNow(info, id, times, known);
+const segmentConflict = (info, id, known, over, mine) => {
+  const { segment, same } = segmentNow(info, id, known);
   const stored = segment ? cpSlice(bodyOf(info), segment.begin, segment.end) : null;
   if (same && stored === over) return { segment };
   if (mine && stored === mine) return { landed: true, segment };
@@ -322,13 +351,18 @@ const ROW_KEYS = ['timeBegin', 'timeEnd', 'speaker'];
 // metadata the write was planned with, except for each of the row's keys it
 // did not change from `was` (the segment's when the write was made), which
 // takes the value stored now, `now`. So a speaker or a time someone else set
-// meanwhile stays, and one this write set is written.
+// meanwhile stays, and one this write set is written. Null when both changed
+// the same key to different values: the write is refused as a conflict.
 const replannedMetadata = (mine, was = {}, now = {}) => {
   const out = { ...mine };
   for (const key of ROW_KEYS) {
-    if ((mine[key] ?? null) !== (was[key] ?? null)) continue;
-    if (now[key] == null) delete out[key];
-    else out[key] = now[key];
+    const [ours, before, stored] = [mine[key] ?? null, was[key] ?? null, now[key] ?? null];
+    if (ours !== before) {
+      if (stored !== before && stored !== ours) return null;
+      continue;
+    }
+    if (stored == null) delete out[key];
+    else out[key] = stored;
   }
   return out;
 };
@@ -454,16 +488,17 @@ export const alignmentMutations = {
 
     // What the edit replaces, for the entity rule when it is refused.
     const over = cpSlice(this.body, existingAlignment.begin, existingAlignment.end);
-    const times = timesOf(existingAlignment);
-    const known = segmentIds(info);
+    const known = segmentsAt(info);
     // Made again over the segment as stored, whose speaker and times are the
     // ones stored now except where this edit changed them: someone else's
     // relabel of the segment is a change to another field of it, and stays.
+    // The same field changed on both sides is a conflict.
     const replan = (fresh) => {
-      const found = segmentConflict(fresh, existingAlignmentId, times, known, over, trimmed);
+      const found = segmentConflict(fresh, existingAlignmentId, known, over, trimmed);
       if (found.segment) this._segmentFrom(found.segment.id, existingAlignmentId);
       if (!found.segment || found.conflict || found.landed) return found;
       const metadata = replannedMetadata(meta, existingAlignment.metadata, found.segment.metadata);
+      if (!metadata) return { conflict: { stored: over, mine: trimmed } };
       const again = planEdit(fresh, found.segment, trimmed, metadata.timeBegin ?? 0);
       return again.error
         ? { conflict: { stored: over, mine: trimmed } }
@@ -585,8 +620,7 @@ export const alignmentMutations = {
     const textOps = planDeleteText(this.body, existingAlignment);
     // What the delete takes, for the entity rule when it is refused.
     const over = cpSlice(this.body, existingAlignment.begin, existingAlignment.end);
-    const times = timesOf(existingAlignment);
-    const known = segmentIds(info);
+    const known = segmentsAt(info);
     const planned = this._plannedText();
 
     // The segment is deleted in its own right, then its text. It used to go
@@ -617,7 +651,7 @@ export const alignmentMutations = {
         // Sent again only over the segment as it was: a text changed
         // meanwhile is refused, and the row comes back with it.
         replan: (fresh, updated) => {
-          const found = segmentConflict(fresh, alignmentId, times, known, over, '');
+          const found = segmentConflict(fresh, alignmentId, known, over, '');
           if (found.conflict) return { conflict: found.conflict };
           const { segment } = found;
           const ops = planDeleteText(bodyOf(fresh), segment);
@@ -631,6 +665,9 @@ export const alignmentMutations = {
         landed: (fresh) => !segmentIds(fresh).has(settledId(alignmentId)),
       });
       this._heardText(textId, results?.[1]?.body);
+      // A replayed answer carries the body as it was: what is stored is read
+      // once the queue has drained.
+      if (state.again) this._writes.reloadWhenDrained = true;
     });
   },
 
@@ -855,6 +892,9 @@ export const alignmentMutations = {
         await this._reloadInSend(); // the batch answered without the ids the patch needs
       } else {
         this._settle(ids);
+        // A replayed answer carries the body as it was when the write first
+        // landed: what is stored now is read once the queue has drained.
+        if (state.again) this._writes.reloadWhenDrained = true;
       }
       await this._rememberSpeaker(speaker);
     });
@@ -905,6 +945,9 @@ export const alignmentMutations = {
   // - `send(base)`: the write, with the digest of that body.
   // - `base` and `keys`, set here: the digest it goes with and the key seed
   //   of its requests (`underKeys`). A plan made again takes new keys.
+  // - `again`, set here: the request was sent under these keys before, so
+  //   its answer may be the first one's, replayed, with the body as it was
+  //   then. The caller has the document read once the queue has drained.
   //
   // When the server refuses it as changed elsewhere (409, or a row it names is
   // gone), or that body's digest is not known, the document is read, put on
@@ -921,6 +964,8 @@ export const alignmentMutations = {
     if (!state.keys) {
       state.base = this._segmentBase(state.planned);
       state.keys = this._client.keySeed?.() ?? null;
+    } else {
+      state.again = true;
     }
     let reused = false;
     if (state.base) {
@@ -947,6 +992,7 @@ export const alignmentMutations = {
     state.send = again.send;
     state.base = fresh.primaryTextLayer?.text?.digest ?? null;
     state.keys = this._client.keySeed?.() ?? null;
+    state.again = false;
     return underKeys(this._client, state.keys, () => state.send(state.base));
   },
 

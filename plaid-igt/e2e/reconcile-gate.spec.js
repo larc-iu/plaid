@@ -32,6 +32,12 @@ test('the initial repair holds the document behind a spinner', async ({ page }) 
   expect(base, 'fixture has a word longer than one character').toBeTruthy();
   let end = base.end - 1;
   while (end > base.begin && wordExtents.has(`${base.begin}:${end}`)) end -= 1;
+  // A project made before the layer rules: its morpheme layer declares none,
+  // as a legacy project's does until a maintainer opens a document in it. An
+  // earlier spec's open declared them, and they refuse the orphan below.
+  await client.tokenLayers.deleteConstraints(morphemeLayer.id, 'igt').catch((e) => {
+    if (e.status !== 404) throw e;
+  });
   const orphan = await client.tokens.create(morphemeLayer.id, text.id, base.begin, end, 1);
 
   let cleaned = false;
@@ -64,6 +70,13 @@ test('the initial repair holds the document behind a spinner', async ({ page }) 
       .filter((tl) => tl.id === morphemeLayer.id)
       .flatMap((tl) => (tl.tokens || []).map((t) => t.id));
     expect(morphemeIds).not.toContain(orphan.id);
+    // ...and the rules were declared again on the open.
+    const declared = async () =>
+      (await client.projects.get(projectId)).textLayers
+        .flatMap((tl) => tl.tokenLayers || [])
+        .find((l) => l.id === morphemeLayer.id)
+        .constraints?.igt?.map((c) => c.type) ?? [];
+    await expect.poll(declared, { timeout: 10_000 }).toContain('coextensive');
     cleaned = true;
   } finally {
     if (!cleaned) await client.tokens.delete(orphan.id).catch(() => {});
