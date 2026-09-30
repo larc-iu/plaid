@@ -261,6 +261,17 @@ async function sendChunks(client, url, ops, stamps, results, groups = []) {
   }
 }
 
+/**
+ * End the key frame `frame` of `group`, wherever it is among the frames open:
+ * the frame under it, or the one open over it, numbers from then on. A plain
+ * function, so a caller that borrows withOperation onto another object
+ * (test doubles do) keeps it.
+ */
+function dropFrame(group, frame) {
+  if (!group || !frame || group.frames[0] === frame) return;
+  group.frames = group.frames.filter((f) => f !== frame);
+}
+
 /** The query of an events read: `types` as the wire's comma-separated list. */
 function eventQuery(types, startTime, endTime) {
   return {
@@ -3749,7 +3760,7 @@ class PlaidClient {
       // A relabel the server refuses (a token scoped to projects may not
       // relabel a group, which names none) must not take the place of the
       // error `fn` threw: the caller answers for that one.
-      this._dropFrame(group, frame);
+      dropFrame(group, frame);
       try {
         await this.endOperation();
       } catch (relabel) {
@@ -3757,17 +3768,11 @@ class PlaidClient {
       }
       throw e;
     }
-    this._dropFrame(group, frame);
+    dropFrame(group, frame);
     await this.endOperation();
     return result;
   }
 
-  // End the key frame `frame` of `group`, wherever it is among the frames
-  // open: the frame under it, or the one open over it, numbers from then on.
-  _dropFrame(group, frame) {
-    if (!group || !frame || group.frames[0] === frame) return;
-    group.frames = group.frames.filter((f) => f !== frame);
-  }
 
   /**
    * Open a batch: a view of this client with the same bundles, on which every
