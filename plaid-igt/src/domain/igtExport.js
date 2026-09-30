@@ -19,7 +19,7 @@
 // text (punctuation) gets its own column with empty gloss cells.
 
 import { canNameWord, joinMorphemes } from './affixMarkers.js';
-import { boundByPieces, lexicalFlagsOf } from './tagsets.js';
+import { boundByPieces, glossSmallCaps } from './tagsets.js';
 import { isTexSpecial, texEscape, texLine } from './tex.js';
 
 export const COPY_FORMATS = [
@@ -169,39 +169,23 @@ export function formatTsv(sentence, fields) {
 }
 
 // ---- LaTeX ----------------------------------------------------------------
-// A gloss as a paper sets it: each grammatical abbreviation in small caps,
+// A gloss as a paper sets it: each grammatical abbreviation in small caps
+// (glossSmallCaps, the tagsets' rule, which the Analyze tab also shows by),
 // written in lowercase because \textsc only changes lowercase letters and
 // \textsc{NOM} prints as full capitals. "1SG.NOM" gives \textsc{1sg}.\textsc{nom}.
-// Grammatical versus lexical is the tagsets' rule (lexicalFlagsOf), so "I" is
-// set in small caps like any tag, and so is the pfv of go.3sg.pfv. A word's
-// joined morpheme gloss is read by its pieces: its stems' glosses as one unit
-// with the fall-back, so pass.PST=and keeps pass, and an affix's or a clitic's
-// with none, so the suffix of pass.PST-sbj:3.pfv is all tags. A part with no letters is left bare, since
-// small caps would not change it. A part holds only letters, marks and digits,
-// none of them a LaTeX special.
-const GLOSS_PART_RE = /[\p{L}\p{M}\p{N}]+/gu;
-const HAS_LETTER_RE = /\p{L}/u;
+// A word's joined morpheme gloss is read by its pieces: its stems' glosses as
+// one unit with the fall-back, so pass.PST=and keeps pass, and an affix's or a
+// clitic's with none, so the suffix of pass.PST-sbj:3.pfv is all tags. A part
+// holds only letters, marks and digits, none of them a LaTeX special.
+//
 // Lowercase for \textsc. Turkish capital dotted I (U+0130) lowercases to i
 // plus a combining dot above everywhere but a Turkish locale, and the dot
 // would then print over a small-caps i. It is set as a plain i.
 const smallCapsText = (part) => part.replace(/\u0130/g, 'i').toLowerCase();
-export const texGloss = (s, pieces) => {
-  const matches = [...s.matchAll(GLOSS_PART_RE)];
-  const lexical = lexicalFlagsOf(
-    s,
-    matches.map((m) => ({ text: m[0], begin: m.index, end: m.index + m[0].length })),
-    { bound: boundByPieces(pieces) },
-  );
-  let out = '';
-  let at = 0;
-  matches.forEach((m, i) => {
-    const part = m[0];
-    out += texEscape(s.slice(at, m.index));
-    out += HAS_LETTER_RE.test(part) && !lexical[i] ? `\\textsc{${smallCapsText(part)}}` : part;
-    at = m.index + part.length;
-  });
-  return out + texEscape(s.slice(at));
-};
+export const texGloss = (s, pieces) =>
+  glossSmallCaps(s, { bound: boundByPieces(pieces) })
+    .map((p) => (p.smallCaps ? `\\textsc{${smallCapsText(p.text)}}` : texEscape(p.text)))
+    .join('');
 
 // gb4e and ExPex split each line into words at spaces, so a cell is always one
 // word: a blank one is {} and one with a space inside ("look after") is braced.

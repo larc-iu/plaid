@@ -164,6 +164,7 @@ export const grid = {
             html`<div class="igt-cell${this._rowCls(`word:${name}`)}" data-row=${`word:${name}`}>
               ${this._field({
                 key: `wa:${token.id}:${name}`,
+                gloss: {},
                 what: this._cellWhat(name, `"${token.content}"`, sctx.index),
                 entityIds: [token.annotations?.[name]?.id],
                 badge: token.annotations?.[name]?.id
@@ -365,21 +366,20 @@ export const grid = {
         ${ctx.morphFields.map((name) => {
           // The tagset as this cell reads its gloss: an affix's with no
           // fall-back, a stem's together with the word's other stems' glosses.
-          const tagset = readingTagset(
-            this._tagsetFor('morpheme', name),
-            morphemeGlossReading(
-              siblings.map((m) => ({
-                morphType: m.morphType,
-                form: morphFormOf(m),
-                gloss: m.annotations?.[name]?.value ?? '',
-              })),
-              siblings.indexOf(morph),
-            ),
+          const reading = morphemeGlossReading(
+            siblings.map((m) => ({
+              morphType: m.morphType,
+              form: morphFormOf(m),
+              gloss: m.annotations?.[name]?.value ?? '',
+            })),
+            siblings.indexOf(morph),
           );
+          const tagset = readingTagset(this._tagsetFor('morpheme', name), reading);
           return html`
             <div class="igt-morph-cell${this._rowCls(`morph:${name}`)}" data-row=${`morph:${name}`}>
               ${this._field({
                 key: `ma:${morph.id}:${name}`,
+                gloss: { reading },
                 what: this._cellWhat(name, this._morphemeSubject(morph, word, siblings), index),
                 entityIds: [morph.annotations?.[name]?.id],
                 badge: morph.annotations?.[name]?.id

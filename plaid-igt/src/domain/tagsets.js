@@ -235,6 +235,50 @@ export const boundByPieces = (pieces) => {
 };
 
 /**
+ * A gloss as print sets it: each grammatical abbreviation in small caps, so
+ * "1SG.NOM" is two small-caps parts. The parts are runs of letters, marks
+ * and digits (whatever lies between is kept as it is), and a part is set in
+ * small caps when it holds a letter and lexicalFlagsOf does not read it as
+ * lexical. `reading` is lexicalFlagsOf's options for the value: a morpheme
+ * cell's reading (morphemeGlossReading), `{ bound: boundByPieces(pieces) }`
+ * for a word's joined morpheme glosses, or nothing for a word's own gloss.
+ * The LaTeX export and the Analyze tab both set glosses by it.
+ */
+const SMALL_CAPS_PART_RE = /[\p{L}\p{M}\p{N}]+/gu;
+const HAS_LETTER_RE = /\p{L}/u;
+export const glossSmallCaps = (value, reading = undefined) => {
+  const s = str(value);
+  const matches = [...s.matchAll(SMALL_CAPS_PART_RE)];
+  const lexical = lexicalFlagsOf(
+    s,
+    matches.map((m) => ({ text: m[0], begin: m.index, end: m.index + m[0].length })),
+    reading,
+  );
+  const out = [];
+  let at = 0;
+  matches.forEach((m, i) => {
+    if (m.index > at) out.push({ text: s.slice(at, m.index), smallCaps: false });
+    out.push({ text: m[0], smallCaps: HAS_LETTER_RE.test(m[0]) && !lexical[i] });
+    at = m.index + m[0].length;
+  });
+  if (at < s.length) out.push({ text: s.slice(at), smallCaps: false });
+  return out;
+};
+
+/**
+ * Whether a gloss cell can show its value with every capital drawn as a small
+ * capital (the font's c2sc), and so read as glossSmallCaps sets it: it holds
+ * a capital, and every part with one is a small-caps part. A lowercase tag
+ * stays as typed, and a value with a capitalised word in it (John-PL) shows
+ * as typed too, since c2sc would shrink the J with the PL.
+ */
+const UPPER_RE = /\p{Lu}/u;
+export const capsAreSmallCaps = (value, reading = undefined) => {
+  const upper = glossSmallCaps(value, reading).filter((p) => UPPER_RE.test(p.text));
+  return upper.length > 0 && upper.every((p) => p.smallCaps);
+};
+
+/**
  * One morpheme's gloss cell as the rule reads it: whether the gloss can
  * never name its word (canNameWord), and the glosses of the word's other
  * morphemes that could, which share its unit. `morphemes` is the word's

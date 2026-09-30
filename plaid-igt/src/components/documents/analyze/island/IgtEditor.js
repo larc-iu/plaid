@@ -15,7 +15,7 @@ import './igt-editor.css';
 import { render, html, nothing } from 'lit-html';
 import { wideEnoughToDock } from '@ui/components/assistant/panelWidth.js';
 import { defaultGuessSource, VOCAB_ENTRY_SOURCE } from '@/domain/glossGuess';
-import { tagsetEnforces, validateValue } from '@/domain/tagsets';
+import { capsAreSmallCaps, tagsetEnforces, validateValue } from '@/domain/tagsets';
 import { handleComposeBeforeInput } from '@/lib/composeInput';
 import { isVirtualMorphemeId, virtualMorphemeWordId } from '@/domain/virtualMorpheme.js';
 import { precedentFetchedAt } from '@/domain/precedentCache';
@@ -659,6 +659,7 @@ export class IgtEditor {
     fieldName = null,
     tagset = null,
     badge = null,
+    gloss = null,
   }) {
     // What is stored, and what the cell shows at rest: a value put back after
     // it was not saved while `stored` is still the one it was typed over
@@ -767,6 +768,10 @@ export class IgtEditor {
     const guessCls = g
       ? `igt-field--guess${g.source === VOCAB_ENTRY_SOURCE ? ' igt-field--guess-entry' : ''}`
       : '';
+    // A word's or a morpheme's gloss field (`gloss`, with the reading its value
+    // is read by) draws its tags in small caps at rest, as the LaTeX export
+    // sets them (capsAreSmallCaps). Focused, it shows what was typed.
+    const smallCaps = gloss && filled && capsAreSmallCaps(shown, gloss.reading);
     // A guess also carries WHAT a whole-word accept would write it to, because
     // the cell key cannot be read back for it: a key is a display key, and both
     // halves may hold a colon — an unanalyzed word's morpheme is `virtual:<word
@@ -779,8 +784,8 @@ export class IgtEditor {
         : ''} ${violations.length ? 'igt-field--invalid' : ''} ${provClass(
         'igt-field',
         p,
-      )} ${conflict ? 'igt-field--conflict' : ''} ${unsent
-        ? 'igt-field--unsent'
+      )} ${conflict ? 'igt-field--conflict' : ''} ${unsent ? 'igt-field--unsent' : ''} ${smallCaps
+        ? 'igt-field--smallcaps'
         : ''} ${extraClass}"
       data-cell-key=${key}
       data-tier=${tier}

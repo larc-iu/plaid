@@ -2215,3 +2215,10 @@
 .igt-alts__value {
   font-family: var(--plaid-font-text);
 }
+
+/* A gloss whose capitals are all tags draws them as small capitals, as print
+   sets glosses (capsAreSmallCaps in domain/tagsets.js). Charis's own small
+   capitals, not synthesized ones. Focused, the cell shows what was typed. */
+.igt-field--smallcaps:not(:focus) {
+  font-feature-settings: 'c2sc';
+}

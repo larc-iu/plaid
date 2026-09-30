@@ -23,6 +23,8 @@ import {
   lexicalFlags,
   lenientFlags,
   lexicalFlagsOf,
+  glossSmallCaps,
+  capsAreSmallCaps,
   boundByPieces,
   morphemeGlossReading,
   glossReadingOf,
@@ -797,5 +799,40 @@ describe('sortedValues', () => {
     expect(sortedValues(made).map((v) => v.value)).toEqual(['ABS', 'ERG', 'PL']);
     expect(sortedValues(statusTagset()).map((v) => v.value)).toEqual(STATUS_VALUES);
     expect(STATUS_VALUES).toEqual(['draft', 'reviewed', 'published']);
+  });
+});
+
+describe('glossSmallCaps and capsAreSmallCaps', () => {
+  const sc = (value, reading) =>
+    glossSmallCaps(value, reading)
+      .filter((p) => p.smallCaps)
+      .map((p) => p.text);
+
+  it('sets each grammatical part in small caps and keeps the rest of the text', () => {
+    expect(sc('1SG.NOM')).toEqual(['1SG', 'NOM']);
+    expect(
+      glossSmallCaps('go-PST')
+        .map((p) => p.text)
+        .join(''),
+    ).toBe('go-PST');
+    expect(sc('go-PST')).toEqual(['PST']);
+  });
+
+  it('never sets a part without a letter', () => {
+    expect(sc('3-PL')).toEqual(['PL']);
+  });
+
+  it('reads an affix gloss with no fall-back, as the Analyze cell does', () => {
+    expect(sc('obj:3', { bound: true, beside: [] })).toEqual(['obj']);
+  });
+
+  it('draws capitals as small caps only when every capital is a tag', () => {
+    expect(capsAreSmallCaps('TOP')).toBe(true);
+    expect(capsAreSmallCaps('AGR:1A', { bound: true, beside: [] })).toBe(true);
+    // Nothing to draw: no capital at all.
+    expect(capsAreSmallCaps('potato')).toBe(false);
+    expect(capsAreSmallCaps('')).toBe(false);
+    // A capitalised word beside a tag: c2sc would shrink its capital too.
+    expect(capsAreSmallCaps('John-PL')).toBe(false);
   });
 });
