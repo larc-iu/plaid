@@ -1735,7 +1735,8 @@ export const PLAID_NAMESPACE: "plaid";
 export const ROLE_KEY: "role";
 /** Layer config key naming the metadata keys a token born of a SPLIT inherits. */
 export const PRESERVE_ON_SPLIT_KEY: "preserveOnSplit";
-export const SEGMENTS_PARENT_KEY: "segmentsParent";
+/** Layer config key asking Plaid to take a text edit plainly on the layer (see the manual's "Changing a text's body"). */
+export const PLAIN_EDITS_KEY: "plainEdits";
 
 /** The server's cap on operations per batch request; a larger batch goes as consecutive requests. */
 export const MAX_BATCH_OPS: 1000;

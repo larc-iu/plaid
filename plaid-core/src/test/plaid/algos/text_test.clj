@@ -2311,7 +2311,7 @@
                     (ta/normalize-deletes old tokens)
                     (ta/align-to-words old tokens #{:w :m})
                     (ta/pair-replacements old tokens))
-            folded (try (#'ta/fold-whole-words* ops old tokens #(#{:w :m} (:token/layer %)) (constantly false))
+            folded (try (#'ta/fold-whole-words* ops old tokens #(#{:w :m} (:token/layer %)))
                         (catch Throwable e e))]
         (when-not (and (sequential? folded)
                        (= new (#'ta/ops-body folded old)))

@@ -91,32 +91,6 @@
   (into (words old) (map (fn [{:token/keys [id begin end]}] {:token/id [:m id] :token/layer :m :token/begin begin :token/end end}))
         (words old)))
 
-(deftest a-space-typed-inside-a-one-morpheme-word-drops-the-morpheme
-  ;; Luke's ruling (2026-09-30): as inside any morpheme (D28), when the
-  ;; morpheme layer declares `segmentsParent`.
-  (let [old "hh pumpkin"
-        tokens (one-morpheme old)
-        view (fn [r] (let [body (:text/body (:text r))]
-                       [body (->> (:tokens r) (sort-by (juxt :token/begin (comp str :token/id)))
-                                  (mapv (fn [{:token/keys [id begin end]}] [id (subs body begin end)])))]))
-        edit (fn [ops segments] (view (ta/apply-edits old tokens ops {:partitioning #{} :word-layers #{:w} :segments segments})))
-        body (fn [new segments]
-               (view (-> (ta/diff old new)
-                         (ta/slide-to-tokens old tokens #{})
-                         (ta/normalize-deletes old tokens)
-                         (ta/align-to-words old tokens #{:w})
-                         (ta/pair-replacements old tokens)
-                         (ta/fold-whole-words old tokens #{:w} segments)
-                         (ta/apply-text-edits {:text/body old} tokens))))]
-    (testing "from the caret"
-      (is (= ["hh pum pkin" [[0 "hh"] [[:m 0] "hh"] [1 "pkin"]]] (edit [(ins 6 " ")] #{:m})))
-      ;; a respelling inside it keeps it
-      (is (= ["hh bumpkin" [[0 "hh"] [[:m 0] "hh"] [1 "bumpkin"] [[:m 1] "bumpkin"]]] (edit [(rep 3 1 "b")] #{:m})))
-      ;; a layer that does not declare it: the token moves with the word, as a ud syntactic word
-      (is (= ["hh pum pkin" [[0 "hh"] [[:m 0] "hh"] [1 "pkin"] [[:m 1] "pkin"]]] (edit [(ins 6 " ")] nil))))
-    (testing "in a whole body"
-      (is (= ["hh pum pkin" [[0 "hh"] [[:m 0] "hh"] [1 "pkin"]]] (body "hh pum pkin" #{:m}))))))
-
 (deftest a-word-fixed-at-two-carets-is-one-change-of-it
   ;; R8: a transposition fixed at two carets keeps the whole word, as the
   ;; whole-body save did
@@ -127,13 +101,6 @@
   ;; R2: a space typed with another change earlier in the word folds it
   (is (= ["a pmp kin x" [[0 "a"] [1 "pmp"] [2 "x"]]] (typed "a pumpkin x" [(del 3 1) (ins 5 " ")])))
   (is (= ["a pXump kin x" [[0 "a"] [1 "pXump"] [2 "x"]]] (typed "a pumpkin x" [(ins 6 " ") (ins 3 "X")]))))
-
-(deftest a-space-typed-in-a-one-morpheme-word-with-another-change-drops-the-morpheme
-  ;; R2 with segmentsParent: Luke's ruling holds for any mix of edits in the word
-  (let [old "a pumpkin x"
-        r (ta/apply-edits old (one-morpheme old) [(del 3 1) (ins 5 " ")] {:partitioning #{} :word-layers #{:w} :segments #{:m}})]
-    (is (= "a pmp kin x" (:text/body (:text r))))
-    (is (some #{[:m 1]} (:deleted r)))))
 
 (deftest a-selection-typed-over-changes-no-token-outside-it
   ;; R3: `ab b` of `a ab ab b` selected and typed over as `bd` leaves the
@@ -178,7 +145,7 @@
   ;; N1: a letter deleted inside `walkd` and `slowly ` typed in front keeps
   ;; the word's morpheme and gloss, as the whole-body save does
   (let [old "the man walkd to"
-        edit (fn [ops] (let [r (ta/apply-edits old (one-morpheme old) ops {:partitioning #{} :word-layers #{:w} :segments #{:m}})
+        edit (fn [ops] (let [r (ta/apply-edits old (one-morpheme old) ops {:partitioning #{} :word-layers #{:w}})
                              body (:text/body (:text r))]
                          [body (->> (:tokens r) (sort-by (juxt :token/begin (comp str :token/id)))
                                     (mapv (fn [{:token/keys [id begin end]}] [id (subs body begin end)])))]))]
@@ -195,29 +162,28 @@
 
 (deftest a-space-typed-in-a-word-with-text-typed-in-front-still-folds-it
   ;; X1: the front text stays outside, and the word folds as a lone space
-  ;; folds it, dropping its one morpheme (D28, the one-morpheme ruling)
+  ;; folds it, its same-extent token going with it (a ud syntactic word)
   (let [run (fn [old ops]
-              (let [r (ta/apply-edits old (one-morpheme old) ops {:partitioning #{} :word-layers #{:w} :segments #{:m}})
+              (let [r (ta/apply-edits old (one-morpheme old) ops {:partitioning #{} :word-layers #{:w}})
                     body (:text/body (:text r))]
                 [body (->> (:tokens r) (sort-by (juxt :token/begin (comp str :token/id)))
                            (mapv (fn [{:token/keys [id begin end]}] [id (subs body begin end)])))]))]
-    (is (= ["a Q c at x" [[0 "a"] [[:m 0] "a"] [1 "at"] [2 "x"] [[:m 2] "x"]]]
+    (is (= ["a Q c at x" [[0 "a"] [[:m 0] "a"] [1 "at"] [[:m 1] "at"] [2 "x"] [[:m 2] "x"]]]
            (run "a cat x" [(ins 3 " ") (ins 2 "Q ")])))
-    (is (= ["a (pum pkin x" [[0 "a"] [[:m 0] "a"] [1 "pkin"] [2 "x"] [[:m 2] "x"]]]
+    (is (= ["a (pum pkin x" [[0 "a"] [[:m 0] "a"] [1 "pkin"] [[:m 1] "pkin"] [2 "x"] [[:m 2] "x"]]]
            (run "a pumpkin x" [(ins 5 " ") (ins 2 "(")])))))
 
 (deftest a-words-letters-typed-back-behind-a-space-or-a-joiner-read-as-typed-inside-it
   ;; Y1: the letters after the space (or before it) Backspaced and typed back
-  ;; with it are a space typed inside the word, which folds by D28 and the
-  ;; one-morpheme ruling. Y2, E1+: behind a hyphen or an apostrophe, the word
+  ;; with it are a space typed inside the word, which folds by D28. Y2, E1+: behind a hyphen or an apostrophe, the word
   ;; is respelled and stays one word.
   (let [run (fn [old ops]
-              (let [r (ta/apply-edits old (one-morpheme old) ops {:partitioning #{} :word-layers #{:w} :segments #{:m}})
+              (let [r (ta/apply-edits old (one-morpheme old) ops {:partitioning #{} :word-layers #{:w}})
                     body (:text/body (:text r))]
                 [body (sort-by str (map (fn [{:token/keys [id begin end]}] [id (subs body begin end)]) (:tokens r)))]))]
-    (is (= ["a the cat x" [[0 "a"] [1 "the"] [2 "x"] [[:m 0] "a"] [[:m 2] "x"]]]
+    (is (= ["a the cat x" [[0 "a"] [1 "the"] [2 "x"] [[:m 0] "a"] [[:m 1] "the"] [[:m 2] "x"]]]
            (run "a thecat x" [(rep 5 3 " cat")])))
-    (is (= ["so I went home" [[0 "so"] [1 "went"] [2 "home"] [[:m 0] "so"] [[:m 2] "home"]]]
+    (is (= ["so I went home" [[0 "so"] [1 "went"] [2 "home"] [[:m 0] "so"] [[:m 1] "went"] [[:m 2] "home"]]]
            (run "so Iwent home" [(rep 3 1 "I ")])))
     (is (= ["a well-known x" [[0 "a"] [1 "well-known"] [2 "x"] [[:m 0] "a"] [[:m 1] "well-known"] [[:m 2] "x"]]]
            (run "a wellknown x" [(rep 6 5 "-known")])))

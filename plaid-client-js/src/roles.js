@@ -35,14 +35,13 @@ export const ROLE_KEY = 'role';
 export const PRESERVE_ON_SPLIT_KEY = 'preserveOnSplit';
 
 /**
- * Layer config key saying that each token of the layer spells a stretch of
- * its parent token's text (true), as a morpheme does its word. Plaid then
- * treats a token as long as its word as the word's one morpheme: a space typed
- * inside the word deletes it, as it deletes a word's morphemes when typed
- * inside one of them. Without it such a token moves with the word, as an
- * analysis of the whole word does.
+ * Layer config key (true) asking Plaid to take a text edit plainly on the
+ * layer: an edit inside a token, or touching its edge with no whitespace
+ * between, grows or shrinks it, a typed space never splits it, a deleted one
+ * never joins two, and only a token whose whole text is deleted goes. See the
+ * manual's `Changing a text's body`.
  */
-export const SEGMENTS_PARENT_KEY = 'segmentsParent';
+export const PLAIN_EDITS_KEY = 'plainEdits';
 
 export const ROLES = Object.freeze({
   BASELINE: 'baseline',

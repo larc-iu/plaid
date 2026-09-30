@@ -743,9 +743,8 @@
           :insert (recur (rest ops) del (+ ins (cp/cp-count value))
                          (conj out {:kind :insert :at old-pos :value value}))
           :replace (recur (rest ops) (+ del length) (+ ins (cp/cp-count value))
-                          (conj out (cond-> {:kind :replace :start old-pos :end (+ old-pos length)
-                                             :value value}
-                                      (:drop (first ops)) (assoc :drop (:drop (first ops))))))))
+                          (conj out {:kind :replace :start old-pos :end (+ old-pos length)
+                                     :value value}))))
       out)))
 
 (defn- edits->ops
@@ -772,8 +771,7 @@
           :replace (let [n (- (:end e) (:start e))]
                      (recur (rest edits) del-before (conj waiting [(:start e) n])
                             (+ ins (cp/cp-count (:value e)))
-                            (conj out (cond-> (replace-op running n (:value e))
-                                        (:drop e) (assoc :drop (:drop e))))))))
+                            (conj out (replace-op running n (:value e)))))))
       out)))
 
 ;; ---------------------------------------------------------------------------
@@ -2351,26 +2349,13 @@
   sentence, a UMR node or a time-alignment segment over several words of a
   script without spaces is never taken for one. Without it any token
   without a space may be a word. Edits leaving only spaces in a word's place
-  are not folded onto it: the word is deleted.
-
-  `segments` is the set of the tokens' layers whose tokens each spell a
-  stretch of their parent token's text (`config.plaid.segmentsParent`, igt's
-  morpheme layers). A token on one with the same extent as a word given a
-  space is that word's one morpheme, and it is deleted with the word's fold,
-  as a word's morphemes are when a space is typed inside one (D28): a space
-  typed inside `pumpkin`, analyzed as one glossed morpheme, leaves the word
-  on the new word sharing more letters and deletes the morpheme. Without it a
-  same-extent token moves with the word, as a ud syntactic word does. The
-  replace carries the ids in `:drop`, and `apply-text-edits` deletes them."
+  are not folded onto it: the word is deleted. A token with the same extent
+  as a word given a space moves with the word, as a ud syntactic word does."
   ([ops old tokens] (fold-whole-words ops old tokens nil))
-  ([ops old tokens word-layers] (fold-whole-words ops old tokens word-layers nil))
-  ([ops old tokens word-layers segments]
+  ([ops old tokens word-layers]
    (let [word? (if (nil? word-layers)
                  (constantly true)
-                 (fn [{:token/keys [layer]}] (contains? word-layers layer)))
-         segment? (if (empty? segments)
-                    (constantly false)
-                    (fn [{:token/keys [layer]}] (contains? segments layer)))]
+                 (fn [{:token/keys [layer]}] (contains? word-layers layer)))]
      ;; The fold must leave the text as it was. On a line retyped almost
      ;; whole, a replace joining two words took letters the next edit also
      ;; took, and the fold gave `forUnveistbr` for `for banister`: the save
@@ -2380,7 +2365,7 @@
      ;; judge is left as it came while the others fold. Should the folded
      ;; ops still not give the same text, or the fold throw elsewhere, all
      ;; the ops stay as they came, as a last guard.
-     (let [folded (try (fold-whole-words* ops old tokens word? segment?)
+     (let [folded (try (fold-whole-words* ops old tokens word?)
                        (catch clojure.lang.ExceptionInfo _ ops)
                        (catch IndexOutOfBoundsException _ ops))
            body #(ops-body % old)]
@@ -2390,7 +2375,7 @@
          ops)))))
 
 (defn- fold-whole-words*
-  [ops old tokens word? segment?]
+  [ops old tokens word?]
   (let [edits0 (vec (ops->edits ops))
         ^ints o (.toArray (.codePoints ^String old))
         near (delay (tokens-near tokens (count edits0)))
@@ -2521,12 +2506,6 @@
                            ;; the old word's last letter came through
                            tail-kept (not-any? #(= e (:end %)) g)]
                        {:kind :replace :start b :end e :value v
-                        ;; a word given a space loses its one morpheme (see
-                        ;; `fold-whole-words`)
-                        :drop (when (or (splits? g b e) (retyped-split? g b e))
-                                (seq (keep (fn [{tb :token/begin te :token/end :as t}]
-                                             (when (and (= b tb) (= e te) (segment? t)) (:token/id t)))
-                                           (@near b e))))
                         :tail-kept tail-kept
                         ;; where it is in the new text: before what is typed after it
                         :tail-at (when tail-kept
@@ -3057,18 +3036,7 @@
   applied a run of such ops at a time: one op out of that order among the
   7,000 a long line retyped gave cost a minute applied in turn."
   [ops text tokens]
-  (if-let [drops (seq (mapcat :drop ops))]
-    ;; the tokens a fold deletes with a word given a space (see
-    ;; `fold-whole-words`)
-    (let [drops (set drops)
-          r (apply-text-edits (mapv #(dissoc % :drop) ops) text tokens)
-          gone (filterv #(contains? drops (:token/id %)) (:tokens r))]
-      (if (empty? gone)
-        r
-        (assoc r
-               :tokens (filterv #(not (contains? drops (:token/id %))) (:tokens r))
-               :deleted (into (:deleted r) (map :token/id) gone))))
-    (apply-text-edits* ops text tokens)))
+  (apply-text-edits* ops text tokens))
 
 (defn- apply-text-edits*
   [ops text tokens]
@@ -3403,7 +3371,7 @@
   steps a whole-body save runs after placing its edits (`pair-replacements`,
   `fold-whole-words`, `apply-text-edits`, `keep-edges-off-spaces`), with the
   layer sets `update-body` gives them."
-  [^String old tokens ops {:keys [partitioning word-layers segments]}]
+  [^String old tokens ops {:keys [partitioning word-layers]}]
   (let [^ints o (.toArray (.codePoints old))
         word? (if (nil? word-layers) (constantly true) #(contains? word-layers (:token/layer %)))
         ;; Gaps inside one word are one change of it, and are read as one
@@ -3488,7 +3456,7 @@
         {:keys [ops stretch]} (plan-edits old tokens gaps partitioning word-layers)]
     (-> ops
         (pair-replacements old tokens stretch)
-        (fold-whole-words old tokens word-layers segments)
+        (fold-whole-words old tokens word-layers)
         (apply-text-edits {:text/body old} tokens)
         (as-> r (keep-edges-off-spaces old tokens r partitioning)))))
 
@@ -3507,3 +3475,207 @@
                            (zero? n) (delete-op i k)
                            :else (replace-op i k value)))))
       out)))
+
+;; ---------------------------------------------------------------------------
+;; Plain edits
+;;
+;; A layer whose config sets `plainEdits` (igt's words, morphemes and time
+;; alignment segments) takes a text edit the plain way: an edit inside one of
+;; its tokens, or touching its edge with no whitespace between, grows or
+;; shrinks the token, and nothing else happens to it. Such a token is never
+;; split by a typed space, never joined to its neighbour by a deleted one,
+;; never folded onto another word, and loses nothing hanging off it. Only a
+;; token whose whole text is deleted goes. An igt word can hold a space (a
+;; FLEx phrase), and its analysis is the app's business, not the core's.
+
+(defn- trim-gap
+  "`gap` without the text its new value shares with the old at either end,
+  or nil when nothing is left of it."
+  [^ints o {:keys [start end value] :as gap}]
+  (let [^ints v (.toArray (.codePoints ^String value))
+        n (alength v)
+        k (- end start)
+        p (loop [p 0] (if (and (< p n) (< p k) (= (aget v p) (aget o (+ start p)))) (recur (inc p)) p))
+        s (loop [s 0] (if (and (< s (- n p)) (< s (- k p)) (= (aget v (- n 1 s)) (aget o (- end 1 s))))
+                        (recur (inc s))
+                        s))]
+    (cond
+      (and (zero? p) (zero? s)) gap
+      (and (= (+ p s) n) (= (+ p s) k)) nil
+      :else {:start (+ start p) :end (- end s) :value (String. v (int p) (int (- n p s)))})))
+
+(defn- edits->gaps
+  "Old-coordinate edits in position order (see `ops->edits`) as gaps: edits
+  that touch are one gap."
+  [edits]
+  (reduce (fn [out e]
+            (let [s (or (:start e) (:at e))
+                  t (or (:end e) (:at e))
+                  v (or (when (string? (:value e)) (:value e)) "")
+                  prev (peek out)]
+              (if (and prev (= (:end prev) s))
+                (conj (pop out) (assoc prev :end t :value (str (:value prev) v)))
+                (conj out {:start s :end t :value v}))))
+          []
+          edits))
+
+(defn- gaps-body
+  [^String old gaps]
+  (let [sb (StringBuilder.)]
+    (loop [gaps gaps at 0]
+      (if-let [{:keys [start end value]} (first gaps)]
+        (do (.append sb (cp/cp-subs old at start))
+            (.append sb ^String value)
+            (recur (rest gaps) end))
+        (.append sb (cp/cp-subs old at))))
+    (str sb)))
+
+(defn apply-plain-gaps
+  "What `gaps` (old-body code points, in order, never touching, each
+  `{:start a :end b :value v}`, see `compose-edits`) do to `old` and to
+  `tokens` taken the plain way. Returns `{:text :tokens :deleted}` as
+  `apply-text-edits` does.
+
+  For a token with text, [B, E):
+  - A gap inside it, or reaching one of its ends from inside, grows or
+    shrinks it (a space typed inside is inside it).
+  - A gap that takes its last letters, or stands right after it, gives it
+    the letters the new text starts with, up to the first whitespace, when
+    its last letter kept is not whitespace. Likewise a gap that takes its
+    first letters or stands right before it gives it the letters the new
+    text ends with, after the last whitespace, when its first letter kept is
+    not whitespace. New text with no whitespace between two such tokens
+    goes to the first, unless only a token of a layer in `partitioning`
+    (a sentence) ends there.
+  - A gap that takes all of it, and more, deletes it.
+  - The new text between the letters given to the tokens either side
+    belongs to neither.
+  - A token left beginning or ending on whitespace it did not begin or end
+    on is moved off it onto its letters (`ki` deleted from `thung ki` leaves
+    the word on `thung`), and one left with only whitespace is deleted.
+
+  A zero-width token is moved as `apply-text-edits` moves it."
+  [^String old tokens gaps partitioning]
+  (let [^ints o (.toArray (.codePoints old))
+        len (alength o)
+        partitioning (set partitioning)
+        gaps (vec gaps)
+        k (count gaps)
+        ws? (fn [c] (space? c))
+        info (mapv (fn [{:keys [start end value]}]
+                     (let [^ints v (.toArray (.codePoints ^String value))
+                           n (alength v)
+                           run (fn [idx] (loop [i 0] (if (and (< i n) (not (ws? (aget v (int (idx i)))))) (recur (inc i)) i)))
+                           lead (run identity)
+                           trail (run #(- n 1 %))]
+                       {:a start :b end :n n :delta (- n (- end start))
+                        :lead lead :trail trail :word? (= lead n)
+                        :before-ok (and (pos? lead) (pos? start) (not (ws? (aget o (dec start)))))
+                        :after-ok (and (pos? trail) (< end len) (not (ws? (aget o end))))}))
+                   gaps)
+        new-body (gaps-body old gaps)
+        ^ints nw (.toArray (.codePoints ^String new-body))
+        ;; shift[i]: what the gaps before gap i add to a position
+        shift (long-array (inc k))
+        _ (dotimes [i k] (aset shift (inc i) (+ (aget shift i) (long (:delta (info i))))))
+        starts (long-array (map :start gaps))
+        ;; the last gap starting at or before x, or -1
+        at-or-before (fn [x]
+                       (loop [lo 0 hi k]
+                         (if (< lo hi)
+                           (let [m (quot (+ lo hi) 2)]
+                             (if (<= (aget starts m) (long x)) (recur (inc m) hi) (recur lo m)))
+                           (dec lo))))
+        wide (filterv #(< (:token/begin %) (:token/end %)) tokens)
+        zero (filterv #(= (:token/begin %) (:token/end %)) tokens)
+        ;; the gaps a token of text stands right before, or ends inside of
+        before? (fn [{:token/keys [begin end]}]
+                  (let [g (at-or-before end)]
+                    (when (>= g 0)
+                      (let [{:keys [a b]} (info g)]
+                        (when (and (< begin a) (<= a end) (or (< end b) (= a b end)))
+                          g)))))
+        has-before (into #{} (keep before?) (remove #(partitioning (:token/layer %)) wide))
+        ;; text with no whitespace goes to the tokens on one side only
+        word-after? (fn [g] (let [{:keys [word? before-ok]} (info g)]
+                              (and word? (not (and before-ok (has-before g))))))
+        new-at (fn [g] (+ (long (:a (info g))) (aget shift g)))
+        given-before (fn [g] (let [{:keys [before-ok lead]} (info g)]
+                               (if (and before-ok (not (and (word-after? g) (:after-ok (info g))))) lead 0)))
+        given-after (fn [g] (let [{:keys [after-ok trail word?]} (info g)]
+                              (if (and after-ok (or (not word?) (word-after? g))) trail 0)))
+        placed (mapv (fn [{:token/keys [begin end] :as t}]
+                       (let [gb (at-or-before begin)
+                             {:keys [a b n]} (when (>= gb 0) (info gb))
+                             nb (cond
+                                  (neg? gb) begin
+                                  ;; a gap took its first letters, or stands
+                                  ;; right before it
+                                  (and (< a begin) (<= begin b))
+                                  (if (<= end b) nil (- (+ (new-at gb) n) (given-after gb)))
+                                  (= a begin)
+                                  (cond
+                                    (= a b) (- (+ (new-at gb) n) (given-after gb))
+                                    (>= end b) (new-at gb)
+                                    :else nil)
+                                  :else (+ begin (aget shift (inc gb))))
+                             ge (at-or-before end)
+                             {a2 :a b2 :b n2 :n} (when (>= ge 0) (info ge))
+                             ne (cond
+                                  (neg? ge) end
+                                  (or (= a2 end) (and (< a2 end) (< end b2)))
+                                  (if (< begin a2) (+ (new-at ge) (given-before ge)) nil)
+                                  (and (< a2 end) (= end b2))
+                                  (if (<= begin a2) (+ (new-at ge) n2) nil)
+                                  :else (+ end (aget shift (inc ge))))]
+                         (if (and nb ne (< nb ne))
+                           ;; off whitespace it did not have at that edge
+                           (let [nb (if (ws? (aget o begin))
+                                      nb
+                                      (loop [x nb] (if (and (< x ne) (ws? (aget nw x))) (recur (inc x)) x)))
+                                 ne (if (ws? (aget o (dec end)))
+                                      ne
+                                      (loop [x ne] (if (and (> x nb) (ws? (aget nw (dec x)))) (recur (dec x)) x)))]
+                             (if (< nb ne)
+                               (assoc t :token/begin nb :token/end ne)
+                               (assoc t ::gone true)))
+                           (assoc t ::gone true))))
+                     wide)
+        zero-r (when (seq zero) (apply-text-edits (gap-ops gaps) {:text/body old} zero))]
+    {:text {:text/body new-body}
+     :tokens (into (filterv (complement ::gone) placed) (:tokens zero-r))
+     :deleted (into (mapv :token/id (filter ::gone placed)) (:deleted zero-r))}))
+
+(defn plain-edit-gaps
+  "The gaps an edit of `old` by `ops` from the caret is taken as on a layer
+  that declares `plainEdits`: its net change (see `compose-edits`), each gap
+  less the text its new value shares with the old at either end."
+  [^String old ops]
+  (let [^ints o (.toArray (.codePoints old))]
+    (into [] (keep #(trim-gap o %)) (compose-edits ops old))))
+
+(defn plain-edits
+  "`apply-plain-gaps` for an edit of `old` by `ops` from the caret (running
+  coordinates, see `compose-edits`). Each gap is taken as it was made, less
+  the text its new value shares with the old at either end."
+  ([old tokens ops] (plain-edits old tokens ops #{}))
+  ([^String old tokens ops partitioning]
+   (apply-plain-gaps old tokens (plain-edit-gaps old ops) partitioning)))
+
+(defn plain-body-gaps
+  "The gaps a whole-body save of `old` as `new` is taken as on a layer that
+  declares `plainEdits`: the diff, each edit moved to the equivalent place
+  that disturbs the fewest `tokens` (see `slide-to-tokens` and
+  `normalize-deletes`), and edits that touch one gap."
+  [^String old ^String new tokens partitioning]
+  (-> (diff old new)
+      (slide-to-tokens old tokens partitioning)
+      (normalize-deletes old tokens)
+      ops->edits
+      edits->gaps))
+
+(defn plain-body
+  "`apply-plain-gaps` for a whole-body save of `old` as `new` (see
+  `plain-body-gaps`)."
+  [^String old ^String new tokens partitioning]
+  (apply-plain-gaps old tokens (plain-body-gaps old new tokens partitioning) partitioning))

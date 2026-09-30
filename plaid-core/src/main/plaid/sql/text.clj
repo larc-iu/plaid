@@ -254,10 +254,6 @@
           ;; partition and nest under another layer. In a script without
           ;; spaces a sentence, a UMR node or a time-alignment segment (no
           ;; parent) over several words looks like a word.
-          ;; A layer whose tokens each spell a stretch of their parent's
-          ;; text (`config.plaid.segmentsParent`, igt's morphemes) loses a
-          ;; token as long as its word when a space is typed inside the word
-          ;; (see ta/fold-whole-words).
           layer-rows (when (and (or (string? new-body-or-ops) edits) (seq tokens))
                        (psc/q db {:select [:id :overlap_mode :parent_token_layer_id :config]
                                   :from [:token_layers]
@@ -268,11 +264,25 @@
                                                 (some? (:parent_token_layer_id %))))
                                   (map :id))
                             layer-rows)
-          segments (into #{}
-                         (comp (filter #(true? (some-> (:config %) psc/parse-config (get-in ["plaid" "segmentsParent"]))))
-                               (map :id))
-                         layer-rows)
+          ;; A layer whose config sets `plainEdits` (igt's) takes the edit
+          ;; the plain way (see ta/apply-plain-gaps), and so do the
+          ;; partitions over it, which then stay on its tokens' edges. The
+          ;; other layers take it by the rules above and below, worked out
+          ;; over every token, and keep only their own tokens' outcome.
+          plain (into #{}
+                      (comp (filter #(true? (some-> (:config %) psc/parse-config (get-in ["plaid" "plainEdits"]))))
+                            (map :id))
+                      layer-rows)
+          plain? (fn [{:token/keys [layer]}] (or (contains? plain layer) (contains? partitioning layer)))
+          plain-tokens (when (seq plain) (filterv plain? tokens))
+          plain-result (when (seq plain)
+                         (cond
+                           edits (ta/plain-edits old-body plain-tokens edits partitioning)
+                           (string? new-body-or-ops) (ta/plain-body old-body new-body-or-ops plain-tokens partitioning)
+                           :else nil))
+          tokens-rest (if plain-result (filterv (complement plain?) tokens) tokens)
           ops (cond
+                (and plain-result (empty? tokens-rest)) nil
                 edits nil
                 (string? new-body-or-ops)
                 (-> (ta/diff old-body new-body-or-ops)
@@ -280,7 +290,7 @@
                     (ta/normalize-deletes old-body tokens)
                     (ta/align-to-words old-body tokens word-layers)
                     (ta/pair-replacements old-body tokens)
-                    (ta/fold-whole-words old-body tokens word-layers segments))
+                    (ta/fold-whole-words old-body tokens word-layers))
                 :else (vec new-body-or-ops))
           indexed-old (reduce (fn [m t] (assoc m (:token/id t) t)) {} tokens)
           ;; A diffed body's tokens are then moved off a space a delete
@@ -288,14 +298,23 @@
           ;; one delete keeps two UMR nodes pulling opposite ways off it.
           ;; Edits from the caret go through the same steps after their
           ;; own placement (see ta/apply-edits).
-          {new-text :text new-tokens :tokens deleted-ids :deleted}
+          rest-result
           (cond
+            (and plain-result (empty? tokens-rest)) nil
             edits (ta/apply-edits old-body tokens edits {:partitioning partitioning
-                                                         :word-layers word-layers
-                                                         :segments segments})
+                                                         :word-layers word-layers})
             (string? new-body-or-ops) (as-> (ta/apply-text-edits ops text-map tokens) r
                                         (ta/keep-edges-off-spaces old-body tokens r partitioning))
             :else (ta/apply-text-edits ops text-map tokens))
+          {new-text :text new-tokens :tokens deleted-ids :deleted}
+          (if plain-result
+            (let [rest-ids (into #{} (map :token/id) tokens-rest)]
+              (when (and rest-result (not= (:text/body (:text rest-result)) (:text/body (:text plain-result))))
+                (throw (ex-info "The new body could not be applied." {:code 500 :id eid})))
+              {:text (:text plain-result)
+               :tokens (into (:tokens plain-result) (filter #(rest-ids (:token/id %))) (:tokens rest-result))
+               :deleted (into (vec (:deleted plain-result)) (filter rest-ids) (:deleted rest-result))})
+            rest-result)
           new-body (:text/body new-text)
           ;; The steps above only move edits between equivalent places, so
           ;; a diffed body comes out as sent, and edits as they make the body

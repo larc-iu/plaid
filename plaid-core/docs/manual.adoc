@@ -965,8 +965,18 @@ An insert or a delete stays exactly where it was made.
 A stretch that was both deleted and typed over is read the way a whole new body is read, so a word typed over keeps its tokens and what hangs off them.
 
 A space typed inside a word splits it, and the word's token stays on one of the two halves.
-A nested token as long as the word moves with it, as a syntactic word does, unless its layer's config sets `segmentsParent` to `true` in the `plaid` namespace (`SEGMENTS_PARENT_KEY` in both clients).
-Each token of such a layer spells a stretch of its parent's text, as a morpheme does, so one as long as its word is the word's only morpheme, and the space deletes it with everything on it, as a space typed inside a morpheme deletes the word's morphemes.
+A nested token as long as the word moves with it, as a syntactic word does.
+
+A token layer whose config sets `plainEdits` to `true` in the `plaid` namespace (`PLAIN_EDITS_KEY` in both clients) takes a change more simply:
+
+* A change inside one of its tokens, or touching the token's edge with no whitespace between, grows or shrinks the token. Letters typed at a word's end become part of the word.
+* A space typed inside a token does not split it. The token now holds the space.
+* Deleting the whitespace between two tokens keeps both, now side by side. Text then typed between them with no whitespace goes to the first.
+* New text apart from every token, with whitespace between, belongs to none of them.
+* A token is deleted only when all its text is deleted. A token typed over whole keeps its place on the new text.
+* A token is never moved onto another word, and nothing that hangs off it is deleted or moved.
+
+Partition layers over such a layer follow its tokens' edges.
 This holds for `body` and `edits` alike.
 
 Send `base` with `edits`: the `digest` of the body the edits were made on.

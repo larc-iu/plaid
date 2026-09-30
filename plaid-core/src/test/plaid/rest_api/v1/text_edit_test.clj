@@ -25,7 +25,7 @@
 (defn- setup
   "A document with sentences, words, morphemes and glosses over `body`, the
   words at the runs without spaces, each word one morpheme."
-  [body & {:keys [segments]}]
+  [body & {:keys [plain other]}]
   (let [proj (create-test-project admin-request "EditProj")
         doc (create-test-document admin-request proj "Doc")
         tl (-> (create-text-layer admin-request proj "TL") :body :id)
@@ -34,10 +34,15 @@
                                                                      :parent-token-layer-id sentences})
                   :body :id)
         morphemes (-> (create-token-layer-opts admin-request tl "Morphemes" {:parent-token-layer-id words}) :body :id)
-        _ (when segments
-            (assert-status 204 (api-call admin-request {:method :put
-                                                        :path (str "/api/v1/token-layers/" morphemes "/config/plaid/segmentsParent")
-                                                        :body true})))
+        _ (when plain
+            (doseq [l [words morphemes]]
+              (assert-status 204 (api-call admin-request {:method :put
+                                                          :path (str "/api/v1/token-layers/" l "/config/plaid/plainEdits")
+                                                          :body true}))))
+        others (when other
+                 (-> (create-token-layer-opts admin-request tl "Other" {:overlap-mode "non-overlapping"
+                                                                        :parent-token-layer-id sentences})
+                     :body :id))
         glosses (-> (create-span-layer admin-request morphemes "Gloss") :body :id)
         text-id (-> (create-text admin-request tl doc body) :body :id)
         _ (assert-created (bulk-create-tokens admin-request [{:token-layer-id sentences :text text-id
@@ -45,41 +50,41 @@
         runs (let [m (re-matcher #"\S+" body)] (loop [out []] (if (.find m) (recur (conj out [(.start m) (.end m)])) out)))
         ws (mapv (fn [[b e]] (-> (create-token admin-request words text-id b e) :body :id)) runs)
         ms (mapv (fn [[b e]] (-> (create-token admin-request morphemes text-id b e) :body :id)) runs)
-        gs (mapv (fn [m] (-> (create-span admin-request glosses [m] "G") :body :id)) ms)]
-    {:doc doc :text text-id :words ws :morphemes ms :glosses gs :sentences sentences}))
+        gs (mapv (fn [m] (-> (create-span admin-request glosses [m] "G") :body :id)) ms)
+        os (when others (mapv (fn [[b e]] (-> (create-token admin-request others text-id b e) :body :id)) runs))]
+    {:doc doc :text text-id :words ws :morphemes ms :glosses gs :sentences sentences :others os}))
 
 (defn- extent [id]
   (let [t (get-token admin-request id)]
     (when (= 200 (:status t)) ((juxt :token/begin :token/end :token/value) (:body t)))))
 
 (deftest an-edit-answers-the-text-its-digest-and-what-it-reshaped
-  (let [{:keys [text words morphemes glosses]} (setup "hh pumpkin cat" :segments true)
+  (let [{:keys [text words morphemes glosses]} (setup "hh pumpkin cat")
         base (-> (get-text admin-request text) :body :text/digest)]
     (is (= (digest/text-digest "hh pumpkin cat") base))
-    (testing "a space typed in a one-morpheme word"
-      (let [res (edit-text text {:edits [(ins 6 " ")] :base base})
+    (testing "a word deleted whole"
+      (let [res (edit-text text {:edits [(del 2 8)] :base base})
             body (:body res)]
         (assert-ok res)
-        (is (= "hh pum pkin cat" (:text/body body)))
-        (is (= (digest/text-digest "hh pum pkin cat") (:text/digest body)))
-        ;; the word goes on the half sharing more letters, the morpheme and its gloss go
-        (is (= [7 11 "pkin"] (extent (words 1))))
+        (is (= "hh cat" (:text/body body)))
+        (is (= (digest/text-digest "hh cat") (:text/digest body)))
+        (assert-not-found (get-token admin-request (words 1)))
         (assert-not-found (get-token admin-request (morphemes 1)))
         (assert-not-found (get-span admin-request (glosses 1)))
         (let [{:keys [tokens spans deleted]} (:reshape body)]
-          (is (some #(= {:id (str (words 1)) :begin 7 :end 11} (update % :id str)) tokens) (pr-str tokens))
-          (is (= #{(str (morphemes 1))} (set (map str (:tokens deleted)))))
+          (is (some #(= {:id (str (words 2)) :begin 3 :end 6} (update % :id str)) tokens) (pr-str tokens))
+          (is (= #{(str (words 1)) (str (morphemes 1))} (set (map str (:tokens deleted)))))
           (is (= #{(str (glosses 1))} (set (map str (:spans deleted)))))
           (is (empty? spans)))))
     (testing "a stale base is 409 with the stored digest, and nothing is written"
       (let [res (edit-text text {:edits [(ins 0 "x")] :base base})]
         (assert-status 409 res)
         (is (true? (-> res :body :text-changed)))
-        (is (= (digest/text-digest "hh pum pkin cat") (-> res :body :digest)))
-        (is (= "hh pum pkin cat" (-> (get-text admin-request text) :body :text/body)))))
+        (is (= (digest/text-digest "hh cat") (-> res :body :digest)))
+        (is (= "hh cat" (-> (get-text admin-request text) :body :text/body)))))
     (testing "without base the edit applies to what is stored"
       (assert-ok (edit-text text {:edits [(del 0 3)]}))
-      (is (= "pum pkin cat" (-> (get-text admin-request text) :body :text/body))))))
+      (is (= "cat" (-> (get-text admin-request text) :body :text/body))))))
 
 (deftest an-edit-is-refused-when-malformed
   (let [{:keys [text]} (setup "a b")]
@@ -216,3 +221,30 @@
         spans (-> res :body :reshape :spans)]
     (assert-ok res)
     (is (= [{:tokens [(str c)] :value "BOTH"}] (map #(-> % (dissoc :id) (update :tokens (partial mapv str))) spans)))))
+
+(deftest a-plain-layer-takes-an-edit-the-plain-way
+  ;; Luke, 2026-09-30: an edit inside a word or touching it with no
+  ;; whitespace grows or shrinks it, and nothing else happens to it. A layer
+  ;; without the key keeps the other rules.
+  (let [{:keys [text words morphemes glosses others]} (setup "the cat sat" :plain true :other true)
+        digest-of #(-> (get-text admin-request text) :body :text/digest)
+        all-there (fn [ids] (every? #(= 200 (:status (get-span admin-request %))) ids))]
+    (testing "a space typed inside a word"
+      (assert-ok (edit-text text {:edits [(ins 5 " ")] :base (digest-of)}))
+      (is (= [4 8 "c at"] (extent (words 1))))
+      (is (= [4 8 "c at"] (extent (morphemes 1))))
+      (is (all-there glosses))
+      (is (contains? #{[4 5 "c"] [6 8 "at"]} (extent (others 1)))))
+    (testing "a whole-body save deleting a space and typing at a word's end"
+      (assert-ok (api-call admin-request {:method :patch :path (str "/api/v1/texts/" text) :body {:body "thec at sats"}}))
+      (is (= [[0 3 "the"] [3 7 "c at"] [8 12 "sats"]] (map extent words)))
+      (is (= [[0 3 "the"] [3 7 "c at"] [8 12 "sats"]] (map extent morphemes)))
+      (is (all-there glosses)))
+    (testing "a word deleted whole goes with its morpheme and gloss"
+      (let [res (edit-text text {:edits [(del 7 5)] :base (digest-of)})]
+        (assert-ok res)
+        (is (= "thec at" (-> res :body :text/body)))
+        (assert-not-found (get-token admin-request (words 2)))
+        (assert-not-found (get-token admin-request (morphemes 2)))
+        (assert-not-found (get-span admin-request (glosses 2)))
+        (is (all-there (take 2 glosses)))))))

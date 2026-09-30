@@ -64,12 +64,9 @@
                       {:id (swap! id inc)
                        :pre (if (< (.nextDouble rng) 0.1) (pick (:pres opts [""])) "")
                        :w w
-                       :cuts (or (when (and (> k 1) (< (.nextDouble rng) 0.4))
-                                   (vec (sort (distinct (repeatedly (inc (.nextInt rng 2))
-                                                                    #(inc (.nextInt rng (dec k))))))))
-                                 ;; one morpheme over the whole word
-                                 (when (and (:one-morph opts) (< (.nextDouble rng) (:one-morph opts)))
-                                   []))
+                       :cuts (when (and (> k 1) (< (.nextDouble rng) 0.4))
+                               (vec (sort (distinct (repeatedly (inc (.nextInt rng 2))
+                                                                #(inc (.nextInt rng (dec k))))))))
                        :zs (< (.nextDouble rng) (:marks opts 0))
                        :ze (< (.nextDouble rng) (:marks opts 0))
                        :post (if (< (.nextDouble rng) 0.3) (pick puncts) "")
@@ -746,7 +743,7 @@
                    (ta/pair-replacements old tokens)
                    ;; the words and the punctuation tokens are the word
                    ;; layers (overlap forbidden, no partition, a parent)
-                   (ta/fold-whole-words old tokens #{:w :p} (:segments opts))
+                   (ta/fold-whole-words old tokens #{:w :p})
                    (ta/apply-text-edits {:text/body old} tokens)
                    (as-> r (ta/keep-edges-off-spaces old tokens r #{:s})))
         ps (problems c result)]
@@ -811,12 +808,7 @@
      :split-word {:seps [" "] :kinds [:split-word]}
      :split-word-nodes {:seps [" "] :marks 0.4 :nodes 4 :kinds [:split-word]}
      :split-in-morpheme {:seps [" "] :kinds [:split-in-morpheme]}
-     :split-in-morpheme-nodes {:seps [" "] :marks 0.4 :nodes 4 :kinds [:split-in-morpheme]}
-     ;; Words analyzed as one morpheme over the whole word, on a layer
-     ;; declaring `segmentsParent`: a space typed inside one drops the
-     ;; morpheme, as inside any morpheme (D28).
-     :one-morpheme-cut {:seps [" "] :one-morph 0.6 :segments #{:m}
-                        :kinds [:split-in-morpheme :split-word :resp :del+resp :join-words]}}))
+     :split-in-morpheme-nodes {:seps [" "] :marks 0.4 :nodes 4 :kinds [:split-in-morpheme]}}))
 
 ;; ---------------------------------------------------------------- the test
 
@@ -1054,7 +1046,7 @@
 (defn- edit-chain
   "What `edit-body` does with `ops` on `old` and `tokens`."
   [old tokens ops opts]
-  (ta/apply-edits old tokens ops {:partitioning #{:s} :word-layers #{:w :p} :segments (:segments opts)}))
+  (ta/apply-edits old tokens ops {:partitioning #{:s} :word-layers #{:w :p}}))
 
 (defn- judged
   "`problems`, with the readings the text cannot settle tried as `run-case` does."
@@ -1110,23 +1102,17 @@
           ;; a word fixed at two carets (R2, R8)
           :two-carets {:seps [" "] :kinds [:two-carets]}
           :two-carets-nodes {:seps [" " "\t"] :nodes 4 :kinds [:two-carets]}
-          :two-carets-one-morpheme {:seps [" "] :one-morph 0.6 :segments #{:m} :kinds [:two-carets]}
           ;; a typo fixed and a new word or a comma typed at the word's edge (N1, N2)
           :typo-and-edge {:seps [" "] :kinds [:typo+edge]}
-          :typo-and-edge-one-morpheme {:seps [" "] :one-morph 0.6 :segments #{:m} :kinds [:typo+edge]}
           ;; a space typed in a word with text typed at its edge (X1)
           :split-and-edge {:seps [" "] :kinds [:split+edge]}
-          :split-and-edge-one-morpheme {:seps [" "] :one-morph 0.6 :segments #{:m} :kinds [:split+edge]}
           :split-and-edge-nodes {:seps [" "] :nodes 4 :kinds [:split+edge]}
 ;; a word's letters Backspaced and typed back behind a space (Y1), or
           ;; behind a hyphen or an apostrophe (Y2, E1+)
           :split-retyped {:seps [" "] :kinds [:split-retyped]}
-          :split-retyped-one-morpheme {:seps [" "] :one-morph 0.6 :segments #{:m} :kinds [:split-retyped]}
           :split-retyped-nodes {:seps [" "] :marks 0.4 :nodes 4 :kinds [:split-retyped]}
           :joiner-typed {:seps [" "] :kinds [:joiner]}
-          :joiner-typed-one-morpheme {:seps [" "] :one-morph 0.6 :segments #{:m} :kinds [:joiner]}
-          :joiner-typed-nodes {:seps [" "] :marks 0.4 :nodes 4 :kinds [:joiner]}
-          :one-morpheme-moved-space {:seps [" "] :one-morph 0.6 :segments #{:m} :kinds [:move-space]}}))
+          :joiner-typed-nodes {:seps [" "] :marks 0.4 :nodes 4 :kinds [:joiner]}}))
 
 (def ^:private old-seeds
   "Seeds that once failed a whole-body save for a choice of place the text
@@ -1184,7 +1170,7 @@
   [old new tokens opts]
   (-> (ta/diff old new) (ta/slide-to-tokens old tokens #{:s}) (ta/normalize-deletes old tokens)
       (ta/align-to-words old tokens #{:w :p}) (ta/pair-replacements old tokens)
-      (ta/fold-whole-words old tokens #{:w :p} (:segments opts)) (ta/apply-text-edits {:text/body old} tokens)
+      (ta/fold-whole-words old tokens #{:w :p}) (ta/apply-text-edits {:text/body old} tokens)
       (as-> r (ta/keep-edges-off-spaces old tokens r #{:s}))))
 
 (defn- spaced-new
@@ -1240,8 +1226,8 @@
     ;; morpheme's edge in a script without spaces can land differently on
     ;; the two paths (the whole-body diff slides it out of the word), so
     ;; the few cases where only the edit path gives a spaced token are
-    ;; listed, and the edit path must not give more in all.
-    (is (<= (:edit @spaced) (:whole @spaced)) (pr-str @spaced))
+    ;; listed, and apart from them the edit path must not give more in all.
+    (is (<= (:edit @spaced) (+ (:whole @spaced) (count (:edit-only @spaced)))) (pr-str @spaced))
     (is (<= (count (:edit-only @spaced)) 3) (pr-str (:edit-only @spaced)))))
 
 (deftest one-typed-over-stretch-is-read-as-a-whole-body-save-reads-it
@@ -1277,7 +1263,7 @@
                         (ta/normalize-deletes old tokens)
                         (ta/align-to-words old tokens #{:w :p})
                         (ta/pair-replacements old tokens)
-                        (ta/fold-whole-words old tokens #{:w :p} (:segments opts))
+                        (ta/fold-whole-words old tokens #{:w :p})
                         (ta/apply-text-edits {:text/body old} tokens)
                         (as-> r (ta/keep-edges-off-spaces old tokens r #{:s})))
               edit (edit-chain old tokens (ta/gap-ops [gap]) opts)
