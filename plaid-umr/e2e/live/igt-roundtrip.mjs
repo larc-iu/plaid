@@ -344,26 +344,26 @@ try {
   );
   // Sentence 3, two words merged.
   check(['ev3-01', 'thing3', 'person3'].every(node), 'the nodes on merged words survive');
-  // Sentence 4, split: everything survives, wherever it now sits.
+  // Sentence 4, split: every node survives, wherever it now sits.
   check(['ev4-01', 'thing4', 'person4'].every(node), 'a split sentence keeps its nodes');
+  // The split deletes, in the same step, the edges that would join nodes of
+  // the two new sentences (core's same-ancestor rule), and keeps the others.
+  const sameSentence = (a) => sentenceOfNode(a) === sentenceOfNode('thing4');
+  const kept = [
+    ...(sameSentence('ev4-01') ? ['in :ARG0'] : []),
+    ...(sameSentence('person4') ? ['out :mod'] : []),
+  ];
   check(
-    JSON.stringify(edgesOf('thing4')) === JSON.stringify(['in :ARG0', 'out :mod']),
-    'and its edges',
-    JSON.stringify(edgesOf('thing4')),
+    JSON.stringify(edgesOf('thing4')) === JSON.stringify(kept),
+    'and its edges inside one sentence, the ones across the split deleted',
+    `${JSON.stringify(edgesOf('thing4'))}, expected ${JSON.stringify(kept)}`,
   );
   console.log(
     `   sentence 4's nodes now in: ${['ev4-01', 'thing4', 'person4'].map(sentenceOfNode).join(', ')}`,
   );
-  // An edge the split left between the halves is not silent: the export
-  // leaves it out, and says so on the node it leaves.
+  // So no edge is left across the two sentences to report.
   const across = umr.problems.filter((p) => p.code === 'edge-across-sentences');
-  if (sentenceOfNode('ev4-01') !== sentenceOfNode('thing4')) {
-    check(
-      across.some((p) => p.var === node('ev4-01').var),
-      'an edge the split left between two sentences is reported',
-      JSON.stringify(across),
-    );
-  }
+  check(across.length === 0, 'no edge is left between two sentences', JSON.stringify(across));
   // Sentences 5 and 6, merged.
   check(
     ['ev5-01', 'thing5', 'person5', 'ev6-01', 'thing6', 'person6'].every(node) &&
