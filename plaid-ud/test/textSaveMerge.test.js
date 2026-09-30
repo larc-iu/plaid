@@ -613,3 +613,34 @@ test('an answer the client replayed is followed by a read of the text stored', a
   assert.equal(doc.body, 'a big dog ran home');
   assert.equal(stored, 'a big dog ran home');
 });
+
+// REV4-edit-ops G1-gap on the client's own resend: plaid-client stores the
+// first send, loses its answer and sends it again under the same key, and
+// that is answered 500. The app sees one plain refusal, and the stored text
+// decides.
+test('a save stored by a send the client resent itself, the resend refused 500, is saved', async () => {
+  const { doc, base, server } = setup();
+  const edit = doc._client.texts.edit;
+  doc._client.texts.edit = async (...args) => {
+    doc._client.texts.edit = edit;
+    await edit(...args);
+    throw Object.assign(new Error('HTTP 500'), { status: 500, method: 'PATCH' });
+  };
+  let stored = null;
+  const ok = await doc.saveText(edited(base, `${base} home`), { onStored: (b) => (stored = b) });
+  assert.equal(ok, true);
+  assert.equal(server.body, `${base} home`);
+  assert.equal(stored, `${base} home`);
+  assert.equal(doc.body, `${base} home`);
+  assert.ok(!doc.error);
+});
+
+test('a first send refused 500 that stored nothing is refused', async () => {
+  const { doc, base, server } = setup();
+  doc._client.texts.edit = async () => {
+    throw Object.assign(new Error('HTTP 500'), { status: 500, method: 'PATCH' });
+  };
+  const ok = await doc.saveText(edited(base, `${base} home`));
+  assert.equal(ok, false);
+  assert.equal(server.body, base);
+});

@@ -318,30 +318,39 @@ export class ConlluDocument extends DocumentModel {
           { keys: plan.keys },
         );
       } catch (err) {
+        // A lost answer goes to the queue, which runs this again with the
+        // plan as it is.
+        if (isUnknownOutcome(err)) {
+          plan.lost = true;
+          throw err;
+        }
+        // Any other refusal: a request under this plan's key may have landed
+        // with its answer lost, sent earlier here or by the client inside
+        // its own resend, whatever this answer says (a 500, a 403, the key
+        // reused). It has when the stored text holds its change, someone
+        // else's saved since or not. A first send refused 409 is not read
+        // so: the server answers a key it stored before the digest is looked
+        // at, so nothing under this key is stored. A read that fails leaves
+        // the refusal as it is.
         const textChanged = statusOf(err) === 409 && err?.responseData?.['text-changed'];
-        // A request under this plan's key has landed, as some other request
-        // than this one, or this is a send again of a plan whose answer was
-        // lost, refused now: the first send may have landed whatever this
-        // answer says. It has when the stored text holds its change,
-        // someone else's saved since or not.
-        const reused = isKeyReused(err);
-        if (reused || (plan.lost && !isUnknownOutcome(err))) {
+        if (textChanged && !plan.lost) {
+          if (attempt >= 2) throw err;
           await this._reloadInSend();
-          const now = this._storedText(text.id);
-          if (storedHolds(plan.base, plan.gaps, now.body)) {
-            onStored?.(now.body, now.digest);
-            return;
-          }
-          if (reused) throw new Error(TEXT_CONFLICT, { cause: err });
-          if (!textChanged || attempt >= 2) throw err;
           plan.ready = false;
           continue;
         }
-        // A lost answer goes to the queue, which runs this again with the
-        // plan as it is.
-        if (isUnknownOutcome(err)) plan.lost = true;
+        try {
+          await this._reloadInSend();
+        } catch {
+          throw err;
+        }
+        const now = this._storedText(text.id);
+        if (storedHolds(plan.base, plan.gaps, now.body)) {
+          onStored?.(now.body, now.digest);
+          return;
+        }
+        if (isKeyReused(err)) throw new Error(TEXT_CONFLICT, { cause: err });
         if (!textChanged || attempt >= 2) throw err;
-        await this._reloadInSend();
         plan.ready = false;
         continue;
       }

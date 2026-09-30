@@ -248,27 +248,37 @@ export const documentMutations = {
         });
         return plan.seed || again || replayed;
       } catch (err) {
-        // Its key was sent before with another request (an earlier run of
-        // this save landed with its answer lost), or this is a run again of
-        // a send whose answer was lost, refused now: the first may have
-        // landed whatever this answer says. It has when the text stored holds
-        // its change, someone else's saved since or not.
-        const reused = isKeyReused(err);
-        if (reused || (again && !isUnknownOutcome(err))) {
-          const stored = await this._readStoredText();
-          if (storedHolds(plan.base, plan.gaps, stored.body)) {
-            plan.landed = true;
-            return false;
-          }
-          if (reused) throw new Error(BASELINE_CONFLICT, { cause: err });
-          if (statusOf(err) === 409 && attempt < 2) {
-            await this._planBaselineEdit(plan, stored);
+        // A lost answer goes to the queue, which sends this again as it is.
+        if (isUnknownOutcome(err)) throw err;
+        // Any other refusal: a send under these keys may have landed with
+        // its answer lost, sent earlier here or by the client inside its own
+        // resend, whatever this answer says (a 500, a 403, the key reused).
+        // It has when the text stored holds its change, someone else's
+        // saved since or not. A first send refused 409 is not read so: the
+        // server answers a key it stored before the digest is looked at, so
+        // nothing under these keys is stored. A read that fails leaves the
+        // refusal as it is.
+        const conflict = statusOf(err) === 409;
+        if (conflict && !again) {
+          if (attempt < 2) {
+            await this._planBaselineEdit(plan, await this._readStoredText());
             continue;
           }
           throw err;
         }
-        if (statusOf(err) === 409 && attempt < 2) {
-          await this._planBaselineEdit(plan, await this._readStoredText());
+        let stored;
+        try {
+          stored = await this._readStoredText();
+        } catch {
+          throw err;
+        }
+        if (storedHolds(plan.base, plan.gaps, stored.body)) {
+          plan.landed = true;
+          return false;
+        }
+        if (isKeyReused(err)) throw new Error(BASELINE_CONFLICT, { cause: err });
+        if (conflict && attempt < 2) {
+          await this._planBaselineEdit(plan, stored);
           continue;
         }
         throw err;

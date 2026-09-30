@@ -463,6 +463,23 @@ describe('editBaselineText: what became of a save', () => {
     });
   }
 
+  it('stored by a send the client resends itself, the resend refused 500: read back, and landed (G1-gap, client)', async () => {
+    const server = serve('the cat sat on a mat');
+    const doc = open(server);
+    // plaid-client stores the first send, loses its answer and sends it again
+    // under the same key, and that is answered 500: the app sees one refusal.
+    const edit = server.client.texts.edit;
+    server.client.texts.edit = async (...args) => {
+      server.client.texts.edit = edit;
+      await edit(...args);
+      throw Object.assign(new Error('HTTP 500'), { status: 500, method: 'PATCH' });
+    };
+    const outcome = {};
+    expect(await doc.editBaselineText(insertBig, outcome)).toBe(true);
+    expect(server.body).toBe('the big cat sat on a mat');
+    expect(doc.body).toBe(server.body);
+  });
+
   it('not landed, its resend refused 500: not landed, and the refusal stands', async () => {
     const server = serve('the cat sat on a mat');
     const doc = open(server);
