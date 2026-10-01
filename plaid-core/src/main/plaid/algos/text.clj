@@ -3553,9 +3553,12 @@
     (str sb)))
 
 (defn- pin-points-to-edges
-  "`points` (zero-width tokens as a text edit left them) with each one that
-  stood at the edge of a token of its own layer, which now holds it strictly
-  inside, moved to that token's edge: its end when it stood at the end."
+  "`points` (zero-width tokens as a text edit left them) with each one that a
+  token of its own layer now holds strictly inside, though the point stood
+  outside it (at its edge, or apart from it: a segment that follows its
+  sentence can take the whitespace and text before a point), moved to that
+  token's edge on the side it stood: its end when it stood at or after the
+  end, its begin when at or before the begin."
   [old-tokens kept points]
   (let [was (into {} (map (juxt :token/id identity)) old-tokens)]
     (mapv (fn [{:token/keys [id layer begin] :as z}]
@@ -3563,9 +3566,9 @@
                   t (some (fn [t] (when (and (= layer (:token/layer t)) (< (:token/begin t) begin (:token/end t))) t)) kept)
                   w (some-> t :token/id was)]
               (cond
-                (nil? t) z
-                (= p (:token/end w)) (assoc z :token/begin (:token/end t) :token/end (:token/end t))
-                (= p (:token/begin w)) (assoc z :token/begin (:token/begin t) :token/end (:token/begin t))
+                (or (nil? t) (nil? w) (nil? p)) z
+                (>= p (:token/end w)) (assoc z :token/begin (:token/end t) :token/end (:token/end t))
+                (<= p (:token/begin w)) (assoc z :token/begin (:token/begin t) :token/end (:token/begin t))
                 :else z)))
           points)))
 

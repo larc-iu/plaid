@@ -98,13 +98,23 @@
           (when (< (.nextDouble rng) 0.3)
             (conj! toks {:token/id [:us si] :token/layer :u :token/begin (first (words 0)) :token/end (second (peek words))})))
         ;; segments over runs of words
-        (loop [i 0]
-          (when (< i n)
-            (let [j (min n (+ i 1 (.nextInt rng 3)))]
-              (when (< (.nextDouble rng) 0.5)
-                (conj! toks {:token/id [:a si i] :token/layer :a
-                             :token/begin (first (words i)) :token/end (second (words (dec j)))}))
-              (recur j))))
+        (let [segs (loop [i 0 segs []]
+                     (if (< i n)
+                       (let [j (min n (+ i 1 (.nextInt rng 3)))
+                             seg (when (< (.nextDouble rng) 0.5)
+                                   {:token/id [:a si i] :token/layer :a
+                                    :token/begin (first (words i)) :token/end (second (words (dec j)))})]
+                         (when seg (conj! toks seg))
+                         (recur j (cond-> segs seg (conj seg))))
+                       segs))]
+          ;; empty segments (legacy time-alignment data) at a word's edge
+          ;; outside every segment's inside, so at a segment's end or start
+          ;; too
+          (when-let [pr (:points opts)]
+            (doseq [p (distinct (mapcat identity words))
+                    :when (and (< (.nextDouble rng) pr)
+                               (not-any? #(< (:token/begin %) p (:token/end %)) segs))]
+              (conj! toks {:token/id [:ap si p] :token/layer :a :token/begin p :token/end p}))))
         (let [before @pos]
           (when (< si (dec nsent))
             (add (if (and (:glue opts) (< (.nextDouble rng) (:glue opts)))
@@ -353,8 +363,8 @@
             (bad! id " off its word"))))
       ;; no two tokens of a layer without overlaps overlap, nor two sentences
       (doseq [layer [:w :a :s]]
-        (let [ts (sort-by :token/begin (filter #(and (= layer (:token/layer %)) (not (gone (:token/id %))))
-                                               (:tokens result)))]
+        (let [ts (sort-by (juxt :token/begin :token/end) (filter #(and (= layer (:token/layer %)) (not (gone (:token/id %))))
+                                                                 (:tokens result)))]
           (doseq [[x y] (partition 2 1 ts)]
             (when (> (:token/end x) (:token/begin y))
               (bad! (:token/id x) " overlaps " (:token/id y) " " (pr-str new-body))))))
@@ -385,7 +395,10 @@
    :written-together {:carets 3 :glue 0.3 :spaced 0.3}
    :nested-layer {:carets 3 :child 0.7 :spaced 0.3 :glue 0.1}
    ;; UMR's nodes beside the words: the words decide, the nodes follow
-   :nodes-beside-words {:carets 3 :nodes true :spaced 0.3 :glue 0.1}})
+   :nodes-beside-words {:carets 3 :nodes true :spaced 0.3 :glue 0.1}
+   ;; empty time-alignment segments at word and segment edges (REV-r4d: text
+   ;; typed at one grew the segment before over it, a 500)
+   :empty-segments {:carets 3 :points 0.4 :spaced 0.3 :glue 0.2}})
 
 (def ^:private cases-per-config 1500)
 
@@ -661,7 +674,7 @@
   ;; and a node over several words keeps to them. Sentences never begin on
   ;; whitespace they did not have. Every other rule judged as ever.
   (let [opts {:carets 3 :spaced 0.3 :bound-early 0.5 :at-sentences true :sentence-segments true :nodes true
-              :lead " "
+              :points 0.2 :lead " "
               :sentence-seps [" " "  " "\n" ". " " \n "]
               :typed ["Q" "Oh " "XZ XZ " " Q" "  " "Q\nR" "\n" "-" "Q R" "Oh.\n"]}
         fails (atom [])]
@@ -719,7 +732,7 @@
   ;; off it and its sentence; with no side, into the word before. A side
   ;; where the words do not meet counts for nothing. Every other rule judged
   ;; as ever.
-  (let [opts {:carets 3 :spaced 0.2 :glue 0.6}
+  (let [opts {:carets 3 :spaced 0.2 :glue 0.6 :points 0.2}
         fails (atom [])]
     (dotimes [seed cases-per-config]
       (let [rng (java.util.Random. (+ seed 99))

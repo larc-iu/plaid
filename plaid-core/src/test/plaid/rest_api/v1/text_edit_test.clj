@@ -8,6 +8,7 @@
                                     with-admin with-test-users with-clean-db]]
             [plaid.sql.common :as psc]
             [plaid.test-helpers :refer :all]
+            [plaid.algos.text]
             [plaid.util.digest :as digest]
             [ring.mock.request :as mock]))
 
@@ -400,21 +401,78 @@
     (is (= [4 4 ""] (extent empty)))
     (is (= [5 13 "The end."] (extent r2)))))
 
+(defn- rows-setup
+  "igt's layers as its Media tab has them: sentences, plain words, plain
+  morphemes under them with igt's rules, and plain rows beside them, a span
+  on every token, and an empty row at each of `points` (legacy data)."
+  [body sents words rows points]
+  (let [proj (create-test-project admin-request "RowsProj")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        mk-layer (fn [n opts] (-> (create-token-layer-opts admin-request tl n opts) :body :id))
+        s (mk-layer "Sentences" {:overlap-mode "partitioning"})
+        w (mk-layer "Words" {:overlap-mode "non-overlapping" :parent-token-layer-id s})
+        m (mk-layer "Morphemes" {:overlap-mode "any" :parent-token-layer-id w})
+        a (mk-layer "Rows" {:overlap-mode "non-overlapping"})
+        sl (into {} (map (fn [l] [l (-> (create-span-layer admin-request l "V") :body :id)])) [s w m a])
+        _ (doseq [l [w m a]]
+            (assert-status 204 (api-call admin-request {:method :put :path (str "/api/v1/token-layers/" l "/config/plaid/plainEdits")
+                                                        :body true})))
+        _ (assert-status 200 (api-call admin-request {:method :put :path (str "/api/v1/token-layers/" m "/constraints/igt")
+                                                      :body {:constraints [{:type "coextensive"} {:type "single-link"}]}}))
+        doc (create-test-document admin-request proj "Doc")
+        text (-> (create-text admin-request tl doc body) :body :id)
+        _ (assert-created (bulk-create-tokens admin-request (mapv (fn [[b e]] {:token-layer-id s :text text :begin b :end e}) sents)))
+        mk (fn [l b e] (let [t (-> (create-token admin-request l text b e) :body :id)]
+                         (create-span admin-request (sl l) [t] "V")
+                         t))
+        _ (doseq [[b e] words] (mk w b e) (mk m b e))
+        rs (mapv (fn [[b e]] (mk a b e)) rows)
+        ps (mapv (fn [p] (-> (create-token admin-request a text p p) :body :id)) points)]
+    {:text text :rows rs :points ps}))
+
+(deftest an-empty-row-in-whitespace-after-a-row-saves
+  ;; REV5 L3, answered 409 until REV-r4d: legacy data with an empty row
+  ;; inside the whitespace after a row, text typed there. The row takes the
+  ;; text as its sentence does and the empty row goes to its end.
+  (let [{:keys [text rows points]} (rows-setup "Hi.  Yo. End." [[0 5] [5 9] [9 13]] [[0 3] [5 8] [9 13]]
+                                               [[0 3] [5 8] [9 13]] [4])
+        r (edit-text text {:edits [(ins 4 "x")]})]
+    (is (= 200 (:status r)) (pr-str (:body r)))
+    (is (= "Hi. x Yo. End." (:text/body (:body r))))
+    (is (= [[0 5] [6 9] [10 14]] (map #(take 2 (extent %)) rows)))
+    (is (= [5 5] (take 2 (extent (first points)))))))
+
 (deftest an-overlap-refusal-names-the-layer
-  ;; REV5 L3: legacy data with an empty segment inside the whitespace after a
-  ;; row; the refusal names the layer by its name
-  (let [{:keys [text]} (setup "Hi.  Yo. End." :plain true :sents [[0 5] [5 9] [9 13]])
-        tl (:text/layer (:body (get-text admin-request text)))
-        rows (-> (create-token-layer-opts admin-request tl "Rows" {:overlap-mode "non-overlapping"}) :body :id)
-        _ (assert-status 204 (api-call admin-request {:method :put
-                                                      :path (str "/api/v1/token-layers/" rows "/config/plaid/plainEdits")
-                                                      :body true}))
-        _ (create-token admin-request rows text 0 3)
-        _ (create-token admin-request rows text 4 4)
-        _ (create-token admin-request rows text 5 8)
-        _ (create-token admin-request rows text 9 13)
-        base (-> (get-text admin-request text) :body :text/digest)
-        r (edit-text text {:edits [{:type "insert" :index 4 :value "x"}] :base base})]
+  ;; REV5 L3: should a rule ever leave two rows over the same text (here the
+  ;; step that keeps an empty row at a row's edge is taken away), the save
+  ;; is refused with a 409 naming the layer by its name
+  (let [{:keys [text]} (rows-setup "Hi.  Yo. End." [[0 5] [5 9] [9 13]] [[0 3] [5 8] [9 13]]
+                                   [[0 3] [5 8] [9 13]] [4])
+        r (with-redefs [plaid.algos.text/pin-points-to-edges (fn [_ _ points] points)]
+            (edit-text text {:edits [(ins 4 "x")]}))]
     (is (= 409 (:status r)))
     (is (re-find #"layer \"Rows\"" (str (:error (:body r)))) (pr-str (:body r)))
     (is (not (re-find #"[0-9a-f]{8}-[0-9a-f]{4}-" (str (:body r)))) (pr-str (:body r)))))
+
+(deftest an-empty-row-at-a-rows-edge-and-text-typed-there-saves
+  ;; REV-r4d: an empty time-alignment row at the end of a row and text typed
+  ;; at that point with no `side` answered 500 "The new body could not be
+  ;; applied." (the row grew over the empty row)
+  (doseq [[at op want] [[3 (ins 3 " Oh") [6 6]] [3 (ins 3 "x") [4 4]] [12 (ins 12 " Oh") [15 15]]]]
+    (testing (pr-str at op)
+      (let [{:keys [text points]} (rows-setup "Hi. The end." [[0 4] [4 12]] [[0 3] [4 7] [8 12]] [[0 3] [4 12]] [at])
+            r (edit-text text {:edits [op]})]
+        (is (= 200 (:status r)) (pr-str (:body r)))
+        (is (= want (take 2 (extent (first points)))))))))
+
+(deftest an-empty-row-a-row-that-follows-its-sentence-grows-over-saves
+  ;; REV-r4d oracle: a row over its sentence follows the sentence, which can
+  ;; take text before an empty row that stood apart from the row, not at its
+  ;; edge. The empty row goes to the row's edge on the side it stood, where
+  ;; it answered 409 for two rows over the same text.
+  (let [{:keys [text rows points]} (rows-setup "mat\nكتاب tat" [[0 4] [4 9] [9 12]] [[0 3] [4 8] [9 12]]
+                                               [[0 3] [4 8] [9 12]] [8])
+        r (api-call admin-request {:method :patch :path (str "/api/v1/texts/" text) :body {:body "XZ XZ XZ"}})]
+    (is (= 200 (:status r)) (pr-str (:body r)))
+    (is (= [0 8] (take 2 (extent (peek rows)))))
+    (is (= [0 0] (take 2 (extent (first points)))))))
