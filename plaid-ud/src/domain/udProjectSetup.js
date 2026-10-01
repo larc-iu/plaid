@@ -25,7 +25,6 @@
 
 import {
   PLAID_NAMESPACE,
-  PLAIN_EDITS_KEY,
   PRESERVE_ON_SPLIT_KEY,
   SPLIT_ON_SPACE_KEY,
   PROVENANCE_KEYS,
@@ -57,11 +56,9 @@ import {
 import { queueDeclarations, wantedConstraints } from '../utils/udConstraints.js';
 import { ensureLayerConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
 
-// A text edit inside a word or touching it grows or shrinks it with its
-// analysis, and a space typed inside one splits it (see the manual's
-// "Changing a text's body").
-const declarePlainEdits = (target, layerId) => {
-  target.tokenLayers.setConfig(layerId, PLAID_NAMESPACE, PLAIN_EDITS_KEY, true);
+// A space typed inside a word splits it (see the manual's "Changing a text's
+// body").
+const declareSplitOnSpace = (target, layerId) => {
   target.tokenLayers.setConfig(layerId, PLAID_NAMESPACE, SPLIT_ON_SPACE_KEY, true);
 };
 
@@ -120,7 +117,7 @@ const bootstrap = async (client, projectName) => {
     const b5 = await client.batched(async (b) => {
       b.tokenLayers.setConfig(wordLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.WORD);
       declarePreserveOnSplit(b, wordLayerId);
-      declarePlainEdits(b, wordLayerId);
+      declareSplitOnSpace(b, wordLayerId);
       b.tokenLayers.create(textLayerId, 'Words', 'any', wordLayerId);
     });
     const morphemeLayerId = createdId(b5.at(-1));
@@ -275,18 +272,11 @@ export const adoptSubstrate = (client, project) =>
       'non-overlapping',
       sentenceLayerId,
     );
-    // The words' edit keys, the missing ones in one batch. On a project
-    // another app made, the word layer is shared, and a space typed inside
-    // one of its words then splits it for both.
+    // On a project another app made, the word layer is shared, and a space
+    // typed inside one of its words then splits it for both.
     const wordLayer = findByRole(existingTextLayer?.tokenLayers, ROLES.WORD);
-    const wordKeys = [PLAIN_EDITS_KEY, SPLIT_ON_SPACE_KEY].filter(
-      (key) => wordLayer?.config?.[PLAID_NAMESPACE]?.[key] !== true,
-    );
-    if (wordKeys.length) {
-      await client.batched(async (b) => {
-        for (const key of wordKeys)
-          b.tokenLayers.setConfig(wordLayerId, PLAID_NAMESPACE, key, true);
-      });
+    if (wordLayer?.config?.[PLAID_NAMESPACE]?.[SPLIT_ON_SPACE_KEY] !== true) {
+      await client.tokenLayers.setConfig(wordLayerId, PLAID_NAMESPACE, SPLIT_ON_SPACE_KEY, true);
     }
     const morphemeLayerId = await ensureTokenLayer(
       ROLES.SYNTACTIC_WORD,

@@ -4,8 +4,8 @@
 // these tabs send, as the core does:
 //
 // - A text write whose `base` is not the digest of the body stored is refused
-//   409, `text-changed`. An edit is taken as the core takes it on layers that
-//   declare `plainEdits`, as igt's do (`plainEditLocally`).
+//   409, `text-changed`. An edit is taken as the core takes it on every
+//   layer (`plainEditLocally`).
 // - Strict mode: the stored document has a version, which every write moves
 //   on, and a write the client stamps with a version that is not the stored
 //   one is refused 409 (a batch is checked at its first stamped write). The
@@ -111,8 +111,8 @@ function reshapeOf(before, after) {
   };
 }
 
-// An edit's gaps taken as the core takes them on igt's layers, which declare
-// `plainEdits` (plaid-core `apply-plain-gaps`): a gap inside a token or
+// An edit's gaps taken as the core takes them on every layer (plaid-core
+// `apply-plain-gaps`): a gap inside a token or
 // reaching one of its ends from inside resizes it, the letters of new text
 // touching a token with no whitespace between join it (where the words meet,
 // the word holding the gap at that end takes them, else the one before), a

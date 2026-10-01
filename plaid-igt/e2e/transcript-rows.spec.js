@@ -1,10 +1,4 @@
-import PlaidClient, {
-  ROLES,
-  PLAID_NAMESPACE,
-  PLAIN_EDITS_KEY,
-  cpLength,
-  cpSlice,
-} from '@larc-iu/plaid-client';
+import PlaidClient, { ROLES, cpLength, cpSlice } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
 import { createScratchProject } from './fixtureProject.js';
 import { wavBytes } from './bugbash/harness.mjs';
@@ -64,10 +58,6 @@ test.beforeAll(async () => {
   const words = layerOf(tl, ROLES.WORD).tokens;
   // One morpheme per word, glossed, and one segment per word, a second each.
   const morphemeLayer = layerOf(tl, ROLES.MORPHEME);
-  // what a maintainer's open back-fills, set here so the test does not race it
-  for (const role of [ROLES.WORD, ROLES.MORPHEME, ROLES.TIME_ALIGNMENT]) {
-    await admin.tokenLayers.setConfig(layerOf(tl, role).id, PLAID_NAMESPACE, PLAIN_EDITS_KEY, true);
-  }
   const { ids } = await admin.tokens.bulkCreate(
     words.map((w) => ({
       tokenLayerId: morphemeLayer.id,

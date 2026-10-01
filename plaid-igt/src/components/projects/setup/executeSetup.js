@@ -18,7 +18,6 @@
 import {
   PLAID_NAMESPACE,
   PRESERVE_ON_SPLIT_KEY,
-  PLAIN_EDITS_KEY,
   PROVENANCE_KEYS,
   ROLE_KEY,
   ROLES,
@@ -235,12 +234,6 @@ async function executeProjectSetupImpl({
         await client.tokenLayers.setConfig(layer.id, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, [
           ...PROVENANCE_KEYS,
         ]);
-      }
-      // A text edit grows or shrinks the tokens it lands in or touches and
-      // never splits, joins or folds them (see PLAIN_EDITS_KEY). Not on the
-      // sentences, a partition, which follow the words' edges.
-      if (role !== ROLES.SENTENCE && config[PLAIN_EDITS_KEY] !== true) {
-        await client.tokenLayers.setConfig(layer.id, PLAID_NAMESPACE, PLAIN_EDITS_KEY, true);
       }
       return layer.id;
     };

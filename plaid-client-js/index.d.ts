@@ -1735,9 +1735,7 @@ export const PLAID_NAMESPACE: "plaid";
 export const ROLE_KEY: "role";
 /** Layer config key naming the metadata keys a token born of a SPLIT inherits. */
 export const PRESERVE_ON_SPLIT_KEY: "preserveOnSplit";
-/** Layer config key asking Plaid to take a text edit plainly on the layer (see the manual's "Changing a text's body"). */
-export const PLAIN_EDITS_KEY: "plainEdits";
-/** Layer config key: a space typed inside a word of the text splits it (beside plainEdits). */
+/** Layer config key: a space typed inside a word of the text splits it (see the manual's "Changing a text's body"). */
 export const SPLIT_ON_SPACE_KEY: "splitOnSpace";
 
 /** The server's cap on operations per batch request; a larger batch goes as consecutive requests. */

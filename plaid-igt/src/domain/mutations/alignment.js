@@ -939,7 +939,7 @@ export const alignmentMutations = {
   // edit did to the words inside is the server's to say: the answer's
   // `reshape` is shown (`_showRowAnswer`). A segment typed over whole keeps
   // its token, since the text rules keep a token holding the stretch typed
-  // over (`plainEdits`). `replan(fresh)`
+  // over. `replan(fresh)`
   // is as `_showSegmentWrite` has it, its plan with its own `patch`.
   _showRowEdit(
     label,

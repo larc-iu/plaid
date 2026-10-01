@@ -1,9 +1,4 @@
-import PlaidClient, {
-  ROLES,
-  PLAIN_EDITS_KEY,
-  PLAID_NAMESPACE,
-  cpLength,
-} from '@larc-iu/plaid-client';
+import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
@@ -35,12 +30,6 @@ test.beforeAll(async () => {
   projectId = project.id;
   const full = await client.projects.get(projectId);
   textLayer = full.textLayers.find((l) => roleOf(l) === ROLES.BASELINE);
-  // what a maintainer's open back-fills, set here so the test does not race it
-  for (const role of [ROLES.WORD, ROLES.MORPHEME, ROLES.TIME_ALIGNMENT]) {
-    if (layer(role)) {
-      await client.tokenLayers.setConfig(layer(role).id, PLAID_NAMESPACE, PLAIN_EDITS_KEY, true);
-    }
-  }
 });
 
 test.afterAll(async () => {

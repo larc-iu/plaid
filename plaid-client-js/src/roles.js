@@ -35,19 +35,10 @@ export const ROLE_KEY = 'role';
 export const PRESERVE_ON_SPLIT_KEY = 'preserveOnSplit';
 
 /**
- * Layer config key (true) asking Plaid to take a text edit plainly on the
- * layer: an edit inside a token, or touching its edge with no whitespace
- * between, grows or shrinks it, a typed space never splits it, a deleted one
- * never joins two, and only a token whose whole text is deleted goes. See the
- * manual's `Changing a text's body`.
- */
-export const PLAIN_EDITS_KEY = 'plainEdits';
-
-/**
- * Layer config key (true), beside PLAIN_EDITS_KEY: a space typed inside a
- * token of the text's words splits it, the token going on the half sharing
- * more letters with it. Declared on a word layer another app shares, it holds
- * for the whole text.
+ * Layer config key (true): a space typed inside a token of the text's words
+ * splits it, the token going on the half sharing more letters with it.
+ * Declared on a word layer another app shares, it holds for the whole text.
+ * See the manual's `Changing a text's body`.
  */
 export const SPLIT_ON_SPACE_KEY = 'splitOnSpace';
 

@@ -6,7 +6,6 @@ import {
   PLAID_NAMESPACE,
   PRESERVE_ON_SPLIT_KEY,
   PROVENANCE_KEYS,
-  PLAIN_EDITS_KEY,
   writerPolicy,
   createdId,
 } from '@larc-iu/plaid-client';
@@ -616,39 +615,6 @@ export class IgtDocument extends DocumentModel {
     }
   }
 
-  // A text edit grows or shrinks the word, morpheme and time-alignment tokens
-  // it lands in or touches, and never splits, joins or folds them (a word may
-  // hold a space, as a FLEx phrase does), when their layers say so. A project
-  // made before the key existed picks it up here. Maintainers only,
-  // compare-and-set on the key alone, and a failure is let go: the next open
-  // tries again.
-  async _backfillPlainEdits(info) {
-    if (!canManageProject(this._project, this._user)) return;
-    const layers = [
-      info?.primaryTokenLayer,
-      info?.morphemeTokenLayer,
-      info?.alignmentTokenLayer,
-    ].filter((l) => l?.id && l.config?.[PLAID_NAMESPACE]?.[PLAIN_EDITS_KEY] !== true);
-    if (layers.length === 0) return;
-    // One batch, so the words are never plain while the morphemes are not.
-    try {
-      await this._client.batched(async (b) => {
-        for (const layer of layers) {
-          b.tokenLayers.setConfig(
-            layer.id,
-            PLAID_NAMESPACE,
-            PLAIN_EDITS_KEY,
-            true,
-            undefined,
-            expectStored(layer, PLAID_NAMESPACE, PLAIN_EDITS_KEY),
-          );
-        }
-      });
-    } catch (err) {
-      if (!isConfigConflict(err)) console.error('Could not declare plainEdits on a layer:', err);
-    }
-  }
-
   // A field's language, recorded from its name once: "Gloss (nl)" was how the
   // FLEx importer said "nl" before fields recorded a language, and the
   // exporters read the record now, not the name. Maintainers only, and a
@@ -722,7 +688,6 @@ export class IgtDocument extends DocumentModel {
       // a document. It has to be in place BEFORE a split, since provenance lost
       // that way leaves nothing for a later pass to find.
       await this._backfillPreserveOnSplit(info);
-      await this._backfillPlainEdits(info);
       await this._backfillFieldLangs(info);
       const rules = await ensureLayerConstraints(
         this._client,
