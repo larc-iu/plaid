@@ -169,7 +169,7 @@ function mapEdge(p, gaps, edge) {
  * until the server's answer to the edit says what it did: the body changed,
  * each token moved or resized by the change beside or inside it, and no token
  * deleted, since which ones the server deletes is its own rules' to say
- * (plaid-core `plan-edits`). A partitioning layer is stretched back into a
+ * (plaid-core `apply-plain-gaps`). A partitioning layer is stretched back into a
  * cover of the body. Returns the ids of the tokens whose extent changed.
  */
 export function applyGapsLocally(raw, textId, gaps) {
