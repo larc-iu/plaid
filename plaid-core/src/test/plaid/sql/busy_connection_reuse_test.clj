@@ -13,10 +13,12 @@
   `cannot commit - no transaction is active`. The caller gets a fast, load-
   independent failure for writes that are already durable. `psd/heal-autocommit!`
   is what keeps that from happening; these tests pin both halves of it."
-  (:require [clojure.test :refer :all]
+  (:require [clojure.string :as str]
+            [clojure.test :refer :all]
             [next.jdbc :as jdbc]
             [plaid.sql.common :as psc]
-            [plaid.sql.datasource :as psd])
+            [plaid.sql.datasource :as psd]
+            [taoensso.timbre :as timbre])
   (:import (java.io File)
            (java.sql DriverManager)))
 
@@ -211,4 +213,76 @@
             "a write that said it landed did"))
       (finally
         (.close ds)
+        (cleanup! db-path)))))
+
+;; ------------------------------------------------------------------
+;; A COMMIT that finds no transaction means SQLite ended the transaction
+;; partway through the body (SQLITE_FULL, IOERR, NOMEM, INTERRUPT), and what
+;; the body ran after that committed statement by statement. It must be
+;; logged as an error, never mistaken for contention.
+
+(deftest a-commit-with-no-transaction-is-logged-as-an-error
+  (let [db-path (temp-db-path)
+        ds (psd/build-datasource db-path {:max-pool-size 1})
+        logged (atom [])]
+    (try
+      (with-open [c (.getConnection ds)]
+        (jdbc/execute! c ["create table t (id integer primary key, v text)"]))
+      (timbre/with-merged-config
+        {:appenders {:capture {:enabled? true
+                               :fn (fn [{:keys [level vargs]}]
+                                     (swap! logged conj [level (str/join " " vargs)]))}}}
+        (let [e (is (thrown? Exception
+                             (psd/with-tx [tx ds]
+                               (jdbc/execute! tx ["insert into t (v) values ('before')"])
+                               (jdbc/execute! tx ["ROLLBACK"])
+                               (jdbc/execute! tx ["insert into t (v) values ('after')"]))))]
+          (is (not (psd/sqlite-busy? e)))))
+      (is (some (fn [[level msg]] (and (= :error level) (str/includes? msg "partly"))) @logged)
+          "an ERROR saying the write may have partly landed")
+      (finally
+        (.close ds)
+        (cleanup! db-path)))))
+
+;; A pool that is not Hikari cannot evict. Its connection must still never
+;; go back holding the transaction that a failed COMMIT left open.
+
+(defn- pooled-datasource
+  "A DataSource that hands out one physical connection again and again, its
+  `close` a no-op, as a pool's checkout does."
+  [physical]
+  (reify javax.sql.DataSource
+    (getConnection [_]
+      (java.lang.reflect.Proxy/newProxyInstance
+       (.getClassLoader java.sql.Connection)
+       (into-array Class [java.sql.Connection])
+       (reify java.lang.reflect.InvocationHandler
+         (invoke [_ _ method args]
+           (case (.getName method)
+             "close" nil
+             "unwrap" physical
+             "isWrapperFor" true
+             (.invoke method physical args))))))))
+
+(deftest a-failed-commit-on-another-pool-lets-the-write-lock-go
+  (let [db-path (temp-db-path)
+        physical (DriverManager/getConnection (str "jdbc:sqlite:" db-path))
+        ds (pooled-datasource physical)]
+    (try
+      (doseq [sql ["PRAGMA foreign_keys=ON"
+                   "create table p (id integer primary key)"
+                   "create table c (pid integer references p(id) deferrable initially deferred)"]]
+        (jdbc/execute! physical [sql]))
+      (is (thrown? Exception
+                   (psd/with-tx [tx ds]
+                     (jdbc/execute! tx ["insert into c (pid) values (99)"])))
+          "the deferred FK refuses the COMMIT, which leaves the transaction open")
+      (with-open [other (DriverManager/getConnection (str "jdbc:sqlite:" db-path))]
+        (is (some? (doto (.createStatement other)
+                     (.execute "PRAGMA busy_timeout=0")
+                     (.execute "BEGIN IMMEDIATE")
+                     (.execute "ROLLBACK")))
+            "another connection takes the write lock at once"))
+      (finally
+        (try (.close physical) (catch Exception _))
         (cleanup! db-path)))))

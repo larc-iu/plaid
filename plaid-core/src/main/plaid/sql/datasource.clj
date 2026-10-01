@@ -271,18 +271,40 @@
   (with-open [stmt (.createStatement con)]
     (.execute stmt sql)))
 
+(defn- discard-connection!
+  "Make sure `con` never serves another borrower. From Hikari: evict it, and
+  Hikari closes it when it is returned. From any other source: close the
+  physical connection under it now, since the source's own close may only
+  return it to a pool. Closing a SQLite connection rolls back whatever
+  transaction it held, and with it lets the write lock go."
+  [db ^java.sql.Connection con]
+  (try
+    (if (instance? HikariDataSource db)
+      (.evictConnection ^HikariDataSource db con)
+      (let [^java.sql.Connection raw (try (.unwrap con java.sql.Connection)
+                                          (catch Throwable _ con))]
+        (.close raw)))
+    (catch Throwable _ nil)))
+
 (defn- end-or-evict!
   "Run `sql` (COMMIT or ROLLBACK) on `con`. If it fails, the connection may
-  still hold an open transaction, and with it the write lock, so it must not
-  go back to the pool: evict it, and Hikari closes it when it is returned
-  (closing a SQLite connection rolls back whatever it held). Rethrows."
+  still hold an open transaction, and with it the write lock, so it is
+  discarded (`discard-connection!`). Rethrows.
+
+  A COMMIT that finds no transaction means SQLite ended the transaction
+  partway through the body (SQLITE_FULL, IOERR, NOMEM, an interrupt), and
+  whatever the body ran after that committed statement by statement. That is
+  logged at ERROR, since some of the write may have landed."
   [db ^java.sql.Connection con ^String sql]
   (try
     (exec-sql! con sql)
     (catch Throwable t
-      (when (instance? HikariDataSource db)
-        (try (.evictConnection ^HikariDataSource db con)
-             (catch Throwable _ nil)))
+      (when (and (= "COMMIT" sql)
+                 (str/includes? (str (.getMessage t)) "no transaction is active"))
+        (log/error t "A write transaction ended before its COMMIT: SQLite rolled it back"
+                   "partway through, so the statements after that point may have partly"
+                   "landed outside any transaction."))
+      (discard-connection! db con)
       (throw t))))
 
 (defn with-tx*
@@ -307,7 +329,7 @@
   transaction takes the lock once and lets it go once, and a busy can only
   come from the BEGIN, before anything ran.
 
-  A COMMIT or ROLLBACK that fails evicts the connection (`end-or-evict!`), so
+  A COMMIT or ROLLBACK that fails discards the connection (`end-or-evict!`), so
   one still holding a transaction never returns to the pool."
   [db f]
   (if (instance? java.sql.Connection db)
