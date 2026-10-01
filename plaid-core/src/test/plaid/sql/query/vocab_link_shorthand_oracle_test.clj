@@ -12,9 +12,11 @@
   The oracle here reads the raw tables and evaluates the clauses by brute force,
   so a match is a binding of the variables and nothing else. Each query is also
   run with the compiler's DISTINCT forced on, which is what the compiler did for
-  every shorthand query before it learned to drop it (54811bd2). Where a limit
-  cuts the groups short, the two runs must return the same rows in the same
-  order and the oracle must hold every one of them."
+  every shorthand query before it learned to drop it (54811bd2). No query here
+  orders its rows (an aggregate return refuses `order-by`), so rows come in
+  whatever order the plan gives and a limit takes an arbitrary slice: the two
+  runs must return the same rows as a multiset, or under a limit the same
+  number of rows, all of which the oracle must hold."
   (:require [clojure.set :as set]
             [clojure.string :as str]
             [clojure.walk :as walk]
@@ -378,6 +380,20 @@
   (every? #(contains? (qc/compile-query (qr/resolve-query db user %)) :select)
           (ast/expand body)))
 
+(defn- same-answer?
+  "Whether two runs of one unordered query agree. Rows come in plan order, and
+  dropping the DISTINCT changes the plan, so they are compared as a multiset (a
+  duplicated row still counts). Under a limit each run may take a different
+  slice, so only its size and `:truncated` are compared here and `judge` holds
+  every row against the oracle."
+  [lim got kept]
+  (cond
+    (:count got) (= got kept)
+    lim (and (= (:truncated got) (:truncated kept))
+             (= (count (:rows got)) (count (:rows kept))))
+    :else (and (= (:truncated got) (:truncated kept))
+               (= (frequencies (:rows got)) (frequencies (:rows kept))))))
+
 (defn- judge
   "Nil when the engine agrees with the forced-DISTINCT run and the oracle,
   otherwise a description of the difference."
@@ -387,7 +403,7 @@
         want (oracle w scope body)
         lim (get body "limit")]
     (cond
-      (not= got kept) {:problem :differs-from-distinct :got got :distinct kept}
+      (not (same-answer? lim got kept)) {:problem :differs-from-distinct :got got :distinct kept}
       (:count want) (when (not= (:count want) (:count got)) {:problem :count :got got :want want})
       (and lim (map? (get body "return")))
       (let [rows (:rows got)]
@@ -449,6 +465,26 @@
     (is (= (* 8 40 3) checked))
     (testing "the guard is exercised"
       (is (< 200 elided)))
+    (is (empty? failures) (pr-str (take 3 failures)))))
+
+(defn- run-in-another-order
+  "`run` as a different plan might answer: the rows reversed, and under a limit
+  the slice taken from the other end."
+  [user body]
+  (let [lim (get body "limit")
+        r (run user (dissoc body "limit"))]
+    (if-not (:rows r)
+      r
+      (let [rows (vec (rseq (:rows r)))]
+        (if lim
+          {:rows (vec (take lim rows)) :truncated (> (count rows) lim)}
+          (assoc r :rows rows))))))
+
+(deftest the-judge-ignores-row-order
+  ;; Release run 36799800120 failed on a grouped count whose elided and
+  ;; DISTINCT runs held the same 17 rows with two of them in other places.
+  (let [{:keys [checked failures]} (campaign [0] 40 run-in-another-order)]
+    (is (= (* 40 3) checked))
     (is (empty? failures) (pr-str (take 3 failures)))))
 
 (deftest the-oracle-sees-a-shorthand-without-its-guard
