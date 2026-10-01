@@ -362,3 +362,33 @@
           (is (not (identical? first-exec @@#'server-sql/planner-stats-schedule))))
         (finally
           (#'server-sql/await-planner-stats!))))))
+
+;; An empty table with no index gets no `sqlite_stat1` row from ANALYZE, so
+;; SQLite's staleness test named it on every pass (`audit_retention`), and
+;; every pass counted it and dropped the pool's connections for nothing.
+(deftest an-empty-table-is-never-stale
+  (with-fixture
+    (fn [ds _]
+      (statement! ds "CREATE TABLE empty_probe (x TEXT)")
+      (as-after-a-restart! ds)
+      (#'server-sql/analyze-tables! ds)
+      (as-after-a-restart! ds)
+      (is (not-any? #(str/includes? % "empty_probe") (#'server-sql/analyze-tables! ds)))
+      (is (zero? (server-sql/refresh-stale-statistics! ds "in a test"))
+          "a pass with nothing grown analyses nothing"))))
+
+;; The startup pass runs on its own thread, and a project removal resumed at
+;; startup runs one of its own: the two must not analyse the same tables.
+(deftest two-refreshes-at-once-analyse-each-table-once
+  (with-fixture
+    (fn [ds _]
+      (statement! ds "DELETE FROM sqlite_stat1;")
+      (as-after-a-restart! ds)
+      (let [a (future (server-sql/refresh-stale-statistics! ds "first"))
+            b (future (server-sql/refresh-stale-statistics! ds "second"))]
+        (is (= table-count (+ (deref a deadline-ms 0) (deref b deadline-ms 0))))))))
+
+;; A young install grows past a tenfold within minutes, and the hourly pass
+;; left every FK cascade planned as a scan until it ran.
+(deftest growth-is-checked-on-a-short-interval
+  (is (<= @#'server-sql/planner-stats-interval-ms (* 5 60 1000))))

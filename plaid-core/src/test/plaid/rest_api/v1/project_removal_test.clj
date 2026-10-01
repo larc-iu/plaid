@@ -213,3 +213,60 @@
     (hide! proj)
     (is (nil? (hread/get-at f/db doc now)))
     (is (false? (hread/exists-at? f/db doc now)))))
+
+;; ------------------------------------------------------------------
+;; The history purge, on, as the running server has it.
+
+(defn- with-purge
+  "Run `f` with the history purge on, as the HTTP server switches it on."
+  [f]
+  (reset! removal/purge-history? true)
+  (try (f) (finally (reset! removal/purge-history? false))))
+
+(defn- history-of [proj]
+  {:operations (rows "FROM operations WHERE project_id = ?" proj)
+   :audit-rows (rows "FROM audit_writes a JOIN operations o ON o.id = a.op_id WHERE o.project_id = ?" proj)})
+
+(def ^:private only-the-delete {:operations 1 :audit-rows 1})
+
+(deftest the-purge-keeps-the-one-audit-row-of-the-delete
+  (let [{:keys [proj]} (setup 2)
+        survivor (:proj (setup 1))
+        survivor-history (history-of survivor)]
+    (with-purge
+      #(assert-no-content (api-call admin-request {:method :delete :path (str "/api/v1/projects/" proj)})))
+    (is (= {:projects 0 :documents 0 :texts 0 :text-layers 0 :roles 0} (left-of proj)))
+    (is (= only-the-delete (history-of proj)) "the history goes, the record of the delete stays")
+    (let [row (jdbc/execute-one! f/db [(str "SELECT o.op_type, o.user_id, a.target_table, a.target_id "
+                                            "FROM audit_writes a JOIN operations o ON o.id = a.op_id "
+                                            "WHERE o.project_id = ?") proj])]
+      (is (= "project/delete" (:operations/op_type row)))
+      (is (= "admin@example.com" (:operations/user_id row)) "and who did it")
+      (is (= "projects" (:audit_writes/target_table row)))
+      (is (= (str proj) (str (:audit_writes/target_id row)))))
+    (is (= survivor-history (history-of survivor)) "another project's history is untouched")))
+
+(deftest a-purge-cut-short-is-taken-up-again
+  (let [{:keys [proj]} (setup 2)]
+    ;; With the purge off, the removal leaves the history behind, just as a
+    ;; restart in the middle of the purge does.
+    (assert-no-content (api-call admin-request {:method :delete :path (str "/api/v1/projects/" proj)}))
+    (is (zero? (:projects (left-of proj))))
+    (is (< 1 (:operations (history-of proj))))
+    (with-purge #(removal/resume! f/db))
+    (is (= only-the-delete (history-of proj)) "startup finds history whose project is gone and purges it")
+    (with-purge #(removal/resume! f/db))
+    (is (= only-the-delete (history-of proj)) "and a second pass finds nothing more to do")))
+
+(deftest a-purge-that-fails-leaves-the-project-for-the-next-startup
+  (let [{:keys [proj]} (setup 1)]
+    (hide! proj)
+    (with-purge
+      #(with-redefs [prj/purge-deleted-project-history!
+                     (fn [& _] (throw (ex-info "the server stopped" {})))]
+         (removal/schedule! f/db proj)))
+    (is (= [(str proj)] (mapv str (prj/hidden-ids f/db)))
+        "the project row stays until its history is gone, so startup resumes it")
+    (with-purge #(removal/resume! f/db))
+    (is (empty? (prj/hidden-ids f/db)))
+    (is (= only-the-delete (history-of proj)))))

@@ -33,11 +33,13 @@
       (throw (Exception. "http-server cannot start: no :port configured. Set [server] port in your config.toml (the bundled default is 8080).")))
     ;; A deleted project is removed in the background and its history purged,
     ;; running-server behavior the test suite must not trigger (it asserts on
-    ;; a deleted project's audit rows). Then the removals a restart cut short.
+    ;; a deleted project's audit rows). Then the removals a restart cut short,
+    ;; and the history of projects already gone, at startup and hourly.
     ;; See `plaid.server.project-removal`.
     (reset! project-removal/background? true)
     (reset! project-removal/purge-history? true)
     (project-removal/resume! sql/datasource)
+    (project-removal/start-sweeps! sql/datasource)
     (log/info "Starting server on port" port "with max body size" max-body-bytes "bytes")
     (let [stop-server (http-kit/run-server middleware http-kit-config-with-max-body)]
       (fn []

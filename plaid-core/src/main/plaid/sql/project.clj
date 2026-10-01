@@ -635,31 +635,44 @@
         (do (Thread/sleep 1000) (recur (inc i)))
         (:n r)))))
 
+(def ^:private delete-op-type
+  "The `op_type` of the operation `delete` writes, the one a purge keeps."
+  "project/delete")
+
+(defn- history-to-purge
+  "The operations of project `project-id` a purge removes: all but the
+  delete's own."
+  [project-id]
+  [:and [:= :project_id project-id] [:<> :op_type delete-op-type]])
+
 (defn purge-deleted-project-history!
   "Reclaim the `operations` + `audit_writes` a project accumulated over its
-  lifetime. Project delete is intentionally cheap: it does NOT audit its
-  descendants and leaves the project's whole op/audit history in place. A
-  deleted project is not time-travelable (`plaid.history.read/project-live?`),
-  so that history is unreadable dead weight; this purges it.
+  lifetime, all but the record of its deletion. Project delete is
+  intentionally cheap: it does NOT audit its descendants and leaves the
+  project's whole op/audit history in place. A deleted project is not
+  time-travelable (`plaid.history.read/project-live?`), so that history is
+  unreadable dead weight, and this purges it. The `project/delete` operation,
+  its one `:projects` `:delete` audit row and its operation group stay: the
+  ruling is a true delete with exactly one audit row.
 
-  Best-effort GC, meant to run in the BACKGROUND after a project's removal
-  (`plaid.server.project-removal`). Deletes in chunks, each its own
-  autocommit statement on `datasource`, so the single SQLite writer lock is
-  released between them. A chunk is sized by how long the last one held the
-  lock (`purge-chunking`), and with `:pause-ms` the purge stands off the
-  database after each chunk for that long or for as long as the chunk took,
-  whichever is more, so a writer parked in its busy_timeout retry loop (which
-  polls at most 100 ms apart) is certain to find the lock free. Phase 1
-  clears the project's audit_writes (the bulk), phase 2 the now-childless
-  operations rows, phase 3 the operation_groups no operation names.
+  Meant to run in the BACKGROUND, from `plaid.server.project-removal`, once
+  the project's documents are gone and before its row is: a purge cut short
+  leaves the project marked deleted, and startup takes it up again. History
+  stranded some other way (a project removed with the purge off) is found by
+  `stranded-history-project-ids`. Deletes in chunks, each its own autocommit
+  statement on `datasource`, so the single SQLite writer lock is released
+  between them. A chunk is sized by how long the last one held the lock
+  (`purge-chunking`), and with `:pause-ms` the purge stands off the database
+  after each chunk for that long or for as long as the chunk took, whichever
+  is more, so a writer parked in its busy_timeout retry loop (which polls at
+  most 100 ms apart) is certain to find the lock free. Phase 1 clears the
+  project's audit_writes (the bulk), phase 2 the now-childless operations
+  rows, phase 3 the operation_groups no operation names.
 
   Raw + unaudited: operations/audit_writes ARE the audit infrastructure, not
   audited entities, so this does not go through `submit-operation!`.
 
-  Caller is responsible for only invoking this once the project row is gone
-  (UUIDv7 ids are never reused, so there's no risk of clobbering a live
-  project's history). A crash mid-sweep leaves some orphaned rows, and a periodic
-  sweep (`project_id NOT IN (SELECT id FROM projects)`) is the backstop.
+  Only for a project that is being deleted or gone: nothing here checks.
   Returns `{:audit-rows n :operations n :operation-groups n :longest-ms n}`,
   the last the longest one chunk held the lock."
   ([datasource project-id]
@@ -685,14 +698,14 @@
                                 {:select [:id] :from [:audit_writes]
                                  :where [:in :op_id
                                          {:select [:id] :from [:operations]
-                                          :where [:= :project_id project-id]}]
+                                          :where (history-to-purge project-id)}]
                                  :limit limit}]}))
          operations (drain!
                      (fn [limit]
                        {:delete-from :operations
                         :where [:in :id
                                 {:select [:id] :from [:operations]
-                                 :where [:= :project_id project-id]
+                                 :where (history-to-purge project-id)
                                  :limit limit}]}))
          ;; Phase 3: operation_groups rows that no surviving op references
          ;; any more. The grouped audit read folds FROM operations, so an
@@ -707,6 +720,26 @@
                              :limit limit}]}))]
      {:audit-rows audit-rows :operations operations :operation-groups groups
       :longest-ms @longest})))
+
+(defn stranded-history-project-ids
+  "The ids of projects that are gone (no row in `projects`) but still have
+  history a purge removes: a purge cut short before the purge resumed from
+  the project row, or a project removed with the purge off. Walks the
+  distinct `operations.project_id` values one index seek at a time, so it
+  costs a seek per project ever made, not a scan of the operations."
+  [db]
+  (loop [after "", out []]
+    (if-let [pid (:project_id (psc/q1 db [(str "SELECT project_id FROM operations "
+                                               "INDEXED BY idx_operations_project_ts "
+                                               "WHERE project_id > ? ORDER BY project_id LIMIT 1")
+                                          after]))]
+      (recur (str pid)
+             (if (and (nil? (psc/q1 db {:select [:id] :from [:projects] :where [:= :id pid]}))
+                      (psc/q1 db {:select [1] :from [:operations]
+                                  :where (history-to-purge pid) :limit 1}))
+               (conj out pid)
+               out))
+      out)))
 
 ;; ============================================================
 ;; Access privileges (project_users join table)

@@ -160,6 +160,16 @@
   (str "DELETE FROM sqlite_stat1 WHERE tbl NOT IN "
        "(SELECT name FROM sqlite_master WHERE type IN ('table', 'index'));"))
 
+(defn- empty-table?
+  "Does the table an `ANALYZE \"main\".\"t\"` statement names hold no rows?
+   ANALYZE writes no `sqlite_stat1` row for an empty table without an index,
+   so SQLite's staleness test names it again on every pass (`audit_retention`)."
+  [^java.sql.Connection conn ^String analyze-sql]
+  (let [target (str/trim (subs analyze-sql (count "ANALYZE ")))]
+    (with-open [stmt (.createStatement conn)
+                rs (.executeQuery stmt (str "SELECT 1 FROM " (str/replace target #";$" "") " LIMIT 1"))]
+      (not (.next rs)))))
+
 (defn- analyze-tables!
   "ANALYZE the tables whose statistics are stale (`analyze-statements`),
    ONE TABLE PER STATEMENT, pausing between them.
@@ -183,7 +193,7 @@
       (.setAutoCommit conn true))
     (with-open [stmt (.createStatement conn)]
       (.execute stmt "PRAGMA analysis_limit=400;"))
-    (let [statements (analyze-statements conn)]
+    (let [statements (vec (remove (partial empty-table? conn) (analyze-statements conn)))]
       (doseq [[i sql] (map-indexed vector statements)]
         (when (pos? i)
           (Thread/sleep analyze-pause-ms))
@@ -198,19 +208,26 @@
           (.execute stmt orphan-statistics-statement)))
       statements)))
 
+(defonce ^:private refresh-lock (Object.))
+
 (defn refresh-stale-statistics!
   "One pass of the refresh: ANALYZE what went stale (`analyze-tables!`), and
    when anything was, drop the pool's open connections so every later one
    loads the fresh statistics. `occasion` names the pass in the log line.
-   Returns how many tables were analysed."
+   Returns how many tables were analysed.
+
+   One pass at a time (`refresh-lock`): the startup pass, the scheduled one
+   and a project removal's each run on their own thread, and a pass that
+   waited finds fresh what the one before it analysed."
   [datasource occasion]
-  (let [t0 (System/nanoTime)
-        n (count (analyze-tables! datasource))]
-    (when (pos? n)
-      (.softEvictConnections (.getHikariPoolMXBean datasource)))
-    (log/info (format "Planner statistics refreshed %s across %d stale tables in %dms"
-                      occasion n (quot (- (System/nanoTime) t0) 1000000)))
-    n))
+  (locking refresh-lock
+    (let [t0 (System/nanoTime)
+          n (count (analyze-tables! datasource))]
+      (when (pos? n)
+        (.softEvictConnections (.getHikariPoolMXBean datasource))
+        (log/info (format "Planner statistics refreshed %s across %d stale tables in %dms"
+                          occasion n (quot (- (System/nanoTime) t0) 1000000))))
+      n)))
 
 (defn- refresh-planner-stats!
   "Run a sampled ANALYZE over the tables whose statistics went stale
@@ -249,14 +266,16 @@
             (.start))))
 
 (def ^:private planner-stats-interval-ms
-  "How often the running server repeats the startup refresh. Hourly, because
-   a database can grow tenfold while the server runs (a fresh install that
-   then imports a corpus planned as if its tables were empty until the next
-   restart: a document's history page took 1.2 s instead of 10 ms). The
-   staleness test is the same one startup uses, so on a database whose size
-   has not changed by an order of magnitude a pass analyses nothing and costs
-   one PRAGMA."
-  (* 60 60 1000))
+  "How often the running server repeats the startup refresh. Every five
+   minutes, because a database can grow tenfold while the server runs, and a
+   young install does so within minutes: a fresh install that then imports a
+   corpus planned as if its tables were empty (a document's history page took
+   1.2 s instead of 10 ms), and an FK cascade into a table analysed nearly
+   empty is planned as a scan per deleted row (a 5000-row purge chunk took
+   34 to 138 s). The staleness test is the same one startup uses, so on a
+   database whose size has not changed by an order of magnitude a pass
+   analyses nothing and costs one PRAGMA."
+  (* 5 60 1000))
 
 (defonce ^{:private true
            :doc "The scheduler that repeats the refresh while the server runs."}
@@ -275,7 +294,7 @@
   (let [exec (java.util.concurrent.Executors/newSingleThreadScheduledExecutor
               (reify java.util.concurrent.ThreadFactory
                 (newThread [_ r]
-                  (doto (Thread. ^Runnable r "plaid-planner-stats-hourly")
+                  (doto (Thread. ^Runnable r "plaid-planner-stats-schedule")
                     (.setDaemon true)))))]
     (.scheduleWithFixedDelay
      exec

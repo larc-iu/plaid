@@ -123,8 +123,8 @@
           {:keys [audit-rows operations]} (prj/purge-deleted-project-history! db a)]
       (is (pos? operations) "purge reports operations deleted")
       (is (pos? audit-rows) "purge reports audit rows deleted")
-      (is (zero? (count-ops a)) "A's operations are purged")
-      (is (zero? (count-audit a)) "A's audit_writes are purged")
+      (is (= 1 (count-ops a)) "A's operations are purged, all but the delete's own")
+      (is (= 1 (count-audit a)) "A's audit_writes are purged, all but the one row of the delete")
       ;; Surviving project B is untouched.
       (is (= b-ops (count-ops b)) "survivor B's operations untouched")
       (is (= b-audit (count-audit b)) "survivor B's audit_writes untouched"))))

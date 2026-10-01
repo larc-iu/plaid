@@ -37,21 +37,21 @@
   (with-open [c (jdbc/get-connection (str "jdbc:sqlite:" db-path))]
     (doseq [sql ["PRAGMA journal_mode=WAL"
                  "PRAGMA foreign_keys=ON"
-                 "CREATE TABLE operations (id TEXT PRIMARY KEY, project_id TEXT, group_id TEXT)"
+                 "CREATE TABLE operations (id TEXT PRIMARY KEY, op_type TEXT, project_id TEXT, group_id TEXT)"
                  "CREATE INDEX idx_operations_project ON operations(project_id)"
                  (str "CREATE TABLE audit_writes (id INTEGER PRIMARY KEY, "
                       "op_id TEXT NOT NULL REFERENCES operations(id) ON DELETE CASCADE, seq INTEGER)")
                  "CREATE UNIQUE INDEX idx_audit_writes_op_seq ON audit_writes(op_id, seq)"
                  "CREATE TABLE operation_groups (id TEXT PRIMARY KEY)"
                  "CREATE TABLE saves (id INTEGER PRIMARY KEY, v TEXT)"
-                 "INSERT INTO operations VALUES ('seed', 'kept', NULL)"
+                 "INSERT INTO operations VALUES ('seed', 'x', 'kept', NULL)"
                  "INSERT INTO audit_writes (op_id, seq) VALUES ('seed', 0)"
                  "ANALYZE"
                  "BEGIN"
                  (str "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < " gone ") "
-                      "INSERT INTO operations SELECT 'gone-' || i, 'gone', NULL FROM n")
+                      "INSERT INTO operations SELECT 'gone-' || i, 'x', 'gone', NULL FROM n")
                  (str "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 20000) "
-                      "INSERT INTO operations SELECT 'kept-' || i, 'kept', NULL FROM n")
+                      "INSERT INTO operations SELECT 'kept-' || i, 'x', 'kept', NULL FROM n")
                  (str "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < " kept ") "
                       "INSERT INTO audit_writes (op_id, seq) SELECT 'kept-' || (1 + i % 20000), i FROM n")
                  "INSERT INTO audit_writes (op_id, seq) SELECT id, 0 FROM operations WHERE project_id = 'gone'"
