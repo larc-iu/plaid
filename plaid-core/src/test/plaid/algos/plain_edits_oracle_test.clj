@@ -1,9 +1,12 @@
 (ns plaid.algos.plain-edits-oracle-test
-  "A seeded property test of the plain edit rule (layers declaring
-  `plainEdits`, igt's): documents of sentences (a partition), words (some
-  holding spaces, as FLEx phrases do), morphemes over the whole of their
-  word (as igt stores them) and time-alignment segments over runs of words,
-  all but the sentences plain. Each case is one to four changes made at
+  "A seeded property test of the plain edit rule, which every token layer
+  takes: documents of sentences (a partition), words (some holding spaces,
+  as FLEx phrases do), morphemes over the whole of their word (as igt
+  stores them) and time-alignment segments over runs of words, on the
+  layers igt, ud and UMR make, or on the layers a script makes with no app
+  config (`layouts`). What each layer is to the rule is read from the
+  layers' shape alone (`plaid.algos.text/layer-roles`), as a save reads it.
+  Each case is one to four changes made at
   once anywhere in the text (typing, deleting, typing over, pasting text
   with spaces, over a word's inside, its edge, the space between words or
   several words), read as the ops a client sends (composed, and keystroke
@@ -82,7 +85,7 @@
                                ;; between them was deleted
                                (add (if (and (:glue opts) (< (.nextDouble rng) (:glue opts)))
                                       ""
-                                      (pick [" " " " " " "  " "\t"]))))
+                                      (pick (:seps opts [" " " " " " "  " "\t"])))))
                              [b e]))))]
         ;; another app's nodes beside the words (a layer with overlap
         ;; allowed and no parent, as UMR's): over one word, over a run of
@@ -386,6 +389,52 @@
 
 ;; ---------------------------------------------------------------- the test
 
+(def ^:private layouts
+  "The token layers of each kind of document, as `layer-roles` takes them."
+  {;; igt's, ud's and UMR's layers on one text: sentences, words under
+   ;; them, morphemes and another app's syntactic words under the words,
+   ;; time-alignment rows and UMR's nodes beside them
+   :apps [{:id :s :overlap-mode "partitioning"}
+          {:id :w :overlap-mode "non-overlapping" :parent :s}
+          {:id :m :overlap-mode "any" :parent :w}
+          {:id :x :overlap-mode "non-overlapping" :parent :w}
+          {:id :a :overlap-mode "non-overlapping"}
+          {:id :ss :overlap-mode "non-overlapping"}
+          {:id :u :overlap-mode "any"}]
+   ;; a script's layers, no app config: sentences, words on a layer with no
+   ;; parent, morphemes under them
+   :script [{:id :s :overlap-mode "partitioning"}
+            {:id :w :overlap-mode "non-overlapping"}
+            {:id :m :overlap-mode "any" :parent :w}]
+   ;; and with no sentences, words on a layer that allows overlap
+   :script-no-sentences [{:id :w :overlap-mode "any"}
+                         {:id :m :overlap-mode "any" :parent :w}]})
+
+(defn- layout-tokens
+  "`tokens` less those on layers `layout` has none of."
+  [layout tokens]
+  (let [ids (into #{} (map :id) (layouts layout))]
+    (filterv #(ids (:token/layer %)) tokens)))
+
+(defn- roles [layout split?]
+  (cond-> (ta/layer-roles (layouts layout)) split? (assoc :split-on-space true)))
+
+(defn- run
+  "What a save of `ops` from the caret does, the layers as `layout` has them."
+  ([old tokens ops] (run old tokens ops :apps false))
+  ([old tokens ops layout split?]
+   (let [{:keys [partitioning deciders] :as r} (roles layout split?)]
+     (ta/plain-edits old tokens ops partitioning deciders (select-keys r [:split-on-space :children :exclusive])))))
+
+(defn- save
+  "What a whole-body save of `new` does, the layers as `layout` has them."
+  ([old new tokens] (save old new tokens :apps false))
+  ([old new tokens layout split?]
+   (let [{:keys [partitioning deciders] :as r} (roles layout split?)]
+     (ta/plain-body old new tokens partitioning deciders (select-keys r [:split-on-space :children :exclusive])))))
+
+(def ^:private nbsp "\u00a0")
+
 (def ^:private configs
   {:one-caret {:carets 1}
    :several-carets {:carets 4}
@@ -398,30 +447,38 @@
    :nodes-beside-words {:carets 3 :nodes true :spaced 0.3 :glue 0.1}
    ;; empty time-alignment segments at word and segment edges (REV-r4d: text
    ;; typed at one grew the segment before over it, a 500)
-   :empty-segments {:carets 3 :points 0.4 :spaced 0.3 :glue 0.2}})
+   :empty-segments {:carets 3 :points 0.4 :spaced 0.3 :glue 0.2}
+   ;; words apart by no-break spaces, tabs and runs of spaces
+   :other-spaces {:carets 3 :spaced 0.2 :seps [" " nbsp "\u202f" "\t" "   "]}
+   ;; a script without spaces between words
+   :no-spaces {:carets 3 :glue 1.0 :spaced 0.1}
+   ;; a script's layers with no app config (a plain API client)
+   :script {:carets 3 :spaced 0.3 :glue 0.1 :layout :script}
+   :script-several-carets {:carets 4 :spaced 0.2 :reach 30 :layout :script}
+   :script-no-sentences {:carets 3 :spaced 0.3 :glue 0.2 :layout :script-no-sentences}})
 
 (def ^:private cases-per-config 1500)
-
-(defn- run [old tokens ops] (ta/plain-edits old tokens ops #{:s} #{:w} {:children #{:m :x} :exclusive #{:a :ss}}))
 
 (deftest a-plain-layer-takes-every-edit-the-plain-way
   (doseq [[cname opts] configs]
     (let [fails (atom [])]
       (dotimes [seed cases-per-config]
         (let [rng (java.util.Random. (+ seed (* 7919 (hash cname))))
+              layout (:layout opts :apps)
               {:keys [body tokens]} (gen-doc rng opts)
               gaps (gen-gaps rng body tokens opts)
+              tokens (layout-tokens layout tokens)
               new-body (ta/edit-ops-body (ta/gap-ops gaps) body)
               server (ta/plain-edit-gaps body (ta/gap-ops gaps))
               readings {:composed (ta/gap-ops gaps)
                         :keys-left-to-right (keystrokes gaps false)
                         :keys-right-to-left (keystrokes gaps true)}]
           (doseq [[rname ops] readings]
-            (let [r (run body tokens ops)
+            (let [r (run body tokens ops layout false)
                   ps (problems body tokens server r)]
               (when (seq ps) (swap! fails conj {:config cname :seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))
           (let [bgaps (ta/plain-body-gaps body new-body tokens #{:s})
-                r (ta/plain-body body new-body tokens #{:s} #{:w} {:children #{:m :x} :exclusive #{:a :ss}})
+                r (save body new-body tokens layout false)
                 ps (problems body tokens bgaps r)]
             (when (seq ps) (swap! fails conj {:config cname :seed seed :reading :whole-body :old body :gaps bgaps :problems (take 3 ps)})))))
       (when (System/getenv "PLAIN_ORACLE_DEBUG")
@@ -430,28 +487,20 @@
       (testing (str cname)
         (is (empty? @fails) (pr-str (take 3 @fails)))))))
 
-;; ---------------------------------------------------------------- nodes beside words on the other rules
+;; ---------------------------------------------------------------- nodes beside the words
 
-(defn- mixed
-  "What `save-plan` does for plain nodes (:u) beside words (:w) that are not
-  plain: the words and sentences by the other rules, the nodes plain, then
-  following the words at their edges."
+(defn- nodes-and-words
+  "The words (:w) and nodes (:u) after a save, both on the one rule."
   [old tokens {:keys [ops new]}]
-  (let [u (filterv #(= :u (:token/layer %)) tokens)
-        plain (if ops
-                (ta/plain-edits old u ops #{:s} #{:w})
-                (ta/plain-body old new u #{:s} #{:w}))
-        rest (if ops
-               (ta/apply-edits old tokens ops {:partitioning #{:s} :word-layers #{:w}})
-               (-> (ta/diff old new) (ta/slide-to-tokens old tokens #{:s}) (ta/normalize-deletes old tokens)
-                   (ta/align-to-words old tokens #{:w}) (ta/pair-replacements old tokens)
-                   (ta/fold-whole-words old tokens #{:w}) (ta/apply-text-edits {:text/body old} tokens)
-                   (as-> r (ta/keep-edges-off-spaces old tokens r #{:s}))))
-        plain (ta/follow-word-edges tokens plain rest #(= :w (:token/layer %)) (into #{} (map :token/id) u))]
-    {:body [(:text/body (:text plain)) (:text/body (:text rest))]
-     :words (into {} (comp (filter #(= :w (:token/layer %))) (map (juxt :token/id identity))) (:tokens rest))
-     :nodes (into {} (map (juxt :token/id identity)) (:tokens plain))
-     :deleted-nodes (set (:deleted plain))}))
+  (let [r (if ops (run old tokens ops) (save old new tokens))
+        live (fn [layer] (into {} (comp (filter #(= layer (:token/layer %)))
+                                        (remove #((set (:deleted r)) (:token/id %)))
+                                        (map (juxt :token/id identity)))
+                               (:tokens r)))]
+    {:body [(:text/body (:text r)) (:text/body (:text r))]
+     :words (live :w)
+     :nodes (live :u)
+     :deleted-nodes (set (:deleted r))}))
 
 (defn- follow-problems
   "A node edge that stood at a word's edge stands at that word's edge now,
@@ -479,9 +528,9 @@
           (conj! out (str id " deleted though its word stays")))))
     (persistent! out)))
 
-(deftest nodes-beside-words-on-the-other-rules-keep-to-the-words
-  ;; Luke (2026-09-30, option c): a plain node layer beside words that are
-  ;; not plain follows the words' outcome at their edges, whatever the edit.
+(deftest nodes-beside-the-words-keep-to-the-words
+  ;; A node layer beside the words (UMR's) takes the words' outcome at their
+  ;; edges, whatever the edit (Luke, 2026-09-30, option c).
   (let [opts {:carets 3 :nodes true :spaced 0.3 :glue 0.1}
         fails (atom [])]
     (dotimes [seed cases-per-config]
@@ -493,7 +542,7 @@
         (doseq [[rname change] {:composed {:ops (ta/gap-ops gaps)}
                                 :keys-left-to-right {:ops (keystrokes gaps false)}
                                 :whole-body {:new new-body}}]
-          (let [ps (follow-problems tokens new-body (mixed body tokens change))]
+          (let [ps (follow-problems tokens new-body (nodes-and-words body tokens change))]
             (when (seq ps) (swap! fails conj {:seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))))
     (is (empty? @fails) (str (count @fails) " " (pr-str (take 3 @fails))))))
 
@@ -585,7 +634,7 @@
         (conj! out (str id " at " (some-> got ((juxt :token/begin :token/end))) ", want " (some-> want ((juxt :token/begin :token/end)))))))
     (persistent! out)))
 
-(deftest a-layer-that-splits-on-space-differs-from-igt-only-there
+(deftest a-layer-that-splits-on-space-differs-only-there
   ;; ud (Luke, 2026-09-30): the plain rule, but a word given a space splits
   (let [opts {:carets 3 :spaced 0.4 :child 0.7 :nodes true :glue 0.1}
         fails (atom [])]
@@ -596,16 +645,16 @@
             new-body (ta/edit-ops-body (ta/gap-ops gaps) body)
             server (ta/plain-edit-gaps body (ta/gap-ops gaps))]
         (doseq [[rname plain split sgaps] [[:composed
-                                            (ta/plain-edits body tokens (ta/gap-ops gaps) #{:s} #{:w} {:children #{:m :x} :exclusive #{:a :ss}})
-                                            (ta/plain-edits body tokens (ta/gap-ops gaps) #{:s} #{:w} {:split-on-space true :children #{:m :x} :exclusive #{:a :ss}})
+                                            (run body tokens (ta/gap-ops gaps) :apps false)
+                                            (run body tokens (ta/gap-ops gaps) :apps true)
                                             server]
                                            [:keys-right-to-left
-                                            (ta/plain-edits body tokens (keystrokes gaps true) #{:s} #{:w} {:children #{:m :x} :exclusive #{:a :ss}})
-                                            (ta/plain-edits body tokens (keystrokes gaps true) #{:s} #{:w} {:split-on-space true :children #{:m :x} :exclusive #{:a :ss}})
+                                            (run body tokens (keystrokes gaps true) :apps false)
+                                            (run body tokens (keystrokes gaps true) :apps true)
                                             server]
                                            [:whole-body
-                                            (ta/plain-body body new-body tokens #{:s} #{:w} {:children #{:m :x} :exclusive #{:a :ss}})
-                                            (ta/plain-body body new-body tokens #{:s} #{:w} {:split-on-space true :children #{:m :x} :exclusive #{:a :ss}})
+                                            (save body new-body tokens :apps false)
+                                            (save body new-body tokens :apps true)
                                             (ta/plain-body-gaps body new-body tokens #{:s})]]]
           (let [ps (split-problems body tokens sgaps plain split)]
             (when (seq ps) (swap! fails conj {:seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))))
@@ -695,7 +744,7 @@
             o (cps body)
             sents (sort-by :token/begin (filter #(= :s (:token/layer %)) tokens))]
         (doseq [[rname ops] {:composed (ta/gap-ops gaps) :keys-left-to-right (keystrokes gaps false)}]
-          (let [r (ta/plain-edits body tokens ops #{:s} #{:w} {:children #{:m :x} :exclusive #{:a :ss}})
+          (let [r (run body tokens ops)
                 server (ta/plain-edit-gaps body ops)
                 ps (vec (remove #(re-find #"^\[:as " %) (problems body tokens server r)))
                 nb (:text/body (:text r))
@@ -748,8 +797,8 @@
                 side (nth [nil "before" "after"] (.nextInt rng 3))
                 v (nth ["Q" "XZ" "Ж𐍂" "x " "x y"] (.nextInt rng 5))
                 op (cond-> {:type :insert :index a :value v} side (assoc :side side))
-                r (ta/plain-edits body tokens [op] #{:s} #{:w} {:children #{:m :x} :exclusive #{:a :ss}})
-                r0 (ta/plain-edits body tokens [(dissoc op :side)] #{:s} #{:w} {:children #{:m :x} :exclusive #{:a :ss}})
+                r (run body tokens [op])
+                r0 (run body tokens [(dissoc op :side)])
                 eff (when glued? side)
                 ;; the part of sided text away from its side belongs to
                 ;; the side's row, not to the word it touches

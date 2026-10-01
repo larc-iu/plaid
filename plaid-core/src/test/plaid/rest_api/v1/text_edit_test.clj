@@ -26,7 +26,7 @@
 (defn- setup
   "A document with sentences, words, morphemes and glosses over `body`, the
   words at the runs without spaces, each word one morpheme."
-  [body & {:keys [plain other nodes runs split sents]}]
+  [body & {:keys [other nodes runs split sents]}]
   (let [proj (create-test-project admin-request "EditProj")
         doc (create-test-document admin-request proj "Doc")
         tl (-> (create-text-layer admin-request proj "TL") :body :id)
@@ -39,11 +39,6 @@
             (assert-status 204 (api-call admin-request {:method :put
                                                         :path (str "/api/v1/token-layers/" words "/config/plaid/splitOnSpace")
                                                         :body true})))
-        _ (when plain
-            (doseq [l [words morphemes]]
-              (assert-status 204 (api-call admin-request {:method :put
-                                                          :path (str "/api/v1/token-layers/" l "/config/plaid/plainEdits")
-                                                          :body true}))))
         ;; another app's layer: beside the words, or (`:child`) nested under them
         others (when other
                  (-> (create-token-layer-opts admin-request tl "Other" {:overlap-mode "non-overlapping"
@@ -61,14 +56,9 @@
         ms (mapv (fn [[b e]] (-> (create-token admin-request morphemes text-id b e) :body :id)) runs)
         gs (mapv (fn [m] (-> (create-span admin-request glosses [m] "G") :body :id)) ms)
         os (when others (mapv (fn [[b e]] (-> (create-token admin-request others text-id b e) :body :id)) runs))
-        ;; UMR's nodes: a layer beside the words, overlap allowed, no parent,
-        ;; `plainEdits` as UMR declares it
+        ;; UMR's nodes: a layer beside the words, overlap allowed, no parent
         node-layer (when nodes
-                     (let [l (-> (create-token-layer-opts admin-request tl "Nodes" {:overlap-mode "any"}) :body :id)]
-                       (assert-status 204 (api-call admin-request {:method :put
-                                                                   :path (str "/api/v1/token-layers/" l "/config/plaid/plainEdits")
-                                                                   :body true}))
-                       l))
+                     (-> (create-token-layer-opts admin-request tl "Nodes" {:overlap-mode "any"}) :body :id))
         ns (when node-layer (mapv (fn [[b e]] (-> (create-token admin-request node-layer text-id b e) :body :id)) runs))]
     {:doc doc :text text-id :words ws :morphemes ms :glosses gs :sentences sentences :others os :nodes ns
      :node-layer node-layer}))
@@ -242,11 +232,11 @@
     (assert-ok res)
     (is (= [{:tokens [(str c)] :value "BOTH"}] (map #(-> % (dissoc :id) (update :tokens (partial mapv str))) spans)))))
 
-(deftest a-plain-layer-takes-an-edit-the-plain-way
+(deftest a-layer-beside-the-words-takes-an-edit-the-plain-way-too
   ;; Luke, 2026-09-30: an edit inside a word or touching it with no
-  ;; whitespace grows or shrinks it, and nothing else happens to it. A layer
-  ;; without the key keeps the other rules.
-  (let [{:keys [text words morphemes glosses others]} (setup "the cat sat" :plain true :other true)
+  ;; whitespace grows or shrinks it, and nothing else happens to it. Another
+  ;; app's word layer on the same text takes it the same way.
+  (let [{:keys [text words morphemes glosses others]} (setup "the cat sat" :other true)
         digest-of #(-> (get-text admin-request text) :body :text/digest)
         all-there (fn [ids] (every? #(= 200 (:status (get-span admin-request %))) ids))]
     (testing "a space typed inside a word"
@@ -254,7 +244,7 @@
       (is (= [4 8 "c at"] (extent (words 1))))
       (is (= [4 8 "c at"] (extent (morphemes 1))))
       (is (all-there glosses))
-      (is (contains? #{[4 5 "c"] [6 8 "at"]} (extent (others 1)))))
+      (is (= [4 8 "c at"] (extent (others 1)))))
     (testing "a whole-body save deleting a space and typing at a word's end"
       (assert-ok (api-call admin-request {:method :patch :path (str "/api/v1/texts/" text) :body {:body "thec at sats"}}))
       (is (= [[0 3 "the"] [3 7 "c at"] [8 12 "sats"]] (map extent words)))
@@ -269,11 +259,10 @@
         (assert-not-found (get-span admin-request (glosses 2)))
         (is (all-there (take 2 glosses)))))))
 
-(deftest a-layer-under-a-plain-layer-follows-it
-  ;; H1: igt and ud on one project. The words are plain (igt), ud's syntactic
-  ;; words nest under them with a coextensive rule. An edit must move them
+(deftest a-layer-under-the-words-follows-them
+  ;; H1: igt and ud on one project. ud's syntactic words nest under the words with a coextensive rule. An edit must move them
   ;; with their word, never delete them for not matching it.
-  (let [{:keys [text words others]} (setup "dog cat eel" :plain true :other :child)
+  (let [{:keys [text words others]} (setup "dog cat eel" :other :child)
         syn others
         lemma (-> (create-span-layer admin-request (first (map #(:token/layer (:body (get-token admin-request %))) syn)) "Lemma")
                   :body :id)
@@ -296,10 +285,10 @@
       (is (= [[0 4 "dogs"] [4 8 "c at"] [9 13 "eels"]] (map extent words) (map extent syn)))
       (is (all-there lemmas)))))
 
-(deftest nodes-beside-plain-words-follow-the-words
-  ;; Luke (2026-09-30): UMR declares plainEdits on its node layer. With plain
-  ;; words beside it the words decide and each node stays on its word.
-  (let [{:keys [text words nodes]} (setup "dog cat eel" :plain true :nodes true)
+(deftest nodes-beside-the-words-follow-the-words
+  ;; UMR's node layer beside the words: the words decide and each node stays
+  ;; on its word.
+  (let [{:keys [text words nodes]} (setup "dog cat eel" :nodes true)
         digest-of #(-> (get-text admin-request text) :body :text/digest)]
     (testing "a letter typed at a word's end"
       (assert-ok (edit-text text {:edits [(ins 3 "s")] :base (digest-of)}))
@@ -313,11 +302,9 @@
       (is (= [0 4 "dogX"] (extent (words 0)) (extent (nodes 0))))
       (is (= [5 7 "at"] (extent (words 1)) (extent (nodes 1)))))))
 
-(deftest nodes-beside-words-on-the-other-rules-follow-the-words
-  ;; A plain node layer beside word layers that are not plain (a UMR-only
-  ;; text, or ud and UMR on one text): at a word's edge a node takes the
-  ;; word's outcome, whatever rule the word takes, so a node never differs
-  ;; from its word (Luke, 2026-09-30, option c).
+(deftest nodes-beside-the-words-take-their-words-outcome
+  ;; A node layer beside the words (a UMR-only text, or ud and UMR on one
+  ;; text): a node never differs from its word.
   (doseq [[label body edit child] [["a letter typed after `200`" "200 dollars" (ins 3 "x") false]
                                    ["a letter typed after `就` in a text without spaces" "他就去" (ins 2 "x") false]
                                    ["a space typed inside a word" "dog cat eel" (ins 5 " ") false]
@@ -341,11 +328,11 @@
           (is (= [(first (extent (words 0))) (second (extent (words 1)))] (take 2 (extent over)))
               (str label ": a node over two words")))))))
 
-(deftest a-plain-layer-that-splits-on-space
+(deftest a-word-layer-that-splits-on-space
   ;; ud (Luke, 2026-09-30): the plain rule, but a space typed inside a word
   ;; splits it, the word and what is as long as it going on the half sharing
   ;; more letters (D28). F1: `walkdd`, Backspace, ` home` keeps the analysis.
-  (let [{:keys [text words others]} (setup "a walkdd cat" :plain true :split true :other :child)
+  (let [{:keys [text words others]} (setup "a walkdd cat" :split true :other :child)
         digest-of #(-> (get-text admin-request text) :body :text/digest)]
     (testing "a letter deleted inside and a word typed after"
       (assert-ok (edit-text text {:edits [(del 7 1) (ins 7 " home")] :base (digest-of)}))
@@ -359,8 +346,7 @@
       (is (= [[0 1 "a"] [1 6 "walkd"]] [(extent (words 0)) (extent (words 1))])))))
 
 (deftest a-node-is-never-deleted-while-its-word-stays
-  ;; REV2 M3: words on the other rules, nodes plain. `cat eel` typed over as
-  ;; `one` leaves the word `eel` on `one`, and its node with it.
+  ;; REV2 M3: `cat eel` typed over as `one`: a node goes only with its word.
   (let [{:keys [text words nodes]} (setup "dog cat eel fox." :nodes true)
         base (-> (get-text admin-request text) :body :text/digest)]
     (assert-ok (edit-text text {:edits [{:type "replace" :index 4 :length 7 :value "one"}] :base base}))
@@ -371,7 +357,7 @@
 (deftest a-line-typed-before-the-first-sentence-is-a-sentence-of-its-own
   ;; REV3 N1: the first sentence keeps its id and what hangs off it, and the
   ;; answer names the sentence made
-  (let [{:keys [text sentences]} (setup "Hi.\nThe end." :plain true)
+  (let [{:keys [text sentences]} (setup "Hi.\nThe end.")
         base (-> (get-text admin-request text) :body :text/digest)
         res (edit-text text {:edits [(ins 0 "Oh.\n")] :base base})
         sents (->> (psc/q db {:select [:id :begin :end_] :from [:tokens]
@@ -386,12 +372,9 @@
 (deftest an-empty-segment-at-a-growing-rows-end-stays-at-its-end
   ;; REV4 R3: legacy data can hold an empty time-alignment segment at a row's
   ;; end; text typed there saves, and the empty segment stays at the row's end
-  (let [{:keys [text]} (setup "Hi. The end." :plain true)
+  (let [{:keys [text]} (setup "Hi. The end.")
         tl (:text/layer (:body (get-text admin-request text)))
         rows (-> (create-token-layer-opts admin-request tl "Rows" {:overlap-mode "non-overlapping"}) :body :id)
-        _ (assert-status 204 (api-call admin-request {:method :put
-                                                      :path (str "/api/v1/token-layers/" rows "/config/plaid/plainEdits")
-                                                      :body true}))
         r1 (-> (create-token admin-request rows text 0 3) :body :id)
         empty (-> (create-token admin-request rows text 3 3) :body :id)
         r2 (-> (create-token admin-request rows text 4 12) :body :id)
@@ -402,8 +385,8 @@
     (is (= [5 13 "The end."] (extent r2)))))
 
 (defn- rows-setup
-  "igt's layers as its Media tab has them: sentences, plain words, plain
-  morphemes under them with igt's rules, and plain rows beside them, a span
+  "igt's layers as its Media tab has them: sentences, words, morphemes
+  under them with igt's rules, and rows beside them, a span
   on every token, and an empty row at each of `points` (legacy data)."
   [body sents words rows points]
   (let [proj (create-test-project admin-request "RowsProj")
@@ -414,9 +397,6 @@
         m (mk-layer "Morphemes" {:overlap-mode "any" :parent-token-layer-id w})
         a (mk-layer "Rows" {:overlap-mode "non-overlapping"})
         sl (into {} (map (fn [l] [l (-> (create-span-layer admin-request l "V") :body :id)])) [s w m a])
-        _ (doseq [l [w m a]]
-            (assert-status 204 (api-call admin-request {:method :put :path (str "/api/v1/token-layers/" l "/config/plaid/plainEdits")
-                                                        :body true})))
         _ (assert-status 200 (api-call admin-request {:method :put :path (str "/api/v1/token-layers/" m "/constraints/igt")
                                                       :body {:constraints [{:type "coextensive"} {:type "single-link"}]}}))
         doc (create-test-document admin-request proj "Doc")
@@ -476,3 +456,45 @@
     (is (= 200 (:status r)) (pr-str (:body r)))
     (is (= [0 8] (take 2 (extent (peek rows)))))
     (is (= [0 0] (take 2 (extent (first points)))))))
+
+(deftest every-layer-takes-an-edit-the-plain-way-with-no-key
+  ;; One rule set (Luke, 2026-10-01): a layer whose config says nothing about
+  ;; edits takes them the plain way, as igt's, ud's and UMR's layers do.
+  (doseq [[label body edit want] [["a space typed inside a word" "the cat sat" (ins 5 " ") [4 8 "c at"]]
+                                  ["a letter typed at a word's end" "the cat sat" (ins 7 "s") [4 8 "cats"]]
+                                  ["a deleted space" "the cat sat" (del 7 1) [4 7 "cat"]]]]
+    (testing label
+      (let [{:keys [text words morphemes glosses]} (setup body)
+            base (-> (get-text admin-request text) :body :text/digest)]
+        (assert-ok (edit-text text {:edits [edit] :base base}))
+        (is (= want (extent (words 1)) (extent (morphemes 1))))
+        (is (every? #(= 200 (:status (get-span admin-request %))) glosses))))))
+
+(deftest a-whole-body-save-takes-the-plain-way-with-no-key
+  (let [{:keys [text words morphemes glosses]} (setup "the cat sat")]
+    (assert-ok (api-call admin-request {:method :patch :path (str "/api/v1/texts/" text) :body {:body "the c at sats"}}))
+    (is (= [[0 3 "the"] [4 8 "c at"] [9 13 "sats"]] (map extent words) (map extent morphemes)))
+    (is (every? #(= 200 (:status (get-span admin-request %))) glosses))))
+
+(deftest a-plain-api-clients-layers-take-the-plain-way
+  ;; a layer made by a script: one root layer, no parent, no partition, no config
+  (let [proj (create-test-project admin-request "ApiProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        toks (-> (create-token-layer admin-request tl "Tokens") :body :id)
+        text (-> (create-text admin-request tl doc "the cat sat") :body :id)
+        ts (mapv (fn [[b e]] (-> (create-token admin-request toks text b e) :body :id)) [[0 3] [4 7] [8 11]])]
+    (assert-ok (edit-text text {:edits [(ins 5 " ") (ins 12 "s")] :base (digest/text-digest "the cat sat")}))
+    (is (= [[0 3 "the"] [4 8 "c at"] [9 13 "sats"]] (map extent ts)))
+    (assert-ok (api-call admin-request {:method :patch :path (str "/api/v1/texts/" text) :body {:body "the c atsats"}}))
+    (is (= [[0 3 "the"] [4 8 "c at"] [8 12 "sats"]] (map extent ts)))))
+
+(deftest umr-only-words-and-nodes-take-the-plain-way
+  ;; UMR's own words (no key) and its nodes beside them: the words decide,
+  ;; each node keeps to its word, on both paths
+  (let [{:keys [text words nodes]} (setup "dog cat eel" :nodes true)
+        digest-of #(-> (get-text admin-request text) :body :text/digest)]
+    (assert-ok (edit-text text {:edits [(ins 5 " ")] :base (digest-of)}))
+    (is (= [4 8 "c at"] (extent (words 1)) (extent (nodes 1))))
+    (assert-ok (api-call admin-request {:method :patch :path (str "/api/v1/texts/" text) :body {:body "dogs c at eel"}}))
+    (is (= [[0 4 "dogs"] [5 9 "c at"] [10 13 "eel"]] (map extent words) (map extent nodes)))))

@@ -961,48 +961,45 @@ Indices are code points, and each operation's index is in the body as the operat
 ----
 
 Only the net change counts: typing a word one letter at a time and inserting it at once are the same edit, and a letter deleted and typed back is no change.
-An insert or a delete stays exactly where it was made.
-A stretch that was both deleted and typed over is read the way a whole new body is read, so a word typed over keeps its tokens and what hangs off them.
+Every change stays exactly where it was made.
 
-A space typed inside a word splits it, and the word's token stays on one of the two halves.
-A nested token as long as the word moves with it, as a syntactic word does.
+The tokens of every token layer take a change the same way, whichever app or script made the layer:
 
-A token layer whose config sets `plainEdits` to `true` in the `plaid` namespace (`PLAIN_EDITS_KEY` in both clients) takes a change more simply:
-
-* A change inside one of its tokens, or touching the token's edge with no whitespace between, grows or shrinks the token. Letters typed at a word's end become part of the word.
+* A change inside a token, or touching the token's edge with no whitespace between, grows or shrinks the token. Letters typed at a word's end become part of the word.
 * A space typed inside a token does not split it. The token now holds the space.
 * Deleting the whitespace between two tokens keeps both, now side by side. Text then typed between them with no whitespace goes to the first.
 * New text apart from every token, with whitespace between, belongs to none of them.
 * A token is deleted only when all its text is deleted. A token typed over whole keeps its place on the new text, and so does a sentence typed over whole with its separator.
 * A token is never moved onto another word, and nothing that hangs off it is deleted or moved.
 
-A layer nested under such a layer, at any depth, takes a change the same way, so its tokens keep to their parents' edges.
-This holds for another app's layer on the same words too.
-Where typed text goes is decided by the words: the tokens of such a layer that forbids overlap and has a parent.
-Every other token of a layer with the key, such as a node over several words on a layer beside the words, follows that decision, so a node over a word stays on it.
-When the text's word layers do not have the key, they and the sentences take the change by the other rules, and a token of a layer with the key follows its words at their edges, so a node over a word stays on it.
-An edge of such a token that stands at no word's edge, or whose word is deleted, takes the change the plain way.
-Partition layers over such a layer follow its tokens' edges.
+A `body` save is read as the smallest change from the stored body to the new one, and where that change could stand in more than one place for the same new body, Plaid picks the place that disturbs the fewest tokens.
+An editor that knows where the cursor was sends `edits`, which say exactly where.
+
+Where typed text goes is decided by the words: the tokens of a layer that forbids overlap and has a parent, and is not nested under another such layer.
+A text with no such layer has its other tokens, all but the sentences, decide.
+A layer nested under the words, at any depth, keeps to its words' edges, as morphemes and syntactic words do.
+Every other token follows the words' decision, so a node over a word on a layer beside the words stays on it.
+Partition layers follow the words' edges.
 Text typed between two sentences that no token takes goes by where it was typed: right before the next sentence's first character it joins that sentence, unless it holds a line break.
 Otherwise, right after a sentence's last character, in the middle of a longer run of whitespace, or in a `body` save, which says nothing of where the text was typed, it joins the sentence before.
 Text typed before the text's first sentence that holds a line break with other than whitespace before it becomes a sentence of its own, up to the first letter after its last line break, so the first sentence keeps its place and what hangs off it.
 This goes by the text before the first sentence after the save, whatever the save's shape: an insert, an insert with other changes, or a `body` save.
 The answer's `reshape.tokens` lists that sentence with its `layer` and `text`.
 Whitespace alone typed there joins the first sentence, which begins at the start of the text. The first sentence's words, and a token that follows it, do not begin on that whitespace.
-A token of a layer with the key that forbids overlap and whose extent is a sentence's, less whitespace at its edges, such as a time-alignment segment over its sentence, follows that sentence: it covers whatever the sentence covers after the change, less whitespace at its edges.
+A token of a layer that forbids overlap beside the words, whose extent is a sentence's less whitespace at its edges, such as a time-alignment segment over its sentence, follows that sentence: it covers whatever the sentence covers after the change, less whitespace at its edges.
 A token of a layer that allows overlap, such as a node, never follows a sentence. It keeps to its words.
-A zero-width token of a layer with the key that forbids overlap, such as an empty time-alignment segment, that a token of its layer grows over goes to that token's edge on the side it stood, so the two never overlap.
+A zero-width token of a layer that forbids overlap, such as an empty time-alignment segment, that a token of its layer grows over goes to that token's edge on the side it stood, so the two never overlap.
 A sentence never begins or ends on whitespace it did not begin or end on, except the first sentence over whitespace typed at the start of the text.
 
-Where two words, two sentences, or two tokens of a layer with the key that forbids overlap beside the words (two time-alignment rows) meet with no whitespace between them, an insert may say which of them its text belongs to with `side`: `"before"` for the one that ends there, `"after"` for the one that begins there, and the sentences and the tokens that follow them go with it.
-Without it, or where nothing meets, the text goes as the other rules say.
+Where two words, two sentences, or two tokens of a layer that forbids overlap beside the words (two time-alignment rows) meet with no whitespace between them, an insert may say which of them its text belongs to with `side`: `"before"` for the one that ends there, `"after"` for the one that begins there, and the sentences and the tokens that follow them go with it.
+Without it, or where nothing meets, the text goes as the rules above say.
 
 [,js]
 ----
 { type: "insert", index: 7, value: "x", side: "after" }   // typed at the front of the token at 7
 ----
 
-A word layer whose config also sets `splitOnSpace` to `true` (`SPLIT_ON_SPACE_KEY`) takes a change the same way, but a space typed inside one of its tokens splits it there.
+A word layer whose config sets `splitOnSpace` to `true` in the `plaid` namespace (`SPLIT_ON_SPACE_KEY` in both clients) has a space typed inside one of its tokens split it there.
 Spaces the token already had do not split it.
 The token goes on the part holding the most of its old letters, the first on a tie, with the tokens as long as it.
 A token inside it is cut to that part, and one wholly on the other part is deleted.

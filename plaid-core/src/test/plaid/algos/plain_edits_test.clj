@@ -1,7 +1,8 @@
 (ns plaid.algos.plain-edits-test
-  "A layer that declares `plainEdits` takes a text edit the plain way (Luke,
-  2026-09-30: \"if something lands within a word boundary grow the word,
-  period\"). Examples here, the property in `plain-edits-oracle-test`."
+  "Every token layer takes a text edit the plain way (Luke, 2026-09-30: \"if
+  something lands within a word boundary grow the word, period\", and
+  2026-10-01: one rule set for every layer). Examples here, the property in
+  `plain-edits-oracle-test`."
   (:require [clojure.test :refer [deftest is testing]]
             [plaid.algos.text :as ta]
             [plaid.util.codepoint :as cp]))
@@ -348,20 +349,18 @@
     (is (= "x two" (at [:s 1])))
     (is (= "one" (at [:s 0])))))
 
-(deftest a-put-back-never-stacks-tokens-of-a-layer-that-forbids-overlap
-  ;; REV3 N8: two tokens inside `cat eel`, typed over as `one` while the words
-  ;; take the other rules: one is put back over the word left, not both
+(deftest a-typed-over-stretch-never-stacks-tokens-of-a-layer-that-forbids-overlap
+  ;; REV3 N8: two tokens inside `cat eel`, typed over as `one`
   (let [old "dog cat eel fox."
         words (mapv (fn [i [b e]] {:token/id [:w i] :token/layer :w :token/begin b :token/end e})
                     (range) [[0 3] [4 7] [8 11] [12 16]])
         segs [{:token/id :g1 :token/layer :g :token/begin 8 :token/end 9}
               {:token/id :g2 :token/layer :g :token/begin 9 :token/end 11}]
         ops [(rep 4 7 "one")]
-        rest (ta/apply-edits old words ops {:partitioning #{} :word-layers #{:w}})
-        plain (ta/plain-edits old segs ops #{} #{:w})
-        r (ta/follow-word-edges (into words segs) plain rest #(= :w (:token/layer %)) #{:g1 :g2} #{:g})
-        gs (filter #(= :g (:token/layer %)) (:tokens r))]
-    (is (<= (count gs) 1) (pr-str gs))))
+        r (ta/plain-edits old (into words segs) ops #{} #{:w} {:exclusive #{:g}})
+        gs (sort-by :token/begin (filter #(= :g (:token/layer %)) (:tokens r)))]
+    (is (= "dog one fox." (:text/body (:text r))))
+    (is (every? (fn [[x y]] (<= (:token/end x) (:token/begin y))) (partition 2 1 gs)) (pr-str gs))))
 
 (deftest side-decides-where-sentences-meet-though-no-words-do
   ;; REV4 R1: rows `Hi.` and `Yo.` written together, the words leaving out the
@@ -430,17 +429,15 @@
     (is (= ["Hi. xYo. End." "Hi. x" "Yo." "Hi" "Yo"] (run (assoc (ins 3 " x") :side "before"))))
     (is (= ["Hi.xYo. End." "Hi." "xYo." "Hi" "xYo"] (run (assoc (ins 3 "x") :side "after"))))))
 
-(deftest a-point-beside-words-that-are-not-plain-stays-a-point
-  ;; REV5 L5: a UMR constant's anchor at 0 on a plain node layer beside words
-  ;; that are not plain stays zero-width, whatever the edit
+(deftest a-point-beside-the-words-stays-a-point
+  ;; REV5 L5: a UMR constant's anchor at 0 on a node layer beside the words
+  ;; stays zero-width, whatever the edit
   (let [old "Hi. The end."
         words (mapv (fn [i [b e]] {:token/id [:w i] :token/layer :w :token/begin b :token/end e})
                     (range) [[0 3] [4 7] [8 12]])
         nodes [{:token/id :n0 :token/layer :u :token/begin 0 :token/end 3}
                {:token/id :c :token/layer :u :token/begin 0 :token/end 0}]
         ops [(ins 12 "x")]
-        rest (ta/apply-edits old words ops {:partitioning #{} :word-layers #{:w}})
-        plain (ta/plain-edits old nodes ops #{} #{:w})
-        r (ta/follow-word-edges (into words nodes) plain rest #(= :w (:token/layer %)) #{:n0 :c})
+        r (ta/plain-edits old (into words nodes) ops #{} #{:w})
         c (some #(when (= :c (:token/id %)) %) (:tokens r))]
     (is (= [0 0] [(:token/begin c) (:token/end c)]))))

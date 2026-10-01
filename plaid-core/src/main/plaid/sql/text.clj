@@ -31,8 +31,7 @@
   require this namespace, but to avoid a load-time cycle if/when token
   ever needs to reach back, we resolve those two fns at call-site via
   `requiring-resolve`."
-  (:require [clojure.set :as set]
-            [plaid.algos.text :as ta]
+  (:require [plaid.algos.text :as ta]
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
@@ -234,140 +233,32 @@
                                 :from [:tokens]
                                 :where [:= :text_id eid]})
           tokens (mapv row->token token-rows)            ; code-point offsets
-          ;; A diffed body gets each edit moved to where it cuts the
-          ;; fewest tokens when it could stand in several places for the
-          ;; same result (see ta/slide-to-tokens), its deletes snapped to
-          ;; token boundaries where the edit script left an equivalent
-          ;; choice open (see ta/normalize-deletes), each changed stretch
-          ;; aligned word by word where the diff kept a letter of a
-          ;; deleted word in place of the respelled word's own (see
-          ;; ta/align-to-words), and then each delete with an insert
-          ;; beside it becomes one replace op, so a token covering the
-          ;; changed letters keeps the new ones (see ta/pair-replacements), and the
-          ;; pieces of a word replaced outright become one replace of it, so its
-          ;; tokens move onto the new word (see ta/fold-whole-words).
-          ;; The pairing comes second because normalize-deletes reads only
-          ;; deletes and inserts, and it must see where the deletes end up.
-          ;; Explicit client ops are applied as sent. The slide is told
-          ;; which layers are partitions, where an insert at a boundary
-          ;; goes into the token that ends there, and the fold which
-          ;; layers hold words: those that forbid overlap, are no
-          ;; partition and nest under another layer. In a script without
-          ;; spaces a sentence, a UMR node or a time-alignment segment (no
-          ;; parent) over several words looks like a word.
+          ;; A new body or edits from the caret take the plain rule (see
+          ;; ta/apply-plain-gaps), on every token layer alike: what the layers
+          ;; are to it is read from their shape (see ta/layer-roles), and a
+          ;; layer setting `splitOnSpace` (ud's words) has a space typed inside
+          ;; a word split it, for every word of the text. A diffed body's
+          ;; edits are first moved to where they disturb the fewest tokens
+          ;; when they could stand in several places for the same result (see
+          ;; ta/plain-body-gaps). Ops sent as the body are applied as sent.
           layer-rows (when (and (or (string? new-body-or-ops) edits) (seq tokens))
                        (psc/q db {:select [:id :name :overlap_mode :parent_token_layer_id :config]
                                   :from [:token_layers]
                                   :where [:= :text_layer_id (:text_layer_id text-row)]}))
-          partitioning (into #{} (comp (filter #(= "partitioning" (:overlap_mode %))) (map :id)) layer-rows)
-          word-layers (into #{}
-                            (comp (filter #(and (= "non-overlapping" (:overlap_mode %))
-                                                (some? (:parent_token_layer_id %))))
-                                  (map :id))
-                            layer-rows)
-          ;; A layer whose config sets `plainEdits` (igt's) takes the edit
-          ;; the plain way (see ta/apply-plain-gaps), and so do the layers
-          ;; nested under it at any depth (another app's syntactic words or
-          ;; nodes on the same words), which then keep to its tokens, and the
-          ;; partitions, which stay on its tokens' edges. Its own word layers
-          ;; decide where typed text goes. The other layers take the edit by
-          ;; the rules above and below, worked out over every token, and keep
-          ;; only their own tokens' outcome.
-          declared (into #{}
-                         (comp (filter #(true? (some-> (:config %) psc/parse-config (get-in ["plaid" "plainEdits"]))))
-                               (map :id))
-                         layer-rows)
-          parent-of (into {} (map (juxt :id :parent_token_layer_id)) layer-rows)
-          plain (into #{}
-                      (filter (fn [id] (loop [id id seen #{}]
-                                         (cond (nil? id) false
-                                               (declared id) true
-                                               (seen id) false
-                                               :else (recur (parent-of id) (conj seen id))))))
-                      (keys parent-of))
-          ;; With no plain word layer (a node layer beside words on the other
-          ;; rules) the words and the partitions over them take the other
-          ;; rules, and the plain tokens follow the words at their edges
-          ;; (see ta/follow-word-edges), so a node never differs from its word.
-          plain-words (set/intersection word-layers plain)
-          deciders (let [ws (set/intersection word-layers declared)] (if (seq ws) ws word-layers))
-          plain? (fn [{:token/keys [layer]}] (or (contains? plain layer)
-                                                 (and (seq plain-words) (contains? partitioning layer))))
-          ;; A layer that also sets `splitOnSpace` (ud's words) has a space
-          ;; typed inside a word split it. Declared on a layer the text's
-          ;; words share with another app, it holds for the whole text.
-          split-on-space (some #(true? (some-> (:config %) psc/parse-config (get-in ["plaid" "splitOnSpace"])))
-                               layer-rows)
-          ;; the layers nested under the deciding words (morphemes,
-          ;; syntactic words): they keep to their words, never to a sentence
-          children (into #{}
-                         (filter (fn [id] (loop [id (parent-of id) seen #{}]
-                                            (cond (nil? id) false
-                                                  (deciders id) true
-                                                  (seen id) false
-                                                  :else (recur (parent-of id) (conj seen id))))))
-                         (keys parent-of))
-          exclusive (into #{} (comp (filter #(= "non-overlapping" (:overlap_mode %))) (map :id)) layer-rows)
-          plain-opts {:split-on-space (boolean split-on-space) :children children :exclusive exclusive}
-          plain-tokens (when (seq plain) (filterv plain? tokens))
-          plain-result (when (seq plain)
-                         (cond
-                           edits (ta/plain-edits old-body plain-tokens edits partitioning deciders plain-opts)
-                           (string? new-body-or-ops) (ta/plain-body old-body new-body-or-ops plain-tokens partitioning deciders plain-opts)
-                           :else nil))
-          tokens-rest (if plain-result (filterv (complement plain?) tokens) tokens)
-          ops (cond
-                (and plain-result (empty? tokens-rest)) nil
-                edits nil
-                (string? new-body-or-ops)
-                (-> (ta/diff old-body new-body-or-ops)
-                    (ta/slide-to-tokens old-body tokens partitioning)
-                    (ta/normalize-deletes old-body tokens)
-                    (ta/align-to-words old-body tokens word-layers)
-                    (ta/pair-replacements old-body tokens)
-                    (ta/fold-whole-words old-body tokens word-layers))
-                :else (vec new-body-or-ops))
+          {:keys [partitioning deciders exclusive] :as roles}
+          (ta/layer-roles (map (fn [r] {:id (:id r)
+                                        :overlap-mode (:overlap_mode r)
+                                        :parent (:parent_token_layer_id r)
+                                        :split-on-space (true? (some-> (:config r) psc/parse-config
+                                                                       (get-in ["plaid" "splitOnSpace"])))})
+                               layer-rows))
+          opts (select-keys roles [:split-on-space :children :exclusive])
           indexed-old (reduce (fn [m t] (assoc m (:token/id t) t)) {} tokens)
-          ;; A diffed body's tokens are then moved off a space a delete
-          ;; left them on (see ta/keep-edges-off-spaces): no place for
-          ;; one delete keeps two UMR nodes pulling opposite ways off it.
-          ;; Edits from the caret go through the same steps after their
-          ;; own placement (see ta/apply-edits).
-          rest-result
-          (cond
-            (and plain-result (empty? tokens-rest)) nil
-            edits (ta/apply-edits old-body tokens edits {:partitioning partitioning
-                                                         :word-layers word-layers})
-            (string? new-body-or-ops) (as-> (ta/apply-text-edits ops text-map tokens) r
-                                        (ta/keep-edges-off-spaces old-body tokens r partitioning))
-            :else (ta/apply-text-edits ops text-map tokens))
           {new-text :text new-tokens :tokens deleted-ids :deleted heads :heads}
-          (if plain-result
-            (let [rest-ids (into #{} (map :token/id) tokens-rest)
-                  plain-result (if (and (empty? plain-words) rest-result)
-                                 (let [plain-ids (into #{} (map :token/id) plain-tokens)
-                                       r (ta/follow-word-edges tokens plain-result rest-result
-                                                               #(contains? word-layers (:token/layer %))
-                                                               plain-ids exclusive)
-                                       ;; and a token over a sentence follows the sentence
-                                       parts (filterv #(partitioning (:token/layer %)) (:tokens rest-result))
-                                       followed (ta/follow-sentences (.toArray (.codePoints ^String old-body))
-                                                                     tokens (into (:tokens r) parts) nil
-                                                                     (.toArray (.codePoints ^String (:text/body (:text r))))
-                                                                     partitioning
-                                                                     ;; a row (a layer that forbids
-                                                                     ;; overlap), never a node
-                                                                     #(and (exclusive (:token/layer %))
-                                                                           (not (children (:token/layer %)))))]
-                                   (assoc r :tokens (filterv #(plain-ids (:token/id %)) followed)))
-                                 plain-result)]
-              (when (and rest-result (not= (:text/body (:text rest-result)) (:text/body (:text plain-result))))
-                (throw (ex-info "The new body could not be applied." {:code 500 :id eid})))
-              {:text (:text plain-result)
-               :tokens (into (:tokens plain-result) (filter #(rest-ids (:token/id %))) (:tokens rest-result))
-               :deleted (into (vec (:deleted plain-result)) (filter rest-ids) (:deleted rest-result))
-               :heads (:heads plain-result)})
-            rest-result)
+          (cond
+            edits (ta/plain-edits old-body tokens edits partitioning deciders opts)
+            (string? new-body-or-ops) (ta/plain-body old-body new-body-or-ops tokens partitioning deciders opts)
+            :else (ta/apply-text-edits (vec new-body-or-ops) text-map tokens))
           new-body (:text/body new-text)
           ;; The steps above only move edits between equivalent places, so
           ;; a diffed body comes out as sent, and edits as they make the body
@@ -403,7 +294,7 @@
                     ;; never two tokens of a layer that forbids overlap on one
                     ;; stretch: should a rule above ever leave them, the save
                     ;; is refused rather than stored
-                    (doseq [[layer ts] (group-by :token/layer (filter #(and (exclusive (:token/layer %)) (plain (:token/layer %)))
+                    (doseq [[layer ts] (group-by :token/layer (filter #(exclusive (:token/layer %))
                                                                       survivors))
                             [x y] (partition 2 1 (sort-by (juxt :token/begin :token/end) ts))]
                       (when (> (:token/end x) (:token/begin y))
@@ -522,9 +413,10 @@
 (defn update-body
   "Change the textual content of `eid`, reindexing tokens to match.
 
-  `new-body-or-ops` is either a string (the full new body — diffed
-  against the current body) or a vector of edit-ops in the shape that
-  `plaid.algos.text/apply-text-edits` accepts, applied as sent. With
+  `new-body-or-ops` is either a string (the full new body, diffed
+  against the current body and taken by the plain rule, see
+  `plaid.algos.text/apply-plain-gaps`) or a vector of edit-ops in the shape
+  that `plaid.algos.text/apply-text-edits` accepts, applied as sent. With
   `base`, the save applies only when it is the digest of the stored body
   (see `plaid.util.digest`), and answers 409 with `:text-changed` otherwise.
 
@@ -557,10 +449,9 @@
   "Change the textual content of `eid` by `edits`, ops made at the caret
   (running code-point coordinates, each op's index in the body the ops
   before it left, in the shapes `update-body` takes). The ops are composed
-  into their net change, and each pure insert or delete stands where it was
-  made, while a stretch both taken and typed over is read as a whole-body
-  save reads that change (see `plaid.algos.text/apply-edits`). The tokens
-  then follow the rules a whole-body save follows.
+  into their net change, each gap of it standing where it was made, and the
+  tokens take it by the plain rule a whole-body save takes (see
+  `plaid.algos.text/plain-edits`).
 
   With `base`, the edit applies only when it is the digest of the stored
   body, and answers 409 with `:text-changed` otherwise: the edit's places

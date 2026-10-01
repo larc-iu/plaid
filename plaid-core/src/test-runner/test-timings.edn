@@ -1,5 +1,4 @@
-{plaid.algos.text-oracle-test 10737,
- plaid.algos.text-test 22596,
+{plaid.algos.text-test 22596,
  plaid.history.as-of-bound-once-test 406,
  plaid.history.batch-entry-time-test 725,
  plaid.history.full-coverage-test 2937,

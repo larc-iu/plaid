@@ -107,9 +107,10 @@
     (is (:success (txt/update-body db text "hello😁world" admin-id)))
     (is (= "hello😁world" (:body (psc/fetch-by-id db :texts text)))
         "body must reconstruct exactly, not corrupt")
-    (is (= "world" (-> (h/get-token admin-request tok) :body :token/value)))
+    ;; the new letter touches the word, which takes it
+    (is (= "😁world" (-> (h/get-token admin-request tok) :body :token/value)))
     (let [row (psc/fetch-by-id db :tokens tok)]
-      (is (= [6 11] [(:begin row) (:end_ row)])))))
+      (is (= [5 11] [(:begin row) (:end_ row)])))))
 
 (deftest update-body-astral-interior-delete
   ;; End-to-end regression: deleting an INTERIOR astral char from a run that

@@ -1,7 +1,7 @@
 (ns plaid.algos.text-edits-test
-  "`compose-edits` and `plan-edits`: the net change of a stream of edits
-  from the caret, and where it stands. The whole chain is judged by the
-  oracle in `text-oracle-test`."
+  "`compose-edits`: the net change of a stream of edits from the caret, and
+  where it stands. What the tokens do with it is judged by the oracle in
+  `plain-edits-oracle-test`."
   (:require [clojure.data.json :as json]
             [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]
@@ -56,7 +56,7 @@
 
 (defn- typed [old ops]
   (let [tokens (words old)
-        r (ta/apply-edits old tokens ops {:partitioning #{} :word-layers #{:w}})
+        r (ta/plain-edits old tokens ops #{} #{:w})
         body (:text/body (:text r))]
     [body (->> (:tokens r) (sort-by :token/begin) (mapv (fn [{:token/keys [id begin end]}] [id (subs body begin end)])))]))
 
@@ -65,130 +65,12 @@
     ;; the whole-body diff of `the cat cat` to `the cat` cannot tell them apart
     (is (= ["the cat" [[0 "the"] [2 "cat"]]] (typed "the cat cat" [(del 4 4)])))
     (is (= ["the cat" [[0 "the"] [1 "cat"]]] (typed "the cat cat" [(del 7 4)]))))
-  (testing "Backspace over the space alone keeps both words (D22, L2)"
+  (testing "Backspace over the space alone keeps both words"
     (is (= ["bb bbbb bb" [[0 "bb"] [1 "bb"] [2 "bb"] [3 "bb"]]] (typed "bb bb bb bb" [(del 5 1)]))))
-  (testing "letters typed at a word's end stay outside it"
-    (is (= ["cats sat" [[0 "cat"] [1 "sat"]]] (typed "cat sat" [(ins 3 "s")]))))
+  (testing "letters typed at a word's end join it"
+    (is (= ["cats sat" [[0 "cats"] [1 "sat"]]] (typed "cat sat" [(ins 3 "s")]))))
   (testing "a word selected and typed over keeps its token"
     (is (= ["dog sat" [[0 "dog"] [1 "sat"]]] (typed "cat sat" [(rep 0 3 "dog")])))))
-
-(deftest a-typed-over-stretch-is-read-inside-itself
-  ;; `sat tat` typed over as `tX` deletes `sat ` and respells `tat`: the
-  ;; whole-body save's reading (` sat` deleted) is put back at the equal place
-  ;; inside the selection, and an insert just before the selection changes
-  ;; nothing about it.
-  (let [old "kai sat tat\n"
-        tokens (words old)
-        free (ta/apply-edits old tokens [(rep 4 7 "tX")] {:partitioning #{} :word-layers #{:w}})
-        beside (ta/apply-edits old tokens [(rep 4 7 "tX") (ins 3 "Q")] {:partitioning #{} :word-layers #{:w}})
-        extents (fn [r] (sort (map (juxt :token/id :token/begin :token/end) (:tokens r))))]
-    (is (= "kai tX\n" (:text/body (:text free))))
-    (is (= [[0 0 3] [2 4 6]] (extents free)))
-    (is (= "kaiQ tX\n" (:text/body (:text beside))))
-    (is (= [[0 0 3] [2 5 7]] (extents beside)))))
-
-(defn- one-morpheme [old]
-  (into (words old) (map (fn [{:token/keys [id begin end]}] {:token/id [:m id] :token/layer :m :token/begin begin :token/end end}))
-        (words old)))
-
-(deftest a-word-fixed-at-two-carets-is-one-change-of-it
-  ;; R8: a transposition fixed at two carets keeps the whole word, as the
-  ;; whole-body save did
-  (is (= ["a the cat" [[0 "a"] [1 "the"] [2 "cat"]]] (typed "a teh cat" [(del 3 1) (ins 4 "e")])))
-  (is (= ["a danced x" [[0 "a"] [1 "danced"] [2 "x"]]] (typed "a dancde x" [(del 6 1) (ins 7 "d")])))
-  ;; a letter deleted inside and one typed at the end
-  (is (= ["a mtX" [[0 "a"] [1 "mtX"]]] (typed "a mat" [(del 3 1) (ins 4 "X")])))
-  ;; R2: a space typed with another change earlier in the word folds it
-  (is (= ["a pmp kin x" [[0 "a"] [1 "pmp"] [2 "x"]]] (typed "a pumpkin x" [(del 3 1) (ins 5 " ")])))
-  (is (= ["a pXump kin x" [[0 "a"] [1 "pXump"] [2 "x"]]] (typed "a pumpkin x" [(ins 6 " ") (ins 3 "X")]))))
-
-(deftest a-selection-typed-over-changes-no-token-outside-it
-  ;; R3: `ab b` of `a ab ab b` selected and typed over as `bd` leaves the
-  ;; first `ab` alone
-  (is (= ["a ab bd" [[0 "a"] [1 "ab"]]]
-         (update (typed "a ab ab b" [(rep 5 4 "bd")]) 1 #(filterv (fn [[id]] (#{0 1} id)) %))))
-  ;; and over random selections of repeated words: every word apart from the
-  ;; selection keeps its place and length
-  (let [rng (java.util.Random. 7)
-        vocab ["a" "ab" "ba" "big" "bag" "dog" "do" "g" "bb" "b"]
-        pick #(nth % (.nextInt rng (count %)))]
-    (dotimes [_ 5000]
-      (let [old (clojure.string/join " " (repeatedly (+ 3 (.nextInt rng 5)) #(pick vocab)))
-            n (count old)
-            s (.nextInt rng n)
-            e (+ s 1 (.nextInt rng (min 8 (- n s))))
-            v (apply str (repeatedly (inc (.nextInt rng 5)) #(pick ["a" "b" " " "g" "o" "d"])))
-            tokens (words old)
-            r (ta/apply-edits old tokens [(rep s (- e s) v)] {:partitioning #{} :word-layers #{:w}})
-            after (into {} (map (juxt :token/id identity)) (:tokens r))
-            shift (- (count v) (- e s))]
-        (doseq [{:token/keys [id begin end]} tokens :when (or (< end s) (> begin e))
-                :let [t (after id)
-                      want (if (> begin e) [(+ begin shift) (+ end shift)] [begin end])]]
-          (is (= want [(:token/begin t) (:token/end t)]) (pr-str old s e v)))))))
-
-(deftest a-space-typed-in-the-first-word-of-a-sentence-leaves-no-word-over-it
-  ;; R9: the second half cannot take the word (text in front of it would go to
-  ;; the sentence before), so the first does
-  (let [old "x. cow y"
-        tokens (conj (words old)
-                     {:token/id :s1 :token/layer :s :token/begin 0 :token/end 3}
-                     {:token/id :s2 :token/layer :s :token/begin 3 :token/end 8})
-        r (ta/apply-edits old tokens [(ins 4 " ")] {:partitioning #{:s} :word-layers #{:w}})
-        body (:text/body (:text r))
-        by-id (into {} (map (juxt :token/id #(subs body (:token/begin %) (:token/end %)))) (:tokens r))]
-    (is (= "x. c ow y" body))
-    (is (= "c" (by-id 1)))
-    (is (= "c ow y" (by-id :s2)))))
-
-(deftest a-new-word-or-a-comma-typed-at-a-words-edge-with-a-typo-fix-stays-outside-it
-  ;; N1: a letter deleted inside `walkd` and `slowly ` typed in front keeps
-  ;; the word's morpheme and gloss, as the whole-body save does
-  (let [old "the man walkd to"
-        edit (fn [ops] (let [r (ta/apply-edits old (one-morpheme old) ops {:partitioning #{} :word-layers #{:w}})
-                             body (:text/body (:text r))]
-                         [body (->> (:tokens r) (sort-by (juxt :token/begin (comp str :token/id)))
-                                    (mapv (fn [{:token/keys [id begin end]}] [id (subs body begin end)])))]))]
-    (is (= ["the man slowly wlkd to" [[0 "the"] [[:m 0] "the"] [1 "man"] [[:m 1] "man"]
-                                      [2 "wlkd"] [[:m 2] "wlkd"] [3 "to"] [[:m 3] "to"]]]
-           (edit [(del 9 1) (ins 8 "slowly ")])))
-    (is (= ["the man walked home to" [[0 "the"] [[:m 0] "the"] [1 "man"] [[:m 1] "man"]
-                                      [2 "walked"] [[:m 2] "walked"] [3 "to"] [[:m 3] "to"]]]
-           (edit [(ins 12 "e") (ins 14 " home")])))
-    ;; N2: a comma typed after it stays outside the word and its morpheme
-    (is (= ["the man walked, to" [[0 "the"] [[:m 0] "the"] [1 "man"] [[:m 1] "man"]
-                                  [2 "walked"] [[:m 2] "walked"] [3 "to"] [[:m 3] "to"]]]
-           (edit [(ins 12 "e") (ins 14 ",")])))))
-
-(deftest a-space-typed-in-a-word-with-text-typed-in-front-still-folds-it
-  ;; X1: the front text stays outside, and the word folds as a lone space
-  ;; folds it, its same-extent token going with it (a ud syntactic word)
-  (let [run (fn [old ops]
-              (let [r (ta/apply-edits old (one-morpheme old) ops {:partitioning #{} :word-layers #{:w}})
-                    body (:text/body (:text r))]
-                [body (->> (:tokens r) (sort-by (juxt :token/begin (comp str :token/id)))
-                           (mapv (fn [{:token/keys [id begin end]}] [id (subs body begin end)])))]))]
-    (is (= ["a Q c at x" [[0 "a"] [[:m 0] "a"] [1 "at"] [[:m 1] "at"] [2 "x"] [[:m 2] "x"]]]
-           (run "a cat x" [(ins 3 " ") (ins 2 "Q ")])))
-    (is (= ["a (pum pkin x" [[0 "a"] [[:m 0] "a"] [1 "pkin"] [[:m 1] "pkin"] [2 "x"] [[:m 2] "x"]]]
-           (run "a pumpkin x" [(ins 5 " ") (ins 2 "(")])))))
-
-(deftest a-words-letters-typed-back-behind-a-space-or-a-joiner-read-as-typed-inside-it
-  ;; Y1: the letters after the space (or before it) Backspaced and typed back
-  ;; with it are a space typed inside the word, which folds by D28. Y2, E1+: behind a hyphen or an apostrophe, the word
-  ;; is respelled and stays one word.
-  (let [run (fn [old ops]
-              (let [r (ta/apply-edits old (one-morpheme old) ops {:partitioning #{} :word-layers #{:w}})
-                    body (:text/body (:text r))]
-                [body (sort-by str (map (fn [{:token/keys [id begin end]}] [id (subs body begin end)]) (:tokens r)))]))]
-    (is (= ["a the cat x" [[0 "a"] [1 "the"] [2 "x"] [[:m 0] "a"] [[:m 1] "the"] [[:m 2] "x"]]]
-           (run "a thecat x" [(rep 5 3 " cat")])))
-    (is (= ["so I went home" [[0 "so"] [1 "went"] [2 "home"] [[:m 0] "so"] [[:m 1] "went"] [[:m 2] "home"]]]
-           (run "so Iwent home" [(rep 3 1 "I ")])))
-    (is (= ["a well-known x" [[0 "a"] [1 "well-known"] [2 "x"] [[:m 0] "a"] [[:m 1] "well-known"] [[:m 2] "x"]]]
-           (run "a wellknown x" [(rep 6 5 "-known")])))
-    (is (= ["said John's x" [[0 "said"] [1 "John's"] [2 "x"] [[:m 0] "said"] [[:m 1] "John's"] [[:m 2] "x"]]]
-           (run "said Johnn x" [(rep 9 1 "'s")])))))
 
 (deftest composing-many-ops-costs-what-they-move
   ;; A long paste sent as one op per word, and the same typed a letter at a
