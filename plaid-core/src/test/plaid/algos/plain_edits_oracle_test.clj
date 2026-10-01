@@ -473,12 +473,25 @@
    (let [{:keys [partitioning deciders] :as r} (roles layout split?)]
      (ta/plain-edits old tokens ops partitioning deciders (select-keys r [:split-on-space :children :exclusive :head-layers])))))
 
+(defn- server-gaps
+  "The gaps an edit by `ops` is taken as, the layers as `layout` has them."
+  [old tokens ops layout]
+  (let [{:keys [partitioning deciders]} (roles layout false)]
+    (ta/plain-edit-gaps old ops (#'ta/word-extents tokens partitioning deciders))))
+
+(defn- save-read
+  "`[gaps result]` of a whole-body save of `new`, the layers as `layout` has
+  them (see `plain-body-read`)."
+  [old new tokens layout split?]
+  (let [{:keys [partitioning deciders] :as r} (roles layout split?)]
+    (ta/plain-body-read old new tokens partitioning deciders (select-keys r [:split-on-space :children :exclusive :head-layers]))))
+
 (defn- save
   "What a whole-body save of `new` does, the layers as `layout` has them."
   ([old new tokens] (save old new tokens :apps false))
-  ([old new tokens layout split?]
-   (let [{:keys [partitioning deciders] :as r} (roles layout split?)]
-     (ta/plain-body old new tokens partitioning deciders (select-keys r [:split-on-space :children :exclusive :head-layers])))))
+  ([old new tokens layout split?] (second (save-read old new tokens layout split?))))
+
+(declare survivor-problems)
 
 (def ^:private nbsp "\u00a0")
 
@@ -521,7 +534,7 @@
               gaps (gen-gaps rng body tokens opts)
               tokens (layout-tokens layout tokens)
               new-body (ta/edit-ops-body (ta/gap-ops gaps) body)
-              server (ta/plain-edit-gaps body (ta/gap-ops gaps))
+              server (server-gaps body tokens (ta/gap-ops gaps) layout)
               readings {:composed (ta/gap-ops gaps)
                         :keys-left-to-right (keystrokes gaps false)
                         :keys-right-to-left (keystrokes gaps true)}]
@@ -529,9 +542,8 @@
             (let [r (run body tokens ops layout false)
                   ps (problems body tokens server r)]
               (when (seq ps) (swap! fails conj {:config cname :seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))
-          (let [bgaps (ta/plain-body-gaps body new-body tokens (:partitioning (roles layout false)) (:deciders (roles layout false)))
-                r (save body new-body tokens layout false)
-                ps (problems body tokens bgaps r)]
+          (let [[bgaps r] (save-read body new-body tokens layout false)
+                ps (into (problems body tokens bgaps r) (survivor-problems body new-body tokens layout r))]
             (when (seq ps) (swap! fails conj {:config cname :seed seed :reading :whole-body :old body :gaps bgaps :problems (take 3 ps)})))))
       (when (System/getenv "PLAIN_ORACLE_DEBUG")
         (println cname (count @fails) (frequencies (map :reading @fails)))
@@ -695,7 +707,7 @@
             {:keys [body tokens]} (gen-doc rng opts)
             gaps (gen-gaps rng body tokens opts)
             new-body (ta/edit-ops-body (ta/gap-ops gaps) body)
-            server (ta/plain-edit-gaps body (ta/gap-ops gaps))]
+            server (server-gaps body tokens (ta/gap-ops gaps) :apps)]
         (doseq [[rname plain split sgaps] [[:composed
                                             (run body tokens (ta/gap-ops gaps) :apps false)
                                             (run body tokens (ta/gap-ops gaps) :apps true)
@@ -707,7 +719,7 @@
                                            [:whole-body
                                             (save body new-body tokens :apps false)
                                             (save body new-body tokens :apps true)
-                                            (ta/plain-body-gaps body new-body tokens #{:s} #{:w})]]]
+                                            (first (save-read body new-body tokens :apps false))]]]
           (let [ps (split-problems body tokens sgaps plain split)]
             (when (seq ps) (swap! fails conj {:seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))))
     (is (empty? @fails) (str (count @fails) " " (pr-str (take 3 @fails))))))
@@ -797,7 +809,7 @@
             sents (sort-by :token/begin (filter #(= :s (:token/layer %)) tokens))]
         (doseq [[rname ops] {:composed (ta/gap-ops gaps) :keys-left-to-right (keystrokes gaps false)}]
           (let [r (run body tokens ops)
-                server (ta/plain-edit-gaps body ops)
+                server (server-gaps body tokens ops :apps)
                 ps (vec (remove #(re-find #"^\[:as " %) (problems body tokens server r)))
                 nb (:text/body (:text r))
                 ss (gap-fill (filterv #(= :s (:token/layer %)) (:tokens r)) (cp/cp-count nb))
@@ -892,6 +904,40 @@
 ;; saved as a whole body, and each word's token must be on the word it was
 ;; made for, or gone when its word was deleted (REV-one-rule F2, F5).
 
+(defn- survivor-problems
+  "The tokens a whole-body save of `old` as `new` deleted though a letter of
+  theirs is outside every gap of the diff, as either reading has it
+  (`body-diff-gaps`, aligned to the words or not): a
+  word goes only when all its letters go (REV2-one-rule G1). A token inside
+  a word the save kept, read as that word typed over (`cow`, `co` + `w`, to
+  `abc`, F4), may go."
+  [^String old ^String new tokens layout r]
+  (let [{:keys [partitioning deciders]} (roles layout false)
+        o (cps old)
+        ;; the two readings of the diff, aligned to the words and as it
+        ;; stands: a token may go when all its letters are in the gaps of one
+        mark (fn [gaps] (let [a (boolean-array (alength o))]
+                          (doseq [{:keys [start end]} gaps, i (range start end)] (aset a i true))
+                          a))
+        readings [(mark (ta/body-diff-gaps old new tokens partitioning deciders))
+                  (mark (ta/body-diff-gaps old new tokens partitioning deciders false))]
+        left? (fn [b e] (every? (fn [^booleans in-gap]
+                                  (some #(and (not (aget in-gap %)) (not (ws? (aget o %)))) (range b e)))
+                                readings))
+        gone (set (:deleted r))
+        words (if (seq deciders) (filter #(deciders (:token/layer %)) tokens)
+                  (remove #(partitioning (:token/layer %)) tokens))
+        kept-word? (fn [{:token/keys [id begin end]}]
+                     (some #(and (not= id (:token/id %)) (not (gone (:token/id %)))
+                                 (<= (:token/begin %) begin) (<= end (:token/end %)))
+                           words))]
+    (into [] (keep (fn [{:token/keys [id begin end] :as t}]
+                     (when (and (gone id) (< begin end)
+                                (left? begin end)
+                                (not (kept-word? t)))
+                       (str id " deleted with a letter left " (pr-str (cp/cp-subs old begin end))))))
+          tokens)))
+
 (defn- intent-save
   "The problems of saving `body` as `new` where old word i was meant to be
   new word `(intent i)` (nil: deleted). Words are the runs between spaces,
@@ -905,40 +951,67 @@
         r (save body new tokens :intent false)
         gone (set (:deleted r))
         got (into {} (comp (remove #(gone (:token/id %))) (map (juxt :token/id (juxt :token/begin :token/end)))) (:tokens r))]
-    (into [] (keep (fn [i]
-                     (let [want (some-> (intent i) new-w)
-                           g (got i)]
-                       (when (not= want g)
-                         (str (apply subs body (old-w i)) " is on " (pr-str (some->> g (apply subs new)))
-                              ", want " (pr-str (some->> want (apply subs new))))))))
+    (into (survivor-problems body new tokens :intent r)
+          (keep (fn [i]
+                  (let [want (some-> (intent i) new-w)
+                        g (got i)]
+                    (when (not= want g)
+                      (str (apply subs body (old-w i)) " is on " (pr-str (some->> g (apply subs new)))
+                           ", want " (pr-str (some->> want (apply subs new))))))))
           (range (count old-w)))))
 
 (deftest a-whole-body-save-keeps-each-word-on-the-word-meant
   ;; the reviewer's cases the rules before the plain rule got right and it
-  ;; got wrong (REV-one-rule, intent oracle, seed 31)
-  (doseq [[body new intent] [["tcad b abb d bc." "atbZ d bc." [nil nil 0 1 2]]
-                             ["ad ctb td a ctc." "ad ctb ta d ctc." [0 1 2 3 4]]
-                             ["atc cda aaat bdd dtcb t." "atc dda dtcb t." [0 1 nil nil 2 3]]
+  ;; got wrong (REV-one-rule, intent oracle, seed 31), that a reading of the
+  ;; diff can get right without deleting a word it keeps letters of
+  (doseq [[body new intent] [["ad ctb td a ctc." "ad ctb ta d ctc." [0 1 2 3 4]]
                              ["bac bbd ata ctc." "bac bba Yca ctc." [0 1 2 3]]
-                             ["dbdt tb bd dtt." "dbdt tZt." [0 nil nil 1]]
-                             ["dcb dbad cdd cc tbtc adba ad." "dcb dbad cdd tdba ad." [0 1 2 nil nil 3 4]]
-                             ["ata bcac dbbb tctb d a." "aca tctb d a." [0 nil nil 1 2 3]]
-                             ["cb b cdb tddb c cbb bcb." "cb b cdb tddb c cXc." [0 1 2 3 4 5 nil]]
                              ["dtb a at da cdc c." "XZa d at da cdc c." [0 1 2 3 4 5]]
-                             ["dd tb ctc c." "dd ttc c." [0 nil 1 2]]
-                             ["b d d tdca bcb." "b ddca bcb." [0 nil nil 1 2]]
-                             ;; F2
-                             ["the a ab." "the aX." [0 nil 1]]]]
+                             ;; a respelled word aligned where that deletes fewer words
+                             ["ac d cda." "ac X." [0 1 nil]]]]
     (is (empty? (intent-save body new intent)) (str (pr-str body) " -> " (pr-str new) " " (pr-str (intent-save body new intent))))))
+
+(deftest a-whole-body-save-keeps-every-word-the-diff-keeps-letters-of
+  ;; The other eight of those cases. What was meant deletes a word that the
+  ;; diff keeps letters of: the rules before the plain rule joined what was
+  ;; left of two words into one and deleted the other (`tb ctc` to `ttc`), or
+  ;; respelled a word from letters the diff took from its neighbours (`tcad
+  ;; b abb` to `atbZ`). That also deleted words with letters left where
+  ;; nothing like it was meant (REV2-one-rule G1: `reported prior
+  ;; discrimination` to `reportedimination` deleted `reported`). A word goes
+  ;; only when all its letters go, so each keeps what the diff left of it, as
+  ;; the same change sent as edits does. Pinned with what each word reads.
+  (doseq [[body new want] [["tcad b abb d bc." "atbZ d bc." ["at" "bZ" nil "d" "bc"]]
+                           ["atc cda aaat bdd dtcb t." "atc dda dtcb t." ["atc" "d" nil "da" "dtcb" "t"]]
+                           ["dbdt tb bd dtt." "dbdt tZt." ["dbdt" "tZ" nil "t"]]
+                           ["dcb dbad cdd cc tbtc adba ad." "dcb dbad cdd tdba ad." ["dcb" "dbad" "cdd" nil "t" "dba" "ad"]]
+                           ["ata bcac dbbb tctb d a." "aca tctb d a." ["a" "ca" nil "tctb" "d" "a"]]
+                           ["cb b cdb tddb c cbb bcb." "cb b cdb tddb c cXc." ["cb" "b" "cdb" "tddb" "c" "cX" "c"]]
+                           ["dd tb ctc c." "dd ttc c." ["dd" "t" "tc" "c"]]
+                           ["b d d tdca bcb." "b ddca bcb." ["b" "d" nil "dca" "bcb"]]]]
+    (let [spans (let [m (re-matcher #"[^ .]+" body)] (loop [out []] (if (.find m) (recur (conj out [(.start m) (.end m)])) out)))
+          tokens (into [{:token/id :s :token/layer :s :token/begin 0 :token/end (cp/cp-count body)}]
+                       (map-indexed (fn [i [b e]] {:token/id i :token/layer :w :token/begin b :token/end e}) spans))
+          r (save body new tokens :intent false)
+          gone (set (:deleted r))
+          by-id (into {} (map (juxt :token/id identity)) (:tokens r))
+          got (mapv (fn [i] (when-let [t (and (not (gone i)) (by-id i))] (subs new (:token/begin t) (:token/end t))))
+                    (range (count spans)))]
+      (is (= new (:text/body (:text r))))
+      (is (= want got) (str (pr-str body) " -> " (pr-str new)))
+      (is (empty? (survivor-problems body new tokens :intent r)) (str (pr-str body) " -> " (pr-str new))))))
 
 (def ^:private intent-ceiling
   "Cases of `intent-cases` the save reads otherwise than meant, at most. In
   each the text cannot tell: which of two words was deleted and which
   respelled when they share no letter with the new word (`dc d` to `Z`), or
-  whether `c d` saved as `cX` respelled `c` or typed `d` over as `X`. 62 of
-  400 when pinned (2026-10-01). On the reviewer's 200 the rules before the
-  plain rule read 78 otherwise, the plain rule before REV-one-rule 37."
-  65)
+  whether `c d` saved as `cX` respelled `c` or typed `d` over as `X`, and
+  a word meant to go that keeps letters the diff leaves it (a word goes only
+  when all its letters do, REV2-one-rule, see the test above), or where
+  two readings of the diff each delete one word and the meant one is not
+  the diff's. 69 of 400 when pinned (2026-10-01). On the reviewer's 200 the rules before the plain
+  rule read 78 otherwise, the plain rule before REV-one-rule 37."
+  72)
 
 (def ^:private intent-cases 400)
 
@@ -969,6 +1042,8 @@
                 intent (mapv (fn [j] (when (new-words j) (count (filter #(< % j) kept)))) (range n))
                 ps (intent-save body new intent)]
             (when (seq ps) (swap! fails conj [body new ps]))))))
+    ;; never a word with a letter left deleted, whatever was meant
+    (is (empty? (filter (fn [[_ _ ps]] (some #(re-find #"deleted with a letter left" %) ps)) @fails)))
     (when (System/getenv "PLAIN_ORACLE_DEBUG")
       (println "intent fails" (count @fails))
       (doseq [f (take 40 @fails)] (println (pr-str f))))

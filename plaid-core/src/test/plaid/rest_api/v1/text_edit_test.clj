@@ -561,3 +561,29 @@
     (assert-ok (edit-text text {:edits [(ins 0 "Oh.\n")] :base (digest/text-digest "Hi.\nThe end.")}))
     (is (= [[0 4] [4 8] [8 16]] (layer-extents sentences)))
     (is (= [[0 16]] (layer-extents dl)))))
+
+(deftest a-whole-body-save-never-deletes-a-word-with-a-letter-left
+  ;; REV2-one-rule G1: a body save that deletes the space or the sentence
+  ;; break between two words, and letters beside it, keeps every word with a
+  ;; letter left, as the same change sent as edits does
+  (doseq [[old new sents want] [["who reported prior discrimination often." "who reportedimination often." nil
+                                 [[0 3 "who"] [4 12 "reported"] nil [12 21 "imination"] [22 28 "often."]]]
+                                ["xx yy abc.\ndefb. zz ww." "xx yy abfb. zz ww." [[0 11] [11 23]]
+                                 [[0 2 "xx"] [3 5 "yy"] [6 8 "ab"] [8 11 "fb."] [12 14 "zz"] [15 18 "ww."]]]
+                                ["人你大。\n见界小天。" "人你小天。" [[0 5] [5 10]]
+                                 [[0 2 "人你"] [2 5 "小天。"]]]]]
+    (testing (pr-str old)
+      (let [{:keys [text words morphemes]} (setup old :sents (or sents [[0 (count old)]]))]
+        (assert-ok (edit-text text {:body new}))
+        (is (= new (-> (get-text admin-request text) :body :text/body)))
+        (is (= want (map extent words)) (pr-str (map extent words)))
+        (is (= (map extent words) (map extent morphemes)))))))
+
+(deftest several-words-typed-over-as-one-keep-the-word-sharing-most-letters
+  ;; REV2-one-rule E1: `the area` typed over as `tlaak` keeps `area`, which
+  ;; shares two letters with it, where `the` shares one
+  (let [{:keys [text words nodes]} (setup "see the area now" :nodes true)]
+    (assert-ok (edit-text text {:edits [{:type "replace" :index 4 :length 8 :value "tlaak"}]
+                                :base (digest/text-digest "see the area now")}))
+    (is (nil? (extent (words 1))))
+    (is (= [4 9 "tlaak"] (extent (words 2)) (extent (nodes 2))))))

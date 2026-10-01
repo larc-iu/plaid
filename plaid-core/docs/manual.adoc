@@ -973,10 +973,11 @@ The tokens of every token layer take a change the same way, whichever app or scr
 * Several whole words typed over as words of their own are each typed over: `不 大` typed over as `x y` keeps the word `不` on `x` and `大` on `y`, with everything on them. With fewer new words than old, the last new word goes to the old word left that shares the most letters with it, the first on a tie, and the other old words are deleted (`cat eel` typed over as `one` keeps `eel`).
 * A token is never moved onto another word, and nothing that hangs off it is deleted or moved.
 
-A `body` save is read as the smallest change from the stored body to the new one, and where that change could stand in more than one place for the same new body, Plaid picks the place that disturbs the fewest tokens, and aligns each changed stretch word by word, so a respelled word keeps its own letters (`the a ab` saved as `the aX` keeps `ab` on `aX`).
+A `body` save is read as the smallest change from the stored body to the new one, and where that change could stand in more than one place for the same new body, Plaid picks the place that disturbs the fewest tokens.
+It reads each changed stretch word by word too, and takes that reading when it deletes fewer words than the diff as it stands, or only words the diff deletes too: `ac d cda` saved as `ac X` keeps `d` on `X` and deletes `cda`, where the diff as it stands deletes both.
+Where each reading deletes a different word (`the a ab` saved as `the aX`), the diff's is taken (`a` on `aX`, `ab` deleted).
 Changes inside one word that would delete a token inside it, such as `cow` analysed `co` + `w` saved as `abc`, are read as the word typed over, so the word keeps its place and its morphemes go, as the same change sent as `edits` does.
-A change that deletes letters of two words and the whitespace between, leaving what is left of them as one word, is read as those words typed over as one (`tb ctc` saved as `ttc` keeps `ctc` on `ttc` and deletes `tb`).
-Whitespace deleted alone, or with letters of one word only, keeps both words.
+A `body` save never deletes a token with a letter of it left in the new body, except a token inside a word it reads as typed over, as above: a change that deletes the whitespace between two words, with or without letters of them, keeps both words on what is left of them, as the same change sent as `edits` does.
 An editor that knows where the cursor was sends `edits`, which say exactly where.
 
 Where typed text goes is decided by the words: the tokens of a layer that forbids overlap and has a parent or a layer nested under it, and is not nested under another such layer.

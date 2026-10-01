@@ -485,7 +485,7 @@
               (let [r (f old new tokens)
                     gone (set (:deleted r))]
                 (into {} (comp (remove #(gone (:token/id %))) (map (juxt :token/id #(subs new (:token/begin %) (:token/end %))))) (:tokens r))))
-        body (fn [old new tokens] (ta/plain-body old new tokens #{} #{:w}))
+        body (fn [old new tokens] (ta/plain-body old new tokens #{} #{:w} {:children #{:m}}))
         edits (fn [old new tokens] (ta/plain-edits old tokens [(rep 4 3 (subs new 4 7))] #{} #{:w}))
         cow [(t :w :w 4 7) (t :co :m 4 6) (t :w2 :m 6 7)]
         cat [(t :w :w 4 7) (t :ca :m 4 6) (t :t :m 6 7)]]

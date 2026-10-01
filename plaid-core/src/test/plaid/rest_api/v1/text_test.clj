@@ -410,11 +410,12 @@
       (is (= [0 4 "mat\t"] (extent n1)))
       (is (= [4 7 "cat"] (extent n2))))))
 
-(deftest text-body-edit-keeps-a-respelled-words-letter-from-itself
-  ;; `a` deleted and `ab` respelled `aX`: the diff kept the `a` of `a` and
-  ;; left `X` in no word, or `ab` deleted and `a` on `aX`. The body update
-  ;; aligns the stretch word by word, with the words layer read from the
-  ;; project.
+(deftest text-body-edit-aligns-a-respelled-word-when-that-deletes-fewer-words
+  ;; The body update aligns a changed stretch word by word, with the words
+  ;; layer read from the project, when that deletes fewer words than the
+  ;; diff as it stands: `d` respelled `X` and `cda` deleted keeps `d` on `X`,
+  ;; where the diff read both deleted. Where each reading deletes one word
+  ;; (`a ab` to `aX`), the diff's is taken (REV2-one-rule): `a` on `aX`.
   (let [proj (create-test-project admin-request "TextAlignWordsProj")
         doc (create-test-document admin-request proj "Doc")
         tl (-> (create-text-layer admin-request proj "TL") :body :id)
@@ -425,19 +426,23 @@
                                            {:overlap-mode "non-overlapping"
                                             :parent-token-layer-id sentences})
                   :body :id)
-        text-id (-> (create-text admin-request tl doc "the a ab\n") :body :id)
+        text-id (-> (create-text admin-request tl doc "ac d cda.\nthe a ab\n") :body :id)
         _ (assert-created (bulk-create-tokens admin-request [{:token-layer-id sentences :text text-id
-                                                              :begin 0 :end 9}]))
-        [the a ab] (mapv (fn [[b e]] (-> (create-token admin-request words text-id b e) :body :id))
-                         [[0 3] [4 5] [6 8]])
+                                                              :begin 0 :end 19}]))
+        [ac d cda the a ab] (mapv (fn [[b e]] (-> (create-token admin-request words text-id b e) :body :id))
+                                  [[0 2] [3 4] [5 8] [10 13] [14 15] [16 18]])
         extent (fn [id]
                  (let [t (get-token admin-request id)]
                    (assert-ok t)
                    ((juxt :token/begin :token/end :token/value) (:body t))))]
-    (assert-ok (update-text admin-request text-id "the aX\n"))
-    (is (= [0 3 "the"] (extent the)))
-    (is (= [4 6 "aX"] (extent ab)))
-    (is (= 404 (:status (get-token admin-request a))))))
+    (assert-ok (update-text admin-request text-id "ac X.\nthe a ab\n"))
+    (is (= [0 2 "ac"] (extent ac)))
+    (is (= [3 4 "X"] (extent d)))
+    (is (= 404 (:status (get-token admin-request cda))))
+    (assert-ok (update-text admin-request text-id "ac X.\nthe aX\n"))
+    (is (= [6 9 "the"] (extent the)))
+    (is (= [10 12 "aX"] (extent a)))
+    (is (= 404 (:status (get-token admin-request ab))))))
 
 (deftest text-combining-mark-typed-at-a-words-end-joins-the-word
   ;; An accent typed as a separate mark after `cafe` makes the word `café`,

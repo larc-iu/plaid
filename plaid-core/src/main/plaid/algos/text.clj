@@ -2635,10 +2635,31 @@
   "The gaps an edit of `old` by `ops` from the caret is taken as: its net
   change (see `compose-edits`), each gap less the text its new value shares
   with the old at either end, and cut where it types words over words (see
-  `cut-at-words`)."
-  [^String old ops]
-  (let [^ints o (.toArray (.codePoints old))]
-    (into [] (comp (keep #(trim-gap o %)) (mapcat #(cut-at-words o %))) (compose-edits ops old))))
+  `cut-at-words`). A stretch of whole words, among `words` (old extents
+  `[b e]`), typed over as fewer words is cut before it is trimmed, so the
+  letters it shares with the new text at its ends count in choosing the
+  word that keeps it (`the area` to `tlaak` keeps `area`, not `the`, which
+  the trim would leave its `t`)."
+  ([old ops] (plain-edit-gaps old ops #{}))
+  ([^String old ops words]
+   (let [^ints o (.toArray (.codePoints old))
+         trimmed (fn [g] (some->> (trim-gap o g) (cut-at-words o)))]
+     (into [] (mapcat (fn [{:keys [start end] :as g}]
+                        (let [whole (cut-at-words o g)]
+                          (if (and (not (and (pos? start) (letter? (aget o (dec start)))))
+                                   (not (and (< end (alength o)) (letter? (aget o end))))
+                                   (some (fn [{:keys [keeps]}] (some (fn [[b e]] (words [b e])) keeps)) whole))
+                            (into [] (keep #(if (:keeps %) % (trim-gap o %))) whole)
+                            (trimmed g)))))
+           (compose-edits ops old)))))
+
+(defn- word-extents
+  "The old extents of the words of `tokens`: those on `word-layers`, else
+  every token on no layer in `partitioning`."
+  [tokens partitioning word-layers]
+  (let [ws (filter #(contains? (set word-layers) (:token/layer %)) tokens)]
+    (into #{} (map (juxt :token/begin :token/end))
+          (if (seq ws) ws (remove #(contains? (set partitioning) (:token/layer %)) tokens)))))
 
 (defn- merge-in-words
   "`gaps` with the gaps inside one word of `tokens` (`word?`), with no
@@ -2701,64 +2722,8 @@
   the text its new value shares with the old at either end."
   ([old tokens ops partitioning word-layers] (plain-edits old tokens ops partitioning word-layers nil))
   ([^String old tokens ops partitioning word-layers opts]
-   (apply-plain-gaps old tokens (plain-edit-gaps old ops) partitioning word-layers (assoc opts :caret true))))
-
-(defn- widen-joins
-  "`gaps` of a whole-body save, each one that joins what is left of two
-  words into one, takes letters of one of them and holds letters of two
-  words, widened to the whole of the words (`word?` tokens of `tokens`,
-  else the runs between whitespace) it reaches into: `tb ctc` saved as
-  `ttc` reads as the diff's `b c` deleted, which leaves `t` and `tc` two
-  tokens on one new word, where `tb ctc` typed over as `ttc` gives the new
-  word to `ctc` (see `cut-at-words`). The text cannot say which was meant,
-  and a person retyping words is more often the second. Whitespace deleted
-  alone, or with letters of one word only (`dog cat` to `docat`), is left as
-  it is: two words written together keep a token each, and so is text left
-  against punctuation outside every word. Gaps a widened one reaches are one
-  gap with it."
-  [gaps ^ints o tokens word?]
-  (let [n (alength o)
-        ws? (fn [i] (space? (aget o i)))
-        blank? (fn [^String v] (.anyMatch (.codePoints v) (reify java.util.function.IntPredicate (test [_ c] (space? c)))))
-        words (vec (sort-by :token/begin (filter #(and (word? %) (< (:token/begin %) (:token/end %))) tokens)))
-        begins (long-array (map :token/begin words))
-        ;; the word holding position i
-        word-at (fn [i] (let [k (dec (loop [a 0 b (alength begins)]
-                                       (if (< a b)
-                                         (let [h (quot (+ a b) 2)] (if (<= (aget begins h) (long i)) (recur (inc h) b) (recur a h)))
-                                         a)))]
-                          (when (>= k 0) (let [w (words k)] (when (< i (:token/end w)) w)))))
-        ;; how many runs between whitespace hold letters, in [a, b)
-        segments (fn [a b] (count (filter (fn [i] (and (not (ws? i)) (or (= i a) (ws? (dec i))))) (range a b))))
-        target (fn [{:keys [start end value]}]
-                 (if (and (pos? start) (< end n) (not (ws? (dec start))) (not (ws? end))
-                          ;; words, not punctuation outside them, either side
-                          (or (empty? words) (and (word-at (dec start)) (word-at end)))
-                          (some ws? (range start end)) (not (blank? value))
-                          (or (not (ws? start)) (not (ws? (dec end))))
-                          (<= 2 (segments start end)))
-                   [(or (some-> (word-at (dec start)) :token/begin)
-                        (loop [x (dec start)] (if (and (pos? x) (not (ws? (dec x)))) (recur (dec x)) x)))
-                    (or (some-> (word-at end) :token/end)
-                        (loop [x end] (if (and (< x n) (not (ws? x))) (recur (inc x)) x)))]
-                   [start end]))
-        groups (reduce (fn [out g]
-                         (let [[s e] (target g)
-                               cur (peek out)]
-                           (if (and cur (<= s (:e cur)))
-                             (conj (pop out) (-> cur (update :gs conj g) (update :e max e)))
-                             (conj out {:s s :e e :gs [g]}))))
-                       [] gaps)]
-    (mapv (fn [{:keys [s e gs]}]
-            (if (and (= 1 (count gs)) (= s (:start (first gs))) (= e (:end (first gs))))
-              (first gs)
-              (let [sb (StringBuilder.)
-                    copy! (fn [x y] (loop [i x] (when (< i y) (.appendCodePoint sb (aget o i)) (recur (inc i)))))
-                    pos (reduce (fn [pos {:keys [start end value]}] (copy! pos start) (.append sb ^String value) end)
-                                s gs)]
-                (copy! pos e)
-                {:start s :end e :value (str sb)})))
-          groups)))
+   (apply-plain-gaps old tokens (plain-edit-gaps old ops (word-extents tokens partitioning word-layers))
+                     partitioning word-layers (assoc opts :caret true))))
 
 (defn- body-word-layers
   "The layers whose tokens are the words of a whole-body save: `word-layers`,
@@ -2768,36 +2733,75 @@
     (set word-layers)
     (into #{} (comp (map :token/layer) (remove (set partitioning))) tokens)))
 
+(defn body-diff-gaps
+  "The change a whole-body save of `old` as `new` reads, before it reads any
+  stretch as words typed over: the diff, each edit moved to the equivalent
+  place that disturbs the fewest `tokens` (see `slide-to-tokens` and
+  `normalize-deletes`), each changed stretch aligned to the words of
+  `word-layers` (see `align-to-words`), and edits that touch one gap. A
+  letter outside these gaps is a letter the save keeps, and no token
+  holding one is deleted. With `align?` false, the stretches are left as
+  the diff spells them."
+  ([old new tokens partitioning] (body-diff-gaps old new tokens partitioning nil))
+  ([old new tokens partitioning word-layers] (body-diff-gaps old new tokens partitioning word-layers true))
+  ([^String old ^String new tokens partitioning word-layers align?]
+   (-> (diff old new)
+       (slide-to-tokens old tokens partitioning)
+       (normalize-deletes old tokens)
+       (cond-> align? (align-to-words old tokens (body-word-layers tokens partitioning word-layers)))
+       ops->edits
+       edits->gaps)))
+
 (defn plain-body-gaps
-  "The gaps a whole-body save of `old` as `new` is taken as: the diff, each
-  edit moved to the equivalent place that disturbs the fewest `tokens` (see
-  `slide-to-tokens` and `normalize-deletes`), each changed stretch aligned
-  to the words of `word-layers` (see `align-to-words`), edits that touch
-  one gap, the gaps inside one word that would delete a token inside it one
-  gap (see `merge-in-words`), a gap joining what is left of two words
-  widened to them (see `widen-joins`), and each gap cut where it types
-  words over words (see `cut-at-words`)."
+  "The gaps a whole-body save of `old` as `new` is taken as: those of
+  `body-diff-gaps`, the gaps inside one word that would delete a token
+  inside it made one gap (see `merge-in-words`), and each gap cut where it
+  types words over words (see `cut-at-words`). Neither step reaches a
+  letter outside the diff's gaps but inside the one word it reads as typed
+  over, so no word with a letter left is deleted."
   ([old new tokens partitioning] (plain-body-gaps old new tokens partitioning nil))
   ([^String old ^String new tokens partitioning word-layers]
    (let [^ints o (.toArray (.codePoints old))
          wl (body-word-layers tokens partitioning word-layers)]
-     (-> (diff old new)
-         (slide-to-tokens old tokens partitioning)
-         (normalize-deletes old tokens)
-         (align-to-words old tokens wl)
-         ops->edits
-         edits->gaps
+     (-> (body-diff-gaps old new tokens partitioning word-layers)
          (merge-in-words o tokens #(contains? wl (:token/layer %)))
-         (widen-joins o tokens #(contains? wl (:token/layer %)))
          (->> (into [] (mapcat #(cut-at-words o %))))))))
 
+(defn plain-body-read
+  "`[gaps result]`: the gaps a whole-body save of `old` as `new` is taken as
+  and `apply-plain-gaps` of them. The gaps are `plain-body-gaps`, the words
+  aligned, typed over and retyped there being a reading of the diff, when
+  every token it deletes the diff as it stands (`body-diff-gaps` without the
+  alignment) deletes too, not counting the tokens under the words
+  (`:children`, a morpheme of a word typed over), or when it deletes fewer.
+  Otherwise the diff as it stands is taken. So a whole-body save never
+  deletes a word its own diff keeps letters of only to keep another
+  (REV2-one-rule): where two readings each delete one word, the diff's is
+  taken."
+  [^String old ^String new tokens partitioning word-layers opts]
+  (let [opts (dissoc opts :caret)
+        run #(apply-plain-gaps old tokens % partitioning word-layers opts)
+        layer-of (into {} (map (juxt :token/id :token/layer)) tokens)
+        children (set (:children opts))
+        counted (fn [r] (into #{} (remove #(children (layer-of %))) (:deleted r)))
+        gaps (plain-body-gaps old new tokens partitioning word-layers)
+        read (run gaps)
+        gone (counted read)]
+    (if (empty? gone)
+      [gaps read]
+      (let [gaps0 (body-diff-gaps old new tokens partitioning word-layers false)
+            as-diffed (run gaps0)
+            gone0 (counted as-diffed)]
+        (if (or (every? gone0 gone) (< (count gone) (count gone0)))
+          [gaps read]
+          [gaps0 as-diffed])))))
+
 (defn plain-body
-  "`apply-plain-gaps` for a whole-body save of `old` as `new` (see
-  `plain-body-gaps`)."
+  "`apply-plain-gaps` for a whole-body save of `old` as `new`, as
+  `plain-body-read` reads it."
   ([old new tokens partitioning word-layers] (plain-body old new tokens partitioning word-layers nil))
-  ([^String old ^String new tokens partitioning word-layers opts]
-   (apply-plain-gaps old tokens (plain-body-gaps old new tokens partitioning word-layers) partitioning word-layers
-                     (dissoc opts :caret))))
+  ([old new tokens partitioning word-layers opts]
+   (second (plain-body-read old new tokens partitioning word-layers opts))))
 
 (defn layer-roles
   "What each token layer of a text is to a body save, from `layers`, each
