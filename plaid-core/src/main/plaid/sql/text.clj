@@ -252,7 +252,7 @@
                                         :split-on-space (true? (some-> (:config r) psc/parse-config
                                                                        (get-in ["plaid" "splitOnSpace"])))})
                                layer-rows))
-          opts (select-keys roles [:split-on-space :children :exclusive])
+          opts (select-keys roles [:split-on-space :children :exclusive :head-layers])
           indexed-old (reduce (fn [m t] (assoc m (:token/id t) t)) {} tokens)
           {new-text :text new-tokens :tokens deleted-ids :deleted heads :heads}
           (cond

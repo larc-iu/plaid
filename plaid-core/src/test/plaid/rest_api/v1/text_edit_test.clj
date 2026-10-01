@@ -454,8 +454,10 @@
                                                [[0 3] [4 8] [9 12]] [8])
         r (api-call admin-request {:method :patch :path (str "/api/v1/texts/" text) :body {:body "XZ XZ XZ"}})]
     (is (= 200 (:status r)) (pr-str (:body r)))
-    (is (= [0 8] (take 2 (extent (peek rows)))))
-    (is (= [0 0] (take 2 (extent (first points)))))))
+    ;; `mat` and `tat` are typed over as words of their own (REV-one-rule
+    ;; F1), and the row over the last sentence follows it
+    (is (= [3 8] (take 2 (extent (peek rows)))))
+    (is (= [2 2] (take 2 (extent (first points)))))))
 
 (deftest every-layer-takes-an-edit-the-plain-way-with-no-key
   ;; One rule set (Luke, 2026-10-01): a layer whose config says nothing about
@@ -498,3 +500,64 @@
     (is (= [4 8 "c at"] (extent (words 1)) (extent (nodes 1))))
     (assert-ok (api-call admin-request {:method :patch :path (str "/api/v1/texts/" text) :body {:body "dogs c at eel"}}))
     (is (= [[0 4 "dogs"] [5 9 "c at"] [10 13 "eel"]] (map extent words) (map extent nodes)))))
+
+(deftest words-typed-over-as-words-each-keep-their-token
+  ;; REV-one-rule F1 (Luke, 2026-09-21: a replaced word keeps its
+  ;; annotations): a stretch of whole words typed over as words of its own is
+  ;; each word typed over, on both paths. With fewer new words than old, the
+  ;; last new word goes to the old word sharing most letters with it.
+  (testing "`不 大` typed over as `x y`"
+    (let [{:keys [text words nodes]} (setup "我 不 大 好 。" :nodes true)
+          base (-> (get-text admin-request text) :body :text/digest)]
+      (assert-ok (edit-text text {:edits [{:type "replace" :index 2 :length 3 :value "x y"}] :base base}))
+      (is (= [[0 1 "我"] [2 3 "x"] [4 5 "y"] [6 7 "好"] [8 9 "。"]] (map extent words) (map extent nodes)))))
+  (testing "and as a whole body"
+    (let [{:keys [text words nodes]} (setup "我 不 大 好 。" :nodes true)]
+      (assert-ok (edit-text text {:body "我 x y 好 。"}))
+      (is (= [[0 1 "我"] [2 3 "x"] [4 5 "y"] [6 7 "好"] [8 9 "。"]] (map extent words) (map extent nodes)))))
+  (testing "`cat eel` typed over as `one` keeps `eel` and its node, a relation on it kept"
+    (let [{:keys [text words nodes node-layer]} (setup "dog cat eel fox." :nodes true)
+          sl (-> (create-span-layer admin-request node-layer "Concept") :body :id)
+          rl (-> (create-relation-layer admin-request sl "Edges") :body :id)
+          [sd _ se] (mapv (fn [n] (-> (create-span admin-request sl [n] "C") :body :id)) (take 3 nodes))
+          rel (-> (create-relation admin-request rl se sd "ARG0") :body :id)
+          base (-> (get-text admin-request text) :body :text/digest)]
+      (assert-ok (edit-text text {:edits [{:type "replace" :index 4 :length 7 :value "one"}] :base base}))
+      (is (= "dog one fox." (-> (get-text admin-request text) :body :text/body)))
+      (is (nil? (extent (words 1))))
+      (is (= [4 7 "one"] (extent (words 2)) (extent (nodes 2))))
+      (assert-ok (get-relation admin-request rel)))))
+
+(deftest a-root-word-layer-with-a-layer-under-it-decides
+  ;; REV-one-rule F6: words a script made on a root layer, morphemes on a
+  ;; layer that forbids overlap under them. The words decide, so a word with
+  ;; no morphemes grows at its edge, and the morphemes follow their words.
+  (let [proj (create-test-project admin-request "RootWordsProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        s (-> (create-token-layer-opts admin-request tl "S" {:overlap-mode "partitioning"}) :body :id)
+        w (-> (create-token-layer-opts admin-request tl "W" {:overlap-mode "non-overlapping"}) :body :id)
+        m (-> (create-token-layer-opts admin-request tl "M" {:overlap-mode "non-overlapping" :parent-token-layer-id w}) :body :id)
+        text (-> (create-text admin-request tl doc "the dogs ran. cat sat.") :body :id)
+        _ (assert-created (bulk-create-tokens admin-request [{:token-layer-id s :text text :begin 0 :end 14}
+                                                             {:token-layer-id s :text text :begin 14 :end 22}]))
+        ws (mapv (fn [[b e]] (-> (create-token admin-request w text b e) :body :id)) [[0 3] [4 8] [9 13] [14 17] [18 22]])
+        ms (mapv (fn [[b e]] (-> (create-token admin-request m text b e) :body :id)) [[4 7] [7 8]])
+        base (digest/text-digest "the dogs ran. cat sat.")]
+    (assert-ok (edit-text text {:edits [(ins 3 "x") (ins 9 "x") (ins 16 "x")] :base base}))
+    (is (= [[0 4 "thex"] [5 10 "dogsx"] [11 15 "ran."] [16 20 "xcat"] [21 25 "sat."]] (map extent ws)))
+    (is (= [[5 8 "dog"] [8 10 "sx"]] (map extent ms)))))
+
+(deftest a-head-sentence-is-made-only-on-the-words-partition
+  ;; REV-one-rule F7: a document partition of one token beside the sentences
+  ;; is never split by a line typed before the first sentence
+  (let [{:keys [text sentences]} (setup "Hi.\nThe end." :sents [[0 4] [4 12]])
+        tl (:text/layer (:body (get-text admin-request text)))
+        dl (-> (create-token-layer-opts admin-request tl "Document" {:overlap-mode "partitioning"}) :body :id)
+        _ (assert-created (bulk-create-tokens admin-request [{:token-layer-id dl :text text :begin 0 :end 12}]))
+        layer-extents (fn [l] (->> (psc/q db {:select [:begin :end_] :from [:tokens]
+                                              :where [:and [:= :text_id (str text)] [:= :token_layer_id (str l)]]})
+                                   (map (juxt :begin :end_)) sort))]
+    (assert-ok (edit-text text {:edits [(ins 0 "Oh.\n")] :base (digest/text-digest "Hi.\nThe end.")}))
+    (is (= [[0 4] [4 8] [8 16]] (layer-extents sentences)))
+    (is (= [[0 16]] (layer-extents dl)))))

@@ -1095,6 +1095,481 @@
             :else (recur (inc i) (conj out x))))
         out))))
 
+;; ---------------------------------------------------------------------------
+;; Aligning a changed stretch word by word
+;;
+;; The diff is a minimal edit script over letters, and where several are
+;; minimal it may keep a letter from a word that was deleted: `sat tat` to
+;; `tX` keeps the `t` of `sat` and deletes ` ta`, which leaves the token of
+;; `sat` on `t` and `X` outside every word, where deleting `sat ` and
+;; respelling `tat` gives the same text and leaves one token on `tX`.
+
+(def ^:private align-limit
+  "The longest stretch, in code points of either body, that
+  `align-to-words` aligns again. A word edit's stretch is a few words long,
+  and the alignment costs the product of the two lengths."
+  64)
+
+;; An alignment is a path of steps: :m keeps an old letter as the next new
+;; one, :d deletes an old letter, :i inserts a new one. The steps between
+;; two kept letters are a run, and a run is judged when it ends. The state
+;; while walking one has six parts: `D` what the run has deleted (0
+;; nothing, 1 letters of one word, 2 more than that or a space), `F`
+;; whether its first deleted letter is in the word of the kept letter
+;; before the run, `P` whether that kept letter ends its word at a space
+;; or the text's end, `L` whether a letter was typed in the run before any
+;; space typed in it, `S` whether a space was typed in it, `R` whether a
+;; letter was typed after the last space typed in it.
+
+(defn- run-state [d f p l s r] (+ (* 32 d) (* 16 f) (* 8 p) (* 4 l) (* 2 s) r))
+
+(defn- run-end
+  "[orphans touched] for the run ending in `state` before a kept letter.
+  `next?` is whether that letter is not a space, `first?` whether it begins
+  its word, and `spaced?` whether a space or the text's start is before it.
+  Letters typed in the run are held by a word when the run deleted letters
+  of that word only (a respelling), when its deletes reach into the kept
+  word they touch (the replace is cut at that word's edge), or when they
+  are typed between two letters of one word. Otherwise the letters typed
+  against a kept word's edge at a space are outside every word's token,
+  one orphan for each side they touch. Against an edge between two words
+  without a space they may be a new word, which the text cannot tell. A
+  space or line break typed between two kept letters of one word counts
+  one too, since the word's token stays over it."
+  [state next? first? spaced?]
+  (let [d (quot state 32) f (bit-and (quot state 16) 1) p (bit-and (quot state 8) 1)
+        l (bit-and (quot state 4) 1) s (bit-and (quot state 2) 1) r (bit-and state 1)
+        inside? (and next? (not first?))
+        held-left? (or (= f 1) (and (zero? d) inside?))
+        right? (and next? first? spaced?)]
+    (update (cond
+              (and (zero? l) (zero? r)) [0 0]
+              (= d 1) [0 0]
+              (zero? s) [(if (and (or (= p 1) right?) (not (or held-left? inside?))) 1 0)
+                         (if (and (zero? d) inside?) 1 0)]
+              :else [(+ (if (and (= l 1) (= p 1) (not held-left?)) 1 0)
+                        (if (and (= r 1) right?) 1 0))
+                     0])
+            ;; a space or line break typed between two kept letters of one
+            ;; word leaves the word's token over it
+            0 + (if (and (= s 1) inside? (or (zero? d) (and (= d 1) (= f 1)))) 1 0))))
+
+(defn- run-step
+  "[state' touched] after deleting an old letter (`kind` :d) or typing a new
+  one (:i). `sp` is whether the letter is a space, `first?` whether an old
+  one begins its word. A letter deleted from a word the run had not yet
+  deleted from touches that word."
+  [state kind sp first?]
+  (let [d (quot state 32) f (bit-and (quot state 16) 1) p (bit-and (quot state 8) 1)
+        l (bit-and (quot state 4) 1) s (bit-and (quot state 2) 1) r (bit-and state 1)]
+    (case kind
+      :d (let [f (if (zero? d) (if (or sp first?) 0 1) f)]
+           (if sp
+             [(run-state 2 f p l s r) 0]
+             [(run-state (cond (zero? d) 1 (and (= d 1) (not first?)) 1 :else 2) f p l s r)
+              (if (or (zero? d) first?) 1 0)]))
+      :i [(cond sp (run-state d f p l 1 0)
+                (zero? s) (run-state d f p 1 s r)
+                :else (run-state d f p l s 1))
+          0])))
+
+(declare align-to-words*)
+
+(defn align-to-words
+  "Rewrite `ops` (as produced by `diff` for `old`, after `normalize-deletes`)
+  so that each changed stretch, taken with the word before and after it, is
+  aligned word by word where the diff kept a letter of a deleted word in
+  place of the respelled word's own. Among the alignments of fewest edits,
+  one is preferred that leaves fewer letters typed against a kept word's
+  edge at a space or at the punctuation after a word written with spaces,
+  where its token does not take them, types no space inside a kept word,
+  and joins fewer old words into one new word. Where those tie, the one touching fewer words is
+  preferred, and between words without a space only when the diff keeps a
+  word by letters from its middle alone and the other alignment types no
+  more letters between two such words where it deletes nothing (see
+  `edge-typed`): there, which of two words kept a letter is otherwise not
+  for the text to say. `sat tat` to `tX` then
+  deletes `sat ` and respells `tat`, `a ab` to `aX` deletes `a ` and
+  respells `ab`, `café é` to `caЖé` respells `café` and deletes ` é`, and
+  `thesattatu` to `taЖ`, three words without spaces, deletes `the` and
+  `sat` and respells `tatu`. The diff stays wherever its alignment is as
+  good, and so does a stretch longer than `align-limit`. The reconstructed
+  string is unchanged.
+
+  Words are the runs between spaces, cut at the edges of the tokens of
+  `word-layers` that no such token holds strictly inside it (two words of a
+  script without spaces, a word and punctuation left out of it). Without
+  `word-layers`, or with none, nothing tells the words, and the ops are
+  left as they are."
+  ([ops old tokens] (align-to-words ops old tokens nil))
+  ([ops old tokens word-layers]
+   (if (empty? word-layers)
+     ops
+     (align-to-words* ops old tokens word-layers))))
+
+(defn- align-to-words*
+  [ops old tokens word-layers]
+  (let [edits (vec (ops->edits ops))
+        ^ints o (.toArray (.codePoints ^String old))
+        n (alength o)
+        near (tokens-near tokens (count edits))
+        sp? (fn [i] (space? (aget o (int i))))
+        start-of (fn [e] (or (:start e) (:at e)))
+        reach-of (fn [e] (or (:end e) (:at e)))
+         ;; the edges between two words without a space, near [lo hi]: the
+         ;; ends of the word tokens there that none of them holds strictly
+         ;; inside it. By a sweep, since one long delete reaches every word.
+        edges (fn [lo hi]
+                (let [ws (sort-by :token/begin
+                                  (filter (fn [{:token/keys [begin end layer]}]
+                                            (and (< begin end) (contains? word-layers layer)))
+                                          (near lo hi)))
+                      begins (long-array (map :token/begin ws))
+                      ;; the furthest end among the first i+1 tokens
+                      ;; (none when no word token is near)
+                      reach (long-array (rest (reductions max Long/MIN_VALUE (map :token/end ws))))
+                      inside? (fn [p]
+                                (let [c (loop [x 0 y (alength begins)]
+                                          (if (< x y)
+                                            (let [h (quot (+ x y) 2)]
+                                              (if (< (aget begins h) (long p)) (recur (inc h) y) (recur x h)))
+                                            x))]
+                                  (and (pos? c) (> (aget reach (dec c)) (long p)))))]
+                  (into #{}
+                        (comp (mapcat (juxt :token/begin :token/end))
+                              (remove inside?))
+                        ws)))
+         ;; [a b edits] for each stretch, a and b at word edges one word
+         ;; beyond its edits each way
+        windows
+        (reduce
+         (fn [ws e]
+           (let [lo (max 0 (- (start-of e) align-limit))
+                 hi (min n (+ (reach-of e) align-limit))
+                 eg (edges lo hi)
+                 bound? (fn [p] (or (<= p 0) (>= p n) (sp? (dec p)) (sp? p) (eg p)))
+                 ustart (fn [p] (loop [p p] (if (or (<= p lo) (bound? p)) p (recur (dec p)))))
+                 uend (fn [p] (loop [p p] (if (or (>= p hi) (bound? p)) p (recur (inc p)))))
+                 a (let [k (loop [k (ustart (start-of e))] (if (and (> k lo) (sp? (dec k))) (recur (dec k)) k))]
+                     (if (> k lo) (ustart (dec k)) k))
+                 b (let [k (loop [k (uend (reach-of e))] (if (and (< k hi) (sp? k)) (recur (inc k)) k))]
+                     (if (< k hi) (uend (inc k)) k))
+                 [pa pb pes] (peek ws)]
+             (if (and pb (<= a pb))
+               (conj (pop ws) [pa (max pb b) (conj pes e)])
+               (conj ws [a b [e]]))))
+         []
+         edits)
+        ;; the alignment's tables, shared by the windows (see `realign`)
+        tables (atom nil)
+        window (volatile! 0)
+        realign
+        (fn [[a b es]]
+          (let [eg (edges (max 0 (dec a)) (min n (inc b)))
+                bound? (fn [p] (or (<= p 0) (>= p n) (sp? (dec p)) (sp? p) (eg p)))
+                m (- b a)
+                N (let [sb (StringBuilder.)]
+                    (loop [p a es es]
+                      (if-let [x (first es)]
+                        (do (.append sb (String. o (int p) (int (- (start-of x) p))))
+                            (when (= :insert (:kind x)) (.append sb ^String (:value x)))
+                            (recur (reach-of x) (rest es)))
+                        (.append sb (String. o (int p) (int (- b p))))))
+                    (.toArray (.codePoints (str sb))))
+                k (alength N)
+                first? (fn [i] (bound? (+ a i)))
+                 ;; whether the old code point i of the window is a letter a
+                 ;; word's token holds (punctuation, in a token of its own or
+                 ;; left out of the words, is not)
+                letter? (fn [i] (let [c (aget o (int (+ a i)))]
+                                  (or (Character/isLetterOrDigit (int c)) (combining-mark? c))))
+                in-word? (let [held (boolean-array (inc m))]
+                           (doseq [{:token/keys [begin end layer]} (near a (min n (inc b)))
+                                   :when (and (< begin end) (contains? word-layers layer))
+                                   p (range (max a begin) (min (inc b) end))]
+                             (aset held (- p a) true))
+                           (fn [i] (and (aget held i) (letter? i))))
+                osp (fn [i] (sp? (+ a i)))
+                nsp (fn [j] (space? (aget N (int j))))
+                lt? (fn [q] (let [c (aget o (int q))] (or (Character/isLetterOrDigit (int c)) (combining-mark? c))))
+                 ;; whether the letter at p ends a word written with spaces
+                 ;; before punctuation that a space or the text's end
+                 ;; follows: `a` in `a! ab`, where letters typed after it
+                 ;; are outside its token as at a space
+                before-punct? (fn [p]
+                                (and (lt? p) (< (inc p) n) (not (lt? (inc p))) (not (sp? (inc p)))
+                                     (loop [q (inc p)] (cond (= q n) true (sp? q) true (lt? q) false :else (recur (inc q))))
+                                     ;; back to the word's start, then over
+                                     ;; punctuation to a space or the text's
+                                     ;; start, and not another word's letter
+                                     (let [q (loop [q p] (if (and (pos? q) (lt? (dec q)) (not (bound? q))) (recur (dec q)) (dec q)))]
+                                       (loop [q q] (cond (< q 0) true (sp? q) true (lt? q) false :else (recur (dec q)))))))
+                 ;; whether the old letter at p is not a space and ends its
+                 ;; word at a space, the text's end or such punctuation
+                spaced-end? (fn [p] (and (not (sp? p)) (or (= (inc p) n) (sp? (inc p)) (before-punct? p))))
+                 ;; the same for each letter of the window, looked up in the
+                 ;; alignment's inner loop
+                window-end (let [xs (boolean-array (max m 1))]
+                             (dotimes [i m] (aset xs i (boolean (spaced-end? (+ a i)))))
+                             xs)
+                spaced-start? (fn [p] (or (zero? p) (sp? (dec p))))
+                 ;; Every word of the window ends at a space. Between two
+                 ;; words without one, which of them kept a letter is not
+                 ;; for the text to say, and the fewest words touched is no
+                 ;; better a guess than the diff's.
+                spaced? (not-any? (fn [p] (and (< a p b) (not (sp? (dec p))) (not (sp? p)))) eg)
+                 ;; A state is a run's (see `run-state`) and a third part
+                 ;; `W`: 0 the new word being written holds no kept letter
+                 ;; yet, 1 it does, 2 it does and an old space was deleted
+                 ;; since. A kept letter then joins two old words in one.
+                RS 96
+                S (* 3 RS)
+                ->w (fn [s] (quot s RS))
+                ->r (fn [s] (rem s RS))
+                s0 (+ (run-state 0 0 (if (and (pos? a) (spaced-end? (dec a))) 1 0) 0 0 0)
+                      (* RS (if (and (pos? a) (not (sp? (dec a)))) 1 0)))
+                 ;; [state' bad touched] for each step
+                step (fn [s kind i j]
+                       (let [w (->w s) r (->r s)]
+                         (case kind
+                           :m (if (osp i)
+                                (let [[x y] (run-end r false false false)]
+                                  [(run-state 0 0 0 0 0 0) x y])
+                                (let [[x y] (run-end r true (first? i) (spaced-start? (+ a i)))]
+                                   ;; A join is left to the replace cut at a
+                                   ;; word's edge when the new word reaches into
+                                   ;; both old words (see `split-at-token-edges`),
+                                   ;; and not when it takes one's first or last
+                                   ;; letter.
+                                  [(+ (run-state 0 0 (if (aget window-end i) 1 0) 0 0 0) RS)
+                                   (+ x (if (and (= w 2) (in-word? i) (or (first? i) (= 1 (bit-and (quot r 8) 1)))) 1 0)) y]))
+                           :d (let [[r' y] (run-step r :d (osp i) (first? i))]
+                                [(+ r' (* RS (if (and (osp i) (= w 1)) 2 w))) 0 y])
+                           :i (let [[r' y] (run-step r :i (nsp j) false)]
+                                [(+ r' (* RS (if (nsp j) 0 w))) 0 y]))))
+                 ;; a run at the window's end ends before the letter after it
+                end-at (fn [s]
+                         (let [nx? (and (< b n) (not (sp? b)))
+                               [x y] (run-end (->r s) nx? (bound? b) (spaced-start? b))]
+                           [(+ x (if (and nx? (= 2 (->w s)) (in-word? m)) 1 0)) y]))
+                diff-steps (loop [p a es es out []]
+                             (if-let [x (first es)]
+                               (let [out (into out (repeat (- (start-of x) p) :m))
+                                     out (case (:kind x)
+                                           :delete (into out (repeat (- (:end x) (:start x)) :d))
+                                           :insert (into out (repeat (cp/cp-count (:value x)) :i)))]
+                                 (recur (reach-of x) (rest es) out))
+                               (into out (repeat (- b p) :m))))
+                key-of (fn [steps]
+                         (loop [steps steps i 0 j 0 s s0 c 0 x 0 y 0]
+                           (if-let [st (first steps)]
+                             (let [[s' dx dy] (step s st i j)]
+                               (recur (rest steps) (if (= st :i) i (inc i)) (if (= st :d) j (inc j))
+                                      s' (if (= st :m) c (inc c)) (+ x dx) (+ y dy)))
+                             (let [[dx dy] (end-at s)] [c (+ x dx) (+ y dy)]))))
+                pack (fn [c x y] (+ (* c 1048576) (* x 1024) y))
+                 ;; How many old words `steps` keep only by letters from their
+                 ;; middle, their first and last letters deleted: `sat`
+                 ;; kept as its `a`.
+                middles (fn [steps]
+                          (loop [steps steps i 0 lost-first? false kept? false out 0]
+                            (if-let [st (first steps)]
+                              (if (= st :i)
+                                (recur (rest steps) i lost-first? kept? out)
+                                (let [lost-first? (if (first? i) (= st :d) lost-first?)
+                                      kept? (if (first? i) (= st :m) (or kept? (= st :m)))
+                                      whole-end? (and (not (osp i)) (bound? (+ a i 1)))]
+                                  (recur (rest steps) (inc i) lost-first? kept?
+                                         (if (and whole-end? lost-first? kept? (= st :d)) (inc out) out))))
+                              out)))
+                 ;; How many letters `steps` type between two old words
+                 ;; written without a space, in a run that deletes nothing
+                 ;; and types no space: a new word, or the end of one of them
+                 ;; or the start of the other, which the text cannot tell. No
+                 ;; token takes them, where the fold puts the letters typed
+                 ;; in a word the diff kept by its middle on that word:
+                 ;; `thekaitat` to `theaek` keeps `kai` by its `a`, and the
+                 ;; fold gives it `aek`, where keeping it by its `k` left
+                 ;; `ae` in no word.
+                edge-typed (fn [steps]
+                             (loop [steps steps i 0 j 0 dels? false spaced? false typed 0 out 0]
+                               (let [st (first steps)]
+                                 (if (or (nil? st) (= st :m))
+                                   (let [p (+ a i)
+                                         out (if (and (pos? typed) (not dels?) (not spaced?) (< 0 p n)
+                                                      (lt? (dec p)) (lt? p) (eg p))
+                                               (+ out typed)
+                                               out)]
+                                     (if st
+                                       (recur (rest steps) (inc i) (inc j) false false 0 out)
+                                       out))
+                                   (cond
+                                     (= st :d) (recur (rest steps) (inc i) j true spaced? typed out)
+                                     (nsp j) (recur (rest steps) i (inc j) dels? true typed out)
+                                     ;; combining marks a run starts with join
+                                     ;; the letter before them, as an insert
+                                     ;; gives them to the token ending there:
+                                     ;; `ña` to `ä` beside a deleted word keeps
+                                     ;; its `a` and types the mark after it
+                                     (and (zero? typed) (combining-mark? (aget N (int j))))
+                                     (recur (rest steps) i (inc j) dels? spaced? typed out)
+                                     :else (recur (rest steps) i (inc j) dels? spaced? (inc typed) out))))))]
+            ;; A stretch of typed text alone deletes no word whose letters
+            ;; the diff could have kept, and where it stands is the slide's
+            ;; business (text typed at a word's edge stays outside it).
+            (when (and (<= m align-limit) (<= k align-limit) (some :end es))
+              (let [inf Long/MAX_VALUE
+                    ^ints N N
+                    a (long a)
+                    m (long m)
+                    k (long k)
+                    k1 (inc k)
+                    idx (fn ^long [^long i ^long j ^long s] (+ (* (+ (* i k1) j) S) s))
+                    ;; The tables are kept for the next window, and an entry
+                    ;; counts only when stamped with this window's number, so
+                    ;; no window allocates or fills its own. Each cell lists
+                    ;; the states reached in it, so a cell costs what it
+                    ;; holds and not all `S` states.
+                    cells (* (inc m) k1)
+                    size (* cells S)
+                    [^longs dp ^ints back ^ints stamp ^ints reached ^ints cell-stamp ^ints cell-count]
+                    (let [[_ _ st _ cs :as ts] @tables]
+                      (if (and st (<= size (alength ^ints st)) (<= cells (alength ^ints cs)))
+                        ts
+                        (reset! tables [(long-array size) (int-array size) (int-array size)
+                                        (int-array size) (int-array cells) (int-array cells)])))
+                    g (int (vswap! window inc))
+                    ;; Each step's outcome depends on the state and on the
+                    ;; letter it reads alone (an old one for :m and :d, a
+                    ;; new one for :i), so it is worked out once for each and
+                    ;; kept as one long: the cost to add, shifted past the
+                    ;; state after it. A vector built for every step of every
+                    ;; cell, and a scan of all `S` states in each, took
+                    ;; 2 to 3 s on a find-and-replace over 10,000 words.
+                    m-kept (long-array (* (max m 1) S) -1)
+                    d-kept (long-array (* (max m 1) S) -1)
+                    i-kept (long-array (* (max k 1) S) -1)
+                    keep! (fn [^longs kept kind p s]
+                            (let [[s' dx dy] (if (= kind :i) (step s kind 0 p) (step s kind p 0))
+                                  t (+ (bit-shift-left (long (pack (if (= kind :m) 0 1) dx dy)) 9) (long s'))]
+                              (aset kept (+ (* (long p) S) (long s)) t)
+                              t))]
+                (let [c (idx 0 0 0)
+                      x (+ c s0)]
+                  (aset cell-stamp c g)
+                  (aset cell-count c 1)
+                  (aset reached c (int s0))
+                  (aset stamp x g)
+                  (aset dp x 0)
+                  (aset back x -1))
+                (dotimes [i (inc m)]
+                  (let [oi (if (< i m) (long (aget o (+ a i))) -1)]
+                    (dotimes [j k1]
+                      (let [cell (+ (* i k1) j)
+                            base (* cell S)
+                            n (if (== (aget cell-stamp cell) g) (long (aget cell-count cell)) 0)]
+                        ;; in the order of the states, as a scan of all of
+                        ;; them would take them, so ties go as they did
+                        (java.util.Arrays/sort reached (int base) (int (+ base n)))
+                        (dotimes [r n]
+                          (let [s (long (aget reached (+ base r)))
+                                v (aget dp (+ base s))]
+                            (when (and (< i m) (< j k) (== oi (aget N j)))
+                              (let [t (aget m-kept (+ (* i S) s))
+                                    t (if (neg? t) (long (keep! m-kept :m i s)) t)
+                                    c (+ (* (inc i) k1) (inc j))
+                                    s' (bit-and t 511)
+                                    x (+ (* c S) s')
+                                    w (+ v (bit-shift-right t 9))]
+                                (if (== (aget stamp x) g)
+                                  (when (< w (aget dp x))
+                                    (aset dp x w)
+                                    (aset back x (int (+ (* s 4) 2))))
+                                  (let [n (if (== (aget cell-stamp c) g) (long (aget cell-count c)) 0)]
+                                    (aset cell-stamp c g)
+                                    (aset cell-count c (inc n))
+                                    (aset reached (+ (* c S) n) (int s'))
+                                    (aset stamp x g)
+                                    (aset dp x w)
+                                    (aset back x (int (+ (* s 4) 2)))))))
+                            (when (< i m)
+                              (let [t (aget d-kept (+ (* i S) s))
+                                    t (if (neg? t) (long (keep! d-kept :d i s)) t)
+                                    c (+ (* (inc i) k1) j)
+                                    s' (bit-and t 511)
+                                    x (+ (* c S) s')
+                                    w (+ v (bit-shift-right t 9))]
+                                (if (== (aget stamp x) g)
+                                  (when (< w (aget dp x))
+                                    (aset dp x w)
+                                    (aset back x (int (* s 4))))
+                                  (let [n (if (== (aget cell-stamp c) g) (long (aget cell-count c)) 0)]
+                                    (aset cell-stamp c g)
+                                    (aset cell-count c (inc n))
+                                    (aset reached (+ (* c S) n) (int s'))
+                                    (aset stamp x g)
+                                    (aset dp x w)
+                                    (aset back x (int (* s 4)))))))
+                            (when (< j k)
+                              (let [t (aget i-kept (+ (* j S) s))
+                                    t (if (neg? t) (long (keep! i-kept :i j s)) t)
+                                    c (+ (* i k1) (inc j))
+                                    s' (bit-and t 511)
+                                    x (+ (* c S) s')
+                                    w (+ v (bit-shift-right t 9))]
+                                (if (== (aget stamp x) g)
+                                  (when (< w (aget dp x))
+                                    (aset dp x w)
+                                    (aset back x (int (+ (* s 4) 1))))
+                                  (let [n (if (== (aget cell-stamp c) g) (long (aget cell-count c)) 0)]
+                                    (aset cell-stamp c g)
+                                    (aset cell-count c (inc n))
+                                    (aset reached (+ (* c S) n) (int s'))
+                                    (aset stamp x g)
+                                    (aset dp x w)
+                                    (aset back x (int (+ (* s 4) 1)))))))))))))
+                (let [total (fn [s] (let [x (idx m k s) v (if (== (aget stamp x) g) (aget dp x) inf)]
+                                      (if (< v inf) (+ v (let [[x y] (end-at s)] (pack 0 x y))) inf)))
+                      best (reduce (fn [b s] (if (< (total s) (total b)) s b)) 0 (range S))
+                      steps (loop [i m j k s best out ()]
+                              (if (and (zero? i) (zero? j))
+                                (vec out)
+                                (let [x (aget back (idx i j s))
+                                      op (rem x 4)
+                                      ps (quot x 4)]
+                                  (case op
+                                    0 (recur (dec i) j ps (conj out :d))
+                                    1 (recur i (dec j) ps (conj out :i))
+                                    2 (recur (dec i) (dec j) ps (conj out :m))))))
+                      [dc dx dy] (key-of diff-steps)
+                      [bc bx by] (key-of steps)]
+                  (when (and (= bc dc)
+                             (or (< bx dx)
+                                 (and (= bx dx) (< by dy)
+                                      (or spaced?
+                                          (and (< (middles steps) (middles diff-steps))
+                                               (<= (edge-typed steps) (edge-typed diff-steps)))))))
+                     ;; each run of the steps as one delete and one insert
+                    (loop [steps steps i 0 j 0 out []]
+                      (if (empty? steps)
+                        out
+                        (if (= :m (first steps))
+                          (recur (rest steps) (inc i) (inc j) out)
+                          (let [run (take-while #(not= :m %) steps)
+                                dn (count (filter #{:d} run))
+                                in (count (filter #{:i} run))]
+                            (recur (drop (count run) steps) (+ i dn) (+ j in)
+                                   (cond-> out
+                                     (pos? dn) (conj {:kind :delete :start (+ a i) :end (+ a i dn)})
+                                     (pos? in) (conj {:kind :insert :at (+ a i dn)
+                                                      :value (String. N (int j) (int in))})))))))))))))
+        ;; a window longer than the aligner looks is left as it is before
+        ;; any work on it
+        out (reduce (fn [out [a b es :as w]]
+                      (into out (or (when (<= (- b a) align-limit) (realign w)) es)))
+                    [] windows)]
+    (if (= out edits) ops (edits->ops out))))
+
 (defn slide-to-tokens
   "Rewrite `ops` (as produced by `diff` for `old`) so that each delete or
   insert that stands apart from the others, and could stand elsewhere for the
@@ -1625,6 +2100,97 @@
       (and (= (+ p s) n) (= (+ p s) k)) nil
       :else (assoc gap :start (+ start p) :end (- end s) :value (String. v (int p) (int (- n p s)))))))
 
+;; A stretch of several words typed over as words of its own is each word
+;; typed over: `不 大` to `x y` is `不` typed over as `x` and `大` as `y`,
+;; so each word keeps its token and what hangs off it (Luke, 2026-09-21: a
+;; replaced word keeps its annotations). Where there are more old words than
+;; new, the last new word goes to the old word left that shares the most
+;; letters with it, the first on a tie (`cat eel` to `one` keeps `eel`), and
+;; the other old words are deleted.
+
+(defn- cp-runs
+  "The runs of `cs` from `from` to `to`, each `[b e ws?]`, whitespace or not."
+  [^ints cs from to]
+  (loop [i from out []]
+    (if (< i to)
+      (let [w (space? (aget cs i))
+            e (loop [j (inc i)] (if (and (< j to) (= w (space? (aget cs j)))) (recur (inc j)) j))]
+        (recur e (conj out [i e w])))
+      out)))
+
+(defn- shared-letters
+  "How many letters `cs`[b, e) and `vs`[x, y) have in common, counted with
+  repeats."
+  [^ints cs b e ^ints vs x y]
+  (let [f (frequencies (map #(aget vs %) (range x y)))]
+    (first (reduce (fn [[n f] i]
+                     (let [c (aget cs i) k (get f c 0)]
+                       (if (pos? k) [(inc n) (assoc f c (dec k))] [n f])))
+                   [0 f] (range b e)))))
+
+(defn- letter?
+  "Whether code point `c` is part of a word's text: a letter, a digit or a
+  combining mark, not punctuation."
+  [c]
+  (or (Character/isLetterOrDigit (int c)) (combining-mark? c)))
+
+(defn- cut-at-words
+  "`gap` (see `compose-edits`) cut where its old and new text are words with
+  whitespace between: old word i is typed over as new word i, the last new
+  word goes to the old word left sharing the most letters with it (the first
+  on a tie), and the pieces whose old and new text are the same are left
+  out. Pieces that touch stay one gap, which then carries `:keeps`, each
+  `[b e off len]`: the token over exactly old [b, e) goes on the gap's new
+  text from `off` for `len`. A gap with fewer than two old words, or no new
+  word, is left whole."
+  [^ints o {:keys [start end value] :as gap}]
+  (let [^ints v (.toArray (.codePoints ^String value))
+        ow (filterv #(not (nth % 2)) (cp-runs o start end))
+        vw (filterv #(not (nth % 2)) (cp-runs v 0 (alength v)))
+        m (count ow)
+        n (count vw)]
+    (if (or (< m 2) (zero? n))
+      [gap]
+      (let [k (min m n)
+            ob (fn [i] (first (ow i))) oe (fn [i] (second (ow i)))
+            vb (fn [i] (first (vw i))) ve (fn [i] (second (vw i)))
+            ;; the old word left the tail's new text goes to: the word the
+            ;; gap reaches into at its start, or at its end, a letter of it
+            ;; left beside the gap (as the plain rule gives it), else the
+            ;; one sharing most letters
+            best (let [x (vb (dec k)) y (ve (dec n))]
+                   (cond
+                     (and (pos? start) (= start (ob (dec k))) (letter? (aget o (dec start)))) (dec k)
+                     (and (< end (alength o)) (= end (oe (dec m))) (letter? (aget o end))) (dec m)
+                     :else (reduce (fn [a i] (if (> (shared-letters o (ob i) (oe i) v x y)
+                                                    (shared-letters o (ob a) (oe a) v x y))
+                                               i a))
+                                   (dec k) (range k m))))
+            ;; [old-b old-e new-b new-e keep], in order
+            pieces (concat [[start (ob 0) 0 (vb 0) nil]]
+                           (mapcat (fn [i] [[(ob i) (oe i) (vb i) (ve i) [(ob i) (oe i)]]
+                                            [(oe i) (ob (inc i)) (ve i) (vb (inc i)) nil]])
+                                   (range (dec k)))
+                           [[(ob (dec k)) (oe (dec m)) (vb (dec k)) (ve (dec n)) [(ob best) (oe best)]]
+                            [(oe (dec m)) end (ve (dec n)) (alength v) nil]])
+            same? (fn [[a b x y]] (and (= (- b a) (- y x))
+                                       (every? #(= (aget o (+ a %)) (aget v (+ x %))) (range (- b a)))))
+            changed (remove same? pieces)
+            ;; pieces that touch are one gap
+            groups (reduce (fn [out [a :as p]]
+                             (if (and (seq out) (= a (second (peek (peek out)))))
+                               (conj (pop out) (conj (peek out) p))
+                               (conj out [p])))
+                           [] changed)]
+        (mapv (fn [ps]
+                (let [[a _ x] (first ps)
+                      [_ b _ y] (peek ps)
+                      keeps (vec (keep (fn [[_ _ px py kp]] (when kp [(first kp) (second kp) (- px x) (- py px)])) ps))]
+                  (cond-> {:start a :end b :value (String. v (int x) (int (- y x)))}
+                    (:side gap) (assoc :side (:side gap))
+                    (seq keeps) (assoc :keeps keeps))))
+              groups)))))
+
 (defn- edits->gaps
   "Old-coordinate edits in position order (see `ops->edits`) as gaps: edits
   that touch are one gap."
@@ -1796,7 +2362,7 @@
   A zero-width token is moved as `apply-text-edits` moves it."
   ([old tokens gaps partitioning word-layers]
    (apply-plain-gaps old tokens gaps partitioning word-layers nil))
-  ([^String old tokens gaps partitioning word-layers {:keys [caret split-on-space children exclusive]}]
+  ([^String old tokens gaps partitioning word-layers {:keys [caret split-on-space children exclusive head-layers]}]
    (let [^ints o (.toArray (.codePoints old))
          len (alength o)
          partitioning (set partitioning)
@@ -1829,6 +2395,7 @@
                               (if (<= (aget starts m) (long x)) (recur (inc m) hi) (recur lo m)))
                             (dec lo))))
          wide (filterv #(< (:token/begin %) (:token/end %)) tokens)
+
          zero (filterv #(= (:token/begin %) (:token/end %)) tokens)
         ;; The tokens that decide where new text goes: the words, those on a
         ;; layer in `word-layers`, else every token on no partition. The
@@ -1836,6 +2403,12 @@
          deciders (let [ws (filterv #(word-layers (:token/layer %)) wide)]
                     (if (seq ws) ws (filterv #(not (partitioning (:token/layer %))) wide)))
          decider-layers (into #{} (map :token/layer) deciders)
+        ;; the tokens whose text is one of a gap's words typed over (see
+        ;; `cut-at-words`), a word's: old extent to [gap offset length]. Its
+        ;; morphemes as long as it and its nodes go with it.
+         keep-at (let [extents (into #{} (map (juxt :token/begin :token/end)) deciders)]
+                   (into {} (mapcat (fn [g] (keep (fn [[b e off len]] (when (extents [b e]) [[b e] [g off len]])) (:keeps (gaps g)))))
+                         (range k)))
         ;; What the words have at each gap: one
         ;; ending at its start or inside it, one beginning inside it or at its
         ;; end, one holding it at its end or at its start (the gap reaches
@@ -1910,6 +2483,14 @@
                            after? [0 n]
                            :else [0 0])))
                      (range k))
+        ;; a word typed over as a word of its own at the gap's start or end
+        ;; holds the new text there, which no neighbour takes
+         given (let [held (reduce (fn [m [_ [g off len]]]
+                                    (cond-> m
+                                      (zero? off) (assoc-in [g 0] true)
+                                      (= (+ off len) (:n (info g))) (assoc-in [g 1] true)))
+                                  {} keep-at)]
+                 (mapv (fn [g [x y]] (let [h (held g)] [(if (get h 0) 0 x) (if (get h 1) 0 y)])) (range k) given))
          given-before (fn [g] (first (given g)))
          given-after (fn [g] (second (given g)))
         ;; text typed where two sentences meet, between whitespace and the
@@ -1924,52 +2505,64 @@
                            ;; sentence of its own, to be split off
                             (not (re-find #"[\n\r\u0085\u2028\u2029]" (:value (gaps g)))))))
          placed (mapv (fn [{:token/keys [begin end layer] :as t}]
-                        (let [gb (at-or-before begin)
-                              {:keys [a b n]} (when (>= gb 0) (info gb))
-                              nb (cond
-                                   (neg? gb) begin
+                        (if-let [[g off len] (keep-at [begin end])]
+                          ;; one of the gap's words typed over: it goes on
+                          ;; its new word
+                          (assoc t :token/begin (+ (new-at g) off) :token/end (+ (new-at g) off len))
+                          (let [gb (at-or-before begin)
+                                {:keys [a b n]} (when (>= gb 0) (info gb))
+                              ;; the gap's words typed over that the token
+                              ;; holds: an edge of it inside the gap goes to
+                              ;; their edge (a sentence keeps its word)
+                                inner (fn [g] (filter (fn [[kb ke]] (and (<= begin kb) (<= ke end) (keep-at [kb ke]))) (:keeps (gaps g))))
+                                nb (cond
+                                     (neg? gb) begin
+                                     (and (< a b) (<= a begin) (< begin b) (or (< a begin) (< end b)) (seq (inner gb)))
+                                     (+ (new-at gb) (reduce min (map #(nth % 2) (inner gb))))
                                   ;; a gap took its first letters, or stands
                                   ;; right before it
-                                   (and (< a begin) (<= begin b))
-                                   (if (<= end b) nil (- (+ (new-at gb) n) (given-after gb)))
-                                   (= a begin)
-                                   (cond
-                                     (and (= a b) (by-caret? gb t)) (new-at gb)
+                                     (and (< a begin) (<= begin b))
+                                     (if (<= end b) nil (- (+ (new-at gb) n) (given-after gb)))
+                                     (= a begin)
+                                     (cond
+                                       (and (= a b) (by-caret? gb t)) (new-at gb)
                                      ;; the text typed where two words meet
                                      ;; goes whole to the side the caret said
-                                     (and (= a b) (or (partitioning layer) (row? layer)) (= :after (side-of gb))) (new-at gb)
-                                     (and (= a b) (or (partitioning layer) (row? layer)) (= :before (side-of gb))) (+ (new-at gb) n)
-                                     (= a b) (- (+ (new-at gb) n) (given-after gb))
-                                     (>= end b) (+ (new-at gb) (given-before gb))
-                                     :else nil)
-                                   :else (+ begin (aget shift (inc gb))))
-                              ge (at-or-before end)
-                              {a2 :a b2 :b n2 :n} (when (>= ge 0) (info ge))
-                              ne (cond
-                                   (neg? ge) end
+                                       (and (= a b) (or (partitioning layer) (row? layer)) (= :after (side-of gb))) (new-at gb)
+                                       (and (= a b) (or (partitioning layer) (row? layer)) (= :before (side-of gb))) (+ (new-at gb) n)
+                                       (= a b) (- (+ (new-at gb) n) (given-after gb))
+                                       (>= end b) (+ (new-at gb) (given-before gb))
+                                       :else nil)
+                                     :else (+ begin (aget shift (inc gb))))
+                                ge (at-or-before end)
+                                {a2 :a b2 :b n2 :n} (when (>= ge 0) (info ge))
+                                ne (cond
+                                     (neg? ge) end
+                                     (and (< a2 end) (<= end b2) (or (< end b2) (< a2 begin)) (seq (inner ge)))
+                                     (+ (new-at ge) (reduce max (map #(+ (nth % 2) (nth % 3)) (inner ge))))
                                    ;; and a row ending there takes it whole
-                                   (and (= a2 b2 end) (row? layer) (= :before (side-of ge))) (+ (new-at ge) n2)
-                                   (or (= a2 end) (and (< a2 end) (< end b2)))
-                                   (if (< begin a2) (+ (new-at ge) (given-before ge)) nil)
-                                   (and (< a2 end) (= end b2))
-                                   (if (<= begin a2) (- (+ (new-at ge) n2) (given-after ge)) nil)
-                                   :else (+ end (aget shift (inc ge))))]
-                          (if (and nb ne (< nb ne))
+                                     (and (= a2 b2 end) (row? layer) (= :before (side-of ge))) (+ (new-at ge) n2)
+                                     (or (= a2 end) (and (< a2 end) (< end b2)))
+                                     (if (< begin a2) (+ (new-at ge) (given-before ge)) nil)
+                                     (and (< a2 end) (= end b2))
+                                     (if (<= begin a2) (- (+ (new-at ge) n2) (given-after ge)) nil)
+                                     :else (+ end (aget shift (inc ge))))]
+                            (if (and nb ne (< nb ne))
                            ;; off whitespace it did not have at that edge
-                            (let [nb (if (ws? (aget o begin))
-                                       nb
-                                       (loop [x nb] (if (and (< x ne) (ws? (aget nw x))) (recur (inc x)) x)))
-                                  ne (if (ws? (aget o (dec end)))
-                                       ne
-                                       (loop [x ne] (if (and (> x nb) (ws? (aget nw (dec x)))) (recur (dec x)) x)))]
+                              (let [nb (if (ws? (aget o begin))
+                                         nb
+                                         (loop [x nb] (if (and (< x ne) (ws? (aget nw x))) (recur (inc x)) x)))
+                                    ne (if (ws? (aget o (dec end)))
+                                         ne
+                                         (loop [x ne] (if (and (> x nb) (ws? (aget nw (dec x)))) (recur (dec x)) x)))]
                                 ;; one left with only whitespace, that had
                                 ;; letters, is gone
-                              (if (and (< nb ne)
-                                       (not (and (every? #(ws? (aget nw %)) (range nb ne))
-                                                 (some #(not (ws? (aget o %))) (range begin end)))))
-                                (assoc t :token/begin nb :token/end ne)
-                                (assoc t ::gone true)))
-                            (assoc t ::gone true))))
+                                (if (and (< nb ne)
+                                         (not (and (every? #(ws? (aget nw %)) (range nb ne))
+                                                   (some #(not (ws? (aget o %))) (range begin end)))))
+                                  (assoc t :token/begin nb :token/end ne)
+                                  (assoc t ::gone true)))
+                              (assoc t ::gone true)))))
                       wide)
          placed (if split-on-space
                   (let [typed (let [a (boolean-array (alength nw))]
@@ -1990,7 +2583,9 @@
         ;; letter before its last line break, is a sentence of its own
         ;; (`:heads`): the new text before the first sentence's first letter
         ;; left, whatever the save's shape.
-         firsts (filter #(and (partitioning (:token/layer %)) (zero? (:token/begin %))) wide)
+         firsts (filter #(and (partitioning (:token/layer %)) (zero? (:token/begin %))
+                              (or (nil? head-layers) (contains? head-layers (:token/layer %))))
+                        wide)
          head-end (when-let [{:token/keys [end]} (first firsts)]
                     (let [in-gap? (fn [i] (let [g (at-or-before i)]
                                             (and (>= g 0) (< i (:b (info g))) (<= (:a (info g)) i))))
@@ -2038,11 +2633,67 @@
 
 (defn plain-edit-gaps
   "The gaps an edit of `old` by `ops` from the caret is taken as: its net
-  change (see `compose-edits`), each gap
-  less the text its new value shares with the old at either end."
+  change (see `compose-edits`), each gap less the text its new value shares
+  with the old at either end, and cut where it types words over words (see
+  `cut-at-words`)."
   [^String old ops]
   (let [^ints o (.toArray (.codePoints old))]
-    (into [] (keep #(trim-gap o %)) (compose-edits ops old))))
+    (into [] (comp (keep #(trim-gap o %)) (mapcat #(cut-at-words o %))) (compose-edits ops old))))
+
+(defn- merge-in-words
+  "`gaps` with the gaps inside one word of `tokens` (`word?`), with no
+  whitespace between them and none typed, made one gap when taken apart
+  they would delete a token inside the word: `cow`, analysed `co` + `w`,
+  saved as `abc` is the word typed over (its morphemes go, as the edits
+  path has it, 2026-09-27), not `ab` typed before `c` and `ow` deleted,
+  which left `co` on `abc` and deleted `w`. A respelling inside each token
+  (`cat`, `ca` + `t`, to `bad`) is left as it is."
+  [gaps ^ints o tokens word?]
+  (let [wide (vec (sort-by :token/begin (filter #(< (:token/begin %) (:token/end %)) tokens)))
+        wbegins (long-array (map :token/begin wide))
+        words (vec (filter word? wide))
+        begins (long-array (map :token/begin words))
+        ;; the first index whose value is above x
+        upper (fn [^longs xs x] (loop [a 0 b (alength xs)]
+                                  (if (< a b)
+                                    (let [h (quot (+ a b) 2)] (if (<= (aget xs h) (long x)) (recur (inc h) b) (recur a h)))
+                                    a)))
+        word-of (fn [{:keys [start end]}]
+                  (let [i (dec (upper begins start))]
+                    (when (>= i 0) (let [w (words i)] (when (<= end (:token/end w)) w)))))
+        blank? (fn [^String v] (.anyMatch (.codePoints v) (reify java.util.function.IntPredicate (test [_ c] (space? c)))))
+        apart? (fn [x y] (some #(space? (aget o %)) (range (:end x) (:start y))))
+        ;; runs of gaps in one word with no whitespace between
+        runs (reduce (fn [out g]
+                       (let [w (word-of g)
+                             [pw run] (peek out)]
+                         (if (and w pw (= (:token/id w) (:token/id pw)) (not (blank? (:value g)))
+                                  (not (blank? (:value (peek run)))) (not (apart? (peek run) g)))
+                           (conj (pop out) [pw (conj run g)])
+                           (conj out [w [g]]))))
+                     [] gaps)
+        ;; whether the gaps of `run` taken apart delete the token: one holds
+        ;; it, and is not exactly its text typed over
+        goes? (fn [run {tb :token/begin te :token/end}]
+                (some (fn [{:keys [start end value]}]
+                        (and (<= start tb) (<= te end)
+                             (not (and (= start tb) (= end te) (seq value)))))
+                      run))]
+    (into []
+          (mapcat (fn [[w run]]
+                    (if (and w (< 1 (count run))
+                             (some #(goes? run %)
+                                   (subvec wide (upper wbegins (dec (:token/begin w)))
+                                           (upper wbegins (dec (:token/end w))))))
+                      (let [a (:start (first run))]
+                        [{:start a :end (:end (peek run))
+                          :value (apply str (map-indexed (fn [i g]
+                                                           (str (when (pos? i)
+                                                                  (let [f (run (dec i))] (String. o (int (:end f)) (int (- (:start g) (:end f))))))
+                                                                (:value g)))
+                                                         run))}])
+                      run)))
+          runs)))
 
 (defn plain-edits
   "`apply-plain-gaps` for an edit of `old` by `ops` from the caret (running
@@ -2052,23 +2703,100 @@
   ([^String old tokens ops partitioning word-layers opts]
    (apply-plain-gaps old tokens (plain-edit-gaps old ops) partitioning word-layers (assoc opts :caret true))))
 
+(defn- widen-joins
+  "`gaps` of a whole-body save, each one that joins what is left of two
+  words into one, takes letters of one of them and holds letters of two
+  words, widened to the whole of the words (`word?` tokens of `tokens`,
+  else the runs between whitespace) it reaches into: `tb ctc` saved as
+  `ttc` reads as the diff's `b c` deleted, which leaves `t` and `tc` two
+  tokens on one new word, where `tb ctc` typed over as `ttc` gives the new
+  word to `ctc` (see `cut-at-words`). The text cannot say which was meant,
+  and a person retyping words is more often the second. Whitespace deleted
+  alone, or with letters of one word only (`dog cat` to `docat`), is left as
+  it is: two words written together keep a token each, and so is text left
+  against punctuation outside every word. Gaps a widened one reaches are one
+  gap with it."
+  [gaps ^ints o tokens word?]
+  (let [n (alength o)
+        ws? (fn [i] (space? (aget o i)))
+        blank? (fn [^String v] (.anyMatch (.codePoints v) (reify java.util.function.IntPredicate (test [_ c] (space? c)))))
+        words (vec (sort-by :token/begin (filter #(and (word? %) (< (:token/begin %) (:token/end %))) tokens)))
+        begins (long-array (map :token/begin words))
+        ;; the word holding position i
+        word-at (fn [i] (let [k (dec (loop [a 0 b (alength begins)]
+                                       (if (< a b)
+                                         (let [h (quot (+ a b) 2)] (if (<= (aget begins h) (long i)) (recur (inc h) b) (recur a h)))
+                                         a)))]
+                          (when (>= k 0) (let [w (words k)] (when (< i (:token/end w)) w)))))
+        ;; how many runs between whitespace hold letters, in [a, b)
+        segments (fn [a b] (count (filter (fn [i] (and (not (ws? i)) (or (= i a) (ws? (dec i))))) (range a b))))
+        target (fn [{:keys [start end value]}]
+                 (if (and (pos? start) (< end n) (not (ws? (dec start))) (not (ws? end))
+                          ;; words, not punctuation outside them, either side
+                          (or (empty? words) (and (word-at (dec start)) (word-at end)))
+                          (some ws? (range start end)) (not (blank? value))
+                          (or (not (ws? start)) (not (ws? (dec end))))
+                          (<= 2 (segments start end)))
+                   [(or (some-> (word-at (dec start)) :token/begin)
+                        (loop [x (dec start)] (if (and (pos? x) (not (ws? (dec x)))) (recur (dec x)) x)))
+                    (or (some-> (word-at end) :token/end)
+                        (loop [x end] (if (and (< x n) (not (ws? x))) (recur (inc x)) x)))]
+                   [start end]))
+        groups (reduce (fn [out g]
+                         (let [[s e] (target g)
+                               cur (peek out)]
+                           (if (and cur (<= s (:e cur)))
+                             (conj (pop out) (-> cur (update :gs conj g) (update :e max e)))
+                             (conj out {:s s :e e :gs [g]}))))
+                       [] gaps)]
+    (mapv (fn [{:keys [s e gs]}]
+            (if (and (= 1 (count gs)) (= s (:start (first gs))) (= e (:end (first gs))))
+              (first gs)
+              (let [sb (StringBuilder.)
+                    copy! (fn [x y] (loop [i x] (when (< i y) (.appendCodePoint sb (aget o i)) (recur (inc i)))))
+                    pos (reduce (fn [pos {:keys [start end value]}] (copy! pos start) (.append sb ^String value) end)
+                                s gs)]
+                (copy! pos e)
+                {:start s :end e :value (str sb)})))
+          groups)))
+
+(defn- body-word-layers
+  "The layers whose tokens are the words of a whole-body save: `word-layers`,
+  else every layer of `tokens` that is no partition."
+  [tokens partitioning word-layers]
+  (if (seq word-layers)
+    (set word-layers)
+    (into #{} (comp (map :token/layer) (remove (set partitioning))) tokens)))
+
 (defn plain-body-gaps
-  "The gaps a whole-body save of `old` as `new` is taken as: the diff, each edit moved to the equivalent place
-  that disturbs the fewest `tokens` (see `slide-to-tokens` and
-  `normalize-deletes`), and edits that touch one gap."
-  [^String old ^String new tokens partitioning]
-  (-> (diff old new)
-      (slide-to-tokens old tokens partitioning)
-      (normalize-deletes old tokens)
-      ops->edits
-      edits->gaps))
+  "The gaps a whole-body save of `old` as `new` is taken as: the diff, each
+  edit moved to the equivalent place that disturbs the fewest `tokens` (see
+  `slide-to-tokens` and `normalize-deletes`), each changed stretch aligned
+  to the words of `word-layers` (see `align-to-words`), edits that touch
+  one gap, the gaps inside one word that would delete a token inside it one
+  gap (see `merge-in-words`), a gap joining what is left of two words
+  widened to them (see `widen-joins`), and each gap cut where it types
+  words over words (see `cut-at-words`)."
+  ([old new tokens partitioning] (plain-body-gaps old new tokens partitioning nil))
+  ([^String old ^String new tokens partitioning word-layers]
+   (let [^ints o (.toArray (.codePoints old))
+         wl (body-word-layers tokens partitioning word-layers)]
+     (-> (diff old new)
+         (slide-to-tokens old tokens partitioning)
+         (normalize-deletes old tokens)
+         (align-to-words old tokens wl)
+         ops->edits
+         edits->gaps
+         (merge-in-words o tokens #(contains? wl (:token/layer %)))
+         (widen-joins o tokens #(contains? wl (:token/layer %)))
+         (->> (into [] (mapcat #(cut-at-words o %))))))))
 
 (defn plain-body
   "`apply-plain-gaps` for a whole-body save of `old` as `new` (see
   `plain-body-gaps`)."
   ([old new tokens partitioning word-layers] (plain-body old new tokens partitioning word-layers nil))
   ([^String old ^String new tokens partitioning word-layers opts]
-   (apply-plain-gaps old tokens (plain-body-gaps old new tokens partitioning) partitioning word-layers
+   (apply-plain-gaps old tokens (plain-body-gaps old new tokens partitioning word-layers) partitioning word-layers
                      (dissoc opts :caret))))
 
 (defn layer-roles
@@ -2080,18 +2808,25 @@
   same way.
   - `:partitioning`: the partition layers (sentences).
   - `:deciders`: the word layers, which decide where typed text goes (see
-    `apply-plain-gaps`): a layer that forbids overlap, has a parent, and is
-    not nested under another such layer (a syntactic word layer under the
-    words follows them, it does not decide).
+    `apply-plain-gaps`): a layer that forbids overlap and has a parent, or
+    has a layer nested under it (words a script made on a root layer, with
+    morphemes under them), and is not nested under another such layer (a
+    syntactic word layer under the words follows them, it does not decide).
   - `:children`: the layers nested under a deciding layer at any depth
     (morphemes, syntactic words), which keep to their words.
   - `:exclusive`: the layers that forbid overlap.
   - `:split-on-space`: whether a layer of the text sets `splitOnSpace`,
-    which then holds for every word of the text."
+    which then holds for every word of the text.
+  - `:head-layers`: the partitions a line typed before the first sentence
+    is made a sentence of (see `apply-plain-gaps`): those the words are
+    nested under, else the text's one partition layer, else none. A second
+    partition (a document's one token, paragraphs) is never split."
   [layers]
   (let [parent-of (into {} (map (juxt :id :parent)) layers)
+        parents (into #{} (keep :parent) layers)
         word-layers (into #{}
-                          (comp (filter #(and (= "non-overlapping" (:overlap-mode %)) (some? (:parent %))))
+                          (comp (filter #(and (= "non-overlapping" (:overlap-mode %))
+                                              (or (some? (:parent %)) (parents (:id %)))))
                                 (map :id))
                           layers)
         ;; whether a layer's parent chain, past the layer itself, reaches one
@@ -2101,8 +2836,13 @@
                                    (xs id) true
                                    (seen id) false
                                    :else (recur (parent-of id) (conj seen id)))))
-        deciders (into #{} (remove #(under? word-layers %)) word-layers)]
-    {:partitioning (into #{} (comp (filter #(= "partitioning" (:overlap-mode %))) (map :id)) layers)
+        deciders (into #{} (remove #(under? word-layers %)) word-layers)
+        partitioning (into #{} (comp (filter #(= "partitioning" (:overlap-mode %))) (map :id)) layers)
+        heads (into #{} (filter (fn [p] (some #(under? #{p} %) deciders))) partitioning)]
+    {:partitioning partitioning
+     :head-layers (cond (seq heads) heads
+                        (= 1 (count partitioning)) partitioning
+                        :else #{})
      :deciders deciders
      :children (into #{} (filter #(under? deciders %)) (keys parent-of))
      :exclusive (into #{} (comp (filter #(= "non-overlapping" (:overlap-mode %))) (map :id)) layers)

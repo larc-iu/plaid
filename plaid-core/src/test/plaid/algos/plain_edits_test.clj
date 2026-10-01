@@ -441,3 +441,53 @@
         r (ta/plain-edits old (into words nodes) ops #{} #{:w})
         c (some #(when (= :c (:token/id %)) %) (:tokens r))]
     (is (= [0 0] [(:token/begin c) (:token/end c)]))))
+
+(deftest words-typed-over-as-words-each-keep-their-token
+  ;; REV-one-rule F1: each word typed over whole keeps its token, on both
+  ;; paths. Fewer new words than old: the last goes to the old word sharing
+  ;; most letters with it, the first on a tie, and the others go.
+  (is (= ["我 x y 好 。" "我" "x" "y" "好" "。"] (edit "|我| |不| |大| |好| |。|" [(rep 2 3 "x y")])))
+  (is (= ["我 x y 好 。" "我" "x" "y" "好" "。"] (save "|我| |不| |大| |好| |。|" "我 x y 好 。")))
+  (is (= ["dog one fox." "dog" nil "one" "fox."] (edit "|dog| |cat| |eel| |fox.|" [(rep 4 7 "one")])))
+  ;; chinese_tlp: `远离 人烟 千 里 之外` typed over as `q `
+  (is (= ["在 q  的" "在" "q" nil nil nil nil "的"]
+         (edit "|在| |远离| |人烟| |千| |里| |之外| |的|" [(rep 2 12 "q ")])))
+  ;; more new words than old: the last old word holds the rest
+  (is (= ["a x y z b" "a" "x" "y z" "b"] (edit "|a| |cat| |eel| |b|" [(rep 2 7 "x y z")]))))
+
+(deftest layer-roles-read-the-layers-shape
+  (testing "a root word layer with a layer under it decides, the layer under it follows (F6)"
+    (let [r (ta/layer-roles [{:id :s :overlap-mode "partitioning"}
+                             {:id :w :overlap-mode "non-overlapping"}
+                             {:id :m :overlap-mode "non-overlapping" :parent :w}])]
+      (is (= #{:w} (:deciders r)))
+      (is (= #{:m} (:children r)))))
+  (testing "ud's syntactic words under shared words never decide"
+    (is (= #{:w} (:deciders (ta/layer-roles [{:id :s :overlap-mode "partitioning"}
+                                             {:id :w :overlap-mode "non-overlapping" :parent :s}
+                                             {:id :x :overlap-mode "non-overlapping" :parent :w}])))))
+  (testing "a head is made only on the partition the words are under (F7)"
+    (is (= #{:s} (:head-layers (ta/layer-roles [{:id :s :overlap-mode "partitioning"}
+                                                {:id :d :overlap-mode "partitioning"}
+                                                {:id :w :overlap-mode "non-overlapping" :parent :s}]))))
+    (is (= #{:s} (:head-layers (ta/layer-roles [{:id :s :overlap-mode "partitioning"}
+                                                {:id :w :overlap-mode "non-overlapping"}]))))
+    (is (= #{} (:head-layers (ta/layer-roles [{:id :s :overlap-mode "partitioning"}
+                                              {:id :d :overlap-mode "partitioning"}
+                                              {:id :w :overlap-mode "any"}]))))))
+
+(deftest an-analysed-word-retyped-in-a-whole-body-save-drops-its-morphemes
+  ;; REV-one-rule F4: `cow` (`co` + `w`) saved as `abc` is the word typed
+  ;; over, as on the edits path (2026-09-27); `cat` (`ca` + `t`) saved as
+  ;; `bad` respells inside each morpheme and keeps them
+  (let [t (fn [id l b e] {:token/id id :token/layer l :token/begin b :token/end e})
+        run (fn [old new tokens f]
+              (let [r (f old new tokens)
+                    gone (set (:deleted r))]
+                (into {} (comp (remove #(gone (:token/id %))) (map (juxt :token/id #(subs new (:token/begin %) (:token/end %))))) (:tokens r))))
+        body (fn [old new tokens] (ta/plain-body old new tokens #{} #{:w}))
+        edits (fn [old new tokens] (ta/plain-edits old tokens [(rep 4 3 (subs new 4 7))] #{} #{:w}))
+        cow [(t :w :w 4 7) (t :co :m 4 6) (t :w2 :m 6 7)]
+        cat [(t :w :w 4 7) (t :ca :m 4 6) (t :t :m 6 7)]]
+    (is (= {:w "abc"} (run "the cow sat" "the abc sat" cow body) (run "the cow sat" "the abc sat" cow edits)))
+    (is (= {:w "bad" :ca "ba" :t "d"} (run "the cat sat" "the bad sat" cat body)))))

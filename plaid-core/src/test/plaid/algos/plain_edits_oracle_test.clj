@@ -32,7 +32,8 @@
   - a word inside a segment stays inside it, and every word stays inside
     one sentence after the partition's gap-fill.
   There are no exemptions."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is testing]]
             [plaid.algos.text :as ta]
             [plaid.util.codepoint :as cp]))
 
@@ -74,8 +75,14 @@
                            (add w)
                            (let [e @pos id (vswap! wid inc)]
                              (conj! toks {:token/id [:w id] :token/layer :w :token/begin b :token/end e})
-                             (dotimes [m (inc (.nextInt rng 3))]
-                               (conj! toks {:token/id [:m id m] :token/layer :m :token/begin b :token/end e}))
+                             (if (and (:sub opts) (< (.nextDouble rng) (:sub opts)) (< 1 (- e b)) (not (re-find #"\s" w)))
+                               ;; morphemes inside the word, as a script's
+                               ;; analysis has them (`[:ms word k]`)
+                               (let [cuts (sort (distinct (repeatedly (inc (.nextInt rng 2)) #(+ b 1 (.nextInt rng (dec (- e b)))))))]
+                                 (doseq [[k [x y]] (map-indexed vector (partition 2 1 (concat [b] cuts [e])))]
+                                   (conj! toks {:token/id [:ms id k] :token/layer :m :token/begin x :token/end y})))
+                               (dotimes [m (if (:one-morph opts) 1 (inc (.nextInt rng 3)))]
+                                 (conj! toks {:token/id [:m id m] :token/layer :m :token/begin b :token/end e})))
                              ;; another app's layer nested under the words
                              ;; (a ud syntactic word): plain because its parent is
                              (when (and (:child opts) (< (.nextDouble rng) (:child opts)))
@@ -269,11 +276,34 @@
                               (or (and (< a b) (<= begin a) (<= b end))
                                   (and (= a b) (< begin a) (< a end))))
                             gaps))
-        text-of (fn [{:token/keys [begin end]}] (String. ^ints nw (int begin) (int (- end begin))))]
+        text-of (fn [{:token/keys [begin end]}] (String. ^ints nw (int begin) (int (- end begin))))
+        ;; a token whose text is one of a gap's words typed over (see
+        ;; `cut-at-words`): where it must be now
+        ;; (those that are a word's text)
+        keep-want (let [extents (into #{} (comp (filter #(and (= wl (:token/layer %)) (< (:token/begin %) (:token/end %))))
+                                                (map (juxt :token/begin :token/end)))
+                                      tokens)]
+                    (into {} (mapcat (fn [g] (keep (fn [[b e off len]]
+                                                     (when (extents [b e]) [[b e] [(+ (gap-new g) off) (+ (gap-new g) off len)]]))
+                                                   (:keeps g))))
+                          gaps))
+        holds-keep? (fn [{:token/keys [begin end]}] (some (fn [[[b e] _]] (and (<= begin b) (<= e end))) keep-want))]
     (when (not= expected new-body) (bad! "body " (pr-str new-body) " not " (pr-str expected)))
     (when (= expected new-body)
+      ;; each word typed over as a word of its own is on it
+      (doseq [{:token/keys [id layer begin end]} tokens
+              :let [want (keep-want [begin end])]
+              :when (and want
+                         ;; a row over a sentence follows it (REV3)
+                         (not (and (#{:a :ss} layer)
+                                   (some #(and (= :s (:token/layer %))
+                                               (= [begin end] (trim-ws o [(:token/begin %) (:token/end %)])))
+                                         tokens))))]
+        (let [now (by-id id)]
+          (when (or (gone id) (not= want [(:token/begin now) (:token/end now)]))
+            (bad! id " typed over as a word of its own is not on it: " (pr-str (when-not (gone id) (some-> now text-of)))))))
       (doseq [{:token/keys [id layer begin end] :as t} tokens
-              :when (and (plain layer) (< begin end)
+              :when (and (plain layer) (< begin end) (not (keep-want [begin end]))
                          ;; a token over a sentence follows it (REV3)
                          (or (= :s layer) (not (#{:a :ss} layer))
                              (not-any? #(and (= :s (:token/layer %))
@@ -283,7 +313,8 @@
               cov (covering t)
               ;; no letter of it left, and none typed inside it
               must-go (and (every? #(ws? (aget o %)) kept)
-                           (every? (fn [g] (every? ws? (cps (:value g)))) cov))
+                           (every? (fn [g] (every? ws? (cps (:value g)))) cov)
+                           (not (holds-keep? t)))
               now (by-id id)]
           (cond
             (and must-go (not (gone id))) (bad! id " kept with none of its text")
@@ -309,7 +340,7 @@
               (when (and (ws? (aget nw (dec ne))) (not (ws? (aget o (dec end)))))
                 (bad! id " ends on whitespace " (pr-str (text-of now))))
               ;; a new letter in a word is inside it, joined to it, or typed over it
-              (when (= layer wl)
+              (when (and (= layer wl) (not (holds-keep? t)))
                 (let [letters (filterv #(not (ws? (aget o %))) kept)
                       hull (when (seq letters) [(aget newpos (first letters)) (inc (aget newpos (peek letters)))])
                       kept-new (set (map #(aget newpos %) kept))]
@@ -357,7 +388,14 @@
               (when (or (reach dec) (reach inc))
                 (bad! "new letter at " p " joined to a word is in none " (pr-str new-body)))))))
       ;; morphemes and child tokens with their word
-      (doseq [{:token/keys [id layer]} tokens :when (#{:m :x} layer)]
+      (doseq [{:token/keys [id]} tokens :when (= :ms (first id))]
+        (let [w [:w (second id)] m* (by-id id) w* (by-id w)]
+          (cond
+            (and (gone w) (not (gone id))) (bad! id " outlived its word")
+            (and m* w* (not (gone id)) (not (gone w))
+                 (not (and (<= (:token/begin w*) (:token/begin m*)) (<= (:token/end m*) (:token/end w*)))))
+            (bad! id " left its word"))))
+      (doseq [{:token/keys [id layer]} tokens :when (and (#{:m :x} layer) (not= :ms (first id)))]
         (let [w [:w (second id)]]
           (cond
             (not= (boolean (gone id)) (boolean (gone w))) (bad! id " and its word part")
@@ -365,8 +403,9 @@
                  (not= ((juxt :token/begin :token/end) (by-id id)) ((juxt :token/begin :token/end) (by-id w))))
             (bad! id " off its word"))))
       ;; no two tokens of a layer without overlaps overlap, nor two sentences
-      (doseq [layer [:w :a :s]]
-        (let [ts (sort-by (juxt :token/begin :token/end) (filter #(and (= layer (:token/layer %)) (not (gone (:token/id %))))
+      (doseq [layer [:w :a :s :ms]]
+        (let [ts (sort-by (juxt :token/begin :token/end) (filter #(and (if (= :ms layer) (= :ms (first (:token/id %))) (= layer (:token/layer %)))
+                                                                       (not (gone (:token/id %))))
                                                                  (:tokens result)))]
           (doseq [[x y] (partition 2 1 ts)]
             (when (> (:token/end x) (:token/begin y))
@@ -406,6 +445,14 @@
    :script [{:id :s :overlap-mode "partitioning"}
             {:id :w :overlap-mode "non-overlapping"}
             {:id :m :overlap-mode "any" :parent :w}]
+   ;; a script's words on a root layer with morphemes on a layer that forbids
+   ;; overlap under them: the words decide
+   :rooted [{:id :s :overlap-mode "partitioning"}
+            {:id :w :overlap-mode "non-overlapping"}
+            {:id :m :overlap-mode "non-overlapping" :parent :w}]
+   ;; one sentence of words, as the whole-body intent judge has them
+   :intent [{:id :s :overlap-mode "partitioning"}
+            {:id :w :overlap-mode "non-overlapping" :parent :s}]
    ;; and with no sentences, words on a layer that allows overlap
    :script-no-sentences [{:id :w :overlap-mode "any"}
                          {:id :m :overlap-mode "any" :parent :w}]})
@@ -424,14 +471,14 @@
   ([old tokens ops] (run old tokens ops :apps false))
   ([old tokens ops layout split?]
    (let [{:keys [partitioning deciders] :as r} (roles layout split?)]
-     (ta/plain-edits old tokens ops partitioning deciders (select-keys r [:split-on-space :children :exclusive])))))
+     (ta/plain-edits old tokens ops partitioning deciders (select-keys r [:split-on-space :children :exclusive :head-layers])))))
 
 (defn- save
   "What a whole-body save of `new` does, the layers as `layout` has them."
   ([old new tokens] (save old new tokens :apps false))
   ([old new tokens layout split?]
    (let [{:keys [partitioning deciders] :as r} (roles layout split?)]
-     (ta/plain-body old new tokens partitioning deciders (select-keys r [:split-on-space :children :exclusive])))))
+     (ta/plain-body old new tokens partitioning deciders (select-keys r [:split-on-space :children :exclusive :head-layers])))))
 
 (def ^:private nbsp "\u00a0")
 
@@ -455,7 +502,12 @@
    ;; a script's layers with no app config (a plain API client)
    :script {:carets 3 :spaced 0.3 :glue 0.1 :layout :script}
    :script-several-carets {:carets 4 :spaced 0.2 :reach 30 :layout :script}
-   :script-no-sentences {:carets 3 :spaced 0.3 :glue 0.2 :layout :script-no-sentences}})
+   :script-no-sentences {:carets 3 :spaced 0.3 :glue 0.2 :layout :script-no-sentences}
+   ;; morphemes inside their words (a script's analysis), words typed over
+   ;; as words of their own
+   :sub-word-morphemes {:carets 3 :spaced 0.2 :sub 0.7 :layout :script :typed ["Q R" "XZ XZ" "XZ XZ XZ" "Q" "XZ" " " "Q " "ab"]}
+   :rooted {:carets 3 :spaced 0.2 :sub 1.0 :one-morph true :glue 0.1 :layout :rooted}
+   :words-typed-over {:carets 2 :spaced 0.2 :reach 40 :typed ["Q R" "XZ XZ" "XZ XZ XZ" "Q R S T" "a b" "Q"]}})
 
 (def ^:private cases-per-config 1500)
 
@@ -477,7 +529,7 @@
             (let [r (run body tokens ops layout false)
                   ps (problems body tokens server r)]
               (when (seq ps) (swap! fails conj {:config cname :seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))
-          (let [bgaps (ta/plain-body-gaps body new-body tokens #{:s})
+          (let [bgaps (ta/plain-body-gaps body new-body tokens (:partitioning (roles layout false)) (:deciders (roles layout false)))
                 r (save body new-body tokens layout false)
                 ps (problems body tokens bgaps r)]
             (when (seq ps) (swap! fails conj {:config cname :seed seed :reading :whole-body :old body :gaps bgaps :problems (take 3 ps)})))))
@@ -655,7 +707,7 @@
                                            [:whole-body
                                             (save body new-body tokens :apps false)
                                             (save body new-body tokens :apps true)
-                                            (ta/plain-body-gaps body new-body tokens #{:s})]]]
+                                            (ta/plain-body-gaps body new-body tokens #{:s} #{:w})]]]
           (let [ps (split-problems body tokens sgaps plain split)]
             (when (seq ps) (swap! fails conj {:seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))))
     (is (empty? @fails) (str (count @fails) " " (pr-str (take 3 @fails))))))
@@ -830,3 +882,94 @@
                            (conj "a morpheme off its word"))]
             (when (seq ps) (swap! fails conj {:seed seed :old body :op op :problems (take 3 ps)}))))))
     (is (empty? @fails) (str (count @fails) " " (pr-str (take 3 @fails))))))
+
+;; ---------------------------------------------------------------- whole-body saves by intent
+
+;; The judge above takes a whole-body save as the gaps its own diff gave,
+;; which leaves out where the diff can stand in several places (`the a ab`
+;; to `the aX`). This one knows what was meant: words of a script's layers,
+;; one respelled with neighbours deleted, two respelled, or a run deleted,
+;; saved as a whole body, and each word's token must be on the word it was
+;; made for, or gone when its word was deleted (REV-one-rule F2, F5).
+
+(defn- intent-save
+  "The problems of saving `body` as `new` where old word i was meant to be
+  new word `(intent i)` (nil: deleted). Words are the runs between spaces,
+  on a word layer under one sentence."
+  [^String body ^String new intent]
+  (let [spans (fn [^String s] (let [m (re-matcher #"[^ .]+" s)] (loop [out []] (if (.find m) (recur (conj out [(.start m) (.end m)])) out))))
+        old-w (spans body)
+        new-w (spans new)
+        tokens (into [{:token/id :s :token/layer :s :token/begin 0 :token/end (cp/cp-count body)}]
+                     (map-indexed (fn [i [b e]] {:token/id i :token/layer :w :token/begin b :token/end e}) old-w))
+        r (save body new tokens :intent false)
+        gone (set (:deleted r))
+        got (into {} (comp (remove #(gone (:token/id %))) (map (juxt :token/id (juxt :token/begin :token/end)))) (:tokens r))]
+    (into [] (keep (fn [i]
+                     (let [want (some-> (intent i) new-w)
+                           g (got i)]
+                       (when (not= want g)
+                         (str (apply subs body (old-w i)) " is on " (pr-str (some->> g (apply subs new)))
+                              ", want " (pr-str (some->> want (apply subs new))))))))
+          (range (count old-w)))))
+
+(deftest a-whole-body-save-keeps-each-word-on-the-word-meant
+  ;; the reviewer's cases the rules before the plain rule got right and it
+  ;; got wrong (REV-one-rule, intent oracle, seed 31)
+  (doseq [[body new intent] [["tcad b abb d bc." "atbZ d bc." [nil nil 0 1 2]]
+                             ["ad ctb td a ctc." "ad ctb ta d ctc." [0 1 2 3 4]]
+                             ["atc cda aaat bdd dtcb t." "atc dda dtcb t." [0 1 nil nil 2 3]]
+                             ["bac bbd ata ctc." "bac bba Yca ctc." [0 1 2 3]]
+                             ["dbdt tb bd dtt." "dbdt tZt." [0 nil nil 1]]
+                             ["dcb dbad cdd cc tbtc adba ad." "dcb dbad cdd tdba ad." [0 1 2 nil nil 3 4]]
+                             ["ata bcac dbbb tctb d a." "aca tctb d a." [0 nil nil 1 2 3]]
+                             ["cb b cdb tddb c cbb bcb." "cb b cdb tddb c cXc." [0 1 2 3 4 5 nil]]
+                             ["dtb a at da cdc c." "XZa d at da cdc c." [0 1 2 3 4 5]]
+                             ["dd tb ctc c." "dd ttc c." [0 nil 1 2]]
+                             ["b d d tdca bcb." "b ddca bcb." [0 nil nil 1 2]]
+                             ;; F2
+                             ["the a ab." "the aX." [0 nil 1]]]]
+    (is (empty? (intent-save body new intent)) (str (pr-str body) " -> " (pr-str new) " " (pr-str (intent-save body new intent))))))
+
+(def ^:private intent-ceiling
+  "Cases of `intent-cases` the save reads otherwise than meant, at most. In
+  each the text cannot tell: which of two words was deleted and which
+  respelled when they share no letter with the new word (`dc d` to `Z`), or
+  whether `c d` saved as `cX` respelled `c` or typed `d` over as `X`. 62 of
+  400 when pinned (2026-10-01). On the reviewer's 200 the rules before the
+  plain rule read 78 otherwise, the plain rule before REV-one-rule 37."
+  65)
+
+(def ^:private intent-cases 400)
+
+(deftest a-whole-body-save-reads-word-edits-as-meant
+  (let [rng (java.util.Random. 31)
+        pick #(nth % (.nextInt rng (count %)))
+        word (fn [] (apply str (repeatedly (inc (.nextInt rng 4)) #(pick "abcdt"))))
+        respell (fn [w] (let [nw (str (apply str (map #(if (< (.nextDouble rng) 0.5) % (pick "abcdtXYZ")) w))
+                                      (when (< (.nextDouble rng) 0.3) (pick "XYZ")))]
+                          (if (= nw w) (str w "X") nw)))
+        fails (atom [])]
+    (dotimes [c intent-cases]
+      (let [words (vec (repeatedly (+ 3 (.nextInt rng 5)) word))
+            n (count words)
+            body (str (str/join " " words) ".")
+            i (.nextInt rng n)
+            new-words (case (pick [:respell+del :respell+del :two-respell :del-run])
+                        :respell+del (let [k (inc (.nextInt rng 2))
+                                           dels (if (.nextBoolean rng) (range (- i k) i) (range (inc i) (+ i 1 k)))]
+                                       (reduce (fn [v j] (if (< -1 j n) (assoc v j nil) v))
+                                               (assoc words i (respell (words i))) dels))
+                        :two-respell (let [i (if (= i (dec n)) (dec i) i)]
+                                       (-> words (update i respell) (update (inc i) respell)))
+                        :del-run (reduce #(assoc %1 %2 nil) words (range i (min n (+ i 1 (.nextInt rng 3))))))
+            kept (keep-indexed (fn [j w] (when w j)) new-words)]
+        (when (seq kept)
+          (let [new (str (str/join " " (keep identity new-words)) ".")
+                intent (mapv (fn [j] (when (new-words j) (count (filter #(< % j) kept)))) (range n))
+                ps (intent-save body new intent)]
+            (when (seq ps) (swap! fails conj [body new ps]))))))
+    (when (System/getenv "PLAIN_ORACLE_DEBUG")
+      (println "intent fails" (count @fails))
+      (doseq [f (take 40 @fails)] (println (pr-str f))))
+    (is (<= (count @fails) intent-ceiling) (str (count @fails) " " (pr-str (take 5 @fails))))))
