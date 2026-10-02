@@ -113,7 +113,10 @@ describe('ensureLayerConstraints', () => {
   });
 
   it('repairs before it declares, in one operation of kind repair', async () => {
-    const c = fakeClient({ 'repairConstraints:L': { repaired: [{ document: 'd', deleted: 1 }] } });
+    const c = fakeClient({
+      'checkConstraints:L': { violations: [{ constraint: 'single-span' }], violationCount: 1 },
+      'repairConstraints:L': { repaired: [{ document: 'd', deleted: 1 }] },
+    });
     const out = await ensureLayerConstraints(
       c,
       [
@@ -125,16 +128,18 @@ describe('ensureLayerConstraints', () => {
     expect(out).toEqual({ changed: true, repaired: true, pending: [] });
     expect(c.groups).toEqual([['Set up layer rules', { kind: 'repair' }]]);
     expect(c.calls.map((x) => x[0])).toEqual([
+      'checkConstraints',
       'batch',
       'repairConstraints',
       'batch',
       'setConstraints',
       'setConstraints',
     ]);
-    // Only the list with a remediable type is repaired, and the declaration
-    // names what it read.
-    expect(c.calls[1][1]).toBe('L');
-    expect(c.calls[3]).toEqual([
+    // Only the rules with a remedy are checked and repaired, and the
+    // declaration names what it read.
+    expect(c.calls[0]).toEqual(['checkConstraints', 'L', [{ type: 'single-span' }]]);
+    expect(c.calls[2][1]).toBe('L');
+    expect(c.calls[4]).toEqual([
       'setConstraints',
       'L',
       'igt',
@@ -142,6 +147,20 @@ describe('ensureLayerConstraints', () => {
       undefined,
       { expected: null },
     ]);
+  });
+
+  // H9-FIRST-OPEN-3: the repair holds the write lock over the whole layer, and
+  // every real project was clean.
+  it('declares clean data with no repair', async () => {
+    const c = fakeClient({ 'checkConstraints:L': { violations: [], violationCount: 0 } });
+    const out = await ensureLayerConstraints(
+      c,
+      [entry('L', [{ type: 'single-span' }, { type: 'value-set', values: ['n'] }])],
+      { canManage: true },
+    );
+    expect(out).toEqual({ changed: true, repaired: false, pending: [] });
+    expect(c.calls.map((x) => x[0])).toEqual(['checkConstraints', 'setConstraints']);
+    expect(c.calls[0][2]).toEqual([{ type: 'single-span' }]);
   });
 
   it('leaves a layer the data breaks undeclared, under pending, and declares the rest', async () => {

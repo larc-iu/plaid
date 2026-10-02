@@ -73,8 +73,9 @@ const refusal = (count) =>
 
 // The recording client with the relation layers' constraint methods, in a
 // batch as well as on their own. `declare` answers setConstraints: an error
-// to throw, or nothing for a landed declaration.
-function load({ user = MAINTAINER, stored, declare = null } = {}) {
+// to throw, or nothing for a landed declaration. `broken` is whether a check
+// finds stored relations the rule would change.
+function load({ user = MAINTAINER, stored, declare = null, broken = true } = {}) {
   const raw = rawFromPlan(planImport(parseUmrFile(TEXT).sentences, []));
   const layer = relationLayerOf(raw);
   layer.name = 'UMR relations';
@@ -85,6 +86,12 @@ function load({ user = MAINTAINER, stored, declare = null } = {}) {
       calls.push({ name: 'relationLayers.setConstraints', args });
       if (declare) throw declare;
       return { constraints: { umr: args[2] } };
+    },
+    checkConstraints: async (...args) => {
+      calls.push({ name: 'relationLayers.checkConstraints', args });
+      return broken
+        ? { violations: [{ constraint: 'same-ancestor' }], violationCount: 1 }
+        : { violations: [], violationCount: 0 };
     },
     repairConstraints: async (...args) => {
       calls.push({ name: 'relationLayers.repairConstraints', args });
@@ -144,10 +151,15 @@ test('an open by a maintainer repairs, then declares the rule on UMR relations o
   const made = constraintCalls(calls);
   assert.deepEqual(
     made.map((c) => c.name),
-    ['relationLayers.repairConstraints', 'relationLayers.setConstraints'],
+    [
+      'relationLayers.checkConstraints',
+      'relationLayers.repairConstraints',
+      'relationLayers.setConstraints',
+    ],
   );
   assert.deepEqual(made[0].args, [layerId, ruleFor(raw)]);
-  assert.deepEqual(made[1].args, [layerId, 'umr', ruleFor(raw), undefined, { expected: null }]);
+  assert.deepEqual(made[1].args, [layerId, ruleFor(raw)]);
+  assert.deepEqual(made[2].args, [layerId, 'umr', ruleFor(raw), undefined, { expected: null }]);
   assert.deepEqual(result, { findings: [], rulesDeclared: true });
   assert.equal(reloads(), 1, 'read again after core repaired the project');
   assert.match(doc.describeReconcile(result), /set up the rule that a relation stays inside/);
@@ -155,6 +167,17 @@ test('an open by a maintainer repairs, then declares the rule on UMR relations o
     calls.some((c) => c.name === 'operation' && c.args[0] === 'Set up layer rules'),
     'the declaration is one labelled operation',
   );
+});
+
+// H9-FIRST-OPEN-3: a repair holds the write lock over the whole layer.
+test('an open by a maintainer declares the rule on clean data with no repair', async () => {
+  const { doc, calls } = load({ broken: false });
+  const result = await doc._reconcile();
+  assert.deepEqual(
+    constraintCalls(calls).map((c) => c.name),
+    ['relationLayers.checkConstraints', 'relationLayers.setConstraints'],
+  );
+  assert.deepEqual(result, { findings: [], rulesDeclared: true });
 });
 
 test('an open by a writer who is not a maintainer repairs the document opened and declares nothing', async () => {

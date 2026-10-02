@@ -186,8 +186,21 @@ describe('reconcileOnOpen and the layer rules', () => {
     expect(rules.every((c) => c.args[3]?.document === doc.id)).toBe(true);
   });
 
-  it('repairs, then declares the rules a maintainer opens without', async () => {
+  // H9-FIRST-OPEN-3: clean data is declared with no repair, which held the
+  // write lock over every layer of the project.
+  it('declares the rules a maintainer opens without and repairs nothing on clean data', async () => {
     const client = makeFakeClient();
+    const doc = maintainerDoc(client);
+    const res = await doc.reconcileOnOpen();
+    const k = client.calls.map((c) => c.kind);
+    expect(k.some((x) => x.endsWith('.checkConstraints'))).toBe(true);
+    expect(k.some((x) => x.endsWith('.repairConstraints'))).toBe(false);
+    expect(k).toContain('tokenLayers.setConstraints');
+    expect(res.rulesDeclared).toBe(true);
+  });
+
+  it('repairs, then declares the rules a maintainer opens without', async () => {
+    const client = makeFakeClient({ broken: { tokenLayers: true, spanLayers: true } });
     const doc = maintainerDoc(client);
     const res = await doc.reconcileOnOpen();
     const k = client.calls.map((c) => c.kind);
@@ -212,7 +225,10 @@ describe('reconcileOnOpen and the layer rules', () => {
   });
 
   it('reads the document again when the repair changed it', async () => {
-    const client = makeFakeClient({ repaired: { spanLayers: [{ document: 'd', deleted: 1 }] } });
+    const client = makeFakeClient({
+      broken: { spanLayers: true },
+      repaired: { spanLayers: [{ document: 'd', deleted: 1 }] },
+    });
     const doc = maintainerDoc(client);
     let reloads = 0;
     doc._reload = async () => {

@@ -142,6 +142,11 @@ test("a maintainer's open repairs, then declares UD's rules, a writer's repairs 
     const bundle = (name) => ({
       setConfig: async () => {},
       setConstraints: async (...a) => calls.push([`${name}.setConstraints`, ...a]),
+      // The stored data breaks a rule with a remedy, so the open repairs.
+      checkConstraints: async (...a) => {
+        calls.push([`${name}.checkConstraints`, ...a]);
+        return { violations: [{ constraint: a[1][0]?.type }], violationCount: 1 };
+      },
       repairConstraints: async (...a) => {
         calls.push([`${name}.repairConstraints`, ...a]);
         return { repaired: [] };

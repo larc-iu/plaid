@@ -267,14 +267,19 @@ export function makeFakeClient(opts = {}) {
         delete: op('texts.delete', () => ({})),
       },
       // Layer config and layer rules (plaid-core's layer constraints). A
-      // repair answers that it changed nothing, as on a project whose data
-      // keeps every rule.
+      // check finds nothing and a repair changes nothing, as on a project
+      // whose data keeps every rule, unless `opts.broken` names the bundle.
       ...Object.fromEntries(
         ['tokenLayers', 'spanLayers', 'relationLayers'].map((bundle) => [
           bundle,
           {
             setConfig: op(`${bundle}.setConfig`, () => ({})),
             setConstraints: op(`${bundle}.setConstraints`, () => ({ constraints: {} })),
+            checkConstraints: op(`${bundle}.checkConstraints`, (id, constraints) =>
+              opts.broken?.[bundle]
+                ? { violations: [{ constraint: constraints[0]?.type }], violationCount: 1 }
+                : { violations: [], violationCount: 0 },
+            ),
             repairConstraints: op(`${bundle}.repairConstraints`, () => ({
               repaired: opts.repaired?.[bundle] ?? [],
               violations: [],

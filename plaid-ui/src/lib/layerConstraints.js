@@ -1,8 +1,9 @@
 // The declaration of an app's layer rules (plaid-core's layer constraints),
 // shared by every app. Each app builds the list it wants for each layer it
 // owns from its layer info (a pure `wantedConstraints`), and a maintainer's
-// open hands it here: a layer whose stored list differs is repaired first
-// (the same deletions the old open-time heals made, once, project-wide), then
+// open hands it here: a layer whose stored list differs is checked, repaired
+// first when the check finds data its rules with a remedy would change (the
+// same deletions the old open-time heals made, once, project-wide), then
 // declared. A rule the stored data still breaks (one with no remedy: two
 // heads on a word, a cycle, an off-list value, or a repair a lock held off)
 // is refused by the server. The layer is then declared with the rest of its
@@ -60,17 +61,25 @@ const stillOut = (entry) => {
 
 /**
  * What a maintainer's open does for one entry: the list to declare, the list
- * to repair first, and the rules left pending, read from a check of the
- * rules still out that have no remedy.
+ * to repair first, and the rules left pending. Reads only: the rules with a
+ * remedy are repaired only when a check finds the stored data breaks them
+ * (H9-FIRST-OPEN-3: a repair holds the write lock for the whole layer, and
+ * clean data is the rule). The rules an earlier open left out that have no
+ * remedy are checked for `pending`.
  */
 const planOf = async (client, entry) => {
   const out = stillOut(entry);
-  if (!out) return { entry, target: entry.constraints, repair: entry.constraints, pending: null };
+  const check = (rules) => client[BUNDLE[entry.kind]].checkConstraints(entry.layerId, rules);
+  const fixable = (out ?? entry.constraints).filter((c) => REMEDIABLE.has(c.type));
+  // Every rule with a remedy is repaired when any is broken: the check lists
+  // at most 100 violations, so their types do not say which are.
+  const repair = fixable.length && countOf(await check(fixable)) > 0 ? fixable : [];
+  if (!out) return { entry, target: entry.constraints, repair, pending: null };
   const unfixable = out.filter((c) => !REMEDIABLE.has(c.type));
   let broken = [];
   let count = 0;
   if (unfixable.length) {
-    const answer = await client[BUNDLE[entry.kind]].checkConstraints(entry.layerId, unfixable);
+    const answer = await check(unfixable);
     count = countOf(answer);
     broken = typesOf(answer?.violations);
     if (count && !broken.length) broken = unfixable.map((c) => c.type);
@@ -79,7 +88,7 @@ const planOf = async (client, entry) => {
   return {
     entry,
     target: entry.constraints.filter(keep),
-    repair: out.filter(keep),
+    repair,
     pending: broken.length ? { constraints: broken, violationCount: count } : null,
   };
 };
@@ -119,8 +128,9 @@ export async function ensureLayerConstraints(
   const differs = wanted.filter((w) => !sameConstraints(w.stored, w.constraints));
   if (!differs.length) return result;
 
-  // Reads only: the rules an earlier open left out are checked before
-  // anything is written, so a layer the data still breaks costs one check.
+  // Reads only: each layer is checked before anything is written, so clean
+  // data is declared with no repair, and a layer the data still breaks costs
+  // its checks.
   const plans = [];
   for (const w of differs) plans.push(await planOf(client, w));
   const pendingOf = new Map();
@@ -131,7 +141,7 @@ export async function ensureLayerConstraints(
     await client.withOperation(
       'Set up layer rules',
       async () => {
-        const toRepair = toDeclare.filter((p) => p.repair.some((c) => REMEDIABLE.has(c.type)));
+        const toRepair = toDeclare.filter((p) => p.repair.length);
         if (toRepair.length) {
           const answers = await client.batched((b) =>
             toRepair.forEach((p) =>
