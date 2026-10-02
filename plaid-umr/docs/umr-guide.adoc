@@ -338,7 +338,9 @@ Escape cancels.
 **Text** in a sentence's header shows the sentence's graph as PENMAN in place of the canvas.
 Every node of the sentence is in the text: the root's graph first, then each part the root does not reach as a graph of its own below it.
 The text is parsed as you type, and the first problem shows under it.
+Tab indents by four spaces, every line of a selection, and Shift+Tab takes up to four off.
 Ctrl+Enter (Cmd+Enter) applies, as **Apply** does.
+Escape cancels, as **Cancel** does.
 **Apply** compares the text with the stored graph, node by variable and edge by relation and target, and writes the difference as one operation: a node that is new in the text is made unaligned (anchor it on the canvas afterwards), a node missing from the text is deleted with what only it reached, a changed root moves the root.
 An empty text deletes every node of the sentence.
 Apply writes the whole text at once: if it fails, nothing of it is applied.

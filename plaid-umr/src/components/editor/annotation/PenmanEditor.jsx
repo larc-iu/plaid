@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@ui/components/ui/button';
 import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
+import { chordText } from '@ui/lib/chords.js';
 import { parsePenman } from '../../../domain/format/penman.js';
 
 // The text mode of one sentence: its graph as PENMAN in a textarea, applied
@@ -72,16 +73,19 @@ export function PenmanEditor({
     ref.current?.focus();
   }, []);
 
-  // Tab indents by four, as the release files are indented.
+  // Tab indents by four, as the release files are indented, and Shift+Tab
+  // takes up to four back off. A selection over several lines is indented
+  // or outdented line by line. Escape and Ctrl+Enter are the keys out.
   const onKeyDown = (e) => {
     e.stopPropagation();
     if (e.key === 'Tab') {
       e.preventDefault();
       const el = e.target;
       const { selectionStart: a, selectionEnd: b } = el;
-      const next = `${text.slice(0, a)}    ${text.slice(b)}`;
-      setText(next);
-      requestAnimationFrame(() => el.setSelectionRange(a + 4, a + 4));
+      const edit = shiftLines(text, a, b, e.shiftKey ? -1 : 1);
+      if (!edit) return;
+      setText(edit.text);
+      requestAnimationFrame(() => el.setSelectionRange(edit.start, edit.end));
     } else if (e.key === 'Escape') {
       e.preventDefault();
       onCancel(dirty);
@@ -128,9 +132,47 @@ export function PenmanEditor({
         >
           Apply
         </Button>
+        <span className="text-xs text-muted-foreground">
+          {chordText('Mod+Enter', { words: true })}
+        </span>
       </div>
     </div>
   );
+}
+
+const INDENT = '    ';
+
+/**
+ * Tab (`step` 1) or Shift+Tab (-1) at a selection from `a` to `b`: the new
+ * text and selection, or null when nothing changes. Tab with the caret or a
+ * selection inside one line puts four spaces in its place. Over several
+ * lines, and always for Shift+Tab, each line touched is indented by four or
+ * has up to four leading spaces taken off.
+ */
+function shiftLines(text, a, b, step) {
+  const lineStart = text.lastIndexOf('\n', a - 1) + 1;
+  // A selection ending at the start of a line leaves that line alone.
+  const end = b > a && text[b - 1] === '\n' ? b - 1 : b;
+  const block = text.slice(lineStart, end);
+  if (step > 0 && !block.slice(a - lineStart).includes('\n')) {
+    const next = `${text.slice(0, a)}${INDENT}${text.slice(b)}`;
+    return { text: next, start: a + INDENT.length, end: a + INDENT.length };
+  }
+  const lines = block.split('\n');
+  const taken = lines.map((line) => (step > 0 ? 0 : /^ {0,4}/.exec(line)[0].length));
+  const shifted = lines.map((line, i) => (step > 0 ? INDENT + line : line.slice(taken[i])));
+  const total = taken.reduce((x, y) => x + y, 0);
+  if (step < 0 && !total) return null;
+  const next = `${text.slice(0, lineStart)}${shifted.join('\n')}${text.slice(end)}`;
+  if (step > 0) {
+    return {
+      text: next,
+      start: a + INDENT.length,
+      end: b + INDENT.length * lines.length,
+    };
+  }
+  const start = Math.max(lineStart, a - taken[0]);
+  return { text: next, start, end: Math.max(start, b - total) };
 }
 
 // What Apply deletes that the text does not show, as a sentence: " It deletes
