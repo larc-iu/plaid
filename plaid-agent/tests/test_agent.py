@@ -62,7 +62,8 @@ def test_a_rate_limit_or_a_provider_briefly_down_at_startup_is_waited_out(monkey
     loop's. Without them one 429 or 503 while an assistant starts made it
     exit."""
     monkeypatch.setattr(agent.time, 'sleep', lambda s: None)
-    monkeypatch.setattr(agent.random, 'uniform', lambda a, b: 0.0)
+    from plaid_client.workflows import llm
+    monkeypatch.setattr(llm.random, 'uniform', lambda a, b: 0.0)
     replies = iter([agent.litellm.RateLimitError('slow down', model='x', llm_provider='openai'),
                     agent.litellm.ServiceUnavailableError('loading', model='x', llm_provider='openai'),
                     SimpleNamespace(choices=[SimpleNamespace()])])

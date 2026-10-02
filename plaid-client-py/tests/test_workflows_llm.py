@@ -264,3 +264,33 @@ def test_a_run_stops_after_two_sentences_in_a_row_get_no_answer(monkeypatch):
     assert run.stop_line(1, verb='glossed').endswith('1 sentence was not glossed.')
     # The last two sentences unanswered: nothing was left, so nothing stopped.
     assert run.stop_line(0) == ''
+
+
+def test_one_retry_loop_decides_for_every_caller_of_a_model(no_sleep):
+    """`retrying` is the loop the model services and the assistants share
+    (R1-DEBT-CORE-15): the assistants had two copies of it, detecting a
+    timeout two different ways."""
+    fake = types.SimpleNamespace(RateLimitError=_RateLimited, Timeout=_Timeout)
+    replies = [_RateLimited('slow'), _Timeout('late'), 'done']
+    retried = []
+
+    def call():
+        r = replies.pop(0)
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+    assert llm.retrying(call, model='m', litellm=fake, on_retry=lambda: retried.append(1)) == 'done'
+    assert len(retried) == 2 and len(no_sleep) == 2
+    # A caller that tries no timeout again sees the first one as it is.
+    with pytest.raises(_Timeout):
+        llm.retrying(lambda: (_ for _ in ()).throw(_Timeout('late')), model='m', litellm=fake,
+                     timeout_retries=0)
+    # Anything else is never tried again.
+    calls = []
+    with pytest.raises(ValueError):
+        llm.retrying(lambda: calls.append(1) or (_ for _ in ()).throw(ValueError('bad request')),
+                     model='m', litellm=fake)
+    assert len(calls) == 1
+    assert llm.is_timeout(_Timeout('late'), fake) and not llm.is_timeout(_RateLimited('x'), fake)
+    assert llm.transient_errors(fake) == (_RateLimited,)

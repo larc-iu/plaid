@@ -13,6 +13,7 @@ import pytest
 
 from plaid_agent.core import agent
 from plaid_agent.core import service as service_mod
+from plaid_client.workflows import llm
 from plaid_agent.core.agent import (EMPTY_REPLY, ModelConfig, Toolkit, TurnFailed, model_failure_line,
                                     run_turn)
 from plaid_agent.core.trace import PLAN, READ, Tracer, summarize_steps, trace_step
@@ -153,7 +154,7 @@ def test_every_model_call_carries_the_operators_timeout(monkeypatch):
 
 def _no_waiting(monkeypatch):
     monkeypatch.setattr(agent.time, 'sleep', lambda s: None)
-    monkeypatch.setattr(agent.random, 'uniform', lambda a, b: 0.0)
+    monkeypatch.setattr(llm.random, 'uniform', lambda a, b: 0.0)
 
 
 def test_a_timed_out_call_is_tried_once_more_by_the_loop_and_no_more(monkeypatch):

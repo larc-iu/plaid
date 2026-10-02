@@ -12,21 +12,23 @@ one read without re-reading.
 """
 
 import json
-import random
 import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
 import litellm
-from plaid_client.workflows.llm import RETRIES, RETRY_BASE_S, TIMEOUT_RETRIES
+# What passes, what a timeout is and how a call is tried again are the model
+# services' own (one loop for every caller of a model). RETRIES and
+# TIMEOUT_RETRIES are imported for the docstrings and tests that name them.
+from plaid_client.workflows.llm import RETRIES, TIMEOUT_RETRIES, is_timeout, retrying, transient_errors  # noqa: F401
 
 from .trace import Tracer, summarize_steps, trace_step
 
 try:  # litellm raises the openai SDK's exception classes, its own included
-    from openai import APITimeoutError as _ProviderTimeout, OpenAIError as _ProviderError
+    from openai import OpenAIError as _ProviderError
 except ImportError:  # pragma: no cover - litellm depends on openai
-    _ProviderTimeout = _ProviderError = ()
+    _ProviderError = ()
 
 litellm.drop_params = True  # providers that lack a param get it dropped, not an error
 
@@ -135,40 +137,23 @@ def ping_model(cfg: ModelConfig, timeout: float = PING_TIMEOUT_S) -> None:
     wait: the call sends ``max_retries=0``, so without this one 429 or 503
     while the assistant starts would stop it.
     """
-    transient = _transient_errors()
-    attempt = 0
-    while True:
-        try:
-            resp = litellm.completion(**{**_provider_kwargs(cfg), 'timeout': timeout},
-                                      max_tokens=PING_MAX_TOKENS,
-                                      messages=[{'role': 'user', 'content': 'ping'}])
-            break
-        except litellm.Timeout as e:
+    try:
+        resp = retrying(lambda: litellm.completion(**{**_provider_kwargs(cfg), 'timeout': timeout},
+                                                   max_tokens=PING_MAX_TOKENS,
+                                                   messages=[{'role': 'user', 'content': 'ping'}]),
+                        model=cfg.model, timeout=timeout, timeout_retries=0, litellm=litellm)
+    except Exception as e:
+        if is_timeout(e, litellm):
             raise ModelTooSlow(str(e)) from e
-        except Exception as e:
-            if not (transient and isinstance(e, transient)) or attempt >= RETRIES:
-                raise
-            delay = random.uniform(0, RETRY_BASE_S * (2 ** attempt))
-            attempt += 1
-            print(f'{cfg.model} failed ({" ".join(str(e).split())[:200]}); '
-                  f'retrying in {delay:.1f}s ({attempt} of {RETRIES})')
-            time.sleep(delay)
+        raise
     if not getattr(resp, 'choices', None):
         raise RuntimeError('the provider answered without a completion')
 
 
-def _transient_errors() -> tuple:
-    """The provider failures that pass: a rate limit, a provider briefly
-    down or unreachable. The same list the model services retry."""
-    return tuple(e for e in (getattr(litellm, n, None) for n in
-                             ('RateLimitError', 'ServiceUnavailableError', 'InternalServerError',
-                              'APIConnectionError'))
-                 if isinstance(e, type) and issubclass(e, Exception))
-
-
 def _complete(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str], None],
               cancelled: Callable[[], bool] = lambda: False):
-    """One model call, tried again the way the model services try theirs.
+    """One model call, tried again as the model services try theirs
+    (``plaid_client.workflows.llm.retrying``).
 
     A call that passes the operator's deadline is tried :data:`TIMEOUT_RETRIES`
     more times and no more: a model that did not answer in the whole window is
@@ -177,38 +162,18 @@ def _complete(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[str],
     a jittered wait. ``cancelled`` is read while the call waits, before every
     retry and during the wait, and a stop ends the call with
     :class:`TurnCancelled`."""
-    transient = _transient_errors()
-    attempt = timeouts = 0
-    while True:
-        try:
-            return _watched(cfg, kwargs, on_text, cancelled)
-        except Exception as e:
-            if _ProviderTimeout and isinstance(e, _ProviderTimeout):
-                timeouts += 1
-                if timeouts > TIMEOUT_RETRIES:
-                    raise
-                delay = 0.0
-                print(f'{cfg.model} did not answer within {cfg.timeout:g} seconds; trying once more'
-                      if cfg.timeout else f'{cfg.model} did not answer in time; trying once more')
-            elif transient and isinstance(e, transient):
-                if attempt >= RETRIES:
-                    raise
-                delay = random.uniform(0, RETRY_BASE_S * (2 ** attempt))
-                attempt += 1
-                # The operator's log, never the reader's.
-                print(f'{cfg.model} failed ({" ".join(str(e).split())[:200]}); '
-                      f'retrying in {delay:.1f}s ({attempt} of {RETRIES})')
-            else:
-                raise
+    def wait(delay: float) -> None:
         end = time.monotonic() + delay
         while True:
             if cancelled():
                 raise TurnCancelled()
             left = end - time.monotonic()
             if left <= 0:
-                break
+                return
             time.sleep(min(0.5, left))
-        on_text('')
+
+    return retrying(lambda: _watched(cfg, kwargs, on_text, cancelled), model=cfg.model,
+                    timeout=cfg.timeout, sleep=wait, on_retry=lambda: on_text(''), litellm=litellm)
 
 
 #: How often a waiting model call looks for a stop, in seconds.
@@ -306,8 +271,7 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
         # A timeout, a rate limit or a provider that is down is not a provider
         # that refuses to stream: asking again at once without streaming would
         # only fail the same way, and :func:`_complete` decides about retries.
-        if chunks or (_ProviderTimeout and isinstance(e, _ProviderTimeout)) \
-                or isinstance(e, _transient_errors()):
+        if chunks or is_timeout(e, litellm) or isinstance(e, transient_errors(litellm)):
             raise
         # A call abandoned at a stop asks nothing more of the provider.
         if abandoned is not None and abandoned.is_set():
@@ -407,7 +371,7 @@ def model_failure_line(e: BaseException, timeout: Optional[float] = None) -> Opt
     quote the request, the endpoint or the key it refused. The operator's log
     has the whole of it. ``timeout`` is the operator's deadline, named in the
     line the way the model services name it."""
-    if _ProviderTimeout and isinstance(e, _ProviderTimeout):
+    if is_timeout(e, litellm):
         return f'The model did not answer within {timeout:g} seconds.' if timeout \
             else 'The model did not answer in time.'
     if _ProviderError and isinstance(e, _ProviderError):

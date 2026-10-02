@@ -121,6 +121,89 @@ class UnansweredRun:
         return line + f' {left} sentences were not {verb}.'
 
 
+# --- what passes, and trying again -------------------------------------------
+#
+# Every caller of a model in Plaid retries the same way: a model service's
+# ChatModel here, and the assistants' turn and startup ping (plaid-agent's
+# core/agent.py). One place decides what is worth another try and what a
+# timeout is.
+
+def transient_errors(litellm=None) -> tuple:
+    """The provider failures that pass: a rate limit, a provider briefly down
+    or unreachable."""
+    if litellm is None:
+        import litellm  # only a caller that talks to a model needs it
+    return tuple(e for e in (getattr(litellm, n, None) for n in
+                             ('RateLimitError', 'ServiceUnavailableError', 'InternalServerError',
+                              'APIConnectionError'))
+                 if isinstance(e, type) and issubclass(e, Exception))
+
+
+def _timeout_errors(litellm) -> tuple:
+    out = [getattr(litellm, 'Timeout', None)]
+    try:  # litellm raises the openai SDK's classes too, its own Timeout among them
+        from openai import APITimeoutError
+        out.append(APITimeoutError)
+    except ImportError:  # pragma: no cover - litellm depends on openai
+        pass
+    return tuple(e for e in out if isinstance(e, type) and issubclass(e, Exception))
+
+
+def is_timeout(e: BaseException, litellm=None) -> bool:
+    """Whether the call passed its deadline without an answer."""
+    if litellm is None:
+        import litellm
+    return isinstance(e, _timeout_errors(litellm))
+
+
+def retrying(call: Callable[[], Any], *, model: str, timeout: Optional[float] = None,
+             retries: int = RETRIES, timeout_retries: int = TIMEOUT_RETRIES,
+             sleep: Callable[[float], None] = None, on_retry: Optional[Callable[[], None]] = None,
+             litellm=None):
+    """``call()``, tried again when the provider refused it for a reason that
+    passes, and its answer returned.
+
+    A rate limit or a provider briefly down is tried up to ``retries`` more
+    times after a wait with full jitter, so two callers hitting one provider
+    do not march in step and collide again. A call that passed its deadline
+    is tried ``timeout_retries`` more times, at once: a model that did not
+    answer in the whole window is down or stuck, and every try costs another
+    window. Anything else, or the last failure, is raised as it is.
+    ``sleep(delay)`` waits between tries (a caller that can be stopped looks
+    for the stop there), and ``on_retry()`` runs before each new try. The
+    operator's log says what happened; the requester never sees it."""
+    if sleep is None:
+        sleep = time.sleep
+    if litellm is None:
+        import litellm
+    transient = transient_errors(litellm)
+    timeouts_of = _timeout_errors(litellm)
+    attempt = timeouts = 0
+    while True:
+        try:
+            return call()
+        except Exception as e:
+            if timeouts_of and isinstance(e, timeouts_of):
+                timeouts += 1
+                if timeouts > timeout_retries:
+                    raise
+                delay = 0.0
+                window = f'within {timeout:g} seconds' if timeout else 'in time'
+                print(f'{model} did not answer {window}; trying once more')
+            elif transient and isinstance(e, transient):
+                if attempt >= retries:
+                    raise
+                delay = random.uniform(0, RETRY_BASE_S * (2 ** attempt))
+                attempt += 1
+                print(f'{model} failed ({" ".join(str(e).split())[:200]}); '
+                      f'retrying in {delay:.1f}s ({attempt} of {retries})')
+            else:
+                raise
+        sleep(delay)
+        if on_retry is not None:
+            on_retry()
+
+
 @dataclass
 class Reply:
     """One model reply. ``truncated`` means the model stopped because it ran
@@ -213,47 +296,22 @@ class ChatModel:
     # --- the parts worth having in one place --------------------------------
 
     def _with_retries(self, litellm, kwargs, should_stop=None):
-        """Retry a call the provider refused for a reason that passes.
-
-        A whole document is one call per sentence, so a rate limit is not an
-        edge case: without this, a burst of 429s turned into a run that failed
-        every sentence it touched and wrote nothing. Full jitter, so two
-        services hitting one provider do not march in step and collide again.
-        A timeout is retried :data:`TIMEOUT_RETRIES` times at most, whatever
-        ``retries`` says.
+        """Retry a call the provider refused for a reason that passes
+        (:func:`retrying`), looking for a stop before every try and while it
+        waits. A timeout that is not tried again is named for the requester.
         """
-        timeout_error = getattr(litellm, 'Timeout', None)
-        if not (isinstance(timeout_error, type) and issubclass(timeout_error, Exception)):
-            timeout_error = None
-        transient = tuple(
-            e for e in (getattr(litellm, name, None) for name in
-                        ('RateLimitError', 'ServiceUnavailableError',
-                         'InternalServerError', 'APIConnectionError'))
-            if isinstance(e, type) and issubclass(e, Exception))
-        attempt = 0
-        timeouts = 0
-        while True:
+        def call():
             self._check_stop(should_stop)
-            try:
-                return self._call(litellm, kwargs, should_stop)
-            except Exception as e:
-                if timeout_error is not None and isinstance(e, timeout_error):
-                    timeouts += 1
-                    window = f'within {self.timeout:g} seconds' if self.timeout else 'in time'
-                    if timeouts > TIMEOUT_RETRIES:
-                        raise ModelTimeout(f'The model did not answer {window}.') from e
-                    delay = 0.0
-                    print(f'{self.model} did not answer {window}; trying once more')
-                elif isinstance(e, transient):
-                    if attempt == self.retries:
-                        raise
-                    delay = random.uniform(0, RETRY_BASE_S * (2 ** attempt))
-                    attempt += 1
-                    print(f'{type(e).__name__} from {self.model}; retrying in {delay:.1f}s '
-                          f'({attempt} of {self.retries})')
-                else:
-                    raise
-            self._sleep(delay, should_stop)
+            return self._call(litellm, kwargs, should_stop)
+
+        try:
+            return retrying(call, model=self.model, timeout=self.timeout, retries=self.retries,
+                            sleep=lambda delay: self._sleep(delay, should_stop), litellm=litellm)
+        except Exception as e:
+            if is_timeout(e, litellm):
+                window = f'within {self.timeout:g} seconds' if self.timeout else 'in time'
+                raise ModelTimeout(f'The model did not answer {window}.') from e
+            raise
 
     @staticmethod
     def _check_stop(should_stop) -> None:
