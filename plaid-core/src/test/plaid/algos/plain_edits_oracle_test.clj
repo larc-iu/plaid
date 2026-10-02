@@ -1251,33 +1251,47 @@
 
 ;; ---------------------------------------------------------------- whole-body saves by intent
 
-;; The judge above takes a whole-body save as the gaps its own diff gave,
-;; which leaves out where the diff can stand in several places (`the a ab`
-;; to `the aX`). This one knows what was meant: words of a script's layers,
+;; The judge above holds a whole-body save to every shortest diff
+;; (`survivor-problems`), which leaves out what was meant where the diff can
+;; stand in several places (`the a ab` to `the aX`). This one knows what was meant: words of a script's layers,
 ;; one respelled with neighbours deleted, two respelled, or a run deleted,
 ;; saved as a whole body, and each word's token must be on the word it was
 ;; made for, or gone when its word was deleted (REV-one-rule F2, F5).
 
+(defn- lcs-length
+  "The length of a longest common subsequence of `o` and `n`, code points,
+  where no position `i` of `o` with `(barred i)` may be matched. Its own
+  dynamic program, independent of `plaid.algos.text`."
+  [^ints o ^ints n ^booleans barred]
+  (let [m (alength n)
+        prev (int-array (inc m))
+        cur (int-array (inc m))]
+    (dotimes [i (alength o)]
+      (let [c (aget o i) bar (aget barred i)]
+        (dotimes [j m]
+          (aset cur (inc j) (int (if (and (not bar) (= c (aget n j)))
+                                   (inc (aget prev j))
+                                   (max (aget prev (inc j)) (aget cur j))))))
+        (System/arraycopy cur 0 prev 0 (inc m))))
+    (aget prev m)))
+
 (defn- survivor-problems
-  "The tokens a whole-body save of `old` as `new` deleted though a letter of
-  theirs is outside every gap of the diff, as either reading has it
-  (`body-diff-gaps`, aligned to the words or not): a
-  word goes only when all its letters go (REV2-one-rule G1). A token inside
-  a word the save kept, read as that word typed over (`cow`, `co` + `w`, to
-  `abc`, F4), may go."
+  "The tokens a whole-body save of `old` as `new` deleted though every
+  shortest diff of the two keeps a letter of theirs (whitespace aside):
+  barring the token's letters from the longest common subsequence makes it
+  shorter. A word goes only when all its letters can go (REV2-one-rule
+  G1). The diff is this test's own, not the reading under test (R1-DEBT-22),
+  so where the diff can stand in several places (`the a ab` to `the aX`)
+  either word may go. A token inside a word the save kept, read as that
+  word typed over (`cow`, `co` + `w`, to `abc`, F4), may go."
   [^String old ^String new tokens layout r]
   (let [{:keys [partitioning deciders]} (roles layout false)
         o (cps old)
-        ;; the two readings of the diff, aligned to the words and as it
-        ;; stands: a token may go when all its letters are in the gaps of one
-        mark (fn [gaps] (let [a (boolean-array (alength o))]
-                          (doseq [{:keys [start end]} gaps, i (range start end)] (aset a i true))
-                          a))
-        readings [(mark (ta/body-diff-gaps old new tokens partitioning deciders))
-                  (mark (ta/body-diff-gaps old new tokens partitioning deciders false))]
-        left? (fn [b e] (every? (fn [^booleans in-gap]
-                                  (some #(and (not (aget in-gap %)) (not (ws? (aget o %)))) (range b e)))
-                                readings))
+        nw (cps new)
+        full (lcs-length o nw (boolean-array (alength o)))
+        left? (fn [b e] (let [barred (boolean-array (alength o))]
+                          (doseq [i (range b e) :when (not (ws? (aget o i)))] (aset barred i true))
+                          (< (lcs-length o nw barred) full)))
         gone (set (:deleted r))
         words (if (seq deciders) (filter #(deciders (:token/layer %)) tokens)
                   (remove #(partitioning (:token/layer %)) tokens))
@@ -1287,10 +1301,26 @@
                            words))]
     (into [] (keep (fn [{:token/keys [id begin end] :as t}]
                      (when (and (gone id) (< begin end)
-                                (left? begin end)
-                                (not (kept-word? t)))
+                                (not (kept-word? t))
+                                (left? begin end))
                        (str id " deleted with a letter left " (pr-str (cp/cp-subs old begin end))))))
           tokens)))
+
+;; The judge of whole-body saves, on its own: a word may go only when some
+;; shortest diff takes all its letters.
+(deftest the-survivor-judge-reads-its-own-diff
+  (let [tokens (fn [^String body] (into [{:token/id :s :token/layer :s :token/begin 0 :token/end (cp/cp-count body)}]
+                                        (let [m (re-matcher #"[^ ]+" body)]
+                                          (loop [out [] i 0] (if (.find m) (recur (conj out {:token/id i :token/layer :w :token/begin (.start m) :token/end (.end m)}) (inc i)) out)))))
+        judged (fn [body new gone] (survivor-problems body new (tokens body) :intent {:deleted gone}))]
+    ;; either reading of an ambiguous diff
+    (is (empty? (judged "the a ab" "the aX" [1])))
+    (is (empty? (judged "the a ab" "the aX" [2])))
+    ;; a word every shortest diff keeps
+    (is (seq (judged "the a ab" "the aX" [0])))
+    (is (seq (judged "the cat sat" "the cat sat" [1])))
+    ;; a word all of whose letters go
+    (is (empty? (judged "the cat sat" "the sat" [1])))))
 
 (defn- intent-save
   "The problems of saving `body` as `new` where old word i was meant to be
