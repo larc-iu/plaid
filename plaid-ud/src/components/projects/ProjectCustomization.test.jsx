@@ -30,6 +30,7 @@ vi.mock('../../utils/udLayerUtils.js', async (orig) => ({
 }));
 
 const { ProjectCustomization } = await import('./ProjectCustomization.jsx');
+const { hasUnsavedDraft } = await import('@ui/hooks/useUnsavedDraft.js');
 
 const button = (root, text) =>
   [...root.querySelectorAll('button')].find((b) => b.textContent.trim() === text);
@@ -60,6 +61,20 @@ describe('UD customization', () => {
     await view.step(() => view.container.querySelector('[aria-label="Remove feature"]').click());
     expect(save.disabled).toBe(true);
     await view.unmount();
+  });
+
+  // Q2-UD-POLISH-5: a change at the top of the page was dropped without a word
+  // by a tab click, with its Save a long page below.
+  it('asks before leaving with a change made, and keeps Save at the bottom of the window', async () => {
+    const view = await mount();
+    expect(hasUnsavedDraft()).toBe(null);
+    await view.step(() => button(view.container, 'Add feature').click());
+    expect(hasUnsavedDraft()).toBe('The settings you have changed');
+    const bar = button(view.container, 'Save').parentElement;
+    expect(bar.className.split(/\s+/)).toContain('sticky');
+    expect(bar.textContent).toContain('Not saved');
+    await view.unmount();
+    expect(hasUnsavedDraft()).toBe(null);
   });
 
   it('draws a feature row trash grey, red only on hover', async () => {

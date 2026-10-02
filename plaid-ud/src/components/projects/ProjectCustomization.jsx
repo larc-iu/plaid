@@ -17,6 +17,7 @@ import {
 } from '../../utils/udMetadata.js';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { useManagedProject } from '@ui/hooks/useManagedProject.js';
+import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import { expectStored, isConfigConflict, sameConfig } from '@ui/domain/configCells.js';
 import { RotateCcw, Trash2 } from 'lucide-react';
 import { TagList } from '../common/TagList.jsx';
@@ -191,6 +192,9 @@ export const ProjectCustomization = () => {
       modes,
       descriptions,
     }) !== baseline;
+
+  // Leaving the tab, the page or the window with a change made asks first.
+  useUnsavedDraft(dirty ? 'The settings you have changed' : null);
 
   // Seed the editors from the project's current layer config.
   useEffect(() => {
@@ -557,7 +561,10 @@ export const ProjectCustomization = () => {
         </CardContent>
       </Card>
 
-      <div className="flex justify-end">
+      {/* Held at the bottom of the window, so a change at the top of a long
+          page has its Save in view. */}
+      <div className="sticky bottom-0 z-10 flex items-center justify-end gap-3 border-t bg-background py-3">
+        {dirty && !saving && <span className="text-sm text-muted-foreground">Not saved</span>}
         <Button onClick={handleSave} disabled={!dirty || saving}>
           {saving ? 'Saving…' : 'Save'}
         </Button>
