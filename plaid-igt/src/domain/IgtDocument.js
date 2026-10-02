@@ -92,9 +92,6 @@ const sameItems = (before, after) =>
 // error label: "Failed to merge morphemes" → "Merge morphemes". Keeps every
 // mutation a labeled logical operation without a second string per call site.
 
-// How often a document a screen holds reads its project again.
-const PROJECT_READ_EVERY_MS = 60_000;
-
 export class IgtDocument extends DocumentModel {
   constructor({
     raw,
@@ -107,8 +104,6 @@ export class IgtDocument extends DocumentModel {
   }) {
     super({ raw, client, projectId, project, user, asOf });
     this._writer = null;
-    // How many times a read of the project changed it (`refreshProject`).
-    this._projectReads = 0;
     // Fold the document-embedded vocab-links (under raw's token layers) into the
     // separately-loaded vocabularies: `vocabLayers.get` returns items but not
     // links, so this is the only way links survive a fresh load. See
@@ -441,28 +436,12 @@ export class IgtDocument extends DocumentModel {
     }
   }
 
-  /**
-   * Read the project again. Its tagsets, metadata fields, speakers and review
-   * setting change while a document stays open, and a copy from the page load
-   * let a value through a tagset closed since, or refused one opened since.
-   * Every refetch reads it, and so does a return to the tab and every
-   * minute on a visible tab while a screen holds the document (`hold`). A past state keeps the project it has, since
-   * a project has no past state. Quiet on failure: the copy stays as it was.
-   */
-  async refreshProject() {
-    const project = await this._readProject();
-    if (!project || sameConfig(project, this._project)) return false;
-    this._project = project;
+  // A new copy of the project (DocumentModel `refreshProject`): each layer's
+  // config comes from it too. The grid draws its cells, each with the tagset
+  // it checks against, again on the new data version, and `document` derives
+  // its metadata fields from the project.
+  _adoptProject(project) {
     this._adoptLayerConfigs(project);
-    // A new data version: the grid draws its cells, each with the tagset it
-    // checks against, again only when that changes, and `document` derives
-    // its metadata fields from the project. `_dataVersion` itself is left
-    // alone, since a reload takes a bump of it during its fetch for an edit
-    // and would then not show what it fetched.
-    this._projectReads++;
-    this._derivedCache.clear();
-    this._emit();
-    return true;
   }
 
   // Each layer's config (which tagset a field checks against, its scope, its
@@ -488,46 +467,6 @@ export class IgtDocument extends DocumentModel {
       const config = configs.get(layer.id);
       if (!sameConfig(config, layer.config)) layer.config = structuredClone(config);
     });
-  }
-
-  /** The document's data version, which a new copy of the project also moves. */
-  get dataVersion() {
-    return this._dataVersion + this._projectReads;
-  }
-
-  async _readProject() {
-    if (!this._client || !this._projectId || this._asOf) return null;
-    try {
-      return await this._client.projects.get(this._projectId);
-    } catch (err) {
-      console.warn('Could not read the project again:', err);
-      return null;
-    }
-  }
-
-  hold() {
-    const release = super.hold();
-    if (this._holds === 1 && typeof document !== 'undefined') {
-      this._onVisible = () => {
-        if (document.visibilityState === 'visible') this.refreshProject();
-      };
-      document.addEventListener('visibilitychange', this._onVisible);
-      // Another maintainer's change reaches a page nobody leaves too: whose
-      // work is reviewed (`plaid.review`) decides what every next edit and
-      // approval is stamped with (H11-MULTI-2).
-      this._projectTimer = setInterval(() => {
-        if (document.visibilityState === 'visible') this.refreshProject();
-      }, PROJECT_READ_EVERY_MS);
-    }
-    return () => {
-      release();
-      if (this._holds === 0 && this._onVisible) {
-        document.removeEventListener('visibilitychange', this._onVisible);
-        this._onVisible = null;
-        clearInterval(this._projectTimer);
-        this._projectTimer = null;
-      }
-    };
   }
 
   // A reload refreshes the project and its vocabularies with the document, at

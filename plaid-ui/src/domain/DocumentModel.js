@@ -23,6 +23,7 @@ import {
 } from './textDirection.js';
 import { WriteQueue } from './WriteQueue.js';
 import { newId, recordSettled, settleIds } from './pendingIds.js';
+import { sameConfig } from './configCells.js';
 import { createdIdsOf, footprintOf, namesAnyOf, pendingIdsOf, resendable } from './rebase.js';
 
 // A copy of a document read from the server, which is plain JSON. A walk
@@ -91,6 +92,9 @@ function operationLabel(errorLabel) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+// How often a document a screen holds reads its project again.
+const PROJECT_READ_EVERY_MS = 60_000;
+
 export class DocumentModel {
   constructor({ raw, client = null, projectId = null, project = null, user = null, asOf = null }) {
     this._raw = raw;
@@ -141,6 +145,8 @@ export class DocumentModel {
     this._unsent = [];
     // How many screens show this document right now (`hold`).
     this._holds = 0;
+    // How many times a read of the project changed it (`refreshProject`).
+    this._projectReads = 0;
     // The History label a screen gave the writes it is making (`labelled`).
     this._operation = null;
     this._conflictHandled = false;
@@ -164,8 +170,9 @@ export class DocumentModel {
   get version() {
     return this._version;
   }
+  /** The document's data version, which a new copy of the project also moves. */
   get dataVersion() {
-    return this._dataVersion;
+    return this._dataVersion + this._projectReads;
   }
   get raw() {
     return this._raw;
@@ -338,16 +345,72 @@ export class DocumentModel {
     if (this._writes.hold()) {
       this._reload().catch((err) => console.error('Reload on coming back failed:', err));
     }
+    if (this._holds === 1) this._watchProject();
     let released = false;
     return () => {
       if (released) return;
       released = true;
       this._holds -= 1;
+      if (this._holds === 0) this._unwatchProject?.();
       setTimeout(() => {
         if (this._holds !== 0) return;
         this._writes.letGo();
       }, 0);
     };
+  }
+
+  // While a screen holds the document, its project is read again on a return
+  // to the tab and every minute on a visible tab: whose work is reviewed
+  // (`plaid.review`) decides what every next edit and approval is stamped
+  // with, and an app's settings (a closed tagset) what a cell takes
+  // (H11-MULTI-2).
+  _watchProject() {
+    if (typeof document === 'undefined' || this._unwatchProject) return;
+    const read = () => {
+      if (document.visibilityState === 'visible') this.refreshProject();
+    };
+    document.addEventListener('visibilitychange', read);
+    const timer = setInterval(read, PROJECT_READ_EVERY_MS);
+    this._unwatchProject = () => {
+      document.removeEventListener('visibilitychange', read);
+      clearInterval(timer);
+      this._unwatchProject = null;
+    };
+  }
+
+  /**
+   * Read the project again (see `_watchProject`; every refetch reads it too).
+   * A past state keeps the project it has, since a project has no past state.
+   * Quiet on failure: the copy stays as it was. Answers whether it changed.
+   */
+  async refreshProject() {
+    const project = await this._readProject();
+    if (!project || sameConfig(project, this._project)) return false;
+    this._project = project;
+    this._adoptProject(project);
+    // A new data version, so what is derived from the project is derived
+    // again. `_dataVersion` itself is left alone, since a reload takes a bump
+    // of it during its fetch for an edit and would then not show what it
+    // fetched.
+    this._projectReads++;
+    this._derivedCache.clear();
+    this._emit();
+    return true;
+  }
+
+  async _readProject() {
+    if (!this._client?.projects?.get || !this._projectId || this._asOf) return null;
+    try {
+      return await this._client.projects.get(this._projectId);
+    } catch (err) {
+      console.warn('Could not read the project again:', err);
+      return null;
+    }
+  }
+
+  // What the subclass takes from a new copy of the project, beside keeping it.
+  _adoptProject(project) {
+    void project;
   }
 
   /**

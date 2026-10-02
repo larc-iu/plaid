@@ -273,7 +273,12 @@ const DocumentEditor = () => {
     id: documentId,
     name: doc?.raw?.name,
     canWrite: canEditProject(project, user) && !pastEntry,
-    contributor: !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin }),
+    // The document's copy of the project, which it reads again while open, so
+    // a change of whose work is reviewed reaches the dock.
+    contributor:
+      !!(doc?.project ?? project) &&
+      !!user &&
+      isReviewed(doc?.project ?? project, user.id, { isAdmin: !!user.isAdmin }),
     onApplied: reload,
     onFocusHere: focusHere,
     // What `@` offers in the composer: this document's sentences, by the same
