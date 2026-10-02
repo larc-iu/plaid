@@ -3,9 +3,6 @@
 import { importTarget, importUmrDocument } from '../../domain/umrImport.js';
 import { getUmrLayerInfo } from '../../utils/umrLayerUtils.js';
 
-// What an import is in the audit log, for a reader counting operations by kind.
-const IMPORT_KIND = { kind: 'import', ref: 'format:umr' };
-
 // Per file, the id its new document is created under, kept while the page is
 // open across every import of that file (the same name, size and time), so an
 // import made again after a create whose answer was lost names the same id and
@@ -58,23 +55,18 @@ export const prepareImport = async ({ client, project, projectId }) => {
     };
     let result;
     try {
-      result = await client.withOperation(
-        `Import UMR document "${name}"`,
-        () =>
-          importUmrDocument(client, projectId, name, text, layerInfo, { into, mint: mintOf(key) }),
-        IMPORT_KIND,
-      );
+      // One audit-log operation of kind import (importUmrDocument's).
+      result = await importUmrDocument(client, projectId, name, text, layerInfo, {
+        into,
+        mint: mintOf(key),
+      });
       if (target.note) result = asNew(target.note)(result);
     } catch (err) {
       // Words that differ from the document of that name: the file is a
       // document of its own, and the row says why.
       if (!into || !/differs|sentences and the document/.test(err?.message || '')) throw err;
       result = asNew(err.message)(
-        await client.withOperation(
-          `Import UMR document "${name}"`,
-          () => importUmrDocument(client, projectId, name, text, layerInfo, { mint: mintOf(key) }),
-          IMPORT_KIND,
-        ),
+        await importUmrDocument(client, projectId, name, text, layerInfo, { mint: mintOf(key) }),
       );
     }
     mints.delete(key);

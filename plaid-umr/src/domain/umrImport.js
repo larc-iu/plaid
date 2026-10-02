@@ -32,7 +32,19 @@ const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
  *   so a second cannot make a second document (createOnce.js)
  * @returns {Promise<{ document: { id: string, name: string }, warnings: string[], attached: boolean }>}
  */
-export async function importUmrDocument(client, projectId, name, text, layerInfo, options = {}) {
+export const importUmrDocument = (client, projectId, name, text, layerInfo, options = {}) =>
+  client.withOperation(
+    `Import UMR document "${name}"`,
+    () => importDocument(client, projectId, name, text, layerInfo, options),
+    IMPORT_KIND,
+  );
+
+// What an import is in the audit log, for a reader counting operations by
+// kind. Core keeps what an import writes as the file has it, a cycle of
+// relations included, where a person's write would be refused.
+const IMPORT_KIND = { kind: 'import', ref: 'format:umr' };
+
+async function importDocument(client, projectId, name, text, layerInfo, options) {
   if (!name || !name.trim()) throw new Error('Document name is required');
   if (!text || !text.trim()) throw new Error('No content to import');
   if (!layerInfo?.isConfigured) {

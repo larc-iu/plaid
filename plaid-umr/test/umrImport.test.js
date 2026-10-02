@@ -4,7 +4,12 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseUmrFile } from '../src/domain/format/umrFile.js';
-import { importTarget, planImport, readerNotes } from '../src/domain/umrImport.js';
+import {
+  importTarget,
+  importUmrDocument,
+  planImport,
+  readerNotes,
+} from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
 import { rawFromPlan } from './rawFromPlan.js';
 
@@ -257,4 +262,24 @@ test('an attach keeps no copy of the text the document already has', () => {
   const plan = planImport(parsed.sentences, [], { existing });
   assert.equal(plan.sentences[0].meta.text, undefined);
   assert.ok(!plan.sentences[0].meta.ilg.some((l) => l.key === 'sentence'));
+});
+
+// Core keeps what an operation of kind import writes as the file has it,
+// a cycle of relations included (`acyclic` exempts it), so every caller of
+// the import writes under one, not only the Import page.
+test('an import is one operation of kind import, whoever calls it', async () => {
+  const seen = [];
+  const client = {
+    withOperation: async (label, fn, opts) => {
+      seen.push({ label, ...opts });
+      return fn(() => {});
+    },
+  };
+  await assert.rejects(
+    importUmrDocument(client, 'p', 'english', 'x', { isConfigured: false }),
+    /not set up for UMR/,
+  );
+  assert.deepEqual(seen, [
+    { label: 'Import UMR document "english"', kind: 'import', ref: 'format:umr' },
+  ]);
 });
