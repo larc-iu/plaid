@@ -1191,7 +1191,17 @@ export class DocumentModel {
       .withOperation(
         RECONCILE_LABEL,
         async (setMessage) => {
-          const result = await this._reconcile();
+          let result = await this._reconcile();
+          // Refused because the document moved on, as when another page
+          // opening it at the same time repaired it first: read it again and
+          // repair once more, so this page shows the document as repaired.
+          if (statusOf(result.error) === 409) {
+            const reread = await this._reload().then(
+              () => true,
+              () => false,
+            );
+            if (reread) result = await this._reconcile();
+          }
           if (result.error || result.interrupted) {
             setMessage(RECONCILE_INTERRUPTED_LABEL);
           } else {
