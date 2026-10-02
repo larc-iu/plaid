@@ -1,9 +1,8 @@
-// The repair on open records a field's language from its name, and declares
-// which metadata keys survive a split. Both are config writes a maintainer's
-// page makes from the copy it loaded. Written whole and unchecked, they wrote
-// over a settings save another maintainer made after the page loaded
-// (REV-F-BULK). Each now names the value it read (compare-and-set) and adds
-// only what was missing.
+// The repair on open declares which metadata keys survive a split, a config
+// write a maintainer's page makes from the copy it loaded. Written whole and
+// unchecked, it wrote over a settings save another maintainer made after the
+// page loaded (REV-F-BULK). It now names the value it read (compare-and-set)
+// and adds only what was missing.
 import { describe, it, expect } from 'vitest';
 import { IgtDocument } from './IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
@@ -95,35 +94,17 @@ const setup = ({ serverFields = loadedFields, spanLayerLang } = {}) => {
   return { doc, info, server, spanLayerId: sl.id };
 };
 
-describe('the field language back-fill', () => {
-  it('adds only the missing languages, naming what it read', async () => {
-    const { doc, info, server } = setup();
-    await doc._backfillFieldLangs(info);
-    const w = server.sent.find((s) => s.kind === 'vocab');
-    expect(w.options).toEqual({ expected: loadedFields });
-    expect(server.store.vocab['voc-1'].igt.fields).toEqual({
-      'gloss (ru)': { type: 'text', lang: 'ru' },
-      note: { type: 'text' },
-    });
-  });
-
-  it("does not write over another maintainer's fields saved after the page loaded", async () => {
-    const saved = {
-      'gloss (ru)': { type: 'text' },
-      note: { type: 'text' },
-      source: { type: 'text' },
-    };
-    const { doc, info, server } = setup({ serverFields: saved });
-    await doc._backfillFieldLangs(info);
-    expect(server.store.vocab['voc-1'].igt.fields).toEqual(saved);
-  });
-
-  it("does not write over a field's language recorded after the page loaded, and goes on", async () => {
-    const { doc, info, server, spanLayerId } = setup({ spanLayerLang: 'fr' });
-    await doc._backfillFieldLangs(info);
-    expect(server.store.span[spanLayerId].igt.lang).toBe('fr');
-    // The refusal stops nothing else: the vocabulary is still written.
-    expect(server.store.vocab['voc-1'].igt.fields['gloss (ru)'].lang).toBe('ru');
+// A field named "Gloss (nl)" whose language a maintainer cleared stays
+// cleared: opening a document records nothing from a field's name, on a span
+// layer or on a vocabulary's fields (R2-DEBT-APPS-2). It also asks no lexicon
+// maintainer rights of a project maintainer (H9-FIRST-OPEN-6).
+describe("a field's language on open", () => {
+  it('is not written from the field name', async () => {
+    const { doc, server } = setup();
+    const res = await doc.reconcileOnOpen();
+    expect(res.error).toBeUndefined();
+    expect(server.sent.filter((s) => s.kind === 'span' || s.kind === 'vocab')).toEqual([]);
+    expect(server.store.vocab['voc-1'].igt.fields).toEqual(loadedFields);
   });
 });
 

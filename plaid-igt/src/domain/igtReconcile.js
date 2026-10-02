@@ -7,9 +7,6 @@
 // an orphan morpheme or a doubled annotation behind. What is planned here is
 // what the rules do not cover: caches and back-fills.
 
-import { readFieldLang, readVocabFields } from './igtConfig.js';
-import { fieldNameLang } from './fieldNames.js';
-
 /** The label a reconcile pass that wrote nothing keeps. */
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
@@ -69,47 +66,6 @@ export const planMorphTypeSync = (sentences) => {
   }
   return plans;
 };
-
-/**
- * Back-fill of a field's recorded language from its name, once. A field named
- * "Gloss (nl)" by the FLEx importer before the record existed says its
- * language in its name alone, and the exporters no longer read names. Every
- * span layer whose name carries a language-shaped suffix and whose config
- * records none gets that suffix recorded. A field that records a language is
- * left alone, whatever its name says: the record is the fact, the name is
- * how it arrived.
- *
- * @param {Array<{id: string, name: string, config?: object}>} spanLayers
- * @returns {Array<{id: string, lang: string}>}
- */
-export function planFieldLangBackfill(spanLayers) {
-  const out = [];
-  for (const sl of spanLayers || []) {
-    if (!sl?.id || readFieldLang(sl.config)) continue;
-    const lang = fieldNameLang(sl.name);
-    if (lang) out.push({ id: sl.id, lang });
-  }
-  return out;
-}
-
-/**
- * The same for a vocabulary's fields ("gloss (ru)"), whose language sits in
- * the field schema rather than on a layer. Returns the whole schema with the
- * languages filled in, or null when nothing was missing, since the schema is
- * written as one value.
- */
-export function planVocabFieldLangBackfill(vocab) {
-  const fields = readVocabFields(vocab?.config);
-  if (!fields) return null;
-  let changed = false;
-  const next = {};
-  for (const [name, spec] of Object.entries(fields)) {
-    const lang = spec?.lang ? null : fieldNameLang(name);
-    next[name] = lang ? { ...spec, lang } : spec;
-    if (lang) changed = true;
-  }
-  return changed ? next : null;
-}
 
 /**
  * Token layers that have not yet declared which metadata keys survive a split.

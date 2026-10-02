@@ -24,8 +24,6 @@ import {
   planMorphTypeSync,
   describeReconcile as describeIgtReconcile,
   planPreserveOnSplit,
-  planFieldLangBackfill,
-  planVocabFieldLangBackfill,
 } from './igtReconcile.js';
 import { validateIgtDocument } from './validate.js';
 import { deriveDocumentData, deriveSentences, deriveAlignmentTokens } from './derive.js';
@@ -615,59 +613,6 @@ export class IgtDocument extends DocumentModel {
     }
   }
 
-  // A field's language, recorded from its name once: "Gloss (nl)" was how the
-  // FLEx importer said "nl" before fields recorded a language, and the
-  // exporters read the record now, not the name. Maintainers only, and a
-  // failure is not worth interrupting anyone over.
-  //
-  // Each write names the value this page read as `expected` (compare-and-set),
-  // so it adds only the missing languages to what is stored. A maintainer's
-  // settings save made after this page loaded makes the write a 409, which is
-  // let go: the save stands, and the next open plans from it.
-  async _backfillFieldLangs(info) {
-    if (!canManageProject(this._project, this._user)) return;
-    const spanLayers = Object.values(info.spanLayers || {}).flat();
-    const byId = new Map(spanLayers.map((sl) => [sl?.id, sl]));
-    const writes = [
-      ...planFieldLangBackfill(spanLayers).map(
-        ({ id, lang }) =>
-          () =>
-            this._client.spanLayers.setConfig(
-              id,
-              IGT_NAMESPACE,
-              'lang',
-              lang,
-              undefined,
-              expectStored(byId.get(id), IGT_NAMESPACE, 'lang'),
-            ),
-      ),
-      ...Object.values(this._vocabularies || {}).flatMap((vocab) => {
-        const fields = planVocabFieldLangBackfill(vocab);
-        if (!fields) return [];
-        return [
-          () =>
-            this._client.vocabLayers.setConfig(
-              vocab.id,
-              IGT_NAMESPACE,
-              'fields',
-              fields,
-              undefined,
-              expectStored(vocab, IGT_NAMESPACE, 'fields'),
-            ),
-        ];
-      }),
-    ];
-    for (const write of writes) {
-      try {
-        await write();
-      } catch (err) {
-        if (isConfigConflict(err)) continue;
-        console.error('Could not record a field language:', err);
-        return;
-      }
-    }
-  }
-
   async _reconcile() {
     const ZERO = {
       rulesDeclared: false,
@@ -688,7 +633,6 @@ export class IgtDocument extends DocumentModel {
       // a document. It has to be in place BEFORE a split, since provenance lost
       // that way leaves nothing for a later pass to find.
       await this._backfillPreserveOnSplit(info);
-      await this._backfillFieldLangs(info);
       const rules = await ensureLayerConstraints(
         this._client,
         wantedConstraints(info, this._project?.config),

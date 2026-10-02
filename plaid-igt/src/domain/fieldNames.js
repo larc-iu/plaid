@@ -5,13 +5,12 @@
 // in import/flex/importEngine.js), and one that makes them in a single
 // language leaves the tag out. That is a NAMING convention: what language a
 // field's values are in is recorded on the field itself (config.igt.lang),
-// written by every importer, shown and edited in the Fields settings, and
-// back-filled from the suffix once for a project made before the record
-// existed (igtReconcile.planFieldLangBackfill). The exporters read the record
-// and never the name, so renaming a field cannot change the language its
-// values go out under. The suffix is read here only to PROPOSE a language:
-// when a field is made or back-filled, or to pair a field with a lexicon
-// entry's when neither side records one (glossGuess.entryFieldFor).
+// written by every importer, and shown and edited in the Fields settings. The
+// exporters read the record and never the name, so renaming a field cannot
+// change the language its values go out under. The suffix is read here only to
+// PROPOSE a language: when a field is made, or to pair a field with a lexicon
+// entry's when neither side records one (glossGuess.entryFieldFor). A
+// language a maintainer cleared is never filled back in from the name.
 
 /**
  * Split a field name into its base and writing system: "gloss (ru)" →
