@@ -85,6 +85,12 @@
 
 (def ^:private noted-tables #{"tokens" "spans" "relations" "vocab_links"})
 
+(def version-mismatch
+  "The one message a stale `document-version` is refused with, before the
+  write lock (`plaid.rest-api.v1.middleware/wrap-document-version`) and
+  inside the write transaction."
+  "Document version mismatch. The document has been modified since you last fetched it.")
+
 (defn check-expected-document-version!
   "Refuse with 409 when the version the request holds of document `doc-id`
   (`*expected-document-version*`, bound from `?document-version=`) is not
@@ -98,7 +104,7 @@
     (when doc-id
       (let [cur (psc/fetch-by-id tx :documents doc-id)]
         (when (and (or cur (= :conflict missing)) (not= expected (:version cur)))
-          (throw (ex-info "Document version conflict"
+          (throw (ex-info version-mismatch
                           {:code 409 :document-id doc-id
                            :expected-version expected :actual-version (:version cur)})))))))
 

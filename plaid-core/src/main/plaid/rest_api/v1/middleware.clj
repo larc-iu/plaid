@@ -609,7 +609,7 @@
 
               (and latest-version (not= latest-version parsed-version))
               {:status 409
-               :body {:error "Document version mismatch. The document has been modified since you last fetched it."}}
+               :body {:error psaw/version-mismatch}}
               :else
               (do
                 (when validated-versions
