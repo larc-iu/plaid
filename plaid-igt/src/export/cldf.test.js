@@ -129,6 +129,59 @@ describe('languageId', () => {
 });
 
 describe('buildCldfDataset — examples', () => {
+  it('keeps the bound translation and gloss columns when every value in them is empty', () => {
+    const doc = makeFixtureDoc();
+    doc.sortedSentences[0].annotations = {};
+    for (const tok of doc.sortedSentences[0].tokens)
+      for (const m of tok.morphemes) m.annotations = {};
+    const { files } = build({ documents: [{ igtDoc: doc }] });
+    const [row] = table(files, 'examples.csv');
+    expect(row.Translated_Text).toBe('');
+    expect(columnNamed(files, 'examples.csv', 'Translated_Text')).toBeTruthy();
+    expect(columnNamed(files, 'examples.csv', 'Gloss')).toBeTruthy();
+    // An unbound one still goes.
+    const unbound = build({
+      documents: [{ igtDoc: doc }],
+      options: { ...OPTIONS, translationField: null },
+    }).files;
+    expect(columnNamed(unbound, 'examples.csv', 'Translated_Text')).toBeUndefined();
+  });
+
+  it('writes no example for a sentence that is only whitespace, which Primary_Text cannot hold', () => {
+    const doc = makeFixtureDoc();
+    const [first] = doc.sortedSentences;
+    doc.body = `${doc.body}\n\u2028`;
+    const blank = { id: 's-blank', begin: 14, end: 16, annotations: {}, tokens: [], pieces: [] };
+    blank.pieces = [{ type: 'gap', content: '\n\u2028', isToken: false }];
+    doc.sortedSentences = [first, blank, { ...first, id: 's-again' }];
+    const { files, warnings } = build({ documents: [{ igtDoc: doc }] });
+    const rows = table(files, 'examples.csv');
+    expect(rows.map((r) => [r.ID, r.Position])).toEqual([
+      ['1-1', '1'],
+      ['1-3', '3'],
+    ]);
+    expect(rows.every((r) => r.Primary_Text !== '')).toBe(true);
+    // Nothing was in it, so nothing is said.
+    expect(warnings.join(' ')).not.toMatch(/left out/);
+  });
+
+  it('says how many sentences with words or values it left out for want of text', () => {
+    const doc = makeFixtureDoc();
+    const [first] = doc.sortedSentences;
+    const said = {
+      id: 's-said',
+      begin: 14,
+      end: 15,
+      annotations: { Translation: { value: 'A pause.' } },
+      tokens: [],
+      pieces: [{ type: 'gap', content: ' ', isToken: false }],
+    };
+    doc.sortedSentences = [first, said];
+    const { files, warnings } = build({ documents: [{ igtDoc: doc }] });
+    expect(table(files, 'examples.csv')).toHaveLength(1);
+    expect(warnings).toContain('1 sentence has no text in the Primary_Text line and was left out.');
+  });
+
   it('writes one example row per sentence with the aligned interlinear lines', () => {
     const { files } = build();
     const [row] = table(files, 'examples.csv');
@@ -265,10 +318,10 @@ describe('buildCldfDataset — custom columns', () => {
 
   it('omits optional columns that are empty in every row', () => {
     const doc = makeFixtureDoc();
-    doc.sortedSentences[0].annotations.Translation = { value: '' };
+    doc.sortedSentences[0].annotations.Note = { value: '' };
     const { files } = build({ documents: [{ igtDoc: doc }] });
     const header = Object.keys(table(files, 'examples.csv')[0]);
-    expect(header).not.toContain('Translated_Text');
+    expect(header).not.toContain('Comment');
     expect(header).toContain('Primary_Text');
   });
 

@@ -131,11 +131,13 @@ const columnSchema = (c) => {
 
 /**
  * Build one table: drop optional columns that are empty in every row (an
- * enabled-but-unused tier should not leave a dead column behind), then render
- * the CSV and the matching table schema.
+ * enabled-but-unused tier should not leave a dead column behind), except a
+ * column marked `keep`, then render the CSV and the matching table schema.
  */
 function buildTable({ url, conformsTo, columns, rows, foreignKeys = [] }) {
-  const kept = columns.filter((c) => c.required || rows.some((r) => (r[c.name] ?? '') !== ''));
+  const kept = columns.filter(
+    (c) => c.required || c.keep || rows.some((r) => (r[c.name] ?? '') !== ''),
+  );
   const names = kept.map((c) => c.name);
   const keptNames = new Set(names);
   const schema = { columns: kept.map(columnSchema) };
@@ -413,6 +415,8 @@ export function buildCldfDataset({
 
   // --- contributions (one per document) + examples ---
   const contributionRows = [];
+  // Sentences with words or values whose Primary_Text would be empty.
+  let leftOut = 0;
   const exampleRows = [];
   const mediaRows = [];
   // Which example row a token sits in, so a sense's promoted examples can name
@@ -480,6 +484,17 @@ export function buildCldfDataset({
     const surfaceWords = !o.primaryText || o.primaryText === BASELINE;
     (igtDoc.sortedSentences || []).forEach((sentence, i) => {
       const tokens = sentence.tokens || [];
+      // Primary_Text is required, so a sentence with no text there (one that
+      // is only whitespace, or has no value in the chosen orthography) is no
+      // example. Position and ID keep the sentence's place in its text.
+      const primaryText = primaryTextOf(sentence, o.primaryText);
+      if (primaryText === '') {
+        const said = Object.values(sentence.annotations || {}).some(
+          (a) => String(a?.value ?? '').trim() !== '',
+        );
+        if (tokens.length || said) leftOut += 1;
+        return;
+      }
       const analyzed = tokens.map(analyzedWordOf);
       const glosses = tokens.map((t) => glossOf(t, o.glossField, o.glossScope));
       const translated = o.translationField
@@ -488,7 +503,7 @@ export function buildCldfDataset({
       const row = {
         ID: `${contributionId}-${i + 1}`,
         Language_ID: objId,
-        Primary_Text: primaryTextOf(sentence, o.primaryText),
+        Primary_Text: primaryText,
         Analyzed_Word: analyzed.join('\t'),
         Gloss: o.glossField ? glosses.join('\t') : '',
         Translated_Text: translated,
@@ -543,6 +558,12 @@ export function buildCldfDataset({
       exampleRows.push(row);
     });
   });
+
+  if (leftOut) {
+    warnings.push(
+      `${leftOut} sentence${leftOut === 1 ? ' has' : 's have'} no text in the Primary_Text line and ${leftOut === 1 ? 'was' : 'were'} left out.`,
+    );
+  }
 
   // --- dictionary (entries + senses) ---
   const entryRows = [];
@@ -724,8 +745,10 @@ export function buildCldfDataset({
       col('Language_ID', { required: true, propertyUrl: 'languageReference' }),
       col('Primary_Text', { required: true, propertyUrl: 'primaryText' }),
       col('Analyzed_Word', { propertyUrl: 'analyzedWord', separator: '\t' }),
-      col('Gloss', { propertyUrl: 'gloss', separator: '\t' }),
-      col('Translated_Text', { propertyUrl: 'translatedText' }),
+      // A bound line stays when every value in it is empty: pycldf's
+      // Example.igt reads it by name and fails when the column is not there.
+      col('Gloss', { propertyUrl: 'gloss', separator: '\t', keep: !!o.glossField }),
+      col('Translated_Text', { propertyUrl: 'translatedText', keep: !!o.translationField }),
       col('Meta_Language_ID', { propertyUrl: 'metaLanguageReference' }),
       col('LGR_Conformance', { propertyUrl: 'lgrConformance' }),
       col('Comment', { propertyUrl: 'comment' }),
