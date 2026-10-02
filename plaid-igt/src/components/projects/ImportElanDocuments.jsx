@@ -532,7 +532,7 @@ export const ImportElanDocuments = () => {
             )}
             <div>
               <Button asChild>
-                <Link to={projectHref}>Open the project</Link>
+                <Link to={projectHref}>Open project</Link>
               </Button>
             </div>
           </div>

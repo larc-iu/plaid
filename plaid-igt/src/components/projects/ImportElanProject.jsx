@@ -312,7 +312,7 @@ export const ImportElanProject = () => {
             )}
             <div>
               <Button asChild>
-                <Link to={`/projects/${projectIdRef.current}`}>Open the project</Link>
+                <Link to={`/projects/${projectIdRef.current}`}>Open project</Link>
               </Button>
             </div>
           </div>
