@@ -681,23 +681,33 @@ export function buildCldfDocuments(dataset, options = {}) {
           }
         }
 
+        const morphemes = pieces.map((p, mi) => {
+          const fields = {};
+          if (aligned && o.glossScope === 'Morpheme') {
+            const g = glossPieces[mi].form;
+            if (g) fields[o.glossField] = g;
+          }
+          for (const [name, list_] of morphemeLists) {
+            const v = list_[mi]?.form ?? '';
+            if (v) fields[name] = v;
+          }
+          return { form: p.form, morphType: morphTypeOf(pieces, mi), fields };
+        });
+        // One piece that is only the word again, with no values, is no
+        // segmentation: Analyzed_Word gives an unsegmented word as itself, and
+        // such a word has no morpheme of its own.
+        const [only] = morphemes;
+        const bare =
+          morphemes.length === 1 &&
+          !only.morphType &&
+          !Object.keys(only.fields).length &&
+          only.form === body.slice(span.beginU16, span.endU16);
         words.push({
           begin: toCp(span.beginU16),
           end: toCp(span.endU16),
           sentenceIndex: si,
           fields: wordFields,
-          morphemes: pieces.map((p, mi) => {
-            const fields = {};
-            if (aligned && o.glossScope === 'Morpheme') {
-              const g = glossPieces[mi].form;
-              if (g) fields[o.glossField] = g;
-            }
-            for (const [name, list_] of morphemeLists) {
-              const v = list_[mi]?.form ?? '';
-              if (v) fields[name] = v;
-            }
-            return { form: p.form, morphType: morphTypeOf(pieces, mi), fields };
-          }),
+          morphemes: bare ? [] : morphemes,
         });
       });
     });

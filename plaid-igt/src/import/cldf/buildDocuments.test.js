@@ -75,8 +75,21 @@ describe('buildCldfDocuments', () => {
     expect([perros.begin, perros.end]).toEqual([0, 6]);
     expect(perros.morphemes.map((m) => m.form)).toEqual(['perro', 's']);
     expect(perros.morphemes.map((m) => m.fields.Gloss)).toEqual(['dog', 'PL']);
-    expect(corren.morphemes).toHaveLength(1);
-    expect(corren.morphemes[0].form).toBe('corren');
+    // "corren" is given as itself with no morpheme gloss: not segmented.
+    expect(corren.morphemes).toEqual([]);
+  });
+
+  it('keeps a one-piece analysis that differs from the word or carries a value', () => {
+    const { documents } = buildCldfDocuments(
+      dataset(
+        'ID,Primary_Text,Analyzed_Word,Gloss\r\n1,yisä corren,yisi\tcorren,\trun\r\n',
+        BASIC_COLUMNS,
+      ),
+      { glossScope: 'Morpheme' },
+    );
+    const [yisa, corren] = documents[0].words;
+    expect(yisa.morphemes.map((m) => m.form)).toEqual(['yisi']);
+    expect(corren.morphemes.map((m) => [m.form, m.fields.Gloss])).toEqual([['corren', 'run']]);
   });
 
   it('infers a clitic type from "=" and nothing at all from "-"', () => {
@@ -120,7 +133,7 @@ describe('buildCldfDocuments', () => {
     const [uno, dashes, dos] = documents[0].words;
     expect([dashes.begin, dashes.end]).toEqual([4, 6]);
     expect(dashes.morphemes).toEqual([]);
-    expect([uno, dos].map((w) => w.morphemes.length)).toEqual([1, 1]);
+    expect([uno, dos].map((w) => w.morphemes.length)).toEqual([0, 0]);
   });
 
   it('puts the translation on the sentence', () => {

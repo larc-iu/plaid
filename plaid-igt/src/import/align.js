@@ -316,3 +316,25 @@ function findSurface(body, surface, at) {
   const m = re.exec(body);
   return m ? { beginU16: m.index, endU16: m.index + m[0].length } : null;
 }
+
+/**
+ * Whether any of these ordered spans begins or ends inside a run of letters
+ * whose letter on the other side is in no span, so that placing them would cut
+ * a word of the text in two and leave part of it in no word. Words that share
+ * a run ("ca" + "n't") cut nothing, since each side of the cut is a word.
+ * Used to refuse an `alignSurfaces` result on a file whose word forms only
+ * look like literal text: "yegirx" found inside "yegirxo".
+ */
+export function cutsAWord(body, spans) {
+  const isLetter = (i) => i >= 0 && i < body.length && !/\s/.test(body[i]) && !isPunct(body[i]);
+  return spans.some((span, i) => {
+    const before = spans[i - 1];
+    const after = spans[i + 1];
+    const openBefore = !(before && before.endU16 >= span.beginU16);
+    const openAfter = !(after && after.beginU16 <= span.endU16);
+    return (
+      (openBefore && isLetter(span.beginU16 - 1) && isLetter(span.beginU16)) ||
+      (openAfter && isLetter(span.endU16) && isLetter(span.endU16 - 1))
+    );
+  });
+}

@@ -418,11 +418,13 @@ export default {
       ruling: 'user, 2026-09-17: metadata no field declares is exported by the native archive only',
     },
     'token.segmentedWord': carried,
-    'token.singleStoredMorpheme': carried,
+    'token.singleStoredMorpheme': {
+      carried: 'changed',
+      how: 'Comes back, unless its form (or, with no form, its word’s text) is the word’s text and no field holds a value on it. Analyzed_Word cannot tell that from a word nobody analyzed, and the import reads it as no analysis: the word comes back unanalyzed. The preset panel lists this loss (INHERENT_LOSSES).',
+    },
     'token.unanalyzedWord': {
-      carried: false,
-      kind: 'inherent',
-      why: 'Analyzed_Word cannot tell an unanalyzed word from one analyzed as a single morpheme, so it comes back with one stored morpheme whose form is the word’s text. A word whose text holds - or = comes back split into morphemes at them. A word the imported project skips as punctuation comes back unanalyzed instead (token.ignoredWord). The preset panel lists this loss (INHERENT_LOSSES).',
+      carried: 'changed',
+      how: 'Comes back unanalyzed, unless its text holds - or =, which Analyzed_Word reads as joints: then it comes back split into stored morphemes at them. A word the imported project skips as punctuation comes back unanalyzed too (token.ignoredWord).',
     },
     'token.morphemeForm': {
       carried: 'changed',
@@ -434,7 +436,7 @@ export default {
     },
     'token.morphemeFormAbsent': {
       carried: 'changed',
-      how: 'Comes back with metadata.form set to the text of its word.',
+      how: 'Comes back with metadata.form set to the text of its word, unless it is its word’s only morpheme and holds no value (token.singleStoredMorpheme).',
     },
     'token.morphemeZero': carried,
     'token.morphTypeOnMorpheme': {

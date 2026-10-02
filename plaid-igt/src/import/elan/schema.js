@@ -127,8 +127,26 @@ export function tierSchema(eaf, canonical = null) {
     }
     node.depth = depth;
   }
-  // Parents before children, then by name, so the UI reads as a tree.
-  return list.sort((a, b) => a.key.localeCompare(b.key));
+  // Parents before children, so the UI reads as a tree, and siblings in the
+  // file's order, which is the order the fields of the new project take.
+  const children = new Map();
+  const roots = [];
+  for (const node of list) {
+    if (node.parentKey && byKey.has(node.parentKey)) {
+      if (!children.has(node.parentKey)) children.set(node.parentKey, []);
+      children.get(node.parentKey).push(node);
+    } else roots.push(node);
+  }
+  const ordered = new Set();
+  const visit = (node) => {
+    if (ordered.has(node)) return;
+    ordered.add(node);
+    for (const child of children.get(node.key) ?? []) visit(child);
+  };
+  roots.forEach(visit);
+  // A cycle (an invalid file) has no root to reach it from.
+  list.forEach(visit);
+  return [...ordered];
 }
 
 /**

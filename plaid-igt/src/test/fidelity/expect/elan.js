@@ -5,9 +5,8 @@
 // what is lost goes by the shared strips. What this module adds is the shape
 // the import rebuilds: a baseline made again from the sentence annotations,
 // every offset re-derived against it, one annotation per token per field, one
-// speaker per sentence, times in whole milliseconds, a derived morpheme stored
-// for every unanalyzed word, and a project schema read back from what the files
-// hold.
+// speaker per sentence, times in whole milliseconds, and a project schema read
+// back from what the files hold.
 //
 // Every step reads the documents the snapshot holds rather than assuming how
 // many there are. The runner compares a whole-project import when the ELAN
@@ -183,7 +182,8 @@ const schemaSteps = [
     // An orthography goes out as a tier over the words and comes back as a
     // word field: nothing in an .eaf says a tier is another spelling rather
     // than an annotation. The expected side is moved to that shape, so the
-    // values themselves are still compared.
+    // values themselves are still compared. The orthography tiers are written
+    // before the word field tiers, so those fields come first, in order.
     apply(expected) {
       const wl = layer(expected, 'token:word');
       if (!wl) return;
@@ -207,15 +207,18 @@ const schemaSteps = [
           }
         }
       }
-      for (const name of names) {
-        if (layer(expected, `span:word/${name}`)) continue;
+      for (const l of spanLayers(expected)) {
+        if (l.key.startsWith('span:word/')) l.position += names.length;
+      }
+      names.forEach((name, position) => {
+        if (layer(expected, `span:word/${name}`)) return;
         expected.layers.push({
           key: `span:word/${name}`,
           name,
-          position: 0,
+          position,
           config: { igt: { scope: 'Word' } },
         });
-      }
+      });
     },
   },
   {
@@ -232,18 +235,6 @@ const schemaSteps = [
       for (const l of spanLayers(expected)) {
         if (!l.key.startsWith('span:morpheme/') || !wordNames.has(l.name)) continue;
         renameSpanLayer(expected, l.key, `${l.name}-2`);
-      }
-    },
-  },
-  {
-    keys: ['layers.fieldOrder'],
-    // The fields come back in the order the import meets their tiers, which is
-    // not the order they sat in. Ruled a tolerated wart (user, 2026-09-17: ELAN
-    // round-trip nits do not matter), so rather than model that order the
-    // comparison stops looking at field order, on both sides.
-    apply(expected, actual) {
-      for (const side of [expected, actual]) {
-        for (const l of spanLayers(side)) l.position = 0;
       }
     },
   },
@@ -316,13 +307,23 @@ const documentSteps = [
 
 const tokenSteps = [
   {
-    keys: ['token.unanalyzedWord', 'token.morphemeFormAbsent', 'token.morphemeForm'],
+    keys: [
+      'token.unanalyzedWord',
+      'token.singleStoredMorpheme',
+      'token.morphemeFormAbsent',
+      'token.morphemeForm',
+    ],
     // A word with no stored morpheme is written with its derived one, and comes
     // back with it stored as {form}: the word's text with a leading - or = taken
     // off. Whether a word has a derived morpheme is the exported project's rule
     // to say, so an ignored word gets none. The enclitic morph type the prose
     // adds for = is not added, because token.morphTypeOnMorpheme is undecided
     // and has already taken morph types off both sides.
+    //
+    // Last, a word's only morpheme whose form is then the word's text, and on
+    // which no field holds a value once trimmed, is no analysis: the import
+    // leaves that word unanalyzed. So a word with no stored morpheme comes back
+    // with one only when its text begins with - or =.
     //
     // A stored morpheme with no form comes back with its word's text as its
     // form. Then EVERY stored form comes back trimmed and with one leading -
@@ -370,6 +371,16 @@ const tokenSteps = [
             m.metadata.form = m.metadata.form.trim().replace(firstMarker, '');
           });
         }
+        const valued = new Set(
+          d.spans.filter((sp) => trimmed(sp.value) !== '').flatMap((sp) => sp.tokens),
+        );
+        const bare = new Set();
+        for (const { word, morphemes } of wordsWithMorphemes(d)) {
+          const [only] = morphemes;
+          if (morphemes.length !== 1 || valued.has(only.key)) continue;
+          if (only.metadata.form === surface(d, word)) bare.add(only);
+        }
+        removeTokens(expected, d, (t) => bare.has(t));
       }
     },
   },

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   makeCpIndexer,
+  cutsAWord,
   matchesAt,
   foldChar,
   splitAnalyzed,
@@ -252,5 +253,25 @@ describe('alignWords', () => {
     const { spans } = alignWords(body, 0, 7, ['uno', 'tres']);
     // "tres" is in the next sentence, so position 2 is "dos", not "tres".
     expect(body.slice(spans[1].beginU16, spans[1].endU16)).toBe('dos');
+  });
+});
+
+describe('cutsAWord', () => {
+  const at = (body, ...words) => {
+    let from = 0;
+    return words.map((w) => {
+      const b = body.indexOf(w, from);
+      from = b + w.length;
+      return { beginU16: b, endU16: b + w.length };
+    });
+  };
+  it('passes words whole, words sharing a run, and punctuation beside them', () => {
+    expect(cutsAWord('in West Bengal now', at('in West Bengal now', 'West Bengal'))).toBe(false);
+    expect(cutsAWord("can't go", at("can't go", 'ca', "n't", 'go'))).toBe(false);
+    expect(cutsAWord('dè nugue.', at('dè nugue.', 'dè nugue', '.'))).toBe(false);
+  });
+  it('catches a form that leaves part of a word in no word', () => {
+    expect(cutsAWord('yegirxo zown', at('yegirxo zown', 'yegirx', 'zown'))).toBe(true);
+    expect(cutsAWord('la casa', at('la casa', 'a', 'casa'))).toBe(true);
   });
 });

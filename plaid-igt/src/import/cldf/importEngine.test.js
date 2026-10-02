@@ -268,10 +268,10 @@ describe('runCldfImport', () => {
     ]);
     // The orthography rides in token metadata, not in a span.
     expect(words[0].metadata).toEqual({ 'orthog:Translit': 'perros-translit' });
+    // "corren" was never segmented, and comes back with no morpheme row.
     expect(morphemes.map((m) => [m.precedence, m.metadata.form])).toEqual([
       [1, 'perro'],
       [2, 's'],
-      [1, 'corren'],
     ]);
     expect(morphemes[1].metadata.morphType).toBe('enclitic');
   });
@@ -289,12 +289,11 @@ describe('runCldfImport', () => {
     });
     await runCldfImport({ client, projectId: 'p1', build });
     const [, , morphemes] = tokenCalls(client);
-    // perro + s, and corren. The word the dataset never analyzed gets no row:
-    // derive gives it a morpheme reading as the word, which is more than the
-    // empty-form row this used to write.
-    expect(morphemes).toHaveLength(3);
+    // perro + s. The words the dataset never analyzed get no row: derive gives
+    // each a morpheme reading as the word.
+    expect(morphemes).toHaveLength(2);
     // No empty-form row anywhere: what is stored is what the dataset analyzed.
-    expect(morphemes.map((m) => m.metadata.form)).toEqual(['perro', 's', 'corren']);
+    expect(morphemes.map((m) => m.metadata.form)).toEqual(['perro', 's']);
   });
 
   it('writes annotations into the span layer for their scope', async () => {

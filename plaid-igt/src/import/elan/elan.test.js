@@ -1584,8 +1584,8 @@ describe('a FLEx text brought in with ELAN', () => {
       { name: 'Mood', scope: 'Sentence', lang: null },
       { name: 'Gloss', scope: 'Word', lang: 'en' },
       { name: 'POS', scope: 'Word', lang: 'en' },
-      { name: 'Citation Form', scope: 'Morpheme', lang: 'qaa-x-dim' },
       { name: 'Gloss', scope: 'Morpheme', lang: 'en' },
+      { name: 'Citation Form', scope: 'Morpheme', lang: 'qaa-x-dim' },
     ]);
     expect(build.schema.orthographies).toEqual(['dis-Latn-AF']);
   });
@@ -1603,6 +1603,125 @@ describe('a FLEx text brought in with ELAN', () => {
     expect(doc.alignments.map((a) => [a.timeBegin, a.timeEnd])).toEqual([
       [0, 20],
       [20, 40],
+    ]);
+  });
+});
+
+describe('reading back our own export', () => {
+  const word = (id, begin, content, gloss, morphemes = []) => ({
+    id,
+    begin,
+    end: begin + content.length,
+    content,
+    metadata: {},
+    orthographies: {},
+    annotations: gloss ? { Gloss: { value: gloss } } : {},
+    vocabItem: null,
+    morphemes,
+  });
+  const roundTrip = (body, tokens, { morphFields = [] } = {}) => {
+    const xml = buildEafDocument(
+      {
+        document: { id: 'd1', name: 'Doc', mediaUrl: null, metadata: {} },
+        body,
+        sortedSentences: [makeSentence({ begin: 0, end: body.length, tokens })],
+        alignmentTokens: [],
+      },
+      {
+        orthographies: [],
+        wordFields: ['Gloss'],
+        morphFields,
+        sentFields: [],
+        segmentMorphemes: true,
+      },
+      { exportedAt: '2026-01-01T00:00:00Z' },
+    );
+    const { build } = buildFrom([[xml, 'doc.eaf']]);
+    const doc = build.documents[0];
+    return {
+      doc,
+      words: doc.words.map((w) => [doc.body.slice(w.begin, w.end), Object.values(w.fields)[0]]),
+    };
+  };
+
+  it('keeps a word that holds a space whole, and every value on its own word', () => {
+    const body = 'in West Bengal now';
+    const { doc, words } = roundTrip(body, [
+      word('w1', 0, 'in', 'in'),
+      word('w2', 3, 'West Bengal', 'state_name'),
+      word('w3', 15, 'now', 'now'),
+    ]);
+    expect(words).toEqual([
+      ['in', 'in'],
+      ['West Bengal', 'state_name'],
+      ['now', 'now'],
+    ]);
+    expect(doc.warnings ?? []).toEqual([]);
+  });
+
+  it('keeps a word that holds a space when punctuation follows it without one', () => {
+    const { words } = roundTrip('dè nugue.', [
+      word('w1', 0, 'dè nugue', 'a'),
+      word('w2', 8, '.', 'b'),
+    ]);
+    expect(words).toEqual([
+      ['dè nugue', 'a'],
+      ['.', 'b'],
+    ]);
+  });
+
+  it('leaves a word nobody segmented with no morpheme of its own', () => {
+    // The export writes such a word's morph as the word again (its virtual
+    // morpheme). That is no analysis, and reading it as one gave every
+    // unanalyzed word a morpheme with no values.
+    const virtual = (id, content) => ({
+      id: `virtual:${id}`,
+      content,
+      metadata: {},
+      annotations: {},
+      virtual: true,
+    });
+    const real = { id: 'm1', content: 'casa', metadata: { form: 'casa' }, annotations: {} };
+    const glossed = {
+      id: 'm2',
+      content: 'sol',
+      metadata: { form: 'sol' },
+      annotations: { Gloss: { value: 'sun' } },
+    };
+    const { doc } = roundTrip(
+      'perro casa sol',
+      [
+        word('w1', 0, 'perro', null, [virtual('w1', 'perro')]),
+        word('w2', 6, 'casa', null, [real]),
+        word('w3', 11, 'sol', null, [glossed]),
+      ],
+      { morphFields: ['Gloss'] },
+    );
+    expect(doc.words[0].morphemes).toEqual([]);
+    // A stored morpheme equal to its word with nothing on it reads the same.
+    expect(doc.words[1].morphemes).toEqual([]);
+    expect(doc.words[2].morphemes).toHaveLength(1);
+  });
+});
+
+describe('field order', () => {
+  it("keeps the file's tier order, parents before children", () => {
+    const xml = eafXml({
+      types: { u: null, a: 'Symbolic_Association', wd: 'Symbolic_Subdivision' },
+      tiers: [
+        { id: 'T', type: 'u', anns: [['a1', 'uno dos', 0, 1000]] },
+        { id: 'Translation', type: 'a', parent: 'T', anns: [['t1', 'one two', 'a1', null]] },
+        { id: 'wd', type: 'wd', parent: 'T', anns: [['w1', 'uno', 'a1', null]] },
+        { id: 'Speaker', type: 'a', parent: 'T', anns: [['s1', 'Ana', 'a1', null]] },
+        { id: 'Audio', type: 'a', parent: 'T', anns: [['x1', 'a.wav', 'a1', null]] },
+      ],
+    });
+    const { build, nodes } = buildFrom([[xml, 'x.eaf']]);
+    expect(nodes.map((n) => n.baseName)).toEqual(['T', 'Translation', 'wd', 'Speaker', 'Audio']);
+    expect(build.schema.fields.filter((f) => f.scope === 'Sentence').map((f) => f.name)).toEqual([
+      'Translation',
+      'Speaker',
+      'Audio',
     ]);
   });
 });

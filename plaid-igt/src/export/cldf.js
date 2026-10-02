@@ -345,7 +345,7 @@ const INHERENT_LOSSES = [
   'Vocabulary links from words and morphemes to their entries',
   'Provenance marks: machine-made and confirmed values arrive looking hand-made',
   'Morpheme types, except the clitics the joints in the aligned cell still carry',
-  'Which words are unanalyzed: a word with no analysis exports as one whole-word morpheme',
+  'One-morpheme analyses that repeat the word and hold no values: they come back unanalyzed',
 ];
 
 // ---- the dataset ------------------------------------------------------------

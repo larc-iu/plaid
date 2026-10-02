@@ -193,7 +193,7 @@ export default {
     // Layers
     'layers.orthography': {
       carried: 'changed',
-      how: 'An orthography goes out as its own tier over the words, and comes back as a word-scope FIELD of the same name holding the same values: an .eaf says nothing about a tier being another spelling of the words, so the import cannot tell one from a field.',
+      how: 'An orthography goes out as its own tier over the words, and comes back as a word-scope FIELD of the same name holding the same values: an .eaf says nothing about a tier being another spelling of the words, so the import cannot tell one from a field. Those fields come before the other word fields, in the order of the orthographies, since their tiers are written first.',
     },
     'layers.ignoredTokensPunctuation': {
       carried: 'changed',
@@ -218,10 +218,7 @@ export default {
       carried: 'changed',
       how: 'Tier ids are unique within a file, so the second of two fields sharing a name is written as "<name>-2" and comes back under that name. The tiers go out sentence, segment, word, orthographies, word fields, morphemes, morpheme fields, sentence fields, so the morpheme field is the one renamed when a word field shares its name.',
     },
-    'layers.fieldOrder': {
-      carried: 'changed',
-      how: 'The fields come back in the order the import meets their tiers across the files of the batch, which is not the order they sat in.',
-    },
+    'layers.fieldOrder': carried,
     'layers.fieldLang': {
       carried: false,
       kind: 'undecided',
@@ -388,10 +385,13 @@ export default {
     },
     'token.wordExtraMetadata': NO_ANNOTATION_METADATA,
     'token.segmentedWord': carried,
-    'token.singleStoredMorpheme': carried,
+    'token.singleStoredMorpheme': {
+      carried: 'changed',
+      how: 'Comes back, unless its form (or, with no form, its word’s text) is then the word’s text and no field holds a value on it once trimmed. The import reads such a morpheme as no analysis, and its word comes back unanalyzed (token.unanalyzedWord).',
+    },
     'token.unanalyzedWord': {
       carried: 'changed',
-      how: 'The export writes the word’s derived morpheme as a Morph annotation on purpose (plaid_igt_virtual_morpheme.md), so the word comes back with one stored morpheme, precedence 1, whose metadata is {form} alone: the word’s text, trimmed, with a leading - or = removed (and morphType enclitic added when that was =). It carries no annotation.',
+      how: 'Comes back unanalyzed. The export writes the word’s derived morpheme as a Morph annotation on purpose (plaid_igt_virtual_morpheme.md), and the import reads a word’s only morph that is the word’s text again, with no value, as no analysis. A word whose text begins with - or = comes back with one stored morpheme, precedence 1, whose metadata is {form} alone: the word’s text, trimmed, with the - or = removed (and morphType enclitic added when that was =).',
     },
     'token.morphemeForm': {
       carried: 'changed',
@@ -404,7 +404,7 @@ export default {
     },
     'token.morphemeFormAbsent': {
       carried: 'changed',
-      how: 'The morpheme comes back with metadata.form set to its word’s text, which is what it showed.',
+      how: 'The morpheme comes back with metadata.form set to its word’s text, which is what it showed, unless it is its word’s only morpheme and holds no value (token.singleStoredMorpheme).',
     },
     'token.morphemeZero': carried,
     'token.morphTypeOnMorpheme': {

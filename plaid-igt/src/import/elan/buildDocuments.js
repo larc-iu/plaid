@@ -25,10 +25,7 @@
 // TIME goes back to seconds: EAF stores milliseconds, Plaid's alignment layer
 // stores seconds in metadata.timeBegin/timeEnd.
 
-import { makeCpIndexer, matchesAt, alignWords } from '../align.js';
-// alignWords is the shared "ordered forms, no offsets" matcher. It currently
-// lives with the CLDF importer that first needed it; it belongs in align.js
-// beside its siblings and should move there when that file next settles.
+import { makeCpIndexer, matchesAt, alignWords, alignSurfaces, cutsAWord } from '../align.js';
 import { ROLES, nodeLabel } from './schema.js';
 import { readAffixMarkers } from '../../domain/affixMarkers.js';
 import { joinPhrase } from '../flex/flextextParser.js';
@@ -589,7 +586,15 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
       } else if (wordNodes.length) {
         wordAnns = childrenOn(piece.ann, piece.tier, wordNodes);
         const forms = wordAnns.map((a) => String(a.value ?? '').trim());
-        const aligned = alignWords(body, piece.beginU16, piece.endU16, forms);
+        // Our own export writes each word as it stands in the text, so a word
+        // that holds a space ("West Bengal") is placed where its text is. When
+        // the forms are not all there in order, or would cut a word of the
+        // text in two, the words are aligned run by run instead.
+        const exact = alignSurfaces(body, piece.beginU16, piece.endU16, forms);
+        const aligned =
+          exact && !cutsAWord(body, exact.spans)
+            ? exact
+            : alignWords(body, piece.beginU16, piece.endU16, forms);
         wordSpans = aligned.spans;
         for (const w of aligned.warnings) {
           docWarnings.push(`Utterance ${si + 1}: ${w}`);
@@ -674,7 +679,18 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
         // form falls back to the word. Among several, a blank form stays
         // blank: the word's text would be wrong there.
         const kept = read.filter((m) => m.form || m.morphType || Object.keys(m.fields).length);
-        const morphemes = kept.length === 1 && !kept[0].form ? [{ ...kept[0], form: null }] : kept;
+        // One morph that is only the word again, with no type and no values,
+        // is no segmentation: our own export writes one for every word nobody
+        // segmented, and an unsegmented word has no morpheme of its own.
+        const [only] = kept;
+        const bare =
+          kept.length === 1 &&
+          !only.morphType &&
+          !Object.keys(only.fields).length &&
+          only.form === body.slice(span.beginU16, span.endU16);
+        let morphemes = kept;
+        if (bare) morphemes = [];
+        else if (kept.length === 1 && !only.form) morphemes = [{ ...only, form: null }];
         words.push({
           begin: toCp(span.beginU16),
           end: toCp(span.endU16),
