@@ -1273,10 +1273,11 @@ class ApiTokensResource(_Resource):
         Returns:
             A dict with ``id``, ``name`` and ``token``.
         """
-        # no_idempotency: the answer is the secret, which the server never keeps.
+        # no_batch: the answer is the secret, which the server never keeps, so
+        # it takes no Idempotency-Key and a batch cannot carry it.
         return self._request('POST', f'/api/v1/users/{user_id}/tokens',
                              body=_body_of(name=name), audit_message=audit_message,
-                             no_idempotency=True)
+                             no_batch=True)
 
     def revoke(self, user_id: str, token_id: str, audit_message=None) -> Any:
         """Revoke a named API token (soft-revoke; idempotent).
@@ -1763,8 +1764,10 @@ class InvitesResource(_Resource):
                                            grant_admin=grant_admin, target_user_id=target_user_id,
                                            max_uses=max_uses, ttl_days=ttl_days, note=note),
                              audit_message=audit_message,
-                             # The answer is the code, which the server never keeps.
-                             no_idempotency=True)
+                             # The answer is the code, which the server never keeps,
+                             # so it takes no Idempotency-Key and a batch cannot
+                             # carry it.
+                             no_batch=True)
 
     def revoke(self, invite_id: str, audit_message=None) -> Any:
         """Revoke an invite, killing the link immediately.

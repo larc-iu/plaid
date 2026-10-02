@@ -208,9 +208,15 @@
                (refusal 400 {:error "Idempotency-Key must be 8 to 128 letters, digits or . _ : -"})
 
                :else
-               (let [user (:user/id request)
-                     fp (fingerprint request batch-route?)]
-                 ;; A fast read with no write lock answers most retries.
-                 (if-let [row (idem/lookup (:db request) user key)]
-                   (answer-from muuntaja row fp)
-                   (keyed-write handler request muuntaja user key fp batch-route?)))))))))})
+               ;; A batch the batch handler would refuse is refused before
+               ;; the lookup, so an answer kept before that refusal existed
+               ;; (a minted secret in it) is never replayed.
+               (or (when batch-route?
+                     (batch/operation-refusal (:reitit.core/router request)
+                                              (get-in request [:parameters :body])))
+                   (let [user (:user/id request)
+                         fp (fingerprint request batch-route?)]
+                     ;; A fast read with no write lock answers most retries.
+                     (if-let [row (idem/lookup (:db request) user key)]
+                       (answer-from muuntaja row fp)
+                       (keyed-write handler request muuntaja user key fp batch-route?))))))))))})

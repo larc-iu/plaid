@@ -196,14 +196,18 @@ test("only the calls the batch transport cannot carry refuse a batch", async () 
   stubFetch(sent);
   const b = client.batch();
 
-  // The two multipart uploads and the user-data store. Nothing else may throw
-  // here: `noBatch` on a read turns a read into a thrown one, and on a write it
-  // refuses work a batch could have done.
+  // The two multipart uploads, the user-data store, and the two calls whose
+  // answer is a secret, which the server refuses in a batch so a keyed batch
+  // never keeps it. Nothing else may throw here: `noBatch` on a read turns a
+  // read into a thrown one, and on a write it refuses work a batch could have
+  // done.
   const refuse = [
     ["upload media", () => b.documents.uploadMedia("d1", "f")],
     ["upload an avatar", () => b.users.setAvatar("u1", "f")],
     ["write user data", () => b.userData.put("u1", "k", 1)],
     ["delete user data", () => b.userData.delete("u1", "k")],
+    ["mint an API token", () => b.apiTokens.create("u1", "name")],
+    ["mint an invite", () => b.invites.create({ projectId: "p1" })],
   ];
 
   try {

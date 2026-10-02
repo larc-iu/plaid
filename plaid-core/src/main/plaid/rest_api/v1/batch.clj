@@ -9,6 +9,7 @@
             [plaid.sql.constraints.layer :as lc]
             [plaid.sql.datasource :as psd]
             [plaid.sql.operation :as op]
+            [reitit.core :as r]
             [taoensso.timbre :as log])
   (:import [java.sql SQLException]))
 
@@ -176,6 +177,43 @@
                                 "which a batch cannot do. Send it on its own.")}}))
         (map-indexed vector operations)))
 
+;; A route that refuses an Idempotency-Key (`:plaid/idempotency false`:
+;; login and logout, minting an API token or an invite, `/admin`, uploads,
+;; private user data, the service routes) is refused inside a batch too. Its
+;; answer may be a secret, which a keyed batch would keep for a day with the
+;; rest of its answer and replay, and none of them is a write of project
+;; data that needs the batch's transaction.
+(defn- takes-no-key?
+  "Whether `method` on `uri` routes to a write that refuses an
+  Idempotency-Key, by the route data the key middleware reads."
+  [router uri method]
+  (when-let [match (and router (r/match-by-path router uri))]
+    (false? (get-in match [:result method :data :plaid/idempotency]))))
+
+(defn keyless-operation-refusal
+  "The 400 for a batch with a write to a route that refuses an
+  Idempotency-Key, or nil. Checked before the batch runs, so nothing is
+  written and no answer is kept. A read of such a route is carried."
+  [router operations]
+  (some (fn [[n {:keys [path method]}]]
+          (let [method-kw (keyword (str/lower-case method))
+                uri (:uri (parse-path-and-query path))]
+            (when (and (not= :get method-kw) (takes-no-key? router uri method-kw))
+              {:status 400
+               :body {:error (str "Operation " n " (" (str/upper-case method) " " path
+                                  ") cannot be part of a batch. Send it on its own.")}})))
+        (map-indexed vector operations)))
+
+(defn operation-refusal
+  "The 400 for a batch holding an operation a batch cannot carry (a lock
+  route, or a write to a route that refuses an Idempotency-Key), or nil.
+  The key middleware asks it before it replays a stored batch too, so an
+  answer kept before the refusal existed is never answered again."
+  [router operations]
+  (when (sequential? operations)
+    (or (lock-operation-refusal operations)
+        (keyless-operation-refusal router operations))))
+
 (defn- merge-document-versions
   "Merge X-Document-Versions headers across a sequence of sub-responses.
    Each header is a JSON object `{doc-id integer}`; produce a single map
@@ -302,7 +340,7 @@
                        {:status 400
                         :body {:error (str "Batch exceeds max of " max-batch-ops
                                            " operations (received " (count raw-ops) ")")}}
-                       (lock-operation-refusal raw-ops))]
+                       (operation-refusal (::r/router request) raw-ops))]
       refused
       (let [pending *pending-key*]
         (with-atomic-tx
@@ -329,7 +367,9 @@
                          "(counted from 0) answered with at each path of its body, where the body holds null, and "
                          "{\"at\": [...], \"op\": n, \"index\": k} the k-th of the ids a bulk create answered with, "
                          "so a write can use what an earlier write in the same batch created. The body is never searched. "
-                         "Taking, renewing or releasing a document lock is not an operation a batch can hold, and refuses the batch with a 400.")
+                         "Taking, renewing or releasing a document lock is not an operation a batch can hold, and refuses the batch with a 400, "
+                         "as does any other write to a route that refuses an Idempotency-Key: logging in or out, minting an API token "
+                         "or an invite, /admin, uploads, private user data and the service routes.")
            :parameters {:body [:sequential
                                [:map
                                 [:path string?]

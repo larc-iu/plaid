@@ -46,9 +46,11 @@ import { uuidv7 } from "./ids.js";
 // does not 409 the next. A batch split past MAX_BATCH_OPS restamps each later
 // request with the version the one before it left (see submitBatch).
 //
-// `noBatch` is not part of that judgment. It marks the four calls the batch
-// transport cannot carry at all (the multipart media and avatar uploads, the
-// user-data store's put and delete) and raises so the caller finds out. A
+// `noBatch` is not part of that judgment. It marks the calls a batch cannot
+// carry at all (the multipart media and avatar uploads, the user-data store's
+// put and delete, and minting an API token or an invite, whose answer is a
+// secret the server refuses to keep with a keyed batch's answer) and raises
+// so the caller finds out. A
 // batch inside a batch is refused by the batch itself. Never put it on a read: it turns a swallowed read into a
 // thrown one, which is what the chrome hit when an unrelated import was
 // running. A blobless DELETE beside an upload is not one of them: it carries
@@ -240,10 +242,10 @@ export async function retryWhileBusy(
 // ---------------------------------------------------------------------------
 // The Idempotency-Key.
 //
-// Every write that is not a signal (`outOfBand`), an upload (`noBatch`) or a
-// call that mints a secret (`noIdempotency`) goes out with an
-// `Idempotency-Key` header, and so does every batch request (a queued op has
-// none: its batch request carries one). The server keeps the answer to a
+// Every write that is not a signal (`outOfBand`) or a call a batch cannot
+// carry (`noBatch`: an upload, user data, a call that mints a secret) goes out
+// with an `Idempotency-Key` header, and so does every batch request (a queued
+// op has none: its batch request carries one). The server keeps the answer to a
 // keyed write for a day, and the same key sent again for the same request is
 // answered from it with `Idempotent-Replayed: true`, writing nothing. So a
 // write whose answer was lost (no response, 502, 504) can be sent again
@@ -588,8 +590,7 @@ export function takesIdempotencyKey(method, options = {}) {
   return (
     method !== "GET" &&
     !options.outOfBand &&
-    !options.noBatch &&
-    !options.noIdempotency
+    !options.noBatch
   );
 }
 
@@ -705,8 +706,8 @@ export async function queueRequest(batch, method, path, options = {}) {
  *   rawBody         - Body value passed directly (no transform). Mutually exclusive with body.
  *   formData        - If true, body is FormData; skip Content-Type header
  *   queryParams     - Object of query param key/values to append
- *   noBatch         - If true, throw when made on a batch. Only for calls the
- *                     batch transport cannot carry at all (see the note at the
+ *   noBatch         - If true, throw when made on a batch. Only for calls a
+ *                     batch cannot carry at all (see the note at the
  *                     top of this file); never for a read.
  *   outOfBand       - If true, the call is a signal rather than a write of
  *                     project data: made on a batch it still goes over the

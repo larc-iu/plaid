@@ -189,14 +189,18 @@ def test_only_the_calls_the_batch_transport_cannot_carry_refuse_a_batch():
     sent = _stub_session(client)
     b = client.batch()
 
-    # The two multipart uploads and the user-data store. Nothing else may
-    # raise here: ``no_batch`` on a read turns a read into a thrown one, and
-    # on a write it refuses work a batch could have done.
+    # The two multipart uploads, the user-data store, and the two calls whose
+    # answer is a secret, which the server refuses in a batch so a keyed batch
+    # never keeps it. Nothing else may raise here: ``no_batch`` on a read
+    # turns a read into a thrown one, and on a write it refuses work a batch
+    # could have done.
     refuse = [
         ('upload media', lambda: b.documents.upload_media('d1', b'f')),
         ('upload an avatar', lambda: b.users.set_avatar('u1', b'f')),
         ('write user data', lambda: b.user_data.put('u1', 'k', 1)),
         ('delete user data', lambda: b.user_data.delete('u1', 'k')),
+        ('mint an API token', lambda: b.api_tokens.create('u1', 'name')),
+        ('mint an invite', lambda: b.invites.create(project_id='p1')),
     ]
 
     try:

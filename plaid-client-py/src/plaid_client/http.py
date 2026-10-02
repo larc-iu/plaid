@@ -55,9 +55,11 @@ logger = logging.getLogger(__name__)
 # does not 409 the next. A batch split past MAX_BATCH_OPS restamps each later
 # request with the version the one before it left (see ``_post_batch``).
 #
-# ``no_batch`` is not part of that judgment. It marks the four calls the batch
-# transport cannot carry at all (the multipart media and avatar uploads, the
-# user-data store's put and delete) and raises so the caller finds out. A
+# ``no_batch`` is not part of that judgment. It marks the calls a batch cannot
+# carry at all (the multipart media and avatar uploads, the user-data store's
+# put and delete, and minting an API token or an invite, whose answer is a
+# secret the server refuses to keep with a keyed batch's answer) and raises so
+# the caller finds out. A
 # batch inside a batch is refused by the batch itself. Never put it on a read: it turns a swallowed read into a thrown
 # one, which is what the chrome hit when an unrelated import was running. A
 # blobless DELETE beside an upload is not one of them: it carries nothing the
@@ -142,12 +144,13 @@ def retry_while_busy(attempt, retries=BUSY_RETRIES, base_delay=BUSY_BACKOFF_S):
 # ---------------------------------------------------------------------------
 # The Idempotency-Key.
 #
-# Every write that is not a signal (``out_of_band``), an upload (``no_batch``)
-# or a call that mints a secret (``no_idempotency``) goes out with an
-# ``Idempotency-Key`` header, and so does every batch request (a queued op has
-# none: its batch request carries one). The server keeps the answer to a keyed
-# write for a day, and the same key sent again for the same request is
-# answered from it with ``Idempotent-Replayed: true``, writing nothing. So a
+# Every write that is not a signal (``out_of_band``) or a call a batch cannot
+# carry (``no_batch``: an upload, user data, a call that mints a secret) goes
+# out with an ``Idempotency-Key`` header, and so does every batch request (a
+# queued op has none: its batch request carries one). The server keeps the
+# answer to a keyed write for a day, and the same key sent again for the same
+# request is answered from it with ``Idempotent-Replayed: true``, writing
+# nothing. So a
 # write whose answer was lost (no response, 502, 504) can be sent again
 # safely: it lands once. ``make_request`` and ``PlaidClient._post_batch`` do
 # that three times themselves (``retry_unknown``), and the error that escapes
@@ -226,9 +229,9 @@ def joins_operation(client, method, out_of_band=False, no_operation=False):
             and not out_of_band and not no_operation)
 
 
-def takes_idempotency_key(method, out_of_band=False, no_batch=False, no_idempotency=False):
+def takes_idempotency_key(method, out_of_band=False, no_batch=False):
     """Whether a call made on the client goes out with an Idempotency-Key."""
-    return method != 'GET' and not out_of_band and not no_batch and not no_idempotency
+    return method != 'GET' and not out_of_band and not no_batch
 
 
 def _is_number(v):
@@ -847,7 +850,7 @@ def queue_request(batch, method, path, *, no_batch=False, out_of_band=False, **k
 
 def make_request(client, method, path, *, body=None, raw_body=None, form_data=False,
                  query_params=None, no_batch=False, out_of_band=False,
-                 no_operation=False, no_idempotency=False, skip_response_transform=False,
+                 no_operation=False, skip_response_transform=False,
                  no_auth=False, binary_response=False, audit_message=None,
                  timeout=_UNSET, on_upload_progress=None, versioned=True,
                  _learning_omitted_version=False):
@@ -863,8 +866,8 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         form_data: If True, body is multipart form data; skip Content-Type
             header.
         query_params: Dict of query param key/values to append.
-        no_batch: If True, raise when made on a batch. Only for calls the
-            batch transport cannot carry at all (see the note at the top of
+        no_batch: If True, raise when made on a batch. Only for calls a
+            batch cannot carry at all (see the note at the top of
             this file); never for a read. Nothing here: a call that reached
             this function is going over the wire.
         out_of_band: If True, the call is a signal rather than a write of
@@ -877,10 +880,6 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         versioned: If False, strict mode does not stamp the call with the
             document version. For a write that carries its own precondition
             (a text edit with ``base``).
-        no_idempotency: If True, the write goes out with no Idempotency-Key
-            (see the note above ``retry_unknown``). For a call whose answer is
-            a secret the server never keeps (an API token, an invite code), so
-            it refuses a key.
         skip_response_transform: Return raw parsed JSON (no transform_response).
         no_auth: Skip Authorization header.
         binary_response: Return raw bytes instead of JSON/text.
@@ -892,7 +891,7 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
     """
     if method != 'GET' and _omitted_strict_document(client):
         _learn_omitted_version(client)
-    keyed = takes_idempotency_key(method, out_of_band, no_batch, no_idempotency)
+    keyed = takes_idempotency_key(method, out_of_band, no_batch)
     joins = joins_operation(client, method, out_of_band, no_operation)
     # The ids the joined operation minted for what it creates (operation()'s
     # ``minted``): a create refused 409 id-taken for one of them was made by

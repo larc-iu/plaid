@@ -1497,8 +1497,9 @@ class PlaidClient {
         this._request("POST", `/api/v1/users/${userId}/tokens`, {
           auditMessage,
           body: bodyOf({ name }),
-          // The answer is the secret, which the server never keeps.
-          noIdempotency: true,
+          // The answer is the secret, which the server never keeps, so it
+          // takes no Idempotency-Key and a batch cannot carry it.
+          noBatch: true,
         }),
       /**
        * Revoke a named API token (soft-revoke; idempotent).
@@ -1593,8 +1594,9 @@ class PlaidClient {
       ) =>
         this._request("POST", "/api/v1/invites", {
           auditMessage,
-          // The answer is the code, which the server never keeps.
-          noIdempotency: true,
+          // The answer is the code, which the server never keeps, so it
+          // takes no Idempotency-Key and a batch cannot carry it.
+          noBatch: true,
           body: bodyOf({
             "project-id": projectId,
             "project-role": projectRole,
