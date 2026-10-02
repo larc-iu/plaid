@@ -6,8 +6,8 @@ import { Popover, PopoverAnchor, PopoverContent } from '@ui/components/ui/popove
 import { Switch } from '@ui/components/ui/switch';
 import { Label } from '@ui/components/ui/label';
 import { Notice } from '@ui/components/shared/Notice.jsx';
-import { cpLength, cpSlice, cpIndexOf, utf16ToCp } from '@larc-iu/plaid-client';
-import { containsToken } from '../../utils/udLayerUtils.js';
+import { utf16ToCp } from '@larc-iu/plaid-client';
+import { tokensWithin } from '../../domain/sentenceRows.js';
 import { notifyError } from '../../utils/feedback.jsx';
 import { stableKey } from '@ui/domain/pendingIds.js';
 import { useFollowedState } from '@ui/hooks/useFollowedState.js';
@@ -65,11 +65,18 @@ export const TokenVisualizer = ({
   const sortPos = (a, b) =>
     a.begin - b.begin || a.end - b.end || (a.precedence ?? 0) - (b.precedence ?? 0);
 
+  // One code-point spread of each text, for every slice of it below.
+  // `cpSlice` spreads the whole text per call, once per token, which froze a
+  // 21,000-word document for minutes on every keystroke.
+  const textCps = useMemo(() => Array.from(text), [text]);
+  const originalCps = useMemo(() => Array.from(originalText), [originalText]);
+  const sliceText = (begin, end) => textCps.slice(begin, end).join('');
+  const textLength = textCps.length;
+
   // Words per token (server positions), and which tokens begin a sentence.
   const sortedMorphemes = useMemo(() => [...morphemeTokens].sort(sortPos), [morphemeTokens]);
   const morphemesByWord = useMemo(
-    () =>
-      new Map(wordTokens.map((w) => [w.id, sortedMorphemes.filter((m) => containsToken(w, m))])),
+    () => new Map(wordTokens.map((w) => [w.id, tokensWithin(sortedMorphemes, w)])),
     [wordTokens, sortedMorphemes],
   );
   const wordById = useMemo(() => new Map(wordTokens.map((w) => [w.id, w])), [wordTokens]);
@@ -84,23 +91,42 @@ export const TokenVisualizer = ({
 
   // Which sentence a character offset falls in. The hand-off to Annotate needs
   // the sentence TOKEN's id, and a badge only knows its own range. Sentences
-  // tile the document, so the containing one is the answer.
-  const sentenceTokenAt = useCallback(
-    (offset) =>
-      sentenceTokens.find((sent) => offset >= sent.begin && offset < sent.end) ||
-      (sentenceTokens.length === 1 ? sentenceTokens[0] : null),
+  // tile the document, so the containing one is the answer: the last one
+  // beginning at or before the offset, found by binary search, not a scan of
+  // every sentence for every badge.
+  const sentencesByBegin = useMemo(
+    () => [...sentenceTokens].sort((a, b) => a.begin - b.begin || a.end - b.end),
     [sentenceTokens],
+  );
+  const sentenceTokenAt = useCallback(
+    (offset) => {
+      let lo = 0;
+      let hi = sentencesByBegin.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (sentencesByBegin[mid].begin <= offset) lo = mid + 1;
+        else hi = mid;
+      }
+      // An empty sentence holds no offset and hides none behind it.
+      for (let i = lo - 1; i >= 0; i--) {
+        const sentence = sentencesByBegin[i];
+        if (offset < sentence.end) return sentence;
+        if (sentence.begin < sentence.end) break;
+      }
+      return sentencesByBegin.length === 1 ? sentencesByBegin[0] : null;
+    },
+    [sentencesByBegin],
   );
 
   const formOf = (m, word) => {
     const f = morphemeForms.get(m.id);
-    return f != null && f !== '' ? f : cpSlice(text, word.begin, word.end);
+    return f != null && f !== '' ? f : sliceText(word.begin, word.end);
   };
   // A token's current word forms — its words' Form-or-substring, or the token's
   // own surface for a 1:1 token. Seeds the editor and detects unsaved changes.
   const currentFormsOf = (word) => {
     const ms = morphemesByWord.get(word.id) || [];
-    return ms.length ? ms.map((m) => formOf(m, word)) : [cpSlice(text, word.begin, word.end)];
+    return ms.length ? ms.map((m) => formOf(m, word)) : [sliceText(word.begin, word.end)];
   };
 
   // --- hover open/close with pin-while-editing ---
@@ -120,7 +146,9 @@ export const TokenVisualizer = ({
   };
   // True while focus is inside the open panel — i.e. the user is editing.
   const isEditing = () => !!(panelRef.current && panelRef.current.contains(document.activeElement));
-  const requestOpen = (id) => {
+  // The open panel's badge, which the one panel is anchored to.
+  const anchorRef = useRef(null);
+  const requestOpen = (id, el) => {
     clearClose();
     if (openId === id) return;
     if (isEditing()) return; // don't yank focus away from an in-progress edit
@@ -129,6 +157,7 @@ export const TokenVisualizer = ({
       openTimer.current = null;
       const word = wordById.get(id);
       if (word) setDraftForms(currentFormsOf(word)); // seed editor with current words
+      anchorRef.current = el;
       setOpenId(id);
     }, OPEN_DELAY);
   };
@@ -267,17 +296,30 @@ export const TokenVisualizer = ({
     const original = originalText;
     const current = text;
     if (!original || original === current) return words;
-    // Work in code points (token offsets are code points).
-    const oCps = Array.from(original);
-    const cCps = Array.from(current);
+    // Work in code points (token offsets are code points), each text spread
+    // once. The search runs on the UTF-16 string, with its positions mapped
+    // to code points and back by table, not by re-spreading the text.
+    const oCps = originalCps;
+    const cCps = textCps;
     const curLen = cCps.length;
+    const cpToUnit = new Int32Array(curLen + 1);
+    const unitToCp = new Int32Array(current.length + 1);
+    for (let c = 0, u = 0; c < curLen; c++) {
+      cpToUnit[c] = u;
+      unitToCp[u] = c;
+      if (cCps[c].length === 2) unitToCp[u + 1] = c + 1;
+      u += cCps[c].length;
+      cpToUnit[c + 1] = u;
+    }
+    unitToCp[current.length] = curLen;
     let editPos = 0;
     while (editPos < Math.min(oCps.length, cCps.length) && oCps[editPos] === cCps[editPos])
       editPos += 1;
     const lengthDiff = cCps.length - oCps.length;
 
     return words.map((word) => {
-      const wordText = cpSlice(original, word.begin, word.end);
+      const wordCps = oCps.slice(word.begin, word.end);
+      const wordText = wordCps.join('');
       // A token with no text in `original` cannot be looked for: '' is found
       // everywhere, and the search below would never end.
       if (!wordText) return { ...word, invalid: true };
@@ -285,7 +327,7 @@ export const TokenVisualizer = ({
       if (word.begin >= editPos) {
         const nb = word.begin + lengthDiff;
         const ne = word.end + lengthDiff;
-        if (nb >= 0 && ne <= curLen && cpSlice(current, nb, ne) === wordText) {
+        if (nb >= 0 && ne <= curLen && cCps.slice(nb, ne).join('') === wordText) {
           return { ...word, begin: nb, end: ne, adjusted: true };
         }
       }
@@ -293,19 +335,20 @@ export const TokenVisualizer = ({
       let bestScore = -1;
       let from = 0;
       while (from <= curLen) {
-        const idx = cpIndexOf(current, wordText, from);
-        if (idx === -1) break;
+        const unit = current.indexOf(wordText, cpToUnit[from]);
+        if (unit === -1) break;
+        const idx = unitToCp[unit];
         const score = 1000 - Math.abs(idx - word.begin);
         if (score > bestScore) {
           bestScore = score;
-          best = { begin: idx, end: idx + cpLength(wordText) };
+          best = { begin: idx, end: idx + wordCps.length };
         }
         from = idx + 1;
       }
       if (best) return { ...word, begin: best.begin, end: best.end, adjusted: true };
       return { ...word, invalid: true };
     });
-  }, [wordTokens, originalText, text]);
+  }, [wordTokens, originalText, text, originalCps, textCps]);
 
   if (!text) {
     return <p className="py-8 text-center text-muted-foreground">No text to visualize</p>;
@@ -329,22 +372,21 @@ export const TokenVisualizer = ({
     );
   }
 
-  const renderWordBadge = (word) => {
-    const wordText = cpSlice(text, word.begin, word.end);
-    const display = word.begin === word.end ? '∅' : wordText;
-    const isSentStart = sentenceInitialWordIds.has(word.id);
-    const morphs = morphemesByWord.get(word.id) || [];
-    const isMwt = morphs.length > 1;
+  const displayOf = (word) => (word.begin === word.end ? '∅' : sliceText(word.begin, word.end));
+  const isMwtWord = (word) => (morphemesByWord.get(word.id) || []).length > 1;
 
+  const renderWordBadge = (word) => {
     const sentenceToken = sentenceTokenAt(word.begin);
     const canHandOff = Boolean(onOpenInAnnotate && sentenceToken);
-
-    const badge = (
+    // A plain span: the one panel is anchored to the badge it opened from.
+    // A popover around every badge cost seconds on a long document.
+    return (
       <span
+        key={`w-${stableKey(word.id)}`}
         className={classes.badge}
         dir="auto"
-        data-mwt={isMwt}
-        data-sent-start={isSentStart}
+        data-mwt={isMwtWord(word)}
+        data-sent-start={sentenceInitialWordIds.has(word.id)}
         data-sentence={sentenceToken?.id}
         title={
           canHandOff
@@ -363,26 +405,32 @@ export const TokenVisualizer = ({
           }
           toggleSentence(word);
         }}
-        onMouseEnter={isTextDirty ? undefined : () => requestOpen(word.id)}
+        // No panel while the text is dirty: the badges are relocated
+        // previews, and editing is blocked until the text is saved.
+        onMouseEnter={isTextDirty ? undefined : (e) => requestOpen(word.id, e.currentTarget)}
         onMouseLeave={isTextDirty ? undefined : requestClose}
       >
-        {display}
+        {displayOf(word)}
       </span>
     );
+  };
 
-    // No panel while the text is dirty — the badges are relocated previews,
-    // and editing is blocked until the text is saved.
-    if (isTextDirty) return <span key={`w-${stableKey(word.id)}`}>{badge}</span>;
-
+  // The one hover panel, for the open token, anchored to its badge.
+  const renderPanel = () => {
+    const word = !isTextDirty && openId != null ? wordById.get(openId) : null;
+    if (!word || !anchorRef.current?.isConnected) return null;
+    const display = displayOf(word);
+    const isSentStart = sentenceInitialWordIds.has(word.id);
+    const isMwt = isMwtWord(word);
     return (
       <Popover
-        key={`w-${stableKey(word.id)}`}
-        open={openId === word.id}
+        key={`p-${stableKey(word.id)}`}
+        open
         onOpenChange={(next) => {
           if (!next) closePanel();
         }}
       >
-        <PopoverAnchor asChild>{badge}</PopoverAnchor>
+        <PopoverAnchor virtualRef={anchorRef} />
         <PopoverContent
           align="center"
           data-token-panel="true"
@@ -521,7 +569,7 @@ export const TokenVisualizer = ({
         if (word.begin > lastEnd) {
           els.push(
             <span key={`bt-${si}-${wi}`} className={classes.plainText}>
-              {cpSlice(text, lastEnd, word.begin)}
+              {sliceText(lastEnd, word.begin)}
             </span>,
           );
         }
@@ -544,10 +592,10 @@ export const TokenVisualizer = ({
       );
     });
 
-    if (lastEnd < cpLength(text)) {
+    if (lastEnd < textLength) {
       blocks.push(
         <div key="trail" className={classes.plainText}>
-          {cpSlice(text, lastEnd)}
+          {sliceText(lastEnd)}
         </div>,
       );
     }
@@ -577,6 +625,7 @@ export const TokenVisualizer = ({
       >
         {renderText()}
       </div>
+      {renderPanel()}
       <p className="mt-3 text-xs text-muted-foreground">
         Click a token to toggle its sentence boundary. Hover a token to edit its words or delete it.
         Select text to create a token. Alt+click a token to annotate its sentence.
