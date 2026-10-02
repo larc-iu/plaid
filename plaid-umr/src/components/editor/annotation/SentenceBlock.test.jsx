@@ -327,6 +327,27 @@ describe('SentenceBlock review', () => {
     expect(button(r.container, 'Accept graph')).toBeUndefined();
     await r.unmount();
   });
+
+  it('leaves focus on the root after Accept graph, so the canvas keys go on working', async () => {
+    const { sentence, nodesById } = fixture();
+    const doc = (open) => ({
+      graph: {},
+      canConfirmSentence: () => open,
+      canDiscardSentence: () => false,
+      confirmSentence: async () => true,
+    });
+    const props = { sentence, nodesById, readOnly: false };
+    const r = await renderComponent(<SentenceBlock doc={doc(true)} dataVersion={1} {...props} />);
+    const accept = button(r.container, 'Accept graph');
+    accept.focus();
+    await r.step(() => accept.click());
+    await r.rerender(<SentenceBlock doc={doc(false)} dataVersion={2} {...props} />);
+    await r.step(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(document.activeElement).toBe(
+      all(r.container, '.umr-node').find((n) => n.textContent.includes('leave-02')),
+    );
+    await r.unmount();
+  });
 });
 
 describe('SentenceBlock discard', () => {

@@ -860,6 +860,17 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     stop?.focus({ preventScroll: true });
   };
 
+  // Accept graph: the button goes with the draft, so the root takes focus,
+  // and the canvas keys go on working.
+  const acceptGraph = () => {
+    doc.confirmSentence(sentence.index);
+    const first = sentence.roots[0]?.id ?? sentence.nodes[0]?.id;
+    requestAnimationFrame(() => {
+      if (first) focusNode(first);
+      else unfocus();
+    });
+  };
+
   // Discard graph: the sentence's drafted nodes and relations go, after a
   // question. What stays takes focus, since the button goes with the draft.
   const discardRef = useRef(null);
@@ -1554,7 +1565,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
           <button
             type="button"
             className="umr-text-toggle plaid-review plaid-review--accept"
-            onClick={() => doc.confirmSentence(sentence.index)}
+            onClick={acceptGraph}
           >
             Accept graph
           </button>
