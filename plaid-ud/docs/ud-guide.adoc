@@ -134,10 +134,18 @@ The save is also refused when the text has passages that read the same and your 
 
 Tokens already made follow an edit of the saved text.
 A change inside a token, or touching it with no space between, changes that token, and it keeps its words and annotations.
-Typing a space inside a token splits it there: the token and its annotations stay on the part holding most of its letters, and the rest is untokenized text. Spaces a token already had do not split it.
+Typing a space inside a token splits it there: the token and its annotations stay on the part holding most of its letters, and the other part becomes a new token, one word with no annotations.
+In a multi-word token whose words match the parts, such as `can't` typed as `ca n't`, each word keeps its own part. Spaces a token already had do not split it.
 On a project whose tokens are shared with another app, the split holds for that app too.
 Deleting the space between two tokens keeps them two tokens. Merge them to make one.
 A token goes, along with its annotations, only when all its text is deleted.
+Pasting the text back with words added, removed or changed changes only those tokens. Every other token keeps its annotations.
+
+**Ctrl/Cmd+Z** in the editor undoes typing, and **Ctrl/Cmd+Shift+Z** redoes it, up to 200 steps back.
+An undo the editor cannot place exactly, such as one reaching back past a save that took in someone else's text, does nothing.
+
+A document of more than 15,000 words shows **Long document** at the top of this tab and the Annotate tab.
+Editing slows down past that length. Split such a document into shorter ones.
 Text typed right before a sentence's first character joins that sentence, unless it holds a line break, and text typed right after a sentence's last character joins that one.
 
 There are two ways to turn saved text into tokens, and both are runs (see <<_services>>):
@@ -208,6 +216,11 @@ Below the grid, each sentence's dependency tree is drawn as arcs between words.
 * **Rename a relation**: click an arc's label to edit its dependency relation (`nsubj`, `obj`, …), again with autocomplete.
 * **Delete a relation**: click its label, then the bin to the left of the box that opens, or press **Shift+Backspace** before typing anything.
 * **Keyboard**: from the grid, **Ctrl/Cmd+D** jumps focus into the tree's labels. **Tab** and **Shift+Tab** walk between them, and from inside an open label they commit it and open the next. See <<_keyboard_shortcuts>> for the rest.
+
+A word has one head in the tree, and the tree has no cycle.
+Drawing a relation to a word that already has a head moves it to the new head, keeping its label.
+A relation that would close a cycle is refused, and so is a second head from the assistant or a script.
+An import keeps a second head a file gives a word, and restoring an earlier state brings back one the document had.
 
 == Enhanced Dependencies
 
@@ -309,6 +322,7 @@ A change to another kind of annotation, on other words, does not refuse it.
 
 When someone else changed the same cell first, the cell shows their value, with yours under it: **Yours: X · Enter to keep yours**.
 A message names the change, such as `b changed this to NOUN.`
+When the change cannot be traced to one person, the message says `Someone`, and `You` for your own change from another tab.
 **Enter** in the cell saves yours, **Escape** or typing another value drops it, and leaving the cell saves nothing.
 The same happens when the word was split or joined by someone else before your value was saved.
 When the word is gone by the time your value is refused, a message says `Not saved:` and the value.
@@ -385,6 +399,7 @@ Approving a plan after a sentence it changes has been edited is refused, and the
 An edit to another sentence does not stop it.
 A replacement across documents is also out of date when a document starts or stops matching it after the plan was made.
 Approving a plan on a document that a parser run is writing to is refused with nothing written. Approve again once the run has finished.
+A plan approved in two tabs at once is applied once. The other tab shows it applied when the first has finished.
 
 A plan that stops partway reads **Partly applied**, with how many of its changes were written, and the changes not written are dimmed.
 Ask the assistant to finish it.
@@ -392,6 +407,7 @@ A parse the assistant started that stops partway reads **Partly applied** too, w
 
 A reply lands whether or not the page stays open: leave the tab, reload, or close the browser, and the answer is there when the conversation is next opened.
 **Stop** ends a turn early, even while the model is still working on its answer.
+The conversation then reads `You stopped this turn.` with **Retry**.
 Conversations are private to you, kept per project, and can be downloaded or copied as Markdown.
 Your server's administrator can read them.
 
@@ -480,11 +496,16 @@ Added between two words the tree already joins, it replaces the tree's relation 
 
 Structure needs Grew, and a word does not. The box above the pattern looks in a single field (form, lemma, UPOS, XPOS, dependency relation or features) for text that **contains**, **is**, or **matches** (as a regular expression) what you type.
 
+In features, each `Key=Value` pair is looked in on its own: **contains** `Number` finds every word with a Number feature, and **is** `Number=Sing` only that feature. In a pattern this is `W [FEATS=re"Number"]`.
+
 It does not run a search of its own: it writes the Grew pattern and hands it to the box below. So a quick lookup is the first draft of a real one. Run it, then edit the pattern it wrote.
+
+A regular expression on a feature (`X [Number=re"^S"]`) is searched for in the feature's value, where `^` and `$` mark its start and end.
 
 === Counting instead of reading
 
-After a search, **Count by** re-runs the same pattern as a tally: pick a pattern node and a field (`V.upos`, `S.lemma`, or a named edge's `e.label`) and the result is a sortable table of values with how many matches each accounts for.
+After a search, **Count by** re-runs the same pattern as a tally: pick a pattern node and a field (`V.upos`, `S.lemma`, `V.FEATS`, or a named edge's `e.label`) and the result is a sortable table of values with how many matches each accounts for.
+Counting by `FEATS` counts each `Key=Value` pair.
 
 The matches themselves are never fetched for this, because the server does the counting, so it stays fast on a corpus too large to page through.
 
@@ -534,6 +555,7 @@ After an apply the preview runs again by itself. **No sentences to change** mean
 
 Every change is recorded.
 **History** at the end of a document's tab row, on any tab, opens its **history**, where you can select an earlier point to view the document exactly as it was then.
+**Escape** closes it, and focus goes back to **History**.
 Each entry is one action as you performed it (for example "Update upos", "Create relation", or a parser run), even when it was made up of several underlying changes.
 A parser run is listed under the service's name and names the person who ran it: `Stanza UD parse (en), requested by Ana`.
 Selecting an entry shows the document as it was right after that action. Entries made of several changes have an arrow you can expand to see, and select, each individual change.
@@ -576,6 +598,8 @@ Projects are shared by adding members with a role:
 
 Add members from the project's **Access** settings by searching for a name or email address.
 When you only have Reader access, the editor shows everything but its controls are inert.
+When a maintainer makes you a Reader, or removes you, while you have a document open, the page turns read-only after your next edit is refused, or within a minute.
+A member who was removed is told `You no longer have access to this project.`
 
 Each member also has a **Review work** checkbox, independent of their role.
 Tick it and everything that person enters is marked as needing review until someone else confirms it (see <<_machine_vs_human_annotations>>).
@@ -585,7 +609,7 @@ The mark is shared with every Plaid app on the project.
 
 A project's maintainers can tailor the annotation scheme from the project's **Settings** tab:
 
-* **UD settings**: the controlled vocabularies (UPOS, XPOS, DEPREL tags), tag and relation **colors**, the **feature inventory** offered in the Features column, and the **document** and **sentence fields** the project keeps notes in (see <<_metadata>>). All vocabularies start from the standard universal sets and can be extended or replaced. **Save** writes only the settings you changed. If another maintainer changed the same one since you opened the tab, the save is refused and the tab shows the stored settings. Leaving the tab with a change not saved asks first.
+* **UD settings**: the controlled vocabularies (UPOS, XPOS, DEPREL tags), tag and relation **colors**, the **feature inventory** offered in the Features column, and the **document** and **sentence fields** the project keeps notes in (see <<_metadata>>). All vocabularies start from the standard universal sets and can be extended or replaced. **Save** writes only the settings you changed. If another maintainer changed one of them since you opened the tab, nothing is saved. The settings changed there show what is stored, the message names them, and your other changes stay on the tab for the next **Save**. Leaving the tab with a change not saved asks first.
 * **General**: the project's **language**, the **tokenizer locale** used by **Tokenize**, and project deletion. The language is a BCP-47 tag such as `en`, `de` or `zh-Hans`. It is the language a connected parser starts on, and the locale **Tokenize** segments with unless the tokenizer locale is set to something more specific.
 
 === Suggestions or rules
@@ -621,6 +645,8 @@ From the **Annotate** view, each sentence carries a small badge under its grid: 
 A thread is collapsed to its latest comment, and opens on click. Bodies are Markdown. You may edit and delete your own, and a maintainer may delete anyone's. Readers can read comments but not write them.
 
 A comment **outlives what it is about**. If the sentence it hangs on is merged away or re-segmented, the comment stays, marked **Outdated**, under the caption it was posted with. Those are shown separately from the current ones.
+
+A project shared with another app can hold threads on things this editor does not show, such as a word's gloss. They are listed under **On other layers** while what they are about still exists. **Outdated** holds only threads whose subject was deleted.
 
 While a thread is open, comments from other people appear as they are written.
 
@@ -689,6 +715,8 @@ The link:manual.html#_services[Services chapter of the Plaid manual] explains ho
 
 From the project's **Access** settings, and from your user profile, you can create named **API tokens** for scripts and services.
 A token carries your permissions and does not expire, and actions taken with one are attributed to it in the history.
+A token cannot change a password, create or revoke API tokens, make a password-reset link, create an account, or make an invitation link that grants administrator rights.
+Do these signed in.
 
 For writing your own scripts against a project, see the link:api-py.html[Python client] and link:api-js.html[JavaScript client] references.
 
