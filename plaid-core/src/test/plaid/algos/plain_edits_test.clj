@@ -655,3 +655,75 @@
     (is (= ["x a bb" "x" "a" "bb"] (save "|a| |a| |b|" "x a bb")))
     (is (= ["na oke kan tak ma" "na" "kan" "tak" "ma"] (save "|na| |kon| |tok| |ma|" "na oke kan tak ma")))
     (is (= ["你好嗎。我很好！" "你" "好" "嗎" "。" "我" "很" "好" "！"] (save "|你||好||吗||。|/|我||很||好||。|" "你好嗎。我很好！")))))
+
+(deftest an-edit-that-only-deletes-or-only-types-is-taken-as-made
+  ;; REV2-F-TEXT-CORE R1: a delete across a word boundary carries all it
+  ;; means, and no reading of it deletes a word with letters left
+  (is (= ["then" "th" "en"] (edit "|the| |then|" [(del 2 4)])))
+  (is (= ["I saw then it ran" "I" "saw" "th" "en" "it" "ran"]
+         (edit "|I| |saw| |the|\n/|then| |it| |ran|" [(del 8 4)])))
+  (is (= ["at" "a" "t"] (edit "|at|\n/|at|" [(del 1 3)])))
+  (is (= ["kan ma" "k" "an" "ma"] (edit "|ka| |kan| |ma|" [(del 1 3)])))
+  (is (= ["a at" "a" nil "at"] (edit "|at| |at| |at|" [(del 1 4)])) "the word all of whose letters went")
+  (testing "sentence 1 is kept"
+    (let [{:keys [body tokens]} (doc "|at|\n/|at|")
+          r (ta/plain-edits body tokens [(del 1 3)] #{:s} #{:w})]
+      (is (empty? (filter #(= :s (first %)) (:deleted r)))))))
+
+(deftest gaps-read-apart-rebuild-the-body-sent
+  ;; REV2-F-TEXT-CORE R2: two gaps over several words and a typed gap between
+  (let [{:keys [body tokens]} (doc "|an| |a| |a| |is| |sat|")
+        ops [(rep 8 3 "x") (rep 4 1 "") (rep 1 1 "b a")]
+        r (ta/plain-edits body tokens ops #{:s} #{:w})]
+    (is (= (ta/edit-ops-body ops body) (:text/body (:text r))))))
+
+(deftest a-line-typed-in-front-with-the-first-letter-changed-is-a-sentence
+  ;; REV2-F-TEXT-CORE R4: `Oh my.\nH` typed over the `h` of `hi`
+  (let [{:keys [body tokens]} (doc "|hi| |there.|\n/|bye|")
+        r (ta/plain-edits body tokens [(rep 0 1 "Oh my.\nH")] #{:s} #{:w})
+        nb (:text/body (:text r))
+        w0 (some #(when (= [:w 0] (:token/id %)) %) (:tokens r))]
+    (is (= "Oh my.\nHi there.\nbye" nb))
+    (is (= "Hi" (cp/cp-subs nb (:token/begin w0) (:token/end w0))))
+    (is (= [[0 7]] (mapv (juxt :token/begin :token/end) (:heads r))))))
+
+(deftest four-hundred-edits-on-40000-words-save-in-under-two-seconds
+  ;; REV2-F-TEXT-CORE R3: a save of many edits over word boundaries read
+  ;; each over the whole body (136 ops 15 s, 396 ops 42 s)
+  (let [rng (java.util.Random. 7)
+        syl ["ka" "na" "ma" "to" "ri" "lu" "se" "po" "ng" "wa" "the" "en"]
+        word #(apply str (repeatedly (inc (.nextInt rng 3)) (fn [] (syl (.nextInt rng (count syl))))))
+        sb (StringBuilder.)
+        [ws ss] (loop [i 0 s0 0 ws [] ss []]
+                  (if (< i 40000)
+                    (let [w (word) b (.length sb)]
+                      (.append sb w)
+                      (let [ws (conj ws [b (.length sb)])]
+                        (if (= 11 (mod i 12))
+                          (do (.append sb "\n") (recur (inc i) (.length sb) ws (conj ss [s0 (.length sb)])))
+                          (do (.append sb " ") (recur (inc i) s0 ws ss)))))
+                    [ws (conj ss [s0 (.length sb)])]))
+        body (str sb)
+        tokens (-> []
+                   (into (map-indexed (fn [i [b e]] {:token/id [:s i] :token/layer :s :token/begin b :token/end e}) ss))
+                   (into (mapcat (fn [i [b e]] [{:token/id [:w i] :token/layer :w :token/begin b :token/end e}
+                                                {:token/id [:m i] :token/layer :m :token/begin b :token/end e}])
+                                 (range) ws)))
+        picks (vec (sort (distinct (repeatedly 230 #(+ 10 (.nextInt rng (- (count ws) 20)))))))
+        ;; at each place, a word's last letter and the next one's first
+        ;; typed over as two words (read as a whole-body save reads it), and
+        ;; a letter typed two words before it, taken back to front
+        ops (->> picks
+                 (mapcat (fn [i] (let [[_ e] (ws i) [b2] (ws (inc i)) [b0] (ws (- i 2))]
+                                   [(rep (dec e) (- (inc b2) (dec e)) "x y") (ins (inc b0) "q")])))
+                 (sort-by #(- (:index %)))
+                 (take 400)
+                 vec)
+        run #(ta/plain-edits body tokens ops #{:s} #{:w} {:children #{:m}})
+        _ (run)
+        t0 (System/nanoTime)
+        r (run)
+        secs (/ (- (System/nanoTime) t0) 1e9)]
+    (is (= (ta/edit-ops-body ops body) (:text/body (:text r))))
+    (is (empty? (filter #(= :w (first %)) (:deleted r))) "no word with letters left is deleted")
+    (is (< secs 2.0) (str secs " s"))))

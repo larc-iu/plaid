@@ -473,6 +473,39 @@
    (let [{:keys [partitioning deciders] :as r} (roles layout split?)]
      (ta/plain-edits old tokens ops partitioning deciders (select-keys r [:split-on-space :children :exclusive :head-layers])))))
 
+(defn- exact
+  "What `ops` do taken exactly as made: each net gap less the text it shares
+  with the old at either end, read by the plain rule (REV2-F-TEXT-CORE X)."
+  [^String old tokens ops layout]
+  (let [{:keys [partitioning deciders] :as r} (roles layout false)
+        o (cps old)]
+    (ta/apply-plain-gaps old tokens (vec (keep #(#'ta/trim-gap o %) (ta/compose-edits ops old)))
+                         partitioning deciders
+                         (assoc (select-keys r [:split-on-space :children :exclusive :head-layers]) :caret true))))
+
+(defn- lost-problems
+  "The words and sentences `r` deletes that `x`, the edit taken exactly as
+  made, keeps (a word counted by its text, so one of two twins may go in
+  place of the other): a reading never deletes what the edit as made keeps
+  letters of (REV2-F-TEXT-CORE R1). With `:paste`, `r` read the change
+  from a paste, which cannot tell a word from one of the same letters
+  beside it, and may delete no more words or sentences than `x`."
+  ([old tokens r x] (lost-problems old tokens r x nil))
+  ([^String old tokens r x mode]
+   (let [o (cps old)
+         text (fn [{:token/keys [begin end]}] (String. o (int begin) (int (- end begin))))
+         gone (fn [r layer] (let [g (set (:deleted r))] (filter #(and (= layer (:token/layer %)) (g (:token/id %))) tokens)))
+         wr (frequencies (map text (gone r :w)))
+         wx (frequencies (map text (gone x :w)))
+         sx (set (map :token/id (gone x :s)))]
+     (if (= mode :paste)
+       (cond-> []
+         (< (count (gone x :w)) (count (gone r :w))) (conj (str "deleted words " (pr-str wr) ", as made " (pr-str wx)))
+         (< (count (gone x :s)) (count (gone r :s))) (conj "deleted more sentences than the edit as made"))
+       (cond-> []
+         (some (fn [[t c]] (< (get wx t 0) c)) wr) (conj (str "deleted words " (pr-str wr) ", as made " (pr-str wx)))
+         (some #(not (sx (:token/id %))) (gone r :s)) (conj "deleted a sentence the edit as made keeps"))))))
+
 (defn- server-gaps
   "The gaps an edit by `ops` is taken as, the layers as `layout` has them."
   [old tokens ops layout]
@@ -540,12 +573,13 @@
                         :keys-right-to-left (keystrokes gaps true)}]
           (doseq [[rname ops] readings]
             (let [r (run body tokens ops layout false)
-                  ps (problems body tokens server r)]
+                  ps (into (problems body tokens server r)
+                           (lost-problems body tokens r (exact body tokens ops layout)))]
               (when (seq ps) (swap! fails conj {:config cname :seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))
           (let [[bgaps r] (save-read body new-body tokens layout false)
                 ps (into (problems body tokens bgaps r) (survivor-problems body new-body tokens layout r))]
             (when (seq ps) (swap! fails conj {:config cname :seed seed :reading :whole-body :old body :gaps bgaps :problems (take 3 ps)})))))
-      (when (System/getenv "PLAIN_ORACLE_DEBUG")
+      (when (or (System/getenv "PLAIN_ORACLE_DEBUG") (System/getProperty "plain.oracle.debug"))
         (println cname (count @fails) (frequencies (map :reading @fails)))
         (doseq [f (take 6 @fails)] (println (pr-str f))))
       (testing (str cname)
@@ -598,8 +632,8 @@
     [(->> (:tokens r)
           (filter #(= :w (:token/layer %)))
           (remove #(gone (:token/id %)))
-          (sort-by (juxt :token/begin :token/end))
-          (mapv (fn [t] [(text (old-of (:token/id t))) (String. nw (int (:token/begin t)) (int (- (:token/end t) (:token/begin t))))])))
+          (map (fn [t] [(text (old-of (:token/id t))) (String. nw (int (:token/begin t)) (int (- (:token/end t) (:token/begin t))))]))
+          frequencies)
      (sort (map text (filter #(and (= :w (:token/layer %)) (gone (:token/id %))) tokens)))]))
 
 (defn- paste-problems
@@ -653,57 +687,84 @@
    :spaceless {:spaced 0 :glue 1.0 :sentences 3 :words 6 :vocab ["你" "好" "吗" "我" "很" "。"] :typed-words ["嗎" "好" "！"]
                :sep "" :sentence-seps ["" "\n"] :changes 2}})
 
+(def ^:private paste-ceiling
+  "Pastes, of the 6,750 the test below makes, read as the whole-body save of
+  the same change reads them although that deletes a word the exact edits
+  keep. Each holds two or three changes, and the text alone does not tell
+  the edits apart from another change of the same result that deletes one
+  word more: `xa ba the ba a` pasted as `the ba ba a` (`xa` typed over as
+  `the` and `the ` deleted) reads as `xa` and a `ba` deleted. The gap as
+  made, the only other reading, deletes more in every one. Finding the
+  edits there needs pairing the words of the paste, which REV-F-TEXT-CORE
+  ruled out. Two hold one change in a script without spaces, where one of
+  two words of the same character on either side of a sentence break is
+  deleted (`好好我好` pasted as `好我好`) and the text cannot tell which: the
+  save deletes the first and its one-word sentence, the edit the second.
+  24 when pinned (2026-10-02, REV2-F-TEXT-CORE)."
+  24)
+
 (deftest a-paste-over-several-words-reads-as-the-edits-or-the-whole-body-save
-  (doseq [[cname opts] paste-configs
-          k (range 1 (inc (:changes opts 3)))]
-    (let [fails (atom [])]
-      (dotimes [seed 250]
-        (let [rng (java.util.Random. (+ seed (* 31 k) (* 104729 (hash cname))))
-              layout (:layout opts :apps)
-              {:keys [body tokens]} (gen-doc rng opts)
-              tokens (layout-tokens layout tokens)
-              o (cps body)
-              n (alength o)
-              words (vec (sort-by :token/begin (filter #(= :w (:token/layer %)) tokens)))
-              sents (filter #(= :s (:token/layer %)) tokens)
-              sole? (fn [w] (let [sent (some #(when (and (<= (:token/begin %) (:token/begin w)) (<= (:token/end w) (:token/end %))) %) sents)]
-                              (or (= 1 (count words))
-                                  (and sent (= 1 (count (filter #(and (<= (:token/begin sent) (:token/begin %)) (<= (:token/end %) (:token/end sent))) words)))))))
+  (let [as-saved (atom [])]
+    (doseq [[cname opts] paste-configs
+            k (range 1 (inc (:changes opts 3)))]
+      (let [fails (atom [])]
+        (dotimes [seed 250]
+          (let [rng (java.util.Random. (+ seed (* 31 k) (* 104729 (hash cname))))
+                layout (:layout opts :apps)
+                {:keys [body tokens]} (gen-doc rng opts)
+                tokens (layout-tokens layout tokens)
+                o (cps body)
+                n (alength o)
+                words (vec (sort-by :token/begin (filter #(= :w (:token/layer %)) tokens)))
+                sents (filter #(= :s (:token/layer %)) tokens)
+                sole? (fn [w] (let [sent (some #(when (and (<= (:token/begin %) (:token/begin w)) (<= (:token/end w) (:token/end %))) %) sents)]
+                                (or (= 1 (count words))
+                                    (and sent (= 1 (count (filter #(and (<= (:token/begin sent) (:token/begin %)) (<= (:token/end %) (:token/end sent))) words)))))))
               ;; k changes, each at its own word, apart from each other
-              changes (->> (repeatedly (* 3 k) #(let [w (words (.nextInt rng (count words)))]
-                                                  (one-word-change rng o w (sole? w) (:typed-words opts ["XZ" "Ж𐍂" "qoke"]) (:sep opts " "))))
-                           (remove nil?)
-                           (sort-by first)
-                           (reduce (fn [out [a :as c]] (if (and (seq out) (<= a (inc (second (peek out))))) out (conj out c))) [])
-                           (take k)
-                           vec)]
-          (when (seq changes)
-            (let [gaps (mapv (fn [[a b v]] {:start a :end b :value v}) changes)
-                  new (ta/edit-ops-body (ta/gap-ops gaps) body)
-                  d (- (cp/cp-count new) n)
-                  exact (run body tokens (ta/gap-ops gaps) layout false)
-                  whole (save body new tokens layout false)
-                  [a b] [(first (first changes)) (second (peek changes))]
+                changes (->> (repeatedly (* 3 k) #(let [w (words (.nextInt rng (count words)))]
+                                                    (one-word-change rng o w (sole? w) (:typed-words opts ["XZ" "Ж𐍂" "qoke"]) (:sep opts " "))))
+                             (remove nil?)
+                             (sort-by first)
+                             (reduce (fn [out [a :as c]] (if (and (seq out) (<= a (inc (second (peek out))))) out (conj out c))) [])
+                             (take k)
+                             vec)]
+            (when (seq changes)
+              (let [gaps (mapv (fn [[a b v]] {:start a :end b :value v}) changes)
+                    new (ta/edit-ops-body (ta/gap-ops gaps) body)
+                    d (- (cp/cp-count new) n)
+                    exact (run body tokens (ta/gap-ops gaps) layout false)
+                    whole (save body new tokens layout false)
+                    [a b] [(first (first changes)) (second (peek changes))]
                   ;; a stretch from the start of a word before the changes to
                   ;; the end of one after them, pasted over with its new text
-                  over (fn [x y] (let [x (min x a) y (max y b)]
-                                   [{:type :replace :index x :length (- y x) :value (cp/cp-subs new x (+ y d))}]))
-                  lo (or (last (filter #(<= (:token/begin %) a) (take (- (count words) (.nextInt rng 3)) words))) (first words))
-                  hi (or (first (filter #(>= (:token/end %) b) (drop (.nextInt rng 3) words))) (peek words))
-                  sent (some #(when (and (<= (:token/begin %) a) (<= b (:token/end %))) %) sents)
-                  readings (cond-> {:whole-body-replace [{:type :replace :index 0 :length n :value new}]
-                                    :stretch (over (:token/begin lo) (:token/end hi))}
-                             sent (assoc :line (over (:token/begin sent) (:token/end sent))))]
-              (doseq [[rname ops] readings]
-                (let [r (run body tokens ops layout false)
-                      ps (into (paste-problems body tokens changes r [exact whole])
-                               (problems body tokens (server-gaps body tokens ops layout) r))]
-                  (when (seq ps) (swap! fails conj {:config cname :changes changes :seed seed :reading rname :old body :problems (take 3 ps)}))))))))
-      (when (System/getenv "PLAIN_ORACLE_DEBUG")
-        (println cname k (count @fails) (frequencies (map :reading @fails)))
-        (doseq [f (take 4 @fails)] (println (pr-str f))))
-      (testing (str cname " " k " changes")
-        (is (empty? @fails) (pr-str (take 3 @fails)))))))
+                    over (fn [x y] (let [x (min x a) y (max y b)]
+                                     [{:type :replace :index x :length (- y x) :value (cp/cp-subs new x (+ y d))}]))
+                    lo (or (last (filter #(<= (:token/begin %) a) (take (- (count words) (.nextInt rng 3)) words))) (first words))
+                    hi (or (first (filter #(>= (:token/end %) b) (drop (.nextInt rng 3) words))) (peek words))
+                    sent (some #(when (and (<= (:token/begin %) a) (<= b (:token/end %))) %) sents)
+                    readings (cond-> {:whole-body-replace [{:type :replace :index 0 :length n :value new}]
+                                      :stretch (over (:token/begin lo) (:token/end hi))}
+                               sent (assoc :line (over (:token/begin sent) (:token/end sent))))]
+                (doseq [[rname ops] readings]
+                  (let [r (run body tokens ops layout false)
+                        made (#'plaid.algos.plain-edits-oracle-test/exact body tokens ops layout)
+                        ps (-> (paste-problems body tokens changes r [exact whole made])
+                               (into (problems body tokens (server-gaps body tokens ops layout) r))
+                               (into (lost-problems body tokens r exact :paste)))]
+                    (when (seq ps)
+                      (if (and (= (placed-words o tokens r) (placed-words o tokens whole))
+                               (empty? (problems body tokens (server-gaps body tokens ops layout) r)))
+                      ;; read as the whole-body save of it reads it, which
+                      ;; deletes a word the edits keep: see `paste-ceiling`
+                        (swap! as-saved conj [cname k seed rname])
+                        (swap! fails conj {:config cname :changes changes :seed seed :reading rname :old body :problems (take 3 ps)})))))))))
+        (when (or (System/getenv "PLAIN_ORACLE_DEBUG") (System/getProperty "plain.oracle.debug"))
+          (println cname k (count @fails) (frequencies (map :reading @fails)))
+          (doseq [f (take 4 @fails)] (println (pr-str f))))
+        (testing (str cname " " k " changes")
+          (is (empty? @fails) (pr-str (take 3 @fails))))))
+    (is (<= (count (distinct (map #(subvec % 0 3) @as-saved))) paste-ceiling)
+        (str (count (distinct (map #(subvec % 0 3) @as-saved))) " " (pr-str (take 10 (distinct (map #(subvec % 0 3) @as-saved))))))))
 
 ;; ---------------------------------------------------------------- nodes beside the words
 
@@ -1248,7 +1309,7 @@
             (when (seq ps) (swap! fails conj [body new ps]))))))
     ;; never a word with a letter left deleted, whatever was meant
     (is (empty? (filter (fn [[_ _ ps]] (some #(re-find #"deleted with a letter left" %) ps)) @fails)))
-    (when (System/getenv "PLAIN_ORACLE_DEBUG")
+    (when (or (System/getenv "PLAIN_ORACLE_DEBUG") (System/getProperty "plain.oracle.debug"))
       (println "intent fails" (count @fails))
       (doseq [f (take 40 @fails)] (println (pr-str f))))
     (is (<= (count @fails) intent-ceiling) (str (count @fails) " " (pr-str (take 5 @fails))))))
