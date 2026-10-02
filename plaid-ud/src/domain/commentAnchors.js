@@ -7,8 +7,9 @@
 //
 // Comments here are SENTENCE and DOCUMENT level only, by ruling: no per-word or
 // per-annotation threads. So the index is small, and a thread that names
-// anything else came from another app on the same substrate and describes as
-// outdated, which is honest: this app cannot show you an IGT gloss.
+// anything else is on a layer this app does not show: the Comments tab files it
+// under "On other layers" while the document holds it, and as outdated once it
+// is gone.
 //
 // `anchorCaption` lives in plaid-ui: it does not depend on what a document
 // looks like. Re-exported so this file is the one place the app asks about an

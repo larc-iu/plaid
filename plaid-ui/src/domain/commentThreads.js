@@ -1,5 +1,6 @@
 // The thread list a Comments tab shows: every entity with comments, described
-// by its anchor, split into current and outdated, searched, and sorted.
+// by its anchor, split into current, on other layers and outdated, searched,
+// and sorted.
 //
 // Pure over a CommentStore and an anchor index (see commentAnchors.js), so the
 // React shell can page it with the app's list chrome and the lit-html island
@@ -22,14 +23,21 @@ const latest = (comments) => comments.reduce((m, c) => (c.createdAt > m ? c.crea
 const earliest = (comments) =>
   comments.reduce((m, c) => (m === '' || c.createdAt < m ? c.createdAt : m), '');
 
-function describe(store, anchors, { entityType, entityId, comments }) {
-  const anchor = describeAnchor(anchors, entityType, entityId, comments[0]?.anchorLabel ?? null);
+function describe(store, anchors, { entityType, entityId, comments }, present = null) {
+  const anchor = describeAnchor(
+    anchors,
+    entityType,
+    entityId,
+    comments[0]?.anchorLabel ?? null,
+    present,
+  );
   return {
     entityType,
     entityId,
     comments,
     anchor,
     outdated: !!anchor.outdated,
+    elsewhere: !!anchor.elsewhere,
     caption: anchorCaption(anchor),
     latestAt: latest(comments),
     firstAt: earliest(comments),
@@ -94,29 +102,37 @@ function filterThreads(threads, query = '') {
  * present (a document's own thread), even with no comments yet; it takes no
  * part in the search, the sort, or the counts.
  *
- * Returns `{ pinned, current, outdated, currentTotal, outdatedTotal }`: the two
- * lists are searched and sorted, the totals are what they were before the
- * search, so a count can say "3 of 12".
+ * `present` is the set of ids the document still holds (`documentEntityIds`),
+ * for an app whose `anchors` index only the layers it shows: a thread on one of
+ * those ids that the index lacks is on another layer, not outdated. Without it,
+ * every anchor the index lacks is gone.
+ *
+ * Returns `{ pinned, current, elsewhere, outdated, currentTotal,
+ * elsewhereTotal, outdatedTotal }`: the lists are searched and sorted, the
+ * totals are what they were before the search, so a count can say "3 of 12".
  */
 export function threadList(
   store,
   anchors,
-  { query = '', sort = 'recent', pinnedId = null, pinnedType = 'document' } = {},
+  { query = '', sort = 'recent', pinnedId = null, pinnedType = 'document', present = null } = {},
 ) {
   const index = anchors ?? new Map();
-  const all = store.threads().map((t) => describe(store, index, t));
+  const all = store.threads().map((t) => describe(store, index, t, present));
   const pinned = pinnedId
     ? (all.find((t) => t.entityId === pinnedId) ??
       describe(store, index, { entityType: pinnedType, entityId: pinnedId, comments: [] }))
     : null;
   const rest = all.filter((t) => t.entityId !== pinnedId);
-  const current = rest.filter((t) => !t.outdated);
+  const current = rest.filter((t) => !t.outdated && !t.elsewhere);
+  const elsewhere = rest.filter((t) => t.elsewhere);
   const outdated = rest.filter((t) => t.outdated);
   return {
     pinned,
     current: sortThreads(filterThreads(current, query), sort),
+    elsewhere: sortThreads(filterThreads(elsewhere, query), sort),
     outdated: sortThreads(filterThreads(outdated, query), sort),
     currentTotal: current.length,
+    elsewhereTotal: elsewhere.length,
     outdatedTotal: outdated.length,
   };
 }

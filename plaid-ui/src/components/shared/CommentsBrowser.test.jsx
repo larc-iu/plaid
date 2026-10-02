@@ -60,6 +60,41 @@ describe('the control that opens what a thread is about', () => {
   });
 });
 
+// A thread on something the app does not show, which is still in the document,
+// is not outdated: it has its own group, offered only when it has threads.
+describe('threads on other layers', () => {
+  const withSpan = () => ({
+    ...store(),
+    threads: () => [
+      { entityType: 'sentence', entityId: 's1', comments: [comment('c1')] },
+      { entityType: 'span', entityId: 'g1', comments: [{ ...comment('c2'), anchorLabel: 'DOG' }] },
+      { entityType: 'span', entityId: 'gone', comments: [{ ...comment('c3'), anchorLabel: 'X' }] },
+    ],
+  });
+  const buttons = (container) =>
+    [...container.querySelectorAll('[aria-label="Which threads"] button')].map((b) =>
+      b.textContent.replace(/\s+/g, ' ').trim(),
+    );
+
+  it('are counted apart from the outdated ones', async () => {
+    const view = await renderComponent(
+      browse({ store: withSpan(), present: new Set(['s1', 'g1']) }),
+    );
+    expect(buttons(view.container)).toEqual(['Current1', 'On other layers1', 'Outdated1']);
+    const other = [...view.container.querySelectorAll('[aria-label="Which threads"] button')][1];
+    await view.step(() => other.click());
+    expect(view.container.textContent).toContain('DOG');
+    expect(view.container.textContent).not.toContain('outdated');
+    await view.unmount();
+  });
+
+  it('offer no group where there are none', async () => {
+    const view = await renderComponent(browse({ present: new Set(['s1']) }));
+    expect(buttons(view.container)).toEqual(['Current1', 'Outdated0']);
+    await view.unmount();
+  });
+});
+
 // The document's own thread is pinned above the list. Once it has a comment it
 // is one of the threads on screen, and a count that left it out said "0
 // threads" above it.

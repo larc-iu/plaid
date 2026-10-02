@@ -11,12 +11,15 @@ import { detectDirection } from '../../domain/textDirection.js';
 import { CommentThread } from './CommentThread.jsx';
 
 // Every thread on one document (or one vocabulary), with the list chrome around
-// it: search, count, sort, Current / Outdated, a pager top and bottom.
+// it: search, count, sort, Current / On other layers / Outdated, a pager top
+// and bottom.
 //
 // `anchors` is the entity index the threads are described by: each app builds
 // its own, since only the app knows what a "sentence 4" is (see
 // domain/commentAnchors.js). `pinnedId` is the thread always shown first, which
-// for a document is its own.
+// for a document is its own. `present` is the ids the document still holds,
+// for an app whose index leaves out layers it does not show: a thread on one of
+// them goes under "On other layers", offered only when there is one.
 //
 // A thread is collapsed to its latest comment and opens on click. A document's
 // worth of threads is a list to scan, not a conversation to read end to end.
@@ -143,6 +146,7 @@ export const CommentsBrowser = ({
   jumpTitle,
   emptyText,
   positionLabel = 'In text order',
+  present = null,
 }) => {
   useCommentStore(store);
   const version = store?.getSnapshot?.() ?? 0;
@@ -152,19 +156,34 @@ export const CommentsBrowser = ({
   const [openId, setOpenId] = useState(null);
 
   const list = useMemo(
-    () => (store ? threadList(store, anchors, { query, sort, pinnedId, pinnedType }) : null),
+    () =>
+      store ? threadList(store, anchors, { query, sort, pinnedId, pinnedType, present }) : null,
     // `version` is the store's change counter: the list is rebuilt on every
     // emit (load, post, edit, delete, live update).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [store, anchors, query, sort, pinnedId, pinnedType, version],
+    [store, anchors, query, sort, pinnedId, pinnedType, present, version],
   );
-  const shown = list ? (filter === 'outdated' ? list.outdated : list.current) : [];
+  const shown = list
+    ? filter === 'outdated'
+      ? list.outdated
+      : filter === 'elsewhere'
+        ? list.elsewhere
+        : list.current
+    : [];
   // The pinned thread sits above the Current list and outside `threadList`'s
   // counts, but once it has a comment it is a thread on screen like the rest,
   // so it is counted with them. Empty, it is only the place to start one.
   const pinnedCount = list?.pinned?.comments.length ? 1 : 0;
   const currentTotal = (list?.currentTotal ?? 0) + pinnedCount;
-  const total = list ? (filter === 'outdated' ? list.outdatedTotal : currentTotal) : 0;
+  const total = list
+    ? filter === 'outdated'
+      ? list.outdatedTotal
+      : filter === 'elsewhere'
+        ? list.elsewhereTotal
+        : currentTotal
+    : 0;
+  // Offered while it has threads, and while it is the group on screen.
+  const showElsewhere = (list?.elsewhereTotal ?? 0) > 0 || filter === 'elsewhere';
   const shownCount = shown.length + (filter === 'current' ? pinnedCount : 0);
   // A thread row is a label line plus a truncated latest comment, and it
   // opens in place into a whole conversation: the taller of the two page
@@ -213,6 +232,19 @@ export const CommentsBrowser = ({
             Current
             <span className="ml-1 tabular-nums text-muted-foreground">{currentTotal}</span>
           </Button>
+          {showElsewhere && (
+            <Button
+              size="sm"
+              variant={filter === 'elsewhere' ? 'secondary' : 'ghost'}
+              aria-pressed={filter === 'elsewhere'}
+              onClick={() => setFilter('elsewhere')}
+            >
+              On other layers
+              <span className="ml-1 tabular-nums text-muted-foreground">
+                {list?.elsewhereTotal ?? 0}
+              </span>
+            </Button>
+          )}
           <Button
             size="sm"
             variant={filter === 'outdated' ? 'secondary' : 'ghost'}
@@ -252,7 +284,9 @@ export const CommentsBrowser = ({
               ? `No comments match “${q}”.`
               : filter === 'outdated'
                 ? 'No outdated comments.'
-                : emptyText}
+                : filter === 'elsewhere'
+                  ? 'No comments on other layers.'
+                  : emptyText}
           </p>
         )}
         <ListPager {...paged} onPage={paged.setPage} />

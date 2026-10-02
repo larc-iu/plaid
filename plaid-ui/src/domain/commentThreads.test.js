@@ -106,6 +106,30 @@ describe('threadList', () => {
     ]);
   });
 
+  it('puts a thread whose anchor is still in the document but not in the index on other layers', () => {
+    seq = 0;
+    const store = storeWith([
+      row({ entityId: 't1', body: 'is this a noun?' }),
+      row({ entityType: 'span', entityId: 'gloss-1', anchorLabel: 'DOG.PL', body: 'check' }),
+      row({ entityType: 'span', entityId: 'gloss-2', body: 'no caption' }),
+      row({ entityId: 'gone', anchorLabel: 'zun, sentence 2', body: 'old remark' }),
+    ]);
+    const present = new Set(['t1', 'gloss-1', 'gloss-2']);
+    const list = threadList(store, anchors, { present, sort: 'oldest' });
+    expect(list.current.map((t) => t.entityId)).toEqual(['t1']);
+    expect(list.elsewhere.map((t) => t.entityId)).toEqual(['gloss-1', 'gloss-2']);
+    expect(list.elsewhere.map((t) => t.anchor.label)).toEqual(['DOG.PL', 'Annotation']);
+    expect(list.elsewhere.every((t) => !t.outdated)).toBe(true);
+    expect(list.outdated.map((t) => t.entityId)).toEqual(['gone']);
+    expect(list.elsewhereTotal).toBe(2);
+    expect(threadList(store, anchors, { present, query: 'dog.pl' }).elsewhere).toHaveLength(1);
+
+    // With no `present` given, nothing is on other layers: a missing anchor is gone.
+    const plain = threadList(store, anchors, {});
+    expect(plain.elsewhere).toEqual([]);
+    expect(plain.outdatedTotal).toBe(3);
+  });
+
   it('keeps the pinned thread present with no comments, and out of the lists', () => {
     const store = storeWith([]);
     const list = threadList(store, anchors, { pinnedId: 'd1' });

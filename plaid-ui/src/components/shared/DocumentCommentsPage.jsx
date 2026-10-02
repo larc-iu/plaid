@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { CommentsBrowser } from './CommentsBrowser.jsx';
+import { documentEntityIds } from '../../domain/commentAnchors.js';
 import { useDocumentEditor } from '../../hooks/useDocumentEditor.js';
 import { useDocumentModel } from '../../domain/useDocumentModel.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
@@ -9,10 +10,11 @@ import { appRoutes } from '../../lib/uiConfig.js';
 // first, each one a sentence you can jump to.
 //
 // Comments are sentence and document level in the editing apps, by ruling. A
-// thread anchored to anything else came from another app sharing this substrate
-// and describes as outdated, which is honest: this app cannot show you an IGT
-// gloss. `buildAnchors(doc)` is the app's reading of what a thread is attached
-// to, since only the app knows what its documents look like.
+// thread anchored to anything else is on a layer this app does not show: while
+// the document still holds its anchor it goes under "On other layers", and only
+// once the anchor is gone under "Outdated". `buildAnchors(doc)` is the app's
+// reading of what a thread is attached to, since only the app knows what its
+// documents look like.
 export const DocumentCommentsPage = ({ buildAnchors }) => {
   const { projectId, documentId, doc, project, comments, canComment, canDeleteAnyComment } =
     useDocumentEditor();
@@ -32,12 +34,15 @@ export const DocumentCommentsPage = ({ buildAnchors }) => {
   const version = doc?.dataVersion ?? 0;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const anchors = useMemo(() => buildAnchors(doc), [doc, version]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const present = useMemo(() => documentEntityIds(doc?.raw), [doc, version]);
 
   return (
     <div className="w-full max-w-4xl">
       <CommentsBrowser
         store={comments}
         anchors={anchors}
+        present={present}
         pinnedId={documentId}
         canWrite={canComment}
         canDeleteAny={canDeleteAnyComment}
