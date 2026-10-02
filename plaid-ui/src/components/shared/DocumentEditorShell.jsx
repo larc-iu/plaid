@@ -51,18 +51,16 @@ import { isLongDocument } from '../../domain/longDocument.js';
 //   when it names nothing on this page.
 // - `sentenceRef(sentence, i)`: the reference `@` and Ask write for a
 //   sentence.
+// - `tabs`: the app's tabs by the last segment of their path. `editor` is
+//   the annotation editor's, which is full-bleed and is where a citation and
+//   Ask point, `past` those that can show the document at a past state (the
+//   others edit it or hang live threads on it, so while a history entry is
+//   open they say they are not shown), and `long` those that slow down with
+//   the document's length.
 // - `wordCount(doc)`, optional: the length the long-document notice weighs.
 
-// Every document tab is full width in `Layout`, so the breadcrumb and the tab
-// row stand in one place whichever tab is open. The annotation editor is
-// full-bleed and supplies its own padding; the others are held to a readable
-// width under the tabs.
-const isWideRoute = (pathname) => pathname.includes('/annotate');
-
-// The tabs that can show the document at a past state. The others edit it or
-// hang live threads on it (Comments), so while a history entry is open they say
-// they are not shown.
-const showsPast = (pathname) => /\/(annotate|export|details)$/.test(pathname);
+// The tab open, by the last segment of its path.
+const tabOf = (pathname) => pathname.split('/').filter(Boolean).pop() ?? '';
 
 // Keyed by document, so opening another document starts from nothing: no
 // history rail, no past state and no busy flag carried over from the last one.
@@ -223,7 +221,8 @@ const DocumentEditor = ({ app }) => {
   const history = useHistoryView({ documentId, client, doc, reload, onExpired: logout });
   const pastEntry = history.selectedEntry;
   const shown = history.snapshot ?? doc;
-  const onPastTab = showsPast(pathname);
+  const tab = tabOf(pathname);
+  const onPastTab = app.tabs.past.includes(tab);
   // Opening an entry puts the past on screen in place of what was typed here
   // and not saved (or takes a tab that cannot show the past off screen), so it
   // asks first, as leaving would.
@@ -249,13 +248,17 @@ const DocumentEditor = ({ app }) => {
   // A comment post, edit or delete on its way asks the same way.
   useSavingGuard(comments);
 
-  const wide = isWideRoute(pathname);
+  // Every document tab is full width in `Layout`, so the breadcrumb and the
+  // tab row stand in one place whichever tab is open. The annotation editor is
+  // full-bleed and supplies its own padding; the others are held to a readable
+  // width under the tabs.
+  const wide = tab === app.tabs.editor;
   // The editors slow down with the document's length.
   const words = app.wordCount?.(doc);
   // "Ask" under a sentence is only worth drawing where there is an assistant to
   // ask, and only on the tab whose content it points into. The PANEL itself is
   // the shell's and is open on every tab.
-  const onAnnotate = pathname.endsWith('/annotate');
+  const onAnnotate = tab === app.tabs.editor;
   const assistantAvailable = useAssistantAvailable(client, projectId, app.assistantApp);
   // A citation into THIS document scrolls the editor instead of opening a
   // second browser tab: ?sent= is the deep link the annotation editor already
@@ -369,7 +372,7 @@ const DocumentEditor = ({ app }) => {
         </div>
       )}
 
-      {(onAnnotate || pathname.endsWith('/edit')) && isLongDocument(words) && (
+      {app.tabs.long?.includes(tab) && isLongDocument(words) && (
         <div className={wide ? 'px-6' : 'max-w-[1320px] px-6'}>
           <LongDocumentNotice words={words} className="mb-4" />
         </div>

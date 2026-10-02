@@ -74,7 +74,8 @@ const at = (site) => `${site.file}:${site.line}`;
 
 describe('useAssistantSubject call sites', () => {
   it('finds the screens, so a passing run is not an empty one', () => {
-    expect(callSites().length).toBeGreaterThanOrEqual(5);
+    // ud's and umr's document shells are one, in this package, since R2-DEBT-APPS-22.
+    expect(callSites().length).toBeGreaterThanOrEqual(4);
   });
 
   it('all publish who the reader is, not just what they may do', () => {

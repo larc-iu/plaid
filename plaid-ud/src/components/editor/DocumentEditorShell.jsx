@@ -20,6 +20,7 @@ const UD_SHELL = {
   useServices: useEditorServices,
   assistantApp: UD_ASSISTANT.app,
   DocumentTabs,
+  tabs: { editor: 'annotate', past: ['annotate', 'export', 'details'], long: ['annotate', 'edit'] },
   roleWords: TOKEN_ROLE_WORDS,
   // A citation names a sentence by the id the annotation editor's ?sent= takes.
   focusParams: (focus) => (focus ? { sent: focus } : null),

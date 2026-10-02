@@ -15,6 +15,7 @@ const UMR_SHELL = {
   useServices: useUmrServices,
   assistantApp: UMR_ASSISTANT.app,
   DocumentTabs,
+  tabs: { editor: 'annotate', past: ['annotate', 'export', 'details'] },
   roleWords: TOKEN_ROLE_WORDS,
   layerWords: UMR_LAYER_WORDS,
   // A citation names a sentence by its number and may name a node (`var`),
