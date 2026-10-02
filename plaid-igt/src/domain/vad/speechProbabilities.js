@@ -7,7 +7,7 @@
 // speechTimestamps.js, which is instant. That is the whole reason this
 // returns probabilities rather than segments.
 
-import { decodeTo16kMono } from './decodeTo16kMono.js';
+import { decodeShared } from './sharedDecode.js';
 
 /**
  * @param {Blob} blob                 the recording, as fetched for playback
@@ -16,7 +16,10 @@ import { decodeTo16kMono } from './decodeTo16kMono.js';
  *          null when cancelled
  */
 export async function speechProbabilities(blob, { onProgress, signal } = {}) {
-  const samples = await decodeTo16kMono(blob);
+  // The timeline's waveform may be decoding the same recording now, and then
+  // gets the same array: a copy goes to the worker, never the shared one.
+  const { samples: decoded, shared } = await decodeShared(blob);
+  const samples = shared ? decoded.slice() : decoded;
   const lengthSamples = samples.length;
   if (signal?.aborted) return null;
 

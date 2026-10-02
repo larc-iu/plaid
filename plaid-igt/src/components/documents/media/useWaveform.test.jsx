@@ -23,7 +23,26 @@ vi.mock('./waveform.js', async (importOriginal) => ({
   barsFor: ({ peaks }) => [...peaks].map((h, i) => ({ x: i, y: 0, width: 1, height: h })),
 }));
 
-const { useWaveform, WAVEFORM_RATE } = await import('./useWaveform.js');
+// The decode is the shared mono 16 kHz one speech detection uses
+// (sharedDecode.js): 8 kHz drew fricatives as silence (REV-MEDIA-1), and the
+// device rate ran out of memory on a long recording (H22-MEDIA-5).
+const { decodeShared, shareCalls } = vi.hoisted(() => {
+  const shareCalls = [];
+  return {
+    shareCalls,
+    decodeShared: vi.fn((blob) => {
+      let finish;
+      const promise = new Promise((resolve) => {
+        finish = resolve;
+      });
+      shareCalls.push({ blob, promise, finish });
+      return promise;
+    }),
+  };
+});
+vi.mock('../../../domain/vad/sharedDecode.js', () => ({ decodeShared }));
+
+const { useWaveform } = await import('./useWaveform.js');
 
 // A recording, named by its versioned URL (which is also the envelope cache's
 // key, so every test needs its own).
@@ -37,12 +56,7 @@ const recording = (key = `/media?v=${(nextKey += 1)}`) => ({
 // One deferred per decode, so two can be in flight at once and land out of
 // order.
 let decodes;
-// The rate of every context a decode ran in.
-let rates;
-const decoded = (samples) => ({
-  numberOfChannels: 1,
-  getChannelData: () => Float32Array.from(samples),
-});
+const decoded = (samples) => ({ samples: Float32Array.from(samples), shared: false });
 
 let api;
 let seq;
@@ -73,25 +87,14 @@ const settle = (view) =>
   });
 
 beforeEach(() => {
-  decodes = [];
-  rates = [];
+  shareCalls.length = 0;
+  decodes = shareCalls;
   seq = [];
   notifyWarning.mockClear();
-  // A full-rate AudioContext is what ran out of memory on a long recording.
+  decodeShared.mockClear();
+  // No decode of its own at any rate: a full-rate one ran out of memory.
   window.AudioContext = undefined;
-  window.OfflineAudioContext = class {
-    constructor(channels, length, rate) {
-      rates.push(rate);
-    }
-    decodeAudioData() {
-      let finish;
-      const promise = new Promise((resolve) => {
-        finish = resolve;
-      });
-      decodes.push({ promise, finish });
-      return promise;
-    }
-  };
+  window.OfflineAudioContext = undefined;
   URL.createObjectURL = (blob) => `drawn:${blob.tag}`;
   URL.revokeObjectURL = () => {};
   const realCreateElement = document.createElement.bind(document);
@@ -195,12 +198,13 @@ describe('the timeline waveform', () => {
     await view.unmount();
   });
 
-  it('decodes at a low rate, so a long recording fits in memory', async () => {
-    const view = await renderComponent(<Probe blob={recording()} />);
+  it('draws from the shared 16 kHz decode speech detection uses', async () => {
+    const blob = recording();
+    const view = await renderComponent(<Probe blob={blob} />);
     await view.step(() => decodes[0].finish(decoded([1, 2, 3])));
     await settle(view);
-    expect(rates).toEqual([WAVEFORM_RATE]);
-    expect(WAVEFORM_RATE).toBeLessThanOrEqual(8000);
+    expect(decodeShared).toHaveBeenCalledWith(blob);
+    expect(seq).toEqual(['drawn:1,2,3']);
     await view.unmount();
   });
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { notifyWarning } from '@/utils/feedback';
+import { decodeShared } from '../../../domain/vad/sharedDecode.js';
 import {
   MAX_CANVAS_WIDTH,
   TIMELINE_HEIGHT,
@@ -46,21 +47,14 @@ const themeColor = (name, alpha) => {
   return h && s && l ? `hsla(${h}, ${s}, ${l}, ${alpha})` : `rgba(144, 202, 249, ${alpha})`;
 };
 
-// The rate the envelope is decoded at. A context decodes at its own rate, and
-// a full-rate one asked for an hour and more of audio runs out of memory (110
-// minutes of a 16 kHz MP3 upsampled to 44.1 kHz is 291 million samples). The
-// envelope is a hundred buckets a second at most, so a low rate draws the same
-// picture at a fraction of the size.
-export const WAVEFORM_RATE = 8000;
-
-const decodeForEnvelope = async (blob) => {
-  const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
-  // The bytes are already in memory as the blob behind the player's <video>
-  // src, so there is nothing to fetch. decodeAudioData detaches the buffer,
-  // hence the fresh copy.
-  const decoded = await new Ctx(1, 1, WAVEFORM_RATE).decodeAudioData(await blob.arrayBuffer());
-  return Array.from({ length: decoded.numberOfChannels }, (_, i) => decoded.getChannelData(i));
-};
+// The samples the envelope is drawn from: the recording as mono 16 kHz, the
+// decode speech detection makes, and the same one when both run at once
+// (sharedDecode.js). Not the device rate, which ran out of memory on a long
+// recording (110 minutes of a 16 kHz MP3 at 44.1 kHz is 291 million samples),
+// and not lower: 8 kHz drops everything above 4 kHz, where [s] and [f] are,
+// and drew them as silence. Mono is the channels mixed, so a recording with
+// the voice on one channel still draws it.
+const decodeForEnvelope = async (blob) => [(await decodeShared(blob)).samples];
 
 const canvasFor = (width) => {
   const pixelRatio = window.devicePixelRatio || 1;
