@@ -14,7 +14,7 @@ and the card says what it will combine."""
 
 from typing import Any, Dict, List, Optional
 
-from plaid_client.workflows.igt.tagsets import CLOSED
+from plaid_client.constraints import value_set_allows
 
 from ..core.args import whole
 from ..core.tools import ToolError
@@ -42,9 +42,11 @@ def _joined_spans(units, project) -> List[Dict[str, Any]]:
     every unit's spans sit on the survivor after a merge, and the layer rule
     each field declares (one span per token) makes the server keep the
     survivor's own span (else the one with the smallest id), give it the
-    distinct non-empty values joined with " | " in text order, and delete the
-    rest, in the merge's own transaction. A closed tagset would refuse the
-    joined value, so there the kept value stays.
+    distinct values that are not blank (JavaScript's trim, as the server
+    reads it) joined with " | " in text order, and delete the rest, in the
+    merge's own transaction. A value-set rule stored on the layer that refuses
+    the joined value leaves the kept value as it is (core's
+    ``remedy-single-span!``, plaid-igt's ``applyMergeRules``).
 
     Nothing here is written by the plan: it is what the card says the merge
     combines and what the plan's guards count as gone."""
@@ -58,17 +60,26 @@ def _joined_spans(units, project) -> List[Dict[str, Any]]:
         if len(spans) < 2:
             continue
         keep = next((sp for sp in spans if sp.id in own), None) or min(spans, key=lambda sp: sp.id)
-        values: List[str] = []
-        for sp in [keep] + [sp for sp in spans if sp is not keep]:
-            if isinstance(sp.value, str) and sp.value != '' and sp.value not in values:
-                values.append(sp.value)
-        merged = ' | '.join(values)
+        joined = keep.value
+        if keep.value is None or isinstance(keep.value, str):
+            values: List[str] = []
+            for sp in [keep] + [sp for sp in spans if sp is not keep]:
+                if isinstance(sp.value, str) and not _blank(sp.value) and sp.value not in values:
+                    values.append(sp.value)
+            if values:
+                joined = ' | '.join(values)
         f = project.field_by_layer(layer_id) if project is not None else None
-        closed = bool(f and (f.tagset or {}).get('mode') == CLOSED)
+        refused = any(not value_set_allows(c, joined) for c in (f.value_sets if f else ()))
         out.append({'layer_id': layer_id, 'keep_id': keep.id,
-                    'value': merged if merged != keep.value and not closed else None,
+                    'value': joined if joined != keep.value and not refused else None,
                     'delete_ids': [sp.id for sp in spans if sp is not keep]})
     return out
+
+
+def _blank(value: str) -> bool:
+    """Blank as the server reads a value: nothing a value-set would check is
+    left (JavaScript's trim, which is what the server and the apps use)."""
+    return value_set_allows({'values': []}, value)
 
 
 def _combined_values(spans: List[Dict[str, Any]], project) -> str:

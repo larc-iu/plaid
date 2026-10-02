@@ -149,11 +149,29 @@ def test_the_card_says_what_the_servers_merge_keeps():
     call_tool(w2, 'merge_words', {'document': 'd1', 'refs': ['s1.w2', 's1.w3']})
     assert w2.ops[0]['spans'][0]['keep_id'] == 'sp-z2' and w2.ops[0]['links']['keep_id'] == 'l-z2'
     assert w2.ops[0]['spans'][0]['value'] == 'fish | see'
-    # A closed tagset keeps the kept value.
+    # A value-set rule stored on the layer that refuses the joined value keeps
+    # the kept value (R1-DEBT-CORE-8: the card asked the tagset's mode, which
+    # core never reads).
     w3 = ws(raw)
-    w3.project.field_by_layer(GLOSS).tagset = {'mode': 'closed', 'values': []}
+    w3.project.field_by_layer(GLOSS).value_sets = [{'type': 'value-set', 'values': ['fish', 'see']}]
     call_tool(w3, 'merge_words', {'document': 'd1', 'refs': ['s1.w2', 's1.w3']})
     assert w3.ops[0]['spans'][0]['value'] is None and 'values combined' not in w3.ops[0]['label']
+    # One that allows it, read part by part as core reads it, joins.
+    w4 = ws(raw)
+    w4.project.field_by_layer(GLOSS).value_sets = [{'type': 'value-set', 'values': ['fish', 'see'],
+                                                     'delimiters': '|'}]
+    call_tool(w4, 'merge_words', {'document': 'd1', 'refs': ['s1.w2', 's1.w3']})
+    assert w4.ops[0]['spans'][0]['value'] == 'fish | see'
+    # A closed tagset with no stored rule is not what core asks.
+    w5 = ws(raw)
+    w5.project.field_by_layer(GLOSS).tagset = {'mode': 'closed', 'values': []}
+    call_tool(w5, 'merge_words', {'document': 'd1', 'refs': ['s1.w2', 's1.w3']})
+    assert w5.ops[0]['spans'][0]['value'] == 'fish | see'
+    # A value of no-break spaces is blank to the server, as to JavaScript's trim.
+    layers[1]['span_layers'][0]['spans'][1]['value'] = '\u00a0'
+    w6 = ws(raw)
+    call_tool(w6, 'merge_words', {'document': 'd1', 'refs': ['s1.w2', 's1.w3']})
+    assert w6.ops[0]['spans'][0]['value'] is None
 
 
 def test_ops_on_tokens_a_shape_op_removes_refuse_the_plan_or_are_filtered():
