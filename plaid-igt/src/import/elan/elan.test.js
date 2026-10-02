@@ -1659,6 +1659,23 @@ describe('reading back our own export', () => {
     expect(doc.warnings ?? []).toEqual([]);
   });
 
+  it('keeps a word whole whatever whitespace it holds, a tab, a line break or a no-break space', () => {
+    for (const gap of ['\t', '\n', '\u00a0']) {
+      const body = `in West${gap}Bengal now`;
+      const { doc, words } = roundTrip(body, [
+        word('w1', 0, 'in', 'in'),
+        word('w2', 3, `West${gap}Bengal`, 'state_name'),
+        word('w3', 15, 'now', 'now'),
+      ]);
+      expect(words.map(([text, gloss]) => [text.replace(/\s/g, ' '), gloss])).toEqual([
+        ['in', 'in'],
+        ['West Bengal', 'state_name'],
+        ['now', 'now'],
+      ]);
+      expect(doc.warnings ?? []).toEqual([]);
+    }
+  });
+
   it('keeps a word that holds a space when punctuation follows it without one', () => {
     const { words } = roundTrip('dè nugue.', [
       word('w1', 0, 'dè nugue', 'a'),

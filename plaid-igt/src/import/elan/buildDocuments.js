@@ -585,7 +585,13 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
         }));
       } else if (wordNodes.length) {
         wordAnns = childrenOn(piece.ann, piece.tier, wordNodes);
-        const forms = wordAnns.map((a) => String(a.value ?? '').trim());
+        // Whitespace collapsed as the utterance's is, so a word holding a tab
+        // or a line break is still found in the text.
+        const forms = wordAnns.map((a) =>
+          String(a.value ?? '')
+            .replace(/\s+/g, ' ')
+            .trim(),
+        );
         // Our own export writes each word as it stands in the text, so a word
         // that holds a space ("West Bengal") is placed where its text is. When
         // the forms are not all there in order, or would cut a word of the

@@ -318,23 +318,25 @@ function findSurface(body, surface, at) {
 }
 
 /**
- * Whether any of these ordered spans begins or ends inside a run of letters
- * whose letter on the other side is in no span, so that placing them would cut
- * a word of the text in two and leave part of it in no word. Words that share
- * a run ("ca" + "n't") cut nothing, since each side of the cut is a word.
- * Used to refuse an `alignSurfaces` result on a file whose word forms only
- * look like literal text: "yegirx" found inside "yegirxo".
+ * Whether placing these ordered spans would leave a letter in no word inside
+ * the whitespace run of one of them: between a span's edge and the next span
+ * or the run's end, only punctuation may go uncovered. Words that share a run
+ * ("ca" + "n't", "medio" + "día") and edge punctuation ("zown.", "«casa»")
+ * leave none. Used to refuse an `alignSurfaces` result on a file whose word
+ * forms only look like literal text: "yegirx" found inside "yegirxo", or "ama"
+ * inside "ama-ka", where the word tier left the clitic off.
  */
 export function cutsAWord(body, spans) {
-  const isLetter = (i) => i >= 0 && i < body.length && !/\s/.test(body[i]) && !isPunct(body[i]);
+  const isLetter = (i) => !/\s/.test(body[i]) && !isPunct(body[i]);
   return spans.some((span, i) => {
-    const before = spans[i - 1];
-    const after = spans[i + 1];
-    const openBefore = !(before && before.endU16 >= span.beginU16);
-    const openAfter = !(after && after.beginU16 <= span.endU16);
-    return (
-      (openBefore && isLetter(span.beginU16 - 1) && isLetter(span.beginU16)) ||
-      (openAfter && isLetter(span.endU16) && isLetter(span.endU16 - 1))
-    );
+    const floor = spans[i - 1]?.endU16 ?? 0;
+    for (let j = span.beginU16 - 1; j >= floor && !/\s/.test(body[j]); j -= 1) {
+      if (isLetter(j)) return true;
+    }
+    const ceiling = spans[i + 1]?.beginU16 ?? body.length;
+    for (let j = span.endU16; j < ceiling && !/\s/.test(body[j]); j += 1) {
+      if (isLetter(j)) return true;
+    }
+    return false;
   });
 }

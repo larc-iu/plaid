@@ -269,9 +269,23 @@ describe('cutsAWord', () => {
     expect(cutsAWord('in West Bengal now', at('in West Bengal now', 'West Bengal'))).toBe(false);
     expect(cutsAWord("can't go", at("can't go", 'ca', "n't", 'go'))).toBe(false);
     expect(cutsAWord('dè nugue.', at('dè nugue.', 'dè nugue', '.'))).toBe(false);
+    // Our own exports' shapes: edge punctuation, a run split at a hyphen,
+    // quotation marks and brackets.
+    expect(cutsAWord('zown.', at('zown.', 'zown'))).toBe(false);
+    expect(cutsAWord('medio-día', at('medio-día', 'medio', 'día'))).toBe(false);
+    expect(cutsAWord('«casa» x', at('«casa» x', 'casa', 'x'))).toBe(false);
+    expect(cutsAWord('(tik-in) x', at('(tik-in) x', 'tik-in', 'x'))).toBe(false);
+    expect(cutsAWord('"West Bengal", x', at('"West Bengal", x', 'West Bengal', 'x'))).toBe(false);
   });
   it('catches a form that leaves part of a word in no word', () => {
     expect(cutsAWord('yegirxo zown', at('yegirxo zown', 'yegirx', 'zown'))).toBe(true);
     expect(cutsAWord('la casa', at('la casa', 'a', 'casa'))).toBe(true);
+  });
+  it('catches a form that is a part of its run set off by punctuation', () => {
+    // A word tier that leaves off a clitic or an elision: the rest of the run
+    // would be in no word.
+    expect(cutsAWord('ama-ka ta', at('ama-ka ta', 'ama', 'ta'))).toBe(true);
+    expect(cutsAWord("l'homme est", at("l'homme est", 'homme', 'est'))).toBe(true);
+    expect(cutsAWord('ka=ma ti', at('ka=ma ti', 'ka', 'ti'))).toBe(true);
   });
 });
