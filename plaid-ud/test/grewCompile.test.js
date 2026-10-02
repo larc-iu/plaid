@@ -217,7 +217,9 @@ test('sent_id compiles to a sentence-metadata constraint, with no warning', () =
   const { query, warnings } = compile('global { sent_id = "x" }');
   assert.ok(!warnings.some((w) => /sent_id/.test(w)));
   assert.ok(
-    query.where.some((c) => c[0] === 'token' && c[1] === '?S' && c[2]?.metadata?.sent_id === 'x'),
+    query.where.some(
+      (c) => c[0] === 'token' && c[1] === '?S' && c[2]?.metadata?.sent_id?.literal === 'x',
+    ),
     `expected a sent_id metadata clause, got ${JSON.stringify(query.where)}`,
   );
 });

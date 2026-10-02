@@ -40,6 +40,18 @@ const fail = (ctx, cmd, msg) => {
   throw new GrewRuntimeError(msg, { rule: ctx.rule, line: cmd.line });
 };
 
+// `FEATS` in a pattern is a word's features as a whole (match.js), which no
+// command sets, removes or reads. Written through as a feature it became a
+// span `FEATS=…`.
+const refuseFeatsWhole = (name, cmd) => {
+  if (String(name).toLowerCase() !== 'feats') return;
+  throw new GrewUnsupportedError(
+    'feats-command',
+    'A command names one feature, not FEATS: X.Number = Sing, del_feat X.Number.',
+    cmd.line,
+  );
+};
+
 function nodeOf(ctx, cmd, v) {
   const id = ctx.nodes.get(v);
   if (!id) {
@@ -147,6 +159,7 @@ function applyCommand(ctx, cmd) {
       return;
     }
     case 'set_feat': {
+      refuseFeatsWhole(cmd.feat, cmd);
       const value = evalExpr(ctx, cmd, cmd.expr);
       const n = nodeOf(ctx, cmd, cmd.node);
       if (n) {
@@ -159,6 +172,7 @@ function applyCommand(ctx, cmd) {
       return;
     }
     case 'del_feat': {
+      refuseFeatsWhole(cmd.feat, cmd);
       const n = nodeOf(ctx, cmd, cmd.node);
       if (n) {
         if (
@@ -245,8 +259,10 @@ function evalExpr(ctx, cmd, atoms) {
       }
       const n = nodeOf(ctx, cmd, a.node);
       let v;
-      if (n) v = getFeat(n, a.feat);
-      else {
+      if (n) {
+        refuseFeatsWhole(a.feat, cmd);
+        v = getFeat(n, a.feat);
+      } else {
         const e = edgeOf(ctx, cmd, a.node);
         if (!e) fail(ctx, cmd, `Edge '${a.node}' was deleted.`);
         v = labelPart(e.label, a.feat);

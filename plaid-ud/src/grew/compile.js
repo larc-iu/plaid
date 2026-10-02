@@ -1065,7 +1065,10 @@ class Compiler {
       op === '<>'
         ? { regex: notExactlyRegex(this.litValue(value)) }
         : this.valueConstraint(value, this.topCtx());
-    this.where.push(['token', '?S', { metadata: { [key]: inner } }]);
+    // A bare metadata value beginning with `?` reads as a variable, which the
+    // engine refuses (400), so a value or a list of them goes as a literal.
+    const spec = typeof inner === 'string' || Array.isArray(inner) ? { literal: inner } : inner;
+    this.where.push(['token', '?S', { metadata: { [key]: spec } }]);
   }
 
   // --- value/label constraint builders ---
