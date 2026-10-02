@@ -212,7 +212,13 @@
   [router operations]
   (when (sequential? operations)
     (or (lock-operation-refusal operations)
-        (keyless-operation-refusal router operations))))
+        (keyless-operation-refusal router operations)
+        ;; A batch carried as an operation is judged by the same rules, so a
+        ;; nested batch's stored answer is never replayed either.
+        (some (fn [{:keys [path body]}]
+                (when (= "/api/v1/batch" (:uri (parse-path-and-query path)))
+                  (operation-refusal router (or (:operations body) (get body "operations") body))))
+              operations))))
 
 (defn- merge-document-versions
   "Merge X-Document-Versions headers across a sequence of sub-responses.

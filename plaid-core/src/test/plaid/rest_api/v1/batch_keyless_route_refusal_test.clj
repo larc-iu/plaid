@@ -50,7 +50,10 @@
                   :body {:user-id "user1@example.com" :password "password1"}}]
    ["logging out" {:path "/api/v1/logout" :method "post"}]
    ["an admin action" {:path "/api/v1/admin/rate-limits" :method "delete"}]
-   ["private user data" {:path "/api/v1/users/admin@example.com/data/x" :method "put" :body {:v 1}}]])
+   ["private user data" {:path "/api/v1/users/admin@example.com/data/x" :method "put" :body {:v 1}}]
+   ["redeeming an invite" {:path "/api/v1/invites/redeem" :method "post"
+                           :body {:code "x" :email "new@example.com" :password "password9"}}]
+   ["looking up an invite" {:path "/api/v1/invites/lookup" :method "post" :body {:code "x"}}]])
 
 (deftest a-write-that-refuses-a-key-refuses-the-batch
   (let [proj (create-test-project admin-request "P")
@@ -100,3 +103,27 @@
       (is (= 400 (:status r)))
       (is (nil? (get-in r [:headers "Idempotent-Replayed"])))
       (is (not (re-find #"SECRET" (pr-str (:body r))))))))
+
+(deftest a-batch-carried-as-an-operation-is-judged-by-the-same-rules
+  (let [proj (create-test-project admin-request "P")
+        doc (create-test-document admin-request proj "D")]
+    (update-document-metadata admin-request doc {:k "before"})
+    (doseq [key [nil (str (psc/new-uuid))]]
+      (testing (if key "keyed" "not keyed")
+        (let [r (batch key [(meta-op doc "after")
+                            {:path "/api/v1/batch" :method "post"
+                             :body [{:path "/api/v1/login" :method "post"
+                                     :body {:user-id "user1@example.com" :password "password1"}}]}])]
+          (is (= 400 (:status r)))
+          (is (= "Operation 0 (POST /api/v1/login) cannot be part of a batch. Send it on its own."
+                 (-> r :body :error)))
+          (is (= "before" (stored-k doc)))
+          (is (zero? (count-rows :idempotency_keys))))))))
+
+(deftest a-keyed-redeem-on-its-own-keeps-no-answer
+  (let [req (-> (admin-request :post "/api/v1/invites/redeem")
+                (mock/header "accept" "application/json")
+                (mock/header "Idempotency-Key" (str (psc/new-uuid)))
+                (mock/json-body {:code "x" :email "new@example.com" :password "password9"}))]
+    (rest-handler req)
+    (is (zero? (count-rows :idempotency_keys)))))

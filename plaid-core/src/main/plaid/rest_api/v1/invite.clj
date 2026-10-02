@@ -72,7 +72,8 @@
    ["/lookup"
     {:conflicting true
      :middleware [rl/wrap-invite-rate-limit]
-     :post {:summary (str "Describe an invite code so a signup page can render itself. "
+     :post {:plaid/idempotency false
+            :summary (str "Describe an invite code so a signup page can render itself. "
                           "POST rather than GET so the code never lands in an access log, "
                           "browser history, or proxy log. Returns the kind of link "
                           "(<body>signup</body> or <body>password-reset</body>), its status, "
@@ -89,7 +90,8 @@
    ["/redeem"
     {:conflicting true
      :middleware [rl/wrap-invite-rate-limit]
-     :post {:summary (str "Redeem an invite code. For a signup invite, supply "
+     :post {:plaid/idempotency false
+            :summary (str "Redeem an invite code. For a signup invite, supply "
                           "<body>email</body> and <body>password</body> to create the "
                           "account (plus an optional <body>display-name</body>); the invite's "
                           "grants (project role, admin) are applied in the same transaction. "
