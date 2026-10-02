@@ -6,18 +6,11 @@
 // Seeds 'the dog runs' with machine-inferred lemma/UPOS/XPOS/feature on "dog"
 // plus two machine relations, then drives each replace gesture and reads the
 // server state back after each.
+import { createUdLayers } from './seedUdDoc.js';
 import { test, expect, seedAuth, readToken, collectClientErrors } from './fixtures.js';
-import { PlaidClient, ROLES, PLAID_NAMESPACE, ROLE_KEY, metadataOps } from '@larc-iu/plaid-client';
+import { PlaidClient, metadataOps } from '@larc-iu/plaid-client';
 
 const BASE = 'http://localhost:8085';
-const UD_NS = 'ud';
-const SPAN_SPECS = [
-  ['Form', 'form'],
-  ['Lemma', 'lemma'],
-  ['UPOS', 'upos'],
-  ['XPOS', 'xpos'],
-  ['Features', 'features'],
-];
 const MACHINE = { prov: 'inferred', provSource: 'service:test', provDetail: { model: 'm1' } };
 const S = {};
 
@@ -26,51 +19,13 @@ test.beforeAll(async () => {
   const client = new PlaidClient(BASE, token);
   S.client = client;
 
-  const project = await client.projects.create(`Prov replace ${Date.now()}`);
-  S.projectId = project.id;
-
-  const bTextLayer = await client.batched(async (b) => {
-    b.textLayers.create(S.projectId, 'Text');
-  });
-  const textLayerId = bTextLayer[0].body.id;
+  const L = await createUdLayers(client, `Prov replace ${Date.now()}`);
+  S.projectId = L.projectId;
+  const { textLayerId, sentenceLayerId, wordLayerId, morphemeLayerId, byKey, relationLayerId } = L;
   S.textLayerId = textLayerId;
-
-  const bSentenceLayer = await client.batched(async (b) => {
-    b.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
-    b.tokenLayers.create(textLayerId, 'Sentences', 'partitioning');
-  });
-  const sentenceLayerId = bSentenceLayer[1].body.id;
   S.sentenceLayerId = sentenceLayerId;
-
-  const bWordLayer = await client.batched(async (b) => {
-    b.tokenLayers.setConfig(sentenceLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SENTENCE);
-    b.tokenLayers.create(textLayerId, 'Tokens', 'non-overlapping', sentenceLayerId);
-  });
-  const wordLayerId = bWordLayer[1].body.id;
-
-  const bMorphemeLayer = await client.batched(async (b) => {
-    b.tokenLayers.setConfig(wordLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.WORD);
-    b.tokenLayers.create(textLayerId, 'Words', 'any', wordLayerId);
-  });
-  const morphemeLayerId = bMorphemeLayer[1].body.id;
-
-  const b6 = await client.batched(async (b) => {
-    b.tokenLayers.setConfig(morphemeLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SYNTACTIC_WORD);
-    for (const [name] of SPAN_SPECS) b.spanLayers.create(morphemeLayerId, name);
-  });
-  const spanLayerIds = SPAN_SPECS.map((_, i) => b6[1 + i].body.id);
-  const byKey = Object.fromEntries(SPAN_SPECS.map(([, key], i) => [key, spanLayerIds[i]]));
   S.byKey = byKey;
-
-  const b7 = await client.batched(async (b) => {
-    SPAN_SPECS.forEach(([, key], i) => b.spanLayers.setConfig(spanLayerIds[i], UD_NS, key, true));
-    b.relationLayers.create(byKey.lemma, 'Dependency Relations');
-  });
-  const relationLayerId = b7[b7.length - 1].body.id;
   S.relationLayerId = relationLayerId;
-  await client.batched(async (b) => {
-    b.relationLayers.setConfig(relationLayerId, UD_NS, 'dependency', true);
-  });
 
   const body = 'the dog runs';
   const doc = await client.documents.create(S.projectId, 'Prov Doc');

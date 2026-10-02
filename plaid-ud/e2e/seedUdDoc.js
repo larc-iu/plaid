@@ -82,3 +82,33 @@ export async function seedUdDoc(name, body, words, sentences) {
     },
   };
 }
+
+/**
+ * A UD project made as the New Project modal makes it (`createUdProject`), for
+ * a spec that seeds its own document: the project and the ids of its layers.
+ * A spec that built the layers by hand made a project UD reads as not set up
+ * the day UD's set-up changed (the enhanced relation layer).
+ *
+ * @param {object} client - a PlaidClient
+ * @param {string} name - project name (make it unique per run)
+ */
+export async function createUdLayers(client, name) {
+  const created = await createUdProject(client, name);
+  const info = getUdLayerInfo(await client.projects.get(created.id));
+  return {
+    projectId: created.id,
+    textLayerId: info.textLayer.id,
+    sentenceLayerId: info.sentenceTokenLayer.id,
+    wordLayerId: info.wordTokenLayer.id,
+    morphemeLayerId: info.morphemeTokenLayer.id,
+    byKey: {
+      form: info.formLayer.id,
+      lemma: info.lemmaLayer.id,
+      upos: info.uposLayer.id,
+      xpos: info.xposLayer.id,
+      features: info.featuresLayer.id,
+    },
+    relationLayerId: info.relationLayer.id,
+    enhancedLayerId: info.enhancedRelationLayer.id,
+  };
+}

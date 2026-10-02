@@ -1,6 +1,6 @@
 // Enhanced dependencies, end to end against the live core:
-//   - A new project has the enhanced relation layer, and one without it is
-//     given it when a maintainer opens a document.
+//   - A new project has the enhanced relation layer. One without it is not set
+//     up for UD, and setting it up at the project door adds the layer.
 //   - Ctrl+drag adds an edge to the enhanced graph and leaves the tree alone.
 //   - Ctrl+drag over a relation of the tree relabels it there.
 //   - Ctrl+click leaves a relation of the tree out of the graph, and back.
@@ -77,21 +77,32 @@ async function enhancedDrag(page, from, to, { under = 0 } = {}) {
   await page.mouse.up();
 }
 
-test('a new project has the layer, and an older one is given it on open', async ({ page }) => {
+test('a new project has the layer, and one without it is set up again at the door', async ({
+  page,
+}) => {
   const made = getUdLayerInfo(await S.client.projects.get(S.projectId));
   expect(made.enhancedRelationLayer).toBeTruthy();
+  expect(made.isConfigured).toBe(true);
   // The tree's own layer is still the only one that answers to `dependency`.
   expect(made.relationLayer.id).toBe(S.layers.relation);
 
-  // A project from before the layer existed: take it away, and a maintainer
-  // opening a document puts it back.
+  // Without the layer the project is not set up for UD. Opening it writes
+  // nothing; the maintainer's Set up button adds the layer, and the tree's
+  // relations stay as they were.
   await S.client.relationLayers.delete(made.enhancedRelationLayer.id);
+  const without = getUdLayerInfo(await S.client.projects.get(S.projectId));
+  expect(without.isConfigured).toBe(false);
+  expect(without.missingLayers).toEqual(['enhancedDependency']);
+  await seedAuth(page);
+  await page.goto(`/#/projects/${S.projectId}/documents`);
+  await expect(page.getByText('Not set up for UD', { exact: true })).toBeVisible();
+  expect(getUdLayerInfo(await S.client.projects.get(S.projectId)).enhancedRelationLayer).toBeNull();
+  await page.getByRole('button', { name: 'Set up for UD' }).click();
+  await expect(page.getByRole('heading', { name: 'Documents', exact: true })).toBeVisible();
+  const again = getUdLayerInfo(await S.client.projects.get(S.projectId));
+  expect(again.isConfigured).toBe(true);
+  expect(again.relationLayer.id).toBe(S.layers.relation);
   await openGrid(page, 4);
-  await expect
-    .poll(async () =>
-      Boolean(getUdLayerInfo(await S.client.projects.get(S.projectId)).enhancedRelationLayer),
-    )
-    .toBe(true);
 });
 
 test('Ctrl+drag gives a word a second head without touching its tree', async ({ page }) => {

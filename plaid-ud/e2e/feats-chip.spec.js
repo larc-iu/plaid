@@ -2,18 +2,11 @@
 // Builds its own throwaway UD project (mirroring ProjectForm.jsx's 8 batches),
 // seeds 'the dog runs' with tokens + lemma spans + two pre-seeded features on
 // the first morpheme, then drives the FEATS chip input through behaviors 1-5.
+import { createUdLayers } from './seedUdDoc.js';
 import { test, expect, seedAuth, collectClientErrors, readToken, BASE_URL } from './fixtures.js';
-import { PlaidClient, ROLES, PLAID_NAMESPACE, ROLE_KEY } from '@larc-iu/plaid-client';
+import { PlaidClient } from '@larc-iu/plaid-client';
 
 const BASE = 'http://localhost:8085';
-const UD_NS = 'ud';
-const SPAN_SPECS = [
-  ['Form', 'form'],
-  ['Lemma', 'lemma'],
-  ['UPOS', 'upos'],
-  ['XPOS', 'xpos'],
-  ['Features', 'features'],
-];
 
 const S = {}; // shared setup state
 
@@ -26,57 +19,11 @@ test.beforeAll(async () => {
   S.client = client;
 
   // B1: project
-  const project = await client.projects.create(`FEATS verify ${Date.now()}`);
-  S.projectId = project.id;
-
-  // B2: text layer
-  const b2 = await client.batched(async (b) => {
-    b.textLayers.create(S.projectId, 'Text');
-  });
-  const textLayerId = b2[0].body.id;
+  const L = await createUdLayers(client, `FEATS verify ${Date.now()}`);
+  S.projectId = L.projectId;
+  const { textLayerId, sentenceLayerId, wordLayerId, morphemeLayerId, byKey } = L;
   S.textLayerId = textLayerId;
-
-  // B3: text role + sentence layer
-  const b3 = await client.batched(async (b) => {
-    b.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
-    b.tokenLayers.create(textLayerId, 'Sentences', 'partitioning');
-  });
-  const sentenceLayerId = b3[1].body.id;
-
-  // B4: sentence role + word layer
-  const b4 = await client.batched(async (b) => {
-    b.tokenLayers.setConfig(sentenceLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SENTENCE);
-    b.tokenLayers.create(textLayerId, 'Words', 'non-overlapping', sentenceLayerId);
-  });
-  const wordLayerId = b4[1].body.id;
-
-  // B5: word role + morpheme layer
-  const b5 = await client.batched(async (b) => {
-    b.tokenLayers.setConfig(wordLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.WORD);
-    b.tokenLayers.create(textLayerId, 'Morphemes', 'any', wordLayerId);
-  });
-  const morphemeLayerId = b5[1].body.id;
-
-  // B6: morpheme role + 5 span layers
-  const b6 = await client.batched(async (b) => {
-    b.tokenLayers.setConfig(morphemeLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SYNTACTIC_WORD);
-    for (const [name] of SPAN_SPECS) b.spanLayers.create(morphemeLayerId, name);
-  });
-  const spanLayerIds = SPAN_SPECS.map((_, i) => b6[1 + i].body.id);
-  const byKey = Object.fromEntries(SPAN_SPECS.map(([, key], i) => [key, spanLayerIds[i]]));
   S.featuresLayerId = byKey.features;
-
-  // B7: span flags + relation layer (under Lemma)
-  const b7 = await client.batched(async (b) => {
-    SPAN_SPECS.forEach(([, key], i) => b.spanLayers.setConfig(spanLayerIds[i], UD_NS, key, true));
-    b.relationLayers.create(byKey.lemma, 'Dependency Relations');
-  });
-  const relationLayerId = b7[b7.length - 1].body.id;
-
-  // B8: relation flag
-  await client.batched(async (b) => {
-    b.relationLayers.setConfig(relationLayerId, UD_NS, 'dependency', true);
-  });
 
   // Document + text + tokens. 'the dog runs' (ASCII: code points == chars).
   const body = 'the dog runs';
