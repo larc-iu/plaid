@@ -46,8 +46,8 @@
 // number no longer matches its sentence is renumbered, a sentence's record
 // left on new text split off before it moves to the sentence it describes, a
 // triple between two constants listed by sentence number goes into those
-// sentences' records, and a node picked from a vocabulary entry that is gone
-// forgets the entry.
+// sentences' records, a node over a word IGT split in two is put on one half,
+// and a node picked from a vocabulary entry that is gone forgets the entry.
 
 import {
   NUMBERED_VARIABLE,
@@ -128,6 +128,52 @@ export function planUnalignedHeal(graph, namespace) {
     standOver(node, home);
   });
   return { remove, rebind, resize, unanchor };
+}
+
+/**
+ * The anchors left over a word IGT split in two (`ikian,` into `ikian` and
+ * `,`): core splits only the layers under the word layer, and the node layer
+ * is a root layer, so a node anchored to the word stands over both halves.
+ * Each is put on the half the word's letters are in: the half with the most
+ * letters and digits, the first on a tie (`a.` keeps `a`, `tsa` split as `t`
+ * and `sa` keeps `sa`).
+ *
+ * A word split leaves its halves with no space between them, so a run of
+ * such words at either end of an anchor piece is read as one word split.
+ * Only the ends: a piece covers one stretch of text, and a run in its middle
+ * could not be dropped without cutting it in two. A node anchored on purpose
+ * to two words IGT tokenized with no space between them (`do` and `n't`) is
+ * put on one of them too: nothing stored tells the two apart.
+ *
+ * @returns {{ nodeId: string, pieceId: string, begin: number, end: number }[]}
+ */
+export function planWordSplits(graph) {
+  const letters = (w) => [...w.text].filter((c) => /[\p{L}\p{N}]/u.test(c)).length;
+  const kept = (run) => run.reduce((best, w) => (letters(w) > letters(best) ? w : best));
+  const out = [];
+  graph.nodesById.forEach((node) => {
+    if (node.constant || !node.aligned || node.sentence == null) return;
+    const sentence = graph.sentences[node.sentence - 1];
+    node.pieces.forEach((piece) => {
+      const words = sentence.words.filter((w) => w.begin < piece.end && piece.begin < w.end);
+      if (words.length < 2) return;
+      if (words[0].begin !== piece.begin || words.at(-1).end !== piece.end) return;
+      // The words in runs with no space between them.
+      const runs = [[words[0]]];
+      words.slice(1).forEach((w) => {
+        const run = runs.at(-1);
+        if (run.at(-1).end === w.begin) run.push(w);
+        else runs.push([w]);
+      });
+      const first = runs[0];
+      const last = runs.at(-1);
+      const begin = first.length > 1 ? kept(first).begin : piece.begin;
+      const end = last.length > 1 ? kept(last).end : piece.end;
+      if (begin === piece.begin && end === piece.end) return;
+      out.push({ nodeId: node.id, pieceId: piece.id, begin, end });
+    });
+  });
+  return out;
 }
 
 /**
@@ -338,6 +384,7 @@ export function describeUmrReconcile({
   recordsMoved = 0,
   recordsHomed = 0,
   triplesMoved = 0,
+  wordSplits = 0,
   rulesDeclared = false,
   rulesRepaired = false,
 } = {}) {
@@ -368,6 +415,9 @@ export function describeUmrReconcile({
     parts.push(
       `put ${nodes(resized)} back over ${resized === 1 ? 'its sentence' : 'their sentences'}`,
     );
+  }
+  if (wordSplits) {
+    parts.push(`put ${countOf(wordSplits, 'node', 'nodes')} on one half of a word split in two`);
   }
   if (recordsHomed) {
     parts.push(

@@ -48,6 +48,7 @@ import {
   planStrayTokens,
   planTripleRecords,
   planUnalignedHeal,
+  planWordSplits,
 } from './umrReconcile.js';
 import {
   serializeUmrFile,
@@ -565,6 +566,7 @@ export class UmrDocument extends DocumentModel {
     const renumber = planRenumber(graph, removed, keptNames);
     const recordMoves = planRecordMoves(graph);
     const tripleRecords = planTripleRecords(graph, UMR_NAMESPACE);
+    const wordSplits = planWordSplits(graph).filter((w) => !removed.has(w.nodeId));
     // An entry counts as deleted only when the vocabulary the node picked it
     // from was read and lacks it (planEntryUnlink). The vocabularies are read
     // only when a node names an entry, so an open waits on no read it does
@@ -585,6 +587,7 @@ export class UmrDocument extends DocumentModel {
       !renumber.length &&
       !recordMoves.length &&
       !tripleRecords.triples.length &&
+      !wordSplits.length &&
       !unlink.length;
     if (nothing) return homed ? { ...ruled, recordsHomed: homed } : ruled;
     const unanchored = new Set(unanchor.map((u) => u.nodeId));
@@ -602,6 +605,7 @@ export class UmrDocument extends DocumentModel {
       recordsMoved: recordMoves.length,
       recordsHomed: homed,
       triplesMoved: tripleRecords.triples.length,
+      wordSplits: new Set(wordSplits.map((w) => w.nodeId)).size,
     };
     // The History entry takes its label from the first write, so the label
     // goes on before any: past 1000 operations the batch is several requests,
@@ -636,6 +640,7 @@ export class UmrDocument extends DocumentModel {
       await this._client.batched(async (b) => {
         if (tokenIds.length) b.tokens.bulkDelete(tokenIds);
         recordMoves.forEach(({ id, begin, end }) => b.tokens.update(id, begin, end));
+        wordSplits.forEach(({ pieceId, begin, end }) => b.tokens.update(pieceId, begin, end));
         if (tripleRecords.newRecords.length) {
           b.tokens.bulkCreate(
             tripleRecords.newRecords.map((r) => ({

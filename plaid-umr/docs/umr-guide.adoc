@@ -223,6 +223,8 @@ Opening the document here puts right what such an edit left behind, in one entry
 
 A node anchored to words follows its words.
 Letters typed at an anchored word's edge or inside it, a space included, stay in the nodes anchored to it.
+A word split in two in Plaid IGT (`ikian,` into `ikian` and `,`) keeps its nodes on the half with the most letters, the first half on a tie, from the next opening here.
+A node anchored to two words with no space between them (`do` and `n't`) is put on one of them in the same way, since nothing tells it from a word split in two.
 A node anchored to no word belongs to the sentence it was made in and stands over the whole of it, so an edit anywhere in the text leaves it where it belongs.
 Two sentences joined into one bring their nodes together in it, where they are two graphs until the annotator joins them, which the sentence's header counts and the Validation tab lists.
 Splitting it again where they were joined gives each sentence its own nodes back, with their edges, and its own imported lines: its number, its gloss and metadata lines, a graph kept as text with the relations held for it, and its document-level relations between constants such as `(root :modal author)`.

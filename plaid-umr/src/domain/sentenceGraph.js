@@ -115,12 +115,11 @@ export function numberedByFile(sentences) {
   return !!first && String(first.snt) !== '1';
 }
 
-// A record can stand over new text typed in before its sentence: IGT types
-// a sentence in before the first one by growing the first sentence over the
-// new text and splitting it off, and core cuts a token of exactly the split
-// sentence's extent (the record's) at the split, so the record is left on
-// the new text, the left half, while its words and its graph are in the
-// right half, which records nothing. The record goes with the graph it
+// A record can stand over new text typed in before its sentence, when an
+// edit grew it over that text with the sentence and a split then left the
+// record on the left half, the new text, while its words and its graph are
+// in the right half, which records nothing. (Core moves a record along with
+// text typed in before it, so this is rare.) The record goes with the graph it
 // describes: a sentence that records something and has no nodes, followed
 // (past any sentences that record nothing and have no nodes either, several
 // typed in at once) by one that records nothing and whose nodes' variables

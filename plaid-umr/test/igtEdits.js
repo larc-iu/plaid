@@ -9,9 +9,9 @@
 //     metadata, and moves the spans on it to the left
 //   - a split keeps the token, its id and metadata, on the left and makes a
 //     new right token with only the `preserveOnSplit` keys; a token of a
-//     layer nested under it that straddles the split is split too, and a
-//     token of another layer with exactly the split token's extent ends at
-//     the split
+//     layer nested under it that straddles the split is split too, and no
+//     other layer's token changes (a node over a word split in two stands
+//     over both halves)
 //   - deleting a token deletes the tokens nested inside it, a span left with
 //     no token, and every relation on a span that goes
 //   - after each of these, a UMR relation whose two ends begin in different
@@ -55,16 +55,6 @@ const childrenOf = (raw, layer) => {
         walk(l.id);
       });
   walk(layer.id);
-  return out;
-};
-
-const parentsOf = (raw, layer) => {
-  const out = [];
-  for (let p = layer.parentTokenLayer; p; ) {
-    const l = tokenLayers(raw).find((x) => x.id === p);
-    out.push(l);
-    p = l.parentTokenLayer;
-  }
   return out;
 };
 
@@ -145,7 +135,7 @@ export function clearSentences(raw) {
 export function splitToken(raw, layer, tokenId, pos) {
   const t = layer.tokens.find((x) => x.id === tokenId);
   const keep = layer.config?.plaid?.preserveOnSplit || [];
-  const { begin, end } = t;
+  const { end } = t;
   const right = { id: newId('split'), begin: pos, end };
   const inherited = Object.fromEntries(
     Object.entries(t.metadata || {}).filter(([k]) => keep.includes(k)),
@@ -162,18 +152,6 @@ export function splitToken(raw, layer, tokenId, pos) {
       }
     }),
   );
-  const related = new Set([
-    layer.id,
-    ...below.map((d) => d.id),
-    ...parentsOf(raw, layer).map((a) => a.id),
-  ]);
-  tokenLayers(raw)
-    .filter((l) => !related.has(l.id))
-    .forEach((l) =>
-      l.tokens.forEach((o) => {
-        if (o.begin === begin && o.end === end) o.end = pos;
-      }),
-    );
   sameAncestor(raw);
   return right.id;
 }

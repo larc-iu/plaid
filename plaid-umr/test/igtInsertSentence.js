@@ -8,10 +8,9 @@
 // Not a test file itself, so the runner does not pick it up.
 //
 // `recordCut`: the first sentence's record grew over the new text with the
-// sentence and was cut at the split (core cuts a token of exactly the split
-// token's extent), so it is left on the new text. Core moves a record along
-// instead, but nothing else would show the reader taking a record to the
-// graph it describes.
+// sentence and was left on the new text by the split. Core moves a record
+// along instead, but nothing else would show the reader taking a record to
+// the graph it describes.
 const role = (raw, r) => raw.textLayers[0].tokenLayers.find((l) => l.config?.plaid?.role === r);
 
 export function insertSentenceAtStart(raw, text = 'Yeni cümle .', { recordCut = false } = {}) {
