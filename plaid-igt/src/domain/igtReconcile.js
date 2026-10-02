@@ -7,8 +7,8 @@
 // an orphan morpheme or a doubled annotation behind. What is planned here is
 // what the rules do not cover: caches and back-fills.
 
-/** The label a reconcile pass that wrote nothing keeps. */
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+// By its real path: the node mirrors reach this file with no alias.
+import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 
 /**
  * The audit label for a reconcile pass, naming what it actually changed.
@@ -35,7 +35,7 @@ export const describeReconcile = ({
   if (rulesDeclared) parts.push('applied the annotation rules');
   if (syncedMorphTypes)
     parts.push(
-      `synced ${plural(syncedMorphTypes, 'morpheme type', 'morpheme types')} from lexicon entries`,
+      `synced ${countOf(syncedMorphTypes, 'morpheme type', 'morpheme types')} from lexicon entries`,
     );
   if (!parts.length) return null;
   return `Repaired: ${parts.join(', ')}`;

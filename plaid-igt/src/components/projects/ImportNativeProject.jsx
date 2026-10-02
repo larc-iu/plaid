@@ -22,7 +22,7 @@ import { readNativeArchive } from '../../import/native/readArchive';
 import { deriveSetupData, runNativeImport } from '../../import/native/importEngine';
 import { useResumeImport } from '@/hooks/useResumeImport';
 import { useProjectImportRun } from '@/hooks/useProjectImportRun';
-import { plural } from '@/utils/plural';
+import { countOf } from '@ui/lib/plural.js';
 
 import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
@@ -172,18 +172,18 @@ export const ImportNativeProject = () => {
                 </span>
               </p>
               <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm sm:grid-cols-3">
-                <p>{plural(archive.documents.length, 'document')}</p>
-                <p>{plural(archive.vocabularies.length, 'vocabulary', 'vocabularies')}</p>
-                <p>{plural(itemCount, 'entry', 'entries')}</p>
-                <p>{plural(fieldCount, 'annotation field')}</p>
+                <p>{countOf(archive.documents.length, 'document')}</p>
+                <p>{countOf(archive.vocabularies.length, 'vocabulary', 'vocabularies')}</p>
+                <p>{countOf(itemCount, 'entry', 'entries')}</p>
+                <p>{countOf(fieldCount, 'annotation field')}</p>
                 <p>
-                  {plural(
+                  {countOf(
                     manifest.schema?.orthographies?.length ?? 0,
                     'orthography',
                     'orthographies',
                   )}
                 </p>
-                <p>{plural(mediaCount, 'media file')}</p>
+                <p>{countOf(mediaCount, 'media file')}</p>
               </div>
             </div>
 

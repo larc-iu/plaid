@@ -9,8 +9,7 @@
 
 import { dependencyRelationLayers } from './udLayerUtils.js';
 import { danglingSuppressorIds } from '../domain/enhancedGraph.js';
-
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 
 // The audit label for a reconcile pass, naming what it actually changed, and
 // the console's record of it. Terse on purpose: a row in a drawer. Null when
@@ -23,7 +22,7 @@ export const describeReconcile = ({
 } = {}) => {
   const parts = [];
   if (createdSyntacticWords)
-    parts.push(`added ${plural(createdSyntacticWords, 'word', 'words')} to the annotation grid`);
+    parts.push(`added ${countOf(createdSyntacticWords, 'word', 'words')} to the annotation grid`);
   if (rulesRepaired) parts.push('fixed annotations the annotation rules forbid');
   if (rulesDeclared) parts.push('applied the annotation rules');
   if (!parts.length) return null;

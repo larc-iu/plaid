@@ -92,7 +92,7 @@ import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { readVocabulary } from '@/domain/vocabCache';
 import { EntryRestoreDialog } from './EntryRestoreDialog';
-import { plural } from '@/utils/plural';
+import { countOf } from '@ui/lib/plural.js';
 
 // A past state read with no entry list: one empty list, so the memos over it
 // keep their identity.
@@ -1042,7 +1042,7 @@ export const VocabularyItems = ({
           const visible = now ?? expectedLinkCount;
           refusedDeleteRef.current.set(deletedId, { seen: visible, server: serverCount });
           const hidden = Math.max(0, serverCount - visible);
-          const linked = `It is linked to ${plural(serverCount, 'word/morpheme', 'words/morphemes')}${
+          const linked = `It is linked to ${countOf(serverCount, 'word/morpheme', 'words/morphemes')}${
             hidden ? `, ${hidden} of them in projects you cannot open` : ''
           }.`;
           // Someone moved on meanwhile (another entry or dialog open, or

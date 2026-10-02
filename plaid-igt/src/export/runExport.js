@@ -43,7 +43,7 @@ import {
 } from './nativeJson.js';
 import { sanitizeFilename, dedupeFilenames, assembleZip } from './files.js';
 import { formatExt } from './presets.js';
-import { plural } from '../utils/plural.js';
+import { countOf } from '@ui/lib/plural.js';
 import { humanizeError } from '@ui/lib/errors.js';
 
 export class ExportCancelled extends Error {
@@ -93,7 +93,7 @@ const flexReadme = ({ stem, lexicon, docCount }) =>
     'Exported from Plaid for FieldWorks Language Explorer (FLEx).',
     '',
     'Contents:',
-    `  ${stem}.lift: the lexicon (${plural(lexicon.entryCount, 'entry', 'entries')}, ${plural(lexicon.senseCount, 'sense')})`,
+    `  ${stem}.lift: the lexicon (${countOf(lexicon.entryCount, 'entry', 'entries')}, ${countOf(lexicon.senseCount, 'sense')})`,
     ...(lexicon.ranges
       ? [`  ${stem}.lift-ranges: the grammatical categories the lexicon uses`]
       : []),

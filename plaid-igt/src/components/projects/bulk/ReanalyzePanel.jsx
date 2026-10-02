@@ -8,7 +8,7 @@ import { analysisViolations, governedFields } from '@/domain/tagsets';
 import { tallyCandidates, analysisLabel, cardRowsFor } from './bulkPlan.js';
 import { planReanalyze, applyReanalyze } from './bulkRunner.js';
 import { AnalysisCard } from './AnalysisCard.jsx';
-import { plural, skippedNote, useRun } from './bulkShared.js';
+import { countOf, skippedNote, useRun } from './bulkShared.js';
 import { ApplyBar, MatchGroups, Progress, SelectionSummary } from './parts.jsx';
 
 // Re-analyze: replace one analysis of a word form with another everywhere.
@@ -81,14 +81,14 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
     const skipped = skippedNote([[res.skipped, 'occurrence']]);
     if (res.failedDoc) {
       notifyWarning(
-        `${plural(res.changed, 'occurrence')} re-analyzed before “${res.failedDoc}” failed. The remaining documents were not changed.${skipped}`,
+        `${countOf(res.changed, 'occurrence')} re-analyzed before “${res.failedDoc}” failed. The remaining documents were not changed.${skipped}`,
         'Stopped early',
       );
     } else if (!res.changed && skipped) {
       notifyWarning(skipped.trim(), 'Nothing re-analyzed');
     } else {
       notifySuccess(
-        `${plural(res.changed, 'occurrence')} of “${plan.form}” re-analyzed.${skipped}`,
+        `${countOf(res.changed, 'occurrence')} of “${plan.form}” re-analyzed.${skipped}`,
         'Re-analyzed',
       );
     }
@@ -127,7 +127,7 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
             <p className="py-6 text-center text-sm text-muted-foreground">
               {plan.rows.length === 0
                 ? `No occurrences of “${plan.form}”.`
-                : `“${plan.form}” occurs ${plural(plan.rows.length, 'time')}, and none is analyzed. Analyze one in a document first.`}
+                : `“${plan.form}” occurs ${countOf(plan.rows.length, 'time')}, and none is analyzed. Analyze one in a document first.`}
             </p>
           ) : (
             <div className="rounded-lg border bg-card p-4">
@@ -152,7 +152,7 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
                       <div className="mb-1 flex items-baseline gap-2">
                         <span className="text-sm font-semibold">Analysis {i + 1}</span>
                         <span className="text-xs text-muted-foreground">
-                          {plural(c.count, 'occurrence')}
+                          {countOf(c.count, 'occurrence')}
                         </span>
                       </div>
                       <div className="overflow-x-auto">
@@ -187,7 +187,7 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
               count={targetBad.length ? 0 : selectedRows.length}
               busy={r.busy}
               onApply={doApply}
-              summary={`${plural(selectedRows.length, 'occurrence')} of “${plan.form}” will be re-analyzed as ${label(target.analysis)}, replacing their current analyses.`}
+              summary={`${countOf(selectedRows.length, 'occurrence')} of “${plan.form}” will be re-analyzed as ${label(target.analysis)}, replacing their current analyses.`}
             >
               <SelectionSummary
                 rows={plan.rows.filter((x) => x.signature !== targetSig)}
@@ -196,7 +196,7 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
                 extra={
                   <>
                     {' '}
-                    ({plural(target.count, 'occurrence')} {target.count === 1 ? 'has' : 'have'}{' '}
+                    ({countOf(target.count, 'occurrence')} {target.count === 1 ? 'has' : 'have'}{' '}
                     {targetName})
                   </>
                 }

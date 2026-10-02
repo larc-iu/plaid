@@ -18,6 +18,7 @@ import { graphFromSentence } from './graph.js';
 import { rewriteSentence } from './engine.js';
 import { diffGraphs } from './diff.js';
 import { bareLabel } from '../edgeLabel.js';
+import { countOf } from '../../../../plaid-ui/src/lib/plural.js';
 import { makeValidators } from '../../utils/udVocabMode.js';
 
 // Document GETs in flight at once. Measured on a 1172-document project: four
@@ -270,8 +271,7 @@ export async function applyRewrite(client, { rows, docs, label }, onProgress) {
 // The toast after an apply. `reason` turns the failure into a sentence, and
 // its own full stop is dropped so the sentence can end here.
 export function applySummary(out, reason) {
-  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
-  const applied = `${plural(out.sentencesChanged, 'sentence')} in ${plural(out.docsChanged, 'document')}`;
+  const applied = `${countOf(out.sentencesChanged, 'sentence')} in ${countOf(out.docsChanged, 'document')}`;
   if (!out.failed) return `Changed ${applied}.`;
   const { docName, status, partial, unsure } = out.failed;
   const why = (status === 409 ? 'it changed since the preview' : reason(out.failed))

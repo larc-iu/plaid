@@ -12,7 +12,7 @@ import { cn } from '@ui/lib/utils';
 import { notifyError } from '@/utils/feedback';
 import { textIncludes } from '@ui/domain/collation.js';
 import { loadEntryCounts } from '@/domain/vocabEntryCounts.js';
-import { plural } from '@/utils/plural';
+import { countOf } from '@ui/lib/plural.js';
 
 // A row the user may not link: an unlinked vocabulary whose row says so
 // (`canLink: false`, set by the screen that loaded it). A linked row is always
@@ -338,7 +338,7 @@ export const VocabularyManager = ({
                         <span dir="auto">{record.name}</span>
                         {entryCounts[record.id] !== undefined && (
                           <span className="ml-2 text-xs not-italic text-muted-foreground">
-                            {plural(entryCounts[record.id], 'entry', 'entries')}
+                            {countOf(entryCounts[record.id], 'entry', 'entries')}
                           </span>
                         )}
                         {isLocked(record) && (

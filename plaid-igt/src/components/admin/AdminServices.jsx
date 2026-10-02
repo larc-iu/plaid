@@ -8,7 +8,7 @@ import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { textIncludes } from '@ui/domain/collation.js';
-import { plural } from '@/utils/plural';
+import { countOf } from '@ui/lib/plural.js';
 
 // Services register per project, so "is the analyze service up" can only be
 // answered one project at a time. This asks every project at once.
@@ -101,7 +101,7 @@ export const AdminServices = ({ client }) => {
     const offline = row.entries.filter((e) => !e.online);
     const ok = await confirm({
       title: `Forget ${row.serviceName} everywhere?`,
-      description: `Removes ${plural(offline.length, 'registration')}, on every project where it is offline. Each reappears if it connects again.`,
+      description: `Removes ${countOf(offline.length, 'registration')}, on every project where it is offline. Each reappears if it connects again.`,
       confirmLabel: `Forget ${offline.length}`,
       destructive: true,
     });
@@ -117,7 +117,7 @@ export const AdminServices = ({ client }) => {
     if (failed.length) {
       notifyError(`${failed.length} could not be removed: ${failed.join(', ')}`, 'Partly done');
     } else {
-      notifySuccess(`${plural(offline.length, 'registration')} forgotten`);
+      notifySuccess(`${countOf(offline.length, 'registration')} forgotten`);
     }
     await load();
   };
@@ -206,7 +206,7 @@ export const AdminServices = ({ client }) => {
       actions={
         <>
           <span className="text-sm text-muted-foreground">
-            {online} online, {plural(registrations.length, 'registration')}
+            {online} online, {countOf(registrations.length, 'registration')}
           </span>
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>
             <RefreshCw className="h-4 w-4" /> Refresh

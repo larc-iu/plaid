@@ -39,7 +39,7 @@ import { deriveSetupData, runCldfImport } from '../../import/cldf/importEngine';
 import { readImportState } from '../../domain/igtConfig';
 import { useResumeImport } from '@/hooks/useResumeImport';
 import { useProjectImportRun } from '@/hooks/useProjectImportRun';
-import { plural } from '@/utils/plural';
+import { countOf } from '@ui/lib/plural.js';
 
 import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
@@ -229,12 +229,12 @@ export const ImportCldfProject = () => {
                 </span>
               </p>
               <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm sm:grid-cols-3">
-                <p>{plural(build.stats.documents, 'text')}</p>
-                <p>{plural(build.stats.sentences, 'sentence')}</p>
-                <p>{plural(build.stats.words, 'word')}</p>
-                <p>{plural(build.stats.morphemes, 'morpheme')}</p>
-                <p>{plural(build.stats.lexiconEntries, 'lexicon entry', 'lexicon entries')}</p>
-                <p>{plural(build.schema.fields.length, 'annotation field')}</p>
+                <p>{countOf(build.stats.documents, 'text')}</p>
+                <p>{countOf(build.stats.sentences, 'sentence')}</p>
+                <p>{countOf(build.stats.words, 'word')}</p>
+                <p>{countOf(build.stats.morphemes, 'morpheme')}</p>
+                <p>{countOf(build.stats.lexiconEntries, 'lexicon entry', 'lexicon entries')}</p>
+                <p>{countOf(build.schema.fields.length, 'annotation field')}</p>
               </div>
               {build.schema.fields.length > 0 && (
                 <p className="mt-2 border-t pt-2 text-xs text-muted-foreground">
@@ -379,7 +379,7 @@ export const ImportCldfProject = () => {
                         A dictionary without examples cannot be imported
                       </p>
                       <p className="text-xs">
-                        This dataset has {plural(build.lexicon.length, 'entry', 'entries')} but no
+                        This dataset has {countOf(build.lexicon.length, 'entry', 'entries')} but no
                         ExampleTable, so it has no texts.
                       </p>
                     </>

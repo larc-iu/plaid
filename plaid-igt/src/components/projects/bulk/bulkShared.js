@@ -1,17 +1,17 @@
 import { useState } from 'react';
 import { notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
 import { isUnknownOutcome } from '@ui/lib/errors.js';
-import { plural } from '@/utils/plural';
+import { countOf } from '@ui/lib/plural.js';
 
 // What every Bulk Edit panel shares: the run state machine, the scope
-// badge classes, and the one pluralizer (the app's, re-exported).
-export { plural };
+// badge classes, and the one count-and-noun helper (plaid-ui's, re-exported).
+export { countOf };
 
 // The sentence an apply's toast ends with when some of the preview's changes
 // were skipped because their word, value or entry changed after the preview.
 // `counts` is [[n, word, words?], ...]. The empty string when all are zero.
 export const skippedNote = (counts) => {
-  const parts = counts.filter(([n]) => n > 0).map(([n, word, words]) => plural(n, word, words));
+  const parts = counts.filter(([n]) => n > 0).map(([n, word, words]) => countOf(n, word, words));
   if (!parts.length) return '';
   return ` Skipped ${parts.join(' and ')} changed since the preview.`;
 };

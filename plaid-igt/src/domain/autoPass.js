@@ -42,7 +42,7 @@ import {
   computeMweProposals,
 } from './autoLink.js';
 import { linkPrecedentQueries, createTally, foldLinkRows } from './precedent.js';
-import { plural } from '../utils/plural.js';
+import { countOf } from '@ui/lib/plural.js';
 import { builtinDetail, builtinRun } from './builtinVersion.js';
 import { BUILTIN_ANALYSIS_COPY, BUILTIN_LINK_PRECEDENT } from './serviceDefaults.js';
 
@@ -136,7 +136,7 @@ async function runCopyPhase(doc, copyContents, onProgress, shouldStop = () => fa
   if (!proposals.length) return 0;
   // Last chance: the write below is one operation and is not interrupted.
   checkpoint(shouldStop);
-  onProgress({ percent: null, message: `Copying onto ${plural(proposals.length, 'word')}…` });
+  onProgress({ percent: null, message: `Copying onto ${countOf(proposals.length, 'word')}…` });
   // A service run naming the rule, whose pieces name the rule and its version.
   const detail = await builtinDetail(BUILTIN_ANALYSIS_COPY);
   return doc.bulkApplyAnalyses(proposals, ANALYSIS_COPY_SOURCE, {
@@ -192,11 +192,11 @@ async function remoteTalliesFor(
       done++;
       onProgress({
         percent: (done / docIds.length) * 100,
-        message: `Read ${done} of ${plural(docIds.length, 'document')}…`,
+        message: `Read ${done} of ${countOf(docIds.length, 'document')}…`,
       });
     }
   };
-  onProgress({ percent: 0, message: `Reading ${plural(docIds.length, 'document')}…` });
+  onProgress({ percent: 0, message: `Reading ${countOf(docIds.length, 'document')}…` });
   await Promise.all(
     Array.from({ length: Math.min(SOURCE_FETCHES_IN_FLIGHT, docIds.length) }, worker),
   );
@@ -248,7 +248,7 @@ async function linkPhase(doc, onProgress = () => {}, shouldStop = () => false, r
   let linked = 0;
   if (proposals.length) {
     checkpoint(shouldStop);
-    onProgress({ percent: null, message: `Linking ${plural(proposals.length, 'word')}…` });
+    onProgress({ percent: null, message: `Linking ${countOf(proposals.length, 'word')}…` });
     const n = await doc.bulkLinkVocab(proposals, AUTO_LINK_SOURCE, stamp);
     if (n === false) return false;
     linked += n;

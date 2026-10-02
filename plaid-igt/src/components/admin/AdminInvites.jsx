@@ -28,7 +28,7 @@ import { InviteStatusBadge } from '@ui/components/shared/InviteStatusBadge.jsx';
 import { inviteLinkFor, GRANT_ROLES, cap } from '@ui/domain/invites.js';
 import { ROLE_HINTS } from '@/domain/roleGrants.js';
 import { textIncludes } from '@ui/domain/collation.js';
-import { plural } from '@/utils/plural';
+import { countOf } from '@ui/lib/plural.js';
 
 // Every invite on the server, whoever minted it. A project's own tab shows
 // that project's links; this is the one place an admin can see an admin grant
@@ -59,7 +59,7 @@ const BatchResult = ({ links, onClose }) => {
     <Dialog open={links.length > 0} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{plural(links.length, 'link')} created</DialogTitle>
+          <DialogTitle>{countOf(links.length, 'link')} created</DialogTitle>
           <DialogDescription>Copy these now. They cannot be shown again.</DialogDescription>
         </DialogHeader>
         <textarea

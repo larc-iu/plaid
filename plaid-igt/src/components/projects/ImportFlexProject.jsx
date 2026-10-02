@@ -40,7 +40,7 @@ import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { humanizeFieldName } from '@/domain/vocabFields';
 import { scopeBadgeClass } from '@/domain/scopeColors';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
-import { plural } from '@/utils/plural';
+import { countOf } from '@ui/lib/plural.js';
 import { readTextFile } from '@ui/lib/textFile.js';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 
@@ -457,20 +457,20 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                   : `Contents of “${parsed.sourceName}”`}
               </p>
               <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm sm:grid-cols-3">
-                <p>{plural(parsed.build.stats.documents, 'text')}</p>
-                <p>{plural(parsed.build.stats.sentences, 'sentence')}</p>
-                <p>{plural(parsed.build.stats.words, 'word')}</p>
-                <p>{plural(parsed.build.stats.morphemes, 'morpheme')}</p>
+                <p>{countOf(parsed.build.stats.documents, 'text')}</p>
+                <p>{countOf(parsed.build.stats.sentences, 'sentence')}</p>
+                <p>{countOf(parsed.build.stats.words, 'word')}</p>
+                <p>{countOf(parsed.build.stats.morphemes, 'morpheme')}</p>
                 {!flextext && (
                   <>
                     <p>
-                      {plural(
+                      {countOf(
                         parsed.build.stats.lexiconEntries,
                         'lexicon entry',
                         'lexicon entries',
                       )}
                     </p>
-                    <p>{plural(parsed.build.stats.lexiconSenses, 'sense')}</p>
+                    <p>{countOf(parsed.build.stats.lexiconSenses, 'sense')}</p>
                   </>
                 )}
               </div>
@@ -530,7 +530,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
               <div className="rounded-lg border bg-card p-4">
                 <p className="mb-1 font-medium">Lexicon</p>
                 <p className="mb-3 text-sm text-muted-foreground">
-                  The FLEx lexicon ({plural(parsed.ir.lexicon.length, 'entry', 'entries')}) becomes
+                  The FLEx lexicon ({countOf(parsed.ir.lexicon.length, 'entry', 'entries')}) becomes
                   the vocabulary the interlinear links to.
                 </p>
                 <div className="flex flex-col gap-3">
@@ -683,7 +683,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                     />
                     <span className="flex-1 truncate">{d.name}</span>
                     <span className="shrink-0 text-xs text-muted-foreground">
-                      {plural(d.sentences.length, 'sentence')} · {plural(d.words.length, 'word')}
+                      {countOf(d.sentences.length, 'sentence')} · {countOf(d.words.length, 'word')}
                     </span>
                   </label>
                 ))}

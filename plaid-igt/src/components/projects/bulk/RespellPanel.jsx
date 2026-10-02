@@ -4,7 +4,7 @@ import { cn } from '@ui/lib/utils';
 import { notifySuccess, notifyWarning } from '@/utils/feedback';
 import { buildReplacer, chainText } from './bulkPlan.js';
 import { planRespell, applyRespell } from './bulkRunner.js';
-import { notifyStopped, plural, skippedNote, useRun } from './bulkShared.js';
+import { notifyStopped, countOf, skippedNote, useRun } from './bulkShared.js';
 import { scopeTextClass } from '@/domain/scopeColors';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
 import { useAuth } from '@/contexts/AuthContext';
@@ -114,10 +114,10 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
       [res.entriesSkipped, 'lexicon entry', 'lexicon entries'],
     ]);
     const done =
-      `${plural(res.wordsChanged, 'word')} in ${plural(res.docsChanged, 'document')}` +
-      (res.morphemesChanged ? `, ${plural(res.morphemesChanged, 'morpheme form')}` : '') +
+      `${countOf(res.wordsChanged, 'word')} in ${countOf(res.docsChanged, 'document')}` +
+      (res.morphemesChanged ? `, ${countOf(res.morphemesChanged, 'morpheme form')}` : '') +
       (res.entriesChanged
-        ? `, ${plural(res.entriesChanged, 'lexicon entry', 'lexicon entries')}`
+        ? `, ${countOf(res.entriesChanged, 'lexicon entry', 'lexicon entries')}`
         : '') +
       ' respelled';
     if (res.failed) {
@@ -166,11 +166,11 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
             count={total}
             busy={r.busy}
             onApply={doApply}
-            summary={`${plural(selectedRows.length, 'word')} will be respelled${
-              morphCount ? `, along with ${plural(morphCount, 'morpheme form')}` : ''
+            summary={`${countOf(selectedRows.length, 'word')} will be respelled${
+              morphCount ? `, along with ${countOf(morphCount, 'morpheme form')}` : ''
             }${
               includeLexicon && selectedLex.length
-                ? `, and ${plural(selectedLex.length, 'lexicon entry', 'lexicon entries')}`
+                ? `, and ${countOf(selectedLex.length, 'lexicon entry', 'lexicon entries')}`
                 : ''
             }.`}
           >
@@ -207,7 +207,7 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
                 />
                 <span className="text-sm font-medium">Lexicon entries</span>
                 <span className="text-xs text-muted-foreground">
-                  {selectedLex.length} of {plural(plan.lexiconRows.length, 'entry', 'entries')}{' '}
+                  {selectedLex.length} of {countOf(plan.lexiconRows.length, 'entry', 'entries')}{' '}
                   selected{!includeLexicon && ' (not included)'}
                 </span>
               </div>

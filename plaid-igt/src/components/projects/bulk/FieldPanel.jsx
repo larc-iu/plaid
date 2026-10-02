@@ -21,7 +21,7 @@ import {
 import { searchDomains } from '../search/searchQueries.js';
 import { buildReplacer } from './bulkPlan.js';
 import { planField, applyField } from './bulkRunner.js';
-import { notifyStopped, plural, skippedNote, useRun } from './bulkShared.js';
+import { notifyStopped, countOf, skippedNote, useRun } from './bulkShared.js';
 import { scopeTextClass } from '@/domain/scopeColors';
 import {
   ApplyBar,
@@ -145,7 +145,7 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
       // The plan stays, so Apply again sends what did not land.
       notifyStopped(
         res.failed,
-        `${plural(res.changed, 'value')} replaced in ${targetLabel}`,
+        `${countOf(res.changed, 'value')} replaced in ${targetLabel}`,
         skipped,
       );
       return;
@@ -153,7 +153,7 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
     if (!res.changed && skipped) notifyWarning(skipped.trim(), 'Nothing replaced');
     else
       notifySuccess(
-        `${plural(res.changed, 'value')} replaced in ${targetLabel}.${skipped}`,
+        `${countOf(res.changed, 'value')} replaced in ${targetLabel}.${skipped}`,
         'Replaced',
       );
     r.setPlan(null);
@@ -213,13 +213,13 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
             count={selectedRows.filter((x) => !x.invalid).length}
             busy={r.busy}
             onApply={doApply}
-            summary={`${plural(selectedRows.filter((x) => !x.invalid).length, 'value')} in ${targetLabel} will be replaced.`}
+            summary={`${countOf(selectedRows.filter((x) => !x.invalid).length, 'value')} in ${targetLabel} will be replaced.`}
           >
             <SelectionSummary rows={plan.rows} selected={r.selected} setSelected={r.setSelected} />
           </ApplyBar>
           {plan.rows.some((x) => x.invalid) && (
             <p className="rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              {plural(plan.rows.filter((x) => x.invalid).length, 'value')} would fall outside the{' '}
+              {countOf(plan.rows.filter((x) => x.invalid).length, 'value')} would fall outside the{' '}
               <strong>{plan.tagset?.name ?? 'field'}</strong> tagset and cannot be written. Those
               rows are marked and will be skipped.
             </p>

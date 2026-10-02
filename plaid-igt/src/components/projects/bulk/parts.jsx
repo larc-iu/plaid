@@ -31,7 +31,7 @@ import { MATCH_TYPES } from '../search/searchQueries.js';
 import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from '../search/hitLinks.js';
 import { groupByDoc } from './bulkPlan.js';
-import { plural } from './bulkShared.js';
+import { countOf } from './bulkShared.js';
 
 // The chrome every Bulk Edit panel is built from: the tick box, the grouped
 // match list, the selection summary, the apply bar, the find/replace fields,
@@ -104,7 +104,7 @@ export const MatchGroups = ({ projectId, rows, selected, toggle, toggleMany, ren
                   <FileText className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-medium">{g.docName}</span>
                   <span className="text-xs text-muted-foreground">
-                    {on} of {plural(ids.length, 'match', 'matches')} selected
+                    {on} of {countOf(ids.length, 'match', 'matches')} selected
                   </span>
                 </div>
               )}
@@ -143,8 +143,8 @@ export const SelectionSummary = ({ rows, selected, setSelected, extra }) => {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
       <span>
-        <strong>{plural(rows.length, 'match', 'matches')}</strong>
-        {docs > 0 && <> in {plural(docs, 'document')}</>}, <strong>{on}</strong> selected
+        <strong>{countOf(rows.length, 'match', 'matches')}</strong>
+        {docs > 0 && <> in {countOf(docs, 'document')}</>}, <strong>{on}</strong> selected
         {extra}
       </span>
       <button
@@ -173,13 +173,13 @@ export const ApplyBar = ({ count, busy, summary, onApply, children }) => {
       {children}
       <div className="ml-auto flex items-center gap-2">
         <Button onClick={() => setOpen(true)} disabled={busy || count === 0}>
-          {busy ? 'Applying…' : `Apply ${plural(count, 'change')}`}
+          {busy ? 'Applying…' : `Apply ${countOf(count, 'change')}`}
         </Button>
       </div>
       <AlertDialog open={open} onOpenChange={setOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Apply {plural(count, 'change')}?</AlertDialogTitle>
+            <AlertDialogTitle>Apply {countOf(count, 'change')}?</AlertDialogTitle>
             <AlertDialogDescription>
               {summary} It lands as one entry in each document’s History.
             </AlertDialogDescription>

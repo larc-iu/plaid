@@ -23,7 +23,7 @@ import { itemLabel, planMergeRefs, refIds } from '@/domain/vocabDictionary';
 import { metadataUpdates } from '@/domain/metadataPatch';
 import { readVocabFields } from '@/domain/igtConfig';
 import { planMerge, applyMerge } from './bulkRunner.js';
-import { plural, useRun } from './bulkShared.js';
+import { countOf, useRun } from './bulkShared.js';
 import { ApplyBar, Checkbox, Progress } from './parts.jsx';
 import { textIncludes } from '@ui/domain/collation.js';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
@@ -230,7 +230,7 @@ export const MergePanel = ({ project, client }) => {
           {
             survivorId: survivor,
             loserIds: losers,
-            label: `Merge ${plural(losers.length, 'lexicon entry', 'lexicon entries')} into “${survivorName}”`,
+            label: `Merge ${countOf(losers.length, 'lexicon entry', 'lexicon entries')} into “${survivorName}”`,
           },
         );
         return { ...out, refPlans, seen };
@@ -248,13 +248,13 @@ export const MergePanel = ({ project, client }) => {
     // duplicates.
     const hidden = Math.max(0, res.linksMoved - (res.seen.links - res.seen.duplicates));
     notifySuccess(
-      `${plural(res.entriesRemoved, 'entry', 'entries')} merged. ${plural(res.linksMoved, 'link')} moved to “${survivorName}”` +
+      `${countOf(res.entriesRemoved, 'entry', 'entries')} merged. ${countOf(res.linksMoved, 'link')} moved to “${survivorName}”` +
         (hidden ? `, ${hidden} of them in projects you cannot open.` : '.') +
         (res.duplicatesRemoved
-          ? ` ${plural(res.duplicatesRemoved, 'duplicate link')} removed.`
+          ? ` ${countOf(res.duplicatesRemoved, 'duplicate link')} removed.`
           : '') +
         (res.entriesRepointed
-          ? ` ${plural(res.entriesRepointed, 'entry', 'entries')} now ${
+          ? ` ${countOf(res.entriesRepointed, 'entry', 'entries')} now ${
               res.entriesRepointed === 1 ? 'points' : 'point'
             } at it.`
           : ''),
@@ -390,7 +390,7 @@ export const MergePanel = ({ project, client }) => {
       {chosen.size > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card p-3 text-sm">
           <span>
-            {plural(chosen.size, 'entry', 'entries')} ticked
+            {countOf(chosen.size, 'entry', 'entries')} ticked
             {survivor && (
               <>
                 , keeping{' '}
@@ -418,7 +418,7 @@ export const MergePanel = ({ project, client }) => {
           onApply={doApply}
           summary={
             <>
-              {plural(losers.length, 'entry', 'entries')} will be merged into “
+              {countOf(losers.length, 'entry', 'entries')} will be merged into “
               <FormLabel form={itemById.get(survivor)?.form} index={numbers.get(survivor)} />
               ”: their links move to it, and the merged entries are deleted.
             </>
@@ -435,7 +435,7 @@ export const MergePanel = ({ project, client }) => {
             <strong>
               <FormLabel form={itemById.get(survivor)?.form} index={numbers.get(survivor)} />
             </strong>
-            : {plural(plan.links, 'link')} in {plural(plan.docs, 'document')} will follow.
+            : {countOf(plan.links, 'link')} in {countOf(plan.docs, 'document')} will follow.
           </span>
         </ApplyBar>
       )}

@@ -49,6 +49,7 @@
 // picked from a vocabulary entry that is gone forgets the entry.
 
 import { NUMBERED_VARIABLE, numberedByFile, sentenceNumberReader } from './sentenceGraph.js';
+import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 
 /**
  * @param {{ sentences: Array, nodesById: Map }} graph from buildDocumentGraph
@@ -243,8 +244,6 @@ export function planEntryUnlink(graph, namespace, lexicon, readVocabs) {
   return out;
 }
 
-const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-
 /** The audit label for what a pass changed, or null when it changed nothing. */
 export function describeUmrReconcile({
   removed = 0,
@@ -266,7 +265,7 @@ export function describeUmrReconcile({
   if (rulesRepaired) parts.push('removed relations that crossed sentences');
   if (rulesDeclared) parts.push('set up the rule that a relation stays inside its sentence');
   if (strays)
-    parts.push(`removed ${count(strays, 'empty node', 'empty nodes')} an interrupted add left`);
+    parts.push(`removed ${countOf(strays, 'empty node', 'empty nodes')} an interrupted add left`);
   if (unanchored.length) {
     const names = unanchored.slice(0, 5).join(' ');
     const more = unanchored.length > 5 ? ` and ${unanchored.length - 5} more` : '';
@@ -296,14 +295,14 @@ export function describeUmrReconcile({
   }
   if (triplesMoved) {
     parts.push(
-      `moved ${count(triplesMoved, 'document-level relation', 'document-level relations')} between constants to ${triplesMoved === 1 ? 'its sentences' : 'their sentences'}`,
+      `moved ${countOf(triplesMoved, 'document-level relation', 'document-level relations')} between constants to ${triplesMoved === 1 ? 'its sentences' : 'their sentences'}`,
     );
   }
   if (renumbered) {
-    parts.push(`renumbered ${count(renumbered, 'variable', 'variables')} to match the sentences`);
+    parts.push(`renumbered ${countOf(renumbered, 'variable', 'variables')} to match the sentences`);
   }
   if (unlinked) {
-    parts.push(`unlinked ${count(unlinked, 'node', 'nodes')} from a deleted vocabulary entry`);
+    parts.push(`unlinked ${countOf(unlinked, 'node', 'nodes')} from a deleted vocabulary entry`);
   }
   return parts.length ? `Repaired: ${parts.join(', ')}` : null;
 }
