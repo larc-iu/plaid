@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import { Trash2, Plus, X } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
@@ -146,9 +146,26 @@ export const TokenVisualizer = ({
   };
   // True while focus is inside the open panel — i.e. the user is editing.
   const isEditing = () => !!(panelRef.current && panelRef.current.contains(document.activeElement));
-  // The open panel's badge, which the one panel is anchored to.
-  const anchorRef = useRef(null);
-  const requestOpen = (id, el) => {
+  // The badge of a token as it is on screen now, found by the token's id. A
+  // badge is drawn again in another sentence block when a sentence is split
+  // or merged at it, so an element kept from before can be off the page. The
+  // last one found is reused only while it is still on the page.
+  const foundBadge = useRef(null);
+  const badgeOf = (id) => {
+    if (id == null) return null;
+    const known = foundBadge.current;
+    if (known?.isConnected && known.dataset.wordId === String(id)) return known;
+    foundBadge.current =
+      [...(textContainerRef.current?.querySelectorAll('[data-word-id]') || [])].find(
+        (el) => el.dataset.wordId === String(id),
+      ) ?? null;
+    return foundBadge.current;
+  };
+  // What the one panel is anchored to: the open token's badge element. A new
+  // element is a new anchor, so the panel is placed again when the badge moves.
+  const [anchorEl, setAnchorEl] = useState(null);
+  const anchorRef = useMemo(() => ({ current: anchorEl }), [anchorEl]);
+  const requestOpen = (id) => {
     clearClose();
     if (openId === id) return;
     if (isEditing()) return; // don't yank focus away from an in-progress edit
@@ -157,7 +174,6 @@ export const TokenVisualizer = ({
       openTimer.current = null;
       const word = wordById.get(id);
       if (word) setDraftForms(currentFormsOf(word)); // seed editor with current words
-      anchorRef.current = el;
       setOpenId(id);
     }, OPEN_DELAY);
   };
@@ -179,6 +195,16 @@ export const TokenVisualizer = ({
     clearClose();
     setOpenId(null);
   };
+  // After every render (any render can draw the badge again), the open panel
+  // follows its token's badge. A panel whose token has no badge any more
+  // (deleted, or left out of the text) closes, so pointing at a token always
+  // opens its panel again. State is set only when the badge really changed.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    const el = openId == null ? null : badgeOf(openId);
+    if (openId != null && !el) closePanel();
+    if (el !== anchorEl) setAnchorEl(el);
+  });
   useEffect(
     () => () => {
       clearOpen();
@@ -388,6 +414,7 @@ export const TokenVisualizer = ({
         data-mwt={isMwtWord(word)}
         data-sent-start={sentenceInitialWordIds.has(word.id)}
         data-sentence={sentenceToken?.id}
+        data-word-id={word.id}
         title={
           canHandOff
             ? 'Click to toggle the sentence boundary. Alt+click to annotate this sentence.'
@@ -407,7 +434,7 @@ export const TokenVisualizer = ({
         }}
         // No panel while the text is dirty: the badges are relocated
         // previews, and editing is blocked until the text is saved.
-        onMouseEnter={isTextDirty ? undefined : (e) => requestOpen(word.id, e.currentTarget)}
+        onMouseEnter={isTextDirty ? undefined : () => requestOpen(word.id)}
         onMouseLeave={isTextDirty ? undefined : requestClose}
       >
         {displayOf(word)}
@@ -418,7 +445,7 @@ export const TokenVisualizer = ({
   // The one hover panel, for the open token, anchored to its badge.
   const renderPanel = () => {
     const word = !isTextDirty && openId != null ? wordById.get(openId) : null;
-    if (!word || !anchorRef.current?.isConnected) return null;
+    if (!word || !anchorEl?.isConnected) return null;
     const display = displayOf(word);
     const isSentStart = sentenceInitialWordIds.has(word.id);
     const isMwt = isMwtWord(word);

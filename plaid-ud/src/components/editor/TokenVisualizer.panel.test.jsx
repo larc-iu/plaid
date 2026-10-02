@@ -83,6 +83,61 @@ describe('the token panel', () => {
     await view.unmount();
   });
 
+  it('stays open on its token when the token moves into another sentence', async () => {
+    // The panel's own switch splits the sentence at its token, which draws
+    // that token's badge again inside a new sentence block.
+    const props = {
+      text: TEXT,
+      originalText: TEXT,
+      wordTokens: words,
+      morphemeTokens: morphemes,
+      onSentenceToggle: vi.fn(),
+      onWordDelete: vi.fn(),
+    };
+    const view = await renderComponent(
+      <TokenVisualizer {...props} sentenceTokens={[{ id: 's1', begin: 0, end: 14 }]} />,
+    );
+    await hover(view, all(view.container, '[data-mwt]')[1]);
+    expect(panel()?.textContent).toContain('dog');
+
+    const split = [
+      { id: 's1', begin: 0, end: 4 },
+      { id: 's2', begin: 4, end: 14 },
+    ];
+    await view.rerender(<TokenVisualizer {...props} sentenceTokens={split} />);
+    expect(all(view.container, '[data-sentence-block]').length).toBe(2);
+    expect(panel()?.textContent).toContain('dog');
+    expect(panel()?.querySelector('[role="switch"]')?.getAttribute('aria-checked')).toBe('true');
+
+    // And back: merged again, still open on the same token.
+    await view.rerender(
+      <TokenVisualizer {...props} sentenceTokens={[{ id: 's1', begin: 0, end: 14 }]} />,
+    );
+    expect(panel()?.textContent).toContain('dog');
+    await view.unmount();
+  });
+
+  it('closes when its token is gone', async () => {
+    const props = {
+      text: TEXT,
+      originalText: TEXT,
+      sentenceTokens: [{ id: 's1', begin: 0, end: 14 }],
+      morphemeTokens: morphemes,
+      onWordDelete: vi.fn(),
+    };
+    const view = await renderComponent(<TokenVisualizer {...props} wordTokens={words} />);
+    await hover(view, all(view.container, '[data-mwt]')[1]);
+    expect(panel()).not.toBeNull();
+    await view.rerender(
+      <TokenVisualizer {...props} wordTokens={words.filter((w) => w.id !== 'w2')} />,
+    );
+    expect(panel()).toBeNull();
+    // Another token opens as usual.
+    await hover(view, all(view.container, '[data-mwt]')[0]);
+    expect(panel()?.textContent).toContain('The');
+    await view.unmount();
+  });
+
   it('opens no panel while the text has unsaved edits', async () => {
     const view = await renderComponent(
       <TokenVisualizer
