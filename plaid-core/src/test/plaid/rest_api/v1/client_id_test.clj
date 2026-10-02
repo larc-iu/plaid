@@ -186,3 +186,29 @@
                                           :tokens [(:tok s)] :value "B"}})]
     (is (= 403 (:status r)))
     (is (nil? (get-in r [:body :id-taken])))))
+
+(deftest an-id-names-one-row-of-one-kind
+  ;; H6-CORE-API-3: one UUIDv7 became a span, a token, a relation, a
+  ;; document, a project, a vocabulary and a span layer.
+  (let [s (setup!)]
+    (testing "an id another kind of row holds"
+      (doseq [[what _ path body-fn] (creates)]
+        (let [r (post (path-of path s) (body-fn s (:span s)))]
+          (is (= 409 (:status r)) (str what ": " (:body r)))
+          (is (= "id-taken" (get-in r [:body :error])) what)
+          (is (false? (get-in r [:body :deleted])) what)
+          (when-not (= what "span")
+            (is (re-find #"^A span with id" (str (get-in r [:body :message]))) what)))))
+    (testing "an id another kind of row held"
+      (let [gone (-> (create-span admin-request (:sl s) [(:tok2 s)] "C") :body :id)]
+        (is (= 204 (:status (api-call admin-request {:method :delete :path (str "/api/v1/spans/" gone)}))))
+        (let [r (post "/api/v1/tokens" {:id gone :token-layer-id (:tkl s) :text (:text s) :begin 10 :end 14})]
+          (is (= 409 (:status r)))
+          (is (true? (get-in r [:body :deleted])))
+          (is (re-find #"^A span with id .* existed" (str (get-in r [:body :message])))))))
+    (testing "in a bulk create"
+      (let [r (api-call admin-request {:method :post :path "/api/v1/tokens/bulk"
+                                       :body [{:id (psc/new-uuid) :token-layer-id (:tkl s) :text (:text s) :begin 10 :end 12}
+                                              {:id (:item s) :token-layer-id (:tkl s) :text (:text s) :begin 12 :end 14}]})]
+        (is (= 409 (:status r)))
+        (is (re-find #"^A vocabulary item with id" (str (get-in r [:body :message]))))))))

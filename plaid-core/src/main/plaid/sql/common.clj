@@ -390,32 +390,47 @@
 
 (declare q1)
 
+(def ^:private id-tables
+  "Every table whose rows a client may name the id of, and what one row is
+  called. An id names one row of one kind for good, so it is taken when any
+  of these holds it or held it."
+  {:projects "project" :documents "document" :texts "text"
+   :text_layers "text layer" :token_layers "token layer" :span_layers "span layer"
+   :relation_layers "relation layer" :vocab_layers "vocabulary"
+   :tokens "token" :spans "span" :relations "relation"
+   :vocab_items "vocabulary item" :vocab_links "vocabulary link"
+   :guidelines "guideline" :comments "comment"})
+
 (defn claim-ids!
   "Refuse the create unless every client-named id in `ids` (nils are the
-  server's own and skipped) is a valid, unused one for `table`. Used means
-  a row with it exists, or existed and was deleted (its delete row in the
-  audit log), so a create retried late never brings back a row someone
-  deleted. `kind` names the row in the message (\"span\"). Call inside the
-  create's transaction. Returns nil."
+  server's own and skipped) is a valid id no row of any kind uses. Used
+  means a row with it exists, or existed and was deleted (its delete row in
+  the audit log), so a create retried late never brings back a row someone
+  deleted, and one id never names a span and a token. `table` is the
+  create's own table, read first, and `kind` names its row in the message
+  (\"span\"). Call inside the create's transaction. Returns nil."
   [tx table kind ids]
   (let [ids (vec (remove nil? ids))]
     (when (seq ids)
       (when-let [dup (some (fn [[id n]] (when (> n 1) id)) (frequencies ids))]
         (throw (ex-info (str "id " dup " is named twice in one request") {:code 400 :id dup})))
       (run! client-id! ids)
-      (let [strs (mapv str ids)]
+      (let [strs (mapv str ids)
+            tables (cons [table kind] (dissoc id-tables table))]
         (doseq [chunk (partition-all 500 strs)]
-          (when-let [row (q1 tx {:select [:id] :from [table] :where [:in :id (vec chunk)]})]
-            (throw (id-taken kind (:id row) false)))
-          (when-let [row (q1 tx {:select [:target_id]
+          (doseq [[t k] tables]
+            (when-let [row (q1 tx {:select [:id] :from [t] :where [:in :id (vec chunk)]})]
+              (throw (id-taken k (:id row) false))))
+          (when-let [row (q1 tx {:select [:target_table :target_id]
                                  :from [:audit_writes]
                                  :where [:and
                                          ;; Inline, so SQLite can match the partial
                                          ;; index idx_audit_writes_deleted.
                                          [:= :change_type [:inline "delete"]]
-                                         [:= :target_table (name table)]
+                                         [:in :target_table (mapv (comp name first) tables)]
                                          [:in :target_id (vec chunk)]]})]
-            (throw (id-taken kind (:target_id row) true))))))))
+            (throw (id-taken (get id-tables (keyword (:target_table row)) kind)
+                             (:target_id row) true))))))))
 
 ;; ============================================================
 ;; Query execution (HoneySQL + next.jdbc)

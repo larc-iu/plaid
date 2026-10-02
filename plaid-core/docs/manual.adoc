@@ -1655,7 +1655,7 @@ The id must be a UUIDv7 (RFC 9562) whose time lies after 2020 and at most an hou
 Rows are read in id order, so an id of another version, or one stamped far in the past or future, would sort before or after everyone else's rows for good.
 One id named twice in one bulk create is a 400.
 
-An id that was used before is refused with 409, and the body says so:
+An id that was used before, by a row of any kind, is refused with 409, and the body says so (the message names the kind of row that holds it):
 
 [,json]
 ----
