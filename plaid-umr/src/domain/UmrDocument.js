@@ -1585,6 +1585,15 @@ export class UmrDocument extends DocumentModel {
     ) {
       return false;
     }
+    // Out of a cycle role (CYCLE_ROLES) the edge may close the cycle that
+    // role was allowed to, which is refused as adding it would be.
+    if (CYCLE_ROLES.has(edge.role) && this.wouldCycle(edge.source, edge.target, role)) {
+      const name = (id) => this.node(id)?.var;
+      this.setError(
+        `${role} from ${name(edge.source)} to ${name(edge.target)} would close a cycle.`,
+      );
+      return false;
+    }
     const label = 'Failed to change the relation';
     if (!this._canWrite(label)) return false;
     // Relabelling a drafted edge settles it, as re-typing a cell does in ud.
