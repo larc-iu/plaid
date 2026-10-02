@@ -437,7 +437,7 @@ A member who was removed is told `You no longer have access to this project.`
 
 **Settings → Access** manages the project's members and invitation links, and makes named tokens for scripts and services.
 A link whose maker no longer has the access it grants reads **inactive** and does not work until they get that access back. Revoking it ends it for good.
-A named token cannot change a password, create or revoke API tokens, make a password-reset link, create an account, or make an invitation link that grants administrator rights. Do these signed in.
+A named token cannot change a password, create or revoke API tokens, make an invitation link of any kind or a password-reset link, or create an account. Do these signed in.
 
 = Services
 
@@ -450,8 +450,10 @@ A reply the model writes as one block per node, linked by variables, is read as 
 A draft stops early when the model gives no answer for two sentences in a row. It keeps what it drafted, and its report names those two sentences and counts the sentences it did not reach.
 **Stop** ends a draft within about a second, even while the model has not answered.
 A draft writes each sentence's graph whole. If it fails partway, the message says how many sentences were drafted.
+A draft that cannot read the project fails and writes nothing.
 The operator sets how long one reply may take (`--timeout`, 120 seconds by default). A reply that does not come in time is asked for once more, then its sentence is reported as not drafted.
 A second drafting method, **Skeleton from glosses**, needs no model: it writes one anchored node per word that is linked to a vocabulary entry or carries a gloss, with the headword or the gloss's lexical part as the concept and the grammatical abbreviations (`3SG`, `NEG`, `HAB`) as attributes, and marks the word carrying tense or aspect as the root. It draws no relations.
+It fails and writes nothing when it cannot read the project or one of its vocabularies.
 
 == Compare
 
