@@ -1,9 +1,10 @@
 (ns plaid.sql.token-split-others-test
-  "A split reaches the tokens of other layers that cover exactly the split
-  token, in a layer neither above nor below it (H5-UMR-2). A layer of nodes
-  aligned to words kept by another app, a root layer, kept its token over
-  both halves of a split word, so `ikian,` split before the comma left the
-  node over `ikian` and `,`."
+  "A split reaches the layers below the split token and no other. A token of
+  a layer beside it with the same extent is left as it is: igt's time
+  alignment segment over a one-word utterance or a document's last sentence
+  must keep its extent when Tokenize splits the word or the sentence
+  (REV-FX-CORE F1, which reverted a generic follow). UMR keeps its node
+  anchors to their words itself, on open."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler with-admin
                                     with-clean-db admin-request assert-created]]
@@ -53,20 +54,19 @@
     {:sentence sentence :word word :word2 word2 :morph morph :node node :node-part node-part
      :node2 node2 :row row :row2 row2 :span span :concept concept}))
 
-(deftest a-split-word-takes-the-tokens-over-it-along
+(deftest a-split-leaves-the-tokens-of-other-layers-alone
   (let [{:keys [sentence word word2 morph node node-part node2 row row2 span]} (build!)
         r (h/split-token admin-request word 5)]
     (is (= 201 (:status r)) (pr-str (:body r)))
     (testing "the word and the morpheme below it split as before"
       (is (= [0 5] (extent word)))
       (is (= [0 5] (extent morph))))
-    (testing "the node over the word ends with the left half and keeps its concept"
-      (is (= [0 5] (extent node)))
+    (testing "a token of a root layer over the word keeps its extent and its concept"
+      (is (= [0 6] (extent node)))
+      (is (= [4 6] (extent node-part)))
       (is (= [node] (:span/tokens (:body (h/get-span admin-request span))))))
-    (testing "what lay under the node past the split is trimmed"
-      (is (= [4 5] (extent node-part))))
-    (testing "a row over the word is split, so the rows still cover the text"
-      (is (= [0 5] (extent row)))
+    (testing "and so does a row of a root partitioning layer"
+      (is (= [0 6] (extent row)))
       (is (= [6 10] (extent row2))))
     (testing "the sentence above the word and the other words are left"
       (is (= [0 10] (extent sentence)))

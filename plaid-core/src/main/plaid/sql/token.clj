@@ -902,47 +902,9 @@
       (when t-row
         (split-one! tx t-row position)))))
 
-(defn- ancestor-layer-ids
-  "The token layers above `layer-id`: its parent, the parent's parent, and on."
-  [tx layer-id]
-  (mapv :id (psc/q tx ["WITH RECURSIVE up(id) AS (
-                          SELECT parent_token_layer_id FROM token_layers WHERE id = ?
-                          UNION
-                          SELECT tl.parent_token_layer_id FROM token_layers tl JOIN up ON tl.id = up.id
-                        )
-                        SELECT id FROM up WHERE id IS NOT NULL"
-                       layer-id])))
-
-(defn- split-coextensive-others!
-  "Carry a split to the tokens of the other layers of the text that cover
-  exactly what the split token covered, in a layer neither above nor below
-  it (a layer over the same words kept by another app). On a partitioning
-  layer the token is split too, so the layer still covers the text. On any
-  other layer it ends where the left half ends and keeps what it had, as
-  the split token's own row does, and what of its descendants lay past the
-  split is trimmed or deleted as a shrink does."
-  [tx t-row dlids position]
-  (let [{:keys [id text_id token_layer_id document_id begin end_]} t-row
-        related (into #{token_layer_id} (concat dlids (ancestor-layer-ids tx token_layer_id)))
-        others (->> (psc/q tx {:select [:id :token_layer_id] :from :tokens
-                               :where [:and [:= :text_id text_id] [:= :begin begin] [:= :end_ end_]
-                                       [:<> :id id]]})
-                    (remove #(contains? related (:token_layer_id %))))]
-    (doseq [{oid :id olayer :token_layer_id} others]
-      (let [o-row (psc/fetch-by-id tx :tokens oid)
-            odlids (tc/descendant-layer-ids tx olayer)]
-        (if (= :partitioning (tc/layer-overlap-mode tx olayer))
-          (let [straddlers (tc/straddling-descendant-tokens-in tx odlids document_id begin end_ position)]
-            (split-one! tx o-row position)
-            (split-straddlers! tx straddlers position))
-          (do (crud/update-by-id! tx :tokens oid {:end_ position})
-              (resize-child-cascade! tx odlids olayer document_id begin end_ begin position)))))))
-
 (defn split
   "Split `eid` at `position`. Cascades to descendant tokens that
-  straddle position, and to the tokens of other layers that cover
-  exactly the same text (`split-coextensive-others!`). Returns
-  {:success true :extra <new-right-id>}.
+  straddle position. Returns {:success true :extra <new-right-id>}.
 
   A relation layer that must stay inside one token of this layer (a
   dependency tree inside its sentence) declares it as a same-ancestor layer
@@ -971,7 +933,6 @@
             _ (psc/claim-ids! tx :tokens "token" [id])
             new-right-id (split-one! tx t-row position id)]
         (split-straddlers! tx straddlers position)
-        (split-coextensive-others! tx t-row dlids position)
         (tc/enforce! tx :split
                      {:layer layer :doc-id doc-id
                       :begin begin :end end
