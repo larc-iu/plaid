@@ -84,6 +84,18 @@ export const EditableCell = React.memo(
       setShown: setValue,
     });
     const { conflict } = cell;
+    // Enter commits by leaving the cell, so a conflict over that commit comes
+    // back to a cell nothing is focused in, under a note that says Enter keeps
+    // yours. The caret goes back to the cell for it, unless it has gone on to
+    // something else since.
+    const leftByEnterRef = useRef(false);
+    useEffect(() => {
+      if (!conflict || !leftByEnterRef.current) return;
+      leftByEnterRef.current = false;
+      const active = document.activeElement;
+      if (active && active !== document.body) return;
+      inputRef.current?.focus();
+    }, [conflict]);
     // Alt+Down replaces the cell's list with what the project has said before
     // about a word like this one, counts and all. Null means the ordinary list.
     const [precedent, setPrecedent] = useState(null);
@@ -257,6 +269,7 @@ export const EditableCell = React.memo(
         // keeps the refused value.
         const mine = typedRef.current ? null : cell.keepYours();
         if (mine != null) setValue(mine);
+        leftByEnterRef.current = true;
         inputRef.current?.blur();
         return;
       }
@@ -343,6 +356,7 @@ export const EditableCell = React.memo(
       // would never happen: React fires none when it unmounts a focused
       // element, and the next real blur would be swallowed silently.
       const arriving = !swappingRef.current && !reentryRef.current;
+      leftByEnterRef.current = false;
       swappingRef.current = false;
       reentryRef.current = false;
       setIsEditing(true);
@@ -556,6 +570,7 @@ export const EditableCell = React.memo(
                 return;
               }
               e.preventDefault();
+              leftByEnterRef.current = true;
               const mine = !typedRef.current && combo.activeValue == null ? cell.keepYours() : null;
               if (mine != null) {
                 takeOption(mine);

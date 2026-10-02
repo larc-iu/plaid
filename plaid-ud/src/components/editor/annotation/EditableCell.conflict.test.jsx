@@ -468,3 +468,56 @@ describe('a focused cell nobody typed in, when the stored value moves', () => {
     await view.unmount();
   });
 });
+
+// Q2-UD-POLISH-9: Enter commits by leaving the cell, so the conflict over that
+// commit came back to a cell nothing was focused in, under a note saying
+// "Enter to keep yours", and Enter did nothing.
+describe('a conflict over a value committed with Enter', () => {
+  for (const c of CASES) {
+    it(`${c.field}: puts the caret back in the cell, where Enter keeps yours`, async () => {
+      let answer;
+      const onAnnotationUpdate = vi.fn(() => new Promise((r) => (answer = r)));
+      const stored = new Map([[`t1:${c.field}`, c.before]]);
+      const s = makeSession(onAnnotationUpdate, stored);
+      const view = await renderComponent(cellWith(s, c.field, c.before));
+      const input = inputOf(view);
+      await view.step(async () => input.focus());
+      await view.step(async () => type(input, c.typed));
+      await view.step(async () => press(input, 'Enter'));
+      expect(onAnnotationUpdate).toHaveBeenCalledWith('t1', c.field, c.typed);
+      expect(document.activeElement).not.toBe(input);
+      stored.set(`t1:${c.field}`, c.winner);
+      await view.rerender(cellWith(s, c.field, c.winner));
+      await view.step(async () => answer({ landed: false }));
+      await view.step(async () => {});
+      expect(noteOf(view)?.textContent).toBe(`Yours: ${c.typed} · Enter to keep yours`);
+      expect(document.activeElement).toBe(input);
+      onAnnotationUpdate.mockImplementation(() => Promise.resolve({ landed: true }));
+      await view.step(async () => press(input, 'Enter'));
+      expect(onAnnotationUpdate).toHaveBeenLastCalledWith('t1', c.field, c.typed);
+      await view.unmount();
+    });
+  }
+
+  it('leaves the caret where it went when it went to another cell', async () => {
+    const c = CASES[0];
+    let answer;
+    const onAnnotationUpdate = vi.fn(() => new Promise((r) => (answer = r)));
+    const stored = new Map([[`t1:${c.field}`, c.before]]);
+    const s = makeSession(onAnnotationUpdate, stored);
+    const view = await renderComponent(cellWith(s, c.field, c.before));
+    const input = inputOf(view);
+    const other = document.createElement('input');
+    document.body.appendChild(other);
+    await view.step(async () => input.focus());
+    await view.step(async () => type(input, c.typed));
+    await view.step(async () => press(input, 'Enter'));
+    other.focus();
+    stored.set(`t1:${c.field}`, c.winner);
+    await view.rerender(cellWith(s, c.field, c.winner));
+    await view.step(async () => answer({ landed: false }));
+    expect(document.activeElement).toBe(other);
+    other.remove();
+    await view.unmount();
+  });
+});
