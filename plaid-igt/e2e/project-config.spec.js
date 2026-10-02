@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, signInAdmin } from './fixtures.js';
 import { executeProjectSetup } from '../src/components/projects/setup/executeSetup.js';
 
 // TEST_PLAN rows that need their own project configuration: B11 ignored
@@ -30,7 +30,7 @@ const ensureReader = async () => {
     () => true,
     () => false,
   );
-  if (!exists) await client.users.create(READER.email, READER.password, false);
+  if (!exists) await (await signInAdmin(CORE)).users.create(READER.email, READER.password, false);
 };
 
 test.beforeAll(async () => {

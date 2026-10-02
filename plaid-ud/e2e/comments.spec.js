@@ -6,7 +6,7 @@
 // the tab and the badge are, and that the live claim is held only while
 // something is open.
 import PlaidClient, { metadataOps } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth } from './fixtures.js';
+import { test, expect, seedAuth, signInAdmin } from './fixtures.js';
 import { seedUdDoc } from './seedUdDoc.js';
 
 const CORE = 'http://localhost:8085';
@@ -37,7 +37,7 @@ test.beforeAll(async () => {
   // The first is named by the corpus; the second is not.
   await S.client.tokens.patchMetadata(S.first, metadataOps({ sent_id: 'ewt-1' }));
 
-  await S.client.users
+  await (await signInAdmin(CORE)).users
     .create(COLLEAGUE.id, COLLEAGUE.password, false, 'A Colleague')
     .catch((err) => {
       if (!/exist/i.test(err.message || '')) throw err;

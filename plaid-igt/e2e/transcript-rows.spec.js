@@ -1,5 +1,5 @@
 import PlaidClient, { ROLES, cpLength, cpSlice } from '@larc-iu/plaid-client';
-import { test, expect, seedAuth, readToken } from './fixtures.js';
+import { test, expect, seedAuth, readToken, signInAdmin } from './fixtures.js';
 import { createScratchProject } from './fixtureProject.js';
 import { wavBytes } from './bugbash/harness.mjs';
 
@@ -88,7 +88,7 @@ test.beforeAll(async () => {
   );
   // The second user, a writer on the project.
   const email = `rows-${Date.now()}@example.com`;
-  await admin.users.create(email, PASSWORD, false, 'Rows B');
+  await (await signInAdmin(CORE)).users.create(email, PASSWORD, false, 'Rows B');
   await admin.projects.addWriter(projectId, email);
   const signedIn = await PlaidClient.login(CORE, email, PASSWORD);
   other = { email, token: (await signedIn.apiTokens.create(email, 'e2e rows')).token };

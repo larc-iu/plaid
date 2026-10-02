@@ -1,4 +1,5 @@
 import { test as base, expect } from '@playwright/test';
+import PlaidClient from '@larc-iu/plaid-client';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -16,6 +17,10 @@ const TOKEN_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..',
 
 // The non-expiring API token for a@b.com.
 export const { readToken, seedAuth } = tokenFixtures(TOKEN_PATH);
+
+// A signed-in session for a@b.com, for the few calls a named API token is
+// refused (creating an account, minting or revoking API tokens).
+export const signInAdmin = (core) => PlaidClient.login(core, 'a@b.com', 'password');
 
 export { collectClientErrors, reportDiagnostics };
 // PLAID_E2E_WRITE_DELAY_MS holds the page's writes (see plaid-ui/e2e/writeDelay.js).

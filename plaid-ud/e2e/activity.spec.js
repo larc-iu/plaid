@@ -8,7 +8,7 @@
 // pictures, which are welcome (Luke, 2026-09-12), so the panel shows them here
 // as it does in plaid-igt and the test is gone.
 import PlaidClient from '@larc-iu/plaid-client';
-import { test, expect, seedAuth } from './fixtures.js';
+import { test, expect, seedAuth, signInAdmin } from './fixtures.js';
 import { seedUdDoc } from './seedUdDoc.js';
 
 const CORE = 'http://localhost:8085';
@@ -33,7 +33,7 @@ test.beforeAll(async () => {
   // A writer, to check the maintainer gate from the other side. Reused across
   // runs, so an "already exists" is the normal case and the only one swallowed:
   // any other failure here would leave the gate untested and look like a pass.
-  await S.client.users
+  await (await signInAdmin(CORE)).users
     .create(WRITER.id, WRITER.password, false, 'UD Activity Writer')
     .catch((err) => {
       if (!/exist/i.test(err.message || '')) throw err;
