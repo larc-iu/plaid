@@ -26,7 +26,6 @@ import {
   newKey,
   removeSpans,
   removeTokens,
-  renameSpanLayer,
   spanLayers,
   wordsWithMorphemes,
   surface,
@@ -219,23 +218,6 @@ const schemaSteps = [
           config: { igt: { scope: 'Word' } },
         });
       });
-    },
-  },
-  {
-    keys: ['layers.fieldSameNameTwoScopes'],
-    // Tier ids are unique within a file, so the second field of a shared name
-    // is written "<name>-2". The tiers go out word fields before morpheme
-    // fields, so the morpheme one is the one renamed.
-    apply(expected) {
-      const wordNames = new Set(
-        spanLayers(expected)
-          .filter((l) => l.key.startsWith('span:word/'))
-          .map((l) => l.name),
-      );
-      for (const l of spanLayers(expected)) {
-        if (!l.key.startsWith('span:morpheme/') || !wordNames.has(l.name)) continue;
-        renameSpanLayer(expected, l.key, `${l.name}-2`);
-      }
     },
   },
 ];

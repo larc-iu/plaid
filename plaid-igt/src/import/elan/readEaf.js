@@ -21,6 +21,7 @@
 // LINGUISTIC_TYPE is, in the spec's own words, "a definition of a type of tier".
 
 import { SaxesParser } from 'saxes';
+import { ELAN_FIELD_NAMES_PROPERTY, readElanFieldNames } from '../../domain/elanFieldNames.js';
 
 export class EafError extends Error {
   constructor(message) {
@@ -212,6 +213,15 @@ export function readEaf(xmlText, fileName = 'file.eaf') {
   }
   if (!sawRoot) {
     throw new EafError(`${fileName} is not an ELAN file (no ANNOTATION_DOCUMENT element).`);
+  }
+
+  // Our own exporter names the second tier of a field name for its scope
+  // ("Morpheme Gloss") and says in the HEADER which field it is. Read here so
+  // every later step sees the field's own name.
+  const fieldNames = readElanFieldNames(properties[ELAN_FIELD_NAMES_PROPERTY]);
+  for (const tier of tiers) {
+    const field = fieldNames.get(tier.baseName);
+    if (field !== undefined) tier.baseName = field;
   }
 
   // Resolve time slots now that TIME_ORDER has certainly been seen. A slot with

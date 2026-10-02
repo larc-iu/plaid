@@ -7,6 +7,8 @@ import {
   elanLossSummary,
   defaultElanOptions,
 } from './elan.js';
+import { ELAN_FIELD_NAMES_PROPERTY } from '../domain/elanFieldNames.js';
+import { readEaf } from '../import/elan/readEaf.js';
 import { makeFixtureDoc, makeSentence, makeAlignmentToken } from './testFixtures.js';
 
 const CONTEXT = { exportedAt: '2026-08-31T12:00:00.000Z' };
@@ -442,6 +444,88 @@ describe('tier name collisions', () => {
     // Every TIER_ID is still unique, which is what the xsd:key requires.
     const ids = all(dom, 'TIER').map((t) => t.getAttribute('TIER_ID'));
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe('fields that share a name across scopes', () => {
+  // A FLEx import makes Gloss and POS on words AND on morphemes. Tier ids are
+  // unique per file, so the second tier of a name is named for its scope, and
+  // the HEADER says which field each such tier is.
+  const sharedDoc = () => {
+    const doc = makeFixtureDoc({});
+    for (const s of doc.sortedSentences) {
+      for (const w of s.tokens) {
+        w.annotations = { ...w.annotations, Gloss: { value: `${w.content}-g` } };
+      }
+    }
+    return doc;
+  };
+  const SHARED = {
+    ...OPTIONS,
+    orthographies: [],
+    wordFields: ['POS', 'Gloss'],
+    morphFields: ['Gloss'],
+    sentFields: ['Translation'],
+  };
+  const fieldNamesOf = (dom) => {
+    const prop = withAttr(dom, 'PROPERTY', 'NAME', ELAN_FIELD_NAMES_PROPERTY);
+    return prop ? JSON.parse(prop.textContent) : null;
+  };
+
+  it('names the tier after the field and its scope, never with a number', () => {
+    const dom = build(sharedDoc(), SHARED);
+    const ids = all(dom, 'TIER').map((t) => t.getAttribute('TIER_ID'));
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids.some((id) => /-\d+$/.test(id))).toBe(false);
+    expect(valuesOf(tierNamed(dom, 'Gloss'))).toEqual(['perros-g', 'corren-g']);
+    expect(valuesOf(tierNamed(dom, 'Morpheme Gloss'))).toEqual(['dog', 'PL']);
+    expect(tierNamed(dom, 'Morpheme Gloss').getAttribute('PARENT_REF')).toBe('Morph');
+    expect(fieldNamesOf(dom)).toEqual({ 'Morpheme Gloss': 'Gloss' });
+  });
+
+  it('keeps a language tag at the end of the name', () => {
+    const doc = makeFixtureDoc({});
+    for (const s of doc.sortedSentences) {
+      for (const w of s.tokens) {
+        w.annotations = { 'Gloss (en)': { value: 'w' } };
+        for (const m of w.morphemes) m.annotations = { 'Gloss (en)': { value: 'm' } };
+      }
+    }
+    const dom = build(doc, { ...SHARED, wordFields: ['Gloss (en)'], morphFields: ['Gloss (en)'] });
+    expect(valuesOf(tierNamed(dom, 'Gloss (en)'))).toEqual(['w', 'w']);
+    expect(valuesOf(tierNamed(dom, 'Morpheme Gloss (en)'))).toEqual(['m', 'm']);
+    expect(fieldNamesOf(dom)).toEqual({ 'Morpheme Gloss (en)': 'Gloss (en)' });
+  });
+
+  it('stays unique when a field is already called by the scoped name', () => {
+    const doc = sharedDoc();
+    for (const s of doc.sortedSentences) {
+      for (const w of s.tokens) w.annotations['Morpheme Gloss'] = { value: 'taken' };
+    }
+    const dom = build(doc, { ...SHARED, wordFields: ['Gloss', 'Morpheme Gloss'] });
+    const ids = all(dom, 'TIER').map((t) => t.getAttribute('TIER_ID'));
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(valuesOf(tierNamed(dom, 'Morpheme Gloss'))).toEqual(['taken', 'taken']);
+    const renamed = Object.entries(fieldNamesOf(dom));
+    expect(renamed).toHaveLength(1);
+    const [tierId, field] = renamed[0];
+    expect(field).toBe('Gloss');
+    expect(valuesOf(tierNamed(dom, tierId))).toEqual(['dog', 'PL']);
+  });
+
+  it('suffixes the speaker after the scoped name, and the import reads it back', () => {
+    const doc = sharedDoc();
+    doc.alignmentTokens = [makeAlignmentToken('a1', 0, 14, 0.5, 2, 'Ana')];
+    const xml = buildEafDocument(doc, { ...SHARED, perSpeaker: true }, CONTEXT);
+    const dom = parse(xml);
+    expect(valuesOf(tierNamed(dom, 'Morpheme Gloss@Ana'))).toEqual(['dog', 'PL']);
+    expect(fieldNamesOf(dom)).toEqual({ 'Morpheme Gloss': 'Gloss' });
+    const tier = readEaf(xml, 'x.eaf').tiers.find((t) => t.id === 'Morpheme Gloss@Ana');
+    expect(tier.baseName).toBe('Gloss');
+  });
+
+  it('writes no field-name record when every tier is named for its field', () => {
+    expect(fieldNamesOf(build(makeFixtureDoc({}), OPTIONS))).toBeNull();
   });
 });
 

@@ -216,10 +216,7 @@ export default {
     'layers.fieldSentence': carried,
     'layers.fieldWord': carried,
     'layers.fieldMorpheme': carried,
-    'layers.fieldSameNameTwoScopes': {
-      carried: 'changed',
-      how: 'Tier ids are unique within a file, so the second of two fields sharing a name is written as "<name>-2" and comes back under that name. The tiers go out sentence, segment, word, orthographies, word fields, morphemes, morpheme fields, sentence fields, so the morpheme field is the one renamed when a word field shares its name.',
-    },
+    'layers.fieldSameNameTwoScopes': carried,
     'layers.fieldOrder': carried,
     'layers.fieldLang': {
       carried: false,

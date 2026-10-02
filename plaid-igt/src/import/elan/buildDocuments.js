@@ -31,6 +31,7 @@ import { readAffixMarkers } from '../../domain/affixMarkers.js';
 import { joinPhrase } from '../flex/flextextParser.js';
 import { fieldWorksFieldNames, parseElanFlexTierName, parseFlexTierName } from './tierNaming.js';
 import { chainOrder } from './readEaf.js';
+import { ELAN_FIELD_NAMES_PROPERTY } from '../../domain/elanFieldNames.js';
 import { MEDIA_FILE_FIELD } from '../../domain/igtConfig.js';
 import { mayOverlap } from '../../domain/alignmentTimes.js';
 
@@ -42,7 +43,8 @@ const toSeconds = (ms) => Math.round(ms) / 1000;
 
 // HEADER properties ELAN maintains for itself. They are not annotation and a
 // user would only ever see them as noise in the document metadata panel.
-const INTERNAL_PROPERTIES = new Set(['lastUsedAnnotationId', 'URN']);
+// So is the exporter's record of which field a tier is.
+const INTERNAL_PROPERTIES = new Set(['lastUsedAnnotationId', 'URN', ELAN_FIELD_NAMES_PROPERTY]);
 
 /**
  * Strip a leading Leipzig joint from a morph form and read a morph type off it.

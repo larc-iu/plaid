@@ -16,6 +16,7 @@ import {
   alignSegments,
 } from './buildDocuments.js';
 import { buildEafDocument } from '../../export/elan.js';
+import { ELAN_FIELD_NAMES_PROPERTY } from '../../domain/elanFieldNames.js';
 import { makeAlignmentToken, makeSentence } from '../../export/testFixtures.js';
 
 // ---- fixtures --------------------------------------------------------------
@@ -1643,6 +1644,82 @@ describe('reading back our own export', () => {
       words: doc.words.map((w) => [doc.body.slice(w.begin, w.end), Object.values(w.fields)[0]]),
     };
   };
+
+  it('keeps the names of fields that share a name on words and morphemes', () => {
+    const morph = (id, begin, content, gloss) => ({
+      id,
+      begin,
+      end: begin + content.length,
+      content,
+      metadata: { form: content },
+      annotations: { Gloss: { value: gloss }, POS: { value: 'n' } },
+      vocabItem: null,
+    });
+    const tokens = [
+      {
+        ...word('w1', 0, 'perros', 'dogs', [
+          morph('m1', 0, 'perro', 'dog'),
+          morph('m2', 5, 's', 'PL'),
+        ]),
+        annotations: { Gloss: { value: 'dogs' }, POS: { value: 'NOUN' } },
+      },
+    ];
+    const xml = buildEafDocument(
+      {
+        document: { id: 'd1', name: 'Doc', mediaUrl: null, metadata: { Genre: 'story' } },
+        body: 'perros',
+        sortedSentences: [makeSentence({ begin: 0, end: 6, tokens })],
+        alignmentTokens: [],
+      },
+      {
+        orthographies: [],
+        wordFields: ['Gloss', 'POS'],
+        morphFields: ['Gloss', 'POS'],
+        sentFields: [],
+        segmentMorphemes: true,
+      },
+      { exportedAt: '2026-01-01T00:00:00Z' },
+    );
+    const { build } = buildFrom([[xml, 'doc.eaf']]);
+    expect(build.schema.fields.map((f) => `${f.scope}:${f.name}`)).toEqual([
+      'Word:Gloss',
+      'Word:POS',
+      'Morpheme:Gloss',
+      'Morpheme:POS',
+    ]);
+    const doc = build.documents[0];
+    expect(doc.words[0].fields).toEqual({ Gloss: 'dogs', POS: 'NOUN' });
+    expect(doc.words[0].morphemes.map((m) => m.fields)).toEqual([
+      { Gloss: 'dog', POS: 'n' },
+      { Gloss: 'PL', POS: 'n' },
+    ]);
+    // The tier-to-field record is the file's own, not the document's metadata.
+    expect(doc.metadata).toEqual({ Genre: 'story' });
+  });
+
+  it('reads a tier by its own name when the file says nothing of its field', () => {
+    const xml = eafXml({
+      types: { u: null, g: 'Symbolic_Association' },
+      properties: { [ELAN_FIELD_NAMES_PROPERTY]: '{"Other":"Gloss"}' },
+      tiers: [
+        { id: 'T', type: 'u', anns: [['a1', 'hola', 0, 500]] },
+        { id: 'Morpheme Gloss', type: 'g', parent: 'T', anns: [['g1', 'hi', 'a1', null]] },
+      ],
+    });
+    const parsed = readEaf(xml, 'x.eaf');
+    expect(parsed.tiers.map((t) => t.baseName)).toEqual(['T', 'Morpheme Gloss']);
+  });
+
+  it('ignores a field-name record that is not an object of names', () => {
+    for (const bad of ['not json', '["Gloss"]', '{"T":3}']) {
+      const xml = eafXml({
+        types: { u: null },
+        properties: { [ELAN_FIELD_NAMES_PROPERTY]: bad },
+        tiers: [{ id: 'T', type: 'u', anns: [['a1', 'hola', 0, 500]] }],
+      });
+      expect(readEaf(xml, 'x.eaf').tiers[0].baseName).toBe('T');
+    }
+  });
 
   it('keeps a word that holds a space whole, and every value on its own word', () => {
     const body = 'in West Bengal now';

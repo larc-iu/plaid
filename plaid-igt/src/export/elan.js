@@ -54,6 +54,7 @@ import { joinerBetween } from '../domain/affixMarkers.js';
 import { xmlEscape, phraseSpeakerFor } from './flextext.js';
 import { hasValidTimes } from '../domain/alignmentTimes.js';
 import { mediaTypeForName } from '../domain/media/mediaTypes.js';
+import { ELAN_FIELD_NAMES_PROPERTY, writeElanFieldNames } from '../domain/elanFieldNames.js';
 
 const EAF_VERSION = '2.8';
 const SCHEMA_URL = 'http://www.mpi.nl/tools/elan/EAFv2.8.xsd';
@@ -151,13 +152,17 @@ export function sentenceTiming(sentence, validTokens) {
 }
 
 // A name allocator: TIER_ID is subject to an xsd:key, so a field named "Word"
-// must not collide with the structural Word tier.
+// must not collide with the structural Word tier. `scope` is given for a
+// field: the second field of a name (Gloss on words and on morphemes) is named
+// for its scope, "Morpheme Gloss", and only a name taken that way too gets a
+// number.
 const nameAllocator = () => {
   const used = new Set();
-  return (candidate, fallback) => {
+  return (candidate, fallback, scope = null) => {
     const base = String(candidate ?? '').trim() || fallback;
-    let name = base;
-    for (let i = 2; used.has(name); i++) name = `${base}-${i}`;
+    const scoped = scope && used.has(base) ? `${scope} ${base}` : base;
+    let name = scoped;
+    for (let i = 2; used.has(name); i++) name = `${scoped}-${i}`;
     used.add(name);
     return name;
   };
@@ -398,12 +403,25 @@ export function buildEafDocument(igtDoc, options = {}, context = {}) {
   // key is corrupted, and the key is what the project's schema is made of. A
   // structural tier renamed to "Word-2" loses nothing, because it is identified
   // by its LINGUISTIC_TYPE and its name is only a label.
-  const orthNames = new Map((options.orthographies || []).map((n) => [n, alloc(n, 'Orthography')]));
-  const wordFieldNames = new Map((options.wordFields || []).map((n) => [n, alloc(n, 'WordField')]));
-  const morphFieldNames = new Map(
-    wantMorphTier ? (options.morphFields || []).map((n) => [n, alloc(n, 'MorphField')]) : [],
+  // A field whose tier had to take another name is listed in the HEADER, so
+  // the import gives the field its own name back (domain/elanFieldNames.js).
+  const fieldOfTier = {};
+  const fieldTiers = (fields, fallback, scope) =>
+    new Map(
+      (fields || []).map((n) => {
+        const tierName = alloc(n, fallback, scope);
+        fieldOfTier[tierName] = n;
+        return [n, tierName];
+      }),
+    );
+  const orthNames = fieldTiers(options.orthographies, 'Orthography', 'Orthography');
+  const wordFieldNames = fieldTiers(options.wordFields, 'WordField', 'Word');
+  const morphFieldNames = fieldTiers(
+    wantMorphTier ? options.morphFields : [],
+    'MorphField',
+    'Morpheme',
   );
-  const sentFieldNames = new Map((options.sentFields || []).map((n) => [n, alloc(n, 'SentField')]));
+  const sentFieldNames = fieldTiers(options.sentFields, 'SentField', 'Sentence');
   const sentenceName = alloc(names.sentence, 'Sentence');
   // Written whether or not this document has segments, for the same reason an
   // empty field tier is: every document of one export has one structure.
@@ -560,7 +578,14 @@ export function buildEafDocument(igtDoc, options = {}, context = {}) {
   for (const [key, value] of Object.entries(docData.metadata || {})) {
     if (value === null || value === undefined || value === '') continue;
     if (key === MEDIA_FILE_FIELD && docData.mediaUrl) continue;
+    if (key === ELAN_FIELD_NAMES_PROPERTY) continue;
     header.push(`    <PROPERTY NAME="${xmlEscape(key)}">${xmlEscape(value)}</PROPERTY>`);
+  }
+  const renamedFields = writeElanFieldNames(fieldOfTier);
+  if (renamedFields) {
+    header.push(
+      `    <PROPERTY NAME="${ELAN_FIELD_NAMES_PROPERTY}">${xmlEscape(renamedFields)}</PROPERTY>`,
+    );
   }
   header.push('  </HEADER>');
 
