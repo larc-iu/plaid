@@ -103,3 +103,23 @@ test('a multi-word token range does not count as a row', () => {
     [1, 2, 3, 4],
   );
 });
+
+test('a unit placed past the text it cannot be found in starts after a space, not on it', () => {
+  // A multi-word token whose FORM is not in `# text` (H4-UD-5): placed after
+  // `mercado`, it starts on the `d` of `dul`, not on the space before it.
+  const h = buildConlluHierarchy(
+    parseCoNLLU(
+      conllu([
+        '# text = mercado dul pueblo',
+        '1\tmercado\t_\t_\t_\t_\t_\t_\t_\t_',
+        '2-3\tdel\t_\t_\t_\t_\t_\t_\t_\t_',
+        '2\tde\t_\t_\t_\t_\t_\t_\t_\t_',
+        '3\tel\t_\t_\t_\t_\t_\t_\t_\t_',
+        '4\tpueblo\t_\t_\t_\t_\t_\t_\t_\t_',
+      ]),
+    ),
+  );
+  assert.equal(h.dropped.syntheticOffsetSentences, 1);
+  const [, mwt] = h.sentences[0].words;
+  assert.equal(h.text.slice(mwt.begin, mwt.end), 'dul');
+});

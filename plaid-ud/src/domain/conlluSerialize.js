@@ -71,6 +71,17 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
     return values.length > 0 ? values.join('|') : UNDERSCORE;
   };
 
+  // MISC is not stored (see scope decisions), but `SpaceAfter=No` is a fact
+  // of the text: a token that is not its sentence's last and is followed by
+  // no space gets it, as UD's validators expect of `# text`.
+  let chars = null;
+  const miscOf = (extent, isLast) => {
+    if (isLast || !extent) return UNDERSCORE;
+    chars ??= [...(info.textLayer?.text?.body ?? '')];
+    const next = chars[extent.end];
+    return next !== undefined && !/\s/u.test(next) ? 'SpaceAfter=No' : UNDERSCORE;
+  };
+
   const output = [];
   const docName = flat(name || 'unknown');
   output.push(`# newdoc id = ${docName}`);
@@ -113,16 +124,15 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
     // above) so it doesn't double-emit, and the reserved provenance keys
     // (the parser stamps sentence tokens too; `# prov = inferred` /
     // `# provDetail = [object Object]` are not CoNLL-U content).
-    // A `# text` from the file it was imported from is kept while it still
-    // says what the sentence says, letters for letters: it carries the
-    // original spacing, which the substring cannot. Once the text under it
-    // has been edited, merged or split, it says something else, and writing
-    // it put a line in the file that its own token rows contradicted, one
-    // that blanked the sentence when the file was read back.
+    // A `# text` stored on the sentence (from an import or a parser) is kept
+    // only while it is the sentence's text exactly, spaces included. The
+    // import builds the body from `# text`, so the two agree until someone
+    // edits the sentence. After an edit, even one that only adds or removes a
+    // space, the stored line says something else, and writing it put a line
+    // in the file that the screen and its own token rows contradicted.
     const own = (sentence.text || '').trim();
-    const bare = (v) => String(v ?? '').replace(/\s+/gu, '');
     const staleText =
-      sentMeta.text !== undefined && bare(sentMeta.text) !== bare(own) ? 'text' : null;
+      sentMeta.text !== undefined && flat(sentMeta.text).trim() !== flat(own) ? 'text' : null;
     let hasTextMetadata = false;
     Object.keys(sentMeta)
       .sort()
@@ -147,17 +157,19 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
         }
       }
 
-      // MWT bracket line. Surface form comes from the word token's
-      // persisted `metadata.form`. When that's absent (MWT imported with
-      // FORM=`_`), emit `_` to round-trip the original "unspecified"
-      // semantics — don't fabricate a value from the body substring.
-      // Editor-created MWTs get `metadata.form` set in `setWordMorphemes`
-      // so they round-trip correctly without going through this branch.
+      // MWT bracket line. A token imported with FORM `_` has no stored
+      // `metadata.form` and is written `_` again. Any other is written as its
+      // text in the document: the stored form is that text when it was set,
+      // and a text edit since (`del` to `dul`) leaves it behind, which put a
+      // form in the file that its own `# text` did not hold.
+      const misc = miscOf(
+        morphemes[i].word || morphemes[i].token,
+        i + groupLen >= morphemes.length,
+      );
       if (groupLen > 1) {
         const wordMeta = morphemes[i].word?.metadata || {};
-        const surfaceForm = esc(wordMeta.form);
-        // MISC is not stored (see scope decisions), so the bracket row's MISC
-        // column is always `_`.
+        const surfaceForm = wordMeta.form ? esc(morphemes[i].wordForm) : UNDERSCORE;
+        // A multi-word token's `SpaceAfter=No` goes on its bracket row.
         output.push(
           [
             `${i + 1}-${i + groupLen}`,
@@ -169,7 +181,7 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
             UNDERSCORE,
             UNDERSCORE,
             UNDERSCORE,
-            UNDERSCORE,
+            misc,
           ].join('\t'),
         );
       }
@@ -200,7 +212,18 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
         }
         const deps = serializeDeps(m.spanIds?.lemma ? enhancedByTarget.get(m.spanIds.lemma) : null);
         output.push(
-          [id, form, lemma, upos, xpos, feats, head, deprel, deps, UNDERSCORE].join('\t'),
+          [
+            id,
+            form,
+            lemma,
+            upos,
+            xpos,
+            feats,
+            head,
+            deprel,
+            deps,
+            groupLen > 1 ? UNDERSCORE : misc,
+          ].join('\t'),
         );
       }
 

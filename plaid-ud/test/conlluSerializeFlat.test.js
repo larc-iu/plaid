@@ -77,7 +77,7 @@ test('the basic DEPREL with a tab or newline stays one column', () => {
 });
 
 test('a multi-word token surface with a tab or newline stays one column', () => {
-  const word = { id: 'W', metadata: { form: BAD } };
-  const out = build([sentence([tok(1, { word }), tok(2, { word })])]);
+  const word = { id: 'W', metadata: { form: 'w' } };
+  const out = build([sentence([tok(1, { word, wordForm: BAD }), tok(2, { word, wordForm: BAD })])]);
   assertShape(out, 1, [2]);
 });

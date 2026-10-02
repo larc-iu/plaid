@@ -10,11 +10,9 @@ const LABEL_CHAR_WIDTH = 8;
 // Room on either side of the label for a stretch of the bracket's line.
 const LABEL_PADDING = 24;
 
-/** The token's written form: its stored FORM, else its text in the document. */
-const writtenForm = (entry) => {
-  const stored = entry.word?.metadata?.form;
-  return typeof stored === 'string' && stored !== '' ? stored : entry.wordForm;
-};
+// The token's written form is its text in the document. Its stored FORM was
+// that text when it was set, and a text edit since leaves it behind.
+const writtenForm = (entry) => entry.wordForm;
 
 /**
  * The multi-word tokens among a sentence's rows, each as the index of its

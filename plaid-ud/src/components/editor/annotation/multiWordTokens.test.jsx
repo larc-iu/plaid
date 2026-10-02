@@ -52,7 +52,13 @@ describe('which columns make up a multi-word token', () => {
     expect(multiWordTokens(rows())).toEqual([{ start: 1, size: 2, form: 'del' }]);
   });
 
-  it('falls back to the text when no form was stored', () => {
+  it('reads the text, not a stored form a text edit has left behind', () => {
+    const w = { id: 'w8', metadata: { form: 'del' } };
+    const r = [row('a', 'de', w, 2, 'dul'), row('b', 'el', w, 2, 'dul')];
+    expect(multiWordTokens(r)).toEqual([{ start: 0, size: 2, form: 'dul' }]);
+  });
+
+  it('reads the text when no form was stored', () => {
     const w = { id: 'w9', metadata: {} };
     const r = [row('a', 'و', w, 2, 'وقال'), row('b', 'قال', w, 2, 'وقال')];
     expect(multiWordTokens(r)).toEqual([{ start: 0, size: 2, form: 'وقال' }]);

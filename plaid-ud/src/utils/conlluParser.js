@@ -154,9 +154,13 @@ export function parseCoNLLU(text) {
     // The MISC column is deliberately unsupported (it often carries annotations
     // like entity info that tokenization changes would silently corrupt; see
     // plaid-ud scope decisions). Count word-row MISC drops so the user hears
-    // about it. (MWT-row MISC — almost always just SpaceAfter=No — is also
-    // dropped, but silently, since the stored text body already encodes spacing.)
-    if (misc !== '_' && misc !== '') {
+    // about it. `SpaceAfter=No` is not counted, on any row: the body is
+    // built from `# text`, so it holds the spacing, and the export writes the
+    // value again from it. (MWT-row MISC is dropped silently.)
+    const keptMisc = (misc || '')
+      .split('|')
+      .filter((item) => item !== '' && item !== '_' && item !== 'SpaceAfter=No');
+    if (keptMisc.length > 0) {
       droppedMiscTokens += 1;
     }
 
@@ -311,9 +315,9 @@ export function buildConlluHierarchy(parsedData) {
   // Locate each surface unit's [begin, end] within its sentence text.
   // When a unit's form can't be located (e.g. CJK / no-space scripts where
   // `# text = ...` doesn't contain the literal form, or when the metadata text
-  // is missing), fall back to a deterministic, gap-free synthetic placement:
-  // begin = previous.end, end = begin + form.length. This preserves the
-  // Words-in-Sentence tiling invariant even though offsets won't match the
+  // is missing), fall back to a deterministic synthetic placement:
+  // begin = previous.end, past any space, end = begin + form.length. Every word
+  // stays inside its sentence even though offsets will not match the
   // original text. We warn so the user knows the offsets are synthetic.
   const locateUnits = (sentenceText, units) => {
     const positions = [];
@@ -330,7 +334,11 @@ export function buildConlluHierarchy(parsedData) {
           );
           warnedSyntheticOffsets = true;
         }
-        const begin = positions.length === 0 ? 0 : positions[positions.length - 1].end;
+        // A unit placed this way starts past any space, so it never begins on
+        // one and cuts the word after it.
+        const chars = [...sentenceText];
+        let begin = positions.length === 0 ? 0 : positions[positions.length - 1].end;
+        while (begin < chars.length && /\s/u.test(chars[begin])) begin += 1;
         positions.push({ begin, end: begin + cpLength(form) });
         searchPos = begin + cpLength(form);
       } else {
