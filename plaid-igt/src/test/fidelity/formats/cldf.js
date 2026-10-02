@@ -122,6 +122,7 @@ export default {
       why: 'It names users of this server. CLDF has no place for it.',
     },
     'project.plaidSettings': PLAID_SETTING,
+    'project.researchOptIn': PLAID_SETTING,
     'project.foreignConfig': {
       carried: false,
       kind: 'foreign',

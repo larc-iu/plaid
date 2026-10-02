@@ -271,13 +271,15 @@ that owns a layer finds it again by whatever it looks for.
 
 - `otherConfig` holds every project config namespace other than `igt` (this app's
   own, carried in `schema`). `plaid` goes without `review` (whose work is
-  reviewed, which names users): `tartan` and `research` are carried.
+  reviewed, which names users) and without `research` (the telemetry opt-in,
+  consent that belongs to the project where the collection happens): `tartan`
+  is carried.
 - `otherLayers.config` holds what this app's own text and token layers keep under
   namespaces other than `igt`, keyed by role (`baseline`, `sentence`, `word`,
   `morpheme`, `time-alignment`), `plaid` without `role` (a word layer's
   `splitOnSpace` and `preserveOnSplit` are carried). Project setup writes `igt`
-  and the roles itself, and the import does not write a `plaid.review` or a
-  `plaid.role` an archive names.
+  and the roles itself, and the import does not write a `plaid.review`, a
+  `plaid.research` or a `plaid.role` an archive names.
 - `otherLayers.spanLayers` lists the span layers on this app's own token layers
   that are no annotation field (`scope` null), and any field that carries relation
   layers or config in another namespace (`scope` set). `tokenLayer` is the role of

@@ -6,8 +6,9 @@ import { restoreOtherLayers } from './otherLayers.js';
 // `plaid` settings at all, since that namespace holds whose work is reviewed,
 // and so lost the tartan, the research opt-in and a shared word layer's
 // splitOnSpace (H24-SETTINGS-1): after an export and import a typed space
-// inside a word no longer split it. Only the review lists (people) and the
-// layer roles (setup's) stay behind.
+// inside a word no longer split it. The review lists (people), the research
+// telemetry opt-in (consent belongs to the project that collects, ruled
+// 2026-10-02) and the layer roles (setup's) stay behind.
 
 const role = (r, extra = {}) => ({ plaid: { role: r, ...extra } });
 const layers = () => [
@@ -68,9 +69,9 @@ const archive = () =>
   buildProjectFile({ project: source(), documents: [], vocabularies: [], exportedAt: 'x' });
 
 describe("the native archive and the project's plaid settings", () => {
-  it('carries them, but not the review lists or the layer roles', () => {
+  it('carries them, but not the review lists, the research opt-in or the layer roles', () => {
     const file = archive();
-    expect(file.otherConfig).toEqual({ plaid: { tartan: false, research: { telemetry: true } } });
+    expect(file.otherConfig).toEqual({ plaid: { tartan: false } });
     expect(file.otherLayers.config).toEqual({
       word: { plaid: { splitOnSpace: true, preserveOnSplit: ['prov', 'ud'] } },
     });
@@ -81,7 +82,6 @@ describe("the native archive and the project's plaid settings", () => {
     await restoreOtherLayers({ client, projectId: 'p2', project: fresh(), manifest: archive() });
     expect(writes).toEqual([
       ['project', 'p2', 'plaid', 'tartan', false],
-      ['project', 'p2', 'plaid', 'research', { telemetry: true }],
       ['tokenLayer', 'word', 'plaid', 'splitOnSpace', true],
       ['tokenLayer', 'word', 'plaid', 'preserveOnSplit', ['prov', 'ud']],
     ]);
@@ -107,13 +107,15 @@ describe("the native archive and the project's plaid settings", () => {
     expect(again.otherLayers.config).toEqual(archive().otherLayers.config);
   });
 
-  it('does not let an archive edited by hand write the review lists or a role', async () => {
+  it('does not let an archive edited by hand write the review lists, the opt-in or a role', async () => {
     const file = archive();
     file.otherConfig.plaid.review = { maintainer: ['intruder@example.com'] };
+    file.otherConfig.plaid.research = { telemetry: true };
     file.otherLayers.config.word.plaid.role = 'sentence';
     const { client, writes } = recording();
     await restoreOtherLayers({ client, projectId: 'p2', project: fresh(), manifest: file });
     expect(writes.map((w) => w[3])).not.toContain('review');
+    expect(writes.map((w) => w[3])).not.toContain('research');
     expect(writes.map((w) => w[3])).not.toContain('role');
   });
 });

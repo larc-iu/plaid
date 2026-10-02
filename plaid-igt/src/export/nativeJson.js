@@ -180,7 +180,8 @@ export function buildProjectFile({
     // What other apps keep in the project, carried without being understood:
     // their project settings, and their layers with the settings on them. The
     // shared `plaid` settings go too, but for whose work is reviewed, which
-    // names users and so goes with permissions (UNCARRIED_PLAID_KEYS).
+    // names users and so goes with permissions, and the research opt-in, which
+    // is the consent of the project that collects (UNCARRIED_PLAID_KEYS).
     otherConfig: configWithout(withoutPlaidKeys(project?.config, UNCARRIED_PLAID_KEYS.project), [
       IGT_NAMESPACE,
     ]),

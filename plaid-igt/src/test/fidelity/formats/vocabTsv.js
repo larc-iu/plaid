@@ -59,6 +59,7 @@ export default {
     'project.exportPresets': NOT_A_VOCABULARY,
     'project.reviewedMembers': NOT_A_VOCABULARY,
     'project.plaidSettings': NOT_A_VOCABULARY,
+    'project.researchOptIn': NOT_A_VOCABULARY,
     'project.foreignConfig': foreign("Another app's project configuration."),
 
     // Layers

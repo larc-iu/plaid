@@ -232,8 +232,13 @@ export const FEATURES = [
   },
   {
     key: 'project.plaidSettings',
-    what: 'the project’s shared plaid settings: tartan hidden, research opt-in',
-    detect: (s) => count(['tartan', 'research'], (k) => s.config?.plaid?.[k] != null),
+    what: 'the project’s shared plaid settings: tartan hidden',
+    detect: (s) => (s.config?.plaid?.tartan != null ? 1 : 0),
+  },
+  {
+    key: 'project.researchOptIn',
+    what: 'the research telemetry opt-in',
+    detect: (s) => (s.config?.plaid?.research != null ? 1 : 0),
   },
   {
     key: 'project.foreignConfig',

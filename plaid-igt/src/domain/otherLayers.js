@@ -55,12 +55,14 @@ export const configWithout = (config, drop = []) =>
 /**
  * The keys of the shared `plaid` namespace the native archive leaves out, on
  * the project and on this app's own layers. Whose work is reviewed names
- * people, so it goes with permissions. A layer's role is what setup finds this
- * app's layers by, and setup writes it. Everything else under `plaid` (the
- * tartan, the research opt-in, a word layer's splitOnSpace and
- * preserveOnSplit) is the project's own and goes with it.
+ * people, so it goes with permissions. The research telemetry opt-in is
+ * consent to collection, which belongs to the project where the collection
+ * happens (ruled 2026-10-02). A layer's role is what setup finds this app's
+ * layers by, and setup writes it. Everything else under `plaid` (the tartan,
+ * a word layer's splitOnSpace and preserveOnSplit) is the project's own and
+ * goes with it.
  */
-export const UNCARRIED_PLAID_KEYS = { project: [REVIEW_KEY], layer: [ROLE_KEY] };
+export const UNCARRIED_PLAID_KEYS = { project: [REVIEW_KEY, 'research'], layer: [ROLE_KEY] };
 
 /** `config` without the `plaid` keys in `keys`. */
 export const withoutPlaidKeys = (config, keys) => {

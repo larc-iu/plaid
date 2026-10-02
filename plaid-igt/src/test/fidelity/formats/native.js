@@ -63,6 +63,12 @@ export default {
     },
     // Every namespace but igt, plaid without its review lists (otherConfig).
     'project.plaidSettings': carried,
+    'project.researchOptIn': {
+      carried: false,
+      kind: 'ruled',
+      why: 'consent to collection belongs to the project where the collection happens',
+      ruling: "docs/native-format.md, Other apps' layers",
+    },
     'project.foreignConfig': carried,
 
     // Layers

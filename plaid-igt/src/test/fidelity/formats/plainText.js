@@ -63,6 +63,7 @@ export default {
     ),
     'project.reviewedMembers': PROJECT_CONFIG,
     'project.plaidSettings': PROJECT_CONFIG,
+    'project.researchOptIn': PROJECT_CONFIG,
     'project.foreignConfig': foreign("Another app's project configuration."),
 
     // Layers

@@ -125,6 +125,7 @@ export default {
       why: 'Names Plaid users. Neither format has a place for whose work is reviewed.',
     },
     'project.plaidSettings': PLAID_SETTING,
+    'project.researchOptIn': PLAID_SETTING,
     'project.foreignConfig': {
       carried: false,
       kind: 'foreign',

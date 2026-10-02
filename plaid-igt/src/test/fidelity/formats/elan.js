@@ -185,6 +185,7 @@ export default {
       why: 'Names project members, which an .eaf has no place for.',
     },
     'project.plaidSettings': PROJECT_SETTING,
+    'project.researchOptIn': PROJECT_SETTING,
     'project.foreignConfig': {
       carried: false,
       kind: 'foreign',

@@ -474,7 +474,7 @@ const CONFIG_KEYS = {
     'project.tagsetOrdered',
   ),
   'projects plaid.review': covers('project.reviewedMembers'),
-  'projects plaid.research': covers('project.plaidSettings'),
+  'projects plaid.research': covers('project.researchOptIn'),
   'projects plaid.tartan': covers('project.plaidSettings'),
   'textLayers plaid.role': notData('structure, how every app finds the layer'),
   'tokenLayers plaid.role': notData('structure, how every app finds the layer'),

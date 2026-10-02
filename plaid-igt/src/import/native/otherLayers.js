@@ -98,7 +98,8 @@ export async function restoreOtherLayers({
   const out = noOtherLayers();
   const described = manifest?.otherLayers || {};
 
-  // Project settings. `igt` is this app's and `plaid.review` is not archived,
+  // Project settings. `igt` is this app's, and `plaid.review` and
+  // `plaid.research` are not archived,
   // so an archive naming either (edited by hand) does not get to write them
   // here.
   await writeConfig(
