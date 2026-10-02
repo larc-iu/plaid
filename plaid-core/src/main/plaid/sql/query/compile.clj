@@ -568,11 +568,19 @@
                          layer-ids (vec (::qr/layer-ids cmap))
                          r0 (next-alias! st "rc0")
                          r1 (next-alias! st "rc1")
+                         rch (next-alias! st "rch")
                          ;; per-hop relation filter: in the (scoped) layer set, and
                          ;; the optional :value. Correlates scope via layer-ids.
-                         hop (fn [r]
-                               (let [s (next-alias! st "rcs")]
-                                 (cond-> [:and [:in (col r :relation_layer_id) layer-ids]
+                         ;; `by-source?`: the recursive step finds the next hop by its
+                         ;; source, so the layer term is written `+col`, which SQLite
+                         ;; uses no index for. Otherwise it walked the whole layer once
+                         ;; per pair reached.
+                         hop (fn [r by-source?]
+                               (let [s (next-alias! st "rcs")
+                                     lcol (if by-source?
+                                            [:raw (str "+" (name (col r :relation_layer_id)))]
+                                            (col r :relation_layer_id))]
+                                 (cond-> [:and [:in lcol layer-ids]
                                           ;; defense-in-depth: the span this hop reaches must
                                           ;; itself live in a span layer within scope, so
                                           ;; reachability can't cross into an unreadable project
@@ -585,20 +593,27 @@
                                                             [:in (col s :span_layer_id) (in-scope-layers st :span_layers)]]}]]
                                    (contains? cmap :value)
                                    (conj (atomic-pred (col r :value) (:value cmap) psc/write-json)))))]
-                     ;; transitive reachability over source_span_id -> target_span_id,
-                     ;; via a correlated recursive CTE inside EXISTS (>=1 hop).
-                     (add-where! st
-                                 [:exists
-                                  {:with-recursive
-                                   [[[:reach {:columns [:rid]}]
-                                     {:union
-                                      [{:select [(col r0 :target_span_id)]
-                                        :from [[:relations r0]]
-                                        :where (conj (hop r0) [:= (col r0 :source_span_id) (col sa :id)])}
-                                       {:select [(col r1 :target_span_id)]
-                                        :from [[:relations r1] :reach]
-                                        :where (conj (hop r1) [:= (col r1 :source_span_id) :reach.rid])}]}]]
-                                   :select [1] :from [:reach] :where [:= :reach.rid (col sb :id)]}]))
+                     ;; Transitive reachability over source_span_id -> target_span_id
+                     ;; (>=1 hop), as a table of (src, rid) pairs computed once from
+                     ;; every relation of the layers and joined to both ends. A
+                     ;; recursive CTE correlated on both ends ran once per candidate
+                     ;; pair, quadratic in the spans in scope: 16.5 s on 2,000 words
+                     ;; (H6-CORE-API-2). UNION keeps each pair once, which ends a
+                     ;; cycle and keeps one row per match.
+                     (add-from! st [{:with-recursive
+                                     [[[:reach {:columns [:src :rid]}]
+                                       {:union
+                                        [{:select [(col r0 :source_span_id) (col r0 :target_span_id)]
+                                          :from [[:relations r0]]
+                                          :where (hop r0 false)}
+                                         {:select [:reach.src (col r1 :target_span_id)]
+                                          :from [[:relations r1] :reach]
+                                          :where (conj (hop r1 true) [:= (col r1 :source_span_id) :reach.rid])}]}]]
+                                     :select [:src :rid] :from [:reach]}
+                                    rch])
+                     (swap! st assoc-in [:keyed-junctions rch] [sa sb])
+                     (add-where! st [:= (col rch :src) (col sa :id)])
+                     (add-where! st [:= (col rch :rid) (col sb :id)]))
       :source   (let [r (av a) s (av b)]
                   (add-where! st [:= (col r :source_span_id) (col s :id)]))
       :target   (let [r (av a) s (av b)]

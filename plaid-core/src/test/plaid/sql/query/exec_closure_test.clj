@@ -1,6 +1,6 @@
 (ns plaid.sql.query.exec-closure-test
   "Integration tests for :related* — transitive closure over relation edges
-  (source_span_id -> target_span_id) via a correlated recursive CTE."
+  (source_span_id -> target_span_id), a recursive CTE of reachable pairs."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :refer [with-db with-mount-states with-clean-db
                                     with-rest-handler with-admin with-test-users
