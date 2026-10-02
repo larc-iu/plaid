@@ -4,6 +4,9 @@ import { configureUi } from '../../lib/uiConfig.js';
 import { createKeymap } from '../../lib/keymap.js';
 import { renderComponent } from '../../test/renderComponent.jsx';
 import { KeyboardSettings } from './KeyboardSettings.jsx';
+import { notifyError } from '../../lib/notify.js';
+
+vi.mock('../../lib/notify.js', () => ({ notifyError: vi.fn() }));
 
 configureUi({ appPrefix: 'test', appName: 'Test', configNamespace: 'igt' });
 
@@ -143,5 +146,19 @@ describe('KeyboardSettings', () => {
     await change('Accept the word');
     await press({ key: 'F9' });
     expect(keymap.chords('accept')).toEqual(['Mod+Enter']);
+  });
+
+  // Another tab of the same person bound the chord after this one read the
+  // account: this screen's own check finds it free, and the save refuses it
+  // (H24-SETTINGS-2).
+  it('refuses a chord another tab bound since, and shows the account', async () => {
+    const { keymap, userData, stored, press, change } = await mount();
+    stored.map = { discard: ['Alt+a'] };
+    await change('Accept the word');
+    await press({ key: 'a', code: 'KeyA', altKey: true });
+    expect(notifyError).toHaveBeenCalledWith('Alt+A is “Discard the word”.', 'Shortcut not saved');
+    expect(userData.put).not.toHaveBeenCalled();
+    expect(keymap.chords('accept')).toEqual(['Mod+Enter']);
+    expect(keymap.chords('discard')).toEqual(['Alt+a']);
   });
 });

@@ -1,7 +1,7 @@
 import { Fragment, useState, useSyncExternalStore } from 'react';
 import { useAuth } from '../../contexts/useAuth.js';
 import { chordCaps, chordText, chordsOf, isModifierKeydown } from '../../lib/chords.js';
-import { saveUserKeymap } from '../../lib/userKeymap.js';
+import { KeymapConflict, saveUserKeymap } from '../../lib/userKeymap.js';
 import { notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
 import { Button } from '../ui/button';
@@ -57,9 +57,15 @@ export const KeyboardSettings = ({ keymap, groups }) => {
     keymap.setOverrides(next);
     setSaving(true);
     try {
-      const stored = await saveUserKeymap(client, user.id, { before, next, replace });
+      const stored = await saveUserKeymap(client, user.id, { before, next, replace, keymap });
       keymap.setOverrides(stored);
     } catch (e) {
+      if (e instanceof KeymapConflict) {
+        // Another tab bound the chord first: show the account's bindings.
+        keymap.setOverrides(e.stored);
+        notifyError(problemText(e.found, e.chord), 'Shortcut not saved');
+        return;
+      }
       keymap.setOverrides(before);
       notifyError(humanizeError(e), 'Shortcut not saved');
     } finally {

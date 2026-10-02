@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { configureUi } from './uiConfig.js';
-import { loadUserKeymap, saveUserKeymap } from './userKeymap.js';
+import { KeymapConflict, loadUserKeymap, saveUserKeymap } from './userKeymap.js';
+import { createKeymap } from './keymap.js';
 
 configureUi({ configNamespace: 'plaid' });
 
@@ -88,5 +89,67 @@ describe('saveUserKeymap', () => {
     ).toEqual({});
     expect(state.map).toBe(null);
     expect(state.deletes).toBe(1);
+  });
+});
+
+// Two tabs of one person, neither reloaded, each bind a different action to
+// one chord. Each tab's own check passed, since each found the chord free,
+// and the merge stored both: after a reload Ctrl+J answered to both
+// (H24-SETTINGS-2). The merged map is checked before it is written.
+describe('saveUserKeymap, two tabs', () => {
+  const ACTIONS = [
+    { id: 'grid.accept', scope: 'grid', group: 'g', label: 'Accept', keys: ['Mod+Enter'] },
+    { id: 'grid.discard', scope: 'grid', group: 'g', label: 'Discard', keys: ['Mod+Backspace'] },
+    { id: 'pop.create', scope: 'pop', group: 'p', label: 'Create', keys: ['Mod+Enter'] },
+  ];
+
+  it('refuses a chord another tab bound since, naming the action, and writes nothing', async () => {
+    const { client, state } = accountWith(null);
+    const tabA = createKeymap(ACTIONS);
+    const tabB = createKeymap(ACTIONS);
+    const bind = (tab, id, chord) => {
+      expect(tab.check(id, chord)).toBeNull();
+      return saveUserKeymap(client, 'a@b.com', {
+        before: tab.overrides(),
+        next: tab.withBinding(id, chord),
+        keymap: tab,
+      });
+    };
+    await bind(tabA, 'grid.accept', 'Mod+j');
+    const refused = await bind(tabB, 'grid.discard', 'Mod+j').catch((e) => e);
+    expect(refused).toBeInstanceOf(KeymapConflict);
+    expect(refused.found.with.label).toBe('Accept');
+    expect(refused.chord).toBe('Mod+j');
+    expect(refused.stored).toEqual({ 'grid.accept': ['Mod+j'] });
+    expect(state.map).toEqual({ 'grid.accept': ['Mod+j'] });
+    expect(state.puts).toBe(1);
+  });
+
+  it('lets an action in another scope take the same chord', async () => {
+    const { client } = accountWith({ 'grid.accept': ['Mod+j'] });
+    const tab = createKeymap(ACTIONS);
+    const stored = await saveUserKeymap(client, 'a@b.com', {
+      before: {},
+      next: { 'pop.create': ['Mod+j'] },
+      keymap: tab,
+    });
+    expect(stored).toEqual({ 'grid.accept': ['Mod+j'], 'pop.create': ['Mod+j'] });
+  });
+
+  it("sends whoever took a default back to theirs when a reset needs it, as one tab's reset does", async () => {
+    // Another tab moved Discard onto Accept's default after this one moved
+    // Accept away. This tab now resets Accept.
+    const { client } = accountWith({
+      'grid.accept': ['Mod+j'],
+      'grid.discard': ['Mod+Enter'],
+    });
+    const tab = createKeymap(ACTIONS);
+    tab.setOverrides({ 'grid.accept': ['Mod+j'] });
+    const stored = await saveUserKeymap(client, 'a@b.com', {
+      before: tab.overrides(),
+      next: tab.withBinding('grid.accept', null),
+      keymap: tab,
+    });
+    expect(stored).toEqual({});
   });
 });
