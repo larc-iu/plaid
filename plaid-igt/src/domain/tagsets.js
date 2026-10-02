@@ -562,29 +562,47 @@ const readOffTagsetParts = (attested, tagset) => {
 };
 
 /**
- * The attested VALUES that fail validation, worst first:
- * [{ value, count, violations }].
+ * `tagset` read as closing it would read it: an open list's unlisted parts
+ * count as off the list. The Validation tab's reading, where a list being
+ * built is checked before it is closed.
+ */
+export const asClosed = (tagset) =>
+  tagset?.mode === MODES.SUGGEST ? { ...tagset, mode: MODES.CLOSED } : tagset;
+
+/**
+ * The attested VALUES with a part off the list or a stray delimiter, worst
+ * first: [{ value, count, violations, flagged }].
  *
  * The sibling of offTagsetParts, answering the other question. That one says
  * which tags are missing from the list, which is what a seed needs; this says
  * which cells are wrong, which is what a person fixing them needs to find and
  * what a bulk replace has to match on.
+ *
+ * An OPEN tagset's unlisted parts are listed too, read as closing the list
+ * would read them: open is the state a list is built in before it is closed,
+ * and these are the values a close would refuse. `flagged` says whether the
+ * cell itself marks the value (validateValue), which on an open list is only
+ * a stray delimiter.
  */
 export const offTagsetValues = (attested, tagset) => {
   if (!tagset) return [];
+  const open = tagset.mode === MODES.SUGGEST;
+  const listing = asClosed(tagset);
   // One row per value. A value attested under two readings (a stem's and a
   // suffix's) counts only the occurrences that fail, with every part that
   // fails under any of them.
   const byValue = new Map();
   for (const [raw, n, reading] of attested || []) {
     const value = raw ?? '';
-    const violations = validateValue(value, readingTagset(tagset, reading));
+    const violations = validateValue(value, readingTagset(listing, reading));
     if (!violations.length) continue;
+    const flagged = !open || violations.some((v) => v.reason === 'empty');
     const row = byValue.get(value);
     if (!row) {
-      byValue.set(value, { value, count: n || 0, violations });
+      byValue.set(value, { value, count: n || 0, violations, flagged });
       continue;
     }
+    row.flagged ||= flagged;
     row.count += n || 0;
     const seen = new Set(row.violations.map((v) => `${v.begin}:${v.end}:${v.reason}`));
     row.violations = [

@@ -1,7 +1,8 @@
 // Opening a flagged value on the Validation tab: where a span field's value
-// fails its tagset, judged cell by cell as the Analyze grid judges it.
+// fails its tagset, judged cell by cell as the Analyze grid judges it, an open
+// list as closing it would (asClosed), as the scan counted it.
 
-import { readingTagset, validateValue } from '@/domain/tagsets';
+import { asClosed, readingTagset, validateValue } from '@/domain/tagsets';
 import { morphemeCellReading, runHitsSearch } from '../search/searchRunner.js';
 
 // A span field's value where it sits fails the tagset as the Analyze grid
@@ -13,7 +14,7 @@ export const failsInCell =
     validateValue(
       span?.value ?? '',
       readingTagset(
-        g.tagset,
+        asClosed(g.tagset),
         morpheme ? morphemeCellReading(token, morpheme, g.domain.field) : undefined,
       ),
     ).length > 0;

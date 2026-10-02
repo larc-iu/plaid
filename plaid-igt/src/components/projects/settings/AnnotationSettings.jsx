@@ -55,7 +55,11 @@ export const AnnotationSettings = ({ project, projectId, client, onProjectUpdate
         governed.map(async (g) => {
           try {
             const attested = await loadAttested(client, projectId, g);
-            counts[`${g.scope}:${g.field}`] = offTagsetValues(attested, g.tagset).length;
+            // What the cells mark: an open list's unlisted values are the
+            // Validation tab's to list, not a fault to badge here.
+            counts[`${g.scope}:${g.field}`] = offTagsetValues(attested, g.tagset).filter(
+              (row) => row.flagged,
+            ).length;
           } catch {
             /* leave this field unbadged */
           }

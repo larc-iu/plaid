@@ -405,13 +405,20 @@ describe('offTagsetValues', () => {
         value: 'ERG',
         count: 7,
         violations: [{ part: 'ERG', begin: 0, end: 3, reason: 'unknown' }],
+        flagged: true,
       },
       {
         value: '1SG.ABL',
         count: 4,
         violations: [{ part: 'ABL', begin: 4, end: 7, reason: 'unknown' }],
+        flagged: true,
       },
-      { value: '1SG.', count: 2, violations: [{ part: '', begin: 4, end: 4, reason: 'empty' }] },
+      {
+        value: '1SG.',
+        count: 2,
+        violations: [{ part: '', begin: 4, end: 4, reason: 'empty' }],
+        flagged: true,
+      },
     ]);
   });
 
@@ -419,9 +426,21 @@ describe('offTagsetValues', () => {
     expect(offTagsetValues([['1SG.NOM', 10]], leipzig)).toEqual([]);
   });
 
-  it('an OPEN tagset only fails on a stray delimiter', () => {
+  it('an OPEN tagset lists what closing it would refuse, and flags only a stray delimiter', () => {
     const open = { ...leipzig, mode: 'suggest' };
-    expect(offTagsetValues(attested, open).map((r) => r.value)).toEqual(['1SG.']);
+    expect(
+      offTagsetValues(attested, open).map((r) => [r.value, r.violations[0].reason, r.flagged]),
+    ).toEqual([
+      ['ERG', 'unknown', false],
+      ['1SG.ABL', 'unknown', false],
+      ['1SG.', 'empty', true],
+    ]);
+    // The same values a close would refuse, lexical-looking ones included.
+    const closed = { ...open, mode: 'closed' };
+    expect(offTagsetValues(attested, open).map((r) => r.value)).toEqual(
+      offTagsetValues(attested, closed).map((r) => r.value),
+    );
+    expect(offTagsetValues([['n.mly', 3]], { ...open, values: [{ value: 'n' }] })).toHaveLength(1);
   });
 });
 
@@ -670,11 +689,13 @@ describe('a value known only by its own morph type', () => {
           { part: 'sbj', begin: 0, end: 3, reason: 'unknown' },
           { part: 'pfv', begin: 6, end: 9, reason: 'unknown' },
         ],
+        flagged: true,
       },
       {
         value: 'pass.PST',
         count: 2,
         violations: [{ part: 'pass', begin: 0, end: 4, reason: 'unknown' }],
+        flagged: true,
       },
     ]);
   });
@@ -698,6 +719,7 @@ describe('a value known only by its own morph type', () => {
           { part: '3', begin: 4, end: 5, reason: 'unknown' },
           { part: 'pfv', begin: 6, end: 9, reason: 'unknown' },
         ],
+        flagged: true,
       },
     ]);
   });

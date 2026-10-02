@@ -115,6 +115,37 @@ describe('the scan', () => {
     await unmount();
   });
 
+  it('lists the values an OPEN list does not hold, without calling them errors', async () => {
+    const open = {
+      ...project,
+      config: {
+        igt: {
+          ...project.config.igt,
+          tagsets: { ...project.config.igt.tagsets, Leipzig: { ...LEIPZIG, mode: 'suggest' } },
+        },
+      },
+    };
+    const client = clientWith([[['1SG.ABL', 3]], [['Song', 4]]]);
+    const { container, unmount } = await renderComponent(
+      <MemoryRouter>
+        <ProjectValidation
+          project={open}
+          projectId="p-1"
+          client={client}
+          onProjectUpdate={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    expect(container.textContent).toContain('1SG.ABL');
+    expect(container.textContent).toContain('1 not in the tagset');
+    // Only the clean metadata field reads as clean.
+    expect(container.textContent.match(/All in the tagset/g)).toHaveLength(1);
+    expect(container.textContent).not.toContain('outside the tagset');
+    expect(container.textContent).not.toContain('is in its tagset');
+    expect(byText(container, 'button', 'Add to tagset')).toBeTruthy();
+    await unmount();
+  });
+
   it('says everything is clean when it is', async () => {
     const client = clientWith([[['1SG.PL', 7]], [['Song', 4]]]);
     const { container, unmount } = await render(client);

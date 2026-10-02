@@ -11,6 +11,13 @@ describe('locateFailing', () => {
     expect(res.passed).toBe(1);
     expect(listedCount(res)).toBe(2);
   });
+
+  it('lists every occurrence under an open list, as the scan counted them', async () => {
+    const open = { ...g, tagset: { ...MIXED, mode: 'suggest' } };
+    const res = await locateFailing(hitsClient(), project, null, open, 'sbj:3.pfv');
+    expect(res.passed).toBe(0);
+    expect(listedCount(res)).toBe(3);
+  });
 });
 
 describe('listedCount', () => {

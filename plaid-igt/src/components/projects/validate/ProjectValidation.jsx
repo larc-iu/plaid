@@ -298,7 +298,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
 
   const header = (
     <ValidationHeader
-      description="Checks every value in the project against its field's tagset, and looks for zero morphs written the wrong way. Values from imports, services and the assistant are not held to closed lists."
+      description="Checks every value in the project against its field's tagset, and looks for zero morphs written the wrong way. Values from imports and services are not held to closed lists."
       busy={busy}
       onCheck={scan}
       className="mb-0"
@@ -402,10 +402,15 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
               {g.tagsetName} · {MODE_LABELS[g.tagset.mode]} · {distinctValues(g.attested)} distinct
               value{distinctValues(g.attested) === 1 ? '' : 's'}
             </span>
-            {g.bad.length > 0 ? (
+            {g.bad.some((row) => row.flagged) ? (
               <span className="ml-auto flex items-center gap-1.5 text-sm font-medium text-destructive">
                 <AlertTriangle className="h-4 w-4" />
                 {g.bad.length} outside the tagset
+              </span>
+            ) : g.bad.length > 0 ? (
+              // An open list refuses nothing: these are what closing it would.
+              <span className="ml-auto text-sm text-muted-foreground">
+                {g.bad.length} not in the tagset
               </span>
             ) : (
               <span className="ml-auto flex items-center gap-1.5 text-sm text-success">
@@ -447,7 +452,11 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
                     // that would open an empty panel.
                     <span className="h-6 w-6 shrink-0" />
                   )}
-                  <code className="rounded bg-destructive/10 px-1.5 py-0.5 text-sm text-destructive">
+                  <code
+                    className={`rounded px-1.5 py-0.5 text-sm ${
+                      row.flagged ? 'bg-destructive/10 text-destructive' : 'bg-muted'
+                    }`}
+                  >
                     {row.value}
                   </code>
                   <span className="text-xs text-muted-foreground">

@@ -83,7 +83,7 @@ export const TagsetsManager = ({
   emptyHint = 'No tagsets yet. Add one, then assign it to a field under Annotation fields.',
   seedLabel = 'Add values used in this project',
   valuesNoun = 'annotations',
-  enforceNote = 'Closed lists apply to what you type. Values brought in by imports, services or the assistant are not checked. The Validation tab lists them.',
+  enforceNote = 'Closed lists apply to what you type and to the assistant. Values brought in by imports or services are not checked. The Validation tab lists them.',
 }) => {
   const [draft, setDraft] = useState(tagsets);
   // The tagsets as the page last read them. A read that brings something new
