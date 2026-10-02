@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { PlaidClient, CONSTRAINT_TYPES, valueSetAllows, violationsOf } from "../src/index.js";
+import { PlaidClient, valueSetAllows, violationsOf } from "../src/index.js";
 
 function queued(fn) {
   const client = new PlaidClient("http://localhost:0", "dummy-token");
@@ -79,11 +79,6 @@ test("violationsOf reads a 422's violations, camelCased", () => {
   assert.equal(violationsOf({ status: 422, responseData: { error: "idempotency-key-reused" } }), null);
   assert.equal(violationsOf({ status: 409, responseData: { violations: [] } }), null);
   assert.equal(violationsOf(new Error("x")), null);
-});
-
-test("CONSTRAINT_TYPES lists the seven types", () => {
-  assert.equal(CONSTRAINT_TYPES.length, 7);
-  assert.ok(CONSTRAINT_TYPES.includes("same-ancestor"));
 });
 
 for (const bundle of Object.keys(BUNDLES)) {

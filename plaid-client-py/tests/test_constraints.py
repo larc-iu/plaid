@@ -13,7 +13,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from plaid_client import CONSTRAINT_TYPES, PlaidAPIError, PlaidClient, value_set_allows, violations_of
+from plaid_client import PlaidAPIError, PlaidClient, value_set_allows, violations_of
 from plaid_client.testing import FakeClient
 
 BUNDLES = {'token_layers': 'token-layers', 'span_layers': 'span-layers', 'relation_layers': 'relation-layers'}
@@ -82,11 +82,6 @@ def test_violations_of_reads_a_422():
     assert violations_of(PlaidAPIError('x', status=422, response_data={'error': 'idempotency-key-reused'})) is None
     assert violations_of(PlaidAPIError('x', status=409, response_data={'violations': []})) is None
     assert violations_of(ValueError('x')) is None
-
-
-def test_constraint_types():
-    assert len(CONSTRAINT_TYPES) == 7
-    assert 'same-ancestor' in CONSTRAINT_TYPES
 
 
 def test_the_fake_records_the_four_methods():

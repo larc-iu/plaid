@@ -62,7 +62,9 @@ test('UD wants its rules on the layers it owns, a value set only on a closed lis
   assert.deepEqual(wantedConstraints(null), []);
 });
 
-test('a settings save queues the layers whose rules it changes, and leaves an undeclared one to the next open', () => {
+// R2-DEBT-APPS-10: as IGT's settings do, a layer that holds no rules yet is
+// declared too, so a list the stored data breaks is refused with the save.
+test('a settings save queues the layers whose rules it changes, each naming what it holds', () => {
   const raw = rawDocFromConllu(INPUT, 'e');
   const info = getUdLayerInfo(raw);
   info.uposLayer.constraints = { ud: [{ type: 'single-span' }] };
@@ -77,10 +79,13 @@ test('a settings save queues the layers whose rules it changes, and leaves an un
     spanLayers: { setConstraints: (...a) => queued.push(['span', ...a]) },
     relationLayers: { setConstraints: (...a) => queued.push(['relation', ...a]) },
   };
-  assert.equal(queueRuleChanges(b, info, after), 1);
-  assert.equal(queued[0][1], info.uposLayer.id);
-  assert.equal(queued[0][3][1].type, 'value-set');
-  assert.deepEqual(queued[0][5], { expected: [{ type: 'single-span' }] });
+  assert.equal(queueRuleChanges(b, info, after), 2);
+  const upos = queued.find((q) => q[1] === info.uposLayer.id);
+  assert.equal(upos[3][1].type, 'value-set');
+  assert.deepEqual(upos[5], { expected: [{ type: 'single-span' }] });
+  const deps = queued.find((q) => q[1] === info.relationLayer.id);
+  assert.ok(deps[3].some((c) => c.type === 'value-set'));
+  assert.deepEqual(deps[5], { expected: null });
 });
 
 test('queueDeclarations declares what differs, naming what each layer holds', () => {

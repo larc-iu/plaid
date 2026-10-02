@@ -3,7 +3,9 @@ import {
   humanizeError,
   isChangedElsewhere,
   isGone,
+  isKeyReused,
   isPermissionError,
+  isTextChanged,
   isUnknownOutcome,
   signInError,
   statusOf,
@@ -291,5 +293,19 @@ describe('a write to something that is gone', () => {
   it('is a change elsewhere, as a 409 is', () => {
     expect(isChangedElsewhere(refused(409, 'conflict'))).toBe(true);
     expect(isChangedElsewhere(refused(400, 'bad'))).toBe(false);
+  });
+});
+
+// R2-DEBT-APPS-7: one reader of each refusal, for every app's text save.
+describe('the refusals a text save reads', () => {
+  const err = (status, responseData = {}) =>
+    Object.assign(new Error('x'), { status, responseData });
+  it('tells a reused key and a changed text', () => {
+    expect(isKeyReused(err(422, { error: 'idempotency-key-reused' }))).toBe(true);
+    expect(isKeyReused(err(422, { violations: [] }))).toBe(false);
+    expect(isTextChanged(err(409, { 'text-changed': true }))).toBe(true);
+    expect(isTextChanged(err(409, { error: 'Document version mismatch' }))).toBe(true);
+    expect(isTextChanged(err(409, { error: 'id-taken', id: 'a' }))).toBe(false);
+    expect(isTextChanged(err(422, {}))).toBe(false);
   });
 });

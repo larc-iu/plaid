@@ -5,6 +5,10 @@
 // given ("HTTP 400 … at http://host/api/v1/…"), and none of that belongs on
 // screen.
 
+// The client's reader of a layer rule's refusal. By its real path: this file
+// is reached from plain node, and that module imports nothing of the page.
+import { violationsOf } from '../../../plaid-client-js/src/constraints.js';
+
 // Pull an HTTP status off an error object or its message ("HTTP 423 …").
 export const statusOf = (error) => {
   if (error && typeof error.status === 'number') return error.status;
@@ -28,7 +32,7 @@ const UNREACHABLE = 'Failed to reach the server. Check your connection and try a
 // A failure that is the network's and passes once it is back. The write queue
 // (domain/WriteQueue.js) waits out exactly these, so what a toast calls "Could
 // not reach the server" is what the queue keeps retrying. This file imports
-// nothing, which is what lets the queue share it.
+// nothing of the page, which is what lets the queue share it.
 export const isUnreachable = (error) => {
   const s = statusOf(error);
   if (s === 0 || s === 502 || s === 503 || s === 504) return true;
@@ -93,15 +97,20 @@ export const isIdTaken = (error) =>
 
 // A write refused because its Idempotency-Key was sent before with another
 // request (422 with `error: "idempotency-key-reused"`).
-const isKeyReused = (error) =>
+export const isKeyReused = (error) =>
   statusOf(error) === 422 && error?.responseData?.error === 'idempotency-key-reused';
+
+// A text save refused because the text, or the document, changed since the
+// save was planned (409 `text-changed`, or the document's version): it is
+// planned again on what is stored now. A taken id is not that.
+export const isTextChanged = (error) => statusOf(error) === 409 && !isIdTaken(error);
 
 // A write refused by a rule its layer declares (422 with `violations`): two
 // heads on one word, a value outside a closed tagset, a relation across
 // sentences. Nothing was stored. Not a conflict: the same write refused again
-// the same way, so the screen puts the value back rather than refetch.
-export const isConstraintViolation = (error) =>
-  statusOf(error) === 422 && Array.isArray(error?.responseData?.violations);
+// the same way, so the screen puts the value back rather than refetch. The
+// violations themselves are the client's `violationsOf`.
+export const isConstraintViolation = (error) => violationsOf(error) !== null;
 
 // A write refused because the document changed under it: a conflict (409),
 // or what it names is gone. Either way the screen refetches and shows what

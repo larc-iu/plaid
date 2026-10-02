@@ -1,5 +1,6 @@
 import { settleKey } from '../pendingIds.js';
 import { setUnsavedDraft } from '../../hooks/useUnsavedDraft.js';
+import { isConstraintViolation } from '../../lib/errors.js';
 
 // What becomes of a grid cell's edit that the server refused, one copy for
 // every app's grid (Luke's ruling Q1, 2026-09-29). The engine holds the
@@ -317,7 +318,7 @@ export class CellEngine {
       this._changed(key);
       return { kind: 'gone', typed, status };
     }
-    if (this._rejected.has(status) && Array.isArray(outcome.error?.responseData?.violations)) {
+    if (this._rejected.has(status) && isConstraintViolation(outcome.error)) {
       const shown = now === typed && !outcome.readBack ? base : now;
       view?.showStored?.(shown, { conflict: false });
       this._changed(key);

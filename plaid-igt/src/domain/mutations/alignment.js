@@ -43,7 +43,7 @@ import {
   wasReplayed,
 } from '@larc-iu/plaid-client';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
-import { isChangedElsewhere, isUnknownOutcome, statusOf } from '@ui/lib/errors.js';
+import { isChangedElsewhere, isKeyReused, isUnknownOutcome } from '@ui/lib/errors.js';
 import { inferEdit } from '@ui/lib/editLog.js';
 import { applyReshape } from '@ui/domain/textReshape.js';
 import { applyGapsLocally, applyTextEditsLocally, removeTokensLocally } from '../textEdits.js';
@@ -385,15 +385,6 @@ const replannedMetadata = (mine, was = {}, now = {}) => {
   }
   return out;
 };
-
-/**
- * A write refused because its Idempotency-Key was sent before with another
- * request (422 `idempotency-key-reused`): a run of a send whose earlier run
- * landed, with its answer lost, and planned again since. What it wrote is
- * read back.
- */
-export const isKeyReused = (error) =>
-  statusOf(error) === 422 && error?.responseData?.error === 'idempotency-key-reused';
 
 /**
  * Run `fn`, the requests of one plan of a write, as an operation under the

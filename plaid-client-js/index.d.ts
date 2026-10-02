@@ -2004,8 +2004,6 @@ export interface ConstraintViolation {
   value?: any;
   parts?: string[];
 }
-/** The constraint types. */
-export const CONSTRAINT_TYPES: readonly string[];
 /** The camelCased violations of a write refused by a layer constraint, or null. */
 export function violationsOf(err: any): ConstraintViolation[] | null;
 export function valueSetAllows(

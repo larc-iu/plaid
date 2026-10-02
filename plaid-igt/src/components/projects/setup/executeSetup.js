@@ -37,7 +37,8 @@ import {
 } from '../../../domain/igtConfig.js';
 import { seedDefaultFields } from '../../../domain/vocabFields.js';
 import { getIgtLayerInfo } from '../../../domain/layerInfo.js';
-import { sameConstraints, wantedConstraints } from '../../../domain/igtConstraints.js';
+import { wantedConstraints } from '../../../domain/igtConstraints.js';
+import { sameConstraints } from '../../../../../plaid-ui/src/lib/layerConstraints.js';
 import { statusFieldSeed } from '../../../domain/vocabDictionary.js';
 
 // The text layer's name is internal (it is matched by role, never surfaced),

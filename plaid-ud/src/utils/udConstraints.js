@@ -7,26 +7,12 @@
 // used to heal on open is gone.
 
 import { MODES, valueSetRule } from './udVocabMode.js';
+import {
+  rulesNotInForce as findingsFor,
+  sameConstraints,
+} from '../../../plaid-ui/src/lib/layerConstraints.js';
 
 const UD_NAMESPACE = 'ud';
-
-// A value with every object's keys in order: the server hands a constraint
-// back with its keys in an order of its own.
-const canonical = (value) => {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.keys(value)
-        .sort()
-        .map((k) => [k, canonical(value[k])]),
-    );
-  }
-  return value;
-};
-
-/** Whether two constraint lists are the same, absent and empty alike. */
-const sameConstraints = (a, b) =>
-  JSON.stringify(canonical(a?.length ? a : [])) === JSON.stringify(canonical(b?.length ? b : []));
 
 const stored = (layer) => layer?.constraints?.[UD_NAMESPACE] ?? null;
 
@@ -100,31 +86,27 @@ const BUNDLE = { token: 'tokenLayers', span: 'spanLayers', relation: 'relationLa
 /**
  * Queue on batch `b` the declarations a settings save changes: the layers
  * whose rules differ between `before` and `after` (getUdLayerInfo of the
- * project before and after the save), each naming what it holds. A layer
- * that holds no UD rules yet is left to a maintainer's next open, which
- * repairs its data before it declares. Returns how many it queued.
+ * project before and after the save), each naming what it holds, as IGT's
+ * settings do. The declaration goes in the same batch as the settings
+ * write, so a list the stored data breaks is refused with it. Returns how
+ * many it queued.
  */
 export const queueRuleChanges = (b, before, after) => {
   const was = new Map(wantedConstraints(before).map((w) => [w.layerId, w]));
   let n = 0;
   for (const w of wantedConstraints(after)) {
-    if (!w.stored) continue;
     if (sameConstraints(w.constraints, was.get(w.layerId)?.constraints)) continue;
     b[BUNDLE[w.kind]].setConstraints(w.layerId, w.namespace, w.constraints, undefined, {
-      expected: w.stored,
+      expected: w.stored ?? null,
     });
     n += 1;
   }
   return n;
 };
 
-/**
- * One validator finding per layer whose rules are not in force: stored data
- * breaks a rule with no repair (two heads on a word, a cycle, a value off a
- * closed list), so the server refused the declaration.
- */
-export const rulesNotInForce = (pending, info) => {
-  const layers = [
+/** The findings for the layers whose rules are not in force (plaid-ui's). */
+export const rulesNotInForce = (pending, info) =>
+  findingsFor(pending, [
     info?.morphemeTokenLayer,
     info?.formLayer,
     info?.lemmaLayer,
@@ -132,18 +114,7 @@ export const rulesNotInForce = (pending, info) => {
     info?.xposLayer,
     info?.relationLayer,
     info?.enhancedRelationLayer,
-  ];
-  return (pending || []).map((p) => {
-    const name = layers.find((l) => l?.id === p.layerId)?.name ?? p.layerId;
-    const n = p.violationCount;
-    return {
-      severity: 'warning',
-      code: 'layer-rules-not-in-force',
-      message: `The ${p.constraints.join(' and ')} rules of "${name}" are not in force: ${n} stored ${n === 1 ? 'row breaks' : 'rows break'} them.`,
-      context: p,
-    };
-  });
-};
+  ]);
 
 /**
  * A copy of `project` with each of `writes` ({entity, key, value}, a config

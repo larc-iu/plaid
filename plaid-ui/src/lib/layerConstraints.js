@@ -15,6 +15,7 @@
 // the document being opened, as the old heals did, and declares nothing.
 
 import { isConstraintViolation, statusOf } from './errors.js';
+import { violationsOf } from '../../../plaid-client-js/src/constraints.js';
 
 const REMEDIABLE = new Set(['coextensive', 'single-span', 'single-link', 'same-ancestor']);
 
@@ -35,7 +36,7 @@ const canonical = (value) => {
 };
 
 /** Whether two constraint lists are the same (absent and empty alike). */
-const sameConstraints = (a, b) =>
+export const sameConstraints = (a, b) =>
   JSON.stringify(canonical(a?.length ? a : [])) === JSON.stringify(canonical(b?.length ? b : []));
 
 const sameRule = (a, b) => sameConstraints([a], [b]);
@@ -92,6 +93,33 @@ const planOf = async (client, entry) => {
     pending: broken.length ? { constraints: broken, violationCount: count } : null,
   };
 };
+
+// What a rule of a layer of each kind is kept on, for the finding.
+const ROW_WORDS = {
+  token: ['token', 'tokens'],
+  span: ['value', 'values'],
+  relation: ['relation', 'relations'],
+};
+
+/**
+ * One validator finding per layer whose rules are not in force (`pending`
+ * from ensureLayerConstraints): the server refused the declaration because
+ * stored data breaks a rule it has no repair for. `layers` are the app's
+ * layer reads, for their names. Written for the console and the copied
+ * details, like every finding.
+ */
+export const rulesNotInForce = (pending, layers) =>
+  (pending || []).map((p) => {
+    const name = (layers || []).find((l) => l?.id === p.layerId)?.name ?? p.layerId;
+    const n = p.violationCount;
+    const [one, many] = ROW_WORDS[p.kind] ?? ['row', 'rows'];
+    return {
+      severity: 'warning',
+      code: 'layer-rules-not-in-force',
+      message: `The ${p.constraints.join(' and ')} rules of "${name}" are not in force: ${n} stored ${n === 1 ? `${one} breaks` : `${many} break`} them.`,
+      context: p,
+    };
+  });
 
 const pendingEntry = (entry, constraints, violationCount) => ({
   layerId: entry.layerId,
@@ -179,7 +207,7 @@ export async function ensureLayerConstraints(
               break;
             } catch (e) {
               if (isConstraintViolation(e)) {
-                const named = typesOf(e.responseData.violations);
+                const named = typesOf(violationsOf(e));
                 const held = pendingOf.get(w.layerId) ?? { constraints: [], violationCount: 0 };
                 if (!counted) held.violationCount += countOf(e.responseData);
                 counted = true;

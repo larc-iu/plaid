@@ -11,28 +11,13 @@
 // Relative imports only: project setup (executeSetup.js) runs this from plain
 // node too.
 import { IGT_NAMESPACE } from './igtConfig.js';
-import { MODES, resolveTagset, splitValue } from './tagsets.js';
-
-// A value with every object's keys in order: the server hands a constraint
-// back with its keys in an order of its own.
-const canonical = (value) => {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.keys(value)
-        .sort()
-        .map((k) => [k, canonical(value[k])]),
-    );
-  }
-  return value;
-};
-
-/** Whether two constraint lists are the same, absent and empty alike. */
-export const sameConstraints = (a, b) =>
-  JSON.stringify(canonical(a?.length ? a : [])) === JSON.stringify(canonical(b?.length ? b : []));
-
-/** The list a layer read holds for IGT's namespace, or null. */
-const storedConstraints = (layer, namespace) => layer?.constraints?.[namespace] ?? null;
+import { MODES, resolveTagset } from './tagsets.js';
+import { valueSetAllows, violationsOf } from '../../../plaid-client-js/src/constraints.js';
+import {
+  rulesNotInForce as findingsFor,
+  sameConstraints,
+  storedConstraints,
+} from '../../../plaid-ui/src/lib/layerConstraints.js';
 
 const tokenEntry = (layer, constraints) => ({
   kind: 'token',
@@ -129,12 +114,10 @@ export const igtFields = (layerInfo) => Object.values(layerInfo?.spanLayers || {
  * tagset it would put in force, or null for any other refusal.
  */
 export const tagsetRefusal = (error) => {
-  const vs = error?.status === 422 ? error?.responseData?.violations : null;
-  if (!Array.isArray(vs) || !vs.length || !vs.every((v) => v.constraint === 'value-set')) {
-    return null;
-  }
+  const vs = violationsOf(error);
+  if (!vs?.length || !vs.every((v) => v.constraint === 'value-set')) return null;
   const n = error.responseData['violation-count'] ?? vs.length;
-  const fields = [...new Set(vs.map((v) => v['layer-name'] ?? v.layerName).filter(Boolean))];
+  const fields = [...new Set(vs.map((v) => v.layerName).filter(Boolean))];
   const values = [...new Set(vs.map((v) => v.value).filter((v) => typeof v === 'string'))];
   const shown = values.slice(0, 5).join(', ') + (values.length > 5 ? ', …' : '');
   return `${n} ${n === 1 ? 'value' : 'values'} in ${fields.join(', ')} ${n === 1 ? 'is' : 'are'} not in the tagset: ${shown}.`;
@@ -145,24 +128,11 @@ export const tagsetRefusal = (error) => {
  * listed, or only the first with `parts: 'first'`. The server's rule, read
  * the same way, for the screen's mirror of a join it makes.
  */
-export const valueSetsAllow = (layer, value) => {
-  const rules = Object.values(layer?.constraints || {})
+export const valueSetsAllow = (layer, value) =>
+  Object.values(layer?.constraints || {})
     .flat()
-    .filter((c) => c?.type === 'value-set');
-  if (value == null || (typeof value === 'string' && value.trim() === '')) return true;
-  if (typeof value !== 'string') return rules.length === 0;
-  return rules.every((c) => {
-    const allowed = new Set(c.values || []);
-    const parts = splitValue(value, c.delimiters || '');
-    if (c.parts === 'first') {
-      const firsts = new Set(
-        (c.values || []).map((v) => splitValue(v, c.delimiters || '')[0].trim()),
-      );
-      return firsts.has(parts[0].trim());
-    }
-    return parts.every((p) => p.trim() !== '' && allowed.has(p.trim()));
-  });
-};
+    .filter((c) => c?.type === 'value-set')
+    .every((c) => valueSetAllows(c, value));
 
 /**
  * What the server's rules leave after a word merge, for the screen to show at
@@ -229,26 +199,10 @@ export const applyMergeRules = (infoNext, vocabs, survivorId, beginOf, own) => {
   }
 };
 
-/**
- * One validator finding per layer whose rules are not in force: the server
- * refused the declaration because stored data breaks a rule it has no repair
- * for (a value outside a closed tagset). Written for the console and the
- * copied details, like every finding.
- */
-export const rulesNotInForce = (pending, layerInfo) => {
-  const layers = [
+/** The findings for the layers whose rules are not in force (plaid-ui's). */
+export const rulesNotInForce = (pending, layerInfo) =>
+  findingsFor(pending, [
     layerInfo?.morphemeTokenLayer,
     layerInfo?.primaryTokenLayer,
     ...Object.values(layerInfo?.spanLayers || {}).flat(),
-  ];
-  return (pending || []).map((p) => {
-    const name = layers.find((l) => l?.id === p.layerId)?.name ?? p.layerId;
-    const n = p.violationCount;
-    return {
-      severity: 'warning',
-      code: 'layer-rules-not-in-force',
-      message: `The ${p.constraints.join(' and ')} rules of "${name}" are not in force: ${n} stored ${n === 1 ? 'value breaks' : 'values break'} them.`,
-      context: p,
-    };
-  });
-};
+  ]);

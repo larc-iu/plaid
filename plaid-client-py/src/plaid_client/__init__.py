@@ -40,7 +40,7 @@ from plaid_client.provenance import (
     with_reviewed_user,
     WriterPolicy,
 )
-from plaid_client.constraints import CONSTRAINT_TYPES, value_set_allows, violations_of
+from plaid_client.constraints import value_set_allows, violations_of
 from plaid_client.created import created_id, created_ids
 from plaid_client.ids import uuid7
 from plaid_client.replayed import was_replayed
@@ -62,7 +62,6 @@ from plaid_client.roles import (
 from plaid_client.text_edits import compose_text_edits, gaps_to_ops, apply_text_ops
 
 __all__ = [
-    "CONSTRAINT_TYPES",
     "value_set_allows",
     "violations_of",
     "created_id",

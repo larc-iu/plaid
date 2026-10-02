@@ -8,7 +8,7 @@
 // over its whole sentence is placed in that sentence, the one it records.
 //
 // By their real paths rather than through `@ui`: the node suite has no alias.
-import { storedConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
+import { rulesNotInForce, storedConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
 import { UMR_NAMESPACE } from '../utils/umrLayerUtils.js';
 
 /** The rules on the sentence graph's relation layer, for a sentence layer id. */
@@ -36,36 +36,11 @@ export const wantedConstraints = (layerInfo) => {
   ];
 };
 
-const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-
 /**
- * One validator finding for the rules the stored data kept from being
- * declared (`pending` from ensureLayerConstraints), or none.
+ * The validator findings for the rules the stored data kept from being
+ * declared (`pending` from ensureLayerConstraints), one per layer (plaid-ui's).
  * @param {Array<object>} pending
  * @param {object} layerInfo - from getUmrLayerInfo
  */
-export const constraintFindings = (pending, layerInfo) => {
-  if (!pending?.length) return [];
-  const layers = [layerInfo?.relationLayer, layerInfo?.documentGraphLayer].filter(Boolean);
-  const nameOf = (id) => layers.find((l) => l.id === id)?.name || 'UMR relations';
-  const lines = pending.map((p) => {
-    const n = p.violationCount;
-    const name = nameOf(p.layerId);
-    if (p.constraints?.length === 1 && p.constraints[0] === 'same-ancestor') {
-      return (
-        `The rule that a relation stays inside its sentence is not in force on ${name}: ` +
-        `${count(n, 'relation crosses', 'relations cross')} sentences. ` +
-        `Fix ${n === 1 ? 'it' : 'them'} to put it in force.`
-      );
-    }
-    return `The rules of ${name} are not in force: ${count(n, 'relation breaks', 'relations break')} them.`;
-  });
-  return [
-    {
-      severity: 'warning',
-      code: 'layer-rules-not-in-force',
-      message: lines.join(' '),
-      context: { pending },
-    },
-  ];
-};
+export const constraintFindings = (pending, layerInfo) =>
+  rulesNotInForce(pending, [layerInfo?.relationLayer, layerInfo?.documentGraphLayer]);

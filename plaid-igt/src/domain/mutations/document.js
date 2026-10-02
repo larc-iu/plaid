@@ -17,13 +17,13 @@ import {
 } from '@larc-iu/plaid-client';
 import { lineSentenceRanges } from '../../utils/tokenizationUtils.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
-import { isUnknownOutcome, statusOf } from '@ui/lib/errors.js';
+import { isKeyReused, isTextChanged, isUnknownOutcome } from '@ui/lib/errors.js';
 import { pendingId } from '@ui/domain/pendingIds.js';
 import { mergeText, rebaseEdits } from '@ui/lib/textMerge.js';
 import { storedHolds } from '@ui/lib/editLog.js';
 import { applyReshape } from '@ui/domain/textReshape.js';
 import { getIgtLayerInfo } from '../layerInfo.js';
-import { isKeyReused, underKeys } from './alignment.js';
+import { underKeys } from './alignment.js';
 
 // One sentence per line of a freshly saved text. The server keeps the
 // partition in step with later edits; the Tokenize tab moves the breaks.
@@ -184,7 +184,7 @@ export const documentMutations = {
       } catch (err) {
         outcome.landed = plan.landed;
         outcome.conflict =
-          !plan.landed && (err?.message === BASELINE_CONFLICT || statusOf(err) === 409);
+          !plan.landed && (err?.message === BASELINE_CONFLICT || isTextChanged(err));
         throw err;
       }
     });
@@ -258,7 +258,7 @@ export const documentMutations = {
         // server answers a key it stored before the digest is looked at, so
         // nothing under these keys is stored. A read that fails leaves the
         // refusal as it is.
-        const conflict = statusOf(err) === 409;
+        const conflict = isTextChanged(err);
         if (conflict && !again) {
           if (attempt < 2) {
             await this._planBaselineEdit(plan, await this._readStoredText());
@@ -348,7 +348,7 @@ export const documentMutations = {
         }
         return body;
       } catch (err) {
-        if (statusOf(err) === 409 && attempt < 2) {
+        if (isTextChanged(err) && attempt < 2) {
           await this._reloadInSend();
           continue;
         }

@@ -6,17 +6,6 @@ core manual, "Layer constraints". The JS twin is plaid-client-js's
 
 from plaid_client.transforms import transform_response
 
-#: The constraint types.
-CONSTRAINT_TYPES = (
-    'max-in-degree',
-    'acyclic',
-    'same-ancestor',
-    'single-span',
-    'value-set',
-    'coextensive',
-    'single-link',
-)
-
 
 def violations_of(err):
     """The violations of a write refused by a layer constraint, snake_cased

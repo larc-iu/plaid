@@ -4193,7 +4193,7 @@ function constraintMethods(client, kind) {
 
 export default PlaidClient;
 export { PlaidClient };
-export { CONSTRAINT_TYPES, valueSetAllows, violationsOf } from "./constraints.js";
+export { valueSetAllows, violationsOf } from "./constraints.js";
 
 // Unicode code-point helpers for text offsets (token begin/end are code-point
 // indices). See ./codepoint.js.

@@ -7,17 +7,6 @@
 
 import { transformResponse } from "./transforms.js";
 
-/** The constraint types, by the layer kind that may carry them. */
-export const CONSTRAINT_TYPES = Object.freeze([
-  "max-in-degree",
-  "acyclic",
-  "same-ancestor",
-  "single-span",
-  "value-set",
-  "coextensive",
-  "single-link",
-]);
-
 /**
  * The violations of a write refused by a layer constraint, camelCased
  * ({constraint, namespace, layer, layerName, document, at, ids, value?,

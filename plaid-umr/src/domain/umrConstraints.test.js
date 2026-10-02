@@ -56,20 +56,20 @@ describe('constraintFindings', () => {
     expect(constraintFindings(undefined, info())).toEqual([]);
   });
 
+  // R2-DEBT-APPS-10: worded as every app words it (plaid-ui's rulesNotInForce).
   it('turns a rule left out into one warning naming the layer and the count', () => {
     const [finding, ...rest] = constraintFindings([pending(2)], info());
     expect(rest).toEqual([]);
     expect(finding).toMatchObject({ severity: 'warning', code: 'layer-rules-not-in-force' });
     expect(finding.message).toBe(
-      'The rule that a relation stays inside its sentence is not in force on UMR relations: ' +
-        '2 relations cross sentences. Fix them to put it in force.',
+      'The same-ancestor rules of "UMR relations" are not in force: 2 stored relations break them.',
     );
-    expect(finding.context.pending).toEqual([pending(2)]);
+    expect(finding.context).toEqual(pending(2));
   });
 
   it('says one relation in the singular', () => {
     expect(constraintFindings([pending(1)], info())[0].message).toContain(
-      '1 relation crosses sentences. Fix it to put it in force.',
+      '1 stored relation breaks them.',
     );
   });
 });

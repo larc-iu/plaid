@@ -209,8 +209,7 @@ test('a declaration the stored data refuses becomes one warning', async () => {
   assert.equal(finding.code, 'layer-rules-not-in-force');
   assert.equal(
     finding.message,
-    'The rule that a relation stays inside its sentence is not in force on UMR relations: ' +
-      '2 relations cross sentences. Fix them to put it in force.',
+    'The same-ancestor rules of "UMR relations" are not in force: 2 stored relations break them.',
   );
   assert.equal(result.rulesDeclared, undefined);
 });

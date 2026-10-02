@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { ensureLayerConstraints, storedConstraints } from './layerConstraints.js';
+import {
+  ensureLayerConstraints,
+  rulesNotInForce,
+  sameConstraints,
+  storedConstraints,
+} from './layerConstraints.js';
 import { humanizeError, isChangedElsewhere, isConstraintViolation } from './errors.js';
 
 // A client with the four bundle methods, a batch that queues them, and a
@@ -335,5 +340,31 @@ describe('a refusal by a layer rule', () => {
       responseData: { error: 'idempotency-key-reused' },
     });
     expect(isConstraintViolation(reused)).toBe(false);
+  });
+});
+
+// R2-DEBT-APPS-10: one copy of the comparison and of the finding, for every app.
+describe('the helpers every app shares', () => {
+  it('compares lists by content, absent and empty alike', () => {
+    expect(sameConstraints(null, [])).toBe(true);
+    expect(sameConstraints([{ a: 1, b: 2 }], [{ b: 2, a: 1 }])).toBe(true);
+    expect(sameConstraints([{ type: 'x' }], [])).toBe(false);
+  });
+
+  it('words a finding per layer by what its rows are', () => {
+    const pending = [
+      { layerId: 'R', kind: 'relation', constraints: ['acyclic'], violationCount: 1 },
+      { layerId: 'S', kind: 'span', constraints: ['value-set'], violationCount: 3 },
+    ];
+    const found = rulesNotInForce(pending, [{ id: 'R', name: 'Deps' }]);
+    expect(found.map((f) => f.message)).toEqual([
+      'The acyclic rules of "Deps" are not in force: 1 stored relation breaks them.',
+      'The value-set rules of "S" are not in force: 3 stored values break them.',
+    ]);
+    expect(found[0]).toMatchObject({
+      severity: 'warning',
+      code: 'layer-rules-not-in-force',
+      context: pending[0],
+    });
   });
 });
