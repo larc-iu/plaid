@@ -319,13 +319,31 @@ export const analysisCopyMutations = {
 
     // Every word here is unanalyzed by definition, so its first morpheme is
     // usually the one derive synthesized rather than a stored token: it is
-    // made along with the rest, carrying the first slot's patch.
-    const { ids: firstIds, creates: firstCreates } = this._planMorphemes(todo.map((p) => p.m0.id));
+    // made along with the rest, carrying the first slot's patch. Only where
+    // the copy puts something on it, though: a precedent whose first slot
+    // carries nothing (its analysis is all on the word) would otherwise store
+    // a morpheme with every field derivable.
+    const firstCarries = ({ token, analysis }) => {
+      const slots = analysis.morphemes || [];
+      const s0 = slots[0];
+      if (slots.length > 1) return true;
+      if (!s0) return false;
+      return (
+        (s0.form != null && s0.form !== token.content) ||
+        s0.morphType != null ||
+        !!findVocabHome(this._vocabularies, s0.vocabItemId) ||
+        Object.keys(s0.fields || {}).some((name) => morphLayersByName.has(name))
+      );
+    };
+    const carries = todo.map(firstCarries);
+    const { ids: firstIds, creates: firstCreates } = this._planMorphemes(
+      todo.map((p, i) => (carries[i] ? p.m0.id : null)),
+    );
     const createdFirst = new Map(firstCreates.map((c) => [c.id, c]));
     const words = [];
     todo.forEach((p, i) => {
       const m0Id = firstIds[i];
-      if (!m0Id) return;
+      if (carries[i] && !m0Id) return;
       const { token, analysis } = p;
       const word = { m0Id, create: createdFirst.get(m0Id) || null, patch: null, extra: [] };
       word.links = [];
@@ -348,7 +366,7 @@ export const analysisCopyMutations = {
         }
       };
       const slots = analysis.morphemes || [];
-      const s0 = slots[0] || null;
+      const s0 = carries[i] ? slots[0] || null : null;
       // First slot reuses the default morpheme. Only stamp the token when the
       // copy actually changes its segmentation-tier data (form/morphType):
       // links/spans carry their own provenance.

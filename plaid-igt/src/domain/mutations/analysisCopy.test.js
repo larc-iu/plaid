@@ -314,3 +314,52 @@ describe('analysis prediction extras', () => {
     expect(client.calls.filter((c) => stamped(c.args))).toEqual([]);
   });
 });
+
+// A precedent whose first morpheme carries nothing (its analysis is all on the
+// word) puts nothing on the copy's first morpheme either, and an unanalyzed
+// word's morpheme is not stored until something is (H2-IGT-ANALYZE-5).
+describe('a copy onto a word with no stored morpheme', () => {
+  beforeEach(() => resetIds());
+  const bareRaw = () =>
+    buildRawDoc({
+      body: 'the kat',
+      morphemes: [{ id: 'm-1', text: 'text-1', begin: 0, end: 3, precedence: 1, metadata: {} }],
+    });
+  // As { begin, end, precedence }, whichever call made them.
+  const morphemeCreates = (client) =>
+    client.calls.flatMap((c) => {
+      if (c.kind === 'tokens.bulkCreate') return c.args[0];
+      if (c.kind !== 'tokens.create') return [];
+      const [, , begin, end, precedence] = c.args;
+      return [{ begin, end, precedence }];
+    });
+
+  it('makes no morpheme when the first slot carries nothing', async () => {
+    const client = clientFor({ reloadDoc: bareRaw() });
+    const doc = docFor(bareRaw(), client);
+    const wordOnly = {
+      word: { vocabItemId: null, fields: { POS: 'N' } },
+      morphemes: [{ form: 'kat', morphType: null, vocabItemId: null, fields: {} }],
+    };
+    expect(
+      await doc.bulkApplyAnalyses([{ wordTokenId: 'w-2', analysis: wordOnly }], 'rule:test'),
+    ).toBe(1);
+    expect(morphemeCreates(client)).toEqual([]);
+    expect(client.calls.find((c) => c.kind === 'tokens.bulkUpdate')).toBeUndefined();
+    const spans = client.calls
+      .filter((c) => c.kind === 'spans.bulkCreate')
+      .flatMap((c) => c.args[0]);
+    expect(spans.map((s) => [s.value, s.tokens])).toEqual([['N', ['w-2']]]);
+  });
+
+  it('makes it with what the first slot carries', async () => {
+    const client = clientFor({ reloadDoc: bareRaw() });
+    const doc = docFor(bareRaw(), client);
+    expect(
+      await doc.bulkApplyAnalyses([{ wordTokenId: 'w-2', analysis: targetAnalysis }], 'rule:test'),
+    ).toBe(1);
+    const created = morphemeCreates(client);
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({ begin: 4, end: 7, precedence: 1 });
+  });
+});
