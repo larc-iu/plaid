@@ -1742,3 +1742,70 @@ describe('field order', () => {
     ]);
   });
 });
+
+// Speaker tiers named by prefix with no PARTICIPANT (`W-Spch`, `K-Spch`) used
+// to come in as segments with no speaker, and their cross-talk as an overlap
+// the next open reported as a broken document (REV-MEDIA-4). The tier names
+// the speaker, and an overlap that is still not cross-talk loses the later
+// segment's time, with a warning.
+describe('speakers of tiers with no participant', () => {
+  const build = (tiers) => {
+    const parsed = [readEaf(eafXml({ types: { u: null }, tiers }), 'x.eaf')];
+    const { nodes } = compareSchemas(parsed);
+    const roles = Object.fromEntries(nodes.map((n) => [n.key, ROLES.UTTERANCE]));
+    return buildElanDocuments(parsed, nodes, roles).documents[0];
+  };
+  const spans = (doc) => doc.alignments.map((a) => [a.timeBegin, a.timeEnd, a.speaker]);
+
+  it('takes the speaker from the tier name, so their overlap is cross-talk', () => {
+    const doc = build([
+      { id: 'W-Spch', type: 'u', anns: [['w1', 'kai pele', 4000, 6500]] },
+      { id: 'K-Spch', type: 'u', anns: [['k1', 'dunu kata', 6200, 9000]] },
+    ]);
+    expect(spans(doc)).toEqual([
+      [4, 6.5, 'W'],
+      [6.2, 9, 'K'],
+    ]);
+    expect(doc.warnings.join(' ')).not.toMatch(/overlaps/);
+  });
+
+  it('takes the whole tier name when the names share no part', () => {
+    const doc = build([
+      { id: 'Ana', type: 'u', anns: [['a1', 'kai', 0, 2000]] },
+      { id: 'Bo', type: 'u', anns: [['b1', 'pele', 1000, 3000]] },
+    ]);
+    expect(spans(doc)).toEqual([
+      [0, 2, 'Ana'],
+      [1, 3, 'Bo'],
+    ]);
+  });
+
+  it('drops the later time of an overlap with one voice, and says so', () => {
+    const doc = build([
+      { id: 'A1', type: 'u', participant: 'Ana', anns: [['a1', 'kai', 0, 2000]] },
+      { id: 'A2', type: 'u', participant: 'Ana', anns: [['a2', 'pele', 1500, 3000]] },
+    ]);
+    expect(doc.body).toBe('kai\npele');
+    expect(spans(doc)).toEqual([[0, 2, 'Ana']]);
+    expect(doc.warnings).toContain(
+      'Utterance 2 overlaps utterance 1 in time with the same speaker. Its time is not imported.',
+    );
+  });
+
+  it('keeps one tier with no participant unlabelled, and drops an overlap in it', () => {
+    const doc = build([
+      {
+        id: 'Spch',
+        type: 'u',
+        anns: [
+          ['s1', 'kai', 0, 2000],
+          ['s2', 'pele', 1500, 3000],
+        ],
+      },
+    ]);
+    expect(spans(doc)).toEqual([[0, 2, null]]);
+    expect(doc.warnings).toContain(
+      'Utterance 2 overlaps utterance 1 in time with no speaker to tell them apart. Its time is not imported.',
+    );
+  });
+});

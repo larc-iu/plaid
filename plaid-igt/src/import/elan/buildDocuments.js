@@ -32,6 +32,7 @@ import { joinPhrase } from '../flex/flextextParser.js';
 import { fieldWorksFieldNames, parseElanFlexTierName, parseFlexTierName } from './tierNaming.js';
 import { chainOrder } from './readEaf.js';
 import { MEDIA_FILE_FIELD } from '../../domain/igtConfig.js';
+import { mayOverlap } from '../../domain/alignmentTimes.js';
 
 // A value that is only punctuation (or symbols), as FLEx's punctuation is.
 const PUNCTUATION = /^[\p{P}\p{S}]+$/u;
@@ -187,6 +188,67 @@ const tiersOfNodes = (eaf, nodeList) => {
   const ids = new Set(nodeList.flatMap((n) => n.tierIds));
   return eaf.tiers.filter((t) => ids.has(t.id));
 };
+
+/**
+ * The speaker each utterance tier with no PARTICIPANT names, when the
+ * utterance role holds several tiers: a corpus that gives each speaker a tier
+ * tree of its own names them by prefix (`W-Spch`, `K-Spch`). The parts of the
+ * name every such tier shares (`Spch`) are the tier's type, and what is left
+ * is the speaker (`W`). A name with nothing left is the speaker whole. One
+ * tier alone is one voice, and names none. A map of tier id to speaker.
+ */
+function tierSpeakers(tiers) {
+  const unnamed = tiers.filter((t) => !t.participant);
+  if (tiers.length < 2 || !unnamed.length) return new Map();
+  const parts = unnamed.map((t) => t.id.split(/[-_@.\s]+/).filter(Boolean));
+  const shared =
+    unnamed.length < 2
+      ? new Set()
+      : new Set(parts[0].filter((part) => parts.every((ps) => ps.includes(part))));
+  return new Map(
+    unnamed.map((t, i) => {
+      const left = parts[i].filter((part) => !shared.has(part)).join('-');
+      return [t.id, left || t.id];
+    }),
+  );
+}
+
+/**
+ * The segments whose times may be kept: two may overlap in time only when
+ * both have a speaker and the speakers differ (alignmentTimes.js), so of an
+ * overlap that is not cross-talk the later one loses its time, and a warning
+ * says which. `utterances[i]` is the number of the utterance segment i is in.
+ */
+function keepTimeRule(alignments, utterances, warnings) {
+  const asToken = (a) => ({ metadata: { speaker: a.speaker ?? '' } });
+  const order = alignments
+    .map((a, i) => i)
+    .sort((i, j) => alignments[i].timeBegin - alignments[j].timeBegin || i - j);
+  const kept = [];
+  const dropped = new Set();
+  for (const i of order) {
+    const a = alignments[i];
+    const clash = kept.find(
+      (k) =>
+        alignments[k].timeBegin < a.timeEnd &&
+        alignments[k].timeEnd > a.timeBegin &&
+        !mayOverlap(asToken(alignments[k]), asToken(a)),
+    );
+    if (clash === undefined) {
+      kept.push(i);
+      continue;
+    }
+    dropped.add(i);
+    const why = a.speaker ? 'with the same speaker' : 'with no speaker to tell them apart';
+    const [n, m] = [utterances[i], utterances[clash]];
+    warnings.push(
+      n === m
+        ? `Utterance ${n}: two of its time segments overlap ${why}. The later one's time is not imported.`
+        : `Utterance ${n} overlaps utterance ${m} in time ${why}. Its time is not imported.`,
+    );
+  }
+  return alignments.filter((a, i) => !dropped.has(i));
+}
 
 /**
  * Utterances in reading order. The aligned ones go by start time. An
@@ -448,7 +510,9 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
     const utterances = [];
     let blankUtterances = 0;
     let unplacedWords = 0;
-    for (const tier of tiersOfNodes(eaf, utteranceNodes)) {
+    const utteranceTiers = tiersOfNodes(eaf, utteranceNodes);
+    const speakerOfTier = tierSpeakers(utteranceTiers);
+    for (const tier of utteranceTiers) {
       for (const ann of tier.annotations) {
         const rebuilt = textFromWords ? rebuildFromWords(ann, tier) : null;
         if (rebuilt) unplacedWords += rebuilt.unplaced;
@@ -460,7 +524,8 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
           blankUtterances += 1;
           continue;
         }
-        utterances.push({ ann, tier, speaker: tier.participant || null, rebuilt });
+        const speaker = tier.participant || speakerOfTier.get(tier.id) || null;
+        utterances.push({ ann, tier, speaker, rebuilt });
       }
     }
     if (blankUtterances) {
@@ -503,6 +568,12 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
     const sentences = [];
     const words = [];
     const alignments = [];
+    // The utterance each segment is in, by number, for the time rule's warnings.
+    const alignmentUtterances = [];
+    const pushAlignment = (si, a) => {
+      alignments.push(a);
+      alignmentUtterances.push(si + 1);
+    };
 
     pieces.forEach((piece, si) => {
       const fields = {};
@@ -518,7 +589,7 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
       // are placed inside the utterance the same way words are.
       if (!alignmentNodes.length) {
         if (piece.ann.beginMs !== null && piece.ann.endMs !== null && piece.text) {
-          alignments.push({
+          pushAlignment(si, {
             begin: toCp(piece.beginU16),
             end: toCp(piece.endU16),
             timeBegin: toSeconds(piece.ann.beginMs),
@@ -542,7 +613,7 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
           const span = spans[i];
           if (!span || span.beginU16 >= span.endU16) return;
           placed += 1;
-          alignments.push({
+          pushAlignment(si, {
             begin: toCp(span.beginU16),
             end: toCp(span.endU16),
             timeBegin: toSeconds(seg.beginMs),
@@ -560,7 +631,7 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
         // utterance unaligned, so fall back to its own coarser time span rather
         // than losing the alignment altogether.
         if (placed === 0 && piece.ann.beginMs !== null && piece.ann.endMs !== null && piece.text) {
-          alignments.push({
+          pushAlignment(si, {
             begin: toCp(piece.beginU16),
             end: toCp(piece.endU16),
             timeBegin: toSeconds(piece.ann.beginMs),
@@ -755,7 +826,7 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
       body,
       sentences,
       words,
-      alignments,
+      alignments: keepTimeRule(alignments, alignmentUtterances, docWarnings),
       // The File the user picked for this .eaf, when they picked one (see
       // matchMediaFiles). The CLDF importer carries media as bytes because its
       // zip already holds them in memory; here the file is on disk and a

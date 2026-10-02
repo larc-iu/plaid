@@ -10,7 +10,8 @@
 // writer of timeBegin/timeEnd or of the speaker goes through here: the
 // timeline drags (an edge and a new selection, clamped live), the
 // transcript's time boxes and the domain method behind both, a new segment
-// and a speaker edit (refused with the reason), and the load-time validator
+// and a speaker edit (refused with the reason), the ELAN import (the later
+// time of an overlap dropped and warned of), and the load-time validator
 // (reported, for data that got in some other way). The ELAN export puts each
 // speaker on its own tier, where cross-talk is legal, and must drop a time
 // for same-tier overlap.
