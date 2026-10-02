@@ -349,6 +349,40 @@ describe('formatExample', () => {
       '\\PlaidTranslation{He said \\PlaidRTL{\\PlaidScript{Arabic}{كتب الولد}} twice.}',
     );
   });
+
+  it('sets every number read right to left in its own order, left to right', () => {
+    // LuaTeX lays out the digits of a right-to-left run right to left, so
+    // 1584 printed as 4851.
+    const s = sentenceOf([word('كتب'), word('23'), word('سنة ١٤٤٥ هـ')], {
+      Translation: span('He wrote 2 books.'),
+      Note: span('1584'),
+    });
+    const tex = formatExample(s, SEL, { docDir: 'rtl' });
+    expect(tex).toContain('\\PlaidWord{\\PlaidLTR{23}}');
+    expect(tex).toContain('\\PlaidWord{{\\PlaidScript{Arabic}{سنة \\PlaidLTR{١٤٤٥} هـ}}}');
+    expect(tex).toContain('{\\PlaidLTR{1584}}');
+    // A value read left to right needs nothing.
+    expect(tex).toContain('\\PlaidLTR{\\PlaidTranslation{He wrote 2 books.}}');
+    // In a left-to-right text, a number inside a right-to-left value too.
+    const ltr = formatExample(sentenceOf([word('x')], { Translation: span('عام 1999 م') }), SEL);
+    expect(ltr).toContain(
+      '\\PlaidRTL{\\PlaidTranslation{\\PlaidScript{Arabic}{عام} \\PlaidLTR{1999} \\PlaidScript{Arabic}{م}}}',
+    );
+    expect(balanced(tex) && balanced(ltr)).toBe(true);
+  });
+
+  it('sets the Arabic comma, question mark, semicolon and tatweel in the Arabic font', () => {
+    const s = sentenceOf([word('كتب'), word('،'), word('هل؟'), word('ـ')]);
+    const tex = formatExample(s, SEL, { docDir: 'rtl' });
+    expect(tex).toContain('\\PlaidWord{\\PlaidScript{Arabic}{،}}');
+    expect(tex).toContain('\\PlaidWord{\\PlaidScript{Arabic}{هل؟}}');
+    expect(tex).toContain('\\PlaidWord{\\PlaidScript{Arabic}{ـ}}');
+    const ltr = formatExample(sentenceOf([word('x'), word('؛')]), SEL);
+    expect(ltr).toContain('\\PlaidWord{\\PlaidRTL{\\PlaidScript{Arabic}{؛}}}');
+    // A mark or a dot that Latin text uses too stays with the text.
+    const latin = formatExample(sentenceOf([word('ã·b')]), SEL);
+    expect(latin).toContain('\\PlaidWord{ã·b}');
+  });
 });
 
 describe('formatChapter', () => {
@@ -393,6 +427,12 @@ describe('fonts', () => {
     expect(c.scripts()).toEqual([]);
     c.add('ꯃꯅꯤꯄꯨꯔ মণিপুরী كتاب 漢字 ꯃ');
     expect(c.scripts()).toEqual(['Meetei_Mayek', 'Bengali', 'Arabic', 'Han']);
+  });
+
+  it('finds the Arabic script from its punctuation alone', () => {
+    const c = scriptCollector();
+    c.add('a ، b');
+    expect(c.scripts()).toEqual(['Arabic']);
   });
 
   it('names a Noto font for each', () => {
@@ -449,6 +489,8 @@ describe('buildLatexBook', () => {
     expect(main).toContain('\\PlaidFallbackFont{Noto Serif Bengali}');
     expect(main).toContain('\\include{abbreviations}');
     expect(balanced(main)).toBe(true);
+    // An example's number reads left to right in a right-to-left text too.
+    expect(main).toContain('\\lingset{exnoformat=\\begingroup\\textdir TLT(X)\\endgroup}');
     expect(files[1].data).toContain('\\textsc{pl}}{plural}');
     expect(files.find((f) => f.path === 'latexmkrc').data).toContain('$pdf_mode = 4;');
   });

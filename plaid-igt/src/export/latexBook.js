@@ -171,14 +171,27 @@ const RTL_SCRIPTS = [
   'Avestan',
   'Old_Turkic',
 ];
-const RTL_CLASS = RTL_SCRIPTS.map((name) => `\\p{Script=${name}}`).join('');
-const RTL_SCRIPT_RES = RTL_SCRIPTS.map((name) => [name, new RegExp(`\\p{Script=${name}}`, 'u')]);
-const rtlScriptOf = (text) => RTL_SCRIPT_RES.find(([, re]) => re.test(text))?.[0] ?? null;
+// A character of one of those scripts, or one the scripts share that no
+// script of the main font uses: the Arabic comma, question mark, semicolon and
+// tatweel belong to the Common script, and Charis SIL has no glyph for them.
+const RTL_SCRIPT_CLASS = RTL_SCRIPTS.map((name) => `\\p{Script=${name}}`).join('');
+const RTL_SHARED_CLASS = `[${RTL_SCRIPTS.map((name) => `\\p{Script_Extensions=${name}}`).join('')}]--[${RTL_SCRIPT_CLASS}\\p{Script_Extensions=Latin}\\p{Script_Extensions=Greek}\\p{Script_Extensions=Cyrillic}\\p{M}]`;
+const RTL_CLASS = `${RTL_SCRIPT_CLASS}[${RTL_SHARED_CLASS}]`;
+const RTL_SHARED_RE = new RegExp(`[${RTL_SHARED_CLASS}]`, 'gv');
+const rtlScriptRes = (property) =>
+  RTL_SCRIPTS.map((name) => [name, new RegExp(`\\p{${property}=${name}}`, 'u')]);
+const RTL_SCRIPT_RES = rtlScriptRes('Script');
+const RTL_EXTENSION_RES = rtlScriptRes('Script_Extensions');
+// A run's script is the one its letters are in, else the first that uses its
+// punctuation.
+const rtlScriptOf = (text) =>
+  (RTL_SCRIPT_RES.find(([, re]) => re.test(text)) ??
+    RTL_EXTENSION_RES.find(([, re]) => re.test(text)))?.[0] ?? null;
 // A run of right-to-left letters with the marks and joiners that go with
 // them, spaces between words included.
 const RTL_RUN_RE = new RegExp(
   `[${RTL_CLASS}][${RTL_CLASS}\\p{M}\\u200c\\u200d]*(?:\\s+[${RTL_CLASS}][${RTL_CLASS}\\p{M}\\u200c\\u200d]*)*`,
-  'gu',
+  'gv',
 );
 // A script's name as the letters of a TeX control sequence.
 const scriptCs = (script) => script.replace(/_/g, '');
@@ -186,8 +199,16 @@ const scriptCs = (script) => script.replace(/_/g, '');
 // A value whose own letters read the other way from the document's is set in
 // its own direction, so an English gloss under an Arabic word reads left to
 // right and an Arabic gloss in an English text right to left. A value with no
-// letters (a number, a punctuation mark) goes with the document.
-const valueDir = (text, docDir) => (/\p{L}/u.test(text) ? detectDirection(text) : docDir);
+// letters (a number, a punctuation mark, a tatweel alone) goes with the
+// document.
+const valueDir = (text, docDir) =>
+  /\p{L}/u.test(text.replace(RTL_SHARED_RE, '')) ? detectDirection(text) : docDir;
+
+// A number, digits with the separators between them. Digits read left to right
+// in every script, and LuaTeX lays a right-to-left run out as it comes, so in
+// one a number is boxed left to right or 1584 prints as 4851.
+const NUMBER_RE = /\p{Nd}+(?:[.,:/\u066b\u066c]\p{Nd}+)*/gu;
+const ltrNumbers = (rendered) => rendered.replace(NUMBER_RE, (n) => `\\PlaidLTR{${n}}`);
 
 // Each right-to-left run of `rendered` in its script's font. Inside text read
 // left to right the run is also boxed right to left (\\PlaidRTL), since LuaTeX
@@ -213,7 +234,7 @@ const styled = (macro, rendered) => (macro ? `\\${macro}{${rendered}}` : rendere
 const inScript = (rendered, text, docDir, macro = null) => {
   if (rendered === '{}') return rendered;
   if (valueDir(text, docDir) === RTL) {
-    const body = styled(macro, rtlRuns(rendered, false));
+    const body = styled(macro, ltrNumbers(rtlRuns(rendered, false)));
     return docDir === RTL ? body : `\\PlaidRTL{${body}}`;
   }
   const body = styled(macro, rtlRuns(rendered, true));
@@ -595,6 +616,13 @@ export function scriptCollector() {
         seen.set(ch, hit);
         if (hit && !MAIN_FONT_SCRIPTS.has(hit)) found.add(hit);
       }
+      // Punctuation of a right-to-left script is set in that script's font.
+      for (const [ch] of String(text ?? '').matchAll(RTL_SHARED_RE)) {
+        if (seen.has(ch)) continue;
+        const hit = rtlScriptOf(ch);
+        seen.set(ch, hit);
+        if (hit) found.add(hit);
+      }
     },
     scripts: () => [...found],
   };
@@ -823,6 +851,8 @@ ${scriptFonts(scripts)}
 % A sentence too long for the line breaks into blocks, set ragged right, and
 % an example too long for the page continues on the next.
 \\lingset{glbreaking,glrightskip=0pt plus .5\\hsize,aboveglftskip=.3ex}
+% An example's number reads left to right in a text written right to left too.
+\\lingset{exnoformat=\\begingroup\\textdir TLT(X)\\endgroup}
 
 % How each line looks. Change one here to change it throughout the book.
 \\newcommand{\\PlaidWord}[1]{\\textit{#1}}           % the words
