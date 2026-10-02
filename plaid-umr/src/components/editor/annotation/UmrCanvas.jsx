@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { SentenceBlock } from './SentenceBlock.jsx';
 import { CrossLinks } from './CrossLinks.jsx';
 import { EditorLegend } from './EditorLegend.jsx';
@@ -111,16 +112,17 @@ export const UmrCanvas = ({
   // whose URL is already the history entry. A turn to the page already shown
   // writes nothing (usePagedList).
   const reveal = useCallback(
-    (sentenceIndex, selector, { replace = false } = {}) => {
+    (sentenceIndex, selector, { replace = false, deepLink = false } = {}) => {
       const target = pageOfSentence.get(String(sentenceIndex));
       if (target == null) return;
       setPage(target, { replace });
-      setPending({ selector, nonce: Date.now() });
+      setPending({ selector, nonce: Date.now(), deepLink });
     },
     [pageOfSentence, setPage],
   );
 
   // A selector, or a list of them tried in turn.
+  const [linkAnswered, setLinkAnswered] = useState(null);
   useEffect(() => {
     if (!pending) return;
     const raf = requestAnimationFrame(() => {
@@ -128,6 +130,7 @@ export const UmrCanvas = ({
       const el = selectors.map((one) => window.document.querySelector(one)).find(Boolean);
       focusElement(el);
       setPending(null);
+      if (pending.deepLink) setLinkAnswered(pending.nonce);
     });
     return () => cancelAnimationFrame(raf);
   }, [pending, page]);
@@ -179,12 +182,18 @@ export const UmrCanvas = ({
 
   // The deep link: ?sent=<sentence number> scrolls to that sentence's block
   // and focuses one of its nodes, the one ?var= names or the root (the first
-  // in the page's order was often an unaligned leaf). The
-  // assistant's citations and the shell's focusHere use it, and the nonce
-  // makes a repeat of the same link scroll again.
+  // in the page's order was often an unaligned leaf), else the empty graph's
+  // stop, else the block itself (a sentence with no nodes, or a graph kept as
+  // text). The assistant's citations and the shell's focusHere use it, and
+  // the nonce makes a repeat of the same link scroll again.
   const answered = useRef(null);
   useEffect(() => {
-    if (!sentParam) return;
+    if (!sentParam) {
+      // Taken out of the URL once answered (below): the same link followed
+      // again is a new one.
+      answered.current = null;
+      return;
+    }
     const asked = `${sentParam}:${varParam}:${focusNonce}`;
     if (answered.current === asked) return;
     answered.current = asked;
@@ -198,8 +207,32 @@ export const UmrCanvas = ({
     const named = drawn ? varParam : root;
     const node = named ? `[data-node-var="${CSS.escape(named)}"]` : '.umr-node';
     // The link is the history entry already: its page is written in place.
-    reveal(index, `${block} ${node}`, { replace: true });
+    reveal(index, [`${block} ${node}`, `${block} .umr-graph[tabindex="0"]`, block], {
+      replace: true,
+      deepLink: true,
+    });
   }, [sentParam, varParam, focusNonce, reveal, doc]);
+
+  // An answered deep link leaves the URL, in place, once its page has
+  // reached it: the URL then names the page the reader is on, and a reload,
+  // a bookmark or Back after a page turn reopens that page, not the linked
+  // sentence's.
+  const [params, setParams] = useSearchParams();
+  const pageInUrl = params.get('page');
+  useEffect(() => {
+    if (!sentParam || linkAnswered == null) return;
+    if (pageInUrl !== (page > 0 ? String(page + 1) : null)) return;
+    setLinkAnswered(null);
+    setParams(
+      (prev) => {
+        const out = new URLSearchParams(prev);
+        out.delete('sent');
+        out.delete('var');
+        return out;
+      },
+      { replace: true },
+    );
+  }, [sentParam, linkAnswered, page, pageInUrl, setParams]);
 
   // Opening a document leaves focus on the page, where every key of the
   // canvas is dead: the first sentence's keyboard stop takes it (its first

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation, useSearchParams } from 'react-router-dom';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { parseUmrFile } from '../../../domain/format/umrFile.js';
 import { planImport } from '../../../domain/umrImport.js';
@@ -119,6 +119,73 @@ describe('UmrCanvas, after an edit', () => {
     await r.step(() => doc.setVariable(nodeOf(doc, 's2p').id, 's2x'));
     await r.rerender(canvas(doc));
     expect(shown(r.container, 's1p')).toBe('person | s2x :same-entity');
+    await r.unmount();
+  });
+});
+
+// The ?sent= deep link (a Validation row, a comment's jump, a citation):
+// the sentence's root takes focus, or with no nodes the empty graph's stop,
+// and once it is answered the link leaves the URL, so a reload reopens the
+// page the reader is on and not the linked sentence's.
+describe('UmrCanvas, the deep link', () => {
+  beforeEach(() => {
+    drawn.clear();
+    localStorage.clear();
+  });
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const many = (n, empty) =>
+    Array.from({ length: n }, (_, i) =>
+      i + 1 === empty
+        ? block(i + 1, 'She ate', '', '')
+        : block(i + 1, 'She ate', `(s${i + 1}e / eat-01)`, `s${i + 1}e: 2-2`),
+    ).join('');
+  const loadFile = (file) => {
+    const raw = structuredClone(rawFromPlan(planImport(parseUmrFile(file).sentences, [])));
+    const doc = new UmrDocument({ raw, client: recordingClient().client });
+    doc._reload = async () => {};
+    return doc;
+  };
+  let where = null;
+  const Linked = ({ doc }) => {
+    const [params] = useSearchParams();
+    where = useLocation().search;
+    return (
+      <UmrCanvas
+        doc={doc}
+        readOnly={false}
+        sentParam={params.get('sent')}
+        varParam={params.get('var')}
+      />
+    );
+  };
+  const open = (doc, search) =>
+    renderComponent(
+      <MemoryRouter initialEntries={[`/${search}`]}>
+        <Linked doc={doc} />
+      </MemoryRouter>,
+    );
+  const settle = async (r) => {
+    for (let i = 0; i < 5; i++) await r.step(() => wait(30));
+  };
+
+  it('focuses a sentence with no nodes, on its page, and leaves the URL to the page', async () => {
+    const doc = loadFile(many(30, 28));
+    expect(doc.sentence(28).nodes).toEqual([]);
+    const r = await open(doc, '?sent=28');
+    await settle(r);
+    const target = r.container.querySelector('.umr-block[data-sentence-index="28"]');
+    expect(target).not.toBeNull();
+    expect(target.contains(document.activeElement)).toBe(true);
+    expect(where).toBe('?page=2');
+    await r.unmount();
+  });
+
+  it('focuses the node it names, and takes the link out of the URL', async () => {
+    const doc = loadFile(many(3, 0));
+    const r = await open(doc, '?sent=2&var=s2e');
+    await settle(r);
+    expect(document.activeElement?.getAttribute('data-node-var')).toBe('s2e');
+    expect(where).toBe('');
     await r.unmount();
   });
 });
