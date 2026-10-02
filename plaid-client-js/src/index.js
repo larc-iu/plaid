@@ -1604,6 +1604,9 @@ class PlaidClient {
        * invite, no password resets — so for a non-admin, projectId/projectRole
        * are required in practice (403 without them).
        *
+       * Needs a signed-in session: a client signed in with a named API token
+       * cannot mint any invite (403).
+       *
        * EVERY option is optional; `create()` with no arguments mints a
        * single-use signup link granting nothing but an account. Two pairing
        * rules the server enforces with a 400: projectId and projectRole must be
@@ -1612,8 +1615,8 @@ class PlaidClient {
        * @param {object} [opts]
        * @param {string} [opts.projectId] - Project the redeemer joins (requires projectRole)
        * @param {string} [opts.projectRole] - "reader" | "writer" | "maintainer" (requires projectId)
-       * @param {boolean} [opts.grantAdmin] - Make the new account a global admin (admin only, and not with a named API token (403))
-       * @param {string} [opts.targetUserId] - Password reset for that user instead of a signup; admin only, single-use, grants nothing, and not with a named API token (403)
+       * @param {boolean} [opts.grantAdmin] - Make the new account a global admin (admin only)
+       * @param {string} [opts.targetUserId] - Password reset for that user instead of a signup; admin only, single-use, grants nothing
        * @param {number} [opts.maxUses] - How many accounts this link may create (default 1)
        * @param {number} [opts.ttlDays] - Days until it expires (default 14, max 365)
        * @param {string} [opts.note] - Human label shown in your invite list

@@ -218,6 +218,15 @@
                                                   :body {:password "stolen-pass-1"}}])
                                 (mock/header "authorization" (str "Bearer " tok))))]
         (is (not= 200 (:status r)))))
+    (testing "a maintainer's token mints no invite to their project"
+      (let [pid (h/create-test-project (token-req-fn session) "TokMaintInviteP")
+            body {:project-id pid :project-role "writer"}
+            r (api-call as-tok {:method :post :path "/api/v1/invites" :body body})]
+        (assert-forbidden r)
+        (is (re-find session-only (-> r :body :error)))
+        (testing "while the session does"
+          (assert-created (api-call (token-req-fn session)
+                                    {:method :post :path "/api/v1/invites" :body body})))))
     (testing "nothing changed: the session and the old password still work"
       (assert-ok (api-call (token-req-fn session) {:method :get :path (tokens-path me)}))
       (is (= 200 (:status (rest-handler (-> (mock/request :post "/api/v1/login")
@@ -263,9 +272,23 @@
           (let [r (api-call as-tok {:method :post :path "/api/v1/invites" :body body})]
             (assert-forbidden r)
             (is (re-find session-only (-> r :body :error)))))
-        (testing "while an invite to a project still mints"
-          (assert-created (api-call as-tok {:method :post :path "/api/v1/invites"
-                                            :body {:project-id pid :project-role "reader"}})))))
+        (testing "nor any other invite: to a project, or a bare signup link"
+          (doseq [body [{:project-id pid :project-role "reader"} {}]]
+            (let [r (api-call as-tok {:method :post :path "/api/v1/invites" :body body})]
+              (assert-forbidden r)
+              (is (re-find session-only (-> r :body :error))))))
+        (testing "and none was made"
+          (is (empty? (-> (api-call admin-request {:method :get
+                                                   :path (str "/api/v1/invites?project-id=" pid)})
+                          :body :entries))))))
+    (testing "an invite is not minted inside a batch either"
+      (let [r (rest-handler (-> (mock/request :post "/api/v1/batch")
+                                (mock/header "accept" "application/edn")
+                                (mock/json-body [{:path "/api/v1/invites" :method "post" :body {}}])
+                                (mock/header "authorization" (str "Bearer " tok))))]
+        (is (<= 400 (:status r) 499))
+        (is (empty? (-> (api-call admin-request {:method :get :path "/api/v1/invites?all=true"})
+                        :body :entries)))))
     (testing "and neither inside a batch"
       (let [r (rest-handler (-> (mock/request :post "/api/v1/batch")
                                 (mock/header "accept" "application/edn")

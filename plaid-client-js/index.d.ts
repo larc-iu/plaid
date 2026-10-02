@@ -977,7 +977,10 @@ interface InvitesBundle {
     all?: boolean;
     pageSize?: number;
   }): AsyncGenerator<Invite[]>;
-  /** The `code` is returned ONCE and is not recoverable afterward. */
+  /**
+   * The `code` is returned ONCE and is not recoverable afterward. Needs a
+   * signed-in session: a named API token cannot mint any invite (403).
+   */
   create(
     opts?: CreateInviteOptions,
     auditMessage?: string,

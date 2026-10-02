@@ -1751,6 +1751,9 @@ class InvitesResource(_Resource):
         invite, no password resets — so for a non-admin, ``project_id`` and
         ``project_role`` are required in practice (403 without them).
 
+        Needs a signed-in session: a client signed in with a named API token
+        cannot mint any invite (403).
+
         EVERY argument is optional; ``create()`` with none mints a single-use
         signup link granting nothing but an account. Two pairing rules the
         server enforces with a 400: ``project_id`` and ``project_role`` must be
@@ -1760,11 +1763,9 @@ class InvitesResource(_Resource):
         Args:
             project_id: Project the redeemer joins (requires ``project_role``)
             project_role: "reader", "writer" or "maintainer" (requires ``project_id``)
-            grant_admin: Make the new account a global admin (admin only,
-                and not with a named API token (403))
+            grant_admin: Make the new account a global admin (admin only)
             target_user_id: Password reset for that user instead of a signup;
-                admin only, single-use, grants nothing, and not with a named
-                API token (403)
+                admin only, single-use, grants nothing
             max_uses: How many accounts this link may create (default 1)
             ttl_days: Days until it expires (default 14, max 365)
             note: Human label shown in your invite list

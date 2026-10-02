@@ -41,9 +41,8 @@
   services and scripts and never expires, so credentials stay out of its
   reach: it may not change a password, mint or revoke API tokens, make a
   password reset link, create an account (which comes with a password), or
-  mint an invite that grants admin. Otherwise one that leaked would be the
-  whole account, and what it made (a token, a login) would outlive revoking
-  it."
+  mint an invite. Otherwise one that leaked would be the whole account, and
+  what it made (a token, a login) would outlive revoking it."
   [handler]
   (fn [request]
     (if (named-token? request)
