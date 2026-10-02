@@ -33,7 +33,7 @@ import {
 import { SUPPRESS_KEY, isSuppressor, suppressorFor } from './enhancedGraph.js';
 import { notSetUp } from '../../../plaid-ui/src/domain/setupGuard.js';
 import { pendingId, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
-import { isUnknownOutcome, statusOf } from '../../../plaid-ui/src/lib/errors.js';
+import { isKeyReused, isTextChanged, isUnknownOutcome } from '../../../plaid-ui/src/lib/errors.js';
 import { expectStored, isConfigConflict } from '../../../plaid-ui/src/domain/configCells.js';
 import { rebaseEdits } from '../../../plaid-ui/src/lib/textMerge.js';
 import { editLogGaps, storedHolds } from '../../../plaid-ui/src/lib/editLog.js';
@@ -65,11 +65,6 @@ const TEXT_CONFLICT = 'The same passage was changed elsewhere. Discard changes a
 
 // What a text save is refused with when the stored text's digest cannot be read.
 const TEXT_UNREAD = 'The saved text could not be read. Try again.';
-
-// A write refused because its Idempotency-Key was used for another request
-// (plaid-ui lib/errors.js keeps its own copy of this test to itself).
-const isKeyReused = (err) =>
-  statusOf(err) === 422 && err?.responseData?.error === 'idempotency-key-reused';
 
 // The body `gaps` make of `base`.
 const gapsBody = (base, gaps) => applyTextOps(base, gapsToOps(gaps));
@@ -329,7 +324,7 @@ export class ConlluDocument extends DocumentModel {
         // so: the server answers a key it stored before the digest is looked
         // at, so nothing under this key is stored. A read that fails leaves
         // the refusal as it is.
-        const textChanged = statusOf(err) === 409 && err?.responseData?.['text-changed'];
+        const textChanged = isTextChanged(err);
         if (textChanged && !plan.lost) {
           if (attempt >= 2) throw err;
           await this._reloadInSend();
@@ -2037,11 +2032,17 @@ export class ConlluDocument extends DocumentModel {
   // What Accept left unreviewed for being off a closed list: each value, its
   // list and its word, the first few of them.
   _offListLeft(left) {
-    const tokens = new Map((this.layerInfo.morphemeTokenLayer?.tokens || []).map((t) => [t.id, t]));
-    const body = this.body;
+    // A word is named by its form, else its text: a part of a multi-word
+    // token is `de`, not the `del` it spans.
+    const wanted = new Set(left.map((l) => l.token));
+    const forms = new Map();
+    for (const sentence of this.sentences || []) {
+      for (const entry of sentence.tokens || []) {
+        if (wanted.has(entry.token.id)) forms.set(entry.token.id, entry.tokenForm);
+      }
+    }
     const items = left.map(({ label, value, token }) => {
-      const t = tokens.get(token);
-      const form = t ? cpSlice(body, t.begin, t.end) : '';
+      const form = forms.get(token) || '';
       return form ? `${value} (${label}, ${form})` : `${value} (${label})`;
     });
     const shown = items.slice(0, 5).join(', ');

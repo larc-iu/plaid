@@ -525,3 +525,21 @@ test('confirmTokens leaves a machine value off a closed list unreviewed and acce
   assert.deepEqual(errors, ['Not on the list, not accepted: NN (XPOS, perro).']);
   assert.deepEqual(doc.layerInfo.xposLayer.spans.find((s) => s.id === nn.id).metadata, machine);
 });
+
+// Review F5: a part of a multi-word token is named by its own form.
+test('confirmTokens names a part of a multi-word token by its form', async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const uposLayer = raw.textLayers[0].tokenLayers[2].spanLayers.find((l) => l.config?.ud?.upos);
+  uposLayer.config = {
+    ...uposLayer.config,
+    ud: { ...uposLayer.config.ud, vocab: ['NOUN', 'ADP'], vocabMode: 'closed' },
+  };
+  const client = provClient();
+  const doc = asAnn(raw, client);
+  const errors = [];
+  doc.onError = (msg) => errors.push(msg);
+  const det = doc.layerInfo.uposLayer.spans.find((s) => s.value === 'DET');
+  det.metadata = { prov: 'inferred', provSource: 'service:stanza-parser' };
+  assert.equal(await doc.confirmTokens(det.tokens), false);
+  assert.deepEqual(errors, ['Not on the list, not accepted: DET (UPOS, el).']);
+});
