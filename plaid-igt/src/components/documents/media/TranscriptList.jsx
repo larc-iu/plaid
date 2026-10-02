@@ -401,6 +401,8 @@ const SegmentRow = memo(function SegmentRow({
             )}
             onChange={(e) => {
               editLog.onChange(e);
+              // A refused undo puts the box back as it was: no typing.
+              if (e.target.value === draftRef.current) return;
               draftRef.current = e.target.value;
               setDraftState(e.target.value);
               setDirty(true);
