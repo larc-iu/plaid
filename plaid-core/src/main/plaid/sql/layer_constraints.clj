@@ -3,10 +3,12 @@
   list on a layer, remove it, check a list against the stored data, and
   repair the stored data for a list. The rules themselves and their checks
   are in `plaid.sql.constraints.layer`."
-  (:require [plaid.sql.common :as psc]
+  (:require [clojure.string :as str]
+            [plaid.sql.audit-write :as psaw]
+            [plaid.sql.common :as psc]
             [plaid.sql.constraints.layer :as lc]
             [plaid.sql.crud :as crud]
-            [plaid.sql.operation :refer [submit-operation!]]))
+            [plaid.sql.operation :as op :refer [submit-operation!]]))
 
 (def ^:private tables {:token :token_layers :span :span_layers :relation :relation_layers})
 
@@ -62,7 +64,14 @@
            (throw (lc/refusal tx vs)))
          (let [new-map (if (seq cs) (assoc stored ns cs) (dissoc stored ns))]
            (when (not= new-map stored)
-             (crud/update-by-id! tx (tables kind) id {:constraints (psc/write-json new-map)}))
+             (crud/update-by-id! tx (tables kind) id {:constraints (psc/write-json new-map)})
+             ;; History names the rules this write declared, not the ones a
+             ;; client meant to (a refused rule is sent again without it).
+             (when-not op/*custom-description*
+               (psc/execute! tx {:update :operations
+                                 :set {:description (str "Set " ns " rules on " (nouns kind) " " (:name row) ": "
+                                                         (if (seq cs) (str/join ", " (map #(get % "type") cs)) "none"))}
+                                 :where [:= :id (:id psaw/*op*)]})))
            new-map))))))
 
 (defn delete-constraints

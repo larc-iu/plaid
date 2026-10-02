@@ -195,7 +195,7 @@
         (is (= 3 (-> r :body :violation-count)))))))
 
 (defn- ops-of [type]
-  (psc/q db {:select [:id :group_id] :from :operations :where [:= :op_type type]}))
+  (psc/q db {:select [:id :group_id :description] :from :operations :where [:= :op_type type]}))
 
 (deftest what-changes-nothing-is-not-recorded
   ;; H9-FIRST-OPEN-4: every writer's open of a clean document added a
@@ -228,3 +228,17 @@
         (create-span admin-request lemma [(first tokens)] "w")
         (assert-status 200 (call admin-request :post (str "/api/v1/span-layers/" lemma "/constraints/repair") cs))
         (is (= 2 (count (ops-of "layer/repair-constraints"))) "the layer's and the document's")))))
+
+(deftest a-declaration-is-named-by-the-rules-it-declared
+  ;; REV-FX-CORE F5: History named the rules a client meant to declare,
+  ;; though one was refused and the rest declared without it.
+  (let [{:keys [lemma deps spans]} (setup!)
+        [sa sb] spans]
+    (create-relation admin-request deps sa sb "x")
+    (create-relation admin-request deps sb sa "y")
+    (let [both {:constraints [{:type "max-in-degree" :max 1} {:type "acyclic"}]}]
+      (assert-status 422 (put admin-request "relation" deps "umr" both))
+      (assert-status 200 (put admin-request "relation" deps "umr" {:constraints [{:type "max-in-degree" :max 1}]})))
+    (is (= ["Set umr rules on relation layer Deps: max-in-degree"]
+           (map :description (ops-of "layer/set-constraints"))))
+    (assert-status 204 (call admin-request :delete (str "/api/v1/span-layers/" lemma "/constraints/igt")))))
