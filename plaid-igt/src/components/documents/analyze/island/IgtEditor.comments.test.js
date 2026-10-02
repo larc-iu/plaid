@@ -175,4 +175,28 @@ describe('the comment badge on a morpheme', () => {
     expect(word.getAttribute('title')).toBe('Comment on cat');
     expect(morph.getAttribute('title')).toBe('Comment on morpheme cat');
   });
+
+  it("names the morpheme on its fields' badges too", async () => {
+    const doc = mount({ comments: seededStore() });
+    await doc.updateMorphemeSpan('m-2', 'Gloss', 'CAT');
+    await new Promise((r) => setTimeout(r, 0));
+    const titles = [...host.querySelectorAll('.igt-cmt-badge')].map((b) => b.title);
+    expect(titles).toContain('Comment on Gloss of morpheme cat');
+  });
+});
+
+describe('opening the comment popover', () => {
+  it('puts the caret in the box to type in', () => {
+    mount({ comments: seededStore() });
+    host.querySelector('[data-pop-opener="comment:w-2"]').click();
+    expect(document.activeElement).toBe(
+      host.querySelector('.igt-cmt-pop textarea[aria-label="Add a comment"]'),
+    );
+  });
+
+  it('puts it on Close for someone who can only read', () => {
+    mount({ comments: seededStore(), canComment: false });
+    host.querySelector('[data-pop-opener="comment:w-1"]').click();
+    expect(document.activeElement).toBe(host.querySelector('.igt-cmt-pop__close'));
+  });
 });

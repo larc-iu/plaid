@@ -386,7 +386,7 @@ export const grid = {
                   ? this._commentBadge(
                       'span',
                       morph.annotations[name].id,
-                      `${name} of ${value || 'morpheme'}`,
+                      value ? `${name} of morpheme ${value}` : `${name} of morpheme`,
                     )
                   : null,
                 value: morph.annotations?.[name]?.value ?? '',

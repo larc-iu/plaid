@@ -82,7 +82,13 @@ export const comments = {
     this._cmtSyncUnsaved();
     this._popoverPos = this._computePopoverPos(anchorEl, 300, this._popWidth('comment'));
     this._render(true);
-    this._focusPopover();
+    // Into the box to type in, or onto Close for someone who can only read:
+    // the badge that opened it is behind the popover, and focus left on the
+    // page made a comment start with a click.
+    const pop = this.container.querySelector('.igt-cmt-pop');
+    (
+      pop?.querySelector('textarea.igt-cmt__input') ?? pop?.querySelector('.igt-cmt-pop__close')
+    )?.focus();
     // The thread's real height is rarely the 300px estimate above.
     this._fitPopover();
   },
