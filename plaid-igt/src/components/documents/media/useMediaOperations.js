@@ -580,12 +580,9 @@ export const useMediaOperations = () => {
     }
 
     ownDeleteRef.current = true;
-    let ok = false;
-    try {
-      ok = await doc.deleteMedia();
-    } finally {
+    const ok = await doc.deleteMedia().finally(() => {
       ownDeleteRef.current = false;
-    }
+    });
     if (ok) {
       notifySuccess('Media file deleted');
     }

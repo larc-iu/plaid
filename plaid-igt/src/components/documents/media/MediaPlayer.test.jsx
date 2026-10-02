@@ -145,7 +145,9 @@ describe('a recording whose length the header does not give', () => {
     Object.defineProperty(element, 'duration', { get: () => duration, configurable: true });
     Object.defineProperty(element, 'currentTime', {
       get: () => seeks.at(-1) ?? 0,
-      set: (t) => seeks.push(t),
+      set: (t) => {
+        seeks.push(t);
+      },
       configurable: true,
     });
     return { view, element, seeks, setDuration: (d) => (duration = d) };
