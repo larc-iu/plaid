@@ -594,7 +594,12 @@ def read_document(raw: dict, layers: UmrLayers,
         return None
 
     # Each record is read with the sentence its token begins in, in text order.
-    records = {t['id']: t for t in _tokens_of(layers.node_layer) if is_record_token(t)}
+    # In text order and then by id, as sentenceGraph.js sorts them, so both
+    # take the same record as a joined sentence's own however the tokens are
+    # listed.
+    records = {t['id']: t for t in sorted(
+        (t for t in (layers.node_layer or {}).get('tokens') or [] if is_record_token(t)),
+        key=lambda t: (t['begin'], t['end'], t['id']))}
     for token in records.values():
         s = sentence_of(token['begin'])
         if s is None:

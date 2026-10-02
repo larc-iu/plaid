@@ -233,8 +233,12 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
   }));
   const sentenceOf = (piece) => sentences.find((s) => beginsIn(piece, s));
   const byTokenId = new Map(sentences.map((s) => [s.tokenId, s]));
-  // Each record is read with the sentence its token begins in, in text order.
-  const recordTokens = nodeTokens.filter(isRecordToken).sort(byBegin);
+  // Each record is read with the sentence its token begins in, in text order
+  // and then by id, so every reader takes the same one as a joined
+  // sentence's own however the tokens are listed (graph.py does the same).
+  const recordTokens = nodeTokens
+    .filter(isRecordToken)
+    .sort((a, b) => byBegin(a, b) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const recordsById = new Map(recordTokens.map((t) => [t.id, t]));
   recordTokens.forEach((token) => {
     const s = sentenceOf(token);

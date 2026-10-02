@@ -268,24 +268,38 @@ export function planRenumber(graph, skip = new Set(), reserved = new Set()) {
 }
 
 /**
- * The sentence records to move to the sentence they describe, as the reader
- * found them (sentenceGraph.js `recordsFollowTheirGraphs`): a record left on
- * new text IGT split off before its sentence. Each is the record's token
- * with the extent of the sentence it now stands over.
+ * Each sentence record put back over its share of its sentence: the
+ * sentence's own record from where the sentence begins, a record waiting in
+ * a sentence joined to the one before (sentenceGraph.js `otherRecords`) from
+ * where it begins, since a split back needs that place, and each up to where
+ * the next record of the sentence begins, or to the sentence's end.
  *
- * @returns {{ id: string, begin: number, end: number }[]}
+ * Core's text rule moves a record along with text typed at its sentence's
+ * start rather than growing it, and keeps it only while some of its text is
+ * left, so a record narrower than its share is deleted with text its sentence
+ * survives. Held over the whole share, it goes only with the whole of it.
+ * (A whole sentence token holds up best of what was measured: a record on the
+ * sentence's line end goes when the line end does, one on a point goes with a
+ * delete across it.) It also moves a record left on new text before the
+ * sentence it describes (sentenceGraph.js `recordsFollowTheirGraphs`) there.
+ *
+ * @returns {{ id: string, begin: number, end: number, moved: boolean }[]}
+ *   `moved` for a record that stood in another sentence
  */
-export function planRecordMoves(graph) {
+export function planRecordExtents(graph) {
   const sentences = graph.sentences || [];
-  return (graph.records || [])
-    .filter((r) => {
-      const s = sentences[r.sentence - 1];
-      return r.own && !(r.begin >= s.begin && r.begin < s.end);
-    })
-    .map((r) => {
-      const s = sentences[r.sentence - 1];
-      return { id: r.id, begin: s.begin, end: s.end };
+  const out = [];
+  sentences.forEach((s) => {
+    const mine = (graph.records || []).filter((r) => r.sentence === s.index);
+    mine.forEach((r, k) => {
+      const begin = r.own ? s.begin : r.begin;
+      const next = mine.slice(k + 1).find((x) => x.begin > begin);
+      const end = next ? next.begin : s.end;
+      if (r.begin === begin && r.end === end) return;
+      out.push({ id: r.id, begin, end, moved: !(r.begin >= s.begin && r.begin < s.end) });
     });
+  });
+  return out;
 }
 
 /**
@@ -382,6 +396,7 @@ export function describeUmrReconcile({
   renumbered = 0,
   unlinked = 0,
   recordsMoved = 0,
+  recordsFitted = 0,
   recordsHomed = 0,
   triplesMoved = 0,
   wordSplits = 0,
@@ -422,6 +437,11 @@ export function describeUmrReconcile({
   if (recordsHomed) {
     parts.push(
       `moved the stored lines of ${countOf(recordsHomed, 'sentence', 'sentences')} off the sentence tokens`,
+    );
+  }
+  if (recordsFitted) {
+    parts.push(
+      `put ${countOf(recordsFitted, 'sentence record', 'sentence records')} back over ${recordsFitted === 1 ? 'its sentence' : 'their sentences'}`,
     );
   }
   if (recordsMoved) {

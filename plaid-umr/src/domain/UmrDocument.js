@@ -43,7 +43,7 @@ import {
   describeUmrReconcile,
   planEntryUnlink,
   planRecordHome,
-  planRecordMoves,
+  planRecordExtents,
   planRenumber,
   planStrayTokens,
   planTripleRecords,
@@ -565,7 +565,7 @@ export class UmrDocument extends DocumentModel {
     // must not take one of them.
     const keptNames = keptVariables(graph);
     const renumber = planRenumber(graph, removed, keptNames);
-    const recordMoves = planRecordMoves(graph);
+    const recordMoves = planRecordExtents(graph);
     const tripleRecords = planTripleRecords(graph, UMR_NAMESPACE);
     const wordSplits = planWordSplits(graph).filter((w) => !removed.has(w.nodeId));
     // An entry counts as deleted only when the vocabulary the node picked it
@@ -603,7 +603,8 @@ export class UmrDocument extends DocumentModel {
       unanchored: unanchor.map((u) => renamed.get(u.nodeId) ?? u.var),
       renumbered: renumber.length,
       unlinked: unlink.length,
-      recordsMoved: recordMoves.length,
+      recordsMoved: recordMoves.filter((r) => r.moved).length,
+      recordsFitted: recordMoves.filter((r) => !r.moved).length,
       recordsHomed: homed,
       triplesMoved: tripleRecords.triples.length,
       wordSplits: new Set(wordSplits.map((w) => w.nodeId)).size,

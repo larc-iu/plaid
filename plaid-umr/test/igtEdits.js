@@ -211,6 +211,59 @@ export function respell(raw, from, to, insert) {
   return true;
 }
 
+/**
+ * Text typed at a sentence's start (`pos` is where a sentence begins), as a
+ * new word and a space before the first: the sentence grows over it, every
+ * other token beginning there or after moves along (a word, a node, a
+ * record), and a token ending there is left. Measured against core's plain
+ * rule. `text` holds no newline and ends in a space.
+ */
+export function typeAtSentenceStart(raw, pos, text) {
+  const L = layersOf(raw);
+  const typed = [...text];
+  const d = typed.length;
+  const body = [...raw.textLayers[0].text.body];
+  body.splice(pos, 0, ...typed);
+  raw.textLayers[0].text.body = body.join('');
+  tokenLayers(raw).forEach((l) =>
+    l.tokens.forEach((t) => {
+      if (l === L.sentence && t.begin === pos) t.end += d;
+      else if (t.begin >= pos && !(t.begin === pos && t.end === pos && pos === 0)) {
+        t.begin += d;
+        t.end += d;
+      }
+    }),
+  );
+  const word = text.trimEnd();
+  if (word) L.word.tokens.push({ id: newId('typed'), begin: pos, end: pos + [...word].length });
+}
+
+/**
+ * The text at [from, to) deleted, as core's text rule deletes it: a token
+ * wholly inside goes (a point strictly inside too), with what hangs on it,
+ * and the rest are cut to what is left and move along.
+ */
+export function deleteText(raw, from, to) {
+  const d = to - from;
+  const body = [...raw.textLayers[0].text.body];
+  body.splice(from, d);
+  raw.textLayers[0].text.body = body.join('');
+  const gone = [];
+  tokenLayers(raw).forEach((l) =>
+    l.tokens.forEach((t) => {
+      const point = t.begin === t.end;
+      if (point ? from < t.begin && t.begin < to : from <= t.begin && t.end <= to) {
+        gone.push(t.id);
+        return;
+      }
+      const at = (x) => (x <= from ? x : x >= to ? x - d : from);
+      [t.begin, t.end] = [at(t.begin), at(t.end)];
+    }),
+  );
+  if (gone.length) deleteTokens(raw, gone);
+  sameAncestor(raw);
+}
+
 // A client that writes what reconcile sends into `raw`, as core would.
 function memoryClient(raw) {
   const all = () => tokenLayers(raw).flatMap((l) => l.tokens);

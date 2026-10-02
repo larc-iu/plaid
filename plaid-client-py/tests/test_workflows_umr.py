@@ -599,3 +599,17 @@ def test_a_gloss_in_the_projects_language_comes_first_whatever_its_scope():
         {'header': 'morpheme-gloss', 'lang': 'es', 'source': 'layer:mes'},
     ]}}}
     assert [g.id for g in lexical_gloss_layers(project, layers)] == ['mes', 'es', 'en']
+
+
+def test_a_joined_sentence_reads_its_first_record_in_text_order_however_the_tokens_are_listed():
+    """Two records in one sentence (it was joined to the next): the one that
+    begins first, and of two with one extent the lower id, is its own, as the
+    app reads it, whatever order the token list gives them in."""
+    raw = _document()
+    node_layer = next(l for l in raw['text_layers'][0]['token_layers'] if l['id'] == 'node')
+    # The same extent (a record doubled by two openers at once): then by id.
+    node_layer['tokens'].insert(0, {'id': 'r9', 'begin': 0, 'end': 17,
+                                    'metadata': {'umr': {'snt': 9}}})
+    node_layer['tokens'].reverse()
+    s1 = _read(raw).sentences[0]
+    assert (s1.snt, s1.record_token, s1.other_records) == (1, 'r1', ['r9'])
