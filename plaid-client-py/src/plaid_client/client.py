@@ -29,6 +29,9 @@ from plaid_client.sse import SSEConnection
 # The server's cap on operations per batch request (plaid.rest-api.v1.batch).
 # A batch queued past it is submitted as consecutive requests.
 MAX_BATCH_OPS = 1000
+# How long ``admin.backup()`` waits for the server to finish writing a backup:
+# minutes on a large database, past the usual per-request timeout.
+BACKUP_TIMEOUT_S = 30 * 60
 from plaid_client import services as svc
 
 
@@ -3388,10 +3391,17 @@ class AdminResource(_Resource):
         succeeded. Uses VACUUM INTO, which only reads, so it is safe while
         people are working.
 
+        The server answers once the backup is written, which takes minutes on
+        a large database, so this waits up to ``BACKUP_TIMEOUT_S`` (30
+        minutes) rather than the client's usual timeout. A proxy in front of
+        the server may still give up first (a 504): the backup goes on, and
+        its file shows in ``server()['backup']['backups']`` once it is written.
+
         out_of_band, as every admin action on the server itself is: none of
         them writes project data (see the note at the top of http.py).
         """
-        return self._request('POST', '/api/v1/admin/backup', out_of_band=True)
+        return self._request('POST', '/api/v1/admin/backup', out_of_band=True,
+                             timeout=BACKUP_TIMEOUT_S)
 
     def locks(self) -> Any:
         """Documents currently held by an editing lock, with who holds each

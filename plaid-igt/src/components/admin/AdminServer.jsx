@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
@@ -6,7 +6,9 @@ import { DataTable } from '@ui/components/shared/data-table';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { formatBytes } from '@/utils/formatBytes';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
-import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
+import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
+import { isUnknownOutcome, isUnreachable, statusOf } from '@ui/lib/errors.js';
+import { formatElapsed } from '@ui/hooks/useRunProgress.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 
 // What the server is doing and what it is sitting on. Read-only except for
@@ -35,6 +37,13 @@ const Facts = ({ rows }) => (
   </dl>
 );
 
+// A backup whose answer did not come (a proxy gave up first) or that found
+// one already running is watched for on disk: the report is read again this
+// often, for this long, until a backup that was not there before shows up.
+// The report counts every table, so not more often than this.
+const BACKUP_POLL_MS = 15000;
+const BACKUP_POLL_FOR_MS = 30 * 60 * 1000;
+
 const duration = (ms) => {
   if (!Number.isFinite(ms)) return '';
   const s = Math.floor(ms / 1000);
@@ -52,7 +61,23 @@ export const AdminServer = ({ client }) => {
   const [locks, setLocks] = useState([]);
   const [rateLimits, setRateLimits] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [backingUp, setBackingUp] = useState(false);
+  // When the backup this page is waiting for was started, null when none.
+  const [backingUpSince, setBackingUpSince] = useState(null);
+  const backingUp = backingUpSince != null;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!backingUpSince) return undefined;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [backingUpSince]);
+  const shown = useRef(true);
+  useEffect(() => {
+    shown.current = true;
+    return () => {
+      shown.current = false;
+    };
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -77,10 +102,51 @@ export const AdminServer = ({ client }) => {
     load();
   }, [load]);
 
+  // Read the report until a backup not in `known` is on disk. Resolves to it,
+  // or null once the page is left or the wait is over.
+  const waitForNewBackup = async (known) => {
+    const until = Date.now() + BACKUP_POLL_FOR_MS;
+    while (Date.now() < until) {
+      await new Promise((r) => setTimeout(r, BACKUP_POLL_MS));
+      if (!shown.current) return null;
+      try {
+        const srv = await client.admin.server();
+        if (!shown.current) return null;
+        const fresh = srv.backup?.backups?.find((b) => !known.has(b.name));
+        if (fresh) {
+          setReport(srv);
+          return fresh;
+        }
+      } catch (err) {
+        console.error('Error reading the server report:', err);
+      }
+    }
+    return null;
+  };
+
+  // The server answers once the zip is written. When that answer does not
+  // come (a proxy gives up first), or a backup is already running (409), the
+  // backup goes on, and the page waits for its file instead of calling it
+  // failed.
   const runBackup = async () => {
-    setBackingUp(true);
+    const known = new Set((report?.backup?.backups || []).map((b) => b.name));
+    setBackingUpSince(Date.now());
     try {
-      const result = await client.admin.backup();
+      let result;
+      try {
+        result = await client.admin.backup();
+      } catch (err) {
+        const running = statusOf(err) === 409;
+        if (!running && !isUnknownOutcome(err) && !isUnreachable(err)) throw err;
+        if (running)
+          notifyWarning('Its file shows here when it is written.', 'Backup already running');
+        const fresh = await waitForNewBackup(known);
+        if (fresh) notifySuccess(fresh.name, 'Backup complete');
+        else if (shown.current) {
+          notifyWarning('No new backup on disk. Check the server log.', 'Backup not confirmed');
+        }
+        return;
+      }
       if (result.ok) {
         notifySuccess(result.backups?.[0]?.name || 'Backup written', 'Backup complete');
         setReport((r) => (r ? { ...r, backup: result } : r));
@@ -90,7 +156,7 @@ export const AdminServer = ({ client }) => {
     } catch (err) {
       notifyError(humanizeError(err), 'Failed to back up');
     } finally {
-      setBackingUp(false);
+      if (shown.current) setBackingUpSince(null);
     }
   };
 
@@ -196,9 +262,16 @@ export const AdminServer = ({ client }) => {
         <Section
           title="Backups"
           action={
-            <Button size="sm" variant="outline" onClick={runBackup} disabled={backingUp}>
-              {backingUp ? 'Backing up…' : 'Back up now'}
-            </Button>
+            <div className="flex items-center gap-2">
+              {backingUp && (
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {formatElapsed(now - backingUpSince)}
+                </span>
+              )}
+              <Button size="sm" variant="outline" onClick={runBackup} disabled={backingUp}>
+                {backingUp ? 'Backing up…' : 'Back up now'}
+              </Button>
+            </div>
           }
         >
           <Facts

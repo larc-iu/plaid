@@ -1740,6 +1740,8 @@ export const SPLIT_ON_SPACE_KEY: "splitOnSpace";
 
 /** The server's cap on operations per batch request; a larger batch goes as consecutive requests. */
 export const MAX_BATCH_OPS: 1000;
+/** How long `admin.backup()` waits for the server to finish writing a backup, in ms. */
+export const BACKUP_TIMEOUT_MS: number;
 /** The fixed role inventory; only these values are interoperable across apps. */
 export const ROLES: {
   readonly BASELINE: "baseline";
