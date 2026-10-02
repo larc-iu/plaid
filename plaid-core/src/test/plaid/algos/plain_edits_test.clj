@@ -747,3 +747,28 @@
   (is (= ["我你你吗！" "我" "你" "你" "吗" "！"] (save "|我||你||好||吗||。|" "我你你吗！")))
   (testing "spaced text was already right"
     (is (= ["x cd cd y." "x" "cd" "cd" "y."] (save "|x| |ab| |cd| |y|" "x cd cd y.")))))
+
+(deftest a-word-layer-with-no-tokens-reads-as-none
+  ;; R1-DEBT-CORE-12: which tokens are the words is decided one way on
+  ;; every path. A word layer that holds no token yet (a script made it but
+  ;; has not tokenized this text) is as good as none, so the tokens on no
+  ;; partition decide, for the whole-body reading as for the plain rule.
+  ;; The whole-body reading aligned to the empty layer's words before.
+  (let [toks (fn [body]
+               (let [m (re-matcher #"[^ .]+" body)]
+                 (into [{:token/id :s :token/layer :s :token/begin 0 :token/end (cp/cp-count body)}]
+                       (loop [out [] i 0]
+                         (if (.find m)
+                           (recur (conj out {:token/id i :token/layer :x :token/begin (.start m) :token/end (.end m)}) (inc i))
+                           out)))))
+        opts {:children #{} :exclusive #{:x}}]
+    (doseq [[body new] [["btd c tttt tbaa td." "btd cY ttttX td."]
+                        ["abdc bcat aa t daac." "bcat."]]]
+      (let [t (toks body)]
+        (is (= (ta/plain-body body new t #{:s} #{:x} opts)
+               (ta/plain-body body new t #{:s} #{:w} opts)
+               (ta/plain-body body new t #{:s} #{} opts))
+            (str (pr-str body) " -> " (pr-str new)))
+        (is (= (ta/plain-edits body t [{:type :replace :index 0 :length (cp/cp-count body) :value new}] #{:s} #{:x} opts)
+               (ta/plain-edits body t [{:type :replace :index 0 :length (cp/cp-count body) :value new}] #{:s} #{:w} opts))
+            (str "edits " (pr-str body) " -> " (pr-str new)))))))

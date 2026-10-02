@@ -2419,6 +2419,18 @@
              placed)
        :made made})))
 
+(defn- word-token?
+  "Whether a token of `tokens` is a word, the one answer every path reads:
+  a token on a layer in `word-layers`, or, when no token of `tokens` is on
+  one (no word layer, or one that holds no token yet), any token on no
+  layer in `partitioning`."
+  [tokens partitioning word-layers]
+  (let [ws (set word-layers)
+        ps (set partitioning)]
+    (if (some #(ws (:token/layer %)) tokens)
+      #(contains? ws (:token/layer %))
+      #(not (contains? ps (:token/layer %))))))
+
 (defn apply-plain-gaps
   "What `gaps` (old-body code points, in order, never touching, each
   `{:start a :end b :value v}`, see `compose-edits`) do to `old` and to
@@ -2493,8 +2505,8 @@
         ;; The tokens that decide where new text goes: the words, those on a
         ;; layer in `word-layers`, else every token on no partition. The
         ;; others (sentences, time-alignment segments) follow them.
-         deciders (let [ws (filterv #(word-layers (:token/layer %)) wide)]
-                    (if (seq ws) ws (filterv #(not (partitioning (:token/layer %))) wide)))
+         decides? (word-token? wide partitioning word-layers)
+         deciders (filterv decides? wide)
          decider-layers (into #{} (map :token/layer) deciders)
         ;; the tokens whose text is one of a gap's words typed over (see
         ;; `cut-at-words`), a word's: old extent to [gap offset length]. Its
@@ -2665,9 +2677,7 @@
                            (let [na (new-at g)] (dotimes [j (:n (info g))] (aset a (+ na j) true))))
                          a)]
              (split-spaced-words nw wide placed
-                                 (if (seq (filter #(word-layers (:token/layer %)) wide))
-                                   #(word-layers (:token/layer %))
-                                   #(not (partitioning (:token/layer %))))
+                                 decides?
                                  #(partitioning (:token/layer %))
                                  #(aget typed (int %))
                                  #(contains? (set children) (:token/layer %))))
@@ -2733,9 +2743,9 @@
   "The old extents of the words of `tokens`: those on `word-layers`, else
   every token on no layer in `partitioning`."
   [tokens partitioning word-layers]
-  (let [ws (filter #(contains? (set word-layers) (:token/layer %)) tokens)]
-    (into #{} (map (juxt :token/begin :token/end))
-          (if (seq ws) ws (remove #(contains? (set partitioning) (:token/layer %)) tokens)))))
+  (into #{} (comp (filter (word-token? tokens partitioning word-layers))
+                  (map (juxt :token/begin :token/end)))
+        tokens))
 
 (defn- merge-in-words
   "`gaps` with the gaps inside one word of `tokens` (`word?`), with no
@@ -2793,12 +2803,10 @@
           runs)))
 
 (defn- body-word-layers
-  "The layers whose tokens are the words of a whole-body save: `word-layers`,
-  else every layer of `tokens` that is no partition."
+  "The layers whose tokens are the words of a whole-body save, as
+  `word-token?` tells them."
   [tokens partitioning word-layers]
-  (if (seq word-layers)
-    (set word-layers)
-    (into #{} (comp (map :token/layer) (remove (set partitioning))) tokens)))
+  (into #{} (comp (filter (word-token? tokens partitioning word-layers)) (map :token/layer)) tokens))
 
 (defn body-diff-gaps
   "The change a whole-body save of `old` as `new` reads, before it reads any
@@ -2928,10 +2936,7 @@
                     (and (< start end) (pos? (alength v))
                          (or (<= 2 w)
                              (and (= 1 w) (or (<= 2 (runs o start end)) (<= 2 (runs v 0 (alength v)))))))))
-         word? (let [ws (set word-layers)]
-                 (if (some #(ws (:token/layer %)) tokens)
-                   #(ws (:token/layer %))
-                   #(not (contains? (set partitioning) (:token/layer %)))))
+         word? (word-token? tokens partitioning word-layers)
          children (set (:children opts))
          ;; gap i read as a whole-body save of its window (the text between
          ;; its neighbours) reads it, the tokens cut to the window, when that
