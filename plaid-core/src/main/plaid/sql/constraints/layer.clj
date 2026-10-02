@@ -428,10 +428,10 @@
                      (u (:id n)))))
                notes))))
 
-(defn- edge-key
-  "A relation's endpoints and value, off a row or an audit image."
+(defn- ends-key
+  "A relation's endpoints, off a row or an audit image."
   [m]
-  [(str (:source_span_id m)) (str (:target_span_id m)) (:value m)])
+  [(str (:source_span_id m)) (str (:target_span_id m))])
 
 (defn- check-max-in-degree
   "A span is the target of at most `max` relations of the layer. As for a
@@ -466,7 +466,9 @@
         ;; A declaration counts only the relations people wrote: a span an
         ;; import, a copy or a restore gave its extra heads keeps them.
         imported (if (and (= :all mode) (seq over))
-                   (import-set-ids tx :relations (mapcat second over) :key-of edge-key)
+                   ;; By the ends only: a relabel of an imported head
+                   ;; leaves it imported (REV-FX-CORE F3).
+                   (import-set-ids tx :relations (mapcat second over) :key-of ends-key)
                    #{})]
     (for [[t rs] over
           :when (> (count (remove #(imported (u (:id %))) rs)) mx)]
@@ -621,7 +623,11 @@
             imported (if (or (seq loops) (seq cyclic-ids))
                        (import-set-ids tx :relations
                                        (concat loops (filter #(cyclic-ids (u (:id %))) rows))
-                                       :key-of edge-key)
+                                       ;; By the ends and whether the value is
+                                       ;; counted: a relabel between counted
+                                       ;; values keeps an imported relation
+                                       ;; imported, as the write check lets it.
+                                       :key-of (fn [m] (conj (ends-key m) (excepted? (read-value (:value m))))))
                        #{})]
         ;; A declaration refuses a cycle made only of relations people
         ;; wrote: one an import, a copy or a restore had a part in stands.
@@ -634,11 +640,25 @@
                  by-doc)))
       (let [cands (live-with ctx "relations" lid [:edge :value])
             exempt (reproduced-ids tx cands [:edge-groups :value-groups])
-            checked (remove #(exempt (u (:id %))) cands)]
+            checked (remove #(exempt (u (:id %))) cands)
+            note-of (into {} (map (fn [n] [(u (:id n)) n])) checked)
+            ;; Only a write that can close a cycle is checked: one that made
+            ;; the relation or moved its ends, or moved its value from an
+            ;; excepted one to a counted one. A relabel between counted
+            ;; values, or a provenance stamp (an Accept), on a relation that
+            ;; already lies on a stored cycle is not refused (REV-FX-CORE F2).
+            can-close? (fn [r]
+                         (let [n (note-of (u (:id r)))
+                               pre (:pre n)]
+                           (or (nil? pre)
+                               (seq (get-in n [:kinds :edge]))
+                               (and (excepted? (read-value (:value pre)))
+                                    (not (excepted? (read-value (:value r))))))))]
         (when (seq checked)
-          (let [rows (q-chunks tx (fn [ch] {:select [:id :source_span_id :target_span_id :value :document_id]
-                                            :from :relations :where [:in :id ch]})
-                               (map :id checked))]
+          (let [rows (filter can-close?
+                             (q-chunks tx (fn [ch] {:select [:id :source_span_id :target_span_id :value :document_id]
+                                                    :from :relations :where [:in :id ch]})
+                                       (map :id checked)))]
             (mapcat
              (fn [[doc rs]]
                (let [counted (filter counted? rs)]

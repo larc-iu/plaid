@@ -2099,7 +2099,9 @@ Three kinds of write keep a value outside a `value-set` list:
 
 A value kept this way does not stop the list from being declared again later, and any later edit of it is checked.
 
-The `acyclic` and `max-in-degree` rules take the last two the same way: a relation an import, a copy or a restore wrote does not count against them, so a cycle or a second head an import brings stands (a file that stores an inverse role in the direction it was written, say), and so does one a restore brings back, while one a later write makes, or a later edit of a relation in it, is refused.
+The `acyclic` and `max-in-degree` rules take the last two the same way: a relation an import, a copy or a restore wrote does not count against them, so a cycle or a second head an import brings stands (a file that stores an inverse role in the direction it was written, say), and so does one a restore brings back, while one a later write makes is refused.
+Only a write that can close a cycle is checked against `acyclic`: one that makes a relation, moves one of its ends, or moves its value from one in `except-values` to one that counts. Relabelling a relation between counted values, or confirming it, is not refused even when it lies on a stored cycle.
+A relabel keeps an imported relation imported for both rules.
 Declaring either rule again over such data refuses only a cycle made wholly of relations other writes made, or a span that more than `max` such relations point at.
 
 A part of a value is compared with the list after trimming exactly what JavaScript's `String.prototype.trim` trims: Unicode white space, including the no-break spaces, and the byte order mark.

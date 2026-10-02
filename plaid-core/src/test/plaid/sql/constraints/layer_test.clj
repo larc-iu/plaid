@@ -240,12 +240,13 @@
       (assert-status 200 (declare! "relation" deps "umr" [{:type "acyclic" :except-values [":quote" ":mode"]}])))
     (testing "a copy of the document keeps them"
       (assert-status 201 (call :post (str "/api/v1/documents/" doc "/copy") {:name "D2"})))
-    (testing "a person's edit of a relation on an imported cycle is checked"
+    (testing "a relabel on an imported cycle is let through, and one out of an excepted value is checked"
       (let [rid (-> (psc/q1 db {:select [:id] :from :relations
                                 :where [:and [:= :source_span_id (span "sat")] [:= :target_span_id (span "The")]]})
                     :id str)]
-        (assert-status 422 (call :patch (str "/api/v1/relations/" rid) {:value ":ARG1"}))
-        (assert-status 200 (call :patch (str "/api/v1/relations/" rid) {:value ":quote"}))))
+        (assert-status 200 (call :patch (str "/api/v1/relations/" rid) {:value ":ARG1"}))
+        (assert-status 200 (call :patch (str "/api/v1/relations/" rid) {:value ":quote"}))
+        (assert-status 422 (call :patch (str "/api/v1/relations/" rid) {:value ":ARG1"}))))
     (testing "a declaration refuses a cycle only people's writes made"
       (assert-status 204 (call :delete (str "/api/v1/relation-layers/" deps "/constraints/umr")))
       (assert-status 201 (rel! s "cat" "Dogs" ":ARG0"))
@@ -254,6 +255,46 @@
         (assert-status 422 r)
         (is (= 1 (-> r :body :violation-count)))
         (is (= 2 (count (-> r :body :violations first :ids))))))))
+
+(deftest only-a-write-that-can-close-a-cycle-is-checked
+  ;; REV-FX-CORE F2: a relabel between counted values or a provenance stamp
+  ;; on a relation of a stored cycle cannot close one, and was refused.
+  (let [{:keys [deps span] :as s} (setup!)
+        import-q (str "?group-id=" (random-uuid) "&group-message=Import&group-kind=import")
+        rel-op (fn [a b v] {:path "/api/v1/relations" :method "POST"
+                            :body {:layer-id deps :source-id (span a) :target-id (span b) :value v}})
+        r (batch [(rel-op "The" "cat" ":ARG0") (rel-op "cat" "The" ":ARG1")] import-q)
+        [a b] (-> r :body (->> (map (comp :id :body))))]
+    (assert-status 200 r)
+    (assert-status 200 (declare! "relation" deps "umr" [{:type "acyclic" :except-values [":quote"]}]))
+    (testing "a relabel from one counted value to another"
+      (assert-status 200 (call :patch (str "/api/v1/relations/" b) {:value ":ARG2"})))
+    (testing "a provenance stamp, as an Accept sends"
+      (assert-status 200 (call :put (str "/api/v1/relations/" a "/metadata") {"prov" "inferred"}))
+      (assert-status 200 (call :put (str "/api/v1/relations/" a "/metadata") {"prov" "inferred" "provConfirmed" true})))
+    (testing "a relabel out of an excepted value that closes a cycle is refused"
+      (assert-status 200 (call :patch (str "/api/v1/relations/" b) {:value ":quote"}))
+      (assert-status 422 (call :patch (str "/api/v1/relations/" b) {:value ":ARG1"})))
+    (testing "moving an end onto a cycle is refused"
+      (let [c (id (rel! s "sat" "The" ":ARG0"))]
+        (assert-status 422 (call :put (str "/api/v1/relations/" c "/source") {:span-id (span "cat")}))))))
+
+(deftest relabelled-imported-heads-stay-imported
+  ;; REV-FX-CORE F3: a re-declaration refused heads an import wrote once a
+  ;; person relabelled them.
+  (let [{:keys [deps span]} (setup!)
+        import-q (str "?group-id=" (random-uuid) "&group-message=Import&group-kind=import")
+        rel-op (fn [a b] {:path "/api/v1/relations" :method "POST"
+                          :body {:layer-id deps :source-id (span a) :target-id (span b) :value "x"}})]
+    (assert-status 200 (declare! "relation" deps "ud" [{:type "max-in-degree" :max 1}]))
+    (let [r (batch [(rel-op "The" "ran") (rel-op "sat" "ran")] import-q)]
+      (assert-status 200 r)
+      (doseq [rid (map (comp :id :body) (:body r))]
+        (assert-status 200 (call :patch (str "/api/v1/relations/" rid) {:value "y"}))))
+    (assert-status 200 (declare! "relation" deps "ud" [{:type "max-in-degree" :max 1}]))
+    (is (zero? (-> (call :post (str "/api/v1/relation-layers/" deps "/constraints/check")
+                         {:constraints [{:type "max-in-degree" :max 1}]})
+                   :body :violation-count)))))
 
 ;; ============================================================
 ;; value-set
