@@ -248,6 +248,44 @@
                                 :body {:target-user-id "admin@example.com"}})]
         (assert-forbidden r)
         (is (re-find session-only (-> r :body :error)))))
+    (testing "not a new account, which comes with a password"
+      (doseq [is-admin [true false]]
+        (let [r (api-call as-tok {:method :post :path "/api/v1/users"
+                                  :body {:email (str "made-by-token-" is-admin "@example.com")
+                                         :password "a-perfectly-fine-password"
+                                         :is-admin is-admin}})]
+          (assert-forbidden r)
+          (is (re-find session-only (-> r :body :error))))))
+    (testing "not an invite that grants admin, alone or beside a project grant"
+      (let [pid (h/create-test-project admin-request "TokInviteP")]
+        (doseq [body [{:grant-admin true}
+                      {:grant-admin true :project-id pid :project-role "reader"}]]
+          (let [r (api-call as-tok {:method :post :path "/api/v1/invites" :body body})]
+            (assert-forbidden r)
+            (is (re-find session-only (-> r :body :error)))))
+        (testing "while an invite to a project still mints"
+          (assert-created (api-call as-tok {:method :post :path "/api/v1/invites"
+                                            :body {:project-id pid :project-role "reader"}})))))
+    (testing "and neither inside a batch"
+      (let [r (rest-handler (-> (mock/request :post "/api/v1/batch")
+                                (mock/header "accept" "application/edn")
+                                (mock/json-body [{:path "/api/v1/users" :method "post"
+                                                  :body {:email "batched@example.com"
+                                                         :password "a-perfectly-fine-password"
+                                                         :is-admin true}}])
+                                (mock/header "authorization" (str "Bearer " tok))))]
+        (is (not= 200 (:status r))))
+      (is (= 404 (:status (api-call admin-request {:method :get
+                                                   :path "/api/v1/users/batched@example.com"}))))
+      (is (= 404 (:status (api-call admin-request {:method :get
+                                                   :path "/api/v1/users/made-by-token-true@example.com"})))))
+    (testing "the session may still do both"
+      (assert-created (api-call admin-request {:method :post :path "/api/v1/users"
+                                               :body {:email "made-by-session@example.com"
+                                                      :password "a-perfectly-fine-password"
+                                                      :is-admin false}}))
+      (assert-created (api-call admin-request {:method :post :path "/api/v1/invites"
+                                               :body {:grant-admin true}})))
     (testing "an admin's other work still runs on it"
       (create-and-login! "cred-other@example.com" "original-password")
       (assert-ok (api-call as-tok {:method :patch :path "/api/v1/users/cred-other@example.com"

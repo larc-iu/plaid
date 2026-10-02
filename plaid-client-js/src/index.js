@@ -1204,7 +1204,8 @@ class PlaidClient {
           query: { q },
         }),
       /**
-       * Create a new user.
+       * Create a new user. Admin only, and not with a named API token (403):
+       * it needs a sign-in token.
        * @param {string} email - The account's email address. It becomes the
        *   user's id and is what they log in with; it can never be changed.
        * @param {string} password - The password
@@ -1611,7 +1612,7 @@ class PlaidClient {
        * @param {object} [opts]
        * @param {string} [opts.projectId] - Project the redeemer joins (requires projectRole)
        * @param {string} [opts.projectRole] - "reader" | "writer" | "maintainer" (requires projectId)
-       * @param {boolean} [opts.grantAdmin] - Make the new account a global admin (admin only)
+       * @param {boolean} [opts.grantAdmin] - Make the new account a global admin (admin only, and not with a named API token (403))
        * @param {string} [opts.targetUserId] - Password reset for that user instead of a signup; admin only, single-use, grants nothing, and not with a named API token (403)
        * @param {number} [opts.maxUses] - How many accounts this link may create (default 1)
        * @param {number} [opts.ttlDays] - Days until it expires (default 14, max 365)

@@ -51,8 +51,9 @@
      :post {:summary (str "Create a new user. The <body>email</body> becomes the account's ID and is "
                           "what they log in with; it can never be changed afterwards. "
                           "<body>display-name</body> is optional and defaults to the local part of "
-                          "the email.")
-            :middleware [pra/wrap-admin-required]
+                          "the email. Needs a signed-in session: a request signed with a named API "
+                          "token is refused (403).")
+            :middleware [pra/wrap-admin-required api-token/wrap-session-required]
             :parameters {:body [:map
                                 [:email string?]
                                 [:password string?]

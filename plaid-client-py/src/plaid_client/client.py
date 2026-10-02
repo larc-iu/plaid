@@ -1051,6 +1051,9 @@ class UsersResource(_Resource):
                display_name: str | None = None, audit_message=None) -> Any:
         """Create a new user.
 
+        Admin only, and not with a named API token (403): it needs a
+        sign-in token.
+
         Args:
             email: The account's email address. It becomes the user's id and
                 is what they log in with; it can never be changed.
@@ -1757,7 +1760,8 @@ class InvitesResource(_Resource):
         Args:
             project_id: Project the redeemer joins (requires ``project_role``)
             project_role: "reader", "writer" or "maintainer" (requires ``project_id``)
-            grant_admin: Make the new account a global admin (admin only)
+            grant_admin: Make the new account a global admin (admin only,
+                and not with a named API token (403))
             target_user_id: Password reset for that user instead of a signup;
                 admin only, single-use, grants nothing, and not with a named
                 API token (403)

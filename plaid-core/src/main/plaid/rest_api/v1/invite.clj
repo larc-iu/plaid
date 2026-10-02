@@ -216,8 +216,8 @@
                           "practice <body>project-id</body>/<body>project-role</body> are "
                           "required of a non-admin (403 without them). Authority is rechecked "
                           "at redemption, so a link stops working if the minter later loses the "
-                          "authority behind it. A password reset link needs a signed-in session: "
-                          "one asked for with a named API token is refused (403).")
+                          "authority behind it. A password reset link and an admin grant need a "
+                          "signed-in session: one asked for with a named API token is refused (403).")
             :parameters {:body [:map
                                 [:note {:optional true} string?]
                                 [:ttl-days {:optional true} int?]
@@ -227,7 +227,8 @@
                                 [:project-role {:optional true} string?]
                                 [:target-user-id {:optional true} string?]]}
             :handler (fn [{{body :body} :parameters db :db :as request}]
-                       (if (and (some? (:target-user-id body)) (api-token/named-token? request))
+                       (if (and (or (some? (:target-user-id body)) (:grant-admin body))
+                                (api-token/named-token? request))
                          api-token/session-only-refusal
                          (let [{:keys [success extra error] status-code :code}
                                (invite/create! db
