@@ -1,11 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { IgtDocument } from './IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
-import {
-  planMorphTypeSync,
-  planPreserveOnSplit,
-  describeReconcile,
-} from './igtReconcile.js';
+import { planMorphTypeSync, planPreserveOnSplit, describeReconcile } from './igtReconcile.js';
 
 const makeDoc = (raw, client) =>
   new IgtDocument({
