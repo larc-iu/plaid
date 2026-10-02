@@ -12,9 +12,11 @@ import {
 /**
  * The edit log (lib/editLog.js) of a controlled textarea. Spread `handlers`
  * on it so the selection before each change is known, and call `onChange`
- * from its change handler (or `record(prev, next, caretAfter)` for a value
- * that changed some other way). A textarea with its own onKeyDown, onSelect,
- * onMouseUp or onFocus calls `capture(event)` from it instead.
+ * from its change handler (or `record(prev, next, caretAfter, inputType)` for
+ * a value that changed some other way). The input event's `inputType` tells
+ * an undo, redo or drop, which happen away from the selection before them. A
+ * textarea with its own onKeyDown, onSelect, onMouseUp or onFocus calls
+ * `capture(event)` from it instead.
  */
 export function useEditLog(base = '', digest = null) {
   const logRef = useRef(null);
@@ -36,8 +38,8 @@ export function useEditLog(base = '', digest = null) {
   }, []);
 
   const record = useCallback(
-    (prev, next, caretAfter) =>
-      put(recordEdit(logRef.current, prev, selection.current, next, caretAfter)),
+    (prev, next, caretAfter, inputType = null) =>
+      put(recordEdit(logRef.current, prev, selection.current, next, caretAfter, inputType)),
     [put],
   );
 
@@ -45,7 +47,7 @@ export function useEditLog(base = '', digest = null) {
     (event) => {
       const el = event.target;
       const caret = typeof el.selectionEnd === 'number' ? el.selectionEnd : el.value.length;
-      record(logRef.current.body, el.value, caret);
+      record(logRef.current.body, el.value, caret, event.nativeEvent?.inputType ?? null);
       capture(event);
     },
     [record, capture],

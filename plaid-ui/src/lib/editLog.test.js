@@ -235,6 +235,112 @@ describe('the edit log', () => {
     expect(applyTextOps('abc def', c.log.ops)).toBe(' defabc');
   });
 
+  // What Chrome reports for a word dragged inside a textarea (seen in a real
+  // browser): `deleteByDrag` with the caret left where the word was, then
+  // `insertFromDrop` with the dropped word selected. Nothing is captured
+  // between the two, so the selection before the drop is the delete's caret.
+  it('reads a word dragged inside the box as a delete where it was and an insert where it went (H1-IGT-TEXT-2)', () => {
+    const base = 'bo arkin\nbo godung et\ngodung keca\n';
+    let log = startEditLog(base, 'd0');
+    const dragged = 'bo arkin\n godung et\ngodung keca\n';
+    log = recordEdit(log, base, { start: 9, end: 11 }, dragged, 9, 'deleteByDrag');
+    const dropped = 'bo arkin\n godung et\ngodung kboeca\n';
+    log = recordEdit(log, dragged, { start: 9, end: 9 }, dropped, 30, 'insertFromDrop');
+    expect(editLogBody(log)).toBe(dropped);
+    expect(editLogGaps(log)).toEqual([
+      { start: 9, end: 11, value: '' },
+      { start: 30, end: 30, value: 'bo' },
+    ]);
+    // the same without being told the input's kind
+    log = startEditLog(base, 'd0');
+    log = recordEdit(log, base, { start: 9, end: 11 }, dragged, 9);
+    log = recordEdit(log, dragged, { start: 9, end: 9 }, dropped, 30);
+    expect(editLogGaps(log)).toEqual([
+      { start: 9, end: 11, value: '' },
+      { start: 30, end: 30, value: 'bo' },
+    ]);
+  });
+
+  it('reads a drop to the left of where the word was (H1-IGT-TEXT-2)', () => {
+    const base = 'Tuu vaari\nching loon\nthung ta\n';
+    let log = startEditLog(base, 'd0');
+    const dragged = 'Tuu vaari\nching loon\n ta\n';
+    log = recordEdit(log, base, { start: 21, end: 26 }, dragged, 21, 'deleteByDrag');
+    const dropped = 'Tthunguu vaari\nching loon\n ta\n';
+    log = recordEdit(log, dragged, { start: 21, end: 21 }, dropped, 6, 'insertFromDrop');
+    expect(editLogGaps(log)).toEqual([
+      { start: 1, end: 1, value: 'thung' },
+      { start: 21, end: 26, value: '' },
+    ]);
+  });
+
+  // Chrome after Ctrl+Z selects the text it put back, after Ctrl+Shift+Z it
+  // leaves the caret after what it redid, wherever the caret was before.
+  it('reads an undo where it happened when the caret moved away first (H1-IGT-TEXT-3)', () => {
+    const base = 'a\ndi ra\ndi ra\nend\n';
+    // select the first `di ra\n` and Delete
+    let log = startEditLog(base, 'd0');
+    const deleted = 'a\ndi ra\nend\n';
+    log = recordEdit(log, base, { start: 2, end: 8 }, deleted, 2, 'deleteContentForward');
+    // the caret moves to the end, then Ctrl+Z: the restored line is selected
+    log = recordEdit(log, deleted, { start: 12, end: 12 }, base, 8, 'historyUndo');
+    expect(editLogBody(log)).toBe(base);
+    expect(editLogIsEmpty(log)).toBe(true);
+    // Ctrl+Shift+Z with the caret moved away again, then Ctrl+Z
+    log = recordEdit(log, base, { start: 0, end: 0 }, deleted, 2, 'historyRedo');
+    expect(editLogGaps(log)).toEqual([{ start: 2, end: 8, value: '' }]);
+    log = recordEdit(log, deleted, { start: 12, end: 12 }, base, 8, 'historyUndo');
+    expect(editLogIsEmpty(log)).toBe(true);
+  });
+
+  it('reads an undo of a reduplicated word where it happened (H1-IGT-TEXT-3)', () => {
+    const base = 'ta krvaa krvaa ra\nnext line\n';
+    let log = startEditLog(base, 'd0');
+    // select the first `krvaa `, Backspace, Down, Ctrl+Z
+    const deleted = 'ta krvaa ra\nnext line\n';
+    log = recordEdit(log, base, { start: 3, end: 9 }, deleted, 3, 'deleteContentBackward');
+    log = recordEdit(log, deleted, { start: 16, end: 16 }, base, 9, 'historyUndo');
+    expect(editLogIsEmpty(log)).toBe(true);
+    // without the input's kind the caret after still places it
+    log = startEditLog(base, 'd0');
+    log = recordEdit(log, base, { start: 3, end: 9 }, deleted, 3);
+    log = recordEdit(log, deleted, { start: 16, end: 16 }, base, 9);
+    expect(editLogIsEmpty(log)).toBe(true);
+  });
+
+  it('reads an undo of typing, and its redo, at the caret Chrome leaves', () => {
+    const base = 'ab ab ab';
+    let log = startEditLog(base, 'd0');
+    log = recordEdit(log, base, { start: 2, end: 2 }, 'abb ab ab', 3, 'insertText');
+    // Ctrl+End, then Ctrl+Z: the caret is left where the letter was
+    log = recordEdit(log, 'abb ab ab', { start: 9, end: 9 }, base, 2, 'historyUndo');
+    expect(editLogIsEmpty(log)).toBe(true);
+    log = recordEdit(log, base, { start: 0, end: 0 }, 'abb ab ab', 3, 'historyRedo');
+    expect(editLogGaps(log)).toEqual([{ start: 2, end: 2, value: 'b' }]);
+  });
+
+  it('never reads a stale selection as a wide replace', () => {
+    // the selection still covers `cats` when Ctrl+Z takes back the `s`
+    // typed before: one letter goes, not the word
+    expect(inferEdit('the cats', { start: 4, end: 8 }, 'the cat', 7, 'historyUndo')).toEqual({
+      type: 'delete',
+      index: 7,
+      value: 1,
+    });
+    // a selection left from before, with the caret after an insert elsewhere
+    expect(inferEdit('one two three', { start: 0, end: 3 }, 'one two xthree', 9)).toEqual({
+      type: 'insert',
+      index: 8,
+      value: 'x',
+    });
+    // a collapsed selection left far before the change
+    expect(inferEdit('aa bb aa bb', { start: 0, end: 0 }, 'aa bb aa bbX', 12)).toEqual({
+      type: 'insert',
+      index: 11,
+      value: 'X',
+    });
+  });
+
   it('reads IME composition steps, the conversion by the common start and end', () => {
     const b = box('日本 ');
     b.type('k'); // composing `k`

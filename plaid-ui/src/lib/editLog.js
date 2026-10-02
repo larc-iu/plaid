@@ -92,32 +92,71 @@ function atWordEdge(prev, next, change) {
   }
 }
 
-// The change read from the caret: the text after it is what followed the old
-// selection, so the old stretch ends where that text starts, and it starts
-// where the selection or the caret does, whichever is first. Null when that
-// reading does not make `next`.
-function caretChange(prev, prevSel, next, caretAfter) {
+// The selection before a change explains it only for what is typed, pasted,
+// cut or deleted over that selection. These inputs happen somewhere else: a
+// drop and the delete of a drag where the mouse says, an undo or redo where
+// the history says, and the selection before them is stale.
+const NOT_AT_SELECTION = new Set(['historyUndo', 'historyRedo', 'insertFromDrop', 'deleteByDrag']);
+
+// The change read from a selection that was typed, pasted or deleted over:
+// [start, end) of `prev` gave way to next[start, caretAfter). Null when that
+// does not make `next`.
+function selectionChange(prev, prevSel, next, caretAfter) {
   const ok = (n) => Number.isInteger(n) && n >= 0;
-  if (!prevSel || !ok(prevSel.start) || !ok(caretAfter) || caretAfter > next.length) return null;
-  const s = Math.min(prevSel.start, caretAfter);
-  const e = prev.length - (next.length - caretAfter);
-  if (s > e || e > prev.length) return null;
+  if (!prevSel || !ok(prevSel.start) || !ok(prevSel.end) || !ok(caretAfter)) return null;
+  const { start: s, end: e } = prevSel;
+  if (s >= e || e > prev.length || caretAfter < s || caretAfter > next.length) return null;
   if (splitsPair(prev, s) || splitsPair(prev, e) || splitsPair(next, caretAfter)) return null;
   if (prev.slice(0, s) + next.slice(s, caretAfter) + prev.slice(e) !== next) return null;
   return { s, e, t: caretAfter };
 }
 
+// The change read from the caret after it, which a browser leaves at the end
+// of what it typed, pasted, dropped, put back or redid, and where it deleted:
+// the text after the caret is what followed the changed stretch, so the
+// stretch ends there, and it starts no later than the first difference from
+// the front. What it shares with the old text at its end is trimmed off, so
+// a stale caret still gives the least change near it, never a wide one. Null
+// when the text after the caret is not the old text's end.
+function caretChange(prev, next, caretAfter) {
+  if (!Number.isInteger(caretAfter) || caretAfter < 0 || caretAfter > next.length) return null;
+  let t = caretAfter;
+  let e = prev.length - (next.length - t);
+  if (e < 0 || splitsPair(prev, e) || splitsPair(next, t)) return null;
+  if (prev.slice(e) !== next.slice(t)) return null;
+  let front = 0;
+  const most = Math.min(prev.length, next.length);
+  while (front < most && prev.charCodeAt(front) === next.charCodeAt(front)) front += 1;
+  if (splitsPair(prev, front) || splitsPair(next, front)) front -= 1;
+  const s = Math.min(front, e, t);
+  while (e > s && t > s && prev.charCodeAt(e - 1) === next.charCodeAt(t - 1)) {
+    e -= 1;
+    t -= 1;
+  }
+  if (splitsPair(prev, e) || splitsPair(next, t)) {
+    e += 1;
+    t += 1;
+  }
+  return { s, e, t };
+}
+
 /**
  * The change of a text box from `prev` to `next` as one running op in code
  * points, or null when nothing changed. `prevSel` is the selection before the
- * change and `caretAfter` the caret after it, both UTF-16 as the DOM gives
- * them. When they do not explain the change (undo and redo, a drop, a value
- * set by code, IME composition), the change is the stretch between the common
- * start and end of the two values.
+ * change and `caretAfter` the caret after it (the selection's end), both
+ * UTF-16 as the DOM gives them, and `inputType` the input event's kind when
+ * known. A selection typed or pasted over is the change's place, else the
+ * caret is its end (see `caretChange`). With no caret known (a value set by
+ * code), the change is the stretch between the common start and end of the
+ * two values.
  */
-export function inferEdit(prev, prevSel, next, caretAfter) {
+export function inferEdit(prev, prevSel, next, caretAfter, inputType = null) {
   if (prev === next) return null;
-  const { s, e, t } = caretChange(prev, prevSel, next, caretAfter) ?? trimmedChange(prev, next);
+  const atSelection = !NOT_AT_SELECTION.has(inputType);
+  const { s, e, t } =
+    (atSelection && selectionChange(prev, prevSel, next, caretAfter)) ||
+    caretChange(prev, next, caretAfter) ||
+    trimmedChange(prev, next);
   const index = utf16ToCp(prev, s);
   const length = cpLength(prev.slice(s, e));
   const value = next.slice(s, t);
@@ -170,12 +209,12 @@ const COMPACT_AT = 128;
  * `prev` is what the box showed, which is the log's body. When it is not, the
  * change is read from the body instead, so the log still makes `next`.
  */
-export function recordEdit(log, prev, prevSel, next, caretAfter) {
+export function recordEdit(log, prev, prevSel, next, caretAfter, inputType = null) {
   next = shown(next);
   const change =
     prev === log.body
-      ? inferEdit(prev, prevSel, next, caretAfter)
-      : inferEdit(log.body, null, next, null);
+      ? inferEdit(prev, prevSel, next, caretAfter, inputType)
+      : inferEdit(log.body, null, next, caretAfter, inputType);
   if (!change) return log;
   const op = onRaw(log.raw, change);
   let ops = [...log.ops, op];
