@@ -67,7 +67,10 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
       .map((f) => f.value)
       .filter(Boolean)
       .map(flat)
-      .sort();
+      // UD orders features by name, case aside (`Number` before `NumType`).
+      .map((v) => [v.split('=')[0].toLowerCase(), v])
+      .sort(([a, x], [b, y]) => (a < b ? -1 : a > b ? 1 : x < y ? -1 : x > y ? 1 : 0))
+      .map(([, v]) => v);
     return values.length > 0 ? values.join('|') : UNDERSCORE;
   };
 

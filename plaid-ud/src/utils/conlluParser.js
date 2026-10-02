@@ -36,6 +36,8 @@ export function splitConlluByNewdoc(text) {
     .filter((d) => d.text.length > 0);
 }
 
+const hasSpaceAfterNo = (misc) => (misc || '').split('|').includes('SpaceAfter=No');
+
 export function parseCoNLLU(text) {
   const lines = text.split('\n');
   const sentences = [];
@@ -141,6 +143,7 @@ export function parseCoNLLU(text) {
         start: start,
         end: end,
         form: form === '_' ? '' : form,
+        spaceAfterNo: hasSpaceAfterNo(misc),
       });
       continue;
     }
@@ -154,9 +157,10 @@ export function parseCoNLLU(text) {
     // The MISC column is deliberately unsupported (it often carries annotations
     // like entity info that tokenization changes would silently corrupt; see
     // plaid-ud scope decisions). Count word-row MISC drops so the user hears
-    // about it. `SpaceAfter=No` is not counted, on any row: the body is
-    // built from `# text`, so it holds the spacing, and the export writes the
-    // value again from it. (MWT-row MISC is dropped silently.)
+    // about it. `SpaceAfter=No` is not counted, on any row: the body holds
+    // the spacing (it is `# text`, or the forms joined as SpaceAfter says),
+    // and the export writes the value again from it. (MWT-row MISC is
+    // dropped silently.)
     const keptMisc = (misc || '')
       .split('|')
       .filter((item) => item !== '' && item !== '_' && item !== 'SpaceAfter=No');
@@ -204,6 +208,9 @@ export function parseCoNLLU(text) {
       // about the enhanced graph, where `_` says this word has no enhanced
       // head, and reading one as the other suppressed the word's relation.
       depsUnreadable,
+      // Read where a sentence has no `# text`, whose text is then built from
+      // the forms (buildConlluHierarchy).
+      spaceAfterNo: hasSpaceAfterNo(misc),
     });
   }
 
@@ -297,6 +304,7 @@ export function buildConlluHierarchy(parsedData) {
           hasExplicitForm,
           isMwt: true,
           members,
+          spaceAfterNo: Boolean(mwt.spaceAfterNo),
         });
         i = endIdx + 1;
       } else {
@@ -305,6 +313,7 @@ export function buildConlluHierarchy(parsedData) {
           hasExplicitForm: false,
           isMwt: false,
           members: [rows[i]],
+          spaceAfterNo: Boolean(rows[i].spaceAfterNo),
         });
         i += 1;
       }
@@ -364,7 +373,9 @@ export function buildConlluHierarchy(parsedData) {
     const rawSentenceText =
       sentence.metadata && sentence.metadata.text
         ? sentence.metadata.text
-        : units.map((u) => u.surfaceForm).join(' ');
+        : units
+            .map((u, k) => u.surfaceForm + (u.spaceAfterNo || k === units.length - 1 ? '' : ' '))
+            .join('');
 
     const { positions: unitPositions, usedSynthetic } = locateUnits(rawSentenceText, units);
     if (usedSynthetic) syntheticOffsetSentences += 1;

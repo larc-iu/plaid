@@ -119,3 +119,35 @@ test('an import does not count SpaceAfter=No as a MISC value dropped', () => {
   );
   assert.equal(parsed.dropped.miscTokens, 1);
 });
+
+// Review F3: with no `# text`, the text is built from the forms, so
+// SpaceAfter=No decides where they are joined, and the file round trips.
+test('a file with no # text keeps SpaceAfter=No in the text it builds', () => {
+  const file = [
+    '1\tHello\thello\tINTJ\t_\t_\t0\troot\t_\tSpaceAfter=No',
+    '2\t,\t,\tPUNCT\t_\t_\t1\tpunct\t_\t_',
+    '3-4\tdel\t_\t_\t_\t_\t_\t_\t_\tSpaceAfter=No',
+    '3\tde\tde\tADP\t_\t_\t5\tcase\t_\t_',
+    '4\tel\tel\tDET\t_\t_\t5\tdet\t_\t_',
+    '5\tworld\tworld\tNOUN\t_\t_\t1\tvocative\t_\tSpaceAfter=No',
+    '6\t!\t!\tPUNCT\t_\t_\t1\tpunct\t_\t_',
+  ].join('\n');
+  assert.equal(parseCoNLLU(file).dropped.miscTokens, 0);
+  const out = exported(rawDocFromConllu(file, 'd'));
+  assert.equal(textLine(out), '# text = Hello, delworld!');
+  const misc = (id) => row(out, id).split('\t')[9];
+  assert.equal(misc('1'), 'SpaceAfter=No');
+  assert.equal(misc('2'), '_');
+  assert.equal(misc('3-4'), 'SpaceAfter=No');
+  assert.equal(misc('5'), 'SpaceAfter=No');
+});
+
+// UD sorts FEATS by name case-insensitively: Number before NumType.
+test('FEATS are written in UD order, case aside', () => {
+  const file = [
+    '# text = two',
+    '1\ttwo\ttwo\tNUM\t_\tNumType=Card|Number=Plur|abbr=Yes\t0\troot\t_\t_',
+  ].join('\n');
+  const out = exported(rawDocFromConllu(file, 'd'));
+  assert.equal(row(out, '1').split('\t')[5], 'abbr=Yes|Number=Plur|NumType=Card');
+});
