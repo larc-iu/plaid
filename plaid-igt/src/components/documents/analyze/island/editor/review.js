@@ -1,5 +1,6 @@
-import { notifyInfo } from '@/utils/feedback';
+import { notifyError, notifyInfo } from '@/utils/feedback';
 import { keys } from '@/lib/keymap.js';
+import { tagsetEnforces, validateValue } from '@/domain/tagsets';
 import {
   ADVANCE_BEAT_MS,
   cellByKey,
@@ -102,6 +103,17 @@ export const review = {
       );
       return true;
     }
+    // A value a closed list refuses would sink the whole accept (it is one
+    // write), so say which cell holds it and stay there instead of moving on.
+    const refused = this._wordRefusedCell(wordId);
+    if (refused) {
+      notifyError(
+        this._violationText(validateValue(refused.value, refused.igtTagset), refused.igtTagset),
+        'Nothing accepted on this word',
+      );
+      if (refused !== e.target) refused.focus();
+      return true;
+    }
     // Each guess taken is recorded once the write lands, and only a guess the
     // accept writes: one it skips is no answer. Asked before the accept, which
     // changes what the word holds.
@@ -160,6 +172,21 @@ export const review = {
       });
     }
     return out;
+  },
+
+  // The first cell of this word's column that the accept would confirm and
+  // whose value its closed tagset refuses, or null. Read off the rendered
+  // cells, as the review stops are, with the tagset each cell reads its value
+  // by (a morpheme gloss's reading included).
+  _wordRefusedCell(wordId) {
+    const col = this.container.querySelector(`[data-word-col="${wordId}"]`);
+    if (!col) return null;
+    for (const el of col.querySelectorAll(this._reviewColSelector())) {
+      if (!el.classList.contains('igt-field')) continue;
+      const tagset = el.igtTagset ?? null;
+      if (tagsetEnforces(tagset) && validateValue(el.value, tagset).length) return el;
+    }
+    return null;
   },
 
   // The selector for material this writer reviews in a word column — the

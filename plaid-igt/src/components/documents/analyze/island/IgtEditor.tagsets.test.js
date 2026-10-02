@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { IgtEditor } from './IgtEditor.js';
 import { IgtDocument } from '@/domain/IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import { notifyError } from '@/utils/feedback';
 
 // The tagset behaviours of the interlinear editor.
 //
@@ -228,6 +229,53 @@ describe('an off-tagset value that was never typed', () => {
     await doc.updateMorphemeSpan(morphId, 'Gloss', 'dog | PL', null);
     await flush();
     expect(glossCell().classList.contains('igt-field--invalid')).toBe(true);
+  });
+});
+
+describe('Ctrl+Enter on a word holding an off-list machine value', () => {
+  const MACHINE = { prov: 'inferred', provSource: 'service:x' };
+  const ctrlEnter = (el) =>
+    el.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Enter',
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+
+  it('accepts nothing, names the value, and stays on the word', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const doc = mount();
+      const morphId = glossCell().dataset.cellKey.split(':')[1];
+      await doc.updateMorphemeSpan(morphId, 'Gloss', '1SG.ABL', MACHINE);
+      await flush();
+      const confirm = vi.spyOn(doc, 'confirmWordAnalysis');
+      // From the word's other cell: the refused one takes the caret.
+      const pos = host.querySelector('input[data-cell-key^="wa:"]');
+      focus(pos);
+      notifyError.mockClear();
+      ctrlEnter(pos);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(confirm).not.toHaveBeenCalled();
+      expect(notifyError).toHaveBeenCalledTimes(1);
+      expect(notifyError.mock.calls[0][0]).toContain('"ABL"');
+      expect(document.activeElement).toBe(glossCell());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('accepts a word whose machine values the list holds', async () => {
+    const doc = mount();
+    const morphId = glossCell().dataset.cellKey.split(':')[1];
+    await doc.updateMorphemeSpan(morphId, 'Gloss', '1SG.PL', MACHINE);
+    await flush();
+    const confirm = vi.spyOn(doc, 'confirmWordAnalysis');
+    focus(glossCell());
+    ctrlEnter(glossCell());
+    expect(confirm).toHaveBeenCalledTimes(1);
   });
 });
 
