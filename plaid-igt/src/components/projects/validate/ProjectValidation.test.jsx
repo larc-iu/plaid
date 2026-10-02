@@ -146,6 +146,51 @@ describe('the scan', () => {
     await unmount();
   });
 
+  it("puts an open list's word-like values in a closed group with no Add, and counts red only what the cells mark", async () => {
+    const open = {
+      ...project,
+      config: {
+        igt: {
+          ...project.config.igt,
+          tagsets: { ...project.config.igt.tagsets, Leipzig: { ...LEIPZIG, mode: 'suggest' } },
+        },
+      },
+    };
+    const client = clientWith([
+      [
+        ['dog', 9],
+        ['1SG.ABL', 3],
+        ['1SG.', 1],
+      ],
+      [['Song', 4]],
+    ]);
+    const { container, step, unmount } = await renderComponent(
+      <MemoryRouter>
+        <ProjectValidation
+          project={open}
+          projectId="p-1"
+          client={client}
+          onProjectUpdate={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    const text = () => container.textContent;
+    // The stray delimiter is the one value the cell marks.
+    expect(text()).toContain('1 outside the tagset');
+    expect(text()).toContain('2 not in the tagset');
+    expect(text()).toContain('1SG.ABL');
+    const group = byText(container, 'button', 'not written in capitals');
+    expect(group.textContent).toContain('1 not written in capitals');
+    expect(group.getAttribute('aria-expanded')).toBe('false');
+    expect(text()).not.toMatch(/\bdog\b/);
+    await step(() => group.click());
+    expect(text()).toMatch(/\bdog\b/);
+    // Add to tagset stays on the tag's row only.
+    const adds = all(container, 'button').filter((b) => b.textContent.includes('Add to tagset'));
+    expect(adds.map((b) => b.title)).toEqual(['Add ABL to Leipzig']);
+    await unmount();
+  });
+
   it('says everything is clean when it is', async () => {
     const client = clientWith([[['1SG.PL', 7]], [['Song', 4]]]);
     const { container, unmount } = await render(client);

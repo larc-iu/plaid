@@ -397,18 +397,21 @@ describe('offTagsetValues', () => {
         count: 7,
         violations: [{ part: 'ERG', begin: 0, end: 3, reason: 'unknown' }],
         flagged: true,
+        lexical: false,
       },
       {
         value: '1SG.ABL',
         count: 4,
         violations: [{ part: 'ABL', begin: 4, end: 7, reason: 'unknown' }],
         flagged: true,
+        lexical: false,
       },
       {
         value: '1SG.',
         count: 2,
         violations: [{ part: '', begin: 4, end: 4, reason: 'empty' }],
         flagged: true,
+        lexical: false,
       },
     ]);
   });
@@ -432,6 +435,24 @@ describe('offTagsetValues', () => {
       offTagsetValues(attested, closed).map((r) => r.value),
     );
     expect(offTagsetValues([['n.mly', 3]], { ...open, values: [{ value: 'n' }] })).toHaveLength(1);
+  });
+
+  it('marks a value whose unlisted parts all read as words, on an open list only', () => {
+    const open = { ...leipzig, mode: 'suggest' };
+    const rows = offTagsetValues(
+      [
+        ['dog', 5],
+        ['dog.ERG', 3],
+        ['ABL', 2],
+      ],
+      open,
+    );
+    expect(rows.map((r) => [r.value, r.lexical])).toEqual([
+      ['dog', true],
+      ['dog.ERG', false],
+      ['ABL', false],
+    ]);
+    expect(offTagsetValues([['dog', 5]], leipzig)[0].lexical).toBe(false);
   });
 });
 
@@ -681,12 +702,14 @@ describe('a value known only by its own morph type', () => {
           { part: 'pfv', begin: 6, end: 9, reason: 'unknown' },
         ],
         flagged: true,
+        lexical: false,
       },
       {
         value: 'pass.PST',
         count: 2,
         violations: [{ part: 'pass', begin: 0, end: 4, reason: 'unknown' }],
         flagged: true,
+        lexical: false,
       },
     ]);
   });
@@ -711,6 +734,7 @@ describe('a value known only by its own morph type', () => {
           { part: 'pfv', begin: 6, end: 9, reason: 'unknown' },
         ],
         flagged: true,
+        lexical: false,
       },
     ]);
   });

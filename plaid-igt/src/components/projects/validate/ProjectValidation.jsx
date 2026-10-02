@@ -144,6 +144,8 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
   // lands nowhere once it answers.
   const scanRun = useRef(0);
   const [zeros, setZeros] = useState(null);
+  // The fields whose group of word-like values (an open list's) is open.
+  const [wordsOpen, setWordsOpen] = useState({});
 
   // Morpheme forms that look like a zero someone spelled another way. A
   // pseudo-field so it can share `locate` and the row markup below.
@@ -314,6 +316,67 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
     );
   }
 
+  // One flagged value's row. `addable` offers Add to tagset, which a word-like
+  // value on an open list does not get.
+  const renderRow = (g, row, addable) => {
+    const key = `${g.key}:${row.value}`;
+    const open = expanded === key;
+    const res = hits[key];
+    const unknownParts = row.violations.filter((v) => v.reason === 'unknown').map((v) => v.part);
+    // The scan's count reads each morpheme alone. Once the row is open
+    // and lists every failing occurrence, their number replaces it.
+    const count = listedCount(res) ?? row.count;
+    return (
+      <div key={row.value} className="border-b last:border-b-0">
+        <div className="flex items-center gap-3 px-3 py-2">
+          {g.domain || g.kind === 'metadata' ? (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-6 w-6 shrink-0"
+              onClick={() => locate(g, row.value)}
+              title={open ? 'Hide occurrences' : 'Show occurrences'}
+            >
+              {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </Button>
+          ) : (
+            // No searchable domain for this layer, so there is nothing
+            // to expand. Hold the column rather than offering a control
+            // that would open an empty panel.
+            <span className="h-6 w-6 shrink-0" />
+          )}
+          <code
+            className={`rounded px-1.5 py-0.5 text-sm ${
+              row.flagged ? 'bg-destructive/10 text-destructive' : 'bg-muted'
+            }`}
+          >
+            {row.value}
+          </code>
+          <span className="text-xs text-muted-foreground">
+            {count} occurrence{count === 1 ? '' : 's'} · {reasonText(row.violations)}
+          </span>
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            {addable && unknownParts.length > 0 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => addToTagset(g, unknownParts)}
+                title={`Add ${unknownParts.join(', ')} to ${g.tagsetName}`}
+              >
+                <Plus className="h-3.5 w-3.5" /> Add to tagset
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" asChild>
+              <Link to={`/projects/${projectId}?tab=bulk`}>Fix in Bulk Edit</Link>
+            </Button>
+          </div>
+        </div>
+
+        {open && <Occurrences res={res} projectId={projectId} />}
+      </div>
+    );
+  };
+
   const totalBad = fields.reduce((a, f) => a + f.bad.length, 0);
   const zeroRows = zeros || [];
 
@@ -402,89 +465,63 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
               {g.tagsetName} · {MODE_LABELS[g.tagset.mode]} · {distinctValues(g.attested)} distinct
               value{distinctValues(g.attested) === 1 ? '' : 's'}
             </span>
-            {g.bad.some((row) => row.flagged) ? (
-              <span className="ml-auto flex items-center gap-1.5 text-sm font-medium text-destructive">
-                <AlertTriangle className="h-4 w-4" />
-                {g.bad.length} outside the tagset
-              </span>
-            ) : g.bad.length > 0 ? (
-              // An open list refuses nothing: these are what closing it would.
-              <span className="ml-auto text-sm text-muted-foreground">
-                {g.bad.length} not in the tagset
-              </span>
-            ) : (
-              <span className="ml-auto flex items-center gap-1.5 text-sm text-success">
-                <Check className="h-4 w-4" /> All in the tagset
-              </span>
-            )}
+            <FieldCount bad={g.bad} />
           </div>
 
-          {g.bad.map((row) => {
-            const key = `${g.key}:${row.value}`;
-            const open = expanded === key;
-            const res = hits[key];
-            const unknownParts = row.violations
-              .filter((v) => v.reason === 'unknown')
-              .map((v) => v.part);
-            // The scan's count reads each morpheme alone. Once the row is open
-            // and lists every failing occurrence, their number replaces it.
-            const count = listedCount(res) ?? row.count;
-            return (
-              <div key={row.value} className="border-b last:border-b-0">
-                <div className="flex items-center gap-3 px-3 py-2">
-                  {g.domain || g.kind === 'metadata' ? (
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-6 w-6 shrink-0"
-                      onClick={() => locate(g, row.value)}
-                      title={open ? 'Hide occurrences' : 'Show occurrences'}
-                    >
-                      {open ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4" />
-                      )}
-                    </Button>
-                  ) : (
-                    // No searchable domain for this layer, so there is nothing
-                    // to expand. Hold the column rather than offering a control
-                    // that would open an empty panel.
-                    <span className="h-6 w-6 shrink-0" />
-                  )}
-                  <code
-                    className={`rounded px-1.5 py-0.5 text-sm ${
-                      row.flagged ? 'bg-destructive/10 text-destructive' : 'bg-muted'
-                    }`}
-                  >
-                    {row.value}
-                  </code>
-                  <span className="text-xs text-muted-foreground">
-                    {count} occurrence{count === 1 ? '' : 's'} · {reasonText(row.violations)}
-                  </span>
-                  <div className="ml-auto flex shrink-0 items-center gap-1">
-                    {unknownParts.length > 0 && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => addToTagset(g, unknownParts)}
-                        title={`Add ${unknownParts.join(', ')} to ${g.tagsetName}`}
-                      >
-                        <Plus className="h-3.5 w-3.5" /> Add to tagset
-                      </Button>
-                    )}
-                    <Button size="sm" variant="ghost" asChild>
-                      <Link to={`/projects/${projectId}?tab=bulk`}>Fix in Bulk Edit</Link>
-                    </Button>
-                  </div>
-                </div>
-
-                {open && <Occurrences res={res} projectId={projectId} />}
-              </div>
-            );
-          })}
+          {g.bad.filter((row) => !row.lexical).map((row) => renderRow(g, row, true))}
+          {g.bad.some((row) => row.lexical) && (
+            <WordsGroup
+              rows={g.bad.filter((row) => row.lexical)}
+              open={!!wordsOpen[g.key]}
+              onToggle={() => setWordsOpen((o) => ({ ...o, [g.key]: !o[g.key] }))}
+            >
+              {g.bad.filter((row) => row.lexical).map((row) => renderRow(g, row, false))}
+            </WordsGroup>
+          )}
         </div>
       ))}
     </div>
   );
 };
+
+// What a field's header says: red for the values its cells mark, grey for an
+// open list's values a close would refuse, green when there are none.
+const FieldCount = ({ bad }) => {
+  const flagged = bad.filter((row) => row.flagged).length;
+  const unlisted = bad.length - flagged;
+  if (!bad.length)
+    return (
+      <span className="ml-auto flex items-center gap-1.5 text-sm text-success">
+        <Check className="h-4 w-4" /> All in the tagset
+      </span>
+    );
+  return (
+    <span className="ml-auto flex items-center gap-3 text-sm">
+      {flagged > 0 && (
+        <span className="flex items-center gap-1.5 font-medium text-destructive">
+          <AlertTriangle className="h-4 w-4" />
+          {flagged} outside the tagset
+        </span>
+      )}
+      {unlisted > 0 && <span className="text-muted-foreground">{unlisted} not in the tagset</span>}
+    </span>
+  );
+};
+
+// An open list's values whose every unlisted part reads as a word, not a tag:
+// collapsed, and with no Add to tagset on each, so a list of tags is not made
+// a word list one click at a time.
+const WordsGroup = ({ rows, open, onToggle, children }) => (
+  <div className="border-b last:border-b-0">
+    <button
+      type="button"
+      className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted/30"
+      aria-expanded={open}
+      onClick={onToggle}
+    >
+      {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+      {rows.length} not written in capitals
+    </button>
+    {open && <div className="border-t">{children}</div>}
+  </div>
+);

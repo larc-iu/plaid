@@ -551,7 +551,7 @@ export const asClosed = (tagset) =>
 
 /**
  * The attested VALUES with a part off the list or a stray delimiter, worst
- * first: [{ value, count, violations, flagged }].
+ * first: [{ value, count, violations, flagged, lexical }].
  *
  * The sibling of readOffTagsetParts, answering the other question. That one says
  * which tags are missing from the list, which is what a seed needs; this says
@@ -562,7 +562,9 @@ export const asClosed = (tagset) =>
  * would read them: open is the state a list is built in before it is closed,
  * and these are the values a close would refuse. `flagged` says whether the
  * cell itself marks the value (validateValue), which on an open list is only
- * a stray delimiter.
+ * a stray delimiter. `lexical` says that every unlisted part of it reads as
+ * lexical (the seed's test, lexicalFlagsOf), so on an open list it is a word
+ * rather than a tag the list is missing. Always false on an enforcing list.
  */
 export const offTagsetValues = (attested, tagset) => {
   if (!tagset) return [];
@@ -577,12 +579,19 @@ export const offTagsetValues = (attested, tagset) => {
     const violations = validateValue(value, readingTagset(listing, reading));
     if (!violations.length) continue;
     const flagged = !open || violations.some((v) => v.reason === 'empty');
+    // Under mixed a lexical part passes, so what mixed still refuses is the
+    // value's tags. None means every unlisted part reads as a word.
+    const lexical =
+      open &&
+      !flagged &&
+      !validateValue(value, readingTagset({ ...tagset, mode: MODES.MIXED }, reading)).length;
     const row = byValue.get(value);
     if (!row) {
-      byValue.set(value, { value, count: n || 0, violations, flagged });
+      byValue.set(value, { value, count: n || 0, violations, flagged, lexical });
       continue;
     }
     row.flagged ||= flagged;
+    row.lexical &&= lexical;
     row.count += n || 0;
     const seen = new Set(row.violations.map((v) => `${v.begin}:${v.end}:${v.reason}`));
     row.violations = [
