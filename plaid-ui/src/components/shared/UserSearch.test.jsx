@@ -72,19 +72,24 @@ describe('the capped hint', () => {
 // and focus fell to the page, with the search still holding what was typed.
 describe('after someone is added', () => {
   it('empties the search and puts focus in it', async () => {
-    let search;
-    const Grab = ({ client }) => {
-      search = useUserSearch({ client, excludeIds: [] });
-      return <UserSearch client={client} search={search} renderAction={() => null} />;
+    const Added = ({ client }) => {
+      const search = useUserSearch({ client, excludeIds: [] });
+      return (
+        <>
+          <UserSearch client={client} search={search} renderAction={() => null} />
+          <button type="button" data-typed onClick={() => search.setQuery('b@x')} />
+          <button type="button" data-added onClick={() => search.added()} />
+        </>
+      );
     };
     const client = clientReturning([user('b@x')]);
-    const r = await renderComponent(<Grab client={client} />);
-    const input = r.container.querySelector('input');
-    await r.step(() => search.setQuery('b@x'));
-    expect(input.value).toBe('b@x');
-    await r.step(() => search.added());
-    expect(r.container.querySelector('input').value).toBe('');
-    expect(document.activeElement).toBe(r.container.querySelector('input'));
+    const r = await renderComponent(<Added client={client} />);
+    const input = () => r.container.querySelector('input');
+    await r.step(() => r.container.querySelector('[data-typed]').click());
+    expect(input().value).toBe('b@x');
+    await r.step(() => r.container.querySelector('[data-added]').click());
+    expect(input().value).toBe('');
+    expect(document.activeElement).toBe(input());
     await r.unmount();
   });
 });
