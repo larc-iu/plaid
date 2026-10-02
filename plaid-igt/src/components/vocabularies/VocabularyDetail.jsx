@@ -70,7 +70,8 @@ import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { useSavingGuard } from '@ui/hooks/useSavingGuard.js';
 import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
-import { vocabWriteQueue } from './vocabWriteQueue.js';
+import { queuesStatus, vocabWriteQueue } from './vocabWriteQueue.js';
+import { SaveStatus } from '@ui/components/shared/SaveStatus.jsx';
 import { createOnce } from '@ui/lib/createOnce.js';
 import { useTabParam } from '@/hooks/useTabParam';
 import { Loading } from '@ui/components/shared/Loading.jsx';
@@ -163,6 +164,12 @@ export const VocabularyDetail = () => {
   );
   useSavingGuard(writes.schema);
   useSavingGuard(writes.entries);
+  // One pill for both queues: an entry or a setting being sent again until
+  // the server answers.
+  const saveStatus = useMemo(
+    () => queuesStatus(writes.schema, writes.entries),
+    [writes.schema, writes.entries],
+  );
   const guardLeavingTab = useUnsavedGuard();
 
   // Each schema write expects the fields, or the tagsets, this page last read
@@ -1043,17 +1050,20 @@ export const VocabularyDetail = () => {
               <h1 dir="auto" className="min-w-0 truncate text-2xl font-bold">
                 {vocabulary?.name}
               </h1>
-              {/* Not a tab: the rail keeps whatever tab is open, the way a
+              <div className="flex shrink-0 items-center gap-2">
+                <SaveStatus doc={saveStatus} />
+                {/* Not a tab: the rail keeps whatever tab is open, the way a
                   document's History does. */}
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0 gap-1.5"
-                onClick={() => history.openHistory()}
-                disabled={history.open && !history.itemId}
-              >
-                <History className="h-4 w-4" /> History
-              </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 gap-1.5"
+                  onClick={() => history.openHistory()}
+                  disabled={history.open && !history.itemId}
+                >
+                  <History className="h-4 w-4" /> History
+                </Button>
+              </div>
             </div>
             {viewingPast && (
               <Notice tone="warning" icon={Info}>

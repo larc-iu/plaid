@@ -12,3 +12,24 @@ export const vocabWriteQueue = () =>
       notifyError('Reload the page to see what is saved.', 'Out of date');
     },
   });
+
+// Several queues seen as one, in the shape plaid-ui's SaveStatus watches: it
+// is saving while any of them is, and retrying while any of them is retrying
+// a send of its own.
+export const queuesStatus = (...queues) => {
+  const saving = () => queues.some((q) => q.isSaving);
+  const offline = () => queues.some((q) => q.isSaving && q.isOffline);
+  return {
+    subscribe: (fn) => {
+      const offs = queues.map((q) => q.subscribe(fn));
+      return () => offs.forEach((off) => off());
+    },
+    getSnapshot: () => `${saving()}:${offline()}`,
+    get isSaving() {
+      return saving();
+    },
+    get isOffline() {
+      return offline();
+    },
+  };
+};
