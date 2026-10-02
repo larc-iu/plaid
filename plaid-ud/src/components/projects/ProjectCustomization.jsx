@@ -312,8 +312,8 @@ export const ProjectCustomization = () => {
         <CardContent className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
             Part-of-speech tags offered while annotating. The 17 universal tags by default. Off-list
-            values are accepted unless refused below, and a parser, an import or the API can write
-            one either way. The Validation tab lists what is off-list.
+            values are accepted unless refused below. Imports and parsers may write values outside
+            the list. The Validation tab lists what is off-list.
           </p>
           <TagList
             value={uposVocab}

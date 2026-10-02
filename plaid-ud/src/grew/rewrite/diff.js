@@ -34,7 +34,6 @@ const COLUMN_LAYER = {
 export function diffGraphs(before, after, layerInfo) {
   const changes = [];
   const writes = { tokens: [], lemmaCreates: [], main: [] };
-
   const layer = (key) => layerInfo[key]?.id;
   const formOf = (g, id) => (id === ANCHOR ? '(root)' : (g.nodes.get(id)?.form ?? '?'));
   const serverSrc = (e) => (e.src === ANCHOR ? e.tgt : e.src);

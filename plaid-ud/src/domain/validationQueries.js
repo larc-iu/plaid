@@ -1,11 +1,10 @@
 // What a project has actually stored in each governed field, as one aggregate
 // query per field.
 //
-// The point of asking the SERVER rather than loading documents: a closed
-// vocabulary is enforced where a person types and nowhere else, so the values
-// that got in another way (an import, a parser, the assistant, a script) are
-// exactly the ones nobody has seen. There may be a corpus of them, and loading
-// a corpus to count its tags is the wrong shape.
+// The point of asking the SERVER rather than loading documents: the off-list
+// values that got in (an import or a parser, which the server's rule exempts)
+// are exactly the ones nobody has seen. There may be a corpus of them, and
+// loading a corpus to count its tags is the wrong shape.
 //
 // Each query returns the field's whole value inventory as `[value, count]`
 // pairs. The diff against the project's list happens on this side, so nothing

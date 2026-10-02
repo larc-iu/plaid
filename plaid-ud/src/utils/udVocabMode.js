@@ -19,7 +19,7 @@
 // signal worth seeing, not an error worth refusing, and the Validation tab is
 // where it gets cleaned up.
 
-import { baseRel } from './udVocab.js';
+import { valueSetAllows } from '@larc-iu/plaid-client';
 
 const UD_NAMESPACE = 'ud';
 
@@ -52,26 +52,30 @@ export const cleanDescriptions = (descriptions) =>
   );
 
 /**
- * Whether a value may be committed to a closed vocabulary of plain tags (UPOS,
- * XPOS). An EMPTY value is always allowed: clearing a cell is not annotating it.
- */
-export const allowsPlainValue = (value, vocab, config) => {
-  if (!value) return true;
-  if (!isClosed(config)) return true;
-  return (vocab || []).includes(value);
-};
-
-/**
- * The same question for a DEPREL, where a closed list governs the BASE relation
- * only: `nsubj:pass` is legal wherever `nsubj` is. Subtypes are language-
+ * The rule a closed list declares on its layer (udConstraints.js), which the
+ * server applies to every write. A plain tag (UPOS, XPOS) is listed whole. A
+ * DEPREL is governed by its BASE relation only, the part before the first
+ * colon: `nsubj:pass` is legal wherever `nsubj` is. Subtypes are language-
  * specific and open-ended by design, and a project that listed every one it
  * used would be re-listing the language.
  */
-export const allowsDeprel = (value, vocab, config) => {
-  if (!value) return true;
-  if (!isClosed(config)) return true;
-  return (vocab || []).some((v) => baseRel(v) === baseRel(value));
-};
+export const valueSetRule = (field, values) =>
+  field === 'deprel'
+    ? { type: 'value-set', values: [...(values || [])], delimiters: ':', parts: 'first' }
+    : { type: 'value-set', values: [...(values || [])], delimiters: '', parts: 'all' };
+
+/**
+ * Whether a value may be committed to a closed vocabulary of plain tags (UPOS,
+ * XPOS), read as the server reads the declared rule (spaces at the ends do
+ * not count). An EMPTY value is always allowed: clearing a cell is not
+ * annotating it.
+ */
+export const allowsPlainValue = (value, vocab, config) =>
+  !isClosed(config) || valueSetAllows(valueSetRule('upos', vocab), value ?? null);
+
+/** The same question for a DEPREL, by its base relation. */
+export const allowsDeprel = (value, vocab, config) =>
+  !isClosed(config) || valueSetAllows(valueSetRule('deprel', vocab), value ?? null);
 
 /**
  * And for a feature, where a closed inventory governs both halves: the KEY must

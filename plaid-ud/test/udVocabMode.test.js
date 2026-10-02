@@ -108,3 +108,12 @@ test('every universal tag ships with a definition', () => {
     [],
   );
 });
+
+// R2-DEBT-APPS-9: the screen reads a closed list as the server reads the
+// declared rule, which trims each value's ends.
+test('a closed list reads a value as the server does, spaces at the ends aside', () => {
+  assert.equal(allowsPlainValue('NOUN ', UPOS_TAGS, closed), true);
+  assert.equal(allowsPlainValue(' NOUN', UPOS_TAGS, closed), true);
+  assert.equal(allowsDeprel(' nsubj:pass', UNIVERSAL_DEPRELS, closed), true);
+  assert.equal(allowsPlainValue('NO UN', UPOS_TAGS, closed), false);
+});

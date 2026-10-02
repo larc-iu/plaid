@@ -4,11 +4,43 @@ import { cpSlice, createdIds } from '@larc-iu/plaid-client';
 import { normalizeFeature } from '../utils/feats.js';
 import { isProvKey } from '../utils/provenanceUi.js';
 import { getUdLayerInfo, missingUdLayerLabels } from '../utils/udLayerUtils.js';
+import { makeValidators } from '../utils/udVocabMode.js';
 import { parseCoNLLU, buildConlluHierarchy } from '../utils/conlluParser.js';
 import { SUPPRESS_KEY, planEnhancedRow } from './enhancedGraph.js';
 import { humanizeError } from '../../../plaid-ui/src/lib/errors.js';
 
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+const OFF_LIST_FIELDS = [
+  ['upos', 'UPOS', (t) => [t.upos]],
+  ['xpos', 'XPOS', (t) => [t.xpos]],
+  ['feats', 'FEATS', (t) => t.feats || []],
+  ['deprel', 'DEPREL', (t) => [t.deprel]],
+];
+
+// One line per closed list the file writes values outside of. An import is
+// not held to a closed list (the server exempts it, as it does parser output),
+// so this is where the person importing hears about them.
+export function offListWarnings(parsedData, layerInfo) {
+  const validators = makeValidators(layerInfo);
+  const out = [];
+  for (const [field, label, valuesOf] of OFF_LIST_FIELDS) {
+    const seen = new Map();
+    for (const s of parsedData.sentences) {
+      for (const t of s.tokens) {
+        for (const v of valuesOf(t)) {
+          if (v && validators[field](v)) seen.set(v, (seen.get(v) || 0) + 1);
+        }
+      }
+    }
+    if (!seen.size) continue;
+    const n = [...seen.values()].reduce((a, b) => a + b, 0);
+    const shown = [...seen.keys()].slice(0, 5).join(', ');
+    const more = seen.size > 5 ? `, and ${seen.size - 5} more` : '';
+    out.push(`${count(n, `${label} value`, `${label} values`)} not on the list: ${shown}${more}.`);
+  }
+  return out;
+}
 
 // CoNLL-U import: text in, a new document in the project out.
 //
@@ -83,6 +115,7 @@ export async function importConlluDocument(
       console.error('UD layers missing:', missingUdLayerLabels(layerInfo.missingLayers).join(', '));
       throw new Error('This project is not set up for UD.');
     }
+    importWarnings.push(...offListWarnings(parsedData, layerInfo));
 
     const {
       textLayer,

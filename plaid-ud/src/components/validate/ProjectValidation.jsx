@@ -28,10 +28,10 @@ import {
 
 // What the project has stored that its own vocabularies do not list.
 //
-// This view exists because a closed list is enforced where a person types and
-// NOWHERE else: an import, a parser, the assistant and a direct API call all
-// reach the same span layer without passing that check, and that is deliberate.
-// Off-list machine output is a signal. This is where you find out what it said.
+// This view exists because a closed list does not hold everything: an import
+// and unreviewed parser output are exempt from the server's rule, and a
+// feature inventory is the app's own check. Off-list machine output is a
+// signal. This is where you find out what it said.
 //
 // It costs one aggregate query per field: the server returns the field's whole
 // value inventory as [value, count] and the diff against the list happens here,
@@ -270,7 +270,7 @@ export const ProjectValidation = () => {
       {/* The same width in every app: a form's, from the page's left edge. */}
       <div className={cn('w-full', FORM_PAGE_WIDTH)}>
         <ValidationHeader
-          description="Values in this project that its lists do not include. Parsers, imports and the API are not held to the lists."
+          description="Values in this project that its lists do not include. Imports and parsers may write values outside the lists."
           busy={busy}
           disabled={!configured}
           onCheck={scan}

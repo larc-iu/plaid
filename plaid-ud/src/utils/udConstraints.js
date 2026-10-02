@@ -6,7 +6,7 @@
 // second head, a cycle or a value outside a closed list is refused. What UD
 // used to heal on open is gone.
 
-import { MODES } from './udVocabMode.js';
+import { MODES, valueSetRule } from './udVocabMode.js';
 
 const UD_NAMESPACE = 'ud';
 
@@ -65,12 +65,7 @@ export const wantedConstraints = (info) => {
     if (!layer?.id) return;
     const constraints = [{ type: 'single-span' }];
     if (field && info.modes?.[field] === MODES.CLOSED) {
-      constraints.push({
-        type: 'value-set',
-        values: [...(info.vocab?.[field] || [])],
-        delimiters: '',
-        parts: 'all',
-      });
+      constraints.push(valueSetRule(field, info.vocab?.[field]));
     }
     out.push(entry('span', layer, constraints));
   };
@@ -86,12 +81,7 @@ export const wantedConstraints = (info) => {
     ];
     if (sentences) constraints.push({ type: 'same-ancestor', tokenLayer: sentences });
     if (info.modes?.deprel === MODES.CLOSED) {
-      constraints.push({
-        type: 'value-set',
-        values: [...(info.vocab?.deprel || [])],
-        delimiters: ':',
-        parts: 'first',
-      });
+      constraints.push(valueSetRule('deprel', info.vocab?.deprel));
     }
     out.push(entry('relation', info.relationLayer, constraints));
   }

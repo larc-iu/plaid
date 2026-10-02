@@ -202,10 +202,10 @@ export const EditableCell = React.memo(
       // A CLOSED vocabulary refuses a value that is not on its list. The
       // saved value is kept, not the typed one: an annotator who meant a tag
       // the project does not have wants to see what is actually stored, and a
-      // maintainer can open the list up in two clicks. Enforced here and in the
-      // Grew rewrite, and nowhere else: an import, a service, the assistant
-      // and the API all still get through, which is what the Validation tab is
-      // for.
+      // maintainer can open the list up in two clicks. The server refuses the
+      // same values (the list is a declared rule, see udConstraints.js), so
+      // this only says so before the write. Imports and unreviewed parser
+      // output are exempt there, which is what the Validation tab is for.
       //
       // Only a value the annotator is actually committing. Refusing before
       // asking whether anything changed meant that a parsed document with any

@@ -91,9 +91,7 @@ export async function planRewrite(client, { project, user, layerInfo, grs }, onP
         if (!applications.length) return;
         // A CLOSED vocabulary refuses the row rather than the run: the rest of
         // the corpus still rewrites, and the preview says which sentence and
-        // why. This and the annotation cells are the only two places a closed
-        // list is enforced: an import, a service, the assistant and the API
-        // all still get through, which is what the Validation tab is for.
+        // why. The server would refuse the whole document's batch for it.
         const refusal = offVocabulary(before, after, validators);
         if (refusal) {
           rows.push({
