@@ -129,13 +129,12 @@ def _case(seed: int) -> dict:
 
 
 def _raw_fields(r: random.Random):
-    """A field schema as a vocab layer stores it, including the legacy boolean
-    form, names that are reserved, and a core field the config never names."""
+    """A field schema as a vocab layer stores it, including names that are
+    reserved and a core field the config never names."""
     out = {}
     for name in r.sample(['gloss', 'pos', 'morphType', 'note', 'parent', 'form',
                           'seeAlso', 'gloss (ru)', 'homograph'], r.randint(0, 6)):
         out[name] = r.choice([
-            True, False,
             {'inline': True},
             {'inline': False, 'type': 'item'},
             {'inline': False, 'type': 'item', 'many': True},

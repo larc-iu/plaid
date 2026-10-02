@@ -96,8 +96,7 @@ def is_reserved_field_name(name) -> bool:
 
 def normalize_vocab_fields(raw: Optional[dict]) -> List[dict]:
     """A vocab layer's ``igt.fields`` config as an ordered list of field specs,
-    tolerating the legacy boolean format and guaranteeing the immutable core
-    fields are present. Mirrors normalizeVocabFields in vocabFields.js, so the
+    guaranteeing the immutable core fields are present. Mirrors normalizeVocabFields in vocabFields.js, so the
     agent sees exactly the fields the app's own editor does."""
     out: List[dict] = []
     seen = set()
@@ -108,7 +107,7 @@ def normalize_vocab_fields(raw: Optional[dict]) -> List[dict]:
             return
         seen.add(name)
         obj = cfg if isinstance(cfg, dict) else None
-        inline = bool(obj.get('inline')) if obj else bool(cfg)
+        inline = bool(obj.get('inline')) if obj else False
         immutable = name in _IMMUTABLE
         # The core fields hold text whatever the config says.
         ftype = FIELD_TEXT if immutable else (
