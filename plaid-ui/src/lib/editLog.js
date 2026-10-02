@@ -204,13 +204,59 @@ function onRaw(raw, op) {
 // Past this many ops, a log keeps its net change instead of every keystroke.
 const COMPACT_AT = 128;
 
+// An undo or redo puts the box back to a text it showed before, and the log
+// saw that text, so it goes back (or forward) to the state it was in then
+// rather than reading the change from the caret, which a browser leaves at
+// the start of what it put back for one kind of delete and at the end for
+// another. `past` holds the states the log came through, the latest last,
+// `future` the ones undone, the next to redo last. Only when no state has
+// the box's new text (an undo past a send or a rebase, or past what the log
+// keeps) is the change read as any other. At most `HISTORY` states are kept,
+// fewer when they hold more than `HISTORY_CHARS` UTF-16 units of text.
+const HISTORY = 200;
+const HISTORY_CHARS = 8_000_000;
+const stateOf = (log) => ({ ops: log.ops, raw: log.raw, body: log.body });
+const bounded = (states) => {
+  const out = states.length > HISTORY ? states.slice(-HISTORY) : states;
+  let size = out.reduce((n, s) => n + s.body.length, 0);
+  let drop = 0;
+  while (size > HISTORY_CHARS && drop < out.length - 1) {
+    size -= out[drop].body.length;
+    drop += 1;
+  }
+  return drop ? out.slice(drop) : out;
+};
+
 /**
  * The log with the change from `prev` to `next` recorded (see `inferEdit`).
  * `prev` is what the box showed, which is the log's body. When it is not, the
- * change is read from the body instead, so the log still makes `next`.
+ * change is read from the body instead, so the log still makes `next`. An
+ * undo or redo (`inputType` `historyUndo`, `historyRedo`) takes the log back
+ * or forward to the state that had `next`, when it kept one.
  */
 export function recordEdit(log, prev, prevSel, next, caretAfter, inputType = null) {
   next = shown(next);
+  const past = log.past ?? [];
+  const future = log.future ?? [];
+  const back = inputType === 'historyUndo';
+  if (back || inputType === 'historyRedo') {
+    const from = back ? past : future;
+    const i = from.findLastIndex((state) => state.body === next);
+    if (i >= 0) {
+      const passed = [stateOf(log), ...from.slice(i + 1).reverse()];
+      const to = [...(back ? future : past), ...passed];
+      return back
+        ? { ...log, ...from[i], past: from.slice(0, i), future: to }
+        : { ...log, ...from[i], past: bounded(to), future: from.slice(0, i) };
+    }
+  }
+  const out = changed(log, prev, prevSel, next, caretAfter, inputType);
+  if (out === log) return log;
+  return { ...out, past: bounded([...past, stateOf(log)]), future: [] };
+}
+
+// The log with the change read from the box (see `inferEdit`).
+function changed(log, prev, prevSel, next, caretAfter, inputType) {
   const change =
     prev === log.body
       ? inferEdit(prev, prevSel, next, caretAfter, inputType)

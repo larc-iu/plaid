@@ -319,6 +319,152 @@ describe('the edit log', () => {
     expect(editLogGaps(log)).toEqual([{ start: 2, end: 2, value: 'b' }]);
   });
 
+  // The event streams below are what Chrome reported in the igt Baseline box
+  // (REV-F-EDITLOG, recorded live): each Delete is its own undo step, and each
+  // Ctrl+Z of a forward delete leaves a collapsed caret at the START of what
+  // it put back.
+  const replay = (base, events) => {
+    let log = startEditLog(base, 'd0');
+    let value = base;
+    let sel = { start: 0, end: 0 };
+    for (const [next, start, end, inputType] of events) {
+      log = recordEdit(log, value, sel, next, end, inputType);
+      value = next;
+      sel = { start, end };
+      expect(editLogBody(log)).toBe(value);
+      expect(applyTextOps(log.base, log.ops)).toBe(value);
+    }
+    return log;
+  };
+  // Delete `count` times at `at`, then Ctrl+Z as many times, the caret moved
+  // to `away` before the first Ctrl+Z
+  const deleteThenUndo = (base, at, count, away = at) => {
+    const states = [base];
+    for (let i = 1; i <= count; i += 1) states.push(base.slice(0, at) + base.slice(at + i));
+    const events = states.slice(1).map((s) => [s, at, at, 'deleteContentForward']);
+    events.push(['__move__']);
+    for (let i = count - 1; i >= 0; i -= 1) events.push([states[i], at, at, 'historyUndo']);
+    let log = startEditLog(base, 'd0');
+    let value = base;
+    let sel = { start: at, end: at };
+    for (const [next, start, end, inputType] of events) {
+      if (next === '__move__') {
+        sel = { start: away, end: away };
+        continue;
+      }
+      log = recordEdit(log, value, sel, next, end, inputType);
+      value = next;
+      sel = { start, end };
+    }
+    return log;
+  };
+
+  it('reads each Ctrl+Z of a forward delete where it was deleted, not at the same text before it (REV-F-EDITLOG R1)', () => {
+    // `bobi emun kabon`: Delete five times at `emun`, Ctrl+Z five times
+    expect(editLogIsEmpty(deleteThenUndo('bestauna bobi emun kabon taruo\n', 14, 5))).toBe(true);
+    // `ime ime nasambung`, caret at the second word
+    expect(editLogIsEmpty(deleteThenUndo('tabaruon ime ime nasambung\n', 13, 4))).toBe(true);
+    // a repeated line by the Delete key, the caret moved away first (H1-IGT-TEXT-3)
+    const base = 'meraraouk\npui parair\npui parair\nnext\n';
+    expect(editLogIsEmpty(deleteThenUndo(base, 10, 11, 35))).toBe(true);
+  });
+
+  it('reads a whole forward delete undone in one step where it was (REV-F-EDITLOG R3)', () => {
+    const base = 'x di ra\ndi ra\nend\n';
+    const events = [];
+    for (let i = 1; i <= 6; i += 1) {
+      events.push([base.slice(0, 2) + base.slice(2 + i), 2, 2, 'deleteContentForward']);
+    }
+    events.push([base, 2, 2, 'historyUndo']);
+    expect(editLogIsEmpty(replay(base, events))).toBe(true);
+  });
+
+  it('reads Ctrl+Delete over a reduplicated word and its undo (REV-F-EDITLOG R1)', () => {
+    const base = 'x ya ya ya\n';
+    // the caret after the first `ya`, Ctrl+Delete takes ` ya`, Ctrl+Z
+    const log = replay(base, [
+      ['x ya ya\n', 4, 4, 'deleteWordForward'],
+      [base, 4, 4, 'historyUndo'],
+    ]);
+    expect(editLogIsEmpty(log)).toBe(true);
+    // and redo
+    const again = recordEdit(log, base, { start: 4, end: 4 }, 'x ya ya\n', 4, 'historyRedo');
+    expect(editLogGaps(again)).toEqual([{ start: 4, end: 7, value: '' }]);
+  });
+
+  it('reads a drag undone and redone as the drag, never one wide replace (REV-F-EDITLOG R2)', () => {
+    const base = 'Tuu vaari\nching loon\nthung ta\n';
+    const dragged = ' vaari\nching loon\nthung ta\n';
+    const dropped = ' vaari\nching loon\nthTuuung ta\n';
+    const drag = [
+      [dragged, 0, 0, 'deleteByDrag'],
+      [dropped, 20, 23, 'insertFromDrop'],
+    ];
+    const want = [
+      { start: 0, end: 3, value: '' },
+      { start: 23, end: 23, value: 'Tuu' },
+    ];
+    expect(editLogGaps(replay(base, drag))).toEqual(want);
+    // Chrome undoes and redoes the drag as one step, both places at once
+    let log = replay(base, [...drag, [base, 0, 3, 'historyUndo']]);
+    expect(editLogIsEmpty(log)).toBe(true);
+    log = recordEdit(log, base, { start: 0, end: 3 }, dropped, 23, 'historyRedo');
+    expect(editLogGaps(log)).toEqual(want);
+    // and Ctrl+Z, Ctrl+Z, Ctrl+Shift+Z, Ctrl+Shift+Z over typing then a drag
+    log = replay('ab ab\n', [
+      ['abc ab\n', 3, 3, 'insertText'],
+      ['abc \n', 4, 4, 'deleteByDrag'],
+      ['ababc \n', 0, 2, 'insertFromDrop'],
+      ['abc ab\n', 4, 6, 'historyUndo'],
+      ['ab ab\n', 2, 2, 'historyUndo'],
+      ['abc ab\n', 3, 3, 'historyRedo'],
+      ['ababc \n', 0, 2, 'historyRedo'],
+    ]);
+    expect(editLogGaps(log)).toEqual([
+      { start: 0, end: 0, value: 'ab' },
+      { start: 2, end: 2, value: 'c' },
+      { start: 3, end: 5, value: '' },
+    ]);
+  });
+
+  it('forgets what was undone once something else is typed', () => {
+    const log = replay('one two\n', [
+      ['one twox\n', 8, 8, 'insertText'],
+      ['one two\n', 7, 7, 'historyUndo'],
+      ['one yes two\n', 7, 7, 'insertText'],
+    ]);
+    // a redo the box cannot have (its redo was dropped) is read as a change
+    const after = recordEdit(
+      log,
+      'one yes two\n',
+      { start: 7, end: 7 },
+      'one yes twox\n',
+      12,
+      'historyRedo',
+    );
+    expect(editLogGaps(after)).toEqual([
+      { start: 3, end: 3, value: ' yes' },
+      { start: 7, end: 7, value: 'x' },
+    ]);
+  });
+
+  it('keeps a bounded history, and reads an undo past it from the caret', () => {
+    let log = startEditLog('', 'd0');
+    let value = '';
+    for (let i = 0; i < 300; i += 1) {
+      log = recordEdit(log, value, { start: i, end: i }, `${value}a`, i + 1, 'insertText');
+      value += 'a';
+    }
+    expect(log.past.length).toBe(200);
+    // Ctrl+Z of the whole run in one step: no kept state has the empty text
+    log = recordEdit(log, value, { start: 300, end: 300 }, '', 0, 'historyUndo');
+    expect(editLogIsEmpty(log)).toBe(true);
+    // a log started at a send has no history, and still reads an undo
+    const { rest } = sendEditLog(log);
+    const after = recordEdit(rest, '', { start: 0, end: 0 }, 'b', 1, 'historyUndo');
+    expect(editLogGaps(after)).toEqual([{ start: 0, end: 0, value: 'b' }]);
+  });
+
   it('never reads a stale selection as a wide replace', () => {
     // the selection still covers `cats` when Ctrl+Z takes back the `s`
     // typed before: one letter goes, not the word
