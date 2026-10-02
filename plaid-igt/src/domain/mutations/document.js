@@ -17,7 +17,8 @@ import {
 } from '@larc-iu/plaid-client';
 import { lineSentenceRanges } from '../../utils/tokenizationUtils.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
-import { isKeyReused, isTextChanged, isUnknownOutcome } from '@ui/lib/errors.js';
+import { isTextChanged } from '@ui/lib/errors.js';
+import { sendTextPlan } from '@ui/lib/textSave.js';
 import { pendingId } from '@ui/domain/pendingIds.js';
 import { mergeText, rebaseEdits } from '@ui/lib/textMerge.js';
 import { storedHolds } from '@ui/lib/editLog.js';
@@ -217,13 +218,20 @@ export const documentMutations = {
   // its own resend (`wasReplayed`). `plan.landed` is set once the edit is
   // stored.
   async _sendBaselineEdit(textId, plan) {
-    for (let attempt = 0; ; attempt += 1) {
-      if (!plan.keys) await this._planBaselineEdit(plan, await this._storedText());
-      const ops = gapsToOps(plan.gaps);
-      const again = plan.sentUnder === plan.keys && plan.keys != null;
-      plan.sentUnder = plan.keys;
-      let replayed = false;
-      try {
+    // Whether the request last sent went under keys it was sent with before,
+    // and whether its answer was replayed from them.
+    let again = false;
+    let replayed = false;
+    const result = await sendTextPlan({
+      prepare: async () => {
+        if (!plan.keys) await this._planBaselineEdit(plan, await this._storedText());
+        return true;
+      },
+      send: async () => {
+        const ops = gapsToOps(plan.gaps);
+        again = plan.sentUnder === plan.keys && plan.keys != null;
+        plan.sentUnder = plan.keys;
+        replayed = false;
         await underKeys(this._client, plan.keys, async () => {
           if (plan.seed) {
             // The sentences after it are stamped with the version from
@@ -247,44 +255,19 @@ export const documentMutations = {
           });
           replayed = wasReplayed(answer);
         });
-        return plan.seed || again || replayed;
-      } catch (err) {
-        // A lost answer goes to the queue, which sends this again as it is.
-        if (isUnknownOutcome(err)) throw err;
-        // Any other refusal: a send under these keys may have landed with
-        // its answer lost, sent earlier here or by the client inside its own
-        // resend, whatever this answer says (a 500, a 403, the key reused).
-        // It has when the text stored holds its change, someone else's
-        // saved since or not. A first send refused 409 is not read so: the
-        // server answers a key it stored before the digest is looked at, so
-        // nothing under these keys is stored. A read that fails leaves the
-        // refusal as it is.
-        const conflict = isTextChanged(err);
-        if (conflict && !again) {
-          if (attempt < 2) {
-            await this._planBaselineEdit(plan, await this._readStoredText());
-            continue;
-          }
-          throw err;
-        }
-        let stored;
-        try {
-          stored = await this._readStoredText();
-        } catch {
-          throw err;
-        }
-        if (storedHolds(plan.base, plan.gaps, stored.body)) {
-          plan.landed = true;
-          return false;
-        }
-        if (isKeyReused(err)) throw new Error(BASELINE_CONFLICT, { cause: err });
-        if (conflict && attempt < 2) {
-          await this._planBaselineEdit(plan, stored);
-          continue;
-        }
-        throw err;
-      }
+      },
+      sentBefore: () => again,
+      readStored: () => this._readStoredText(),
+      holds: (stored) => storedHolds(plan.base, plan.gaps, stored.body),
+      replan: async (stored) =>
+        this._planBaselineEdit(plan, stored ?? (await this._readStoredText())),
+      conflict: BASELINE_CONFLICT,
+    });
+    if ('stored' in result) {
+      plan.landed = true;
+      return false;
     }
+    return plan.seed || again || replayed;
   },
 
   // The body stored and its digest, from the copy on screen when it knows the
