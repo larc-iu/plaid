@@ -218,6 +218,9 @@ export const ProjectSetup = () => {
                     updateSetupData(stepIdToDataKey(currentStepData.id), data)
                   }
                   setupData={setupData}
+                  onNext={() => {
+                    if (currentStep < steps.length - 1 && isCurrentStepValid()) handleNext();
+                  }}
                   isNewProject={isNewProject}
                   projectId={projectId}
                   client={client}

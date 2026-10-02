@@ -29,9 +29,27 @@ export function DocumentBaseline() {
     el.style.height = `${Math.min(el.scrollHeight, 480)}px`;
   };
 
-  // Fit the box to the text the editor opens with.
+  // Fit the box to the text the editor opens with, and give it the caret:
+  // Edit text is gone once the editor is open, and a blank document opens
+  // straight into it. Closed by Save or Cancel, which go with it, the caret
+  // goes back to Edit text.
+  const editButtonRef = useRef(null);
+  const wasEditing = useRef(ops.isEditing);
   useEffect(() => {
-    if (ops.isEditing) requestAnimationFrame(autoGrow);
+    const opened = ops.isEditing && !wasEditing.current;
+    const closed = !ops.isEditing && wasEditing.current;
+    wasEditing.current = ops.isEditing;
+    const lost = () => !document.activeElement || document.activeElement === document.body;
+    if (opened) {
+      requestAnimationFrame(() => {
+        autoGrow();
+        textareaRef.current?.focus();
+      });
+    } else if (closed) {
+      requestAnimationFrame(() => {
+        if (lost()) editButtonRef.current?.focus();
+      });
+    }
   }, [ops.isEditing]);
 
   // A document with no text yet opens straight into the editor: typing the
@@ -57,7 +75,7 @@ export function DocumentBaseline() {
               <h2 className="text-lg font-semibold">Baseline text</h2>
             </div>
             {!ops.isEditing && !readOnly && (
-              <Button variant="outline" size="sm" onClick={ops.handleEdit}>
+              <Button ref={editButtonRef} variant="outline" size="sm" onClick={ops.handleEdit}>
                 <Pencil className="h-4 w-4" /> Edit text
               </Button>
             )}
