@@ -55,13 +55,24 @@ export class DocumentLockLost extends Error {
  * shrink the window. It is how a window an operator has retuned
  * (`:plaid.server.locks/config :expiration-ms`) reaches the keeper.
  *
+ * An answer that cannot be a window (none, already over, past an hour) is
+ * core's default, 60 s.
+ *
  * @param {number} expiresAt
  * @param {number} serverNowMs
  * @returns {number}
  */
 export function lockTtlMs(expiresAt, serverNowMs) {
-  return expiresAt - serverNowMs;
+  const ttl = expiresAt - serverNowMs;
+  // No answer at all, or one past an hour or already over: this machine's
+  // clock stood in for the server's (a page that cannot read its Date
+  // header) and is far off. Core's default window is the better guess.
+  return Number.isFinite(ttl) && ttl > 0 && ttl <= MAX_TTL_MS ? ttl : DEFAULT_TTL_MS;
 }
+
+// Core's default lock window, and the longest one believed.
+const DEFAULT_TTL_MS = 60000;
+const MAX_TTL_MS = 3600000;
 
 /**
  * Renews one document's lock until the block holding it exits.
@@ -214,8 +225,9 @@ function mintLockId() {
  * An acquire whose outcome is unknown (no answer, a timeout, a 502 or a 504)
  * may have taken the lock. It is sent again under the same id as any write is
  * (`retryUnknown`), which the server answers 200 while that holder has it.
- * When every send is unknown, the lock it may hold is released on the way
- * out, so it does not stand in everyone's way until it expires.
+ * When every send is unknown (or the network went), the lock it may hold is
+ * released on the way out, so it does not stand in everyone's way until it
+ * expires.
  */
 async function takeLock(client, documentId, lockId, retryMs) {
   try {
@@ -239,7 +251,7 @@ async function takeLock(client, documentId, lockId, retryMs) {
       readable.cause = error;
       throw readable;
     }
-    if (isUnknownOutcome(error) && !error.offline) {
+    if (isUnknownOutcome(error)) {
       try {
         await client.documents.releaseLock(documentId, lockId);
       } catch {

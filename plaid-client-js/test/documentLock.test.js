@@ -73,6 +73,15 @@ test("the window comes from the server's own expiresAt, on the server's clock", 
   assert.equal(lockTtlMs(120000, 60000), 60000);
 });
 
+test("a window that cannot be one falls back to core's default", () => {
+  // REV-DEBT-R1 F4: with no Date header readable (a page served from another
+  // origin) the server clock is this machine's, unbounded, and a missing
+  // expiresAt made the beat NaN, which fires at once.
+  assert.equal(lockTtlMs(undefined, 0), 60000);
+  assert.equal(lockTtlMs(1000, 5000), 60000);
+  assert.equal(lockTtlMs(99999999999, 0), 60000);
+});
+
 test("the beat is half the window and the retry a tenth", () => {
   const short = new LockKeeper(async () => {}, "d1", 20000);
   assert.equal(short.intervalMs, 10000);
@@ -536,7 +545,7 @@ test("an acquire never answered releases what it may hold", async () => {
   }
 });
 
-test("an acquire made offline is not sent again", async () => {
+test("an acquire made offline is not sent again, and what it may hold is released", async () => {
   // The request never left, as any write's resend rule has it (retryUnknown).
   const realFetch = globalThis.fetch;
   const had = Object.getOwnPropertyDescriptor(globalThis.navigator, "onLine");
@@ -556,6 +565,9 @@ test("an acquire made offline is not sent again", async () => {
       (e) => e.status === 0 && e.offline === true,
     );
     assert.equal(core.acquires.length, 1);
+    // The send may have taken the lock before the network went: it is
+    // released, as after any unknown outcome.
+    assert.equal(core.holder, null);
   } finally {
     if (had) Object.defineProperty(globalThis.navigator, "onLine", had);
     else delete globalThis.navigator.onLine;

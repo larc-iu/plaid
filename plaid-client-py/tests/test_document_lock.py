@@ -75,6 +75,15 @@ def test_the_window_comes_from_the_servers_own_expires_at_on_the_servers_clock()
     assert lock_ttl_s(120_000, 60.0) == 60.0
 
 
+def test_a_window_that_cannot_be_one_falls_back_to_cores_default():
+    # REV-DEBT-R1 F4: with no Date header read the server clock is this
+    # machine's, unbounded, and a missing expires_at was a KeyError.
+    assert lock_ttl_s(None, 0.0) == 60.0
+    assert lock_ttl_s(1000, 5.0) == 60.0
+    assert lock_ttl_s(99_999_999_999, 0.0) == 60.0
+    assert lock_ttl_s('soon', 0.0) == 60.0
+
+
 def test_the_beat_is_half_the_window_and_the_retry_a_tenth():
     short = LockKeeper(lambda _: None, 'd1', 20.0)
     assert short.interval_s == 10.0

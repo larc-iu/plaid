@@ -59,7 +59,19 @@ def lock_ttl_s(expires_at, server_now_s) -> float:
     or shrink the window. It is how a window an operator has retuned
     (``:plaid.server.locks/config :expiration-ms``) reaches the keeper.
     """
-    return expires_at / 1000.0 - server_now_s
+    if isinstance(expires_at, (int, float)) and not isinstance(expires_at, bool):
+        ttl = expires_at / 1000.0 - server_now_s
+        if 0 < ttl <= _MAX_TTL_S:
+            return float(ttl)
+    # No answer at all, or one past an hour or already over: this machine's
+    # clock stood in for the server's and is far off. Core's default window
+    # is the better guess.
+    return _DEFAULT_TTL_S
+
+
+# Core's default lock window, and the longest one believed.
+_DEFAULT_TTL_S = 60.0
+_MAX_TTL_S = 3600.0
 
 
 class LockKeeper:

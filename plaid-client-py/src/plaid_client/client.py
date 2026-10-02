@@ -2067,7 +2067,7 @@ class DocumentsResource(_Resource):
         lock_id = (info or {}).get('lock_id') or minted
         keeper = None
         if keep_alive:
-            ttl_s = lock_ttl_s(info['expires_at'], client.server_now().timestamp())
+            ttl_s = lock_ttl_s((info or {}).get('expires_at'), client.server_now().timestamp())
             client.document_lock_lost = None
             keeper = LockKeeper(
                 lambda doc_id: self.renew_lock(doc_id, lock_id), document_id, ttl_s,
