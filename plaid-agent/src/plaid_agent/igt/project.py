@@ -14,7 +14,6 @@ them no annotation cells.
 
 import dataclasses
 import re
-import unicodedata
 from dataclasses import dataclass, field
 
 from ..core.guidelines import Guideline, load as load_guidelines
@@ -23,10 +22,12 @@ from ..core.project import find_layer, word_ref  # noqa: F401  (re-exported: the
 from ..core.provenance import CONTRIBUTED, REVIEWABLE, UNVERIFIED, mark as _mark, review_mark  # noqa: F401
 from typing import Dict, List, Optional, Tuple
 
-import regex as uregex
 from plaid_client import ROLES, find_by_role
 from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.igt import read_tagsets, read_tagset_name, vocab_tagset_for, mode_rule, value_lines
+# Which tokens are left out of annotation is plaid_client's, the one Python copy
+# of igtConfig.js's rule. Re-exported for the modules that read it from here.
+from plaid_client.workflows.igt.ignored import is_token_ignored  # noqa: F401
 from .vocab import normalize_vocab_fields, vocab_field_summary
 
 SCOPES = ('Word', 'Morpheme', 'Sentence')
@@ -36,40 +37,18 @@ def _igt(cfg, key):
     return ((cfg or {}).get('igt') or {}).get(key)
 
 
-# --- ignored tokens and word breaks (ported from plaid-igt: domain/igtConfig.js
-# and utils/tokenizationUtils.js). Word numbering depends on these agreeing
-# with the editor exactly, so the character classes are the editor's own. ---
+# --- ignored tokens and word breaks (plaid-igt: domain/igtConfig.js and
+# utils/tokenizationUtils.js). Word numbering depends on these agreeing with
+# the editor exactly, so the character classes are the editor's own, and
+# tests/test_igt_tokens_mirror.py runs the app's over the same cases. ---
 
 # The editor's isUnicodePunctuation character class, verbatim.
 _EDITOR_PUNCT = re.compile('[' + '''\u0021-\u002F\u003A-\u0040\u005B-\u0060\u007B-\u007E\u00A1-\u00A9\u00AB-\u00B1\u00B4\u00B6-\u00B8\u00BB\u00BF\u037E\u0387\u055A-\u055F\u0589-\u058A\u05BE\u05C0\u05C3\u05C6\u05F3-\u05F4\u0609-\u060A\u060C-\u060D\u061B\u061E-\u061F\u066A-\u066D\u06D4\u0700-\u070D\u07F7-\u07F9\u0830-\u083E\u085E\u0964-\u0965\u0970\u09FD\u0A76\u0AF0\u0C77\u0C84\u0DF4\u0E4F\u0E5A-\u0E5B\u0F04-\u0F12\u0F14\u0F3A-\u0F3D\u0F85\u0FD0-\u0FD4\u0FD9-\u0FDA\u104A-\u104F\u10FB\u1360-\u1368\u1400\u166E\u169B-\u169C\u16EB-\u16ED\u1735-\u1736\u17D4-\u17D6\u17D8-\u17DA\u1800-\u180A\u1944-\u1945\u1A1E-\u1A1F\u1AA0-\u1AA6\u1AA8-\u1AAD\u1B5A-\u1B60\u1BFC-\u1BFF\u1C3B-\u1C3F\u1C7E-\u1C7F\u1CC0-\u1CC7\u1CD3\u2010-\u2027\u2030-\u2043\u2045-\u2051\u2053-\u205E\u207D-\u207E\u208D-\u208E\u2308-\u230B\u2329-\u232A\u2768-\u2775\u27C5-\u27C6\u27E6-\u27EF\u2983-\u2998\u29D8-\u29DB\u29FC-\u29FD\u2CF9-\u2CFC\u2CFE-\u2CFF\u2D70\u2E00-\u2E2E\u2E30-\u2E4F\u2E52-\u2E5D\u3001-\u3003\u3008-\u3011\u3014-\u301F\u3030\u303D\u30A0\u30FB\uA4FE-\uA4FF\uA60D-\uA60F\uA673\uA67E\uA6F2-\uA6F7\uA874-\uA877\uA8CE-\uA8CF\uA8F8-\uA8FA\uA8FC\uA92E-\uA92F\uA95F\uA9C1-\uA9CD\uA9DE-\uA9DF\uAA5C-\uAA5F\uAADE-\uAADF\uAAF0-\uAAF1\uABEB\uFD3E-\uFD3F\uFE10-\uFE19\uFE30-\uFE52\uFE54-\uFE61\uFE63\uFE68\uFE6A-\uFE6B\uFF01-\uFF03\uFF05-\uFF0A\uFF0C-\uFF0F\uFF1A-\uFF1B\uFF1F-\uFF20\uFF3B-\uFF3D\uFF3F\uFF5B\uFF5D\uFF5F-\uFF65\U00010100-\U00010102\U0001039F\U000103D0\U0001056F\U00010857\U0001091F\U0001093F\U00010A50-\U00010A58\U00010A7F\U00010AF0-\U00010AF6\U00010B39-\U00010B3F\U00010B99-\U00010B9C\U00010F55-\U00010F59\U00011047-\U0001104D\U000110BB-\U000110BC\U000110BE-\U000110C1\U00011140-\U00011143\U00011174-\U00011175\U000111C5-\U000111C8\U000111C9\U000111DD\U000111DB\U000111DA\U00011238-\U0001123D\U000112A9\U0001144B-\U0001144F\U0001145A-\U0001145B\U0001145D\U000114C6\U000115C1-\U000115D7\U00011641-\U00011643\U00011660-\U0001166C\U0001173C-\U0001173E\U0001183B\U00011944-\U00011946\U000119E2\U00011A3F-\U00011A46\U00011A9A-\U00011A9C\U00011A9E-\U00011AA2\U00011C41-\U00011C45\U00011C70-\U00011C71\U00011EF7-\U00011EF8\U00012470-\U00012474\U00016A6E-\U00016A6F\U00016AF5\U00016B37-\U00016B3B\U00016B44\U00016E97-\U00016E9A\U0001BC9F\U0001DA87-\U0001DA8B\U0001E95E-\U0001E95F''' + ']')
-_PICTOGRAPH = uregex.compile(r'\p{Extended_Pictographic}')
 
 
 def is_unicode_punctuation(c: str) -> bool:
     """The editor's rule for a punctuation character (tokenizationUtils.js)."""
     return len(c) == 1 and bool(_EDITOR_PUNCT.match(c))
-
-
-def _is_pictograph(c):
-    return bool(_PICTOGRAPH.match(c))
-
-
-def _is_punct_char(c):
-    return unicodedata.category(c)[0] in 'PS' and not _is_pictograph(c)
-
-
-def is_token_ignored(content, cfg):
-    """igtConfig.js isTokenIgnored: an all-punctuation token (P or S category,
-    pictographs excepted) is ignored unless whitelisted."""
-    if not cfg:
-        return False
-    if cfg.get('type') == 'unicodePunctuation':
-        if content and all(_is_punct_char(c) for c in content):
-            return content not in (cfg.get('whitelist') or [])
-        return False
-    if cfg.get('type') == 'blacklist':
-        return content in (cfg.get('blacklist') or [])
-    return False
 
 
 def is_clitic(morph_type):

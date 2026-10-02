@@ -17,7 +17,8 @@ words (and free translation) into one interleaved line per sentence; see
 ``plaid-igt/services/igt_analyze_polygloss.py`` for the template.
 """
 
-from .derive import derive, field_layer_id, word_state, select_targets, is_token_ignored, virtual_morpheme
+from .derive import derive, field_layer_id, word_state, select_targets, virtual_morpheme
+from .ignored import is_token_ignored
 from .interlinear import (
     ParsedWord,
     parse_interleaved,

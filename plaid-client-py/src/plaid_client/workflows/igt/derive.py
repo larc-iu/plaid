@@ -5,41 +5,15 @@ classify words under the provenance write contract.
 needs (sentences > words > morphemes, with every span and link attached,
 and the virtual morpheme of a word nobody has segmented),
 ``word_state`` mirrors its ``isUnanalyzedWord`` + provenance voting, and
-``is_token_ignored`` mirrors ``igtConfig.js``'s ignored-token rule.
+the ignored-token rule is :mod:`.ignored`.
 """
 
-import unicodedata
 from typing import Dict, List, Tuple
 
 from plaid_client.provenance import prov_state, MACHINE
 from plaid_client.workflows.messages import setup_incomplete
 
-
-# --- ignored tokens (mirrors plaid-igt domain/igtConfig.js) -----------------
-
-def _is_punct_char(c):
-    cat = unicodedata.category(c)
-    return cat[0] in 'PS' and not _is_pictograph(c)
-
-
-def _is_pictograph(c):
-    # Rough stand-in for \p{Extended_Pictographic}: emoji blocks.
-    o = ord(c)
-    return 0x1F000 <= o <= 0x1FAFF or 0x2600 <= o <= 0x27BF
-
-
-def is_token_ignored(content, cfg):
-    """Is this word excluded from annotation by the word layer's
-    ``config.igt.ignoredTokens`` rule (punctuation, or an explicit list)?"""
-    if not cfg:
-        return False
-    if cfg.get('type') == 'unicodePunctuation':
-        if content and all(_is_punct_char(c) for c in content):
-            return content not in (cfg.get('whitelist') or [])
-        return False
-    if cfg.get('type') == 'blacklist':
-        return content in (cfg.get('blacklist') or [])
-    return False
+from .ignored import is_token_ignored
 
 
 # --- the virtual morpheme (mirrors plaid-igt domain/virtualMorpheme.js) --------
