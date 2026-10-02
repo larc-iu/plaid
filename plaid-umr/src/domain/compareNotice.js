@@ -3,7 +3,10 @@
 // that declares its own `notice` authors the words and the severity.
 //
 // Pure, so `test/compareNotice.test.js` can drive every shape.
-const pct = (x) => (typeof x === 'number' ? `${Math.round(x * 100)}%` : null);
+import { percent } from './adjudication.js';
+
+// A score as the Compare tab prints it, or null when there is none.
+const pct = (x) => (typeof x === 'number' ? percent(x) : null);
 
 export const compareNotice = (summary) => {
   const notice = summary?.notice;

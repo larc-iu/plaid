@@ -105,8 +105,17 @@ test("a sentence row from an earlier run is not part of this run's report", () =
   assert.deepEqual(readAdjudication(raw, [{ id: 'x', begin: 0 }]).sentences, []);
 });
 
-test('scores print as whole percents and a missing one is not a row', () => {
+test('scores print as percents, never 100% short of full agreement, and a missing one is not a row', () => {
   assert.equal(percent(0.8312), '83%');
+  // Only full agreement is 100%, and only none is 0%.
+  assert.equal(percent(1), '100%');
+  assert.equal(percent(0.9986), '99.9%');
+  assert.equal(percent(0.99999), '99.9%');
+  assert.equal(percent(0.995), '99.5%');
+  assert.equal(percent(0.994), '99%');
+  assert.equal(percent(0), '0%');
+  assert.equal(percent(0.004), '0.4%');
+  assert.equal(percent(0.00001), '0.1%');
   assert.equal(percent(null), 'n/a');
   // Temporal is null: neither document annotates it, a row saying so.
   assert.deepEqual(
@@ -181,5 +190,10 @@ test('the notice says the scores and the other document, or warns', () => {
   assert.equal(
     compareNotice({ notice: { level: 'success', title: 'T', message: 'M' } }).title,
     'T',
+  );
+  // Two documents that differ never read as 100%, in the notice as on the tab.
+  assert.match(
+    compareNotice({ scores: { sentence: 0.9986, comprehensive: 1 } }).message,
+    /^Sentence graphs 99\.9%, comprehensive 100%/,
   );
 });

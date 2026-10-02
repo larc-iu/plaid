@@ -76,9 +76,18 @@ export const readAdjudication = (raw, sentenceTokens = []) => {
 /** Whether a pair's two concepts differ. */
 export const conceptsDiffer = (match) => match.thisConcept !== match.otherConcept;
 
-/** A score as the tab prints it: `83%`, or `n/a` when it was not computed. */
-export const percent = (x) =>
-  typeof x === 'number' && Number.isFinite(x) ? `${Math.round(x * 100)}%` : 'n/a';
+/**
+ * A score as the tab prints it: `83%`, or `n/a` when it was not computed.
+ * Only full agreement prints as `100%` and only none as `0%`: a score that
+ * would round to either is printed with one decimal (`99.9%`, `0.1%`).
+ */
+export const percent = (x) => {
+  if (typeof x !== 'number' || !Number.isFinite(x)) return 'n/a';
+  const whole = Math.round(x * 100);
+  if (whole === 100 && x < 1) return `${Math.min(99.9, Math.round(x * 1000) / 10)}%`;
+  if (whole === 0 && x > 0) return `${Math.max(0.1, Math.round(x * 1000) / 10)}%`;
+  return `${whole}%`;
+};
 
 // The document-level scores in the order the tab lists them, with the
 // label each carries.
