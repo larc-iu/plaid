@@ -389,7 +389,7 @@ export class CommentStore {
         text,
         caption ? { anchorLabel: caption, id } : { id },
       );
-    let err = null;
+    let err;
     for (let attempt = 0; ; attempt += 1) {
       try {
         return this._posted(said, id, await send());
