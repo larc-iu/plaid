@@ -4,6 +4,7 @@ import { ServiceRunDialog } from '@ui/components/services/ServiceRunDialog.jsx';
 import { ServiceMethodRow } from '@ui/components/services/ServiceMethodRow.jsx';
 import { ServiceRunButton } from '@ui/components/services/ServiceRunButton.jsx';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
+import { runHeldNotice } from '../runHeld.js';
 
 // Transcription: the button in the Transcript header and the dialog behind it.
 // Results are segments with text, which is what the transcript itself shows,
@@ -13,7 +14,7 @@ export function TranscribeDialog({ mediaOps, readOnly = false }) {
   const { writeLock } = useDocumentCtx();
   const { transcribeSpot, transcribeRun, handleTranscribe, isUploading, stopTranscribe } = mediaOps;
   const running = transcribeRun.running;
-  const busyElsewhere = !!writeLock && !running;
+  const held = runHeldNotice(writeLock, running);
 
   const run = async () => {
     await handleTranscribe();
@@ -37,14 +38,14 @@ export function TranscribeDialog({ mediaOps, readOnly = false }) {
         icon={Mic}
         description="Segments and their text are written to this document."
         progress={transcribeRun}
-        notice={busyElsewhere ? `${writeLock.label} is running.` : null}
+        notice={held}
         runLabel="Transcribe"
         onRun={run}
         onCancel={stopTranscribe}
         runDisabled={
           !transcribeSpot.service ||
           isUploading ||
-          busyElsewhere ||
+          !!held ||
           Object.keys(transcribeSpot.params.errors).length > 0
         }
       >
