@@ -206,6 +206,7 @@ Per-page variants (e.g. `list_documents_page` / `listDocumentsPage`) are availab
 == Audit Log
 
 Every write to the database is recorded in an append-only **audit log** which provides an account of who performed every change.
+Uploading and deleting a document's recording are recorded too, as operations of type `media/upload` and `media/delete`, and each moves the document's version. The recording itself is a file, not part of the log, so time travel and a restore cannot bring back a deleted one.
 Audit history is retained indefinitely — it is both the forensic record and the source for document time travel (see below), so pruning it trades away history. Operators monitor disk via the `/health` endpoint's `audit` block.
 
 The log can be queried like so:

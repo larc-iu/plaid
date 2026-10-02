@@ -7,12 +7,13 @@ import {
 } from '@/test/mountDocumentHook.jsx';
 import { fakeRaf } from '@/test/fakeRaf.js';
 import { all } from '@ui/test/renderComponent.jsx';
-import { notifyInfo } from '@/utils/feedback';
+import { notifyInfo, notifyWarning } from '@/utils/feedback';
 import { useMediaOperations } from './useMediaOperations.js';
 
 vi.mock('@/utils/feedback', async (importOriginal) => ({
   ...(await importOriginal()),
   notifyInfo: vi.fn(),
+  notifyWarning: vi.fn(),
 }));
 
 // The media tab's operations hook, at the one seam where it can fall behind
@@ -60,6 +61,7 @@ beforeEach(() => {
   revoked = [];
   localStorage.clear();
   notifyInfo.mockClear();
+  notifyWarning.mockClear();
   vi.stubGlobal(
     'fetch',
     vi.fn((url) => {
@@ -671,4 +673,62 @@ describe('useMediaOperations: stopping a transcription before the service is ask
       await h.unmount();
     },
   );
+});
+
+// Someone else deletes or replaces the recording while this page plays it.
+// The page learns it when it reads the document again (its next write is
+// refused as changed elsewhere, since the recording's change moved the
+// document's version), and says so.
+describe('useMediaOperations: the recording changed elsewhere', () => {
+  const A = '/api/v1/documents/doc-1/media?v=1-4';
+  const B = '/api/v1/documents/doc-1/media?v=2-4';
+
+  it('says a recording deleted elsewhere is gone', async () => {
+    const h = await mountMedia({ doc: withMedia(A) });
+    await h.setInputs({ doc: withMedia(null) });
+    expect(notifyWarning).toHaveBeenCalledWith('Deleted elsewhere.', 'Recording deleted');
+    await h.unmount();
+  });
+
+  it('says a recording replaced elsewhere was replaced', async () => {
+    const h = await mountMedia({ doc: withMedia(A) });
+    await h.setInputs({ doc: withMedia(B) });
+    expect(notifyWarning).toHaveBeenCalledWith('Replaced elsewhere.', 'Recording replaced');
+    await h.unmount();
+  });
+
+  it('says nothing of a recording that appears, or of another document', async () => {
+    const h = await mountMedia({ doc: withMedia(null) });
+    await h.setInputs({ doc: withMedia(A) });
+    await h.setInputs({ doc: withMedia(null, { document: { id: 'doc-2' } }) });
+    expect(notifyWarning).not.toHaveBeenCalled();
+    await h.unmount();
+  });
+
+  it("says nothing of this page's own delete", async () => {
+    const deleting = deferred();
+    const doc = withMedia(A, { deleteMedia: vi.fn(() => deleting.promise) });
+    const h = await mountMedia({ doc });
+    let done;
+    await h.step(async () => {
+      done = h.api.handleDeleteMedia();
+      await settle();
+    });
+    const confirm = [...document.querySelectorAll('[role="alertdialog"] button')].find(
+      (b) => b.textContent === 'Delete',
+    );
+    await h.step(async () => {
+      confirm.click();
+      await settle();
+    });
+    expect(doc.deleteMedia).toHaveBeenCalled();
+    // The delete shows at once, before the server answers.
+    await h.setInputs({ doc: withMedia(null, { deleteMedia: doc.deleteMedia }) });
+    await h.step(async () => {
+      deleting.resolve(true);
+      await done;
+    });
+    expect(notifyWarning).not.toHaveBeenCalled();
+    await h.unmount();
+  });
 });

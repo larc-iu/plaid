@@ -1,6 +1,7 @@
 (ns plaid.rest-api.v1.media
   (:require [clojure.string :as str]
             [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.middleware :as prm]
             [plaid.media.storage :as media]
             [plaid.sql.document :as doc]
             [plaid.sql.operation :as op]
@@ -26,6 +27,58 @@
   {:status (get error-status (:error-kind result) 500)
    :body (merge {:error (:error result)}
                 (select-keys result [:max-bytes :size]))})
+
+(defn- refused!
+  "Throw a storage failure out of an operation's body, so the operation is
+  rolled back and answers with the failure's status and fields."
+  [result]
+  (throw (ex-info (:error result)
+                  {:code (get error-status (:error-kind result) 500)
+                   :plaid/body (select-keys result [:max-bytes :size])})))
+
+(defn upload!
+  "Store `temp-file` as the media of `document-id`, and record it as one
+  operation in the audit log (`:media/upload`), so History and Activity say
+  who added a recording and when, and the document's version moves, which
+  tells a page holding the document that it changed. The file is stored
+  before the operation, so the write lock is not held while hundreds of
+  megabytes are copied, and taken back out when the operation is refused."
+  [db document-id temp-file filename user-id]
+  (let [stored (media/store-media-file! document-id temp-file filename)]
+    (if-not (:success stored)
+      {:success false
+       :code (get error-status (:error-kind stored) 500)
+       :error (:error stored)
+       :error-body (select-keys stored [:max-bytes :size])}
+      (let [result (op/submit-operation!
+                    [_tx db {:type :media/upload
+                             :project (doc/project-id db document-id)
+                             :document document-id
+                             :description (str "Upload media file \"" filename "\" to document " document-id)
+                             :user user-id}]
+                    (select-keys stored [:extension :content-type]))]
+        (when-not (:success result)
+          (media/delete-media-file! document-id))
+        result))))
+
+(defn delete!
+  "Delete the media of `document-id`, as one operation in the audit log
+  (`:media/delete`). The file goes once the operation is durable: in an
+  atomic batch a later failure rolls the batch back, and nothing brings a
+  file back."
+  [db document-id user-id]
+  (let [result (op/submit-operation!
+                [_tx db {:type :media/delete
+                         :project (doc/project-id db document-id)
+                         :document document-id
+                         :description (str "Delete media file of document " document-id)
+                         :user user-id}]
+                (when-not (media/media-exists? document-id)
+                  (refused! {:error-kind :not-found :error "No media file found"}))
+                nil)]
+    (when (:success result)
+      (op/after-commit! (fn [] (media/delete-media-file! document-id))))
+    result))
 
 (defn get-project-id-from-document
   "Get project ID from document ID for auth middleware"
@@ -183,7 +236,7 @@
                                                                            :format "binary"
                                                                            :description "Media file to upload (audio or video)"}}
                                                        :required ["file"]}}}}}
-           :handler (fn [{{{:keys [document-id]} :path} :parameters :as request}]
+           :handler (fn [{{{:keys [document-id]} :path} :parameters db :db user-id :user/id :as request}]
                       (let [multipart-params (:multipart-params request)
                             file (get multipart-params "file")]
                         (log/debug "Request keys:" (keys request))
@@ -193,13 +246,15 @@
                                 temp-file (:tempfile file)]
                             (log/debug "File details - filename:" filename "temp-file exists:" (some? temp-file))
                             (if temp-file
-                              (let [result (media/store-media-file! document-id temp-file filename)]
+                              (let [result (upload! db document-id temp-file filename user-id)]
                                 (if (:success result)
-                                  {:status 201
-                                   :body {:message "Media file uploaded successfully"
-                                          :extension (:extension result)
-                                          :content-type (:content-type result)}}
-                                  (error-response result)))
+                                  (prm/assoc-document-version-in-header
+                                   {:status 201
+                                    :body (merge {:message "Media file uploaded successfully"}
+                                                 (:extra result))}
+                                   db document-id)
+                                  {:status (:code result 500)
+                                   :body (prm/error-body result)}))
                               {:status 400
                                :body {:error "Invalid file upload - no temp file"}}))
                           {:status 400
@@ -207,11 +262,9 @@
 
      :delete {:summary "Delete media file for a document"
               :middleware [[pra/wrap-writer-required get-project-id-from-document]]
-              :handler (fn [{{{:keys [document-id]} :path} :parameters}]
-                         ;; The file goes once the request it belongs to is
-                         ;; durable: in an atomic batch a later failure rolls
-                         ;; the batch back, and nothing brings a file back.
-                         (if (media/media-exists? document-id)
-                           (do (op/after-commit! (fn [] (media/delete-media-file! document-id)))
-                               {:status 204})
-                           (error-response (media/delete-media-file! document-id))))}}]])
+              :handler (fn [{{{:keys [document-id]} :path} :parameters db :db user-id :user/id}]
+                         (let [result (delete! db document-id user-id)]
+                           (if (:success result)
+                             (prm/assoc-document-version-in-header {:status 204} db document-id)
+                             {:status (:code result 500)
+                              :body (prm/error-body result)})))}}]])

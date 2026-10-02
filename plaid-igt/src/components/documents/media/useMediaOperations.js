@@ -2,7 +2,14 @@ import { useEffect, useCallback, useRef, useState } from 'react';
 import { TASKS, serviceSource } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
-import { notifySuccess, notifyError, notifyInfo, humanizeError } from '@/utils/feedback';
+import {
+  notifySuccess,
+  notifyError,
+  notifyInfo,
+  notifyWarning,
+  humanizeError,
+} from '@/utils/feedback';
+import { recordingChangeNotice } from './recordingChange.js';
 import { useServiceRequest } from '@ui/hooks/useServiceRequest.js';
 import { useServiceSpot } from '@ui/hooks/useServiceSpot.js';
 import { useRunProgress, useMirroredProgress } from '@ui/hooks/useRunProgress.js';
@@ -252,6 +259,21 @@ export const useMediaOperations = () => {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [mediaSrcUrl]);
+
+  // A recording deleted or replaced by someone else is said so once the
+  // document is read again (recordingChange.js). This page's own delete is
+  // not: it shows at once, and the flag is up while it does.
+  const ownDeleteRef = useRef(false);
+  const seenMediaRef = useRef({ id: doc.document.id, url: mediaSrcUrl });
+  useEffect(() => {
+    const seen = seenMediaRef.current;
+    seenMediaRef.current = { id: doc.document.id, url: mediaSrcUrl };
+    if (seen.id !== doc.document.id) return;
+    const notice = recordingChangeNotice(seen.url, mediaSrcUrl, {
+      ownDelete: ownDeleteRef.current,
+    });
+    if (notice) notifyWarning(notice.message, notice.title);
+  }, [doc.document.id, mediaSrcUrl]);
 
   const authenticatedMediaUrl = media.url;
   const mediaBlob = media.blob;
@@ -557,7 +579,13 @@ export const useMediaOperations = () => {
       return;
     }
 
-    const ok = await doc.deleteMedia();
+    ownDeleteRef.current = true;
+    let ok = false;
+    try {
+      ok = await doc.deleteMedia();
+    } finally {
+      ownDeleteRef.current = false;
+    }
     if (ok) {
       notifySuccess('Media file deleted');
     }
