@@ -1,10 +1,10 @@
 import { useCallback, useRef, useEffect } from 'react';
-import { isMachine } from '@larc-iu/plaid-client';
 import {
   adjacentWord,
   findWord,
   markedFields,
   nextReviewWord,
+  wordHasDiscardable,
   wordHasMaterial,
 } from '../../../domain/reviewTargets.js';
 
@@ -178,7 +178,7 @@ export function useReviewGestures({ sentences, doc, readOnly, visibleFields, rev
         cancelPending();
         // Discard takes MACHINE material only, whoever is looking, so the
         // "anything to do" test is that and not the writer's review scope.
-        if (!wordHasMaterial(sentences, tokenId, isMachine)) return;
+        if (!wordHasDiscardable(sentences, tokenId)) return;
         doc.discardTokens([tokenId]).then((ok) => {
           if (ok) afterABeat(() => hopToNextWord(tokenId, field));
         });

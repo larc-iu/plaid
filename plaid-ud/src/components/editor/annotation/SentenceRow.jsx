@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback, useRef } from 'react';
-import { isMachine } from '@larc-iu/plaid-client';
+import { hasDiscardable } from '../../../domain/reviewTargets.js';
 import { DependencyTree } from './DependencyTree.jsx';
 import { EnhancedArcs } from './EnhancedArcs.jsx';
 import {
@@ -240,7 +240,7 @@ export const SentenceRow = React.memo(
       [tokenData, arcs],
     );
     const hasInferred = useMemo(() => holds(reviewable), [holds, reviewable]);
-    const hasMachine = useMemo(() => holds(isMachine), [holds]);
+    const hasMachine = useMemo(() => hasDiscardable(tokenData, arcs), [tokenData, arcs]);
 
     // Tokens whose incoming dependency relation still needs this writer's look
     // (the dependent is the relation's TARGET lemma span), for the per-word ✓.

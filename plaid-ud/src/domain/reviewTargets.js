@@ -9,7 +9,8 @@
 // A "word" here is a morpheme token, the unit the annotation grid gives a
 // column to and the unit confirmTokens / discardTokens act on.
 
-import { sentenceArcs } from './enhancedGraph.js';
+import { isMachine } from '@larc-iu/plaid-client';
+import { isSuppressor, sentenceArcs } from './enhancedGraph.js';
 
 const spansOf = (entry) => [
   entry.form,
@@ -127,8 +128,8 @@ export function findWord(sentences, tokenId) {
  * material is the head the parser guessed is exactly the case markedFields
  * cannot see, since the relation is not one of the word's cells.
  *
- * Pass the writer policy's `reviewable` for the accept gesture and `isMachine`
- * for discard, which takes machine material only.
+ * Pass the writer policy's `reviewable` for the accept gesture. Discard asks
+ * `wordHasDiscardable`, which knows the lemma spans discard keeps.
  */
 export function wordHasMaterial(sentences, tokenId, predicate) {
   for (const sentence of sentences || []) {
@@ -138,6 +139,45 @@ export function wordHasMaterial(sentences, tokenId, predicate) {
     const lemmaId = entry.lemma?.id;
     if (!lemmaId) return false;
     return sentenceArcs(sentence).some((r) => r.target === lemmaId && predicate(r.metadata));
+  }
+  return false;
+}
+
+/**
+ * Whether Discard on these words would delete anything, by the rule
+ * ConlluDocument.discardTokens applies: their machine spans and the machine
+ * relations into them count, except a machine lemma span that a relation
+ * somebody vouched for still hangs on, which discard keeps. `arcs` are every
+ * relation of their sentence, since a kept relation from any word of it can
+ * hold one of these lemmas. Without the exception, a tree approved over
+ * seeded lemmas left Discard lit with nothing to do.
+ */
+export function hasDiscardable(entries, arcs) {
+  const anchored = new Set();
+  for (const r of arcs || []) {
+    if (isSuppressor(r) || isMachine(r.metadata)) continue;
+    anchored.add(r.source);
+    anchored.add(r.target);
+  }
+  const lemmas = new Set();
+  for (const entry of entries || []) if (entry.lemma?.id) lemmas.add(entry.lemma.id);
+  const machineRel = (arcs || []).some(
+    (r) => !isSuppressor(r) && isMachine(r.metadata) && lemmas.has(r.target),
+  );
+  if (machineRel) return true;
+  return (entries || []).some((entry) =>
+    spansOf(entry).some(
+      (span) =>
+        !!span && isMachine(span.metadata) && !(span === entry.lemma && anchored.has(span.id)),
+    ),
+  );
+}
+
+/** `hasDiscardable` for one word, by its id. */
+export function wordHasDiscardable(sentences, tokenId) {
+  for (const sentence of sentences || []) {
+    const entry = (sentence.tokens || []).find((t) => t.token.id === tokenId);
+    if (entry) return hasDiscardable([entry], sentenceArcs(sentence));
   }
   return false;
 }
