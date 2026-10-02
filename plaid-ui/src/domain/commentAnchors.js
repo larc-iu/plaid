@@ -21,6 +21,46 @@
 //
 // Framework-agnostic, like everything else under domain/.
 
+import { clipText } from '../lib/text.js';
+
+// How much of a sentence, or of a value, an anchor quotes, in code points.
+const EXCERPT_LIMIT = 60;
+// How much of a word, a morpheme or an entry form an anchor's heading names.
+// Short enough that the heading stays one line.
+const NAME_LIMIT = 32;
+
+const clip = (text, limit) => {
+  const clean = String(text ?? '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  return [...clean].length > limit ? `${clipText(clean, limit - 1)}…` : clean;
+};
+
+/**
+ * A sentence or a value as an anchor quotes it: on one line, cut short at a
+ * character a person sees as one. It is the descriptor's `excerpt`, which the
+ * Comments tab lays out in its own direction, and `quoted` gives it its quotes
+ * in `detail`.
+ */
+export const anchorExcerpt = (text) => clip(text, EXCERPT_LIMIT);
+
+/** An excerpt in quotes, or '' for none. */
+export const quoted = (excerpt) => (excerpt ? `“${excerpt}”` : '');
+
+/** A word, a morpheme or an entry form as an anchor's heading names it. */
+export const anchorName = (text) => clip(text, NAME_LIMIT);
+
+/** The anchor of the document itself, the first entry of every app's index. */
+export const documentAnchor = (doc) => ({
+  kind: 'document',
+  label: doc.name || 'This document',
+  detail: '',
+  sentenceIndex: null,
+  sentenceId: null,
+  jumpId: null,
+  order: [-1],
+});
+
 // The heading for an anchor that no longer exists, by what it was. Every entity
 // type either app anchors a comment to has an entry: a UD sentence and an IGT
 // word are both `token`, and both read "Deleted word" here, which is what the

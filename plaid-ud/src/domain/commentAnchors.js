@@ -15,23 +15,9 @@
 // looks like. Re-exported so this file is the one place the app asks about an
 // anchor.
 
-import { clipText } from '@ui/lib/text.js';
+import { anchorExcerpt, documentAnchor, quoted } from '@ui/domain/commentAnchors';
 
 export { anchorCaption } from '@ui/domain/commentAnchors';
-
-const QUOTE_LIMIT = 60;
-
-// The sentence as a thread shows it: one line, cut short. It is also the
-// descriptor's `excerpt`, so the Comments tab gives it its own direction apart
-// from the words around it.
-const excerptOf = (text) => {
-  const clean = String(text || '')
-    .replace(/\s+/gu, ' ')
-    .trim();
-  return [...clean].length > QUOTE_LIMIT ? `${clipText(clean, QUOTE_LIMIT - 1)}…` : clean;
-};
-
-const quote = (excerpt) => (excerpt ? `“${excerpt}”` : '');
 
 /**
  * The anchor index for one document: its own thread, and one per sentence.
@@ -48,24 +34,16 @@ export function buildAnchorIndex(doc) {
   const index = new Map();
   if (!doc) return index;
 
-  index.set(doc.id, {
-    kind: 'document',
-    label: doc.name || 'This document',
-    detail: '',
-    sentenceIndex: null,
-    sentenceId: null,
-    jumpId: null,
-    order: [-1],
-  });
+  index.set(doc.id, documentAnchor(doc));
 
   (doc.sentences || []).forEach((sentence, index_) => {
     const sentId = sentence.sentenceToken?.metadata?.sent_id;
     const position = `Sentence ${index_ + 1}`;
-    const excerpt = excerptOf(sentence.text);
+    const excerpt = anchorExcerpt(sentence.text);
     index.set(sentence.id, {
       kind: 'sentence',
       label: sentId ? String(sentId) : position,
-      detail: sentId ? `${position} · ${quote(excerpt)}` : quote(excerpt),
+      detail: sentId ? `${position} · ${quoted(excerpt)}` : quoted(excerpt),
       excerpt,
       sentenceIndex: index_,
       sentenceId: sentence.id,

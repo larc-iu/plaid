@@ -37,9 +37,9 @@ describe('buildAnchorIndex', () => {
       sentenceIndex: 0,
       sentenceId: sentence.id,
     });
-    expect(index.get(sentence.id).detail).toContain('the cat');
+    expect(index.get(sentence.id).detail).toBe('“the cat”');
     // The Comments tab gives the sentence its own direction by its letters.
-    expect(index.get(sentence.id).excerpt).toBe(index.get(sentence.id).detail);
+    expect(index.get(sentence.id).excerpt).toBe('the cat');
     // A word's place ("sentence 1") is the app's words, not an excerpt.
     expect(index.get(sentence.tokens[0].id).excerpt).toBeUndefined();
   });
@@ -160,10 +160,10 @@ describe('buildEntryAnchorIndex', () => {
     expect(index.get('i1')).toMatchObject({
       kind: 'entry',
       label: 'gam',
-      detail: 'house',
+      detail: '“house”',
       jumpId: 'i1',
     });
-    expect(anchorCaption(index.get('i1'))).toBe('gam, house');
+    expect(anchorCaption(index.get('i1'))).toBe('gam, “house”');
     expect(anchorCaption(index.get('i2'))).toBe('ar');
   });
 

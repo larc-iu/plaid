@@ -13,19 +13,7 @@
 //
 // Framework-agnostic, like everything else under domain/.
 
-import { clipText } from '@ui/lib/text.js';
-
-// Longest form we will inline into a label before trimming, in code points.
-// Long enough for a real word or a short translation, short enough that a
-// thread heading stays one line.
-const MAX_QUOTE = 32;
-
-// Cut at a character a person sees as one, never inside it.
-const quote = (s) => {
-  const t = String(s ?? '').trim();
-  if (!t) return '';
-  return [...t].length > MAX_QUOTE ? `${clipText(t, MAX_QUOTE - 1)}…` : t;
-};
+import { anchorExcerpt, anchorName, documentAnchor, quoted } from '@ui/domain/commentAnchors';
 
 /**
  * Build `entityId -> { kind, label, detail, sentenceIndex, sentenceId, jumpId }`
@@ -46,15 +34,7 @@ export function buildAnchorIndex(doc) {
   const index = new Map();
   if (!doc) return index;
 
-  index.set(doc.id, {
-    kind: 'document',
-    label: doc.name || 'This document',
-    detail: '',
-    sentenceIndex: null,
-    sentenceId: null,
-    jumpId: null,
-    order: [-1],
-  });
+  index.set(doc.id, documentAnchor(doc));
 
   // The baseline text. Commentable server-side; nothing in the UI offers it
   // yet, but a thread created by another client must still be describable.
@@ -79,8 +59,8 @@ export function buildAnchorIndex(doc) {
     index.set(sentence.id, {
       kind: 'sentence',
       label: `Sentence ${sIdx + 1}`,
-      detail: quote(sentenceText(sentence)),
-      excerpt: quote(sentenceText(sentence)),
+      detail: quoted(anchorExcerpt(sentenceText(sentence))),
+      excerpt: anchorExcerpt(sentenceText(sentence)),
       ...at,
       order: [sIdx, -1, -1, 0],
     });
@@ -90,8 +70,8 @@ export function buildAnchorIndex(doc) {
         index.set(span.id, {
           kind: 'annotation',
           label: `${field} of sentence ${sIdx + 1}`,
-          detail: quote(span.value),
-          excerpt: quote(span.value),
+          detail: quoted(anchorExcerpt(span.value)),
+          excerpt: anchorExcerpt(span.value),
           ...at,
           order: [sIdx, -1, -1, 1],
         });
@@ -101,7 +81,7 @@ export function buildAnchorIndex(doc) {
     (sentence.tokens || []).forEach((token, wIdx) => {
       index.set(token.id, {
         kind: 'word',
-        label: quote(token.content) || 'Word',
+        label: anchorName(token.content) || 'Word',
         detail: where,
         ...at,
         order: [sIdx, wIdx, -1, 0],
@@ -111,7 +91,7 @@ export function buildAnchorIndex(doc) {
         if (span?.id) {
           index.set(span.id, {
             kind: 'annotation',
-            label: `${field} of ${quote(token.content)}`,
+            label: `${field} of ${anchorName(token.content)}`,
             detail: where,
             ...at,
             order: [sIdx, wIdx, -1, 1],
@@ -120,11 +100,11 @@ export function buildAnchorIndex(doc) {
       }
 
       (token.morphemes || []).forEach((morph, mIdx) => {
-        const form = quote(morph.metadata?.form || morph.content);
+        const form = anchorName(morph.metadata?.form || morph.content);
         index.set(morph.id, {
           kind: 'morpheme',
           label: form || 'Morpheme',
-          detail: `in ${quote(token.content)}, ${where}`,
+          detail: `in ${anchorName(token.content)}, ${where}`,
           ...at,
           order: [sIdx, wIdx, mIdx, 0],
         });
@@ -134,7 +114,7 @@ export function buildAnchorIndex(doc) {
             index.set(span.id, {
               kind: 'annotation',
               label: `${field} of ${form}`,
-              detail: `in ${quote(token.content)}, ${where}`,
+              detail: `in ${anchorName(token.content)}, ${where}`,
               ...at,
               order: [sIdx, wIdx, mIdx, 1],
             });
@@ -166,8 +146,8 @@ export function buildEntryAnchorIndex(items, { glossField = 'gloss' } = {}) {
     if (!item?.id) continue;
     index.set(item.id, {
       kind: 'entry',
-      label: quote(item.form) || 'Entry',
-      detail: quote(item.metadata?.[glossField]),
+      label: anchorName(item.form) || 'Entry',
+      detail: quoted(anchorExcerpt(item.metadata?.[glossField])),
       sentenceIndex: null,
       sentenceId: null,
       jumpId: item.id,

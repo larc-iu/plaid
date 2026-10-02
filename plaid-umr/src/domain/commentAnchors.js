@@ -14,21 +14,7 @@
 // not depend on what a document looks like, so the screens take it from
 // there directly.
 
-import { clipText } from '@ui/lib/text.js';
-
-const QUOTE_LIMIT = 60;
-
-// The sentence as a thread shows it: one line, cut short. It is also the
-// descriptor's `excerpt`, so the Comments tab gives it its own direction apart
-// from the words around it.
-const excerptOf = (text) => {
-  const clean = String(text || '')
-    .replace(/\s+/gu, ' ')
-    .trim();
-  return [...clean].length > QUOTE_LIMIT ? `${clipText(clean, QUOTE_LIMIT - 1)}…` : clean;
-};
-
-const quote = (excerpt) => (excerpt ? `“${excerpt}”` : '');
+import { anchorExcerpt, documentAnchor, quoted } from '@ui/domain/commentAnchors';
 
 /**
  * The anchor index for one document: its own thread, and one per sentence.
@@ -44,15 +30,7 @@ export function buildAnchorIndex(doc) {
   const index = new Map();
   if (!doc) return index;
 
-  index.set(doc.id, {
-    kind: 'document',
-    label: doc.name || 'This document',
-    detail: '',
-    sentenceIndex: null,
-    sentenceId: null,
-    jumpId: null,
-    order: [-1],
-  });
+  index.set(doc.id, documentAnchor(doc));
 
   // A sentence is anchored by its sentence TOKEN. The editor's `?sent=` deep
   // link names the sentence by its NUMBER, counting from one, so that is the
@@ -60,11 +38,11 @@ export function buildAnchorIndex(doc) {
   (doc.sentences || []).forEach((sentence, offset) => {
     if (!sentence?.tokenId) return;
     const number = sentence.index ?? offset + 1;
-    const excerpt = excerptOf(sentence.text);
+    const excerpt = anchorExcerpt(sentence.text);
     index.set(sentence.tokenId, {
       kind: 'sentence',
       label: `Sentence ${number}`,
-      detail: quote(excerpt),
+      detail: quoted(excerpt),
       excerpt,
       sentenceIndex: number,
       sentenceId: sentence.tokenId,
