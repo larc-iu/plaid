@@ -75,3 +75,12 @@
           (is (re-find #"idx_relations_source" p) p)
           (is (re-find #"idx_relations_target" p) p)
           (is (not (re-find #"idx_relations_layer" p)) p))))))
+
+(deftest the-value-history-is-read-by-target
+  ;; H2-IGT-ANALYZE-1: closing a tagset over 37,653 off-list values read the
+  ;; history of each in chunks that scanned the operations table, 1.7 s each.
+  (jdbc/with-transaction [tx db {:rollback-only true}]
+    (doseq [table [:spans :relations]]
+      (let [p (plan tx (#'lc/value-history-chunk table ids))]
+        (is (re-find #"SEARCH aw USING INDEX idx_audit_writes_target" p) p)
+        (is (not (re-find #"SCAN o" p)) p)))))

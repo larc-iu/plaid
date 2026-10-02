@@ -800,6 +800,19 @@
   import's exemption: a document copy and a restore from history."
   #{"document/copy" "document/restore"})
 
+(defn- value-history-chunk
+  "The audit rows of the rows `ch` of `table`, newest first, with the kind of
+  group and the type of operation that wrote each. Read by target through
+  `idx_audit_writes_target`, which covers spans and relations for this."
+  [table ch]
+  {:select [:aw.target_id :aw.post_image :og.kind :o.op_type]
+   :from [[:audit_writes :aw]]
+   :join [[:operations :o] [:= :o.id :aw.op_id]]
+   :left-join [[:operation_groups :og] [:= :og.id :o.group_id]]
+   :where [:and [:= :aw.target_table (name table)]
+           [:in :aw.target_id (mapv str ch)]]
+   :order-by [[:aw.ts :desc] [:aw.seq :desc]]})
+
 (defn- import-set-ids
   "The ids among `rows` (id, value as stored) whose current value was set
   by a write in an operation group of kind import, or by a copy or a
@@ -807,14 +820,7 @@
   writes that left the value as it is."
   [tx table rows]
   (let [current (into {} (map (fn [r] [(u (:id r)) (:value r)])) rows)
-        audit (q-chunks tx (fn [ch] {:select [:aw.target_id :aw.post_image :og.kind :o.op_type]
-                                     :from [[:audit_writes :aw]]
-                                     :join [[:operations :o] [:= :o.id :aw.op_id]]
-                                     :left-join [[:operation_groups :og] [:= :og.id :o.group_id]]
-                                     :where [:and [:= :aw.target_table (name table)]
-                                             [:in :aw.target_id (mapv str ch)]]
-                                     :order-by [[:aw.ts :desc] [:aw.seq :desc]]})
-                        (keys current))]
+        audit (q-chunks tx (partial value-history-chunk table) (keys current))]
     (->> (group-by (comp u :target_id) audit)
          (keep (fn [[id rs]]
                  (let [cur (get current id)
