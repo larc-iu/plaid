@@ -179,7 +179,7 @@
 (deftest a-layer-that-splits-on-space-splits-a-word-a-space-is-typed-in
   ;; ud (Luke, 2026-09-30): as igt, but a space typed strictly inside a word
   ;; splits it, the word going on the half sharing more letters with it, as
-  ;; D28 has it, the tokens inside it dropped and those as long as it moved
+  ;; `split-spaced-words` has it, the tokens inside it dropped and those as long as it moved
   ;; with it
   (let [split {:split-on-space true}]
     (is (= ["the c at" "the" "at"] (edit-with "|the| |cat|" [(ins 5 " ")] split)))

@@ -1,42 +1,21 @@
 (ns plaid.sql.text
-  "SQL port of plaid.xtdb2.text. Texts live in the `texts` table with
-  the (document_id, text_layer_id) pair under a UNIQUE constraint.
+  "Texts: one per (document, text layer) pair, a UNIQUE constraint in the
+  `texts` table.
 
-  The interesting function here is `update-body`. In v2 it had to thread
-  the text body change, token reindexing, deleted-token cascade, and
-  partitioning gap-fill through a single XTDB transaction laden with
-  match*/ASSERT TOCTOU guards (`oob-assert`, `text-edit-partition-asserts`,
-  the `compensated-ids` filter). All of that machinery exists in v2 because
-  the XTDB writer does not serialize on the read snapshot.
-
-  The SQL port runs inside a single JDBC transaction, which under SQLite's
-  single-writer model gives us serializable isolation for free. The reads
-  inside the tx see a consistent snapshot and no other writer can interleave,
-  so the v2 guards are redundant and are not ported:
-
-    * `match*` calls for texts/tokens → gone (tx isolation)
-    * `:sql \"ASSERT NOT EXISTS ... text$end > ?\"` → gone
-    * `text-edit-partition-asserts` → gone
-    * `compensated-ids` filtering of update-tx → gone (we just don't
-       schedule duplicate updates; the compensator runs LAST and writes
-       what it needs)
-
-  The one exception is a body save's diff, which `update-body` works out
-  before the transaction and writes only when no write that could change
-  what it read has committed in between (see `update-body`).
-
-  Cross-namespace dependencies: this file calls into
-  `plaid.sql.token/multi-delete!` and `plaid.sql.token/compensate-partition-layers!`
-  for cascade-deletion and partition gap-fill. plaid.sql.token doesn't
-  require this namespace, but to avoid a load-time cycle if/when token
-  ever needs to reach back, we resolve those two fns at call-site via
-  `requiring-resolve`."
+  The interesting function here is `update-body`, which saves a new body
+  and moves, shrinks or deletes the tokens over it (see `plaid.algos.text`)
+  in one write transaction. Its plan is worked out before the transaction
+  and written only when no write that could change what it read has
+  committed in between. Deleting the tokens a save leaves with no letter
+  and refilling the partitions are `plaid.sql.token`'s
+  `multi-delete!` and `compensate-partition-layers!`."
   (:require [plaid.algos.text :as ta]
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.metadata :as metadata]
             [plaid.sql.operation :as op :refer [submit-operation!]]
+            [plaid.sql.token :as token]
             [plaid.util.codepoint :as cp]
             [plaid.util.digest :as digest]
             [plaid.util.storable-text :as storable])
@@ -62,26 +41,6 @@
      :text/layer    (:text_layer_id row)
      :text/digest   (digest/text-digest (:body row))}))
 
-(defn- row->token
-  "Local row->token, kept independent of plaid.sql.token to avoid a
-  load-time require cycle (text -> token would close the loop, since
-  token already calls into text for partition gap-fill, etc.).
-
-  DRIFT RISK: this body is intentionally a copy of
-  `plaid.sql.token/row->token` — that is the canonical version. If you
-  add/rename a token attr, update BOTH places (token.clj first, then
-  mirror the change here). Tests on either side should fail loudly if
-  they drift, but the duplication is not enforced by code."
-  [row]
-  (when row
-    {:token/id       (:id row)
-     :token/text     (:text_id row)
-     :token/layer    (:token_layer_id row)
-     :token/document (:document_id row)
-     :token/begin    (:begin row)
-     :token/end      (:end_ row)
-     :token/precedence (:precedence row)}))
-
 ;; ============================================================
 ;; Reads
 ;; ============================================================
@@ -97,18 +56,6 @@
   [db id]
   (when-let [txtl-id (:text_layer_id (psc/fetch-by-id db :texts id))]
     (:project_id (psc/fetch-by-id db :text_layers txtl-id))))
-
-(defn get-text-for-doc
-  "Find the (unique) text for a (text-layer, document) pair. Returns the
-  formatted text or nil."
-  [db text-layer-id document-id]
-  (when-let [row (psc/q1 db {:select [:*]
-                             :from [:texts]
-                             :where [:and
-                                     [:= :text_layer_id text-layer-id]
-                                     [:= :document_id document-id]]})]
-    (let [t (row->text row)]
-      (metadata/add-metadata-to-response db t "text" (:text/id t)))))
 
 (defn get-token-ids
   "Return the IDs of all tokens for this text."
@@ -202,9 +149,8 @@
 ;; Update body
 ;; ============================================================
 
-;; Offsets are Unicode code points throughout: `plaid.algos.text/diff` produces
-;; code-point-indexed ops (it diffs at code-point granularity) and
-;; `apply-text-edits` shifts code-point token offsets, so no unit conversion is
+;; Offsets are Unicode code points throughout: the edits, the diff of a body
+;; and the token offsets `plaid.algos.text` moves, so no unit conversion is
 ;; needed here.
 (def ^:private text-changed
   "The error of an edit whose `base` is not the stored body's digest."
@@ -232,7 +178,7 @@
           token-rows (psc/q db {:select [:*]
                                 :from [:tokens]
                                 :where [:= :text_id eid]})
-          tokens (mapv row->token token-rows)            ; code-point offsets
+          tokens (mapv token/row->token token-rows)            ; code-point offsets
           ;; A new body or edits from the caret take the plain rule (see
           ;; ta/apply-plain-gaps), on every token layer alike: what the layers
           ;; are to it is read from their shape (see ta/layer-roles), and a
@@ -382,13 +328,8 @@
                      (:plan ahead))
                    (save-plan tx eid change base)
                    (throw (ex-info (psc/err-msg-not-found "Text" eid) {:code 404 :id eid})))
-               ;; Use requiring-resolve to keep this file decoupled from
-               ;; plaid.sql.token at load time. (token.clj does not require
-               ;; text.clj today, but if it ever did, deferring resolution
-               ;; here keeps the cycle from biting.)
-               multi-delete! (requiring-resolve 'plaid.sql.token/multi-delete!)
-               compensate-partition-layers!
-               (requiring-resolve 'plaid.sql.token/compensate-partition-layers!)]
+               multi-delete! token/multi-delete!
+               compensate-partition-layers! token/compensate-partition-layers!]
            ;; 1. Cascade-delete tokens that collapsed into a deletion range.
            (when (seq deleted-ids)
              (multi-delete! tx deleted-ids))

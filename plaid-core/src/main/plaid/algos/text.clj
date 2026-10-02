@@ -1338,7 +1338,7 @@
                                 (let [[x y] (run-end r true (first? i) (spaced-start? (+ a i)))]
                                    ;; A join is left to the replace cut at a
                                    ;; word's edge when the new word reaches into
-                                   ;; both old words (see `split-at-token-edges`),
+                                   ;; both old words (counted by `run-end`),
                                    ;; and not when it takes one's first or last
                                    ;; letter.
                                   [(+ (run-state 0 0 (if (aget window-end i) 1 0) 0 0 0) RS)
@@ -1386,10 +1386,10 @@
                  ;; written without a space, in a run that deletes nothing
                  ;; and types no space: a new word, or the end of one of them
                  ;; or the start of the other, which the text cannot tell. No
-                 ;; token takes them, where the fold puts the letters typed
-                 ;; in a word the diff kept by its middle on that word:
+                 ;; token takes them, where the plain rule puts the letters
+                 ;; typed in a word the diff kept by its middle on that word:
                  ;; `thekaitat` to `theaek` keeps `kai` by its `a`, and the
-                 ;; fold gives it `aek`, where keeping it by its `k` left
+                 ;; plain rule gives it `aek`, where keeping it by its `k` left
                  ;; `ae` in no word.
                 edge-typed (fn [steps]
                              (loop [steps steps i 0 j 0 dels? false spaced? false typed 0 out 0]

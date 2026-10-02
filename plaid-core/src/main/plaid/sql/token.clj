@@ -45,7 +45,7 @@
 ;; Row mappers
 ;; ============================================================
 
-(defn- row->token
+(defn row->token
   "Translate a `tokens` row to the namespaced shape used by the REST
   API. Returns nil on nil input.
 
