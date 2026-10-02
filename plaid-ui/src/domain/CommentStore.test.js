@@ -201,9 +201,9 @@ describe('CommentStore writes', () => {
     expect(store.countFor('t1')).toBe(1);
     expect(isPending(store.threadFor('t1')[0])).toBe(true);
     expect(store.canEdit(store.threadFor('t1')[0], { canWrite: true })).toBe(false);
-    expect(store.canDelete(store.threadFor('t1')[0], { canWrite: true, canDeleteAny: true })).toBe(
-      false,
-    );
+    expect(
+      store.canDelete(store.threadFor('t1')[0], { canWrite: true, canDeleteAny: true }),
+    ).toBe(false);
 
     resolve();
     await posting;

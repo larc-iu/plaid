@@ -80,11 +80,6 @@ To end every sign-in of your account on every device, for example on a laptop le
 Every sign-in token of yours stops working at once, the calling client's included.
 Named API tokens are not affected: revoke one with `api_tokens.revoke` (`apiTokens.revoke`).
 
-A named API token acts as its owner in every request but three, since it is handed to services and scripts and never expires.
-It cannot change a password (its owner's, or for an admin anyone's), mint or revoke API tokens, or make a password reset link.
-Each of these answers 403 "This needs a signed-in session, not an API token." and changes nothing.
-Sign-in tokens are not limited this way.
-
 === Private user data
 
 Each user also has a small private **key/value store** (`/users/{id}/data/{key}`), meant for application state that should follow a person across devices and sessions but belongs to nobody else: assistant conversations, drafts, interface preferences.
