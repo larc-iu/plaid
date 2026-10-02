@@ -257,9 +257,6 @@ export const userSource = (userId) => `user:${userId}`;
 /** The config key, under the `plaid` namespace, holding the review lists. */
 export const REVIEW_KEY = 'review';
 
-/** The project roles a review list may name. */
-export const PROJECT_ROLES = Object.freeze(['reader', 'writer', 'maintainer']);
-
 /**
  * The project's review lists, normalized: { users: string[], roles: string[] }.
  * @param {Object|null|undefined} config - a project's `config`

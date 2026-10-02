@@ -222,8 +222,6 @@ def user_source(user_id):
 #: The config key, under the ``plaid`` namespace, holding the review lists.
 REVIEW_KEY = 'review'
 
-#: The project roles a review list may name.
-PROJECT_ROLES = ('reader', 'writer', 'maintainer')
 
 
 def read_review(config):

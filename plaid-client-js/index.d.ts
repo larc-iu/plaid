@@ -1706,8 +1706,6 @@ export function cpSlice(s: string, begin: number, end?: number): string;
 export function cpSlicer(s: string): (begin: number, end?: number) => string;
 /** UTF-16 index -> code-point index in `s`. */
 export function utf16ToCp(s: string, u: number): number;
-/** Code-point index -> UTF-16 index in `s` (clamps past the end). */
-export function cpToUtf16(s: string, cp: number): number;
 /** Like indexOf, but the result and `fromCp` are code-point indices; -1 if absent. */
 export function cpIndexOf(s: string, sub: string, fromCp?: number): number;
 
@@ -1858,20 +1856,12 @@ export function confirmedInferred(
 };
 /** Classify an entity's metadata into one of the three provenance states. */
 export function provState(metadata: object | null | undefined): ProvState;
-/** The verifying fragment, { provConfirmed: true }: PATCH it over existing metadata. */
-export const PROV_CONFIRMED: { readonly provConfirmed: true };
 /** Machine-made and not yet human-verified (needs review, replaceable, confirmable). */
 export function isMachine(metadata: object | null | undefined): boolean;
 /** Whether a machine writer must leave this entity alone (human or verified). !isMachine. */
 export function isProtected(metadata: object | null | undefined): boolean;
-/** The fragment a HUMAN edit should merge in: PROV_CONFIRMED iff machine-unverified, else null. */
-export function verifyOnEdit(
-  metadata: object | null | undefined,
-): { readonly provConfirmed: true } | null;
 /** Canonical provSource for a service: 'service:<serviceId>'. */
 export function serviceSource(serviceId: string): string;
-/** Canonical provSource for a contributor: 'user:<userId>'. */
-export function userSource(userId: string): string;
 /** The metadata fragment a contributor's work carries. */
 export function stampContributed(userId: string): {
   prov: "contributed";
@@ -1929,8 +1919,6 @@ export function isReservedMetadataKey(key: string): boolean;
 // --- Review: whose work is reviewed (a project-config norm) -------------------
 /** The config key, under the `plaid` namespace, holding the review lists. */
 export const REVIEW_KEY: "review";
-/** The project roles a review list may name. */
-export const PROJECT_ROLES: readonly ["reader", "writer", "maintainer"];
 /** A project's review lists, normalized. */
 export function readReview(config?: object | null): {
   users: string[];

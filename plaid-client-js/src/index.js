@@ -4241,7 +4241,6 @@ export {
   cpSlice,
   cpSlicer,
   utf16ToCp,
-  cpToUtf16,
   cpIndexOf,
 } from "./codepoint.js";
 export { composeTextEdits, gapsToOps, applyTextOps } from "./textEdits.js";
@@ -4285,7 +4284,6 @@ export { DocumentLock, DocumentLockLost } from "./documentLock.js";
 export {
   PROV,
   PROV_STATES,
-  PROV_CONFIRMED,
   PROVENANCE_KEYS,
   stampInferred,
   confirmedInferred,
@@ -4295,12 +4293,9 @@ export {
   isMachine,
   isProtected,
   needsReview,
-  verifyOnEdit,
   contributeOnEdit,
   serviceSource,
-  userSource,
   REVIEW_KEY,
-  PROJECT_ROLES,
   readReview,
   projectRole,
   isReviewed,
