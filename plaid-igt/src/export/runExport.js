@@ -65,7 +65,7 @@ const toJson = (obj) => JSON.stringify(obj, null, 2);
 // jittered), since an export fails on any read it cannot make and one blip
 // would otherwise throw away a long run. The client itself retries a GET only
 // on a 503, and the recording is read with plain fetch.
-export const READ_RETRY_DELAYS_MS = [1000, 3000, 9000];
+const READ_RETRY_DELAYS_MS = [1000, 3000, 9000];
 const passing = (error) =>
   isUnreachable(error) || /fetch failed|ECONNRESET|socket hang up/i.test(String(error?.message));
 
