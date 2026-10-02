@@ -1,12 +1,19 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
-import { useVadProposals, VAD_METADATA_KEY } from './useVadProposals.js';
+
+// A recording's print is read from its bytes (mediaFingerprint.js, tested on
+// its own). Here a recording is named by its id.
+vi.mock('../../../domain/media/mediaFingerprint.js', () => ({
+  mediaFingerprint: async (blob) => (blob ? `print:${blob.id}` : null),
+}));
+
+const { useVadProposals, VAD_METADATA_KEY } = await import('./useVadProposals.js');
 
 // Detection is expensive and its cuts are a real piece of work, so they are
 // kept on the document instead of dying with the tab. They are still
 // proposals: no segment exists until somebody types into one.
 
-const BLOB = { size: 4096 };
+const BLOB = { id: 'take-1', size: 4096 };
 const REGIONS = [
   { timeBegin: 0.42, timeEnd: 3.1 },
   { timeBegin: 3.8, timeEnd: 7.55 },
@@ -15,7 +22,7 @@ const REGIONS = [
 function Probe({ saved, onPersist, tokens = [], blob = BLOB, method = 'builtin', onReady }) {
   const vad = useVadProposals({
     mediaBlob: blob,
-    mediaKey: blob ? `blob:${blob.size}` : null,
+    mediaKey: blob ? `blob:${blob.id}` : null,
     alignmentTokens: tokens,
     params: {},
     methodKey: method,
@@ -30,7 +37,7 @@ const shown = (r) => r.container.querySelector('output').textContent;
 // The shape on the document: begin and end in turn, no objects (the server
 // counts keys through every level, and 300 cuts as objects blew its cap).
 const kept = (regions, dismissed = []) => ({
-  mediaBytes: BLOB.size,
+  media: 'print:take-1',
   method: 'builtin',
   regions: regions.flatMap((r) => [r.timeBegin, r.timeEnd]),
   dismissed,
@@ -54,12 +61,34 @@ describe('useVadProposals persistence', () => {
   });
 
   it('ignores cuts measured from a different recording or method', async () => {
-    const other = await renderComponent(<Probe saved={{ ...kept(REGIONS), mediaBytes: 999 }} />);
+    const other = await renderComponent(<Probe saved={{ ...kept(REGIONS), media: 'print:x' }} />);
     expect(shown(other)).toBe('');
     await other.unmount();
     const swapped = await renderComponent(<Probe saved={kept(REGIONS)} method="some-service" />);
     expect(shown(swapped)).toBe('');
     await swapped.unmount();
+  });
+
+  it('does not bring back cuts on a replacement recording of the same length', async () => {
+    const r = await renderComponent(
+      <Probe saved={kept(REGIONS)} blob={{ id: 'take-2', size: BLOB.size }} />,
+    );
+    expect(shown(r)).toBe('');
+    await r.unmount();
+  });
+
+  it('sends no waiting write once the recording is deleted', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const onPersist = vi.fn();
+    let api;
+    const r = await renderComponent(
+      <Probe saved={kept(REGIONS)} onPersist={onPersist} onReady={(v) => (api = v)} />,
+    );
+    await r.step(() => api.dismiss('vad-0.420-3.100'));
+    await r.rerender(<Probe saved={kept(REGIONS)} onPersist={onPersist} blob={null} />);
+    await r.step(() => vi.advanceTimersByTime(2000));
+    await r.unmount();
+    expect(onPersist).not.toHaveBeenCalled();
   });
 
   it('keeps a long recording within the server key cap', async () => {
@@ -156,7 +185,7 @@ describe('useVadProposals: a service run that produced nothing', () => {
   afterEach(() => vi.useRealTimers());
 
   const keptForService = (regions) => ({
-    mediaBytes: BLOB.size,
+    media: 'print:take-1',
     method: 'svc:detect',
     regions: regions.flatMap((r) => [r.timeBegin, r.timeEnd]),
     dismissed: [],

@@ -24,6 +24,7 @@ import { storedHolds } from '@ui/lib/editLog.js';
 import { applyReshape } from '@ui/domain/textReshape.js';
 import { getIgtLayerInfo } from '../layerInfo.js';
 import { underKeys } from './alignment.js';
+import { VAD_METADATA_KEY } from '../media/speechDetectionKey.js';
 
 // One sentence per line of a freshly saved text. The server keeps the
 // partition in step with later edits; the Tokenize tab moves the breaks.
@@ -411,12 +412,22 @@ export const documentMutations = {
     });
   },
 
+  // The speech-detection cuts were measured on the recording, so they go with
+  // it, in the same operation.
   async deleteMedia() {
     const label = 'Failed to delete media';
     if (!this._canWrite(label)) return false;
+    const ops =
+      this._raw?.metadata?.[VAD_METADATA_KEY] != null
+        ? metadataOps({ [VAD_METADATA_KEY]: null })
+        : [];
     this._applyRawPatch((next) => {
       next.mediaUrl = null;
+      if (ops.length) next.metadata = applyMetadataOps(next.metadata, ops);
     });
-    return this._queueWrite(label, () => this._client.documents.deleteMedia(this.id));
+    return this._queueWrite(label, async () => {
+      await this._client.documents.deleteMedia(this.id);
+      if (ops.length) await this._client.documents.patchMetadata(this.id, ops);
+    });
   },
 };

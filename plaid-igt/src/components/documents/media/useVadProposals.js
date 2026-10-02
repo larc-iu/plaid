@@ -3,6 +3,8 @@ import { speechProbabilities } from '../../../domain/vad/speechProbabilities.js'
 import { speechTimestamps, toSeconds } from '../../../domain/vad/speechTimestamps.js';
 import { detectorParams } from './detectSpeechBuiltin.js';
 import { humanizeError } from '@ui/lib/errors.js';
+import { mediaFingerprint } from '../../../domain/media/mediaFingerprint.js';
+import { VAD_METADATA_KEY } from '../../../domain/media/speechDetectionKey.js';
 
 // Speech detection as PROPOSALS, not as data.
 //
@@ -33,7 +35,7 @@ const timeBeginOf = (t) => t.metadata?.timeBegin ?? 0;
 const timeEndOf = (t) => t.metadata?.timeEnd ?? timeBeginOf(t);
 
 /** Where the cuts are kept on the document. */
-export const VAD_METADATA_KEY = 'speechDetection';
+export { VAD_METADATA_KEY };
 
 // Long enough that dragging a slider or discarding a run of proposals settles
 // into one write, short enough that leaving the tab straight after a detection
@@ -41,8 +43,9 @@ export const VAD_METADATA_KEY = 'speechDetection';
 const PERSIST_DELAY_MS = 1500;
 
 // What is stored, in one shape both the writer and the restore check build, so
-// they can be compared as strings. The recording is identified by its exact
-// byte length: replacing it leaves cuts measured from something else behind.
+// they can be compared as strings. The recording is identified by its print
+// (mediaFingerprint.js), read from its bytes: a replacement of the same length
+// is another recording, and its cuts are not these.
 // The regions go into the document's metadata as one flat list of numbers,
 // begin and end in turn, with the speakers (a service may name them) in a
 // parallel list only when there are any. The server caps a metadata payload
@@ -70,10 +73,10 @@ const unpackRegions = (kept) => {
   return out.length ? out : null;
 };
 
-const payloadOf = (mediaBlob, methodKey, regions, dismissed) =>
-  regions && regions.length
+const payloadOf = (media, methodKey, regions, dismissed) =>
+  media && regions && regions.length
     ? {
-        mediaBytes: mediaBlob?.size ?? null,
+        media,
         method: methodKey ?? null,
         ...packRegions(regions),
         dismissed: [...dismissed].sort(),
@@ -106,6 +109,22 @@ export function useVadProposals({
   const [error, setError] = useState(null);
   const [dismissed, setDismissed] = useState(() => new Set());
   const abortRef = useRef(null);
+  // The print of the recording on screen, once read, with the blob it was
+  // read from so a print of the one before is never taken for it.
+  const [print, setPrint] = useState({ blob: null, media: null });
+  useEffect(() => {
+    let live = true;
+    setPrint({ blob: null, media: null });
+    if (!mediaBlob) return undefined;
+    mediaFingerprint(mediaBlob).then(
+      (media) => live && setPrint({ blob: mediaBlob, media }),
+      (e) => console.error('Could not read the recording:', e),
+    );
+    return () => {
+      live = false;
+    };
+  }, [mediaBlob]);
+  const media = print.blob === mediaBlob ? print.media : null;
 
   // Read only when the recording or the method changes. As a dependency it
   // would fire on our own write and undo whatever happened since.
@@ -133,9 +152,7 @@ export function useVadProposals({
   useEffect(() => {
     const kept = savedRef.current;
     const mine =
-      kept && kept.mediaBytes === (mediaBlob?.size ?? null) && kept.method === (methodKey ?? null)
-        ? kept
-        : null;
+      kept && media && kept.media === media && kept.method === (methodKey ?? null) ? kept : null;
     const restored = mine ? unpackRegions(mine) : null;
     setAnalysis(null);
     setServiceRegions(restored);
@@ -143,9 +160,9 @@ export function useVadProposals({
     setError(null);
     setDismissed(new Set(mine?.dismissed ?? []));
     writtenRef.current = JSON.stringify(
-      payloadOf(mediaBlob, methodKey, restored, new Set(mine?.dismissed ?? [])),
+      payloadOf(media, methodKey, restored, new Set(mine?.dismissed ?? [])),
     );
-  }, [mediaKey, methodKey, mediaBlob]);
+  }, [mediaKey, methodKey, mediaBlob, media]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -295,8 +312,14 @@ export function useVadProposals({
   // covers its stretch of time, so the filter above drops it again on the way
   // back in, and nothing has to be rewritten each time one is typed into.
   useEffect(() => {
-    if (!onPersist) return undefined;
-    const payload = payloadOf(mediaBlob, methodKey, regions, dismissed);
+    // Nothing is kept, or dropped, until the recording is known: an empty
+    // payload here would erase cuts the restore has not looked at yet.
+    if (!onPersist || !media) {
+      // A write still waiting was about a recording that is gone.
+      pendingRef.current = null;
+      return undefined;
+    }
+    const payload = payloadOf(media, methodKey, regions, dismissed);
     const encoded = JSON.stringify(payload);
     if (encoded === writtenRef.current) {
       pendingRef.current = null;
@@ -307,7 +330,7 @@ export function useVadProposals({
     return () => clearTimeout(timer);
     // persistRef and writtenRef are refs; onPersist is read only for its presence.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [regions, dismissed, methodKey, mediaBlob, !!onPersist, flush]);
+  }, [regions, dismissed, methodKey, media, !!onPersist, flush]);
 
   // Leaving the tab is exactly the moment the cuts used to be lost, so a write
   // still inside its delay goes out on the way rather than being cancelled.
