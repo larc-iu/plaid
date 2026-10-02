@@ -43,10 +43,6 @@ export const readExportPresets = (project) => {
   return Array.isArray(presets) ? presets : [];
 };
 
-export async function writeExportPresets(client, projectId, presets) {
-  await client.projects.setConfig(projectId, IGT_NAMESPACE, 'export', { presets });
-}
-
 /**
  * Change a project's preset list by `change(list)`, which returns the list to
  * store. The write expects the list as `project` holds it. When another save

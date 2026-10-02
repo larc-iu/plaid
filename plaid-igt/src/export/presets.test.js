@@ -1,8 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   applyExportPresets,
   readExportPresets,
-  writeExportPresets,
   newPreset,
   defaultFieldMap,
   formatExt,
@@ -110,12 +109,6 @@ describe('preset persistence', () => {
     expect(readExportPresets({ config: { igt: { export: { presets: 'junk' } } } })).toEqual([]);
     expect(readExportPresets({})).toEqual([]);
     expect(readExportPresets(null)).toEqual([]);
-  });
-
-  it('writes the presets list under config.igt.export', async () => {
-    const setConfig = vi.fn();
-    await writeExportPresets({ projects: { setConfig } }, 'p1', [{ id: 'x' }]);
-    expect(setConfig).toHaveBeenCalledWith('p1', 'igt', 'export', { presets: [{ id: 'x' }] });
   });
 
   it('applies the same write to a project in hand, keeping the rest of its config', () => {

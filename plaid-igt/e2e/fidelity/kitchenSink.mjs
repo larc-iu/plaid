@@ -40,7 +40,7 @@ import {
   defaultIgnoredTokensSetup,
 } from '../../src/domain/igtConfig.js';
 import { discoverExportLayers } from '../../src/export/exportLayers.js';
-import { newPreset, writeExportPresets } from '../../src/export/presets.js';
+import { newPreset } from '../../src/export/presets.js';
 import { wavBytes } from '../bugbash/harness.mjs';
 
 const CONTRIBUTOR = {
@@ -231,9 +231,9 @@ async function configureMain(client, projectId, contributorId) {
     'Glosses',
   );
 
-  await writeExportPresets(client, projectId, [
-    newPreset('plaid-igt-json', discoverExportLayers(project), 'Archive'),
-  ]);
+  await client.projects.setConfig(projectId, IGT_NAMESPACE, 'export', {
+    presets: [newPreset('plaid-igt-json', discoverExportLayers(project), 'Archive')],
+  });
 
   await client.projects.addWriter(projectId, contributorId);
   await client.projects.setConfig(
