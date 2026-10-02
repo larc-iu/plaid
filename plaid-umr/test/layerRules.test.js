@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { parseUmrFile } from '../src/domain/format/umrFile.js';
 import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
+import { relationRules } from '../src/domain/umrConstraints.js';
 import { humanizeError } from '../../plaid-ui/src/lib/errors.js';
 import { rawFromPlan } from './rawFromPlan.js';
 import { recordingClient } from './recordingClient.js';
@@ -132,7 +133,7 @@ function load({ user = MAINTAINER, stored, declare = null, broken = true } = {})
   return { doc, calls, raw, reloads: () => reloads };
 }
 
-const ruleFor = (raw) => [{ type: 'same-ancestor', tokenLayer: sentenceLayerOf(raw).id }];
+const ruleFor = (raw) => relationRules(sentenceLayerOf(raw).id);
 const constraintCalls = (calls) => calls.filter((c) => c.name.startsWith('relationLayers.'));
 
 test('an open by a maintainer on a layer that already holds the rule writes nothing', async () => {
@@ -157,12 +158,20 @@ test('an open by a maintainer repairs, then declares the rule on UMR relations o
       'relationLayers.setConstraints',
     ],
   );
-  assert.deepEqual(made[0].args, [layerId, ruleFor(raw)]);
-  assert.deepEqual(made[1].args, [layerId, ruleFor(raw)]);
+  const remediable = ruleFor(raw).filter((r) => r.type === 'same-ancestor');
+  assert.deepEqual(
+    made[0].args,
+    [layerId, remediable],
+    'the rules with a remedy are checked first',
+  );
+  assert.deepEqual(made[1].args, [layerId, remediable], 'acyclic has no remedy to apply');
   assert.deepEqual(made[2].args, [layerId, 'umr', ruleFor(raw), undefined, { expected: null }]);
   assert.deepEqual(result, { findings: [], rulesDeclared: true });
   assert.equal(reloads(), 1, 'read again after core repaired the project');
-  assert.match(doc.describeReconcile(result), /set up the rule that a relation stays inside/);
+  assert.match(
+    doc.describeReconcile(result),
+    /set up the rules that a relation stays inside its sentence and closes no cycle/,
+  );
   assert.ok(
     calls.some((c) => c.name === 'operation' && c.args[0] === 'Set up layer rules'),
     'the declaration is one labelled operation',

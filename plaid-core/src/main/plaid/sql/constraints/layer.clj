@@ -441,41 +441,6 @@
 ;; acyclic
 ;; ============================================================
 
-(defn- find-cycles
-  "Cycles among `edges` ({:id :s :t}, no self-loops), found by an iterative
-  depth-first search: one cycle, as its edge ids, per back edge met. Every
-  node is visited once, so it is linear in the edges."
-  [edges]
-  (let [adj (group-by :s edges)
-        color (java.util.HashMap.)
-        found (volatile! [])]
-    (doseq [start (distinct (map :s edges))
-            :when (nil? (.get color start))]
-      (.put color start :gray)
-      (loop [stack (list [start (seq (get adj start))])
-             path []]
-        (when-let [[node remaining] (first stack)]
-          (if-let [e (first remaining)]
-            (let [stack (conj (rest stack) [node (next remaining)])
-                  t (:t e)
-                  c (.get color t)]
-              (cond
-                (nil? c)
-                (do (.put color t :gray)
-                    (recur (conj stack [t (seq (get adj t))]) (conj path e)))
-
-                (= :gray c)
-                (let [depth (if (= t start)
-                              0
-                              (inc (count (take-while #(not= t (:t %)) path))))]
-                  (vswap! found conj (conj (mapv :id (subvec path depth)) (:id e)))
-                  (recur stack path))
-
-                :else (recur stack path)))
-            (do (.put color node :black)
-                (recur (rest stack) (if (seq path) (pop path) path)))))))
-    @found))
-
 (defn- path-ids
   "The edge ids of a path from `from` to `to` among `edges`, or nil."
   [edges from to]
@@ -516,12 +481,96 @@
                  ") SELECT 1 AS hit FROM reach WHERE span = ? LIMIT 1")]
     (some? (psc/q1 tx (-> [sql (str from) (str lid)] (into ex) (conj (str to)))))))
 
-(defn- check-acyclic [{:keys [tx mode] :as ctx} {:keys [layer params] :as c}]
+(defn- components
+  "Each node's strongly connected component among `edges` ({:s :t}), as a
+  map of node to component number. Tarjan's algorithm, iterative, so it is
+  linear in the edges and holds no stack frame per node."
+  [edges]
+  (let [adj (group-by :s edges)
+        index (java.util.HashMap.)
+        low (java.util.HashMap.)
+        on-stack (java.util.HashSet.)
+        stack (java.util.ArrayDeque.)
+        comp (java.util.HashMap.)
+        counter (long-array 2)]
+    (doseq [root (distinct (map :s edges))
+            :when (not (.containsKey index root))]
+      (let [work (java.util.ArrayDeque.)
+            visit! (fn [v]
+                     (.put index v (aget counter 0))
+                     (.put low v (aget counter 0))
+                     (aset counter 0 (inc (aget counter 0)))
+                     (.push stack v)
+                     (.add on-stack v)
+                     (.push work (object-array [v (seq (get adj v))])))]
+        (visit! root)
+        (while (not (.isEmpty work))
+          (let [^objects top (.peek work)
+                v (aget top 0)]
+            (if-let [e (first (aget top 1))]
+              (let [w (:t e)]
+                (aset top 1 (next (aget top 1)))
+                (cond
+                  (not (.containsKey index w)) (visit! w)
+                  (.contains on-stack w) (.put low v (min (.get low v) (.get index w)))))
+              (do
+                (.pop work)
+                (when-let [^objects parent (.peek work)]
+                  (let [p (aget parent 0)]
+                    (.put low p (min (.get low p) (.get low v)))))
+                (when (= (.get low v) (.get index v))
+                  (loop []
+                    (let [w (.pop stack)]
+                      (.remove on-stack w)
+                      (.put comp w (aget counter 1))
+                      (when-not (= w v) (recur))))
+                  (aset counter 1 (inc (aget counter 1))))))))))
+    (into {} comp)))
+
+(defn- on-cycles
+  "The edges among `edges` ({:id :s :t}, no self-loops) that lie on a cycle
+  and that `flag?` takes, each as `{:id :ids}`, `ids` being a cycle through
+  it. An edge on a cycle already reported is left out, and past the first
+  hundred cycles an edge stands for its own, which is all a refusal lists."
+  [edges flag?]
+  (let [comp (components edges)
+        cyclic (filter (fn [e] (= (get comp (:s e)) (get comp (:t e)))) edges)
+        by-comp (group-by #(get comp (:s %)) cyclic)]
+    (loop [es (filter flag? cyclic) covered #{} n 0 out []]
+      (if-let [e (first es)]
+        (if (contains? covered (:id e))
+          (recur (rest es) covered n out)
+          (let [ids (if (< n 100)
+                      (conj (or (path-ids (by-comp (get comp (:s e))) (:t e) (:s e)) []) (:id e))
+                      [(:id e)])]
+            (recur (rest es) (into covered ids) (inc n) (conj out {:id (:id e) :ids ids}))))
+        out))))
+
+(declare import-groups import-set-ids)
+
+(defn- edge-key
+  "A relation's endpoints and value, off a row or an audit image."
+  [m]
+  [(str (:source_span_id m)) (str (:target_span_id m)) (:value m)])
+
+(defn- check-acyclic
+  "No cycle among the relations of the layer, but through a value in
+  `except-values`, and no self-loop unless `self-loops`. As for a value
+  list, a relation an import, a copy or a restore wrote is exempt (its
+  endpoints and value as that write left them): a cycle it closes stands,
+  and one a person's write closes is refused."
+  [{:keys [tx mode] :as ctx} {:keys [layer params] :as c}]
   (let [lid (:id layer)
         self-ok? (true? (get params "self-loops"))
         except (set (get params "except-values"))
         excepted? (fn [v] (and (string? v) (contains? except v)))
         excepted-json (map psc/write-json except)
+        self-loop? (fn [r] (and (= (str (:source_span_id r)) (str (:target_span_id r)))
+                                (not self-ok?)
+                                (not (excepted? (read-value (:value r))))))
+        counted? (fn [r] (and (not= (str (:source_span_id r)) (str (:target_span_id r)))
+                              (not (excepted? (read-value (:value r))))))
+        ->edge (fn [r] {:id (u (:id r)) :s (u (:source_span_id r)) :t (u (:target_span_id r))})
         cycle-violations (fn [doc cycles]
                            (->> cycles
                                 (map set)
@@ -530,40 +579,43 @@
     (if (= :all mode)
       (let [rows (psc/q tx {:select [:id :source_span_id :target_span_id :value :document_id]
                             :from :relations
-                            :where (where-and [:= :relation_layer_id lid] (doc-clause ctx :document_id))})]
+                            :where (where-and [:= :relation_layer_id lid] (doc-clause ctx :document_id))})
+            loops (filter self-loop? rows)
+            cycles (mapcat (fn [[doc rs]]
+                             (map #(assoc % :doc doc) (on-cycles (map ->edge (filter counted? rs)) any?)))
+                           (group-by (comp u :document_id) rows))
+            by-id (into {} (map (fn [r] [(u (:id r)) r])) rows)
+            imported (import-set-ids tx :relations
+                                     (concat loops (map (comp by-id :id) cycles))
+                                     :key-of edge-key)]
         (concat
-         (for [r rows
-               :when (and (= (str (:source_span_id r)) (str (:target_span_id r)))
-                          (not self-ok?)
-                          (not (excepted? (read-value (:value r)))))]
+         (for [r loops :when (not (imported (u (:id r))))]
            (violation c (:document_id r) (:source_span_id r) [(:id r)]))
-         (mapcat (fn [[doc rs]]
-                   (cycle-violations doc (find-cycles
-                                          (keep (fn [r]
-                                                  (let [s (u (:source_span_id r)) t (u (:target_span_id r))]
-                                                    (when (and (not= s t) (not (excepted? (read-value (:value r)))))
-                                                      {:id (u (:id r)) :s s :t t})))
-                                                rs))))
-                 (group-by (comp u :document_id) rows))))
-      (let [cands (live-with ctx "relations" lid [:edge :value])]
-        (when (seq cands)
+         (mapcat (fn [[doc cs]] (cycle-violations doc (map :ids cs)))
+                 (group-by :doc (remove #(imported (:id %)) cycles)))))
+      (let [cands (live-with ctx "relations" lid [:edge :value])
+            imports (import-groups tx (mapcat #(concat (:edge-groups %) (:value-groups %)) cands))
+            exempt (set (keep (fn [n]
+                                (let [gs (concat (:edge-groups n) (:value-groups n))]
+                                  (when (and (seq gs)
+                                             (every? #(or (= :reproduced %) (and % (contains? imports (u %)))) gs))
+                                    (u (:id n)))))
+                              cands))
+            checked (remove #(exempt (u (:id %))) cands)]
+        (when (seq checked)
           (let [rows (q-chunks tx (fn [ch] {:select [:id :source_span_id :target_span_id :value :document_id]
                                             :from :relations :where [:in :id ch]})
-                               (map :id cands))]
+                               (map :id checked))]
             (mapcat
              (fn [[doc rs]]
-               (let [self (for [r rs
-                                :when (and (= (str (:source_span_id r)) (str (:target_span_id r)))
-                                           (not self-ok?)
-                                           (not (excepted? (read-value (:value r)))))]
-                            (violation c doc (:source_span_id r) [(:id r)]))
-                     counted (filter (fn [r] (and (not= (str (:source_span_id r)) (str (:target_span_id r)))
-                                                  (not (excepted? (read-value (:value r))))))
-                                     rs)]
+               (let [counted (filter counted? rs)]
                  (concat
-                  self
+                  (for [r rs :when (self-loop? r)]
+                    (violation c doc (:source_span_id r) [(:id r)]))
                   (if (> (count counted) 50)
-                    (cycle-violations doc (find-cycles (relation-edges tx lid doc excepted?)))
+                    (let [ids (set (map (comp u :id) counted))]
+                      (cycle-violations doc (map :ids (on-cycles (relation-edges tx lid doc excepted?)
+                                                                 #(contains? ids (:id %))))))
                     (let [edges (delay (relation-edges tx lid doc excepted?))]
                       (cycle-violations
                        doc
@@ -817,15 +869,16 @@
   "The ids among `rows` (id, value as stored) whose current value was set
   by a write in an operation group of kind import, or by a copy or a
   restore, read from the audit log: the oldest write of the newest run of
-  writes that left the value as it is."
-  [tx table rows]
-  (let [current (into {} (map (fn [r] [(u (:id r)) (:value r)])) rows)
+  writes that left the value as it is. `key-of` reads what counts as the
+  value off a row and off an audit image (the value column by default)."
+  [tx table rows & {:keys [key-of] :or {key-of :value}}]
+  (let [current (into {} (map (fn [r] [(u (:id r)) (key-of r)])) rows)
         audit (q-chunks tx (partial value-history-chunk table) (keys current))]
     (->> (group-by (comp u :target_id) audit)
          (keep (fn [[id rs]]
                  (let [cur (get current id)
                        run (take-while (fn [r] (when-let [img (some-> (:post_image r) psc/read-json)]
-                                                 (= cur (:value img))))
+                                                 (= cur (key-of img))))
                                        rs)
                        setter (last run)]
                    (when (or (= "import" (:kind setter))

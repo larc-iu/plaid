@@ -116,8 +116,9 @@
   token list), and the op kinds that changed what each constraint reads:
   a token's extent, a span's or link's token list, a relation's endpoints,
   a span's or relation's value (or its provenance, which decides whether
-  the value is exempt), and the operation group of each value write, or
-  `:reproduced` for a copy or a restore. The op kind is the op type's
+  the value is exempt), and the operation group of each value write and of
+  each write of a relation's endpoints, or `:reproduced` for a copy or a
+  restore. The op kind is the op type's
   namespace, which is how `finish!` tells a write on the row's own kind from
   a structural one."
   [op table-name id change pre post]
@@ -170,6 +171,9 @@
                    (update :kinds (fn [m] (reduce (fn [m c] (update m c (fnil conj #{}) kind)) m cats)))
                    (contains? cats :value)
                    (update :value-groups (fnil conj #{})
+                           (if (reproducing-op-types (:type op)) :reproduced group))
+                   (contains? cats :edge)
+                   (update :edge-groups (fnil conj #{})
                            (if (reproducing-op-types (:type op)) :reproduced group)))))))))
 
 (defn- note!

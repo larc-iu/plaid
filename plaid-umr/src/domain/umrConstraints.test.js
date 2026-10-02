@@ -12,20 +12,23 @@ const info = (relationConstraints) => ({
 });
 
 describe('wantedConstraints', () => {
-  it('asks the sentence graph, and only it, to stay inside the sentence layer', () => {
+  it('asks the sentence graph, and only it, to stay inside the sentence layer and have no cycle', () => {
     expect(wantedConstraints(info())).toEqual([
       {
         kind: 'relation',
         layerId: 'rel',
         namespace: 'umr',
-        constraints: [{ type: 'same-ancestor', tokenLayer: 'sent' }],
+        constraints: [
+          { type: 'same-ancestor', tokenLayer: 'sent' },
+          { type: 'acyclic', exceptValues: [':quote', ':modal-predicate'] },
+        ],
         stored: null,
       },
     ]);
   });
 
   it('carries what the layer holds under umr, not what another app declared', () => {
-    const held = [{ type: 'same-ancestor', tokenLayer: 'sent' }];
+    const held = relationRules('sent');
     const [entry] = wantedConstraints(info({ umr: held, ud: [{ type: 'acyclic' }] }));
     expect(entry.stored).toEqual(held);
     expect(entry.stored).toEqual(entry.constraints);

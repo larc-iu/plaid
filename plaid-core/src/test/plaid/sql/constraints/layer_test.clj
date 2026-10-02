@@ -167,6 +167,43 @@
       (assert-status 422 r)
       (is (= "acyclic" (-> r :body :violations first :constraint))))))
 
+;; An import, a copy or a restore keeps a cycle, as it keeps an unlisted
+;; value: a UMR file holds inverse roles stored in the direction written
+;; (R2-DEBT-APPS-11).
+(deftest an-import-keeps-a-cycle
+  (let [{:keys [deps doc span] :as s} (setup!)
+        import-q (fn [] (str "?group-id=" (random-uuid) "&group-message=Import&group-kind=import"))
+        rel-op (fn [a b v] {:path "/api/v1/relations" :method "POST"
+                            :body {:layer-id deps :source-id (span a) :target-id (span b) :value v}})]
+    (assert-status 200 (declare! "relation" deps "umr" [{:type "acyclic" :except-values [":quote"]}]))
+    (testing "an import's cycle is stored"
+      (assert-status 200 (batch [(rel-op "The" "cat" ":ARG1-of") (rel-op "cat" "sat" ":ARG2")
+                                 (rel-op "sat" "The" ":ARG0")]
+                                (import-q))))
+    (testing "and the same outside an import is refused"
+      (assert-status 422 (batch [(rel-op "Dogs" "ran" ":ARG0") (rel-op "ran" "Dogs" ":ARG1")])))
+    (testing "a large import's cycle too (the whole-document search)"
+      (assert-status 200 (batch (concat (repeat 58 (rel-op "Dogs" "ran" ":mod"))
+                                        [(rel-op "ran" "Dogs" ":ARG0")])
+                                (import-q))))
+    (testing "a person's write that closes a cycle through imported relations is refused"
+      (assert-status 422 (rel! s "sat" "cat" ":ARG0")))
+    (testing "and a large batch of a person's writes is refused for its own cycle only"
+      (assert-status 200 (batch (repeat 60 (rel-op "cat" "ran" ":mod"))))
+      (let [r (batch (concat (repeat 58 (rel-op "cat" "ran" ":mod")) [(rel-op "sat" "cat" ":ARG1")]))]
+        (assert-status 422 r)
+        (is (= 1 (-> r :body :violation-count)))))
+    (testing "declaring the rule again leaves the imported cycles"
+      (assert-status 200 (declare! "relation" deps "umr" [{:type "acyclic" :except-values [":quote" ":mode"]}])))
+    (testing "a copy of the document keeps them"
+      (assert-status 201 (call :post (str "/api/v1/documents/" doc "/copy") {:name "D2"})))
+    (testing "a person's edit of a relation on an imported cycle is checked"
+      (let [rid (-> (psc/q1 db {:select [:id] :from :relations
+                                :where [:and [:= :source_span_id (span "sat")] [:= :target_span_id (span "The")]]})
+                    :id str)]
+        (assert-status 422 (call :patch (str "/api/v1/relations/" rid) {:value ":ARG1"}))
+        (assert-status 200 (call :patch (str "/api/v1/relations/" rid) {:value ":quote"}))))))
+
 ;; ============================================================
 ;; value-set
 ;; ============================================================

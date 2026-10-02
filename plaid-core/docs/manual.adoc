@@ -2095,6 +2095,8 @@ Three kinds of write keep a value outside a `value-set` list:
 
 A value kept this way does not stop the list from being declared again later, and any later edit of it is checked.
 
+The `acyclic` rule takes the last two the same way: a relation an import, a copy or a restore wrote does not count against it, so a cycle closed by an import stands (a file that stores an inverse role in the direction it was written, say), while a cycle a later write closes, or a later edit of a relation on it, is refused.
+
 A part of a value is compared with the list after trimming exactly what JavaScript's `String.prototype.trim` trims: Unicode white space, including the no-break spaces, and the byte order mark.
 `valueSetAllows(constraint, value)` in JavaScript and `value_set_allows(constraint, value)` in Python read a value the same way.
 
