@@ -1,5 +1,5 @@
 (ns plaid.sql.common
-  "Foundation helpers for the SQL port of plaid.xtdb2.
+  "Foundation helpers for the SQL store.
 
   Ids, JSON ser/de, timestamps, name validation, query execution, and the
   read primitives every entity namespace is built from.
@@ -603,20 +603,6 @@
    (fetch-by-id db table :id id))
   ([db table id-col id]
    (q1 db {:select [:*] :from [table] :where [:= id-col id]})))
-
-(defn fetch-where
-  "SELECT * FROM <table> WHERE <attrs>. attrs is a column-keyed map.
-  Vector values produce IN clauses; scalar values use `=`."
-  [db table attrs]
-  (q db {:select [:*]
-         :from [table]
-         :where (into [:and]
-                      (map (fn [[k v]]
-                             (cond
-                               (sequential? v) [:in k v]
-                               (nil? v) [:= k nil]
-                               :else [:= k v]))
-                           attrs))}))
 
 (def bulk-chunk-size
   "Rows per statement for any helper handed an arbitrarily-sized collection

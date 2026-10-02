@@ -1,6 +1,5 @@
 (ns plaid.server.sql
-  "Mount state for the SQL datasource. Replaces plaid.server.xtdb.
-  Starts a HikariCP pool around SQLite, runs Migratus migrations, and
+  "Mount state for the SQL datasource. Starts a HikariCP pool around SQLite, runs Migratus migrations, and
   prompts to create an admin user if none exists."
   (:require [clojure.string :as str]
             [migratus.core :as migratus]
@@ -422,9 +421,8 @@
                ;; config falls through to the defaults; passing nil is
                ;; explicitly supported by `build-datasource`.
                pool-cfg (:plaid.server.sql/pool config)
-               ;; Wire the slow-query threshold from config — promised by the
-               ;; docstring on `psc/*slow-query-threshold-ms*` but previously
-               ;; never read. Defaults to the var's existing 500ms default.
+               ;; The slow-query threshold from config (see
+               ;; `psc/*slow-query-threshold-ms*`), 500 ms by default.
                threshold-ms (or (coerce-slow-query-threshold-ms
                                  (:slow-query-threshold-ms cfg))
                                 500)

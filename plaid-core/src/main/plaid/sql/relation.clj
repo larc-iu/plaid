@@ -1,9 +1,6 @@
 (ns plaid.sql.relation
-  "SQL port of plaid.xtdb2.relation. Relations live in the `relations`
-  table; source/target are FK references onto `spans`.
-
-  External API mirrors xtdb2 (same fn names + arglists). `db` replaces
-  `node-or-map`. Relations have no junction tables — the FK CASCADE on
+  "Relations: the `relations` table, whose source and target are FK
+  references onto `spans`. Relations have no junction tables — the FK CASCADE on
   spans deletes them when a parent span is removed (and the span
   module audits that cascade explicitly)."
   (:require [taoensso.timbre :as log]

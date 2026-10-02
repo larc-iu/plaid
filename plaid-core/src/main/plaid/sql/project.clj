@@ -1,12 +1,9 @@
 (ns plaid.sql.project
-  "SQL port of plaid.xtdb2.project. Projects live in the `projects`
-  table; ACL lives in `project_users` keyed by role; vocab grants in
-  `project_vocabs`; the editor `:config` is a JSON blob on the project
-  row.
-
-  External API mirrors the xtdb2 version. The first argument is `db`,
-  either a HikariCP DataSource (reads) or a JDBC Connection in a tx
-  (writes). Write fns open their own tx via `submit-operation!`."
+  "Projects: the `projects` table, the ACL in `project_users` keyed by
+  role, vocab grants in `project_vocabs`, and the editor `:config` as a
+  JSON blob on the project row. The first argument is `db`, a HikariCP
+  DataSource (reads) or a JDBC Connection in a tx (writes). Write fns open
+  their own tx via `submit-operation!`."
   (:require [clojure.data.json :as json]
             [taoensso.timbre :as log]
             [plaid.sql.audit-write :as psaw]
@@ -180,12 +177,6 @@
 ;; Reads
 ;; ============================================================
 
-(defn get-document-ids [db id]
-  (->> (psc/q db {:select [:id]
-                  :from [:documents]
-                  :where [:= :project_id id]})
-       (mapv :id)))
-
 (defn get-documents-page
   "Keyset-paginated documents for a project, ordered by (name, id). The stub
   carries the same scalar fields as `document/get` (sans nested layers/media) so
@@ -230,12 +221,6 @@
      (-> bare
          (->> (attach-acl db id))
          (->> (enrich-layers db))))))
-
-(defn reader-ids [db id]
-  (user-ids-for-role db id "reader"))
-
-(defn writer-ids [db id]
-  (user-ids-for-role db id "writer"))
 
 (defn maintainer-ids [db id]
   (user-ids-for-role db id "maintainer"))
@@ -407,13 +392,6 @@
    (pagination/paginate-coll (get-accessible db user-id)
                              [:project/name :project/id]
                              limit cursor-vals)))
-
-(defn get-by-name [db name]
-  (when-let [row (psc/q1 db {:select [:*]
-                             :from [:projects]
-                             :where [:and [:= :name name] [:= :deleted_at nil]]})]
-    (-> (row->project-bare row)
-        (->> (attach-acl db (:id row))))))
 
 (defn project-id
   "For projects, the project-id is the entity's own ID."
@@ -625,15 +603,8 @@
 (defn- purge-chunk!
   "Run one chunk's DELETE, trying again a second later while it is busy."
   [datasource sql]
-  (loop [i 1]
-    (let [r (try {:n (psc/execute! datasource sql)}
-                 (catch Exception e
-                   (if (and (< i purge-attempts) (psd/sqlite-busy? e))
-                     ::busy
-                     (throw e))))]
-      (if (= ::busy r)
-        (do (Thread/sleep 1000) (recur (inc i)))
-        (:n r)))))
+  (psd/retry-busy datasource "A history purge chunk" purge-attempts
+                  #(psc/execute! datasource sql)))
 
 (def ^:private delete-op-type
   "The `op_type` of the operation `delete` writes, the one a purge keeps."

@@ -222,6 +222,29 @@
           true
           :else (recur (into stack' (remove nil? (cons (.getCause t) (seq (.getSuppressed t)))))))))))
 
+(defn pool-closed?
+  "Has the pool been closed (the server is stopping)?"
+  [datasource]
+  (and (instance? HikariDataSource datasource) (.isClosed ^HikariDataSource datasource)))
+
+(defn retry-busy
+  "`(f)`, tried again a second later while SQLite answers busy (a long write
+  elsewhere held the write lock past busy_timeout), at most `attempts` times
+  in all, and never once the pool is closed: the server is stopping, and
+  whatever runs `f` takes it up again at the next startup. Any other failure
+  is thrown at once. `what` names the step in the log."
+  [datasource what attempts f]
+  (loop [i 1]
+    (let [r (try {:ok (f)}
+                 (catch Exception e
+                   (if (and (< i attempts) (sqlite-busy? e) (not (pool-closed? datasource)))
+                     (do (log/warn (str what " found the database busy, trying again in a second"))
+                         ::busy)
+                     (throw e))))]
+      (if (= ::busy r)
+        (do (Thread/sleep 1000) (recur (inc i)))
+        (:ok r)))))
+
 (defn heal-autocommit!
   "Undo a half-applied `setAutoCommit(false)` before `con` returns to the pool.
 

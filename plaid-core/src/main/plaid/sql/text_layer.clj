@@ -1,10 +1,6 @@
 (ns plaid.sql.text-layer
-  "SQL port of plaid.xtdb2.text-layer. Text layers live in the
-  `text_layers` table; ordering within a project is by `order_idx`.
-
-  External API mirrors the xtdb2 version: same fn names + arglists,
-  `db` replaces `node-or-map`/`xt-map`. Writes open their own tx via
-  `submit-operation!`. Child rows (token_layers and below) are
+  "Text layers: the `text_layers` table, ordered within a project by
+  `order_idx`. Writes open their own tx via `submit-operation!`. Child rows (token_layers and below) are
   cleaned up by FK ON DELETE CASCADE — we do not manually delete
   them here."
   (:require [taoensso.timbre :as log]

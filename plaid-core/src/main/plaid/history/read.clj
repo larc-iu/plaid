@@ -1,8 +1,7 @@
 (ns plaid.history.read
   "Time-travel document reads served DIRECTLY from the audit log.
 
-  Replaces the XTDB history replica (see the xtdb-removal plan,
-  2026-06-11): every audit_writes row carries a full post-image of the
+  Every audit_writes row carries a full post-image of the
   row it touched (RETURNING *), `operations.ts` is strictly monotonic
   and audit rows inherit it, so `(ts, seq)` totally orders the log and
   the state of any entity at time T is the key-merge of its post-images

@@ -1,16 +1,10 @@
 (ns plaid.sql.operation
-  "Logical-operation wrapper for the SQL port.
-
-  Where the XTDB v2 version built a vector of XTDB tx-ops, threaded them
-  through a coordinator, and submitted them as a single XTDB transaction,
-  here we open a JDBC transaction, generate an operation_id, bind it via
-  the *op* dynamic var, and let the body do its writes imperatively. The
-  write helpers in plaid.sql.common capture pre/post images into
-  audit_writes automatically.
-
-  The application-level coordinator from plaid.xtdb2 is gone: SQL
-  transactions provide atomicity, and SQLite's single-writer model
-  serializes concurrent batches naturally."
+  "The logical operation around every write: open a JDBC transaction,
+  record an `operations` row, bind it as the *op* dynamic var, and let the
+  body do its writes imperatively. The audited write helpers in
+  plaid.sql.crud capture pre/post images into audit_writes automatically.
+  SQL transactions give atomicity, and SQLite's single writer serializes
+  concurrent batches."
   (:require [clojure.string]
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
@@ -574,15 +568,7 @@
                     ;; The check DOES fire for :document/delete: at this
                     ;; point the row is still present, so a stale version
                     ;; correctly produces a 409 and rolls the tx back.
-                    (when-let [expected psaw/*expected-document-version*]
-                      (when-let [doc-id (:document op-attrs)]
-                        (when-let [cur (psc/fetch-by-id tx :documents doc-id)]
-                          (when (not= expected (:version cur))
-                            (throw (ex-info "Document version conflict"
-                                            {:code 409
-                                             :document-id doc-id
-                                             :expected-version expected
-                                             :actual-version (:version cur)}))))))
+                    (psaw/check-expected-document-version! tx (:document op-attrs) :skip)
                     ;; :seq-counter is an atom holding the next audit-write
                     ;; ordinal for this op. record-audit-write! pulls it and
                     ;; bumps the counter so every row gets a unique

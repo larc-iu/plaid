@@ -85,6 +85,23 @@
 
 (def ^:private noted-tables #{"tokens" "spans" "relations" "vocab_links"})
 
+(defn check-expected-document-version!
+  "Refuse with 409 when the version the request holds of document `doc-id`
+  (`*expected-document-version*`, bound from `?document-version=`) is not
+  its version now, read inside the write transaction. `missing` says what a
+  document that is not there answers: `:skip` for a document's own write
+  (its create makes the row, its delete has it still), `:conflict` for a
+  write made for a document that is gone and so has moved on from every
+  version."
+  [tx doc-id missing]
+  (when-let [expected *expected-document-version*]
+    (when doc-id
+      (let [cur (psc/fetch-by-id tx :documents doc-id)]
+        (when (and (or cur (= :conflict missing)) (not= expected (:version cur)))
+          (throw (ex-info "Document version conflict"
+                          {:code 409 :document-id doc-id
+                           :expected-version expected :actual-version (:version cur)})))))))
+
 (defn- op-kind
   "The namespace of the op type, e.g. \"span\" for :span/create."
   [op]

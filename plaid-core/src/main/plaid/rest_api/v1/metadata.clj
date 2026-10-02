@@ -5,27 +5,6 @@
             [plaid.sql.metadata :as psm]
             [reitit.coercion.malli]))
 
-(def max-metadata-depth
-  "Maximum nesting level allowed in a metadata payload."
-  psm/max-metadata-depth)
-
-(def max-metadata-key-count
-  "Soft cap on the total number of keys in one metadata map."
-  psm/max-metadata-key-count)
-
-(def max-metadata-string-length
-  "Soft cap on individual string-value length, in characters."
-  psm/max-metadata-string-length)
-
-(def max-metadata-total-bytes
-  "Cumulative cap on the JSON-serialized size of one metadata map."
-  psm/max-metadata-total-bytes)
-
-(def validate-metadata-shape!
-  "Public so route handlers that accept inline `:metadata` can call it.
-  See `plaid.sql.metadata/validate-metadata-shape!`."
-  psm/validate-metadata-shape!)
-
 (defn validate-inline-metadata!
   "Check a request body that may carry an inline `:metadata` key (POST
   /spans, POST /tokens, bulk variants thereof, …). Returns a 400 response
@@ -38,7 +17,7 @@
                     ;; result `patch-metadata!` checks against the same caps.
                     (when-let [md (and (map? m) (:metadata m))]
                       (when-not (sequential? md)
-                        (validate-metadata-shape! md))))
+                        (psm/validate-metadata-shape! md))))
         errs (cond
                (sequential? body) (keep check-one body)
                (map? body) (when-let [e (check-one body)] [e])
@@ -65,7 +44,7 @@
   [handler]
   (fn [request]
     (let [body (get-in request [:parameters :body])]
-      (if-let [err (and (some? body) (validate-metadata-shape! body))]
+      (if-let [err (and (some? body) (psm/validate-metadata-shape! body))]
         {:status 400 :body {:error err}}
         (handler request)))))
 

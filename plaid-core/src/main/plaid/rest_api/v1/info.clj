@@ -10,7 +10,7 @@
   Unauthenticated on purpose. These are the shape of the API, not secrets, and
   a client needs them before it has a session to ask with."
   (:require [plaid.rest-api.v1.batch :as batch]
-            [plaid.rest-api.v1.metadata :as metadata]
+            [plaid.sql.metadata :as metadata]
             [plaid.server.config :refer [config]]
             [plaid.server.locks :as locks]
             [plaid.sql.guideline :as guideline]

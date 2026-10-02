@@ -20,10 +20,10 @@
   startup, a path tests never run."
   (:require [plaid.media.storage :as media]
             [plaid.server.sql :as server-sql]
+            [plaid.sql.datasource :as psd]
             [plaid.sql.project :as prj]
             [taoensso.timbre :as log])
-  (:import (com.zaxxer.hikari HikariDataSource)
-           (java.util.concurrent Executors ScheduledExecutorService ThreadFactory TimeUnit)))
+  (:import (java.util.concurrent Executors ScheduledExecutorService ThreadFactory TimeUnit)))
 
 (defonce ^{:doc "When true, removal runs on the background thread, else inline in
   the request that deleted the project. The HTTP server flips it at startup."}
@@ -57,25 +57,10 @@
   (SQLITE_BUSY past busy_timeout)."
   10)
 
-(defn- closed?
-  "Has the pool been closed under the removal (the server is stopping)? The
-  removal then stops where it is, and the next startup resumes it."
-  [datasource]
-  (and (instance? HikariDataSource datasource) (.isClosed ^HikariDataSource datasource)))
-
 (defn- with-retries
-  "`(f)`, tried up to `attempts` times a second apart."
+  "`(f)`, tried again while the database is busy, as a purge chunk is."
   [what datasource f]
-  (loop [i 1]
-    (let [r (try {:ok (f)}
-                 (catch Exception e
-                   (if (and (< i attempts) (not (closed? datasource)))
-                     (do (log/warn e (str "Project removal: " what " failed, trying again"))
-                         ::retry)
-                     (throw e))))]
-      (if (= ::retry r)
-        (do (Thread/sleep 1000) (recur (inc i)))
-        (:ok r)))))
+  (psd/retry-busy datasource (str "Project removal: " what) attempts f))
 
 (defn- purge-history!
   "Purge `pid`'s history (`prj/purge-deleted-project-history!`), standing off
@@ -131,7 +116,7 @@
   (if @purge-history?
     (let [ids (prj/stranded-history-project-ids datasource)]
       (doseq [pid ids]
-        (when-not (closed? datasource)
+        (when-not (psd/pool-closed? datasource)
           (purge-history! datasource pid)))
       ids)
     []))
@@ -164,7 +149,7 @@
 (defn- schedule-sweep!
   [datasource]
   (run-now! #(try
-               (when-not (closed? datasource)
+               (when-not (psd/pool-closed? datasource)
                  (sweep-stranded-history! datasource))
                (catch Throwable t
                  (log/error t "Purging the history of removed projects failed; the next sweep"
@@ -194,7 +179,7 @@
   (reset! sweep-schedule
           (.scheduleWithFixedDelay executor
                                    ^Runnable #(try
-                                                (when-not (closed? datasource)
+                                                (when-not (psd/pool-closed? datasource)
                                                   (sweep-stranded-history! datasource))
                                                 (catch Throwable t
                                                   (log/error t "Purging the history of removed projects failed;"

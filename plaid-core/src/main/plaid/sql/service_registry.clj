@@ -4,8 +4,7 @@
 
   All writes here are deliberately UNAUDITED (not routed through
   `submit-operation!`) — they fire on every service channel open/close, which
-  is operational bookkeeping, not annotation data (same rationale as
-  `plaid.sql.api-token/touch-last-used!`). Rows are upserted on registration
+  is operational bookkeeping, not annotation data. Rows are upserted on registration
   and removable via the discard endpoint; project deletion cascades them away
   (FK ON DELETE CASCADE)."
   (:require [clojure.data.json :as json]

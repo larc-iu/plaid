@@ -1,10 +1,6 @@
 (ns plaid.sql.relation-layer
-  "SQL port of plaid.xtdb2.relation-layer. Relation layers live in
-  the `relation_layers` table; ordering within a span layer is by
-  `order_idx`.
-
-  External API mirrors xtdb2: same fn names + arglists, `db` replaces
-  `node-or-map`. Relations cascade-delete via FK ON DELETE CASCADE."
+  "Relation layers: the `relation_layers` table, ordered within a span
+  layer by `order_idx`. Relations cascade-delete via FK ON DELETE CASCADE."
   (:require [taoensso.timbre :as log]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]

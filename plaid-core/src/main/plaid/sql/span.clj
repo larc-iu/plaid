@@ -1,10 +1,8 @@
 (ns plaid.sql.span
-  "SQL port of plaid.xtdb2.span. Spans live in the `spans` table; their
-  token references live in the ordered `span_tokens` junction table,
-  with `order_idx` preserving the input order.
+  "Spans: the `spans` table, with their tokens in the ordered
+  `span_tokens` junction table (`order_idx` keeps the input order).
 
-  External API mirrors xtdb2 (same fn names + arglists). `db` replaces
-  `node-or-map`. Cascade-on-delete: relations whose source or target
+  Cascade-on-delete: relations whose source or target
   span is being deleted are removed explicitly first (audited via
   delete-by-id!) so audit_writes captures them; FK ON DELETE CASCADE
   then sweeps the now-orphaned span_tokens rows."
@@ -31,7 +29,7 @@
 ;; NOTE: unlike most row mappers in this codebase (which are 1-arg `row` -> map),
 ;; this mapper takes a second `tokens` arg because the span's token list lives
 ;; in the `span_tokens` junction table and must be fetched separately via
-;; `fetch-token-ids`. Folding that fetch into the mapper would require passing
+;; `crud/junction-token-ids`. Folding that fetch into the mapper would require passing
 ;; `db`/`tx` into what is otherwise pure data shaping — we keep the mapper pure
 ;; and accept the asymmetry. Callers must pre-fetch tokens.
 (defn- row->span
@@ -42,15 +40,6 @@
      :span/document (:document_id row)
      :span/value    (psc/read-json (:value row))
      :span/tokens   (vec tokens)}))
-
-(defn- fetch-token-ids
-  "Return the ordered (by order_idx) token-id vector for `span-id`."
-  [db span-id]
-  (->> (psc/q db {:select [:token_id]
-                  :from [:span_tokens]
-                  :where [:= :span_id span-id]
-                  :order-by [:order_idx]})
-       (mapv :token_id)))
 
 ;; ============================================================
 ;; Public reads
@@ -68,7 +57,7 @@
   "Look up a span by id. Returns the formatted (API-shape) map or nil."
   [db id]
   (when-let [row (psc/fetch-by-id db :spans id)]
-    (let [tokens (fetch-token-ids db id)]
+    (let [tokens (crud/junction-token-ids db :spans id)]
       (format db (row->span row tokens)))))
 
 (defn project-id
@@ -104,11 +93,6 @@
   (let [rows (psc/fetch-ids tx :tokens token-ids)
         by-id (into {} (map (juxt :id identity)) rows)]
     (mapv #(clojure.core/get by-id %) token-ids)))
-
-(defn- span-layer-token-layer-id
-  "Return the :token_layer_id (parent) of the given span layer."
-  [tx span-layer-id]
-  (:token_layer_id (psc/fetch-by-id tx :span_layers span-layer-id)))
 
 (defn- check-tokens!
   "Schema check used by create + bulk-create.
@@ -222,7 +206,7 @@
           (metadata/insert-metadata! tx "span" new-id metadata
                                      {:skip-parent-audit? true}))
         (let [post-row (psc/fetch-by-id tx :spans new-id)
-              post-tokens (fetch-token-ids tx new-id)
+              post-tokens (crud/junction-token-ids tx :spans new-id)
               post-image (cond-> (assoc post-row :tokens post-tokens)
                            (seq metadata) (assoc :metadata metadata))]
           (psaw/record-audit-write! tx :spans new-id :insert nil post-image))
@@ -427,7 +411,7 @@
        ;; Emit one synthetic :insert per span with the full image.
        (doseq [r records]
          (let [post-row (psc/fetch-by-id tx :spans (:id r))
-               post-tokens (fetch-token-ids tx (:id r))
+               post-tokens (crud/junction-token-ids tx :spans (:id r))
                post-image (cond-> (assoc post-row :tokens post-tokens)
                             (seq (:metadata r)) (assoc :metadata (:metadata r)))]
            (psaw/record-audit-write! tx :spans (:id r) :insert nil post-image)))
@@ -541,11 +525,11 @@
        ;; rows. We emit one synthetic audit_writes row against :spans
        ;; (pre/post images carry the token vector) instead of auditing
        ;; each junction-row delete/insert — see docstring.
-       (let [pre-tokens (fetch-token-ids tx eid)]
+       (let [pre-tokens (crud/junction-token-ids tx :spans eid)]
          (psc/execute! tx {:delete-from :span_tokens
                            :where [:= :span_id eid]})
          (insert-span-tokens! tx eid new-token-ids)
-         (let [post-tokens (fetch-token-ids tx eid)
+         (let [post-tokens (crud/junction-token-ids tx :spans eid)
                pre-image (assoc span-row :tokens pre-tokens)
                post-image (assoc span-row :tokens post-tokens)]
            (psaw/record-audit-write! tx :spans eid :update pre-image post-image)))

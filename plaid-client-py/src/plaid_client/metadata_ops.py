@@ -82,9 +82,11 @@ def _apply_op(node, path, depth, op):
 def apply_metadata_ops(metadata, ops):
     """Apply ops to a local copy of an entity's metadata the way the server
     does, for an optimistic update. Returns a new dict and never mutates its
-    input. Raises ValueError where the server would refuse (a path through a
-    non-object, or a first key that is blank, over 200 characters or holds a
-    control character)."""
+    input. Raises ValueError on part of what the server refuses: an empty path,
+    an op other than set or delete, a path through a non-object, or a first
+    key that is blank, over 200 characters or holds a control character. The
+    server's caps on depth, key count, string length and size are not checked
+    here."""
     out = dict(metadata or {})
     for op in ops or []:
         path = op.get("path")

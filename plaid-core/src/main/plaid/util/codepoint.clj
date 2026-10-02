@@ -38,28 +38,3 @@
    (subs s (cp->utf16 s cp-begin)))
   (^String [^String s ^long cp-begin ^long cp-end]
    (subs s (cp->utf16 s cp-begin) (cp->utf16 s cp-end))))
-
-(defn cp->utf16-index
-  "Build a reusable code-point -> UTF-16 offset array for `s`: a length
-  `(inc (cp-count s))` int-array where element k is the UTF-16 offset of the
-  k-th code point (element (cp-count s) == (.length s)). Use when slicing many
-  ranges off ONE body — `cp->utf16` is O(distance), so naive per-token slicing
-  is O(n*k); precomputing the array makes the whole pass O(n)."
-  ^ints [^String s]
-  (let [len (.length s)
-        cps (.codePointCount s 0 len)
-        arr (int-array (inc cps))]
-    (loop [u 0, c 0]
-      (aset arr c u)
-      (if (< u len)
-        (recur (.offsetByCodePoints s u 1) (inc c))
-        arr))))
-
-(defn cp-slicer
-  "Return a `(fn [cp-begin cp-end] substring)` that slices `s` by code-point
-  indices in O(1) per call, after an O(n) prebuild. For slicing many tokens'
-  surfaces out of a single text body (e.g. `get-tokens`)."
-  [^String s]
-  (let [idx (cp->utf16-index s)]
-    (fn ^String [^long cp-begin ^long cp-end]
-      (subs s (aget idx cp-begin) (aget idx cp-end)))))

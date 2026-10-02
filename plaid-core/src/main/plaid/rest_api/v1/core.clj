@@ -229,11 +229,6 @@
                                        [prm/wrap-request-extras db secret-key]
                                        pra/wrap-read-jwt
                                        wrap-authentication-first
-                                       ;; Run BEFORE coerce-request-middleware so v2-format UUID
-                                       ;; values for ?document-version= return a clear 400 rather
-                                       ;; than malli's generic coercion error (or worse, the v2-
-                                       ;; era silent OCC bypass).
-                                       prm/wrap-reject-uuid-document-version
                                        coercion/coerce-request-middleware
                                        multipart/multipart-middleware
                                        ;; Inside coercion so the shapes it dumps are the

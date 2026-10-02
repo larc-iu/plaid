@@ -26,6 +26,20 @@
 ;; high-volume and the parent entity's audit row already captures the change.
 ;; ============================================================
 
+(def junction
+  "Tables whose ordered token list lives in a junction table, as
+  `[junction-table parent-column]`."
+  {:spans [:span_tokens :span_id]
+   :vocab_links [:vocab_link_tokens :vocab_link_id]})
+
+(defn junction-token-ids
+  "The token ids of row `id` of `table` (`:spans`, `:vocab_links`), in their
+  order, from its junction table."
+  [db table id]
+  (let [[jtable jcol] (junction table)]
+    (mapv :token_id (psc/q db {:select [:token_id] :from [jtable]
+                               :where [:= jcol id] :order-by [:order_idx]}))))
+
 (defn insert!
   "Insert one row into `table`. Returns the inserted row (the RETURNING *
   post-image, so DB defaults / generated columns are reflected). Records an
@@ -92,9 +106,7 @@
   post-image is captured via `UPDATE ... RETURNING *` in the same
   round-trip as the write. Skips the audit_writes row when the post-image
   equals the pre-image (caller wrote the same values back) — matches the
-  `update-by-id!` contract and keeps no-op updates out of the audit log.
-
-  Mirrors the v2 `plaid.xtdb2.common/merge*` contract for ergonomic parity."
+  `update-by-id!` contract and keeps no-op updates out of the audit log."
   ([tx table id attrs]
    (merge* tx table id attrs {}))
   ([tx table id attrs {:keys [id-col not-found-kind] :or {id-col :id}}]
@@ -143,12 +155,9 @@
 (defn bulk-update-by-id!
   "Apply per-id attribute updates, one UPDATE statement per chunk of ids.
 
-  Accepts EITHER:
-    - a map `id → attrs-map` (legacy API; audit rows emit in `(sort ids)`
-      order for determinism), OR
-    - a sequence of `[id attrs-map]` pairs (preferred; audit rows emit in
-      the supplied pair order, letting callers control ordering — e.g.
-      sort by source position so the audit log reflects document order).
+  `pairs` is a sequence of `[id attrs-map]`. Audit rows are written in
+  that order, so a caller controls it (sort by source position, say, so
+  the audit log reflects document order).
 
   The new values travel as a VALUES table joined on the id
   (`UPDATE t SET col = v.columnN FROM (VALUES (?, ?, ...), ...) AS v
@@ -176,18 +185,13 @@
   Returns a vector of post-image rows (across all chunks). Row order
   within each chunk follows the database's RETURNING order; audit row
   order is the deterministic order described above."
-  ([tx table id->updates]
-   (bulk-update-by-id! tx table id->updates {}))
-  ([tx table id->updates {:keys [id-col] :or {id-col :id}}]
+  ([tx table pairs]
+   (bulk-update-by-id! tx table pairs {}))
+  ([tx table pairs {:keys [id-col] :or {id-col :id}}]
    (psaw/ensure-op-bound!)
-   (if (empty? id->updates)
+   (if (empty? pairs)
      []
-     (let [;; Normalize to a sequence of [id attrs] pairs in audit-emit
-           ;; order: caller-supplied order for seqs, sorted-by-id for maps.
-           pairs (cond
-                   (map? id->updates) (mapv (fn [id] [id (get id->updates id)])
-                                            (sort (keys id->updates)))
-                   :else (vec id->updates))
+     (let [pairs (vec pairs)
            ids (mapv first pairs)
            id->attrs (into {} pairs)
            ;; Union of columns supplied across all rows (in stable order).

@@ -1,7 +1,6 @@
 (ns plaid.sql.vocab-layer
-  "SQL port of plaid.xtdb2.vocab-layer. Vocab layers live in
-  `vocab_layers`; their maintainers in `vocab_maintainers`; their
-  project grants in `project_vocabs`.
+  "Vocab layers: the `vocab_layers` table, their maintainers in
+  `vocab_maintainers` and their project grants in `project_vocabs`.
 
   Items live in `vocab_items` (see plaid.sql.vocab-item) and are
   cascade-deleted by the FK when a vocab layer is dropped."

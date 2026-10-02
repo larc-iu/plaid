@@ -1,14 +1,13 @@
 (ns plaid.sql.token-layer
-  "SQL port of plaid.xtdb2.token-layer. Token layers live in the
-  `token_layers` table; ordering within a text layer is by `order_idx`.
+  "Token layers: the `token_layers` table, ordered within a text layer by
+  `order_idx`.
 
   `parent_token_layer_id` is immutable and may only point to another
   token_layer in the same text_layer whose overlap_mode is
   :non-overlapping or :partitioning — validated at create time.
 
-  External API mirrors xtdb2: same fn names + arglists, `db` replaces
-  `node-or-map`. Heavy token-overlap enforcement lives in
-  plaid.sql.constraints.token, not here."
+  Token overlap and nesting are enforced in plaid.sql.constraints.token,
+  not here."
   (:require [clojure.string :as str]
             [taoensso.timbre :as log]
             [plaid.sql.common :as psc]
@@ -71,8 +70,8 @@
 
 (defn sort-token-records
   "Pure helper: deterministically sort token records (task #101, revised
-  2026-06-02). Ordering matches the SQL ORDER BY in get-with-layer-data and
-  plaid.sql.token/get-tokens — the canonical token order, precedence OUTRANKS
+  2026-06-02). Ordering matches the SQL ORDER BY in get-with-layer-data, the
+  canonical token order, in which precedence OUTRANKS
   extent (see plaid.sql.query.compile):
     1. :token/begin ASC
     2. :token/precedence ASC, NULLS LAST (a nil precedence ranks AFTER any

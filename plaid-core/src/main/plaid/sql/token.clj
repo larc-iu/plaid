@@ -1,25 +1,22 @@
 (ns plaid.sql.token
-  "SQL port of plaid.xtdb2.token. Tokens live in the `tokens` table.
+  "Tokens: the `tokens` table.
 
-  This is the hardest module of the port: it has the most schema-wide
-  cascades (token deletes ripple through spans → relations and
+  This module has the most schema-wide cascades (token deletes ripple through spans → relations and
   vocab_links), the only nontrivial constraint surface
   (overlap-mode + nesting + orphan guards), and the only operations
   that the cascades depend on (split, merge-tokens, shift-boundary,
   bulk-create/delete).
 
-  The single biggest simplification vs v2: the entire body of each
-  submit-operation! runs in one SQL transaction with serializable
-  semantics under SQLite. All the match* + ASSERT TOCTOU machinery
-  from v2 is GONE — pre-flight reads in plaid.sql.constraints.token
-  see a consistent snapshot and no other writer can interleave, so
-  the constraint check IS the safety check.
+  The whole body of each submit-operation! runs in one SQL transaction,
+  serialized under SQLite's write lock, so the pre-flight reads in
+  plaid.sql.constraints.token see a consistent snapshot and no other
+  writer can interleave: the constraint check IS the safety check.
 
-  The other thing worth noting: schema-level ON DELETE CASCADE from
+  Schema-level ON DELETE CASCADE from
   span_tokens.token_id, vocab_link_tokens.token_id, and from
   relations.{source,target}_span_id would clean up the database fine
   on a raw token DELETE, but FK cascades bypass audit_writes. To
-  preserve v2 audit semantics, multi-delete! does the visible-entity
+  keep every deleted row in the audit log, multi-delete! does the visible-entity
   cascade manually (relations → spans → vocab_links → tokens) and
   lets FK CASCADE only sweep up the now-orphaned junction rows."
   (:require [taoensso.timbre :as log]
@@ -122,9 +119,6 @@
 (defn- fetch-text [db text-id]
   (psc/fetch-by-id db :texts text-id))
 
-(defn- text-layer-id-of-text [db text-id]
-  (:text_layer_id (fetch-text db text-id)))
-
 (defn- token-layer-ids-of-text-layer
   "Return the set of token-layer ids attached to `text-layer-id`."
   [db text-layer-id]
@@ -149,7 +143,8 @@
 (defn get
   "Look up a token by id. Returns the formatted (API-shape) map or nil. Enriches
   `:token/value` — the surface substring of the text body[begin,end] — so a token
-  carries its surface form like any other attribute (matches `get-tokens`)."
+  carries its surface form like any other attribute, as the deep document read
+  gives it."
   [db id]
   (when-let [row (psc/fetch-by-id db :tokens id)]
     (let [tok (row->token row)
@@ -169,47 +164,6 @@
   "Return the document id for `text-id`."
   [db text-id]
   (:document_id (psc/fetch-by-id db :texts text-id)))
-
-(defn get-tokens
-  "Return all tokens for (layer, doc), each enriched with
-  :token/value (its substring of the text body). Empty when there
-  are no tokens.
-
-  Ordering — the canonical token order (task #101, revised 2026-06-02 to
-  match the query engine; see plaid.sql.query.compile):
-    1. :begin ASC
-    2. :precedence ASC NULLS LAST (lower precedence first; nil ranks AFTER
-       any non-nil). Precedence OUTRANKS extent.
-    3. :end_ ASC (shorter token first, among equal begin+precedence)
-    4. :id ASC (final deterministic tiebreaker)"
-  [db layer-id doc-id]
-  (let [rows (psc/q db {:select [:*]
-                        :from :tokens
-                        :where [:and
-                                [:= :token_layer_id layer-id]
-                                [:= :document_id doc-id]]
-                        :order-by [[:begin :asc]
-                                   [:precedence :asc-nulls-last]
-                                   [:end_ :asc]
-                                   [:id :asc]]})
-        tokens (mapv row->token rows)]
-    (if (empty? tokens)
-      []
-      (when-let [body (fetch-text-body db (:token/text (first tokens)))]
-        ;; One cp->utf16 index for the whole body, reused per token: O(n+k)
-        ;; instead of O(n*k) from per-token offsetByCodePoints walks.
-        (let [slice (cp/cp-slicer body)]
-          (mapv #(assoc % :token/value (slice (:token/begin %) (:token/end %)))
-                tokens))))))
-
-(defn get-span-ids
-  "Return the IDs of spans that reference this token (via the
-  span_tokens junction)."
-  [db eid]
-  (->> (psc/q db {:select-distinct [:span_id]
-                  :from :span_tokens
-                  :where [:= :token_id eid]})
-       (mapv :span_id)))
 
 ;; ============================================================
 ;; Junction-table helpers (private)
@@ -324,18 +278,6 @@
                             [:in :target_span_id (vec span-ids)]]})
          (mapv :id))))
 
-(defn- fetch-span-token-ids
-  "Return the ordered token-id vector for `span-id` from span_tokens.
-  Mirror of plaid.sql.span/fetch-token-ids — duplicated to avoid the ns
-  dependency cycle (span already depends on this ns transitively via
-  reads)."
-  [tx span-id]
-  (->> (psc/q tx {:select [:token_id]
-                  :from [:span_tokens]
-                  :where [:= :span_id span-id]
-                  :order-by [:order_idx]})
-       (mapv :token_id)))
-
 (defn- partition-spans-by-deletion
   "For the set of spans that reference any token in `token-ids`,
   partition into (a) fully orphaned (every token in token-ids — DELETE,
@@ -363,7 +305,7 @@
         {:orphan-span-ids [] :span-trim-plan []}
         (let [span-rows-by-id (psc/fetch-ids-as-map tx :spans :id touched-span-ids)
               plans (for [span-id touched-span-ids
-                          :let [pre-tokens (fetch-span-token-ids tx span-id)
+                          :let [pre-tokens (crud/junction-token-ids tx :spans span-id)
                                 post-tokens (vec (remove token-ids-set pre-tokens))]]
                       {:span-id span-id
                        :span-row (clojure.core/get span-rows-by-id span-id)
@@ -389,18 +331,6 @@
                            [:= :span_id span-id]
                            [:not-in :token_id (if (seq post-tokens) (vec post-tokens) [nil])]]})))
 
-(defn- fetch-vocab-link-token-ids
-  "Return the ordered token-id vector for `vl-id` from vocab_link_tokens.
-  Mirror of plaid.sql.vocab-link/fetch-token-ids — duplicated to avoid
-  the ns dependency cycle (vocab_link already depends on this ns
-  transitively via reads)."
-  [tx vl-id]
-  (->> (psc/q tx {:select [:token_id]
-                  :from [:vocab_link_tokens]
-                  :where [:= :vocab_link_id vl-id]
-                  :order-by [:order_idx]})
-       (mapv :token_id)))
-
 (defn- partition-vocab-links-by-deletion
   "For the set of vocab_links that reference any token in `token-ids`,
   partition into (a) fully orphaned (every token in token-ids — DELETE),
@@ -410,12 +340,10 @@
   Returns {:orphan-vl-ids [...] :vl-trim-plan [{:vl-id :vl-row
                                                 :pre-tokens :post-tokens} ...]}.
 
-  This is the SQL port's restoration of v2's `multi-delete*` vocab-link
-  trim semantics (xtdb2/token.clj:296-310): v2 kept a vocab-link with
-  remaining tokens, only deleting it when its token list was fully
-  consumed. The SQL port previously only handled the orphan case, with
-  partial-trim silently relying on FK CASCADE on
-  vocab_link_tokens.token_id (audit-invisible)."
+  A vocab link keeps its remaining tokens and is deleted only when its
+  token list is fully consumed. The trim is audited here, where an FK
+  CASCADE on vocab_link_tokens.token_id would leave the audit log
+  without it."
   [tx token-ids token-ids-set]
   (if (empty? token-ids)
     {:orphan-vl-ids [] :vl-trim-plan []}
@@ -428,7 +356,7 @@
         {:orphan-vl-ids [] :vl-trim-plan []}
         (let [vl-rows-by-id (psc/fetch-ids-as-map tx :vocab_links :id touched-vl-ids)
               plans (for [vl-id touched-vl-ids
-                          :let [pre-tokens (fetch-vocab-link-token-ids tx vl-id)
+                          :let [pre-tokens (crud/junction-token-ids tx :vocab_links vl-id)
                                 post-tokens (vec (remove token-ids-set pre-tokens))]]
                       {:vl-id vl-id
                        :vl-row (clojure.core/get vl-rows-by-id vl-id)

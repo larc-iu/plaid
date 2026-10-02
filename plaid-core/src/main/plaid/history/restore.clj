@@ -111,7 +111,7 @@
   (let [cur-by-id (into {} (map (juxt :id identity)) cur)
         tgt-by-id (into {} (map (juxt :id identity)) tgt)
         cols (get drows/columns table)
-        junction? (contains? drows/junction table)]
+        junction? (contains? crud/junction table)]
     {:delete (vec (remove #(contains? tgt-by-id (:id %)) cur))
      :insert (vec (remove #(contains? cur-by-id (:id %)) tgt))
      :update (vec (for [t tgt
@@ -186,14 +186,10 @@
         (crud/delete-where! tx table [:in :id (vec chunk)])
         (metadata/sweep-metadata! tx (get drows/entity-type table) (vec chunk))))))
 
-(defn- fetch-junction-tokens [tx [jtable jcol] id]
-  (mapv :token_id (psc/q tx {:select [:token_id] :from [jtable]
-                             :where [:= jcol id] :order-by [:order_idx]})))
-
 (defn- update-rows! [tx table updates]
   (when (seq updates)
     (let [etype (get drows/entity-type table)
-          j (get drows/junction table)
+          j (get crud/junction table)
           cols (get drows/columns table)]
       (doseq [chunk (partition-all 1000 (for [u updates :when (:attrs? u)]
                                           [(:id u) (select-keys (:row u) cols)]))]
@@ -202,7 +198,7 @@
       ;; synthetic row on the parent carrying the new list (span/set-tokens).
       (doseq [u updates :when (:tokens? u)]
         (let [row (psc/fetch-by-id tx table (:id u))
-              pre (fetch-junction-tokens tx j (:id u))]
+              pre (crud/junction-token-ids tx table (:id u))]
           (psc/execute! tx {:delete-from (first j) :where [:= (second j) (:id u)]})
           (drows/insert-junction! tx j [(:row u)])
           (psaw/record-audit-write! tx table (:id u) :update

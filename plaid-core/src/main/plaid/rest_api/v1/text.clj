@@ -105,12 +105,10 @@
                  :middleware [[pra/wrap-writer-required get-project-id]
                               [prm/wrap-document-version get-document-id]]
                  :parameters {:query [:map [:document-version {:optional true} :int]]
-                              ;; TODO figure out how to make malli happy with something like this
-                              ;; [:map [:body {:optional true} string?]
-                              ;;  [:ops {:optional true} [:sequential [:map
-                              ;;                                       [:type [:enum "delete" "insert"]]
-                              ;;                                       [:index int?]
-                              ;;                                      [:value [:or string? int?]]]]]]
+                              ;; `{body}` (a string or a list of delete, insert and
+                              ;; replace directives) or `{edits}`, each with an
+                              ;; optional `base`: read and refused with 400 by the
+                              ;; handler below and by the text edit reader.
                               :body any?}
                  :handler (fn [{{{:keys [text-id]} :path params :body} :parameters db :db user-id :user/id}]
                             (let [doc-id (:text/document (txt/get db text-id))

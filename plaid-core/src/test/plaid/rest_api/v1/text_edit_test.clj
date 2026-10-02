@@ -331,7 +331,7 @@
 (deftest a-word-layer-that-splits-on-space
   ;; ud (Luke, 2026-09-30): the plain rule, but a space typed inside a word
   ;; splits it, the word and what is as long as it going on the half sharing
-  ;; more letters (D28), the other half a word of its own (2026-10-02). F1:
+  ;; more letters (`split-spaced-words`), the other half a word of its own (2026-10-02). F1:
   ;; `walkdd`, Backspace, ` home` keeps the analysis.
   (let [{:keys [text words others]} (setup "a walkdd cat" :split true :other :child)
         digest-of #(-> (get-text admin-request text) :body :text/digest)]
@@ -586,11 +586,14 @@
         (is (= want (map extent words)) (pr-str (map extent words)))
         (is (= (map extent words) (map extent morphemes)))))))
 
-(deftest several-words-typed-over-as-one-keep-the-word-sharing-most-letters
-  ;; REV2-one-rule E1: `the area` typed over as `tlaak` keeps `area`, which
-  ;; shares two letters with it, where `the` shares one
+(deftest several-words-typed-over-as-one-keep-the-letters-left-of-each
+  ;; `the area` typed over as `tlaak` is read as a whole-body save reads it
+  ;; (REV-F-TEXT-CORE, one reading for a change over several words): its
+  ;; diff keeps letters of both words, so neither goes (REV2-one-rule), and
+  ;; each keeps its node. REV2-one-rule E1 had the edits path keep `area`
+  ;; alone, on `tlaak`, and delete `the`.
   (let [{:keys [text words nodes]} (setup "see the area now" :nodes true)]
     (assert-ok (edit-text text {:edits [{:type "replace" :index 4 :length 8 :value "tlaak"}]
                                 :base (digest/text-digest "see the area now")}))
-    (is (nil? (extent (words 1))))
-    (is (= [4 9 "tlaak"] (extent (words 2)) (extent (nodes 2))))))
+    (is (= [4 6 "tl"] (extent (words 1)) (extent (nodes 1))))
+    (is (= [6 9 "aak"] (extent (words 2)) (extent (nodes 2))))))

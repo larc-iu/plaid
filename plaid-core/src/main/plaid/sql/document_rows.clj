@@ -16,6 +16,7 @@
   (:require [clojure.data.json :as json]
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
+            [plaid.sql.crud :as crud]
             [plaid.sql.metadata :as metadata]
             [plaid.sql.token-layer :as token-layer]
             [plaid.util.digest :as digest]))
@@ -45,12 +46,6 @@
    :spans [:span_layer_id :document_id :value]
    :relations [:relation_layer_id :document_id :source_span_id :target_span_id :value]
    :vocab_links [:vocab_item_id :document_id]})
-
-(def junction
-  "Tables whose ordered token list lives in a junction table, as
-  `[table parent-column]`."
-  {:spans [:span_tokens :span_id]
-   :vocab_links [:vocab_link_tokens :vocab_link_id]})
 
 (def entity-type
   "The `entity_metadata.entity_type` spelling for each table."
@@ -313,7 +308,7 @@
   [tx table rows]
   (when (seq rows)
     (let [etype (get entity-type table)
-          j (get junction table)]
+          j (get crud/junction table)]
       (doseq [chunk (partition-all chunk-size rows)]
         (let [posts (psc/execute-returning! tx {:insert-into table
                                                 :values (mapv #(plain-row table %) chunk)

@@ -1,9 +1,6 @@
 (ns plaid.sql.span-layer
-  "SQL port of plaid.xtdb2.span-layer. Span layers live in the
-  `span_layers` table; ordering within a token layer is by `order_idx`.
-
-  External API mirrors xtdb2: same fn names + arglists, `db` replaces
-  `node-or-map`. Child rows (relation_layers, spans, span_tokens,
+  "Span layers: the `span_layers` table, ordered within a token layer by
+  `order_idx`. Child rows (relation_layers, spans, span_tokens,
   relations) cascade-delete via FK ON DELETE CASCADE."
   (:require [taoensso.timbre :as log]
             [plaid.sql.common :as psc]

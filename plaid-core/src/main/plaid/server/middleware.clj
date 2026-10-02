@@ -294,9 +294,6 @@
 ;; materializes in memory.
 ;; ---------------------------------------------------------------------------
 
-(def ^:private json-body-cap-headers
-  {"Content-Type" "application/json"})
-
 (defn- parse-long-header [s]
   (try (when s (Long/parseLong (str/trim s)))
        (catch NumberFormatException _ nil)))

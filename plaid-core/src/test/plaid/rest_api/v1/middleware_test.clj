@@ -249,10 +249,9 @@
                                           :body {:layer-id rl :source-id s2 :target-id s1 :value "dep2"}})]
           (assert-status 409 r2))))))
 
-(deftest document-version-rejects-v2-format-uuid
-  ;; Old v2 clients used audit-id UUIDs for ?document-version=. The SQL
-  ;; port uses integers; a UUID-shaped value must be rejected with a clear
-  ;; 400 rather than silently bypassing OCC (the original v2-port bug).
+(deftest document-version-must-be-an-integer
+  ;; A version that is not an integer is refused with 400 rather than
+  ;; silently bypassing the check.
   (let [proj (create-test-project admin-request "UuidVersionProj")
         doc (create-test-document admin-request proj "Doc")
         tl-res (create-text-layer admin-request proj "TL")
@@ -263,24 +262,16 @@
         _ (assert-created text-res)
         bad-version "550e8400-e29b-41d4-a716-446655440000"]
 
-    (testing "PATCH with UUID document-version returns 400 (not silently allowed)"
-      (let [res (api-call admin-request {:method :patch
-                                         :path (str "/api/v1/texts/" text-id
-                                                    "?document-version=" bad-version)
-                                         :body {:body "updated"}})]
-        (assert-status 400 res)
-        (let [err (-> res :body :error)]
-          (is (some? err) "Response body must include an :error message")
-          (is (string? err))
-          (is (re-find #"(?i)v2|uuid|integer" (str err))
-              "Error message must signal deprecation (mention v2/UUID/integer)"))))
-
-    (testing "Uppercased-hex UUID is also rejected (regex is case-insensitive)"
-      (let [res (api-call admin-request {:method :patch
-                                         :path (str "/api/v1/texts/" text-id
-                                                    "?document-version=550E8400-E29B-41D4-A716-446655440000")
-                                         :body {:body "updated"}})]
-        (assert-status 400 res)))))
+    (doseq [v [bad-version "550E8400-E29B-41D4-A716-446655440000" "1.5" "x"]]
+      (testing v
+        (let [res (api-call admin-request {:method :patch
+                                           :path (str "/api/v1/texts/" text-id "?document-version=" v)
+                                           :body {:body "updated"}})]
+          (assert-status 400 res)
+          (is (string? (-> res :body :error))))))
+    (is (= "hello" (-> (api-call admin-request {:method :get :path (str "/api/v1/texts/" text-id)})
+                       :body :text/body))
+        "nothing was written")))
 
 (deftest atomic-batch-surfaces-merged-document-versions-header
   ;; Each sub-response sets X-Document-Versions on itself; previously those

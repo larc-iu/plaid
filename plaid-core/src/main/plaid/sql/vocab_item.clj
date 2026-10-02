@@ -1,9 +1,6 @@
 (ns plaid.sql.vocab-item
-  "SQL port of plaid.xtdb2.vocab-item. Items live in `vocab_items`,
-  keyed by their parent vocab via `vocab_layer_id`.
-
-  Per v2 there is no public `delete` — items are removed transitively
-  via the cascade from `vocab_layers`."
+  "Vocab items: the `vocab_items` table, keyed by their vocab via
+  `vocab_layer_id`."
   (:require [clojure.string :as str]
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
@@ -97,16 +94,10 @@
   holds at a version (`?document-id=` beside `?document-version=`, bound by
   `wrap-document-version`). An entry belongs to no document, so the check
   `submit-operation*` makes for a document's own writes never fires here.
-  Read inside the write transaction, like that one. A document that is gone
-  has moved on from every version, so it answers 409 too."
+  A document that is gone has moved on from every version, so it answers
+  409 too."
   [tx doc-id]
-  (when-let [expected psaw/*expected-document-version*]
-    (when doc-id
-      (let [cur (psc/fetch-by-id tx :documents doc-id)]
-        (when (not= expected (:version cur))
-          (throw (ex-info "Document version conflict"
-                          {:code 409 :document-id doc-id
-                           :expected-version expected :actual-version (:version cur)})))))))
+  (psaw/check-expected-document-version! tx doc-id :conflict))
 
 (defn create
   "Create a new vocab item.

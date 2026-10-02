@@ -66,7 +66,7 @@
 (deftest text-edit-op-validation
   ;; Client-supplied edit directives reach apply-text-edit unvalidated
   ;; (the PATCH body schema is any?). A malformed op used to corrupt the
-  ;; fold's accumulator and surface as a raw 500 NPE (tx rolled back, no
+  ;; body being built and surface as a raw 500 NPE (tx rolled back, no
   ;; corruption — but unusable error UX); out-of-bounds indices threw
   ;; StringIndexOutOfBounds, also a 500. Both are structured 400s now.
   (let [proj (create-test-project admin-request "TextOpValidationProj")

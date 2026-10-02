@@ -37,11 +37,6 @@
   [result]
   (= 409 (:code result)))
 
-(defn get-constraints
-  "The layer's whole constraint map, namespace to list."
-  [db kind id]
-  (lc/parse-constraints (:constraints (psc/fetch-by-id db (tables kind) id))))
-
 (defn set-constraints
   "Declare `constraints` as namespace `ns`'s list on the layer. The list is
   validated (400), compared with `expected` when `check` carries it (409),

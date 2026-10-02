@@ -59,7 +59,7 @@
                           :project proj
                           :description "empty bulk-update"
                           :user "admin@example.com"}]
-                  (crud/bulk-update-by-id! tx :tokens {}))
+                  (crud/bulk-update-by-id! tx :tokens []))
           op-id (latest-op-id "test/bulk-update-empty")
           rows (audit-rows-for-op op-id)]
       (is (:success result) (str "op should succeed: " result))
@@ -76,7 +76,7 @@
                      :project proj
                      :description "single bulk-update"
                      :user "admin@example.com"}]
-             (crud/bulk-update-by-id! tx :tokens {t1 {:begin 1}}))
+             (crud/bulk-update-by-id! tx :tokens [[t1 {:begin 1}]]))
           op-id (latest-op-id "test/bulk-update-one")
           token-rows (filter #(= "tokens" (:target_table %))
                              (audit-rows-for-op op-id))]
@@ -99,8 +99,8 @@
                      :description "sparse bulk-update"
                      :user "admin@example.com"}]
              (crud/bulk-update-by-id! tx :tokens
-                                      {t1 {:begin 1}
-                                       t2 {:end_ 9}}))
+                                      [[t1 {:begin 1}]
+                                       [t2 {:end_ 9}]]))
           post-t1 (psc/fetch-by-id db :tokens t1)
           post-t2 (psc/fetch-by-id db :tokens t2)
           op-id (latest-op-id "test/bulk-update-sparse")
@@ -200,18 +200,15 @@
                                         (zero? (rnd 2)) (assoc :end_ (+ 10 (rnd 90)))
                                         (zero? (rnd 3)) (assoc :precedence (when (pos? (rnd 3)) (rnd 5))))]))
                       (filterv (comp seq second)))
-            as-map? (zero? (rnd 4))
-            input (fn [ids] (let [ps (mapv (fn [[i a]] [(if (< i n) (ids i) (missing i)) a]) spec)]
-                              (if as-map? (into {} ps) ps)))
-            pairs (fn [in] (if (map? in) (mapv (fn [k] [k (get in k)]) (sort (keys in))) in))]
+            input (fn [ids] (mapv (fn [[i a]] [(if (< i n) (ids i) (missing i)) a]) spec))]
         (when (seq spec)
           (let [ra (op/submit-operation! [tx db {:type :test/bulk-diff-new :project proj :document doc-a
                                                  :description "new" :user "admin@example.com"}]
                                          (crud/bulk-update-by-id! tx :tokens (input as)))
                 rb (op/submit-operation! [tx db {:type :test/bulk-diff-old :project proj :document doc-b
                                                  :description "old" :user "admin@example.com"}]
-                                         (case-bulk-update! tx :tokens (pairs (input bs))))
-                msg (str "round " round " " (pr-str spec) (when as-map? " as a map"))]
+                                         (case-bulk-update! tx :tokens (input bs)))
+                msg (str "round " round " " (pr-str spec))]
             (is (:success ra) msg)
             (is (:success rb) msg)
             (is (= (state bs) (state as)) msg)

@@ -1,5 +1,5 @@
 (ns plaid.sql.constraints.token
-  "Token constraint checking for the SQL port.
+  "Token constraint checking.
 
   Enforces three axes of token-layer invariants on every token mutation:
     1. Overlap-mode (:any / :non-overlapping / :partitioning) within the
@@ -11,13 +11,9 @@
        would orphan nested child-layer tokens are rejected (the caller's
        cascade has already removed/resized the children).
 
-  This is the SQL translation of plaid.xtdb2.constraints.token. The
-  single biggest change: XTDB v2 used `match*` + `[:sql \"ASSERT NOT
-  EXISTS …\"]` ops as TOCTOU fences against concurrent writers; under
-  SQLite's serializable-on-write isolation, every read inside the tx
-  already sees a consistent snapshot and the writer is alone. So all of
-  the ASSERT-emitting helpers from the v2 version are gone — `enforce!`
-  is purely pre-flight validation now.
+  Under SQLite's serializable-on-write isolation every read inside the tx
+  sees a consistent snapshot and the writer is alone, so `enforce!` is
+  pre-flight validation and needs no fence against concurrent writers.
 
   `enforce!` is the single entry point. Each token mutation in
   plaid.sql.token calls it once with the op keyword, a ctx map of

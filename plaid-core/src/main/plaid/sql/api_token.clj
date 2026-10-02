@@ -131,14 +131,3 @@
                        (when (nil? (:revoked_at existing))
                          (crud/update-by-id! tx :api_tokens id {:revoked_at (psc/now-iso)}))
                        id)))
-
-(defn touch-last-used!
-  "Best-effort, UNAUDITED update of `last_used_at`. Deliberately NOT routed
-  through `submit-operation!` — it fires on every authenticated API-token
-  request, so an audit row per request would swamp the log. Currently
-  unused (deferred); kept here so the read path has an obvious home if/when
-  last-used tracking is wired in."
-  [db id]
-  (psc/execute! db {:update :api_tokens
-                    :set {:last_used_at (psc/now-iso)}
-                    :where [:= :id id]}))

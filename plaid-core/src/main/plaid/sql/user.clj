@@ -1,10 +1,7 @@
 (ns plaid.sql.user
-  "SQL port of plaid.xtdb2.user. Users live in the `users` table.
-
-  External API matches the xtdb2 version: same function names, same
-  arglists, same return shapes. The first argument is now `db`, which
-  may be a HikariCP DataSource (for reads) or a JDBC Connection inside
-  a transaction (for writes). Writes open their own transaction via
+  "Users: the `users` table. The first argument is `db`, a HikariCP
+  DataSource (for reads) or a JDBC Connection inside a transaction (for
+  writes). Writes open their own transaction via
   `plaid.sql.operation/submit-operation!`."
   (:require [buddy.hashers :as hashers]
             [clojure.string]

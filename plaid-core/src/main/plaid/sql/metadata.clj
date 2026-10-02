@@ -1,9 +1,7 @@
 (ns plaid.sql.metadata
   "SQL-side metadata helpers backed by the `entity_metadata` table.
 
-  Where the XTDB v2 port stuffed metadata into a per-entity-type
-  `<entity-type>/metadata` JSON column, the SQL port normalizes it
-  into a wide-narrow table keyed on (entity_type, entity_id, key).
+  Metadata is a wide-narrow table keyed on (entity_type, entity_id, key).
 
   ## Parent-owned :delete contract (task #58)
 
@@ -63,7 +61,7 @@
   (:refer-clojure :exclude [get]))
 
 (def ^:private valid-entity-types
-  "Mirrors the v2 entity-type whitelist (`plaid.xtdb2.metadata`)."
+  "The entity types that carry metadata."
   #{"document" "text" "token" "span" "relation" "vocab-item" "vocab-link"})
 
 (def entity-type->table

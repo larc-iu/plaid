@@ -528,36 +528,15 @@
                             :correlation-id cid}})))))))
       (handler request))))
 
-(def ^:private uuid-regex
-  ;; canonical 8-4-4-4-12 hex UUID
-  #"(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
-
 (defn- extract-raw-document-version
   "Pull the raw document-version value out of the request's query-string,
-  if present. Operates on the raw string so we can intercept old-format
-  v2 UUIDs BEFORE malli coercion converts the failure into its own
-  generic 400."
+  if present."
   [request]
   (when-let [qs (:query-string request)]
     (some (fn [param]
             (when (str/starts-with? param "document-version=")
               (subs param (count "document-version="))))
           (str/split qs #"&"))))
-
-(defn wrap-reject-uuid-document-version
-  "Reject old-format `?document-version=<uuid>` with a clear 400 BEFORE
-  malli's request-coercion gets a chance to convert the value-type error
-  into a less-specific 400. v2 used audit-id UUIDs; the SQL port uses
-  integer document versions. Silently dropping the OCC check (the v2-port
-  bug) is dangerous, so we fail loudly."
-  [handler]
-  (fn [request]
-    (let [raw (extract-raw-document-version request)]
-      (if (and raw (re-matches uuid-regex raw))
-        {:status 400
-         :body {:error (str "Invalid document-version (expected integer; "
-                            "v2 UUIDs are no longer supported)")}}
-        (handler request)))))
 
 (defn- names-ids?
   "Does the request name any entity by id, in its path or anywhere in its
@@ -575,12 +554,9 @@
   TOCTOU window that existed when the middleware did the comparison
   before the handler opened its tx (task #108).
 
-  In v2 this compared against the latest audit-id (an opaque UUID). The
-  SQL port uses the integer `documents.version` column that
-  `plaid.sql.document/merge` bumps on every change. v2-format UUIDs are
-  rejected upstream by `wrap-reject-uuid-document-version`; any
-  unparseable value reaching here is also rejected with a 400 rather
-  than silently bypassing OCC.
+  The version is the integer `documents.version` column that every write
+  to the document bumps. A value that is not an integer is refused with a
+  400 rather than silently bypassing the check.
 
   A pre-flight read still happens here as a fast-fail (avoids opening a
   tx when the version is already known to be stale from a stable read);

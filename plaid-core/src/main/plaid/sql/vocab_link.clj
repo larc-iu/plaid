@@ -1,12 +1,8 @@
 (ns plaid.sql.vocab-link
-  "SQL port of plaid.xtdb2.vocab-link. Vocab links live in the
-  `vocab_links` table; their token references live in the ordered
-  `vocab_link_tokens` junction table with `order_idx` preserving the
-  input order.
-
-  External API mirrors xtdb2 (same fn names + arglists). `db` replaces
-  `node-or-map`. Delete is a single row delete on `vocab_links` — the
-  FK ON DELETE CASCADE sweeps the junction rows."
+  "Vocab links: the `vocab_links` table, with their tokens in the ordered
+  `vocab_link_tokens` junction table (`order_idx` keeps the input order).
+  Delete is a single row delete on `vocab_links`, and the FK ON DELETE
+  CASCADE sweeps the junction rows."
   (:require [taoensso.timbre :as log]
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
@@ -32,7 +28,7 @@
 ;; NOTE: unlike most row mappers in this codebase (which are 1-arg `row` -> map),
 ;; this mapper takes a second `tokens` arg because the vocab-link's token list
 ;; lives in the `vocab_link_tokens` junction table and must be fetched separately
-;; via `fetch-token-ids`. Folding that fetch into the mapper would require
+;; via `crud/junction-token-ids`. Folding that fetch into the mapper would require
 ;; passing `db`/`tx` into what is otherwise pure data shaping — we keep the
 ;; mapper pure and accept the asymmetry. Callers must pre-fetch tokens.
 (defn- row->vocab-link
@@ -42,15 +38,6 @@
      :vocab-link/vocab-item (:vocab_item_id row)
      :vocab-link/document   (:document_id row)
      :vocab-link/tokens     (vec tokens)}))
-
-(defn- fetch-token-ids
-  "Return the ordered (by order_idx) token-id vector for `vl-id`."
-  [db vl-id]
-  (->> (psc/q db {:select [:token_id]
-                  :from [:vocab_link_tokens]
-                  :where [:= :vocab_link_id vl-id]
-                  :order-by [:order_idx]})
-       (mapv :token_id)))
 
 ;; ============================================================
 ;; Public reads
@@ -69,7 +56,7 @@
   or nil."
   [db id]
   (when-let [row (psc/fetch-by-id db :vocab_links id)]
-    (let [tokens (fetch-token-ids db id)]
+    (let [tokens (crud/junction-token-ids db :vocab_links id)]
       (format db (row->vocab-link row tokens)))))
 
 (defn get-vocab-layer
@@ -116,7 +103,6 @@
    - non-empty + every token id resolves
    - all tokens share the same document (fast pre-flight)
    - all tokens share the same text AND the same token-layer
-     (mirrors the v2 invariants in plaid.xtdb2.vocab-link/create*)
    - the document's project has the vocab-item's vocab_layer in
      project_vocabs"
   [tx vocab-item-id token-ids token-rows]
@@ -245,7 +231,7 @@
           (metadata/insert-metadata! tx "vocab-link" new-id metadata
                                      {:skip-parent-audit? true}))
         (let [post-row (psc/fetch-by-id tx :vocab_links new-id)
-              post-tokens (fetch-token-ids tx new-id)
+              post-tokens (crud/junction-token-ids tx :vocab_links new-id)
               post-image (cond-> (assoc post-row :tokens post-tokens)
                            (seq metadata) (assoc :metadata metadata))]
           (psaw/record-audit-write! tx :vocab_links new-id :insert nil post-image))
@@ -319,7 +305,7 @@
                                       {:skip-parent-audit? true})))
        (doseq [r records]
          (let [post-row (psc/fetch-by-id tx :vocab_links (:id r))
-               post-tokens (fetch-token-ids tx (:id r))
+               post-tokens (crud/junction-token-ids tx :vocab_links (:id r))
                post-image (cond-> (assoc post-row :tokens post-tokens)
                             (seq (:metadata r)) (assoc :metadata (:metadata r)))]
            (psaw/record-audit-write! tx :vocab_links (:id r) :insert nil post-image)))

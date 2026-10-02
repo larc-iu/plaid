@@ -5,7 +5,7 @@
   routes; POST /spans, /tokens, etc. accepted inline metadata of any
   shape, defeating the depth/key-count/string-length caps."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
-            [plaid.rest-api.v1.metadata :as metadata]
+            [plaid.sql.metadata :as psm]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler
                                     admin-request with-admin with-clean-db
                                     assert-created assert-ok assert-status]]
@@ -27,13 +27,13 @@
   ;; Unit test of the public helper used by the inline-metadata guard.
   (testing "validate-metadata-shape! returns an error string when depth exceeds the cap"
     (let [bad (nested-map 12)
-          err (metadata/validate-metadata-shape! bad)]
+          err (psm/validate-metadata-shape! bad)]
       (is (some? err))
       (is (re-find #"depth" err)))))
 
 (deftest validate-metadata-shape-accepts-shallow-payload
   (testing "Shallow payload returns nil (no error)"
-    (is (nil? (metadata/validate-metadata-shape!
+    (is (nil? (psm/validate-metadata-shape!
                {"a" 1 "b" "two" "c" {"nested" true}})))))
 
 (deftest validate-metadata-shape-rejects-oversize-total-bytes
@@ -44,7 +44,7 @@
     ;; 10KB per-string cap) = ~1.25MB > 1MB cap.
     (let [val (apply str (repeat 2600 \x))
           m (into {} (for [i (range 500)] [(str "k" i) val]))
-          err (metadata/validate-metadata-shape! m)]
+          err (psm/validate-metadata-shape! m)]
       (is (some? err) "Cumulative byte-size cap must fire")
       (is (re-find #"(?i)bytes|size" err)))))
 

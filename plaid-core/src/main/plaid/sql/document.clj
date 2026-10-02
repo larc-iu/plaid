@@ -1,10 +1,7 @@
 (ns plaid.sql.document
-  "SQL port of plaid.xtdb2.document. Documents live in the `documents`
-  table. Optimistic concurrency uses the explicit `version` INTEGER
-  column (replacing v2's :xt/system-from probe). `time-created` /
-  `time-modified` come from `created_at` / `modified_at` columns.
-
-  Public API mirrors the xtdb2 surface."
+  "Documents: the `documents` table. Optimistic concurrency uses its
+  `version` INTEGER column. `time-created` and `time-modified` come from
+  the `created_at` and `modified_at` columns."
   (:require [clojure.data.json :as json]
             [clojure.string]
             [taoensso.timbre :as log]
@@ -60,33 +57,10 @@
   [db id]
   (:project_id (psc/fetch-by-id db :documents id)))
 
-(defn get-text-layers
-  "Return text-layer ID stubs for the document's project. Mirrors v2's
-  `get-text-layers` shape: a vector of `{:text-layer/id <id>}` maps."
-  [db id]
-  (let [doc (psc/fetch-by-id db :documents id)
-        prj-id (:project_id doc)]
-    (if prj-id
-      (->> (psc/q db {:select [:id]
-                      :from [:text_layers]
-                      :where [:= :project_id prj-id]
-                      :order-by [:order_idx]})
-           (mapv (fn [r] {:text-layer/id (:id r)})))
-      [])))
-
-(defn get-text-ids
-  "Return the IDs of all texts belonging to this document."
-  [db eid]
-  (->> (psc/q db {:select [:id]
-                  :from [:texts]
-                  :where [:= :document_id eid]})
-       (mapv :id)))
-
 ;; ============================================================
 ;; Deep read: get-with-layer-data
 ;;
-;; Mirrors the recursive get-doc-info multimethod in
-;; plaid.xtdb2.document. The result is document + text-layers →
+;; The result is document + text-layers →
 ;; token-layers → span-layers → relation-layers within the document's
 ;; project, with the document-scoped rows (texts, tokens, spans,
 ;; relations, vocab-links) attached under each layer.
