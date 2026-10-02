@@ -17,7 +17,7 @@ each app's tools address a document by name, which
 
 import re
 from collections import Counter
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from .args import clamp_limit
 from .limits import AUDIT_MAX_PAGES, AUDIT_PAGE, READ_LIMITS
@@ -188,3 +188,89 @@ def doc_label(ws, doc_id: str) -> str:
         return ref
     name = next((d.get('name') for d in ws.documents() if d['id'] == doc_id), None)
     return f'{name} ({doc_id})' if name else doc_id
+
+
+# --- putting a document back -----------------------------------------------------
+#
+# The server does the work (``POST /documents/:id/restore?as-of=``), and the
+# same call with ``dry_run`` says what would change, so the plan shows that
+# rather than promising. Maintainers only, which the server decides and this
+# only reports. The executor is ``plan.apply_restore_document``. What an app
+# brings is the names of its own layers.
+
+AS_OF = re.compile(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}')
+
+
+def _changed(counts) -> int:
+    return sum((counts or {}).get(k) or 0 for k in ('inserted', 'updated', 'deleted'))
+
+
+def restore_lines(summary: Dict[str, Any], *, tokens: Callable[[Optional[str], int], str],
+                  spans: Callable[[Optional[str], int], str], relations: Callable[[int], str],
+                  links: Callable[[int], str]) -> List[str]:
+    """The dry run's counts, one phrase per kind of change, in the order a
+    document is built, its metadata, and then what cannot come back. Every count core's
+    ``summarize`` puts in ``total`` is named here, so no change is counted and
+    left out. The app names its layers: ``tokens(layer id, n)`` and
+    ``spans(layer id, n)`` per layer, ``relations(n)`` and ``links(n)`` for
+    the rest."""
+    lines = []
+    if summary.get('name'):
+        lines.append('the document name')
+    if _changed(summary.get('texts')):
+        lines.append('the text')
+    for e in (summary.get('tokens') or {}).get('by_layer') or []:
+        n = _changed(e)
+        if n:
+            lines.append(tokens(e.get('layer_id'), n))
+    for e in (summary.get('spans') or {}).get('by_layer') or []:
+        n = _changed(e)
+        if n:
+            lines.append(spans(e.get('layer_id'), n))
+    n = _changed(summary.get('relations'))
+    if n:
+        lines.append(relations(n))
+    n = _changed(summary.get('vocab_links'))
+    if n:
+        lines.append(links(n))
+    if summary.get('document_metadata'):
+        lines.append('the document metadata')
+    for k in summary.get('skipped') or []:
+        lines.append(f'{k.get("count")} {k.get("kind")}(s) cannot come back ({k.get("reason")})')
+    return lines
+
+
+def restore_document(ws, document: Optional[str], as_of: Optional[str], *,
+                     lines: Callable[[Dict[str, Any]], List[str]],
+                     extra: Optional[Callable[[Any], Dict[str, Any]]] = None) -> str:
+    """PLAN: put a document back as it was at a moment in its history (every
+    layer, ids kept), as one operation. The plan shows what would change, from
+    the server's dry run. Nothing else can share the plan, since the restore
+    rewrites what the other changes would address. ``lines(summary)`` is the
+    app's :func:`restore_lines`, ``extra(doc)`` the keys its op carries."""
+    as_of = (as_of or '').strip()
+    if not AS_OF.match(as_of):
+        raise ToolError('as_of must be an ISO-8601 instant, e.g. 2026-09-05T18:45:49Z (recent_changes '
+                        'prints one per change as as_of=).')
+    doc = ws.doc(document)
+    # The funnel asks the same question of the op this tool is about to stage;
+    # asked here too, the model is told before the dry run costs a round trip.
+    # Of the OP, so a second restore of the same document is the supersession
+    # the registry declares rather than a refusal this tool alone made.
+    ws.refuse_exclusive_early({'kind': 'restore_document', 'document_id': doc.id})
+    ws.on_progress(f'Checking what a restore of "{doc.name}" would change…')
+    try:
+        summary = ws.client.documents.restore(doc.id, as_of, dry_run=True)
+    except Exception as e:  # noqa: BLE001 - the server's reason is the model's answer
+        if getattr(e, 'status', None) == 403:
+            raise ToolError('Restoring a document needs maintainer access to the project.')
+        raise ToolError(f'The restore was refused: {" ".join(str(e).split())[:400]}')
+    summary = summary if isinstance(summary, dict) else {}
+    total = summary.get('total') or 0
+    if not total:
+        return f'Nothing to restore: "{doc.name}" is as it was at {as_of}.'
+    said = lines(summary)
+    ws.add_op({'kind': 'restore_document', 'document_id': doc.id, 'as_of': as_of, **(extra(doc) if extra else {}),
+               'label': f'{doc_label(ws, doc.id)}: restore to {as_of} ({total} change{"s" if total != 1 else ""}: '
+                        + ', '.join(said) + ')'})
+    return ws.planned_note(1) + '\nWhat changes (from the server\'s dry run): ' + ', '.join(said) + '.'

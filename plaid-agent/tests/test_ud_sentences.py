@@ -347,11 +347,39 @@ def test_the_restore_summary_reads_as_english():
 
     class P:
         sentence_layer_id, token_layer_id, word_layer_id = 'S', 'T', 'W'
+        span_layers = {'lemma': 'L', 'upos': 'U', 'features': 'F'}
 
-    assert restore_lines(P(), {'relations': {'deleted': 1}}) == ['1 dependency']
-    assert restore_lines(P(), {'relations': {'deleted': 3}}) == ['3 dependencies']
-    assert restore_lines(P(), {'tokens': {'by_layer': [{'layer_id': 'S', 'inserted': 1}]}}) == [
+    class W:
+        project = P()
+
+    w = W()
+    assert restore_lines(w, {'relations': {'deleted': 1}}) == ['1 dependency']
+    assert restore_lines(w, {'relations': {'deleted': 3}}) == ['3 dependencies']
+    assert restore_lines(w, {'tokens': {'by_layer': [{'layer_id': 'S', 'inserted': 1}]}}) == [
         '1 sentence']
+
+
+def test_a_restore_names_everything_its_dry_run_counts(ws):
+    """The summary's total counts the document's metadata and its vocabulary
+    links as well, and lists what cannot come back. ud's own reading left all
+    three out, so a metadata-only restore was staged as "(1 change: )"
+    (R1-DEBT-CORE-5)."""
+    ws.client.restore_summary = {
+        'name': False, 'document_metadata': True,
+        'texts': {'inserted': 0, 'updated': 0, 'deleted': 0},
+        'tokens': {'inserted': 0, 'updated': 0, 'deleted': 0, 'by_layer': []},
+        'spans': {'inserted': 0, 'updated': 2, 'deleted': 1,
+                  'by_layer': [{'layer_id': 'u-upos', 'inserted': 0, 'updated': 2, 'deleted': 0},
+                               {'layer_id': 'u-feats', 'inserted': 0, 'updated': 0, 'deleted': 1}]},
+        'relations': {'inserted': 0, 'updated': 0, 'deleted': 0},
+        'vocab_links': {'inserted': 1, 'updated': 0, 'deleted': 0},
+        'skipped': [{'kind': 'vocab-link', 'count': 1, 'reason': 'item-gone'}],
+        'total': 5}
+    out = run(ws, 'restore_document', document='Viaje', as_of='2026-09-05T18:45:49Z')
+    said = ('2 UPOS values, 1 feature value, 1 vocabulary link, the document metadata, '
+            '1 vocab-link(s) cannot come back (item-gone)')
+    assert said in out
+    assert ws.ops[0]['label'] == f'Viaje: restore to 2026-09-05T18:45:49Z (5 changes: {said})'
 
 
 @pytest.mark.parametrize('tool,args', [

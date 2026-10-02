@@ -10,12 +10,11 @@ respelling cannot overlap another) live here.
 """
 
 import copy
-import re
 from typing import Any, Dict, List, Optional
 
 from plaid_client.provenance import prov_state, MACHINE
 
-from ..core import opkind
+from ..core import history, opkind
 from ..core.args import whole
 from ..core.limits import MAX_SCOPE_DOCS
 from ..core.plan import by_document, change_of, labelled
@@ -971,71 +970,28 @@ def t_add_comment(ws: Workspace, document: str, body: str, ref: Optional[str] = 
 # --- restore ------------------------------------------------------------------------
 
 def _restore_lines(ws: Workspace, summary: dict) -> List[str]:
-    """The dry run's counts, one line per kind of change, as the editor's
-    restore dialog lists them."""
-    def changed(c):
-        return sum((c or {}).get(k) or 0 for k in ('inserted', 'updated', 'deleted'))
+    """The dry run's counts, as the editor's restore dialog lists them, in
+    this app's names for its layers."""
     roles = {ws.project.sentence_layer_id: 'sentence', ws.project.word_layer_id: 'word',
              ws.project.morpheme_layer_id: 'morpheme'}
-    lines = []
-    if summary.get('name'):
-        lines.append('the document name')
-    if changed(summary.get('texts')):
-        lines.append('the text')
-    for e in (summary.get('tokens') or {}).get('by_layer') or []:
-        n = changed(e)
-        if n:
-            lines.append(f'{n} {roles.get(e.get("layer_id"), "token")}{"s" if n != 1 else ""}')
-    for e in (summary.get('spans') or {}).get('by_layer') or []:
-        n = changed(e)
-        if n:
-            f = ws.project.field_by_layer(e.get('layer_id'))
-            lines.append(f'{n} {f.name if f else "annotation"} value{"s" if n != 1 else ""}')
-    n = changed(summary.get('relations'))
-    if n:
-        lines.append(f'{n} relation{"s" if n != 1 else ""}')
-    n = changed(summary.get('vocab_links'))
-    if n:
-        lines.append(f'{n} lexicon link{"s" if n != 1 else ""}')
-    if summary.get('document_metadata'):
-        lines.append('the document metadata')
-    for k in summary.get('skipped') or []:
-        lines.append(f'{k.get("count")} {k.get("kind")}(s) cannot come back ({k.get("reason")})')
-    return lines
+
+    def span_phrase(layer_id, n):
+        f = ws.project.field_by_layer(layer_id)
+        return f'{n} {f.name if f else "annotation"} value{"s" if n != 1 else ""}'
+
+    return history.restore_lines(
+        summary,
+        tokens=lambda layer_id, n: f'{n} {roles.get(layer_id, "token")}{"s" if n != 1 else ""}',
+        spans=span_phrase,
+        relations=lambda n: f'{n} relation{"s" if n != 1 else ""}',
+        links=lambda n: f'{n} lexicon link{"s" if n != 1 else ""}')
 
 
 def t_restore_document(ws: Workspace, document: str, as_of: str) -> str:
-    """PLAN: put a document back as it was at a moment in its history (every
-    layer, ids kept), in one operation. The plan shows what would change,
-    from the server's dry run. Maintainers only; nothing else can share the
-    plan, since the restore rewrites what the other changes would address."""
-    as_of = (as_of or '').strip()
-    if not re.match(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}', as_of):
-        raise ToolError('as_of must be an ISO-8601 instant, e.g. 2026-09-05T18:45:49Z (recent_changes prints one '
-                        'per change as as_of=)')
-    doc = ws.doc(document)
-    # The funnel asks the same question of the op this tool is about to stage;
-    # asked here too, the model is told before the dry run costs a round trip.
-    # Of the OP, so a second restore of the same document is the supersession
-    # the registry declares rather than a refusal this tool alone made.
-    ws.refuse_exclusive_early({'kind': 'restore_document', 'document_id': doc.id})
-    ws.on_progress(f'Checking what a restore of "{doc.name}" would change…')
-    try:
-        summary = ws.client.documents.restore(doc.id, as_of, dry_run=True)
-    except Exception as e:  # noqa: BLE001 - the server's reason is the model's answer
-        msg = str(e)
-        if '403' in msg or 'orbidden' in msg:
-            raise ToolError('Restoring a document needs maintainer access to the project.')
-        raise ToolError(f'The restore was refused: {msg[:400]}')
-    summary = summary if isinstance(summary, dict) else {}
-    total = summary.get('total') or 0
-    lines = _restore_lines(ws, summary)
-    if not total:
-        return f'Nothing to restore: "{doc.name}" is as it was at {as_of}.'
-    ws.add_op({'kind': 'restore_document', 'document_id': doc.id, 'as_of': as_of, 'doc': doc.id,
-               'label': f'{ws.doc_label(doc.id)}: restore to {as_of} ({total} change{"s" if total != 1 else ""}: '
-                        + ', '.join(lines) + ')'})
-    return ws.planned_note(1) + '\nWhat changes (from the server\'s dry run): ' + ', '.join(lines) + '.'
+    """PLAN: put a document back as it was at a moment in its history. Shared
+    with every app (core/history.py), naming this one's layers."""
+    return history.restore_document(ws, document, as_of, lines=lambda s: _restore_lines(ws, s),
+                                    extra=lambda doc: {'doc': doc.id})
 
 
 def t_discard_plan(ws: Workspace) -> str:
