@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const toast = { error: vi.fn(), warning: vi.fn(), dismiss: vi.fn() };
+const toast = { error: vi.fn(), warning: vi.fn(), info: vi.fn(), dismiss: vi.fn() };
 vi.mock('sonner', () => ({ toast }));
 
 const {
@@ -15,6 +15,7 @@ const finding = (severity, code, message, context = {}) => ({ severity, code, me
 beforeEach(() => {
   toast.error.mockClear();
   toast.warning.mockClear();
+  toast.info.mockClear();
   toast.dismiss.mockClear();
   vi.spyOn(console, 'group').mockImplementation(() => {});
   vi.spyOn(console, 'groupEnd').mockImplementation(() => {});
@@ -65,5 +66,33 @@ describe('reportIntegrityFindings', () => {
     expect(new Set(ids).size).toBe(1);
     dismissIntegrityFindings();
     expect(toast.dismiss).toHaveBeenCalledWith(ids[0]);
+  });
+
+  // REV-FX-CORE F5: a rule the stored data keeps out is a standing fact the
+  // editor already holds, not damage, so it is said once, plainly, and goes.
+  it('says a rule not in force plainly, not as damage, and lets it go', () => {
+    const rule = finding(
+      'warning',
+      'layer-rules-not-in-force',
+      'The acyclic rules of "UMR relations" are not in force: 3 stored relations break them.',
+    );
+    reportIntegrityFindings([rule], { documentId: 'd1' });
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+    const [title, options] = toast.info.mock.calls[0];
+    expect(title).toBe('Layer rules not in force');
+    expect(options.description).toBe(rule.message);
+    expect(options.duration).not.toBe(Infinity);
+    expect(options.action).toBeUndefined();
+  });
+
+  it('keeps the integrity notice for the other findings beside a rule not in force', () => {
+    reportIntegrityFindings([
+      finding('warning', 'layer-rules-not-in-force', 'a'),
+      finding('error', 'span-duplicate', 'b'),
+    ]);
+    expect(toast.info).toHaveBeenCalledTimes(1);
+    expect(toast.error.mock.calls[0][1].description).toBe(INTEGRITY_DESCRIPTION);
+    expect(toast.error.mock.calls[0][1].action.label).toBe('Copy details');
   });
 });

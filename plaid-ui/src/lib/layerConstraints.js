@@ -106,6 +106,9 @@ const planOf = async (client, entry) => {
   };
 };
 
+/** The code of the finding for rules the stored data keeps out. */
+export const RULES_NOT_IN_FORCE = 'layer-rules-not-in-force';
+
 // What a rule of a layer of each kind is kept on, for the finding.
 const ROW_WORDS = {
   token: ['token', 'tokens'],
@@ -127,7 +130,7 @@ export const rulesNotInForce = (pending, layers) =>
     const [one, many] = ROW_WORDS[p.kind] ?? ['row', 'rows'];
     return {
       severity: 'warning',
-      code: 'layer-rules-not-in-force',
+      code: RULES_NOT_IN_FORCE,
       message: `The ${p.constraints.join(' and ')} rules of "${name}" are not in force: ${n} stored ${n === 1 ? `${one} breaks` : `${many} break`} them.`,
       context: p,
     };
