@@ -376,6 +376,7 @@ export const TextEditor = () => {
                 tokenize={services.tokenize}
                 text={rawText}
                 writeLockHeld={writeLockHeld}
+                onOpen={services.discoverServices}
                 blockedHint={
                   !textContent.trim()
                     ? 'There is no text to tokenize.'
@@ -393,7 +394,8 @@ export const TextEditor = () => {
                 parse={services.parse}
                 isDiscovering={services.isDiscovering}
                 writeLockHeld={writeLockHeld}
-                blockedHint={hasTokens ? null : 'Tokenize the text first.'}
+                blockedHint={rawText !== log.base ? 'Save the text first.' : null}
+                onOpen={services.discoverServices}
               />
             )}
 

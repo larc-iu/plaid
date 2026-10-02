@@ -10,7 +10,14 @@ import { ServiceRunButton } from '@ui/components/services/ServiceRunButton.jsx';
 // service the project has, so bringing your own tokenizer changes nothing else
 // about the gesture. Results are the tokens in the panel underneath, so the
 // dialog carries nothing but the method and what would block a run.
-export function TokenizeDialog({ tokenize, text, writeLockHeld, blockedHint = null }) {
+// `onOpen` looks for services again each time the dialog opens.
+export function TokenizeDialog({
+  tokenize,
+  text,
+  writeLockHeld,
+  blockedHint = null,
+  onOpen = null,
+}) {
   const [open, setOpen] = useState(false);
   const { spot, run, start } = tokenize;
   const running = run.running;
@@ -29,7 +36,10 @@ export function TokenizeDialog({ tokenize, text, writeLockHeld, blockedHint = nu
       <ServiceRunButton
         label="Tokenize"
         icon={Scissors}
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setOpen(true);
+          onOpen?.();
+        }}
         progress={run}
       />
 

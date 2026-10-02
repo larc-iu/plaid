@@ -110,6 +110,7 @@ The same tab exports the whole project as a ZIP of `.conllu` files.
 ====
 Import brings in tokens, sentence metadata, and the dependency tree, but two CoNLL-U features are *not* stored and will be dropped on import: **empty nodes** and the **MISC** column.
 If you need those preserved, Plaid UD is not the right tool for that file.
+A `SpaceAfter=No` is not counted as dropped: the text keeps the spacing, and the export writes it again.
 ====
 
 The DEPS column is read into the enhanced dependency graph (see <<_enhanced_dependencies>>).
@@ -323,6 +324,7 @@ A document with no sentences to show until then says `The document could not be 
 = Export
 
 The **Export** tab shows the current document as CoNLL-U, with **Copy** and **Download**.
+Each sentence's `# text` is its text as it stands, spaces included, and a multi-word token's row gives its text as it stands. A token followed by no space is marked `SpaceAfter=No` in the MISC column, the one value written there.
 
 To export a whole project, use its **Import and export** tab, which packages every document into one ZIP of `.conllu` files.
 
@@ -583,7 +585,7 @@ The mark is shared with every Plaid app on the project.
 
 A project's maintainers can tailor the annotation scheme from the project's **Settings** tab:
 
-* **UD settings**: the controlled vocabularies (UPOS, XPOS, DEPREL tags), tag and relation **colors**, the **feature inventory** offered in the Features column, and the **document** and **sentence fields** the project keeps notes in (see <<_metadata>>). All vocabularies start from the standard universal sets and can be extended or replaced. **Save** writes only the settings you changed. If another maintainer changed the same one since you opened the tab, the save is refused and the tab shows the stored settings.
+* **UD settings**: the controlled vocabularies (UPOS, XPOS, DEPREL tags), tag and relation **colors**, the **feature inventory** offered in the Features column, and the **document** and **sentence fields** the project keeps notes in (see <<_metadata>>). All vocabularies start from the standard universal sets and can be extended or replaced. **Save** writes only the settings you changed. If another maintainer changed the same one since you opened the tab, the save is refused and the tab shows the stored settings. Leaving the tab with a change not saved asks first.
 * **General**: the project's **language**, the **tokenizer locale** used by **Tokenize**, and project deletion. The language is a BCP-47 tag such as `en`, `de` or `zh-Hans`. It is the language a connected parser starts on, and the locale **Tokenize** segments with unless the tokenizer locale is set to something more specific.
 
 === Suggestions or rules
@@ -596,7 +598,7 @@ Where a project wants the list to be binding, the switch beneath it makes it so.
 * **Dependency relations**: the BASE relation must be on the list. A subtype is judged by its base, so `nsubj:pass` is allowed wherever `nsubj` is, and a project does not have to list every subtype its language uses.
 * **Features**: the key must be in the inventory and the value in that key's list. A key listed with no values accepts any value.
 
-A closed list is enforced where a person types: the annotation cells and the Grew rewrite preview. A closed UPOS, XPOS or relation list is also enforced by the server, on every write. A value off the list is refused, even from a page opened before the list was closed, and the cell shows the stored value again with a message naming the value. An approved assistant plan and a script are refused the same way. Three kinds of value are kept anyway: values brought in by an import, values a document copy or a restore writes back, and a parser's predictions nobody has accepted yet. Accepting such a value is refused while it is off the list. Off-list machine output is a signal, and refusing it at the door would hide it. A closed feature inventory is enforced only where a person types. Spaces at either end of a value, no-break spaces included, are ignored when it is checked.
+A closed list is enforced where a person types: the annotation cells and the Grew rewrite preview. A closed UPOS, XPOS or relation list is also enforced by the server, on every write. A value off the list is refused, even from a page opened before the list was closed, and the cell shows the stored value again with a message naming the value. An approved assistant plan and a script are refused the same way. Three kinds of value are kept anyway: values brought in by an import, values a document copy or a restore writes back, and a parser's predictions nobody has accepted yet. An import names the values it brought in that are off a closed list. **Accept predictions** leaves a prediction that is off the list unreviewed, names it, and accepts the rest. Off-list machine output is a signal, and refusing it at the door would hide it. A closed feature inventory is enforced only where a person types. Spaces at either end of a value, no-break spaces included, are ignored when it is checked.
 
 Closing a list, or removing a value from a closed one, is refused while any other value in the project's annotations is off it, and the message names one of them. Change them first, or add them to the list.
 

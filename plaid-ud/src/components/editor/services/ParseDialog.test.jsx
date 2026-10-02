@@ -38,4 +38,13 @@ describe('the Parse dialog', () => {
     expect(count('Looking for a parsing service')).toBe(1);
     await view.unmount();
   });
+
+  // Q2-UD-POLISH-6: a parser that came online after the page loaded stayed
+  // "not online" until a reload, since services were looked for once.
+  it('looks for services again each time it opens', async () => {
+    let looked = 0;
+    const view = await openDialog({ isDiscovering: false, onOpen: () => (looked += 1) });
+    expect(looked).toBe(1);
+    await view.unmount();
+  });
 });

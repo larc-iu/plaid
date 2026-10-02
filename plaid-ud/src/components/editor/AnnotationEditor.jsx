@@ -469,6 +469,7 @@ export const AnnotationEditor = () => {
         parse={services.parse}
         isDiscovering={services.isDiscovering}
         writeLockHeld={writeLockHeld}
+        onOpen={services.discoverServices}
       />
     </div>
   );
@@ -552,7 +553,7 @@ export const AnnotationEditor = () => {
                 ? 'This state has no tokens.'
                 : repairFailed
                   ? 'The document could not be repaired. Reload the page to try again.'
-                  : 'No sentences. Tokenize the document in the Text Editor.'}
+                  : 'No sentences. Parse, or tokenize in the Text Editor.'}
             </p>
           ) : (
             // The review gestures listen here, above every sentence, because

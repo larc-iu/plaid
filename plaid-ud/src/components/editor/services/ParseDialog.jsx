@@ -9,7 +9,15 @@ import { ServiceRunButton } from '@ui/components/services/ServiceRunButton.jsx';
 // Both toolbars render this, and both read the same `parse` from the shell, so
 // the run a linguist starts in the Text Editor is the run the Annotate tab
 // shows. Closing the dialog never cancels, and the button carries the clock.
-export function ParseDialog({ parse, isDiscovering, writeLockHeld, blockedHint = null }) {
+// `onOpen` looks for services again each time the dialog opens, so one that
+// came online after the page loaded is offered without a reload.
+export function ParseDialog({
+  parse,
+  isDiscovering,
+  writeLockHeld,
+  blockedHint = null,
+  onOpen = null,
+}) {
   const [open, setOpen] = useState(false);
   const { spot, run, start } = parse;
   const running = run.running;
@@ -29,7 +37,15 @@ export function ParseDialog({ parse, isDiscovering, writeLockHeld, blockedHint =
 
   return (
     <>
-      <ServiceRunButton label="Parse" icon={Zap} onClick={() => setOpen(true)} progress={run} />
+      <ServiceRunButton
+        label="Parse"
+        icon={Zap}
+        onClick={() => {
+          setOpen(true);
+          onOpen?.();
+        }}
+        progress={run}
+      />
 
       <ServiceRunDialog
         open={open}
