@@ -107,7 +107,7 @@ def _document():
             'id': 'tl', 'config': {'plaid': {'role': 'baseline'}},
             'text': {'id': 'tx', 'body': BODY},
             'token_layers': [
-                {'id': 'sent', 'config': {'plaid': {'role': 'sentence'}}, 'tokens': [
+                {'id': 'sent', 'overlap_mode': 'partitioning', 'config': {'plaid': {'role': 'sentence'}}, 'tokens': [
                     {'id': 's1', 'begin': 0, 'end': 17},
                     {'id': 's2', 'begin': 17, 'end': 31}]},
                 {'id': 'word', 'config': {'plaid': {'role': 'word'}}, 'tokens': [

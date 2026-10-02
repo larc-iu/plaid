@@ -27,7 +27,7 @@ def project_raw():
         'text_layers': [{
             'id': TEXT_LAYER, 'name': 'Text', 'config': {'plaid': {'role': 'baseline'}},
             'token_layers': [
-                {'id': SENT_LAYER, 'name': 'Sentences', 'config': {'plaid': {'role': 'sentence'}},
+                {'id': SENT_LAYER, 'name': 'Sentences', 'overlap_mode': 'partitioning', 'config': {'plaid': {'role': 'sentence'}},
                  'span_layers': []},
                 {'id': TOK_LAYER, 'name': 'Tokens', 'config': {'plaid': {'role': 'word'}},
                  'span_layers': []},

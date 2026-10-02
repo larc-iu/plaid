@@ -529,7 +529,9 @@ class Resource:
             new = arguments.get('id') or writer.new_id(self._name)
             return _payload(args, kwargs), {'body': {'id': new}}, {'id': new}
         if method == 'check_constraints':
-            # The fake holds no layer data, so nothing breaks a rule.
+            # The fake holds no layer data, so nothing breaks a rule, and no
+            # write here is ever refused with 422: a test on this fake covers
+            # no constraint refusal.
             answer = {'violations': [], 'violation_count': 0}
             return _payload(args, kwargs), {'body': answer}, answer
         if method == 'repair_constraints':
@@ -909,10 +911,10 @@ class FakeClient:
                 yield text_layer, text_layer.get('token_layers') or []
 
     def partitioning_layers(self):
-        """The token layers the server keeps as a partition of the text: the
-        sentence layer, known by its role."""
+        """The token layers the server keeps as a partition of the text: those
+        whose overlap mode is ``partitioning``, as the server decides it."""
         return {layer['id'] for _, layers in self._fixture_token_layers() for layer in layers
-                if ((layer.get('config') or {}).get('plaid') or {}).get('role') == 'sentence'}
+                if layer.get('overlap_mode') == 'partitioning'}
 
     def text_length(self, text_id):
         """The length of a text a document holds or a create made, or None."""

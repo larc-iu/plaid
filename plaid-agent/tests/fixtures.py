@@ -21,7 +21,7 @@ def project_raw():
         'text_layers': [{
             'id': TEXT_LAYER, 'name': 'Text', 'config': {'plaid': {'role': 'baseline'}},
             'token_layers': [
-                {'id': SENT_LAYER, 'name': 'Sentences', 'config': {'plaid': {'role': 'sentence'}},
+                {'id': SENT_LAYER, 'name': 'Sentences', 'overlap_mode': 'partitioning', 'config': {'plaid': {'role': 'sentence'}},
                  'span_layers': [{'id': TRANS, 'name': 'Translation', 'config': {'igt': {'scope': 'Sentence'}}}]},
                 {'id': WORD_LAYER, 'name': 'Words',
                  'config': {'plaid': {'role': 'word'},
@@ -166,7 +166,7 @@ def odd_project_raw():
         'text_layers': [{
             'id': TEXT_LAYER, 'name': 'Text', 'config': {'plaid': {'role': 'baseline'}},
             'token_layers': [
-                {'id': SENT_LAYER, 'name': 'Lines', 'config': {'plaid': {'role': 'sentence'}},
+                {'id': SENT_LAYER, 'name': 'Lines', 'overlap_mode': 'partitioning', 'config': {'plaid': {'role': 'sentence'}},
                  'span_layers': [{'id': ODD_FREE, 'name': 'Free translation', 'config': {'igt': {'scope': 'Sentence'}}}]},
                 {'id': WORD_LAYER, 'name': 'Tokens',
                  'config': {'plaid': {'role': 'word'}, 'igt': {'orthographies': [], 'ignoredTokens': {'type': 'blacklist', 'blacklist': ['.']}}},

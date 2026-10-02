@@ -23,7 +23,7 @@ def project_raw():
         'text_layers': [{
             'id': TEXT_LAYER, 'name': 'Text', 'config': {'plaid': {'role': 'baseline'}},
             'token_layers': [
-                {'id': SENT_LAYER, 'name': 'Sentences', 'config': {'plaid': {'role': 'sentence'}},
+                {'id': SENT_LAYER, 'name': 'Sentences', 'overlap_mode': 'partitioning', 'config': {'plaid': {'role': 'sentence'}},
                  'span_layers': []},
                 {'id': WORD_LAYER, 'name': 'Words', 'config': {'plaid': {'role': 'word'}},
                  'span_layers': [
@@ -59,7 +59,7 @@ def document_raw():
             'id': TEXT_LAYER, 'name': 'Text', 'config': {'plaid': {'role': 'baseline'}},
             'text': {'id': TEXT_ID, 'body': BODY},
             'token_layers': [
-                {'id': SENT_LAYER, 'config': {'plaid': {'role': 'sentence'}}, 'tokens': [
+                {'id': SENT_LAYER, 'overlap_mode': 'partitioning', 'config': {'plaid': {'role': 'sentence'}}, 'tokens': [
                     {'id': 'ms-1', 'begin': 0, 'end': 17},
                     {'id': 'ms-2', 'begin': 17, 'end': 31}],
                  'span_layers': []},

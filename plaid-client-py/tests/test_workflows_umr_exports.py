@@ -14,8 +14,8 @@ local variable of the same name is not a use.
 """
 
 import ast
+import os
 import pathlib
-import subprocess
 
 import plaid_client.workflows.umr as umr
 
@@ -67,15 +67,25 @@ def imported_names(source):
 
 
 def outside_imports():
-    files = subprocess.run(['git', 'ls-files', '*.py'], cwd=REPO, capture_output=True,
-                           text=True, check=True).stdout.split()
     used = set()
-    for f in files:
-        path = REPO / f
-        if f.startswith(PACKAGE) or not path.is_file():
+    for path in python_files(REPO):
+        f = path.relative_to(REPO).as_posix()
+        if f.startswith(PACKAGE):
             continue
         used |= imported_names(path.read_text(encoding='utf-8'))
     return used
+
+
+def python_files(root):
+    """Every .py file under ``root``, leaving out dependencies, caches and
+    hidden directories. A walk, not ``git ls-files``, so the test runs in a
+    checkout that is not a git one (a release archive, a lane)."""
+    skip = {'node_modules', '__pycache__', 'venv', 'out', 'dist', 'build'}
+    for d, dirs, files in os.walk(root):
+        dirs[:] = [x for x in dirs if x not in skip and not x.startswith('.')]
+        for name in files:
+            if name.endswith('.py'):
+                yield pathlib.Path(d) / name
 
 
 def test_a_name_that_is_only_mentioned_is_not_imported():

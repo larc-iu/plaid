@@ -124,7 +124,7 @@ def _document(*, body=BODY, sentences=((0, 14),), words=WORDS, node_tokens=(),
             'id': 'textL', 'name': 'Baseline', 'config': {'plaid': {'role': 'baseline'}},
             'text': {'id': 'text-1', 'body': body},
             'token_layers': [
-                {'id': 'sentL', 'name': 'Sentences', 'config': {'plaid': {'role': 'sentence'}},
+                {'id': 'sentL', 'name': 'Sentences', 'overlap_mode': 'partitioning', 'config': {'plaid': {'role': 'sentence'}},
                  'tokens': [_token(f's{i + 1}', b, e) for i, (b, e) in enumerate(sentences)],
                  'span_layers': []},
                 {'id': 'wordL', 'name': 'Words', 'config': {'plaid': {'role': 'word'}},

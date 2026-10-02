@@ -317,7 +317,7 @@ def _document(doc_id=DOC, *, name='Ann', version=7, metadata=None, body=BODY,
             'id': 'textL', 'name': 'Baseline', 'config': {'plaid': {'role': 'baseline'}},
             'text': {'id': f'{doc_id}-text', 'body': body},
             'token_layers': [
-                {'id': 'sentL', 'name': 'Sentences', 'config': {'plaid': {'role': 'sentence'}},
+                {'id': 'sentL', 'name': 'Sentences', 'overlap_mode': 'partitioning', 'config': {'plaid': {'role': 'sentence'}},
                  'tokens': [{'id': f'{doc_id}sent{i}', 'begin': b, 'end': e}
                             for i, (b, e) in enumerate(sentences)],
                  'span_layers': []},
