@@ -32,7 +32,7 @@ const projectWith = (tagset) => ({
 });
 
 // buildRawDoc's morpheme span layer is msl-0; point it at the tagset.
-function docWith(tagset, rawOpts = {}) {
+function docWith(tagset, rawOpts = {}, { sentence = false } = {}) {
   const raw = buildRawDoc(rawOpts);
   // The editor builds its precedent tally from project-wide queries on first
   // render; makeFakeClient has no query, and an empty result is what we want
@@ -43,6 +43,11 @@ function docWith(tagset, rawOpts = {}) {
     .flatMap((tl) => tl.spanLayers || [])
     .find((sl) => sl.id === 'msl-0');
   morphLayer.config.igt.tagset = 'Leipzig';
+  if (sentence) {
+    raw.textLayers[0].tokenLayers
+      .flatMap((tl) => tl.spanLayers || [])
+      .find((sl) => sl.id === 'ssl-0').config.igt.tagset = 'Leipzig';
+  }
   return new IgtDocument({
     raw,
     project: projectWith(tagset),
@@ -55,8 +60,8 @@ function docWith(tagset, rawOpts = {}) {
 let host;
 let editor;
 
-const mount = (tagset = LEIPZIG, rawOpts = {}) => {
-  const doc = docWith(tagset, rawOpts);
+const mount = (tagset = LEIPZIG, rawOpts = {}, opts = {}) => {
+  const doc = docWith(tagset, rawOpts, opts);
   host = document.createElement('div');
   document.body.appendChild(host);
   editor = new IgtEditor(host, doc, {});
@@ -232,7 +237,8 @@ describe('an off-tagset value that was never typed', () => {
   });
 });
 
-describe('Ctrl+Enter on a word holding an off-list machine value', () => {
+// One refusal for both accepts: a word's Ctrl+Enter and a sentence field's.
+describe('Ctrl+Enter over an off-list machine value', () => {
   const MACHINE = { prov: 'inferred', provSource: 'service:x' };
   const ctrlEnter = (el) =>
     el.dispatchEvent(
@@ -243,38 +249,69 @@ describe('Ctrl+Enter on a word holding an off-list machine value', () => {
         cancelable: true,
       }),
     );
+  const TWO_SENTENCES = {
+    sentences: [
+      { id: 's-1', begin: 0, end: 3 },
+      { id: 's-2', begin: 4, end: 7 },
+    ],
+  };
+  const translation = (sid) => host.querySelector(`textarea[data-cell-key^="sa:${sid}:"]`);
 
-  it('accepts nothing, names the value, and stays on the word', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-      const doc = mount();
-      const morphId = glossCell().dataset.cellKey.split(':')[1];
-      await doc.updateMorphemeSpan(morphId, 'Gloss', '1SG.ABL', MACHINE);
-      await flush();
-      const confirm = vi.spyOn(doc, 'confirmWordAnalysis');
+  // Each gesture: where the value is put, which cell Ctrl+Enter is pressed
+  // in, which cell must hold the caret after, and the accept it must not send.
+  const gestures = {
+    word: {
+      put: (doc, value) =>
+        doc.updateMorphemeSpan(glossCell().dataset.cellKey.split(':')[1], 'Gloss', value, MACHINE),
       // From the word's other cell: the refused one takes the caret.
-      const pos = host.querySelector('input[data-cell-key^="wa:"]');
-      focus(pos);
-      notifyError.mockClear();
-      ctrlEnter(pos);
-      await vi.advanceTimersByTimeAsync(2000);
-      expect(confirm).not.toHaveBeenCalled();
-      expect(notifyError).toHaveBeenCalledTimes(1);
-      expect(notifyError.mock.calls[0][0]).toContain('"ABL"');
-      expect(document.activeElement).toBe(glossCell());
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+      from: () => host.querySelector('input[data-cell-key^="wa:"]'),
+      refused: () => glossCell(),
+      accept: 'confirmWordAnalysis',
+      title: 'Nothing accepted on this word',
+    },
+    sentence: {
+      put: (doc, value) => doc.updateSentenceSpan('s-1', 'Translation', value, MACHINE),
+      from: () => translation('s-1'),
+      refused: () => translation('s-1'),
+      accept: 'confirmSentenceSpan',
+      title: 'Nothing accepted in Translation',
+    },
+  };
 
-  it('accepts a word whose machine values the list holds', async () => {
-    const doc = mount();
-    const morphId = glossCell().dataset.cellKey.split(':')[1];
-    await doc.updateMorphemeSpan(morphId, 'Gloss', '1SG.PL', MACHINE);
+  it.each(Object.keys(gestures))(
+    '%s: accepts nothing, names the value, and stays',
+    async (name) => {
+      const g = gestures[name];
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const doc = mount(LEIPZIG, TWO_SENTENCES, { sentence: true });
+        await g.put(doc, '1SG.ABL');
+        await flush();
+        const confirm = vi.spyOn(doc, g.accept);
+        const from = g.from();
+        focus(from);
+        notifyError.mockClear();
+        ctrlEnter(from);
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(confirm).not.toHaveBeenCalled();
+        expect(notifyError).toHaveBeenCalledTimes(1);
+        expect(notifyError.mock.calls[0][0]).toContain('"ABL"');
+        expect(notifyError.mock.calls[0][1]).toBe(g.title);
+        expect(document.activeElement).toBe(g.refused());
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it.each(Object.keys(gestures))('%s: accepts a value the list holds', async (name) => {
+    const g = gestures[name];
+    const doc = mount(LEIPZIG, TWO_SENTENCES, { sentence: true });
+    await g.put(doc, '1SG.PL');
     await flush();
-    const confirm = vi.spyOn(doc, 'confirmWordAnalysis');
-    focus(glossCell());
-    ctrlEnter(glossCell());
+    const confirm = vi.spyOn(doc, g.accept);
+    focus(g.from());
+    ctrlEnter(g.from());
     expect(confirm).toHaveBeenCalledTimes(1);
   });
 });

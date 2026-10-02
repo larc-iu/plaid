@@ -684,6 +684,7 @@ export const cells = {
         if (!this._navMove(el, 'next')) el.blur();
         return;
       }
+      if (this._refuseOffList([el], `Nothing accepted in ${field}`, el)) return;
       this.doc.confirmSentenceSpan(sid, field);
       // Same beat as the word gesture, and for a stronger reason: the hop is
       // to the NEXT SENTENCE, so without it the pulse plays on a row already

@@ -105,15 +105,10 @@ export const review = {
     }
     // A value a closed list refuses would sink the whole accept (it is one
     // write), so say which cell holds it and stay there instead of moving on.
-    const refused = this._wordRefusedCell(wordId);
-    if (refused) {
-      notifyError(
-        this._violationText(validateValue(refused.value, refused.igtTagset), refused.igtTagset),
-        'Nothing accepted on this word',
-      );
-      if (refused !== e.target) refused.focus();
+    if (
+      this._refuseOffList(this._wordReviewCells(wordId), 'Nothing accepted on this word', e.target)
+    )
       return true;
-    }
     // Each guess taken is recorded once the write lands, and only a guess the
     // accept writes: one it skips is no answer. Asked before the accept, which
     // changes what the word holds.
@@ -174,19 +169,29 @@ export const review = {
     return out;
   },
 
-  // The first cell of this word's column that the accept would confirm and
-  // whose value its closed tagset refuses, or null. Read off the rendered
-  // cells, as the review stops are, with the tagset each cell reads its value
-  // by (a morpheme gloss's reading included).
-  _wordRefusedCell(wordId) {
+  // The cells of this word's column that the accept would confirm.
+  _wordReviewCells(wordId) {
     const col = this.container.querySelector(`[data-word-col="${wordId}"]`);
-    if (!col) return null;
-    for (const el of col.querySelectorAll(this._reviewColSelector())) {
-      if (!el.classList.contains('igt-field')) continue;
-      const tagset = el.igtTagset ?? null;
-      if (tagsetEnforces(tagset) && validateValue(el.value, tagset).length) return el;
-    }
-    return null;
+    return col ? [...col.querySelectorAll(this._reviewColSelector())] : [];
+  },
+
+  // Before an accept (a word's Ctrl+Enter or a sentence field's): the first
+  // of `cells` whose value its enforcing tagset refuses, read with the tagset
+  // each cell reads its value by (a morpheme gloss's reading included). The
+  // server would refuse the whole accept, so it is refused here: the toast
+  // names the value, that cell takes the caret, nothing is sent and nothing
+  // moves on. True when refused.
+  _refuseOffList(cells, title, from) {
+    const el = cells.find(
+      (c) =>
+        c.classList.contains('igt-field') &&
+        tagsetEnforces(c.igtTagset ?? null) &&
+        validateValue(c.value, c.igtTagset).length > 0,
+    );
+    if (!el) return false;
+    notifyError(this._violationText(validateValue(el.value, el.igtTagset), el.igtTagset), title);
+    if (el !== from) el.focus();
+    return true;
   },
 
   // The selector for material this writer reviews in a word column — the
