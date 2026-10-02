@@ -3,9 +3,6 @@ import {
   isReviewed,
   mergeMetadata,
   metadataOps,
-  PLAID_NAMESPACE,
-  PRESERVE_ON_SPLIT_KEY,
-  PROVENANCE_KEYS,
   writerPolicy,
 } from '@larc-iu/plaid-client';
 import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
@@ -19,11 +16,7 @@ import { statusOf } from '@ui/lib/errors.js';
 import { expectStored, isConfigConflict, sameConfig } from '@ui/domain/configCells.js';
 import { ensureLayerConstraints } from '@ui/lib/layerConstraints.js';
 import { rulesNotInForce, wantedConstraints } from './igtConstraints.js';
-import {
-  planMorphTypeSync,
-  describeReconcile as describeIgtReconcile,
-  planPreserveOnSplit,
-} from './igtReconcile.js';
+import { planMorphTypeSync, describeReconcile as describeIgtReconcile } from './igtReconcile.js';
 import { validateIgtDocument } from './validate.js';
 import { deriveDocumentData, deriveSentences, deriveAlignmentTokens } from './derive.js';
 
@@ -530,44 +523,6 @@ export class IgtDocument extends DocumentModel {
     return describeIgtReconcile(result);
   }
 
-  // Declared on the layer so a split in ANY app preserves it, including one
-  // that has never heard of these keys. Maintainers only, since it is layer
-  // config; a failure is not worth interrupting anyone over, because nothing
-  // is worse than it was. The write adds only the missing keys to what the
-  // layer declared, and names that declaration as `expected`, so a key
-  // another app declared after this page loaded is not written over: that
-  // write is refused and the next open plans again.
-  async _backfillPreserveOnSplit(info) {
-    if (!canManageProject(this._project, this._user)) return;
-    const ids = planPreserveOnSplit(info, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, PROVENANCE_KEYS);
-    const layers = [
-      info?.sentenceTokenLayer,
-      info?.primaryTokenLayer,
-      info?.morphemeTokenLayer,
-      info?.alignmentTokenLayer,
-    ];
-    for (const id of ids) {
-      const layer = layers.find((l) => l?.id === id);
-      const options = expectStored(layer, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY);
-      const declared = Array.isArray(options.expected) ? options.expected : [];
-      const value = [...declared, ...PROVENANCE_KEYS.filter((k) => !declared.includes(k))];
-      try {
-        await this._client.tokenLayers.setConfig(
-          id,
-          PLAID_NAMESPACE,
-          PRESERVE_ON_SPLIT_KEY,
-          value,
-          undefined,
-          options,
-        );
-      } catch (err) {
-        if (isConfigConflict(err)) continue;
-        console.error('Could not declare preserveOnSplit on a layer:', err);
-        return;
-      }
-    }
-  }
-
   async _reconcile() {
     const ZERO = {
       rulesDeclared: false,
@@ -583,11 +538,6 @@ export class IgtDocument extends DocumentModel {
     let landed = false;
     try {
       let info = this.layerInfo;
-      // Back-fill, the reconcile contract's second step: a project made before
-      // `preserveOnSplit` existed picks it up the next time a maintainer opens
-      // a document. It has to be in place BEFORE a split, since provenance lost
-      // that way leaves nothing for a later pass to find.
-      await this._backfillPreserveOnSplit(info);
       const rules = await ensureLayerConstraints(
         this._client,
         wantedConstraints(info, this._project?.config),

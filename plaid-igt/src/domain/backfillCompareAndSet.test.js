@@ -106,26 +106,3 @@ describe("a field's language on open", () => {
     expect(server.store.vocab['voc-1'].igt.fields).toEqual(loadedFields);
   });
 });
-
-describe('the preserveOnSplit declaration', () => {
-  it('keeps the keys a layer already declared and names them as expected', async () => {
-    const { doc, info, server } = setup();
-    const layer = info.primaryTokenLayer;
-    layer.config = { ...(layer.config || {}), plaid: { preserveOnSplit: ['otherAppKey'] } };
-    server.store.token[layer.id] = { plaid: { preserveOnSplit: ['otherAppKey'] } };
-    await doc._backfillPreserveOnSplit(info);
-    const w = server.sent.find((s) => s.kind === 'token' && s.id === layer.id);
-    expect(w.options).toEqual({ expected: ['otherAppKey'] });
-    const stored = server.store.token[layer.id].plaid.preserveOnSplit;
-    expect(stored[0]).toBe('otherAppKey');
-    expect(stored.length).toBeGreaterThan(1);
-  });
-
-  it('does not write over a declaration made after the page loaded', async () => {
-    const { doc, info, server } = setup();
-    const layer = info.primaryTokenLayer;
-    server.store.token[layer.id] = { plaid: { preserveOnSplit: ['later'] } };
-    await doc._backfillPreserveOnSplit(info);
-    expect(server.store.token[layer.id].plaid.preserveOnSplit).toEqual(['later']);
-  });
-});
