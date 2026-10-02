@@ -170,25 +170,25 @@ def test_word_state_votes_by_provenance():
                              'precedence': 1, 'metadata': {}}]
     assert word_state(w0) == word_state(w1) == 'unanalyzed'
     targets, skipped = select_targets(words_of(doc))
-    assert [idxs for _, idxs in targets] == [[0, 1]] and skipped == {'protected': 0}
+    assert [idxs for _, idxs in targets] == [[0, 1]] and skipped == {'protected': 0, 'precedent': 0}
 
 
 def test_select_targets_applies_the_write_contract():
     s = words_of(raw_doc())
     targets, skipped = select_targets(s, overwrite=False)
     assert [(sent['id'], idxs) for sent, idxs in targets] == [('s1', [0])]
-    assert skipped == {'protected': 1}
+    assert skipped == {'protected': 1, 'precedent': 0}
     assert s[0]['words'][1]['state'] == 'protected'
     targets, skipped = select_targets(s, overwrite=True)
     assert [idxs for _, idxs in targets] == [[0, 1]]
-    assert skipped == {'protected': 0}
+    assert skipped == {'protected': 0, 'precedent': 0}
 
 
 def test_chunk_plans_respects_the_op_budget():
     s = words_of(raw_doc())
     w = s[0]['words'][0]
-    plan = {'word': w, 'analysis': analysis_for('ev', ParsedWord('house(ev)'))}  # 2 ops
-    assert chunk_plans([plan] * 5, budget=4) == [[plan, plan], [plan, plan], [plan]]
+    plan = {'word': w, 'analysis': analysis_for('ev', ParsedWord('house(ev)'))}  # 3 ops
+    assert chunk_plans([plan] * 5, budget=6) == [[plan, plan], [plan, plan], [plan]]
     assert chunk_plans([plan], budget=1) == [[plan]]  # never an empty chunk
 
 
@@ -362,9 +362,11 @@ def test_write_analyses_says_where_it_is_between_batches():
     assert seen and seen[0][0] == 0 and seen[-1] == (seen[-1][1], seen[-1][1])
     assert all(0 <= done <= total for done, total in seen)
     assert client.direct == []  # every write went on the batch
-    # Batch 1 creates the morphemes, batch 2 glosses the ones it made.
-    assert ('tokens', 'create') in client.batches[0].queued
-    assert client.batches[1].queued == [('spans', 'create')] * 5
+    # One batch makes the morphemes and their glosses together.
+    assert len(client.batches) == 1
+    assert client.batches[0].queued.count(('tokens', 'delete')) == 5
+    assert client.batches[0].queued.count(('tokens', 'create')) == 10
+    assert client.batches[0].queued.count(('spans', 'create')) == 10
 
 
 def _plan(word_id):
@@ -423,6 +425,126 @@ def test_write_analyses_makes_the_first_morpheme_of_a_word_nobody_segmented():
     assert creates[0][2] == ('morph-layer', 't1', 0, 3)
     assert creates[0][3]['precedence'] == 1 and creates[0][3]['metadata']['form'] == 'ab'
     assert creates[0][3]['metadata']['morphType'] == 'stem'
-    [gloss] = [c for c in first if c[:2] == ('spans', 'create')]
-    assert gloss[2][:3] == ('gloss-layer', [made], 'A')
+    glosses = [c for c in first if c[:2] == ('spans', 'create')]
+    assert [g[2][:3] for g in glosses] == [('gloss-layer', [made], 'A'),
+                                           ('gloss-layer', [creates[1][3]['id']], 'C')]
+    assert not [c for c in first if c[:2] == ('tokens', 'delete')]  # nothing stored to delete
     assert all('virtual:' not in repr(c) for b in client.batches for c in b.log)
+
+
+# --- re-analysis replaces the whole analysis (H26-SERVICES-1, -2, -3) -------------------
+
+PRECEDENT = {'prov': 'inferred', 'provSource': 'rule:analysis-precedent'}
+
+
+class _RecBatch:
+    def __init__(self, log):
+        self.log = log
+        self.results = []
+        self.tokens = _RecResource(log, 'tokens')
+        self.spans = _RecResource(log, 'spans')
+
+
+class _RecResource:
+    def __init__(self, log, name):
+        self._log, self._name = log, name
+
+    def __getattr__(self, method):
+        return lambda *a, **k: self._log.append((self._name, method, a, k))
+
+
+class _RecClient:
+    def __init__(self):
+        self.batches = []
+
+    @contextlib.contextmanager
+    def batched(self):
+        b = _RecBatch([])
+        self.batches.append(b)
+        yield b
+        b.results = [{'body': {'id': f'new-{i}'}} for i in range(len(b.log))]
+
+
+def _analyzed_word(m0_meta, m1_meta, gloss_meta, link_meta, pos_meta):
+    """`dogs` analyzed as dog-s: its first morpheme linked to an entry and
+    carrying a POS value beside its gloss."""
+    m0 = {'id': 'm0', 'metadata': {'form': 'dog', **m0_meta}}
+    m1 = {'id': 'm1', 'metadata': {'form': 's', **m1_meta}}
+    return _word('dogs', [m0, m1],
+                 morph_spans={'m0': [('glossL', {'id': 'g0', 'metadata': gloss_meta}),
+                                     ('posL', {'id': 'p0', 'metadata': pos_meta})],
+                              'm1': [('glossL', {'id': 'g1', 'metadata': gloss_meta})]},
+                 morph_links={'m0': [{'id': 'l0', 'metadata': link_meta}]})
+
+
+def test_a_word_copied_from_precedent_is_left_to_its_precedent():
+    """Auto-analyze copies precedent first so the model only sees what
+    precedent cannot answer. The copy is machine-made, so the model step read
+    it as fair game and replaced the project's own analysis with its guess,
+    and the toast counted the word twice."""
+    w = _analyzed_word(PRECEDENT, PRECEDENT, PRECEDENT, PRECEDENT, PRECEDENT)
+    assert word_state(w) == 'precedent'
+    # a later auto-link adds its own machine link: still the precedent's word
+    w['morph_links']['m1'] = [{'id': 'l1', 'metadata': {'prov': 'inferred',
+                                                        'provSource': 'rule:precedent-or-unique'}}]
+    assert word_state(w) == 'precedent'
+    s = [{'id': 's1', 'words': [w, _word('bark', [virtual_morpheme({'id': 'w2', 'begin': 5, 'end': 9})])]}]
+    targets, skipped = select_targets(s, overwrite=False)
+    assert [idxs for _, idxs in targets] == [[1]]
+    assert skipped == {'protected': 0, 'precedent': 1}
+    # Overwrite replaces it like everything else
+    targets, skipped = select_targets(s, overwrite=True)
+    assert [idxs for _, idxs in targets] == [[0, 1]]
+    # a person's edit of one piece makes it a person's word
+    w['morph_spans']['m0'][0] = ('glossL', {'id': 'g0', 'metadata': {}})
+    assert word_state(w) == 'protected'
+    # and a model's own analysis stays the model's to redo
+    assert word_state(_analyzed_word(MACHINE, MACHINE, MACHINE, MACHINE, MACHINE)) == 'machine'
+
+
+def _rewrite(word, reply):
+    from plaid_client.workflows.igt import ParsedWord as _P
+    word = {**word, 'text_id': 't1', 'token': {'id': 'w1', 'begin': 0, 'end': 4}}
+    client = _RecClient()
+    write_analyses(client, [{'word': word, 'analysis': analysis_for('dogs', _P(reply))}],
+                   'glossL', 'morphL', 'service:x', {})
+    return client
+
+
+def _deleted(client):
+    return {c[2][0] for b in client.batches for c in b.log if c[:2] == ('tokens', 'delete')}
+
+
+def test_a_rewrite_discards_the_old_first_morpheme_with_its_link_and_fields():
+    """The first morpheme was patched in place: its form became the model's,
+    and its lexicon link and its other fields (a POS, a note) stayed, naming
+    an entry of the old form and describing a different morpheme. A rewrite
+    now deletes every old morpheme, which takes their spans and links with
+    them, and makes every slot afresh."""
+    for word in (_analyzed_word(MACHINE, MACHINE, MACHINE, MACHINE, MACHINE),  # a re-run
+                 _analyzed_word({}, {}, {}, {}, {})):  # Overwrite over a person's work
+        client = _rewrite(word, 'dogs(dogs)')
+        assert _deleted(client) == {'m0', 'm1'}
+        log = [c for b in client.batches for c in b.log]
+        assert not [c for c in log if c[1] == 'patch_metadata']
+        [made] = [c for c in log if c[:2] == ('tokens', 'create')]
+        assert made[3]['id'] not in ('m0', 'm1')
+        assert made[3]['metadata']['form'] == 'dogs'
+        [gloss] = [c for c in log if c[:2] == ('spans', 'create')]
+        assert gloss[2][1] == [made[3]['id']]
+
+
+def test_overwrite_leaves_nothing_verified_on_what_it_rewrites():
+    """Overwrite over a confirmed analysis kept provConfirmed on the first
+    morpheme while giving it the model's form, so the model's segment read as
+    verified, and a later machine run treated the word as protected."""
+    word = _analyzed_word(VERIFIED, VERIFIED, VERIFIED, VERIFIED, VERIFIED)
+    client = _rewrite(word, 'dog(dog)-PL(s)')
+    log = [c for b in client.batches for c in b.log]
+    made = [c[3]['metadata'] for c in log if c[:2] == ('tokens', 'create')]
+    glosses = [c[2][3] for c in log if c[:2] == ('spans', 'create')]
+    assert len(made) == 2 and len(glosses) == 2
+    for meta in made + glosses:
+        assert 'provConfirmed' not in meta and meta['prov'] == 'inferred'
+    # Every gloss goes in the batch that makes its morpheme.
+    assert len(client.batches) == 1

@@ -159,8 +159,14 @@ def derive(doc, word_layer_id, morpheme_layer_id, sentence_layer_id, *,
 
 # --- the write contract, per word ----------------------------------------------
 
+#: The producer of an analysis copied from the project's precedent (plaid-igt
+#: analysisMemory.js ANALYSIS_COPY_SOURCE): a person's analysis of the same
+#: form elsewhere in the project.
+ANALYSIS_COPY_SOURCE = 'rule:analysis-precedent'
+
+
 def word_state(w):
-    """'unanalyzed' | 'machine' | 'protected'.
+    """'unanalyzed' | 'machine' | 'precedent' | 'protected'.
 
     Only what a write replaces votes: every non-default morpheme and every
     span and link on a morpheme, each with its provenance state. Word-scope
@@ -168,40 +174,48 @@ def word_state(w):
     left as they are by :func:`write_analyses`, so they protect nothing. A
     word is 'machine' only when every vote is machine-unverified,
     'protected' as soon as one piece is human-made, contributed or
-    verified."""
+    verified. An all-machine word with any piece copied from precedent
+    (:data:`ANALYSIS_COPY_SOURCE`) is 'precedent': Auto-analyze copies
+    precedent before it asks a model, so the model only sees what precedent
+    cannot answer, and a model run leaves such a word alone unless told to
+    overwrite."""
     ms = w['morphs']
     votes = []
+    copied = False
     for m in ms:
         meta = m.get('metadata') or {}
         form = meta.get('form')
         nondefault = (len(ms) > 1 or meta.get('morphType') is not None
                       or (form not in (None, '') and form != w['surface']))
-        if nondefault:
-            votes.append(prov_state(meta))
-        for _, sp in w['morph_spans'].get(m['id'], []):
-            votes.append(prov_state(sp.get('metadata')))
-        for link in w['morph_links'].get(m['id'], []):
-            votes.append(prov_state(link.get('metadata')))
+        pieces = ([meta] if nondefault else []) \
+            + [sp.get('metadata') for _, sp in w['morph_spans'].get(m['id'], [])] \
+            + [link.get('metadata') for link in w['morph_links'].get(m['id'], [])]
+        for piece in pieces:
+            votes.append(prov_state(piece))
+            copied = copied or (piece or {}).get('provSource') == ANALYSIS_COPY_SOURCE
     if not votes:
         return 'unanalyzed'
-    return 'machine' if all(v == MACHINE for v in votes) else 'protected'
+    if not all(v == MACHINE for v in votes):
+        return 'protected'
+    return 'precedent' if copied else 'machine'
 
 
 def select_targets(sentences, overwrite=False):
     """Which words may be written: unanalyzed and entirely machine-unverified
-    ones always, protected ones only with ``overwrite``. Stamps each word's
-    ``state`` and returns ``(targets, skipped)`` where targets is
-    ``[(sentence, [word indices])]`` over sentences with at least one target
-    and skipped counts ``{'protected'}``."""
-    skipped = {'protected': 0}
+    ones always, protected ones and ones copied from precedent only with
+    ``overwrite``. Stamps each word's ``state`` and returns ``(targets,
+    skipped)`` where targets is ``[(sentence, [word indices])]`` over
+    sentences with at least one target and skipped counts ``{'protected',
+    'precedent'}``."""
+    skipped = {'protected': 0, 'precedent': 0}
     targets = []
     for s in sentences:
         idxs = []
         for i, w in enumerate(s['words']):
             st = word_state(w)
             w['state'] = st
-            if st == 'protected' and not overwrite:
-                skipped['protected'] += 1
+            if st in skipped and not overwrite:
+                skipped[st] += 1
             else:
                 idxs.append(i)
         if idxs:

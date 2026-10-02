@@ -79,8 +79,9 @@ which are required, so it glosses with your abbreviations.
 - **Examples**: how many analyzed sentences to show the model per sentence.
 - **Overwrite human-edited annotations**: by default the service only writes
   words that have no analysis yet or whose analysis is entirely machine-made
-  and unverified. Enable this to replace human-made or human-verified
-  analyses too (their morphemes, morpheme glosses, and links are discarded).
+  and unverified, other than one copied from a previous analysis. Enable this
+  to replace copied, human-made and human-verified analyses too (their
+  morphemes, every morpheme field, and links are discarded).
 
 Everything it writes is stamped machine-made and shows as unverified until a
 person confirms it (edit, ✓, or Ctrl+Enter on the word).
@@ -385,7 +386,7 @@ class LLMAnalyzeService(BaseService):
                 Param.number('examples', 'Examples per sentence', default=DEFAULT_EXAMPLES,
                              description='How many of the most similar analyzed sentences to show the model.'),
                 Param.boolean('overwrite', 'Overwrite human-edited annotations', default=False,
-                              description='Also replace analyses a human made or verified.'),
+                              description='Also replace copied analyses and ones a person made or verified.'),
             ],
         )
         self.model: Optional[ChatModel] = None

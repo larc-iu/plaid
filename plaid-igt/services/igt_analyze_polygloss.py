@@ -20,7 +20,9 @@ exposes no probabilities, so no `provProb` / `valueProbs` are written.
 
 Write contract (the provenance convention):
   * unanalyzed words are always written;
-  * words whose analysis is entirely machine-made and unverified are REPLACED;
+  * words whose analysis is entirely machine-made and unverified are REPLACED,
+    except one copied from precedent (Auto-analyze's copy step), which is
+    skipped unless the `overwrite` parameter is set;
   * words with any human-made or human-verified piece of morpheme analysis
     (a segmentation, or a span or link on a morpheme) are skipped unless the
     `overwrite` parameter is set. Word-scope fields such as a word gloss are
@@ -78,8 +80,9 @@ from ~2,000 languages; results are best for languages it has seen.
 - **Gloss field**: the morpheme-scope field that receives the glosses.
 - **Overwrite human-edited annotations**: by default the service only writes
   words that have no analysis yet or whose analysis is entirely machine-made
-  and unverified. Enable this to replace human-made or human-verified analyses
-  too (their morphemes, morpheme glosses, and links are discarded).
+  and unverified, other than one copied from a previous analysis. Enable this
+  to replace copied, human-made and human-verified analyses too (their
+  morphemes, every morpheme field, and links are discarded).
 
 Everything it writes is stamped machine-made and shows as unverified until a
 person confirms it (edit, ✓, or Ctrl+Enter on the word).
@@ -175,7 +178,7 @@ class PolyGlossService(BaseService):
                 Param.field('translation_field', 'Translation field', 'Sentence', default='Translation',
                             description='The sentence-scope field holding the free translation.'),
                 Param.boolean('overwrite', 'Overwrite human-edited annotations', default=False,
-                              description='Also replace analyses a human made or verified.'),
+                              description='Also replace copied analyses and ones a person made or verified.'),
             ],
         )
         self.model: Optional[PolyGlossModel] = None

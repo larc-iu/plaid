@@ -130,7 +130,7 @@ def test_an_analysis_lands_stamped_machine_made_and_never_confirmed():
     assert result['status'] == 'success'
     assert result['sentences'] == 1 and result['sentences_sent'] == 1
     assert result['words_written'] == 2 and result['words_replaced'] == 0
-    assert result['skipped'] == {'protected': 0, 'unaligned': 0}
+    assert result['skipped'] == {'protected': 0, 'precedent': 0, 'unaligned': 0}
     assert result['sentences_failed'] == []
     assert result['translation_field_missing'] is None
     assert 'stopped' not in result
@@ -140,25 +140,24 @@ def test_an_analysis_lands_stamped_machine_made_and_never_confirmed():
     assert 'Text in Turkish: ev geliyor' in prompt
     assert 'Translation in English: the house is coming' in prompt
 
-    # Each word's first morpheme is patched in place and further slots created.
-    patched = {payload[0]: apply_metadata_ops({}, payload[1])
-               for kind, payload in service.client.calls if kind == 'tokens.patch_metadata'}
-    assert set(patched) == {'m1', 'm2'}
-    assert patched['m1']['form'] == 'ev' and patched['m2']['form'] == 'gel'
-    for meta in patched.values():
+    # Each word's stored morphemes go, and every slot is made afresh.
+    deleted = [payload for kind, payload in service.client.calls if kind == 'tokens.delete']
+    assert deleted == ['m1', 'm2']
+    assert not [c for kind, c in service.client.calls if kind == 'tokens.patch_metadata']
+    created = [c for kind, c in service.client.calls if kind == 'tokens.create']
+    assert [c['args'][0] for c in created] == ['morphL'] * 3
+    assert [(c['args'][2], c['args'][3]) for c in created] == [(0, 2), (3, 10), (3, 10)]
+    made = [c['kwargs']['metadata'] for c in created]
+    assert [m['form'] for m in made] == ['ev', 'gel', 'iyor']
+    for meta in made:
         assert meta['prov'] == 'inferred' and meta['provSource'] == SOURCE
         assert 'provConfirmed' not in meta
         assert 'provProb' not in meta          # PolyGloss exposes no probabilities
         assert meta['provDetail']['model'] == 'polygloss-test'
         assert meta['provDetail']['version'] == service_version(polygloss.__file__)
         assert meta['provDetail']['language'] == 'Turkish'
-    assert patched['m1']['provDetail']['form'] == 'ev'
-    assert patched['m2']['provDetail']['boundaries'] == '-'
-
-    created = [c['args'] for kind, c in service.client.calls if kind == 'tokens.create']
-    assert [args[0] for args in created] == ['morphL']
-    [(_, _, begin, end)] = [args for args in created]
-    assert (begin, end) == (3, 10)             # the new slot covers its word
+    assert made[0]['provDetail']['form'] == 'ev'
+    assert made[1]['provDetail']['boundaries'] == '-'
 
     # …and every morpheme gets its gloss, stamped with what was predicted.
     glosses = [(call['args'][1], call['args'][2], call['args'][3])
@@ -185,7 +184,7 @@ def test_a_freshly_tokenized_document_is_analyzed():
     assert helper.errors == []
     [result] = helper.results
     assert result['status'] == 'success' and result['words_written'] == 2
-    assert result['skipped'] == {'protected': 0, 'unaligned': 0}
+    assert result['skipped'] == {'protected': 0, 'precedent': 0, 'unaligned': 0}
     assert not [c for kind, c in service.client.calls if kind == 'tokens.patch_metadata']
     created = [c for kind, c in service.client.calls if kind == 'tokens.create']
     assert [(c['args'][2], c['args'][3]) for c in created] == [(0, 2), (3, 10), (3, 10)]
@@ -220,9 +219,8 @@ def test_a_word_a_person_analyzed_is_left_alone_and_counted():
     [result] = helper.results
     assert result['skipped']['protected'] == 1
     assert result['words_written'] == 1
-    patched = [payload[0] for kind, payload in service.client.calls
-               if kind == 'tokens.patch_metadata']
-    assert patched == ['m1']
+    deleted = [payload for kind, payload in service.client.calls if kind == 'tokens.delete']
+    assert deleted == ['m1']
     assert 'g-m2' not in [payload for kind, payload in service.client.calls
                           if kind == 'spans.delete']
 
@@ -235,9 +233,9 @@ def test_a_words_machine_analysis_is_replaced_and_counted():
     [result] = helper.results
     assert result['skipped']['protected'] == 0
     assert result['words_written'] == 2 and result['words_replaced'] == 1
-    # The gloss it replaces is deleted first, so nothing is doubled up.
-    assert 'g-m2' in [payload for kind, payload in service.client.calls
-                      if kind == 'spans.delete']
+    # The morpheme it replaces is deleted with its gloss, so nothing is doubled up.
+    assert 'm2' in [payload for kind, payload in service.client.calls
+                    if kind == 'tokens.delete']
 
 
 def test_a_document_with_nothing_left_to_do_says_so_without_taking_the_lock():
@@ -342,10 +340,10 @@ def test_a_missing_parameter_is_reported_once_and_nothing_is_read():
 
 
 def test_a_failure_reaches_the_requester_once_without_an_internal_url():
-    service = _service(fails={'tokens.patch_metadata': PlaidAPIError(
-        'HTTP 409 Version conflict at http://plaid.internal:8085/api/v1/tokens/m1/metadata',
-        status=409, url='http://plaid.internal:8085/api/v1/tokens/m1/metadata',
-        method='PATCH')})
+    service = _service(fails={'tokens.delete': PlaidAPIError(
+        'HTTP 409 Version conflict at http://plaid.internal:8085/api/v1/tokens/m1',
+        status=409, url='http://plaid.internal:8085/api/v1/tokens/m1',
+        method='DELETE')})
     helper = servicetest.run(service, REQUEST)
 
     assert helper.errors == ['PolyGloss: HTTP 409 Version conflict']
