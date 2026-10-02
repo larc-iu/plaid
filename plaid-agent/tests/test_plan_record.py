@@ -310,6 +310,8 @@ def test_an_applied_plan_keeps_what_was_dropped_when_it_was_applied(spec, monkey
 
 def test_a_contributors_approval_is_recorded_on_the_item(spec, monkeypatch):
     client = spec['client']()
+    # The project reviews this approver's work: the service reads it there.
+    client.project.setdefault('config', {})['plaid'] = {'review': {'users': ['u@x']}}
     plan = _staged(spec, client, monkeypatch)
     svc = spec['service']()
     from plaid_agent.core.agent import ModelConfig
@@ -318,6 +320,6 @@ def test_a_contributors_approval_is_recorded_on_the_item(spec, monkeypatch):
     svc.service_id = f'{spec["app"]}:assist:fake'
     svc.process_request({'requester_client': client, 'requester_id': 'u@x', 'project_id': spec['pid'],
                          'conversation_id': 'c1',
-                         'approve': {'plan_id': plan['id'], 'contributed_by': 'u@x'}}, Helper(request_id='r9'))
+                         'approve': {'plan_id': plan['id']}}, Helper(request_id='r9'))
     item = _stored(spec, client)
     assert item['status'] == 'applied' and item['contributed'] is True and item['as_human'] is False

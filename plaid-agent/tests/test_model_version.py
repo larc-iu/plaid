@@ -233,13 +233,36 @@ def test_a_contributors_approval_keeps_the_proposal_as_a_guess():
     # what proposed it is kept beside it.
     from fixtures import FakeClient
     client = FakeClient()
+    client.project['config']['plaid'] = {'review': {'users': ['u@x']}}
     _seed_plan(client)
     svc = _service()
-    svc.process_request(_request(client, approve={'plan_id': PLAN1, 'contributed_by': 'u@x'}),
-                        Helper(request_id='r9'))
+    svc.process_request(_request(client, approve={'plan_id': PLAN1}), Helper(request_id='r9'))
     [(_, _, _, stamp)] = [c['args'] for c in client.payloads('spans.create')]
     assert stamp['prov'] == 'contributed' and stamp['provSource'] == 'user:u@x'
     assert stamp['provDetail'] == {'model': 'fake/model', 'guess': 'service:igt:assist:fake'}
+
+
+def test_whose_work_is_reviewed_is_read_from_the_project_at_approval():
+    """The page told the service whether the approver is a contributor, from
+    the project as it was when the page loaded, so a review change made since
+    was not honored (H11-MULTI-2). The service reads ``plaid.review`` itself
+    and ignores what the page says."""
+    from fixtures import FakeClient
+    client = FakeClient()
+    _seed_plan(client)
+    # The page still believes the approver is reviewed; the project no longer does.
+    _service().process_request(_request(client, approve={'plan_id': PLAN1, 'contributed_by': 'u@x'}),
+                               Helper(request_id='r9'))
+    [(_, _, _, stamp)] = [c['args'] for c in client.payloads('spans.create')]
+    assert stamp['prov'] == 'inferred' and stamp['provConfirmed'] is True
+    # Reviewed by role, which the page did not know about.
+    client2 = FakeClient()
+    client2.project['config']['plaid'] = {'review': {'roles': ['writer']}}
+    client2.project['writers'] = ['u@x']
+    _seed_plan(client2)
+    _service().process_request(_request(client2, approve={'plan_id': PLAN1}), Helper(request_id='r9'))
+    [(_, _, _, stamp)] = [c['args'] for c in client2.payloads('spans.create')]
+    assert stamp['prov'] == 'contributed' and stamp['provSource'] == 'user:u@x'
 
 
 def test_a_plan_recorded_as_human_made_names_no_model():

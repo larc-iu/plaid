@@ -28,11 +28,12 @@ Request data:
                      An app answers `place` for the kinds of screen it docks the
                      assistant beside, with what to call one and what the model
                      should be told about it.
-    approve          instead of a turn: {plan_id, as_human, contributed_by} for a plan
-                     in the conversation the user approved (as_human: record the writes
-                     as human-made instead of verified machine-made. Contributed_by: the
-                     approver's user id when they are a contributor, whose approval records
-                     the writes as their own unreviewed work). The plan's ops and the
+    approve          instead of a turn: {plan_id, as_human} for a plan in the
+                     conversation the user approved (as_human: record the writes as
+                     human-made instead of verified machine-made). When the project
+                     reviews the approver's work (its plaid.review lists, read at
+                     approval), the writes are recorded as their own unreviewed work.
+                     A contributed_by the page sends is not read. The plan's ops and the
                      document versions it was made against come from the record. A plan
                      whose documents changed since is refused.
 
@@ -63,6 +64,7 @@ from urllib.parse import urlsplit
 
 from plaid_client import BaseService, DocumentLockLost, TASKS, service_source
 from plaid_client.http import PlaidAPIError
+from plaid_client.provenance import is_reviewed
 from plaid_client.service import requester_message
 from plaid_client.workflows.llm import add_timeout_argument, provider_secrets
 
@@ -639,6 +641,20 @@ class BaseAssistantService(BaseService):
         return (model_failure_line(e, self.cfg.timeout)
                 or f'The assistant could not answer: {requester_message(e, secrets=self.REQUEST_SECRETS)}')
 
+    @staticmethod
+    def _reviewed(client, project_id: str, user_id: str) -> bool:
+        """Whether the approver's work is reviewed in the project (its
+        ``plaid.review`` lists, by name or by role), read from the server. An
+        administrator with no role of their own counts as a maintainer, as
+        everywhere else; a token that may not read the user says nothing about
+        that, so they then count by their listed role alone."""
+        project = client.projects.get(project_id)
+        try:
+            is_admin = bool((client.users.get(user_id) or {}).get('is_admin'))
+        except Exception:  # noqa: BLE001 - a delegated token may not read users
+            is_admin = False
+        return is_reviewed(project, user_id, is_admin=is_admin)
+
     def _apply(self, client, project, store, conv_id, conv, meta, approve: dict, request_id, response_helper) -> None:
         model = self.cfg.model
         plan_id = approve.get('plan_id')
@@ -693,7 +709,16 @@ class BaseAssistantService(BaseService):
             settled()
             response_helper.error('Nothing to apply')
             return
-        contributor = approve.get('contributed_by') or None
+        # Whose work is reviewed is the project's setting as it is NOW, read
+        # here rather than taken from the page: a page loaded before a
+        # maintainer changed it would stamp the plan by the old setting.
+        try:
+            contributor = store.user_id if self._reviewed(client, store.project_id, store.user_id) else None
+        except Exception as e:  # noqa: BLE001 - the reason goes to the requester as one line
+            settled()
+            response_helper.error(f'Nothing was written. The project\'s review settings could not be '
+                                  f'read: {" ".join(str(e).split())[:200]}')
+            return
         as_human = bool(approve.get('as_human'))
         stamp_mode = 'contributed' if contributor else 'human' if as_human else 'verified'
         documents = plan.get('documents') or []
