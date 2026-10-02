@@ -1705,8 +1705,8 @@ A GET ignores it.
 === What the clients do
 
 Both clients send a key on every write that is not a signal (`outOfBand`) or a call a batch cannot carry (`noBatch`: an upload, private user data, or a call that mints a secret).
-A queued write has none of its own: its batch request has one, and a batch the client splits past 1,000 operations sends one key per part.
 Redeeming and looking up an invite (`redeemInvite`, `lookupInvite`, `redeem_invite`, `lookup_invite`) are made before there is a client, carry no key and are never batched.
+A queued write has none of its own: its batch request has one, and a batch the client splits past 1,000 operations sends one key per part.
 When a keyed write gets no answer (no response at all, 502 or 504), the client sends it again under the same key, up to three times after about 1, 3 and 9 seconds, unless the browser says it is offline.
 The error that finally escapes carries the key (`idempotencyKey`, `idempotency_key`), so a caller that sends the write again under it later is answered from the first send if it landed.
 
@@ -2325,11 +2325,11 @@ If the proxy must run on another hostname than the API, list the app's origin un
 Every night at `[backup] time` (03:00 by default) Plaid writes a consistent, compacted snapshot of the database to `data/backups/plaid-backup-<timestamp>.zip` and keeps the most recent `retention` of them.
 That protects against a bad edit, not against a lost machine: copy the newest zip somewhere else on a schedule, and copy `data/media/` with it, since recordings are files on disk and not in the database.
 
-For a backup right now while the server runs, use SQLite's own copy rather than `cp` (the database is in WAL mode, and a plain copy misses recent writes):
 An admin can take one outside the schedule with `POST /api/v1/admin/backup` (the admin pages' Back up now, `client.admin.backup()` in both clients).
 It answers once the zip is written, which takes minutes on a large database, with the backup block of `GET /api/v1/admin/server`.
 One backup is written at a time: while one runs, the nightly one or one asked for by hand, another is refused with 409 (`"A backup is already being written. It is listed here when it is done."`), and the backup block names its start under `running`.
 
+For a backup right now while the server runs, use SQLite's own copy rather than `cp` (the database is in WAL mode, and a plain copy misses recent writes):
 
 [source,console]
 ----
