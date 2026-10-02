@@ -34,7 +34,6 @@ function recordingClient() {
       },
       delete: async () => {},
     },
-    texts: { create: async () => ({ id: 'text-1' }) },
     batched: async (fn) => {
       const queued = [];
       const queue = (kind, ops) => {
@@ -42,6 +41,7 @@ function recordingClient() {
         calls[kind].push(ops);
       };
       const batch = {
+        texts: { create: () => queued.push({ kind: 'texts', ops: [] }) },
         tokens: { bulkCreate: (ops) => queue('tokens', ops) },
         spans: { bulkCreate: (ops) => queue('spans', ops) },
         relations: {
@@ -153,21 +153,8 @@ for (const [what, input, options] of ALL_CASES) {
     for (const ops of client.calls.spans) {
       for (const op of ops) if (op.spanLayerId === info.lemmaLayer.id) lemmaIds.push(op);
     }
-    const mintedLemma = new Map();
-    {
-      // The fake mints ids per batch call, in op order, from one counter.
-      let next = 0;
-      const minted = [];
-      for (const ops of client.calls.tokens) for (const _ of ops) minted.push(`tokens-${next++}`);
-      const spanMinted = [];
-      for (const ops of client.calls.spans) {
-        for (const op of ops) spanMinted.push([`spans-${next++}`, op]);
-      }
-      let k = 0;
-      for (const [id, op] of spanMinted) {
-        if (op.spanLayerId === info.lemmaLayer.id) mintedLemma.set(id, k++);
-      }
-    }
+    // Each lemma span is made under the id the importer minted for it.
+    const mintedLemma = new Map(lemmaIds.map((op, k) => [op.id, k]));
     const place = (id) => (mintedLemma.has(id) ? mintedLemma.get(id) : `unknown:${id}`);
     const mirrorLemmaPlace = new Map((info.lemmaLayer?.spans || []).map((s, i) => [s.id, i]));
     assert.deepEqual(

@@ -1150,9 +1150,7 @@ export class ConlluDocument extends DocumentModel {
   }
 
   // Manually create a word (e.g. from a text selection) plus its 1:1
-  // morpheme and a default lemma. Word + morpheme go in one atomic batch
-  // (the morpheme nests in the just-created word); the lemma span follows
-  // since it needs the morpheme id.
+  // morpheme and a default lemma, in one atomic batch.
   async createWord(begin, end, textContent) {
     const info = this.layerInfo;
     const { textLayer, sentenceTokenLayer, wordTokenLayer, morphemeTokenLayer, lemmaLayer } = info;

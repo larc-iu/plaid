@@ -1,4 +1,4 @@
-import { cpSlicer, createdIds } from '@larc-iu/plaid-client';
+import { cpSlicer, uuidv7 } from '@larc-iu/plaid-client';
 // By its real path rather than through `@ui`, for the same reason
 // ConlluDocument.js gives: the `node --test` suite has no alias.
 import { normalizeFeature } from '../utils/feats.js';
@@ -193,8 +193,10 @@ export async function importConlluDocument(
       );
     }
 
-    const textResponse = await client.texts.create(textLayer.id, createdDocumentId, hierarchy.text);
-    const textId = textResponse.id;
+    // The text and every token, span and relation are made in ONE batch below,
+    // each under an id minted here, so a span names its morpheme and a
+    // relation its lemma spans by those ids.
+    const textId = uuidv7();
 
     // Sentences carry arbitrary `# k = v` metadata; words carry the MWT
     // surface form on `metadata.form` ONLY when the FORM column was
@@ -235,6 +237,7 @@ export async function importConlluDocument(
         const wordSubstring = sliceText(w.begin, w.end);
         w.morphemes.forEach((m) => {
           morphemeOps.push({
+            id: uuidv7(),
             tokenLayerId: morphemeTokenLayer.id,
             text: textId,
             begin: m.begin,
@@ -246,31 +249,9 @@ export async function importConlluDocument(
       });
     });
 
-    // Token batch: sentences -> words -> morphemes, atomic. `morphemeResultIndex`
-    // must live outside the batched() callback so it's readable after it returns.
-    let morphemeResultIndex = -1;
-    const tokenResults = await client.batched(async (b) => {
-      b.tokens.bulkCreate(sentenceOps);
-      if (wordOps.length > 0) b.tokens.bulkCreate(wordOps);
-      if (morphemeOps.length > 0) {
-        b.tokens.bulkCreate(morphemeOps);
-        morphemeResultIndex = wordOps.length > 0 ? 2 : 1;
-      }
-    });
-    const morphemeIds =
-      morphemeResultIndex >= 0 ? createdIds(tokenResults[morphemeResultIndex]) : [];
-    // Every annotation is addressed by its morpheme's position in this list,
-    // so a short one would attach some and drop the rest while the import
-    // still reported success. Fail instead: the catch below rolls the
-    // document back.
-    if (morphemeIds.length !== morphemeOps.length) {
-      throw new Error(
-        `Failed to import: the server returned ${morphemeIds.length} morpheme ids for ` +
-          `${morphemeOps.length} morphemes, so the annotations could not be attached.`,
-      );
-    }
+    const morphemeIds = morphemeOps.map((op) => op.id);
 
-    // Annotation spans on morphemes. Bundle all five into ONE atomic batch.
+    // Annotation spans on morphemes.
     const lemmaSpanIds = parsedData.sentences.map((s) => s.tokens.map(() => null));
     const formOps = [];
     const lemmaOps = [];
@@ -290,6 +271,7 @@ export async function importConlluDocument(
       }
       if (lemmaLayer && (row.lemma || needsLemma[meta.sentIdx]?.has(row.id))) {
         lemmaOps.push({
+          id: uuidv7(),
           spanLayerId: lemmaLayer.id,
           tokens: [morphemeId],
           value: row.lemma || null,
@@ -320,49 +302,14 @@ export async function importConlluDocument(
       }
     });
 
-    const spanOpsInOrder = [];
-    // batched() submits an empty batch as a no-op ([]), so the old
-    // "submit only if something was queued" guard is unnecessary.
-    const spanResults = await client.batched(async (b) => {
-      if (formOps.length) {
-        b.spans.bulkCreate(formOps);
-        spanOpsInOrder.push('form');
-      }
-      if (lemmaOps.length) {
-        b.spans.bulkCreate(lemmaOps);
-        spanOpsInOrder.push('lemma');
-      }
-      if (uposOps.length) {
-        b.spans.bulkCreate(uposOps);
-        spanOpsInOrder.push('upos');
-      }
-      if (xposOps.length) {
-        b.spans.bulkCreate(xposOps);
-        spanOpsInOrder.push('xpos');
-      }
-      if (featOps.length) {
-        b.spans.bulkCreate(featOps);
-        spanOpsInOrder.push('feat');
-      }
+    lemmaMeta.forEach((lm, k) => {
+      lemmaSpanIds[lm.sentIdx][lm.rowIndex] = lemmaOps[k].id;
     });
-    const lemmaResultIdx = spanOpsInOrder.indexOf('lemma');
-    if (lemmaResultIdx >= 0) {
-      const ids = createdIds(spanResults[lemmaResultIdx]);
-      if (ids.length !== lemmaOps.length) {
-        throw new Error(
-          `Failed to import: the server returned ${ids.length} Lemma span ids for ` +
-            `${lemmaOps.length} lemmas, so the dependency relations could not be attached.`,
-        );
-      }
-      lemmaMeta.forEach((lm, k) => {
-        lemmaSpanIds[lm.sentIdx][lm.rowIndex] = ids[k];
-      });
-    }
 
-    // Dependency relations — a separate follow-up batch since they
-    // reference lemma span ids produced above.
+    // Dependency relations, hung on the lemma spans by their minted ids.
+    const relationOps = [];
+    const enhancedOps = [];
     if (relationLayer) {
-      const relationOps = [];
       parsedData.sentences.forEach((sentence, sentIdx) => {
         const ids = lemmaSpanIds[sentIdx];
         sentence.tokens.forEach((token, tokIdx) => {
@@ -392,7 +339,6 @@ export async function importConlluDocument(
       // from but in a bulk create of their own: the server takes one layer's
       // relations to a call. A suppressor lies over its row's own basic
       // relation, so it is written only where that relation was.
-      const enhancedOps = [];
       let headlessDeps = 0;
       if (enhancedRelationLayer) {
         const basicPairs = new Set(relationOps.map((op) => `${op.source} ${op.target}`));
@@ -435,13 +381,23 @@ export async function importConlluDocument(
             'the head is not a row of the sentence.',
         );
       }
-      if (relationOps.length > 0 || enhancedOps.length > 0) {
-        await client.batched(async (b) => {
-          if (relationOps.length > 0) b.relations.bulkCreate(relationOps);
-          if (enhancedOps.length > 0) b.relations.bulkCreate(enhancedOps);
-        });
-      }
     }
+
+    // Everything in one atomic batch: the text, sentences -> words ->
+    // morphemes, the annotation spans, then the relations.
+    await client.batched(async (b) => {
+      b.texts.create(textLayer.id, createdDocumentId, hierarchy.text, undefined, undefined, {
+        id: textId,
+      });
+      b.tokens.bulkCreate(sentenceOps);
+      if (wordOps.length > 0) b.tokens.bulkCreate(wordOps);
+      if (morphemeOps.length > 0) b.tokens.bulkCreate(morphemeOps);
+      for (const ops of [formOps, lemmaOps, uposOps, xposOps, featOps]) {
+        if (ops.length) b.spans.bulkCreate(ops);
+      }
+      if (relationOps.length > 0) b.relations.bulkCreate(relationOps);
+      if (enhancedOps.length > 0) b.relations.bulkCreate(enhancedOps);
+    });
 
     return { documentId: createdDocumentId, importWarnings };
   } catch (err) {

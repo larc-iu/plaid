@@ -179,7 +179,7 @@ test('apply: the operation is a bulk edit naming the Grew rewrite', async () => 
   ]);
 });
 
-test('apply: lemma spans first, then token deletes and relations in one batch, under the lock', async () => {
+test('apply: the lemma spans, the token deletes and the relations go in one batch', async () => {
   const { client, project, layerInfo } = setup();
   // "loudly" has no lemma and no place in the tree, so it has no Lemma span
   // for a relation to hang on; give it the advmod and drop "the".
@@ -191,17 +191,15 @@ test('apply: lemma spans first, then token deletes and relations in one batch, u
     ['the: word deleted', 'saw → loudly: advmod added', 'loudly: lemma loudly added'],
   );
   await applyRewrite(client, { rows: plan.rows, docs: plan.docs, label: 'Rewrite' });
-  assert.deepEqual(client.batches, [['spans.create'], ['tokens.delete', 'relations.create']]);
-  assert.deepEqual(client.locks, [
-    ['lock', 'doc1-id'],
-    ['unlock', 'doc1-id'],
-  ]);
+  assert.deepEqual(client.batches, [['spans.create', 'tokens.delete', 'relations.create']]);
+  assert.deepEqual(client.locks, []);
   const lemmaCreate = client.calls[0];
   assert.equal(lemmaCreate.args[2], 'loudly');
   const relCreate = client.calls[2];
-  // The TARGET is the word that needed the span, so it is the id the batch
-  // handed back for the create above.
-  assert.equal(relCreate.args[2], 'spans.create-0');
+  // The TARGET is the word that needed the span, named by the id minted for
+  // the create above.
+  assert.ok(lemmaCreate.args[5].id);
+  assert.equal(relCreate.args[2], lemmaCreate.args[5].id);
   assert.equal(relCreate.args[3], 'advmod');
   // The surface token of a one-word token is what gets deleted.
   const theWord = plan.rows[0].nodes.get([...plan.rows[0].nodes.keys()][1]); // [0] is the anchor
@@ -358,7 +356,7 @@ test('apply: a document with no lemma to create is one batch, with no lock', asy
   assert.deepEqual(client.locks, []);
 });
 
-test('apply: a refused change batch writes nothing of it and takes the lemma spans back', async () => {
+test('apply: a refused batch writes nothing, the lemma spans included', async () => {
   const { client, project, layerInfo } = setup();
   const plan = await planRewrite(client, {
     project,
@@ -371,26 +369,9 @@ test('apply: a refused change batch writes nothing of it and takes the lemma spa
   assert.equal(out.docsChanged, 0);
   assert.equal(out.failed.status, 500);
   assert.equal(out.failed.partial, false);
-  // The lemma span created for "loudly" is deleted again, and no token went.
-  assert.deepEqual(client.batches, [['spans.create'], ['spans.delete']]);
-  assert.equal(client.calls[1].args[0], 'spans.create-0');
-  assert.deepEqual(client.locks, [
-    ['lock', 'doc1-id'],
-    ['unlock', 'doc1-id'],
-  ]);
-});
-
-test('apply: a document whose lemma spans cannot be taken back is reported partly changed', async () => {
-  const { client, project, layerInfo } = setup();
-  const plan = await planRewrite(client, {
-    project,
-    user: null,
-    layerInfo,
-    grs: parseGrs(LEMMA_AND_DELETE),
-  });
-  client.refuse = (ops) => ops.includes('tokens.delete') || ops.includes('spans.delete');
-  const out = await applyRewrite(client, { rows: plan.rows, docs: plan.docs, label: 'Rewrite' });
-  assert.equal(out.failed.partial, true);
+  // The one batch, lemma span and all, was refused whole.
+  assert.deepEqual(client.batches, []);
+  assert.deepEqual(client.locks, []);
 });
 
 test('applySummary: the reason ends in one full stop, and a first-document refusal names no count', () => {

@@ -10,7 +10,7 @@
 // sentence matches after every application, and a rule whose pattern the
 // query language cannot express visits every document instead.
 
-import { metadataOps, createdId, MAX_BATCH_OPS } from '@larc-iu/plaid-client';
+import { metadataOps, uuidv7, MAX_BATCH_OPS } from '@larc-iu/plaid-client';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { compileGrew } from '../compile.js';
 import { GrewRuntimeError, GrewUnsupportedError } from '../errors.js';
@@ -289,17 +289,14 @@ export function applySummary(out, reason) {
   return parts.join(' ');
 }
 
-// A document's writes go as ONE batch whenever they can: the words deleted
-// first, then every span and relation write, in one transaction, so a refusal
-// leaves the document as it was. Two cases cannot be one transaction. A
-// relation that needs a lemma span created for it names that span's id, which
-// only the server hands out, so the lemma spans go first in a batch of their
-// own. And a batch past MAX_BATCH_OPS is sent as consecutive requests. Either
-// way the document lock is held across the requests so no one else writes in
-// between, and when the second batch is refused whole, the lemma spans the
-// first created are deleted again. A refusal that leaves writes behind is
-// thrown with `partial` set, and a request whose answer never came (status 0)
-// with `unsure`, since it may have landed.
+// A document's writes go as ONE batch: the lemma spans a new relation needs,
+// each made under an id minted here so the relation can name it, then the
+// words deleted, then every span and relation write, in one transaction, so a
+// refusal leaves the document as it was. A batch past MAX_BATCH_OPS cannot be
+// one transaction and is sent as consecutive requests, with the document lock
+// held across them so no one else writes in between. A refusal that may leave
+// writes behind is thrown with `partial` set, and a request whose answer never
+// came (status 0) with `unsure`, since it may have landed.
 async function applyToDocument(client, docId, doc, rows) {
   const writer = doc.writer;
   const createStamp = writer.createStamp || undefined;
@@ -312,15 +309,21 @@ async function applyToDocument(client, docId, doc, rows) {
   const lemmas = rows.flatMap((r) => r.writes.lemmaCreates);
   const main = rows.flatMap((r) => r.writes.main);
 
+  for (const w of lemmas) lemmaOf.set(w.node, uuidv7());
   const queueChanges = (b) => {
+    lemmas.forEach((w) =>
+      b.spans.create(w.layer, w.tokens, w.value, createStamp, undefined, {
+        id: lemmaOf.get(w.node),
+      }),
+    );
     // Deleted words first (their spans and relations cascade server-side).
     tokens.forEach((w) => b.tokens.delete(w.id));
     queueMain(b, main, writer, createStamp, lemmaOf);
   };
 
   // An update may carry a stamp beside it, so a main write is at most two ops.
-  const changeOps = tokens.length + 2 * main.length;
-  if (!lemmas.length && changeOps <= MAX_BATCH_OPS) {
+  const changeOps = lemmas.length + tokens.length + 2 * main.length;
+  if (changeOps <= MAX_BATCH_OPS) {
     try {
       await client.batched(queueChanges);
     } catch (e) {
@@ -330,39 +333,12 @@ async function applyToDocument(client, docId, doc, rows) {
     return;
   }
 
+  // Past MAX_BATCH_OPS the requests before a refused one landed.
   await client.documents.locked(docId, async () => {
-    let created = [];
-    if (lemmas.length) {
-      let results;
-      try {
-        results = await client.batched(async (b) => {
-          lemmas.forEach((w) => b.spans.create(w.layer, w.tokens, w.value, createStamp));
-        });
-      } catch (e) {
-        // Past MAX_BATCH_OPS the requests before the refused one landed.
-        if (lemmas.length > MAX_BATCH_OPS) e.partial = true;
-        else if (e?.status === 0) e.unsure = true;
-        throw e;
-      }
-      created = lemmas.map((w, i) => createdId(results[i]));
-      lemmas.forEach((w, i) => lemmaOf.set(w.node, created[i]));
-    }
     try {
       await client.batched(queueChanges);
     } catch (e) {
-      // Past MAX_BATCH_OPS some of the requests may have landed, and the
-      // lemma spans cannot be taken back from under them.
-      let partial = changeOps > MAX_BATCH_OPS;
-      if (!partial && created.length) {
-        try {
-          await client.batched(async (b) => {
-            created.forEach((id) => b.spans.delete(id));
-          });
-        } catch {
-          partial = true;
-        }
-      }
-      if (partial) e.partial = true;
+      e.partial = true;
       throw e;
     }
   });
