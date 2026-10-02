@@ -208,25 +208,33 @@ def test_overwrite_lets_the_reset_through():
     assert any(c[0] == 'bulk_delete' for c in client.calls)
 
 
-def test_the_invariants_are_checked_against_the_document_the_writes_left(capsys):
-    # The sentence check used to be handed the document as it was BEFORE the
-    # batch, so it reported on the partition the run had just replaced.
-    before = _document('')
-    after = _document('hello there', sentences=[(0, 8), (4, 11)],
-                      align=[(0, 11, 0.0, 1.5)])
-    # Read once for the version once the lock is held, once by the run.
-    client = _FakeClient([before, before, after])
+def test_the_run_never_reads_the_document_back():
+    # Core refuses an incomplete or overlapping partition on its own, inside
+    # the write, so a read-back to look for one only cost a read
+    # (R1-DEBT-CORE-10).
+    client = _FakeClient([_document('')])
     _run(client)
-    printed = capsys.readouterr().out
-    assert 'Sentence partitioning invariant violated' in printed
-    # And it reads only the two layers it checks, not a transcribed recording's
-    # whole body.
-    assert client.reads[-1]['layers'] == [ALIGN_LAYER, SENTENCE_LAYER]
+    # Once for the version once the lock is held, once by the run.
+    assert len(client.reads) == 2
 
 
-def test_a_partition_the_run_left_whole_says_nothing(capsys):
-    before = _document('')
-    after = _document('hello there', sentences=[(0, 11)], align=[(0, 11, 0.0, 1.5)])
-    client = _FakeClient([before, before, after])
-    _run(client)
-    assert 'invariant violated' not in capsys.readouterr().out
+def test_a_segment_that_cannot_be_put_in_time_order_is_refused_before_the_write():
+    # The document's segments are out of order in the text (the one at 5 s
+    # comes first), so a segment at 3 s has no place that keeps time order.
+    # The run refuses before writing, where it wrote and printed a warning.
+    client = _FakeClient([_document('aaaaa bbbbb', sentences=[(0, 11)],
+                                    align=[(0, 5, 5.0, 6.0), (6, 11, 1.0, 2.0)])])
+    with pytest.raises(ValueError) as caught:
+        AlignmentProcessor().process_alignments(
+            client, 'd1', [Alignment(text='new', start=3.0, end=4.0)],
+            TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, _Helper(), prov_source='service:asr:test')
+    assert 'time order' in str(caught.value)
+    assert [c for c in client.calls if c[0] in ('text_update', 'bulk_create', 'bulk_delete')] == []
+
+
+def test_a_segment_in_time_order_is_written():
+    client = _FakeClient([_document('aaaaa bbbbb', sentences=[(0, 11)],
+                                    align=[(0, 5, 1.0, 2.0), (6, 11, 5.0, 6.0)])])
+    assert AlignmentProcessor().process_alignments(
+        client, 'd1', [Alignment(text='new', start=3.0, end=4.0)],
+        TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, _Helper(), prov_source='service:asr:test') == 1

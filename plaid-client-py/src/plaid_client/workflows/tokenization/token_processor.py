@@ -14,6 +14,7 @@ from plaid_client.provenance import PROV_KEY, PROVENANCE_KEYS, stamp_inferred, i
 from plaid_client.service import (batch_body_budget, check_unchanged, locked_for_writes,
                                   requester_message)
 from plaid_client.workflows.messages import setup_incomplete
+from plaid_client.workflows.partition import partition
 
 from .tokenizer_model import TokenSpan
 
@@ -166,15 +167,7 @@ class TokenProcessor:
             # Sentence layer is :partitioning — must replace via bulk_delete + bulk_create
             # in one batch. Build a complete partition covering [0, text_length) exactly,
             # filling any gaps left by the tokenizer so the server accepts it.
-            sentences_to_create = self._normalize_sentence_partition(
-                [{'begin': s['begin'], 'end': s['end']} for s in new_sentences_dict],
-                text_length
-            )
-            # Pre-check: complete cover of [0, text_length), no gaps/overlaps/zero-widths
-            if not self._is_complete_partition(sentences_to_create, text_length):
-                logger.warning("Sentence tokenization did not produce a valid partition of [0, %d)",
-                               text_length)
-                raise ValueError("Could not split the text into sentences.")
+            sentences_to_create = partition(new_sentences_dict, text_length)
             # The tokenizer found the sentence the document already has. A
             # reset would delete it and every word and morpheme in it, with
             # all their annotations, to make the same sentence again: the
@@ -525,77 +518,6 @@ class TokenProcessor:
         
         return split_tokens
     
-    def _normalize_sentence_partition(self, sentences: List[Dict], text_length: int) -> List[Dict]:
-        """Normalize a list of sentence ranges into a complete partition of [0, text_length).
-
-        Drops zero-width entries, merges overlaps by clamping, and fills gaps (including
-        leading/trailing) so the result tiles [0, text_length) exactly. Required because
-        the sentence layer is :partitioning and the server rejects partitions with gaps,
-        overlaps, or zero-width tokens.
-        """
-        if text_length <= 0:
-            return []
-
-        # Sort and drop zero/negative-width entries; clamp to [0, text_length)
-        cleaned = []
-        for s in sorted(sentences, key=lambda x: (x['begin'], x['end'])):
-            b = max(0, min(s['begin'], text_length))
-            e = max(0, min(s['end'], text_length))
-            if e > b:
-                cleaned.append({'begin': b, 'end': e})
-
-        # Resolve overlaps by clamping each subsequent range to start at the previous end
-        resolved = []
-        cursor = 0
-        for s in cleaned:
-            b = max(s['begin'], cursor)
-            e = max(s['end'], b)
-            if e > b:
-                resolved.append({'begin': b, 'end': e})
-                cursor = e
-
-        if not resolved:
-            return [{'begin': 0, 'end': text_length}]
-
-        # Fill leading gap by EXTENDING the first sentence's begin to 0 (mirror of
-        # the trailing-gap behavior below). Earlier this branch instead inserted a
-        # NEW sentence covering [0, first.begin); the asymmetry made the partition
-        # less predictable and grew the sentence count for no benefit. Extending
-        # the first sentence backward keeps the sentence count minimal.
-        partition = [dict(resolved[0])]
-        if partition[0]['begin'] > 0:
-            partition[0]['begin'] = 0
-
-        # Fill interior gaps by extending preceding sentence's end to next sentence's begin
-        for i in range(1, len(resolved)):
-            s = resolved[i]
-            partition.append(dict(s))
-            if partition[-2]['end'] < s['begin']:
-                # Extend the preceding sentence forward to close the gap.
-                partition[-2]['end'] = s['begin']
-
-        # Fill trailing gap by extending the last sentence
-        if partition[-1]['end'] < text_length:
-            partition[-1]['end'] = text_length
-
-        return partition
-
-    def _is_complete_partition(self, sentences: List[Dict], text_length: int) -> bool:
-        """Check that sentences tile [0, text_length) exactly with no gaps/overlaps/zero-widths."""
-        if text_length <= 0:
-            return len(sentences) == 0
-        if not sentences:
-            return False
-        sorted_s = sorted(sentences, key=lambda x: x['begin'])
-        if sorted_s[0]['begin'] != 0 or sorted_s[-1]['end'] != text_length:
-            return False
-        for i, s in enumerate(sorted_s):
-            if s['end'] <= s['begin']:
-                return False
-            if i + 1 < len(sorted_s) and s['end'] != sorted_s[i + 1]['begin']:
-                return False
-        return True
-
     def _merge_with_existing_tokens(self, new_tokens: List[Dict], existing_tokens: List[Dict]) -> List[Dict]:
         """Merge new tokens with existing ones, preserving existing tokens"""
         if not existing_tokens:

@@ -13,6 +13,7 @@ from typing import List, Dict, Optional
 from plaid_client.provenance import stamp_inferred, is_protected
 from plaid_client.service import locked_for_writes, requester_message
 from plaid_client.workflows.messages import setup_incomplete
+from plaid_client.workflows.partition import partition
 
 from .asr_model import Alignment
 
@@ -300,6 +301,9 @@ class AlignmentProcessor:
                 # Update cumulative offset for next insertion
                 cumulative_offset += len(mod['new_text'])
             
+            self._refuse_out_of_time_order(
+                self._shifted(existing_alignment_tokens, text_modifications), new_alignment_tokens)
+
             # Begin atomic batch operation
             response_helper.progress(88, "Saving…")
             with client.batched() as b:
@@ -356,26 +360,6 @@ class AlignmentProcessor:
                 # `with client.batched()` block exits.
                 response_helper.progress(95, "Saving…")
 
-            # Both invariants are about the document the writes LEFT, so both
-            # read it back. The sentence check used to be handed the document
-            # as it was BEFORE the batch, so it checked the partition the run
-            # had just replaced and could not have seen a partition the run
-            # itself broke. Only the two token layers are read back, not the
-            # whole body: a transcribed recording's body is large and none of
-            # it is being checked.
-            response_helper.progress(98, "Checking segment order…")
-            layers = [layer_id for layer_id in (alignment_token_layer_id, sentence_token_layer_id)
-                      if layer_id]
-            written_document = client.documents.get(document_id, include_body=True, layers=layers)
-            all_updated_tokens = []
-            for tl in written_document["text_layers"]:
-                for token_layer in tl.get("token_layers", []):
-                    if token_layer["id"] == alignment_token_layer_id:
-                        all_updated_tokens = token_layer.get("tokens", [])
-                        break
-            self._validate_temporal_ordering(all_updated_tokens)
-            self._validate_sentence_partitioning(written_document, sentence_token_layer_id)
-        
         return len(new_alignment_tokens)
 
     def _find_text_insertion_position(self, current_text: str, existing_alignment_tokens: List[Dict], target_time: float) -> int:
@@ -415,80 +399,47 @@ class AlignmentProcessor:
         last_token = tokens_by_time[-1]
         return last_token["end"]
     
-    def _validate_temporal_ordering(self, alignment_tokens: List[Dict]):
-        """
-        Validate that alignment tokens maintain temporal ordering invariant
-        
-        Ensures that for any two tokens A and B:
-        if A.timeBegin < B.timeBegin then A.begin < B.begin
-        """
-        if len(alignment_tokens) < 2:
-            return  # Nothing to validate
-        
-        # Sort by time to check against position ordering
-        tokens_by_time = sorted(alignment_tokens, key=lambda t: t.get("metadata", {}).get("timeBegin", 0))
-        
-        # Check that text positions also increase with time
-        for i in range(len(tokens_by_time) - 1):
-            current_token = tokens_by_time[i]
-            next_token = tokens_by_time[i + 1]
-            
-            current_time = current_token.get("metadata", {}).get("timeBegin", 0)
-            next_time = next_token.get("metadata", {}).get("timeBegin", 0)
-            
-            current_pos = current_token.get("begin", 0)
-            next_pos = next_token.get("begin", 0)
-            
-            if current_time < next_time and current_pos >= next_pos:
-                # Temporal ordering violated
-                print(f"WARNING: Temporal ordering invariant violated!")
-                print(f"  Token 1: time={current_time}, pos={current_pos}, text='{current_token.get('text', '')}'")
-                print(f"  Token 2: time={next_time}, pos={next_pos}, text='{next_token.get('text', '')}'")
-                print(f"  Expected: time1 < time2 implies pos1 < pos2, but got pos1 >= pos2")
-    
-    def _validate_sentence_partitioning(self, document: Dict, sentence_token_layer_id: str):
-        """
-        Validate that sentence tokens maintain proper partitioning invariant
-        
-        Ensures that sentences:
-        1. Do not overlap with each other
-        2. Are properly ordered by position
-        """
-        if not sentence_token_layer_id:
-            return  # Skip validation if no sentence layer
-        
-        try:
-            # Find sentence tokens (document already fetched)
-            sentence_tokens = []
-            for tl in document["text_layers"]:
-                for token_layer in tl.get("token_layers", []):
-                    if token_layer["id"] == sentence_token_layer_id:
-                        sentence_tokens = token_layer.get("tokens", [])
-                        break
-            
-            if len(sentence_tokens) < 2:
-                return  # Nothing to validate
-            
-            # Sort by position
-            sorted_sentences = sorted(sentence_tokens, key=lambda s: s.get("begin", 0))
-            
-            # Check for overlaps and proper ordering
-            for i in range(len(sorted_sentences) - 1):
-                current = sorted_sentences[i]
-                next_sentence = sorted_sentences[i + 1]
-                
-                current_end = current.get("end", 0)
-                next_start = next_sentence.get("begin", 0)
-                
-                if current_end > next_start:
-                    print(f"WARNING: Sentence partitioning invariant violated!")
-                    print(f"  Sentence 1: pos={current.get('begin', 0)}-{current_end}")
-                    print(f"  Sentence 2: pos={next_start}-{next_sentence.get('end', 0)}")
-                    print(f"  Sentences overlap by {current_end - next_start} characters")
-            
-        except Exception as e:
-            print(f"Error during sentence validation: {e}")
-    
+    @staticmethod
+    def _shifted(tokens: List[Dict], text_modifications: List[Dict]) -> List[Dict]:
+        """``tokens`` at their places once ``text_modifications`` are inserted
+        (an insert at a token's begin goes before it)."""
+        out = []
+        for token in tokens:
+            begin = token.get("begin", 0)
+            shift = sum(len(mod['new_text']) for mod in text_modifications if mod['position'] <= begin)
+            out.append({**token, "begin": begin + shift, "end": token.get("end", 0) + shift})
+        return out
+
+    @staticmethod
+    def _refuse_out_of_time_order(existing: List[Dict], new: List[Dict]) -> None:
+        """Refuse, before anything is written, a new segment that stands in the
+        text before a segment that begins earlier in time, or after one that
+        begins later. Segments already out of order among themselves are left
+        as a person put them."""
+        def time(t):
+            return (t.get("metadata") or {}).get("timeBegin", 0)
+        tokens = sorted([(time(t), t["begin"], False) for t in existing]
+                        + [(time(t), t["begin"], True) for t in new])
+        # The furthest text position of a segment strictly earlier in time,
+        # and the nearest of one strictly later, for each time.
+        times = sorted({t for t, _, _ in tokens})
+        latest_before, pos_max = {}, -1
+        earliest_after, pos_min = {}, float('inf')
+        by_time = {}
+        for t, pos, _ in tokens:
+            by_time.setdefault(t, []).append(pos)
+        for t in times:
+            latest_before[t] = pos_max
+            pos_max = max(pos_max, max(by_time[t]))
+        for t in reversed(times):
+            earliest_after[t] = pos_min
+            pos_min = min(pos_min, min(by_time[t]))
+        for t, pos, is_new in tokens:
+            if is_new and (latest_before[t] >= pos or earliest_after[t] <= pos):
+                raise ValueError(
+                    f"The segment at {t:g} s cannot be placed in time order: the document's "
+                    f"segments around it are out of order in the text. Nothing was written.")
+
     def _update_sentence_partitioning(self, batch, document: Dict, text_id: str, sentence_token_layer_id: str,
                                      existing_alignment_tokens: List[Dict], new_alignment_tokens: List[Dict],
                                      original_text: str, updated_text: str, text_modifications: List[Dict],
@@ -566,18 +517,8 @@ class AlignmentProcessor:
                 batch.tokens.bulk_delete([s["id"] for s in existing_sentence_tokens if "id" in s])
             return
 
-        # Reindex existing alignment tokens to their post-insertion positions
-        updated_existing_tokens = []
-        for token in existing_alignment_tokens:
-            token_begin = token.get("begin", 0)
-            adjustment = sum(len(mod['new_text']) for mod in text_modifications
-                             if mod['position'] <= token_begin)
-            updated_token = dict(token)
-            updated_token["begin"] = token_begin + adjustment
-            updated_token["end"] = token.get("end", 0) + adjustment
-            updated_existing_tokens.append(updated_token)
-
-        all_alignment_tokens = updated_existing_tokens + list(new_alignment_tokens)
+        all_alignment_tokens = (self._shifted(existing_alignment_tokens, text_modifications)
+                                + list(new_alignment_tokens))
 
         # Build a complete partition of [0, text_length) anchored on the alignment tokens
         new_sentences = self._create_sentences_from_alignment_tokens(
@@ -585,24 +526,8 @@ class AlignmentProcessor:
             full_text=updated_text, text_start=0, text_end=text_length
         )
 
-        new_sentences = self._normalize_partition(new_sentences, text_id, sentence_token_layer_id, text_length)
-
-        if not new_sentences:
-            print("Warning: Could not build a sentence partition; skipping sentence update")
-            return
-
-        if not self._is_complete_partition(new_sentences, text_length):
-            # Fail closed (consistent with token_processor's pre-check). If
-            # _normalize_partition can't produce a valid partition, that is a
-            # bug we want to surface, not paper over with a half-cooked
-            # bulk_create that the server will reject anyway (rolling back the
-            # whole ASR batch — text update included). Raising here aborts
-            # this batch BEFORE submit, so no destructive state changes.
-            # The specifics go to the operator's log, the requester is told
-            # what failed.
-            print(f"Computed sentence partition does not cleanly cover [0, {text_length}); "
-                  f"aborting sentence partition update")
-            raise ValueError("Could not split the text into sentences.")
+        new_sentences = [{"token_layer_id": sentence_token_layer_id, "text": text_id, **r}
+                         for r in partition(new_sentences, text_length)]
 
         # TODO(annotation-preservation): ASR runs incrementally, and this full-reset
         # bulk_delete + bulk_create wipes every sentence-level annotation (spans,
@@ -644,85 +569,6 @@ class AlignmentProcessor:
             batch.tokens.bulk_delete(existing_ids)
         batch.tokens.bulk_create(new_sentences)
 
-    def _normalize_partition(self, sentences: List[Dict], text_id: str, sentence_token_layer_id: str,
-                              text_length: int) -> List[Dict]:
-        """Normalize a list of sentence dicts to a complete partition of [0, text_length).
-
-        Drops zero/negative widths, clamps overlaps by extending the previous end, and
-        fills leading/interior/trailing gaps. The result either tiles [0, text_length)
-        exactly or is empty (when text_length <= 0).
-        """
-        if text_length <= 0:
-            return []
-
-        cleaned = []
-        for s in sorted(sentences, key=lambda x: (x.get('begin', 0), x.get('end', 0))):
-            b = max(0, min(s.get('begin', 0), text_length))
-            e = max(0, min(s.get('end', 0), text_length))
-            if e > b:
-                cleaned.append({
-                    "token_layer_id": sentence_token_layer_id,
-                    "text": text_id,
-                    "begin": b,
-                    "end": e,
-                })
-
-        resolved = []
-        cursor = 0
-        for s in cleaned:
-            b = max(s['begin'], cursor)
-            e = max(s['end'], b)
-            if e > b:
-                resolved.append({
-                    "token_layer_id": sentence_token_layer_id,
-                    "text": text_id,
-                    "begin": b,
-                    "end": e,
-                })
-                cursor = e
-
-        if not resolved:
-            return [{
-                "token_layer_id": sentence_token_layer_id,
-                "text": text_id,
-                "begin": 0,
-                "end": text_length,
-            }]
-
-        # Fill leading gap by EXTENDING the first sentence's begin to 0, mirroring
-        # the trailing-gap behavior below. Keeps the partition symmetric and
-        # minimizes the sentence count.
-        partition = [dict(resolved[0])]
-        if partition[0]['begin'] > 0:
-            partition[0]['begin'] = 0
-
-        for i in range(1, len(resolved)):
-            s = resolved[i]
-            partition.append(dict(s))
-            if partition[-2]['end'] < s['begin']:
-                partition[-2]['end'] = s['begin']
-
-        if partition[-1]['end'] < text_length:
-            partition[-1]['end'] = text_length
-
-        return partition
-
-    def _is_complete_partition(self, sentences: List[Dict], text_length: int) -> bool:
-        """Check that sentences tile [0, text_length) exactly with no gaps/overlaps/zero-widths."""
-        if text_length <= 0:
-            return len(sentences) == 0
-        if not sentences:
-            return False
-        sorted_s = sorted(sentences, key=lambda x: x['begin'])
-        if sorted_s[0]['begin'] != 0 or sorted_s[-1]['end'] != text_length:
-            return False
-        for i, s in enumerate(sorted_s):
-            if s['end'] <= s['begin']:
-                return False
-            if i + 1 < len(sorted_s) and s['end'] != sorted_s[i + 1]['begin']:
-                return False
-        return True
-    
     def _create_sentences_from_alignment_tokens(self, alignment_tokens: List[Dict], text_id: str, 
                                                sentence_token_layer_id: str, full_text: str = "",
                                                text_start: int = 0, text_end: Optional[int] = None) -> List[Dict]:
