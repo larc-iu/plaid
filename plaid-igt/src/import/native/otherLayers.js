@@ -14,7 +14,12 @@
 import { PLAID_NAMESPACE, ROLES, createdIds } from '@larc-iu/plaid-client';
 import { bulkInChunks } from '../../domain/bulk.js';
 import { IGT_NAMESPACE, findBaselineTextLayer, readScope } from '../../domain/igtConfig.js';
-import { otherTokenLayers, ownTokenLayers, parentsFirst } from '../../domain/otherLayers.js';
+import {
+  UNCARRIED_PLAID_KEYS,
+  otherTokenLayers,
+  ownTokenLayers,
+  parentsFirst,
+} from '../../domain/otherLayers.js';
 
 const isMap = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
 
@@ -57,10 +62,11 @@ export const noOtherLayers = () => ({
  * value is left alone, so a resumed import writes only what an interrupted
  * one did not get to.
  */
-async function writeConfig(setConfig, id, current, config, skip = []) {
+async function writeConfig(setConfig, id, current, config, skip = [], skipKeys = {}) {
   for (const [ns, keys] of Object.entries(config || {})) {
     if (skip.includes(ns) || !isMap(keys)) continue;
     for (const [key, value] of Object.entries(keys)) {
+      if (skipKeys[ns]?.includes(key)) continue;
       if (sameValue(current?.[ns]?.[key], value)) continue;
       await setConfig(id, ns, key, value);
     }
@@ -92,14 +98,16 @@ export async function restoreOtherLayers({
   const out = noOtherLayers();
   const described = manifest?.otherLayers || {};
 
-  // Project settings. `igt` is this app's and `plaid` is not archived, so an
-  // archive naming either (edited by hand) does not get to write them here.
+  // Project settings. `igt` is this app's and `plaid.review` is not archived,
+  // so an archive naming either (edited by hand) does not get to write them
+  // here.
   await writeConfig(
     (id, ns, key, value) => client.projects.setConfig(id, ns, key, value),
     projectId,
     project?.config,
     manifest?.otherConfig,
-    [IGT_NAMESPACE, PLAID_NAMESPACE],
+    [IGT_NAMESPACE],
+    { [PLAID_NAMESPACE]: UNCARRIED_PLAID_KEYS.project },
   );
 
   const textLayer = findBaselineTextLayer(project?.textLayers || []);
@@ -146,7 +154,9 @@ export async function restoreOtherLayers({
     const setConfig = isText
       ? (id, ns, key, value) => client.textLayers.setConfig(id, ns, key, value)
       : (id, ns, key, value) => client.tokenLayers.setConfig(id, ns, key, value);
-    await writeConfig(setConfig, layer.id, layer.config, config, [IGT_NAMESPACE, PLAID_NAMESPACE]);
+    await writeConfig(setConfig, layer.id, layer.config, config, [IGT_NAMESPACE], {
+      [PLAID_NAMESPACE]: UNCARRIED_PLAID_KEYS.layer,
+    });
   }
 
   // Span layers on this app's own token layers: a field setup already made,

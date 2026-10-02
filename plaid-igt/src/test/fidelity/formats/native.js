@@ -61,7 +61,7 @@ export default {
       why: 'names users, so it goes with permissions and is not archived',
       ruling: 'docs/native-format.md, Provenance',
     },
-    // Every namespace but igt and plaid, verbatim (otherConfig).
+    // Every namespace but igt, plaid without its review lists (otherConfig).
     'project.foreignConfig': carried,
 
     // Layers

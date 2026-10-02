@@ -8,7 +8,7 @@
 // holds is plain Plaid data (layers, config, tokens, spans, relations), which
 // an archive can carry as it is without asking whose it is.
 
-import { ROLES } from '@larc-iu/plaid-client';
+import { PLAID_NAMESPACE, REVIEW_KEY, ROLE_KEY, ROLES } from '@larc-iu/plaid-client';
 import {
   findAlignmentTokenLayer,
   findMorphemeTokenLayer,
@@ -51,6 +51,24 @@ export const configWithout = (config, drop = []) =>
         Object.keys(keys).length > 0,
     ),
   );
+
+/**
+ * The keys of the shared `plaid` namespace the native archive leaves out, on
+ * the project and on this app's own layers. Whose work is reviewed names
+ * people, so it goes with permissions. A layer's role is what setup finds this
+ * app's layers by, and setup writes it. Everything else under `plaid` (the
+ * tartan, the research opt-in, a word layer's splitOnSpace and
+ * preserveOnSplit) is the project's own and goes with it.
+ */
+export const UNCARRIED_PLAID_KEYS = { project: [REVIEW_KEY], layer: [ROLE_KEY] };
+
+/** `config` without the `plaid` keys in `keys`. */
+export const withoutPlaidKeys = (config, keys) => {
+  const plaid = config?.[PLAID_NAMESPACE];
+  if (plaid == null || typeof plaid !== 'object' || Array.isArray(plaid)) return config || {};
+  const kept = Object.fromEntries(Object.entries(plaid).filter(([k]) => !keys.includes(k)));
+  return { ...config, [PLAID_NAMESPACE]: kept };
+};
 
 /**
  * `layers` reordered so that each comes after the layer it is nested in, which

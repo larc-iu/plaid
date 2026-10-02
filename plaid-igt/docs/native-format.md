@@ -17,7 +17,7 @@ everything other Plaid apps sharing the project keep on the baseline text layer:
 their token, span and relation layers with their config, the tokens, spans and
 relations on them, and their project config (see Other apps' layers). It does
 NOT capture additional text layers or anything on them, users or permissions
-(the project's `plaid` namespace, which lists whose work is reviewed, among
+(the review lists in the project's `plaid` namespace, which name users, among
 them), or document history. Comments ride along as a faithful record (author,
 body, both timestamps), but re-import cannot restore their authorship. See
 Comments.
@@ -82,7 +82,7 @@ the upload's media type is validated from its filename.
 | `layers` | substrate layer ids (`baselineText`, `sentence`, `word`, `morpheme`, `timeAlignment`, `spanLayers: [{id, name, scope}]`) — **informative only**, for debugging and correlation |
 | `layers.names` | what this app's layers are called, by the same keys, `null` for a layer the project lacks. A re-importer renames the layers setup made to these, since a project another app set up first names them its own way |
 | `layers.tokenLayerOrder` | every token layer on the baseline text in the project's order, `{role}` for this app's and `{id}` (an `otherLayers.tokenLayers` id) for another app's. A re-importer shifts the layers into this order once they all exist |
-| `otherConfig` | every project config namespace other than `igt` and `plaid`, verbatim, `{}` when there is none. See Other apps' layers |
+| `otherConfig` | every project config namespace other than `igt`, verbatim, `plaid` without its `review` key, `{}` when there is none. See Other apps' layers |
 | `otherLayers` | `{config, spanLayers, tokenLayers}`: other apps' layers and settings on the baseline text layer. See Other apps' layers |
 | `documents` | manifest: `[{id, name, file, mediaFile}]` (`mediaFile` null when no media was embedded) |
 | `vocabularies` | manifest: `[{id, name, file}]` |
@@ -270,10 +270,14 @@ that owns a layer finds it again by whatever it looks for.
 ```
 
 - `otherConfig` holds every project config namespace other than `igt` (this app's
-  own, carried in `schema`) and `plaid` (whose work is reviewed, which names users).
+  own, carried in `schema`). `plaid` goes without `review` (whose work is
+  reviewed, which names users): `tartan` and `research` are carried.
 - `otherLayers.config` holds what this app's own text and token layers keep under
-  namespaces other than `igt` and `plaid`, keyed by role (`baseline`, `sentence`,
-  `word`, `morpheme`, `time-alignment`). Project setup writes those two itself.
+  namespaces other than `igt`, keyed by role (`baseline`, `sentence`, `word`,
+  `morpheme`, `time-alignment`), `plaid` without `role` (a word layer's
+  `splitOnSpace` and `preserveOnSplit` are carried). Project setup writes `igt`
+  and the roles itself, and the import does not write a `plaid.review` or a
+  `plaid.role` an archive names.
 - `otherLayers.spanLayers` lists the span layers on this app's own token layers
   that are no annotation field (`scope` null), and any field that carries relation
   layers or config in another namespace (`scope` set). `tokenLayer` is the role of

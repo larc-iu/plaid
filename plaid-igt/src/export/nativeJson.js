@@ -36,14 +36,16 @@ import {
   readVocabFields,
   readFieldLang,
 } from '../domain/igtConfig.js';
-import { PLAID_NAMESPACE, ROLES } from '@larc-iu/plaid-client';
+import { ROLES } from '@larc-iu/plaid-client';
 import { readTagsetName } from '../domain/tagsets.js';
 import { normalizeVocabFields } from '../domain/vocabFields.js';
 import {
+  UNCARRIED_PLAID_KEYS,
   configWithout,
   otherTokenLayers,
   ownTokenLayers,
   parentsFirst,
+  withoutPlaidKeys,
 } from '../domain/otherLayers.js';
 import { discoverExportLayers } from './exportLayers.js';
 import { IMPORT_STAMP_KEYS } from '../import/resume.js';
@@ -176,10 +178,12 @@ export function buildProjectFile({
       tokenLayerOrder: tokenLayerOrder(textLayer),
     },
     // What other apps keep in the project, carried without being understood:
-    // their project settings, and their layers with the settings on them.
-    // `plaid` is left out of the settings because it holds whose work is
-    // reviewed, which names users and so goes with permissions.
-    otherConfig: configWithout(project?.config, [IGT_NAMESPACE, PLAID_NAMESPACE]),
+    // their project settings, and their layers with the settings on them. The
+    // shared `plaid` settings go too, but for whose work is reviewed, which
+    // names users and so goes with permissions (UNCARRIED_PLAID_KEYS).
+    otherConfig: configWithout(withoutPlaidKeys(project?.config, UNCARRIED_PLAID_KEYS.project), [
+      IGT_NAMESPACE,
+    ]),
     otherLayers: describeOtherLayers(textLayer),
     documents,
     vocabularies,
@@ -212,7 +216,8 @@ const relationLayerRows = (spanLayer) =>
  * descriptions an importer can make again (see domain/otherLayers.js).
  *
  * - `config`: what this app's own text and token layers hold under namespaces
- *   other than `igt` and `plaid`, by role. Setup writes those two itself.
+ *   other than `igt`, by role, `plaid` without the role (setup writes `igt`
+ *   and the role itself).
  * - `spanLayers`: span layers on this app's token layers that it has no field
  *   for, plus any field that other apps hang relation layers or settings on.
  *   The spans on them are in each document already (a field's in the tree, the
@@ -233,7 +238,9 @@ function describeOtherLayers(textLayer) {
 
   const config = {};
   for (const [role, layer] of [[ROLES.BASELINE, textLayer], ...own]) {
-    const rest = configWithout(layer?.config, [IGT_NAMESPACE, PLAID_NAMESPACE]);
+    const rest = configWithout(withoutPlaidKeys(layer?.config, UNCARRIED_PLAID_KEYS.layer), [
+      IGT_NAMESPACE,
+    ]);
     if (nonEmpty(rest)) config[role] = rest;
   }
 
