@@ -6,9 +6,13 @@
 // NOTE the method key is `builtin:silero`, the composite the service picker
 // uses, not the bare model name. The app writes whatever it is and compares
 // against the same value, so real use round-trips; a hand-written probe has to
-// get it exactly right or the restore correctly refuses.
+// get it exactly right or the restore correctly refuses. The same goes for the
+// recording's print (`media`, mediaFingerprint.js), read here from the bytes
+// the Media tab will play, and for the regions, a flat list of begin and end
+// in turn.
 import { chromium } from '@playwright/test';
 import { makeClient } from '../bugbash/harness.mjs';
+import { mediaFingerprint } from '../../src/domain/media/mediaFingerprint.js';
 
 const PROJECT = '01a043bf-fa13-7aa8-921c-13ff44e74415';
 const DOC = '01a043bf-fcdd-7965-8843-b320a24c10db';
@@ -18,19 +22,15 @@ const before = (await client.documents.get(DOC)).metadata || {};
 const media = await fetch(`http://localhost:8085/api/v1/documents/${DOC}/media`, {
   headers: { Authorization: `Bearer ${client.token}` },
 });
-const bytes = Number(media.headers.get('content-length'));
-console.log('media bytes:', bytes);
+const print = await mediaFingerprint(await media.blob());
+console.log('media print:', print);
 
 await client.documents.setMetadata(DOC, {
   ...before,
   speechDetection: {
-    mediaBytes: bytes,
+    media: print,
     method: 'builtin:silero',
-    regions: [
-      { timeBegin: 1.0, timeEnd: 2.5 },
-      { timeBegin: 4.0, timeEnd: 6.25 },
-      { timeBegin: 8.5, timeEnd: 11.0 },
-    ],
+    regions: [1.0, 2.5, 4.0, 6.25, 8.5, 11.0],
     dismissed: [],
   },
 });

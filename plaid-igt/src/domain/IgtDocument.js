@@ -293,10 +293,14 @@ export class IgtDocument extends DocumentModel {
   // cache so it surfaces in other documents. Never throws and never fails the
   // alignment write that triggered it: the live source of truth is the token
   // metadata, this is only autocomplete sugar. A no-op when the name is blank,
-  // already cached, or the user lacks project-config write access.
+  // already cached, or the user may not write project config (a maintainer's
+  // or an admin's), checked here rather than left to a refused write: a
+  // writer's every row edit was refused 403. A writer's suggestions still hold
+  // every speaker the document's own rows use (`knownSpeakers`).
   async _rememberSpeaker(name) {
     const speaker = (name || '').trim();
     if (!speaker || !this._client || !this._projectId) return;
+    if (!canManageProject(this._project, this._user)) return;
     // Added to the list as stored: a write refused because someone else
     // saved the list since is made again to what they saved.
     const append = async (project) => {

@@ -135,6 +135,8 @@ describe('remembering a speaker', () => {
       project: { id: 'proj-1', vocabs: [], config: { igt: { speakers: ['Ana'] } } },
       client,
       projectId: 'proj-1',
+      // Project config is a maintainer's to write (speakerMemory.test.js).
+      user: { id: 'admin@x.com', isAdmin: true },
     });
     await doc._rememberSpeaker('Cy');
     expect(server.config.igt.speakers).toEqual(['Ana', 'Bea', 'Cy']);
