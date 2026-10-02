@@ -434,7 +434,10 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
  * you already made rejoins it instead of starting another.
  *
  * Errors that leave the request alive carry `pending: true`: a timeout, a
- * stop, a dropped connection. An error without it is the end of the request.
+ * stop, a dropped connection, a proxy's 502 or 504. An error without it is
+ * the end of the request. With `opts.requestId`, a request whose answer went
+ * missing (a dropped connection, a 502 or 504) is rejoined by that id a few
+ * times before the error is given.
  *
  * @param {Object} client - PlaidClient instance
  * @param {string} projectId - Project UUID
@@ -485,7 +488,7 @@ export function requestService(client, projectId, serviceId, data, timeout = 100
   if (opts.requestId) query.set('request-id', opts.requestId);
   if (opts.projectIds?.length) query.set('project-ids', opts.projectIds.join(','));
   const qs = String(query) ? `?${query}` : '';
-  return streamServiceRequest(
+  const submit = () => streamServiceRequest(
     client,
     {
       url: `${client.baseUrl}/api/v1/projects/${projectId}/services/${encodeURIComponent(serviceId)}/requests${qs}`,
@@ -499,6 +502,14 @@ export function requestService(client, projectId, serviceId, data, timeout = 100
     onProgress,
     signal,
     opts.onAccepted,
+  );
+  // A request whose id is known is rejoined when its answer goes missing, so
+  // a run the service took and finished is not reported failed.
+  if (!opts.requestId) return submit();
+  return rejoinLost(
+    submit,
+    () => attachServiceRequest(client, projectId, opts.requestId, timeout, onProgress, signal),
+    signal,
   );
 }
 
@@ -613,6 +624,62 @@ export function cancelServiceRequest(client, projectId, requestId) {
 const stillRunning = (err) => Object.assign(err, { pending: true });
 
 /**
+ * A still-running error whose cause is that the ANSWER went missing: the
+ * request could not be sent or read to its end, or a proxy answered for the
+ * server (502, 504). Not a timeout or a stop, which are the caller's own
+ * choice to stop waiting. A submit whose answer was lost rejoins its request
+ * (`rejoinLost`).
+ */
+const lostAnswer = (err) => Object.assign(stillRunning(err), { lostAnswer: true });
+
+/** How long to wait before each attempt to rejoin a request whose answer was lost. */
+const REJOIN_DELAYS_MS = [1000, 3000, 9000];
+
+const delay = (ms, signal) =>
+  new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+
+/**
+ * `submit()` again, by attaching to the request `requestId` names, while its
+ * answer is the one that went missing. The request was taken, or never
+ * reached the server: attaching follows a taken one to its end, and a 404
+ * says the server never had it, so the first error stands. Each attempt
+ * whose answer goes missing too waits a little longer before the next.
+ */
+async function rejoinLost(submit, attach, signal) {
+  let first;
+  try {
+    return await submit();
+  } catch (err) {
+    if (!err?.lostAnswer) throw err;
+    first = err;
+  }
+  let last = first;
+  for (const ms of REJOIN_DELAYS_MS) {
+    await delay(ms, signal);
+    if (signal?.aborted) throw last;
+    try {
+      return await attach();
+    } catch (err) {
+      if (err?.status === 404) throw first;
+      if (!err?.lostAnswer) throw err;
+      last = err;
+    }
+  }
+  throw last;
+}
+
+/**
  * Open a request stream (submit or attach) and read it to its terminal
  * event: `accepted` names the request, `progress` events go to `onProgress`,
  * and `result` / `error` settle the promise.
@@ -679,7 +746,7 @@ function streamServiceRequest(client, { url, method, body, onStatus, what }, tim
       } catch (error) {
         // The POST may or may not have reached the server. Treat it as alive:
         // rejoining a request that was never made simply 404s.
-        if (error.name !== 'AbortError') finish(reject, stillRunning(new Error(`${what} could not be sent: ${error.message}`)));
+        if (error.name !== 'AbortError') finish(reject, lostAnswer(new Error(`${what} could not be sent: ${error.message}`)));
         return;
       }
 
@@ -691,7 +758,9 @@ function streamServiceRequest(client, { url, method, body, onStatus, what }, tim
       if (!response.ok) {
         const err = new Error(`${what} failed: HTTP ${response.status} ${response.statusText}`);
         err.status = response.status;
-        finish(reject, err);
+        // A proxy's 502 or 504 is no answer from the server: the request may
+        // have been taken, and the service may be running it.
+        finish(reject, response.status === 502 || response.status === 504 ? lostAnswer(err) : err);
         return;
       }
 
@@ -733,9 +802,9 @@ function streamServiceRequest(client, { url, method, body, onStatus, what }, tim
             }
           }
         }
-        finish(reject, stillRunning(new Error('Service closed the connection without a result')));
+        finish(reject, lostAnswer(new Error('Service closed the connection without a result')));
       } catch (error) {
-        if (error.name !== 'AbortError') finish(reject, stillRunning(new Error(`${what} stream error: ${error.message}`)));
+        if (error.name !== 'AbortError') finish(reject, lostAnswer(new Error(`${what} stream error: ${error.message}`)));
       }
     })();
   });

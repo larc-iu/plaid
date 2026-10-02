@@ -662,8 +662,8 @@ def request_service(client, project_id, service_id, data, timeout=10.0, on_progr
     response (no broadcast). ``timeout`` is in seconds and measures SILENCE:
     how long the service may say nothing. Every event it sends starts the clock
     again, so this does not cap a long run. Raises ``RuntimeError`` if no
-    service is currently connected (503), if the service reports an error, or
-    if the stream ends without a result; ``TimeoutError`` on timeout.
+    service is currently connected (503) or the service reports an error;
+    ``TimeoutError`` on timeout.
     ``on_progress``, if given, is called with each progress payload
     (``{'percent', 'message'}``).
 
@@ -674,7 +674,10 @@ def request_service(client, project_id, service_id, data, timeout=10.0, on_progr
     Pass ``request_id`` (a UUID you mint) to know the id before submitting;
     submitting an id that names a request you already made rejoins it
     instead of starting another. Errors that leave the request alive carry
-    ``pending = True``; an error without it is the end of the request.
+    ``pending = True``: a timeout, a dropped connection, a proxy's 502 or 504,
+    a stream that ends without a result. An error without it is the end of
+    the request. With ``request_id``, a request whose answer went missing is
+    rejoined by that id a few times before the error is raised.
 
     ``project_ids`` names other projects the request is about, beside
     ``project_id``. A delegating service's token is scoped to ``project_id``
@@ -709,21 +712,37 @@ def request_service(client, project_id, service_id, data, timeout=10.0, on_progr
         carried.update({k: group[k] for k in ('kind', 'ref') if group.get(k)})
         data = {**data, 'operation_group': carried}
     body = transform_request(data) if data is not None else None
-    try:
-        resp = requests.post(url, headers=_stream_headers(client), json=body, stream=True, timeout=(10, None))
-    except Exception as e:
-        # The POST may or may not have reached the server. Treat it as alive:
-        # rejoining a request that was never made simply 404s.
-        raise _still_running(RuntimeError(f'Failed to submit service request: {e}'))
 
-    if resp.status_code == 503:
-        resp.close()
-        raise RuntimeError(f"No live service '{service_id}' on this project")
-    if not resp.ok:
-        detail = _response_text(resp)
-        resp.close()
-        raise RuntimeError(f'Service request failed: HTTP {resp.status_code} {detail}')
-    return _await_stream(resp, timeout, on_progress, on_accepted)
+    def submit():
+        try:
+            resp = requests.post(url, headers=_stream_headers(client), json=body, stream=True,
+                                 timeout=(10, None))
+        except Exception as e:
+            # The POST may or may not have reached the server. Treat it as alive:
+            # rejoining a request that was never made simply 404s.
+            raise _lost_answer(RuntimeError(f'Failed to submit service request: {e}'))
+
+        if resp.status_code == 503:
+            resp.close()
+            raise RuntimeError(f"No live service '{service_id}' on this project")
+        if not resp.ok:
+            detail = _response_text(resp)
+            status = resp.status_code
+            resp.close()
+            err = RuntimeError(f'Service request failed: HTTP {status} {detail}')
+            err.status = status
+            # A proxy's 502 or 504 is no answer from the server: the request may
+            # have been taken, and the service may be running it.
+            raise _lost_answer(err) if status in (502, 504) else err
+        return _await_stream(resp, timeout, on_progress, on_accepted)
+
+    # A request whose id is known is rejoined when its answer goes missing, so
+    # a run the service took and finished is not reported failed.
+    if not request_id:
+        return submit()
+    return _rejoin_lost(
+        submit,
+        lambda: attach_service_request(client, project_id, request_id, timeout, on_progress))
 
 
 def attach_service_request(client, project_id, request_id, timeout=10.0, on_progress=None):
@@ -740,13 +759,14 @@ def attach_service_request(client, project_id, request_id, timeout=10.0, on_prog
     try:
         resp = requests.get(url, headers=_stream_headers(client), stream=True, timeout=(10, None))
     except Exception as e:
-        raise RuntimeError(f'Failed to attach to service request: {e}')
+        raise _lost_answer(RuntimeError(f'Failed to attach to service request: {e}'))
     if not resp.ok:
         detail = _response_text(resp)
         status = resp.status_code
         resp.close()
-        raise PlaidAPIError(f'Attach to service request failed: HTTP {status} {detail}',
+        err = PlaidAPIError(f'Attach to service request failed: HTTP {status} {detail}',
                             status=status, url=url, method='GET')
+        raise _lost_answer(err) if status in (502, 504) else err
     return _await_stream(resp, timeout, on_progress, None)
 
 
@@ -787,6 +807,46 @@ def _still_running(exc):
     end of the request."""
     exc.pending = True
     return exc
+
+
+def _lost_answer(exc):
+    """A still-running error whose cause is that the ANSWER went missing: the
+    request could not be sent or read to its end, or a proxy answered for the
+    server (502, 504). Not a timeout, which is the caller's own choice to stop
+    waiting. A submit whose answer was lost rejoins its request
+    (:func:`_rejoin_lost`)."""
+    exc.lost_answer = True
+    return _still_running(exc)
+
+
+# How long to wait before each attempt to rejoin a request whose answer was lost.
+REJOIN_DELAYS_S = (1.0, 3.0, 9.0)
+
+
+def _rejoin_lost(submit, attach):
+    """``submit()``, then attach to the request it made while its answer is
+    the one that went missing. The request was taken, or never reached the
+    server: attaching follows a taken one to its end, and a 404 says the
+    server never had it, so the first error stands. Each attempt whose answer
+    goes missing too waits a little longer before the next."""
+    try:
+        return submit()
+    except Exception as err:
+        if not getattr(err, 'lost_answer', False):
+            raise
+        first = err
+    last = first
+    for wait in REJOIN_DELAYS_S:
+        time.sleep(wait)
+        try:
+            return attach()
+        except Exception as err:
+            if getattr(err, 'status', None) == 404:
+                raise first
+            if not getattr(err, 'lost_answer', False):
+                raise
+            last = err
+    raise last
 
 
 def _await_stream(resp, timeout, on_progress, on_accepted):
@@ -875,5 +935,7 @@ def _await_stream(resp, timeout, on_progress, on_accepted):
         raise _still_running(TimeoutError(f'Service request timed out after {timeout}s of silence'))
     if result['error']:
         err = RuntimeError(result['error'])
-        raise _still_running(err) if result['pending'] else err
+        # The stream ended or broke before the service's last word: the
+        # answer went missing, not the request.
+        raise _lost_answer(err) if result['pending'] else err
     return result['value']
