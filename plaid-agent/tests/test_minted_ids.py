@@ -475,3 +475,59 @@ def _user_data(client):
     """The fake's stored user data, which a test rewinds to stand for a
     record the settle never reached."""
     return client.user_data.store
+
+
+def test_a_batch_or_bulk_an_earlier_run_made_counts_as_made_even_with_a_row_deleted_since():
+    """REV-DEBT-R1 F3: a batch or a bulk create is one transaction, so a drawn
+    id it finds taken means the earlier run made all of it, whichever of its
+    rows the server names and whether a person deleted that row since. Only a
+    single create's deleted row is not made (``minted_taken``)."""
+    from plaid_agent.core.plan import Batcher
+
+    class _Refused:
+        def __init__(self, err):
+            self.err = err
+
+        def submit(self):
+            raise self.err
+
+    for deleted in (False, True):
+        m = Minter(uuid7())
+        b = Batcher(object(), ids=m)
+        first = m()
+        m()
+        taken = PlaidAPIError('HTTP 409', status=409,
+                              response_data={'error': 'id-taken', 'id': first, 'deleted': deleted})
+        b._batch, b._pending = _Refused(taken), 2
+        b.flush()
+        assert b.results == [None, None]
+        assert m.once(lambda: (_ for _ in ()).throw(taken), whole=True) is None
+    with pytest.raises(PlaidAPIError):
+        m.once(lambda: (_ for _ in ()).throw(taken))
+
+
+def test_a_new_document_whose_text_failed_is_kept_for_the_plan_to_finish(monkeypatch):
+    """REV-DEBT-R1 F3, older: the half-made document was deleted, and the plan
+    draws the same id when it is approved again, so it was refused id-taken
+    for good. It stays, and the plan approved again finishes it."""
+    from plaid_agent.igt import plan as igt_plan
+    calls = []
+
+    class _Docs:
+        def create(self, *args, **kwargs):
+            calls.append('create')
+
+        def delete(self, doc_id):
+            calls.append('delete')
+
+    class _Client:
+        documents = _Docs()
+
+    def fail(*args, **kwargs):
+        raise PlaidAPIError('HTTP 503', status=503)
+
+    monkeypatch.setattr(igt_plan, '_seed_text', fail)
+    project = type('P', (), {'id': 'p1'})()
+    with pytest.raises(PlaidAPIError):
+        igt_plan.create_document(_Client(), project, 'Text', 'a b', {}, Minter(uuid7()))
+    assert calls == ['create']

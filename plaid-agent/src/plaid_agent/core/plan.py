@@ -106,24 +106,34 @@ class Minter:
         self._drawn.add(made)
         return made
 
-    def made(self, error) -> bool:
+    def made(self, error, whole: bool = False) -> bool:
         """Whether ``error`` refuses a create because an id this plan drew is
         taken: an earlier run of the plan made that row. Its answer was lost,
         or the service stopped before the record said so, and the key that
         would have replayed it is gone or was never the plan's (a batch of
-        comments alone takes one of its own). Not when that row has been
-        deleted since. The client's rule (``minted_taken``)."""
-        return isinstance(error, PlaidAPIError) and minted_taken(
-            error.status, getattr(error, 'response_data', None), self._drawn)
+        comments alone takes one of its own).
 
-    def once(self, create):
+        For a single create, not when that row has been deleted since: the
+        client's rule (``minted_taken``). For a batch or a bulk create
+        (``whole``), one transaction, a taken id means the earlier run made
+        all of it, whichever row the server names and whether a person
+        deleted it since."""
+        if not isinstance(error, PlaidAPIError):
+            return False
+        data = getattr(error, 'response_data', None)
+        if whole:
+            data = {k: v for k, v in data.items() if k != 'deleted'} if isinstance(data, dict) else data
+        return minted_taken(error.status, data, self._drawn)
+
+    def once(self, create, whole: bool = False):
         """Run ``create()``, a write made on the client that makes rows under
         ids this plan drew. Refused because an earlier run made them, it is
-        taken as made and answers None."""
+        taken as made and answers None. ``whole`` for a batch or a bulk
+        create (see :meth:`made`)."""
         try:
             return create()
         except PlaidAPIError as e:
-            if self.made(e):
+            if self.made(e, whole=whole):
                 return None
             raise
 
@@ -333,7 +343,7 @@ class Batcher:
         try:
             res = batch.submit()
         except PlaidAPIError as e:
-            if not self.new_id.made(e):
+            if not self.new_id.made(e, whole=True):
                 raise
             # An earlier run of this plan committed this very batch: the same
             # plan draws the same ids and cuts the same batches, and a batch
