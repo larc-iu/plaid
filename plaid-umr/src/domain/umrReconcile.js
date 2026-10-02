@@ -3,10 +3,10 @@
 //
 // Such a node records the sentence it belongs to (`umr.sentence`, the
 // sentence token's id), and that record is what says it is aligned to
-// nothing. Its anchor is one token over the whole of that sentence, which is
-// only where it stands: an edit anywhere in the text resizes the anchor with
-// the sentence, and the node goes only when its sentence's text does, which
-// is when it should. (It stood on a POINT at the sentence's start before, and
+// nothing. Its anchor is one token over the whole of that sentence when it
+// is made, which is only where it stands: an edit in the text resizes the
+// anchor with the sentence, and the node goes only when the text under it
+// does. (It stood on a POINT at the sentence's start before, and
 // core deletes a zero-width token a deletion spans, so joining two sentences
 // by deleting across the boundary took the node with it.)
 //
@@ -21,9 +21,11 @@
 //   stands in.
 //
 //   A sentence's own extent changes as the text around it is edited, so an
-//   anchor that no longer covers exactly the sentence it belongs to is put
-//   back over it. That is also what turns an old point-anchored node into
-//   the shape above, the first time its document is opened.
+//   anchor that reaches out of the sentence it belongs to, or stands on a
+//   point, is put back over it. An anchor of text inside the sentence is
+//   left: a node of a sentence joined to the one before keeps standing over
+//   its old half, and a split at the same place puts it back with its
+//   relations.
 //
 //   A word deleted under a node aligned to it (IGT deletes the word token,
 //   the text stays) leaves the anchor over text with no word. The node
@@ -65,11 +67,17 @@ export function planUnalignedHeal(graph, namespace) {
   const resize = [];
   const unanchor = [];
   // Its first piece put over the sentence. A node that lost two words apart
-  // had two pieces, and the others go (`extra`).
-  const standOver = (node, home) => {
+  // had two pieces, and the others go (`extra`). A node already unaligned
+  // (`keepInside`) whose anchor is one stretch of text inside its sentence
+  // is left where it is: after two sentences are joined, a node of the
+  // second one keeps standing over that one's text, so splitting them again
+  // at the same place gives it back to its own sentence with its relations.
+  const standOver = (node, home, keepInside) => {
     const [piece, ...rest] = node.pieces;
     if (!piece) return;
-    if (piece.begin === home.begin && piece.end === home.end && !rest.length) return;
+    const inside = piece.end > piece.begin && piece.begin >= home.begin && piece.end <= home.end;
+    const whole = piece.begin === home.begin && piece.end === home.end;
+    if ((whole || (keepInside && inside)) && !rest.length) return;
     const item = { nodeId: node.id, pieceId: piece.id, begin: home.begin, end: home.end };
     if (rest.length) item.extra = rest.map((p) => p.id);
     resize.push(item);
@@ -81,7 +89,7 @@ export function planUnalignedHeal(graph, namespace) {
     if (!record) {
       // A word deleted under it: no word overlaps its anchor any more
       // (sentenceGraph.js reads it as unaligned already). Bound to the
-      // sentence it stands in and stretched over it.
+      // sentence it stands in and put over it, as a node made unaligned is.
       // Only an anchor over text: a point is what an older writer left
       // for a node it did not say was unaligned, and is read as one already.
       if (node.aligned || node.sentence == null) return;
@@ -92,7 +100,7 @@ export function planUnalignedHeal(graph, namespace) {
       // stand, and the words that come back align them as before.
       if (!home || !home.words.length) return;
       unanchor.push({ nodeId: node.id, var: node.var, sentenceTokenId: home.tokenId });
-      standOver(node, home);
+      standOver(node, home, false);
       return;
     }
     // The sentence it belongs to, as sentenceGraph.js reads it: the one it
@@ -104,7 +112,7 @@ export function planUnalignedHeal(graph, namespace) {
       return;
     }
     if (home.tokenId !== record) rebind.push({ nodeId: node.id, sentenceTokenId: home.tokenId });
-    standOver(node, home);
+    standOver(node, home, true);
   });
   return { remove, rebind, resize, unanchor };
 }

@@ -61,17 +61,38 @@ test('a node anchored to a point is put back over its sentence', () => {
   });
 });
 
-// Text typed at the start of B: the sentence grew, so the anchor is grown
-// with it.
-test('an anchor that no longer covers its sentence is put back over it', () => {
+// Text deleted across the boundary of A and B: the anchor reaches out of
+// the sentence it belongs to, and is put back over it.
+test('an anchor reaching out of its sentence is put back over it', () => {
   const graph = graphOf(sentences(['A', 0, 15], ['B', 15, 30]), [
-    unaligned('b1', [18, 25], 2, 'B'),
+    unaligned('b1', [12, 25], 2, 'B'),
   ]);
   assert.deepEqual(plan(graph).resize, [{ nodeId: 'b1', pieceId: 'p-b1', begin: 15, end: 30 }]);
 });
 
+// Text typed at the start of B: the sentence grew around the anchor, which
+// is still inside it, and is left.
+test('an anchor of text inside its sentence is left where it is', () => {
+  const graph = graphOf(sentences(['A', 0, 15], ['B', 15, 30]), [
+    unaligned('b1', [18, 25], 2, 'B'),
+  ]);
+  assert.deepEqual(plan(graph), nothing);
+});
+
+// Two pieces, one per word deleted under it: one is enough.
+test('an anchor of two pieces is put back over its sentence as one', () => {
+  const node = unaligned('b1', [16, 18], 2, 'B');
+  node.pieces.push({ id: 'p-b1b', begin: 22, end: 24 });
+  const graph = graphOf(sentences(['A', 0, 15], ['B', 15, 30]), [node]);
+  assert.deepEqual(plan(graph).resize, [
+    { nodeId: 'b1', pieceId: 'p-b1', begin: 15, end: 30, extra: ['p-b1b'] },
+  ]);
+});
+
 // B joined to A: the merged sentence keeps A's token, so B's record names a
-// token that is gone. Its words are in A now, and so is it.
+// token that is gone. Its words are in A now, and so is it. Its anchor stays
+// over B's old text, so a split at the same place gives it back to B with
+// its relations.
 test("a joined sentence's node is bound to the sentence it joined", () => {
   const b1 = unaligned('b1', [10, 20], 1, 'B');
   const b2 = unaligned('b2', [10, 20], 1, 'B');
@@ -82,10 +103,7 @@ test("a joined sentence's node is bound to the sentence it joined", () => {
       { nodeId: 'b1', sentenceTokenId: 'A' },
       { nodeId: 'b2', sentenceTokenId: 'A' },
     ],
-    resize: [
-      { nodeId: 'b1', pieceId: 'p-b1', begin: 0, end: 20 },
-      { nodeId: 'b2', pieceId: 'p-b2', begin: 0, end: 20 },
-    ],
+    resize: [],
     unanchor: [],
   });
 });

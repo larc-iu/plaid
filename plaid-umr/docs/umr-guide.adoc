@@ -225,6 +225,7 @@ A node anchored to words follows its words.
 Letters typed at an anchored word's edge or inside it, a space included, stay in the nodes anchored to it.
 A node anchored to no word belongs to the sentence it was made in and stands over the whole of it, so an edit anywhere in the text leaves it where it belongs.
 Two sentences joined into one bring their nodes together in it, where they are two graphs until the annotator joins them, which the sentence's header counts and the Validation tab lists.
+Splitting it again where they were joined gives each sentence its own nodes back, with their edges.
 A sentence split in Plaid IGT or UD deletes the edges that would join nodes of the two new sentences, in the same step.
 Opening a document as a maintainer deletes, once for the project, such edges an earlier split left behind.
 A sentence's text deleted takes that sentence's nodes with it, and its history keeps them.
