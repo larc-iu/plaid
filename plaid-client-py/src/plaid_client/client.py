@@ -4395,8 +4395,9 @@ class PlaidClient:
 
         This is what a signup page calls before the redeemer has an account.
         Returns the kind of link (``"signup"`` or ``"password-reset"``), its
-        ``status`` (``"active"``, ``"used"``, ``"expired"``, ``"revoked"``),
-        and the project it grants access to, if any.
+        ``status`` (``"active"``, ``"used"``, ``"expired"``, ``"revoked"``,
+        or ``"inactive"`` when its creator can no longer grant what it
+        grants), and the project it grants access to, if any.
 
         Raises ``PlaidAPIError`` with status 404 if the code is unknown. A
         known-but-dead code returns normally with a non-active ``status``, so

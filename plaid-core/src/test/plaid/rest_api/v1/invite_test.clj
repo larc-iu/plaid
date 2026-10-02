@@ -301,22 +301,51 @@
       (assert-bad-request (mint! admin-request {:project-id pid :project-role "reader"
                                                 :max-uses 0})))))
 
+(defn- assert-dead-and-anonymous
+  "A redeem refused because the minter lost authority: 410, the same shape
+  as a revoked or expired link, and nothing in the body names the minter or
+  the project (the visitor holding the code has no account)."
+  [r minter pid]
+  (assert-status 410 r)
+  (is (= "inactive" (-> r :body :status)))
+  (let [msg (-> r :body :error)]
+    (is (string? msg))
+    (is (not (re-find (re-pattern (java.util.regex.Pattern/quote minter)) (pr-str (:body r)))))
+    (when pid
+      (is (not (re-find (re-pattern (str pid)) (pr-str (:body r))))))))
+
 (deftest an-invite-dies-with-the-authority-behind-it
   (let [pid (h/create-test-project admin-request "P")]
     (api-call admin-request {:method :post
                              :path (str "/api/v1/projects/" pid
                                         "/maintainers/user1@example.com")})
-    (let [code (-> (mint! user1-request {:project-id pid :project-role "writer"}) :body :code)]
+    (let [resp (mint! user1-request {:project-id pid :project-role "writer"})
+          code (-> resp :body :code)]
       (testing "the link works while the minter still maintains the project"
         (is (= "active" (-> (lookup! code) :body :status))))
       (api-call admin-request {:method :delete
                                :path (str "/api/v1/projects/" pid
                                           "/maintainers/user1@example.com")})
-      (testing "and stops the moment they are demoted, without being revoked"
-        (let [r (redeem! {:code code :email "toolate@example.com"
-                          :password good-password})]
-          (assert-forbidden r)
-          (is (re-find #"does not maintain" (-> r :body :error))))))))
+      (testing "once they are demoted the preview says the link no longer works"
+        (let [pv (lookup! code)]
+          (assert-ok pv)
+          (is (= "inactive" (-> pv :body :status)))))
+      (testing "and the project's maintainers see it in their list as such"
+        (let [lr (api-call admin-request {:method :get
+                                          :path (str "/api/v1/invites?project-id=" pid)})]
+          (assert-ok lr)
+          (is (= ["inactive"] (mapv :status (:entries (:body lr)))))))
+      (testing "redeem refuses it without naming the minter or the project"
+        (assert-dead-and-anonymous (redeem! {:code code :email "toolate@example.com"
+                                             :password good-password})
+                                   "user1@example.com" pid))
+      (testing "and it works again when the minter is a maintainer again"
+        (api-call admin-request {:method :post
+                                 :path (str "/api/v1/projects/" pid
+                                            "/maintainers/user1@example.com")})
+        (is (= "active" (-> (lookup! code) :body :status)))
+        (assert-ok (redeem! {:code code :email "intime@example.com"
+                             :password good-password}))))))
 
 (deftest a-deactivated-minters-invites-stop-working
   (let [pid (h/create-test-project admin-request "P")
@@ -325,13 +354,33 @@
                              :path (str "/api/v1/projects/" pid "/maintainers/" minter)})
     (let [code (-> (mint! minter-request {:project-id pid :project-role "reader"}) :body :code)]
       (is (string? code))
-      ;; Deactivation strips project memberships too, so this covers the
-      ;; deactivated-actor branch only if it is checked BEFORE the
-      ;; maintainer branch — which is the ordering in check-grant-authority!.
       (api-call admin-request {:method :delete :path (str "/api/v1/users/" minter)})
-      (let [r (redeem! {:code code :email "orphan@example.com" :password good-password})]
-        (assert-forbidden r)
-        (is (re-find #"deactivated" (-> r :body :error)))))))
+      (is (= "inactive" (-> (lookup! code) :body :status)))
+      (assert-dead-and-anonymous (redeem! {:code code :email "orphan@example.com"
+                                           :password good-password})
+                                 minter pid))))
+
+(deftest a-demoted-admins-links-stop-working
+  ;; Admin grants and password resets are admin-only, so an admin who loses
+  ;; admin takes those links with them.
+  (let [[admin2 admin2-request] (throwaway-user! "admin2@example.com")
+        [target _] (throwaway-user! "forgetful2@example.com")]
+    (assert-ok (api-call admin-request {:method :patch :path (str "/api/v1/users/" admin2)
+                                        :body {:is-admin true}}))
+    (let [reset-code (-> (mint! admin2-request {:target-user-id target}) :body :code)
+          admin-code (-> (mint! admin2-request {:grant-admin true}) :body :code)]
+      (is (= "active" (-> (lookup! reset-code) :body :status)))
+      (is (= "active" (-> (lookup! admin-code) :body :status)))
+      (assert-ok (api-call admin-request {:method :patch :path (str "/api/v1/users/" admin2)
+                                          :body {:is-admin false}}))
+      (is (= "inactive" (-> (lookup! reset-code) :body :status)))
+      (is (= "inactive" (-> (lookup! admin-code) :body :status)))
+      (assert-dead-and-anonymous (redeem! {:code reset-code :password "a-brand-new-password"})
+                                 admin2 nil)
+      (assert-dead-and-anonymous (redeem! {:code admin-code :email "upstart@example.com"
+                                           :password good-password})
+                                 admin2 nil)
+      (is (= 200 (:status (login! target good-password)))))))
 
 ;; ---------------------------------------------------------------------------
 ;; listing

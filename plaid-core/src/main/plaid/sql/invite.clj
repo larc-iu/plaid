@@ -113,24 +113,33 @@
   (and (:expires_at row)
        (neg? (compare (:expires_at row) now))))
 
+(declare authority-holds?)
+
 (defn- status
-  "Which of the four states an invite is in, most decisive first. The REST
+  "Which of the five states an invite is in, most decisive first. The REST
   layer surfaces this verbatim so a holder is told WHY a dead link is dead
   (they already have the code, so there is nothing left to withhold) and a
-  minter can see at a glance which links still work."
-  [row now]
+  minter can see at a glance which links still work.
+
+  `:inactive` is a link whose minter no longer holds the authority it
+  grants (removed or demoted from the project, deactivated, or no longer an
+  admin for an admin grant or a password reset). It is derived, not stored:
+  the link comes back to life if the authority does, exactly as redemption
+  would decide."
+  [db row now]
   (cond
     (some? (:revoked_at row))            :revoked
     (>= (long (:uses row)) (long (:max_uses row))) :used
     (expired? row now)                   :expired
+    (not (authority-holds? db row))      :inactive
     :else                                :active))
 
 (defn- row->invite
   "External shape. NEVER carries `code_hash` — the digest is a verifier for
   a live credential and has no business leaving the SQL layer, let alone
   reaching a REST response."
-  ([row] (row->invite row (psc/now-iso)))
-  ([row now]
+  ([db row] (row->invite db row (psc/now-iso)))
+  ([db row now]
    (when row
      {:invite/id             (:id row)
       :invite/created-by     (:created_by row)
@@ -145,7 +154,7 @@
       :invite/grant-admin    (->bool (:grant_admin row))
       :invite/project-id     (:project_id row)
       :invite/project-role   (:project_role row)
-      :invite/status         (name (status row now))})))
+      :invite/status         (name (status db row now))})))
 
 ;; ============================================================
 ;; Reads
@@ -159,7 +168,7 @@
 (defn get
   "Invite by id in external shape, or nil."
   [db id]
-  (row->invite (get-internal db id)))
+  (row->invite db (get-internal db id)))
 
 (defn find-by-code
   "Raw row for a plaintext code, or nil if the code is blank or unknown.
@@ -180,7 +189,7 @@
                              :order-by [:created_at :id]
                              :limit limit
                              :cursor-vals cursor-vals
-                             :row->entity #(row->invite % now)})))
+                             :row->entity #(row->invite db % now)})))
 
 (defn list-for-project
   "Invites granting access to `project-id`, oldest-first, keyset-paginated.
@@ -193,7 +202,7 @@
                              :order-by [:created_at :id]
                              :limit limit
                              :cursor-vals cursor-vals
-                             :row->entity #(row->invite % now)})))
+                             :row->entity #(row->invite db % now)})))
 
 (defn list-all
   "Every invite on the server, oldest-first, keyset-paginated. Admin-only at
@@ -209,7 +218,7 @@
                              :order-by [:created_at :id]
                              :limit limit
                              :cursor-vals cursor-vals
-                             :row->entity #(row->invite % now)})))
+                             :row->entity #(row->invite db % now)})))
 
 ;; ============================================================
 ;; Authority
@@ -259,6 +268,19 @@
         (throw (ex-info "Only an admin can create an invite that grants no project access"
                         {:code 403}))))
     true))
+
+(defn- authority-holds?
+  "Whether the minter of `row` could still mint it today, by the same rules
+  `check-grant-authority!` applies. Its refusals name the actor and the
+  project, which is right for the minter and wrong for an anonymous holder
+  of the code, so here they are reduced to a yes or no."
+  [db row]
+  (try
+    (check-grant-authority! db {:actor-id (:created_by row)
+                                :grant-admin (->bool (:grant_admin row))
+                                :project-id (:project_id row)
+                                :target-user-id (:target_user_id row)})
+    (catch clojure.lang.ExceptionInfo _ false)))
 
 ;; ============================================================
 ;; Writes
@@ -388,17 +410,24 @@
   "Throw a 4xx unless `row` is a live invite. Runs inside the redemption tx,
   under SQLite's BEGIN IMMEDIATE writer lock, which is what makes the
   use-count check race-free: two people redeeming the last seat of a
-  20-use class link serialize here, so exactly one of them gets it."
-  [row]
+  20-use class link serialize here, so exactly one of them gets it.
+
+  The authority recheck is part of the status, so a link whose minter lost
+  the right to grant it is refused here like any other dead link, with a
+  message that names neither the minter nor the project: the holder has no
+  account, and the minter's refusal text is not theirs to read."
+  [db row]
   (when (nil? row)
     (throw (ex-info "That invite code is not valid." {:code 404})))
-  (case (status row (psc/now-iso))
+  (case (status db row (psc/now-iso))
     :revoked (throw (ex-info "That invite has been revoked. Ask for a new link."
-                             {:code 410 :status "revoked"}))
+                             {:code 410 :plaid/body {:status "revoked"}}))
     :used    (throw (ex-info "That invite has already been used. Ask for a new link."
-                             {:code 410 :status "used"}))
+                             {:code 410 :plaid/body {:status "used"}}))
     :expired (throw (ex-info "That invite has expired. Ask for a new link."
-                             {:code 410 :status "expired"}))
+                             {:code 410 :plaid/body {:status "expired"}}))
+    :inactive (throw (ex-info "That invite no longer works. Ask for a new link."
+                              {:code 410 :plaid/body {:status "inactive"}}))
     :active  true))
 
 (defn preview
@@ -422,7 +451,7 @@
           ;; question the address answers.)
           target (when (:target_user_id row) (user/get-internal db (:target_user_id row)))]
       (cond-> {:kind (if (:target_user_id row) "password-reset" "signup")
-               :status (name (status row (psc/now-iso)))
+               :status (name (status db row (psc/now-iso)))
                :expires-at (:expires_at row)
                :grant-admin (->bool (:grant_admin row))}
         (:target_user_id row) (assoc :email (or (:user/id target)
@@ -459,12 +488,10 @@
                        ;; The authoritative read: under BEGIN IMMEDIATE, so two
                        ;; people racing for the last seat of a class link
                        ;; serialize here and exactly one of them gets it.
+                       ;; The minter's authority is rechecked here too, as
+                       ;; part of the status, so a link that outlived it dies.
                        (let [row (psc/fetch-by-id tx :invites (:id invite-row))]
-                         (assert-redeemable! row)
-                         (check-grant-authority! tx {:actor-id inviter
-                                                     :grant-admin (->bool (:grant_admin row))
-                                                     :project-id (:project_id row)
-                                                     :target-user-id (:target_user_id row)})
+                         (assert-redeemable! tx row)
                          ;; Checked here, not just at mint: the target could
                          ;; have been deactivated in between. Without this the
                          ;; reset would "succeed" and hand back a token that
@@ -523,11 +550,13 @@
   ;; one is purely an early out and never the last word.
   (let [pre (try
               (let [row (find-by-code db code)]
-                (assert-redeemable! row)
+                (assert-redeemable! db row)
                 {:ok row})
               (catch clojure.lang.ExceptionInfo e
-                {:failure {:success false
-                           :code (or (:code (ex-data e)) 500)
-                           :error (ex-message e)}}))]
+                {:failure (cond-> {:success false
+                                   :code (or (:code (ex-data e)) 500)
+                                   :error (ex-message e)}
+                            (:plaid/body (ex-data e))
+                            (assoc :error-body (:plaid/body (ex-data e))))}))]
     (or (:failure pre)
         (redeem-checked! db (:ok pre) email password display-name))))

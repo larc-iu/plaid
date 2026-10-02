@@ -25,7 +25,7 @@ import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { InviteStatusBadge } from '@ui/components/shared/InviteStatusBadge.jsx';
-import { inviteLinkFor, GRANT_ROLES, cap } from '@ui/domain/invites.js';
+import { inviteLinkFor, GRANT_ROLES, cap, inviteRevocable } from '@ui/domain/invites.js';
 import { ROLE_HINTS } from '@/domain/roleGrants.js';
 import { textIncludes } from '@ui/domain/collation.js';
 import { countOf } from '@ui/lib/plural.js';
@@ -247,7 +247,7 @@ export const AdminInvites = ({ client }) => {
       headerClassName: 'w-20',
       align: 'right',
       render: (i) =>
-        i.status === 'active' ? (
+        inviteRevocable(i.status) ? (
           <Button size="sm" variant="ghost" onClick={() => revoke(i)}>
             Revoke
           </Button>
@@ -285,6 +285,7 @@ export const AdminInvites = ({ client }) => {
                 <SelectItem value="used">Used</SelectItem>
                 <SelectItem value="expired">Expired</SelectItem>
                 <SelectItem value="revoked">Revoked</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
               </SelectContent>
             </Select>
             <Button size="sm" onClick={() => setBatchOpen(true)}>

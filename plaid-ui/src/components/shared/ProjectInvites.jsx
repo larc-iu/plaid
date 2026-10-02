@@ -20,7 +20,7 @@ import { notifySuccess, notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
 import { ROW_DELETE_CLASS } from '../../lib/destructive.js';
 import { useLatestCall } from '../../hooks/useLatestCall.js';
-import { GRANT_ROLES, cap, fmtDate } from '../../domain/invites.js';
+import { GRANT_ROLES, cap, fmtDate, inviteRevocable } from '../../domain/invites.js';
 
 const EMPTY_FORM = { role: 'writer', maxUses: '1', ttlDays: '14', note: '' };
 
@@ -156,7 +156,7 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage, role
       headerClassName: 'w-12',
       align: 'right',
       render: (inv) =>
-        inv.status === 'active' ? (
+        inviteRevocable(inv.status) ? (
           <Button
             variant="ghost"
             size="icon"

@@ -61,6 +61,28 @@ describe('RedeemInvite', () => {
     expect(container.querySelector('form')).toBe(null);
   });
 
+  it('says a link whose creator lost access no longer works, and whom to ask', async () => {
+    authService.lookupInvite.mockResolvedValue({ ...ACTIVE, status: 'inactive' });
+    const { container } = await mount();
+    expect(alertText(container)).toBe(
+      'This invite no longer works. Ask a maintainer of Lezgi for a new link.',
+    );
+    expect(container.querySelector('form')).toBe(null);
+  });
+
+  it('sends an inactive link with no project to an administrator', async () => {
+    authService.lookupInvite.mockResolvedValue({
+      status: 'inactive',
+      kind: 'password-reset',
+      email: 'ada@example.com',
+    });
+    const { container } = await mount();
+    expect(alertText(container)).toBe(
+      'This invite no longer works. Ask an administrator for a new link.',
+    );
+    expect(container.querySelector('form')).toBe(null);
+  });
+
   it('refuses a short password and a mismatch before asking the server', async () => {
     const { container, step } = await mount();
 

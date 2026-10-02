@@ -19,6 +19,17 @@ const DEAD_STATUS_MESSAGE = {
   used: 'This invite has already been used. Ask whoever sent it for a new link.',
   expired: 'This invite has expired. Ask whoever sent it for a new link.',
   revoked: 'This invite has been revoked. Ask whoever sent it for a new link.',
+  // Its creator lost the access it grants, so they are the wrong person to ask.
+  inactive: (preview) =>
+    preview.projectName
+      ? `This invite no longer works. Ask a maintainer of ${preview.projectName} for a new link.`
+      : 'This invite no longer works. Ask an administrator for a new link.',
+};
+
+const deadMessageFor = (preview) => {
+  if (!preview || preview.status === 'active') return null;
+  const message = DEAD_STATUS_MESSAGE[preview.status];
+  return typeof message === 'function' ? message(preview) : message;
 };
 
 /**
@@ -107,7 +118,7 @@ export const RedeemInvite = ({ loginPath, homePath }) => {
     );
   };
 
-  const deadMessage = preview && preview.status !== 'active' && DEAD_STATUS_MESSAGE[preview.status];
+  const deadMessage = deadMessageFor(preview);
 
   const subtitle = loading
     ? 'Checking your invite…'

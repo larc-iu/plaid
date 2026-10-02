@@ -10,14 +10,24 @@ export const inviteLinkFor = (code) => {
 };
 
 // What each status looks like. Colour rather than a shadcn variant, because the
-// four are read at a glance down a column and "active" and "revoked" are the
-// two that matter.
+// five are read at a glance down a column and "active" and "revoked" are the
+// two that matter. "inactive" is a link whose creator no longer has the access
+// it grants: dead for now, alive again if they get it back.
 export const INVITE_STATUS_CLASS = {
   active: 'border-success/40 bg-success/10 text-success-foreground',
   used: 'border-border bg-muted text-muted-foreground',
   expired: 'border-border bg-muted text-muted-foreground',
   revoked: 'border-destructive/40 bg-destructive/10 text-destructive',
+  inactive: 'border-warning/40 bg-warning/10 text-warning-foreground',
 };
+
+/** The hover text a status badge carries, where the word alone does not say it. */
+export const INVITE_STATUS_TITLE = {
+  inactive: 'Creator no longer has the access this link grants',
+};
+
+/** Whether a link can still be revoked: one that works, or one that could again. */
+export const inviteRevocable = (status) => status === 'active' || status === 'inactive';
 
 /** The three levels an invite can grant on a project, lowest first. */
 export const GRANT_ROLES = ['reader', 'writer', 'maintainer'];

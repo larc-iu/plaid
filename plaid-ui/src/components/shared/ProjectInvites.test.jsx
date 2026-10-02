@@ -30,6 +30,15 @@ const ROWS = [
     expiresAt: '2026-10-01T00:00:00Z',
     status: 'used',
   },
+  {
+    id: 'i3',
+    note: 'Old class',
+    projectRole: 'writer',
+    uses: 1,
+    maxUses: 5,
+    expiresAt: '2026-09-15T00:00:00Z',
+    status: 'inactive',
+  },
 ];
 
 const client = (over = {}) => ({
@@ -80,17 +89,18 @@ describe('ProjectInvites', () => {
     expect(rows).toEqual([
       ['Fall 2026', 'Writer', '0 / 3'],
       ['Untitled', 'Reader', '1 / 1'],
+      ['Old class', 'Writer', '1 / 5'],
     ]);
-    expect(texts(container, 'tbody tr td:nth-child(5)')).toEqual(['active', 'used']);
+    expect(texts(container, 'tbody tr td:nth-child(5)')).toEqual(['active', 'used', 'inactive']);
     await unmount();
   });
 
-  it('offers a revoke only on a link that is still live', async () => {
+  it('offers a revoke on a link that is live or could come back', async () => {
     const { container, unmount } = await mount();
     const buttons = all(container, 'tbody tr').map(
       (tr) => tr.querySelector('button[aria-label="Revoke invitation link"]') !== null,
     );
-    expect(buttons).toEqual([true, false]);
+    expect(buttons).toEqual([true, false, true]);
     await unmount();
   });
 

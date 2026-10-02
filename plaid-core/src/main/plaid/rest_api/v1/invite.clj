@@ -100,7 +100,8 @@
                           "<body>email</body> is ignored. "
                           "Returns a session token so the caller is immediately logged in. "
                           "409 if an account already exists for that email, 410 if the invite "
-                          "is spent, expired, or revoked.")
+                          "is spent, expired, revoked, or inactive (its creator can no longer "
+                          "grant what it grants), with that <body>status</body> in the body.")
             :parameters {:body [:map
                                 [:code string?]
                                 [:email {:optional true} string?]
@@ -110,7 +111,7 @@
                            db :db secret-key :secret-key :as request}]
                        ;; `status-code`, not `code` — the request body's :code is
                        ;; the invite code and the result's is an HTTP status.
-                       (let [{:keys [success extra error] status-code :code}
+                       (let [{:keys [success extra error error-body] status-code :code}
                              (invite/redeem! db code {:email email
                                                       :password password
                                                       :display-name display-name})]
@@ -128,7 +129,7 @@
                              (when (#{404 410} status-code)
                                (rl/record-invite-failure! request))
                              {:status (or status-code 500)
-                              :body {:error error}}))))}}]
+                              :body (merge {:error error} error-body)}))))}}]
 
    [""
     {:openapi {:security [{:auth []}]}

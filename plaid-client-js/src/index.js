@@ -4028,7 +4028,8 @@ class PlaidClient {
    * Describe an invite code, with NO authentication — this is what a signup
    * page calls before the redeemer has an account. Returns the kind of link
    * ("signup" or "password-reset"), its status ("active", "used", "expired",
-   * "revoked"), and the project it grants access to, if any.
+   * "revoked", or "inactive" when its creator can no longer grant what it
+   * grants), and the project it grants access to, if any.
    *
    * Throws a 404-shaped error if the code is unknown. A known-but-dead code
    * resolves normally with a non-"active" status, so the page can say why.

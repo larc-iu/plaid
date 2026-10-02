@@ -667,7 +667,7 @@ interface Invite {
   id: string;
   /** "signup" | "password-reset" */
   kind: string;
-  /** "active" | "used" | "expired" | "revoked" */
+  /** "active" | "used" | "expired" | "revoked" | "inactive" */
   status: string;
   createdBy: string;
   createdAt: string;
@@ -685,7 +685,7 @@ interface Invite {
 interface InvitePreview {
   /** "signup" | "password-reset" */
   kind: string;
-  /** "active" | "used" | "expired" | "revoked" */
+  /** "active" | "used" | "expired" | "revoked" | "inactive" */
   status: string;
   expiresAt: string;
   grantAdmin: boolean;
