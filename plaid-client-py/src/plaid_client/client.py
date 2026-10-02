@@ -1103,7 +1103,8 @@ class UsersResource(_Resource):
 
         Admins may change the display name, password, and admin status of any
         user. All other users may only modify their own display name or
-        password.
+        password. A password change cannot be made with a named API token
+        (403): it needs a sign-in token.
 
         A user's id is their email address and is fixed for the life of the
         account — it is what they log in with, so nothing can change it.
@@ -1267,7 +1268,8 @@ class ApiTokensResource(_Resource):
         The returned ``token`` is the signed credential and is shown ONLY
         here — store it immediately. API tokens do not expire and survive
         password changes / logout; revoke to kill. Returns a dict with
-        ``id``, ``name`` and ``token``.
+        ``id``, ``name`` and ``token``. A client signed in with a named API
+        token cannot do this (403): it needs a sign-in token.
 
         Args:
             user_id: The user ID who will own the token
@@ -1284,6 +1286,9 @@ class ApiTokensResource(_Resource):
 
     def revoke(self, user_id: str, token_id: str, audit_message=None) -> Any:
         """Revoke a named API token (soft-revoke; idempotent).
+
+        A client signed in with a named API token cannot do this (403): it
+        needs a sign-in token.
 
         Args:
             user_id: The user ID who owns the token
@@ -1754,7 +1759,8 @@ class InvitesResource(_Resource):
             project_role: "reader", "writer" or "maintainer" (requires ``project_id``)
             grant_admin: Make the new account a global admin (admin only)
             target_user_id: Password reset for that user instead of a signup;
-                admin only, single-use, grants nothing
+                admin only, single-use, grants nothing, and not with a named
+                API token (403)
             max_uses: How many accounts this link may create (default 1)
             ttl_days: Days until it expires (default 14, max 365)
             note: Human label shown in your invite list

@@ -1299,7 +1299,8 @@ class PlaidClient {
       /**
        * Modify a user. Admins may change the display name, password, and admin
        * status of any user. All other users may only modify their own display
-       * name or password.
+       * name or password. A password change cannot be made with a named API
+       * token (403): it needs a sign-in token.
        *
        * A user's id is their email address and is fixed for the life of the
        * account — it is what they log in with, so nothing can change it.
@@ -1522,6 +1523,8 @@ class PlaidClient {
        * Mint a named API token for a user. The returned `token` is the signed
        * credential and is shown ONLY here — store it immediately. API tokens
        * do not expire and survive password changes / logout; revoke to kill.
+       * A client signed in with a named API token cannot do this (403): it
+       * needs a sign-in token.
        * @param {string} userId - The user ID who will own the token
        * @param {string} name - A human label, e.g. "Stanza parser"
        * @returns {Promise<{id: string, name: string, token: string}>}
@@ -1536,6 +1539,8 @@ class PlaidClient {
         }),
       /**
        * Revoke a named API token (soft-revoke; idempotent).
+       * A client signed in with a named API token cannot do this (403): it
+       * needs a sign-in token.
        * @param {string} userId - The user ID who owns the token
        * @param {string} tokenId - The token ID to revoke
        */
@@ -1607,7 +1612,7 @@ class PlaidClient {
        * @param {string} [opts.projectId] - Project the redeemer joins (requires projectRole)
        * @param {string} [opts.projectRole] - "reader" | "writer" | "maintainer" (requires projectId)
        * @param {boolean} [opts.grantAdmin] - Make the new account a global admin (admin only)
-       * @param {string} [opts.targetUserId] - Password reset for that user instead of a signup; admin only, single-use, grants nothing
+       * @param {string} [opts.targetUserId] - Password reset for that user instead of a signup; admin only, single-use, grants nothing, and not with a named API token (403)
        * @param {number} [opts.maxUses] - How many accounts this link may create (default 1)
        * @param {number} [opts.ttlDays] - Days until it expires (default 14, max 365)
        * @param {string} [opts.note] - Human label shown in your invite list

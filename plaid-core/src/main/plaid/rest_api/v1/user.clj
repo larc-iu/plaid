@@ -1,6 +1,7 @@
 (ns plaid.rest-api.v1.user
   (:require [clojure.string :as str]
             [plaid.media.avatar :as avatar]
+            [plaid.rest-api.v1.api-token :as api-token]
             [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.pagination :as pagination]
             [reitit.coercion.malli]
@@ -80,7 +81,8 @@
                             "status of any user. All other users may only modify their own display "
                             "name or password. A user's ID is their email address and is fixed for "
                             "the life of the account: it is what they log in with, so no endpoint "
-                            "changes it.")
+                            "changes it. A password change needs a signed-in session: one signed "
+                            "with a named API token is refused (403).")
               :parameters {:body [:map
                                   [:password {:optional true} string?]
                                   [:display-name {:optional true} string?]
@@ -93,6 +95,9 @@
                                is-self? (= id current-user-id)
                                is-admin? (user/admin? current-user)]
                            (cond
+                             (and (some? password) (api-token/named-token? request))
+                             api-token/session-only-refusal
+
                              is-admin?
                              (let [{:keys [success code error]} (user/merge db
                                                                             id

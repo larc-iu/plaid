@@ -30,7 +30,8 @@
     mounted outside the login-required group in `core.clj` so that the two
     public routes can reach a handler at all. A new subtree here is
     unauthenticated until it says otherwise: say otherwise."
-  (:require [plaid.rest-api.v1.auth :as pra]
+  (:require [plaid.rest-api.v1.api-token :as api-token]
+            [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.pagination :as pagination]
             [plaid.rest-api.v1.rate-limit :as rl]
             [plaid.sql.invite :as invite]
@@ -215,7 +216,8 @@
                           "practice <body>project-id</body>/<body>project-role</body> are "
                           "required of a non-admin (403 without them). Authority is rechecked "
                           "at redemption, so a link stops working if the minter later loses the "
-                          "authority behind it.")
+                          "authority behind it. A password reset link needs a signed-in session: "
+                          "one asked for with a named API token is refused (403).")
             :parameters {:body [:map
                                 [:note {:optional true} string?]
                                 [:ttl-days {:optional true} int?]
@@ -225,21 +227,23 @@
                                 [:project-role {:optional true} string?]
                                 [:target-user-id {:optional true} string?]]}
             :handler (fn [{{body :body} :parameters db :db :as request}]
-                       (let [{:keys [success extra error] status-code :code}
-                             (invite/create! db
-                                             {:note (:note body)
-                                              :ttl-days (:ttl-days body)
-                                              :max-uses (:max-uses body)
-                                              :grant-admin (:grant-admin body)
-                                              :project-id (:project-id body)
-                                              :project-role (:project-role body)
-                                              :target-user-id (:target-user-id body)}
-                                             (pra/->user-id request))]
-                         (if success
-                           {:status 201
-                            :body (merge {:id (:id extra) :code (:code extra)}
-                                         (->wire (invite/get db (:id extra))))}
-                           {:status (or status-code 500) :body {:error error}})))}}]
+                       (if (and (some? (:target-user-id body)) (api-token/named-token? request))
+                         api-token/session-only-refusal
+                         (let [{:keys [success extra error] status-code :code}
+                               (invite/create! db
+                                               {:note (:note body)
+                                                :ttl-days (:ttl-days body)
+                                                :max-uses (:max-uses body)
+                                                :grant-admin (:grant-admin body)
+                                                :project-id (:project-id body)
+                                                :project-role (:project-role body)
+                                                :target-user-id (:target-user-id body)}
+                                               (pra/->user-id request))]
+                           (if success
+                             {:status 201
+                              :body (merge {:id (:id extra) :code (:code extra)}
+                                           (->wire (invite/get db (:id extra))))}
+                             {:status (or status-code 500) :body {:error error}}))))}}]
 
    ["/:id"
     {:conflicting true

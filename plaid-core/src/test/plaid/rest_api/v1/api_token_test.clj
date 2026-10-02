@@ -180,3 +180,75 @@
     (testing "every batched create op is attributed to the minting token"
       (is (= 2 (count rows)))
       (is (every? #(= tid (:token_id %)) rows)))))
+
+;; ---------------------------------------------------------------------------
+;; a named token is not the account
+;; ---------------------------------------------------------------------------
+
+(def ^:private session-only #"signed-in session")
+
+(deftest a-named-token-cannot-manage-credentials
+  ;; Named tokens are handed to services and scripts and never expire, so one
+  ;; that leaks must not be able to take the account: it may not change the
+  ;; password, mint more tokens, or revoke any.
+  (let [me "cred-user@example.com"
+        session (create-and-login! me "original-password")
+        minted (mint! (token-req-fn session) me "svc")
+        tok (-> minted :body :token)
+        tid (-> minted :body :id)
+        as-tok (token-req-fn tok)]
+    (testing "minting another token is refused"
+      (let [r (mint! as-tok me "child")]
+        (assert-forbidden r)
+        (is (re-find session-only (-> r :body :error)))))
+    (testing "revoking a token, its own included, is refused"
+      (let [r (api-call as-tok {:method :delete :path (str (tokens-path me) "/" tid)})]
+        (assert-forbidden r)
+        (is (re-find session-only (-> r :body :error)))))
+    (testing "changing the password is refused, alone or beside a name change"
+      (doseq [body [{:password "stolen-pass-1"}
+                    {:password "stolen-pass-1" :display-name "Someone"}]]
+        (let [r (api-call as-tok {:method :patch :path (str "/api/v1/users/" me) :body body})]
+          (assert-forbidden r)
+          (is (re-find session-only (-> r :body :error))))))
+    (testing "and inside a batch"
+      (let [r (rest-handler (-> (mock/request :post "/api/v1/batch")
+                                (mock/header "accept" "application/edn")
+                                (mock/json-body [{:path (str "/api/v1/users/" me) :method "patch"
+                                                  :body {:password "stolen-pass-1"}}])
+                                (mock/header "authorization" (str "Bearer " tok))))]
+        (is (not= 200 (:status r)))))
+    (testing "nothing changed: the session and the old password still work"
+      (assert-ok (api-call (token-req-fn session) {:method :get :path (tokens-path me)}))
+      (is (= 200 (:status (rest-handler (-> (mock/request :post "/api/v1/login")
+                                            (mock/header "accept" "application/edn")
+                                            (mock/json-body {:user-id me
+                                                             :password "original-password"})))))))
+    (testing "what is not a credential still works with the token"
+      (assert-ok (api-call as-tok {:method :get :path (tokens-path me)}))
+      (assert-ok (api-call as-tok {:method :patch :path (str "/api/v1/users/" me)
+                                   :body {:display-name "Renamed by script"}})))
+    (testing "the session may still do all three"
+      (assert-created (mint! (token-req-fn session) me "second"))
+      (assert-no-content (api-call (token-req-fn session)
+                                   {:method :delete :path (str (tokens-path me) "/" tid)})))))
+
+(deftest an-admins-named-token-cannot-manage-credentials
+  (let [tok (-> (mint! admin-request "admin@example.com" "admin-svc") :body :token)
+        as-tok (token-req-fn tok)]
+    (testing "not another user's tokens"
+      (assert-forbidden (mint! as-tok "user1@example.com" "evil")))
+    (testing "not another user's password"
+      (let [r (api-call as-tok {:method :patch :path "/api/v1/users/user1@example.com"
+                                :body {:password "stolen-pass-1"}})]
+        (assert-forbidden r)
+        (is (re-find session-only (-> r :body :error)))))
+    (testing "not a password reset link, which would set one"
+      (let [r (api-call as-tok {:method :post :path "/api/v1/invites"
+                                :body {:target-user-id "admin@example.com"}})]
+        (assert-forbidden r)
+        (is (re-find session-only (-> r :body :error)))))
+    (testing "an admin's other work still runs on it"
+      (create-and-login! "cred-other@example.com" "original-password")
+      (assert-ok (api-call as-tok {:method :patch :path "/api/v1/users/cred-other@example.com"
+                                   :body {:display-name "Renamed by admin script"}})))))
