@@ -10,6 +10,8 @@
 // the old undo-snapshot only restored IGT's own layers, which silently lost
 // other apps' material while reporting success.
 
+import { PROVENANCE_KEYS } from '@larc-iu/plaid-client';
+
 const containsToken = (parent, child) =>
   parent.begin <= child.begin && child.end <= parent.end && child.begin < parent.end;
 
@@ -124,41 +126,83 @@ export const countAnnotationLossForRange = (layerInfo, vocabularies, begin, end)
 /**
  * Count annotations a destructive *service* re-tokenize would discard. A
  * tokenizer service resets the sentence partition ONLY when a single sentence
- * covers the whole text; that cascade-deletes every word + morpheme token and
- * every span / relation / vocab-link on them, plus the sentence's own spans.
- * With zero or >1 sentences the service takes the non-destructive word-only
- * path, so nothing here is lost. Used to surface a confirm before running.
+ * covers the whole text and it finds a different one; that cascade-deletes
+ * every token in a layer nested (transitively) under the sentence layer, any
+ * app's, and every span / relation / vocab-link on them, plus the sentence's
+ * own spans. A token's own content (a segmentation, an orthography line: any
+ * metadata beyond provenance) counts as one annotation. With zero or >1
+ * sentences the service takes the non-destructive word-only path, so nothing
+ * here is lost. Used to surface a confirm before running.
  *
  * @returns {{annotations: number, links: number}}
  */
 export const countReTokenizeLoss = (layerInfo, vocabularies) => {
   const result = { annotations: 0, links: 0 };
-  const sentenceTokens = layerInfo?.sentenceTokenLayer?.tokens || [];
+  const sentenceLayer = layerInfo?.sentenceTokenLayer;
+  const sentenceTokens = sentenceLayer?.tokens || [];
   if (sentenceTokens.length !== 1) return result; // non-destructive path
 
-  const spanLayers = layerInfo.spanLayers || {};
-  for (const group of ['sentence', 'word', 'morpheme']) {
-    for (const sl of spanLayers[group] || []) {
-      result.annotations += (sl.spans || []).length;
+  const tokenLayers = layerInfo.primaryTextLayer?.tokenLayers || [];
+  const cascading = [sentenceLayer, ...nestedUnder(tokenLayers, sentenceLayer.id)];
+  const dyingTokens = new Set();
+  for (const tl of cascading) {
+    for (const t of tl.tokens || []) {
+      dyingTokens.add(t.id);
+      if (Object.keys(t.metadata || {}).some((k) => !PROVENANCE_KEYS.includes(k))) {
+        result.annotations += 1;
+      }
+    }
+  }
+  const dyingSpans = new Set();
+  for (const tl of cascading) {
+    for (const sl of tl.spanLayers || []) {
+      for (const s of sl.spans || []) {
+        if (Array.isArray(s.tokens) && s.tokens.some((t) => dyingTokens.has(t))) {
+          result.annotations += 1;
+          dyingSpans.add(s.id);
+        }
+      }
+    }
+  }
+  for (const tl of cascading) {
+    for (const sl of tl.spanLayers || []) {
       for (const rl of sl.relationLayers || []) {
-        result.annotations += (rl.relations || []).length;
+        for (const r of rl.relations || []) {
+          if (dyingSpans.has(r.source) || dyingSpans.has(r.target)) result.annotations += 1;
+        }
       }
     }
   }
 
   // Vocab links on any of the doc's (about-to-be-deleted) tokens.
-  const docTokenIds = new Set();
-  for (const key of ['sentenceTokenLayer', 'primaryTokenLayer', 'morphemeTokenLayer']) {
-    for (const t of layerInfo[key]?.tokens || []) docTokenIds.add(t.id);
-  }
   for (const vocab of Object.values(vocabularies || {})) {
     for (const link of vocab.vocabLinks || []) {
-      if (Array.isArray(link.tokens) && link.tokens.some((t) => docTokenIds.has(t))) {
+      if (Array.isArray(link.tokens) && link.tokens.some((t) => dyingTokens.has(t))) {
         result.links += 1;
       }
     }
   }
   return result;
+};
+
+// Token layers nested (transitively) under the layer `parentId`.
+const nestedUnder = (tokenLayers, parentId) => {
+  const childrenOf = new Map();
+  tokenLayers.forEach((tl) => {
+    if (tl.parentTokenLayer) {
+      if (!childrenOf.has(tl.parentTokenLayer)) childrenOf.set(tl.parentTokenLayer, []);
+      childrenOf.get(tl.parentTokenLayer).push(tl);
+    }
+  });
+  const out = [];
+  const queue = [parentId];
+  while (queue.length) {
+    for (const child of childrenOf.get(queue.shift()) || []) {
+      out.push(child);
+      queue.push(child.id);
+    }
+  }
+  return out;
 };
 
 /**

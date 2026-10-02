@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { countAnnotationLossForRange, countAnnotationLossForWord } from './annotationLoss.js';
+import {
+  countAnnotationLossForRange,
+  countAnnotationLossForWord,
+  countReTokenizeLoss,
+} from './annotationLoss.js';
 
 // A shared IGT+UD-shaped layerInfo: the word carries an IGT gloss, its IGT
 // morpheme a gloss, and UD's syntactic-word layer (nested under words too)
@@ -130,5 +134,79 @@ describe('countAnnotationLossForRange', () => {
     expect(countAnnotationLossForRange(withSentence, vocabularies, 0, 6)).toEqual(
       countAnnotationLossForRange(layerInfo, vocabularies, 0, 6),
     );
+  });
+});
+
+// A tokenizer service resets a one-sentence document's sentence partition,
+// and the server takes every token nested under the sentence with it. The
+// confirm asks first whenever that loses anything.
+describe('countReTokenizeLoss', () => {
+  const oneSentence = ({ word = {}, morph = {}, extra = [] } = {}) => {
+    const sentenceLayer = { id: 'tl-sent', tokens: [{ id: 'sent1', begin: 0, end: 9 }] };
+    const wordLayer = {
+      id: 'tl-word',
+      parentTokenLayer: 'tl-sent',
+      tokens: [
+        { id: 'w1', begin: 0, end: 5, metadata: word },
+        { id: 'w2', begin: 6, end: 9 },
+      ],
+      spanLayers: [],
+    };
+    const morphLayer = {
+      id: 'tl-morph',
+      parentTokenLayer: 'tl-word',
+      tokens: [{ id: 'm1', begin: 0, end: 5, metadata: morph }],
+      spanLayers: [],
+    };
+    return {
+      primaryTextLayer: { tokenLayers: [sentenceLayer, wordLayer, morphLayer, ...extra] },
+      sentenceTokenLayer: sentenceLayer,
+      primaryTokenLayer: wordLayer,
+      morphemeTokenLayer: morphLayer,
+      spanLayers: {},
+    };
+  };
+
+  it('is zero for words nobody has annotated', () => {
+    expect(countReTokenizeLoss(oneSentence(), {})).toEqual({ annotations: 0, links: 0 });
+  });
+
+  it('counts a segmentation with no gloss on it', () => {
+    const info = oneSentence({ morph: { form: 'Mimm', morphType: 'stem' } });
+    expect(countReTokenizeLoss(info, {})).toEqual({ annotations: 1, links: 0 });
+  });
+
+  it('counts an orthography line on a word', () => {
+    const info = oneSentence({ word: { 'orthog:Translit': 'Mimme' } });
+    expect(countReTokenizeLoss(info, {})).toEqual({ annotations: 1, links: 0 });
+  });
+
+  it('does not count provenance alone', () => {
+    const info = oneSentence({ word: { prov: 'inferred', provSource: 'service:x' } });
+    expect(countReTokenizeLoss(info, {})).toEqual({ annotations: 0, links: 0 });
+  });
+
+  it("counts another app's layers nested under the words", () => {
+    const ud = {
+      id: 'tl-ud',
+      parentTokenLayer: 'tl-word',
+      tokens: [{ id: 'sw1', begin: 0, end: 5 }],
+      spanLayers: [
+        {
+          id: 'sl-lemma',
+          spans: [{ id: 'l1', tokens: ['sw1'], value: 'x' }],
+          relationLayers: [{ id: 'rl', relations: [{ id: 'r1', source: 'l1', target: 'l1' }] }],
+        },
+      ],
+    };
+    const info = oneSentence({ extra: [ud] });
+    const vocabularies = { v: { vocabLinks: [{ id: 'k', tokens: ['m1'] }] } };
+    expect(countReTokenizeLoss(info, vocabularies)).toEqual({ annotations: 2, links: 1 });
+  });
+
+  it('is zero when the document has more than one sentence', () => {
+    const info = oneSentence({ morph: { form: 'Mimm' } });
+    info.sentenceTokenLayer.tokens.push({ id: 'sent2', begin: 9, end: 9 });
+    expect(countReTokenizeLoss(info, {})).toEqual({ annotations: 0, links: 0 });
   });
 });

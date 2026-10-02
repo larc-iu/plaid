@@ -33,10 +33,11 @@ splits each sentence into **words** with the Treebank word tokenizer.
   here, and English contractions are split (`don't` becomes `do` + `n't`).
   The built-in tokenizer on the Tokenize tab is the one that follows the
   project.
-- **Overwrite human-edited annotations**: re-segmenting sentences deletes
-  sentence-level annotations. Machine-made, unverified ones are always fair
-  game; if any are human-made or human-verified, the run refuses unless this
-  is enabled.
+- **Overwrite human-edited annotations**: splitting a document that is one
+  sentence makes its words again, deleting what is on the sentence, its words
+  and their morphemes. A sentence found unchanged is left as it is.
+  Machine-made, unverified annotations are always fair game; if any are
+  human-made or human-verified, the run refuses unless this is enabled.
 """
 
 
@@ -98,8 +99,8 @@ class NLTKTokenizerService(BaseService):
                 Param.enum('language', 'Language', PUNKT_LANGUAGES, default='english',
                            description='Pretrained Punkt model used for sentence segmentation.'),
                 Param.boolean('overwrite', 'Overwrite human-edited annotations', default=False,
-                              description='Allow re-segmentation to delete sentence-level annotations '
-                                          'a human created or verified.'),
+                              description='Allow re-segmentation to delete annotations on sentences, words '
+                                          'and morphemes that a person made or verified.'),
             ],
         )
         self.tokenizer_model = NLTKPunktTokenizer()

@@ -67,16 +67,18 @@ def test_the_tokens_are_substrate_and_carry_no_provenance():
         {'id': 'wordL', 'name': 'Words', 'config': {}, 'tokens': []},
     ]
     service = _service(doc)
+    # Two sentences, so the one the document has is replaced.
     service.tokenizer_model.tokenize_text = lambda text, language: (
-        [TokenSpan('the dog barks', 0, 13)],
+        [TokenSpan('the dog', 0, 7), TokenSpan('barks', 8, 13)],
         [TokenSpan('the', 0, 3), TokenSpan('dog', 4, 7), TokenSpan('barks', 8, 13)])
     helper = servicetest.run(service, {**REQUEST, 'language': 'german'})
 
     assert helper.errors == []
     created = [op for kind, payload in service.client.writes if kind == 'tokens.bulk_create'
                for op in payload]
-    assert sorted((op['token_layer_id'], op['begin'], op['end']) for op in created) == [
-        ('sentL', 0, 13), ('wordL', 0, 3), ('wordL', 4, 7), ('wordL', 8, 13)]
+    made = sorted((op['token_layer_id'], op['begin'], op['end']) for op in created)
+    assert [m for m in made if m[0] == 'wordL'] == [('wordL', 0, 3), ('wordL', 4, 7), ('wordL', 8, 13)]
+    assert len([m for m in made if m[0] == 'sentL']) == 2
     assert all(not (op.get('metadata') or {}) for op in created), created
     assert service.client.operation_tags == [
         {'kind': 'service-run', 'ref': 'service:tok:nltk-punkt-tokenizer'}]

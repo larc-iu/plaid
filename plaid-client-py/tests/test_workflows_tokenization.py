@@ -163,6 +163,12 @@ def _spans(text):
     return [TokenSpan(text=text, start=0, end=len(text))]
 
 
+def _two_sentences():
+    """'Hello there.' read as two sentences, so the one the document has is
+    reset (a sentence found unchanged is left standing)."""
+    return [TokenSpan(text='Hello', start=0, end=5), TokenSpan(text='there.', start=6, end=12)]
+
+
 def test_a_refused_run_raises_instead_of_reporting_over_its_caller():
     # The sentence reset would cascade away a human-made annotation. The
     # refusal must reach the caller as an exception: reporting it here and
@@ -175,7 +181,7 @@ def test_a_refused_run_raises_instead_of_reporting_over_its_caller():
     helper = _Helper()
     with pytest.raises(ValueError) as caught:
         TokenProcessor().process_tokens(
-            client, 'd1', _spans('Hello there.'),
+            client, 'd1', _two_sentences(),
             [TokenSpan(text='Hello', start=0, end=5)],
             'word-layer', 'sentence-layer', helper,
             text_layer_id='text-layer')
@@ -193,11 +199,11 @@ def test_a_machine_annotation_is_not_in_the_way():
                     sentence_spans=[machine])
     client = _FakeClient(doc)
     counts = TokenProcessor().process_tokens(
-        client, 'd1', _spans('Hello there.'),
+        client, 'd1', _two_sentences(),
         [TokenSpan(text='Hello', start=0, end=5)],
         'word-layer', 'sentence-layer', _Helper(),
         text_layer_id='text-layer')
-    assert counts['sentences_created'] == 1
+    assert counts['sentences_created'] == 2
 
 
 def test_an_empty_document_is_refused_in_words_not_in_zeroes():
@@ -265,11 +271,11 @@ def test_the_same_document_is_tokenized():
     doc['version'] = 58
     client = _FakeClient(doc)
     counts = TokenProcessor().process_tokens(
-        client, 'd1', _spans('Hello there.'),
+        client, 'd1', _two_sentences(),
         [TokenSpan(text='Hello', start=0, end=5)],
         'word-layer', 'sentence-layer', _Helper(),
         text_layer_id='text-layer', expect_version=58)
-    assert counts['sentences_created'] == 1
+    assert counts['sentences_created'] == 2
 
 
 def test_a_run_stamps_what_it_creates_with_the_detail_it_is_given():
@@ -503,3 +509,135 @@ def test_a_failure_in_a_later_word_batch_says_what_was_written():
     assert str(caught.value).startswith(f'The 2 sentences were written, and {len(made)} of 200 words. '
                                         'Run the tokenizer again to finish. ')
     assert 'plaid.internal' not in str(caught.value)
+
+
+# --- a one-sentence document (H26-SERVICES-4) -----------------------------------
+# A sentence reset bulk-deletes the one sentence, and the server takes every
+# word under it, every morpheme under those, and every span, relation and
+# lexicon link on any of them. Rosetano holds one proverb per document.
+
+BODY = 'Mimme i Rinuzza. Dorme.'
+HUMAN = {}
+MACHINE_MADE = {'prov': 'inferred', 'provSource': 'service:x'}
+
+
+def _analyzed(*, word_spans=(), word_meta=None, morph_meta=None, morph_spans=(), morph_links=(),
+              relations=(), sentences=((0, len(BODY)),)):
+    """Words Mimme, i, Rinuzza, '.', Dorme, '.' under the given sentences, and
+    a morpheme for Mimme. Nesting as plaid-igt sets it up: words under the
+    sentences, morphemes under the words."""
+    words = [(0, 5), (6, 7), (8, 15), (15, 16), (17, 22), (22, 23)]
+    return {'version': 7, 'text_layers': [{
+        'id': 'text-layer', 'text': {'id': 'text-1', 'body': BODY},
+        'token_layers': [
+            {'id': 'sentence-layer', 'name': 'Sentences',
+             'tokens': [{'id': f's{i}', 'begin': b, 'end': e} for i, (b, e) in enumerate(sentences)],
+             'span_layers': [], 'vocabs': []},
+            {'id': 'word-layer', 'name': 'Words', 'parent_token_layer': 'sentence-layer',
+             'tokens': [{'id': f'w{i}', 'begin': b, 'end': e,
+                         **({'metadata': word_meta} if i == 0 and word_meta is not None else {})}
+                        for i, (b, e) in enumerate(words)],
+             'span_layers': [{'id': 'wg', 'name': 'Word Gloss', 'spans': list(word_spans)}],
+             'vocabs': []},
+            {'id': 'morph-layer', 'name': 'Morphemes', 'parent_token_layer': 'word-layer',
+             'tokens': [{'id': 'm0', 'begin': 0, 'end': 5, 'metadata': morph_meta or {}}],
+             'span_layers': [{'id': 'mg', 'name': 'Gloss', 'spans': list(morph_spans),
+                              'relation_layers': [{'id': 'rl', 'name': 'Dep',
+                                                   'relations': list(relations)}]}],
+             'vocabs': [{'id': 'v1', 'vocab_links': list(morph_links)}]},
+        ]}]}
+
+
+def _punkt_words():
+    return [TokenSpan(text=BODY[b:e], start=b, end=e)
+            for b, e in [(0, 5), (6, 7), (8, 15), (15, 16), (17, 22), (22, 23)]]
+
+
+def _run(doc, sentences, *, overwrite=False):
+    client = _FakeClient(doc)
+    counts = TokenProcessor().process_tokens(
+        client, 'd1', sentences, _punkt_words(), 'word-layer', 'sentence-layer', _Helper(),
+        text_layer_id='text-layer', expect_version=7, overwrite=overwrite)
+    return client, counts
+
+
+def _writes(client):
+    return [c for c in client.calls if c[0] in ('bulk_create', 'bulk_delete', 'delete')]
+
+
+ONE = [TokenSpan(text=BODY, start=0, end=len(BODY))]
+TWO = [TokenSpan(text=BODY[:16], start=0, end=16), TokenSpan(text=BODY[17:], start=17, end=len(BODY))]
+
+
+def test_a_sentence_punkt_finds_unchanged_is_left_standing_with_everything_on_it():
+    """Punkt found the one sentence the document already had. The run deleted
+    it and made it again, and the delete took every word, morpheme, gloss and
+    link with it, with Overwrite off and a result saying 0 deleted."""
+    gloss = {'id': 'g1', 'tokens': ['m0'], 'value': 'Mimmo', 'metadata': HUMAN}
+    doc = _analyzed(morph_spans=[gloss], morph_meta={'form': 'Mimme'})
+    # the document lacks one word Punkt finds
+    doc['text_layers'][0]['token_layers'][1]['tokens'].pop()
+    client, counts = _run(doc, ONE)
+    assert not [c for c in client.calls if c[0] in ('bulk_delete', 'delete')]
+    assert _writes(client) == [('bulk_create', [{'token_layer_id': 'word-layer', 'text': 'text-1',
+                                                 'begin': 22, 'end': 23}])]
+    assert counts == {'tokens_created': 1, 'tokens_deleted': 0, 'sentences_created': 0}
+
+
+@pytest.mark.parametrize('what, doc', [
+    ('a word gloss', lambda: _analyzed(word_spans=[{'id': 'g', 'tokens': ['w0'], 'metadata': HUMAN}])),
+    ('an orthography line', lambda: _analyzed(word_meta={'orthog:Translit': 'Mimme'})),
+    ('a segmentation alone', lambda: _analyzed(morph_meta={'form': 'Mimm', 'morphType': 'stem'})),
+    ('a morpheme gloss', lambda: _analyzed(morph_spans=[{'id': 'g', 'tokens': ['m0'], 'metadata': HUMAN}])),
+    ('a verified gloss', lambda: _analyzed(morph_spans=[{'id': 'g', 'tokens': ['m0'],
+                                                         'metadata': {**MACHINE_MADE, 'provConfirmed': True}}])),
+    ('a lexicon link', lambda: _analyzed(morph_links=[{'id': 'l', 'tokens': ['m0'], 'metadata': HUMAN}])),
+    ('a relation', lambda: _analyzed(
+        morph_spans=[{'id': 'g', 'tokens': ['m0'], 'metadata': MACHINE_MADE}],
+        relations=[{'id': 'r', 'source': 'g', 'target': 'g', 'metadata': HUMAN}])),
+])
+def test_a_sentence_reset_refuses_over_any_persons_work_it_would_take(what, doc):
+    """The refusal counted only the sentence's own spans and links, so a
+    reset took a person's words, morphemes, glosses and links without one."""
+    with pytest.raises(ValueError) as caught:
+        _run(doc(), TWO)
+    assert 'human-made or human-verified' in str(caught.value), what
+
+
+def test_a_sentence_reset_over_machine_work_goes_ahead_and_counts_what_it_deletes():
+    doc = _analyzed(morph_meta={'form': 'Mimm', **MACHINE_MADE},
+                    morph_spans=[{'id': 'g', 'tokens': ['m0'], 'metadata': MACHINE_MADE}],
+                    morph_links=[{'id': 'l', 'tokens': ['m0'], 'metadata': MACHINE_MADE}])
+    client, counts = _run(doc, TWO)
+    assert ('bulk_delete', ['s0']) in client.calls
+    # six words and the morpheme go with the sentence, and six words come back
+    assert counts == {'tokens_created': 6, 'tokens_deleted': 7, 'sentences_created': 2}
+
+
+def test_overwrite_lets_a_sentence_reset_take_a_persons_work_and_counts_it():
+    doc = _analyzed(morph_spans=[{'id': 'g', 'tokens': ['m0'], 'metadata': HUMAN}])
+    client, counts = _run(doc, TWO, overwrite=True)
+    assert ('bulk_delete', ['s0']) in client.calls
+    assert counts['tokens_deleted'] == 7 and counts['sentences_created'] == 2
+
+
+def test_a_sentences_own_timing_is_a_persons_work_a_reset_refuses_over():
+    doc = _analyzed()
+    doc['text_layers'][0]['token_layers'][0]['tokens'][0]['metadata'] = {'timeBegin': 1.5}
+    with pytest.raises(ValueError):
+        _run(doc, TWO)
+
+
+def test_a_word_split_at_a_sentence_boundary_takes_nothing_of_a_persons_without_overwrite():
+    """The word-only path deletes a word that crosses a sentence boundary
+    (only possible where words are not nested in sentences), and its
+    morphemes and glosses go with it. It refused nothing."""
+    gloss = {'id': 'g', 'tokens': ['m0'], 'metadata': HUMAN}
+    doc = _analyzed(morph_spans=[gloss], sentences=((0, 3), (3, len(BODY))))
+    doc['text_layers'][0]['token_layers'][1].pop('parent_token_layer')
+    with pytest.raises(ValueError) as caught:
+        _run(doc, ONE)
+    assert 'human-made or human-verified' in str(caught.value)
+    client, counts = _run(doc, ONE, overwrite=True)
+    assert ('bulk_delete', ['w0']) in client.calls
+    assert counts['tokens_deleted'] == 2  # the word and its morpheme
