@@ -161,6 +161,8 @@
    hand or copied in."
   []
   (let [{:keys [enabled? directory retention time]} (backup-config)
+        ;; Read once, so a backup ending meanwhile cannot give `running ""`.
+        started @running
         dir  (io/file directory)
         zips (when (.isDirectory dir)
                (->> (.listFiles dir)
@@ -176,7 +178,7 @@
              :retention retention
              :time      time
              :backups   (or zips [])}
-      @running (assoc :running (str @running)))))
+      started (assoc :running (str started)))))
 
 (defn run-now!
   "Take a backup immediately, outside the schedule. Returns the same
