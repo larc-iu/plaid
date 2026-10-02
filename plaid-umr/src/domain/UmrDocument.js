@@ -39,6 +39,7 @@ import {
   KEPT_VARIABLE,
 } from './sentenceGraph.js';
 import { CYCLE_ROLES, DOC_CONSTANTS } from './format/inventory.js';
+import { editScopes, resendableBySentence } from './umrRebase.js';
 import {
   describeUmrReconcile,
   planEntryUnlink,
@@ -49,6 +50,7 @@ import {
   planTripleRecords,
   planUnalignedHeal,
   planWordSplits,
+  unalignedStretch,
 } from './umrReconcile.js';
 import {
   serializeUmrFile,
@@ -195,6 +197,8 @@ export class UmrDocument extends DocumentModel {
     // so the next version can hand back what an edit left as it was.
     this._lastGraph = null;
     this._lastProblems = null;
+    // The sentences each edit waiting to be sent writes (`_resendable`).
+    this._editScopes = new WeakMap();
   }
 
   static async load({ client, documentId, projectId, project = null, user = null }) {
@@ -478,6 +482,22 @@ export class UmrDocument extends DocumentModel {
 
   _patchContext(next) {
     return [getUmrLayerInfo(next)];
+  }
+
+  // An edit refused because the document moved on goes again by itself
+  // unless what changed meanwhile is in a sentence it writes (Luke's ruling,
+  // 2026-10-03, umrRebase.js). An edit that writes no sentence's rows gets
+  // plaid-ui's rule by layer. The sentences an edit writes are read once,
+  // from the document it was made on and the one it made.
+  _resendable(unsent, footprint, now) {
+    if (!this._editScopes.has(unsent)) {
+      const made = unsent.made;
+      const base = unsent.origin ?? unsent.base;
+      this._editScopes.set(unsent, made && base ? editScopes(base, made) : null);
+    }
+    const scopes = this._editScopes.get(unsent);
+    if (!scopes) return super._resendable(unsent, footprint, now);
+    return resendableBySentence(footprint, scopes, unsent.base, now);
   }
 
   // ----- reconcile on open -----
@@ -1078,8 +1098,11 @@ export class UmrDocument extends DocumentModel {
    * vocabulary entry the concept was picked from, kept on the node so the
    * role picker offers that entry's arguments. `onShown` is called
    * with the node's (pending) ids the moment it is on the canvas, so focus
-   * can go to it before the server answers. Resolves to `{ nodeId, edgeId }`
-   * with the server's ids once it has, or false on failure.
+   * can go to it before the server answers. `onRefused` is called when the
+   * server refused it after it was shown (someone changed the sentence
+   * meanwhile), so the screen can offer what was typed again. Resolves to
+   * `{ nodeId, edgeId }` with the server's ids once it has, or false on
+   * failure.
    */
   async createNode({
     sentenceIndex,
@@ -1090,6 +1113,7 @@ export class UmrDocument extends DocumentModel {
     attrs = [],
     entry = null,
     onShown = null,
+    onRefused = null,
   }) {
     concept = nfc(concept);
     role = nfc(role);
@@ -1203,7 +1227,11 @@ export class UmrDocument extends DocumentModel {
         },
       },
     );
-    return ok ? { nodeId: settledId(spanId), edgeId: edgeId ? settledId(edgeId) : null } : false;
+    if (!ok) {
+      onRefused?.();
+      return false;
+    }
+    return { nodeId: settledId(spanId), edgeId: edgeId ? settledId(edgeId) : null };
   }
 
   /**
@@ -1211,8 +1239,9 @@ export class UmrDocument extends DocumentModel {
    * or null for a concept typed or picked from anywhere else, which takes
    * back the entry the node had: two senses of one headword offer the same
    * concept with different arguments, so picking the other one is a change.
+   * `onRefused` is called when the server refused it after it was shown.
    */
-  async setConcept(nodeId, concept, { entry = null } = {}) {
+  async setConcept(nodeId, concept, { entry = null, onRefused = null } = {}) {
     concept = nfc(concept);
     const node = this.node(nodeId);
     if (!node || !concept) return false;
@@ -1241,7 +1270,7 @@ export class UmrDocument extends DocumentModel {
       span.value = concept;
       if (ops.length) span.metadata = applyMetadataOps(span.metadata, ops);
     });
-    return this._queueWrite(
+    const ok = await this._queueWrite(
       label,
       async () => {
         const id = settledId(node.id);
@@ -1266,6 +1295,8 @@ export class UmrDocument extends DocumentModel {
         },
       },
     );
+    if (!ok) onRefused?.();
+    return ok;
   }
 
   // `from s1e to s1l2`, for an audit label: the relation's two ends, since a
@@ -1447,7 +1478,15 @@ export class UmrDocument extends DocumentModel {
     if (same) return false;
     const label = 'Failed to change the anchor';
     if (!this._canWrite(label)) return false;
-    const pieces = this._pendingPieces(this.piecesFor(sentence, wordIds));
+    // A node made unaligned keeps standing over the text it stood on, as
+    // reconcile puts an unaligned anchor (`unalignedStretch`), not over the
+    // whole sentence: a split of the sentence elsewhere leaves it, and its
+    // relations, on its own side.
+    const pieces = this._pendingPieces(
+      wordIds.length
+        ? this.piecesFor(sentence, wordIds)
+        : [unalignedStretch(node.pieces, sentence)],
+    );
     const oldIds = node.pieces.map((p) => p.id);
     const words = sentence.words.filter((w) => wordIds.includes(w.id)).map((w) => w.text);
     // The sentence an unaligned node records (see _reconcile), set when it
@@ -1497,13 +1536,17 @@ export class UmrDocument extends DocumentModel {
       {
         // The node still stands on the pieces it had, and the words are
         // still the words it was anchored to.
+        // Made unaligned, it is placed over the text its pieces stood on,
+        // so they must still stand there.
         recheck: (fresh) => {
           const now = fresh.node(node.id);
           if (!now || now.sentence !== node.sentence) return false;
-          const pieces = new Set(now.pieces.map((p) => settledId(p.id)));
+          const pieces = new Map(now.pieces.map((p) => [settledId(p.id), p]));
           return (
-            oldIds.every((id) => pieces.has(settledId(id))) &&
-            this._sameWords(fresh, sentence, wordIds)
+            node.pieces.every((was) => {
+              const is = pieces.get(settledId(was.id));
+              return !!is && (wordIds.length || (is.begin === was.begin && is.end === was.end));
+            }) && this._sameWords(fresh, sentence, wordIds)
           );
         },
       },
@@ -1512,7 +1555,8 @@ export class UmrDocument extends DocumentModel {
 
   // An edge from one node to another of the same sentence. A second edge into
   // a node is a re-entrancy. Resolves to the edge id, or false.
-  async createEdge(sourceId, targetId, role) {
+  // `onRefused` is called when the server refused it after it was shown.
+  async createEdge(sourceId, targetId, role, { onRefused = null } = {}) {
     role = nfc(role);
     const source = this.node(sourceId);
     const target = this.node(targetId);
@@ -1570,10 +1614,15 @@ export class UmrDocument extends DocumentModel {
         },
       },
     );
-    return ok ? settledId(edgeId) : false;
+    if (!ok) {
+      onRefused?.();
+      return false;
+    }
+    return settledId(edgeId);
   }
 
-  async setRole(edgeId, role) {
+  // `onRefused` is called when the server refused it after it was shown.
+  async setRole(edgeId, role, { onRefused = null } = {}) {
     role = nfc(role);
     const edge = this.edge(edgeId);
     if (!edge || !role || edge.role === role) return false;
@@ -1604,7 +1653,7 @@ export class UmrDocument extends DocumentModel {
       rel.value = role;
       if (stampOps.length) rel.metadata = applyMetadataOps(rel.metadata, stampOps);
     });
-    return this._queueWrite(
+    const ok = await this._queueWrite(
       label,
       async () => {
         const id = settledId(edge.id);
@@ -1619,6 +1668,8 @@ export class UmrDocument extends DocumentModel {
       },
       `Relabel ${edge.role} ${this._ends(edge)} as ${role}`,
     );
+    if (!ok) onRefused?.();
+    return ok;
   }
 
   // Move an edge one place earlier (dir -1) or later (+1) among its head's

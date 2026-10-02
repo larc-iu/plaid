@@ -271,6 +271,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const [mode, setMode] = useFollowedState(null);
   // An open editor: `{ kind, x, y, ... }`, see askRole and askNewNode.
   const [editor, setEditor] = useFollowedState(null);
+  const editorRef = useRef(null);
+  editorRef.current = editor;
   // A mode waits for a click in THIS sentence: focus arriving in another
   // block ends it, or a later click here carried out a move asked for before
   // the annotator went elsewhere.
@@ -661,6 +663,28 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const askPick = (group, nodeId) =>
     setEditor({ kind: 'pick', group, nodeId, ...positionBelow(nodeId), value: '' });
 
+  // A typed edit the server refused once it was shown (someone changed this
+  // sentence meanwhile): its editor opens again with what was typed, when
+  // what it was for is still there, no other editor or text mode is open
+  // and focus has not gone to another part of the page. The refusal has
+  // already put the stored graph back on the canvas.
+  const offerAgain = (reopen) => () => {
+    if (editorRef.current || textModeRef.current) return;
+    const active = document.activeElement;
+    if (active && active !== document.body && !sectionRef.current?.contains(active)) return;
+    const next = reopen();
+    if (next) setEditor(next);
+  };
+  // A new node's concept, again: under its parent while that is there, on
+  // the words of it still in the sentence.
+  const newNodeAgain = (newNode, at) =>
+    offerAgain(() => {
+      if (newNode.parentId && !doc.node(newNode.parentId)) return null;
+      const words = doc.sentence(newNode.sentenceIndex)?.words || [];
+      const wordIds = newNode.wordIds.filter((id) => words.some((w) => w.id === id));
+      return { kind: 'new', parentId: newNode.parentId, wordIds, ...at, value: newNode.concept };
+    });
+
   const commitEditor = async (text, option = null) => {
     const ed = editor;
     if (!ed) return;
@@ -743,12 +767,22 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       const p = ed.pending;
       if (p.newNode) {
         setEditor(null);
-        doc.createNode({ ...p.newNode, role, onShown: focusWhenDrawn });
+        doc.createNode({
+          ...p.newNode,
+          role,
+          onShown: focusWhenDrawn,
+          onRefused: newNodeAgain(p.newNode, { x: ed.x, y: ed.y }),
+        });
         return;
       }
       closeEditor();
-      if (p.edgeId) await doc.setRole(p.edgeId, role);
-      else await doc.createEdge(p.sourceId, p.targetId, role);
+      const roleAgain = offerAgain(() =>
+        (p.edgeId ? doc.edge(p.edgeId) : doc.node(p.sourceId) && doc.node(p.targetId))
+          ? { kind: 'role', pending: p, x: ed.x, y: ed.y, value: role }
+          : null,
+      );
+      if (p.edgeId) await doc.setRole(p.edgeId, role, { onRefused: roleAgain });
+      else await doc.createEdge(p.sourceId, p.targetId, role, { onRefused: roleAgain });
     } else if (ed.kind === 'new') {
       setEditor(null);
       // A number names a word only when no word was dropped on: a word whose
@@ -773,11 +807,22 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       if (ed.parentId) {
         askRole({ newNode }, { x: ed.x, y: ed.y });
       } else {
-        doc.createNode({ ...newNode, onShown: focusWhenDrawn });
+        doc.createNode({
+          ...newNode,
+          onShown: focusWhenDrawn,
+          onRefused: newNodeAgain(newNode, { x: ed.x, y: ed.y }),
+        });
       }
     } else if (ed.kind === 'concept') {
       closeEditor();
-      await doc.setConcept(ed.nodeId, text, { entry: entryPicked(text, option) });
+      await doc.setConcept(ed.nodeId, text, {
+        entry: entryPicked(text, option),
+        onRefused: offerAgain(() =>
+          doc.node(ed.nodeId)
+            ? { kind: 'concept', nodeId: ed.nodeId, x: ed.x, y: ed.y, value: text }
+            : null,
+        ),
+      });
     } else if (ed.kind === 'variable') {
       closeEditor();
       await doc.setVariable(ed.nodeId, text);

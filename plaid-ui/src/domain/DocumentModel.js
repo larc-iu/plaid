@@ -871,10 +871,21 @@ export class DocumentModel {
     const { footprint } = this._summary(unsent);
     // Both read against the base the edit was made on, which this replaces.
     this._created(unsent);
-    if (!resendable(footprint, unsent.base, now, { byEntity: unsent.byEntity })) return false;
+    if (!this._resendable(unsent, footprint, now)) return false;
     unsent.origin ??= unsent.base;
     unsent.base = now;
     return true;
+  }
+
+  // Whether nothing that changed between `unsent.base` and `now` touches
+  // `footprint`, what `unsent` writes: by layer, or by entity when it was
+  // opted in (rebase.js `resendable`). A subclass that knows what its rows
+  // mean may judge its own rows by a rule of its own and leave the rest to
+  // this one (plaid-umr: a UMR edit and a change to another sentence's
+  // graph). `unsent.origin ?? unsent.base` and `unsent.made` are the
+  // document the edit was made on and the one it made.
+  _resendable(unsent, footprint, now) {
+    return resendable(footprint, unsent.base, now, { byEntity: unsent.byEntity });
   }
 
   // The version the server checks this document's writes against, or null

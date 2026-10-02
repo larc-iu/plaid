@@ -133,15 +133,31 @@ test('an edge that would close a cycle with an edge added meanwhile is refused, 
   release();
 });
 
-// Luke's ruling Q2 narrowed (2026-09-30): an edge goes again only when what
-// changed meanwhile is all in layers it neither reads nor writes. Another
-// edge, even in another sentence, is in its own layer.
-test('an edge is refused, not sent again, when an edge went in elsewhere meanwhile', async () => {
+// UMR conflicts are per sentence (Luke's ruling, 2026-10-03, umrRebase.js):
+// an edge goes again past an edge another user put in another sentence, and
+// is refused past one put in its own.
+test('an edge goes again when an edge went in in another sentence meanwhile', async () => {
   let c;
   let d;
   const { doc, calls, errors, release } = load((raw, dd) => withEdge(raw, dd, d.id, c.id));
   const [a, b] = unrelated(doc, 1);
   [c, d] = unrelated(doc, 2);
+  const result = await doc.createEdge(a.id, b.id, ':ARG1');
+  assert.ok(result, 'the edge was written');
+  assert.equal(created(calls).length, 1, 'sent again');
+  assert.deepEqual(errors, []);
+  release();
+});
+
+test('an edge is refused, not sent again, when an edge went in in its own sentence meanwhile', async () => {
+  let c;
+  let d;
+  const { doc, calls, errors, release } = load((raw, dd) => withEdge(raw, dd, d.id, c.id));
+  const [a, b] = unrelated(doc, 1);
+  // Two other nodes of sentence 1, so only the sentence is shared.
+  const rest = doc.sentence(1).nodes.filter((n) => n.id !== a.id && n.id !== b.id);
+  [c, d] = rest;
+  assert.ok(c && d);
   const result = await doc.createEdge(a.id, b.id, ':ARG1');
   assert.equal(result, false);
   assert.equal(created(calls).length, 0, 'not sent again');

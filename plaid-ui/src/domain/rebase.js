@@ -432,13 +432,17 @@ export function untouched(footprint, before, now) {
 // does not have yet are its own, not a change made elsewhere. The rule every
 // edit gets (Luke's ruling Q2 narrowed): an igt gloss passes a UMR node or a
 // parser's relations, while two edits in one layer never pass each other.
-export function apart(footprint, before, now) {
+//
+// `skip` is the ids of changes the caller has judged already, by a rule of
+// its own that knows more of what its rows mean (plaid-umr's per sentence):
+// they are not looked at here. Without it, every change is.
+export function apart(footprint, before, now, { skip = null } = {}) {
   if (!footprint) return false;
   const a = indexEntities(before);
   const b = indexEntities(now);
   const holders = holdersOf(a, b);
   for (const id of changedIds(a, b)) {
-    if (isPendingId(id)) continue;
+    if (isPendingId(id) || skip?.has(id)) continue;
     if (footprint.names.has(id) || footprint.removed.has(id)) return false;
     if (holders.has(id)) {
       if (footprint.reads.has(id)) return false;

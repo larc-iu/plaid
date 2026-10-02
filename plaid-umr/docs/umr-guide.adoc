@@ -225,7 +225,8 @@ A node anchored to words follows its words.
 Letters typed at an anchored word's edge or inside it, a space included, stay in the nodes anchored to it.
 A word split in two in Plaid IGT (`ikian,` into `ikian` and `,`) keeps its nodes on the half with the most letters, the first half on a tie, from the next opening here.
 A node anchored to two words with no space between them (`do` and `n't`) is put on one of them in the same way, since nothing tells it from a word split in two.
-A node anchored to no word belongs to the sentence it was made in and stands over the whole of it, so an edit anywhere in the text leaves it where it belongs.
+A node made with no word belongs to the sentence it was made in and stands over the whole of it, so an edit anywhere in the text leaves it where it belongs.
+A node whose words are all taken off its anchor (**u**) stands over the text they had, as one whose words are deleted does, so a sentence split elsewhere leaves it, with its edges, on the side of that text.
 Two sentences joined into one bring their nodes together in it, where they are two graphs until the annotator joins them, which the sentence's header counts and the Validation tab lists.
 Splitting it again where they were joined gives each sentence its own nodes back, with their edges, and its own imported lines: its number, its gloss and metadata lines, a graph kept as text with the relations held for it, and its document-level relations between constants such as `(root :modal author)`.
 While the two are one sentence, the export writes the first one's lines.
@@ -426,8 +427,11 @@ Threads on things this editor does not show, such as a word's gloss written in a
 **Activity** shows who has been working on the project and on what.
 
 Two people can have one document open, and neither page shows the other's edits as they are made.
-An edit is refused when another person changed the document since the page loaded, unless everything they changed is annotation this edit does not touch, such as a gloss in Plaid IGT on another word.
-It says `Changed elsewhere. Now showing the latest version. Redo your edit.`, and the page then shows their change.
+An edit is refused when, since the page last read the document, another person changed the graph of the same sentence (its nodes, edges, document-level relations or imported lines) or the text.
+A change to another sentence's graph, or annotation this edit does not touch such as a gloss in Plaid IGT, is no conflict: the edit is saved, and the page shows both.
+Two people adding the same constant (`author`) for the first time at once conflict, while relations to a constant that is there already from two sentences do not.
+A refused edit says `Changed elsewhere. Now showing the latest version. Redo your edit.`, and the page then shows their change.
+While you are still in that sentence, a concept or relation typed for it opens again in its editor with what was typed, and Enter saves it.
 When a maintainer makes you a Reader, or removes you, while you have a document open, the page turns read-only after your next edit is refused, or within a minute.
 A member who was removed is told `You no longer have access to this project.`
 

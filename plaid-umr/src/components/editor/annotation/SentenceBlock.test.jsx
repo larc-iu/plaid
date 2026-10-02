@@ -2014,3 +2014,101 @@ describe('SentenceBlock text mode, closed by the Text toggle', () => {
     await r.unmount();
   });
 });
+
+// Luke's ruling (2026-10-03): a typed edit refused because someone changed
+// the same sentence meanwhile keeps what was typed. The editor opens again
+// with it once the refusal has put the stored graph back.
+describe('SentenceBlock, a typed edit the server refused', () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const press = (el, key, init = {}) =>
+    el.dispatchEvent(
+      new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }),
+    );
+  const type = (input, text) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    setter.call(input, text);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const docStub = (extra = {}) => ({
+    graph: {},
+    canConfirmSentence: () => false,
+    canDiscardSentence: () => false,
+    canConfirm: () => false,
+    ...extra,
+  });
+  const editorInput = (r) => r.container.querySelector('.umr-inline-editor input');
+
+  it("opens a new node's concept again with what was typed", async () => {
+    const { sentence, nodesById } = fixture();
+    const empty = { ...sentence, nodes: [], edges: [], roots: [] };
+    const made = [];
+    const doc = docStub({
+      sentence: () => empty,
+      node: () => null,
+      createNode: async (args) => {
+        made.push(args.concept);
+        await wait(5);
+        args.onRefused?.();
+        return false;
+      },
+    });
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={doc}
+        dataVersion={1}
+        readOnly={false}
+        sentence={empty}
+        nodesById={nodesById}
+      />,
+    );
+    const stop = r.container.querySelector('.umr-graph');
+    await r.step(() => stop.focus());
+    await r.step(() => press(stop, 'n'));
+    await r.step(() => type(editorInput(r), 'dog'));
+    await r.step(() => press(editorInput(r), 'Enter'));
+    await r.step(() => wait(20));
+    expect(made).toEqual(['dog']);
+    expect(editorInput(r)?.value).toBe('dog');
+    // Enter sends it again.
+    await r.step(() => press(editorInput(r), 'Enter'));
+    await r.step(() => wait(20));
+    expect(made).toEqual(['dog', 'dog']);
+    await r.unmount();
+  });
+
+  it('opens a concept again with what was typed while its node is there, and not after it went', async () => {
+    const { sentence, nodesById } = fixture();
+    let there = true;
+    const doc = docStub({
+      node: (id) => (there ? nodesById.get(id) : null),
+      setConcept: async (id, text, { onRefused }) => {
+        await wait(5);
+        onRefused?.();
+        return false;
+      },
+    });
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={doc}
+        dataVersion={1}
+        readOnly={false}
+        sentence={sentence}
+        nodesById={nodesById}
+      />,
+    );
+    const node = all(r.container, '.umr-node')[0];
+    await r.step(() => node.focus());
+    await r.step(() => press(node, 'Enter'));
+    expect(editorInput(r)?.value).toBe('leave-02');
+    await r.step(() => type(editorInput(r), 'depart-01'));
+    await r.step(() => press(editorInput(r), 'Enter'));
+    await r.step(() => wait(20));
+    expect(editorInput(r)?.value).toBe('depart-01');
+    // Gone meanwhile: nothing to open again on.
+    there = false;
+    await r.step(() => press(editorInput(r), 'Enter'));
+    await r.step(() => wait(20));
+    expect(editorInput(r)).toBeNull();
+    await r.unmount();
+  });
+});

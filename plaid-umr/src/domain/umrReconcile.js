@@ -58,6 +58,27 @@ import {
 import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 
 /**
+ * Where a node aligned to no word stands: one stretch of text from where the
+ * first of its `pieces` that covers text begins to where the last ends, cut
+ * to its sentence `home`, and the whole sentence when they cover no text
+ * there (a point, or no piece). Reconcile puts an unaligned anchor there,
+ * and the canvas puts a node made unaligned there, so a later split of the
+ * sentence outside that text leaves the node, and its relations, on the side
+ * its text is on.
+ *
+ * @param {{ begin: number, end: number }[]} pieces
+ * @param {{ begin: number, end: number }} home
+ * @returns {{ begin: number, end: number }}
+ */
+export function unalignedStretch(pieces, home) {
+  const text = pieces.filter((p) => p.end > p.begin);
+  const begin = Math.max(home.begin, Math.min(...text.map((p) => p.begin)));
+  const end = Math.min(home.end, Math.max(...text.map((p) => p.end)));
+  if (!text.length || end <= begin) return { begin: home.begin, end: home.end };
+  return { begin, end };
+}
+
+/**
  * @param {{ sentences: Array, nodesById: Map }} graph from buildDocumentGraph
  * @param {string} namespace the metadata namespace a node records in
  * @returns {{
@@ -86,10 +107,7 @@ export function planUnalignedHeal(graph, namespace) {
   const standOver = (node, home) => {
     const [piece, ...rest] = node.pieces;
     if (!piece) return;
-    const text = node.pieces.filter((p) => p.end > p.begin);
-    let begin = Math.max(home.begin, Math.min(...text.map((p) => p.begin)));
-    let end = Math.min(home.end, Math.max(...text.map((p) => p.end)));
-    if (!text.length || end <= begin) [begin, end] = [home.begin, home.end];
+    const { begin, end } = unalignedStretch(node.pieces, home);
     if (piece.begin === begin && piece.end === end && !rest.length) return;
     const item = { nodeId: node.id, pieceId: piece.id, begin, end };
     if (rest.length) item.extra = rest.map((p) => p.id);

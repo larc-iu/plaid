@@ -428,6 +428,12 @@ describe('the rule by layer, which every edit gets', () => {
     expect(apart(addNode, base, nodeElsewhere)).toBe(false);
   });
 
+  it('leaves out the changes a caller judged by a rule of its own (`skip`), and only those', () => {
+    expect(apart(addNode, base, nodeElsewhere, { skip: new Set(['n1', 'c1']) })).toBe(true);
+    expect(apart(addNode, base, nodeElsewhere, { skip: new Set(['n1']) })).toBe(false);
+    expect(apart(addGlossOnDog, base, glossElsewhere, { skip: new Set(['n1', 'c1']) })).toBe(false);
+  });
+
   it('lets an edit pass a change in layers it neither reads nor writes, both ways', () => {
     // An igt gloss and a UMR node.
     expect(apart(addGlossOnDog, base, nodeElsewhere)).toBe(true);
