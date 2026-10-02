@@ -6,9 +6,8 @@
 // rather than a hand-rolled one. Not every browser honours the context rate,
 // hence the render fallback below.
 //
-// Size matters here. An hour of 16 kHz mono is 230 MB of Float32, which is
-// still four times smaller than the full-rate stereo decode the waveform
-// already does on the same file, so this is not the tab's memory ceiling.
+// Size matters here. An hour of 16 kHz mono is 230 MB of Float32, about a
+// fifth of an hour decoded at 44.1 kHz in stereo.
 
 const OfflineCtx = () =>
   typeof window !== 'undefined' && (window.OfflineAudioContext || window.webkitOfflineAudioContext);

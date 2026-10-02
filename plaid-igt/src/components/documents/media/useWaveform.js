@@ -22,11 +22,13 @@ import {
 // whole recording just to look in the cache. What it actually bought — not
 // decoding again on the way back to a document — is the envelope cache below.
 
-// Envelopes for the last few recordings looked at. Keyed by byte length and
-// duration, because the tab refetches the recording and gets a fresh Blob.
+// Envelopes for the last few recordings looked at. Keyed by the recording's
+// versioned URL (the document's `mediaUrl`, whose `?v=` changes when the file
+// is replaced), because the tab refetches the recording and gets a fresh Blob.
+// Byte length and duration are no identity: two takes of one length are
+// routine, and one drew the other's picture.
 const ENVELOPE_CACHE_LIMIT = 3;
 const envelopeCache = new Map();
-const envelopeKey = (blob, duration) => `${blob?.size ?? 0}_${Math.round(duration * 1000)}`;
 const rememberEnvelope = (key, value) => {
   envelopeCache.delete(key);
   envelopeCache.set(key, value);
@@ -44,6 +46,22 @@ const themeColor = (name, alpha) => {
   return h && s && l ? `hsla(${h}, ${s}, ${l}, ${alpha})` : `rgba(144, 202, 249, ${alpha})`;
 };
 
+// The rate the envelope is decoded at. A context decodes at its own rate, and
+// a full-rate one asked for an hour and more of audio runs out of memory (110
+// minutes of a 16 kHz MP3 upsampled to 44.1 kHz is 291 million samples). The
+// envelope is a hundred buckets a second at most, so a low rate draws the same
+// picture at a fraction of the size.
+export const WAVEFORM_RATE = 8000;
+
+const decodeForEnvelope = async (blob) => {
+  const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  // The bytes are already in memory as the blob behind the player's <video>
+  // src, so there is nothing to fetch. decodeAudioData detaches the buffer,
+  // hence the fresh copy.
+  const decoded = await new Ctx(1, 1, WAVEFORM_RATE).decodeAudioData(await blob.arrayBuffer());
+  return Array.from({ length: decoded.numberOfChannels }, (_, i) => decoded.getChannelData(i));
+};
+
 const canvasFor = (width) => {
   const pixelRatio = window.devicePixelRatio || 1;
   const canvas = window.document.createElement('canvas');
@@ -56,13 +74,22 @@ const canvasFor = (width) => {
 
 /**
  * @param {Blob|null} mediaBlob    the recording, already fetched for playback
+ * @param {string|null} mediaKey   names that recording and its version (the
+ *                                 document's `mediaUrl`)
  * @param {number} duration        seconds
  * @param {number} timelineWidth   the timeline's full width in its own pixels
  * @param {number} scrollLeft      how far along it is scrolled
  * @param {{current: HTMLElement|null}} containerRef  the scrolling box
  * @returns {{image: string|null, box: {left: number, width: number}, loading: boolean}}
  */
-export function useWaveform({ mediaBlob, duration, timelineWidth, scrollLeft, containerRef }) {
+export function useWaveform({
+  mediaBlob,
+  mediaKey,
+  duration,
+  timelineWidth,
+  scrollLeft,
+  containerRef,
+}) {
   const [image, setImage] = useState(null);
   const [box, setBox] = useState({ left: 0, width: 0 });
   const [loading, setLoading] = useState(false);
@@ -72,6 +99,9 @@ export function useWaveform({ mediaBlob, duration, timelineWidth, scrollLeft, co
   const envelopeRef = useRef({ blob: null, peaks: null, level: 1 });
   const drawnRef = useRef({ blob: null, timelineWidth: 0, left: 0, width: 0 });
   const decodeRef = useRef(null);
+  // The recording whose decode failed and was said so, so a redraw (a scroll,
+  // a typed row) draws the flat line again without a second notice.
+  const failedRef = useRef(null);
 
   // Object URLs are revoked as they are replaced, and on the way out.
   useEffect(() => {
@@ -105,8 +135,8 @@ export function useWaveform({ mediaBlob, duration, timelineWidth, scrollLeft, co
       setLoading(true);
       try {
         if (envelopeRef.current.blob !== mediaBlob) {
-          const key = envelopeKey(mediaBlob, duration);
-          const cached = envelopeCache.get(key);
+          const key = mediaKey || null;
+          const cached = key ? envelopeCache.get(key) : null;
           if (cached) {
             envelopeRef.current = { blob: mediaBlob, ...cached };
           } else {
@@ -114,15 +144,8 @@ export function useWaveform({ mediaBlob, duration, timelineWidth, scrollLeft, co
               decodeRef.current = {
                 blob: mediaBlob,
                 promise: (async () => {
-                  const audio = new (window.AudioContext || window.webkitAudioContext)();
-                  // The bytes are already in memory as the blob behind the
-                  // player's <video> src, so there is nothing to fetch.
-                  // decodeAudioData detaches the buffer, hence the fresh copy.
-                  const decoded = await audio.decodeAudioData(await mediaBlob.arrayBuffer());
-                  const channels = Array.from({ length: decoded.numberOfChannels }, (_, i) =>
-                    decoded.getChannelData(i),
-                  );
-                  return rememberEnvelope(key, peaksOf(channels, duration));
+                  const envelope = peaksOf(await decodeForEnvelope(mediaBlob), duration);
+                  return key ? rememberEnvelope(key, envelope) : envelope;
                 })(),
               };
             }
@@ -143,8 +166,11 @@ export function useWaveform({ mediaBlob, duration, timelineWidth, scrollLeft, co
         }
         publish(canvas, at);
       } catch (error) {
-        console.error('Failed to generate waveform:', error);
-        notifyWarning('The timeline shows a flat line.', 'Waveform unavailable');
+        if (failedRef.current !== mediaBlob) {
+          failedRef.current = mediaBlob;
+          console.error('Failed to generate waveform:', error);
+          notifyWarning('The timeline shows a flat line.', 'Waveform unavailable');
+        }
         // No amplitudes, so a flat centreline rather than randomised bars,
         // which would read as a genuine signal.
         const { canvas, ctx, drawWidth } = canvasFor(at.width);
@@ -170,7 +196,7 @@ export function useWaveform({ mediaBlob, duration, timelineWidth, scrollLeft, co
       cancelled = true;
       if (retry) cancelAnimationFrame(retry);
     };
-  }, [mediaBlob, duration, timelineWidth, scrollLeft, containerRef]);
+  }, [mediaBlob, mediaKey, duration, timelineWidth, scrollLeft, containerRef]);
 
   return { image, box, loading };
 }

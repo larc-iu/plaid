@@ -15,26 +15,30 @@ import { renderComponent } from '@ui/test/renderComponent.jsx';
 // the seam, so a channel's samples ARE the bar heights and the drawn image is
 // readable as the numbers that went into it.
 
-vi.mock('@/utils/feedback', () => ({ notifyWarning: vi.fn() }));
+const { notifyWarning } = vi.hoisted(() => ({ notifyWarning: vi.fn() }));
+vi.mock('@/utils/feedback', () => ({ notifyWarning }));
 vi.mock('./waveform.js', async (importOriginal) => ({
   ...(await importOriginal()),
   peaksOf: (channels) => ({ peaks: channels[0], level: 1 }),
   barsFor: ({ peaks }) => [...peaks].map((h, i) => ({ x: i, y: 0, width: 1, height: h })),
 }));
 
-const { useWaveform } = await import('./useWaveform.js');
+const { useWaveform, WAVEFORM_RATE } = await import('./useWaveform.js');
 
-// A recording, identified by byte length (which is also the envelope cache's
+// A recording, named by its versioned URL (which is also the envelope cache's
 // key, so every test needs its own).
-let nextSize = 1000;
-const recording = () => {
-  nextSize += 1;
-  return { size: nextSize, arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) };
-};
+let nextKey = 1000;
+const recording = (key = `/media?v=${(nextKey += 1)}`) => ({
+  key,
+  size: 5000,
+  arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
+});
 
 // One deferred per decode, so two can be in flight at once and land out of
 // order.
 let decodes;
+// The rate of every context a decode ran in.
+let rates;
 const decoded = (samples) => ({
   numberOfChannels: 1,
   getChannelData: () => Float32Array.from(samples),
@@ -48,6 +52,7 @@ const Probe = ({ blob, timelineWidth = 400 }) => {
   const containerRef = useRef({ clientWidth: 300 });
   const view = useWaveform({
     mediaBlob: blob,
+    mediaKey: blob?.key ?? null,
     duration: 2,
     timelineWidth,
     scrollLeft: 0,
@@ -69,8 +74,15 @@ const settle = (view) =>
 
 beforeEach(() => {
   decodes = [];
+  rates = [];
   seq = [];
-  window.AudioContext = class {
+  notifyWarning.mockClear();
+  // A full-rate AudioContext is what ran out of memory on a long recording.
+  window.AudioContext = undefined;
+  window.OfflineAudioContext = class {
+    constructor(channels, length, rate) {
+      rates.push(rate);
+    }
     decodeAudioData() {
       let finish;
       const promise = new Promise((resolve) => {
@@ -129,10 +141,10 @@ describe('the timeline waveform', () => {
 
   it('keeps the envelope of the recording on screen when an abandoned decode lands', async () => {
     // Two fetches of one recording, so both passes share the envelope cache's
-    // key (byte length and duration). The samples differ only so the test can
-    // tell which pass's envelope was kept.
-    const first = { size: 5000, arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) };
-    const second = { size: 5000, arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) };
+    // key (its versioned URL). The samples differ only so the test can tell
+    // which pass's envelope was kept.
+    const first = recording('/media?v=same');
+    const second = recording('/media?v=same');
     const view = await renderComponent(<Probe blob={first} />);
     await view.rerender(<Probe blob={second} />);
 
@@ -164,6 +176,45 @@ describe('the timeline waveform', () => {
     await view.step(() => decodes[1].finish(decoded([7, 8, 9])));
     await settle(view);
     expect(api.loading).toBe(false);
+    await view.unmount();
+  });
+
+  it("never draws another recording's waveform for one of the same length", async () => {
+    // A replaced recording, or another document's, of the same byte length and
+    // duration: two takes cut to one length are routine.
+    const first = recording();
+    const second = recording();
+    const view = await renderComponent(<Probe blob={first} />);
+    await view.step(() => decodes[0].finish(decoded([1, 2, 3])));
+    await settle(view);
+    await view.rerender(<Probe blob={second} />);
+    expect(decodes).toHaveLength(2);
+    await view.step(() => decodes[1].finish(decoded([7, 8, 9])));
+    await settle(view);
+    expect(seq).toEqual(['drawn:1,2,3', 'drawn:7,8,9']);
+    await view.unmount();
+  });
+
+  it('decodes at a low rate, so a long recording fits in memory', async () => {
+    const view = await renderComponent(<Probe blob={recording()} />);
+    await view.step(() => decodes[0].finish(decoded([1, 2, 3])));
+    await settle(view);
+    expect(rates).toEqual([WAVEFORM_RATE]);
+    expect(WAVEFORM_RATE).toBeLessThanOrEqual(8000);
+    await view.unmount();
+  });
+
+  it('says once that a recording could not be decoded, not on every redraw', async () => {
+    const blob = recording();
+    const view = await renderComponent(<Probe blob={blob} />);
+    await view.step(() => decodes[0].finish(Promise.reject(new Error('Unable to decode'))));
+    await settle(view);
+    await view.rerender(<Probe blob={blob} timelineWidth={600} />);
+    await settle(view);
+    await view.rerender(<Probe blob={blob} timelineWidth={800} />);
+    await settle(view);
+    expect(decodes).toHaveLength(1);
+    expect(notifyWarning).toHaveBeenCalledTimes(1);
     await view.unmount();
   });
 });

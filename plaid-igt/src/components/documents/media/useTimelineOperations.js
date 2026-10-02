@@ -517,6 +517,7 @@ export const useTimelineOperations = (mediaOps) => {
   // The waveform picture: decoded once, redrawn for the stretch on screen.
   const waveform = useWaveform({
     mediaBlob: mediaOps.mediaBlob,
+    mediaKey: mediaOps.mediaBlobKey ?? null,
     duration: mediaOps.duration,
     timelineWidth,
     scrollLeft: timelineScrollLeft,

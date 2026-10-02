@@ -203,14 +203,16 @@ export const useMediaOperations = () => {
   // also what the timeline decodes for its waveform, so this is one download
   // where it used to be two.
   const mediaSrcUrl = doc.document.mediaUrl;
-  const [media, setMedia] = useState({ url: null, blob: null });
+  // `key` is the versioned URL the blob was fetched from, which names it for
+  // anything cached per recording (the waveform), and changes with the blob.
+  const [media, setMedia] = useState({ url: null, blob: null, key: null });
   const [isLoadingMedia, setIsLoadingMedia] = useState(false);
   const [mediaLoadError, setMediaLoadError] = useState(null);
 
   useEffect(() => {
     // Clear eagerly so a stale blob never shows under a new (or deleted)
     // media file while the fetch below is still in flight.
-    setMedia({ url: null, blob: null });
+    setMedia({ url: null, blob: null, key: null });
     setMediaLoadError(null);
     if (!mediaSrcUrl) {
       setIsLoadingMedia(false);
@@ -234,7 +236,7 @@ export const useMediaOperations = () => {
         const blob = await response.blob();
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
-        setMedia({ url: objectUrl, blob });
+        setMedia({ url: objectUrl, blob, key: mediaSrcUrl });
       } catch (error) {
         if (cancelled) return;
         console.error('Failed to load media:', error);
@@ -253,6 +255,7 @@ export const useMediaOperations = () => {
 
   const authenticatedMediaUrl = media.url;
   const mediaBlob = media.blob;
+  const mediaBlobKey = media.key;
 
   // Whether the element has read the file it was handed. The file arrives
   // whole after the tab opens, and the transcript rows and the keys are live
@@ -969,6 +972,7 @@ export const useMediaOperations = () => {
     project,
     authenticatedMediaUrl,
     mediaBlob,
+    mediaBlobKey,
     isLoadingMedia,
     mediaLoadError,
     alignmentTokenLayer,
