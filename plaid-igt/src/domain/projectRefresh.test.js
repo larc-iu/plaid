@@ -3,7 +3,7 @@
 // load, so a tagset closed after the page opened let any value through, and
 // one opened since still refused values the server allows (V6 H6-4). The
 // project is read again with every refetch and on a return to the tab.
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { IgtDocument } from './IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
 
@@ -58,6 +58,31 @@ describe('the project copy an open document holds', () => {
     document.dispatchEvent(new Event('visibilitychange'));
     await new Promise((r) => setTimeout(r, 0));
     expect(mode(doc)).toBe('suggest');
+  });
+
+  // H11-MULTI-2: a maintainer's change of whose work is reviewed reached an
+  // open page only on a refetch, so the writer's next edits and approvals
+  // were stamped by the old policy.
+  it('is read again every minute on a visible tab, and decides who is reviewed', async () => {
+    vi.useFakeTimers();
+    try {
+      const { doc, server } = setup();
+      doc._user = { id: 'w@x.org' };
+      const release = doc.hold();
+      expect(doc.contributorId).toBe(null);
+      server.project.config = {
+        ...server.project.config,
+        plaid: { review: { users: ['w@x.org'] } },
+      };
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(doc.contributorId).toBe('w@x.org');
+      release();
+      server.project.config = tagsets('closed');
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(doc.contributorId).toBe('w@x.org');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('keeps the copy it has when the read fails', async () => {
