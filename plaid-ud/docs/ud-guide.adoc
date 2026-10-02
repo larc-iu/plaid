@@ -104,6 +104,7 @@ If you already have annotated data, you can import it instead of typing it in.
 
 Open the project's **Import and export** tab and drop `.conllu` files on it, one or many, or a ZIP of them.
 Each `# newdoc` boundary inside a file becomes its own document.
+A document too large for the server is not imported, and its row says `This document is too large to save in one request. Split it into shorter documents.`
 The same tab exports the whole project as a ZIP of `.conllu` files.
 
 [WARNING]
@@ -715,7 +716,7 @@ The link:manual.html#_services[Services chapter of the Plaid manual] explains ho
 
 From the project's **Access** settings, and from your user profile, you can create named **API tokens** for scripts and services.
 A token carries your permissions and does not expire, and actions taken with one are attributed to it in the history.
-A token cannot change a password, create or revoke API tokens, make a password-reset link, create an account, or make an invitation link that grants administrator rights.
+A token cannot change a password, create or revoke API tokens, make an invitation link of any kind or a password-reset link, or create an account.
 Do these signed in.
 
 For writing your own scripts against a project, see the link:api-py.html[Python client] and link:api-js.html[JavaScript client] references.
