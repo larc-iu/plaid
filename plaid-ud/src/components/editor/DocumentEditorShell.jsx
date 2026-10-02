@@ -29,6 +29,8 @@ import { DocumentHistoryPanel } from '@ui/components/shared/DocumentHistoryPanel
 import { HistoricalBanner } from '@ui/components/shared/HistoricalBanner.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { Notice } from '@ui/components/shared/Notice.jsx';
+import { LongDocumentNotice } from '@ui/components/shared/LongDocumentNotice.jsx';
+import { isLongDocument } from '@ui/domain/longDocument.js';
 import { TOKEN_ROLE_WORDS } from '../../domain/restoreSummary.js';
 
 // Parent route of the four document tabs (/edit, /annotate, /export, /details).
@@ -245,6 +247,8 @@ const DocumentEditor = () => {
   useSavingGuard(comments);
 
   const wide = isWideRoute(pathname);
+  // The two editors slow down with the document's length.
+  const words = doc?.layerInfo?.wordTokenLayer?.tokens?.length;
   // "Ask" under a sentence is only worth drawing where there is an assistant to
   // ask, and only on the tab whose content it points into. The PANEL itself is
   // the shell's and is open on every tab.
@@ -353,6 +357,12 @@ const DocumentEditor = () => {
         <div className={wide ? 'px-6' : 'max-w-[1320px] px-6'}>
           <HistoricalBanner entry={pastEntry} loading={history.loadingSnapshot} className="mb-4" />
           {writeLock.held && <RunBanner {...writeLock.held} />}
+        </div>
+      )}
+
+      {(onAnnotate || pathname.endsWith('/edit')) && isLongDocument(words) && (
+        <div className={wide ? 'px-6' : 'max-w-[1320px] px-6'}>
+          <LongDocumentNotice words={words} className="mb-4" />
         </div>
       )}
 

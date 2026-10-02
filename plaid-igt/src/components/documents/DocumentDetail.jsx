@@ -47,6 +47,7 @@ import { useComposeProject } from '@/hooks/useCompose';
 import { useDelayedFlag } from '@/hooks/useDelayedFlag';
 import { cpSlice, isReviewed } from '@larc-iu/plaid-client';
 import { EdgeRail } from '@ui/components/shared/EdgeRail.jsx';
+import { LongDocumentNotice } from '@ui/components/shared/LongDocumentNotice.jsx';
 import { useAssistantSubject } from '@ui/components/assistant/subject.js';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
@@ -464,6 +465,13 @@ const DocumentEditor = () => {
               a previous page started. Without this the document just stops
               accepting edits. */}
             {writeLock.held && <RunBanner {...writeLock.held} />}
+
+            {(activeTab === 'baseline' || activeTab === 'analyze') && (
+              <LongDocumentNotice
+                words={doc?.layerInfo?.primaryTokenLayer?.tokens?.length}
+                className="mb-4"
+              />
+            )}
 
             <DocumentProvider
               value={{
