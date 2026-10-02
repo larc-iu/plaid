@@ -482,18 +482,24 @@
   (this app, another one, a script through a client library, a service)
   without any of them having to remember to stamp a field.
 
+  An app's repair on open (an operation in a group of kind `repair`) is not
+  an edit: opening a document never makes it the opener's last edit
+  (H9-FIRST-OPEN-5).
+
   `idx_operations_user_ts` serves the scan, and one person's own rows are the
   small side of a table that holds everybody's."
   [db project-id user-id]
   (into {}
         (map (juxt :document_id :ts))
-        (psc/q db {:select   [:document_id [[:max :ts] :ts]]
-                   :from     [:operations]
+        (psc/q db {:select   [:o.document_id [[:max :o.ts] :ts]]
+                   :from     [[:operations :o]]
                    :where    [:and
-                              [:= :project_id project-id]
-                              [:= :user_id user-id]
-                              [:not= :document_id nil]]
-                   :group-by [:document_id]})))
+                              [:= :o.project_id project-id]
+                              [:= :o.user_id user-id]
+                              [:not= :o.document_id nil]
+                              [:not [:exists {:select [1] :from [[:operation_groups :g]]
+                                              :where [:and [:= :g.id :o.group_id] [:= :g.kind "repair"]]}]]]
+                   :group-by [:o.document_id]})))
 
 (defn get-audit-log
   "Every operation on the server, unscoped. Same fold, window and `:op-types`

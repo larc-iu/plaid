@@ -381,6 +381,8 @@ The two filters combine: with both, an entry must be of one of the kinds and sti
 
 `my_last_edits` / `myLastEdits` answers, in one request, when the calling user last wrote to each document in a project.
 It returns a `{document id: timestamp}` map, and a document the caller has never written to is simply absent.
+A write in an operation of kind `repair` (an app's repair when a document opens) is not counted, and it leaves the document's `time-modified` where it was, so opening a document never makes it the last edited.
+Its version still moves.
 
 [,python]
 ----
@@ -970,8 +972,8 @@ The tokens of every token layer take a change the same way, whichever app or scr
 * Deleting the whitespace between two tokens keeps both, now side by side. Text then typed between them with no whitespace goes to the first.
 * New text apart from every token, with whitespace between, belongs to none of them.
 * A token is deleted only when all its text is deleted. A token typed over whole keeps its place on the new text, and so does a sentence typed over whole with its separator.
-* Several whole words typed over as words of their own are each typed over: `不 大` typed over as `x y` keeps the word `不` on `x` and `大` on `y`, with everything on them. With fewer new words than old, the last new word goes to the old word left that shares the most letters with it, the first on a tie, and the other old words are deleted (`cat eel` typed over as `one` keeps `eel`). With more new words than old, the last old word goes the same way to the new word left that shares the most letters with it, and the other new words belong to no token (`cat eel` typed over as `x y z` keeps `cat` on `x` and `eel` on `y`).
-* Words a change has on both sides, in the same order, stay as they are. Pasting a text back over itself, or over a line, with one word added, removed or typed over changes only that word, and every other word keeps its token and everything on it.
+* Several whole words typed over as words of their own are each typed over: `不 大` typed over as `x y` keeps the word `不` on `x` and `大` on `y`, with everything on them. With fewer new words than old, the last new word goes to the old word left that shares the most letters with it, the first on a tie, and the other old words are deleted (`cat eel` typed over as `one` keeps `eel`).
+* A change sent as `edits` that reaches inside several words, or inside one and holds or types words with whitespace between (a paste over a line, a transcript row or the whole body), is read the way a `body` save of the same change is read (below). Which words such a change keeps does not depend on how it was sent: pasting a text back with words added, removed or typed over changes only those words, and every other word keeps its token and everything on it.
 * A token is never moved onto another word, and nothing that hangs off it is deleted or moved.
 
 A `body` save is read as the smallest change from the stored body to the new one, and where that change could stand in more than one place for the same new body, Plaid picks the place that disturbs the fewest tokens.
@@ -2033,6 +2035,8 @@ Two more routes help before declaring:
 * `repair_constraints` (`POST .../constraints/repair`) applies the remedies described below to every violation in the layer's stored data, as one operation per document (`layer/repair-constraints`), and lists what is left.
   A repair deletes no value: doubled spans are joined as a merge joins them, and a joined value outside the list's `value-set` is listed among what is left.
   A join a `value-set` already stored on the layer would refuse leaves that token as it is.
+
+A declaration, removal or repair that changes nothing (the list was already stored, there was none to remove, the data broke no rule) is not recorded: it adds no entry to the history and starts no operation group.
 
 A repair leaves a document another user holds the lock on as it is, and lists it under `locked`, as `{document, locked-by}`.
 Its violations stay in the list of what is left, so declaring the rules waits for a repair after the lock is released.

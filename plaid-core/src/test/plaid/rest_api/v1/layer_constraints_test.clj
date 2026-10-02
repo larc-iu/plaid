@@ -193,3 +193,38 @@
                       :body {:constraints [{:type "value-set" :values ["q"]}]}}])]
         (assert-status 422 r)
         (is (= 3 (-> r :body :violation-count)))))))
+
+(defn- ops-of [type]
+  (psc/q db {:select [:id :group_id] :from :operations :where [:= :op_type type]}))
+
+(deftest what-changes-nothing-is-not-recorded
+  ;; H9-FIRST-OPEN-4: every writer's open of a clean document added a
+  ;; "Repair on open" entry of operations that wrote nothing.
+  (let [{:keys [lemma doc]} (setup!)
+        cs {:constraints [{:type "single-span"}]}
+        group (str (psc/new-uuid))
+        in-group (fn [path] (str path "?group-id=" group "&group-message=Repair%20on%20open&group-kind=repair"))]
+    (testing "a repair of clean data, of the layer or of one document"
+      (assert-status 200 (call admin-request :post (in-group (str "/api/v1/span-layers/" lemma "/constraints/repair")) cs))
+      (assert-status 200 (call user1-request :post (str "/api/v1/span-layers/" lemma "/constraints/repair")
+                               (assoc cs :document doc)))
+      (is (empty? (ops-of "layer/repair-constraints")))
+      (is (nil? (psc/fetch-by-id db :operation_groups group)) "no group is started"))
+    (testing "the same in a batch"
+      (assert-status 200 (call admin-request :post "/api/v1/batch"
+                               [{:path (str "/api/v1/span-layers/" lemma "/constraints/repair") :method "POST"
+                                 :body cs}]))
+      (is (empty? (ops-of "layer/repair-constraints"))))
+    (testing "a declaration is recorded once, and stating it again is not"
+      (assert-status 200 (put admin-request "span" lemma "igt" cs))
+      (assert-status 200 (put admin-request "span" lemma "igt" cs))
+      (is (= 1 (count (ops-of "layer/set-constraints")))))
+    (testing "removing a list that is not there is not recorded"
+      (assert-status 204 (call admin-request :delete (str "/api/v1/span-layers/" lemma "/constraints/ud")))
+      (is (empty? (ops-of "layer/delete-constraints"))))
+    (testing "a repair that changes something is recorded"
+      (create-span admin-request lemma [(first (:tokens (setup!)))] "w")
+      (let [{:keys [lemma tokens]} (setup!)]
+        (create-span admin-request lemma [(first tokens)] "w")
+        (assert-status 200 (call admin-request :post (str "/api/v1/span-layers/" lemma "/constraints/repair") cs))
+        (is (= 2 (count (ops-of "layer/repair-constraints"))) "the layer's and the document's")))))

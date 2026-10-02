@@ -53,7 +53,8 @@
            :project (project-of db kind id)
            :document nil
            :description (str "Set " ns " constraints on " (nouns kind) " " id)
-           :user user-id}]
+           :user user-id
+           :unrecorded-if-empty? true}]
    (lc/validate-namespace! ns)
    (let [row (layer-row! tx kind id)
          stored (lc/parse-constraints (:constraints row))
@@ -77,7 +78,8 @@
            :project (project-of db kind id)
            :document nil
            :description (str "Remove " ns " constraints from " (nouns kind) " " id)
-           :user user-id}]
+           :user user-id
+           :unrecorded-if-empty? true}]
    (lc/validate-namespace! ns)
    (let [row (layer-row! tx kind id)
          stored (lc/parse-constraints (:constraints row))]
@@ -126,7 +128,8 @@
                         :project project
                         :document nil
                         :description (str "Repair layer rules on " (nouns kind) " " id)
-                        :user user-id}]
+                        :user user-id
+                        :unrecorded-if-empty? true}]
                 (let [row (layer-row! tx kind id)
                       cs (lc/validate-list tx kind row constraints)
                       layer (lc/layer-record-by-id tx kind id)

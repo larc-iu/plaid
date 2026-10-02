@@ -300,6 +300,20 @@
       (catch Exception e
         (log/warn "Failed to refresh locks:" (ex-message e))))))
 
+(defn- repair-op?
+  "Whether the current operation is in a group of kind `repair`: an app's
+  repair on open, which no one made by editing."
+  [tx]
+  (when-let [g (:group-id psaw/*op*)]
+    (= "repair" (:kind (psc/q1 tx {:select [:kind] :from :operation_groups :where [:= :id g]})))))
+
+(defn- modified-at
+  "What a write leaves as a document's `modified_at`: the operation's time,
+  or the time it had for a repair on open, so that looking at a document
+  never makes it the latest edited (H9-FIRST-OPEN-5)."
+  [tx pre ts]
+  (if (repair-op? tx) (:modified_at pre) ts))
+
 (defn- bump-document-version!
   "Post-body version bump on the operation's :document. Audited under
   the sentinel `change_type` `:doc-version-bump` (vs. a plain `:update`)
@@ -326,7 +340,7 @@
   (when-let [pre (psc/fetch-by-id tx :documents doc-id)]
     (let [post (assoc pre
                       :version (inc (or (:version pre) 0))
-                      :modified_at ts)]
+                      :modified_at (modified-at tx pre ts))]
       (psc/execute! tx {:update :documents
                         :set {:version (:version post)
                               :modified_at (:modified_at post)}
@@ -367,7 +381,7 @@
             :when pre]
       (let [post (assoc pre
                         :version (inc (or (:version pre) 0))
-                        :modified_at ts)]
+                        :modified_at (modified-at tx pre ts))]
         (psc/execute! tx {:update :documents
                           :set {:version (:version post)
                                 :modified_at (:modified_at post)}
@@ -422,6 +436,26 @@
   [tx vocab-id]
   (touch-vocab-layers! tx [vocab-id]))
 
+(defn- wrote-nothing?
+  "Whether operation `op-id` (stamped `ts`) wrote no row, and no operation
+  was nested inside it. Nested operations run in the same transaction after
+  it, so they are the ones stamped later."
+  [tx op-id ts]
+  (and (nil? (psc/q1 tx {:select [1] :from :audit_writes :where [:= :op_id op-id] :limit 1}))
+       (nil? (psc/q1 tx {:select [1] :from :operations :where [:> :ts ts] :limit 1}))))
+
+(defn- unrecord-operation!
+  "Take the row of an operation that wrote nothing back out, and its group's
+  row when no other operation is in that group, so the log shows no entry
+  for it."
+  [tx {:keys [id group-id]}]
+  (psc/execute! tx {:delete-from :operations :where [:= :id id]})
+  (when group-id
+    (psc/execute! tx {:delete-from :operation_groups
+                      :where [:and [:= :id group-id]
+                              [:not [:exists {:select [1] :from :operations
+                                              :where [:= :group_id group-id]}]]]})))
+
 (defn submit-operation*
   "Functional core. body-fn is (fn [tx] ...). Returns a result map.
 
@@ -450,6 +484,10 @@
   The catch sits OUTSIDE `with-tx` so the body's tx still rolls back
   cleanly (see batch-interaction note below).
 
+  `:unrecorded-if-empty? true` in op-attrs takes the operation's row back
+  out (and announces nothing) when the body wrote nothing, for an operation
+  that only sometimes has work to do, such as a repair of clean data.
+
   Logging policy: 5xx is treated as a real server bug and logged at
   `error`; 4xx is a normal client-side validation failure and gets
   `debug` only (avoids spamming the log on every bad request)."
@@ -477,6 +515,9 @@
           ;; this atom off psaw/*op*). Unioned into the audit event's
           ;; :audit/documents post-commit — see ->v2-shape.
           affected-docs (atom #{})
+          ;; Set when an op that asked for it (`:unrecorded-if-empty?`)
+          ;; wrote nothing and its row was taken back out.
+          unrecorded? (volatile! false)
           extra (psd/with-tx [tx db]
                   ;; ts stamped here — while holding the RESERVED write
                   ;; lock — so it is strictly monotonic with COMMIT order.
@@ -573,6 +614,10 @@
                         (when (and (:document op-attrs)
                                    (not (:skip-doc-version-bump? op-attrs)))
                           (bump-document-version! tx (:document op-attrs) ts))
+                        (when (and (:unrecorded-if-empty? op-attrs)
+                                   (wrote-nothing? tx op-id ts))
+                          (unrecord-operation! tx op-record)
+                          (vreset! unrecorded? true))
                         result))))
           op-record (assoc @op-record* :documents @affected-docs)]
       (try
@@ -581,11 +626,12 @@
           (log/warn t "Publishing the layer rule events failed after the commit:" (ex-message t))))
       ;; The try/catch around post-submit! is defensive: the OLTP commit
       ;; is already durable, so nothing post-commit may invert success
-      ;; into a 5xx response.
-      (try
-        (post-submit! op-record (:user op-attrs))
-        (catch Throwable t
-          (log/warn t "post-submit! failed after successful commit:" (ex-message t))))
+      ;; into a 5xx response. An operation left unrecorded announces nothing.
+      (when-not @unrecorded?
+        (try
+          (post-submit! op-record (:user op-attrs))
+          (catch Throwable t
+            (log/warn t "post-submit! failed after successful commit:" (ex-message t)))))
       ;; `:documents` is every document this op bumped the version of, the same
       ;; set the audit event carries. A handler passes it to
       ;; `assoc-document-versions-in-header` so a strict-mode client learns the
