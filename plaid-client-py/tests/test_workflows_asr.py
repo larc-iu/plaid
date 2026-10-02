@@ -238,3 +238,30 @@ def test_a_segment_in_time_order_is_written():
     assert AlignmentProcessor().process_alignments(
         client, 'd1', [Alignment(text='new', start=3.0, end=4.0)],
         TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, _Helper(), prov_source='service:asr:test') == 1
+
+
+def test_segments_the_model_gives_out_of_order_are_written_in_time_order():
+    # REV-DEBT-R1 F2: the model's segments are not always sorted by start.
+    # They were placed in the order given, then refused as out of time order
+    # on a document with no segments at all.
+    client = _FakeClient([_document('')])
+    starts = [1.5, 1, 20, 5, 0.25]
+    n = AlignmentProcessor().process_alignments(
+        client, 'd1', [Alignment(text=f'w{s}', start=s, end=s + 0.1) for s in starts],
+        TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, _Helper(), prov_source='service:asr:test')
+    assert n == 5
+    made = next(c[1] for c in client.calls if c[0] == 'bulk_create' and c[1][0]['token_layer_id'] == ALIGN_LAYER)
+    by_pos = sorted(made, key=lambda t: t['begin'])
+    assert [t['metadata']['timeBegin'] for t in by_pos] == sorted(starts)
+
+
+def test_the_time_order_refusal_names_the_document_segment_in_the_way():
+    client = _FakeClient([_document('aaaaa bbbbb', sentences=[(0, 11)],
+                                    align=[(0, 5, 5.0, 6.0), (6, 11, 1.0, 2.0)])])
+    with pytest.raises(ValueError) as caught:
+        AlignmentProcessor().process_alignments(
+            client, 'd1', [Alignment(text='new', start=3.0, end=4.0)],
+            TEXT_LAYER, ALIGN_LAYER, SENTENCE_LAYER, _Helper(), prov_source='service:asr:test')
+    assert str(caught.value) == ('The new segment at 3 s has no place in time order: the document\'s segment '
+                                 'at 1 s stands after it in the text. Put the document\'s segments in time '
+                                 'order first. Nothing was written.')

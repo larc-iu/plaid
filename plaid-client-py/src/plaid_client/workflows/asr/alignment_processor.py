@@ -85,8 +85,10 @@ class AlignmentProcessor:
         # document has once held, so one that lands late is refused.
         response_helper.progress(lock_percent, "Writing the transcription…")
         with locked_for_writes(client, document_id):
-            # Convert alignments to transcription format
-            transcriptions = [
+            # Convert alignments to transcription format, in time order: a
+            # model's segments are not always sorted by start, and segments
+            # that land at one place in the text stand in the order given.
+            transcriptions = sorted((
                 {
                     'text': alignment.text,
                     'start': alignment.start,
@@ -94,7 +96,7 @@ class AlignmentProcessor:
                     'metadata': alignment.metadata
                 }
                 for alignment in alignments
-            ]
+            ), key=lambda t: t['start'])
 
             # Create time alignment tokens (preserve existing ones)
             tokens_created = self._create_time_alignment_tokens(
@@ -435,10 +437,21 @@ class AlignmentProcessor:
             earliest_after[t] = pos_min
             pos_min = min(pos_min, min(by_time[t]))
         for t, pos, is_new in tokens:
-            if is_new and (latest_before[t] >= pos or earliest_after[t] <= pos):
-                raise ValueError(
-                    f"The segment at {t:g} s cannot be placed in time order: the document's "
-                    f"segments around it are out of order in the text. Nothing was written.")
+            if not is_new:
+                continue
+            after = latest_before[t] >= pos
+            if not after and earliest_after[t] > pos:
+                continue
+            # The segment in the way: earlier in time and after it in the
+            # text, or later in time and before it.
+            u, _, other_new = next(x for x in tokens
+                                   if ((x[0] < t and x[1] >= pos) if after
+                                       else (x[0] > t and x[1] <= pos)))
+            whose = 'new segment' if other_new else "document's segment"
+            raise ValueError(
+                f"The new segment at {t:g} s has no place in time order: the {whose} at {u:g} s "
+                f"stands {'after' if after else 'before'} it in the text. Put the document's "
+                f"segments in time order first. Nothing was written.")
 
     def _update_sentence_partitioning(self, batch, document: Dict, text_id: str, sentence_token_layer_id: str,
                                      existing_alignment_tokens: List[Dict], new_alignment_tokens: List[Dict],
