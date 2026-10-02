@@ -144,17 +144,17 @@ const INDENT = '    ';
 
 /**
  * Tab (`step` 1) or Shift+Tab (-1) at a selection from `a` to `b`: the new
- * text and selection, or null when nothing changes. Tab with the caret or a
- * selection inside one line puts four spaces in its place. Over several
- * lines, and always for Shift+Tab, each line touched is indented by four or
- * has up to four leading spaces taken off.
+ * text and selection, or null when nothing changes. Tab at a bare caret puts
+ * four spaces there. With a selection, and always for Shift+Tab, each line
+ * the selection touches is indented by four or has up to four leading
+ * spaces taken off, so no selected text is ever replaced.
  */
 function shiftLines(text, a, b, step) {
   const lineStart = text.lastIndexOf('\n', a - 1) + 1;
   // A selection ending at the start of a line leaves that line alone.
   const end = b > a && text[b - 1] === '\n' ? b - 1 : b;
   const block = text.slice(lineStart, end);
-  if (step > 0 && !block.slice(a - lineStart).includes('\n')) {
+  if (step > 0 && a === b) {
     const next = `${text.slice(0, a)}${INDENT}${text.slice(b)}`;
     return { text: next, start: a + INDENT.length, end: a + INDENT.length };
   }

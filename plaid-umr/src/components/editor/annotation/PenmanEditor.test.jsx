@@ -154,6 +154,21 @@ describe('Tab and Shift+Tab', () => {
     expect(box.value).toBe('(s1h / have-91\n    :ARG0 (s1p / person)\n  :ARG1 (s1t / thing))');
   });
 
+  it('indents a whole line selected with its newline, and a selection inside a line', async () => {
+    const box = await open();
+    const line2 = GRAPH.indexOf('    :ARG0');
+    const line3 = GRAPH.indexOf('  :ARG1');
+    // A triple click selects the line and its newline.
+    await press(box, { at: line2, to: line3 });
+    expect(box.value).toBe('(s1h / have-91\n        :ARG0 (s1p / person)\n  :ARG1 (s1t / thing))');
+    expect(status()).not.toContain('deletes');
+    const word = box.value.indexOf('person');
+    await press(box, { at: word, to: word + 'person'.length });
+    expect(box.value).toBe(
+      '(s1h / have-91\n            :ARG0 (s1p / person)\n  :ARG1 (s1t / thing))',
+    );
+  });
+
   it('indents at the caret with Tab, and shows the key to Apply', async () => {
     const box = await open();
     await press(box, { at: 1 });
