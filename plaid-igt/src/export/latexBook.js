@@ -205,10 +205,12 @@ const scriptCs = (script) => script.replace(/_/g, '');
 const valueDir = (text, docDir) =>
   /\p{L}/u.test(text.replace(RTL_SHARED_RE, '')) ? detectDirection(text) : docDir;
 
-// A number, digits with the separators between them. Digits read left to right
-// in every script, and LuaTeX lays a right-to-left run out as it comes, so in
-// one a number is boxed left to right or 1584 prints as 4851.
-const NUMBER_RE = /\p{Nd}+(?:[.,:/\u066b\u066c]\p{Nd}+)*/gu;
+// A number, digits with the separators between them, a range of two (a hyphen
+// or an en dash between digits) and a percent or per mille sign after it.
+// Digits read left to right in every script, and LuaTeX lays a right-to-left
+// run out as it comes, so in one a number is boxed left to right or 1584
+// prints as 4851 and 1990-2000 as 2000-1990. The percent sign is escaped by now.
+const NUMBER_RE = /\p{Nd}+(?:[.,:/\u066b\u066c\-\u2013]\p{Nd}+)*(?:\\%|[\u066a\u2030])?/gu;
 const ltrNumbers = (rendered) => rendered.replace(NUMBER_RE, (n) => `\\PlaidLTR{${n}}`);
 
 // Each right-to-left run of `rendered` in its script's font. Inside text read

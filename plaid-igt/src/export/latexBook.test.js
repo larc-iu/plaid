@@ -371,6 +371,28 @@ describe('formatExample', () => {
     expect(balanced(tex) && balanced(ltr)).toBe(true);
   });
 
+  it('keeps a range of numbers and a percentage together, left to right', () => {
+    const s = sentenceOf([
+      word('1990-2000'),
+      word('1990–2000'),
+      word('50%'),
+      word('٥٠٪'),
+      word('3‰'),
+    ]);
+    const tex = formatExample(s, SEL, { docDir: 'rtl' });
+    expect(tex).toContain('\\PlaidWord{\\PlaidLTR{1990-2000}}');
+    expect(tex).toContain('\\PlaidWord{\\PlaidLTR{1990–2000}}');
+    expect(tex).toContain('\\PlaidWord{\\PlaidLTR{50\\%}}');
+    expect(tex).toContain('\\PlaidWord{\\PlaidScript{Arabic}{\\PlaidLTR{٥٠٪}}}');
+    expect(tex).toContain('\\PlaidWord{\\PlaidLTR{3‰}}');
+    // In an Arabic value too.
+    const value = formatExample(
+      sentenceOf([word('x')], { Translation: span('من 1990-2000') }),
+      SEL,
+    );
+    expect(value).toContain('\\PlaidLTR{1990-2000}');
+  });
+
   it('sets the Arabic comma, question mark, semicolon and tatweel in the Arabic font', () => {
     const s = sentenceOf([word('كتب'), word('،'), word('هل؟'), word('ـ'), word('\u0654')]);
     const tex = formatExample(s, SEL, { docDir: 'rtl' });
