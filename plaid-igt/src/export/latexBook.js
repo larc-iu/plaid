@@ -173,9 +173,10 @@ const RTL_SCRIPTS = [
 ];
 // A character of one of those scripts, or one the scripts share that no
 // script of the main font uses: the Arabic comma, question mark, semicolon and
-// tatweel belong to the Common script, and Charis SIL has no glyph for them.
+// tatweel belong to the Common script and the Arabic vowel marks and hamza to
+// the Inherited one, and Charis SIL has no glyph for them.
 const RTL_SCRIPT_CLASS = RTL_SCRIPTS.map((name) => `\\p{Script=${name}}`).join('');
-const RTL_SHARED_CLASS = `[${RTL_SCRIPTS.map((name) => `\\p{Script_Extensions=${name}}`).join('')}]--[${RTL_SCRIPT_CLASS}\\p{Script_Extensions=Latin}\\p{Script_Extensions=Greek}\\p{Script_Extensions=Cyrillic}\\p{M}]`;
+const RTL_SHARED_CLASS = `[${RTL_SCRIPTS.map((name) => `\\p{Script_Extensions=${name}}`).join('')}]--[${RTL_SCRIPT_CLASS}\\p{Script_Extensions=Latin}\\p{Script_Extensions=Greek}\\p{Script_Extensions=Cyrillic}]`;
 const RTL_CLASS = `${RTL_SCRIPT_CLASS}[${RTL_SHARED_CLASS}]`;
 const RTL_SHARED_RE = new RegExp(`[${RTL_SHARED_CLASS}]`, 'gv');
 const rtlScriptRes = (property) =>

@@ -372,8 +372,10 @@ describe('formatExample', () => {
   });
 
   it('sets the Arabic comma, question mark, semicolon and tatweel in the Arabic font', () => {
-    const s = sentenceOf([word('كتب'), word('،'), word('هل؟'), word('ـ')]);
+    const s = sentenceOf([word('كتب'), word('،'), word('هل؟'), word('ـ'), word('\u0654')]);
     const tex = formatExample(s, SEL, { docDir: 'rtl' });
+    // A hamza above written as a word of its own.
+    expect(tex).toContain('\\PlaidWord{\\PlaidScript{Arabic}{\u0654}}');
     expect(tex).toContain('\\PlaidWord{\\PlaidScript{Arabic}{،}}');
     expect(tex).toContain('\\PlaidWord{\\PlaidScript{Arabic}{هل؟}}');
     expect(tex).toContain('\\PlaidWord{\\PlaidScript{Arabic}{ـ}}');
@@ -382,6 +384,9 @@ describe('formatExample', () => {
     // A mark or a dot that Latin text uses too stays with the text.
     const latin = formatExample(sentenceOf([word('ã·b')]), SEL);
     expect(latin).toContain('\\PlaidWord{ã·b}');
+    expect(formatExample(sentenceOf([word('n\u0303o\u0323')]), SEL)).toContain(
+      '\\PlaidWord{n\u0303o\u0323}',
+    );
   });
 });
 
