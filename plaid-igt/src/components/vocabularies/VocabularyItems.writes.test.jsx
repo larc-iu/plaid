@@ -223,6 +223,54 @@ describe('the entry form', () => {
     await view.unmount();
   });
 
+  it('saves on Enter in any one-line field and on Ctrl+Enter, and only when something changed', async () => {
+    const { client, calls } = stub([{ id: 'a', form: 'uno', metadata: { gloss: 'one' } }]);
+    const view = await mount(client, '/vocabularies/v1?item=a');
+    const press = (el, init = {}) =>
+      el.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, ...init }),
+      );
+    const sent = () => calls.filter(([kind]) => kind === 'bulkUpdate').length;
+    await view.step(() => press(glossInput()));
+    expect(sent()).toBe(0);
+    await view.step(() => setValue(glossInput(), 'ONE'));
+    await view.step(() => press(glossInput(), { shiftKey: true }));
+    expect(sent()).toBe(0);
+    await view.step(async () => {
+      press(glossInput());
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(sent()).toBe(1);
+    await view.step(() => setValue(glossInput(), 'ONE!'));
+    await view.step(async () => {
+      press(glossInput(), { ctrlKey: true });
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(sent()).toBe(2);
+    await view.step(() => setValue(formInput(), 'uno2'));
+    await view.step(async () => {
+      press(formInput());
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(sent()).toBe(3);
+    await view.unmount();
+  });
+
+  it('puts the caret in the Form field after Save, which greys out', async () => {
+    const { client } = stub([{ id: 'a', form: 'uno' }]);
+    const view = await mount(client, '/vocabularies/v1?item=a');
+    await view.step(() => setValue(glossInput(), 'one'));
+    await view.step(async () => {
+      button('Save').focus();
+      button('Save').click();
+      await new Promise((r) => requestAnimationFrame(r));
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(button('Save').disabled).toBe(true);
+    expect(document.activeElement).toBe(formInput());
+    await view.unmount();
+  });
+
   it('saves an entry whose older roleset the rule would refuse, when the roleset is untouched', async () => {
     // "look after-01" was accepted before rolesets were checked. The band
     // that could mend it is not even on screen here (no UMR project links

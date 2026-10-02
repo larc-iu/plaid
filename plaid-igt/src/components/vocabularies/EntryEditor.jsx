@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useId, useRef } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
@@ -62,6 +62,7 @@ export const EntryEditor = ({
   // Prefix for the input ids, so every label addresses its own field
   // (clicking the label focuses it) even with another copy on the page.
   const uid = useId();
+  const formRef = useRef(null);
   const setFields = (fieldsNext) => dispatch({ type: 'draft/fields', fields: fieldsNext });
 
   // One field input for the entry form. morphType is a controlled vocab, a
@@ -135,6 +136,31 @@ export const EntryEditor = ({
 
   const uses = usageCounts?.[selectedItem?.id] ?? 0;
 
+  // Saving greys out Save (nothing is left to save), which would drop the
+  // caret on the page. It goes to the Form field instead.
+  const save = () => {
+    onSave();
+    requestAnimationFrame(() => {
+      const at = document.activeElement;
+      if (!at || at === document.body || at.disabled) formRef.current?.focus();
+    });
+  };
+
+  // One key path for the whole form: Enter in a one-line field saves, and so
+  // does Ctrl/Cmd+Enter anywhere in it. A picker or list that takes Enter for
+  // itself marks the key handled, and a key that finishes an IME composition
+  // is the composition's.
+  const onFormKeyDown = (e) => {
+    if (e.key !== 'Enter' || e.defaultPrevented || e.nativeEvent.isComposing) return;
+    if (e.shiftKey || e.altKey) return;
+    const mod = e.ctrlKey || e.metaKey;
+    const t = e.target;
+    const oneLine = t.tagName === 'INPUT' && ['text', 'search', ''].includes(t.type ?? '');
+    if (!mod && !oneLine) return;
+    e.preventDefault();
+    if (canManage && dirty) save();
+  };
+
   return (
     <div className="rounded-lg border bg-card p-4">
       <div className="mb-3 flex items-start justify-between gap-2">
@@ -198,7 +224,7 @@ export const EntryEditor = ({
         </p>
       )}
 
-      <div className="flex flex-col gap-4 [&>*+*]:border-t [&>*+*]:pt-3">
+      <div className="flex flex-col gap-4 [&>*+*]:border-t [&>*+*]:pt-3" onKeyDown={onFormKeyDown}>
         <FormGroup>
           <div className="flex min-w-0 flex-col gap-1">
             <Label htmlFor={`${uid}-form`} className="text-xs font-medium text-muted-foreground">
@@ -213,13 +239,8 @@ export const EntryEditor = ({
               placeholder="Form"
               spellCheck={false}
               disabled={!canManage}
+              ref={formRef}
               onChange={(e) => dispatch({ type: 'draft/form', form: e.target.value })}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  if (dirty) onSave();
-                }
-              }}
             />
           </div>
           {/* Status belongs here, with everything else Save governs. Beside
@@ -288,7 +309,7 @@ export const EntryEditor = ({
             </Button>
             <Button
               size="sm"
-              onClick={onSave}
+              onClick={save}
               disabled={!dirty || !draft.form.trim() || !saveAllowed}
             >
               {isNew ? 'Create' : 'Save'}
