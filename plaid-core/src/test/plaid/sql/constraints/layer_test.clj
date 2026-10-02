@@ -125,6 +125,49 @@
                                    {:path (str "/api/v1/relations/" old) :method "DELETE"}]))
         (is (= 1 (count-rows :relations [:= :target_span_id ((:span s) "cat")])))))))
 
+(defn- restore! [doc ts & {:keys [dry-run]}]
+  (call :post (str "/api/v1/documents/" doc "/restore?as-of=" (java.net.URLEncoder/encode (str ts) "UTF-8")
+                   (when dry-run "&dry-run=true"))))
+
+(defn- latest-ts [] (:ts (psc/q1 db {:select [:ts] :from :operations :order-by [[:ts :desc]] :limit 1})))
+
+;; As for an unlisted value and a cycle, an import, a copy or a restore keeps
+;; a second head (H24-SETTINGS: a restore its dry run called doable was
+;; refused).
+(deftest an-import-a-copy-or-a-restore-keeps-a-second-head
+  (let [{:keys [deps doc span] :as s} (setup!)
+        rel-op (fn [a b] {:path "/api/v1/relations" :method "POST"
+                          :body {:layer-id deps :source-id (span a) :target-id (span b) :value "x"}})
+        import-q (fn [] (str "?group-id=" (random-uuid) "&group-message=Import&group-kind=import"))]
+    (testing "a restore to before a second head was removed"
+      (assert-status 201 (rel! s "The" "cat"))
+      (let [second-head (id (rel! s "sat" "cat"))
+            t (latest-ts)]
+        (assert-status 204 (call :delete (str "/api/v1/relations/" second-head)))
+        (assert-status 200 (declare! "relation" deps "ud" [{:type "max-in-degree" :max 1}]))
+        (let [dry (restore! doc t :dry-run true)]
+          (assert-status 200 dry)
+          (is (pos? (-> dry :body :total)) "the dry run lists the change"))
+        (assert-status 200 (restore! doc t))
+        (is (exists? :relations second-head) "and the restore makes it")))
+    (testing "a copy of the document keeps both heads"
+      (assert-status 201 (call :post (str "/api/v1/documents/" doc "/copy") {:name "D2"})))
+    (testing "an import's second head is stored"
+      (assert-status 200 (batch [(rel-op "The" "ran") (rel-op "sat" "ran")] (import-q))))
+    (testing "a person's is refused, beside imported heads too"
+      (assert-status 422 (rel! s "Dogs" "ran"))
+      (assert-status 422 (batch [(rel-op "The" "Dogs") (rel-op "sat" "Dogs")])))
+    (testing "declaring the rule again over the kept heads is not refused, people wrote one of each"
+      (assert-status 200 (declare! "relation" deps "ud" [{:type "max-in-degree" :max 1} {:type "acyclic"}])))
+    (testing "but a second head a person wrote while the rule was off is"
+      (assert-status 204 (call :delete (str "/api/v1/relation-layers/" deps "/constraints/ud")))
+      (assert-status 201 (rel! s "The" "Dogs"))
+      (assert-status 201 (rel! s "sat" "Dogs"))
+      (let [r (declare! "relation" deps "ud" [{:type "max-in-degree" :max 1}])]
+        (assert-status 422 r)
+        (is (= 1 (-> r :body :violation-count)))
+        (is (= (span "Dogs") (-> r :body :violations first :at)))))))
+
 (deftest a-self-loop-counts-toward-in-degree
   (let [{:keys [deps] :as s} (setup!)]
     (assert-status 200 (declare! "relation" deps "ud" [{:type "max-in-degree" :max 1}]))
@@ -202,7 +245,15 @@
                                 :where [:and [:= :source_span_id (span "sat")] [:= :target_span_id (span "The")]]})
                     :id str)]
         (assert-status 422 (call :patch (str "/api/v1/relations/" rid) {:value ":ARG1"}))
-        (assert-status 200 (call :patch (str "/api/v1/relations/" rid) {:value ":quote"}))))))
+        (assert-status 200 (call :patch (str "/api/v1/relations/" rid) {:value ":quote"}))))
+    (testing "a declaration refuses a cycle only people's writes made"
+      (assert-status 204 (call :delete (str "/api/v1/relation-layers/" deps "/constraints/umr")))
+      (assert-status 201 (rel! s "cat" "Dogs" ":ARG0"))
+      (assert-status 201 (rel! s "Dogs" "cat" ":ARG1"))
+      (let [r (declare! "relation" deps "umr" [{:type "acyclic" :except-values [":quote"]}])]
+        (assert-status 422 r)
+        (is (= 1 (-> r :body :violation-count)))
+        (is (= 2 (count (-> r :body :violations first :ids))))))))
 
 ;; ============================================================
 ;; value-set

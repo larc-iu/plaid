@@ -412,11 +412,38 @@
 ;; max-in-degree
 ;; ============================================================
 
-(defn- check-max-in-degree [{:keys [tx mode] :as ctx} {:keys [layer params] :as c}]
+(declare import-groups import-set-ids)
+
+(defn- reproduced-ids
+  "The ids among the noted rows `notes` that only an import, a copy or a
+  restore wrote in this transaction: every group noted under `group-keys`
+  is of kind import, or is `:reproduced`."
+  [tx notes group-keys]
+  (let [groups-of (fn [n] (mapcat #(get n %) group-keys))
+        imports (import-groups tx (mapcat groups-of notes))]
+    (set (keep (fn [n]
+                 (let [gs (groups-of n)]
+                   (when (and (seq gs)
+                              (every? #(or (= :reproduced %) (and % (contains? imports (u %)))) gs))
+                     (u (:id n)))))
+               notes))))
+
+(defn- edge-key
+  "A relation's endpoints and value, off a row or an audit image."
+  [m]
+  [(str (:source_span_id m)) (str (:target_span_id m)) (:value m)])
+
+(defn- check-max-in-degree
+  "A span is the target of at most `max` relations of the layer. As for a
+  value list, a relation an import, a copy or a restore wrote (its endpoints
+  as that write left them) is exempt: a span such a write gave a second
+  head keeps it, and a person's write that gives one is refused. A
+  declaration counts only the relations people wrote."
+  [{:keys [tx mode] :as ctx} {:keys [layer params] :as c}]
   (let [lid (:id layer)
         mx (get params "max")
         rows (if (= :all mode)
-               (psc/q tx {:select [:id :target_span_id :document_id]
+               (psc/q tx {:select [:id :source_span_id :target_span_id :value :document_id]
                           :from :relations
                           :where (where-and [:= :relation_layer_id lid]
                                             (doc-clause ctx :document_id)
@@ -426,15 +453,23 @@
                                                                                     (doc-clause ctx :document_id))
                                                                   :group-by [:target_span_id]
                                                                   :having [:> [:count :*] mx]}])})
-               (let [cands (map :id (live-with ctx "relations" lid [:edge]))]
+               (let [noted (live-with ctx "relations" lid [:edge])
+                     exempt (reproduced-ids tx noted [:edge-groups])
+                     cands (map :id (remove #(exempt (u (:id %))) noted))]
                  (when (seq cands)
                    (let [targets (map :target_span_id
                                       (q-chunks tx (fn [ch] {:select [:target_span_id] :from :relations
                                                              :where [:in :id ch]})
                                                 cands))]
-                     (q-chunks tx (partial in-degree-chunk lid) targets)))))]
-    (for [[t rs] (group-by (comp u :target_span_id) rows)
-          :when (> (count rs) mx)]
+                     (q-chunks tx (partial in-degree-chunk lid) targets)))))
+        over (filter (fn [[_ rs]] (> (count rs) mx)) (group-by (comp u :target_span_id) rows))
+        ;; A declaration counts only the relations people wrote: a span an
+        ;; import, a copy or a restore gave its extra heads keeps them.
+        imported (if (and (= :all mode) (seq over))
+                   (import-set-ids tx :relations (mapcat second over) :key-of edge-key)
+                   #{})]
+    (for [[t rs] over
+          :when (> (count (remove #(imported (u (:id %))) rs)) mx)]
       (violation c (:document_id (first rs)) t (map :id rs) :count (count rs)))))
 
 ;; ============================================================
@@ -546,19 +581,13 @@
             (recur (rest es) (into covered ids) (inc n) (conj out {:id (:id e) :ids ids}))))
         out))))
 
-(declare import-groups import-set-ids)
-
-(defn- edge-key
-  "A relation's endpoints and value, off a row or an audit image."
-  [m]
-  [(str (:source_span_id m)) (str (:target_span_id m)) (:value m)])
-
 (defn- check-acyclic
   "No cycle among the relations of the layer, but through a value in
   `except-values`, and no self-loop unless `self-loops`. As for a value
   list, a relation an import, a copy or a restore wrote is exempt (its
   endpoints and value as that write left them): a cycle it closes stands,
-  and one a person's write closes is refused."
+  and one a person's write closes is refused. A declaration refuses a cycle
+  made only of relations people wrote."
   [{:keys [tx mode] :as ctx} {:keys [layer params] :as c}]
   (let [lid (:id layer)
         self-ok? (true? (get params "self-loops"))
@@ -581,26 +610,30 @@
                             :from :relations
                             :where (where-and [:= :relation_layer_id lid] (doc-clause ctx :document_id))})
             loops (filter self-loop? rows)
-            cycles (mapcat (fn [[doc rs]]
-                             (map #(assoc % :doc doc) (on-cycles (map ->edge (filter counted? rs)) any?)))
-                           (group-by (comp u :document_id) rows))
-            by-id (into {} (map (fn [r] [(u (:id r)) r])) rows)
-            imported (import-set-ids tx :relations
-                                     (concat loops (map (comp by-id :id) cycles))
-                                     :key-of edge-key)]
+            by-doc (group-by (comp u :document_id) (filter counted? rows))
+            ;; Only relations on a cycle can matter, so only theirs are read
+            ;; from the log.
+            cyclic-ids (set (mapcat (fn [[_ rs]]
+                                      (let [edges (map ->edge rs)
+                                            comp (components edges)]
+                                        (keep (fn [e] (when (= (get comp (:s e)) (get comp (:t e))) (:id e))) edges)))
+                                    by-doc))
+            imported (if (or (seq loops) (seq cyclic-ids))
+                       (import-set-ids tx :relations
+                                       (concat loops (filter #(cyclic-ids (u (:id %))) rows))
+                                       :key-of edge-key)
+                       #{})]
+        ;; A declaration refuses a cycle made only of relations people
+        ;; wrote: one an import, a copy or a restore had a part in stands.
         (concat
          (for [r loops :when (not (imported (u (:id r))))]
            (violation c (:document_id r) (:source_span_id r) [(:id r)]))
-         (mapcat (fn [[doc cs]] (cycle-violations doc (map :ids cs)))
-                 (group-by :doc (remove #(imported (:id %)) cycles)))))
+         (mapcat (fn [[doc rs]]
+                   (cycle-violations doc (map :ids (on-cycles (map ->edge (remove #(imported (u (:id %))) rs))
+                                                              any?))))
+                 by-doc)))
       (let [cands (live-with ctx "relations" lid [:edge :value])
-            imports (import-groups tx (mapcat #(concat (:edge-groups %) (:value-groups %)) cands))
-            exempt (set (keep (fn [n]
-                                (let [gs (concat (:edge-groups n) (:value-groups n))]
-                                  (when (and (seq gs)
-                                             (every? #(or (= :reproduced %) (and % (contains? imports (u %)))) gs))
-                                    (u (:id n)))))
-                              cands))
+            exempt (reproduced-ids tx cands [:edge-groups :value-groups])
             checked (remove #(exempt (u (:id %))) cands)]
         (when (seq checked)
           (let [rows (q-chunks tx (fn [ch] {:select [:id :source_span_id :target_span_id :value :document_id]
@@ -904,15 +937,7 @@
       (let [machine (machine-unverified-ids tx entity-type (map :id failing))
             imported (if (= :all mode)
                        (import-set-ids tx table failing)
-                       (let [groups-of (into {} (map (fn [n] [(:id n) (:value-groups n)])) cands)
-                             imports (import-groups tx (mapcat :value-groups cands))]
-                         (set (keep (fn [[id gs]]
-                                      (when (and (seq gs)
-                                                 (every? #(or (= :reproduced %)
-                                                              (and % (contains? imports (u %))))
-                                                         gs))
-                                        id))
-                                    groups-of))))]
+                       (reproduced-ids tx cands [:value-groups]))]
         (for [r failing
               :let [id (u (:id r))]
               :when (not (or (machine id) (imported id)))]

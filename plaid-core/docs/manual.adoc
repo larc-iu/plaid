@@ -80,6 +80,11 @@ To end every sign-in of your account on every device, for example on a laptop le
 Every sign-in token of yours stops working at once, the calling client's included.
 Named API tokens are not affected: revoke one with `api_tokens.revoke` (`apiTokens.revoke`).
 
+A named API token acts as its owner in every request but three, since it is handed to services and scripts and never expires.
+It cannot change a password (its owner's, or for an admin anyone's), mint or revoke API tokens, or make a password reset link.
+Each of these answers 403 "This needs a signed-in session, not an API token." and changes nothing.
+Sign-in tokens are not limited this way.
+
 === Private user data
 
 Each user also has a small private **key/value store** (`/users/{id}/data/{key}`), meant for application state that should follow a person across devices and sessions but belongs to nobody else: assistant conversations, drafts, interface preferences.
@@ -2080,7 +2085,7 @@ When a write breaks a rule on rows it did not write, because it changed what the
 * `single-link`: of the single-token links a merge leaves on one token, the survivor's own is kept (else the one with the smallest id) and the others are deleted.
 
 The remedies run as their own operation, `layer/apply-constraints`, in the same batch and group as the write that set them off, so History shows them under it.
-`max-in-degree`, `acyclic` and `value-set` have no remedy: a write elsewhere that would break one, such as a restore that brings back a second head, is refused.
+`max-in-degree`, `acyclic` and `value-set` have no remedy: a write elsewhere that would break one is refused. A restore and a copy are not refused by them (see <<Values a list does not govern>>).
 
 A batch larger than 1,000 operations is sent as several transactions, each checked on its own.
 A batch that moves several relations should therefore send every delete before any create.
@@ -2095,7 +2100,8 @@ Three kinds of write keep a value outside a `value-set` list:
 
 A value kept this way does not stop the list from being declared again later, and any later edit of it is checked.
 
-The `acyclic` rule takes the last two the same way: a relation an import, a copy or a restore wrote does not count against it, so a cycle closed by an import stands (a file that stores an inverse role in the direction it was written, say), while a cycle a later write closes, or a later edit of a relation on it, is refused.
+The `acyclic` and `max-in-degree` rules take the last two the same way: a relation an import, a copy or a restore wrote does not count against them, so a cycle or a second head an import brings stands (a file that stores an inverse role in the direction it was written, say), and so does one a restore brings back, while one a later write makes, or a later edit of a relation in it, is refused.
+Declaring either rule again over such data refuses only a cycle made wholly of relations other writes made, or a span that more than `max` such relations point at.
 
 A part of a value is compared with the list after trimming exactly what JavaScript's `String.prototype.trim` trims: Unicode white space, including the no-break spaces, and the byte order mark.
 `valueSetAllows(constraint, value)` in JavaScript and `value_set_allows(constraint, value)` in Python read a value the same way.
