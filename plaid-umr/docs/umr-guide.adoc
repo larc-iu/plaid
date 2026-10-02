@@ -300,6 +300,9 @@ So is a concept change that would put a node there, such as `and` with a node un
 The assistant and **Draft** refuse it too.
 An edge an imported file brought there is kept, and the Validation tab lists it.
 
+An edge that would close a cycle is refused, except through `:quote` or `:modal-predicate`, whether it is drawn or relabelled.
+The assistant and **Draft** refuse such a sentence too.
+
 While **u** or **Add a child** waits for its click, the arrows still move and Escape leaves it.
 Other keys do nothing until it ends, except the digits, Backspace and Enter of **u**.
 The list of **m** and **r** closes on Escape, and ends the wait with it.
@@ -384,6 +387,7 @@ The arrows order the lines of one scope against each other, so a line cannot be 
 = History
 
 **History** at the end of a document's tab row, on any tab, opens the document's history: every operation, who made it and when.
+**Escape** closes it, and focus goes back to **History**.
 A service's run is recorded under the service's account, and its entry names the person who ran it: `UMR draft of sentence 3, requested by second`.
 Selecting an entry shows the document as it was then, read-only, on Annotate, Export and Details.
 Compare and Comments are not shown at a past state.
@@ -417,12 +421,19 @@ The one exception is `:li`: the official validator refuses every value under it,
 = Comments, Activity, Sharing
 
 A document's **Comments** tab holds comments on the document and on its sentences.
+Threads on things this editor does not show, such as a word's gloss written in another app, are listed under **On other layers** while what they are about still exists.
+**Outdated** holds only threads whose subject was deleted.
 **Activity** shows who has been working on the project and on what.
 
 Two people can have one document open, and neither page shows the other's edits as they are made.
 An edit is refused when another person changed the document since the page loaded, unless everything they changed is annotation this edit does not touch, such as a gloss in Plaid IGT on another word.
 It says `Changed elsewhere. Now showing the latest version. Redo your edit.`, and the page then shows their change.
+When a maintainer makes you a Reader, or removes you, while you have a document open, the page turns read-only after your next edit is refused, or within a minute.
+A member who was removed is told `You no longer have access to this project.`
+
 **Settings → Access** manages the project's members and invitation links, and makes named tokens for scripts and services.
+A link whose maker no longer has the access it grants reads **inactive** and does not work until they get that access back. Revoking it ends it for good.
+A named token cannot change a password, create or revoke API tokens, make a password-reset link, create an account, or make an invitation link that grants administrator rights. Do these signed in.
 
 = Services
 
@@ -481,12 +492,14 @@ Approving a plan after a sentence it changes has been edited is refused, and the
 An edit to another sentence does not stop it, and an edit to a sentence's glosses in Plaid IGT counts as an edit to that sentence.
 A change to every node of a concept is refused after any edit to its document.
 Approving a plan on a document that another run (Draft, a parser) is writing to is refused with nothing written. Approve again once the run has finished.
+A plan approved in two tabs at once is applied once. The other tab shows it applied when the first has finished.
 
 A plan that stops partway reads **Partly applied**, with how many of its changes were written, and the changes not written are dimmed.
 Ask the assistant to finish it.
 
 A reply is written into the conversation as it arrives, and it lands whether or not the page stays open: leave the tab, reload, or close the browser, and the answer is there when the conversation is next opened.
 **Stop** ends a turn early, even while the model is still working on its answer.
+The conversation then reads `You stopped this turn.` with **Retry**.
 A turn the model does not finish ends with the reason and **Retry**.
 Conversations are private to you, kept per project, and can be downloaded or copied as Markdown.
 Your server's administrator can read them.
