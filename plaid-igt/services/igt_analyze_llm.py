@@ -70,12 +70,11 @@ each sentence is sent with the lexicon entries found inside its words and
 the project's most similar sentences that a person has analyzed, so the model
 follows the project's own conventions and improves as the project grows.
 If the gloss field is held to a tagset, the model is shown its tags and told
-which are required, so it glosses with your abbreviations.
+which are required, so it glosses with your abbreviations. The model reads
+each word in the baseline, and the morphemes are written in the baseline.
 
 - **Language** / **Metalanguage**: the object language's name and the
   language of glosses and translations.
-- **Orthography**: leave blank to send the baseline text; name a word
-  orthography to send that instead.
 - **Gloss field**: the morpheme-scope field that receives the glosses.
 - **Examples**: how many analyzed sentences to show the model per sentence.
 - **Overwrite human-edited annotations**: by default the service only writes
@@ -293,7 +292,7 @@ def render_sentence(sentence, gloss_layer_id) -> Optional[str]:
     return ' '.join(items)
 
 
-def load_examples(client, project_id, layers, gloss_field, translation_field, orthography,
+def load_examples(client, project_id, layers, gloss_field, translation_field,
                   exclude_doc_id, max_docs=MAX_EXAMPLE_DOCS, on_progress=None) -> List[dict]:
     """Fully person-analyzed (or verified) sentences from other documents of
     the project: [{text, translation, line, words}]."""
@@ -305,7 +304,7 @@ def load_examples(client, project_id, layers, gloss_field, translation_field, or
         try:
             doc = client.documents.get(d['id'], include_body=True)
             sentences, gloss_layer_id = derive(doc, *layers, gloss_field=gloss_field,
-                                               translation_field=translation_field, orthography=orthography)
+                                               translation_field=translation_field)
         except Exception as exc:
             print(f'Skipping document {d["id"]} as an example source: {exc}')
             continue
@@ -315,8 +314,8 @@ def load_examples(client, project_id, layers, gloss_field, translation_field, or
             line = render_sentence(s, gloss_layer_id)
             if not line:
                 continue
-            pool.append({'text': ' '.join(w['text'] for w in s['words']),
-                         'words': [w['text'].casefold() for w in s['words']],
+            pool.append({'text': ' '.join(w['surface'] for w in s['words']),
+                         'words': [w['surface'].casefold() for w in s['words']],
                          'translation': (s['translation'] or '').strip(), 'line': line})
     return pool
 
@@ -379,8 +378,6 @@ class LLMAnalyzeService(BaseService):
                              description="The object language's name."),
                 Param.string('metalanguage', 'Metalanguage', default='English',
                              description='The language of the glosses and free translations.'),
-                Param.string('orthography', 'Orthography', default='', placeholder='baseline',
-                             description='Name of a word orthography to send instead of the baseline text.'),
                 Param.field('gloss_field', 'Gloss field', 'Morpheme', default='Gloss', required=True,
                             description='The morpheme-scope field that receives the glosses.'),
                 Param.field('translation_field', 'Translation field', 'Sentence', default='Translation',
@@ -419,7 +416,6 @@ class LLMAnalyzeService(BaseService):
             response_helper.error('Missing required option: Language')
             return
         metalanguage = (request_data.get('metalanguage') or '').strip() or 'English'
-        orthography = (request_data.get('orthography') or '').strip()
         gloss_field = (request_data.get('gloss_field') or '').strip() or 'Gloss'
         translation_field = (request_data.get('translation_field') or '').strip() or 'Translation'
         overwrite = bool(request_data.get('overwrite', False))
@@ -434,7 +430,7 @@ class LLMAnalyzeService(BaseService):
         layers = (word_layer_id, morph_layer_id, sent_layer_id)
         try:
             sentences, gloss_layer_id = derive(doc, *layers, gloss_field=gloss_field,
-                                               translation_field=translation_field, orthography=orthography)
+                                               translation_field=translation_field)
         except ValueError as e:
             response_helper.error(str(e))
             return
@@ -465,7 +461,7 @@ class LLMAnalyzeService(BaseService):
             on_progress=lambda n, total: response_helper.progress(
                 5 + int(3 * n / max(total, 1)), f'Reading the lexicon ({n + 1}/{total})…'))
         pool = load_examples(
-            self.client, project_id, layers, gloss_field, translation_field, orthography,
+            self.client, project_id, layers, gloss_field, translation_field,
             exclude_doc_id=document_id,
             on_progress=lambda n, total: response_helper.progress(
                 8 + int(12 * n / max(total, 1)), f'Collecting analyzed sentences ({n}/{total} documents)…'),
@@ -484,7 +480,7 @@ class LLMAnalyzeService(BaseService):
         unanswered = UnansweredRun()
         for n, (s, idxs) in enumerate(targets):
             response_helper.progress(20 + int(65 * n / total), f'Glossing sentences ({n + 1}/{total})…')
-            words = [w['text'] for w in s['words']]
+            words = [w['surface'] for w in s['words']]
             entries = matching_entries(lexicon, words)
             examples = rank_examples(pool, words, n_examples) if n_examples else []
             prompt = build_user_prompt(language, metalanguage, words, (s['translation'] or '').strip(),
@@ -525,7 +521,7 @@ class LLMAnalyzeService(BaseService):
                     skipped['unaligned'] += 1
                     continue
                 w = s['words'][i]
-                plans.append({'word': w, 'analysis': analysis_for(w['text'], out), 'sentence_id': s['id']})
+                plans.append({'word': w, 'analysis': analysis_for(w['surface'], out), 'sentence_id': s['id']})
                 if w['state'] != 'unanalyzed':
                     replaced += 1
 

@@ -39,8 +39,8 @@ class TASKS:
     #
     # Apart from ``analyze`` on purpose. A task is the CONTRACT a spot offers a
     # service against, and these two share almost none of it: an analyze
-    # request names the three token layers plus the language, metalanguage and
-    # orthography, and writes morphemes and glosses. Both claimed ``analyze``
+    # request names the three token layers plus the language and metalanguage,
+    # and writes morphemes and glosses. Both claimed ``analyze``
     # for a while, so every app offering an analyze spot offered the other
     # app's services, which could not answer the request they would have been
     # given.

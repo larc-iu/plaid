@@ -28,7 +28,6 @@ REQUEST = {
     'sentence_token_layer_id': 'sentL',
     'language': 'Turkish',
     'metalanguage': 'English',
-    'orthography': '',
     'gloss_field': 'Gloss',
     'translation_field': 'Translation',
     'overwrite': False,

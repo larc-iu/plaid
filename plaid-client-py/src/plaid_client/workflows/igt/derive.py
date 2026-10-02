@@ -87,7 +87,9 @@ def derive(doc, word_layer_id, morpheme_layer_id, sentence_layer_id, *,
     segmented has one morpheme, its virtual one (:func:`virtual_morpheme`).
 
     ``text`` is the word as the proposer should see it: the baseline surface,
-    or the named word orthography when ``orthography`` is given. Ignored
+    or the named word orthography when ``orthography`` is given (the
+    translation service offers that). An analyzer sends ``surface``, never an
+    orthography: the morphemes it writes are in the baseline. Ignored
     tokens (punctuation) are left out. Raises ValueError with a user-facing
     message when a layer or the gloss field is missing; ``gloss_field=None``
     asks for no gloss layer (the second item is then None)."""

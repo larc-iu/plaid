@@ -74,12 +74,11 @@ SUMMARY = """\
 **PolyGloss** (Ginn et al. 2026) proposes a morpheme **segmentation** and
 **glosses** for every word of the document in one pass, from the words and each
 sentence's free translation. It is a single multilingual model trained on IGT
-from ~2,000 languages; results are best for languages it has seen.
+from ~2,000 languages; results are best for languages it has seen. The model
+reads each word in the baseline, and the morphemes are written in the baseline.
 
 - **Language** / **Metalanguage**: the object language's name as the model
   would know it (e.g. `Lezgian`) and the translation's language.
-- **Orthography**: leave blank to send the baseline text; name a word
-  orthography (e.g. `Translit`) to send that instead.
 - **Gloss field**: the morpheme-scope field that receives the glosses.
 - **Overwrite human-edited annotations**: by default the service only writes
   words that have no analysis yet or whose analysis is entirely machine-made
@@ -175,8 +174,6 @@ class PolyGlossService(BaseService):
                              description="The object language's name as the model would know it."),
                 Param.string('metalanguage', 'Metalanguage', default='English',
                              description="The language of the free translations."),
-                Param.string('orthography', 'Orthography', default='', placeholder='baseline',
-                             description='Name of a word orthography to send instead of the baseline text.'),
                 Param.field('gloss_field', 'Gloss field', 'Morpheme', default='Gloss', required=True,
                             description='The morpheme-scope field that receives the glosses.'),
                 Param.field('translation_field', 'Translation field', 'Sentence', default='Translation',
@@ -221,7 +218,6 @@ class PolyGlossService(BaseService):
             response_helper.error('Missing required option: Language')
             return
         metalanguage = (request_data.get('metalanguage') or '').strip() or 'English'
-        orthography = (request_data.get('orthography') or '').strip()
         gloss_field = (request_data.get('gloss_field') or '').strip() or 'Gloss'
         translation_field = (request_data.get('translation_field') or '').strip() or 'Translation'
         overwrite = bool(request_data.get('overwrite', False))
@@ -232,7 +228,7 @@ class PolyGlossService(BaseService):
         try:
             sentences, gloss_layer_id = derive(
                 doc, word_layer_id, morph_layer_id, sent_layer_id,
-                gloss_field=gloss_field, translation_field=translation_field, orthography=orthography)
+                gloss_field=gloss_field, translation_field=translation_field)
         except ValueError as e:
             response_helper.error(str(e))
             return
@@ -266,7 +262,7 @@ class PolyGlossService(BaseService):
         while pending and passes <= MAX_CONTINUATIONS:
             prompts = []
             for s, start in pending:
-                transcription = ' '.join(w['text'] for w in s['words'][start:])
+                transcription = ' '.join(w['surface'] for w in s['words'][start:])
                 translation = (s['translation'] or '').strip() or 'None'
                 prompts.append(PROMPT.format(lang=language, metalang=metalanguage,
                                              transcription=transcription, translation=translation))
@@ -279,7 +275,7 @@ class PolyGlossService(BaseService):
             next_pending = []
             for (s, start), (text, truncated) in zip(pending, results):
                 outputs = parse_interleaved(text)
-                surfaces = [w['text'] for w in s['words'][start:]]
+                surfaces = [w['surface'] for w in s['words'][start:]]
                 if not outputs:
                     failed.append({'sentence_id': s['id'], 'reason': 'empty output'})
                     continue
@@ -306,7 +302,7 @@ class PolyGlossService(BaseService):
                 if out is None:
                     skipped['unaligned'] += 1
                     continue
-                plans.append({'word': w, 'analysis': analysis_for(w['text'], out), 'sentence_id': s['id']})
+                plans.append({'word': w, 'analysis': analysis_for(w['surface'], out), 'sentence_id': s['id']})
                 if w['state'] != 'unanalyzed':
                     replaced += 1
 
