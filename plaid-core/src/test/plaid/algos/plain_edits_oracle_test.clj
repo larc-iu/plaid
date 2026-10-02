@@ -506,6 +506,36 @@
          (some (fn [[t c]] (< (get wx t 0) c)) wr) (conj (str "deleted words " (pr-str wr) ", as made " (pr-str wx)))
          (some #(not (sx (:token/id %))) (gone r :s)) (conj "deleted a sentence the edit as made keeps"))))))
 
+(defn- letters-left-problems
+  "The words and sentences `r` deletes though an old letter of theirs, not
+  whitespace, lies outside every net gap of `ops` (Luke: a word goes only
+  when all its letters do)."
+  [^String old tokens ops r]
+  (let [o (cps old)
+        in-gap (let [a (boolean-array (alength o))]
+                 (doseq [{:keys [start end]} (ta/compose-edits ops old), i (range start end)] (aset a i true))
+                 a)
+        gone (set (:deleted r))]
+    (into [] (keep (fn [{:token/keys [id layer begin end]}]
+                     (when (and (#{:w :s} layer) (gone id) (< begin end)
+                                (some #(and (not (aget in-gap %)) (not (ws? (aget o %)))) (range begin end)))
+                       (str id " deleted with a letter left outside the change " (pr-str (cp/cp-subs old begin end))))))
+          tokens)))
+
+(declare server-gaps)
+
+(defn- edit-loss-problems
+  "An edit never deletes a word or sentence with a letter left outside the
+  change, and where the server took each gap as made (no gap read as a
+  whole-body save reads it, see `plaid.algos.text/plain-edit-gaps`), none
+  the edit as made keeps (REV3-F-TEXT-CORE G3)."
+  [^String old tokens ops layout r]
+  (let [o (cps old)
+        as-made (vec (keep #(#'ta/trim-gap o %) (ta/compose-edits ops old)))]
+    (cond-> (letters-left-problems old tokens ops r)
+      (= as-made (server-gaps old tokens ops layout))
+      (into (lost-problems old tokens r (exact old tokens ops layout))))))
+
 (defn- server-gaps
   "The gaps an edit by `ops` is taken as, the layers as `layout` has them."
   [old tokens ops layout]
@@ -574,7 +604,7 @@
           (doseq [[rname ops] readings]
             (let [r (run body tokens ops layout false)
                   ps (into (problems body tokens server r)
-                           (lost-problems body tokens r (exact body tokens ops layout)))]
+                           (edit-loss-problems body tokens ops layout r))]
               (when (seq ps) (swap! fails conj {:config cname :seed seed :reading rname :old body :gaps gaps :problems (take 3 ps)}))))
           (let [[bgaps r] (save-read body new-body tokens layout false)
                 ps (into (problems body tokens bgaps r) (survivor-problems body new-body tokens layout r))]
@@ -582,6 +612,59 @@
       (when (or (System/getenv "PLAIN_ORACLE_DEBUG") (System/getProperty "plain.oracle.debug"))
         (println cname (count @fails) (frequencies (map :reading @fails)))
         (doseq [f (take 6 @fails)] (println (pr-str f))))
+      (testing (str cname)
+        (is (empty? @fails) (pr-str (take 3 @fails)))))))
+
+;; ---------------------------------------------------------------- selections typed over
+
+(defn- select-type-over
+  "One gap: a selection from inside or at the edge of a word to inside or at
+  the edge of a word up to three on, typed over with its own text with its
+  words changed: one dropped, one of the text's words added before or after
+  one, one grown or shrunk by a letter, one swapped for another word of the
+  text, or all retyped as they were. The typed text shares letters, often
+  ends, with the selection (REV3-F-TEXT-CORE G3)."
+  [^java.util.Random rng ^String body tokens]
+  (let [words (vec (sort-by :token/begin (filter #(= :w (:token/layer %)) tokens)))
+        texts (mapv #(cp/cp-subs body (:token/begin %) (:token/end %)) words)
+        pick #(nth % (.nextInt rng (count %)))
+        i (.nextInt rng (count words))
+        j (min (dec (count words)) (+ i (.nextInt rng 4)))
+        wi (words i) wj (words j)
+        a (+ (:token/begin wi) (.nextInt rng (max 1 (- (:token/end wi) (:token/begin wi)))))
+        a (if (.nextBoolean rng) (:token/begin wi) a)
+        b (if (.nextBoolean rng) (:token/end wj) (- (:token/end wj) (.nextInt rng (max 1 (- (:token/end wj) (:token/begin wj))))))
+        b (max b (inc a))
+        sel (cp/cp-subs body a b)
+        parts (vec (re-seq #"\S+|\s+" sel))
+        wk (vec (keep-indexed (fn [k p] (when-not (re-matches #"\s+" p) k)) parts))
+        k (when (seq wk) (pick wk))
+        v (if (nil? k)
+            (str sel (pick texts))
+            (case (.nextInt rng 6)
+              0 (apply str (assoc parts k ""))
+              1 (apply str (assoc parts k (str (pick texts) " " (parts k))))
+              2 (apply str (assoc parts k (str (parts k) " " (pick texts))))
+              3 (apply str (assoc parts k (str (parts k) (pick texts))))
+              4 (apply str (assoc parts k (pick texts)))
+              sel))]
+    (when (not= v sel) [{:start a :end b :value v}])))
+
+(deftest a-selection-typed-over-deletes-no-word-with-a-letter-left
+  (doseq [[cname opts] configs]
+    (let [fails (atom [])]
+      (dotimes [seed 400]
+        (let [rng (java.util.Random. (+ seed (* 6151 (hash cname))))
+              layout (:layout opts :apps)
+              {:keys [body tokens]} (gen-doc rng opts)
+              tokens (layout-tokens layout tokens)]
+          (when-let [gaps (and (some #(= :w (:token/layer %)) tokens) (select-type-over rng body tokens))]
+            (let [ops (ta/gap-ops gaps)
+                  r (run body tokens ops layout false)
+                  ps (-> (problems body tokens (server-gaps body tokens ops layout) r)
+                         (into (edit-loss-problems body tokens ops layout r))
+                         (cond-> (not= (ta/edit-ops-body ops body) (:text/body (:text r))) (conj "body")))]
+              (when (seq ps) (swap! fails conj {:config cname :seed seed :old body :gaps gaps :problems (take 3 ps)}))))))
       (testing (str cname)
         (is (empty? @fails) (pr-str (take 3 @fails)))))))
 
@@ -689,19 +772,25 @@
 
 (def ^:private paste-ceiling
   "Pastes, of the 6,750 the test below makes, read as the whole-body save of
-  the same change reads them although that deletes a word the exact edits
-  keep. Each holds two or three changes, and the text alone does not tell
-  the edits apart from another change of the same result that deletes one
-  word more: `xa ba the ba a` pasted as `the ba ba a` (`xa` typed over as
-  `the` and `the ` deleted) reads as `xa` and a `ba` deleted. The gap as
-  made, the only other reading, deletes more in every one. Finding the
-  edits there needs pairing the words of the paste, which REV-F-TEXT-CORE
-  ruled out. Two hold one change in a script without spaces, where one of
-  two words of the same character on either side of a sentence break is
-  deleted (`好好我好` pasted as `好我好`) and the text cannot tell which: the
-  save deletes the first and its one-word sentence, the edit the second.
-  24 when pinned (2026-10-02, REV2-F-TEXT-CORE)."
-  24)
+  the same change reads them although that deletes a word or sentence the
+  exact edits keep (REV3-F-TEXT-CORE G2 sorted them):
+  - 2 are twins the text cannot tell apart: one of two words of the same
+    character either side of a sentence break deleted in a script without
+    spaces (`好好我好` pasted as `好我好`). The save deletes the first and its
+    one-word sentence, the edit the second.
+  - 2 are explained more cheaply by more deletions: the exact edits change
+    more letters than the diff does.
+  - 16 are a known limit of reading a paste without pairing its words, which
+    REV-F-TEXT-CORE ruled out. Two or three changes in one stretch, and the
+    diff takes another longest common subsequence of the same length as the
+    exact edits, which deletes one word more (`a ba the` pasted as `the ba`:
+    `a` and `ba` deleted and ` ba` typed, where the edits type `the` over `a`
+    and delete ` the`). The single-change forms read right.
+  The spaceless pastes of a word typed over beside its twin (`我你好吗。` as
+  `我好好吗！`) were 4 more, until `slide-to-tokens` let an insert stand against
+  a delete of exactly one token. Lower this whenever the count drops.
+  20 when pinned (2026-10-02)."
+  20)
 
 (deftest a-paste-over-several-words-reads-as-the-edits-or-the-whole-body-save
   (let [as-saved (atom [])]

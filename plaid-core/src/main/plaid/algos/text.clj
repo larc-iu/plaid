@@ -1605,17 +1605,35 @@
                           (if (or (< (start-of e) lo) (> (reach-of e) hi))
                             e
                             (let [places (slide-places o e lo hi)
-                                  near (near (reduce min (map start-of places))
-                                             (reduce max (map reach-of places)))
-                                  cost #(slide-cost o near partitioning %)
-                                  here (cost e)]
-                              (if (zero? here)
+                                  near-e (near (reduce min (map start-of places))
+                                               (reduce max (map reach-of places)))
+                                  cost #(slide-cost o near-e partitioning %)
+                                  here (cost e)
+                                  ;; an insert that can stand right after (or
+                                  ;; before) a delete of exactly one token's text
+                                  ;; makes that token typed over whole, which
+                                  ;; keeps it: `我你好吗。` saved as `我好好吗！` is
+                                  ;; `你` typed over as `好`, not `你` deleted and
+                                  ;; `好` doubled (REV3-F-TEXT-CORE G2)
+                                  whole? (fn [d] (and d (= :delete (:kind d))
+                                                      (some #(and (= (:token/begin %) (:start d)) (= (:token/end %) (:end d)))
+                                                            (near (:start d) (:end d)))))
+                                  typed-over (when (and (= :insert (:kind e)) (pos? here))
+                                               (let [p (peek moved)]
+                                                 (or (when (and prev (whole? p) (<= (:end p) (:at e)))
+                                                       (some #(when (= (:at %) (:end p)) %) (slide-places o e (:end p) hi)))
+                                                     (when (and (whole? nxt) (<= (:at e) (:start nxt)))
+                                                       (some #(when (= (:at %) (:start nxt)) %) (slide-places o e lo (:start nxt)))))))]
+                              (cond
+                                typed-over typed-over
+                                (zero? here)
                                 e
                                 ;; The fewest disturbed, then the fewest cut, then
                                 ;; the nearest place. The sort is stable and
                                 ;; `places` starts with the edit itself.
+                                :else
                                 (first (sort-by (juxt cost
-                                                      #(slide-cuts near %)
+                                                      #(slide-cuts near-e %)
                                                       #(Math/abs (long (- (start-of %) (start-of e)))))
                                                 places))))))))
                 []
@@ -2919,23 +2937,26 @@
          ;; its neighbours) reads it, the tokens cut to the window, when that
          ;; reading deletes no word or sentence the gap as made keeps, or
          ;; deletes fewer, else the gap as made
-         ;; `tokens` cut to old [lo, hi), in its coordinates
-         by-begin (vec (sort-by :token/begin tokens))
+         ;; `tokens` cut to old [lo, hi), in its coordinates: the short ones
+         ;; found by their begin, the few long ones (a text in one sentence,
+         ;; a document's token, a node over a long sentence) looked at whole
+         long? #(< 1024 (- (:token/end %) (:token/begin %)))
+         longs (filterv long? tokens)
+         by-begin (vec (sort-by :token/begin (remove long? tokens)))
          tbegins (long-array (map :token/begin by-begin))
-         tlongest (reduce max 0 (map #(- (:token/end %) (:token/begin %)) tokens))
+         tlongest (reduce max 0 (map #(- (:token/end %) (:token/begin %)) by-begin))
+         in? (fn [lo hi {:token/keys [begin end]}] (if (= begin end) (<= lo begin hi) (and (< begin hi) (< lo end))))
+         cut-one (fn [lo hi tk] (assoc tk :token/begin (- (max lo (:token/begin tk)) lo) :token/end (- (min hi (:token/end tk)) lo)))
          cut (fn [lo hi]
                (let [from (loop [a 0 b (alength tbegins)]
                             (if (< a b)
                               (let [m (quot (+ a b) 2)]
                                 (if (< (aget tbegins m) (- lo tlongest)) (recur (inc m) b) (recur a m)))
                               a))]
-                 (loop [i from out (transient [])]
+                 (loop [i from out (transient (into [] (comp (filter #(in? lo hi %)) (map #(cut-one lo hi %))) longs))]
                    (if (and (< i (count by-begin)) (<= (aget tbegins i) hi))
-                     (let [{:token/keys [begin end] :as tk} (by-begin i)]
-                       (recur (inc i)
-                              (if (if (= begin end) (<= lo begin hi) (and (< begin hi) (< lo end)))
-                                (conj! out (assoc tk :token/begin (- (max lo begin) lo) :token/end (- (min hi end) lo)))
-                                out)))
+                     (let [tk (by-begin i)]
+                       (recur (inc i) (if (in? lo hi tk) (conj! out (cut-one lo hi tk)) out)))
                      (persistent! out)))))
          shift (fn [gs by] (mapv (fn [gap] (cond-> (-> gap (update :start + by) (update :end + by))
                                              (:keeps gap) (update :keeps (fn [ks] (mapv (fn [[b e off len]] [(+ b by) (+ e by) off len]) ks)))))

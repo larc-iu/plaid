@@ -687,9 +687,12 @@
     (is (= "Hi" (cp/cp-subs nb (:token/begin w0) (:token/end w0))))
     (is (= [[0 7]] (mapv (juxt :token/begin :token/end) (:heads r))))))
 
-(deftest four-hundred-edits-on-40000-words-save-in-under-two-seconds
-  ;; REV2-F-TEXT-CORE R3: a save of many edits over word boundaries read
-  ;; each over the whole body (136 ops 15 s, 396 ops 42 s)
+(defn- big-save
+  "Seconds a save of `places` two-word retypes (a word's last letter and the
+  next one's first typed over as `x y`, read as a whole-body save reads it)
+  and as many letters typed takes on 40,000 words, sentences by line or
+  (`one-sentence?`) one sentence over the whole text, and the result."
+  [places one-sentence?]
   (let [rng (java.util.Random. 7)
         syl ["ka" "na" "ma" "to" "ri" "lu" "se" "po" "ng" "wa" "the" "en"]
         word #(apply str (repeatedly (inc (.nextInt rng 3)) (fn [] (syl (.nextInt rng (count syl))))))
@@ -704,26 +707,43 @@
                           (do (.append sb " ") (recur (inc i) s0 ws ss)))))
                     [ws (conj ss [s0 (.length sb)])]))
         body (str sb)
+        ss (if one-sentence? [[0 (count body)]] ss)
         tokens (-> []
                    (into (map-indexed (fn [i [b e]] {:token/id [:s i] :token/layer :s :token/begin b :token/end e}) ss))
                    (into (mapcat (fn [i [b e]] [{:token/id [:w i] :token/layer :w :token/begin b :token/end e}
                                                 {:token/id [:m i] :token/layer :m :token/begin b :token/end e}])
                                  (range) ws)))
-        picks (vec (sort (distinct (repeatedly 230 #(+ 10 (.nextInt rng (- (count ws) 20)))))))
-        ;; at each place, a word's last letter and the next one's first
-        ;; typed over as two words (read as a whole-body save reads it), and
-        ;; a letter typed two words before it, taken back to front
+        picks (vec (sort (distinct (repeatedly (* 2 places) #(+ 10 (.nextInt rng (- (count ws) 20)))))))
+        picks (vec (take places (map first (partition-all 1 (remove (set (map inc picks)) picks)))))
         ops (->> picks
                  (mapcat (fn [i] (let [[_ e] (ws i) [b2] (ws (inc i)) [b0] (ws (- i 2))]
                                    [(rep (dec e) (- (inc b2) (dec e)) "x y") (ins (inc b0) "q")])))
                  (sort-by #(- (:index %)))
-                 (take 400)
                  vec)
         run #(ta/plain-edits body tokens ops #{:s} #{:w} {:children #{:m}})
         _ (run)
         t0 (System/nanoTime)
-        r (run)
-        secs (/ (- (System/nanoTime) t0) 1e9)]
-    (is (= (ta/edit-ops-body ops body) (:text/body (:text r))))
-    (is (empty? (filter #(= :w (first %)) (:deleted r))) "no word with letters left is deleted")
-    (is (< secs 2.0) (str secs " s"))))
+        r (run)]
+    {:secs (/ (- (System/nanoTime) t0) 1e9) :r r :body (ta/edit-ops-body ops body)}))
+
+(deftest many-edits-on-40000-words-save-in-seconds
+  ;; REV2-F-TEXT-CORE R3: a save of many edits over word boundaries read
+  ;; each over the whole body (396 ops 42 s); REV3-F-TEXT-CORE G1: one long
+  ;; token (a text in one sentence) made each read scan every token (6,000
+  ;; gaps 30 s). Idle, these take 0.6 s and 2.9 s (11.4 s with the long
+  ;; token scanned); each bound leaves room for a busy machine and still
+  ;; catches the shape.
+  (doseq [[places one? bound] [[200 false 5.0] [4000 true 8.0]]]
+    (let [{:keys [secs r body]} (big-save places one?)]
+      (is (= body (:text/body (:text r))))
+      (is (empty? (filter #(= :w (first %)) (:deleted r))) "no word with letters left is deleted")
+      (is (< secs bound) (str places (when one? " in one sentence") ": " secs " s")))))
+
+(deftest a-word-typed-over-beside-its-twin-keeps-its-token
+  ;; REV3-F-TEXT-CORE G2: the diff deletes `你` and types `好` after the next
+  ;; `好`; the same text is `你` typed over as `好`, which keeps every word
+  (is (= ["我好好吗！" "我" "好" "好" "吗" "！"] (save "|我||你||好||吗||。|" "我好好吗！")))
+  (is (= ["我好好吗！" "我" "好" "好" "吗" "！"] (edit "|我||你||好||吗||。|" [(rep 0 5 "我好好吗！")])))
+  (is (= ["我你你吗！" "我" "你" "你" "吗" "！"] (save "|我||你||好||吗||。|" "我你你吗！")))
+  (testing "spaced text was already right"
+    (is (= ["x cd cd y." "x" "cd" "cd" "y."] (save "|x| |ab| |cd| |y|" "x cd cd y.")))))
