@@ -49,7 +49,7 @@ import { applyReshape } from '@ui/domain/textReshape.js';
 import { applyGapsLocally, applyTextEditsLocally, removeTokensLocally } from '../textEdits.js';
 import { reshapeVocabLinks } from './document.js';
 import { getIgtLayerInfo } from '../layerInfo.js';
-import { rangeProblem } from '../alignmentTimes.js';
+import { overlapProblem, rangeProblem } from '../alignmentTimes.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
 
 // Two ranges [a, b) and [c, d) overlap iff a < d && b > c.
@@ -75,6 +75,21 @@ const alignmentMeta = (timeBegin, timeEnd, speaker) => {
   if (s) meta.speaker = s;
   return meta;
 };
+
+const seconds = (s) => `${s.toFixed(3)} s`;
+
+// Why a segment with these times and this speaker may not be stored, by the
+// cross-talk rule (alignmentTimes.js), or null. `existing` is the segment as
+// stored when the write changes one: an overlap it already had is not counted.
+const crossTalkProblem = (info, { timeBegin, timeEnd, speaker }, existing = null) =>
+  overlapProblem(
+    info.alignmentTokenLayer?.tokens || [],
+    {
+      id: existing?.id ?? null,
+      metadata: alignmentMeta(timeBegin, timeEnd, speaker),
+    },
+    { was: existing, format: seconds },
+  );
 
 // The stretch of baseline text a segment at [timeBegin, timeEnd) may take
 // without breaking the rule that time order follows text order: from the end
@@ -432,6 +447,11 @@ export const alignmentMutations = {
       this.setError(notSetUp('Text layer not found'));
       return false;
     }
+    const overlap = crossTalkProblem(info, { timeBegin, timeEnd, speaker });
+    if (overlap) {
+      this.setError(overlap);
+      return false;
+    }
 
     const plan = planCreate(info, trimmed, timeBegin);
     if (plan.error) {
@@ -498,6 +518,11 @@ export const alignmentMutations = {
     const gaps = rowGaps(over, trimmed, edits);
     const mine = alignmentMeta(timeBegin, timeEnd, speaker);
     const was = existingAlignment.metadata;
+    const overlap = crossTalkProblem(info, { timeBegin, timeEnd, speaker }, existingAlignment);
+    if (overlap) {
+      this.setError(overlap);
+      return false;
+    }
     if (!gaps.length) {
       // Only spaces were typed: what else the row changed, or nothing.
       const s = (speaker || '').trim();
@@ -592,6 +617,11 @@ export const alignmentMutations = {
     }
     if (findOverlappingAlignment(alignmentTokens, begin, end)) {
       this.setError('The selected text overlaps an existing segment.');
+      return false;
+    }
+    const overlap = crossTalkProblem(info, { timeBegin, timeEnd, speaker });
+    if (overlap) {
+      this.setError(overlap);
       return false;
     }
 
@@ -786,6 +816,15 @@ export const alignmentMutations = {
       return false;
     }
     const value = (speaker || '').trim();
+    // The speaker is half of the cross-talk rule, so a rename or a clear is
+    // held to it as a time edit is.
+    const { timeBegin = 0 } = token.metadata || {};
+    const timeEnd = token.metadata?.timeEnd ?? timeBegin;
+    const overlap = crossTalkProblem(info, { timeBegin, timeEnd, speaker: value }, token);
+    if (overlap) {
+      this.setError(overlap);
+      return false;
+    }
     const label = 'Failed to update speaker';
     if (!this._canWrite(label)) return false;
     // A person's edit carries the writer's stamp (write-contract rule 3), and

@@ -7,9 +7,10 @@
 // speaker label and the labels differ (cross-talk). One voice cannot overlap
 // itself, and an unlabelled segment cannot be told apart from its neighbour,
 // so those overlaps are the slip of a dragged edge and are stopped. Every
-// writer of timeBegin/timeEnd goes through here: the timeline drag (clamped
-// live), the transcript's time boxes and the domain method behind both
-// (refused with the reason), and the load-time validator (reported, for data
+// writer of timeBegin/timeEnd or of the speaker goes through here: the
+// timeline drag (clamped live), the transcript's time boxes and the domain
+// method behind both, a new segment and a speaker edit (refused with the
+// reason), and the load-time validator (reported, for data
 // that got in some other way). The ELAN export puts each speaker on its own
 // tier, where cross-talk is legal, and must drop a time for same-tier overlap.
 
@@ -108,6 +109,25 @@ export function rangeProblem(
     return `The next segment starts at ${format(ceiling)}. Only segments with different speakers may overlap.`;
   }
   return null;
+}
+
+/**
+ * Why segment `candidate`, as it would be stored (its times and speaker), may
+ * not sit where it is in time, or null: the earliest other segment it would
+ * overlap and may not, named by its times. For a change to a stored segment,
+ * `was` is the segment as stored now, and an overlap it already had is not
+ * this change's doing, so it does not count. Speaker edits and new segments
+ * go through here, since the speaker is half of the cross-talk rule.
+ */
+export function overlapProblem(tokens, candidate, { was = null, format = String } = {}) {
+  const begin = timeBeginOf(candidate);
+  const end = timeEndOf(candidate);
+  const others = (tokens || [])
+    .filter((o) => o.id !== candidate.id && timeBeginOf(o) < end && timeEndOf(o) > begin)
+    .sort(byTime);
+  const other = others.find((o) => !mayOverlap(candidate, o) && (!was || mayOverlap(was, o)));
+  if (!other) return null;
+  return `Overlaps the segment from ${format(timeBeginOf(other))} to ${format(timeEndOf(other))}. Only segments with different speakers may overlap.`;
 }
 
 /** Every pair of segments that overlap in time and may not, in time order. */
