@@ -87,6 +87,30 @@ describe('the rules IGT wants', () => {
     gloss.constraints = { igt: [{ type: 'single-span' }] };
     expect(queueFieldDeclarations(b, igtFields(info), tagsets('suggest'))).toBe(0);
   });
+
+  // Ruling on FX-UI's question (2026-10-02): a settings save on a layer that
+  // holds no rules yet repairs what core can repair first, in the same batch,
+  // so only a violation with no remedy refuses it. A new field's layer
+  // (`constraints: null`) has nothing to repair.
+  it('repairs a field whose layer holds no rules before declaring, and not a new one', () => {
+    const info = getIgtLayerInfo(buildRawDoc());
+    const [gloss] = Object.values(info.spanLayers).flat();
+    const queued = [];
+    const b = {
+      spanLayers: {
+        repairConstraints: (...args) => queued.push(['repair', ...args]),
+        setConstraints: (...args) => queued.push(['set', ...args]),
+      },
+    };
+    const bare = { ...gloss, constraints: {} };
+    expect(queueFieldDeclarations(b, [bare], tagsets('closed', ['N']))).toBe(1);
+    expect(queued.map((q) => q[0])).toEqual(['repair', 'set']);
+    expect(queued[0][1]).toBe(gloss.id);
+    expect(queued[0][2]).toEqual(queued[1][3]);
+    queued.length = 0;
+    queueFieldDeclarations(b, [{ ...gloss, constraints: null }], tagsets('closed', ['N']));
+    expect(queued.map((q) => q[0])).toEqual(['set']);
+  });
 });
 
 describe('a value set read as the server reads it', () => {

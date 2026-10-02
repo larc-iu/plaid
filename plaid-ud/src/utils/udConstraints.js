@@ -8,6 +8,7 @@
 
 import { MODES, valueSetRule } from './udVocabMode.js';
 import {
+  queueRepairOfBareLayer,
   rulesNotInForce as findingsFor,
   sameConstraints,
 } from '../../../plaid-ui/src/lib/layerConstraints.js';
@@ -88,7 +89,9 @@ const BUNDLE = { token: 'tokenLayers', span: 'spanLayers', relation: 'relationLa
  * whose rules differ between `before` and `after` (getUdLayerInfo of the
  * project before and after the save), each naming what it holds, as IGT's
  * settings do. The declaration goes in the same batch as the settings
- * write, so a list the stored data breaks is refused with it. Returns how
+ * write, so a list the stored data breaks is refused with it. A layer that
+ * holds no rules yet is repaired first in the batch, so only a violation
+ * with no remedy refuses it. Returns how
  * many it queued.
  */
 export const queueRuleChanges = (b, before, after) => {
@@ -96,6 +99,7 @@ export const queueRuleChanges = (b, before, after) => {
   let n = 0;
   for (const w of wantedConstraints(after)) {
     if (sameConstraints(w.constraints, was.get(w.layerId)?.constraints)) continue;
+    queueRepairOfBareLayer(b, w);
     b[BUNDLE[w.kind]].setConstraints(w.layerId, w.namespace, w.constraints, undefined, {
       expected: w.stored ?? null,
     });

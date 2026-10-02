@@ -14,6 +14,7 @@ import { IGT_NAMESPACE } from './igtConfig.js';
 import { MODES, resolveTagset } from './tagsets.js';
 import { valueSetAllows, violationsOf } from '../../../plaid-client-js/src/constraints.js';
 import {
+  queueRepairOfBareLayer,
   rulesNotInForce as findingsFor,
   sameConstraints,
   storedConstraints,
@@ -89,7 +90,9 @@ export const wantedConstraints = (layerInfo, projectConfig) => {
  * the save) whose rules under `projectConfig` (the project's config after the
  * save) differ from what its layer holds. The declaration goes in the same
  * batch as the settings write, so a tagset the stored values break is refused
- * with them and stays as it was. Returns how many it queued.
+ * with them and stays as it was. A field whose layer holds no rules yet is
+ * repaired first in the batch (`sl.constraints` given: the layer exists).
+ * Returns how many declarations it queued.
  */
 export const queueFieldDeclarations = (b, spanLayers, projectConfig) => {
   let n = 0;
@@ -98,6 +101,10 @@ export const queueFieldDeclarations = (b, spanLayers, projectConfig) => {
     const wanted = fieldConstraints(sl.config, projectConfig);
     const stored = storedConstraints(sl, IGT_NAMESPACE);
     if (sameConstraints(wanted, stored)) continue;
+    // A layer that exists and holds no rules yet: what core can repair first.
+    if (sl.constraints != null) {
+      queueRepairOfBareLayer(b, { kind: 'span', layerId: sl.id, constraints: wanted, stored });
+    }
     b.spanLayers.setConstraints(sl.id, IGT_NAMESPACE, wanted, undefined, {
       expected: stored ?? null,
     });

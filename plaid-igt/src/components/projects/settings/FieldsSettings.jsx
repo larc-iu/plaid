@@ -254,7 +254,8 @@ export const FieldsSettings = ({
         return {
           id: layerIds.get(key),
           config: { ...layer?.config, [IGT_NAMESPACE]: igt },
-          constraints: layer?.constraints ?? {},
+          // A new field's layer holds nothing to repair.
+          constraints: layer ? (layer.constraints ?? {}) : null,
         };
       }),
       projectConfig,

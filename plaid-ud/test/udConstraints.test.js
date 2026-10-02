@@ -75,11 +75,24 @@ test('a settings save queues the layers whose rules it changes, each naming what
   const after = getUdLayerInfo(withConfigWrites(raw, writes));
   after.uposLayer.constraints = info.uposLayer.constraints;
   const queued = [];
+  const repaired = [];
   const b = {
-    spanLayers: { setConstraints: (...a) => queued.push(['span', ...a]) },
-    relationLayers: { setConstraints: (...a) => queued.push(['relation', ...a]) },
+    spanLayers: {
+      setConstraints: (...a) => queued.push(['span', ...a]),
+      repairConstraints: (...a) => repaired.push(['span', ...a]),
+    },
+    relationLayers: {
+      setConstraints: (...a) => queued.push(['relation', ...a]),
+      repairConstraints: (...a) => repaired.push(['relation', ...a]),
+    },
   };
   assert.equal(queueRuleChanges(b, info, after), 2);
+  // The layer with no rules yet is repaired first (ruling on FX-UI's
+  // question): a doubled head is not repairable, but crossing relations are.
+  assert.deepEqual(
+    repaired.map((r) => r[1]),
+    [info.relationLayer.id],
+  );
   const upos = queued.find((q) => q[1] === info.uposLayer.id);
   assert.equal(upos[3][1].type, 'value-set');
   assert.deepEqual(upos[5], { expected: [{ type: 'single-span' }] });

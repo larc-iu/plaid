@@ -41,6 +41,18 @@ export const sameConstraints = (a, b) =>
 
 const sameRule = (a, b) => sameConstraints([a], [b]);
 
+/**
+ * Queue on batch `b`, ahead of a settings save's declaration on a layer that
+ * holds none of the app's rules yet, the repair of what core can repair (a
+ * doubled annotation, say), as a maintainer's open would have done. Then only
+ * a violation with no remedy refuses the save. True when it queued one.
+ */
+export const queueRepairOfBareLayer = (b, { kind, layerId, constraints, stored }) => {
+  if (stored?.length || !constraints?.some((c) => REMEDIABLE.has(c.type))) return false;
+  b[BUNDLE[kind]].repairConstraints(layerId, constraints);
+  return true;
+};
+
 /** The list a layer read holds for `namespace`, or null. */
 export const storedConstraints = (layer, namespace) => layer?.constraints?.[namespace] ?? null;
 
