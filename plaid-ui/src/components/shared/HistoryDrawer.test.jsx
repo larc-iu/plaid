@@ -165,6 +165,73 @@ describe('HistoryDrawer', () => {
     });
   });
 
+  // Q1-IGT-POLISH-3: opened from the keyboard, focus dropped to the page,
+  // Escape did nothing, and Close left focus on the page.
+  describe('focus', () => {
+    const Host = ({ open, loading = false, onClose = () => {} }) => (
+      <div>
+        <button type="button" data-opener>
+          History
+        </button>
+        <HistoryDrawer
+          isOpen={open}
+          onClose={onClose}
+          auditEntries={loading ? [] : [entry]}
+          loading={loading}
+          error={null}
+          onSelectEntry={() => {}}
+          selectedEntry={null}
+        />
+      </div>
+    );
+    const opener = (view) => view.container.querySelector('[data-opener]');
+
+    it('moves into the list on open, and back to the opener on close', async () => {
+      const view = await renderComponent(<Host open={false} />);
+      await view.step(() => opener(view).focus());
+      await view.rerender(<Host open />);
+      expect(document.activeElement.getAttribute('data-history-item')).toBe('u:batch-1');
+      await view.rerender(<Host open={false} />);
+      expect(document.activeElement).toBe(opener(view));
+      await view.unmount();
+    });
+
+    it('waits on Close while the list loads, then moves into it', async () => {
+      const view = await renderComponent(<Host open={false} />);
+      await view.step(() => opener(view).focus());
+      await view.rerender(<Host open loading />);
+      expect(document.activeElement.textContent).toContain('Close');
+      await view.rerender(<Host open />);
+      expect(document.activeElement.getAttribute('data-history-item')).toBe('u:batch-1');
+      await view.unmount();
+    });
+
+    it('closes on Escape from inside it', async () => {
+      const onClose = vi.fn();
+      const view = await renderComponent(<Host open onClose={onClose} />);
+      await view.step(() =>
+        document.activeElement.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+        ),
+      );
+      expect(onClose).toHaveBeenCalledTimes(1);
+      await view.unmount();
+    });
+
+    it('leaves focus where the reader put it outside the drawer', async () => {
+      const view = await renderComponent(<Host open={false} />);
+      const elsewhere = document.createElement('input');
+      document.body.appendChild(elsewhere);
+      await view.step(() => opener(view).focus());
+      await view.rerender(<Host open />);
+      await view.step(() => elsewhere.focus());
+      await view.rerender(<Host open={false} />);
+      expect(document.activeElement).toBe(elsewhere);
+      elsewhere.remove();
+      await view.unmount();
+    });
+  });
+
   it('names the kind of an operation that has one, and nothing for one that has none', async () => {
     const one = (id, kind, message) => ({
       id,

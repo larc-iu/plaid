@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { X, History, ChevronRight } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { Badge } from '../ui/badge.jsx';
@@ -48,6 +48,9 @@ export const HISTORY_DRAWER_WIDTH = 400;
 
 // Non-modal left slide-in panel (no overlay, no focus trap) so the editor stays
 // interactive while browsing history. A Radix Dialog or Sheet would trap focus.
+// Opening it moves focus into its list (to Close while the list loads),
+// Escape inside it closes it, and closing it gives focus back to what had it
+// before, when focus was still in the drawer.
 export const HistoryDrawer = ({
   isOpen,
   onClose,
@@ -146,6 +149,38 @@ export const HistoryDrawer = ({
       toggleExpanded(entryId);
     } else handled = false;
     if (handled) e.preventDefault();
+  };
+
+  // Focus on open and on close (Q1-IGT-POLISH-3).
+  const rootRef = useRef(null);
+  const closeRef = useRef(null);
+  const listWanted = useRef(false);
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const active = document.activeElement;
+    const opener = active && active !== document.body ? active : null;
+    const root = rootRef.current;
+    listWanted.current = true;
+    closeRef.current?.focus();
+    return () => {
+      listWanted.current = false;
+      const now = document.activeElement;
+      const lost = !now || now === document.body || root?.contains(now);
+      if (lost && opener?.isConnected && !opener.disabled) opener.focus();
+    };
+  }, [isOpen]);
+  const ready = isOpen && !loading && !error && reversedAuditEntries.length > 0;
+  useEffect(() => {
+    if (!ready || !listWanted.current) return;
+    listWanted.current = false;
+    // Unless the reader has gone elsewhere while the list loaded.
+    if (document.activeElement === closeRef.current) focusItem(tabKey);
+  });
+
+  const onDrawerKeyDown = (e) => {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    e.preventDefault();
+    onClose?.();
   };
 
   const focusRing =
@@ -258,6 +293,10 @@ export const HistoryDrawer = ({
 
   return (
     <div
+      ref={rootRef}
+      role="region"
+      aria-label="History"
+      onKeyDown={onDrawerKeyDown}
       className="fixed left-0 top-0 z-40 flex h-screen flex-col border-r bg-background shadow-lg"
       style={{ width: HISTORY_DRAWER_WIDTH }}
     >
@@ -267,7 +306,7 @@ export const HistoryDrawer = ({
           <History className="h-5 w-5" />
           <span className="text-lg font-semibold">History</span>
         </div>
-        <Button variant="ghost" size="sm" onClick={onClose}>
+        <Button ref={closeRef} variant="ghost" size="sm" onClick={onClose}>
           <X className="h-4 w-4" /> Close
         </Button>
       </div>

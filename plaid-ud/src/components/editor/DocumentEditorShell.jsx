@@ -340,8 +340,9 @@ const DocumentEditor = () => {
             variant="outline"
             size="sm"
             className="gap-1.5"
-            onClick={history.openHistory}
-            disabled={!doc || chromeBusy || history.drawerOpen}
+            onClick={history.drawerOpen ? history.closeHistory : history.openHistory}
+            aria-expanded={history.drawerOpen}
+            disabled={!doc || chromeBusy}
           >
             <History className="h-4 w-4" /> History
           </Button>

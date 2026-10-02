@@ -1058,8 +1058,10 @@ export const VocabularyDetail = () => {
                   variant="outline"
                   size="sm"
                   className="shrink-0 gap-1.5"
-                  onClick={() => history.openHistory()}
-                  disabled={history.open && !history.itemId}
+                  onClick={() =>
+                    history.open && !history.itemId ? history.closeHistory() : history.openHistory()
+                  }
+                  aria-expanded={history.open && !history.itemId}
                 >
                   <History className="h-4 w-4" /> History
                 </Button>
