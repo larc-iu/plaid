@@ -1,8 +1,9 @@
 // The Text Editor saves the edits typed in the box, where they were typed,
 // against the body they were typed on (PATCH /texts/:id with `edits` and
 // `base`). An edit inside a word or touching it changes that word and keeps
-// its analysis. A space typed inside a word cuts it, and the word's token goes
-// with one half. Backspace over a space joins two words, and both tokens stay.
+// its analysis. A space typed inside a word splits it: the larger half keeps
+// the word's token, and the other half is a new word. Backspace over a space
+// joins two words, and both tokens stay.
 // Two tabs saving different passages both land, and a tab that changed the
 // passage another tab saved first is refused with its text kept. After each
 // save, what the screen shows is what a reload shows.
@@ -97,14 +98,18 @@ async function expectScreenIsStored(page, S) {
   return before;
 }
 
-test('a space typed inside a word keeps its token on one half', async ({ page }) => {
+test('a space typed inside a word splits it, and the larger half keeps its token', async ({
+  page,
+}) => {
   const body = 'the doghouse runs';
   const S = await seed('split', body, [
     [0, 3],
     [4, 12],
     [13, 17],
   ]);
-  const [, [wordId]] = (await stored(S)).words;
+  const before = await stored(S);
+  const [, [wordId]] = before.words;
+  const [, [morphemeId]] = before.morphemes;
   await openEditor(page, S, body);
 
   await caretAt(page, 7);
@@ -115,18 +120,25 @@ test('a space typed inside a word keeps its token on one half', async ({ page })
 
   await expect.poll(async () => (await stored(S)).body).toBe('the dog house runs');
   const { words, morphemes } = await stored(S);
-  const word = words.find(([id]) => id === wordId);
-  // The word is on "dog" or on "house", and the other half has no token.
-  expect([
+  // "house" holds more of the old letters, so it keeps the word's token and
+  // the syntactic word under it. "dog" is a new word with a new syntactic
+  // word of its own, so no letter is left outside a token.
+  const spans = [
+    [0, 3],
     [4, 7],
     [8, 13],
-  ]).toContainEqual(word.slice(1));
-  expect(words.map((w) => w.slice(1))).toEqual([[0, 3], word.slice(1), [14, 18]]);
-  expect(morphemes.map((m) => m.slice(1))).toEqual([[0, 3], word.slice(1), [14, 18]]);
+    [14, 18],
+  ];
+  expect(words.map((w) => w.slice(1))).toEqual(spans);
+  expect(morphemes.map((m) => m.slice(1))).toEqual(spans);
+  expect(words[2][0]).toBe(wordId);
+  expect(morphemes[2][0]).toBe(morphemeId);
+  expect(before.words.map(([id]) => id)).not.toContain(words[1][0]);
+  expect(before.morphemes.map(([id]) => id)).not.toContain(morphemes[1][0]);
 
   const shown = await expectScreenIsStored(page, S);
   expect(shown.text).toBe('the dog house runs');
-  expect(shown.sentences.flat()).toHaveLength(3);
+  expect(shown.sentences.flat()).toEqual(['the', 'dog', 'house', 'runs']);
 });
 
 test('Backspace over a space keeps both words', async ({ page }) => {

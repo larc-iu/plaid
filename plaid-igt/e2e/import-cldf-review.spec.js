@@ -206,16 +206,21 @@ test('review: reads the dataset and reports what it found', async ({ page }) => 
 test('review: the gloss scope moves the Gloss field between scopes', async ({ page }) => {
   await upload(page, corpus());
   // Segmentation is independent of where the gloss lands: "perro=s" is two
-  // morphemes either way, and only the Gloss field's scope moves.
+  // morphemes either way, and only the Gloss field's scope moves. With the
+  // gloss on the word, a word left whole ("corren") holds one morpheme that
+  // repeats it with no value, which is no analysis, so only the two segmented
+  // words keep morphemes (2 + 2).
   await expect(page.getByText('8 morphemes', { exact: true })).toBeVisible();
   await expect(page.getByText(/Gloss \(Morpheme\)/)).toBeVisible();
 
   await choose(page, 'How the gloss is read', 'Word (whole)');
   await expect(page.getByText(/Gloss \(Word\)/)).toBeVisible();
-  await expect(page.getByText('8 morphemes', { exact: true })).toBeVisible();
+  await expect(page.getByText('4 morphemes', { exact: true })).toBeVisible();
+  await expect(page.getByText('6 words', { exact: true })).toBeVisible();
 
   await choose(page, 'How the gloss is read', 'Morpheme (segmented)');
   await expect(page.getByText(/Gloss \(Morpheme\)/)).toBeVisible();
+  await expect(page.getByText('8 morphemes', { exact: true })).toBeVisible();
 });
 
 test('review: our own export’s prefixes are read back, a stranger’s are not', async ({ page }) => {
