@@ -25,18 +25,15 @@ describe('normalizeVocabFields / fieldsToConfig', () => {
       gloss: { inline: true },
       pos: { inline: true, tagset: 'POS' },
       Plural: { inline: false, lang: 'ru' },
-      legacy: true,
     });
     expect(fields.find((f) => f.name === 'pos')).toMatchObject({ tagset: 'POS', lang: null });
     expect(fields.find((f) => f.name === 'Plural')).toMatchObject({ tagset: null, lang: 'ru' });
-    expect(fields.find((f) => f.name === 'legacy')).toMatchObject({ inline: true, tagset: null });
     // An unrelated edit (an inline toggle, say) must not erase either key.
     expect(fieldsToConfig(fields)).toEqual({
       morphType: { inline: false },
       gloss: { inline: true },
       pos: { inline: true, tagset: 'POS' },
       Plural: { inline: false, lang: 'ru' },
-      legacy: { inline: true },
     });
   });
 

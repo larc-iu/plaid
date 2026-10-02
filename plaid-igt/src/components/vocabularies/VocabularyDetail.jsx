@@ -216,8 +216,7 @@ export const VocabularyDetail = () => {
       setVocabulary(vocabularyData);
       setEditedName(vocabularyData.name);
 
-      // Normalize the field inventory (guarantees immutable morphType, tolerates
-      // the legacy boolean format).
+      // Normalize the field inventory (guarantees immutable morphType).
       setFields(normalizeVocabFields(readVocabFields(vocabularyData.config)));
 
       setError('');

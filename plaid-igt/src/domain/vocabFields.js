@@ -257,9 +257,8 @@ const typeOf = (v) => (str(v) === FIELD_TYPES.ITEM ? FIELD_TYPES.ITEM : FIELD_TY
 const scopeOf = (v) => (str(v) === FIELD_SCOPES.ENTRY ? FIELD_SCOPES.ENTRY : FIELD_SCOPES.SENSE);
 
 /**
- * Read a vocab layer's config into an ordered list of fields, tolerating the
- * legacy boolean format (`name: true|false`) and guaranteeing the immutable
- * core fields are present. `form` is never a field (it's the item's own form).
+ * Read a vocab layer's config into an ordered list of fields, guaranteeing the
+ * immutable core fields are present. `form` is never a field (it's the item's own form).
  *
  * @param {object} vocabFields - the raw `igt.fields` map (from readVocabFields)
  * @returns {{name: string, inline: boolean, immutable: boolean, tagset: string|null, lang: string|null, type: string, many: boolean, scope: string}[]}
@@ -271,7 +270,7 @@ export const normalizeVocabFields = (vocabFields) => {
     if (!name || isReservedFieldName(name) || seen.has(name)) return;
     seen.add(name);
     const obj = typeof cfg === 'object' && cfg !== null ? cfg : null;
-    const inline = obj ? !!obj.inline : !!cfg;
+    const inline = !!obj?.inline;
     // The core fields hold text whatever the config says: the editor reads
     // gloss and morphType as strings.
     const immutable = IMMUTABLE_NAMES.has(name);
