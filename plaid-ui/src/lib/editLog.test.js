@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  editLogBody,
   editLogGaps,
-  editLogIsEmpty,
   inferEdit,
   rebaseEditLog,
   recordEdit,
@@ -13,6 +11,10 @@ import {
   unsendEditLog,
 } from './editLog.js';
 import { applyTextOps } from '../../../plaid-client-js/src/textEdits.js';
+
+// The text the log makes as the box shows it, and whether it changes nothing.
+const editLogBody = (log) => log.body;
+const editLogIsEmpty = (log) => editLogGaps(log).length === 0;
 
 // A text box as a browser changes it: a value and a selection (UTF-16), and
 // each action reports the value and selection before and after, which is all
@@ -618,6 +620,65 @@ describe('the edit log', () => {
 });
 
 describe('sending and rebasing a log', () => {
+  // REV3-F-EDITLOG L1: after a failed save, the states from before it came
+  // back wider than their change, and an undo to one sent a replace over
+  // words never touched.
+  const typeAt = (log, at, text) => {
+    for (const ch of text) {
+      const b = log.body;
+      log = recordEdit(
+        log,
+        b,
+        { start: at, end: at },
+        b.slice(0, at) + ch + b.slice(at),
+        at + 1,
+        'insertText',
+      );
+      at += 1;
+    }
+    return log;
+  };
+  const deleteAt = (log, at) => {
+    const b = log.body;
+    return recordEdit(
+      log,
+      b,
+      { start: at, end: at },
+      b.slice(0, at) + b.slice(at + 1),
+      at,
+      'deleteContentForward',
+    );
+  };
+  const undoTo = (log, text) =>
+    recordEdit(log, log.body, { start: 0, end: 0 }, text, 0, 'historyUndo');
+  const typedThenDeleted = () => {
+    let log = typeAt(startEditLog('foo bar baz'), 4, 'q ');
+    const seen = [log.body];
+    for (let i = 0; i < 4; i += 1) {
+      log = deleteAt(log, 6);
+      seen.push(log.body);
+    }
+    return { log, seen };
+  };
+
+  it('takes the states from before a failed save back as they were', () => {
+    const { log, seen } = typedThenDeleted();
+    const { sent, rest } = sendEditLog(log);
+    let back = unsendEditLog(sent, rest);
+    for (let i = 3; i >= 0; i -= 1) back = undoTo(back, seen[i]);
+    expect(back.body).toBe('foo q bar baz');
+    expect(editLogGaps(back)).toEqual([{ start: 4, end: 4, value: 'q ' }]);
+  });
+
+  it('moves a state past a landed save no wider than its change', () => {
+    const { log, seen } = typedThenDeleted();
+    const { rest } = sendEditLog(log);
+    let after = settleEditLog(rest, 'd1');
+    for (let i = 3; i >= 0; i -= 1) after = undoTo(after, seen[i]);
+    expect(after.base).toBe('foo q baz');
+    expect(editLogGaps(after)).toEqual([{ start: 6, end: 6, value: 'bar ' }]);
+  });
+
   it('splits at a send, and later typing is relative to the sent text', () => {
     let log = startEditLog('the dog', 'd0');
     log = recordEdit(log, 'the dog', { start: 7, end: 7 }, 'the dogs', 8);

@@ -399,11 +399,9 @@ const TEST_ONLY_EXEMPT = {
 };
 
 // Found when this census was added (2026-10-02) in a file another fixer was
-// reworking, so listed rather than fixed. The list only ever gets shorter.
-const TEST_ONLY_BACKLOG = new Set([
-  'plaid-ui/src/lib/editLog.js:editLogBody',
-  'plaid-ui/src/lib/editLog.js:editLogIsEmpty',
-]);
+// reworking, so listed rather than fixed, and since settled (editLog.js's two
+// went to its test). Kept for the next such finding. Only ever gets shorter.
+const TEST_ONLY_BACKLOG = new Set([]);
 
 const testOnly = [];
 const testOnlyExemptUsed = new Set();

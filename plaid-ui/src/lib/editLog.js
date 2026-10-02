@@ -309,14 +309,8 @@ function assertEditLog(log, op) {
   }
 }
 
-/** The text the log makes, as the box shows it. */
-export const editLogBody = (log) => log.body;
-
 /** The log's net change, as gaps of its base (see plaid-client `composeTextEdits`). */
 export const editLogGaps = (log) => composeTextEdits(log.base, log.ops);
-
-/** Whether the log changes nothing. */
-export const editLogIsEmpty = (log) => editLogGaps(log).length === 0;
 
 /**
  * Split the log at a send. `sent` is what to send: the base, its digest and
@@ -339,12 +333,42 @@ export function sendEditLog(log) {
   };
 }
 
+// Each gap without the text it would put back as it was: the start and end
+// it shares with what it replaces (as core's trim-gap does). Composing an
+// undo of the sent text with a state's own ops reads old text deleted and put
+// back as typed, so a moved state's gap came out wider than its change
+// (REV3-F-EDITLOG L1). Trimming only shrinks what a gap deletes.
+function trimGaps(base, gaps) {
+  const chars = [...base];
+  return gaps.flatMap((g) => {
+    const old = chars.slice(g.start, g.end);
+    const value = [...g.value];
+    let front = 0;
+    while (front < old.length && front < value.length && old[front] === value[front]) front += 1;
+    let back = 0;
+    while (
+      back < old.length - front &&
+      back < value.length - front &&
+      old[old.length - 1 - back] === value[value.length - 1 - back]
+    ) {
+      back += 1;
+    }
+    const start = g.start + front;
+    const end = g.end - back;
+    const typed = value.slice(front, value.length - back).join('');
+    return start === end && typed === '' ? [] : [{ start, end, value: typed }];
+  });
+}
+
 // `log` keeping `past` and `future`, states over another base, which `toBase`
-// (ops over the log's base) takes to.
+// (ops over the log's base) takes to. Each moved state remembers the state it
+// was moved from (`prior`), so moving it back (`unsendEditLog`) takes that
+// state as it was rather than moving it twice.
 function overBase(log, toBase, past = [], future = []) {
   const moved = (state) => ({
     ...state,
-    ops: gapsToOps(composeTextEdits(log.base, [...toBase, ...state.ops])),
+    ops: gapsToOps(trimGaps(log.base, composeTextEdits(log.base, [...toBase, ...state.ops]))),
+    prior: state,
   });
   return { ...log, past: past.map(moved), future: future.map(moved) };
 }
@@ -357,7 +381,15 @@ export function unsendEditLog(sent, rest) {
   const toRest = gapsToOps(sent.gaps);
   const ops = [...toRest, ...rest.ops];
   const back = { base: sent.base, digest: sent.digest, ops, raw: rest.raw, body: rest.body };
-  return overBase(back, toRest, rest.past, rest.future);
+  // A state from before the send goes back as it was, only the states typed
+  // since are moved.
+  const moved = overBase(back, toRest, rest.past, rest.future);
+  const restore = (states, movedStates) => states.map((s, i) => s.prior ?? movedStates[i]);
+  return {
+    ...moved,
+    past: restore(rest.past ?? [], moved.past),
+    future: restore(rest.future ?? [], moved.future),
+  };
 }
 
 /**
