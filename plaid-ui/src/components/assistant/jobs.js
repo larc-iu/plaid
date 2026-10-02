@@ -553,9 +553,45 @@ export const startApply = ({
       ),
     );
     applyToasts(j, plan.summary, { docked });
-    return finishJob(j, store, service);
+    const result = await finishJob(j, store, service);
+    if (j.error && !j.error.pending && undecided(result.conv, plan.id)) {
+      followSettle(store, j, plan.id);
+    }
+    return result;
   })();
   return j;
+};
+
+const undecided = (conv, planId) =>
+  (conv?.display ?? []).some((d) => d.plan?.id === planId && d.status == null);
+
+// How often, and how many times, a refused approval rereads its record.
+const SETTLE_EVERY_MS = 3000;
+const SETTLE_TRIES = 30;
+
+// An approval refused while the plan is still undecided may have lost to an
+// approval of the same plan from another tab, whose run held the document
+// (H8-ASSISTANT-3). That run settles the record when it ends, so the record
+// is read again until the plan is decided there, and the card shows it then,
+// rather than offering Approve over a plan already applied. Stops at once when
+// this conversation runs something new.
+const followSettle = async (store, j, planId) => {
+  for (let i = 0; i < SETTLE_TRIES; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_EVERY_MS));
+    if (jobFor(j.id)) return;
+    let read;
+    try {
+      read = await readConv(store, j.id);
+    } catch {
+      continue;
+    }
+    if (jobFor(j.id)) return;
+    if (!undecided(read.conv, planId)) {
+      // Shown as the finished apply it now is, so the host refreshes too.
+      notifyJob({ ...j, error: null, outcome: null, result: read });
+      return;
+    }
+  }
 };
 
 // Rejoin the request a conversation's record says is under way (it was
