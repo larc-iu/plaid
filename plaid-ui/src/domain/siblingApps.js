@@ -31,3 +31,22 @@ export const umrProjectUrl = (projectId) => `${UMR_URL}/#/projects/${projectId}/
  * rather than growing a second.
  */
 export const adminUrl = () => `${IGT_URL}/#/admin`;
+
+/**
+ * The root of the server an app is served from, given the app's own base (Vite's
+ * `base`, which is `import.meta.env.BASE_URL` at runtime) and the page's URL.
+ *
+ * The jar serves each app one directory below its root (`/igt/`), so the root
+ * is the app's base with its last segment taken off: `/igt/` gives `/`, and a
+ * build for a server under a prefix (`base: '/plaid/igt/'`) gives `/plaid/`. A
+ * relative base resolves against the page first. A dev server serves the app at
+ * its own root (`/`), and that is where it leads there: the jar's landing page
+ * is the jar's, and a dev server has none.
+ */
+export const serverRootPath = (base, pageUrl) => {
+  const dir = new URL(base || '/', pageUrl).pathname.replace(/\/?$/, '/');
+  return dir === '/' ? '/' : dir.replace(/[^/]+\/$/, '');
+};
+
+/** The root of the server this app is served from (see `serverRootPath`). */
+export const serverRootUrl = () => serverRootPath(import.meta.env.BASE_URL, window.location.href);

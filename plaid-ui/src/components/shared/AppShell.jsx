@@ -9,7 +9,7 @@ import { headerItem } from './headerItem.js';
 import { AssistantChrome } from '../assistant/AssistantChrome.jsx';
 import { AssistantSubjectProvider } from '../assistant/AssistantSubject.jsx';
 import { useAssistantScope } from '../assistant/subject.js';
-import { adminUrl } from '../../domain/siblingApps.js';
+import { adminUrl, serverRootUrl } from '../../domain/siblingApps.js';
 import { useUserKeymap } from '../../hooks/useUserKeymap.js';
 import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
 
@@ -88,15 +88,23 @@ const Shell = ({ adapter, keymap, nav = [], guideHref, adminTo, isAssistantRoute
             {/* `h-14`, the same band in every app, which is also what the
                 assistant panel's own header measures itself against. The band
                 has to line up with the container below it. One row at every
-                width: on a phone the name leaves only the mark, and the nav
-                scrolls sideways in the room left beside the account. */}
+                width: the nav scrolls sideways in the room left beside the
+                account. */}
             <div
               className={cn('mx-auto flex h-14 items-center gap-2 px-4 sm:gap-4', LIST_PAGE_WIDTH)}
             >
-              <Link to={routes.projects} className="flex shrink-0 items-center gap-2 font-bold">
-                <PlaidMark className="h-[18px] w-[18px] shrink-0" />
-                <span className="sr-only sm:not-sr-only">{appName()}</span>
-              </Link>
+              {/* Two links. The mark is the server's and leads to the root the
+                  server serves, a full page load out of this app. The name is
+                  this app's and leads to its projects. The name stays on screen
+                  at every width, since on a phone it is the way to them. */}
+              <div className="flex shrink-0 items-center gap-2">
+                <a href={serverRootUrl()} aria-label="Plaid home" className="shrink-0">
+                  <PlaidMark className="h-[18px] w-[18px] shrink-0" />
+                </a>
+                <Link to={routes.projects} className="font-bold">
+                  {appName()}
+                </Link>
+              </div>
               {(nav.length > 0 || guideHref) && (
                 <nav className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
                   {nav.map(({ to, label, match }) => (
