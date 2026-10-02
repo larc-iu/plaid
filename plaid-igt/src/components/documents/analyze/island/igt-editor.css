@@ -1410,6 +1410,9 @@
 }
 .igt-sentence-anno {
   display: flex;
+  /* A row too narrow for the label and a 280px field (a phone) puts the
+     field under its label. */
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   /* Same reserved badge gutter as .igt-tokens, and for the same reason: this
@@ -1476,8 +1479,10 @@
 }
 .igt-field--sentence {
   field-sizing: auto; /* width/height are controlled by flex + _autoGrow */
-  flex: 1 1 auto;
-  min-width: 320px;
+  /* A basis, not a minimum: a fixed minimum overflowed a phone, and in a
+     right-to-left document past the left edge where nothing scrolls. */
+  flex: 1 1 280px;
+  min-width: 0;
   max-width: 680px;
   text-align: start;
   line-height: 1.4;
@@ -1801,8 +1806,8 @@
 .igt-cell__face--noted {
   position: relative;
   display: flex;
-  flex: 1 1 auto;
-  min-width: 320px;
+  flex: 1 1 280px;
+  min-width: 0;
   max-width: 680px;
 }
 
