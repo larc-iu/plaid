@@ -3,7 +3,8 @@
   something lands within a word boundary grow the word, period\", and
   2026-10-01: one rule set for every layer). Examples here, the property in
   `plain-edits-oracle-test`."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is testing]]
             [plaid.algos.text :as ta]
             [plaid.util.codepoint :as cp]))
 
@@ -452,8 +453,14 @@
   ;; chinese_tlp: `远离 人烟 千 里 之外` typed over as `q `
   (is (= ["在 q  的" "在" "q" nil nil nil nil "的"]
          (edit "|在| |远离| |人烟| |千| |里| |之外| |的|" [(rep 2 12 "q ")])))
-  ;; more new words than old: the last old word holds the rest
-  (is (= ["a x y z b" "a" "x" "y z" "b"] (edit "|a| |cat| |eel| |b|" [(rep 2 7 "x y z")]))))
+  ;; more new words than old: the last old word goes to the new word left
+  ;; sharing most letters with it, the first on a tie, and the other new
+  ;; words are in no word, as a word typed apart is (H1-IGT-TEXT-1: it held
+  ;; the rest, so `jadi` pasted over as `xy\njjadi` was one token across a
+  ;; line break)
+  (is (= ["a x y z b" "a" "x" "y" "b"] (edit "|a| |cat| |eel| |b|" [(rep 2 7 "x y z")])))
+  (is (= ["a x y zeel b" "a" "x" "zeel" "b"] (edit "|a| |cat| |eel| |b|" [(rep 2 7 "x y zeel")])))
+  (is (= ["wa xy\njjadi ma" "wa" "jjadi" "ma"] (edit "|wa|\n|jadi| |ma|" [(rep 0 10 "wa xy\njjadi ma")]))))
 
 (deftest layer-roles-read-the-layers-shape
   (testing "a root word layer with a layer under it decides, the layer under it follows (F6)"
@@ -491,3 +498,78 @@
         cat [(t :w :w 4 7) (t :ca :m 4 6) (t :t :m 6 7)]]
     (is (= {:w "abc"} (run "the cow sat" "the abc sat" cow body) (run "the cow sat" "the abc sat" cow edits)))
     (is (= {:w "bad" :ca "ba" :t "d"} (run "the cat sat" "the bad sat" cat body)))))
+
+(defn- live-texts
+  "Each live token's text after `r`, by id."
+  [{:keys [text tokens deleted]}]
+  (let [body (:text/body text)
+        gone (set deleted)]
+    (into {} (comp (remove #(gone (:token/id %)))
+                   (map (fn [{:token/keys [id begin end]}] [id (cp/cp-subs body begin end)])))
+          tokens)))
+
+(deftest a-paste-of-the-same-words-with-one-more-or-less-keeps-every-other-word
+  ;; H1-IGT-TEXT-1: the same text pasted over the whole body, a line or a
+  ;; stretch, with one word inserted, deleted or replaced, read old word i
+  ;; as new word i, so every word after the change took its neighbour's
+  ;; analysis and sentences went. Every other word keeps its own token,
+  ;; morphemes and sentence, on all three readings: one replace of the
+  ;; whole body, one replace of the line, and a whole-body save.
+  (let [lines [["wa" "me" "sekarang" "wandi"] ["jadi" "ma" "parlure"]
+               ["karena" "arun" "tok" "kurang" "(...)" "ma" "koi" "kielunara" "perlu" "a" "mera"]
+               ["yo," "sor..."] ["lore!"]]
+        s (str/join "\n/" (map (fn [ws] (str/join " " (map #(str "|" % "|") ws))) lines))
+        {:keys [body tokens]} (doc s)
+        ;; word ids by line and place
+        ids (vec (reductions + 0 (map count lines)))
+        wid (fn [li k] [:w (+ (ids li) k)])
+        line-text (fn [ls] (str/join "\n" (map #(str/join " " %) ls)))
+        cases (for [li (range (count lines))
+                    k (distinct [0 (quot (count (lines li)) 2) (dec (count (lines li)))])
+                    change [:insert :delete :replace]
+                    :when (not (and (= change :delete) (= 1 (count (lines li)))))]
+                [li k change])]
+    (is (= body (line-text lines)))
+    (doseq [[li k change] cases]
+      (let [line (lines li)
+            new-line (case change
+                       :insert (into (conj (subvec line 0 k) "oke") (subvec line k))
+                       :delete (into (subvec line 0 k) (subvec line (inc k)))
+                       :replace (assoc line k "XYZ"))
+            new (line-text (assoc lines li new-line))
+            ;; what every word but the changed one should read
+            want (into {} (for [l (range (count lines)) j (range (count (lines l)))
+                                :when (not (and (= l li) (= j k) (not= change :insert)))]
+                            [(wid l j) ((lines l) j)]))
+            want (cond-> want (= change :replace) (assoc (wid li k) "XYZ"))
+            lb (cp/cp-count (line-text (subvec lines 0 li)))
+            lb (if (pos? li) (inc lb) lb)
+            le (+ lb (cp/cp-count (str/join " " line)))
+            readings {:whole-replace (ta/plain-edits body tokens [(rep 0 (cp/cp-count body) new)] #{:s} #{:w})
+                      :line-replace (ta/plain-edits body tokens [(rep lb (- le lb) (str/join " " new-line))] #{:s} #{:w})
+                      :whole-body (ta/plain-body body new tokens #{:s} #{:w})}]
+        (doseq [[rname r] readings]
+          (let [got (live-texts r)
+                where (str rname " " change " word " k " of line " li)]
+            (is (= new (:text/body (:text r))) where)
+            (is (= want (into {} (filter #(= :w (first (key %)))) got)) where)
+            (doseq [[[_ i] t] want]
+              (is (= t (got [:m i])) (str where ": morpheme " i)))
+            (is (every? #(contains? got [:s %]) (range (count lines))) (str where ": every sentence kept"))
+            (is (= (if (= change :delete) #{[:w (+ (ids li) k)] [:m (+ (ids li) k)]} #{})
+                   (set (:deleted r)))
+                where)))))))
+
+(deftest small-edits-sent-as-one-replace-are-each-taken-as-made
+  ;; H1-IGT-TEXT-1, the API form: three small inserts written as one replace
+  ;; stored `jadi` on `xy`, `ma` on `jjadi`, and `parlure` across a space
+  ;; and a line break
+  (is (= ["wa me sekarang wandi xy\njjadi ma parlure\nz" "wa" "me" "sekarang" "wandi" "jjadi" "ma" "parlure"]
+         (edit "|wa| |me| |sekarang| |wandi|\n|jadi| |ma| |parlure|\n"
+               [(rep 0 37 "wa me sekarang wandi xy\njjadi ma parlure\nz")])))
+  ;; a phrase (a word holding a space) next to its twin, one of them deleted:
+  ;; one keeps its token whole, the first as the text cannot tell which
+  (is (= ["a thee da. b" "a" "thee da" nil "b"]
+         (edit "|a| |thee da| |thee da|. |b|" [(rep 0 20 "a thee da. b")])))
+  ;; a word deleted before punctuation: the word before keeps off it
+  (is (= ["on köye. a" "on" "köye" nil "a"] (edit "|on| |köye| |tat|. |a|" [(rep 0 14 "on köye. a")]))))

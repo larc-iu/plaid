@@ -59,7 +59,7 @@
         pos (volatile! 0)
         add (fn [^String s] (.append sb s) (vswap! pos + (cp/cp-count s)))
         toks (transient [])
-        nsent (inc (.nextInt rng 3))
+        nsent (inc (.nextInt rng (:sentences opts 3)))
         wid (volatile! 0)
         ;; where the next sentence begins: after the whitespace between two
         ;; sentences, or (`:bound-early`) before it
@@ -68,7 +68,7 @@
         _ (when-let [l (:lead opts)] (when (< (.nextDouble rng) 0.5) (add l)))]
     (dotimes [si nsent]
       (let [sb0 @nstart
-            n (+ 1 (.nextInt rng 5))
+            n (+ 1 (.nextInt rng (:words opts 5)))
             words (vec (for [i (range n)]
                          (let [w (if (< (.nextDouble rng) (:spaced opts 0.3)) (pick phrases) (pick vocab))
                                b @pos]
@@ -545,6 +545,120 @@
           (let [[bgaps r] (save-read body new-body tokens layout false)
                 ps (into (problems body tokens bgaps r) (survivor-problems body new-body tokens layout r))]
             (when (seq ps) (swap! fails conj {:config cname :seed seed :reading :whole-body :old body :gaps bgaps :problems (take 3 ps)})))))
+      (when (System/getenv "PLAIN_ORACLE_DEBUG")
+        (println cname (count @fails) (frequencies (map :reading @fails)))
+        (doseq [f (take 6 @fails)] (println (pr-str f))))
+      (testing (str cname)
+        (is (empty? @fails) (pr-str (take 3 @fails)))))))
+
+;; ---------------------------------------------------------------- one word more or less
+
+;; H1-IGT-TEXT-1: the same text pasted back with one word more, one less or
+;; one typed over, over the whole body, a line or any stretch of whole
+;; words, read old word i as new word i, so every word after the change
+;; took its neighbour's analysis and sentences went. Whatever the stretch,
+;; every other word keeps its own token on its own text.
+
+(defn- one-word-change
+  "`[start end value]`: one word typed in before or after `w`, `w` deleted
+  with the whitespace on one side of it, or `w` typed over, or nil when `w`
+  is its sentence's only word and the change would delete it."
+  [^java.util.Random rng ^ints o w sole?]
+  (let [{:token/keys [begin end]} w
+        n (alength o)
+        blank? (fn [c] (or (= c (int \space)) (= c (int \tab))))
+        run-after (loop [x end] (if (and (< x n) (blank? (aget o x))) (recur (inc x)) x))
+        run-before (loop [x begin] (if (and (pos? x) (blank? (aget o (dec x)))) (recur (dec x)) x))
+        word (nth ["XZ" "Ж𐍂" "qoke"] (.nextInt rng 3))]
+    (case (.nextInt rng 4)
+      0 [begin begin (str word " ")]
+      1 [end end (str " " word)]
+      2 (when-not sole?
+          (cond (< end run-after) [begin run-after ""]
+                (< run-before begin) [run-before end ""]
+                :else nil))
+      3 [begin end word])))
+
+(defn- one-word-problems
+  "What is wrong with `r`, a save of `old` changed at [`a`, `b`) to `value`
+  read from a wider stretch, for `tokens`, against `exact`, the same change
+  sent as it is: the same words on the same text (a word of the same text
+  may stand in for another, as in `cat cat` to `cat`), the same words
+  deleted, no sentence deleted, and every word apart from the change on
+  its own text where the change leaves it."
+  [^String old tokens [a b value] r exact]
+  (let [o (cps old)
+        d (- (cp/cp-count value) (- b a))
+        text (fn [{:token/keys [begin end]}] (String. o (int begin) (int (- end begin))))
+        words (filter #(= :w (:token/layer %)) tokens)
+        old-of (into {} (map (juxt :token/id identity)) tokens)
+        placed (fn [r] (let [gone (set (:deleted r))]
+                         (into {} (comp (filter #(= :w (:token/layer %)))
+                                        (remove #(gone (:token/id %)))
+                                        (map (fn [t] [[(:token/begin t) (:token/end t)] (text (old-of (:token/id t)))])))
+                               (:tokens r))))
+        gone-words (fn [r] (sort (map text (filter #(and (= :w (:token/layer %)) ((set (:deleted r)) (:token/id %))) words))))
+        got (placed r)
+        want (placed exact)
+        apart (into {} (keep (fn [{:token/keys [begin end] :as w}]
+                               (cond (< end a) [[begin end] (text w)]
+                                     (< b begin) [[(+ begin d) (+ end d)] (text w)])))
+                    words)]
+    (cond-> []
+      (not= (:text/body (:text r)) (:text/body (:text exact))) (conj (str "body " (pr-str (:text/body (:text r)))))
+      (not= want got) (conj (str "words " (pr-str (into (sorted-map) (remove (fn [[k v]] (= v (got k)))) want))
+                                 " got " (pr-str (into (sorted-map) (remove (fn [[k v]] (= v (want k)))) got))))
+      (not= apart (select-keys got (keys apart))) (conj "a word apart from the change moved")
+      (not= (gone-words exact) (gone-words r)) (conj (str "deleted words " (pr-str (gone-words r)) ", sent as it is " (pr-str (gone-words exact))))
+      (some #(and (= :s (:token/layer %)) ((set (:deleted r)) (:token/id %))) tokens) (conj "a sentence deleted"))))
+
+(def ^:private one-word-configs
+  {:apps {:spaced 0.3 :sentences 4 :words 8}
+   :apps-nodes-and-children {:spaced 0.2 :nodes true :child 0.5 :points 0.2 :sentences 4 :words 8}
+   :long {:spaced 0.2 :sentences 10 :words 14 :sentence-segments true}
+   :script {:spaced 0.3 :sentences 4 :words 8 :layout :script}
+   :rooted {:spaced 0.2 :sub 1.0 :one-morph true :sentences 4 :words 8 :layout :rooted}
+   :script-no-sentences {:spaced 0.3 :words 12 :layout :script-no-sentences}
+   :other-spaces {:spaced 0.2 :sentences 4 :words 8 :seps [" " nbsp "\t" "   "] :sentence-seps ["\n" ". " "\n\n"]}})
+
+(deftest a-paste-with-one-word-more-or-less-keeps-every-other-word
+  (doseq [[cname opts] one-word-configs]
+    (let [fails (atom [])]
+      (dotimes [seed 400]
+        (let [rng (java.util.Random. (+ seed (* 104729 (hash cname))))
+              layout (:layout opts :apps)
+              {:keys [body tokens]} (gen-doc rng opts)
+              tokens (layout-tokens layout tokens)
+              o (cps body)
+              n (alength o)
+              words (vec (sort-by :token/begin (filter #(= :w (:token/layer %)) tokens)))
+              sents (filter #(= :s (:token/layer %)) tokens)
+              wi (.nextInt rng (count words))
+              w (words wi)
+              sent (some #(when (and (<= (:token/begin %) (:token/begin w)) (<= (:token/end w) (:token/end %))) %) sents)
+              sole? (and sent (= 1 (count (filter #(and (<= (:token/begin sent) (:token/begin %)) (<= (:token/end %) (:token/end sent))) words))))
+              change (one-word-change rng o w (or sole? (= 1 (count words))))]
+          (when-let [[a b value] change]
+            (let [new (str (cp/cp-subs body 0 a) value (cp/cp-subs body b n))
+                  d (- (cp/cp-count value) (- b a))
+                  exact (run body tokens (ta/gap-ops [{:start a :end b :value value}]) layout false)
+                  ;; a stretch from the start of a word before the change to
+                  ;; the end of one after it, pasted over with its new text
+                  over (fn [x y] (let [x (min x a) y (max y b)]
+                                   [{:type :replace :index x :length (- y x) :value (cp/cp-subs new x (+ y d))}]))
+                  lo (words (max 0 (- wi (.nextInt rng 4))))
+                  hi (words (min (dec (count words)) (+ wi (.nextInt rng 4))))
+                  readings (cond-> {:whole-body-replace [{:type :replace :index 0 :length n :value new}]
+                                    :stretch (over (:token/begin lo) (:token/end hi))}
+                             sent (assoc :line (over (:token/begin sent) (:token/end sent))))]
+              (doseq [[rname ops] readings]
+                (let [r (run body tokens ops layout false)
+                      ps (into (one-word-problems body tokens change r exact)
+                               (problems body tokens (server-gaps body tokens ops layout) r))]
+                  (when (seq ps) (swap! fails conj {:config cname :seed seed :reading rname :old body :change change :problems (take 3 ps)}))))
+              (let [[bgaps r] (save-read body new tokens layout false)
+                    ps (into (one-word-problems body tokens change r exact) (problems body tokens bgaps r))]
+                (when (seq ps) (swap! fails conj {:config cname :seed seed :reading :whole-body :old body :change change :problems (take 3 ps)})))))))
       (when (System/getenv "PLAIN_ORACLE_DEBUG")
         (println cname (count @fails) (frequencies (map :reading @fails)))
         (doseq [f (take 6 @fails)] (println (pr-str f))))

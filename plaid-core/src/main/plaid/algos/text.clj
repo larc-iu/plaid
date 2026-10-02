@@ -2106,7 +2106,11 @@
 ;; replaced word keeps its annotations). Where there are more old words than
 ;; new, the last new word goes to the old word left that shares the most
 ;; letters with it, the first on a tie (`cat eel` to `one` keeps `eel`), and
-;; the other old words are deleted.
+;; the other old words are deleted. Where there are more new words than old,
+;; the last old word goes the same way to a new word, and the others are in
+;; no word. The words a stretch has on both sides, in order, are not typed
+;; over at all: a word pasted in or left out moves no other word
+;; (H1-IGT-TEXT-1).
 
 (defn- cp-runs
   "The runs of `cs` from `from` to `to`, each `[b e ws?]`, whitespace or not."
@@ -2134,62 +2138,186 @@
   [c]
   (or (Character/isLetterOrDigit (int c)) (combining-mark? c)))
 
-(defn- cut-at-words
-  "`gap` (see `compose-edits`) cut where its old and new text are words with
-  whitespace between: old word i is typed over as new word i, the last new
-  word goes to the old word left sharing the most letters with it (the first
-  on a tie), and the pieces whose old and new text are the same are left
-  out. Pieces that touch stay one gap, which then carries `:keeps`, each
-  `[b e off len]`: the token over exactly old [b, e) goes on the gap's new
-  text from `off` for `len`. A gap with fewer than two old words, or no new
-  word, is left whole."
-  [^ints o {:keys [start end value] :as gap}]
+(defn- spaced-words
+  "The extents `[b e]` among `extents` (old word tokens) whose text in `o`
+  holds whitespace (a FLEx phrase), as a map from begin to end, or nil."
+  [^ints o extents]
+  (let [m (java.util.TreeMap.)]
+    (doseq [[b e] extents
+            :when (some #(space? (aget o %)) (range b e))]
+      (.put m (long b) (long e)))
+    (when-not (.isEmpty m) m)))
+
+(defn- spaced-at
+  "The one of `spaced` (see `spaced-words`, which do not overlap each
+  other) that the old word `[b e]` overlaps, as `[b e]`, or nil."
+  [^java.util.TreeMap spaced [b e]]
+  (when spaced
+    (when-let [en (.floorEntry spaced (long (dec e)))]
+      (when (< (long b) (long (.getValue en)))
+        [(.getKey en) (.getValue en)]))))
+
+(defn- word-anchors
+  "Pairs `[i j]`, in order, of old words `ow` (extents in `o`, inside old
+  [`start`, `end`)) and new words `vw` (extents in `v`) of the same text, as
+  many as a longest common subsequence of the two lists of words keeps:
+  the words a stretch pasted or typed over has as they were. The words the
+  two share at the start and at the end are paired first, so of two equal
+  readings the earlier word is kept (`cat cat` to `cat` keeps the first).
+  The words of a word token holding whitespace (`spaced`, see
+  `spaced-words`) are shared all together, each with the next new word, or
+  not at all, since half a phrase kept would leave its token on the other
+  half (`thee da thee da.` to `thee da.`)."
+  [^ints o ow ^ints v vw spaced start end]
+  (let [text (fn [^ints cs [b e]] (String. cs (int b) (int (- e b))))
+        os (mapv #(text o %) ow)
+        vs (mapv #(text v %) vw)
+        m (count os)
+        n (count vs)
+        p (loop [p 0] (if (and (< p m) (< p n) (= (os p) (vs p))) (recur (inc p)) p))
+        s (loop [s 0] (if (and (< s (- m p)) (< s (- n p)) (= (os (- m 1 s)) (vs (- n 1 s)))) (recur (inc s)) s))
+        mid (when (and (< p (- m s)) (< p (- n s)))
+              (let [seen (java.util.HashMap.)
+                    id (fn [w] (or (.get seen w) (let [k (int (.size seen))] (.put seen w k) k)))
+                    ia (int-array (map id (subvec os p (- m s))))
+                    ib (int-array (map id (subvec vs p (- n s))))
+                    [ma mb] (or (myers ia ib (min myers-max-d (max 16 (quot myers-work (+ (alength ia) (alength ib))))))
+                                (band-matches ia ib))]
+                (map (fn [x y] [(+ p x) (+ p y)]) ma mb)))
+        pairs (vec (concat (map (fn [i] [i i]) (range p))
+                           mid
+                           (map (fn [k] [(+ (- m s) k) (+ (- n s) k)]) (range s))))]
+    (if-not spaced
+      pairs
+      (let [phrase (mapv #(spaced-at spaced %) ow)
+            runs (frequencies (keep identity phrase))
+            ;; each phrase's pairs, in order
+            by (group-by (comp phrase first) (filter (comp phrase first) pairs))
+            whole? (fn [[b e :as t]]
+                     (let [ps (by t)]
+                       (and (<= start b) (<= e end)
+                            (= (count ps) (runs t))
+                            (every? (fn [[[i j] [i2 j2]]] (and (= i2 (inc i)) (= j2 (inc j))))
+                                    (partition 2 1 ps)))))]
+        (filterv (fn [[i]] (let [t (phrase i)] (or (nil? t) (whole? t)))) pairs)))))
+
+(defn- pair-words
+  "Pieces `[old-b old-e new-b new-e keep]`, in order, for old [`a`, `b`)
+  holding the words `ow` typed over as new [`x`, `y`) holding the words
+  `vw` (extents in `o` and `v`), none of them the same on both sides: old
+  word i is typed over as new word i. Where there are more old words than
+  new, the last new word goes to the old word left that the stretch
+  reaches into at its start or end (a letter of it beside the stretch, as
+  the plain rule gives it), else the one sharing most letters with it, the
+  first on a tie, and the other old words go. Where there are more new
+  words than old, the last old word goes the same way to the new word left
+  it reaches into or shares most letters with, and the other new words are
+  typed apart from every word."
+  [^ints o ^ints v ow vw a b x y]
+  (let [m (count ow)
+        n (count vw)]
+    (if (or (zero? m) (zero? n))
+      [[a b x y nil]]
+      (let [ob (fn [i] (first (ow i))) oe (fn [i] (second (ow i)))
+            vb (fn [i] (first (vw i))) ve (fn [i] (second (vw i)))
+            most (fn [score from to] (reduce (fn [a i] (if (> (score i) (score a)) i a)) from (range (inc from) to)))
+            at-start? (fn [i] (and (pos? a) (= a (ob i)) (letter? (aget o (dec a)))))
+            at-end? (fn [i] (and (< b (alength o)) (= b (oe i)) (letter? (aget o b))))
+            typed (fn [i j] [(ob i) (oe i) (vb j) (ve j) [(ob i) (oe i)]])
+            words (if (<= n m)
+                    (let [l (dec n)
+                          best (cond
+                                 (at-start? l) l
+                                 (at-end? (dec m)) (dec m)
+                                 :else (most #(shared-letters o (ob %) (oe %) v (vb l) (ve l)) l m))]
+                      (conj (mapv #(typed % %) (range l))
+                            [(ob l) (oe (dec m)) (vb l) (ve l) [(ob best) (oe best)]]))
+                    (let [l (dec m)
+                          best (cond
+                                 (at-end? l) (dec n)
+                                 (at-start? l) l
+                                 :else (most #(shared-letters o (ob l) (oe l) v (vb %) (ve %)) l n))]
+                      (conj (mapv #(typed % %) (range l)) (typed l best))))]
+        (concat [[a (nth (first words) 0) x (nth (first words) 2) nil] (first words)]
+                (mapcat (fn [p q] [[(p 1) (q 0) (p 3) (q 2) nil] q]) words (rest words))
+                [[(nth (peek words) 1) b (nth (peek words) 3) y nil]])))))
+
+(defn- anchored-stretches
+  "`{:v :stretches}` for `gap` (see `compose-edits`) with at least two old
+  words and a new one, else nil: `v` the code points of its value, and the
+  stretches between the words its old and new text share (see
+  `word-anchors`), in order, each `{:a :b :x :y :ow :vw :open-start
+  :open-end}`: old [a, b) holding the old words `ow` (extents `[b e]`),
+  typed over as [x, y) of `v` holding the new words `vw`, `:open-start` and
+  `:open-end` true where the stretch meets a shared word."
+  [^ints o spaced {:keys [start end value]}]
   (let [^ints v (.toArray (.codePoints ^String value))
         ow (filterv #(not (nth % 2)) (cp-runs o start end))
         vw (filterv #(not (nth % 2)) (cp-runs v 0 (alength v)))
         m (count ow)
         n (count vw)]
-    (if (or (< m 2) (zero? n))
-      [gap]
-      (let [k (min m n)
-            ob (fn [i] (first (ow i))) oe (fn [i] (second (ow i)))
-            vb (fn [i] (first (vw i))) ve (fn [i] (second (vw i)))
-            ;; the old word left the tail's new text goes to: the word the
-            ;; gap reaches into at its start, or at its end, a letter of it
-            ;; left beside the gap (as the plain rule gives it), else the
-            ;; one sharing most letters
-            best (let [x (vb (dec k)) y (ve (dec n))]
-                   (cond
-                     (and (pos? start) (= start (ob (dec k))) (letter? (aget o (dec start)))) (dec k)
-                     (and (< end (alength o)) (= end (oe (dec m))) (letter? (aget o end))) (dec m)
-                     :else (reduce (fn [a i] (if (> (shared-letters o (ob i) (oe i) v x y)
-                                                    (shared-letters o (ob a) (oe a) v x y))
-                                               i a))
-                                   (dec k) (range k m))))
-            ;; [old-b old-e new-b new-e keep], in order
-            pieces (concat [[start (ob 0) 0 (vb 0) nil]]
-                           (mapcat (fn [i] [[(ob i) (oe i) (vb i) (ve i) [(ob i) (oe i)]]
-                                            [(oe i) (ob (inc i)) (ve i) (vb (inc i)) nil]])
-                                   (range (dec k)))
-                           [[(ob (dec k)) (oe (dec m)) (vb (dec k)) (ve (dec n)) [(ob best) (oe best)]]
-                            [(oe (dec m)) end (ve (dec n)) (alength v) nil]])
-            same? (fn [[a b x y]] (and (= (- b a) (- y x))
-                                       (every? #(= (aget o (+ a %)) (aget v (+ x %))) (range (- b a)))))
-            changed (remove same? pieces)
-            ;; pieces that touch are one gap
-            groups (reduce (fn [out [a :as p]]
-                             (if (and (seq out) (= a (second (peek (peek out)))))
-                               (conj (pop out) (conj (peek out) p))
-                               (conj out [p])))
-                           [] changed)]
-        (mapv (fn [ps]
-                (let [[a _ x] (first ps)
-                      [_ b _ y] (peek ps)
-                      keeps (vec (keep (fn [[_ _ px py kp]] (when kp [(first kp) (second kp) (- px x) (- py px)])) ps))]
-                  (cond-> {:start a :end b :value (String. v (int x) (int (- y x)))}
-                    (:side gap) (assoc :side (:side gap))
-                    (seq keeps) (assoc :keeps keeps))))
-              groups)))))
+    (when-not (or (< m 2) (zero? n))
+      (let [anchors (word-anchors o ow v vw spaced start end)]
+        {:v v
+         :stretches (mapv (fn [[pi pj] [qi qj]]
+                            {:a (if (neg? pi) start (second (ow pi)))
+                             :b (if (= qi m) end (first (ow qi)))
+                             :x (if (neg? pj) 0 (second (vw pj)))
+                             :y (if (= qj n) (alength v) (first (vw qj)))
+                             :ow (subvec ow (inc pi) qi)
+                             :vw (subvec vw (inc pj) qj)
+                             :open-start (<= 0 pi)
+                             :open-end (< qi m)})
+                          (cons [-1 -1] anchors) (conj anchors [m n]))}))))
+
+(defn- split-at-anchors
+  "`gap` cut around the words its old and new text share (see
+  `word-anchors`), each stretch between them `[gap open-start? open-end?]`,
+  the flags true where it meets a shared word. A stretch the same on both
+  sides is left out."
+  [^ints o spaced gap]
+  (if-let [{:keys [^ints v stretches]} (anchored-stretches o spaced gap)]
+    (into [] (keep (fn [{:keys [a b x y open-start open-end]}]
+                     (when-not (and (= (- b a) (- y x))
+                                    (every? #(= (aget o (+ a %)) (aget v (+ x %))) (range (- b a))))
+                       [(cond-> {:start a :end b :value (String. v (int x) (int (- y x)))}
+                          (:side gap) (assoc :side (:side gap)))
+                        open-start open-end])))
+          stretches)
+    [[gap false false]]))
+
+(defn- cut-at-words
+  "`gap` (see `compose-edits`) cut where its old and new text are words with
+  whitespace between. The words the two share, in order, are kept as they
+  are (see `word-anchors`), so a word pasted in or left out moves no other
+  word onto its neighbour (H1-IGT-TEXT-1), and the words between them are
+  typed over word by word (see `pair-words`). The pieces whose old and new
+  text are the same are left out. Pieces that touch stay one gap, which
+  then carries `:keeps`, each `[b e off len]`: the token over exactly old
+  [b, e) goes on the gap's new text from `off` for `len`. A gap with fewer
+  than two old words, or no new word, is left whole."
+  [^ints o spaced gap]
+  (if-let [{:keys [^ints v stretches]} (anchored-stretches o spaced gap)]
+    (let [;; [old-b old-e new-b new-e keep], in order
+          pieces (into [] (mapcat (fn [{:keys [a b x y ow vw]}] (pair-words o v ow vw a b x y))) stretches)
+          same? (fn [[a b x y]] (and (= (- b a) (- y x))
+                                     (every? #(= (aget o (+ a %)) (aget v (+ x %))) (range (- b a)))))
+          changed (remove same? pieces)
+          ;; pieces that touch are one gap
+          groups (reduce (fn [out [a :as p]]
+                           (if (and (seq out) (= a (second (peek (peek out)))))
+                             (conj (pop out) (conj (peek out) p))
+                             (conj out [p])))
+                         [] changed)]
+      (mapv (fn [ps]
+              (let [[a _ x] (first ps)
+                    [_ b _ y] (peek ps)
+                    keeps (vec (keep (fn [[_ _ px py kp]] (when kp [(first kp) (second kp) (- px x) (- py px)])) ps))]
+                (cond-> {:start a :end b :value (String. v (int x) (int (- y x)))}
+                  (:side gap) (assoc :side (:side gap))
+                  (seq keeps) (assoc :keeps keeps))))
+            groups))
+    [gap]))
 
 (defn- edits->gaps
   "Old-coordinate edits in position order (see `ops->edits`) as gaps: edits
@@ -2512,12 +2640,13 @@
                           (let [gb (at-or-before begin)
                                 {:keys [a b n]} (when (>= gb 0) (info gb))
                               ;; the gap's words typed over that the token
-                              ;; holds: an edge of it inside the gap goes to
-                              ;; their edge (a sentence keeps its word)
+                              ;; holds: an edge of it inside the gap, or at
+                              ;; the edge of one of them, goes to their edge
+                              ;; (a sentence keeps its word, a node its words)
                                 inner (fn [g] (filter (fn [[kb ke]] (and (<= begin kb) (<= ke end) (keep-at [kb ke]))) (:keeps (gaps g))))
                                 nb (cond
                                      (neg? gb) begin
-                                     (and (< a b) (<= a begin) (< begin b) (or (< a begin) (< end b)) (seq (inner gb)))
+                                     (and (< a b) (<= a begin) (< begin b) (or (< a begin) (< end b) (some #(= begin (first %)) (inner gb))) (seq (inner gb)))
                                      (+ (new-at gb) (reduce min (map #(nth % 2) (inner gb))))
                                   ;; a gap took its first letters, or stands
                                   ;; right before it
@@ -2538,7 +2667,7 @@
                                 {a2 :a b2 :b n2 :n} (when (>= ge 0) (info ge))
                                 ne (cond
                                      (neg? ge) end
-                                     (and (< a2 end) (<= end b2) (or (< end b2) (< a2 begin)) (seq (inner ge)))
+                                     (and (< a2 end) (<= end b2) (or (< end b2) (< a2 begin) (some #(= end (second %)) (inner ge))) (seq (inner ge)))
                                      (+ (new-at ge) (reduce max (map #(+ (nth % 2) (nth % 3)) (inner ge))))
                                    ;; and a row ending there takes it whole
                                      (and (= a2 b2 end) (row? layer) (= :before (side-of ge))) (+ (new-at ge) n2)
@@ -2633,25 +2762,35 @@
 
 (defn plain-edit-gaps
   "The gaps an edit of `old` by `ops` from the caret is taken as: its net
-  change (see `compose-edits`), each gap less the text its new value shares
-  with the old at either end, and cut where it types words over words (see
-  `cut-at-words`). A stretch of whole words, among `words` (old extents
-  `[b e]`), typed over as fewer words is cut before it is trimmed, so the
-  letters it shares with the new text at its ends count in choosing the
-  word that keeps it (`the area` to `tlaak` keeps `area`, not `the`, which
-  the trim would leave its `t`)."
+  change (see `compose-edits`), cut around the words its old and new text
+  share (see `split-at-anchors`), so a paste of the same text with a word
+  more or less changes no other word (H1-IGT-TEXT-1), then each stretch
+  less the text its new value shares with the old at either end, and cut
+  where it types words over words (see `cut-at-words`). A stretch of whole
+  words, among `words` (old extents `[b e]`), typed over as fewer words is
+  cut before it is trimmed, so the letters it shares with the new text at
+  its ends count in choosing the word that keeps it (`the area` to `tlaak`
+  keeps `area`, not `the`, which the trim would leave its `t`). A stretch
+  that meets a shared word reaches into no word there. A stretch whose
+  trimmed change only deletes or only inserts types no word over and is
+  taken trimmed (`köye tat.` to `köye.` deletes ` tat`, and `köye` keeps off
+  the `.`)."
   ([old ops] (plain-edit-gaps old ops #{}))
   ([^String old ops words]
    (let [^ints o (.toArray (.codePoints old))
-         trimmed (fn [g] (some->> (trim-gap o g) (cut-at-words o)))]
-     (into [] (mapcat (fn [{:keys [start end] :as g}]
-                        (let [whole (cut-at-words o g)]
-                          (if (and (not (and (pos? start) (letter? (aget o (dec start)))))
-                                   (not (and (< end (alength o)) (letter? (aget o end))))
-                                   (some (fn [{:keys [keeps]}] (some (fn [[b e]] (words [b e])) keeps)) whole))
+         spaced (spaced-words o words)
+         trimmed (fn [g] (some->> (trim-gap o g) (cut-at-words o spaced)))
+         one-way? (fn [g] (let [{:keys [start end value] :as t} (trim-gap o g)]
+                            (or (nil? t) (= start end) (empty? value))))]
+     (into [] (mapcat (fn [[{:keys [start end] :as g} open-start? open-end?]]
+                        (let [whole (cut-at-words o spaced g)]
+                          (if (and (or open-start? (not (and (pos? start) (letter? (aget o (dec start))))))
+                                   (or open-end? (not (and (< end (alength o)) (letter? (aget o end)))))
+                                   (some (fn [{:keys [keeps]}] (some (fn [[b e]] (words [b e])) keeps)) whole)
+                                   (not (one-way? g)))
                             (into [] (keep #(if (:keeps %) % (trim-gap o %))) whole)
                             (trimmed g)))))
-           (compose-edits ops old)))))
+           (mapcat #(split-at-anchors o spaced %) (compose-edits ops old))))))
 
 (defn- word-extents
   "The old extents of the words of `tokens`: those on `word-layers`, else
@@ -2762,10 +2901,11 @@
   ([old new tokens partitioning] (plain-body-gaps old new tokens partitioning nil))
   ([^String old ^String new tokens partitioning word-layers]
    (let [^ints o (.toArray (.codePoints old))
-         wl (body-word-layers tokens partitioning word-layers)]
+         wl (body-word-layers tokens partitioning word-layers)
+         spaced (spaced-words o (into [] (comp (filter #(contains? wl (:token/layer %))) (map (juxt :token/begin :token/end))) tokens))]
      (-> (body-diff-gaps old new tokens partitioning word-layers)
          (merge-in-words o tokens #(contains? wl (:token/layer %)))
-         (->> (into [] (mapcat #(cut-at-words o %))))))))
+         (->> (into [] (mapcat #(cut-at-words o spaced %))))))))
 
 (defn plain-body-read
   "`[gaps result]`: the gaps a whole-body save of `old` as `new` is taken as
