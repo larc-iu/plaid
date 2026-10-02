@@ -11,6 +11,7 @@
                                     with-clean-db]]
             [plaid.rest-api.v1.auth :as auth]
             [plaid.rest-api.v1.rate-limit :as rl]
+            [plaid.server.backup :as backup]
             [plaid.server.locks :as locks]
             [plaid.server.log-buffer :as log-buffer]
             [plaid.test-helpers :refer :all]))
@@ -332,3 +333,16 @@
   (seed-conversations!)
   (testing "A person cannot reach the cross-account listing, not even for their own entries"
     (assert-forbidden (admin-get user1-request "/user-data"))))
+
+(deftest back-up-now-while-one-is-written
+  ;; H7-CORE-OPS-2: the admin page waits on a 409 for the backup that runs.
+  (let [running @#'backup/running]
+    (reset! running (java.time.Instant/now))
+    (try
+      (let [r (api-call admin-request {:method :post :path "/api/v1/admin/backup"})]
+        (is (= 409 (:status r)))
+        (is (= "A backup is already being written. It is listed here when it is done."
+               (get-in r [:body :error]))))
+      (is (string? (get-in (api-call admin-request {:method :get :path "/api/v1/admin/server"})
+                           [:body :backup :running])))
+      (finally (reset! running nil)))))

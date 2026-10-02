@@ -217,11 +217,18 @@
                           "Returns the same body as the backup block of "
                           "<code>/admin/server</code>, with <code>ok</code> reporting whether "
                           "the snapshot succeeded. Uses VACUUM INTO, which only reads, so it "
-                          "is safe while people are working.")
+                          "is safe while people are working. Answers 409 while another backup "
+                          "is being written, and <code>/admin/server</code>'s backup block then "
+                          "names its start under <code>running</code>.")
             :handler (fn [{db :db}]
-                       (let [result (backup/run-now! db)]
-                         {:status (if (:ok result) 200 500)
-                          :body result}))}}]
+                       (try
+                         (let [result (backup/run-now! db)]
+                           {:status (if (:ok result) 200 500)
+                            :body result})
+                         (catch clojure.lang.ExceptionInfo e
+                           (if (= 409 (:code (ex-data e)))
+                             {:status 409 :body {:error (ex-message e)}}
+                             (throw e)))))}}]
 
    ["/locks"
     {:get {:summary (str "Documents currently held by an editing lock, with who holds each "

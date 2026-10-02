@@ -39,3 +39,44 @@
                            (throw (ex-info "simulated zip failure" {})))}
           #(is (nil? (backup/backup-once! db dir 2))))
         (is (empty? (.listFiles dir)))))))
+
+(defn- while-a-backup-is-written
+  "Run `f` while a backup into `dir` is held between its snapshot and its zip."
+  [dir f]
+  (let [entered (promise)
+        release (promise)
+        zip-file! @#'backup/zip-file!]
+    (with-redefs-fn {#'backup/zip-file! (fn [src zip]
+                                          (deliver entered true)
+                                          @release
+                                          (zip-file! src zip))}
+      (fn []
+        (let [first-run (future (backup/backup-once! db dir 2))]
+          (try
+            (is (deref entered 30000 false) "the first backup started")
+            (f)
+            (finally
+              (deliver release true)))
+          (is (some? @first-run) "the first backup is written"))))))
+
+(deftest one-backup-at-a-time
+  ;; H7-CORE-OPS-2: a second "Back up now" ran beside the first, 2.3 times
+  ;; the database in disk at its peak.
+  (with-temp-directory
+    (fn [dir]
+      (while-a-backup-is-written
+       dir
+       (fn []
+         (testing "a second one is not started"
+           (is (= ::backup/running (backup/backup-once! db dir 2))))
+         (testing "one asked for by hand is refused with 409"
+           (let [e (try (backup/run-now! db) nil (catch clojure.lang.ExceptionInfo e e))]
+             (is (= 409 (:code (ex-data e))))
+             (is (= "A backup is already being written. It is listed here when it is done."
+                    (ex-message e)))))
+         (testing "the report says one is running"
+           (is (string? (:running (backup/status)))))))
+      (testing "and once it is written, the next one runs"
+        (is (nil? (:running (backup/status))))
+        (Thread/sleep 1100)
+        (is (instance? java.io.File (backup/backup-once! db dir 2)))))))

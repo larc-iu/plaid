@@ -97,11 +97,29 @@
         (log/info "Pruned old database backup:" (.getName f))
         (log/warn "Could not delete old database backup:" (.getName f))))))
 
+(defonce ^:private running
+  ;; When the backup now being written started (an Instant), or nil. One at a
+  ;; time: two at once need more than twice the database in free disk, and a
+  ;; manual one could meet the nightly one.
+  (atom nil))
+
+(declare write-backup!)
+
 (defn backup-once!
   "Take one backup now: snapshot `ds` into a timestamped zip under `dir`, then
    prune to the `retention` newest. Returns the zip File on success, nil on
    failure (failures are logged, never thrown — a bad backup must not crash the
-   scheduler or the server)."
+   scheduler or the server), and `::running` without starting one while
+   another is being written."
+  [ds dir retention]
+  (let [started (java.time.Instant/now)]
+    (if (compare-and-set! running nil started)
+      (try (write-backup! ds dir retention)
+           (finally (reset! running nil)))
+      (do (log/info "Database backup not started: another is being written")
+          ::running))))
+
+(defn- write-backup!
   [ds dir retention]
   (let [dir-file (io/file dir)
         stamp    (.format (LocalDateTime/now) ts-formatter)
@@ -153,19 +171,25 @@
                             {:name     (.getName f)
                              :bytes    (.length f)
                              :modified (str (java.time.Instant/ofEpochMilli (.lastModified f)))}))))]
-    {:enabled   (boolean enabled?)
-     :directory (.getAbsolutePath dir)
-     :retention retention
-     :time      time
-     :backups   (or zips [])}))
+    (cond-> {:enabled   (boolean enabled?)
+             :directory (.getAbsolutePath dir)
+             :retention retention
+             :time      time
+             :backups   (or zips [])}
+      @running (assoc :running (str @running)))))
 
 (defn run-now!
   "Take a backup immediately, outside the schedule. Returns the same
    `status` map, so a caller sees the new file in the listing rather than
-   having to ask again. `:ok` reports whether the snapshot succeeded."
+   having to ask again. `:ok` reports whether the snapshot succeeded. Throws
+   a 409 while another backup is being written, the nightly one or one
+   asked for by hand."
   [ds]
   (let [{:keys [directory retention]} (backup-config)
         zip (backup-once! ds directory retention)]
+    (when (= ::running zip)
+      (throw (ex-info "A backup is already being written. It is listed here when it is done."
+                      {:code 409})))
     (assoc (status) :ok (some? zip))))
 
 (defn- parse-time ^LocalTime [s]
