@@ -1,5 +1,5 @@
-// The two links at the left of every app's header: the Plaid mark leads to the
-// root the server serves, and the app's name to the app's own projects.
+// The two links at the left of every app's header: the Plaid mark leads to /,
+// the root the jar serves, and the app's name to the app's own projects.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { renderComponent, all } from '../../test/renderComponent.jsx';
@@ -22,7 +22,6 @@ let view = null;
 afterEach(async () => {
   if (view) await view.unmount();
   view = null;
-  vi.unstubAllEnvs();
 });
 
 const mount = async () => {
@@ -45,17 +44,10 @@ const headerLinks = () =>
   }));
 
 describe('the header’s mark and name', () => {
-  it('links the mark to the server’s root and the name to the projects', async () => {
+  it('links the mark to / and the name to the projects', async () => {
     await mount();
     const [mark, name] = headerLinks();
-    // The test page is served at /, as a dev server serves an app.
     expect(mark).toEqual({ name: 'Plaid home', href: '/', hasMark: true });
     expect(name).toEqual({ name: 'Plaid IGT', href: '/projects', hasMark: false });
-  });
-
-  it('links the mark to the prefix when the app is built under one', async () => {
-    vi.stubEnv('BASE_URL', '/plaid/igt/');
-    await mount();
-    expect(headerLinks()[0]).toMatchObject({ name: 'Plaid home', href: '/plaid/' });
   });
 });

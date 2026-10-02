@@ -9,7 +9,7 @@ import { headerItem } from './headerItem.js';
 import { AssistantChrome } from '../assistant/AssistantChrome.jsx';
 import { AssistantSubjectProvider } from '../assistant/AssistantSubject.jsx';
 import { useAssistantScope } from '../assistant/subject.js';
-import { adminUrl, serverRootUrl } from '../../domain/siblingApps.js';
+import { adminUrl } from '../../domain/siblingApps.js';
 import { useUserKeymap } from '../../hooks/useUserKeymap.js';
 import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
 
@@ -98,7 +98,7 @@ const Shell = ({ adapter, keymap, nav = [], guideHref, adminTo, isAssistantRoute
                   this app's and leads to its projects. The name stays on screen
                   at every width, since on a phone it is the way to them. */}
               <div className="flex shrink-0 items-center gap-2">
-                <a href={serverRootUrl()} aria-label="Plaid home" className="shrink-0">
+                <a href="/" aria-label="Plaid home" className="shrink-0">
                   <PlaidMark className="h-[18px] w-[18px] shrink-0" />
                 </a>
                 <Link to={routes.projects} className="font-bold">
