@@ -1502,7 +1502,7 @@ They should be used only where necessary in order to minimize the risk of invari
 
 Both clients wrap these calls in a block that holds the lock for the length of the work and releases it on the way out, including on error.
 The block is one holder, and its handle carries the id as `lock.lockId` (`lock.lock_id` in Python).
-The block mints that id and sends it with the acquire, so an acquire that got no answer is sent again, up to three times, and released if none is answered:
+The block mints that id and sends it with the acquire, so an acquire that got no answer is sent again, at most three sends in all, and released if none is answered:
 
 [,js]
 ----
