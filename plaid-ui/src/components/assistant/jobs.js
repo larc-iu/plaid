@@ -131,7 +131,7 @@ export const upsert = (meta) => (prev) =>
   [meta, ...prev.filter((m) => m.id !== meta.id)].sort(byRecency);
 
 // The sidebar entry after a write. `pending` names the request under way, if
-// any: {kind, requestId, serviceId, planId, asHuman, contributedBy, startedAt}.
+// any: {kind, requestId, serviceId, planId, asHuman, startedAt}.
 //
 // It carries the project it is written under, because the list holds rows from
 // more than one (All projects) and each is deleted and linked to under its OWN
@@ -492,20 +492,12 @@ export const changesTheView = (j) => !!j.done && j.kind === 'apply' && !j.error?
 
 // Apply `plan` from `conv`. What a plan writes is recorded as verified (made
 // by the assistant, confirmed by the approver) unless the user asks for it to
-// count as human-made; a contributor's approval records it as their own
-// unreviewed work (`contributedBy`, provenance convention). The service
+// count as human-made. Whether the approver's work is reviewed, so recorded
+// as their own unreviewed work, the service reads from the project itself
+// (`plaid.review`, provenance convention), not from the page. The service
 // refuses a second application of the same plan (a retried request, a double
 // click), so a failure leaves the plan undecided and approving again is safe.
-export const startApply = ({
-  store,
-  service,
-  conv,
-  prevMeta,
-  plan,
-  asHuman,
-  contributedBy = null,
-  docked = false,
-}) => {
+export const startApply = ({ store, service, conv, prevMeta, plan, asHuman, docked = false }) => {
   const { client, projectId } = store;
   const requestId = newId();
   const j = newJob({
@@ -528,7 +520,6 @@ export const startApply = ({
     serviceId: service.serviceId,
     planId: plan.id,
     asHuman,
-    contributedBy,
     startedAt: new Date(j.startedAt).toISOString(),
   });
   j.promise = (async () => {
@@ -540,7 +531,7 @@ export const startApply = ({
         {
           projectId,
           conversationId: conv.id,
-          approve: { planId: plan.id, asHuman, contributedBy },
+          approve: { planId: plan.id, asHuman },
         },
         REQUEST_TIMEOUT_MS,
         progressOf(j),

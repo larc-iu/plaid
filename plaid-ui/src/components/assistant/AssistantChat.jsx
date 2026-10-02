@@ -725,7 +725,6 @@ export const AssistantChat = ({
         prevMeta: list.rows.find((m) => m.id === conv.id),
         plan,
         asHuman,
-        contributedBy: contributor ? userId : null,
         docked: !toastOnApply,
       }),
     );
