@@ -357,7 +357,7 @@ export const grid = {
               formText: value,
               kind: 'morpheme',
               badge: [
-                this._commentBadge('token', morph.id, value || 'morpheme'),
+                this._commentBadge('token', morph.id, value ? `morpheme ${value}` : 'morpheme'),
                 this._conflictNote(formKey),
               ],
             },

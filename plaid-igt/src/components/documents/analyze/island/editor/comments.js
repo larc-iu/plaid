@@ -3,6 +3,7 @@ import { withReturnedDraft } from '@ui/domain/CommentStore';
 import { setUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import { commentThread } from '@/components/documents/comments/island/CommentThread.js';
 import { buildAnchorIndex, describeAnchor, anchorCaption } from '@/domain/commentAnchors';
+import { isVirtualMorphemeId } from '@/domain/virtualMorpheme';
 
 // Comment badges on cells and the comment popover they open.
 export const comments = {
@@ -21,7 +22,9 @@ export const comments = {
    */
   _commentBadge(entityType, entityId, label, { inline = false } = {}) {
     const store = this.comments;
-    if (!store || !entityId) return nothing;
+    // An unanalyzed word's morpheme is not stored, so nothing can be anchored
+    // to it. The word's own badge sits beside it over the same text.
+    if (!store || !entityId || isVirtualMorphemeId(entityId)) return nothing;
     const n = store.countFor(entityId);
     // Nothing to show and nothing to add: a reader (or a past-state view) sees
     // counts but is never offered a control they cannot use.

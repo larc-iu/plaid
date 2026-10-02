@@ -39,12 +39,12 @@ const seededStore = () => {
   return store;
 };
 
-const mount = (opts = {}) => {
+const mount = (opts = {}, rawOpts = {}) => {
   resetIds();
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
   const doc = new IgtDocument({
-    raw: buildRawDoc({}),
+    raw: buildRawDoc(rawOpts),
     project: { id: 'proj-1', vocabs: [], config: {}, maintainers: [], writers: [] },
     vocabularies: {},
     client,
@@ -157,5 +157,22 @@ describe('a comment the server refuses, from the grid', () => {
     openThread();
     expect(host.querySelector('.igt-cmt-pop').getAttribute('dir')).toBe('ltr');
     expect(composer().getAttribute('dir')).toBe('auto');
+  });
+});
+
+describe('the comment badge on a morpheme', () => {
+  it('is not offered on an unanalyzed word, whose morpheme is not stored', () => {
+    mount({ comments: seededStore() }, { morphemes: [] });
+    // The word's badge is there, the derived morpheme's is not.
+    expect(host.querySelector('[data-pop-opener="comment:w-2"]')).not.toBeNull();
+    expect(host.querySelector('[data-pop-opener^="comment:virtual:"]')).toBeNull();
+  });
+
+  it('names the morpheme, not just its text, on an analyzed word', () => {
+    mount({ comments: seededStore() });
+    const word = host.querySelector('[data-pop-opener="comment:w-2"]');
+    const morph = host.querySelector('[data-pop-opener="comment:m-2"]');
+    expect(word.getAttribute('title')).toBe('Comment on cat');
+    expect(morph.getAttribute('title')).toBe('Comment on morpheme cat');
   });
 });
