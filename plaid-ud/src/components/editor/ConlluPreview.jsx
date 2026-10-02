@@ -62,10 +62,13 @@ export const ConlluPreview = ({ content }) => {
       data-testid="conllu-preview"
       className="max-h-[400lh] w-full overflow-auto whitespace-pre rounded-md border bg-muted/40 p-3 text-left font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
+      {/* A block a row, not one inline run of the whole file: a file of
+          26,000 rows was one layout of about 80 s as a single run, 3 s as
+          blocks. A blank row keeps a line's height. Copy and Download use the
+          file's text, not this. */}
       {lines.map((line, i) => (
-        <span key={i} className="conllu-row">
+        <span key={i} className="conllu-row block min-h-[1lh]">
           <Row line={line} />
-          {i < lines.length - 1 && '\n'}
         </span>
       ))}
     </pre>

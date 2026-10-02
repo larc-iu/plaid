@@ -24,7 +24,11 @@ describe('the CoNLL-U preview', () => {
     const { container, unmount } = await mount();
     expect(all(container, 'textarea').length).toBe(0);
     const pre = container.querySelector('pre');
-    expect(pre.textContent).toBe(FILE);
+    const rows = all(container, '.conllu-row');
+    expect(rows.map((r) => r.textContent).join('\n')).toBe(FILE);
+    // One block a row, not one inline run of the whole file: on a 26,000-row
+    // file the inline run took one layout of 78 s.
+    for (const r of rows) expect(r.className.split(/\s+/)).toContain('block');
     expect(pre.getAttribute('dir')).toBe('ltr');
     // A name on a bare `pre` is not announced: it needs a role to carry it.
     expect(pre.getAttribute('role')).toBe('region');
