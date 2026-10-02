@@ -20,6 +20,7 @@ from ..core.limits import MAX_SCOPE_DOCS, OVERVIEW_DOCS
 from ..core.history import doc_label
 from ..core.plan import by_document
 from ..core.workspace import BaseWorkspace
+from ..core.provenance import unmark
 from ..core.tools import ToolError, server_refused
 from .plan import (KIND, RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, docs_of_op,
                    scope_clears)
@@ -416,6 +417,7 @@ def t_set_field(ws: Workspace, document: str = None, refs=None, field: str = Non
     value = '' if value is None else str(value)
     if field == FEATURES:
         return _set_features(ws, doc, layer_id, refs, value)
+    value = unmark(value, field)
     _check_value(ws, field, value)
     words = _words(ws, doc, refs)
     staged = []
@@ -439,6 +441,8 @@ def _pairs(bundle: str) -> Dict[str, str]:
     for raw in (bundle or '').split('|'):
         if not raw.strip():
             continue
+        # A read marks each pair on its own ("Mood=Ind~|Number=Plur").
+        raw = unmark(raw, 'feature')
         pair = normalize_feature(raw)
         if not pair:
             raise ToolError(f'"{raw}" is not a feature: write each one as Feature=Value, '
@@ -559,7 +563,7 @@ def t_set_feature(ws: Workspace, document: str = None, refs=None, feature: str =
     feature = (feature or '').strip()
     if not feature or '=' in feature or '|' in feature:
         raise ToolError('Give feature: one feature name, like Number (the value goes in value).')
-    value = '' if value is None else str(value).strip()
+    value = '' if value is None else unmark(str(value), 'value').strip()
     if value:
         refusal = feature_refusal(f'{feature}={value}')
         if refusal or '|' in value:
@@ -609,7 +613,7 @@ def t_set_head(ws: Workspace, document: str = None, ref: str = None, head=None,
         raise ToolError(f'Sentence s{sentence.index} has no word {head}. Its words are 1 to {len(sentence.words)}.')
     if head == word.index:
         raise ToolError(f'A word cannot be its own head. Use head 0 to make {ref} the root of s{sentence.index}.')
-    deprel = (deprel or '').strip()
+    deprel = unmark(deprel or '', 'deprel').strip()
     if head == 0 and not deprel:
         deprel = 'root'
     if not deprel:

@@ -1590,3 +1590,20 @@ def test_set_field_features_underscore_clears_as_a_read_prints_it(ws):
     out = run(ws, 'set_field', document='Viaje', refs=['s1.w1'], field='features', value='_')
     assert out.startswith('Planned features cleared')
     assert sorted((op['span_id'], op['value']) for op in ws.ops) == [('sp-x1', ''), ('sp-x2', '')]
+
+
+def test_a_value_copied_back_from_a_read_is_written_without_its_mark(ws):
+    """The ~ and ^ a read appends are display only (F7 ruling). A value copied
+    back with its mark is written without it, per pair in FEATS, and a value
+    that is only a mark is refused."""
+    run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='upos', value='PROPN~')
+    run(ws, 'set_field', document='Viaje', refs=['s2.w1'], field='lemma', value='correr^ ')
+    run(ws, 'set_field', document='Viaje', refs=['s2.w2'], field='features', value='Mood=Ind~|Number=Plur^')
+    run(ws, 'set_feature', document='Viaje', refs=['s1.w4'], feature='Gender', value='Masc~')
+    run(ws, 'set_head', document='Viaje', ref='s2.w2', head=1, deprel='punct~')
+    values = [op.get('value') or op.get('deprel') for op in ws.ops]
+    assert sorted(values) == sorted(['PROPN', 'correr', 'Mood=Ind', 'Number=Plur', 'Gender=Masc', 'punct'])
+    assert 'only a review mark' in run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='xpos', value='~')
+    # Only a trailing mark is a read's.
+    run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='xpos', value='a~b')
+    assert ws.ops[-1]['value'] == 'a~b'

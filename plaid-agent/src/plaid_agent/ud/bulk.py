@@ -18,6 +18,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..core import opkind, work
 from ..core.limits import SAMPLE_LINES
+from ..core.provenance import unmark
 from ..core.history import doc_label
 from ..core.plan import by_document
 from ..core.replace import replacer as core_replacer
@@ -124,6 +125,7 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
     if replacement is None:
         raise ToolError('Give replacement: the text that takes the place of what the pattern matches '
                         '("" clears it).')
+    replacement = unmark(replacement, 'replacement')
     if field == 'deprel' and not (replacement or '').strip():
         raise ToolError('A dependency cannot have an empty label. del_relation removes a head outright.')
     rep = replacer(pattern, replacement, bool(regex), bool(whole), bool(case_sensitive))

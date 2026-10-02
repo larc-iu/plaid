@@ -928,3 +928,22 @@ def test_a_form_that_carries_its_affix_marker_gets_no_second_one():
                                         'morphemes': [{'form': 'Al'}, {'form': '-i', 'type': 'suffix'}]})
     assert 'Planned' in out
     assert 'Ali-di → Al-i' in w.ops[0]['label'] and '--' not in w.ops[0]['label']
+
+
+def test_a_value_copied_back_from_a_read_is_written_without_its_mark():
+    """The ~ and ^ a read appends are display only (F7 ruling): a field value,
+    a morpheme gloss, the last form of a segmentation and a link's entry
+    copied back with their marks are written without them."""
+    w = scan_ws(FakeClient())
+    call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3'], 'field': 'Gloss', 'value': 'say~'})
+    assert w.ops[-1]['value'] == 'say'
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w3', 'morphemes': [
+        {'form': 'aku', 'fields': {'Morph Gloss': 'say^'}}, {'form': 'na~', 'fields': {'Morph Gloss': 'PST~'}}]})
+    op = w.ops[-1]
+    assert [m['form'] for m in op['morphemes']] == ['aku', 'na']
+    assert [fv['value'] for m in op['morphemes'] for fv in m['fields']] == ['say', 'PST']
+    out = call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w2'], 'entry_form': 'gam^',
+                                      'entry_gloss': 'fish'})
+    assert 'Planned' in out, out
+    assert 'only a review mark' in call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3'],
+                                                                'field': 'Gloss', 'value': '^'})

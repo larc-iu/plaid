@@ -19,6 +19,7 @@ from ..core import history, opkind
 from ..core.args import whole
 from ..core.limits import MAX_SCOPE_DOCS
 from ..core.plan import by_document, change_of, labelled
+from ..core.provenance import unmark
 from ..core.tools import ToolError
 
 from .plan import ANALYSIS, KIND, TEXT_SHAPE, WORD_SHAPE, analysed_morphemes, reshaped_subjects
@@ -34,7 +35,7 @@ from .workspace import Workspace, _need, _refs, _sentence_of, _words_of
 def t_set_field(ws: Workspace, document: str, refs, field: str, value: str) -> str:
     f = ws.project.field(field)
     doc = ws.doc(document)
-    value = '' if value is None else str(value)
+    value = '' if value is None else unmark(str(value), f.name)
     kind = {'Word': Word, 'Morpheme': Morpheme, 'Sentence': Sentence}[f.scope]
     staged: List[Dict[str, Any]] = []
     edits = 0
@@ -185,9 +186,12 @@ def parse_analysis(ws: Workspace, morphemes: list) -> List[Dict[str, Any]]:
     if not morphemes or not isinstance(morphemes, list):
         raise ToolError('morphemes must be a non-empty list of {form, type?, fields?}')
     out = []
-    for m in morphemes:
+    for i, m in enumerate(morphemes):
         if not isinstance(m, dict) or not (m.get('form') or '').strip():
             raise ToolError('each morpheme needs a non-empty form')
+        if i == len(morphemes) - 1 and isinstance(m.get('form'), str):
+            # A read marks a segmentation once, after its last form.
+            m = {**m, 'form': unmark(m['form'], 'form')}
         if m.get('type'):
             m = {**m, 'type': morph_type(m['type'])}
         fvals = []
@@ -195,7 +199,7 @@ def parse_analysis(ws: Workspace, morphemes: list) -> List[Dict[str, Any]]:
             f = ws.project.field(name)
             if f.scope != 'Morpheme':
                 raise ToolError(f'"{f.name}" is a {f.scope} field, not a morpheme field; use set_field for it')
-            fvals.append({'layer_id': f.layer_id, 'value': '' if val is None else str(val)})
+            fvals.append({'layer_id': f.layer_id, 'value': '' if val is None else unmark(str(val), f.name)})
         out.append({'form': m['form'].strip(), 'morph_type': m.get('type') or None, 'fields': fvals})
     return out
 
@@ -321,11 +325,24 @@ def no_scope_reaches(ws: Workspace, doc_id: Optional[str], where: str) -> None:
                         'Apply it first, then plan this (plan_status, drop_planned).')
 
 
+def _entry_named(ws: Workspace, entry_form, lexicon, entry_id, entry_gloss):
+    """The entry a link names. A read marks a link's entry ("link=Ali^"), so a
+    form copied from one names the entry without its mark, unless an entry is
+    spelled with that last character itself."""
+    try:
+        return ws.find_entry(entry_form, lexicon, entry_id, entry_gloss)
+    except ToolError:
+        bare = unmark(entry_form, 'entry form') if isinstance(entry_form, str) and not entry_id else entry_form
+        if bare == entry_form:
+            raise
+        return ws.find_entry(bare, lexicon, entry_id, entry_gloss)
+
+
 def t_link_entry(ws: Workspace, document: str, refs, entry_form: Optional[str] = None,
                  lexicon: Optional[str] = None, entry_id: Optional[str] = None,
                  entry_gloss: Optional[str] = None) -> str:
     doc = ws.doc(document)
-    kind, target = ws.find_entry(entry_form, lexicon, entry_id, entry_gloss)
+    kind, target = _entry_named(ws, entry_form, lexicon, entry_id, entry_gloss)
     form = target.get('form') if kind == 'existing' else ws.new_entries[target]['form']
     staged: List[Dict[str, Any]] = []
     inside: List[str] = []
@@ -587,7 +604,7 @@ def t_link_phrase(ws: Workspace, document: str, refs, entry_form: Optional[str] 
     words = _words_of(doc, refs)
     if len(words) < 2:
         raise ToolError('A multi-word expression needs two or more distinct words, e.g. ["s3.w2", "s3.w3"]')
-    kind, target = ws.find_entry(entry_form, lexicon, entry_id, entry_gloss)
+    kind, target = _entry_named(ws, entry_form, lexicon, entry_id, entry_gloss)
     form = target.get('form') if kind == 'existing' else ws.new_entries[target]['form']
     token_ids = [w.id for _, _, w in words]
     existing = None

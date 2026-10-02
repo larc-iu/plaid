@@ -10,6 +10,7 @@ from ..core import work
 from ..core.limits import SAMPLE_LINES
 from ..core.plan import PLAN_MAX_OPS, by_document, labelled
 from ..core.replace import replacer as core_replacer
+from ..core.provenance import unmark
 from .plan import SCOPES, analysed_morphemes, move_phrase, settle_merges
 from .project import join_morphemes, word_ref
 from ..core.tools import ToolError
@@ -70,6 +71,8 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
     document. Empty cells are not filled: use set_field_for_form for that.
     ``field`` may also name the stored morpheme forms (Bulk Edit's morpheme
     domain) when no field is so named."""
+    if not _names_morpheme_forms(ws, field):
+        replacement = unmark(replacement, 'replacement')
     rep = _replacer(pattern, replacement, bool(regex), bool(whole), bool(case_sensitive))
     staged: List[Dict[str, Any]] = []
     if not ws.use_scan(document) and not _names_morpheme_forms(ws, field):
@@ -388,7 +391,7 @@ def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_
     key = (form or '').strip().casefold()
     if not key:
         raise ToolError('Give a form.')
-    value = '' if value is None else str(value)
+    value = '' if value is None else unmark(str(value), f.name)
     staged: List[Dict[str, Any]] = []
     if not ws.use_scan(document):
         args = {'form': form, 'field': field, 'value': value, 'only_empty': bool(only_empty)}
