@@ -4,8 +4,8 @@
  */
 
 // Token offsets are Unicode CODE POINTS, so locate/measure forms in code points
-// (cpIndexOf / cpLength), not the UTF-16 indexOf / .length.
-import { cpLength, cpIndexOf } from '@larc-iu/plaid-client';
+// (cpLength, and code-point offsets kept beside UTF-16 ones), not the UTF-16 indexOf / .length.
+import { cpLength } from '@larc-iu/plaid-client';
 import { parseDeps } from '../domain/enhancedGraph.js';
 
 // Split a CoNLL-U file into one chunk per `# newdoc[ id = X]` block, so a single
@@ -330,12 +330,17 @@ export function buildConlluHierarchy(parsedData) {
   // original text. We warn so the user knows the offsets are synthetic.
   const locateUnits = (sentenceText, units) => {
     const positions = [];
-    let searchPos = 0;
+    // Where the search goes on from, in UTF-16 units for `indexOf` and in code
+    // points for the offsets, kept together so neither is counted again from
+    // the sentence's start for every unit.
+    let from16 = 0;
+    let fromCp = 0;
+    let chars = null;
     let warnedSyntheticOffsets = false;
     for (const unit of units) {
       const form = unit.surfaceForm || '';
-      const idx = form ? cpIndexOf(sentenceText, form, searchPos) : -1;
-      if (idx === -1) {
+      const at16 = form ? sentenceText.indexOf(form, from16) : -1;
+      if (at16 === -1) {
         if (!warnedSyntheticOffsets) {
           console.warn(
             `CoNLL-U import: could not locate form "${form}" in sentence text; ` +
@@ -345,23 +350,29 @@ export function buildConlluHierarchy(parsedData) {
         }
         // A unit placed this way starts past any space, so it never begins on
         // one and cuts the word after it.
-        const chars = [...sentenceText];
+        chars ??= [...sentenceText];
         let begin = positions.length === 0 ? 0 : positions[positions.length - 1].end;
         while (begin < chars.length && /\s/u.test(chars[begin])) begin += 1;
-        positions.push({ begin, end: begin + cpLength(form) });
-        searchPos = begin + cpLength(form);
+        const end = begin + cpLength(form);
+        positions.push({ begin, end });
+        fromCp = end;
+        from16 = end > chars.length ? sentenceText.length + 1 : chars.slice(0, end).join('').length;
       } else {
-        positions.push({ begin: idx, end: idx + cpLength(form) });
-        searchPos = idx + cpLength(form);
+        const begin = fromCp + cpLength(sentenceText.slice(from16, at16));
+        const end = begin + cpLength(form);
+        positions.push({ begin, end });
+        from16 = at16 + form.length;
+        fromCp = end;
       }
     }
     // `warnedSyntheticOffsets` is set the first (and only) time a unit needs a
     // synthetic placement, so it doubles as "this sentence used synthetic
-    // offsets" — surfaced to the caller so the lossy event isn't silent.
+    // offsets", surfaced to the caller so the lossy event is not silent.
     return { positions, usedSynthetic: warnedSyntheticOffsets };
   };
 
   let text = '';
+  let textLength = 0;
   const sentences = [];
   // Number of sentences in which at least one unit needed a synthetic offset
   // (its form couldn't be located in the sentence text). Surfaced via `dropped`
@@ -400,11 +411,17 @@ export function buildConlluHierarchy(parsedData) {
         ? Object.fromEntries(Object.entries(sentenceMetadata).filter(([k]) => k !== 'text'))
         : sentenceMetadata;
 
-    const sentenceStart = cpLength(text);
+    // The text's length so far is kept as it grows, not counted again for
+    // every sentence.
+    const sentenceStart = textLength;
     text += sentenceText;
+    textLength += rawLen + (overflowed ? maxEnd - rawLen : 0);
     const isLast = sentIdx === parsedData.sentences.length - 1;
-    if (!isLast) text += '\n';
-    const sentenceEnd = cpLength(text); // includes the trailing newline for non-last sentences
+    if (!isLast) {
+      text += '\n';
+      textLength += 1;
+    }
+    const sentenceEnd = textLength; // includes the trailing newline for non-last sentences
 
     const words = units.map((unit, unitIdx) => {
       const begin = sentenceStart + unitPositions[unitIdx].begin;
