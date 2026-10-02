@@ -110,6 +110,7 @@ Every field in a project belongs to exactly one scope, which decides which row o
 The **Documents** tab lists a project's texts with their word counts, when each was last changed by anyone, and when you last changed it yourself.
 Click a column heading to sort by it, and again to reverse it.
 Sorting by **Your last edit** is the quickest way back to what you were working on. A document you have never edited shows a dash.
+Opening a document does not count as changing it, even when a repair is made on opening.
 Once there are many, the list can be searched and paged.
 How a list is sorted is remembered for next time, and for the document list so is the page you were on, both per project.
 **New document** creates an empty document and opens it on its Baseline tab.
@@ -147,10 +148,14 @@ Each change is saved where you typed it.
 Existing sentences, words, and annotations are kept and adjusted to fit the new text.
 A change inside a word, or touching it with no space between, changes that word, and it keeps its analysis.
 A space typed inside a word leaves one word with a space in it. Split it on the Tokenize tab to make two words.
-On a project whose words are shared with an app that splits a word at a typed space, a space typed inside a word splits it there: the word and its analysis stay on the part holding most of its letters, and the rest is untokenized text.
+On a project whose words are shared with an app that splits a word at a typed space, a space typed inside a word splits it there: the word and its analysis stay on the part holding most of its letters, and the other part becomes a new word with no analysis.
 Deleting the space between two words keeps them two words. Merge them on the Tokenize tab to make one.
 New text with a space between it and every word is in no word. The Tokenize tab makes words of it.
 A word goes, along with its annotations, only when all its text is deleted.
+Pasting the text back with words added, removed or changed changes only those words. Every other word keeps its analysis.
+
+**Ctrl/Cmd+Z** in the box undoes typing, and **Ctrl/Cmd+Shift+Z** redoes it, up to 200 steps back.
+An undo the box cannot place exactly, such as one reaching back past a save that took in someone else's text, does nothing.
 Text typed right before a sentence's first character joins that sentence, unless it holds a line break: a line added in front of a sentence joins the sentence before, so splitting it off leaves the sentence its translation.
 A line typed in front of the first sentence becomes a sentence of its own. Spaces typed there alone join the first sentence.
 Text typed right after a sentence's last character joins that one. Move a sentence break on the Tokenize tab.
@@ -174,7 +179,10 @@ A large recording can be sent as audio instead of itself.
 Choosing one offers to convert it to MP3, naming the size that would produce.
 The conversion runs in the browser, mono at 16 kHz, about 14 MB an hour, and that is what is uploaded.
 The timing is unchanged, so segments and alignments are the same either way, but the picture is dropped and the sound is no longer good enough for phonetic measurement.
+The first 69 milliseconds play as silence.
 A server refuses a file over its own size limit, and the offer says so before the upload starts rather than after it.
+
+When someone else deletes or replaces the recording while you have the tab open, the tab says **Recording deleted** or **Recording replaced** after your next change.
 
 === Transcript
 
@@ -231,6 +239,7 @@ This is how you align a text that was typed before the recording was attached.
 Speakers are labeled per segment, and the timeline colors each speaker's segments alike.
 Two segments may overlap in time only when they carry different speaker labels, which is how cross-talk is recorded.
 A dragged edge stops at any segment it may not overlap.
+A speaker change or a new segment that would overlap a segment of the same speaker is refused, naming that segment.
 
 === Speech detection
 
@@ -245,7 +254,7 @@ The **×** on the row discards it.
 No segment exists until you type into one, so nothing reaches the Analyze grid, an export or a validator before then.
 The proposed times themselves are kept with the document, so leaving the tab does not throw the segmentation away: reopen it another day, or hand it to somebody else to transcribe, and the proposals are where you left them.
 **Discard**, in the detection dialog, removes them.
-They are dropped on their own if the recording is replaced, since they were measured from the old one.
+They belong to the recording they were measured from: deleting it removes them, and a different recording does not show them.
 
 The built-in detector's options change what is proposed without running the model again:
 
@@ -288,6 +297,8 @@ Words already there are kept, so text added after a first run can be tokenized b
 The built-in **Rule-based punctuation** splitter finds words and leaves sentence breaks as they are.
 A tokenization service can replace it with smarter segmentation of both sentences and words (see <<_services>>).
 A service run that stops partway says how many sentences and words it wrote. Run it again to finish.
+A service run on a document that already holds annotations asks first, with a count of what a new segmentation would delete.
+On a document that is one sentence, a service that finds the same sentence leaves it and its words as they are. One that splits it makes the words again, and their analyses are lost.
 **Clear tokens** and **Reset sentences**, beside it, start over.
 **Split at segments** adds a sentence break wherever a segment from the Media tab starts, so a recording cut into utterances becomes one sentence per utterance.
 It only adds breaks, never removes one, and a segment that starts inside a word is left alone.
@@ -306,6 +317,8 @@ TIP: A word that came out split can be repaired in place by dragging across its 
 The **Analyze** tab is where interlinearization happens.
 It shows each sentence with its words, the morphemes under each word, and a row for every annotation field.
 Long documents are shown twenty-five sentences at a time, with a pager above and below the grid.
+A document of more than 15,000 words shows **Long document** at the top of this tab and the Baseline tab.
+Editing slows down past that length. Split such a document into shorter ones.
 
 What you do here:
 
@@ -318,7 +331,7 @@ After it is linked, its popover still offers to link the rest.
 Nothing is linked this way unless you ask.
 * **Reuse an analysis**. Once you have analyzed a word, its popover (and the popover of any of its morphemes) offers **Analyze every "…" in this text like this** when other words spelled the same have not been analyzed at all. It gives each of them the same morphemes, links and field values, as your own work. A word with any analysis of its own is left alone. For the whole document at once, or to draw on the rest of the project, use Auto-analyze's copy step (see <<_copying_previous_analyses>>).
 * **Auto-analyze**. Let the machine make a first pass over the whole document: translations, analyses copied onto words you have analyzed before, a model's segmentation and glosses, and lexicon links. Everything it produces shows in violet until you confirm it, and words you analyzed yourself are never touched (see <<_auto_analyze>>).
-* **Review machine work**. **Ctrl/Cmd+Enter** accepts everything proposed on a word, the faint guesses in its cells included, and moves to the next. **Ctrl/Cmd+Backspace** discards a word's (or a translation's) unverified proposal. **Ctrl/Cmd+Shift+↑/↓** jumps between the words and translations that still have one.
+* **Review machine work**. **Ctrl/Cmd+Enter** accepts everything proposed on a word, the faint guesses in its cells included, and moves to the next. If a value on the word, or in a sentence field, is not in its closed tagset, nothing is accepted and the caret goes to that cell. **Ctrl/Cmd+Backspace** discards a word's (or a translation's) unverified proposal. **Ctrl/Cmd+Shift+↑/↓** jumps between the words and translations that still have one.
 * **Fill sentence fields**. Record the free translation, the speaker, and other sentence-scope values on each sentence's row.
 * **Show only the rows you need**. Click a row's label to choose which rows show. A minimized row stays as a thin stripe you can click back open.
 * **Copy as IGT**. Copy one sentence to the clipboard for a paper or a message, as aligned plain text, tab-separated text for a spreadsheet, LaTeX (gb4e or ExPex), or leipzig.js HTML. The LaTeX formats carry characters like ə and ∅ as they are, so typeset them with XeLaTeX or LuaLaTeX and a font that has the glyphs. This keeps the characters searchable and copyable in the finished PDF, which a `tipa` transcription does not. On the LaTeX gloss line, each part written in capitals, such as NOM or 1SG, is set in small caps as `\textsc{nom}`. The rule goes by case alone, so a capital I glossing a pronoun is set in small caps too.
@@ -370,6 +383,7 @@ An edit that reaches the server after someone else changed the document is handl
 
 When someone else changed the same cell first, the cell shows their value with an amber edge, and yours under it: **Yours: X · Enter to keep yours**.
 A message names the change, such as `b changed this to DOG.`
+When the change cannot be traced to one person, the message says `Someone`, and `You` for your own change from another tab.
 **Enter** writes your value over theirs, **Escape** or typing another value lets yours go, and leaving the cell sends nothing.
 The same happens when someone else split, joined or respelled the word, re-segmented its morpheme, or split, joined or respelled the sentence of a sentence field, before your value was saved.
 The message then names the word, morpheme or sentence as it reads now, such as `b changed this word to si.`
@@ -384,6 +398,7 @@ Leaving the document first asks, naming the cell.
 Any sentence, word, morpheme, or annotation value can carry **comments**: a conversation in the margin of the text, for a question to the speaker, a doubt about a gloss, or a note to a classmate.
 In the Analyze tab, hover a sentence's label, a word, or a morpheme and click its comment badge to read the thread or add to it.
 A badge with a number marks a thread that already has comments.
+A word nobody has segmented has no morpheme badge: its word's badge covers the same text.
 
 The **Comments** tab lists every thread in the document, newest activity first, each collapsed to its latest comment.
 Click a thread to open it, and click its heading to jump to its sentence.
@@ -442,7 +457,7 @@ See <<_headwords_and_senses>>.
 It lets you map the columns onto the entry fields, then reviews each row against the entries that already exist before anything is created, so a homonym stays separate and an existing entry is never overwritten unless you say so.
 When the entries change between the review and **Import** so that the import would write something else, nothing is written and the review is shown again.
 **Replace** finds text in one field of every entry, the form included, and replaces it: as plain text, as a whole value, or as a regular expression.
-Plain text ignores case.
+Plain text ignores case, and keeps each match's capitals when both boxes are typed in small letters: `ka` to `ga` makes `Kalamang` `Galamang`.
 The other two do not.
 A fourth kind, **is empty**, matches the entries that have no value in the field and sets one, which is how a status is given to a lexicon imported without any.
 It has no counterpart in Bulk Edit: an annotation field has no value on a word until something writes one, so filling every blank means visiting every word rather than matching what is there.
@@ -453,6 +468,9 @@ A value the field's tagset refuses is listed but never written.
 **Export** downloads the table as a tab-separated file that opens in any spreadsheet.
 
 A vocabulary's maintainers edit its entries and fields here.
+**Enter** in a one-line field, or **Ctrl/Cmd+Enter** anywhere in the entry, saves it.
+While a change waits for the server, the save status beside **History** reads **Offline, retrying** or **Can't reach the server, retrying**.
+An entry someone else deleted shows **This entry was deleted.** in place of its form.
 A project's writers link words to its entries and add new ones from the link popover, but only a maintainer renames or deletes an entry.
 Each entry carries a comment thread (see <<_comments>>).
 
@@ -585,7 +603,7 @@ Everything it produces is marked as machine-made and shows in violet until you a
 
 1. **Propose translations.** A translation service drafts a free translation for every sentence from its words and any glosses already present. This runs first because the analyzers in the later steps read the translation. Translations a person wrote are left alone, and earlier machine drafts are replaced. Needs a connected translation service.
 2. **Copy previous analyses.** Every word that has not been analyzed at all is looked up elsewhere in the project, and if the same word form has been analyzed before, that analysis is copied onto it. This is built in and needs no service. The details are below.
-3. **Propose segmentation and glosses.** An analysis service, such as PolyGloss or a language model, proposes morphemes and glosses for every word that still has none. Words a person analyzed are left alone, and earlier machine proposals are replaced. Needs a connected analysis service.
+3. **Propose segmentation and glosses.** An analysis service, such as PolyGloss or a language model, proposes morphemes and glosses for every word that still has none. Words a person analyzed, and analyses copied from earlier ones, are left alone. Earlier machine proposals are replaced. Needs a connected analysis service.
 4. **Link to the lexicon.** Words and morphemes that have no link yet are linked to lexicon entries, by the built-in rule described below or by a service. This runs last so that it can link the stems step 3 just produced. Needs the project to have a vocabulary.
 
 Each step remembers whether you left it on, and a service step is unavailable when no service for it is online.
@@ -680,7 +698,8 @@ Three things live here:
 The annotation **fields** at each scope, sentence, word, and morpheme.
 You can add, rename, reorder, and remove them, and removing a field first tells you how many values it holds.
 The count is checked again when you press **Delete**. If it changed, the dialog shows the new count and asks again.
-Each field records the **language** its values are in, as a writing system tag such as `pmy` or `nl`: a FLEx, ELAN, or CLDF import fills it in from the file, a field named with a tag in parentheses (`Gloss (nl)`) is given that tag when the project is next opened, and FLEx and ELAN exports label each field with it.
+Each field records the **language** its values are in, as a writing system tag such as `pmy` or `nl`: a FLEx, ELAN, or CLDF import fills it in from the file, a field made with a tag in parentheses in its name (`Gloss (nl)`) is given that tag, and FLEx and ELAN exports label each field with it.
+A language you clear stays cleared.
 A field with no language goes out under the project's meta language.
 Alongside the fields sits the **ignored tokens** rule, usually punctuation, so those tokens carry no word-level annotation and host no morphemes.
 Its exceptions are the **characters that behave as letters**: one character each, and each one joins the word around it instead of splitting it, stays on the word's form in the lexicon, and can be annotated.
@@ -744,6 +763,8 @@ Change them first, or add them to the tagset.
 A **Closed, plus lexical glosses** tagset is enforced as you type and in Bulk Edit only, and an import, a service, the Assistant, or a script writes past it.
 The project's **Validation** tab (maintainers) closes that gap.
 It lists, for each governed field, every value in the project that its tagset refuses, with a count, and offers the remedies: **Add to tagset**, **Fix in Bulk Edit**, or open each occurrence and correct it by hand.
+A field under an **Open** tagset is listed as well, with the values closing it would refuse, counted as not in the tagset.
+Values there not written in capitals are grouped apart, and are not added one by one.
 It also looks for zero morphs spelled some other way than ∅ (see <<_typing_special_characters>>).
 
 NOTE: The Assistant and the LLM glossing service read a governed field's tagset before proposing values, so they use its spellings. A service's proposals are not refused, even outside a closed tagset. A model's off-list output can be a useful signal that the tagset is missing something, and the Validation tab is where you will see it.
@@ -802,7 +823,7 @@ Entries of a vocabulary you do not maintain are listed as *maintainers only* and
 A merge's preview counts the links in documents you can open. The message after **Apply** counts every link moved, and says how many were in projects you cannot open.
 
 Respelling and replacing ask how to match, with the same three kinds the Search tab offers.
-Contains ignores case.
+Contains ignores case, and keeps each match's capitals when both boxes are typed in small letters: `ka` to `ga` makes `Kalamang` `Galamang`.
 Is exactly and matches a regular expression do not, and here a match is a write.
 
 A long preview is paged.
@@ -810,7 +831,10 @@ A document's heading ticks every match in that document, not only the ones on th
 
 A place that changed after the preview is skipped, and so is a document deleted after it.
 The message after **Apply** says how many were skipped, and the rest of each document is still changed.
-When **Apply** stops partway, the message says what was written before the stop, and the remaining documents are not changed. **Apply** again writes the rest.
+While **Apply** runs, it names the document it is on, of how many, and how long it has run.
+When **Apply** stops partway, the message says what was written before the stop, and the documents after it are not changed.
+A document whose answer was lost is named as one that may or may not be changed.
+**Apply** again counts only what is left, and writes the rest.
 
 Bulk Edit respects tagsets.
 A replacement a closed tagset refuses is skipped, and the preview says so.
@@ -839,6 +863,7 @@ A replacement across documents is also out of date when a document starts or sto
 Approving a plan on a document that a service run (a transcription, an analysis) is writing to is refused with nothing written. Approve again once the run has finished.
 Deleting an entry through a plan is refused when the entry was linked after the plan was made.
 The assistant cannot delete an entry that has links in projects it cannot open: the plan says so and is not applied.
+A plan approved in two tabs at once is applied once. The other tab shows it applied when the first has finished.
 
 A plan that stops partway reads **Partly applied**, with how many of its changes were written, and the changes not written are dimmed.
 Ask the assistant to finish it.
@@ -846,6 +871,7 @@ Ask the assistant to finish it.
 A reply is written into the conversation as it arrives, and it lands whether or not the page stays open: leave the tab, reload, or close the browser, and the answer is there when the conversation is next opened.
 A conversation that is still being answered says so in the list, and opening it picks the answer up as it comes.
 **Stop** ends a turn early, even while the model is still working on its answer.
+The conversation then reads `You stopped this turn.` with **Retry**.
 Conversations are private to you, kept per project, and can be downloaded or copied as Markdown.
 Your server's administrator can read them.
 The tab opens on a new conversation. The list on the left holds the earlier ones, and each has its own link.
@@ -957,7 +983,7 @@ Five formats are supported:
 * **FieldWorks (FLEx) interlinear texts** (`.flextext`): one or more files exported from FLEx with **File > Export Interlinear**, bringing in their texts, words, morphemes, glosses, parts of speech, translations and notes, but no lexicon. A `.flextext` holds only what the Interlinear view showed when it was exported, so turn on every line you want before exporting. It does not hold the running text either, only the words and punctuation, so the text is rebuilt from them with the spacing FLEx itself uses: a space between two words, none before a comma or a full stop. Where the original was spaced otherwise, the spacing is FLEx's. The review screen lists what the files hold that is not imported, such as the lexical entry each morpheme names, time alignment and speakers. An analysis FLEx marks as a guess arrives as machine work to review, and a text found in two of the files is imported once.
 * **CLDF** (`.zip`): a Cross-Linguistic Data Formats dataset. Its examples become interlinear texts, its lexicon a vocabulary, and its language the project's identity.
 * **ELAN** (`.eaf`): a set of annotation files that share one tier structure. Each file becomes a document, with its tiers, speakers, time alignment, and its recording when you choose that alongside.
-* **Plaid IGT archive** (`.zip`): recreates a project exactly, including its vocabularies, media, comments, and guidelines.
+* **Plaid IGT archive** (`.zip`): recreates a project exactly, including its vocabularies, media, comments, guidelines, the **Show the project's plaid** setting, and whether a space typed inside a word splits it. Two settings are not carried: which members' work is reviewed, since it names people, and **Record responses to suggestions**, which each project decides for itself.
 
 A FLEx category is one thing with a name in each of the project's analysis languages, `v` in English and `kt.kerja` in Indonesian, so one of those names is imported and not both.
 Where a file carries more than one, the review screen of either FLEx import lists them under **Part-of-speech language**, and the words, morphemes and entries take the name in the one selected.
@@ -977,6 +1003,7 @@ A tier with no annotations is left out.
 Recordings are chosen in the same step as the `.eaf` files, and everything chosen is listed together with what will happen to it: which `.eaf` each recording belongs to, and which of them matches none.
 A recording is matched to the `.eaf` that names it, and a document whose recording you did not choose is imported without it.
 One too large for the server says so and says what converting would produce, and it can be converted to MP3 in the browser before the run (see <<_media>>), so the import does not finish without it.
+A conversion can be stopped. Recordings already converted stay converted, and the rest are imported as they are.
 A file imported into this project before says so on its row, with a link to its document, and the screen asks once for all of them: keep that document, replace it (which deletes it and everything added to it since), or add a copy beside it, named with a number.
 A recording chosen beside a kept file is added to its document when that document has no recording yet.
 The rest of the project is untouched, and nothing is locked while the import runs.
@@ -991,6 +1018,7 @@ Either way, the import asks what each tier becomes:
 * **Sentence field**, **Word field**, **Morpheme field**: one value per sentence, word or morpheme, in an annotation field. Importing into an existing project writes into that project's own fields. A field tier may sit below another field tier, such as one added under the segment number, and its values still belong to the sentence, word or morpheme above them both.
 
 Tier names of the form `Translation-gls-nl`, which is how a corpus prepared for FieldWorks names them, are read: `gls` is the kind of annotation and `nl` the language, so such a tier is offered the matching field without your having to say so. A tier that needs a new field names it the way a FLEx import would, `Translation (nl)`, or plain `Translation` when every such tier is in one language.
+New fields are made in the order of the file's tiers.
 A file made by ELAN's **Import FLEx** names its tiers by level and item instead (`A_phrase-gls-en`, `A_word-pos-en`, `A_morph-type`), and those are read too: the fields are named as a FLEx import names them (Translation, Gloss, POS), a word's text in another writing system becomes an orthography, and the morph type tier gives each morpheme its type.
 Each sentence's text is written from its words, as FLEx writes a phrase, so a word the phrase line leaves out, such as `[0]` for a zero argument, keeps its place and its annotations, and the text shows the words' own spelling.
 The segment number tier is left out. So are the times of such a file when it names no recording and every time falls on a whole second, since that import makes them up.
@@ -1023,13 +1051,18 @@ Each import only appears in the menu from its own area, and the order matters be
 The export screen and a README in the `.zip` repeat these steps.
 * **CLDF TextCorpus** (`.zip`): a Cross-Linguistic Data Formats dataset, one CSV per component table with a `cldf-metadata.json` describing them.
 CLDF aligns morphemes by their position in a tab-separated cell, and has no column for some of what a project holds.
-Whatever the preset is set to, a CLDF export leaves behind the vocabulary links between words and their entries, the provenance marks that tell machine work from a person's, morpheme types other than the clitics the joints still show, and the difference between a word left unanalyzed and a word analyzed as a single morpheme.
+Whatever the preset is set to, a CLDF export leaves behind the vocabulary links between words and their entries, the provenance marks that tell machine work from a person's, morpheme types other than the clitics the joints still show, and any analysis with no values that only repeats its word, or splits it at its own `-` or `=`, which comes back unanalyzed.
+With an orthography chosen for the primary text, a sentence with nothing in that orthography is written with the baseline text, and the export says how many.
 The preset lists these under the columns it is dropping, so the loss is on screen before the export runs.
 * **ELAN** (`.eaf`): one annotation file per document, bundled into a `.zip` with its recording when it has one. A recording is saved under the name in the document's **Media file** field when it has one, and under the document's name otherwise.
 **Segment words into morphemes** decides whether the tier tree reaches below the word, **Show affix markers on morphemes** writes them as `-ka` rather than `ka`, **One tier set per speaker** gives each speaker their own tiers, and **Include media files** puts the recording in the `.zip`.
 * **LaTeX book** (`.zip`): LaTeX source for a book of the texts, ready to upload to Overleaf.
 See <<_latex_book>>.
 * **Plaid IGT JSON** (`.zip`): a lossless archive you can import again later.
+
+An export holds everything its preset names, or it fails.
+When a document, a vocabulary or a recording cannot be read, nothing is downloaded, and the export panel says which.
+The panel also lists the warnings of a finished export until you dismiss them.
 
 A FLEx preset also carries the writing-system tags FieldWorks will see: one for the baseline text, one for each alternate orthography, and one for glosses and translations.
 Use the codes your FieldWorks project already uses, or FLEx will offer to add a new writing system when you import.
@@ -1088,8 +1121,14 @@ To grab a single sentence instead, use **Copy as IGT** in the Analyze tab.
 A project's **Search** tab looks across every document.
 Pick where to look: word forms, morpheme forms, any annotation field at any scope, or the lexicon's entries.
 Type what to find, and choose whether a match **contains** it, **is exactly** it, or **matches** a regular expression.
-Contains ignores case.
+Contains ignores case, in any script.
 The other two do not.
+Ignoring case never makes the dotless ı or the dotted İ an i, since they are letters of their own in Turkic orthographies.
+
+A regular expression is read the same way in Search, in Bulk Edit, in a vocabulary's **Replace**, and by the Assistant.
+`\w` is a letter, mark, digit or underscore in any script, `\d` a digit in any script, and `\b` the edge of a word.
+`(?i)` at the start ignores case in any script.
+A pattern that cannot be read the same way everywhere, such as `[[:alpha:]]`, is refused with a message saying why.
 
 Results come in two views:
 
@@ -1102,8 +1141,10 @@ Every change in Plaid IGT is recorded in an **audit log**, with a meaningful mes
 Past states of any document can be viewed, read-only.
 A past state shows each vocabulary entry as it read at that same moment, so a gloss changed since shows its old value.
 Comments are the exception: they are kept beside the data rather than in it, so they neither appear in the log nor change what a past state shows.
+Uploading and deleting a recording are in the log, but the recording itself is not, so a past state cannot bring back a deleted one.
 
 Open a document's **history** with **History** at the end of its tab row, on any tab, or from the rail at the left edge of the editor.
+**Escape** closes it, and focus goes back to **History**.
 Each entry is one action as you performed it, such as "Merge morphemes" or "Tokenize", even when it was made up of several underlying changes.
 An edit made in a cell names the field, the word or morpheme, the sentence and the value, such as `Gloss of "dogs" in sentence 3: DOG`.
 Selecting an entry shows the document as it was right after that action.
@@ -1171,19 +1212,26 @@ A Reader not being able to comment is the one that catches people out, so the ro
 Add and manage members under the project's **Settings**, in **Access**.
 Members are found by their email address.
 When you only have Reader access, the editor shows everything, but a banner says so and its controls are inert.
+When a maintainer makes you a Reader, or removes you, while you have a document open, the page turns read-only after your next edit is refused, or within a minute.
+A member who was removed is told `You no longer have access to this project.`
 
 **Invitation links** let people join without an administrator creating each account.
 A maintainer mints a link that grants a role on the project, good for a set number of uses and a set number of days.
 Whoever opens it chooses their own password and lands in the project.
 A link is not addressed to anyone, so whoever it reaches can use it, and a link raised to fifteen uses for a class admits whoever those fifteen people forward it to.
 The private **Label** on a link is where to record who it was meant for. Nothing checks it.
-A link can be revoked at any time, and it stops working on its own if the person who made it loses the authority it grants.
+A link can be revoked at any time.
+A link whose maker no longer has the access it grants (removed, demoted, deactivated, or no longer an administrator) reads **inactive** and does not work.
+It works again if they get that access back, and revoking it ends it for good.
+Whoever opens an inactive link is told to ask a maintainer of the project, or an administrator, for a new one.
 
 An **administrator** can also create accounts directly from the same Access section, and can mint a password-reset link for someone who is locked out.
 
 Scripts and services should not borrow your sign-in.
 Mint a named **API token** on your profile page instead.
 It can be revoked on its own, and its name appears in the history, so machine-made changes are told apart from yours.
+A named token cannot change a password, create or revoke API tokens, make a password-reset link, create an account, or make an invitation link that grants administrator rights.
+Do these signed in.
 
 = Administration
 
@@ -1213,6 +1261,8 @@ Conversations are otherwise private to the person who had them, and they are rea
 
 **Server** reports the version, how long it has been up, the size of the database and what is in it, the backups on disk, the media directory, which documents are open for editing, and which addresses are being refused at sign-in.
 Three things can be done from it, and each only ever unblocks something: take a backup now, release a document someone left open, and clear a sign-in block for someone who mistyped their password too many times.
+**Back up now** waits until the backup is written, which takes minutes on a large database, and lists it when it is on disk.
+Only one backup is written at a time. Starting one while another is being written says **Backup already running**, and the page waits for that one.
 
 **Logs** is what the server has been doing since it last started.
 Requests are one table, with the account behind each one, and everything else is another, with warnings, errors and their stack traces.
@@ -1274,6 +1324,7 @@ A change takes effect at once, follows your account to any computer you sign in 
 
 A few keys cannot be reassigned, because what they do depends on where you are: Enter, Tab, the arrow keys, Escape, Backspace, and `-` and `=` in a morpheme form.
 A shortcut is also refused when the browser already uses it, when it would type a character into the cell you are in (add Ctrl or Alt), or when another action on the same screen already has it, and the screen says which.
+A shortcut given to another action in another tab, or on another computer, since this screen was opened is refused the same way, and the screen then shows your shortcuts as they are saved.
 
 == Anywhere
 
@@ -1302,7 +1353,7 @@ A shortcut is also refused when the browser already uses it, when it would type 
 | **Alt+-** / **Alt+=** | Type a literal hyphen or equals sign in a morpheme form.
 | **Alt+0** | In a morpheme form, type the zero morph ∅.
 | **\** + a two-letter code | Type a character the keyboard lacks, anywhere language data is typed: `\sw` gives ə. See <<_typing_special_characters>>.
-| **Ctrl/Cmd+Enter** | Accept the current word's whole analysis, every faint guess in its cells included, and jump to the next word. On a sentence field, accept its proposed value and jump to the next sentence.
+| **Ctrl/Cmd+Enter** | Accept the current word's whole analysis, every faint guess in its cells included, and jump to the next word. On a sentence field, accept its proposed value and jump to the next sentence. A value not in its closed tagset accepts nothing and keeps the caret on that cell.
 | **Ctrl/Cmd+Backspace** | Discard the current word's unverified proposal (its machine-made morphemes, glosses, and links) and jump to the next. Anything a person made or confirmed stays. On a sentence field, discard its proposed value. **Delete** does the same as Backspace.
 | **Ctrl/Cmd+Shift+↑** / **↓** | Jump to the previous or next word or sentence field that still has unverified proposals.
 | **Ctrl/Cmd+↑** / **↓** | Move between vocabulary links awaiting your review. On one, **Enter** accepts it and **Backspace** removes it.
@@ -1347,4 +1398,14 @@ The arrow button above a sentence merges it with the previous one.
 | **Ctrl/Cmd+Enter** / **Esc** (new-segment popover) | Save the segment, or cancel it.
 | **Esc** (timeline) | Clear the selected stretch.
 | **Ctrl/Cmd+wheel** / **wheel** (timeline) | Zoom, or pan.
+|===
+
+== Vocabulary entry
+
+[cols="1,3"]
+|===
+| Shortcut | Action
+
+| **Enter** (one-line field) | Save the entry.
+| **Ctrl/Cmd+Enter** | Save the entry, from any field.
 |===
