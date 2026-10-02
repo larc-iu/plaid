@@ -171,7 +171,7 @@ def retrying(call: Callable[[], Any], *, model: str, timeout: Optional[float] = 
     window. Anything else, or the last failure, is raised as it is.
     ``sleep(delay)`` waits between tries (a caller that can be stopped looks
     for the stop there), and ``on_retry()`` runs before each new try. The
-    operator's log says what happened; the requester never sees it."""
+    operator's log says what happened, and the requester never sees it."""
     if sleep is None:
         sleep = time.sleep
     if litellm is None:

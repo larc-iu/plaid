@@ -646,7 +646,7 @@ class BaseAssistantService(BaseService):
         """Whether the approver's work is reviewed in the project (its
         ``plaid.review`` lists, by name or by role), read from the server. An
         administrator with no role of their own counts as a maintainer, as
-        everywhere else; a token that may not read the user says nothing about
+        everywhere else. A token that may not read the user says nothing about
         that, so they then count by their listed role alone."""
         project = client.projects.get(project_id)
         try:

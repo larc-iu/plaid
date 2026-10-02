@@ -250,7 +250,7 @@ def test_whose_work_is_reviewed_is_read_from_the_project_at_approval():
     from fixtures import FakeClient
     client = FakeClient()
     _seed_plan(client)
-    # The page still believes the approver is reviewed; the project no longer does.
+    # The page still believes the approver is reviewed, and the project no longer does.
     _service().process_request(_request(client, approve={'plan_id': PLAN1, 'contributed_by': 'u@x'}),
                                Helper(request_id='r9'))
     [(_, _, _, stamp)] = [c['args'] for c in client.payloads('spans.create')]
