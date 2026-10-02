@@ -159,8 +159,29 @@ describe('CommentStore reads', () => {
     const store = makeStore(client);
     await store.load();
 
-    expect(store.canEdit(store.threadFor('t1').find((c) => c.id === 'mine'))).toBe(true);
-    expect(store.canEdit(store.threadFor('t1').find((c) => c.id === 'theirs'))).toBe(false);
+    const mine = store.threadFor('t1').find((c) => c.id === 'mine');
+    const theirs = store.threadFor('t1').find((c) => c.id === 'theirs');
+    expect(store.canEdit(mine, { canWrite: true })).toBe(true);
+    expect(store.canEdit(theirs, { canWrite: true })).toBe(false);
+  });
+
+  it('allows neither edit nor delete to an author who may no longer write', async () => {
+    const client = fakeClient([
+      comment({ id: 'mine', authorId: ME }),
+      comment({ id: 'theirs', authorId: THEM }),
+    ]);
+    const store = makeStore(client);
+    await store.load();
+    const mine = store.threadFor('t1').find((c) => c.id === 'mine');
+    const theirs = store.threadFor('t1').find((c) => c.id === 'theirs');
+
+    expect(store.canEdit(mine, { canWrite: false })).toBe(false);
+    expect(store.canEdit(mine)).toBe(false);
+    expect(store.canDelete(mine, { canWrite: false })).toBe(false);
+    expect(store.canDelete(theirs, { canWrite: false, canDeleteAny: true })).toBe(false);
+    expect(store.canDelete(mine, { canWrite: true })).toBe(true);
+    expect(store.canDelete(theirs, { canWrite: true })).toBe(false);
+    expect(store.canDelete(theirs, { canWrite: true, canDeleteAny: true })).toBe(true);
   });
 });
 
@@ -179,7 +200,10 @@ describe('CommentStore writes', () => {
     // Optimistic: visible immediately, flagged as not yet acknowledged.
     expect(store.countFor('t1')).toBe(1);
     expect(isPending(store.threadFor('t1')[0])).toBe(true);
-    expect(store.canEdit(store.threadFor('t1')[0])).toBe(false);
+    expect(store.canEdit(store.threadFor('t1')[0], { canWrite: true })).toBe(false);
+    expect(store.canDelete(store.threadFor('t1')[0], { canWrite: true, canDeleteAny: true })).toBe(
+      false,
+    );
 
     resolve();
     await posting;

@@ -159,6 +159,12 @@ describe('commentThread permissions', () => {
     // someone else's words.
     expect(countAction('Edit')).toBe(1);
   });
+
+  it('offers no Edit or Delete to an author who may no longer write', () => {
+    // A writer demoted to reader keeps authorship, and the server refuses both.
+    draw({ comments: [comment({ authorId: ME })], canWrite: false });
+    expect(actions()).toEqual([]);
+  });
 });
 
 describe('commentThread interaction', () => {

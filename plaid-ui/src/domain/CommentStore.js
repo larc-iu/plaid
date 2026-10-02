@@ -199,11 +199,28 @@ export class CommentStore {
     return out.sort((a, b) => byCreated(a.comments[0], b.comments[0]));
   }
 
-  /** True when the user may edit this comment: authorship, and nothing else. */
-  canEdit(comment) {
+  /**
+   * True when the user may edit this comment: its author, while they may write
+   * where it lives (`canWrite`). The server checks both, so an author demoted
+   * to reader is refused, and is offered nothing here either.
+   */
+  canEdit(comment, { canWrite = false } = {}) {
     return (
-      !!this._currentUserId && comment?.authorId === this._currentUserId && !isPending(comment)
+      canWrite &&
+      !!this._currentUserId &&
+      comment?.authorId === this._currentUserId &&
+      !isPending(comment)
     );
+  }
+
+  /**
+   * True when the user may delete this comment: its author or a maintainer
+   * (`canDeleteAny`), in either case while they may write where it lives.
+   * Never for a comment the server has not acknowledged yet.
+   */
+  canDelete(comment, { canWrite = false, canDeleteAny = false } = {}) {
+    if (!canWrite || !comment || isPending(comment)) return false;
+    return canDeleteAny || this.canEdit(comment, { canWrite });
   }
 
   /**

@@ -208,10 +208,10 @@ export function commentThread(opts) {
     editingId,
     editDraft,
     on,
-    canEdit: (c) => store.canEdit(c),
-    // The author may always remove their own; a maintainer may remove any.
-    // Never offered for a comment that has not been acknowledged yet.
-    canDelete: (c) => !isPending(c) && (store.canEdit(c) || canDeleteAny),
+    canEdit: (c) => store.canEdit(c, { canWrite }),
+    // The author may remove their own and a maintainer any, while they may
+    // write. Never offered for a comment that has not been acknowledged yet.
+    canDelete: (c) => store.canDelete(c, { canWrite, canDeleteAny }),
   };
 
   return html`

@@ -47,7 +47,7 @@ const useMounted = () => {
 const metaKeyLabel = () =>
   typeof navigator !== 'undefined' && navigator.platform?.startsWith('Mac') ? '⌘' : 'Ctrl';
 
-const Comment = ({ comment, store, canDeleteAny, onEdit, onRemove }) => {
+const Comment = ({ comment, store, canWrite, canDeleteAny, onEdit, onRemove }) => {
   const [draft, setDraft] = useState(null); // null = not editing
   // An edit on its way: the text is kept until the server has it.
   const [sending, setSending] = useState(false);
@@ -59,10 +59,10 @@ const Comment = ({ comment, store, canDeleteAny, onEdit, onRemove }) => {
   const pending = isPending(comment);
   const mine = comment.authorId === store.currentUserId;
   const name = store.authorName(comment.authorId);
-  const mayEdit = store.canEdit(comment);
-  // The author may always remove their own; a maintainer may remove any. Never
-  // offered for a comment the server has not acknowledged yet.
-  const mayDelete = !pending && (mayEdit || canDeleteAny);
+  const mayEdit = store.canEdit(comment, { canWrite });
+  // The author may remove their own and a maintainer any, while they may write.
+  // Never offered for a comment the server has not acknowledged yet.
+  const mayDelete = store.canDelete(comment, { canWrite, canDeleteAny });
 
   // A comment is unaudited by ruling, so there is no history entry and no
   // restore: a mis-click on a colleague's thread is permanent. One more click
@@ -218,6 +218,7 @@ export const CommentThread = ({
               key={comment.id}
               comment={comment}
               store={store}
+              canWrite={canWrite}
               canDeleteAny={canDeleteAny}
               onEdit={(c, body) => store.edit(c.id, body)}
               onRemove={(c) => store.remove(c.id)}

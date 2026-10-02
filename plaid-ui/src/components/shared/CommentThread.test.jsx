@@ -66,24 +66,35 @@ afterEach(async () => {
 });
 
 // The thread as a host mounts it: following the store.
-const Host = ({ store }) => {
+const Host = ({ store, canWrite = true, canDeleteAny = false }) => {
   useSyncExternalStore(store.subscribe, store.getSnapshot);
   return (
     <CommentThread
       store={store}
       comments={store.threadFor('t1')}
-      canWrite
+      canWrite={canWrite}
+      canDeleteAny={canDeleteAny}
       entityType="token"
       entityId="t1"
     />
   );
 };
 
-const mount = async (store) => {
+const mount = async (store, props = {}) => {
   await store.load();
-  view = await renderComponent(<Host store={store} />);
+  view = await renderComponent(<Host store={store} {...props} />);
   return view;
 };
+
+describe('an author who may no longer write', () => {
+  it('is offered neither Edit nor Delete on their own comment', async () => {
+    const { store } = makeStore([row()]);
+    await mount(store, { canWrite: false, canDeleteAny: true });
+    expect(view.container.querySelector('[aria-label="Edit this comment"]')).toBe(null);
+    expect(view.container.querySelector('[aria-label^="Delete"]')).toBe(null);
+    expect(view.container.textContent).toContain('before');
+  });
+});
 
 describe('a comment the server refuses', () => {
   it('comes back into the composer, and leaving asks until then', async () => {
