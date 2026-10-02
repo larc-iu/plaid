@@ -619,7 +619,7 @@ PLAN: add text at the end of a document, one sentence per line, tokenized into w
 
 ### retype_sentence
 
-PLAN: replace the baseline text of one sentence (fix a transcript: insert, remove, or respell words). Unchanged words keep their analyses; changed text is re-tokenized without analysis; the sentence's own fields stay. Newlines in the new text split it into several sentences.
+PLAN: replace the baseline text of one sentence (fix a transcript: insert, remove, or respell words). A word that is edited or typed over keeps its analysis (gloss, morphemes, links) under its new spelling, a word removed entirely loses it, and new words start unanalyzed. When a retyped word is a different word, its old analysis is wrong: tell the user, and once the retype is applied, plan its new analysis. The sentence's own fields stay. Newlines in the new text split it into several sentences.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `ref` (string, required): The sentence, sN.

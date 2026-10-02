@@ -282,6 +282,24 @@ def test_a_retype_and_an_analysis_of_its_words_cannot_share_a_plan():
                                           'morphemes': [{'form': 'Gam'}]}).startswith('Planned')
 
 
+def test_a_retype_card_says_what_the_plain_rule_does_to_the_words():
+    """The text goes to the server as edits, and its plain rule keeps a word
+    that is edited or typed over, with its analysis. The card promised the
+    words would be re-tokenized without analysis (H8-ASSISTANT-1), so a
+    misheard word replaced through the assistant kept the wrong word's gloss
+    under a card saying it would not. It now says what happens and names the
+    analyzed words the edit touches."""
+    w = ws()
+    call_tool(w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali gam akuna.'})
+    label = w.ops[0]['label']
+    assert 'Changed words keep their analysis, removed words lose theirs, new words start unanalyzed.' in label
+    assert 'Analyzed words changed: Ali-di' in label
+    assert 're-tokenized' not in label
+    w2 = ws()
+    call_tool(w2, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali-di gam akuna mai.'})
+    assert 'Analyzed words changed' not in w2.ops[0]['label']
+
+
 def test_every_reshaping_tool_refuses_a_plan_a_corpus_wide_change_reaches():
     """Nine kinds count as a reshape when a corpus-wide change looks for one,
     and only five of the tools looked the other way. A sentence split or an
@@ -330,7 +348,7 @@ def test_append_and_retype_plan_ops_and_guards():
     op = w3.ops[0]
     assert (op['begin'], op['end'], op['old'], op['new'], op['sentence_id']) == (0, 17, 'Ali-di gam akuna.', 'Ali-di gam akuna gam.', 's-1')
     assert op['word_ids'] == ['w-1', 'w-2', 'w-3'] and op['morpheme_ids'] == ['m-1a', 'm-1b', 'm-2']
-    assert op['label'].startswith('Text 1 s1: retype "Ali-di gam akuna." → "Ali-di gam akuna gam." (unchanged words keep')
+    assert op['label'].startswith('Text 1 s1: retype "Ali-di gam akuna." → "Ali-di gam akuna gam." (Changed words keep')
     assert call_tool(w3, 'retype_sentence', {'document': 'd1', 'ref': 's2', 'text': 'Gam-ar.'}).startswith('Planned 0')
     # Same sentence again: last wins (same region), then a respelling inside it is refused.
     call_tool(w3, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali-di gam.'})

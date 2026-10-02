@@ -322,10 +322,10 @@ def t_retype_sentence(ws: Workspace, document: str, ref: str, text: str) -> str:
     old = doc.body[b:e]
     if old == text:
         return ws.planned_note(0)
-    # The word ids, not the sentence's: a retype deletes every word of the
-    # sentence, and the analysis guard compares word ids. Handed a sentence id
-    # it could never fire, so set_analysis then retype staged both and
-    # approval silently dropped one of them.
+    # The word ids, not the sentence's: a retype may respell or remove any
+    # word of the sentence, and the analysis guard compares word ids. Handed a
+    # sentence id it could never fire, so set_analysis then retype staged both
+    # and approval silently dropped one of them.
     word_ids = [w.id for w in s.words]
     morpheme_ids = [m.id for w in s.words for m in w.morphemes]
     _guard(ws, s, ref, word_ids=word_ids)
@@ -336,6 +336,40 @@ def t_retype_sentence(ws: Workspace, document: str, ref: str, text: str) -> str:
                'word_ids': word_ids, 'morpheme_ids': morpheme_ids,
                'label': f'{ws.doc_label(doc.id)} {ref}: retype "{old[:40]}{"…" if len(old) > 40 else ""}" → '
                         f'"{text[:40]}{"…" if len(text) > 40 else ""}"' + (f' ({n} sentences)' if n > 1 else '')
-                        + ' (unchanged words keep their analyses; changed text is re-tokenized without analysis; '
-                          'sentence fields stay)'})
+                        + f' ({_retype_effects(ws, s, b, old, text)})'})
     return ws.planned_note(1)
+
+
+def _retype_effects(ws: Workspace, s: Sentence, at: int, old: str, text: str) -> str:
+    """What a retype does to the sentence's words, for the card. The text is
+    sent as edits at their place (``plan._region_edits``) and the server's
+    plain rule decides: a word edited or typed over keeps its token and its
+    analysis, a word left with no letter is deleted with its analysis, and
+    text between words becomes new words with none. The analyzed words an
+    edit reaches are named, since each either carries its analysis onto a new
+    spelling or loses it."""
+    from difflib import SequenceMatcher
+    from .stats import _analyzed
+    gaps = [(at + i1, at + i2, text[j1:j2])
+            for tag, i1, i2, j1, j2 in SequenceMatcher(None, old, text, autojunk=False).get_opcodes()
+            if tag != 'equal']
+
+    def reached(w) -> bool:
+        for gb, ge, value in gaps:
+            if gb < w.end and ge > w.begin:
+                return True
+            # Typed at an edge with no space between: the word takes it.
+            if gb == ge == w.end and value[:1] and not value[:1].isspace():
+                return True
+            if gb == ge == w.begin and value[-1:] and not value[-1:].isspace():
+                return True
+            if gb == ge and w.begin < gb < w.end:
+                return True
+        return False
+
+    touched = [w for w in s.words if _analyzed(w) and reached(w)]
+    out = ('Changed words keep their analysis, removed words lose theirs, new words start unanalyzed. '
+           'Sentence fields stay')
+    if touched:
+        out += '. Analyzed words changed: ' + ', '.join(w.surface for w in touched)
+    return out
