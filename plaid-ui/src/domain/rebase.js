@@ -269,6 +269,32 @@ function reshapes(changed, a, b) {
   return false;
 }
 
+// Every entity id in `raw`, read as `indexEntities` reads them, without the
+// cost of reading each one's fields.
+function entityIdsOf(raw) {
+  const ids = new Set();
+  const visit = (node) => {
+    ids.add(settledId(node.id));
+    for (const value of Object.values(node)) {
+      if (isEntity(value)) visit(value);
+      else if (isEntityList(value)) value.forEach(visit);
+    }
+  };
+  if (isEntity(raw)) visit(raw);
+  return ids;
+}
+
+// The pending ids an edit made (rows it added under an id the server has not
+// given yet), from the document before its patch and after it: what
+// `pendingIdsOf` answers as `created`, for every send, at a fraction of the
+// cost (H2-IGT-ANALYZE-3).
+export function createdIdsOf(before, after) {
+  const was = entityIdsOf(before);
+  const created = new Set();
+  for (const id of entityIdsOf(after)) if (isPendingId(id) && !was.has(id)) created.add(id);
+  return created;
+}
+
 // The pending ids an edit made (`created`: rows it added under an id the
 // server has not given yet) and the ones it names (`named`: its own rows and
 // every id its rows point at, still pending), from the document before its

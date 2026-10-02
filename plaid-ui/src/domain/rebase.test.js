@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { apart, footprintOf, pendingIdsOf, resendable, untouched } from './rebase.js';
+import { apart, createdIdsOf, footprintOf, pendingIdsOf, resendable, untouched } from './rebase.js';
 import { pendingId } from './pendingIds.js';
 
 // Luke's ruling Q2 (2026-09-29): a refused edit goes again by itself when what
@@ -295,6 +295,21 @@ describe('the pending ids an edit makes and names', () => {
     const { created, named } = pendingIdsOf(before, after);
     expect([...created]).toEqual([span]);
     expect([...named].sort()).toEqual([span, tok].sort());
+  });
+
+  // H2-IGT-ANALYZE-3: every send asks which rows it made, and the whole diff
+  // took most of a second on a 40k-word document.
+  it('reads the rows it made the same way without reading every field', () => {
+    const tok = pendingId();
+    const before = doc();
+    before.textLayers[0].tokenLayers[1].tokens.push({ id: tok, begin: 4, end: 7 });
+    const after = structuredClone(before);
+    const spans = after.textLayers[0].tokenLayers[1].spanLayers[0].spans;
+    spans.push({ id: pendingId(), tokens: [tok], value: 'x' });
+    spans.push({ id: 'server-made', tokens: [tok], value: 'y' });
+    after.textLayers[0].tokenLayers[1].tokens[0].begin = 1;
+    expect(createdIdsOf(before, after)).toEqual(pendingIdsOf(before, after).created);
+    expect(createdIdsOf(before, before).size).toBe(0);
   });
 });
 

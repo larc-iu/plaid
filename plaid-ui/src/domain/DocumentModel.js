@@ -23,9 +23,28 @@ import {
 } from './textDirection.js';
 import { WriteQueue } from './WriteQueue.js';
 import { newId, recordSettled, settleIds } from './pendingIds.js';
-import { footprintOf, pendingIdsOf, resendable } from './rebase.js';
+import { createdIdsOf, footprintOf, pendingIdsOf, resendable } from './rebase.js';
 
-const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
+// A copy of a document read from the server, which is plain JSON. A walk
+// rather than a JSON round trip, which took five times as long on a document
+// of 40k words, on every edit (H2-IGT-ANALYZE-3). An undefined field is left
+// out, as JSON leaves it out.
+const cloneRaw = (value) => {
+  if (Array.isArray(value)) {
+    const out = new Array(value.length);
+    for (let i = 0; i < value.length; i += 1) out[i] = cloneRaw(value[i]);
+    return out;
+  }
+  if (value !== null && typeof value === 'object') {
+    const out = {};
+    for (const key of Object.keys(value)) {
+      const v = value[key];
+      if (v !== undefined) out[key] = cloneRaw(v);
+    }
+    return out;
+  }
+  return value;
+};
 
 // The audit label every heal write of a reconcile pass folds under, until the
 // pass names what it changed (see `describeReconcile`).
@@ -564,6 +583,7 @@ export class DocumentModel {
       origin: null,
       footprint: undefined,
       ids: undefined,
+      created: undefined,
       // It changed what the subclass keeps beside the document (igt's
       // links), which no read of the document shows: never sent again.
       beside: this._patchesBeside,
@@ -592,7 +612,7 @@ export class DocumentModel {
         keys: unsent.keys,
         // A create refused 409 id-taken for a row this edit made was made by
         // an earlier send of it, and answers as made (the client).
-        minted: this._summary(unsent)?.created,
+        minted: this._created(unsent),
       });
     return this._writes.push(
       async () => {
@@ -627,7 +647,7 @@ export class DocumentModel {
           // way someone else changed the document.
           conflict = isChangedElsewhere(err);
           if (cell) cell.error = err;
-          const created = this._summary(unsent)?.created ?? new Set();
+          const created = this._created(unsent) ?? new Set();
           // Refused because a row it makes is there already under the id this
           // page minted, inside a batch the refusal took back whole: that row
           // is made, and the rest of the edit is not. One deleted since is not.
@@ -713,6 +733,16 @@ export class DocumentModel {
     return { footprint: unsent.footprint, made: unsent.made, ...unsent.ids };
   }
 
+  // The pending ids `unsent` makes, read once, before anything else reads
+  // its base: every send asks, so it is not `_summary`'s whole diff. Null
+  // when it was not kept.
+  _created(unsent) {
+    if (unsent.created === undefined) {
+      unsent.created = unsent.base && unsent.made ? createdIdsOf(unsent.base, unsent.made) : null;
+    }
+    return unsent.created;
+  }
+
   // Whether `unsent` names a row an edit refused before it made.
   _namesRefused(unsent) {
     if (this._refusedIds.size === 0) return false;
@@ -731,6 +761,8 @@ export class DocumentModel {
   _untouched(unsent, now) {
     if (!unsent.base || unsent.beside) return false;
     const { footprint } = this._summary(unsent);
+    // Both read against the base the edit was made on, which this replaces.
+    this._created(unsent);
     if (!resendable(footprint, unsent.base, now, { byEntity: unsent.byEntity })) return false;
     unsent.origin ??= unsent.base;
     unsent.base = now;
