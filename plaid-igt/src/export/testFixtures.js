@@ -100,7 +100,6 @@ export const FULL_SELECTION = {
   wordFields: ['POS'],
   morphFields: ['Gloss'],
   sentFields: ['Translation', 'Note'],
-  segmentMorphemes: true,
   numberSentences: true,
   includeHeader: true,
 };

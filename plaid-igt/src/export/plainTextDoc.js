@@ -17,7 +17,7 @@ const cpLen = (s) => [...(s ?? '')].length;
 
 /**
  * selection: { orthographies: [name], wordFields: [name], morphFields: [name],
- *              sentFields: [name], segmentMorphemes: bool,
+ *              sentFields: [name], wordLine: 'segmented'|'surface'|'both',
  *              numberSentences: bool, includeHeader: bool }
  *
  * Returns the ordered tier lines for one sentence:
@@ -29,18 +29,14 @@ const cpLen = (s) => [...(s ?? '')].length;
  */
 /**
  * Which object line(s) a selection asks for. `wordLine` is 'segmented' (the
- * default), 'surface', or 'both'; `segmentMorphemes: false` from a preset
- * written before there was a choice still means 'surface'.
+ * default), 'surface', or 'both'.
  *
  * 'both' is the classic four-line hand-in: the word as written, the word
  * segmented, the morpheme glosses, the free translation. There was no way to
  * get it before, because the toggle SWAPPED the object line rather than adding
  * one, so a segmented export never showed the original spelling anywhere.
  */
-export const wordLineOf = (selection) => {
-  if (selection?.wordLine) return selection.wordLine;
-  return selection?.segmentMorphemes === false ? 'surface' : 'segmented';
-};
+export const wordLineOf = (selection) => selection?.wordLine || 'segmented';
 
 /**
  * True when the selection would print a gloss line segmented by hyphens over an

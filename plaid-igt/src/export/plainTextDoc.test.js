@@ -25,7 +25,7 @@ describe('sentenceTierLines', () => {
     const doc = makeFixtureDoc();
     const lines = sentenceTierLines(doc.sortedSentences[0], {
       ...FULL_SELECTION,
-      segmentMorphemes: false,
+      wordLine: 'surface',
     });
     expect(lines[0].cells).toEqual(['perros', 'corren']);
   });
@@ -79,7 +79,7 @@ describe('formatSentencePlain', () => {
     const out = formatSentencePlain(s, {
       orthographies: ['IPA', 'Cyrillic'],
       wordFields: ['Gloss'],
-      segmentMorphemes: false,
+      wordLine: 'surface',
     });
     expect(out.split('\n')).toEqual(['ab  c', 'x']);
   });
@@ -190,9 +190,7 @@ describe('the object line', () => {
     expect(cells({ wordLine: 'surface', morphFields: [] })).toEqual(['Eve']);
   });
 
-  it('reads a preset written before there was a choice', () => {
-    expect(wordLineOf({ segmentMorphemes: false })).toBe('surface');
-    expect(wordLineOf({ segmentMorphemes: true })).toBe('segmented');
+  it('segments the word line by default', () => {
     expect(wordLineOf({})).toBe('segmented');
   });
 

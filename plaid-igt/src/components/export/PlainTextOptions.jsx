@@ -68,7 +68,7 @@ export const PlainTextOptions = ({ options, layers, onChange }) => {
               id="plaintext-word-line"
               className="h-8 rounded-md border bg-background px-2 text-sm"
               value={wordLineOf(options)}
-              onChange={(e) => set({ wordLine: e.target.value, segmentMorphemes: undefined })}
+              onChange={(e) => set({ wordLine: e.target.value })}
             >
               <option value="segmented">Segmented into morphemes</option>
               <option value="surface">As written</option>

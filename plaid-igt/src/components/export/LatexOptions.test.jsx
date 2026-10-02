@@ -83,21 +83,4 @@ describe('LatexOptions', () => {
     expect(state.options.sentenceFields.map((f) => f.name)).toEqual(['Note', 'Translation']);
     await view.unmount();
   });
-
-  it('opens a preset saved before the order could be set with its own switches', async () => {
-    const { view, state } = await mount({
-      orthographies: [],
-      wordFields: ['POS'],
-      morphFields: ['Gloss'],
-      sentFields: ['Translation'],
-      includeHeader: true,
-    });
-    const on = all(view.container, 'input[type=checkbox]').map((b) => b.checked);
-    expect(on).toEqual([true, false, false, true, true, true, true, false]);
-    const meta = all(view.container, 'label').find((l) => l.textContent === 'Document metadata');
-    await view.step(() => meta.querySelector('[role=switch]').click());
-    expect(state.options.orthographies).toBeUndefined();
-    expect(state.options.rows).toHaveLength(6);
-    await view.unmount();
-  });
 });

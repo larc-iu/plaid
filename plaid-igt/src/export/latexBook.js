@@ -85,20 +85,10 @@ function mergeInDefaultOrder(saved, defaults, same) {
 /**
  * The preset's lines as the project has them now: every example line and
  * every sentence field, each `on` or not, in the preset's order. A line the
- * preset does not name (one added to the project since, or a preset saved
- * before the order could be set) goes right after the line the Analyze tab's
- * order puts before it (mergeInDefaultOrder).
- * It is on, unless the preset lists the fields it includes by scope
- * (`orthographies`, `wordFields`, `morphFields`, `sentFields`, as a preset
- * saved before the order could be set does) and leaves it out.
+ * preset does not name (one added to the project since) is on, and goes right
+ * after the line the Analyze tab's order puts before it (mergeInDefaultOrder).
  */
 export function latexLayout(options, layers) {
-  const legacy = {
-    [ROW_KINDS.ORTHOGRAPHY]: options?.orthographies,
-    [ROW_KINDS.WORD_FIELD]: options?.wordFields,
-    [ROW_KINDS.MORPHEME_FIELD]: options?.morphFields,
-  };
-  const legacyOn = (list, name) => (Array.isArray(list) ? list.includes(name) : true);
   const savedRows = (Array.isArray(options?.rows) ? options.rows : [])
     .filter((r) => r && typeof r.kind === 'string')
     .map((r) => ({
@@ -108,10 +98,7 @@ export function latexLayout(options, layers) {
     }));
   const rows = mergeInDefaultOrder(
     savedRows,
-    defaultRows(layers).map((r) => ({
-      ...r,
-      on: r.name == null || legacyOn(legacy[r.kind], r.name),
-    })),
+    defaultRows(layers).map((r) => ({ ...r, on: true })),
     sameRow,
   );
   const savedFields = (Array.isArray(options?.sentenceFields) ? options.sentenceFields : [])
@@ -119,7 +106,7 @@ export function latexLayout(options, layers) {
     .map((f) => ({ name: f.name, on: f.on !== false }));
   const sentenceFields = mergeInDefaultOrder(
     savedFields,
-    layers.sentFields.map((name) => ({ name, on: legacyOn(options?.sentFields, name) })),
+    layers.sentFields.map((name) => ({ name, on: true })),
     sameField,
   );
   return { rows, sentenceFields };

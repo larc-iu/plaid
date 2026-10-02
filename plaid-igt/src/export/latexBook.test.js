@@ -108,27 +108,6 @@ describe('latexLayout', () => {
     ]);
   });
 
-  it('reads a preset saved before the order could be set: its lists say which lines are on', () => {
-    const layout = latexLayout(
-      { orthographies: ['IPA'], wordFields: [], morphFields: ['Gloss'], sentFields: ['Note'] },
-      L2,
-    );
-    expect(layout.rows).toEqual([
-      W,
-      orth('Latin', false),
-      orth('IPA'),
-      wf('Gloss', false),
-      wf('POS', false),
-      M,
-      mf('Gloss'),
-      mf('Type', false),
-    ]);
-    expect(layout.sentenceFields).toEqual([
-      { name: 'Translation', on: false },
-      { name: 'Note', on: true },
-    ]);
-  });
-
   it('orders the sentence fields too', () => {
     const sentenceFields = [{ name: 'Note', on: true }];
     // Translation comes first in the default order, so it goes back in first.

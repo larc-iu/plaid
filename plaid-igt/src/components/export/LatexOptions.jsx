@@ -79,8 +79,7 @@ const OrderedList = ({ title, items, nameOf, scopeOf = () => null, onChange }) =
 
 // Step 2 (LaTeX book): which lines each example shows and in what order, the
 // sentence fields under it, and the metadata switch. Any change stores the
-// whole order, so the lists by scope a preset saved before the order could be
-// set are dropped then.
+// whole order.
 export const LatexOptions = ({ options, layers, onChange }) => {
   const { rows, sentenceFields } = latexLayout(options, layers);
   const set = (patch) =>
@@ -88,10 +87,6 @@ export const LatexOptions = ({ options, layers, onChange }) => {
       ...options,
       rows,
       sentenceFields,
-      orthographies: undefined,
-      wordFields: undefined,
-      morphFields: undefined,
-      sentFields: undefined,
       ...patch,
     });
   return (
