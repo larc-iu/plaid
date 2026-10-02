@@ -1,6 +1,6 @@
 /**
  * Tests for the service self-description helpers (serviceSchema.js): task
- * filtering (declared + legacy-prefix fallback), schema/summary accessors,
+ * filtering (declared tasks), schema/summary accessors,
  * default building, value coercion, and the cross-language param-key casing
  * round-trip. Uses Node's built-in test runner — run with `npm test`.
  */
@@ -40,11 +40,11 @@ test('servesTask prefers the declared tasks array', () => {
   assert.equal(servesTask(tokService, TASKS.PARSE), false);
 });
 
-test('servesTask falls back to legacy id prefixes when tasks absent', () => {
-  const legacy = { serviceId: 'asr:whisper-asr', extras: {} };
-  assert.equal(servesTask(legacy, TASKS.TRANSCRIBE), true);
-  assert.equal(servesTask(legacy, TASKS.TOKENIZE), false);
-  // 'parse' has no legacy prefix, so an un-declared service never matches it.
+test('servesTask reads only the declared tasks array', () => {
+  // An id prefix says nothing: every service declares its tasks.
+  const undeclared = { serviceId: 'asr:whisper-asr', extras: {} };
+  assert.equal(servesTask(undeclared, TASKS.TRANSCRIBE), false);
+  assert.equal(servesTask({ serviceId: 'tok:punkt' }, TASKS.TOKENIZE), false);
   assert.equal(servesTask({ serviceId: 'stanza-parser', extras: {} }, TASKS.PARSE), false);
 });
 

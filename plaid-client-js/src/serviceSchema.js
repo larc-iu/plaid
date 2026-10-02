@@ -16,7 +16,7 @@
  *
  *   {
  *     schemaVersion: 1,
- *     tasks: ["tokenize"],              // controlled vocab; REPLACES tok:/asr: id prefixes
+ *     tasks: ["tokenize"],              // controlled vocab (TASKS)
  *     summary: "## markdown …",         // rich human description
  *     parameters: [                     // ordered; rendered into a form
  *       { key, label, type, description?, default?, required?,
@@ -93,32 +93,14 @@ export const TASKS = Object.freeze({
 });
 
 /**
- * Legacy id-prefix → task map, for services that have not yet migrated to a
- * declared `tasks` array. Drop once all services advertise `tasks`.
- */
-const LEGACY_TASK_PREFIXES = Object.freeze({
-  [TASKS.TOKENIZE]: "tok:",
-  [TASKS.TRANSCRIBE]: "asr:",
-});
-
-/**
- * Does `service` serve `task`? Prefers the declared `extras.tasks` array; falls
- * back to the legacy id-prefix convention for un-migrated services.
+ * Does `service` serve `task`, as its declared `extras.tasks` says?
  * @param {{serviceId?: string, extras?: {tasks?: string[]}}} service
  * @param {string} task one of TASKS
  * @returns {boolean}
  */
 export function servesTask(service, task) {
   const declared = service?.extras?.tasks;
-  if (Array.isArray(declared) && declared.length) {
-    return declared.includes(task);
-  }
-  const prefix = LEGACY_TASK_PREFIXES[task];
-  return (
-    !!prefix &&
-    typeof service?.serviceId === "string" &&
-    service.serviceId.startsWith(prefix)
-  );
+  return Array.isArray(declared) && declared.includes(task);
 }
 
 /**
