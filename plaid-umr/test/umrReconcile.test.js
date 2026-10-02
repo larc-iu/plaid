@@ -62,12 +62,12 @@ test('a node anchored to a point is put back over its sentence', () => {
 });
 
 // Text deleted across the boundary of A and B: the anchor reaches out of
-// the sentence it belongs to, and is put back over it.
-test('an anchor reaching out of its sentence is put back over it', () => {
+// the sentence it belongs to, and is cut back to it.
+test('an anchor reaching out of its sentence is cut back to it', () => {
   const graph = graphOf(sentences(['A', 0, 15], ['B', 15, 30]), [
     unaligned('b1', [12, 25], 2, 'B'),
   ]);
-  assert.deepEqual(plan(graph).resize, [{ nodeId: 'b1', pieceId: 'p-b1', begin: 15, end: 30 }]);
+  assert.deepEqual(plan(graph).resize, [{ nodeId: 'b1', pieceId: 'p-b1', begin: 15, end: 25 }]);
 });
 
 // Text typed at the start of B: the sentence grew around the anchor, which
@@ -79,13 +79,40 @@ test('an anchor of text inside its sentence is left where it is', () => {
   assert.deepEqual(plan(graph), nothing);
 });
 
-// Two pieces, one per word deleted under it: one is enough.
-test('an anchor of two pieces is put back over its sentence as one', () => {
+// Two pieces, one per word deleted under it: one stretch over both, not
+// the whole sentence.
+test('an anchor of two pieces is made one stretch over them', () => {
   const node = unaligned('b1', [16, 18], 2, 'B');
   node.pieces.push({ id: 'p-b1b', begin: 22, end: 24 });
   const graph = graphOf(sentences(['A', 0, 15], ['B', 15, 30]), [node]);
   assert.deepEqual(plan(graph).resize, [
-    { nodeId: 'b1', pieceId: 'p-b1', begin: 15, end: 30, extra: ['p-b1b'] },
+    { nodeId: 'b1', pieceId: 'p-b1', begin: 16, end: 24, extra: ['p-b1b'] },
+  ]);
+});
+
+// A word deleted under an aligned node (no record yet): it is bound to its
+// sentence and stays over its word's text, also in a sentence joined to the
+// one before, so a later split before that text leaves it on the right.
+test("a node that lost its word stays over the word's text", () => {
+  const lost = { ...unaligned('r', [37, 41], 1, null) };
+  const graph = graphOf(sentences(['A', 0, 56]), [lost]);
+  graph.sentences[0].words = [{ id: 'w', begin: 0, end: 5 }];
+  assert.deepEqual(plan(graph), {
+    remove: [],
+    rebind: [],
+    resize: [],
+    unanchor: [{ nodeId: 'r', var: undefined, sentenceTokenId: 'A' }],
+  });
+});
+
+// Two pieces of a node that lost two words: one stretch over them.
+test('a node that lost two words apart stands over one stretch from the first to the last', () => {
+  const lost = unaligned('r', [5, 8], 1, null);
+  lost.pieces.push({ id: 'p-r2', begin: 12, end: 15 });
+  const graph = graphOf(sentences(['A', 0, 30]), [lost]);
+  graph.sentences[0].words = [{ id: 'w', begin: 0, end: 4 }];
+  assert.deepEqual(plan(graph).resize, [
+    { nodeId: 'r', pieceId: 'p-r', begin: 5, end: 15, extra: ['p-r2'] },
   ]);
 });
 

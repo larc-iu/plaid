@@ -21,17 +21,18 @@
 //   stands in.
 //
 //   A sentence's own extent changes as the text around it is edited, so an
-//   anchor that reaches out of the sentence it belongs to, or stands on a
-//   point, is put back over it. An anchor of text inside the sentence is
-//   left: a node of a sentence joined to the one before keeps standing over
-//   its old half, and a split at the same place puts it back with its
-//   relations.
+//   anchor that reaches out of the sentence it belongs to is cut back to
+//   it, and one on a point is put over it. An anchor of text inside the
+//   sentence is left: a node of a sentence joined to the one before keeps
+//   standing over its old half, and a split at the same place puts it back
+//   with its relations.
 //
 //   A word deleted under a node aligned to it (IGT deletes the word token,
 //   the text stays) leaves the anchor over text with no word. The node
-//   becomes an ordinary unaligned node: it records its sentence and stands
-//   over it, so a later re-tokenize does not align it again without anyone
-//   asking. The History entry names it.
+//   becomes an ordinary unaligned node: it records its sentence, so a later
+//   re-tokenize does not align it again without anyone asking, and keeps
+//   standing over its word's text, so a split before or after that text
+//   leaves it with its relations. The History entry names it.
 //
 // A node left outside every sentence is removed: there is no sentence for it
 // to belong to and nothing on screen would show it. A stray kept is a
@@ -66,19 +67,24 @@ export function planUnalignedHeal(graph, namespace) {
   const rebind = [];
   const resize = [];
   const unanchor = [];
-  // Its first piece put over the sentence. A node that lost two words apart
-  // had two pieces, and the others go (`extra`). A node already unaligned
-  // (`keepInside`) whose anchor is one stretch of text inside its sentence
-  // is left where it is: after two sentences are joined, a node of the
-  // second one keeps standing over that one's text, so splitting them again
-  // at the same place gives it back to its own sentence with its relations.
-  const standOver = (node, home, keepInside) => {
+  // An unaligned node's anchor made one stretch of text inside its
+  // sentence: from where its first piece of text begins to where its last
+  // ends, cut to the sentence, and the whole sentence when it covers no text
+  // there (a point). An anchor that is one such stretch already is left
+  // where it is. Never stretched further: after two sentences are joined, or
+  // a word is deleted under a node, the node keeps standing over its own
+  // text, so a split of the sentence at a point outside that text leaves
+  // the node, and its relations, on the side its text is on. A node that
+  // lost two words apart had two pieces, and the others go (`extra`).
+  const standOver = (node, home) => {
     const [piece, ...rest] = node.pieces;
     if (!piece) return;
-    const inside = piece.end > piece.begin && piece.begin >= home.begin && piece.end <= home.end;
-    const whole = piece.begin === home.begin && piece.end === home.end;
-    if ((whole || (keepInside && inside)) && !rest.length) return;
-    const item = { nodeId: node.id, pieceId: piece.id, begin: home.begin, end: home.end };
+    const text = node.pieces.filter((p) => p.end > p.begin);
+    let begin = Math.max(home.begin, Math.min(...text.map((p) => p.begin)));
+    let end = Math.min(home.end, Math.max(...text.map((p) => p.end)));
+    if (!text.length || end <= begin) [begin, end] = [home.begin, home.end];
+    if (piece.begin === begin && piece.end === end && !rest.length) return;
+    const item = { nodeId: node.id, pieceId: piece.id, begin, end };
     if (rest.length) item.extra = rest.map((p) => p.id);
     resize.push(item);
   };
@@ -89,7 +95,7 @@ export function planUnalignedHeal(graph, namespace) {
     if (!record) {
       // A word deleted under it: no word overlaps its anchor any more
       // (sentenceGraph.js reads it as unaligned already). Bound to the
-      // sentence it stands in and put over it, as a node made unaligned is.
+      // sentence it stands in, over the text its word had.
       // Only an anchor over text: a point is what an older writer left
       // for a node it did not say was unaligned, and is read as one already.
       if (node.aligned || node.sentence == null) return;
@@ -100,7 +106,7 @@ export function planUnalignedHeal(graph, namespace) {
       // stand, and the words that come back align them as before.
       if (!home || !home.words.length) return;
       unanchor.push({ nodeId: node.id, var: node.var, sentenceTokenId: home.tokenId });
-      standOver(node, home, false);
+      standOver(node, home);
       return;
     }
     // The sentence it belongs to, as sentenceGraph.js reads it: the one it
@@ -112,7 +118,7 @@ export function planUnalignedHeal(graph, namespace) {
       return;
     }
     if (home.tokenId !== record) rebind.push({ nodeId: node.id, sentenceTokenId: home.tokenId });
-    standOver(node, home, true);
+    standOver(node, home);
   });
   return { remove, rebind, resize, unanchor };
 }

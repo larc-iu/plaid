@@ -155,15 +155,23 @@ test('a node whose word was deleted becomes an ordinary unaligned node, named in
     calls.filter((c) => c.name === 'spans.patchMetadata').map((c) => c.args),
     [[node.id, [{ op: 'set', path: ['umr', 'sentence'], value: sentence.tokenId }]]],
   );
+  // Its anchor stays over the word's text: stretched over the sentence, a
+  // split of the sentence before that text would leave it on the left and
+  // core would delete its relations to the right half.
   assert.deepEqual(
     calls.filter((c) => c.name === 'tokens.update').map((c) => c.args),
-    [[node.pieces[0].id, sentence.begin, sentence.end]],
+    [],
   );
   // Now it records its sentence, so a word typed back under it does not
   // align it again.
   const healed = byVar(after, 's2y2');
   assert.equal(healed.aligned, false);
   assert.equal(healed.sentence, 2);
+  const at = after.graph.sentences[1].text.indexOf('yemek') + sentence.begin;
+  assert.deepEqual(
+    healed.pieces.map((p) => [p.begin, p.end]),
+    [[at, at + 'yemek'.length]],
+  );
 });
 
 test('a node-layer token with no node on it, left by an add cut off, is removed', async () => {
