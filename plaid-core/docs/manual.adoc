@@ -1615,7 +1615,8 @@ In a batch the stamp is left to the batch's other writes, such as the link the e
 A read made on a batch—any GET, and `query`—is answered from the server there and then rather than queued, so a read may be made on the batch or on the client as you please.
 The server runs a batch as one transaction holding its single write lock for the whole of it, and no other write can proceed meanwhile, so keep a batch to the work that has to be atomic.
 A document lock is taken and released on its own, never in a batch: a rollback could not give back a lock, so the server refuses a batch that takes, renews or releases one with a 400 before running any of it.
-A write to any other route that refuses an `Idempotency-Key` (see below) is refused in a batch the same way, keyed or not, with a 400 naming the operation: logging in or out, minting an API token or an invite, `/admin`, uploads, private user data and the service routes.
+A write to any other route that refuses an `Idempotency-Key` (see below) is refused in a batch the same way, keyed or not, with a 400 naming the operation: logging in or out, minting an API token or an invite, redeeming or looking up an invite, `/admin`, uploads, private user data and the service routes.
+A batch carried as an operation of a batch is judged by the same rule, so it may not hold any of these either.
 Their answers are not project data, and some are secrets, which a keyed batch would otherwise keep with the rest of its answer.
 A read of such a route may still be made in a batch.
 Both clients raise when such a call is made on a batch, before anything is sent, so make it on the client.
@@ -1697,14 +1698,15 @@ The same key for a different request is refused with 422, whose `error` is `idem
 Only a success is kept: a write refused for any reason (a version conflict, a lock, a bad request, a busy database) wrote nothing, and sending it again runs it again.
 
 A `/batch` takes one key for the whole batch.
-The key is refused with 400 on the routes a batch cannot carry, or whose answer is a secret: the lock routes, uploads (media and profile pictures), private user data, login and logout, minting an API token or an invite, `/admin`, and the service routes.
-A write to one of them is refused inside a batch too, so a batch's stored answer never holds a secret.
+The key is refused with 400 on the routes a batch cannot carry, or whose answer is a secret: the lock routes, uploads (media and profile pictures), private user data, login and logout, minting an API token or an invite, redeeming or looking up an invite, `/admin`, and the service routes.
+A write to one of them is refused inside a batch too, and inside a batch carried by a batch, so a batch's stored answer never holds a secret.
 A GET ignores it.
 
 === What the clients do
 
 Both clients send a key on every write that is not a signal (`outOfBand`) or a call a batch cannot carry (`noBatch`: an upload, private user data, or a call that mints a secret).
 A queued write has none of its own: its batch request has one, and a batch the client splits past 1,000 operations sends one key per part.
+Redeeming and looking up an invite (`redeemInvite`, `lookupInvite`, `redeem_invite`, `lookup_invite`) are made before there is a client, carry no key and are never batched.
 When a keyed write gets no answer (no response at all, 502 or 504), the client sends it again under the same key, up to three times after about 1, 3 and 9 seconds, unless the browser says it is offline.
 The error that finally escapes carries the key (`idempotencyKey`, `idempotency_key`), so a caller that sends the write again under it later is answered from the first send if it landed.
 
