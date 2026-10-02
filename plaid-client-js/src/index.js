@@ -343,8 +343,35 @@ class PlaidClient {
     // the stored token and route back to login. See makeRequest in http.js.
     this.onAuthError = options.onAuthError || null;
     this._authErrorFired = false;
+    // Who hears that a request is being sent again (onRetry).
+    this._retryListeners = new Set();
 
     this._installResources();
+  }
+
+  /**
+   * Hear every time a request is sent again: after a 503 (the database was
+   * busy), or for a keyed write after its answer was lost (no response, 502,
+   * 504). The listener gets `{ attempt, retries, delay, error }` before the
+   * wait. A screen that writes through the client directly can say it is
+   * retrying while the server does not answer, though the browser is online.
+   * @param {(info: {attempt: number, retries: number, delay: number, error: Error}) => void} listener
+   * @returns {() => void} the unsubscribe
+   */
+  onRetry(listener) {
+    this._retryListeners.add(listener);
+    return () => this._retryListeners.delete(listener);
+  }
+
+  /** Tell every `onRetry` listener. A listener that throws is passed over. */
+  _noteRetry(info) {
+    for (const listener of this._retryListeners) {
+      try {
+        listener(info);
+      } catch (_) {
+        /* a listener must not stop the retry */
+      }
+    }
   }
 
   /**
@@ -3871,8 +3898,10 @@ class PlaidClient {
         }
         return res;
       };
-      const response = await retryUnknown(() => retryWhileBusy(attempt), {
+      const onRetry = (info) => this._noteRetry(info);
+      const response = await retryUnknown(() => retryWhileBusy(attempt, { onRetry }), {
         delaysMs: this.retryDelaysMs,
+        onRetry,
       }).catch((error) => {
         error.idempotencyKey = key;
         // 401 means the token is missing, expired or invalid: fire the app's

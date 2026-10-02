@@ -808,11 +808,13 @@ export async function makeRequest(client, method, path, options = {}) {
   };
 
   try {
+    const onRetry = (info) => client._noteRetry?.(info);
     const response = keyed
-      ? await retryUnknown(() => retryWhileBusy(attempt), {
+      ? await retryUnknown(() => retryWhileBusy(attempt, { onRetry }), {
           delaysMs: client.retryDelaysMs,
+          onRetry,
         })
-      : await retryWhileBusy(attempt);
+      : await retryWhileBusy(attempt, { onRetry });
     noteServerClock(client, response.headers);
 
     if (!response.ok) {

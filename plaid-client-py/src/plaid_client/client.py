@@ -3796,8 +3796,32 @@ class PlaidClient:
         # 'frames'}, each frame {'keys', 'count', 'minted', 'depth', 'owned'}.
         self._operation_group: dict | None = None
         self.session = req_lib.Session()
+        # Who hears that a request is being sent again (on_retry).
+        self._retry_listeners: list = []
 
         _install_resources(self)
+
+    def on_retry(self, listener):
+        """Hear every time a request is sent again: after a 503 (the database
+        was busy), or for a keyed write after its answer was lost (no response,
+        502, 504). ``listener`` gets ``{'attempt', 'retries', 'delay',
+        'error'}`` (delay in seconds) before the wait. Returns the unsubscribe.
+        The JS twin is ``client.onRetry``."""
+        self._retry_listeners.append(listener)
+
+        def unsubscribe():
+            if listener in self._retry_listeners:
+                self._retry_listeners.remove(listener)
+        return unsubscribe
+
+    def _note_retry(self, info):
+        """Tell every ``on_retry`` listener. A listener that raises is passed
+        over."""
+        for listener in list(self._retry_listeners):
+            try:
+                listener(info)
+            except Exception:
+                pass
 
     def server_now(self) -> datetime:
         """The server's time now (UTC), as its last response's Date header
@@ -4208,8 +4232,9 @@ class PlaidClient:
                     return resp
 
                 try:
-                    response = retry_unknown(lambda: retry_while_busy(attempt),
-                                             self.retry_delays)
+                    response = retry_unknown(
+                        lambda: retry_while_busy(attempt, on_retry=self._note_retry),
+                        self.retry_delays, on_retry=self._note_retry)
                 except PlaidAPIError as e:
                     e.idempotency_key = key
                     raise

@@ -1615,6 +1615,10 @@ export declare class PlaidClient {
   serverClockOffsetMs: number | null;
   /** The server's time now, from its last response's Date header (to the second), else this machine's. Judge a time the server stamped, such as an audit entry's `ts`, against this rather than `Date.now()`. */
   serverNow(): Date;
+  /** Hear every time a request is sent again: after a 503, or for a keyed write after its answer was lost (no response, 502, 504). Called before the wait. Returns the unsubscribe. */
+  onRetry(
+    listener: (info: { attempt: number; retries: number; delay: number; error: Error }) => void,
+  ): () => void;
 
   // Batches.
   //

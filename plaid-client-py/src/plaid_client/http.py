@@ -125,12 +125,14 @@ class PlaidAPIError(Exception):
         self.idempotency_key = None
 
 
-def retry_while_busy(attempt, retries=BUSY_RETRIES, base_delay=BUSY_BACKOFF_S):
+def retry_while_busy(attempt, retries=BUSY_RETRIES, base_delay=BUSY_BACKOFF_S, on_retry=None):
     """Run ``attempt``, retrying while it raises a 503.
 
     Exponential backoff with full jitter, so two clients that collide do not
     march in lockstep and collide again on every retry. ``attempt`` must
     perform the whole request: a response body is consumed once.
+    ``on_retry`` hears ``{'attempt', 'retries', 'delay', 'error'}`` (delay in
+    seconds) before each wait.
     """
     for i in itertools.count():
         try:
@@ -138,7 +140,10 @@ def retry_while_busy(attempt, retries=BUSY_RETRIES, base_delay=BUSY_BACKOFF_S):
         except PlaidAPIError as e:
             if getattr(e, 'status', None) != 503 or i >= retries:
                 raise
-            time.sleep(base_delay * 2 ** i * (0.5 + random.random()))
+            delay = base_delay * 2 ** i * (0.5 + random.random())
+            if on_retry:
+                on_retry({'attempt': i + 1, 'retries': retries, 'delay': delay, 'error': e})
+            time.sleep(delay)
 
 
 # ---------------------------------------------------------------------------
@@ -182,11 +187,12 @@ def is_unknown_outcome(error):
     return getattr(error, 'status', None) in (0, 502, 504)
 
 
-def retry_unknown(attempt, delays=None):
+def retry_unknown(attempt, delays=None, on_retry=None):
     """Run ``attempt``, sending it again after each delay in ``delays``
     (seconds, default ``UNKNOWN_RETRY_DELAYS_S``) while it fails with an
     unknown outcome. Only for a keyed write, whose resend is answered from the
-    first send when that one landed. Full jitter, as ``retry_while_busy``."""
+    first send when that one landed. Full jitter, as ``retry_while_busy``,
+    and ``on_retry`` as there."""
     delays = UNKNOWN_RETRY_DELAYS_S if delays is None else delays
     for i in itertools.count():
         try:
@@ -194,7 +200,10 @@ def retry_unknown(attempt, delays=None):
         except PlaidAPIError as e:
             if not is_unknown_outcome(e) or i >= len(delays):
                 raise
-            time.sleep(delays[i] * (0.5 + random.random()))
+            delay = delays[i] * (0.5 + random.random())
+            if on_retry:
+                on_retry({'attempt': i + 1, 'retries': len(delays), 'delay': delay, 'error': e})
+            time.sleep(delay)
 
 
 def next_idempotency_key(client, joins):
@@ -958,9 +967,10 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         return resp
 
     try:
-        response = (retry_unknown(lambda: retry_while_busy(attempt),
-                                  getattr(client, 'retry_delays', None))
-                    if keyed else retry_while_busy(attempt))
+        on_retry = getattr(client, '_note_retry', None)
+        response = (retry_unknown(lambda: retry_while_busy(attempt, on_retry=on_retry),
+                                  getattr(client, 'retry_delays', None), on_retry=on_retry)
+                    if keyed else retry_while_busy(attempt, on_retry=on_retry))
     except PlaidAPIError as e:
         data = e.response_data if isinstance(e.response_data, dict) else {}
         # Only a single create: a bulk refused whole made none of its rows.
