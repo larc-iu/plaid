@@ -19,7 +19,7 @@ const toast = vi.hoisted(() => ({
 vi.mock('@ui/lib/integrityToast.js', () => toast);
 
 const auth = vi.hoisted(() => ({ getClient: vi.fn(), logout: vi.fn(), user: { id: 'u1' } }));
-vi.mock('../../contexts/AuthContext.jsx', () => ({ useAuth: () => auth }));
+vi.mock('@ui/contexts/useAuth.js', () => ({ useAuth: () => auth }));
 
 // Every document the shell builds, so a test can reach its error channel.
 const docs = vi.hoisted(() => []);
@@ -54,7 +54,7 @@ vi.mock('@ui/domain/CommentStore', () => ({
   },
 }));
 const feedback = vi.hoisted(() => ({ notifyError: vi.fn() }));
-vi.mock('../../utils/feedback.jsx', () => feedback);
+vi.mock('@ui/lib/notify.js', () => feedback);
 vi.mock('@ui/domain/useCommentStore', () => ({ useCommentStore: () => 0 }));
 vi.mock('@ui/hooks/useWriteLock.js', () => ({
   useWriteLock: () => ({ held: null, acquire: () => null }),

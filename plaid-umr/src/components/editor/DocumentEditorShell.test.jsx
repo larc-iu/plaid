@@ -10,7 +10,7 @@ import { renderComponent } from '@ui/test/renderComponent.jsx';
 // is the wiring of the comment store's error channel to the document.
 
 const auth = vi.hoisted(() => ({ getClient: vi.fn(), logout: vi.fn(), user: { id: 'u1' } }));
-vi.mock('../../contexts/AuthContext.jsx', () => ({ useAuth: () => auth }));
+vi.mock('@ui/contexts/useAuth.js', () => ({ useAuth: () => auth }));
 
 const docs = vi.hoisted(() => []);
 vi.mock('../../domain/UmrDocument.js', () => ({
@@ -46,7 +46,7 @@ vi.mock('@ui/domain/CommentStore', () => ({
   },
 }));
 const feedback = vi.hoisted(() => ({ notifyError: vi.fn() }));
-vi.mock('../../utils/feedback.jsx', () => feedback);
+vi.mock('@ui/lib/notify.js', () => feedback);
 vi.mock('@ui/domain/useCommentStore', () => ({ useCommentStore: () => 0 }));
 vi.mock('@ui/hooks/useWriteLock.js', () => ({
   useWriteLock: () => ({ held: null, acquire: () => null }),
