@@ -376,21 +376,6 @@ export const fieldsToConfig = (fields) =>
 // ---- tagsets on vocabulary fields ------------------------------------------
 
 /**
- * The tagset governing a field of this vocabulary, or null: the field names
- * none, or names one the vocabulary no longer has (a dangling reference
- * governs nothing, never an empty closed list; see resolveTagset in
- * tagsets.js for why).
- *
- * @param {{tagset?: string|null}} field - a normalized field
- * @param {object} vocabConfig - the vocab layer's whole `config`
- */
-export const vocabFieldTagset = (field, vocabConfig) => {
-  const name = str(field?.tagset);
-  if (!name) return null;
-  return readTagsets(vocabConfig)[name] ?? null;
-};
-
-/**
  * Every field of the vocabulary that a tagset governs, in the shape
  * TagsetsManager and byTagsetName read (`field`, `scope`, `kind`, `key`,
  * `tagsetName`, `tagset`): the vocabulary's own governedFields.

@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-  EMPTY_TAGSET,
   normalizeTagset,
   readTagsets,
   readTagsetName,
@@ -14,7 +13,6 @@ import {
   partAtCaret,
   replacePartAtCaret,
   tagsetHas,
-  tagsetRecord,
   sortedValues,
   validateValue,
   isValueAllowed,
@@ -31,9 +29,7 @@ import {
   entryTagsetFor,
   readingTagset,
   glossMorphemes,
-  offTagsetParts,
   offTagsetValues,
-  seedValueRecords,
   seedCandidates,
   unreachableValues,
 } from './tagsets.js';
@@ -53,8 +49,9 @@ const projectConfig = { igt: { tagsets: { Leipzig: leipzig, POS: { values: [{ va
 
 describe('normalizeTagset', () => {
   it('fills in the defaults', () => {
-    expect(normalizeTagset({})).toEqual(EMPTY_TAGSET);
-    expect(normalizeTagset(undefined)).toEqual(EMPTY_TAGSET);
+    const empty = { delimiters: '', mode: 'suggest', values: [] };
+    expect(normalizeTagset({})).toEqual(empty);
+    expect(normalizeTagset(undefined)).toEqual(empty);
   });
 
   it('keeps free-form keys on a value record', () => {
@@ -266,11 +263,6 @@ describe('membership', () => {
   it('trims the part before testing', () => {
     expect(tagsetHas(leipzig, '  NOM ')).toBe(true);
   });
-
-  it('returns the record so the picker can show a description', () => {
-    expect(tagsetRecord(leipzig, '1SG').description).toBe('1st person singular');
-    expect(tagsetRecord(leipzig, 'ABL')).toBeNull();
-  });
 });
 
 describe('validateValue', () => {
@@ -311,37 +303,34 @@ describe('validateValue', () => {
   });
 });
 
-describe('offTagsetParts / seedValueRecords', () => {
+describe('what the seed offers', () => {
   const attested = [
     ['1SG.NOM', 10],
     ['1SG.ABL', 4],
     ['ERG', 7],
     ['ABL', 1],
   ];
+  const none = { tags: [], lexical: [] };
 
-  it('pools counts per unknown part, most frequent first', () => {
-    expect(offTagsetParts(attested, leipzig)).toEqual([
-      { part: 'ERG', count: 7 },
-      { part: 'ABL', count: 5 },
-    ]);
+  it('offers the unknown parts, most frequent first', () => {
+    expect(seedCandidates(attested, leipzig)).toEqual({
+      tags: [{ value: 'ERG' }, { value: 'ABL' }],
+      lexical: [],
+    });
   });
 
-  it('reports nothing when everything attested is in the tagset', () => {
-    expect(offTagsetParts([['1SG.NOM', 3]], leipzig)).toEqual([]);
+  it('offers nothing when everything attested is in the tagset', () => {
+    expect(seedCandidates([['1SG.NOM', 3]], leipzig)).toEqual(none);
   });
 
   it('ignores empty parts: a stray delimiter is not a tag to seed', () => {
-    expect(offTagsetParts([['1SG.', 9]], leipzig)).toEqual([]);
+    expect(seedCandidates([['1SG.', 9]], leipzig)).toEqual(none);
   });
 
-  it('turns the unknowns into value records for the seed button', () => {
-    expect(seedValueRecords(attested, leipzig)).toEqual([{ value: 'ERG' }, { value: 'ABL' }]);
-  });
-
-  it('finds every attested value when the tagset is empty, which is the seed case', () => {
+  it('finds every attested value when the tagset is empty, pooling counts per part', () => {
     const fresh = { delimiters: '.', mode: 'suggest', values: [] };
     // 1SG pools 10+4, NOM 10, ERG 7, ABL 4+1.
-    expect(seedValueRecords(attested, fresh).map((r) => r.value)).toEqual([
+    expect(seedCandidates(attested, fresh).tags.map((r) => r.value)).toEqual([
       '1SG',
       'NOM',
       'ERG',
@@ -507,7 +496,7 @@ describe("mode 'mixed'", () => {
       ['dog.PL', 5],
       ['run.ERG', 3],
     ];
-    expect(offTagsetParts(attested, gloss)).toEqual([{ part: 'ERG', count: 3 }]);
+    expect(seedCandidates(attested, gloss)).toEqual({ tags: [{ value: 'ERG' }], lexical: [] });
   });
 });
 
@@ -576,7 +565,7 @@ describe('the lenient reading in tagset checks', () => {
 
   it('holds a lower-case abbreviation beside a tag to the list', () => {
     expect(validateValue('go.3.pfv', gloss).map((v) => v.part)).toEqual(['pfv']);
-    expect(offTagsetParts([['go.3.pfv', 2]], gloss)).toEqual([{ part: 'pfv', count: 2 }]);
+    expect(seedCandidates([['go.3.pfv', 2]], gloss).tags).toEqual([{ value: 'pfv' }]);
   });
 
   it('lets a word that spells an abbreviation through when nothing else is lexical', () => {
@@ -734,11 +723,10 @@ describe('a value known only by its own morph type', () => {
       tags: [{ value: '3' }],
       lexical: [{ value: 'pfv' }, { value: 'sbj' }],
     });
-    expect(offTagsetParts([['sbj:3.pfv', 2, suffix]], { ...fresh, mode: 'mixed' })).toEqual([
-      { part: '3', count: 2 },
-      { part: 'pfv', count: 2 },
-      { part: 'sbj', count: 2 },
-    ]);
+    expect(seedCandidates([['sbj:3.pfv', 2, suffix]], { ...fresh, mode: 'mixed' })).toEqual({
+      tags: [{ value: '3' }, { value: 'pfv' }, { value: 'sbj' }],
+      lexical: [],
+    });
   });
 });
 

@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   normalizeVocabFields,
   fieldsToConfig,
-  vocabFieldTagset,
   vocabGovernedFields,
   vocabTagsetByField,
   fieldBaseName,
@@ -88,18 +87,13 @@ describe('resolving a field tagset', () => {
   it('resolves the vocabulary-level tagset a field names', () => {
     const fields = normalizeVocabFields({ pos: { inline: true, tagset: 'POS' } });
     const pos = fields.find((f) => f.name === 'pos');
-    expect(vocabFieldTagset(pos, config)).toMatchObject({ mode: 'closed' });
-    expect(
-      vocabFieldTagset(
-        fields.find((f) => f.name === 'gloss'),
-        config,
-      ),
-    ).toBeNull();
+    const byField = vocabTagsetByField(fields, config);
+    expect(byField.get(pos.name)).toMatchObject({ mode: 'closed' });
+    expect(byField.has('gloss')).toBe(false);
   });
 
   it('governs nothing on a dangling reference, never an empty closed list', () => {
     const fields = normalizeVocabFields({ pos: { inline: true, tagset: 'Gone' } });
-    expect(vocabFieldTagset(fields[2], config)).toBeNull();
     expect(vocabGovernedFields(fields, config)).toEqual([]);
     expect(vocabTagsetByField(fields, config).size).toBe(0);
   });

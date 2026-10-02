@@ -1,12 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  composeInsert,
-  composePending,
-  composeString,
-  lookupCode,
-  isComposeCode,
-  COMPOSE_PREFIX,
-} from './compose.js';
+import { composeInsert, composePending, lookupCode, COMPOSE_PREFIX } from './compose.js';
 import { COMPOSE_TABLE } from './composeTable.js';
 
 // Type a whole string one character at a time through composeInsert, the way
@@ -40,7 +33,7 @@ describe('the table', () => {
     expect(lookupCode('ng')).toBe('ŋ');
     expect(lookupCode('?g')).toBe('ʔ');
     expect(lookupCode(':f')).toBe('ː');
-    expect(isComposeCode('zz')).toBe(false);
+    expect(lookupCode('zz')).toBeNull();
   });
 
   it('spells the empty set Praat\u2019s way and two easier ways', () => {
@@ -156,26 +149,5 @@ describe('composePending', () => {
     expect(lookupCode('-5')).toBe('˥');
     expect(at('\\i')).toBe(true); // the `-` that follows must not split
     expect(at('\\')).toBe(true); // nor the one that starts `\-5`
-  });
-});
-
-describe('composeString', () => {
-  it('applies codes across a whole string', () => {
-    expect(composeString('\\swk\\ng')).toBe('əkŋ');
-  });
-
-  it('handles the escape and the code point form', () => {
-    expect(composeString('\\\\sw')).toBe('\\sw');
-    expect(composeString('\\u2205')).toBe('∅');
-  });
-
-  it('leaves a backslash that opens nothing', () => {
-    expect(composeString('\\zz')).toBe('\\zz');
-    expect(composeString('a\\')).toBe('a\\');
-  });
-
-  it('is identity on text with no prefix', () => {
-    expect(composeString('ngoma')).toBe('ngoma');
-    expect(composeString('')).toBe('');
   });
 });

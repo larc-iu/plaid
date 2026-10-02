@@ -123,7 +123,6 @@ export const useBaselineOperations = () => {
   // is left. What was typed since is.
   useUnsavedDraft(isEditing && editedText !== base ? 'The baseline text you have typed' : null);
 
-  const updateEditedText = (text) => setEditedText(text);
   // The box's change, with the selection before it (editLogHandlers) and the
   // caret after it, kept as an edit.
   const handleTextChange = (event) => {
@@ -132,8 +131,6 @@ export const useBaselineOperations = () => {
   };
 
   return {
-    document: doc.document,
-    project: doc.project,
     body,
     primaryTextLayer,
     isEditing,
@@ -144,7 +141,6 @@ export const useBaselineOperations = () => {
     handleEdit,
     handleCancel,
     handleSave,
-    updateEditedText,
     handleTextChange,
     editLogHandlers: editLog.handlers,
   };

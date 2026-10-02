@@ -59,13 +59,6 @@ export const RESERVED_VALUE_KEYS = Object.freeze(['description']);
 export const MODES = Object.freeze({ SUGGEST: 'suggest', CLOSED: 'closed', MIXED: 'mixed' });
 export const TAGSET_MODES = Object.freeze([MODES.SUGGEST, MODES.CLOSED, MODES.MIXED]);
 
-/** A tagset with nothing configured: whole-cell, advisory, empty. */
-export const EMPTY_TAGSET = Object.freeze({
-  delimiters: '',
-  mode: MODES.SUGGEST,
-  values: [],
-});
-
 // The case rule and small caps live in plaid-ui (domain/glossCase.js), since
 // plaid-umr reads glosses by them too.
 import {
@@ -411,12 +404,6 @@ export const tagsetHas = (tagset, part) => {
   return (tagset?.values || []).some((v) => v.value === want);
 };
 
-/** The value record for a part, or null. */
-export const tagsetRecord = (tagset, part) => {
-  const want = str(part).trim();
-  return (tagset?.values || []).find((v) => v.value === want) ?? null;
-};
-
 /**
  * The order a person expects to read a list of abbreviations in: alphabetical
  * without regard to case, and with numbers in numeric order (1SG, 2SG, 3PL,
@@ -526,19 +513,15 @@ export const tagsetEnforces = (tagset) => !!tagset && tagset.mode !== MODES.SUGG
  * frequency query returns over its span layer, `reading` being how the grid
  * reads the value: glossReadingOf for a morpheme field's, absent for any
  * other), the parts that are NOT in the tagset, most frequent first:
- * [{ part, count }].
+ * [{ part, count, lexical }], `lexical` saying whether the part read as
+ * lexical in every value it came from (lexicalFlagsOf, which reads a part with
+ * the rest of its value).
  *
- * Used by "add values used in this project", which turns these into value
- * records. Its sibling offTagsetValues answers the other question — which
- * CELLS are wrong — and is what the Validation view lists. Neither loads a
- * document: both read a field's whole value inventory from one aggregate
- * query.
+ * What "add values used in this project" offers (seedCandidates). Its sibling
+ * offTagsetValues answers the other question (which CELLS are wrong) and is
+ * what the Validation view lists. Neither loads a document: both read a
+ * field's whole value inventory from one aggregate query.
  */
-export const offTagsetParts = (attested, tagset) =>
-  readOffTagsetParts(attested, tagset).map(({ part, count }) => ({ part, count }));
-
-// offTagsetParts, with whether each part read as lexical in every value it
-// came from (lexicalFlagsOf, which reads a part with the rest of its value).
 const readOffTagsetParts = (attested, tagset) => {
   if (!tagset) return [];
   const counts = new Map();
@@ -573,7 +556,7 @@ export const asClosed = (tagset) =>
  * The attested VALUES with a part off the list or a stray delimiter, worst
  * first: [{ value, count, violations, flagged }].
  *
- * The sibling of offTagsetParts, answering the other question. That one says
+ * The sibling of readOffTagsetParts, answering the other question. That one says
  * which tags are missing from the list, which is what a seed needs; this says
  * which cells are wrong, which is what a person fixing them needs to find and
  * what a bulk replace has to match on.
@@ -612,10 +595,6 @@ export const offTagsetValues = (attested, tagset) => {
   }
   return [...byValue.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
 };
-
-/** Those parts as value records, ready to append to a tagset's `values`. */
-export const seedValueRecords = (attested, tagset) =>
-  offTagsetParts(attested, tagset).map(({ part }) => ({ value: part }));
 
 /**
  * What the seed button would add, split by kind:

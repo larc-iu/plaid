@@ -7,7 +7,6 @@ import {
   readRemovedCodes,
   resolveComposeTable,
   rowsToConfig,
-  shadowsBuiltIn,
   validateCode,
 } from './composeConfig.js';
 import { composeInsert, lookupCode } from './compose.js';
@@ -121,13 +120,6 @@ describe('validateCode', () => {
     expect(validateCode(b, [a, b]).some((p) => /Another code/.test(p))).toBe(true);
     // Against itself alone it is fine.
     expect(ok(a, [a])).toBe(true);
-  });
-});
-
-describe('shadowsBuiltIn', () => {
-  it('knows which codes already mean something', () => {
-    expect(shadowsBuiltIn('sw')).toBe(true);
-    expect(shadowsBuiltIn("b'")).toBe(false);
   });
 });
 

@@ -219,7 +219,6 @@ SURFACE_EXEMPT = {
     'newVocabField': 'the Settings field table: one row before its first reload',
     'exportedVocabFields': "an export file's columns, and the agent writes no export",
     'seedDefaultFields': 'a new vocabulary',
-    'vocabFieldTagset': 'the Settings field table',
     'vocabGovernedFields': 'the Settings field table',
     'vocabTagsetByField': 'the Settings field table',
 }

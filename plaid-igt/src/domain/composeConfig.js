@@ -29,9 +29,6 @@ const isCode = (v) => typeof v === 'string' && [...v].length === CODE_LENGTH;
 /** Is this one of the codes that ships with the app? */
 export const isBuiltInCode = (code) => Object.prototype.hasOwnProperty.call(BUILT_IN_TABLE, code);
 
-/** Kept for callers that ask the older question. */
-export const shadowsBuiltIn = isBuiltInCode;
-
 /** The project's changed and added entries. Never null. */
 export function readProjectCodes(projectConfig) {
   const rows = readCompose(projectConfig)?.codes;

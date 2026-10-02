@@ -27,7 +27,6 @@ export const CODE_LENGTH = 2;
 
 /** `\u` + this many hex digits is the by-number escape hatch. */
 const HEX_LENGTH = 4;
-const HEX_INTRO = 'u';
 const HEX_DIGIT = /[0-9a-fA-F]/;
 // `\u`, then the digits accumulated so far, anchored at the caret.
 const HEX_PENDING = /\\u([0-9a-fA-F]{0,3})$/;
@@ -41,9 +40,6 @@ const tableOr = (t) => t || COMPOSE_TABLE;
 /** The character a code produces in `table`, or null. */
 export const lookupCode = (code, table) =>
   Object.prototype.hasOwnProperty.call(tableOr(table), code) ? tableOr(table)[code] : null;
-
-/** Is `code` a complete code? */
-export const isComposeCode = (code, table) => lookupCode(code, table) != null;
 
 /**
  * Decide what typing `ch` at `caret` in `value` should do.
@@ -127,43 +123,4 @@ export function composeAppend(value, ch, { escapedAt = -1, table } = {}) {
     value: value.slice(0, r.start) + r.text + value.slice(r.end),
     escapedAt: r.escapedAt ?? -1,
   };
-}
-
-/**
- * Apply every code in a string at once. Used for text that never passed
- * through a keystroke: the morpheme grid buffers raw characters while a split
- * is in flight and replays them into the new cell, so the replay runs this
- * rather than losing the codes typed during the round trip.
- */
-export function composeString(s, { table } = {}) {
-  if (typeof s !== 'string' || !s.includes(COMPOSE_PREFIX)) return s;
-  let out = '';
-  let i = 0;
-  while (i < s.length) {
-    if (s[i] !== COMPOSE_PREFIX) {
-      out += s[i++];
-      continue;
-    }
-    if (s[i + 1] === COMPOSE_PREFIX) {
-      out += COMPOSE_PREFIX;
-      i += 2;
-      continue;
-    }
-    const hit = lookupCode(s.slice(i + 1, i + 1 + CODE_LENGTH), table);
-    if (hit != null) {
-      out += hit;
-      i += 1 + CODE_LENGTH;
-      continue;
-    }
-    if (s[i + 1] === HEX_INTRO) {
-      const digits = s.slice(i + 2, i + 2 + HEX_LENGTH);
-      if (digits.length === HEX_LENGTH && [...digits].every((d) => HEX_DIGIT.test(d))) {
-        out += String.fromCodePoint(parseInt(digits, 16));
-        i += 2 + HEX_LENGTH;
-        continue;
-      }
-    }
-    out += s[i++]; // a backslash that opens nothing stays as typed
-  }
-  return out;
 }
