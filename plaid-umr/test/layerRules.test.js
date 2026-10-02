@@ -164,18 +164,48 @@ test('an open by a maintainer repairs, then declares the rule on UMR relations o
     [layerId, remediable],
     'the rules with a remedy are checked first',
   );
-  assert.deepEqual(made[1].args, [layerId, remediable], 'acyclic has no remedy to apply');
+  assert.deepEqual(made[1].args, [layerId, remediable]);
   assert.deepEqual(made[2].args, [layerId, 'umr', ruleFor(raw), undefined, { expected: null }]);
   assert.deepEqual(result, { findings: [], rulesDeclared: true });
   assert.equal(reloads(), 1, 'read again after core repaired the project');
   assert.match(
     doc.describeReconcile(result),
-    /set up the rules that a relation stays inside its sentence and closes no cycle/,
+    /set up the rule that a relation stays inside its sentence$/,
   );
   assert.ok(
     calls.some((c) => c.name === 'operation' && c.args[0] === 'Set up layer rules'),
     'the declaration is one labelled operation',
   );
+});
+
+// REV-FX-CORE F5: UMR no longer asks core for `acyclic` (the canvas and the
+// services hold the cycle rule). A layer an earlier open declared it on has
+// it taken off by a maintainer's open, once.
+test('the rule is same-ancestor alone, and a declared acyclic is taken off once', async () => {
+  const probe = load();
+  assert.deepEqual(
+    ruleFor(probe.raw).map((r) => r.type),
+    ['same-ancestor'],
+  );
+  const old = [
+    ...ruleFor(probe.raw),
+    { type: 'acyclic', exceptValues: [':quote', ':modal-predicate'] },
+  ];
+  const { doc, calls, raw } = load({ stored: old, broken: false });
+  const result = await doc._reconcile();
+  const set = constraintCalls(calls).filter((c) => c.name === 'relationLayers.setConstraints');
+  assert.equal(set.length, 1);
+  assert.deepEqual(set[0].args, [
+    relationLayerOf(raw).id,
+    'umr',
+    ruleFor(raw),
+    undefined,
+    { expected: old },
+  ]);
+  assert.deepEqual(result.findings, []);
+  const again = load({ stored: ruleFor(raw) });
+  assert.deepEqual(await again.doc._reconcile(), { findings: [] });
+  assert.deepEqual(constraintCalls(again.calls), []);
 });
 
 // H9-FIRST-OPEN-3: a repair holds the write lock over the whole layer.

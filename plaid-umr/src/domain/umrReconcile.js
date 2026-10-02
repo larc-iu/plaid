@@ -346,8 +346,7 @@ export function describeUmrReconcile({
   // The rule on UMR relations (umrConstraints.js): core deletes what breaks
   // it, then holds it.
   if (rulesRepaired) parts.push('removed relations that crossed sentences');
-  if (rulesDeclared)
-    parts.push('set up the rules that a relation stays inside its sentence and closes no cycle');
+  if (rulesDeclared) parts.push('set up the rule that a relation stays inside its sentence');
   if (strays)
     parts.push(`removed ${countOf(strays, 'empty node', 'empty nodes')} an interrupted add left`);
   if (unanchored.length) {

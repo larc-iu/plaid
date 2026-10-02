@@ -1,11 +1,15 @@
 // The layer rules UMR asks core to hold (plaid-core's layer constraints),
 // under its own namespace, on the sentence graph ("UMR relations"): a
 // relation joins two nodes of one sentence, which core holds as
-// `same-ancestor` over the sentence token layer, and the graph has no cycle
-// but through a cycle role (CYCLE_ROLES), which core holds as `acyclic`. A
-// cycle an import, a copy or a restore wrote is kept, as the canvas keeps
-// one a file brings. The document graph is cross-sentence by design and
-// carries none.
+// `same-ancestor` over the sentence token layer. The document graph is
+// cross-sentence by design and carries none.
+//
+// The rule that the graph has no cycle but through a cycle role
+// (CYCLE_ROLES) is not core's: the canvas, Text mode, the Draft service and
+// the assistant each refuse a graph that breaks it, a sentence at a time.
+// Core's `acyclic` refused an edit to a relation on a cycle a file brought,
+// and a whole batch of drafted sentences for one of them (REV-FX-CORE F2,
+// F4), so a layer an earlier open declared it on has it taken off.
 //
 // A node's place is where its anchor begins, so an unaligned node standing
 // over its whole sentence is placed in that sentence, the one it records.
@@ -13,12 +17,10 @@
 // By their real paths rather than through `@ui`: the node suite has no alias.
 import { rulesNotInForce, storedConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
 import { UMR_NAMESPACE } from '../utils/umrLayerUtils.js';
-import { CYCLE_ROLES } from './format/inventory.js';
 
 /** The rules on the sentence graph's relation layer, for a sentence layer id. */
 export const relationRules = (sentenceLayerId) => [
   { type: 'same-ancestor', tokenLayer: sentenceLayerId },
-  { type: 'acyclic', exceptValues: [...CYCLE_ROLES] },
 ];
 
 /**
