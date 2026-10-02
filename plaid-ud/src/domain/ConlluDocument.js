@@ -737,6 +737,10 @@ export class ConlluDocument extends DocumentModel {
       findings: [],
     };
     if (this._reconciling) return ZERO;
+    // A project UD has not adopted is only looked at: a link straight to one
+    // of its documents writes nothing, not even the back-fills, which would
+    // change how another app's shared word layer splits.
+    if (!this.layerInfo.isConfigured) return ZERO;
     this._reconciling = true;
     try {
       let info = this.layerInfo;
