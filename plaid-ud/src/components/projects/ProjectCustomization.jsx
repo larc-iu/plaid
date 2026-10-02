@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { UD_NAMESPACE, getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import {
@@ -79,6 +79,60 @@ const snapshot = (state) =>
       Object.entries(state.descriptions).map(([k, v]) => [k, cleanDescriptions(v || {})]),
     ),
   });
+
+// The tab's settings one at a time, each with the card it is on. A Save that
+// another maintainer's save refused (409) reads the project again, and only
+// the settings changed there take the new value. Every other change on the
+// tab stays as it was typed.
+const VOCAB_CARDS = {
+  upos: 'UPOS tags',
+  xpos: 'XPOS tags',
+  deprel: 'Dependency relations',
+  feats: 'Feature inventory',
+};
+const SETTINGS = [
+  ['uposVocab', 'UPOS tags'],
+  ['xposVocab', 'XPOS tags'],
+  ['deprelVocab', 'Dependency relations'],
+  ['deprelColors', 'Relation colors'],
+  ['uposColors', 'UPOS colors'],
+  ['featureInventory', 'Feature inventory'],
+  ['documentFields', 'Document fields'],
+  ['sentenceFields', 'Sentence fields'],
+  ...['modes', 'descriptions'].flatMap((head) =>
+    Object.entries(VOCAB_CARDS).map(([vocab, card]) => [`${head}.${vocab}`, card]),
+  ),
+];
+
+// One setting of a tab state, cleaned as Save cleans it.
+const settingValue = (state, path) => {
+  const [head, vocab] = path.split('.');
+  const value = vocab ? state[head]?.[vocab] : state[head];
+  if (head === 'modes') return value || MODES.OPEN;
+  if (head === 'descriptions') return cleanDescriptions(value || {});
+  if (head.endsWith('Colors')) return cleanColorMap(value || {});
+  return value;
+};
+const sameSetting = (a, b, path) => sameConfig(settingValue(a, path), settingValue(b, path));
+
+// The cards whose change on the tab gave way to a different change saved
+// elsewhere, and whether the tab still holds changes of its own.
+const conflictSummary = (draft, loaded, latest) => {
+  const edited = SETTINGS.filter(([path]) => !sameSetting(draft, loaded, path));
+  const movedThere = ([path]) => !sameSetting(loaded, latest, path);
+  const replaced = edited.filter((s) => movedThere(s) && !sameSetting(draft, latest, s[0]));
+  return {
+    replaced: [...new Set(replaced.map(([, card]) => card))],
+    kept: edited.some((s) => !movedThere(s)),
+  };
+};
+
+const conflictMessage = ({ replaced, kept }) => {
+  const latest = replaced.length
+    ? `Changed elsewhere, now showing the latest: ${replaced.join(', ')}.`
+    : 'Changed elsewhere.';
+  return kept ? `${latest} Save again for the rest.` : latest;
+};
 
 // Every config cell this tab writes, with the value the tab's state stores
 // there. Mode and descriptions are SIBLING keys beside `vocab`, never a new
@@ -196,20 +250,32 @@ export const ProjectCustomization = () => {
   // Leaving the tab, the page or the window with a change made asks first.
   useUnsavedDraft(dirty ? 'The settings you have changed' : null);
 
-  // Seed the editors from the project's current layer config.
+  // Seed the editors from the project's current layer config. A project read
+  // again (after a Save, or after one refused because of a save elsewhere)
+  // changes only the settings that changed on the server, so an edit to any
+  // other setting survives the read.
+  const seeded = useRef(null);
   useEffect(() => {
     if (!project) return;
     const seed = seedFrom(project);
-    setUposVocab(seed.uposVocab);
-    setXposVocab(seed.xposVocab);
-    setDeprelVocab(seed.deprelVocab);
-    setDeprelColors(seed.deprelColors);
-    setUposColors(seed.uposColors);
-    setFeatureInventory(seed.featureInventory);
-    setModes(seed.modes);
-    setDescriptions(seed.descriptions);
-    setDocumentFields(seed.documentFields);
-    setSentenceFields(seed.sentenceFields);
+    const before = seeded.current?.id === project.id ? seeded.current.seed : null;
+    seeded.current = { id: project.id, seed };
+    const moved = (path) => !before || !sameSetting(before, seed, path);
+    const take = (head) => (prev) => (moved(head) ? seed[head] : prev);
+    const takeEach = (head) => (prev) =>
+      Object.fromEntries(
+        Object.keys(VOCAB_CARDS).map((v) => [v, moved(`${head}.${v}`) ? seed[head][v] : prev[v]]),
+      );
+    setUposVocab(take('uposVocab'));
+    setXposVocab(take('xposVocab'));
+    setDeprelVocab(take('deprelVocab'));
+    setDeprelColors(take('deprelColors'));
+    setUposColors(take('uposColors'));
+    setFeatureInventory(take('featureInventory'));
+    setModes(takeEach('modes'));
+    setDescriptions(takeEach('descriptions'));
+    setDocumentFields(take('documentFields'));
+    setSentenceFields(take('sentenceFields'));
   }, [project]);
 
   const setMode = (field) => (closed) =>
@@ -230,26 +296,28 @@ export const ProjectCustomization = () => {
 
   // Save writes only the settings changed on this tab, in one batch, each
   // expecting the value the tab was loaded with. A save by someone else since
-  // then refuses the batch (409), and the tab reads the project again.
+  // then refuses the batch (409), and the tab reads the project again and
+  // keeps every change whose setting did not change there.
   const handleSave = async () => {
     setSaving(true);
+    const current = {
+      uposVocab,
+      xposVocab,
+      deprelVocab,
+      deprelColors,
+      uposColors,
+      featureInventory,
+      documentFields,
+      sentenceFields,
+      modes,
+      descriptions,
+    };
+    const loadedSeed = seedFrom(project);
     try {
       const client = getClient();
       if (!client) throw new Error('Not authenticated');
       const info = getUdLayerInfo(project);
-      const current = {
-        uposVocab,
-        xposVocab,
-        deprelVocab,
-        deprelColors,
-        uposColors,
-        featureInventory,
-        documentFields,
-        sentenceFields,
-        modes,
-        descriptions,
-      };
-      const loaded = new Map(configCells(seedFrom(project), info, project).map((c) => [c.id, c]));
+      const loaded = new Map(configCells(loadedSeed, info, project).map((c) => [c.id, c]));
       const changed = configCells(current, info, project).filter(
         (c) => !sameConfig(c.value, loaded.get(c.id)?.value),
       );
@@ -275,8 +343,18 @@ export const ProjectCustomization = () => {
       notifySuccess('UD settings saved');
     } catch (err) {
       console.error('Failed to save customization:', err);
-      notifyError(err, 'Failed to save the UD settings');
-      if (isConfigConflict(err)) await fetchProject();
+      if (isConfigConflict(err)) {
+        // Reading the project again moves only what changed there (the seed
+        // effect above). The toast names the cards where that replaced a
+        // change made on this tab.
+        const latest = await fetchProject();
+        const summary = latest
+          ? conflictSummary(current, loadedSeed, seedFrom(latest))
+          : { replaced: [], kept: true };
+        notifyError(conflictMessage(summary), 'UD settings not saved');
+      } else {
+        notifyError(err, 'Failed to save the UD settings');
+      }
     } finally {
       setSaving(false);
     }
