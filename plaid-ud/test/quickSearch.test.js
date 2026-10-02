@@ -21,6 +21,7 @@ const LAYERS = {
   xposLayer: { id: 'XP' },
   featuresLayer: { id: 'FE' },
   relationLayer: { id: 'REL' },
+  enhancedRelationLayer: { id: 'EREL' },
   isConfigured: true,
 };
 

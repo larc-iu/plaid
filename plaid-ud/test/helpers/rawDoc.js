@@ -9,8 +9,8 @@ import { cpSlice } from '@larc-iu/plaid-client';
 import { parseCoNLLU, buildConlluHierarchy } from '../../src/utils/conlluParser.js';
 import { planEnhancedRow } from '../../src/domain/enhancedGraph.js';
 
-// `enhanced: true` gives the project the optional enhanced relation layer, and
-// the rows the importer would write into it from DEPS.
+// Every UD project has the enhanced relation layer. `enhanced: true` gives it
+// the rows the importer would write into it from DEPS, else it is empty.
 export function rawDocFromConllu(conlluText, name = 'doc', { enhanced = false } = {}) {
   const parsed = parseCoNLLU(conlluText);
   const hierarchy = buildConlluHierarchy(parsed);
@@ -179,15 +179,11 @@ export function rawDocFromConllu(conlluText, name = 'doc', { enhanced = false } 
                 spans: lemmaSpans,
                 relationLayers: [
                   { id: 'relation-layer', config: { ud: { dependency: true } }, relations },
-                  ...(enhanced
-                    ? [
-                        {
-                          id: 'enhanced-relation-layer',
-                          config: { ud: { enhancedDependency: true } },
-                          relations: enhancedRelations,
-                        },
-                      ]
-                    : []),
+                  {
+                    id: 'enhanced-relation-layer',
+                    config: { ud: { enhancedDependency: true } },
+                    relations: enhancedRelations,
+                  },
                 ],
               },
               { id: 'upos-layer', config: { ud: { upos: true } }, spans: uposSpans },

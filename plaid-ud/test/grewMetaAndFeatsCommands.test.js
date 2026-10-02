@@ -16,6 +16,7 @@ const LI = {
   xposLayer: { id: 'XPOS' },
   featuresLayer: { id: 'FEATS' },
   relationLayer: { id: 'REL' },
+  enhancedRelationLayer: { id: 'EREL' },
 };
 
 const metadataOf = (src) =>

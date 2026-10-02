@@ -21,14 +21,12 @@ const Row = ({ title, children }) => (
   </div>
 );
 
-export const EditorLegend = ({ project, annotatesEnhanced = false }) => {
+export const EditorLegend = ({ project }) => {
   // The amber mark only means something in a project that reviews somebody's
   // work. Everywhere else there is no such thing as a contributed annotation,
   // and a legend row for it is a row about a feature nobody here has.
   const review = readReview(project?.config);
   const reviewsSomeone = review.users.length > 0 || review.roles.length > 0;
-  // The same goes for `annotatesEnhanced`: a row for a gesture that does
-  // nothing in this project is noise.
 
   return (
     <details className="group mt-3 text-xs text-muted-foreground">
@@ -87,16 +85,14 @@ export const EditorLegend = ({ project, annotatesEnhanced = false }) => {
           <Key>→</Key> move between them, <Key>↵</Key> edits, <Key>↓</Key> drops back into the grid.
         </Row>
 
-        {annotatesEnhanced && (
-          <Row title="Enhanced">
-            Start drawing a relation with <Key>Ctrl</Key>/<Key>Cmd</Key> held to add it to the
-            enhanced graph, shown under the words. Drawn over a relation of the tree, it gives that
-            relation a different label there · <Key>Ctrl</Key>/<Key>Cmd</Key>+click a relation of
-            the tree, or <Key>Ctrl</Key>/<Key>Cmd</Key>+<Key>E</Key> on its label, leaves it out of
-            the enhanced graph, shown faded · <Key>Ctrl</Key>/<Key>Cmd</Key>+<Key>D</Key> from the
-            tree&rsquo;s labels moves to the ones under the words, and back.
-          </Row>
-        )}
+        <Row title="Enhanced">
+          Start drawing a relation with <Key>Ctrl</Key>/<Key>Cmd</Key> held to add it to the
+          enhanced graph, shown under the words. Drawn over a relation of the tree, it gives that
+          relation a different label there · <Key>Ctrl</Key>/<Key>Cmd</Key>+click a relation of the
+          tree, or <Key>Ctrl</Key>/<Key>Cmd</Key>+<Key>E</Key> on its label, leaves it out of the
+          enhanced graph, shown faded · <Key>Ctrl</Key>/<Key>Cmd</Key>+<Key>D</Key> from the
+          tree&rsquo;s labels moves to the ones under the words, and back.
+        </Row>
       </div>
     </details>
   );

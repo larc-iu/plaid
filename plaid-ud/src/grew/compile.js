@@ -646,14 +646,8 @@ class Compiler {
       sides.push(cm);
     }
     if (split.enhanced) {
-      const layer = this.li.enhancedRelationLayer?.id;
-      // A label that reads both graphs reads the tree alone in a project with
-      // no enhanced layer. One that reads only the extras has nothing to read.
-      if (layer) {
-        sides.push({ layer, value: this.edgeValueConstraint(split.enhanced, ctx) ?? ANY_VALUE });
-      } else if (!split.basic) {
-        this.layerId('enhancedRelationLayer', 'enhanced dependency');
-      }
+      const layer = this.layerId('enhancedRelationLayer', 'enhanced dependency');
+      sides.push({ layer, value: this.edgeValueConstraint(split.enhanced, ctx) ?? ANY_VALUE });
     }
     if (!sides.length) {
       throw new GrewUnsupportedError('edge-label', 'This edge label can match no edge.');

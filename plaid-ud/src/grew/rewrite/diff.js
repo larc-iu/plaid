@@ -144,14 +144,7 @@ export function diffGraphs(before, after, layerInfo) {
     if (!id) throw new GrewRuntimeError(notSetUp(`no ${what} layer`));
     return id;
   };
-  const enhancedLayerId = () => {
-    if (!layer('enhancedRelationLayer')) {
-      throw new GrewRuntimeError(
-        'This project is not set up for enhanced dependencies. A maintainer opening a document sets it up.',
-      );
-    }
-    return layer('enhancedRelationLayer');
-  };
+  const enhancedLayerId = () => layerIdOf('enhancedRelationLayer', 'enhanced dependency relation');
   const basicLayerId = () => layerIdOf('relationLayer', 'dependency relation');
   const writeCreate = (a, layerId, extra = {}) => {
     writes.main.push({

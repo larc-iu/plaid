@@ -10,9 +10,7 @@ import {
   metadataOps,
   PLAID_NAMESPACE,
   isReservedMetadataKey,
-  PRESERVE_ON_SPLIT_KEY,
   SPLIT_ON_SPACE_KEY,
-  PROVENANCE_KEYS,
   applyTextOps,
   gapsToOps,
   stampInferred,
@@ -45,7 +43,6 @@ import {
   relationsCrossing,
   staleSuppressorIds,
   wordsNeedingSyntacticWord,
-  planPreserveOnSplit,
   describeReconcile as describeUdReconcile,
 } from '../utils/udReconcile.js';
 import { validateConlluDocument } from './validate.js';
@@ -53,7 +50,6 @@ import { makeValidators } from '../utils/udVocabMode.js';
 import { importConlluDocument } from './conlluImport.js';
 import { buildSentenceRows } from './sentenceRows.js';
 import { buildConllu, conlluLosses } from './conlluSerialize.js';
-import { ensureEnhancedRelationLayer } from './udProjectSetup.js';
 import { basicTokenize, newlineSentenceRanges } from '../utils/basicTokenize.js';
 import { normalizeFeature, featureRefusal } from '../utils/feats.js';
 
@@ -640,38 +636,6 @@ export class ConlluDocument extends DocumentModel {
     return describeUdReconcile(result);
   }
 
-  // Maintainers only, since it is layer config; a failure is not worth
-  // interrupting anyone over, because nothing is worse than it was. The write
-  // adds only the missing keys to what the layer declared, and names that
-  // declaration as `expected`, so a key another app declared after this page
-  // loaded is not written over: that write is refused and the next open plans
-  // again.
-  async _backfillPreserveOnSplit(info) {
-    if (!canManageProject(this._project, this._user)) return;
-    const ids = planPreserveOnSplit(info, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, PROVENANCE_KEYS);
-    const layers = [info?.sentenceTokenLayer, info?.wordTokenLayer, info?.morphemeTokenLayer];
-    for (const id of ids) {
-      const layer = layers.find((l) => l?.id === id);
-      const options = expectStored(layer, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY);
-      const declared = Array.isArray(options.expected) ? options.expected : [];
-      const value = [...declared, ...PROVENANCE_KEYS.filter((k) => !declared.includes(k))];
-      try {
-        await this._client.tokenLayers.setConfig(
-          id,
-          PLAID_NAMESPACE,
-          PRESERVE_ON_SPLIT_KEY,
-          value,
-          undefined,
-          options,
-        );
-      } catch (err) {
-        if (isConfigConflict(err)) continue;
-        console.error('Could not declare preserveOnSplit on a layer:', err);
-        return;
-      }
-    }
-  }
-
   // A space typed inside a word splits it: `splitOnSpace` on the word layer.
   // A project made before the key existed picks it up here, for a
   // maintainer, naming what this page read. A failure is let go: the next
@@ -695,18 +659,6 @@ export class ConlluDocument extends DocumentModel {
     }
   }
 
-  // The same back-fill for the enhanced relation layer, which a project from
-  // before it existed lacks. True when a layer was made, so the caller re-reads.
-  async _backfillEnhancedLayer(info) {
-    if (info.enhancedRelationLayer || !canManageProject(this._project, this._user)) return false;
-    try {
-      return Boolean(await ensureEnhancedRelationLayer(this._client, info.lemmaLayer));
-    } catch (err) {
-      console.error('Could not add the enhanced dependency layer:', err);
-      return false;
-    }
-  }
-
   async _reconcile() {
     const ZERO = {
       createdSyntacticWords: 0,
@@ -722,16 +674,7 @@ export class ConlluDocument extends DocumentModel {
     this._reconciling = true;
     try {
       let info = this.layerInfo;
-      // Back-fill, the reconcile contract's second step. Provenance lost in a
-      // split leaves nothing for a later pass to find, so the declaration has
-      // to be in place before the split, not repaired after it.
-      await this._backfillPreserveOnSplit(info);
       await this._backfillSplitOnSpace(info);
-      const addedEnhancedLayer = await this._backfillEnhancedLayer(info);
-      if (addedEnhancedLayer) {
-        await this._reload();
-        info = this.layerInfo;
-      }
       const rules = await ensureLayerConstraints(this._client, wantedConstraints(info), {
         canManage: canManageProject(this._project, this._user),
         canWrite: canEditProject(this._project, this._user),

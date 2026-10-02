@@ -141,18 +141,6 @@ export async function importConlluDocument(
       // says nothing: the word keeps the relation its tree gives it.
       return s.tokens.map((t) => planEnhancedRow(t, t.deps, hasDeps && !t.depsUnreadable));
     });
-    if (!enhancedRelationLayer) {
-      const lost = enhancedPlans
-        .flat()
-        .reduce((n, plan) => n + plan.extras.length + (plan.suppress ? 1 : 0), 0);
-      if (lost > 0) {
-        importWarnings.push(
-          `${count(lost, 'enhanced dependency', 'enhanced dependencies')} dropped: ` +
-            'this project is not set up for enhanced dependencies. ' +
-            'A maintainer opening a document sets it up.',
-        );
-      }
-    }
 
     const hierarchy = buildConlluHierarchy(parsedData);
 
@@ -170,7 +158,6 @@ export async function importConlluDocument(
           rows.add(t.id);
           if (t.head > 0) rows.add(t.head);
         }
-        if (!enhancedRelationLayer) return;
         // An extra enhanced edge hangs off the same two kinds of row.
         enhancedPlans[sentIdx][tokIdx].extras.forEach((e) => {
           rows.add(t.id);
@@ -340,41 +327,39 @@ export async function importConlluDocument(
       // relations to a call. A suppressor lies over its row's own basic
       // relation, so it is written only where that relation was.
       let headlessDeps = 0;
-      if (enhancedRelationLayer) {
-        const basicPairs = new Set(relationOps.map((op) => `${op.source} ${op.target}`));
-        parsedData.sentences.forEach((sentence, sentIdx) => {
-          const ids = lemmaSpanIds[sentIdx];
-          sentence.tokens.forEach((token, tokIdx) => {
-            const targetId = ids[tokIdx];
-            if (!targetId) return;
-            const plan = enhancedPlans[sentIdx][tokIdx];
-            const spanOf = (head) => (head === 0 ? targetId : ids[head - 1]);
-            const basicSource = token.deprel ? spanOf(token.head) : null;
-            if (plan.suppress && basicSource && basicPairs.has(`${basicSource} ${targetId}`)) {
-              enhancedOps.push({
-                relationLayerId: enhancedRelationLayer.id,
-                source: basicSource,
-                target: targetId,
-                value: null,
-                metadata: { [SUPPRESS_KEY]: true },
-              });
+      const basicPairs = new Set(relationOps.map((op) => `${op.source} ${op.target}`));
+      parsedData.sentences.forEach((sentence, sentIdx) => {
+        const ids = lemmaSpanIds[sentIdx];
+        sentence.tokens.forEach((token, tokIdx) => {
+          const targetId = ids[tokIdx];
+          if (!targetId) return;
+          const plan = enhancedPlans[sentIdx][tokIdx];
+          const spanOf = (head) => (head === 0 ? targetId : ids[head - 1]);
+          const basicSource = token.deprel ? spanOf(token.head) : null;
+          if (plan.suppress && basicSource && basicPairs.has(`${basicSource} ${targetId}`)) {
+            enhancedOps.push({
+              relationLayerId: enhancedRelationLayer.id,
+              source: basicSource,
+              target: targetId,
+              value: null,
+              metadata: { [SUPPRESS_KEY]: true },
+            });
+          }
+          plan.extras.forEach((e) => {
+            const sourceId = spanOf(e.head);
+            if (!sourceId) {
+              headlessDeps += 1;
+              return;
             }
-            plan.extras.forEach((e) => {
-              const sourceId = spanOf(e.head);
-              if (!sourceId) {
-                headlessDeps += 1;
-                return;
-              }
-              enhancedOps.push({
-                relationLayerId: enhancedRelationLayer.id,
-                source: sourceId,
-                target: targetId,
-                value: e.deprel,
-              });
+            enhancedOps.push({
+              relationLayerId: enhancedRelationLayer.id,
+              source: sourceId,
+              target: targetId,
+              value: e.deprel,
             });
           });
         });
-      }
+      });
       if (headlessDeps > 0) {
         importWarnings.push(
           `${count(headlessDeps, 'enhanced dependency', 'enhanced dependencies')} dropped: ` +

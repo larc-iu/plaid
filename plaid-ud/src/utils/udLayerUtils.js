@@ -22,11 +22,9 @@ export const containsToken = (parent, child) =>
 export const UD_RELATION_CONFIG_KEY = 'dependency';
 
 // The second relation layer on Lemma, holding what the enhanced graph has that
-// the basic tree does not (see domain/enhancedGraph.js). Every new project has
-// one, and an older project is given one the first time a maintainer opens a
-// document in it (`ensureEnhancedRelationLayer`). Until then it is absent, so
-// it is never among the missing layers, and everything that reads it takes
-// null for an answer. It carries its own flag and not the
+// the basic tree does not (see domain/enhancedGraph.js). Every UD project has
+// one: a project without it is not set up for UD. It carries its own flag and
+// not the
 // `dependency` one, so everything that finds the tree by that flag, in this app
 // and outside it, goes on finding the tree alone.
 export const UD_ENHANCED_RELATION_CONFIG_KEY = 'enhancedDependency';
@@ -60,6 +58,7 @@ export const UD_LAYER_LABELS = {
   xpos: 'XPOS layer',
   features: 'Features layer',
   dependency: 'Dependency relation layer',
+  enhancedDependency: 'Enhanced dependency relation layer',
 };
 
 const hasConfigFlag = (config, key) => config?.[UD_NAMESPACE]?.[key] === true;
@@ -93,6 +92,7 @@ const EMPTY_MISSING = [
   'xpos',
   'features',
   'dependency',
+  'enhancedDependency',
 ];
 
 export const getUdLayerInfo = (document) => {
@@ -167,6 +167,7 @@ export const getUdLayerInfo = (document) => {
   const enhancedRelationLayer = lemmaLayer
     ? findUdRelationLayer(lemmaLayer, UD_ENHANCED_RELATION_CONFIG_KEY)
     : null;
+  if (!enhancedRelationLayer) missingLayers.push('enhancedDependency');
 
   const normalizedMissing = Array.from(new Set(missingLayers));
 

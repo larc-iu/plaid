@@ -310,35 +310,3 @@ const queueEnhancedRelationLayer = (b, lemmaLayerId) => {
   b.relationLayers.setConfig(id, UD_NAMESPACE, UD_ENHANCED_RELATION_CONFIG_KEY, true);
   return id;
 };
-
-/**
- * The project's enhanced relation layer, made if it has none: a second
- * relation layer on Lemma, beside the tree's (see domain/enhancedGraph.js).
- *
- * Every new project is given one by the bootstrap above. This is for the
- * projects that were not: one made before the layer existed, or one another
- * app set up and UD adopted. A relation layer can be added to a project at any
- * time, so they take it as readily. It needs a maintainer, being a layer, so
- * the callers are the three places a maintainer is known to be standing: the
- * layer setup page, reconcile-on-open, and the bulk import. One batch, the
- * layer made under an id minted here so its flag can name it.
- *
- * @param {object} client - PlaidClient instance
- * @param {object} lemmaLayer - the project's Lemma span layer, as read
- * @returns {Promise<string|null>} the id of a layer this call CREATED, or null
- *   when the project already had one
- */
-export const ensureEnhancedRelationLayer = async (client, lemmaLayer) => {
-  if (!lemmaLayer?.id) return null;
-  const existing = (lemmaLayer.relationLayers || []).find(
-    (layer) => layer.config?.[UD_NAMESPACE]?.[UD_ENHANCED_RELATION_CONFIG_KEY] === true,
-  );
-  if (existing) return null;
-  return client.withOperation('Add enhanced dependencies', async () => {
-    let layerId = null;
-    await client.batched(async (b) => {
-      layerId = queueEnhancedRelationLayer(b, lemmaLayer.id);
-    });
-    return layerId;
-  });
-};

@@ -380,13 +380,8 @@ export const AnnotationEditor = () => {
       onRelationCreate: readOnly ? null : handleRelationCreate,
       onRelationUpdate: readOnly ? null : handleRelationUpdate,
       onRelationDelete: readOnly ? null : handleRelationDelete,
-      // Both null in a project with no enhanced relation layer yet (one from
-      // before it existed, until a maintainer opens a document in it), which
-      // is how the tree knows not to offer the gesture.
-      onEnhancedRelationCreate:
-        readOnly || !layerInfo?.enhancedRelationLayer ? null : handleEnhancedRelationCreate,
-      onRelationSuppress:
-        readOnly || !layerInfo?.enhancedRelationLayer ? null : handleRelationSuppress,
+      onEnhancedRelationCreate: readOnly ? null : handleEnhancedRelationCreate,
+      onRelationSuppress: readOnly ? null : handleRelationSuppress,
       onConfirmTokens: readOnly ? null : handleConfirmTokens,
       onDiscardTokens: readOnly ? null : handleDiscardTokens,
       onSentenceMetadata: readOnly ? null : handleSentenceMetadata,
@@ -533,12 +528,7 @@ export const AnnotationEditor = () => {
           <div className="px-6 pb-4">
             {toolbar}
             {readOnlyBanner}
-            {processedSentences.length > 0 && !readOnly && (
-              <EditorLegend
-                project={project}
-                annotatesEnhanced={Boolean(layerInfo?.enhancedRelationLayer)}
-              />
-            )}
+            {processedSentences.length > 0 && !readOnly && <EditorLegend project={project} />}
             <ListPager
               {...paged}
               onPage={setPage}

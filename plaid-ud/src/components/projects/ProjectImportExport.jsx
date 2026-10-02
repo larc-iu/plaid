@@ -2,8 +2,6 @@ import JSZip from 'jszip';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { splitConlluByNewdoc } from '../../utils/conlluParser.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
-import { canManageProject } from '@ui/domain/permissions.js';
-import { ensureEnhancedRelationLayer } from '../../domain/udProjectSetup.js';
 import { humanizeError } from '../../utils/feedback.jsx';
 import { NOT_SET_UP_FILE, NOT_TOKENIZED_FILE } from '../../domain/conlluSerialize.js';
 import { ProjectImportExportPage } from '@ui/components/shared/ProjectImportExportPage.jsx';
@@ -29,24 +27,11 @@ async function mapWithConcurrency(items, limit, fn, onProgress) {
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
 }
 
-const prepareImport = async ({ client, project, projectId, user }) => {
+const prepareImport = async ({ client, project, projectId }) => {
   // Layer config is the same for every document, so it is read once and passed
   // in. Otherwise importFromConllu re-fetches it (a full includeBody read) per
   // document, which roughly doubles import time on a big set.
-  let layerInfo = getUdLayerInfo(project);
-  // A project from before the enhanced relation layer has none, and an import
-  // is where its absence costs something: DEPS would be dropped. A
-  // maintainer's import adds it first. Anyone else's goes ahead without, and
-  // says what it dropped.
-  if (!layerInfo.enhancedRelationLayer && canManageProject(project, user)) {
-    try {
-      if (await ensureEnhancedRelationLayer(client, layerInfo.lemmaLayer)) {
-        layerInfo = getUdLayerInfo(await client.projects.get(projectId));
-      }
-    } catch (err) {
-      console.error('Could not add the enhanced dependency layer:', err);
-    }
-  }
+  const layerInfo = getUdLayerInfo(project);
 
   // A file holds one document, or several split at `# newdoc`.
   return async ({ text, index, name: base, push }) => {

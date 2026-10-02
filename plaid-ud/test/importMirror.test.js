@@ -119,7 +119,6 @@ const ENHANCED = conllu([
 const ALL_CASES = [
   ...Object.entries(CASES).map(([what, input]) => [what, input, undefined]),
   ['an enhanced graph', ENHANCED, { enhanced: true }],
-  ['an enhanced graph, into a project with no layer for one yet', ENHANCED, undefined],
 ];
 
 for (const [what, input, options] of ALL_CASES) {
@@ -228,17 +227,6 @@ test('an enhanced graph comes back out of DEPS as it went in', () => {
   // column says so again on the way out. Reading it as "follows the tree"
   // wrote `4:obj` into a file that never said it.
   assert.ok(out.includes('\t4\tobj\t_\t'), out);
-});
-
-test('a project with no enhanced relation layer yet says what it dropped', async () => {
-  const info = getUdLayerInfo(rawDocFromConllu(ENHANCED, 'm'));
-  const out = await ConlluDocument.importFromConllu(recordingClient(), 'p1', 'm', ENHANCED, info);
-  // One extra head, a relabel that is a suppressor and an extra, and one row
-  // whose `_` leaves its tree relation out.
-  assert.deepEqual(out.importWarnings, [
-    '4 enhanced dependencies dropped: this project is not set up for enhanced dependencies. ' +
-      'A maintainer opening a document sets it up.',
-  ]);
 });
 
 test('an enhanced dependency from an empty node is dropped with the node', async () => {

@@ -347,12 +347,6 @@ test('discarding a machine relation takes the suppressor lying over it', async (
   );
 });
 
-test('a project with no enhanced layer refuses an enhanced edge', async () => {
-  const { doc, log, lemma } = open(INPUT, {});
-  assert.equal(await doc.createEnhancedRelation(lemma('leave'), lemma('she'), 'nsubj'), false);
-  assert.deepEqual(log, []);
-});
-
 test("a sentence split leaves the edges it cuts to the server's rule, and takes them off the screen", async () => {
   const { client } = relationClient();
   const deleted = [];
@@ -425,69 +419,6 @@ test('reconcile deletes a suppressor whose basic relation another writer removed
   assert.deepEqual(deleted, ['stale']);
   // Housekeeping, not a loss: nothing is reported to the annotator.
   assert.equal(doc.describeReconcile(result), null);
-});
-
-// A project from before the enhanced layer existed is given one the first time
-// a maintainer opens a document in it, as it was given `preserveOnSplit`.
-const backfillClient = (raw, calls) =>
-  withOps({
-    relationLayers: {
-      create: async (spanLayerId, name, _audit, { id } = {}) => {
-        calls.push(['create', spanLayerId, name, id]);
-        return { id };
-      },
-      setConfig: async (...args) => calls.push(['setConfig', ...args]),
-    },
-    tokenLayers: { setConfig: async () => {} },
-    documents: { get: async () => rawDocFromConllu(INPUT, 'e', { enhanced: true }) },
-  });
-
-test('reconcile adds the enhanced layer to a project that has none, for a maintainer', async () => {
-  const raw = rawDocFromConllu(INPUT, 'e');
-  const calls = [];
-  const doc = new ConlluDocument({
-    raw,
-    client: backfillClient(raw, calls),
-    project: { maintainers: ['m@x.org'] },
-    user: { id: 'm@x.org' },
-  });
-  assert.equal(doc.layerInfo.enhancedRelationLayer, null);
-
-  await doc._reconcile();
-
-  // One batch: the layer is made under an id minted for it, which its flag
-  // names.
-  const made = calls[0][3];
-  assert.ok(made);
-  assert.deepEqual(calls, [
-    ['create', 'lemma-layer', 'Enhanced Dependencies', made],
-    ['setConfig', made, 'ud', 'enhancedDependency', true],
-  ]);
-  // Re-read, so the tree offers the gesture in the same sitting.
-  assert.ok(doc.layerInfo.enhancedRelationLayer);
-});
-
-test('reconcile leaves the layers alone for anyone else, and where the layer exists', async () => {
-  const calls = [];
-  const bare = rawDocFromConllu(INPUT, 'e');
-  const writer = new ConlluDocument({
-    raw: bare,
-    client: backfillClient(bare, calls),
-    project: { maintainers: ['m@x.org'], writers: ['w@x.org'] },
-    user: { id: 'w@x.org' },
-  });
-  await writer._reconcile();
-
-  const full = rawDocFromConllu(INPUT, 'e', { enhanced: true });
-  const maintainer = new ConlluDocument({
-    raw: full,
-    client: backfillClient(full, calls),
-    project: { maintainers: ['m@x.org'] },
-    user: { id: 'm@x.org' },
-  });
-  await maintainer._reconcile();
-
-  assert.deepEqual(calls, []);
 });
 
 test('an enhanced edge and the suppressor it lays are created under the ids they were shown under', async () => {

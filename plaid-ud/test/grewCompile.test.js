@@ -11,6 +11,7 @@ const LI = {
   xposLayer: { id: 'XPOS' },
   featuresLayer: { id: 'FEATS' },
   relationLayer: { id: 'REL' },
+  enhancedRelationLayer: { id: 'EREL' },
 };
 
 const compile = (src, opts) => parseAndCompile(src, LI, opts);
@@ -252,13 +253,15 @@ test('countBy over a named edge groups by its label', () => {
     countBy: { node: 'e', field: 'label' },
   });
   // By layer as well: the enhanced layer stores the bare deprel, and an extra
-  // `nsubj` is not the tree's.
-  assert.deepEqual(query.where.at(-1), [
-    'relation',
-    '?e_e',
-    { layer: '?groupLayer', value: { var: '?groupValue' } },
-  ]);
-  assert.deepEqual(query.return.group, ['?groupValue', '?groupLayer']);
+  // `nsubj` is not the tree's. An edge that reads both graphs is bound through
+  // a layer variable already, and is grouped by that one.
+  assert.deepEqual(query.where.at(-1), ['relation', '?e_e', { value: { var: '?groupValue' } }]);
+  const [value, layer] = query.return.group;
+  assert.equal(value, '?groupValue');
+  assert.ok(
+    query.where.some((c) => c[0] === 'relation' && c[1] === '?e_e' && c[2]?.layer === layer),
+    `the edge is bound through ${layer}`,
+  );
 });
 
 test('countBy names what the pattern offers, and refuses what it does not', () => {

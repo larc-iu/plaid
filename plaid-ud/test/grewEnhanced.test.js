@@ -196,16 +196,6 @@ test('a count by label is grouped by the layer the edge was bound with', () => {
   );
 });
 
-test('a project with no enhanced layer: both means the tree, E: is refused', () => {
-  const { enhancedRelationLayer: _gone, ...bare } = LI;
-  const { query } = compile('pattern { X -> Y }', bare);
-  assert.deepEqual(
-    relations(query.where).map((c) => c[2].layer),
-    ['REL'],
-  );
-  assert.throws(() => compile('pattern { X -[E:nsubj]-> Y }', bare), GrewUnsupportedError);
-});
-
 test('a root relation from a named head is refused with the spelling that works', () => {
   assert.throws(() => compile('pattern { X -[root]-> Y }'), /Write \* -\[root\]-> Y/);
   assert.throws(() => compile('pattern { X -[E:root]-> Y }'), GrewUnsupportedError);
@@ -581,11 +571,4 @@ test('a project with no dependency relation layer refuses the row', () => {
   );
   const { relationLayer: _gone, ...bare } = doc.layerInfo;
   assert.throws(() => diffGraphs(before, after, bare), GrewRuntimeError);
-});
-
-test('an E: edge in a project with no enhanced layer refuses the row', () => {
-  const doc = new ConlluDocument({ raw: rawDocFromConllu(CONLLU) });
-  const before = graphFromSentence(doc.sentences[0]);
-  const { graph: after } = rewriteSentence(parseGrs(SHARED_SUBJECT), before);
-  assert.throws(() => diffGraphs(before, after, doc.layerInfo), GrewRuntimeError);
 });
