@@ -4,7 +4,6 @@
   (:require [clojure.string :as str]
             [migratus.core :as migratus]
             [mount.core :refer [defstate]]
-            [plaid.migrate.codepoint-offsets :as codepoint-offsets]
             [plaid.server.config :refer [config]]
             [plaid.sql.common :as psc]
             [plaid.sql.datasource :as psd]
@@ -442,12 +441,8 @@
            (when (and (empty? (pxu/get-all ds))
                       (not (System/getenv "SKIP_ACCOUNT_CREATION_PROMPT")))
              (make-admin-user ds))
-           ;; One-time DATA migration: reinterpret any pre-existing token
-           ;; offsets from UTF-16 to Unicode code points. Idempotent + a
-           ;; verified no-op when there is no astral text.
-           (codepoint-offsets/ensure-converted! ds)
-           ;; Last, so the one write-lock holder on the startup path (the
-           ;; migration above) is done before ANALYZE wants it.
+           ;; Last, so the schema migrations above, the one write-lock
+           ;; holder on the startup path, are done before ANALYZE wants it.
            (refresh-planner-stats! ds)
            (schedule-planner-stats! ds planner-stats-interval-ms)
            ds)

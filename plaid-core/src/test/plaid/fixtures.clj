@@ -89,10 +89,9 @@
   ["audit_writes"
    "operations"
    "operation_groups"
-   ;; data_migrations tracks one-time DATA-migration markers (codepoint-offsets).
-   ;; Unlike schema_migrations (DDL state, kept), these are about data that IS
-   ;; truncated between tests, so a stale "complete" marker must not leak and make
-   ;; a later test's ensure-converted! silently skip. No FK refs → order-free.
+   ;; data_migrations holds one-time DATA-migration markers. Unlike
+   ;; schema_migrations (DDL state, kept), they are about data that IS truncated
+   ;; between tests. No FK refs, so order-free.
    "data_migrations"
    ;; audit_retention: the prune high-water marker. A test that sets it
    ;; (cold-rebuild refusal coverage) must not leak it into later tests.

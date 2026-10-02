@@ -24,13 +24,6 @@
   ^long [^String s ^long cp-idx]
   (.offsetByCodePoints s 0 cp-idx))
 
-(defn utf16->cp
-  "Code-point index in `s` equivalent to UTF-16 index `u` — i.e. how many code
-  points precede `u`. Inverse of [[cp->utf16]]. Used to reinterpret a stored
-  UTF-16 offset as a code-point offset (see plaid.migrate.codepoint-offsets)."
-  ^long [^String s ^long u]
-  (.codePointCount s 0 u))
-
 (defn cp-subs
   "Like `clojure.core/subs`, but `cp-begin`/`cp-end` are **code-point** indices.
   Two-arity slices to the end. Zero-width (cp-begin == cp-end) yields \"\"."

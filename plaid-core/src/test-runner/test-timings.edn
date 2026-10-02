@@ -7,7 +7,6 @@
  plaid.history.vocab-history-review-test 4182,
  plaid.history.vocab-history-test 1391,
  plaid.media.storage-test 19,
- plaid.migrate.codepoint-offsets-test 1204,
  plaid.query.ast-test 148,
  plaid.rest-api.v1.admin-test 961,
  plaid.rest-api.v1.api-token-test 2630,
