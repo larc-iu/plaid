@@ -124,6 +124,48 @@ class Workspace(BaseWorkspace):
         super().guard_op(op, replacing=replacing)
         self.refuse_scope_clash(op, replacing=replacing)
         self.refuse_reshape_clash(op, replacing=replacing)
+        self.refuse_cycle(op, replacing=replacing)
+
+    def staged_values(self, op: Dict[str, Any]) -> List[tuple]:
+        if op.get('kind') in ('set_head', 'set_deprel'):
+            return [(self.project.relation_layer_id, op.get('deprel'))]
+        return super().staged_values(op)
+
+    def value_rules(self, layer_id: str) -> tuple:
+        if layer_id and layer_id == self.project.relation_layer_id:
+            return 'deprel', self.project.value_sets.get('deprel') or []
+        field = next((f for f, lid in self.project.span_layers.items() if lid == layer_id), None)
+        return (field, self.project.value_sets.get(field) or []) if field else ('', [])
+
+    def refuse_cycle(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
+        """A head that closes a cycle in the basic tree, with the heads the
+        plan already gives (the tree's layer holds the acyclic rule, so the
+        server would refuse the whole plan at approval, R1-DEBT-CORE-4)."""
+        if (op.get('kind') != 'set_head' or op.get('head_id') == op.get('word_id')
+                or not self.project.acyclic):
+            return
+        doc = self.doc(op['document_id'])
+        sentence = next((s for s in doc.sentences if any(w.id == op['word_id'] for w in s.words)), None)
+        if sentence is None:
+            return
+        by_index = {w.index: w.id for w in sentence.words}
+        heads = {w.id: (by_index.get(w.head) if w.head else None) for w in sentence.words}
+        for i, o in enumerate(self.ops):
+            if i == replacing or o.get('word_id') not in heads:
+                continue
+            if o.get('kind') == 'set_head':
+                heads[o['word_id']] = None if o.get('head_id') == o['word_id'] else o.get('head_id')
+            elif o.get('kind') == 'del_relation':
+                heads[o['word_id']] = None
+        heads[op['word_id']] = op['head_id']
+        seen, cur = set(), op['word_id']
+        while cur is not None and cur not in seen:
+            seen.add(cur)
+            cur = heads.get(cur)
+        if cur is not None:
+            raise ToolError(f'{op.get("ref") or "That word"} cannot take that head: the head hangs below it '
+                            'in the tree (with the heads this plan gives), so the tree would hold a cycle. '
+                            'Give the head word another head first.')
 
     def exclusive_message(self, staging_it: bool) -> str:
         if staging_it:
@@ -396,20 +438,6 @@ def _field_layer(ws: Workspace, field: str) -> str:
     return ws.project.layer('features' if field == 'features' else field)
 
 
-def _check_value(ws: Workspace, field: str, value: str) -> None:
-    """Refuse a value a CLOSED vocabulary does not list. An open one takes
-    anything: an off-list value there is a finding, not an error."""
-    if not value:
-        return
-    key = {'upos': 'upos', 'xpos': 'xpos'}.get(field)
-    if not key or ws.project.modes.get(key) != 'closed':
-        return
-    allowed = ws.project.vocab.get(key) or []
-    if allowed and value not in allowed:
-        raise ToolError(f'"{value}" is not in this project\'s {field} vocabulary, which is closed. '
-                        f'Allowed: ' + ', '.join(allowed))
-
-
 def t_set_field(ws: Workspace, document: str = None, refs=None, field: str = None,
                 value: str = None) -> str:
     doc = ws.doc(document)
@@ -418,7 +446,6 @@ def t_set_field(ws: Workspace, document: str = None, refs=None, field: str = Non
     if field == FEATURES:
         return _set_features(ws, doc, layer_id, refs, value)
     value = unmark(value, field)
-    _check_value(ws, field, value)
     words = _words(ws, doc, refs)
     staged = []
     for w in words:

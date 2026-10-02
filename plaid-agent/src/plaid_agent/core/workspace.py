@@ -16,6 +16,8 @@ refusals only it owes (:meth:`BaseWorkspace.guard_op`).
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
+from plaid_client.constraints import value_set_allows
+
 from . import docload, fingerprint as fp, opkind, work
 from .limits import PIN_SENTENCES_MAX, PIN_SENTENCES_PLAN_MAX
 from .plan import PLAN_MAX_OPS, PlanFull, docs_of_op, reserve as core_reserve
@@ -602,6 +604,37 @@ class BaseWorkspace:
         ``replacing`` index is the op this one supersedes, which is not part of
         the plan any more."""
         self.refuse_exclusive(op.get('kind'), replacing=replacing)
+        self.refuse_off_list(op)
+
+    def staged_values(self, op: Dict[str, Any]) -> List[tuple]:
+        """``(layer id, value)`` for each annotation value ``op`` writes. A
+        span's value here; an app adds the kinds of its own that carry one."""
+        if op.get('kind') == 'set_span':
+            return [(op.get('layer_id'), op.get('value'))]
+        return []
+
+    def value_rules(self, layer_id: str) -> tuple:
+        """``(field name, value-set rules)`` stored on a layer, as the server
+        enforces them on a person's value. No rules by default."""
+        return '', []
+
+    def refuse_off_list(self, op: Dict[str, Any]) -> None:
+        """A value a layer's stored value-set rule refuses. The plan is stamped
+        a person's work, so the server would refuse the whole of it at
+        approval (R1-DEBT-CORE-4). Refused here, the model can correct it."""
+        for layer_id, value in self.staged_values(op):
+            self.refuse_value(layer_id, value)
+
+    def refuse_value(self, layer_id: str, value) -> None:
+        """``value`` on layer ``layer_id``, refused when a stored value-set
+        rule of the layer does not take it."""
+        name, rules = self.value_rules(layer_id)
+        for rule in rules:
+            if not value_set_allows(rule, value):
+                listed = list(rule.get('values') or [])
+                shown = ', '.join(listed[:60]) + (f' and {len(listed) - 60} more' if len(listed) > 60 else '')
+                raise ToolError(f'"{value}" is not on the list {name or "this layer"} is held to, so '
+                                f'the plan would be refused. Allowed: {shown}')
 
     def reserve(self, n: int) -> None:
         """Refuse BEFORE staging what would push the plan past what a record

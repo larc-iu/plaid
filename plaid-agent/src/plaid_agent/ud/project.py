@@ -36,7 +36,7 @@ from plaid_client.provenance import stamp_inferred
 from plaid_client.workflows.messages import setup_incomplete
 
 from ..core.guidelines import Guideline, load as load_guidelines
-from ..core.project import find_layer, word_ref  # noqa: F401  (re-exported: the tools import it from here)
+from ..core.project import declares, find_layer, value_set_rules, word_ref  # noqa: F401  (re-exported: the tools import it from here)
 from ..core.provenance import review_mark
 
 UD = 'ud'
@@ -171,6 +171,8 @@ class UdProject:
     #: The value-set rules stored on each field's layer, any app's, as core
     #: enforces them: 'upos', 'xpos', ... and 'deprel' for the tree's layer.
     value_sets: Dict[str, List[dict]] = dc_field(default_factory=dict)
+    #: Whether the tree's layer holds the acyclic rule (plaid-ud declares it).
+    acyclic: bool = False
 
     def allows(self, field: str, value) -> bool:
         """Whether the layer's stored rules take ``value`` once it is a
@@ -233,13 +235,14 @@ def load_project(client, project_id: str) -> UdProject:
             if _ud(sl.get('config'), key) is True:
                 span_layers[key] = sl['id']
                 configs[key] = sl.get('config') or {}
-                value_sets[key] = _value_sets(sl)
+                value_sets[key] = value_set_rules(sl)
     missing = [k for k in SPAN_KEYS if k not in span_layers]
     if missing:
         raise setup_incomplete('missing the ' + ', '.join(missing) + ' layer'
                                + ('s' if len(missing) > 1 else ''))
 
     relation_layer_id, relation_config = None, {}
+    acyclic = False
     enhanced_layer_id = None
     for sl in word.get('span_layers') or []:
         if sl['id'] != span_layers['lemma']:
@@ -247,7 +250,8 @@ def load_project(client, project_id: str) -> UdProject:
         for rl in sl.get('relation_layers') or []:
             if _ud(rl.get('config'), RELATION_KEY) is True:
                 relation_layer_id, relation_config = rl['id'], rl.get('config') or {}
-                value_sets['deprel'] = _value_sets(rl)
+                value_sets['deprel'] = value_set_rules(rl)
+                acyclic = declares(rl, 'acyclic')
             elif _ud(rl.get('config'), ENHANCED_KEY) is True:
                 enhanced_layer_id = rl['id']
     if not relation_layer_id:
@@ -276,13 +280,8 @@ def load_project(client, project_id: str) -> UdProject:
             'deprel': _descriptions(relation_config),
         },
         guidelines=guidelines,
-        value_sets=value_sets,
+        value_sets=value_sets, acyclic=acyclic,
     )
-
-
-def _value_sets(layer) -> List[dict]:
-    return [c for cs in ((layer or {}).get('constraints') or {}).values() for c in (cs or [])
-            if isinstance(c, dict) and c.get('type') == 'value-set']
 
 
 # --- document ---------------------------------------------------------------

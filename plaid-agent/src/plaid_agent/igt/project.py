@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 
 from ..core.guidelines import Guideline, load as load_guidelines
 from ..core.limits import MAX_SENTENCES_PER_READ, OVERVIEW_DOCS
-from ..core.project import find_layer, word_ref  # noqa: F401  (re-exported: the tools import it from here)
+from ..core.project import declares, find_layer, value_set_rules, word_ref  # noqa: F401  (re-exported: the tools import it from here)
 from ..core.provenance import CONTRIBUTED, REVIEWABLE, UNVERIFIED, mark as _mark, review_mark  # noqa: F401
 from typing import Dict, List, Optional, Tuple
 
@@ -94,11 +94,6 @@ class Field:
     #: The value-set rules stored on the layer, any app's, as core enforces
     #: them (the layer's ``constraints``).
     value_sets: List[dict] = dataclasses.field(default_factory=list)
-
-
-def _value_sets(layer) -> List[dict]:
-    return [c for cs in ((layer or {}).get('constraints') or {}).values() for c in (cs or [])
-            if isinstance(c, dict) and c.get('type') == 'value-set']
 
 
 def _unique_field_names(entries):
@@ -284,7 +279,7 @@ def load_project(client, project_id: str) -> IgtProject:
             if scope in SCOPES:
                 tname = read_tagset_name(sl.get('config'))
                 entries.append((sl['name'], sl['id'], scope, tagsets.get(tname) if tname else None,
-                                _value_sets(sl)))
+                                value_set_rules(sl)))
     fields = _unique_field_names(entries)
     metadata = [m for m in (_igt(p.get('config'), 'documentMetadata') or []) if isinstance(m, dict) and m.get('name')]
     metadata_tagsets = {}

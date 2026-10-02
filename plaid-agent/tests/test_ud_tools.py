@@ -176,9 +176,43 @@ def test_setting_the_same_field_twice_replaces_the_first_plan_and_says_so(ws):
     assert 'superseded' not in run(ws, 'read_document', document='Viaje')
 
 
-def test_a_closed_vocabulary_refuses_a_value_it_does_not_list(ws):
+def test_a_closed_list_refuses_a_value_it_does_not_list():
+    """R1-DEBT-CORE-4: the rule is the one stored on the layer, as the server
+    enforces it, for UPOS and XPOS as for a head's deprel and a replace."""
+    ws = _closed_ws(['VERB', 'NOUN', 'ADP', 'DET', 'PUNCT'], deprel_values=['root', 'case', 'nsubj', 'obl'])
     out = run(ws, 'set_field', document='Viaje', refs=['s2.w1'], field='upos', value='VRB')
-    assert 'not in this project\'s upos vocabulary, which is closed' in out and not ws.ops
+    assert '"VRB" is not on the list upos is held to' in out and not ws.ops
+    out = run(ws, 'set_head', document='Viaje', ref='s1.w2', head=1, deprel='foo')
+    assert '"foo" is not on the list deprel is held to' in out and not ws.ops
+    # Only its first part is held to the list.
+    assert run(ws, 'set_head', document='Viaje', ref='s1.w2', head=1, deprel='nsubj:pass').startswith('Planned')
+    # A replace, staged as one scope and found again at approval, is asked
+    # as it is planned (it never was for deprel).
+    _engine_rows(ws, [('r-3', 'obl', 'ud1', 'uw-4')])
+    out = run(ws, 'replace_in_field', field='deprel', pattern='obl', replacement='foo')
+    assert '"foo" is not on the list deprel is held to' in out and len(ws.ops) == 1
+
+
+def test_a_head_that_would_close_a_cycle_is_refused():
+    """R1-DEBT-CORE-4: a basic tree holds no cycle (plaid-ud declares it on
+    the layer), and an approved plan with one failed whole."""
+    ws = _closed_ws(['VERB', 'NOUN', 'ADP', 'DET', 'PUNCT'], acyclic=True)
+    s1 = ws.doc('Viaje').sentences[0]
+    w4 = s1.word(4)
+    head = s1.word(w4.head)
+    assert head is not None and head.index != 4
+    # w4 hangs below its head, so that head cannot hang below w4
+    out = run(ws, 'set_head', document='Viaje', ref=f's1.w{head.index}', head=4, deprel='obl')
+    assert 'cycle' in out and not ws.ops
+    # once w4 hangs elsewhere, it can
+    run(ws, 'set_head', document='Viaje', ref='s1.w4', head=0)
+    assert run(ws, 'set_head', document='Viaje', ref=f's1.w{head.index}', head=4,
+               deprel='obl').startswith('Planned')
+
+
+def test_an_open_list_takes_anything(ws):
+    out = run(ws, 'set_field', document='Viaje', refs=['s2.w1'], field='upos', value='VRB')
+    assert out.startswith('Planned') and ws.ops
 
 
 def test_an_open_vocabulary_takes_anything(ws):
@@ -1199,10 +1233,11 @@ def test_a_literal_replacement_may_hold_a_backslash(ws):
     assert 'Planned 1 lemma change' in out and '"mar" → "arm"' in out
 
 
-def test_a_closed_vocabulary_refuses_what_a_replacement_would_write(ws):
+def test_a_closed_list_refuses_what_a_replacement_would_write():
+    ws = _closed_ws(['VERB', 'NOUN', 'ADP', 'DET', 'PUNCT'])
     _engine_rows(ws, [('sp-u3', 'NOUN', 'ud1', 'uw-3')])
     out = run(ws, 'replace_in_field', field='upos', pattern='NOUN', replacement='NOMEN')
-    assert 'not in this project\'s upos vocabulary' in out and ws.ops == []
+    assert '"NOMEN" is not on the list upos is held to' in out and ws.ops == []
 
 
 def test_a_deprel_replacement_relabels_the_relations(ws):
@@ -1514,7 +1549,7 @@ def test_a_head_on_a_word_whose_old_head_a_reshape_takes_is_not_deleted_twice(ws
     assert head['relation_id'] not in deleted
 
 
-def _closed_ws(upos_values, deprel_values=None):
+def _closed_ws(upos_values, deprel_values=None, acyclic=False):
     """The fixture with a value-set rule stored on UPOS (and on the tree's
     layer), as plaid-ud declares one for a closed list, and r-3 machine-made."""
     from ud_fixtures import FakeClient, document_raw, project_raw
@@ -1526,6 +1561,10 @@ def _closed_ws(upos_values, deprel_values=None):
         if sl['id'] == LEMMA and deprel_values is not None:
             sl['relation_layers'][0]['constraints'] = {'ud': [
                 {'type': 'value-set', 'values': deprel_values, 'delimiters': ':', 'parts': 'first'}]}
+        if sl['id'] == LEMMA and acyclic:
+            rl = sl['relation_layers'][0]
+            rl['constraints'] = {'ud': [*(rl.get('constraints') or {}).get('ud', []),
+                                        {'type': 'acyclic', 'selfLoops': True}]}
     raw = document_raw()
     rel = next(r for sl in raw['text_layers'][0]['token_layers'][2]['span_layers'] if sl['id'] == LEMMA
                for rl in sl['relation_layers'] for r in rl['relations'] if r['id'] == 'r-3')

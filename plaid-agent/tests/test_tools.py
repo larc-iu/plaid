@@ -947,3 +947,28 @@ def test_a_value_copied_back_from_a_read_is_written_without_its_mark():
     assert 'Planned' in out, out
     assert 'only a review mark' in call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3'],
                                                                 'field': 'Gloss', 'value': '^'})
+
+
+def test_a_value_off_a_layers_stored_list_is_refused_while_planning():
+    """R1-DEBT-CORE-4: the server refuses a person's value off a layer's
+    value-set rule, and an approved plan with one failed whole. The plan
+    refuses it as it is staged, from the rule stored on the layer, so the
+    model can correct itself: a set_field, a value inside a planned
+    analysis, and an edit of a planned morpheme."""
+    from fixtures import MGLOSS
+    c = FakeClient(documents={'d1': _machine_doc()})
+    w = scan_ws(c)
+    w.project.field_by_layer(MGLOSS).value_sets = [{'type': 'value-set', 'values': ['Ali', 'PST', 'ERG'],
+                                                    'delimiters': '.'}]
+    out = call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1.m1'], 'field': 'Morph Gloss',
+                                     'value': 'Ali.XX'})
+    assert '"Ali.XX" is not on the list Morph Gloss is held to' in out and w.ops == []
+    out = call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1.m1'], 'field': 'Morph Gloss',
+                                     'value': 'Ali.PST'})
+    assert out.startswith('Planned') and len(w.ops) == 1
+    out = call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w3', 'morphemes': [
+        {'form': 'x', 'fields': {'Morph Gloss': 'ZZ'}}]})
+    assert '"ZZ" is not on the list Morph Gloss is held to' in out and len(w.ops) == 1
+    # A gloss rule leaves the other fields alone.
+    out = call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1'], 'field': 'Gloss', 'value': 'ZZ'})
+    assert out.startswith('Planned')

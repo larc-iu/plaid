@@ -25,7 +25,7 @@ from ..core.replace import replacer as core_replacer
 from .corpus import Corpus, rx
 from .plan import DOCUMENT_SHAPE, KIND, SENTENCE_SHAPE, WORD_SHAPE
 from .project import FEATURES, UdProject, feature_key, feature_refusal, normalize_feature
-from .tools import FIELDS, ToolError, Workspace, _check_feature, _check_value
+from .tools import FIELDS, ToolError, Workspace, _check_feature
 
 REPLACE_FIELDS = FIELDS + ('deprel',)
 REPLACE_MAX = 5000   # changes one plan may make; past it, narrow and go in passes
@@ -145,14 +145,15 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
         return (f'Nothing to change: no {field} matches "{pattern}"' if not rows
                 else f'Nothing to change: {len(rows)} {field} value(s) match "{pattern}", but the '
                      f'replacement leaves every one of them as it is')
-    # A closed vocabulary refuses what it does not list, whatever the pattern
-    # turned the value into.
-    if field in ('upos', 'xpos'):
-        bad = sorted({ch['new'] for ch in found if ch['new']})
-        for value in bad:
-            _check_value(ws, field, value)
     if field == FEATURES:
         _check_features(ws, c, found, document_id)
+    else:
+        # A value-set rule refuses what it does not list, whatever the pattern
+        # turned the value into. The change is staged as one scope, found
+        # again at approval, so it is asked here.
+        layer = ws.project.relation_layer_id if field == 'deprel' else None
+        for value in sorted({ch['new'] for ch in found if ch['new']}):
+            ws.refuse_value(layer or ws.project.span_layers.get(field), value)
     docs = sorted({ch['document_id'] for ch in found if ch['document_id']})
     _clear_of_reshapes(ws, docs)
     ws.note_staged_versions({d: versions.get(d) for d in docs})

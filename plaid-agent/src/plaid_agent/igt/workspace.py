@@ -425,6 +425,16 @@ class Workspace(BaseWorkspace):
             return True
         return self.requester_id in (v.get('maintainers') or []) or self.requester_is_admin()
 
+    def staged_values(self, op: Dict[str, Any]) -> List[tuple]:
+        if op.get('kind') == 'set_analysis':
+            return [(fv.get('layer_id'), fv.get('value'))
+                    for m in op.get('morphemes') or [] for fv in m.get('fields') or []]
+        return super().staged_values(op)
+
+    def value_rules(self, layer_id: str) -> tuple:
+        f = self.project.field_by_layer(layer_id) if layer_id else None
+        return (f.name, f.value_sets) if f else ('', [])
+
     def guard_op(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
         super().guard_op(op, replacing=replacing)
         self.guard_morpheme_change(op, replacing=replacing)
