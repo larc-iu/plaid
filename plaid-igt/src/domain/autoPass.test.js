@@ -70,7 +70,7 @@ describe('runBuiltinAnalysis: stopping', () => {
       copyContents: copyAll,
       shouldStop: () => true,
     });
-    expect(res).toEqual({ copied: 0, linked: 0, ok: true, stopped: true });
+    expect(res).toEqual({ copied: 0, copiedWordIds: [], linked: 0, ok: true, stopped: true });
     expect(doc.gets).toHaveLength(0);
     expect(doc.bulkApplyAnalyses).not.toHaveBeenCalled();
   });
@@ -127,7 +127,7 @@ describe('runBuiltinAnalysis: stopping', () => {
   it('runs to the end and reports stopped: false when nothing asks it to stop', async () => {
     const doc = makeDoc(3);
     const res = await runBuiltinAnalysis(doc, { copy: true, link: false, copyContents: copyAll });
-    expect(res).toEqual({ copied: 0, linked: 0, ok: true, stopped: false });
+    expect(res).toEqual({ copied: 0, copiedWordIds: [], linked: 0, ok: true, stopped: false });
     expect(doc.gets).toEqual(['src-0', 'src-1', 'src-2']);
   });
 

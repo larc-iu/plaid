@@ -364,8 +364,10 @@ def test_write_analyses_says_where_it_is_between_batches():
     assert client.direct == []  # every write went on the batch
     # One batch makes the morphemes and their glosses together.
     assert len(client.batches) == 1
-    assert client.batches[0].queued.count(('tokens', 'delete')) == 5
-    assert client.batches[0].queued.count(('tokens', 'create')) == 10
+    # Each word's one stored morpheme is the word itself: patched in place.
+    assert client.batches[0].queued.count(('tokens', 'delete')) == 0
+    assert client.batches[0].queued.count(('tokens', 'patch_metadata')) == 5
+    assert client.batches[0].queued.count(('tokens', 'create')) == 5
     assert client.batches[0].queued.count(('spans', 'create')) == 10
 
 
@@ -373,7 +375,7 @@ def _plan(word_id):
     morph = {'id': f'{word_id}-m0', 'metadata': {}}
     return {
         'word': {'text_id': 't1', 'morphs': [morph], 'morph_spans': {morph['id']: []},
-                 'token': {'begin': 0, 'end': 3}},
+                 'morph_links': {}, 'surface': 'abc', 'token': {'begin': 0, 'end': 3}},
         'analysis': {'segments': ['ab', 'c'], 'glosses': ['A', 'C'], 'types': [None, None],
                      'joiners': ['-'], 'surface_mismatch': False, 'degraded': False},
         'sentence_id': 's1',
@@ -548,3 +550,44 @@ def test_overwrite_leaves_nothing_verified_on_what_it_rewrites():
         assert 'provConfirmed' not in meta and meta['prov'] == 'inferred'
     # Every gloss goes in the batch that makes its morpheme.
     assert len(client.batches) == 1
+
+
+def test_an_unanalyzed_words_stored_morpheme_is_patched_in_place_with_what_else_it_carries():
+    """REV-SVC-1. A word whose one stored morpheme is the word itself (no type,
+    no span, no link) is unanalyzed, so a run writes it without Overwrite.
+    Deleting and remaking that morpheme dropped every other key on it (an
+    import's record, on 3,585 Biloxi morphemes) and left any comment on it
+    Outdated. It is patched in place, and slots 2..n are created beside it."""
+    from plaid_client.metadata_ops import apply_metadata_ops
+    record = {'record': 'r-17', 'source_kind': 'default full-word morpheme'}
+    m0 = {'id': 'm0', 'metadata': {'form': 'dogs', 'biloxi': record, 'provConfirmed': True}}
+    word = _word('dogs', [m0])  # a comment anchored on m0 lives as long as m0 does
+    assert word_state(word) == 'unanalyzed'
+    client = _rewrite(word, 'dog(dog)-PL(s)')
+    log = [c for b in client.batches for c in b.log]
+    assert len(client.batches) == 1
+    assert not [c for c in log if c[:2] == ('tokens', 'delete')]
+    [patch] = [c for c in log if c[:2] == ('tokens', 'patch_metadata')]
+    assert patch[2][0] == 'm0'
+    after = apply_metadata_ops(m0['metadata'], patch[2][1])
+    assert after['biloxi'] == record
+    assert after['form'] == 'dog' and after['prov'] == 'inferred'
+    assert 'provConfirmed' not in after
+    [made] = [c for c in log if c[:2] == ('tokens', 'create')]
+    assert made[3]['metadata']['form'] == 's' and made[3]['precedence'] == 2
+    glosses = [(c[2][1], c[2][2]) for c in log if c[:2] == ('spans', 'create')]
+    assert glosses == [(['m0'], 'dog'), ([made[3]['id']], 'PL')]
+
+
+def test_words_the_caller_names_are_left_alone_whatever_overwrite_says():
+    """REV-SVC-3. Auto-analyze names the words its copy step wrote in this
+    run, and the model step never re-analyzes them, Overwrite or not."""
+    copied = _analyzed_word(PRECEDENT, PRECEDENT, PRECEDENT, PRECEDENT, PRECEDENT)
+    copied['token'] = {'id': 'w1'}
+    bare = _word('bark', [virtual_morpheme({'id': 'w2', 'begin': 5, 'end': 9})])
+    bare['token'] = {'id': 'w2'}
+    s = [{'id': 's1', 'words': [copied, bare]}]
+    for overwrite in (False, True):
+        targets, skipped = select_targets(s, overwrite=overwrite, skip_word_ids={'w1'})
+        assert [idxs for _, idxs in targets] == [[1]], overwrite
+        assert skipped['precedent'] == 1

@@ -63,7 +63,9 @@ const checkpoint = (shouldStop) => {
 //   copyContents — { segmentation, links, fields } for the copy phase
 //   onProgress   — ({percent, message}) as the phases advance
 //   shouldStop   — read at each checkpoint, true ends the run there
-// Returns { copied, linked, ok, stopped }. Copy runs first so the linker doesn't
+// Returns { copied, copiedWordIds, linked, ok, stopped }. `copiedWordIds` names
+// the words the copy phase wrote, so the dialog can tell the model step to
+// leave them. Copy runs first so the linker doesn't
 // re-handle words a copy just analyzed; a phase that fails (the mutation
 // returns false, having already surfaced the error) short-circuits the rest
 // and sets ok=false.
@@ -87,32 +89,35 @@ export async function runBuiltinAnalysis(
   } = {},
 ) {
   let copied = 0;
+  let copiedWordIds = [];
   let linked = 0;
   try {
     if (copy) {
-      const n = await runCopyPhase(doc, copyContents, onProgress, shouldStop);
-      if (n === false) return { copied, linked, ok: false, stopped: false };
-      copied = n;
+      const res = await runCopyPhase(doc, copyContents, onProgress, shouldStop);
+      if (res === false) return { copied, copiedWordIds, linked, ok: false, stopped: false };
+      ({ copied, copiedWordIds } = res);
     }
     checkpoint(shouldStop);
     if (link) {
       const n = await runLinkPhase(doc, onProgress, shouldStop);
-      if (n === false) return { copied, linked, ok: false, stopped: false };
+      if (n === false) return { copied, copiedWordIds, linked, ok: false, stopped: false };
       linked = n;
     }
   } catch (err) {
     if (!(err instanceof Stopped)) throw err;
-    return { copied, linked, ok: true, stopped: true };
+    return { copied, copiedWordIds, linked, ok: true, stopped: true };
   }
-  return { copied, linked, ok: true, stopped: false };
+  return { copied, copiedWordIds, linked, ok: true, stopped: false };
 }
 
-// Number of words copied, or false on mutation failure. Throws Stopped if the
-// run is stopped at a checkpoint, which is always before a write.
+// { copied, copiedWordIds } (the count and the words it was proposed for), or
+// false on mutation failure. Throws Stopped if the run is stopped at a
+// checkpoint, which is always before a write.
 async function runCopyPhase(doc, copyContents, onProgress, shouldStop = () => false) {
   const info = doc.layerInfo;
   const wordLayerId = info.primaryTokenLayer?.id;
-  if (!wordLayerId || !info.morphemeTokenLayer) return 0;
+  const none = { copied: 0, copiedWordIds: [] };
+  if (!wordLayerId || !info.morphemeTokenLayer) return none;
   const ignoredCfg = readIgnoredTokens(info.primaryTokenLayer.config);
 
   const forms = new Set();
@@ -121,7 +126,7 @@ async function runCopyPhase(doc, copyContents, onProgress, shouldStop = () => fa
       if (isUnanalyzedWord(t, ignoredCfg) && t.content) forms.add(t.content);
     }
   }
-  if (!forms.size) return 0;
+  if (!forms.size) return none;
 
   const localTally = tallyAnalyses(new Map(), doc.sentences, ignoredCfg);
   const remoteTallies = await remoteTalliesFor(doc, wordLayerId, forms, onProgress, shouldStop);
@@ -133,16 +138,21 @@ async function runCopyPhase(doc, copyContents, onProgress, shouldStop = () => fa
     table,
     copy: copyContents,
   });
-  if (!proposals.length) return 0;
+  if (!proposals.length) return none;
   // Last chance: the write below is one operation and is not interrupted.
   checkpoint(shouldStop);
   onProgress({ percent: null, message: `Copying onto ${countOf(proposals.length, 'word')}…` });
   // A service run naming the rule, whose pieces name the rule and its version.
   const detail = await builtinDetail(BUILTIN_ANALYSIS_COPY);
-  return doc.bulkApplyAnalyses(proposals, ANALYSIS_COPY_SOURCE, {
+  const n = await doc.bulkApplyAnalyses(proposals, ANALYSIS_COPY_SOURCE, {
     detail,
     ...builtinRun(BUILTIN_ANALYSIS_COPY),
   });
+  if (n === false) return false;
+  // Every proposal is for a word that was unanalyzed a moment ago. One the
+  // write passed over (analyzed since) is analyzed now, so leaving it out of
+  // the model step costs nothing.
+  return { copied: n, copiedWordIds: n ? proposals.map((p) => p.wordTokenId) : [] };
 }
 
 // Tallies of identical whole-word analyses from the project's other documents:

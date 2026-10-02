@@ -204,6 +204,19 @@ describe('countReTokenizeLoss', () => {
     expect(countReTokenizeLoss(info, vocabularies)).toEqual({ annotations: 2, links: 1 });
   });
 
+  // REV-SVC-2: a person's merge or split of a machine tokenizer's token leaves
+  // provenance keys only, verified or contributed.
+  it('counts a stamped token a person verified or contributed', () => {
+    const machine = { prov: 'inferred', provSource: 'service:whisper' };
+    const verified = oneSentence({ word: { ...machine, provConfirmed: true } });
+    expect(countReTokenizeLoss(verified, {})).toEqual({ annotations: 1, links: 0 });
+    const contributed = oneSentence({ word: { prov: 'contributed', provSource: 'user:b@x.com' } });
+    expect(countReTokenizeLoss(contributed, {})).toEqual({ annotations: 1, links: 0 });
+    const merged = oneSentence();
+    merged.sentenceTokenLayer.tokens[0].metadata = { ...machine, provConfirmed: true };
+    expect(countReTokenizeLoss(merged, {})).toEqual({ annotations: 1, links: 0 });
+  });
+
   it('is zero when the document has more than one sentence', () => {
     const info = oneSentence({ morph: { form: 'Mimm' } });
     info.sentenceTokenLayer.tokens.push({ id: 'sent2', begin: 9, end: 9 });

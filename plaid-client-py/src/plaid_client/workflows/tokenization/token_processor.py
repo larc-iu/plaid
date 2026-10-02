@@ -10,7 +10,7 @@ import json
 import logging
 from typing import List, Dict, Optional
 
-from plaid_client.provenance import PROVENANCE_KEYS, stamp_inferred, is_protected
+from plaid_client.provenance import PROV_KEY, PROVENANCE_KEYS, stamp_inferred, is_protected
 from plaid_client.service import (batch_body_budget, check_unchanged, locked_for_writes,
                                   requester_message)
 from plaid_client.workflows.messages import setup_incomplete
@@ -420,7 +420,8 @@ class TokenProcessor:
         deleted, the annotations lost, and how many of those are human-made,
         contributed or verified (provenance convention). A token's own
         metadata beyond provenance (a segmentation, an orthography line, a
-        sentence's timing) is one annotation."""
+        sentence's timing) is one annotation, and so is a stamped token a
+        person verified or contributed."""
         layers = text_layer.get('token_layers', []) or []
         children = {}
         for tl in layers:
@@ -444,8 +445,12 @@ class TokenProcessor:
                 loss['protected'] += 1
 
         def content(token):
+            # A token with content of its own, or a stamped token a person
+            # verified or contributed (a person's merge or split of a machine
+            # tokenizer's token leaves provenance keys only). Unstamped
+            # substrate with nothing on it is not counted.
             meta = token.get('metadata') or {}
-            if any(k not in PROVENANCE_KEYS for k in meta):
+            if any(k not in PROVENANCE_KEYS for k in meta) or (PROV_KEY in meta and is_protected(meta)):
                 tally(meta)
 
         dying = set(deleted_ids)

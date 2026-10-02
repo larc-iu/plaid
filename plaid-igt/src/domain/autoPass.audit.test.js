@@ -70,6 +70,8 @@ describe('runBuiltinAnalysis in the audit log and the provenance', () => {
     const doc = makeDoc();
     const res = await runBuiltinAnalysis(doc, { copy: true, link: false });
     expect(res.copied).toBe(1);
+    // The words it wrote, for the model step to leave (REV-SVC-3).
+    expect(res.copiedWordIds).toEqual(['w-1']);
     const [, source, opts] = doc.bulkApplyAnalyses.mock.calls[0];
     expect(source).toBe('rule:analysis-precedent');
     expect(opts).toEqual({

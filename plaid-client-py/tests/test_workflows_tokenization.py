@@ -641,3 +641,24 @@ def test_a_word_split_at_a_sentence_boundary_takes_nothing_of_a_persons_without_
     client, counts = _run(doc, ONE, overwrite=True)
     assert ('bulk_delete', ['w0']) in client.calls
     assert counts['tokens_deleted'] == 2  # the word and its morpheme
+
+
+@pytest.mark.parametrize('layer, meta', [
+    (0, {**MACHINE_MADE, 'provConfirmed': True}),  # a person merged two sentences into one
+    (1, {**MACHINE_MADE, 'provConfirmed': True}),  # a person split a word
+    (1, {'prov': 'contributed', 'provSource': 'user:b@x.com'}),
+])
+def test_a_persons_reshape_of_stamped_substrate_is_refused_over(layer, meta):
+    """REV-SVC-2. A person's merge or split of a machine tokenizer's token
+    leaves it with provenance keys only, verified or contributed."""
+    doc = _analyzed()
+    doc['text_layers'][0]['token_layers'][layer]['tokens'][0]['metadata'] = meta
+    with pytest.raises(ValueError):
+        _run(doc, TWO)
+
+
+def test_a_machine_stamped_token_alone_is_not_in_the_way():
+    doc = _analyzed()
+    doc['text_layers'][0]['token_layers'][1]['tokens'][0]['metadata'] = dict(MACHINE_MADE)
+    _, counts = _run(doc, TWO)
+    assert counts['sentences_created'] == 2

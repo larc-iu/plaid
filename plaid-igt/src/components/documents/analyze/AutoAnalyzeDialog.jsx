@@ -278,11 +278,15 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         noteMissing(result?.glossFieldMissing, 'morpheme', 'glosses');
       }
       if (stopRef.current) return halt();
-      // 2. copy previous analyses (built-in)
+      // 2. copy previous analyses (built-in). The words it writes are the
+      // model step's to leave alone, Overwrite or not: the model only sees what
+      // precedent cannot answer.
+      let copiedWordIds = [];
       if (steps.copy) {
         at('copy');
         const {
           copied,
+          copiedWordIds: ids,
           ok,
           stopped: wasStopped,
         } = await runBuiltinAnalysis(doc, {
@@ -300,6 +304,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         });
         if (!ok) return; // the domain layer toasted the failure
         if (wasStopped) return halt();
+        copiedWordIds = ids || [];
         if (copied) {
           parts.push(`copied previous analyses onto ${plural(copied, 'word')}`);
           wrote = true;
@@ -315,7 +320,11 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
           doc.id,
           service.serviceId,
           // User-controlled args first; the fixed identifiers win.
-          { ...analyzeSpot.params.coerced(), ...identifiers },
+          {
+            ...analyzeSpot.params.coerced(),
+            ...identifiers,
+            ...(copiedWordIds.length ? { skipWordIds: copiedWordIds } : {}),
+          },
           {
             successTitle: 'Analysis complete',
             successMessage: `${service.serviceName} finished.`,

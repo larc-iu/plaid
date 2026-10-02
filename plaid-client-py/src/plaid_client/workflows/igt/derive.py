@@ -200,21 +200,43 @@ def word_state(w):
     return 'precedent' if copied else 'machine'
 
 
-def select_targets(sentences, overwrite=False):
+#: The analyze request's fields beyond its parameter schema, which an analyze
+#: service declares in its self-description as ``extras['request_fields']``
+#: (they are not a person's choice, so they are not parameters).
+ANALYZE_REQUEST_FIELDS = {
+    'skip_word_ids': 'Optional. Word token ids the run leaves as they are, whatever overwrite says. '
+                     'Auto-analyze sends the words its copy step wrote in the same run.',
+}
+
+
+def read_skip_word_ids(request_data):
+    """The ``skip_word_ids`` of an analyze request as a set of ids (empty when
+    absent)."""
+    ids = request_data.get('skip_word_ids') or []
+    return {i for i in ids if isinstance(i, str)} if isinstance(ids, list) else set()
+
+
+def select_targets(sentences, overwrite=False, skip_word_ids=()):
     """Which words may be written: unanalyzed and entirely machine-unverified
     ones always, protected ones and ones copied from precedent only with
-    ``overwrite``. Stamps each word's ``state`` and returns ``(targets,
-    skipped)`` where targets is ``[(sentence, [word indices])]`` over
-    sentences with at least one target and skipped counts ``{'protected',
-    'precedent'}``."""
+    ``overwrite``. A word whose token id is in ``skip_word_ids`` is never
+    written, whatever ``overwrite`` says: Auto-analyze names the words its
+    copy step wrote in the same run, so the model only sees what precedent
+    cannot answer. Those count as 'precedent'. Stamps each word's ``state``
+    and returns ``(targets, skipped)`` where targets is ``[(sentence, [word
+    indices])]`` over sentences with at least one target and skipped counts
+    ``{'protected', 'precedent'}``."""
     skipped = {'protected': 0, 'precedent': 0}
+    skip = set(skip_word_ids or ())
     targets = []
     for s in sentences:
         idxs = []
         for i, w in enumerate(s['words']):
             st = word_state(w)
             w['state'] = st
-            if st in skipped and not overwrite:
+            if w['token'].get('id') in skip:
+                skipped['precedent'] += 1
+            elif st in skipped and not overwrite:
                 skipped[st] += 1
             else:
                 idxs.append(i)

@@ -2,14 +2,18 @@
 
 A plan is ``{'word': <derive word>, 'analysis': <analysis_for result>}``.
 Per word, the proposal replaces the whole analysis: every stored morpheme
-of the word is deleted, which takes its spans (every field, not only the
-gloss) and its lexicon links with it, and every slot is created afresh
-under an id minted here, with its gloss naming that id in the same batch.
-Nothing of the old analysis carries over, so no link names an entry of a
-form that is gone and no ``provConfirmed`` survives onto the model's work.
-A word nobody has segmented has only its virtual morpheme, which is not
-stored, so nothing is deleted for it. One atomic batch per chunk, and
-chunks stay under the server's per-batch op cap.
+of an analyzed word is deleted, which takes its spans (every field, not
+only the gloss) and its lexicon links with it, and every slot is created
+afresh under an id minted here, with its gloss naming that id in the same
+batch. Nothing of the old analysis carries over, so no link names an entry
+of a form that is gone and no ``provConfirmed`` survives onto the model's
+work. An unanalyzed word's one stored morpheme (the word itself, with no
+type, span or link) is patched in place instead: it has no analysis to
+discard, and whatever else it carries (an import's record, a comment
+anchored on it) stays. Its ``provConfirmed`` goes. A word nobody has
+segmented has only its virtual morpheme, which is not stored, so its first
+slot is created. One atomic batch per chunk, and chunks stay under the
+server's per-batch op cap.
 
 Everything is stamped machine-made (``stamp_inferred``) with the recorded
 prediction from the provenance convention: ``provDetail.form`` on each
@@ -19,7 +23,10 @@ have applied the write contract already (:func:`select_targets`).
 """
 
 from plaid_client.ids import uuid7
-from plaid_client.provenance import stamp_inferred
+from plaid_client.metadata_ops import metadata_ops
+from plaid_client.provenance import PROV_CONFIRMED_KEY, PROV_PROB_KEY, stamp_inferred
+
+from .derive import word_state
 
 BATCH_OP_BUDGET = 800  # the server caps one atomic batch at 1000 ops
 
@@ -70,8 +77,11 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
         with client.batched() as b:
             for p in chunk:
                 w, a = p['word'], p['analysis']
-                for m in _stored(w):
-                    b.tokens.delete(m['id'])  # cascades its spans + links
+                stored = _stored(w)
+                keep = stored[0]['id'] if stored and word_state(w) == 'unanalyzed' else None
+                if not keep:
+                    for m in stored:
+                        b.tokens.delete(m['id'])  # cascades its spans + links
                 for j, segment in enumerate(a['segments']):
                     form_detail = {**detail, 'form': segment}
                     if j == 0:
@@ -80,11 +90,17 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
                             **({'surfaceMismatch': True} if a['surface_mismatch'] else {}),
                             **({'degraded': True} if a['degraded'] else {})})
                     meta = {'form': segment, **stamp_inferred(source, detail=form_detail)}
-                    if a['types'][j]:
-                        meta['morphType'] = a['types'][j]
-                    mid = uuid7()
-                    b.tokens.create(morph_layer_id, text_id, w['token']['begin'], w['token']['end'],
-                                    precedence=j + 1, metadata=meta, id=mid)
+                    if j == 0 and keep:
+                        mid = keep
+                        b.tokens.patch_metadata(mid, metadata_ops({
+                            **meta, 'morphType': a['types'][0],
+                            PROV_CONFIRMED_KEY: None, PROV_PROB_KEY: None}))
+                    else:
+                        if a['types'][j]:
+                            meta['morphType'] = a['types'][j]
+                        mid = uuid7()
+                        b.tokens.create(morph_layer_id, text_id, w['token']['begin'], w['token']['end'],
+                                        precedence=j + 1, metadata=meta, id=mid)
                     gloss = a['glosses'][j]
                     if gloss:
                         b.spans.create(gloss_layer_id, [mid], gloss,

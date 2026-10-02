@@ -26,7 +26,10 @@ Write contract (the provenance convention):
   * words with any human-made or human-verified piece of morpheme analysis
     (a segmentation, or a span or link on a morpheme) are skipped unless the
     `overwrite` parameter is set. Word-scope fields such as a word gloss are
-    never written, so they protect nothing.
+    never written, so they protect nothing;
+  * words the request names in `skip_word_ids` are never written, whatever
+    `overwrite` says (Auto-analyze names the words its copy step wrote in the
+    same run). Declared in the self-description as `request_fields`.
 
 The model's output is whitespace-aligned to the input words only when it
 behaves. The bookkeeping and mending live in `plaid_client.workflows.igt`
@@ -50,7 +53,7 @@ from plaid_client.service import locked_for_writes, machine_detail
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.igt import (
     ParsedWord, derive, field_layer_id, select_targets, parse_interleaved, align_words, analysis_for,
-    write_analyses,
+    write_analyses, ANALYZE_REQUEST_FIELDS, read_skip_word_ids,
 )
 
 DEFAULT_MODEL = 'lecslab/polygloss-byt5-interleaved-2025-12-28'
@@ -166,6 +169,7 @@ class PolyGlossService(BaseService):
             description='Proposes morpheme segmentation and glosses for every word with the PolyGloss model',
             tasks=[TASKS.ANALYZE],
             summary=SUMMARY,
+            extras={'request_fields': ANALYZE_REQUEST_FIELDS},
             parameters=[
                 Param.string('language', 'Language', required=True, placeholder='e.g. Lezgian',
                              description="The object language's name as the model would know it."),
@@ -238,7 +242,8 @@ class PolyGlossService(BaseService):
                                else translation_field)
 
         # Eligible sentences: any word we may write (the write contract).
-        targets, skipped = select_targets(sentences, overwrite)
+        targets, skipped = select_targets(sentences, overwrite,
+                                          skip_word_ids=read_skip_word_ids(request_data))
         skipped['unaligned'] = 0
         if not targets:
             response_helper.complete({

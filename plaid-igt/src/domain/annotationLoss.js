@@ -10,7 +10,7 @@
 // the old undo-snapshot only restored IGT's own layers, which silently lost
 // other apps' material while reporting success.
 
-import { PROVENANCE_KEYS } from '@larc-iu/plaid-client';
+import { PROV, PROVENANCE_KEYS, isProtected } from '@larc-iu/plaid-client';
 
 const containsToken = (parent, child) =>
   parent.begin <= child.begin && child.end <= parent.end && child.begin < parent.end;
@@ -130,7 +130,8 @@ export const countAnnotationLossForRange = (layerInfo, vocabularies, begin, end)
  * every token in a layer nested (transitively) under the sentence layer, any
  * app's, and every span / relation / vocab-link on them, plus the sentence's
  * own spans. A token's own content (a segmentation, an orthography line: any
- * metadata beyond provenance) counts as one annotation. With zero or >1
+ * metadata beyond provenance) counts as one annotation, and so does a stamped
+ * token a person verified or contributed. With zero or >1
  * sentences the service takes the non-destructive word-only path, so nothing
  * here is lost. Used to surface a confirm before running.
  *
@@ -148,7 +149,13 @@ export const countReTokenizeLoss = (layerInfo, vocabularies) => {
   for (const tl of cascading) {
     for (const t of tl.tokens || []) {
       dyingTokens.add(t.id);
-      if (Object.keys(t.metadata || {}).some((k) => !PROVENANCE_KEYS.includes(k))) {
+      // A token with content of its own, or a stamped token a person verified
+      // or contributed (their merge or split of a machine tokenizer's token).
+      const meta = t.metadata || {};
+      if (
+        Object.keys(meta).some((k) => !PROVENANCE_KEYS.includes(k)) ||
+        (PROV.key in meta && isProtected(meta))
+      ) {
         result.annotations += 1;
       }
     }

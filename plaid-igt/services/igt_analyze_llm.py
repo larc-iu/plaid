@@ -53,6 +53,7 @@ from plaid_client.workflows.llm import (NOT_ASKED, ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
 from plaid_client.workflows.igt import (
     derive, field_layer_id, select_targets, word_state, parse_interleaved, align_words, analysis_for,
+    ANALYZE_REQUEST_FIELDS, read_skip_word_ids,
     write_analyses, tagset_for, mode_rule, value_lines,
 )
 
@@ -372,6 +373,7 @@ class LLMAnalyzeService(BaseService):
                         "project's lexicon and analyzed sentences",
             tasks=[TASKS.ANALYZE],
             summary=SUMMARY,
+            extras={'request_fields': ANALYZE_REQUEST_FIELDS},
             parameters=[
                 Param.string('language', 'Language', required=True, placeholder='e.g. Lezgian',
                              description="The object language's name."),
@@ -441,7 +443,8 @@ class LLMAnalyzeService(BaseService):
         translation_missing = (None if field_layer_id(doc, sent_layer_id, translation_field)
                                else translation_field)
 
-        targets, skipped = select_targets(sentences, overwrite)
+        targets, skipped = select_targets(sentences, overwrite,
+                                          skip_word_ids=read_skip_word_ids(request_data))
         skipped['unaligned'] = 0
         if not targets:
             response_helper.complete({
