@@ -11,8 +11,13 @@
 // the lexicon as LIFT, so it is a zip whenever there is a lexicon to pair.
 // 'latex' is one book, a chapter per document (latexBook.js), always a zip.
 //
-// UI-free and stub-client-testable. Per-document failures become entries in
-// `warnings`, not an aborted run; cancellation throws ExportCancelled.
+// UI-free and stub-client-testable. An export is complete or it fails: a
+// document, a vocabulary or a recording the run includes that cannot be read
+// (after the client's retries) or written throws, and so does anything the
+// native archive carries, so no file ever goes out with a part missing and
+// nothing saying so. What is left in `warnings` changes no part's presence:
+// a value or character written differently, or a lexicon example's sentence
+// from a document that could not be read. Cancellation throws ExportCancelled.
 
 import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '../domain/IgtDocument.js';
 import { readInOrder, readLayerIds } from '../domain/documentReads.js';
@@ -325,9 +330,11 @@ export async function runExport({
     // over them is built once for the run rather than once per document.
     vocabs = Object.values(shareVocabularies(loaded.vocabularies));
     if (loaded.failedCount) {
-      warnings.push(
-        `${loaded.failedCount} vocabular${loaded.failedCount === 1 ? 'y' : 'ies'} failed to load`,
-      );
+      const names = loaded.failed.map((id) => {
+        const name = (project.vocabs || []).find((v) => v.id === id)?.name;
+        return name ? `"${name}"` : 'A vocabulary';
+      });
+      throw new Error(`${names.join(', ')} could not be read.`);
     }
   }
   const vocabsById = Object.fromEntries(vocabs.map((v) => [v.id, v]));
@@ -354,7 +361,7 @@ export async function runExport({
     try {
       guidelines = await client.guidelines.list(project.id, { includeBodies: true });
     } catch (err) {
-      warnings.push(`Guidelines could not be fetched: ${humanizeError(err)}`);
+      throw new Error(`The guidelines could not be read: ${humanizeError(err)}`, { cause: err });
     }
   }
   checkStop();
@@ -393,7 +400,7 @@ export async function runExport({
   const readLayers = isNative ? null : readLayerIds(project);
   // A document and its comments are read ahead of the serializer, a few
   // documents at a time. A read's failure is kept for its turn in the loop,
-  // where it becomes a warning as before.
+  // where it fails the export.
   const readDoc = async (id) => {
     const raw = await client.documents.get(id, true, asOf || undefined, readLayers);
     let comments = null;
@@ -434,8 +441,9 @@ export async function runExport({
       });
     } catch (err) {
       const label = await docLabel(docIds[i]);
-      warnings.push(`${label ?? 'A document'} failed to load: ${humanizeError(err)}`);
-      continue;
+      throw new Error(`${label ?? 'A document'} could not be read: ${humanizeError(err)}`, {
+        cause: err,
+      });
     }
     const name = igtDoc.document?.name || docIds[i];
     onProgress({ done: i, total: progressTotal, name });
@@ -462,14 +470,16 @@ export async function runExport({
         // Already-compressed audio/video — store, don't deflate.
         mediaEntry = { path: mediaFile, data: bytes, opts: { level: 0 } };
       } catch (err) {
-        warnings.push(`"${name}": media could not be fetched: ${humanizeError(err)}`);
+        throw new Error(`The recording of "${name}" could not be read: ${humanizeError(err)}`, {
+          cause: err,
+        });
       }
     }
 
     let docComments = [];
     if (read.comments?.error) {
       const err = read.comments.error;
-      warnings.push(`"${name}": comments could not be fetched: ${humanizeError(err)}`);
+      throw new Error(`The comments on "${name}" could not be read: ${humanizeError(err)}`);
     } else if (read.comments) {
       docComments = await shapeComments(client, read.comments.list, authorNames);
     }
@@ -512,11 +522,9 @@ export async function runExport({
         mediaFile,
         mediaType,
       });
-      // Staged only on a successful doc serialize — a skipped document must
-      // not leave an orphan media file in the archive.
       if (mediaEntry) mediaEntries.push(mediaEntry);
     } catch (err) {
-      warnings.push(`"${name}" failed to serialize: ${err?.message ?? err}`);
+      throw new Error(`"${name}" could not be written: ${err?.message ?? err}`, { cause: err });
     }
   }
   // The example documents the scope did not cover, read whole: one can be in
@@ -547,11 +555,7 @@ export async function runExport({
   // The native archive of a project with no documents still holds the
   // project: its vocabularies, settings and guidelines. Every other format
   // is its documents.
-  if (!docFiles.length && !(isNative && !docIds.length)) {
-    throw new Error(
-      warnings.length ? `Nothing exported. ${warnings.join('; ')}` : 'Nothing to export',
-    );
-  }
+  if (!docFiles.length && !isNative) throw new Error('Nothing to export');
 
   // What the export is named after: the document when the run covers exactly
   // one, the project otherwise. Which radio the scope came from does not
@@ -685,7 +689,10 @@ export async function runExport({
         try {
           vocabComments = await loadVocabComments(client, vocab.id, authorNames);
         } catch (err) {
-          warnings.push(`"${vocabName}": comments could not be fetched: ${humanizeError(err)}`);
+          throw new Error(
+            `The comments on "${vocabName}" could not be read: ${humanizeError(err)}`,
+            { cause: err },
+          );
         }
       }
       entries.push({

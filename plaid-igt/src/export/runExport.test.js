@@ -442,40 +442,32 @@ describe('runExport', () => {
     ).toEqual(['Alpha', 'Beta']);
   });
 
-  it('keeps a failed document out of the flextext without losing the rest', async () => {
+  it('fails a flextext export when a document cannot be read', async () => {
     const docs = [rawDoc('d1', 'Alpha', 'hi yo'), rawDoc('d2', 'Beta', 'ba')];
     const client = stubClient({ docs, failIds: ['d2'] });
     const preset = newPreset('flextext', discoverExportLayers(PROJECT), 'f');
     preset.options.lexicon = false;
-    const result = await runExport({
-      client,
-      project: PROJECT,
-      preset,
-      scope: { type: 'project' },
-    });
-    const files = await unzipBlob(result.blob);
-    const xml = new TextDecoder().decode(files['My Project Test.flextext']);
-    expect(
-      new DOMParser().parseFromString(xml, 'text/xml').querySelectorAll('interlinear-text').length,
-    ).toBe(1);
-    expect(result.warnings).toEqual(['"Beta" failed to load: boom']);
+    await expect(
+      runExport({ client, project: PROJECT, preset, scope: { type: 'project' } }),
+    ).rejects.toThrow('"Beta" could not be read: boom');
   });
 
-  it('turns per-document failures into warnings, not aborts', async () => {
+  it('fails rather than leave out a document that cannot be read', async () => {
+    // A file with a document missing and nothing in it saying so reads as
+    // the whole project. Every format, not only the archive.
     const docs = [rawDoc('d1', 'Good', 'hi'), rawDoc('d2', 'Bad', 'yo')];
-    const client = stubClient({ docs, failIds: ['d2'] });
-    const result = await runExport({
-      client,
-      project: PROJECT,
-      preset: plainPreset(),
-      scope: { type: 'project' },
-    });
-    expect(result.warnings).toEqual(['"Bad" failed to load: boom']);
-    const entries = await unzipBlob(result.blob);
-    expect(Object.keys(entries)).toEqual(['documents/Good.txt']);
+    for (const preset of [
+      plainPreset(),
+      newPreset('plaid-igt-json', discoverExportLayers(PROJECT), 'n'),
+    ]) {
+      const client = stubClient({ docs, failIds: ['d2'] });
+      await expect(
+        runExport({ client, project: PROJECT, preset, scope: { type: 'project' } }),
+      ).rejects.toThrow('"Bad" could not be read: boom');
+    }
   });
 
-  it('throws when nothing could be exported', async () => {
+  it('fails a selection whose document cannot be read, naming it', async () => {
     const docs = [rawDoc('d1', 'Bad', 'hi')];
     const client = stubClient({ docs, failIds: ['d1'] });
     await expect(
@@ -483,9 +475,9 @@ describe('runExport', () => {
         client,
         project: PROJECT,
         preset: plainPreset(),
-        scope: { type: 'project' },
+        scope: { type: 'documents', ids: ['d1'] },
       }),
-    ).rejects.toThrow(/Nothing exported/);
+    ).rejects.toThrow('"Bad" could not be read: boom');
   });
 
   it('honors cancellation between documents, and reads no further than the reads ahead', async () => {
@@ -510,10 +502,10 @@ describe('runExport', () => {
     expect(read.length).toBeLessThanOrEqual(1 + READS_IN_FLIGHT);
   });
 
-  it('reads ahead but writes the documents, their progress and their warnings in order', async () => {
+  it('reads ahead but writes the documents and their progress in order', async () => {
     // The first read is the slowest, so the others land before it.
     const docs = ['d1', 'd2', 'd3', 'd4', 'd5'].map((id) => rawDoc(id, id.toUpperCase(), 'hi'));
-    const client = stubClient({ docs, failIds: ['d3'], delays: { d1: 30, d2: 10 } });
+    const client = stubClient({ docs, delays: { d1: 30, d2: 10 } });
     const progress = [];
     const result = await runExport({
       client,
@@ -528,11 +520,30 @@ describe('runExport', () => {
     expect(files).toEqual([
       'documents/D1.txt',
       'documents/D2.txt',
+      'documents/D3.txt',
       'documents/D4.txt',
       'documents/D5.txt',
     ]);
-    expect(progress.filter((p) => p.name).map((p) => p.name)).toEqual(['D1', 'D2', 'D4', 'D5']);
-    expect(result.warnings).toEqual(['"D3" failed to load: boom']);
+    expect(progress.filter((p) => p.name).map((p) => p.name)).toEqual([
+      'D1',
+      'D2',
+      'D3',
+      'D4',
+      'D5',
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('stops at the first document that cannot be read, in order, and reads no further ahead', async () => {
+    const docs = ['d1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8', 'd9'].map((id) =>
+      rawDoc(id, id.toUpperCase(), 'hi'),
+    );
+    const client = stubClient({ docs, failIds: ['d2', 'd4'], delays: { d1: 30 } });
+    await expect(
+      runExport({ client, project: PROJECT, preset: plainPreset(), scope: { type: 'project' } }),
+    ).rejects.toThrow('"D2" could not be read');
+    const read = client.calls.filter(([m]) => m === 'documents.get').map(([, id]) => id);
+    expect(read.length).toBeLessThanOrEqual(2 + READS_IN_FLIGHT);
   });
 
   it("reads only this app's layers, except for the archive, which reads every layer", async () => {
@@ -598,19 +609,17 @@ describe('runExport', () => {
     );
   });
 
-  it('warns about failed vocabularies without emitting empty TSVs for them', async () => {
+  it('fails when a vocabulary it includes cannot be read, naming it', async () => {
     const docs = [rawDoc('d1', 'A', 'hi'), rawDoc('d2', 'B', 'yo')];
-    const client = stubClient({ docs, vocabFails: true });
-    const preset = { ...plainPreset(), includeVocabularies: true };
-    const result = await runExport({
-      client,
-      project: PROJECT,
-      preset,
-      scope: { type: 'project' },
-    });
-    expect(result.warnings).toEqual(['1 vocabulary failed to load']);
-    const entries = await unzipBlob(result.blob);
-    expect(Object.keys(entries).some((p) => p.startsWith('vocabularies/'))).toBe(false);
+    for (const preset of [
+      { ...plainPreset(), includeVocabularies: true },
+      newPreset('plaid-igt-json', discoverExportLayers(PROJECT), 'n'),
+    ]) {
+      const client = stubClient({ docs, vocabFails: true });
+      await expect(
+        runExport({ client, project: PROJECT, preset, scope: { type: 'project' } }),
+      ).rejects.toThrow(/could not be read/);
+    }
   });
 
   it('threads asOf into document fetches for historical export', async () => {
@@ -686,12 +695,12 @@ describe('runExport — native plaid-igt-json', () => {
     expect(manifest.documents).toEqual([]);
   });
 
-  it('still refuses an archive when every document asked for failed', async () => {
+  it('refuses an archive when a document asked for cannot be read', async () => {
     const docs = [rawDoc('d1', 'Bad', 'hi')];
     const client = stubClient({ docs, failIds: ['d1'] });
     await expect(
       runExport({ client, project: PROJECT, preset: nativePreset(), scope: { type: 'project' } }),
-    ).rejects.toThrow(/Nothing exported/);
+    ).rejects.toThrow('"Bad" could not be read');
   });
 
   it('embeds media via the injected fetcher, named by the fetched content type', async () => {
@@ -823,20 +832,19 @@ describe('runExport — native plaid-igt-json', () => {
     expect(client.calls.some((c) => c[0] === 'guidelines.list')).toBe(false);
   });
 
-  it('degrades a failed guideline fetch to a warning, the corpus still exported', async () => {
+  it('fails an archive whose guidelines cannot be read', async () => {
     const client = stubClient({
       docs: [rawDoc('d1', 'A', 'hi')],
       guidelinesFail: true,
     });
-    const result = await runExport({
-      client,
-      project: PROJECT,
-      preset: nativePreset(),
-      scope: { type: 'document', id: 'd1' },
-    });
-    expect(result.warnings.some((w) => w.includes('Guidelines'))).toBe(true);
-    const entries = await unzipBlob(result.blob);
-    expect(entries['documents/A.json']).toBeTruthy();
+    await expect(
+      runExport({
+        client,
+        project: PROJECT,
+        preset: nativePreset(),
+        scope: { type: 'document', id: 'd1' },
+      }),
+    ).rejects.toThrow(/The guidelines could not be read/);
   });
 
   it("carries a document's comments, with author display names resolved", async () => {
@@ -1013,35 +1021,20 @@ describe('runExport — native plaid-igt-json', () => {
     expect(client.calls.filter((c) => c[0] === 'users.get')).toHaveLength(1);
   });
 
-  it('degrades a failed vocabulary comment fetch to a warning, vocabulary still exported', async () => {
+  it('fails an archive whose vocabulary comments cannot be read', async () => {
     const docs = [rawDoc('d1', 'A', 'hi')];
     const client = stubClient({ docs, vocabCommentsFail: true });
-    const result = await runExport({
-      client,
-      project: PROJECT,
-      preset: nativePreset(),
-      scope: { type: 'project' },
-    });
-    expect(result.warnings).toEqual([
-      '"Lexicon": comments could not be fetched: vocab comment boom',
-    ]);
-    const entries = await unzipBlob(result.blob);
-    const vocab = JSON.parse(new TextDecoder().decode(entries['vocabularies/Lexicon.json']));
-    expect(vocab).not.toHaveProperty('comments');
+    await expect(
+      runExport({ client, project: PROJECT, preset: nativePreset(), scope: { type: 'project' } }),
+    ).rejects.toThrow('The comments on "Lexicon" could not be read: vocab comment boom');
   });
 
-  it('degrades a failed comment fetch to a warning, doc still exported', async () => {
+  it('fails an archive whose document comments cannot be read', async () => {
     const docs = [rawDoc('d1', 'A', 'hi')];
     const client = stubClient({ docs, commentsFail: true });
-    const result = await runExport({
-      client,
-      project: PROJECT,
-      preset: nativePreset(),
-      scope: { type: 'project' },
-    });
-    expect(result.warnings).toEqual(['"A": comments could not be fetched: comment boom']);
-    const entries = await unzipBlob(result.blob);
-    expect(Object.keys(entries)).toContain('documents/A.json');
+    await expect(
+      runExport({ client, project: PROJECT, preset: nativePreset(), scope: { type: 'project' } }),
+    ).rejects.toThrow('The comments on "A" could not be read: comment boom');
   });
 
   it('skips media when includeMedia is off', async () => {
@@ -1061,23 +1054,20 @@ describe('runExport — native plaid-igt-json', () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it('degrades a failed media fetch to a warning, doc still exported', async () => {
+  it('fails when a recording it includes cannot be read', async () => {
     const docs = [rawDoc('d1', 'A', 'hi', '/media/d1/song.wav')];
     const client = stubClient({ docs });
-    const result = await runExport({
-      client,
-      project: PROJECT,
-      preset: nativePreset(),
-      scope: { type: 'project' },
-      fetchMedia: async () => {
-        throw new Error('boom');
-      },
-    });
-    expect(result.warnings).toEqual(['"A": media could not be fetched: boom']);
-    const entries = await unzipBlob(result.blob);
-    expect(Object.keys(entries)).toContain('documents/A.json');
-    const doc = JSON.parse(new TextDecoder().decode(entries['documents/A.json']));
-    expect(doc.mediaFile).toBeNull();
+    await expect(
+      runExport({
+        client,
+        project: PROJECT,
+        preset: nativePreset(),
+        scope: { type: 'project' },
+        fetchMedia: async () => {
+          throw new Error('boom');
+        },
+      }),
+    ).rejects.toThrow('The recording of "A" could not be read: boom');
   });
 });
 

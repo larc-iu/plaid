@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Download, Settings } from 'lucide-react';
+import { Download, Settings, X } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Label } from '@ui/components/ui/label';
-import { notifySuccess, notifyError, notifyWarning, humanizeError } from '@/utils/feedback';
+import { Notice } from '@ui/components/shared/Notice.jsx';
+import { notifySuccess, notifyWarning, humanizeError } from '@/utils/feedback';
 import { readExportPresets, EXPORT_FORMATS } from '@/export/presets';
 import { runExport, ExportCancelled } from '@/export/runExport';
 import { downloadBlob } from '@/export/files';
@@ -61,6 +62,10 @@ export const ExportRunner = ({
   const [docList, setDocList] = useState(documents);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(null);
+  // How the last run ended, when there is more to say than a toast holds: a
+  // failure, or a file downloaded with warnings. It stays until dismissed or
+  // the next run.
+  const [outcome, setOutcome] = useState(null);
   const stopRef = useRef(false);
 
   const preset = presets.find((p) => p.id === selectedId) ?? null;
@@ -102,6 +107,7 @@ export const ExportRunner = ({
           ? { type: 'documents', ids: [...selectedDocIds] }
           : { type: 'project' };
     setRunning(true);
+    setOutcome(null);
     stopRef.current = false;
     setProgress({ done: 0, total: 0, name: null });
     try {
@@ -116,10 +122,12 @@ export const ExportRunner = ({
       });
       downloadBlob(result.filename, result.blob);
       if (result.warnings.length) {
-        notifyWarning(
-          `Exported with ${result.warnings.length} warning${result.warnings.length === 1 ? '' : 's'}: ${result.warnings.join('; ')}`,
-          'Export finished',
-        );
+        const n = result.warnings.length;
+        setOutcome({
+          tone: 'warning',
+          title: `Downloaded ${result.filename} with ${n} warning${n === 1 ? '' : 's'}`,
+          lines: result.warnings,
+        });
       } else {
         notifySuccess(`Downloaded ${result.filename}`, 'Export complete');
       }
@@ -129,7 +137,11 @@ export const ExportRunner = ({
         notifyWarning('Nothing was downloaded.', 'Export cancelled');
       } else {
         console.error('Export failed:', err);
-        notifyError(humanizeError(err), 'Failed to export');
+        setOutcome({
+          tone: 'error',
+          title: 'Failed to export',
+          lines: [humanizeError(err), 'Nothing was downloaded.'],
+        });
       }
     } finally {
       setRunning(false);
@@ -232,6 +244,27 @@ export const ExportRunner = ({
             </div>
           )}
         </>
+      )}
+
+      {outcome && !running && (
+        <Notice tone={outcome.tone} role="alert" data-testid="export-outcome">
+          <div className="flex items-start gap-2">
+            <p className="flex-1 font-medium">{outcome.title}</p>
+            <button
+              type="button"
+              aria-label="Dismiss"
+              className="rounded p-0.5 hover:bg-background/60"
+              onClick={() => setOutcome(null)}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <ul className="mt-1 max-h-64 list-inside list-disc overflow-y-auto">
+            {outcome.lines.map((line, i) => (
+              <li key={i}>{line}</li>
+            ))}
+          </ul>
+        </Notice>
       )}
 
       {preset?.format === 'flextext' && (
