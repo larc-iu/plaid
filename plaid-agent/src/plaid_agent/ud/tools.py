@@ -23,7 +23,7 @@ from ..core.workspace import BaseWorkspace
 from ..core.tools import ToolError, server_refused
 from .plan import (KIND, RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, docs_of_op,
                    scope_clears)
-from .project import (FEATURES, Sentence, Token, UdDoc, UdProject, Word, feature_key,
+from .project import (FEATURES, Sentence, Token, UdDoc, UdProject, Word, feats_order, feature_key,
                       feature_refusal, load_document, normalize_feature, render_document, resolve,
                       word_ref)
 from .review import (REVIEW_FIELDS, all_words, confirm_targets, counts_phrase, discard_targets,
@@ -493,9 +493,9 @@ def _feature_ops(ws: Workspace, doc: UdDoc, layer_id: str, w: Word,
     """What a word needs for its features to be ``want`` (a value, or None to
     remove one): ``(ops to stage, planned ops to drop)``. Each feature is its
     own span, so a change is a create, an update or a delete of the one span
-    holding that feature, as the app's FEATS cell writes it. Removing a
-    feature only this plan adds drops the planned add, since nothing stored
-    is there to delete."""
+    holding that feature, as the app's FEATS cell writes it. Wanting what is
+    stored drops the planned change to that feature (removing a feature only
+    this plan adds, or putting back a stored one this plan removes)."""
     planned = _planned_features(ws, layer_id, w)
     ref = word_ref(ws.sentence_of(doc, w), w)
     stage, drop = [], []
@@ -503,7 +503,11 @@ def _feature_ops(ws: Workspace, doc: UdDoc, layer_id: str, w: Word,
         if (planned.get(key) or None) == (value or None):
             continue
         sp = w.feature_span(key)
-        if not value and sp is None:
+        stored = (normalize_feature(sp.value) or (None, None))[1] if sp is not None else None
+        if (value or None) == stored:
+            # Back to what is stored: drop the planned change rather than
+            # stage a write of the span's own value, which an approved plan
+            # would stamp verified.
             drop += [op for op in ws.ops if _is_feature_op(op, layer_id, w.id) and op['feature'] == key]
             continue
         stage.append({'kind': 'set_span', 'layer_id': layer_id, 'token_id': w.id,
@@ -527,7 +531,8 @@ def _set_features(ws: Workspace, doc: UdDoc, layer_id: str, refs, value: str) ->
     """set_field on features: the word's whole FEATS becomes ``value``. Each
     pair is its own span, so this writes the pairs that differ and removes
     the ones ``value`` leaves out."""
-    pairs = _pairs(value)
+    # A read prints "_" for a word with no features, as CoNLL-U does.
+    pairs = _pairs('' if value.strip() == '_' else value)
     for k, v in pairs.items():
         _check_feature(ws, k, v)
     words = _words(ws, doc, refs)
@@ -539,7 +544,7 @@ def _set_features(ws: Workspace, doc: UdDoc, layer_id: str, refs, value: str) ->
         stage, drop = _feature_ops(ws, doc, layer_id, w, want)
         changes.append((word_ref(ws.sentence_of(doc, w), w), stage, drop))
     changed = _stage_features(ws, changes)
-    bundle = '|'.join(f'{k}={v}' for k, v in sorted(pairs.items(), key=lambda kv: f'{kv[0]}={kv[1]}'))
+    bundle = '|'.join(sorted((f'{k}={v}' for k, v in pairs.items()), key=feats_order))
     if not changed:
         return (f'Nothing to change: features are already "{bundle}" on every word named.' if bundle
                 else 'Nothing to change: none of the words named has features.')

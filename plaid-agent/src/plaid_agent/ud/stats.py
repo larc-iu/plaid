@@ -8,7 +8,7 @@ from collections import defaultdict
 from typing import Dict, List
 
 from .corpus import RENDER_DOC_BUDGET, Corpus, rx
-from .project import Sentence, UdDoc, Word, kwic, word_ref
+from .project import Sentence, UdDoc, Word, feats_order, kwic, word_ref
 from ..core.corpus import spread
 from ..core.tools import ToolError, truncate
 from .tools import FIELDS, Workspace
@@ -151,7 +151,7 @@ def _bundles(c: Corpus) -> List[tuple]:
             by_word[word].append(value)
     counts: Dict[str, int] = defaultdict(int)
     for values in by_word.values():
-        counts['|'.join(sorted(values))] += 1
+        counts['|'.join(sorted(values, key=feats_order))] += 1
     return sorted(counts.items(), key=lambda kv: -kv[1])
 
 

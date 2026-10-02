@@ -85,6 +85,13 @@ def normalize_feature(raw) -> Optional[Tuple[str, str, str]]:
     return key, value, f'{key}={value}'
 
 
+def feats_order(pair: str) -> Tuple[str, str]:
+    """Where a pair goes in FEATS: by feature name, case aside, then by the
+    pair (``Number`` before ``NumType``), as plaid-ud's ``serializeFeats``
+    writes the export."""
+    return (pair.split('=', 1)[0].lower(), pair)
+
+
 def feature_key(field: str, value) -> Optional[str]:
     """Which feature a span of ``field`` holding ``value`` is, for naming the
     span a plan writes to: a word holds one span per field, except features,
@@ -323,7 +330,7 @@ class Word:
         """The word's spans of one field that hold a value: every feature
         pair for ``features``, at most one span for any other field."""
         if name == FEATURES:
-            return sorted((sp for sp in self.features if sp.value), key=lambda sp: sp.value)
+            return sorted((sp for sp in self.features if sp.value), key=lambda sp: feats_order(sp.value))
         sp = self.fields.get(name)
         return [sp] if sp and sp.value else []
 

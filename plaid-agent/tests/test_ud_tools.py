@@ -1555,3 +1555,38 @@ def test_confirm_leaves_a_machine_value_off_a_closed_list_and_names_it():
     # On the list, it is confirmed as before.
     ws3 = _closed_ws(['NOUN'])
     assert run(ws3, 'confirm', document='Viaje', refs=['s1.w4']) == 'Planned confirming 2 value(s).'
+
+
+def test_features_read_in_the_exports_order_by_name_case_aside(ws):
+    """plaid-ud's export orders FEATS by feature name, case aside, so
+    Number comes before NumType (REV-AGENT F1)."""
+    run(ws, 'set_feature', document='Viaje', refs=['s1.w1'], feature='NumType', value='Card')
+    out = run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='features', value='NumType=Card|Number=Sing')
+    assert 'features = "Number=Sing|NumType=Card"' in out
+    from plaid_agent.ud.project import Span
+    w = ws.doc('Viaje').sentences[0].words[0]
+    w.features.append(Span('sp-n', 'NumType=Card', None, 'u-feats'))
+    assert w.value('features') == 'Mood=Ind|Number=Plur|NumType=Card'
+    rows = [['uw-1', 'NumType=Card', 1], ['uw-1', 'Number=Sing', 1]]
+    ws.client.query = lambda body: {'return': 'aggregate', 'results': rows}
+    assert '1  Number=Sing|NumType=Card' in run(ws, 'frequency_list', what='feature-bundles')
+
+
+def test_putting_back_a_stored_feature_stages_nothing(ws):
+    """Removing a stored feature and then setting it back to its value staged
+    a write of the span's own value, which approval stamps verified
+    (REV-AGENT F3)."""
+    run(ws, 'set_feature', document='Viaje', refs=['s1.w1'], feature='Mood', value='')
+    assert len(ws.ops) == 1
+    out = run(ws, 'set_feature', document='Viaje', refs=['s1.w1'], feature='Mood', value='Ind')
+    assert ws.ops == [] and out.startswith('Planned Mood=Ind on 1 word(s)')
+    run(ws, 'set_field', document='Viaje', refs=['s1.w1'], field='features', value='Number=Sing')
+    run(ws, 'set_field', document='Viaje', refs=['s1.w1'], field='features', value='Mood=Ind|Number=Plur')
+    assert ws.ops == []
+
+
+def test_set_field_features_underscore_clears_as_a_read_prints_it(ws):
+    """A read prints "_" for a word with no features (REV-AGENT F4)."""
+    out = run(ws, 'set_field', document='Viaje', refs=['s1.w1'], field='features', value='_')
+    assert out.startswith('Planned features cleared')
+    assert sorted((op['span_id'], op['value']) for op in ws.ops) == [('sp-x1', ''), ('sp-x2', '')]
