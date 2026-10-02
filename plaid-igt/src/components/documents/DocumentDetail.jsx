@@ -115,7 +115,12 @@ const DocumentEditor = () => {
   // Base path the tab links hang their `?tab=` off.
   const docPath = `/projects/${projectId}/documents/${documentId}`;
 
-  const permissions = useDocumentPermissions(doc?.project);
+  // The project as the document keeps it. The document reads it again while
+  // open and after a refused write, and a new copy re-renders this screen (a
+  // save does not), so a member demoted or removed meanwhile gets the
+  // read-only page without a reload.
+  const docProject = useSyncExternalStore(doc?.subscribe ?? NO_SUBSCRIBE, () => doc?.project);
+  const permissions = useDocumentPermissions(docProject);
 
   const writeLock = useWriteLock();
   // A run the previous page started and did not live to see the end of.
@@ -138,7 +143,7 @@ const DocumentEditor = () => {
   // Landing on a sentence: the ?focusSentence= handoff, and a citation asking
   // for one of this document's sentences while the reader is here.
   const focusHere = useSentenceFocus({ documentId, focusParam, focusWordParam, activeTab });
-  const project = doc?.project;
+  const project = docProject;
   // The island offers its own "Ask" gesture, which is only worth showing when
   // there is something to ask. The panel itself is the shell's.
   const assistantAvailable = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
@@ -457,7 +462,11 @@ const DocumentEditor = () => {
             {!isViewingHistorical && permissions.isReadOnly && (
               <Notice tone="info" className="mb-4">
                 <p className="font-medium">Read-only</p>
-                <p className="text-xs">You have reader access to this project.</p>
+                <p className="text-xs">
+                  {permissions.canRead
+                    ? 'You have reader access to this project.'
+                    : 'You no longer have access to this project.'}
+                </p>
               </Notice>
             )}
 
