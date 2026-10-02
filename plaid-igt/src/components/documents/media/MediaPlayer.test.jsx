@@ -132,3 +132,52 @@ describe('the transport before the recording has loaded', () => {
     await view.unmount();
   });
 });
+
+// A WebM made by MediaRecorder has no duration in its header: the element says
+// Infinity at loadedmetadata and learns the real length only once it has read
+// to the end. The timeline and the slider were stuck at 0:00.000 for good.
+describe('a recording whose length the header does not give', () => {
+  const mount = async (ops) => {
+    const view = await renderComponent(<MediaPlayer mediaOps={ops} canWrite />);
+    const element = view.container.querySelector('video');
+    const seeks = [];
+    let duration = Infinity;
+    Object.defineProperty(element, 'duration', { get: () => duration, configurable: true });
+    Object.defineProperty(element, 'currentTime', {
+      get: () => seeks.at(-1) ?? 0,
+      set: (t) => seeks.push(t),
+      configurable: true,
+    });
+    return { view, element, seeks, setDuration: (d) => (duration = d) };
+  };
+
+  it('finds the length by a seek to the end, then goes back to the start', async () => {
+    const ops = mediaOps();
+    const { view, element, seeks, setDuration } = await mount(ops);
+    await view.step(() => element.dispatchEvent(new Event('loadedmetadata')));
+    // Not loaded yet: a play or a seek now would be lost to the one below.
+    expect(ops.handleMediaLoaded).not.toHaveBeenCalled();
+    expect(ops.handleDurationChange).not.toHaveBeenCalled();
+    expect(seeks).toEqual([Number.MAX_SAFE_INTEGER]);
+    setDuration(24.923);
+    await view.step(() => element.dispatchEvent(new Event('durationchange')));
+    expect(ops.handleDurationChange).toHaveBeenLastCalledWith(24.923);
+    expect(seeks.at(-1)).toBe(0);
+    expect(ops.handleMediaLoaded).toHaveBeenCalledWith('blob:rec');
+    await view.unmount();
+  });
+
+  it('takes a length the element learns later, from playing to the end', async () => {
+    const ops = mediaOps();
+    const { view, element, setDuration } = await mount(ops);
+    setDuration(12);
+    await view.step(() => element.dispatchEvent(new Event('loadedmetadata')));
+    expect(ops.handleDurationChange).toHaveBeenLastCalledWith(12);
+    expect(ops.handleMediaLoaded).toHaveBeenCalledTimes(1);
+    setDuration(12.5);
+    await view.step(() => element.dispatchEvent(new Event('durationchange')));
+    expect(ops.handleDurationChange).toHaveBeenLastCalledWith(12.5);
+    expect(ops.handleMediaLoaded).toHaveBeenCalledTimes(1);
+    await view.unmount();
+  });
+});

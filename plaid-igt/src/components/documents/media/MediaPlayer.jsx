@@ -67,6 +67,23 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
   // gates the keys and the transcript rows the same way), and again for a new
   // file.
   const animationFrameRef = useRef(null);
+  // A WebM from MediaRecorder carries no duration, and the element reports
+  // Infinity at loadedmetadata. A seek past the end makes it read the file to
+  // its end and learn the real one, which arrives as a durationchange. While
+  // that runs the file is not loaded yet, so nothing seeks or plays it.
+  const findingEndRef = useRef(false);
+  const reportDuration = (element) => {
+    const d = element.duration;
+    if (!Number.isFinite(d) || d <= 0) return false;
+    onDurationChange?.(d);
+    return true;
+  };
+  const endFound = (element) => {
+    if (!findingEndRef.current) return;
+    findingEndRef.current = false;
+    element.currentTime = 0;
+    onMediaLoaded?.(mediaUrl);
+  };
   // The clock's digits redraw a few times a second while playing; the slider
   // keeps every frame.
   const shownTime = useThrottledValue(currentTime, RUNNING_TIME_MS, { bypass: !isPlaying });
@@ -226,9 +243,23 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
             onPause={() => {
               onPlayingChange && onPlayingChange(false);
             }}
+            onDurationChange={(e) => {
+              if (reportDuration(e.target)) endFound(e.target);
+            }}
+            onSeeked={(e) => {
+              // The seek past the end landed without a durationchange: what
+              // the element has now is all there is to know.
+              reportDuration(e.target);
+              endFound(e.target);
+            }}
             onLoadedMetadata={(e) => {
-              onDurationChange && onDurationChange(e.target.duration);
-              onMediaLoaded?.(mediaUrl);
+              findingEndRef.current = false;
+              if (!reportDuration(e.target) && e.target.duration === Infinity) {
+                findingEndRef.current = true;
+                e.target.currentTime = Number.MAX_SAFE_INTEGER;
+              } else {
+                onMediaLoaded?.(mediaUrl);
+              }
 
               // Detect if this is actually a video or just audio
               const video = e.target;
