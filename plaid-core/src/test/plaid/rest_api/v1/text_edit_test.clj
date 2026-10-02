@@ -331,7 +331,8 @@
 (deftest a-word-layer-that-splits-on-space
   ;; ud (Luke, 2026-09-30): the plain rule, but a space typed inside a word
   ;; splits it, the word and what is as long as it going on the half sharing
-  ;; more letters (D28). F1: `walkdd`, Backspace, ` home` keeps the analysis.
+  ;; more letters (D28), the other half a word of its own (2026-10-02). F1:
+  ;; `walkdd`, Backspace, ` home` keeps the analysis.
   (let [{:keys [text words others]} (setup "a walkdd cat" :split true :other :child)
         digest-of #(-> (get-text admin-request text) :body :text/digest)]
     (testing "a letter deleted inside and a word typed after"
@@ -339,8 +340,14 @@
       (is (= "a walkd home cat" (-> (get-text admin-request text) :body :text/body)))
       (is (= [2 7 "walkd"] (extent (words 1)) (extent (others 1)))))
     (testing "a space typed inside a word splits it"
-      (assert-ok (edit-text text {:edits [(ins 14 " ")] :base (digest-of)}))
-      (is (= [15 17 "at"] (extent (words 2)) (extent (others 2)))))
+      (let [res (edit-text text {:edits [(ins 14 " ")] :base (digest-of)})
+            made (filter :layer (-> res :body :reshape :tokens))]
+        (assert-ok res)
+        (is (= [15 17 "at"] (extent (words 2)) (extent (others 2))))
+        ;; Q2-UD-POLISH-2: the other part is a word of its own, with a token
+        ;; under it on each layer the word had one as long as it on
+        (is (= 3 (count made) (count (distinct (map :layer made)))) "a word, a morpheme and the other layer's token")
+        (is (every? #(= [13 14 "c"] (extent (:id %))) made))))
     (testing "a deleted space keeps both words"
       (assert-ok (edit-text text {:edits [(del 1 1)] :base (digest-of)}))
       (is (= [[0 1 "a"] [1 6 "walkd"]] [(extent (words 0)) (extent (words 1))])))))

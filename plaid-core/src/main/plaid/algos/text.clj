@@ -2409,60 +2409,114 @@
           kept)))
 
 (defn- split-spaced-words
-  "`placed` (the tokens `apply-plain-gaps` placed, `::gone` marking the
-  deleted) with each word (`word?`) that the edit typed whitespace inside
-  split there: only at the runs of whitespace holding typed
-  whitespace, never at spaces the word had. The word goes on the part holding
-  the most of its old letters (the first on a tie), a token that was as long
-  as it goes with it, a token that stood strictly inside it is cut to that
-  part (and deleted when none of it is there), and a token over several
-  words that began or ended with it begins or ends where it does now.
-  `typed?` says whether a new-body position holds typed text."
-  [^ints nw old-tokens placed word? part? typed?]
+  "`{:placed :made}`: `placed` (the tokens `apply-plain-gaps` placed,
+  `::gone` marking the deleted) with each word (`word?`) that the edit typed
+  whitespace inside split there, and `made`, the new tokens the split
+  makes (Luke, 2026-10-02: ud splits a word a space is typed in). A word is
+  cut only at the runs of whitespace holding typed whitespace, never at
+  spaces it had. It stays on the part holding the most of its old letters
+  (the first on a tie), with what hangs off it, and each other part holding
+  one of its old letters is a new token of its layer (a part of typed text
+  alone is text typed apart from the word, in no word). The tokens under the word (`child?`) as long as
+  it go one to each part, in order of precedence, when there are as many
+  of a layer as parts (a multi-word token `can't`, `ca` + `n't`, typed as
+  `ca n't` leaves each word on its own part). Otherwise they stay with the
+  word, and each new part gets a new token of that layer as long as it. A
+  token that stood strictly inside the word goes to the part holding most
+  of its kept letters, cut to it, and is deleted when it holds nothing of
+  any. Another token as long as the word stays with it, and one over
+  several words that began or ended with it begins or ends where it does
+  now. `typed?` says whether a new-body position holds typed text."
+  [^ints nw old-tokens placed word? part? typed? child?]
   (let [was (into {} (map (juxt :token/id identity)) old-tokens)
+        letter-at? (fn [i] (and (not (typed? i)) (not (space? (aget nw i)))))
         ;; the old letters kept, by new position
-        kept (fn [x y] (count (filter #(and (not (typed? %)) (not (space? (aget nw %)))) (range x y))))
-        moves (into {}
-                    (keep (fn [{:token/keys [id begin end] :as t}]
-                            (let [{ob :token/begin oe :token/end} (was id)]
-                              (when (and (word? t) (not (::gone t)) ob)
-                                ;; the whitespace runs holding typed whitespace
-                                (let [cuts (loop [i begin out [] run nil]
-                                             (if (< i end)
-                                               (if (space? (aget nw i))
-                                                 (recur (inc i) out (let [[x t?] (or run [i false])] [x (or t? (typed? i))]))
-                                                 (recur (inc i) (if (and run (second run)) (conj out [(first run) i]) out) nil))
-                                               out))]
-                                  (when (seq cuts)
-                                    (let [pieces (map vector (cons begin (map second cuts)) (concat (map first cuts) [end]))
-                                          best (reduce max (map #(apply kept %) pieces))]
-                                      [[ob oe] (first (filter #(= best (apply kept %)) pieces))])))))))
-                    placed)
-        edge-moves (into {} (map (fn [[[ob oe] [x y]]] [ob [x y]])) moves)
-        end-moves (into {} (map (fn [[[ob oe] [x y]]] [oe [x y]])) moves)]
-    (if (empty? moves)
-      placed
-      (mapv (fn [{:token/keys [id begin end] :as t}]
-              (let [{ob :token/begin oe :token/end} (was id)]
-                (cond
-                  (or (::gone t) (nil? ob) (part? t)) t
-                  (moves [ob oe]) (let [[x y] (moves [ob oe])] (assoc t :token/begin x :token/end y))
-                  ;; inside a split word: cut to its part
-                  (some (fn [[[wb we] _]] (and (<= wb ob) (<= oe we))) moves)
-                  (let [[x y] (some (fn [[[wb we] xy]] (when (and (<= wb ob) (<= oe we)) xy)) moves)
-                        b (max begin x) e (min end y)]
-                    (if (< b e) (assoc t :token/begin b :token/end e) (assoc t ::gone true)))
-                  ;; over several words: an edge at a split word's edge follows it
-                  :else (let [b (if-let [[x _] (edge-moves ob)] x begin)
-                              e (if-let [[_ y] (end-moves oe)] y end)]
-                          (if (< b e) (assoc t :token/begin b :token/end e) t)))))
-            placed))))
+        kept (fn [x y] (count (filter letter-at? (range x y))))
+        ;; old extent -> {:keep [x y] :pieces [[x y] ...] :layer}
+        splits (into {}
+                     (keep (fn [{:token/keys [id begin end layer] :as t}]
+                             (let [{ob :token/begin oe :token/end} (was id)]
+                               (when (and (word? t) (not (::gone t)) ob)
+                                 ;; the whitespace runs holding typed whitespace
+                                 (let [cuts (loop [i begin out [] run nil]
+                                              (if (< i end)
+                                                (if (space? (aget nw i))
+                                                  (recur (inc i) out (let [[x t?] (or run [i false])] [x (or t? (typed? i))]))
+                                                  (recur (inc i) (if (and run (second run)) (conj out [(first run) i]) out) nil))
+                                                out))]
+                                   (when (seq cuts)
+                                     (let [pieces (mapv vector (cons begin (map second cuts)) (concat (map first cuts) [end]))
+                                           best (reduce max (map #(apply kept %) pieces))
+                                           kp (first (filter #(= best (apply kept %)) pieces))]
+                                       ;; a part with none of its old letters is
+                                       ;; text typed apart from it, in no word
+                                       [[ob oe] {:keep kp
+                                                 :pieces (or (not-empty (filterv #(pos? (apply kept %)) pieces)) [kp])
+                                                 :layer layer}])))))))
+                     placed)
+        live? (fn [t] (and (not (::gone t)) (was (:token/id t)) (not (part? t)) (not (word? t))))
+        ;; the tokens under a split word as long as it, by word and layer
+        under (group-by (fn [t] (let [{ob :token/begin oe :token/end} (was (:token/id t))]
+                                  [[ob oe] (:token/layer t)]))
+                        (filter #(and (live? %) (child? %)
+                                      (let [{ob :token/begin oe :token/end} (was (:token/id %))]
+                                        (splits [ob oe])))
+                                placed))
+        ;; those that go one to each part: id -> part
+        shared (into {}
+                     (mapcat (fn [[[w _] ts]]
+                               (let [pieces (:pieces (splits w))]
+                                 (when (= (count ts) (count pieces))
+                                   (map vector
+                                        (map :token/id (sort-by #(or (:token/precedence (was (:token/id %))) 0) ts))
+                                        pieces)))))
+                     under)
+        made (into []
+                   (mapcat (fn [[w {kp :keep :keys [pieces layer]}]]
+                             (for [p pieces
+                                   :when (not= p kp)
+                                   t (cons {:token/layer layer :token/begin (first p) :token/end (second p)}
+                                           (keep (fn [[[w2 l] ts]]
+                                                   (when (and (= w2 w) (not (shared (:token/id (first ts)))))
+                                                     {:token/layer l :token/begin (first p) :token/end (second p)}))
+                                                 under))]
+                               t)))
+                   splits)
+        edge-moves (into {} (map (fn [[[ob _] {[x y] :keep}]] [ob [x y]])) splits)
+        end-moves (into {} (map (fn [[[_ oe] {[x y] :keep}]] [oe [x y]])) splits)]
+    (if (empty? splits)
+      {:placed placed :made []}
+      {:placed
+       (mapv (fn [{:token/keys [id begin end] :as t}]
+               (let [{ob :token/begin oe :token/end} (was id)
+                     inside (when ob (some (fn [[[wb we] s]] (when (and (<= wb ob) (<= oe we) (not (and (= wb ob) (= oe we)))) s)) splits))]
+                 (cond
+                   (or (::gone t) (nil? ob) (part? t)) t
+                   (shared id) (let [[x y] (shared id)] (assoc t :token/begin x :token/end y))
+                   (splits [ob oe]) (let [[x y] (:keep (splits [ob oe]))] (assoc t :token/begin x :token/end y))
+                   ;; inside a split word: to the part holding most of it
+                   inside
+                   (let [in (fn [[x y]] [(max begin x) (min end y)])
+                         score (fn [p] (let [[b e] (in p)] [(kept b e) (- e b)]))
+                         best (reduce (fn [a p] (if (pos? (compare (score p) (score a))) p a)) (:pieces inside))
+                         [b e] (in best)]
+                     (if (< b e) (assoc t :token/begin b :token/end e) (assoc t ::gone true)))
+                   ;; over several words: an edge at a split word's edge follows it
+                   :else (let [b (if-let [[x _] (edge-moves ob)] x begin)
+                               e (if-let [[_ y] (end-moves oe)] y end)]
+                           (if (< b e) (assoc t :token/begin b :token/end e) t)))))
+             placed)
+       :made made})))
 
 (defn apply-plain-gaps
   "What `gaps` (old-body code points, in order, never touching, each
   `{:start a :end b :value v}`, see `compose-edits`) do to `old` and to
   `tokens` taken the plain way. Returns `{:text :tokens :deleted}` as
-  `apply-text-edits` does.
+  `apply-text-edits` does, with `:heads`, the sentences made over a line
+  typed before the first one, and with `split-on-space`, `:made`, the new
+  tokens of the words a typed space split (see `split-spaced-words`), each
+  `{:token/layer :token/begin :token/end}`, a word before the tokens under
+  it.
 
   For a token with text, [B, E):
   - A gap inside it, or reaching one of its ends from inside, grows or
@@ -2693,18 +2747,20 @@
                                   (assoc t ::gone true)))
                               (assoc t ::gone true)))))
                       wide)
-         placed (if split-on-space
-                  (let [typed (let [a (boolean-array (alength nw))]
-                                (dotimes [g k]
-                                  (let [na (new-at g)] (dotimes [j (:n (info g))] (aset a (+ na j) true))))
-                                a)]
-                    (split-spaced-words nw wide placed
-                                        (if (seq (filter #(word-layers (:token/layer %)) wide))
-                                          #(word-layers (:token/layer %))
-                                          #(not (partitioning (:token/layer %))))
-                                        #(partitioning (:token/layer %))
-                                        #(aget typed (int %))))
-                  placed)
+         {placed :placed made :made}
+         (if split-on-space
+           (let [typed (let [a (boolean-array (alength nw))]
+                         (dotimes [g k]
+                           (let [na (new-at g)] (dotimes [j (:n (info g))] (aset a (+ na j) true))))
+                         a)]
+             (split-spaced-words nw wide placed
+                                 (if (seq (filter #(word-layers (:token/layer %)) wide))
+                                   #(word-layers (:token/layer %))
+                                   #(not (partitioning (:token/layer %))))
+                                 #(partitioning (:token/layer %))
+                                 #(aget typed (int %))
+                                 #(contains? (set children) (:token/layer %))))
+           {:placed placed})
          zero-r (when (seq zero) (apply-text-edits (gap-ops gaps) {:text/body old} zero))
          kept (filterv (complement ::gone) placed)
          was-token (let [m (into {} (map (juxt :token/id identity)) wide)] #(m (:token/id %)))
@@ -2758,7 +2814,9 @@
               ;; stays at that edge, so nothing ends up inside another
               :tokens (into kept (pin-points-to-edges tokens kept (:tokens zero-r)))
               :deleted (into (mapv :token/id (filter ::gone placed)) (:deleted zero-r))}
-       (seq heads) (assoc :heads heads)))))
+       (seq heads) (assoc :heads heads)
+       ;; the parts of a word split by a typed space (see `split-spaced-words`)
+       (seq made) (assoc :made made)))))
 
 (defn plain-edit-gaps
   "The gaps an edit of `old` by `ops` from the caret is taken as: its net

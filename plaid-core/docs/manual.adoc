@@ -1007,9 +1007,13 @@ Without it, or where nothing meets, the text goes as the rules above say.
 
 A word layer whose config sets `splitOnSpace` to `true` in the `plaid` namespace (`SPLIT_ON_SPACE_KEY` in both clients) has a space typed inside one of its tokens split it there.
 Spaces the token already had do not split it.
-The token goes on the part holding the most of its old letters, the first on a tie, with the tokens as long as it.
-A token inside it is cut to that part, and one wholly on the other part is deleted.
+The token stays on the part holding the most of its old letters, the first on a tie, with its annotations and the tokens as long as it.
+Each other part holding a letter of the token becomes a new token of the same layer, and for each layer under it where the token had a token as long as itself (syntactic words, morphemes), the new token gets a new token of that layer as long as it.
+A part holding only typed text is text typed apart from the token and belongs to no token.
+Where a layer under the token held as many tokens as long as it as there are parts (a multi-word token, `can't` as `ca` + `n't`, typed as `ca n't`), those tokens go one to each part in order of `precedence` instead, so each stays on its own letters.
+A token inside it goes to the part holding most of its letters and is cut to it, and is deleted when it holds no letter of any part.
 A token over several words that began or ended with it begins or ends where the token now does.
+The answer's `reshape.tokens` names each new token with its `layer`.
 The key holds for every word of the text, so on a word layer two apps share, one app's key decides for both.
 This holds for `body` and `edits` alike.
 

@@ -254,7 +254,7 @@
                                layer-rows))
           opts (select-keys roles [:split-on-space :children :exclusive :head-layers])
           indexed-old (reduce (fn [m t] (assoc m (:token/id t) t)) {} tokens)
-          {new-text :text new-tokens :tokens deleted-ids :deleted heads :heads}
+          {new-text :text new-tokens :tokens deleted-ids :deleted heads :heads made :made}
           (cond
             edits (ta/plain-edits old-body tokens edits partitioning deciders opts)
             (string? new-body-or-ops) (ta/plain-body old-body new-body-or-ops tokens partitioning deciders opts)
@@ -288,14 +288,16 @@
                                             [id {:begin begin :end_ end}])))))
                               (sort-by (fn [[_ {:keys [begin]}]] begin))
                               vec)
-       ;; the sentences made over a line typed before the first one
-       :heads (mapv #(assoc % :token/id (psc/new-uuid)) heads)
+       ;; the tokens the save makes, written in this order: the sentences
+       ;; made over a line typed before the first one, and the parts of a
+       ;; word a typed space split, each before the tokens under it
+       :heads (mapv #(assoc % :token/id (psc/new-uuid)) (concat heads made))
        :survivors (let [survivors (into [] (remove #(contains? deleted-set (:token/id %))) new-tokens)]
                     ;; never two tokens of a layer that forbids overlap on one
                     ;; stretch: should a rule above ever leave them, the save
                     ;; is refused rather than stored
                     (doseq [[layer ts] (group-by :token/layer (filter #(exclusive (:token/layer %))
-                                                                      survivors))
+                                                                      (into survivors made)))
                             [x y] (partition 2 1 (sort-by (juxt :token/begin :token/end) ts))]
                       (when (> (:token/end x) (:token/begin y))
                         (throw (ex-info (str "The change would leave two tokens of layer \""
@@ -399,8 +401,9 @@
            ;; transaction wrote, not one read after it.
            (crud/update-by-id! tx :texts eid {:body new-body})
            (vswap! op assoc :body new-body)
-           ;; 4. The sentences made over a line typed before the first one,
-           ;; then the partitioning-mode gap-fill on the surviving tokens.
+           ;; 4. The tokens the save makes (a sentence over a line typed before
+           ;; the first one, the parts of a split word), then the
+           ;; partitioning-mode gap-fill on the surviving tokens.
            (doseq [{:token/keys [id layer begin end]} heads]
              (crud/insert! tx :tokens {:id id :text_id eid :token_layer_id layer
                                        :document_id (:document_id pre) :begin begin :end_ end}))

@@ -228,8 +228,9 @@
     (is (= ["tlaak naa x" "tlaak naa" "x"] (edit-with "|tlaak naa| |x|" [] split)))))
 
 (deftest a-split-keeps-what-stood-inside-the-word-on-its-half
-  ;; REV2 L2: a token strictly inside the split word is kept, cut to the half
-  ;; the word goes on, and one wholly on the other half goes; REV2 L1: a token
+  ;; REV2 L2: a token strictly inside the split word is kept, cut to the part
+  ;; holding most of its letters (the other part is a word of its own since
+  ;; Q2-UD-POLISH-2, so one wholly on it stays); REV2 L1: a token
   ;; over several words that ended with the split word ends where it does
   (let [{:keys [body tokens]} (doc "|dog| |cat| |eel|")
         tokens (conj tokens
@@ -241,7 +242,7 @@
     (is (= "dog c at eel" (:text/body (:text r))))
     (is (= [6 8] (at [:w 1])))
     (is (= [6 8] (at :at)))
-    (is (nil? (at :c)))
+    (is (= [4 5] (at :c)) "on the new part, now a token of its own (Q2-UD-POLISH-2)")
     (is (= [0 8] (at :dc)))
     (let [r (ta/plain-edits body tokens [(ins 6 " ")] #{:s} #{:w} {:split-on-space true})
           at (fn [id] (some #(when (= id (:token/id %)) [(:token/begin %) (:token/end %)]) (:tokens r)))]
@@ -573,3 +574,49 @@
          (edit "|a| |thee da| |thee da|. |b|" [(rep 0 20 "a thee da. b")])))
   ;; a word deleted before punctuation: the word before keeps off it
   (is (= ["on köye. a" "on" "köye" nil "a"] (edit "|on| |köye| |tat|. |a|" [(rep 0 14 "on köye. a")]))))
+
+(deftest a-split-makes-each-other-part-a-word-of-its-own
+  ;; Q2-UD-POLISH-2 (Luke, 2026-10-02): on a layer that splits on space, a
+  ;; space typed inside a word splits it. The part holding more letters keeps
+  ;; the token and what hangs off it, and the other part is a new token of
+  ;; the layer, with a new token under it on each layer the word had one as
+  ;; long as it on. A multi-word token's words (as long as it, told apart by
+  ;; precedence) go one to each part when there are as many.
+  (let [t (fn [id l b e & [p]] (cond-> {:token/id id :token/layer l :token/begin b :token/end e} p (assoc :token/precedence p)))
+        opts {:split-on-space true :children #{:x}}
+        run (fn [body tokens ops]
+              (let [r (ta/plain-edits body tokens ops #{:s} #{:w} opts)
+                    nb (:text/body (:text r))
+                    gone (set (:deleted r))]
+                {:body nb
+                 :live (into {} (comp (remove #(gone (:token/id %))) (map (juxt :token/id #(cp/cp-subs nb (:token/begin %) (:token/end %))))) (:tokens r))
+                 :made (mapv (juxt :token/layer #(cp/cp-subs nb (:token/begin %) (:token/end %))) (:made r))}))]
+    (testing "Hello wonder ful world."
+      (let [body "Hello wonderful world."
+            toks [(t :s :s 0 22) (t :w0 :w 0 5) (t :x0 :x 0 5) (t :w1 :w 6 15) (t :x1 :x 6 15) (t :w2 :w 16 22) (t :x2 :x 16 22)]]
+        (is (= {:body "Hello wonder ful world."
+                :live {:s "Hello wonder ful world." :w0 "Hello" :x0 "Hello" :w1 "wonder" :x1 "wonder" :w2 "world." :x2 "world."}
+                :made [[:w "ful"] [:x "ful"]]}
+               (run body toks [(ins 12 " ")])))
+        (testing "a whole-body save alike"
+          (let [r (ta/plain-body body "Hello wonder ful world." toks #{:s} #{:w} opts)]
+            (is (= [[:w 13 16] [:x 13 16]] (mapv (juxt :token/layer :token/begin :token/end) (:made r))))))))
+    (testing "can't, ca + n't, typed as ca n't: each word on its own part"
+      (let [body "I can't go"
+            toks [(t :s :s 0 10) (t :w :w 2 7) (t :ca :x 2 7 0) (t :nt :x 2 7 1)]]
+        (is (= {:body "I ca n't go" :live {:s "I ca n't go" :w "n't" :ca "ca" :nt "n't"} :made [[:w "ca"]]}
+               (run body toks [(ins 4 " ")])))))
+    (testing "did + n't, the second word first by precedence"
+      (let [body "didn't"
+            toks [(t :s :s 0 6) (t :w :w 0 6) (t :nt :x 0 6 1) (t :did :x 0 6 0)]]
+        (is (= {:body "did n't" :live {:s "did n't" :w "did" :did "did" :nt "n't"} :made [[:w "n't"]]}
+               (run body toks [(ins 3 " ")])))))
+    (testing "two spaces typed: three parts, the words under it too few to go one each"
+      (let [body "abcdefg"
+            toks [(t :s :s 0 7) (t :w :w 0 7) (t :a :x 0 7 0) (t :b :x 0 7 1)]]
+        (is (= {:body "ab cdef g" :live {:s "ab cdef g" :w "cdef" :a "cdef" :b "cdef"}
+                :made [[:w "ab"] [:x "ab"] [:w "g"] [:x "g"]]}
+               (run body toks [(ins 2 " ") (ins 7 " ")])))))
+    (testing "no layer splits on space: nothing is made"
+      (let [r (ta/plain-edits "wonderful" [(t :s :s 0 9) (t :w :w 0 9)] [(ins 6 " ")] #{:s} #{:w} {:children #{:x}})]
+        (is (nil? (:made r)))))))
