@@ -13,11 +13,12 @@
 //   merge      — lexicon entries folded into one survivor (no rows here: the
 //                server moves the links).
 //
-// Match semantics mirror the Search tab (searchQueries.js): `contains` is a
-// case-insensitive literal, `exact` is whole-value equality, `regex` is the
-// pattern verbatim (JS regex here, with $1-style groups in the replacement;
-// Search evaluates the same pattern server-side, and the two engines agree on
-// everything a field linguist is likely to type).
+// Match semantics are the Search tab's (searchQueries.js): `contains` is a
+// case-insensitive literal, `exact` is whole-value equality, `regex` is a
+// Java pattern with $1-style groups in the replacement. The documents come
+// from the server's search and the rows from buildReplacer in the browser,
+// and both read the pattern through translatePattern (domain/javaRegex.js),
+// so they match the same values.
 
 import { cpSlice } from '@larc-iu/plaid-client';
 import { extractAnalysis, analysisSignature } from '../../../domain/analysisMemory.js';

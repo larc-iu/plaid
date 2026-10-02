@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional
 from plaid_client import uuid7
 
 from ..core import docload, opkind
+from ..core.java_regex import PatternError, matcher
 from ..core.plan import change_of, docs_of_op, labelled
 from ..core.tools import ToolError
 from ..core.workspace import BaseWorkspace
@@ -762,17 +763,14 @@ def _refs(refs) -> List[str]:
     return out
 
 
-def _matcher(pattern: str, regex: bool, case_sensitive: bool = False):
-    if regex:
-        try:
-            rx = re.compile(pattern, 0 if case_sensitive else re.IGNORECASE)
-        except re.error as e:
-            raise ToolError(f'That is not a valid regular expression: {e}')
-        return lambda s: bool(rx.search(s or ''))
-    if case_sensitive:
-        return lambda s: (pattern or '') in (s or '')
-    p = (pattern or '').casefold()
-    return lambda s: p in (s or '').casefold()
+def _matcher(pattern: str, regex: bool, case_sensitive: bool = False, whole: bool = False):
+    """Whether a value holds the pattern, read as the server reads it
+    (java_regex), so a scan finds what the engine's search finds."""
+    try:
+        return matcher(pattern or '', literal=not regex, case_insensitive=not case_sensitive,
+                       whole=whole)
+    except PatternError as e:
+        raise ToolError(f'That pattern cannot be used: {e}') from None
 
 
 def _hits_in(ws: Workspace, v: dict, form: str, suffix: Optional[str], has_gloss,

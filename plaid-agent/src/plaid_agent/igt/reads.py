@@ -203,13 +203,7 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
     else:
         # Whole-form match by default (a concordance of "ar" must not include
         # "para"). Regex for anything looser.
-        if regex:
-            match = _matcher(pattern, True, bool(case_sensitive))
-        elif case_sensitive:
-            match = lambda s: (s or '') == pattern  # noqa: E731
-        else:
-            wanted = pattern.casefold()
-            match = lambda s: (s or '').casefold() == wanted  # noqa: E731
+        match = _matcher(pattern, bool(regex), bool(case_sensitive), whole=not regex)
         docs = [ws.doc(document)] if document else ws.all_docs()
         hits = []
         total = 0

@@ -18,6 +18,7 @@ import { cn } from '@ui/lib/utils';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { MATCH_TYPES, searchDomains } from './searchQueries.js';
+import { PatternError } from '../../../domain/javaRegex.js';
 import { runHitsSearch, runFreqSearch } from './searchRunner.js';
 import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from './hitLinks.js';
@@ -102,9 +103,11 @@ export const ProjectSearch = ({ project, projectId, client }) => {
       // near index 1 (" — keep only the engine's own explanation.
       const detail = humanizeError(err, '').replace(/^.*?invalid regex:\s*/i, '');
       notifyError(
-        matchType === 'regex' && err?.status === 400
-          ? `Check your regex: ${detail || 'the pattern is invalid.'}`
-          : 'Try again or simplify the query.',
+        err instanceof PatternError
+          ? `Check your regex: ${err.message}`
+          : matchType === 'regex' && err?.status === 400
+            ? `Check your regex: ${detail || 'the pattern is invalid.'}`
+            : 'Try again or simplify the query.',
         'Failed to search',
       );
     } finally {

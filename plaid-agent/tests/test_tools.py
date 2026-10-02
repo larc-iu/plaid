@@ -143,7 +143,7 @@ def test_tool_errors_come_back_as_text():
     assert call_tool(w, 'set_field', {'document': 'd1'}).startswith('Error:')
     # The same sentence both apps use, wherever a pattern is compiled.
     out = call_tool(w, 'search', {'pattern': '(', 'regex': True})
-    assert out.startswith('Error: That is not a valid regular expression:')
+    assert out.startswith('Error: That pattern cannot be used:')
 
 
 def test_an_argument_a_tool_does_not_take_names_the_tool_and_its_parameters():

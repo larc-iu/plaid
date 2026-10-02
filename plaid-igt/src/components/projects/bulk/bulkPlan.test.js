@@ -20,7 +20,7 @@ const docOf = (opts) => new IgtDocument({ raw: buildRawDoc(opts), client: makeFa
 describe('buildReplacer', () => {
   it('contains: case-insensitive literal, every occurrence, $ stays literal', () => {
     const { apply } = buildReplacer('ka', 'contains', '$c');
-    expect(apply('Kaka')).toBe('$c$c');
+    expect(apply('kaKA')).toBe('$c$C');
     expect(apply('dog')).toBeNull();
     expect(apply('')).toBeNull();
   });

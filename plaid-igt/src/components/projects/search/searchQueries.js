@@ -9,8 +9,13 @@
 // project's linked vocab ids).
 //
 // Match semantics: exact = literal equality (case-sensitive);
-// contains = escaped substring regex, case-insensitive;
-// regex = the user's pattern verbatim (server-side Java regex), case-sensitive.
+// contains = the text as a substring, in any case;
+// regex = the user's pattern, read as Java syntax, case-sensitive.
+// contains and regex go through translatePattern (domain/javaRegex.js), which
+// writes the pattern out for the server and for the browser alike, so Bulk
+// Edit's rows (planned in the browser) are the values Search finds.
+
+import { PatternError, translatePattern } from '../../../domain/javaRegex.js';
 
 // The case behaviour differs between these and it changes what comes back, so
 // the label says it rather than leaving it to be discovered: `contains` folds
@@ -23,13 +28,24 @@ export const MATCH_TYPES = [
   { id: 'regex', label: 'matches regex (same case)' },
 ];
 
-const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
+/**
+ * The query constraint for a (queryText, matchType) pair. Throws a
+ * PatternError, whose message says what is wrong, for a pattern that cannot
+ * be used.
+ */
 export function buildMatchSpec(queryText, matchType) {
   if (matchType === 'exact') return queryText;
-  if (matchType === 'regex') return { regex: queryText };
-  return { regex: escapeRegex(queryText), flags: 'i' };
+  const { server, error } = translatePattern(
+    queryText,
+    matchType === 'regex' ? {} : { literal: true, caseInsensitive: true },
+  );
+  if (error) throw new PatternError(error);
+  return { regex: server };
 }
+
+// A value under `metadata`: a bare string beginning with "?" reads there as
+// a variable, so an exact string is written as a literal.
+const metadataSpec = (spec) => (typeof spec === 'string' ? { literal: spec } : spec);
 
 // The searchable domains for a project, derived from its IGT layer info.
 // kind: 'token' | 'morpheme' | 'span' | 'lexicon'.
@@ -103,7 +119,13 @@ export function hitsQueries(domain, spec, docId) {
     return [
       {
         find: ['?t'],
-        where: [['token', '?t', { layer: domain.layerId, metadata: { form: spec }, doc: docId }]],
+        where: [
+          [
+            'token',
+            '?t',
+            { layer: domain.layerId, metadata: { form: metadataSpec(spec) }, doc: docId },
+          ],
+        ],
         limit: HIT_LIMIT,
       },
     ];
@@ -144,7 +166,11 @@ export function hitsByDocQueries(domain, spec) {
     return [
       {
         where: [
-          ['token', '?t', { layer: domain.layerId, metadata: { form: spec }, doc: { var: '?d' } }],
+          [
+            'token',
+            '?t',
+            { layer: domain.layerId, metadata: { form: metadataSpec(spec) }, doc: { var: '?d' } },
+          ],
         ],
         return: agg,
       },
@@ -189,7 +215,7 @@ export function freqQueries(domain, spec) {
   if (domain.kind === 'morpheme') {
     return [
       {
-        where: [['token', '?t', { layer: domain.layerId, metadata: { form: spec } }]],
+        where: [['token', '?t', { layer: domain.layerId, metadata: { form: metadataSpec(spec) } }]],
         return: { ...agg, group: ['?t.metadata.form'] },
       },
     ];
@@ -332,7 +358,7 @@ export const metadataHitsQuery = (projectId, field, value) => ({
   scope: { projectIds: [projectId] },
   find: ['?d', '?name'],
   where: [
-    ['document', '?d', { metadata: { [field]: value } }],
+    ['document', '?d', { metadata: { [field]: metadataSpec(value) } }],
     ['document', '?d', { name: { var: '?name' } }],
   ],
 });

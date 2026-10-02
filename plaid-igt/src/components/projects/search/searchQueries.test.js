@@ -5,15 +5,25 @@ import {
   hitsQueries,
   hitsByDocQueries,
   freqQueries,
+  metadataHitsQuery,
 } from './searchQueries.js';
+import { PatternError } from '../../../domain/javaRegex.js';
 
 describe('buildMatchSpec', () => {
-  it('contains escapes regex specials and is case-insensitive', () => {
-    expect(buildMatchSpec('a.b(c', 'contains')).toEqual({ regex: 'a\\.b\\(c', flags: 'i' });
+  // The server gets no case flag: each letter is written as the letters Java
+  // folds it with, which the browser reads the same way.
+  it('contains is a literal in any case, with no flag', () => {
+    expect(buildMatchSpec('a.b(c', 'contains')).toEqual({ regex: '[Aa]\\x2e[Bb]\\x28[Cc]' });
+    expect(buildMatchSpec('ц', 'contains')).toEqual({ regex: '[Цц]' });
   });
-  it('exact is a literal; regex passes through verbatim', () => {
+  it('exact is a literal, regex is read as Java syntax', () => {
     expect(buildMatchSpec('M.PL', 'exact')).toBe('M.PL');
     expect(buildMatchSpec('^nac', 'regex')).toEqual({ regex: '^nac' });
+    expect(buildMatchSpec('\\p{L}', 'regex')).toEqual({ regex: '\\p{L}' });
+  });
+  it("throws a PatternError for a pattern it cannot read the server's way", () => {
+    expect(() => buildMatchSpec('[[:alpha:]]', 'regex')).toThrow(PatternError);
+    expect(() => buildMatchSpec('(', 'regex')).toThrow('Unclosed group.');
   });
 });
 
@@ -48,7 +58,29 @@ describe('query shapes', () => {
 
   it('morpheme hits constrain metadata.form (not value)', () => {
     const [q] = hitsQueries(morph, 'os', 'd1');
-    expect(q.where[0][2]).toEqual({ layer: 'morphL', metadata: { form: 'os' }, doc: 'd1' });
+    expect(q.where[0][2]).toEqual({
+      layer: 'morphL',
+      metadata: { form: { literal: 'os' } },
+      doc: 'd1',
+    });
+  });
+
+  // A bare metadata value beginning with "?" is a variable to the engine, and
+  // the search answered 400. An exact form is always sent as a literal.
+  it('an exact morpheme form or document value is sent as a literal', () => {
+    const forms = [
+      hitsQueries(morph, '?a', 'd1')[0].where[0][2].metadata.form,
+      hitsByDocQueries(morph, '?a')[0].where[0][2].metadata.form,
+      freqQueries(morph, '?a')[0].where[0][2].metadata.form,
+    ];
+    expect(forms).toEqual([{ literal: '?a' }, { literal: '?a' }, { literal: '?a' }]);
+    expect(metadataHitsQuery('p1', 'Genre', '?').where[0][2].metadata).toEqual({
+      Genre: { literal: '?' },
+    });
+    // A pattern stays a pattern.
+    expect(hitsQueries(morph, { regex: 'os' }, 'd1')[0].where[0][2].metadata.form).toEqual({
+      regex: 'os',
+    });
   });
 
   it('every hit query is scoped to one document', () => {

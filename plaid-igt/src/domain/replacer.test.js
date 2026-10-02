@@ -8,7 +8,23 @@ const run = (find, matchType, replacement, values) => {
 
 describe('buildReplacer', () => {
   it('rewrites a literal match, case-insensitively', () => {
-    expect(run('ka', 'contains', 'ga', ['kat', 'KAt', 'imbwa']).out).toEqual(['gat', 'gat', null]);
+    expect(run('ka', 'contains', 'ga', ['kat', 'KAt', 'imbwa']).out).toEqual(['gat', 'GAt', null]);
+  });
+
+  // "any case" finds Kalamang for ka, and respelling it galamang was a
+  // capital lost. Typed in small letters, the replacement takes each match's
+  // capitals. Typed with a capital in either box, it is written as typed.
+  it('keeps the capitals of each match on an any-case match', () => {
+    expect(run('ka', 'contains', 'ga', ['Kalamang', 'KALAMANG', 'kalamang', 'kaKa']).out).toEqual([
+      'Galamang',
+      'GALAMANG',
+      'galamang',
+      'gaGa',
+    ]);
+    expect(run('цу', 'contains', 'цы', ['Цуз']).out).toEqual(['Цыз']);
+    expect(run('PFV', 'contains', 'pfv', ['sbj:3.PFV', 'Pfv']).out).toEqual(['sbj:3.pfv', 'pfv']);
+    expect(run('ka', 'contains', 'Ga', ['kat', 'KAT']).out).toEqual(['Gat', 'GaT']);
+    expect(run('ka', 'contains', '', ['Kat']).out).toEqual(['t']);
   });
 
   it('rewrites only a whole value on an exact match', () => {
@@ -68,5 +84,45 @@ describe('buildReplacer, filling a blank', () => {
 
   it('never reports an error', () => {
     expect(run('([', MATCH_EMPTY, 'published', ['']).error).toBeNull();
+  });
+});
+
+// Search finds the documents on the server (Java) and these rows are planned
+// in the browser. Each case here is one where the two dialects disagreed
+// before both read the pattern through translatePattern; javaRegex.oracle.test.js
+// checks the same agreement against Java itself.
+describe('buildReplacer, read as the server reads it', () => {
+  it('matches Unicode categories', () => {
+    expect(run('\\p{L}', 'regex', 'x', ['ñaa', '12']).out).toEqual(['xxx', null]);
+    expect(run('\\p{Lu}', 'regex', 'x', ['Ñu']).out).toEqual(['xu']);
+  });
+
+  it('takes \\b as a boundary of [0-9A-Za-z_], as \\w is', () => {
+    expect(run('\\bko\\b', 'regex', 'KO', ['ko', 'kĭkoⁿtu´', 'ayiⁿdŭko´', 'koko']).out).toEqual([
+      'KO',
+      'kĭKOⁿtu´',
+      'ayiⁿdŭKO´',
+      null,
+    ]);
+  });
+
+  it('reads \\h, \\s, . and $ as Java does', () => {
+    expect(run('\\h', 'regex', '_', ['a\u00a0b', 'ahb']).out).toEqual(['a_b', null]);
+    expect(run('\\s', 'regex', '_', ['a\u00a0b', 'a\tb']).out).toEqual([null, 'a_b']);
+    expect(run('a.b', 'regex', '_', ['a\u0085b', 'a-b']).out).toEqual([null, '_']);
+    expect(run('a$', 'regex', 'b', ['a\n', 'a']).out).toEqual(['b\n', 'b']);
+  });
+
+  it('takes (?i) in any case, as an any-case match does', () => {
+    expect(run('(?i)ц', 'regex', 'x', ['Цвез']).out).toEqual(['xвез']);
+    expect(run('a(?i)b', 'regex', '_', ['aB', 'AB']).out).toEqual(['_', null]);
+  });
+
+  it('refuses a pattern the server would read another way, saying what', () => {
+    expect(run('[[:alpha:]]', 'regex', 'x', ['a']).error).toBe(
+      'Nested [...] is not supported. Write \\[ for a [.',
+    );
+    expect(run('\\p{IsLatin}', 'regex', 'x', ['a']).error).toMatch(/not supported/);
+    expect(run('(a)?\\1', 'regex', 'x', ['a']).error).toMatch(/always matches/);
   });
 });

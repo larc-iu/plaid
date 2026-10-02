@@ -21,6 +21,7 @@ from plaid_client import metadata_ops, uuid7
 from ..core import guidelines as _guidelines
 from ..core import opkind as ok
 from ..core.opkind import OpKind
+from ..core.java_regex import matcher
 from ..core.plan import (Minter, PlanError, Resolution, Stamps, TrackingBatcher, applying,
                          docs_of_op, expand_ops)
 from .project import load_document, node_ref, with_attribute
@@ -184,10 +185,8 @@ def concept_matches(op: Dict[str, Any], concept: str) -> bool:
     pattern = op.get('concept') or ''
     if not pattern:
         return False
-    p = pattern if op.get('regex') else re.escape(pattern)
-    if op.get('whole'):
-        p = f'^(?:{p})$'
-    return bool(re.search(p, concept or '', 0 if op.get('case_sensitive') else re.I))
+    return matcher(pattern, literal=not op.get('regex'), case_insensitive=not op.get('case_sensitive'),
+                   whole=bool(op.get('whole')))(concept)
 
 
 def holds(node, rel: str) -> List[str]:

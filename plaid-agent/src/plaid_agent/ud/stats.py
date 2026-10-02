@@ -10,6 +10,7 @@ from typing import Dict, List
 from .corpus import RENDER_DOC_BUDGET, Corpus, rx
 from .project import Sentence, UdDoc, Word, feats_order, kwic, word_ref
 from ..core.corpus import spread
+from ..core.java_regex import matcher
 from ..core.tools import ToolError, truncate
 from .tools import FIELDS, Workspace
 from ..core.args import clamp_limit
@@ -60,9 +61,8 @@ def _awaiting_in(doc: UdDoc, field: str, state: str) -> List[tuple]:
 
 
 REGEX_NOTE = ('(note) The engine matched this pattern in {docs}, but nothing in them matched it '
-              'here: the engine reads Java regular expressions and this reads Python\'s, and they '
-              'differ in places. A simpler pattern, or a literal with regex off, is read the same '
-              'way by both.')
+              'here: those documents changed since, or hold characters newer than the engine\'s '
+              'Unicode tables.')
 
 
 def t_search(ws: Workspace, field: str = None, pattern: str = None, document: str = None,
@@ -73,13 +73,10 @@ def t_search(ws: Workspace, field: str = None, pattern: str = None, document: st
     if not pattern:
         raise ToolError('Give a pattern to search for.')
     limit = clamp_limit(limit, *READ_LIMITS['search'])
-    import re as _re
     spec = rx(pattern, regex=regex, whole=whole, case_sensitive=bool(case_sensitive))
-    try:
-        rgx = _re.compile(spec['regex'], _re.I if spec.get('flags') == 'i' else 0)
-    except _re.error as e:
-        raise ToolError(f'That is not a valid regular expression: {e}')
-    matches = lambda v: bool(v) and bool(rgx.search(v))  # noqa: E731
+    # The server's reading of the pattern (rx already refused one it cannot use).
+    found = matcher(pattern, literal=not regex, case_insensitive=not case_sensitive, whole=whole)
+    matches = lambda v: bool(v) and found(v)  # noqa: E731
 
     if document:
         doc = ws.doc(document)

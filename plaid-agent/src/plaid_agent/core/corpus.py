@@ -18,6 +18,7 @@ import math
 import re
 from typing import Any, Dict, List, Tuple
 
+from .java_regex import PatternError, translate
 from .limits import GROUP_LIMIT, ROW_LIMIT
 from .tools import ToolError
 
@@ -62,15 +63,16 @@ class Clipping:
 
 def rx(pattern: str, *, regex: bool = False, whole: bool = False,
        case_sensitive: bool = False) -> Dict[str, Any]:
-    """A regex constraint: a literal substring (escaped) or a pattern, whole
-    value when asked, case-insensitive unless asked otherwise."""
-    p = pattern if regex else re.escape(pattern)
-    if whole:
-        p = f'^(?:{p})$'
-    spec: Dict[str, Any] = {'regex': p}
-    if not case_sensitive:
-        spec['flags'] = 'i'
-    return spec
+    """A regex constraint: a literal substring or a pattern, whole value when
+    asked, case-insensitive unless asked otherwise. Written out by
+    :func:`.java_regex.translate`, the reading a replace uses too, so what the
+    server finds is what a replace rewrites."""
+    try:
+        server = translate(pattern, literal=not regex, case_insensitive=not case_sensitive,
+                           whole=whole).server
+    except PatternError as e:
+        raise ToolError(f'That pattern cannot be used: {e}')
+    return {'regex': server}
 
 
 class Spread:

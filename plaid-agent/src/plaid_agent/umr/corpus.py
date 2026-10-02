@@ -15,10 +15,10 @@ are fetched only to render the hits a tool shows, so the cost follows what is
 displayed rather than the size of the corpus.
 """
 
-import re
 from typing import Any, Dict, List
 
 from ..core.corpus import Corpus as BaseCorpus, rx, spread
+from ..core.java_regex import PatternError, matcher
 from ..core.limits import GROUP_LIMIT, READ_LIMITS
 from ..core.args import clamp_limit
 from ..core.tools import ToolError, truncate
@@ -172,14 +172,13 @@ def t_find_nodes(ws: Workspace, concept: str = None, role: str = None, attribute
 
 
 def _matches(value: str, pattern: str, regex: bool, whole: bool, case_sensitive: bool) -> bool:
-    text = value or ''
-    p = pattern if regex else re.escape(pattern)
-    if whole:
-        p = f'^(?:{p})$'
+    """The server's reading of the pattern (java_regex), so a node is matched
+    here exactly when the engine's search found it."""
     try:
-        return bool(re.search(p, text, 0 if case_sensitive else re.I))
-    except re.error as e:
-        raise ToolError(f'That pattern is not a valid regular expression: {e}') from None
+        found = matcher(pattern, literal=not regex, case_insensitive=not case_sensitive, whole=whole)
+    except PatternError as e:
+        raise ToolError(f'That pattern cannot be used: {e}') from None
+    return found(value)
 
 
 def t_search(ws: Workspace, pattern: str = None, where: str = 'words', document: str = None,
