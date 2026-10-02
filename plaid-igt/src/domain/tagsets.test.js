@@ -9,7 +9,6 @@ import {
   byTagsetName,
   missingAffixDelimiters,
   scanValue,
-  splitValue,
   partAtCaret,
   replacePartAtCaret,
   tagsetHas,
@@ -179,6 +178,9 @@ describe('missingAffixDelimiters', () => {
     expect(missingAffixDelimiters(mixed(''), true)).toEqual(['-', '=']);
   });
 });
+
+// The segment texts alone, untrimmed.
+const splitValue = (value, delimiters) => scanValue(value, delimiters).map((p) => p.text);
 
 describe('scanValue', () => {
   it('returns the whole cell when no delimiters are configured', () => {

@@ -160,9 +160,6 @@ export const isModifierKeydown = (e) => BARE_MODIFIERS.has(e?.key);
  */
 export const isImeKey = (e) => !!(e?.nativeEvent ?? e)?.isComposing || e?.keyCode === 229;
 
-/** Is this keydown the chord? `chord` must already be canonical. */
-export const matchesChord = (chord, e) => chordsOf(e).includes(chord);
-
 /**
  * Would this chord type into a text box? True for a bare character or Space,
  * with or without Shift. Such a chord can only belong to an action that fires

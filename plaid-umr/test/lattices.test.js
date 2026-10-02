@@ -5,12 +5,24 @@ import {
   NUMBER_LATTICE,
   PERSON_LATTICE,
   latticeFor,
-  latticeValues,
   linesFor,
   pathTo,
   valuesFor,
 } from '../src/domain/lattices.js';
+
 import { ATTRIBUTES } from '../src/domain/format/inventory.js';
+
+/** Every value a lattice holds, once each, in tree order. */
+const latticeValues = (lattice) => {
+  const out = [];
+  const walk = (nodes) =>
+    nodes.forEach((node) => {
+      if (!out.includes(node.value)) out.push(node.value);
+      walk(node.children);
+    });
+  walk(lattice);
+  return out;
+};
 
 // The picker and the validator must agree on what a value is called: every
 // schema value has a place in its lattice, and the lattice invents none.

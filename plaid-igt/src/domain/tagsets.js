@@ -360,9 +360,6 @@ export const scanValue = (value, delimiters) => {
   return out;
 };
 
-/** Just the segment texts, untrimmed. */
-export const splitValue = (value, delimiters) => scanValue(value, delimiters).map((p) => p.text);
-
 /**
  * The segment the caret sits in. Never null: scanValue always yields at least
  * one segment, so an empty value gives one empty segment. A caret exactly on

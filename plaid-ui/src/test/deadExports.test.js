@@ -121,15 +121,30 @@ const DYNAMIC_RE = /import\(\s*['"]([^'"]+)['"]\s*\)(?=([\s\S]{0,80}))/g;
 // module -> names imported from it, and the modules somebody took whole.
 const imported = new Map();
 const whole = new Set();
+// `module:name` -> the files that import it, for the test-only census below.
+const importersOf = new Map();
+// module -> the files that took it whole.
+const wholeBy = new Map();
+let current = null;
 
 const take = (target, name) => {
   if (!target) return;
   if (!imported.has(target)) imported.set(target, new Set());
   imported.get(target).add(name);
+  const key = `${target}:${name}`;
+  if (!importersOf.has(key)) importersOf.set(key, new Set());
+  importersOf.get(key).add(current);
+};
+
+const takeWhole = (target) => {
+  whole.add(target);
+  if (!wholeBy.has(target)) wholeBy.set(target, new Set());
+  wholeBy.get(target).add(current);
 };
 
 for (const file of importerFiles) {
   const src = text.get(file);
+  current = file;
   let m;
 
   while ((m = IMPORT_RE.exec(src))) {
@@ -138,7 +153,7 @@ for (const file of importerFiles) {
     if (!target) continue;
     // `import * as X` and `export * from` both mean every name is in play.
     if (clause.startsWith('*') || clause.includes('* as')) {
-      whole.add(target);
+      takeWhole(target);
       continue;
     }
     const braces = clause.match(/\{([^}]*)\}/);
@@ -166,7 +181,7 @@ for (const file of importerFiles) {
     // `lazyNamed(() => import('./Screen.jsx'), 'Screen')` names its export.
     const named = /^\s*,\s*['"]([A-Za-z_$][\w$]*)['"]/.exec(m[2]);
     if (named) take(target, named[1]);
-    else whole.add(target);
+    else takeWhole(target);
   }
 }
 
@@ -345,6 +360,76 @@ for (const file of censusFiles) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Exports only a test imports (R2-DEBT-APPS-25)
+//
+// A test counts as an importer above, so an export that only its own test
+// imports passed, though nothing the apps run uses it: the dead code with a
+// test of its own. Such a name is a finding unless its own file uses it too
+// (a test reaching a helper the module runs), or the file is there to support
+// tests.
+
+const isTestFile = (file) =>
+  /(^|\/)(test|tests|e2e)\//.test(file) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(file);
+
+// Modules in src whose purpose is the tests: their exports are for tests.
+const TEST_SUPPORT = [
+  /(^|\/)cellParity\.js$/,
+  /(^|\/)test-helpers\.js$/,
+  /\/export\/testFixtures\.js$/,
+  /Fixture\.js$/,
+];
+
+// A name that says it is a test's seam (`__resetUnloadingForTests`, `__test`).
+const SEAM = /^__/;
+
+// `file:name` -> why a name only tests import stays exported.
+const TEST_ONLY_EXEMPT = {
+  'plaid-ui/src/components/guidelines/guidelineMarkdown.js:roundTrip':
+    'the open-and-save a guideline undergoes, named for the tests that hold it to the identity',
+  'plaid-ui/src/components/assistant/attachments.js:storedBytes':
+    'the store byte count the chunker keeps under, checked against the server',
+  'plaid-ui/src/components/assistant/attachments.js:resetSweep':
+    'a test resets the once-per-page-load sweep',
+  'plaid-igt/src/export/flextext.js:buildFlextextDocument':
+    'the whole .flextext file three test files read the exporter and the importer through',
+  'plaid-ud/src/utils/feedback.jsx:notifyInfo': 'one import site for every toast form',
+  'plaid-ud/src/utils/feedback.jsx:notifyPromise': 'one import site for every toast form',
+  'plaid-ud/src/utils/feedback.jsx:notifyWithAction': 'one import site for every toast form',
+};
+
+// Found when this census was added (2026-10-02) in a file another fixer was
+// reworking, so listed rather than fixed. The list only ever gets shorter.
+const TEST_ONLY_BACKLOG = new Set([
+  'plaid-ui/src/lib/editLog.js:editLogBody',
+  'plaid-ui/src/lib/editLog.js:editLogIsEmpty',
+]);
+
+const testOnly = [];
+const testOnlyExemptUsed = new Set();
+for (const file of censusFiles) {
+  if (isTestFile(file) || TEST_SUPPORT.some((re) => re.test(file))) continue;
+  const wholeTakers = [...(wholeBy.get(file) || [])];
+  if (wholeTakers.some((f) => !isTestFile(f))) continue;
+  const src = text.get(file);
+  for (const { name, line } of exportsOf(src)) {
+    const takers = [...(importersOf.get(`${file}:${name}`) || []), ...wholeTakers];
+    // Nobody at all is the census above's finding.
+    if (takers.length === 0 || takers.some((f) => !isTestFile(f))) continue;
+    const word = name.replace(/\$/g, '\\$');
+    const mentions = (src.match(new RegExp(`\\b${word}\\b`, 'g')) || []).length;
+    const jsx = (src.match(new RegExp(`</?${word}[\\s/>]`, 'g')) || []).length;
+    if (mentions > 1 || jsx > 0) continue;
+    const key = `${file}:${name}`;
+    if (SEAM.test(name)) continue;
+    if (key in TEST_ONLY_EXEMPT || TEST_ONLY_BACKLOG.has(key)) {
+      testOnlyExemptUsed.add(key);
+      continue;
+    }
+    testOnly.push(`${file}:${line} ${name} (only tests import it)`);
+  }
+}
+
 describe('exported names', () => {
   it('finds the tree, so a passing run is not an empty one', () => {
     expect(censusFiles.length).toBeGreaterThan(500);
@@ -385,8 +470,16 @@ describe('exported names', () => {
     expect(findings).toEqual([]);
   });
 
+  it('each have an importer that is not a test, or a use in their own file', () => {
+    expect(testOnly).toEqual([]);
+  });
+
   it('names a real file in every exemption it is given', () => {
-    const missing = Object.keys(EXEMPT_NAMES).filter((key) => {
+    const missing = [
+      ...Object.keys(EXEMPT_NAMES),
+      ...Object.keys(TEST_ONLY_EXEMPT),
+      ...TEST_ONLY_BACKLOG,
+    ].filter((key) => {
       const file = key.slice(0, key.lastIndexOf(':'));
       return !isFile(file);
     });
@@ -398,6 +491,9 @@ describe('exported names', () => {
     const stale = [
       ...Object.keys(EXEMPT_NAMES).filter((key) => !exemptionsUsed.has(key)),
       ...[...UMR_BACKLOG].filter((key) => !backlogSeen.has(key)),
+      ...[...Object.keys(TEST_ONLY_EXEMPT), ...TEST_ONLY_BACKLOG].filter(
+        (key) => !testOnlyExemptUsed.has(key),
+      ),
     ];
     if (stale.length) {
       console.warn(`Dead-export exemptions no longer needed: ${stale.join(', ')}`);

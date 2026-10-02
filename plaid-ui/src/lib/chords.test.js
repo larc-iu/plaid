@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   canonicalChord,
   chordsOf,
-  matchesChord,
   chordTypes,
   isReservedChord,
   chordCaps,
@@ -48,8 +47,8 @@ describe('chordsOf', () => {
 
   it('matches modifiers exactly', () => {
     const e = ev('ArrowDown', { ctrlKey: true, shiftKey: true });
-    expect(matchesChord('Mod+Shift+ArrowDown', e)).toBe(true);
-    expect(matchesChord('Mod+ArrowDown', e)).toBe(false);
+    expect(chordsOf(e).includes('Mod+Shift+ArrowDown')).toBe(true);
+    expect(chordsOf(e).includes('Mod+ArrowDown')).toBe(false);
   });
 
   // `/` is Shift+7 on a German keyboard: the same key as far as a chord goes.

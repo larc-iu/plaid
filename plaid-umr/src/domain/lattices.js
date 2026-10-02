@@ -135,15 +135,3 @@ export const linesFor = (lattice, value) => {
   }
   return lines;
 };
-
-/** Every value a lattice holds, once each, in tree order. */
-export const latticeValues = (lattice) => {
-  const out = [];
-  const walk = (nodes) =>
-    nodes.forEach((node) => {
-      if (!out.includes(node.value)) out.push(node.value);
-      walk(node.children);
-    });
-  walk(lattice);
-  return out;
-};
