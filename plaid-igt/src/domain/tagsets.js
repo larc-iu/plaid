@@ -29,10 +29,10 @@
 // column saved it, but nothing ever rendered it; a stored one is now just a
 // free-form key.)
 //
-// CLOSED IS A PLAID-IGT RULE, NOT AN INVARIANT. plaid-core knows nothing about
-// tagsets, so services, the agent, and direct API writes can all still land
-// off-tagset values. That is what the violations view is for: closed means
-// "closed to typing here", and the way you find out otherwise is by looking.
+// A CLOSED list is also a rule core holds (igtConstraints.js declares it as a
+// value set on each field it governs), so every writer is refused an off-list
+// value, the assistant included. Core lets through an unverified machine value
+// and an import's, and the Validation view is how those are found.
 
 import { canNameWord, isBoundType } from './affixMarkers.js';
 import { IGT_NAMESPACE } from './igtConfig.js';

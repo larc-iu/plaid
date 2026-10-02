@@ -376,10 +376,8 @@ export const cells = {
     if (!this._stillFocusedCell(el)) return;
     const next = el.value;
     this._syncCellClasses(el, next, tagset);
-    // An enforcing tagset refuses a value it does not allow. Typing is the ONLY
-    // write that passes through here, so this is the whole of what "closed"
-    // enforces: imports, services and the assistant reach the same span layer
-    // without coming this way, which is what the Validation view is for.
+    // An enforcing tagset refuses a value it does not allow, here before any
+    // request (core refuses a closed list's too, and mixed is this app's own).
     //
     // Refuse the way a failed save refuses (see _runKeepingFocus): keep what
     // was typed in the cell and put focus back, rather than reverting. The
