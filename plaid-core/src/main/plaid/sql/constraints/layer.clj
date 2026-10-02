@@ -344,6 +344,51 @@
   [tx query-fn ids]
   (into [] (mapcat #(psc/q tx (query-fn (vec %)))) (partition-all 4000 (distinct ids))))
 
+(defn- unindexed
+  "`col` written `+col`, which keeps SQLite from using an index for a term on
+  it. A chunk query that pairs a layer equality with an IN list of ids must
+  look the ids up by their own index. Under sampled planner statistics every
+  layer looks about 400 rows big, so an IN list longer than that would
+  otherwise walk the whole layer."
+  [col]
+  [:raw (str "+" (name col))])
+
+(defn- in-degree-chunk
+  "The relations of layer `lid` into the spans `ch`."
+  [lid ch]
+  {:select [:id :target_span_id :document_id]
+   :from :relations
+   :where [:and [:= (unindexed :relation_layer_id) lid] [:in :target_span_id ch]]})
+
+(defn- span-relations-chunk
+  "The relations of layer `lid` from or into the spans `ch`."
+  [lid ch]
+  {:select [:id :document_id] :from :relations
+   :where [:and [:= (unindexed :relation_layer_id) lid]
+           [:or [:in :source_span_id ch] [:in :target_span_id ch]]]})
+
+(defn- single-span-chunk
+  "The spans of layer `lid` on the tokens `ch`."
+  [lid ch]
+  {:select [:st.token_id :st.span_id :s.document_id]
+   :from [[:span_tokens :st]]
+   :join [[:spans :s] [:= :s.id :st.span_id]]
+   :where [:and [:= (unindexed :s.span_layer_id) lid] [:in :st.token_id ch]]})
+
+(def ^:private single-only
+  "A vocab link whose only token is `vlt`'s."
+  [:not [:exists {:select [1] :from [[:vocab_link_tokens :o]]
+                  :where [:and [:= :o.vocab_link_id :vlt.vocab_link_id]
+                          [:<> :o.token_id :vlt.token_id]]}]])
+
+(defn- single-link-chunk
+  "The single-token vocab links on the tokens `ch` of token layer `lid`."
+  [lid ch]
+  {:select [:vlt.token_id :vlt.vocab_link_id :t.document_id]
+   :from [[:vocab_link_tokens :vlt]]
+   :join [[:tokens :t] [:= :t.id :vlt.token_id]]
+   :where [:and [:in :vlt.token_id ch] [:= (unindexed :t.token_layer_id) lid] single-only]})
+
 (defn- doc-clause
   "A `document_id` filter for `col` when the check is restricted to one document."
   [ctx col]
@@ -387,11 +432,7 @@
                                       (q-chunks tx (fn [ch] {:select [:target_span_id] :from :relations
                                                              :where [:in :id ch]})
                                                 cands))]
-                     (q-chunks tx (fn [ch] {:select [:id :target_span_id :document_id]
-                                            :from :relations
-                                            :where [:and [:= :relation_layer_id lid]
-                                                    [:in :target_span_id ch]]})
-                               targets)))))]
+                     (q-chunks tx (partial in-degree-chunk lid) targets)))))]
     (for [[t rs] (group-by (comp u :target_span_id) rows)
           :when (> (count rs) mx)]
       (violation c (:document_id (first rs)) t (map :id rs) :count (count rs)))))
@@ -613,10 +654,7 @@
                                   (:id n)))
                         (notes-of ctx "spans" sl))
             moved-rels (when (seq moved)
-                         (q-chunks tx (fn [ch] {:select [:id :document_id] :from :relations
-                                                :where [:and [:= :relation_layer_id lid]
-                                                        [:or [:in :source_span_id ch] [:in :target_span_id ch]]]})
-                                   moved))
+                         (q-chunks tx (partial span-relations-chunk lid) moved))
             rel-cands (->> (concat (live-with ctx "relations" lid [:edge])
                                    (map (fn [r] {:id (u (:id r)) :doc (u (:document_id r))}) moved-rels))
                            (remove #(token-docs (:doc %)))
@@ -665,11 +703,7 @@
                    (let [tokens (map :token_id (q-chunks tx (fn [ch] {:select [:token_id] :from :span_tokens
                                                                       :where [:in :span_id ch]})
                                                          cands))]
-                     (q-chunks tx (fn [ch] {:select [:st.token_id :st.span_id :s.document_id]
-                                            :from [[:span_tokens :st]]
-                                            :join [[:spans :s] [:= :s.id :st.span_id]]
-                                            :where [:and [:= :s.span_layer_id lid] [:in :st.token_id ch]]})
-                               tokens)))))]
+                     (q-chunks tx (partial single-span-chunk lid) tokens)))))]
     (for [[t rs] (group-by (comp u :token_id) rows)
           :when (> (count (distinct (map :span_id rs))) 1)]
       (violation c (:document_id (first rs)) t (map :span_id rs)))))
@@ -886,9 +920,6 @@
 
 (defn- check-single-link [{:keys [tx mode] :as ctx} {:keys [layer] :as c}]
   (let [lid (:id layer)
-        single-only [:not [:exists {:select [1] :from [[:vocab_link_tokens :o]]
-                                    :where [:and [:= :o.vocab_link_id :vlt.vocab_link_id]
-                                            [:<> :o.token_id :vlt.token_id]]}]]
         rows (if (= :all mode)
                (psc/q tx {:select [:vlt.token_id :vlt.vocab_link_id :t.document_id]
                           :from [[:vocab_link_tokens :vlt]]
@@ -905,12 +936,7 @@
                    (let [tokens (map :token_id (q-chunks tx (fn [ch] {:select [:token_id] :from :vocab_link_tokens
                                                                       :where [:in :vocab_link_id ch]})
                                                          links))]
-                     (q-chunks tx (fn [ch] {:select [:vlt.token_id :vlt.vocab_link_id :t.document_id]
-                                            :from [[:vocab_link_tokens :vlt]]
-                                            :join [[:tokens :t] [:= :t.id :vlt.token_id]]
-                                            :where [:and [:in :vlt.token_id ch] [:= :t.token_layer_id lid]
-                                                    single-only]})
-                               tokens)))))]
+                     (q-chunks tx (partial single-link-chunk lid) tokens)))))]
     (for [[t rs] (group-by (comp u :token_id) rows)
           :when (> (count (distinct (map :vocab_link_id rs))) 1)]
       (violation c (:document_id (first rs)) t (map :vocab_link_id rs)))))
