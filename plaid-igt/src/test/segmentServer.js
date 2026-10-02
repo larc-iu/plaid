@@ -30,7 +30,7 @@
 // code.
 
 import { createHash } from 'node:crypto';
-import { ROLES, composeTextEdits } from '@larc-iu/plaid-client';
+import { composeTextEdits } from '@larc-iu/plaid-client';
 import {
   applyGapsLocally,
   applyTextEditsLocally,
