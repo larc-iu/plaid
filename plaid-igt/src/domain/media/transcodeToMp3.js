@@ -80,13 +80,17 @@ export async function transcodeToMp3(file, { onProgress, signal } = {}) {
   const worker = new Worker(new URL('./mp3Worker.js', import.meta.url), { type: 'module' });
   try {
     const mp3 = await new Promise((resolve, reject) => {
-      const abort = () => worker.postMessage({ type: 'cancel' });
+      // The encode is one synchronous loop in the worker, which reads no
+      // message until it ends, so a stop ends the worker itself.
+      const abort = () => {
+        worker.terminate();
+        resolve(null);
+      };
       signal?.addEventListener('abort', abort, { once: true });
 
       worker.onmessage = ({ data }) => {
         if (data.type === 'progress') onProgress?.(data.total ? data.done / data.total : 0);
         else if (data.type === 'result') resolve(data.mp3);
-        else if (data.type === 'cancelled') resolve(null);
         else if (data.type === 'error') reject(new Error(data.message));
       };
       worker.onerror = (event) => reject(new Error(event.message || 'Converting the file failed.'));

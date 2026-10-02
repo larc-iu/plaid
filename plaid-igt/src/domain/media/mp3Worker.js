@@ -12,8 +12,6 @@ import { Mp3Encoder } from '@breezystack/lamejs';
 const BLOCK = 1152;
 const PROGRESS_EVERY = 200; // blocks, ~14 s of audio at 16 kHz
 
-let cancelled = false;
-
 /** Float samples in [-1, 1] to 16-bit PCM, which is what the encoder takes. */
 const toPcm = (samples, from, count, into) => {
   for (let i = 0; i < count; i++) {
@@ -31,7 +29,6 @@ function encode(samples, sampleRate, bitrateKbps) {
   const blocks = Math.ceil(samples.length / BLOCK);
 
   for (let b = 0; b < blocks; b++) {
-    if (cancelled) return null;
     const from = b * BLOCK;
     const chunk = encoder.encodeBuffer(
       toPcm(samples, from, Math.min(BLOCK, samples.length - from), pcm),
@@ -58,17 +55,12 @@ function encode(samples, sampleRate, bitrateKbps) {
   return out;
 }
 
+// A stop terminates the worker: the loop above reads no message until it ends.
 self.onmessage = ({ data }) => {
-  if (data.type === 'cancel') {
-    cancelled = true;
-    return;
-  }
   if (data.type !== 'run') return;
-  cancelled = false;
   try {
     const mp3 = encode(data.samples, data.sampleRate, data.bitrateKbps);
-    if (mp3) self.postMessage({ type: 'result', mp3 }, [mp3.buffer]);
-    else self.postMessage({ type: 'cancelled' });
+    self.postMessage({ type: 'result', mp3 }, [mp3.buffer]);
   } catch (error) {
     self.postMessage({ type: 'error', message: error?.message ?? String(error) });
   }
