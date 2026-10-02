@@ -2,7 +2,6 @@ import {
   applyMetadataOps,
   cpLength,
   createdId,
-  createdIds,
   cpSlice,
   cpSlicer,
   isMachine,
@@ -60,6 +59,10 @@ import { normalizeFeature, featureRefusal } from '../utils/feats.js';
 // The lemma a new word starts with is a copy of its form, made by a rule and
 // by no person, so a parser may replace it (provenance write contract rule 1).
 const LEMMA_FROM_FORM = stampInferred('rule:lemma-from-form');
+
+// The rows of an edit, each made under the id this page minted for it, as
+// `_settle` takes them.
+const madeAsMinted = (...rows) => new Map(rows.flat().map((r) => [r.id, r.id]));
 
 // What a text save whose draft cannot be put onto the stored text is refused with.
 const TEXT_CONFLICT = 'The same passage was changed elsewhere. Discard changes and redo the edit.';
@@ -479,10 +482,10 @@ export class ConlluDocument extends DocumentModel {
       }
     });
 
+    // One batch: every row is made under the id this page minted, so the
+    // default lemma spans name their morphemes in the same request, and a
+    // refusal leaves no word without its lemma.
     return this._queueWrite(label, async () => {
-      const ids = new Map();
-      const record = (rows, created) =>
-        rows.forEach((row, i) => created?.[i] && ids.set(row.id, created[i]));
       const bulk = (layer, rows) =>
         rows.map(({ id, begin, end }) => ({
           id,
@@ -491,35 +494,25 @@ export class ConlluDocument extends DocumentModel {
           begin,
           end,
         }));
-      const results = await this._client.batched(async (b) => {
+      await this._client.batched(async (b) => {
         b.tokens.bulkCreate(bulk(sentenceTokenLayer, sentences));
         if (words.length > 0) {
           b.tokens.bulkCreate(bulk(wordTokenLayer, words));
           b.tokens.bulkCreate(bulk(morphemeTokenLayer, morphemes));
         }
+        if (lemmas.length) {
+          b.spans.bulkCreate(
+            lemmas.map((span) => ({
+              id: span.id,
+              spanLayerId: lemmaLayer.id,
+              tokens: span.tokens,
+              value: span.value,
+              metadata: span.metadata,
+            })),
+          );
+        }
       });
-      record(sentences, createdIds(results[0]));
-      if (words.length > 0) {
-        record(words, createdIds(results[1]));
-        record(morphemes, createdIds(results[2]));
-      }
-
-      // Default lemma spans (a follow-up call: they reference the morpheme
-      // ids produced above). A failure propagates, and the refetch it causes
-      // shows the committed tokens minus their lemmas rather than hiding it.
-      if (lemmas.length) {
-        const created = await this._client.spans.bulkCreate(
-          lemmas.map((span) => ({
-            id: span.id,
-            spanLayerId: lemmaLayer.id,
-            tokens: [ids.get(span.tokens[0])],
-            value: span.value,
-            metadata: span.metadata,
-          })),
-        );
-        record(lemmas, createdIds(created));
-      }
-      this._settle(ids);
+      this._settle(madeAsMinted(sentences, words, morphemes, lemmas));
     });
   }
 
@@ -945,12 +938,20 @@ export class ConlluDocument extends DocumentModel {
       add(info.lemmaLayer, lemmaSpans);
     });
 
+    // One batch: the morpheme replacement, the word's metadata and the new
+    // words' Form and Lemma spans commit or roll back together, so no word is
+    // left without its Lemma span (which its relations hang on). The spans
+    // name the morphemes by the ids this page minted.
     return this._queueWrite(label, async () => {
-      const ids = new Map();
-      // Batch 1: atomic morpheme replacement PLUS the word-metadata write
-      // (so the server commits or rolls them back together; no window where
-      // morphemes exist with stale or missing `metadata.form`).
-      const setResults = await this._client.batched(async (b) => {
+      const ops = (spanLayer, spans) =>
+        spans.map((s) => ({
+          id: s.id,
+          spanLayerId: spanLayer.id,
+          tokens: s.tokens,
+          value: s.value,
+          ...(s.metadata ? { metadata: s.metadata } : {}),
+        }));
+      await this._client.batched(async (b) => {
         if (existing.length) b.tokens.bulkDelete(existing.map((m) => settledId(m.id)));
         b.tokens.bulkCreate(
           morphemes.map(({ id, begin, end, precedence }) => ({
@@ -963,34 +964,10 @@ export class ConlluDocument extends DocumentModel {
           })),
         );
         if (wordFormOps) b.tokens.patchMetadata(settledId(word.id), wordFormOps);
+        if (formSpans.length) b.spans.bulkCreate(ops(formLayer, formSpans));
+        if (lemmaSpans.length) b.spans.bulkCreate(ops(lemmaLayer, lemmaSpans));
       });
-      // bulkCreate sits at index 1 when we issued a bulkDelete, else index 0;
-      // patchMetadata (if any) is the final op and we don't need its result.
-      const created = createdIds(setResults[existing.length ? 1 : 0]);
-      morphemes.forEach((m, i) => created[i] && ids.set(m.id, created[i]));
-
-      // Batch 2: atomic Form + Lemma spans for the new morphemes. (Separate
-      // batch because these ops reference morpheme ids produced above.)
-      const ops = (spanLayer, spans) =>
-        spans.map((s) => ({
-          id: s.id,
-          spanLayerId: spanLayer.id,
-          tokens: [ids.get(s.tokens[0])],
-          value: s.value,
-          ...(s.metadata ? { metadata: s.metadata } : {}),
-        }));
-      if (formSpans.length || lemmaSpans.length) {
-        const spanResults = await this._client.batched(async (b) => {
-          if (formSpans.length) b.spans.bulkCreate(ops(formLayer, formSpans));
-          if (lemmaSpans.length) b.spans.bulkCreate(ops(lemmaLayer, lemmaSpans));
-        });
-        const [formIds, lemmaIds] = formSpans.length
-          ? [createdIds(spanResults[0]), createdIds(spanResults[1])]
-          : [null, createdIds(spanResults[0])];
-        formSpans.forEach((s, i) => formIds?.[i] && ids.set(s.id, formIds[i]));
-        lemmaSpans.forEach((s, i) => lemmaIds?.[i] && ids.set(s.id, lemmaIds[i]));
-      }
-      this._settle(ids);
+      this._settle(madeAsMinted(morphemes, formSpans, lemmaSpans));
     });
   }
 
@@ -1228,9 +1205,10 @@ export class ConlluDocument extends DocumentModel {
       if (lemma) push(infoNext.lemmaLayer, 'spans', { ...lemma, tokens: [...lemma.tokens] });
     });
 
+    // One batch, the default lemma span with its morpheme, which it names by
+    // the id this page minted.
     return this._queueWrite(label, async () => {
-      const ids = new Map();
-      const res = await this._client.batched(async (b) => {
+      await this._client.batched(async (b) => {
         if (sentence) {
           b.tokens.bulkCreate([
             {
@@ -1248,28 +1226,21 @@ export class ConlluDocument extends DocumentModel {
         b.tokens.bulkCreate([
           { id: morpheme.id, tokenLayerId: morphemeTokenLayer.id, text: text.id, begin, end },
         ]);
+        if (lemma) {
+          b.spans.bulkCreate([
+            {
+              id: lemma.id,
+              spanLayerId: lemmaLayer.id,
+              tokens: lemma.tokens,
+              value: lemma.value,
+              metadata: lemma.metadata,
+            },
+          ]);
+        }
       });
-      if (sentence) ids.set(sentence.id, createdIds(res[0])[0]);
-      ids.set(wordRow.id, createdIds(res[res.length - 2])[0]);
-      const morphemeId = createdIds(res[res.length - 1])[0];
-      ids.set(morpheme.id, morphemeId);
-
-      // Default lemma span (follow-up call: it needs the morpheme id). A
-      // failure propagates, so the refetch shows a lemma-less word rather
-      // than hiding it.
-      if (lemma && morphemeId) {
-        const lr = await this._client.spans.bulkCreate([
-          {
-            id: lemma.id,
-            spanLayerId: lemmaLayer.id,
-            tokens: [morphemeId],
-            value: lemma.value,
-            metadata: lemma.metadata,
-          },
-        ]);
-        ids.set(lemma.id, createdIds(lr)[0]);
-      }
-      this._settle(ids);
+      this._settle(
+        madeAsMinted(sentence ? [sentence] : [], [wordRow, morpheme], lemma ? [lemma] : []),
+      );
     });
   }
 
@@ -1505,7 +1476,7 @@ export class ConlluDocument extends DocumentModel {
   // annotation grid). A word with no lemma span yet is given one under a
   // pending id: `ids` holds what each endpoint resolved to, `pending` the spans
   // to add locally with `_addPendingSpans` and to create with
-  // `_createPendingSpans`. The same word named twice (a root) is one span.
+  // `_queuePendingSpans`. The same word named twice (a root) is one span.
   _planLemmaSpans(info, candidateIds) {
     const lemmaSpans = info.lemmaLayer?.spans || [];
     const textBody = info.textLayer?.text?.body || '';
@@ -1546,11 +1517,11 @@ export class ConlluDocument extends DocumentModel {
     lemmaLayerDoc.spans.push(...pending.map((span) => ({ ...span })));
   }
 
-  // Create the planned spans on the server, recording each one's id in `ids`
-  // (pending id to server id).
-  async _createPendingSpans(info, pending, ids) {
+  // Queue the planned spans on batch `b`, each under the id this page minted,
+  // so the relation queued after them in the same batch can name it.
+  _queuePendingSpans(b, info, pending) {
     for (const span of pending) {
-      const created = await this._client.spans.create(
+      b.spans.create(
         info.lemmaLayer.id,
         span.tokens.map(settledId),
         span.value,
@@ -1558,7 +1529,6 @@ export class ConlluDocument extends DocumentModel {
         undefined,
         { id: span.id },
       );
-      ids.set(span.id, createdId(created));
     }
   }
 
@@ -1658,24 +1628,21 @@ export class ConlluDocument extends DocumentModel {
     });
 
     return this._queueWrite(label, async () => {
-      const ids = new Map();
-      await this._createPendingSpans(info, pending, ids);
-      const serverId = (id) => ids.get(id) || settledId(id);
-      const batchResults = await this._client.batched(async (b) => {
-        incomingRelations.forEach((rel) => b.relations.delete(serverId(rel.id)));
-        staleSuppressors.forEach((id) => b.relations.delete(serverId(id)));
+      await this._client.batched(async (b) => {
+        this._queuePendingSpans(b, info, pending);
+        incomingRelations.forEach((rel) => b.relations.delete(settledId(rel.id)));
+        staleSuppressors.forEach((id) => b.relations.delete(settledId(id)));
         b.relations.create(
           info.relationLayer.id,
-          serverId(resolvedSourceId),
-          serverId(resolvedTargetId),
+          settledId(resolvedSourceId),
+          settledId(resolvedTargetId),
           finalDeprel,
           relStamp || undefined,
           undefined,
           { id: relationId },
         );
       });
-      ids.set(relationId, createdId(batchResults[batchResults.length - 1]));
-      this._settle(ids);
+      this._settle(madeAsMinted(pending, [{ id: relationId }]));
     });
   }
 
@@ -1747,15 +1714,13 @@ export class ConlluDocument extends DocumentModel {
     });
 
     const ok = await this._queueWrite(label, async () => {
-      const ids = new Map();
-      await this._createPendingSpans(info, pending, ids);
-      const serverId = (id) => ids.get(id) || settledId(id);
-      const results = await this._client.batched(async (b) => {
+      await this._client.batched(async (b) => {
+        this._queuePendingSpans(b, info, pending);
         if (suppress) {
           b.relations.create(
             info.enhancedRelationLayer.id,
-            serverId(source),
-            serverId(target),
+            settledId(source),
+            settledId(target),
             null,
             { [SUPPRESS_KEY]: true },
             undefined,
@@ -1764,17 +1729,17 @@ export class ConlluDocument extends DocumentModel {
         }
         b.relations.create(
           info.enhancedRelationLayer.id,
-          serverId(source),
-          serverId(target),
+          settledId(source),
+          settledId(target),
           value,
           stamp || undefined,
           undefined,
           { id: edgeId },
         );
       });
-      if (suppressorId) ids.set(suppressorId, createdId(results[0]));
-      ids.set(edgeId, createdId(results[results.length - 1]));
-      this._settle(ids);
+      this._settle(
+        madeAsMinted(pending, [{ id: edgeId }], suppressorId ? [{ id: suppressorId }] : []),
+      );
     });
     return ok ? settledId(edgeId) : false;
   }

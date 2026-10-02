@@ -22,7 +22,7 @@ import {
   PROVENANCE_KEYS,
   ROLE_KEY,
   ROLES,
-  createdId,
+  uuidv7,
 } from '@larc-iu/plaid-client';
 import { UMR_NAMESPACE, UMR_LAYER_FLAGS } from '../utils/umrLayerUtils.js';
 import { relationRules } from './umrConstraints.js';
@@ -56,62 +56,84 @@ const LAYER_NAMES = {
   documentGraph: 'UMR document graph',
 };
 
-// Bootstrap as a sequence of atomic batches: an op cannot reference an id
-// produced earlier in the same batch, so each layer's setConfig and its child
-// create move to the next batch. Each batch ends with the ONE create whose id
-// the next batch needs, read as the last result rather than by position.
+// Queue on batch `b` UMR's concept layer under the node layer and its two
+// relation layers, each with its flag, those not there yet, every one made
+// under an id minted here. Answers whether it queued any.
+const queueUmrLayers = (
+  b,
+  { nodeLayerId, sentenceLayerId, conceptLayerId = null, hasRelations, hasDocumentGraph },
+) => {
+  let queued = false;
+  let conceptId = conceptLayerId;
+  if (!conceptId) {
+    conceptId = uuidv7();
+    b.spanLayers.create(nodeLayerId, LAYER_NAMES.concepts, undefined, { id: conceptId });
+    b.spanLayers.setConfig(conceptId, UMR_NAMESPACE, UMR_LAYER_FLAGS.concepts, true);
+    queued = true;
+  }
+  if (!hasRelations) {
+    const id = uuidv7();
+    b.relationLayers.create(conceptId, LAYER_NAMES.relations, undefined, { id });
+    b.relationLayers.setConfig(id, UMR_NAMESPACE, UMR_LAYER_FLAGS.relations, true);
+    if (sentenceLayerId) declareRelationRules(b, id, sentenceLayerId);
+    queued = true;
+  }
+  if (!hasDocumentGraph) {
+    const id = uuidv7();
+    b.relationLayers.create(conceptId, LAYER_NAMES.documentGraph, undefined, { id });
+    b.relationLayers.setConfig(id, UMR_NAMESPACE, UMR_LAYER_FLAGS.documentGraph, true);
+    queued = true;
+  }
+  return queued;
+};
+
+// Bootstrap: the project, then every layer and its config in ONE atomic
+// batch. Each layer is made under an id minted here, so a later op in the
+// batch names it directly. A failed batch leaves an empty project, which the
+// catch handler deletes.
 const bootstrap = async (client, projectName) => {
   const project = await client.projects.create(projectName);
   const projectId = project.id;
   try {
-    const b2 = await client.batched(async (b) => {
-      b.textLayers.create(projectId, LAYER_NAMES.text);
-    });
-    const textLayerId = createdId(b2.at(-1));
-
-    const b3 = await client.batched(async (b) => {
+    const textLayerId = uuidv7();
+    const sentenceLayerId = uuidv7();
+    const wordLayerId = uuidv7();
+    const nodeLayerId = uuidv7();
+    await client.batched(async (b) => {
+      b.textLayers.create(projectId, LAYER_NAMES.text, undefined, { id: textLayerId });
       b.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
-      b.tokenLayers.create(textLayerId, LAYER_NAMES.sentences, 'partitioning');
-    });
-    const sentenceLayerId = createdId(b3.at(-1));
 
-    const b4 = await client.batched(async (b) => {
+      b.tokenLayers.create(
+        textLayerId,
+        LAYER_NAMES.sentences,
+        'partitioning',
+        undefined,
+        undefined,
+        {
+          id: sentenceLayerId,
+        },
+      );
       b.tokenLayers.setConfig(sentenceLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SENTENCE);
       declarePreserveOnSplit(b, sentenceLayerId);
-      b.tokenLayers.create(textLayerId, LAYER_NAMES.words, 'non-overlapping', sentenceLayerId);
-    });
-    const wordLayerId = createdId(b4.at(-1));
 
-    // The node layer is a ROOT layer (no parent): see umrLayerUtils.js.
-    const b5 = await client.batched(async (b) => {
+      b.tokenLayers.create(
+        textLayerId,
+        LAYER_NAMES.words,
+        'non-overlapping',
+        sentenceLayerId,
+        undefined,
+        { id: wordLayerId },
+      );
       b.tokenLayers.setConfig(wordLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.WORD);
       declarePreserveOnSplit(b, wordLayerId);
-      b.tokenLayers.create(textLayerId, LAYER_NAMES.nodes, 'any');
-    });
-    const nodeLayerId = createdId(b5.at(-1));
 
-    const b6 = await client.batched(async (b) => {
+      // The node layer is a ROOT layer (no parent): see umrLayerUtils.js.
+      b.tokenLayers.create(textLayerId, LAYER_NAMES.nodes, 'any', undefined, undefined, {
+        id: nodeLayerId,
+      });
       b.tokenLayers.setConfig(nodeLayerId, UMR_NAMESPACE, UMR_LAYER_FLAGS.nodes, true);
-      b.spanLayers.create(nodeLayerId, LAYER_NAMES.concepts);
-    });
-    const conceptLayerId = createdId(b6.at(-1));
 
-    const b7 = await client.batched(async (b) => {
-      b.spanLayers.setConfig(conceptLayerId, UMR_NAMESPACE, UMR_LAYER_FLAGS.concepts, true);
-      b.relationLayers.create(conceptLayerId, LAYER_NAMES.relations);
-      b.relationLayers.create(conceptLayerId, LAYER_NAMES.documentGraph);
-    });
-    const [relationLayerId, documentGraphLayerId] = b7.slice(-2).map(createdId);
-
-    await client.batched(async (b) => {
-      b.relationLayers.setConfig(relationLayerId, UMR_NAMESPACE, UMR_LAYER_FLAGS.relations, true);
-      declareRelationRules(b, relationLayerId, sentenceLayerId);
-      b.relationLayers.setConfig(
-        documentGraphLayerId,
-        UMR_NAMESPACE,
-        UMR_LAYER_FLAGS.documentGraph,
-        true,
-      );
+      queueUmrLayers(b, { nodeLayerId, sentenceLayerId });
     });
 
     return project;
@@ -145,8 +167,9 @@ export const createUmrProject = (client, projectName) =>
 
 /**
  * Add UMR's own layers to a project that already has a substrate (one set up
- * by IGT or UD). Creates only what is missing, so a re-run is harmless.
- * Sequential awaits on purpose: each step needs the id of the one before.
+ * by IGT or UD). Creates only what is missing, so a re-run is harmless. One
+ * batch, every new layer made under an id minted here: it lands whole or not
+ * at all, so a layer is never left without the flag a re-run finds it by.
  * @param {object} client
  * @param {object} layerInfo - from getUmrLayerInfo on the project
  * @returns {Promise<boolean>} true when something was created
@@ -154,49 +177,27 @@ export const createUmrProject = (client, projectName) =>
 export const adoptSubstrate = async (client, layerInfo) => {
   const { textLayer } = layerInfo;
   if (!textLayer) throw new Error('The project has no text layer to build on.');
-  let created = false;
   return client.withOperation('Set the project up for UMR', async () => {
-    let nodeLayerId = layerInfo.nodeTokenLayer?.id;
-    if (!nodeLayerId) {
-      const layer = await client.tokenLayers.create(textLayer.id, LAYER_NAMES.nodes, 'any');
-      nodeLayerId = createdId(layer);
-      await client.batched(async (b) => {
+    let created = false;
+    await client.batched(async (b) => {
+      let nodeLayerId = layerInfo.nodeTokenLayer?.id;
+      if (!nodeLayerId) {
+        nodeLayerId = uuidv7();
+        b.tokenLayers.create(textLayer.id, LAYER_NAMES.nodes, 'any', undefined, undefined, {
+          id: nodeLayerId,
+        });
         b.tokenLayers.setConfig(nodeLayerId, UMR_NAMESPACE, UMR_LAYER_FLAGS.nodes, true);
-      });
-      created = true;
-    }
-    let conceptLayerId = layerInfo.conceptLayer?.id;
-    if (!conceptLayerId) {
-      const layer = await client.spanLayers.create(nodeLayerId, LAYER_NAMES.concepts);
-      conceptLayerId = createdId(layer);
-      await client.spanLayers.setConfig(
-        conceptLayerId,
-        UMR_NAMESPACE,
-        UMR_LAYER_FLAGS.concepts,
-        true,
-      );
-      created = true;
-    }
-    if (!layerInfo.relationLayer) {
-      const layer = await client.relationLayers.create(conceptLayerId, LAYER_NAMES.relations);
-      const relationLayerId = createdId(layer);
-      const sentenceLayerId = layerInfo.sentenceTokenLayer?.id;
-      await client.batched(async (b) => {
-        b.relationLayers.setConfig(relationLayerId, UMR_NAMESPACE, UMR_LAYER_FLAGS.relations, true);
-        if (sentenceLayerId) declareRelationRules(b, relationLayerId, sentenceLayerId);
-      });
-      created = true;
-    }
-    if (!layerInfo.documentGraphLayer) {
-      const layer = await client.relationLayers.create(conceptLayerId, LAYER_NAMES.documentGraph);
-      await client.relationLayers.setConfig(
-        createdId(layer),
-        UMR_NAMESPACE,
-        UMR_LAYER_FLAGS.documentGraph,
-        true,
-      );
-      created = true;
-    }
+        created = true;
+      }
+      created =
+        queueUmrLayers(b, {
+          nodeLayerId,
+          sentenceLayerId: layerInfo.sentenceTokenLayer?.id,
+          conceptLayerId: layerInfo.conceptLayer?.id,
+          hasRelations: !!layerInfo.relationLayer,
+          hasDocumentGraph: !!layerInfo.documentGraphLayer,
+        }) || created;
+    });
     return created;
   });
 };

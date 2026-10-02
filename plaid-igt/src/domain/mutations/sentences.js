@@ -8,7 +8,7 @@
 // `split` are partition- and nesting-preserving and are the only boundary
 // edits used here; `clearSentences` is a merge of everything into the first.
 
-import { mergeMetadata, metadataOps, createdId } from '@larc-iu/plaid-client';
+import { mergeMetadata, metadataOps } from '@larc-iu/plaid-client';
 import { newHalfMetadata, survivingProvenance, survivorPatch } from '../tokenReshape.js';
 import { reparentSpans } from './reparent.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
@@ -80,26 +80,19 @@ export const sentenceMutations = {
       splits.push(this._showSentenceSplit(containing, charPos));
     }
     if (!splits.length) return false;
+    // One batch: a split names the id this page minted for the right half,
+    // so a later split of that half, and the metadata of both, can name it.
     return this._queueWrite(label, async () => {
-      const ids = new Map();
-      const serverId = (id) => ids.get(id) || settledId(id);
-      // One request a split: each needs the id the one before it made.
-      for (const s of splits) {
-        const result = await this._client.tokens.split(serverId(s.leftId), s.charPos, undefined, {
-          id: s.rightId,
-        });
-        ids.set(s.rightId, createdId(result));
-      }
-      const patches = splits.flatMap((s) => [
-        ...(s.leftPatch ? [[serverId(s.leftId), s.leftPatch]] : []),
-        ...(s.rightMetadata && ids.get(s.rightId) ? [[ids.get(s.rightId), s.rightMetadata]] : []),
-      ]);
-      if (patches.length) {
-        await this._client.batched(async (b) => {
-          patches.forEach(([id, p]) => b.tokens.patchMetadata(id, metadataOps(p)));
-        });
-      }
-      this._settle(ids);
+      await this._client.batched(async (b) => {
+        for (const s of splits) {
+          b.tokens.split(settledId(s.leftId), s.charPos, undefined, { id: s.rightId });
+        }
+        for (const s of splits) {
+          if (s.leftPatch) b.tokens.patchMetadata(settledId(s.leftId), metadataOps(s.leftPatch));
+          if (s.rightMetadata) b.tokens.patchMetadata(s.rightId, metadataOps(s.rightMetadata));
+        }
+      });
+      this._settle(new Map(splits.map((s) => [s.rightId, s.rightId])));
     });
   },
 

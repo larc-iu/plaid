@@ -32,7 +32,7 @@ import {
   ROLES,
   findByRole,
   readRole,
-  createdId,
+  uuidv7,
 } from '@larc-iu/plaid-client';
 
 // Provenance survives a split, including one made by another app sharing this
@@ -70,92 +70,29 @@ export const SPAN_LAYER_SPECS = [
   ['Features', UD_SPAN_CONFIG_KEYS.features],
 ];
 
-// Bootstrap as a sequence of atomic batches. Each batch is server-side atomic
-// (full rollback on any op failure), so a partial failure is limited to
-// "batches 1..k-1 committed, batch k failed". The catch handler deletes the
-// project to roll that prefix back, since layers are immutable and a
-// half-configured project is otherwise permanently broken.
-//
-// Why so many batches: an op cannot reference an id produced earlier in the
-// SAME batch. So each layer's setConfig (which needs the layer's id) and any
-// child create (which needs the parent's id) must move to the next batch. We
-// pair each setConfig with the next downstream create to minimize round-trips.
+// Bootstrap: the project, then every layer, its config and UD's layer rules
+// in ONE atomic batch. Each layer is made under an id minted here, so a later
+// op in the batch names it directly. A failed batch leaves an empty project,
+// which the catch handler deletes.
 const bootstrap = async (client, projectName) => {
-  // B1: project (alone; textLayer needs project.id)
   const project = await client.projects.create(projectName);
   const projectId = project.id;
 
   try {
-    // Each batch ends with the ONE create whose id the next batch needs, and
-    // that result is read as the last of the batch rather than by position.
-    // Position broke once already: `declarePreserveOnSplit` was added to B4 and
-    // B5 in 9d9608ef, which pushed each create from index 1 to index 2, and
-    // creating a UD project failed on `null.id` from then on. Adding a config
-    // op must not be able to do that again.
-    // B2: textLayer (alone; setConfig + sentence create both need its id)
-    const b2 = await client.batched(async (b) => {
-      b.textLayers.create(projectId, 'Text');
-    });
-    const textLayerId = createdId(b2.at(-1));
-
-    // B3: textLayer.setConfig + sentenceLayer.create
-    const b3 = await client.batched(async (b) => {
-      b.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
-      b.tokenLayers.create(textLayerId, 'Sentences', 'partitioning');
-    });
-    const sentenceLayerId = createdId(b3.at(-1));
-
-    // B4: sentenceLayer.setConfig + wordLayer.create
-    const b4 = await client.batched(async (b) => {
-      b.tokenLayers.setConfig(sentenceLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SENTENCE);
-      declarePreserveOnSplit(b, sentenceLayerId);
-      b.tokenLayers.create(textLayerId, 'Tokens', 'non-overlapping', sentenceLayerId);
-    });
-    const wordLayerId = createdId(b4.at(-1));
-
-    // B5: wordLayer.setConfig + morphemeLayer.create
-    const b5 = await client.batched(async (b) => {
-      b.tokenLayers.setConfig(wordLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.WORD);
-      declarePreserveOnSplit(b, wordLayerId);
-      declareSplitOnSpace(b, wordLayerId);
-      b.tokenLayers.create(textLayerId, 'Words', 'any', wordLayerId);
-    });
-    const morphemeLayerId = createdId(b5.at(-1));
-
-    // B6: morphemeLayer.setConfig + all 5 span layer creates
-    const b6 = await client.batched(async (b) => {
-      // UD's "Words" layer holds SYNTACTIC WORDS (MWT splits), so its role is
-      // `syntactic-word`, NOT `morpheme`. IGT's true-morpheme layer is a
-      // sibling under the shared word layer. Getting this wrong corrupts
-      // segmentation.
-      b.tokenLayers.setConfig(morphemeLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SYNTACTIC_WORD);
-      declarePreserveOnSplit(b, morphemeLayerId);
-      for (const [name] of SPAN_LAYER_SPECS) {
-        b.spanLayers.create(morphemeLayerId, name);
-      }
-    });
-    // The five span creates are the LAST five results, whatever config ops run
-    // before them (see the note on B2 above).
-    const spanLayerIds = b6.slice(-SPAN_LAYER_SPECS.length).map(createdId);
-    const lemmaIdx = SPAN_LAYER_SPECS.findIndex(([, key]) => key === UD_SPAN_CONFIG_KEYS.lemma);
-    const lemmaLayerId = spanLayerIds[lemmaIdx];
-
-    // B7: 5x spanLayer.setConfig + both relationLayer creates (use lemmaLayerId)
-    const b7 = await client.batched(async (b) => {
-      SPAN_LAYER_SPECS.forEach(([, configKey], i) => {
-        b.spanLayers.setConfig(spanLayerIds[i], UD_NAMESPACE, configKey, true);
-      });
-      b.relationLayers.create(lemmaLayerId, 'Dependency Relations');
-      b.relationLayers.create(lemmaLayerId, 'Enhanced Dependencies');
-    });
-    // The two creates are the LAST two results (see the note on B2 above).
-    const [relationLayerId, enhancedLayerId] = b7.slice(-2).map(createdId);
-
-    // B8: both relationLayer.setConfig, and UD's layer rules (see
-    // utils/udConstraints.js), in force before anything is written.
+    const textLayerId = uuidv7();
+    const sentenceLayerId = uuidv7();
+    const wordLayerId = uuidv7();
+    const morphemeLayerId = uuidv7();
+    const spanLayerIds = SPAN_LAYER_SPECS.map(() => uuidv7());
+    const relationLayerId = uuidv7();
+    const enhancedLayerId = uuidv7();
+    const lemmaLayerId =
+      spanLayerIds[SPAN_LAYER_SPECS.findIndex(([, key]) => key === UD_SPAN_CONFIG_KEYS.lemma)];
     const spanId = (key) => ({
       id: spanLayerIds[SPAN_LAYER_SPECS.findIndex(([, k]) => k === key)],
     });
+    // UD's layer rules (see utils/udConstraints.js), in force before anything
+    // is written.
     const rules = wantedConstraints({
       sentenceTokenLayer: { id: sentenceLayerId },
       wordTokenLayer: { id: wordLayerId },
@@ -168,7 +105,44 @@ const bootstrap = async (client, projectName) => {
       enhancedRelationLayer: { id: enhancedLayerId },
     });
     await client.batched(async (b) => {
+      b.textLayers.create(projectId, 'Text', undefined, { id: textLayerId });
+      b.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
+
+      b.tokenLayers.create(textLayerId, 'Sentences', 'partitioning', undefined, undefined, {
+        id: sentenceLayerId,
+      });
+      b.tokenLayers.setConfig(sentenceLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SENTENCE);
+      declarePreserveOnSplit(b, sentenceLayerId);
+
+      b.tokenLayers.create(textLayerId, 'Tokens', 'non-overlapping', sentenceLayerId, undefined, {
+        id: wordLayerId,
+      });
+      b.tokenLayers.setConfig(wordLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.WORD);
+      declarePreserveOnSplit(b, wordLayerId);
+      declareSplitOnSpace(b, wordLayerId);
+
+      // UD's "Words" layer holds SYNTACTIC WORDS (MWT splits), so its role is
+      // `syntactic-word`, NOT `morpheme`. IGT's true-morpheme layer is a
+      // sibling under the shared word layer. Getting this wrong corrupts
+      // segmentation.
+      b.tokenLayers.create(textLayerId, 'Words', 'any', wordLayerId, undefined, {
+        id: morphemeLayerId,
+      });
+      b.tokenLayers.setConfig(morphemeLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SYNTACTIC_WORD);
+      declarePreserveOnSplit(b, morphemeLayerId);
+
+      SPAN_LAYER_SPECS.forEach(([name, configKey], i) => {
+        b.spanLayers.create(morphemeLayerId, name, undefined, { id: spanLayerIds[i] });
+        b.spanLayers.setConfig(spanLayerIds[i], UD_NAMESPACE, configKey, true);
+      });
+
+      b.relationLayers.create(lemmaLayerId, 'Dependency Relations', undefined, {
+        id: relationLayerId,
+      });
       b.relationLayers.setConfig(relationLayerId, UD_NAMESPACE, UD_RELATION_CONFIG_KEY, true);
+      b.relationLayers.create(lemmaLayerId, 'Enhanced Dependencies', undefined, {
+        id: enhancedLayerId,
+      });
       b.relationLayers.setConfig(
         enhancedLayerId,
         UD_NAMESPACE,
@@ -223,10 +197,9 @@ export const createUdProject = (client, projectName) =>
  * role, and a project made by any Plaid app has exactly one; failing that, the
  * project's only text layer, or a new one when it has none. Everything below
  * is found by role or by UD's own config flag, and created where it is
- * missing, so a re-run after a failure picks up where it left off.
- *
- * Sequential awaits, not a batch: each find-or-create needs the result of the
- * one before it, which is also what makes a re-run safe.
+ * missing. Every layer it makes is made under an id minted here, so the whole
+ * set-up is one batch: it lands whole or not at all, and a layer is never left
+ * without the flag or role a re-run would find it by.
  *
  * @param {object} client - PlaidClient instance
  * @param {object} project - the project, as read
@@ -243,84 +216,82 @@ export const adoptSubstrate = (client, project) =>
     }
     const existingTextLayer = baseline || textLayers[0] || null;
 
-    let textLayerId = existingTextLayer?.id;
-    if (!textLayerId) {
-      const created = await client.textLayers.create(project.id, 'Text');
-      textLayerId = createdId(created);
-    }
-    if (readRole(existingTextLayer?.config) !== ROLES.BASELINE) {
-      await client.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
-    }
-
-    // Sentences > Tokens > Words, bound by shared role. UD's "Words" layer
-    // holds SYNTACTIC WORDS (CoNLL-U words / MWT splits), so its role is
-    // `syntactic-word`: a sibling of IGT's `morpheme` layer under the shared
-    // word layer, never the same layer.
-    const ensureTokenLayer = async (role, name, overlapMode, parentId) => {
-      const existing = findByRole(existingTextLayer?.tokenLayers, role);
-      if (existing) return existing.id;
-      const created = await client.tokenLayers.create(textLayerId, name, overlapMode, parentId);
-      const id = createdId(created);
-      await client.tokenLayers.setConfig(id, PLAID_NAMESPACE, ROLE_KEY, role);
-      await declarePreserveOnSplit(client, id);
-      return id;
-    };
-    const sentenceLayerId = await ensureTokenLayer(ROLES.SENTENCE, 'Sentences', 'partitioning');
-    const wordLayerId = await ensureTokenLayer(
-      ROLES.WORD,
-      'Tokens',
-      'non-overlapping',
-      sentenceLayerId,
-    );
-    // On a project another app made, the word layer is shared, and a space
-    // typed inside one of its words then splits it for both.
-    const wordLayer = findByRole(existingTextLayer?.tokenLayers, ROLES.WORD);
-    if (wordLayer?.config?.[PLAID_NAMESPACE]?.[SPLIT_ON_SPACE_KEY] !== true) {
-      await client.tokenLayers.setConfig(wordLayerId, PLAID_NAMESPACE, SPLIT_ON_SPACE_KEY, true);
-    }
-    const morphemeLayerId = await ensureTokenLayer(
-      ROLES.SYNTACTIC_WORD,
-      'Words',
-      'any',
-      wordLayerId,
-    );
-
-    // Annotation layers are UD's own, found by UD's flags under the layer UD
-    // annotates: the one that was already there, or none when this call just
-    // made it.
-    const existingMorphemeLayer = findByRole(existingTextLayer?.tokenLayers, ROLES.SYNTACTIC_WORD);
-    const findFlagged = (layers, key) =>
-      (layers || []).find((layer) => layer.config?.[UD_NAMESPACE]?.[key] === true) || null;
-
-    let lemmaLayer = null;
-    let lemmaLayerId = null;
-    for (const [name, configKey] of SPAN_LAYER_SPECS) {
-      const existing = findFlagged(existingMorphemeLayer?.spanLayers, configKey);
-      let id = existing?.id;
-      if (!id) {
-        const created = await client.spanLayers.create(morphemeLayerId, name);
-        id = createdId(created);
-        await client.spanLayers.setConfig(id, UD_NAMESPACE, configKey, true);
+    await client.batched(async (b) => {
+      let textLayerId = existingTextLayer?.id;
+      if (!textLayerId) {
+        textLayerId = uuidv7();
+        b.textLayers.create(project.id, 'Text', undefined, { id: textLayerId });
       }
-      if (configKey === UD_SPAN_CONFIG_KEYS.lemma) {
-        lemmaLayer = existing;
-        lemmaLayerId = id;
+      if (readRole(existingTextLayer?.config) !== ROLES.BASELINE) {
+        b.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
       }
-    }
 
-    // The dependency tree, and the enhanced graph beside it. `lemmaLayer` is
-    // the project's own layer where it had one, relation layers and all, and
-    // null where this call just made it, which has none to find.
-    if (!findFlagged(lemmaLayer?.relationLayers, UD_RELATION_CONFIG_KEY)) {
-      const created = await client.relationLayers.create(lemmaLayerId, 'Dependency Relations');
-      await client.relationLayers.setConfig(
-        createdId(created),
-        UD_NAMESPACE,
-        UD_RELATION_CONFIG_KEY,
-        true,
+      // Sentences > Tokens > Words, bound by shared role. UD's "Words" layer
+      // holds SYNTACTIC WORDS (CoNLL-U words / MWT splits), so its role is
+      // `syntactic-word`: a sibling of IGT's `morpheme` layer under the shared
+      // word layer, never the same layer.
+      const ensureTokenLayer = (role, name, overlapMode, parentId) => {
+        const existing = findByRole(existingTextLayer?.tokenLayers, role);
+        if (existing) return existing.id;
+        const id = uuidv7();
+        b.tokenLayers.create(textLayerId, name, overlapMode, parentId, undefined, { id });
+        b.tokenLayers.setConfig(id, PLAID_NAMESPACE, ROLE_KEY, role);
+        declarePreserveOnSplit(b, id);
+        return id;
+      };
+      const sentenceLayerId = ensureTokenLayer(ROLES.SENTENCE, 'Sentences', 'partitioning');
+      const wordLayerId = ensureTokenLayer(
+        ROLES.WORD,
+        'Tokens',
+        'non-overlapping',
+        sentenceLayerId,
       );
-    }
-    await ensureEnhancedRelationLayer(client, lemmaLayer || { id: lemmaLayerId });
+      // On a project another app made, the word layer is shared, and a space
+      // typed inside one of its words then splits it for both.
+      const wordLayer = findByRole(existingTextLayer?.tokenLayers, ROLES.WORD);
+      if (wordLayer?.config?.[PLAID_NAMESPACE]?.[SPLIT_ON_SPACE_KEY] !== true) {
+        declareSplitOnSpace(b, wordLayerId);
+      }
+      const morphemeLayerId = ensureTokenLayer(ROLES.SYNTACTIC_WORD, 'Words', 'any', wordLayerId);
+
+      // Annotation layers are UD's own, found by UD's flags under the layer UD
+      // annotates: the one that was already there, or none when this call
+      // makes it.
+      const existingMorphemeLayer = findByRole(
+        existingTextLayer?.tokenLayers,
+        ROLES.SYNTACTIC_WORD,
+      );
+      const findFlagged = (layers, key) =>
+        (layers || []).find((layer) => layer.config?.[UD_NAMESPACE]?.[key] === true) || null;
+
+      let lemmaLayer = null;
+      let lemmaLayerId = null;
+      for (const [name, configKey] of SPAN_LAYER_SPECS) {
+        const existing = findFlagged(existingMorphemeLayer?.spanLayers, configKey);
+        let id = existing?.id;
+        if (!id) {
+          id = uuidv7();
+          b.spanLayers.create(morphemeLayerId, name, undefined, { id });
+          b.spanLayers.setConfig(id, UD_NAMESPACE, configKey, true);
+        }
+        if (configKey === UD_SPAN_CONFIG_KEYS.lemma) {
+          lemmaLayer = existing;
+          lemmaLayerId = id;
+        }
+      }
+
+      // The dependency tree, and the enhanced graph beside it. `lemmaLayer` is
+      // the project's own layer where it had one, relation layers and all, and
+      // null where this call makes it, which has none to find.
+      if (!findFlagged(lemmaLayer?.relationLayers, UD_RELATION_CONFIG_KEY)) {
+        const id = uuidv7();
+        b.relationLayers.create(lemmaLayerId, 'Dependency Relations', undefined, { id });
+        b.relationLayers.setConfig(id, UD_NAMESPACE, UD_RELATION_CONFIG_KEY, true);
+      }
+      if (!findFlagged(lemmaLayer?.relationLayers, UD_ENHANCED_RELATION_CONFIG_KEY)) {
+        queueEnhancedRelationLayer(b, lemmaLayerId);
+      }
+    });
 
     // UD's layer rules (utils/udConstraints.js). The layers adopted may hold
     // another app's data, which the server repairs first where a rule has a
@@ -329,6 +300,16 @@ export const adoptSubstrate = (client, project) =>
     const info = getUdLayerInfo(await client.projects.get(project.id));
     await ensureLayerConstraints(client, wantedConstraints(info), { canManage: true });
   });
+
+// Queue on batch `b` the enhanced relation layer on the Lemma layer
+// `lemmaLayerId`, made under an id minted here so its flag can name it.
+// Answers that id.
+const queueEnhancedRelationLayer = (b, lemmaLayerId) => {
+  const id = uuidv7();
+  b.relationLayers.create(lemmaLayerId, 'Enhanced Dependencies', undefined, { id });
+  b.relationLayers.setConfig(id, UD_NAMESPACE, UD_ENHANCED_RELATION_CONFIG_KEY, true);
+  return id;
+};
 
 /**
  * The project's enhanced relation layer, made if it has none: a second
@@ -339,8 +320,8 @@ export const adoptSubstrate = (client, project) =>
  * app set up and UD adopted. A relation layer can be added to a project at any
  * time, so they take it as readily. It needs a maintainer, being a layer, so
  * the callers are the three places a maintainer is known to be standing: the
- * layer setup page, reconcile-on-open, and the bulk import. Two writes, since
- * the flag needs the layer's id.
+ * layer setup page, reconcile-on-open, and the bulk import. One batch, the
+ * layer made under an id minted here so its flag can name it.
  *
  * @param {object} client - PlaidClient instance
  * @param {object} lemmaLayer - the project's Lemma span layer, as read
@@ -354,14 +335,10 @@ export const ensureEnhancedRelationLayer = async (client, lemmaLayer) => {
   );
   if (existing) return null;
   return client.withOperation('Add enhanced dependencies', async () => {
-    const created = await client.relationLayers.create(lemmaLayer.id, 'Enhanced Dependencies');
-    const layerId = createdId(created);
-    await client.relationLayers.setConfig(
-      layerId,
-      UD_NAMESPACE,
-      UD_ENHANCED_RELATION_CONFIG_KEY,
-      true,
-    );
+    let layerId = null;
+    await client.batched(async (b) => {
+      layerId = queueEnhancedRelationLayer(b, lemmaLayer.id);
+    });
     return layerId;
   });
 };

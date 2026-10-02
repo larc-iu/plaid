@@ -87,7 +87,8 @@ test('an enhanced edge gives a word a second head and leaves its tree alone', as
   const { doc, log, lemma, rows, graph } = open();
   const id = await doc.createEnhancedRelation(lemma('leave'), lemma('she'), 'nsubj');
 
-  assert.equal(id, 'new-0');
+  // Made under the id it was shown under, which this page minted.
+  assert.equal(doc.layerInfo.enhancedRelationLayer.relations.at(-1).id, id);
   assert.deepEqual(
     log.map((l) => [l.op, l.layerId, l.value]),
     [['create', 'enhanced-relation-layer', 'nsubj']],
@@ -431,9 +432,9 @@ test('reconcile deletes a suppressor whose basic relation another writer removed
 const backfillClient = (raw, calls) =>
   withOps({
     relationLayers: {
-      create: async (spanLayerId, name) => {
-        calls.push(['create', spanLayerId, name]);
-        return { id: 'enhanced-new' };
+      create: async (spanLayerId, name, _audit, { id } = {}) => {
+        calls.push(['create', spanLayerId, name, id]);
+        return { id };
       },
       setConfig: async (...args) => calls.push(['setConfig', ...args]),
     },
@@ -454,9 +455,13 @@ test('reconcile adds the enhanced layer to a project that has none, for a mainta
 
   await doc._reconcile();
 
+  // One batch: the layer is made under an id minted for it, which its flag
+  // names.
+  const made = calls[0][3];
+  assert.ok(made);
   assert.deepEqual(calls, [
-    ['create', 'lemma-layer', 'Enhanced Dependencies'],
-    ['setConfig', 'enhanced-new', 'ud', 'enhancedDependency', true],
+    ['create', 'lemma-layer', 'Enhanced Dependencies', made],
+    ['setConfig', made, 'ud', 'enhancedDependency', true],
   ]);
   // Re-read, so the tree offers the gesture in the same sitting.
   assert.ok(doc.layerInfo.enhancedRelationLayer);

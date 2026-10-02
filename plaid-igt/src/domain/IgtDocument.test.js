@@ -640,6 +640,28 @@ describe('word-token structural ops', () => {
     expect(update.args.slice(1, 3)).toEqual([undefined, end]);
   });
 
+  // R2-DEBT-APPS-3: the halves' marks went in a second request, lost when
+  // that one was refused. The right half is made under the id this page
+  // minted, so one batch names it.
+  it("splitToken sends the split and both halves' marks in one batch", async () => {
+    const raw = buildRawDoc({
+      words: [{ id: 'w-1', begin: 0, end: 7, metadata: { prov: 'machine' } }],
+      morphemes: [],
+      body: 'the cat',
+    });
+    const doc = makeDoc({ raw });
+    await doc.splitToken('w-1', 2);
+    const kinds = doc._client.calls.map((c) => c.kind);
+    expect(kinds.filter((k) => k === 'batch.submit')).toHaveLength(1);
+    expect(kinds.at(-1)).toBe('batch.submit');
+    const split = doc._client.calls.find((c) => c.kind === 'tokens.split');
+    const marked = doc._client.calls
+      .filter((c) => c.kind === 'tokens.patchMetadata')
+      .map((c) => c.args[0]);
+    expect(marked).toEqual(['w-1', split.args[3].id]);
+    expect(doc.sentences[0].tokens[1].id).toBe(split.args[3].id);
+  });
+
   it('splitToken counts the space in code points after an astral letter', async () => {
     const body = '𐌰𐌱 cat';
     const raw = buildRawDoc({ words: [{ id: 'w-1', begin: 0, end: 6 }], morphemes: [], body });
@@ -873,6 +895,10 @@ describe('sentence boundary ops', () => {
     expect(splits.map((c) => c.args[1])).toEqual([8, 12]);
     expect(splits[0].args[0]).toBe(before);
     expect(splits[1].args[0]).not.toBe(before); // the new right half
+    // One batch: the second split names the half the first one made by the
+    // id this page minted for it.
+    expect(splits[1].args[0]).toBe(splits[0].args[3].id);
+    expect(doc.client.calls.filter((c) => c.kind === 'batch.submit')).toHaveLength(1);
     expect(doc.sentences.map((s) => [s.begin, s.end])).toEqual([
       [0, 8],
       [8, 12],

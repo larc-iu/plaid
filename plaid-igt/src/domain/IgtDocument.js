@@ -7,7 +7,6 @@ import {
   PRESERVE_ON_SPLIT_KEY,
   PROVENANCE_KEYS,
   writerPolicy,
-  createdId,
 } from '@larc-iu/plaid-client';
 import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { DocumentModel } from '@ui/domain/DocumentModel.js';
@@ -771,23 +770,18 @@ export class IgtDocument extends DocumentModel {
       }
     });
 
+    // One batch, the halves' metadata with the split: the right half is made
+    // under the id this page minted, so the batch can name it.
     return this._queueWrite(label, async () => {
       const id = settledId(tokenId);
-      const results = await this._client.batched(async (b) => {
+      await this._client.batched(async (b) => {
         if (coincident.length > 0) b.tokens.bulkDelete(coincident.map(settledId));
         b.tokens.split(id, rightBegin, undefined, { id: rightId });
         if (leftEnd < rightBegin) b.tokens.update(id, undefined, leftEnd);
+        if (leftPatch) b.tokens.patchMetadata(id, metadataOps(leftPatch));
+        if (rightMetadata) b.tokens.patchMetadata(rightId, metadataOps(rightMetadata));
       });
-      // The body of `tokens.split` is `{ id: <new right id> }`.
-      const newRightTokenId = createdId(results[coincident.length > 0 ? 1 : 0]);
-      if (leftPatch || (newRightTokenId && rightMetadata)) {
-        await this._client.batched(async (b) => {
-          if (leftPatch) b.tokens.patchMetadata(id, metadataOps(leftPatch));
-          if (newRightTokenId && rightMetadata)
-            b.tokens.patchMetadata(newRightTokenId, metadataOps(rightMetadata));
-        });
-      }
-      this._settle(new Map([[rightId, newRightTokenId]]));
+      this._settle(new Map([[rightId, rightId]]));
     });
   }
 }

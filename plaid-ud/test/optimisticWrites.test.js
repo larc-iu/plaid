@@ -331,11 +331,78 @@ test('a provenance key is never written as a metadata field', async () => {
   assert.equal(calls.length, 0);
 });
 
-test('a create the server answers with no id keeps its pending id', async () => {
+test('a relation is made under the id it was shown under, and is pending no more', async () => {
   const { doc, release, lemma, headOf } = open();
-  doc._client.relations.create = async () => ({});
+  const write = doc.createRelation(lemma('come'), lemma('home'), 'obj');
+  const [shown] = headOf(lemma('home'));
+  assert.ok(isPendingId(shown?.id));
   release();
-  assert.equal(await doc.createRelation(lemma('come'), lemma('home'), 'obj'), true);
+  assert.equal(await write, true);
   const [rel] = headOf(lemma('home'));
-  assert.ok(isPendingId(rel?.id), `the relation's id became ${JSON.stringify(rel?.id)}`);
+  assert.equal(rel?.id, shown.id);
+  assert.ok(!isPendingId(rel.id));
+});
+
+// R2-DEBT-APPS-3: these edits went as two requests, so a refused second one
+// left words without their Lemma spans (which relations hang on). Every row
+// is made under the id this page minted, so each edit is one batch, and a
+// later op in it names an earlier op's row by that id.
+const oneBatch = async (doc, calls, edit) => {
+  const orig = doc._client.batched;
+  const batches = [];
+  doc._client.batched = async (fn) => {
+    const from = calls.length;
+    try {
+      return await orig(fn);
+    } finally {
+      batches.push(calls.slice(from).map((c) => c.call));
+    }
+  };
+  const before = calls.length;
+  assert.equal(await edit(), true);
+  doc._client.batched = orig;
+  assert.equal(batches.length, 1, `sent as ${batches.length} batches`);
+  assert.equal(batches[0].length, calls.length - before, 'a write went outside the batch');
+  return batches[0];
+};
+
+test('a new word goes with its lemma span in one batch', async () => {
+  const { doc, release, calls } = open();
+  release();
+  await doc.clearTokens();
+  const body = doc.layerInfo.textLayer.text.body;
+  const sent = await oneBatch(doc, calls, () => doc.createWord(0, 3, body));
+  assert.deepEqual(sent.slice(-1), ['spans.bulkCreate']);
+  const [morpheme] = doc.layerInfo.morphemeTokenLayer.tokens;
+  assert.deepEqual(calls.at(-1).args[0][0].tokens, [morpheme.id]);
+});
+
+test('tokenizing goes with its lemma spans in one batch', async () => {
+  const { doc, release, calls } = open();
+  release();
+  await doc.clearTokens();
+  const body = doc.layerInfo.textLayer.text.body;
+  const sent = await oneBatch(doc, calls, () => doc.tokenize(body));
+  assert.deepEqual(sent.slice(-1), ['spans.bulkCreate']);
+});
+
+test("a word's new parts go with their Form and Lemma spans in one batch", async () => {
+  const { doc, release, calls } = open();
+  release();
+  const word = doc.layerInfo.wordTokenLayer.tokens.find((w) => w.begin === 0);
+  const sent = await oneBatch(doc, calls, () => doc.setWordMorphemes(word, ['sh', 'e']));
+  assert.equal(sent.filter((c) => c === 'spans.bulkCreate').length, 2);
+});
+
+test('a relation to a word with no lemma span goes with the span in one batch', async () => {
+  const { doc, release, calls, lemma, token } = open();
+  release();
+  const sent = await oneBatch(doc, calls, () =>
+    doc.createRelation(lemma('come'), token('.'), 'punct'),
+  );
+  assert.deepEqual(sent.slice(0, 1), ['spans.create']);
+  assert.deepEqual(sent.slice(-1), ['relations.create']);
+  const span = calls.find((c) => c.call === 'spans.create');
+  const rel = calls.find((c) => c.call === 'relations.create');
+  assert.equal(rel.args[2], span.args[5].id);
 });
