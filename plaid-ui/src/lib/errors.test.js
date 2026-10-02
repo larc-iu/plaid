@@ -309,3 +309,19 @@ describe('the refusals a text save reads', () => {
     expect(isTextChanged(err(422, {}))).toBe(false);
   });
 });
+
+// A request over the server's JSON body cap (413) says what to do in words,
+// not the server's byte count (the huge-documents ruling: split it).
+describe('a request too large for the server', () => {
+  it('says to split the document', () => {
+    const err = Object.assign(
+      new Error(
+        'HTTP 413 Request body exceeds JSON cap of 10485760 bytes at http://x/api/v1/batch',
+      ),
+      { status: 413, method: 'POST' },
+    );
+    expect(humanizeError(err, 'Failed to import.')).toBe(
+      'This document is too large to save in one request. Split it into shorter documents.',
+    );
+  });
+});

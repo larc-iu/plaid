@@ -175,6 +175,10 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
       // Both apps resync a document after a conflict, so the user is never
       // told to reload by hand.
       return 'Changed elsewhere. Now showing the latest version. Redo your edit.';
+    case 413:
+      // Over the server's cap on a request's body. A document that long is
+      // to be split (the huge-documents ruling), not sent in pieces.
+      return 'This document is too large to save in one request. Split it into shorter documents.';
     case 423:
       return 'This document is being edited right now (by another user or a service). Try again in a moment.';
     case 500:
