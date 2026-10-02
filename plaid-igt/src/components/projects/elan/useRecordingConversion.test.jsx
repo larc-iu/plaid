@@ -9,14 +9,18 @@ import { notifyWarning } from '@/utils/feedback';
 
 vi.mock('@/utils/feedback', () => ({ notifyError: vi.fn(), notifyWarning: vi.fn() }));
 
-// Each conversion waits until it is let go or stopped, as a long encode does.
+// Each conversion waits until it is let go, as a long encode does. A stop is
+// answered when the test says (the worker answers a cancel with a message of
+// its own, a moment later).
 const pending = [];
+const cancelled = [];
 vi.mock('@/domain/media/transcodeToMp3', () => ({
   transcodeToMp3: (file, { signal }) =>
     new Promise((resolve) => {
       pending.push(() => resolve(new File(['x'], `${file.name}.mp3`)));
-      // The worker answers a cancel with a message of its own, a moment later.
-      signal?.addEventListener('abort', () => setTimeout(() => resolve(null), 0), { once: true });
+      signal?.addEventListener('abort', () => cancelled.push(() => resolve(null)), {
+        once: true,
+      });
     }),
 }));
 
@@ -44,6 +48,7 @@ describe('stopping a conversion', () => {
     await view.step(() => hook.stopConverting());
     expect(hook.converting).toMatchObject({ stopping: true });
     await view.step(async () => {
+      cancelled.splice(0).forEach((answer) => answer());
       await run;
     });
     expect(hook.converting).toBeNull();

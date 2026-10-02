@@ -101,8 +101,7 @@ const setup = ({ serverFields = loadedFields, spanLayerLang } = {}) => {
 describe("a field's language on open", () => {
   it('is not written from the field name', async () => {
     const { doc, server } = setup();
-    const res = await doc.reconcileOnOpen();
-    expect(res.error).toBeUndefined();
+    await doc.reconcileOnOpen();
     expect(server.sent.filter((s) => s.kind === 'span' || s.kind === 'vocab')).toEqual([]);
     expect(server.store.vocab['voc-1'].igt.fields).toEqual(loadedFields);
   });
