@@ -206,6 +206,11 @@ export const DOC_RELATIONS = {
   },
 };
 
+// The roles a sentence graph may cycle through (validate.py:587): the
+// validator allows no other cycle, and an edge with one of these into a node
+// does not make it a child.
+export const CYCLE_ROLES = new Set([':quote', ':modal-predicate']);
+
 // The nodes of a document-level relation that are not sentence variables
 // (validate.py:1166). `have-condition-91` is there because annotators use it
 // as a modal conceiver, documented or not.

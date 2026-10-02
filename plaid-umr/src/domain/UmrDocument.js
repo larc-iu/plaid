@@ -30,7 +30,6 @@ import {
   toUmrSentences,
   sentencePenman,
   nextVariable,
-  CYCLE_ROLES,
   crossSentenceEdges,
   unreachedByRoot,
   groupOf,
@@ -38,7 +37,7 @@ import {
   keepUnchangedSentences,
   KEPT_VARIABLE,
 } from './sentenceGraph.js';
-import { DOC_CONSTANTS } from './format/inventory.js';
+import { CYCLE_ROLES, DOC_CONSTANTS } from './format/inventory.js';
 import {
   describeUmrReconcile,
   planEntryUnlink,

@@ -31,7 +31,7 @@ import { cpSlicer } from '@larc-iu/plaid-client';
 import { UMR_NAMESPACE } from '../utils/umrLayerUtils.js';
 import { treeEdges, serializePenman } from './format/penman.js';
 import { perWordStored } from './ilg.js';
-import { DOC_CONSTANTS } from './format/inventory.js';
+import { CYCLE_ROLES, DOC_CONSTANTS } from './format/inventory.js';
 
 const umrMeta = (entity) => entity?.metadata?.[UMR_NAMESPACE] || {};
 
@@ -513,11 +513,10 @@ const storedLines = (s) =>
     s.words.length,
   );
 
-// The roles a graph may cycle through (the validator allows no others): an
-// edge with one of these into a node does not make it a child, so the root
-// of `(s / say-01 :ARG1 (b / believe-01 :quote s))` is still say-01.
-export const CYCLE_ROLES = new Set([':quote', ':modal-predicate']);
-
+// An edge with a cycle role (CYCLE_ROLES) into a node does not make it a
+// child, so the root of `(s / say-01 :ARG1 (b / believe-01 :quote s))` is
+// still say-01.
+//
 // The sentence's roots. A node marked as the root (the file's own, kept at
 // import) is one whatever reaches it, since a graph may cycle back into its
 // root through more than :quote in the released data. Then one root for each

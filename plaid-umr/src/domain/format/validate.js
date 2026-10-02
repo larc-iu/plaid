@@ -12,6 +12,7 @@
 
 import {
   ATTRIBUTES,
+  CYCLE_ROLES,
   DOC_CONSTANTS,
   DOC_RELATIONS,
   DISCOURSE_CONCEPTS,
@@ -112,7 +113,7 @@ function dominates(var0, var1, nodes, tried = new Set()) {
   if (!node) return false;
   for (const child of node.children ?? []) {
     if (child.kind !== 'node') continue;
-    if (child.rel === ':quote' || child.rel === ':modal-predicate') continue;
+    if (CYCLE_ROLES.has(child.rel)) continue;
     if (!nodes.has(child.value)) continue;
     if (child.value === var1) return true;
     if (!tried.has(child.value) && dominates(child.value, var1, nodes, tried)) return true;
