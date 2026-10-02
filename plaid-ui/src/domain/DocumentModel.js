@@ -42,15 +42,12 @@ const conflictError = () =>
   });
 
 // What an edit that names a row made by a refused edit is refused with,
-// unsent: the server would refuse the id it names, which it never made, and
-// every screen words it as it words that refusal.
+// unsent: the server would refuse the id it names, which it never made.
+// lib/errors.js words it by this message.
 const dependencyError = () =>
-  Object.assign(
-    new Error(
-      'HTTP 400 The edit this one depends on was not saved: an id it names should be a uuid.',
-    ),
-    { status: 400 },
-  );
+  Object.assign(new Error('HTTP 400 The edit this one depends on was not saved.'), {
+    status: 400,
+  });
 
 // How many waiting edits keep the document they were made on, for telling
 // whether a change elsewhere touched them (rebase.js). One past that is

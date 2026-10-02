@@ -245,7 +245,7 @@ describe('an edit naming a row that a refused edit made', () => {
     expect(await other.done).toBe(true);
     expect(server.sent).toEqual(['add t1 DEF', 'add t2 CANINE']);
     expect(errors.map((e) => e.status)).toEqual([403, 400]);
-    expect(errors[1].message).toMatch(/should be a uuid/);
+    expect(errors[1].message).toMatch(/depends on was not saved/);
   });
 
   it('is sent when the row was made after all', async () => {

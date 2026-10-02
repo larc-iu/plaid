@@ -122,6 +122,8 @@ const UNKNOWN_OUTCOME =
 // action that failed.
 const namesAnId = (msg) => msg.search(UUID_RE) !== -1;
 
+const errorText = (error) => String((error && error.message) || error || '');
+
 // plaid-client's DocumentLockLost, whose message names the document by id. A
 // document model folds it into a string ("Failed to …: The lock on document
 // … lapsed"), so the message is read as well as the name.
@@ -143,10 +145,15 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
     const said = String(error.responseData.error ?? '').trim();
     return said && !namesAnId(said) ? said : 'Not allowed by the rules of this layer.';
   }
-  // An edit that names a row by the id it was shown under before the server
-  // made it (pendingIds.js): the create it waited on was refused.
-  if (statusOf(error) === 400 && /\bshould be a uuid\b/i.test(String(error?.message ?? error))) {
+  // An edit that names a row whose create was refused, held back unsent by
+  // the document model (DocumentModel.js `dependencyError`).
+  if (statusOf(error) === 400 && /\bdepends on was not saved\b/i.test(errorText(error))) {
     return 'Depends on an edit that was not saved.';
+  }
+  // A request the server could not read (a malformed id, a missing field): a
+  // fault of the page, which nothing on screen can explain.
+  if (statusOf(error) === 400 && /\bRequest validation failed\b/i.test(errorText(error))) {
+    return namesAnId(String(fallback)) ? 'Something went wrong.' : fallback;
   }
   switch (statusOf(error)) {
     case 401:

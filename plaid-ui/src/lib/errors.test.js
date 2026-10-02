@@ -189,23 +189,24 @@ describe('a write whose answer was lost', () => {
     expect(humanizeError(lost('get'))).toMatch(/Failed to reach the server/);
   });
 
-  // An edit made on a row whose create was refused names it by the id it was
-  // shown under, which the server takes for a malformed request.
+  // An edit made on a row whose create was refused is held back unsent by the
+  // document model, with this message.
   it('says an edit depended on one that was not saved', () => {
-    const e = Object.assign(
-      new Error(
-        'HTTP 400 Request validation failed. span-id: should be a uuid at http://x/api/v1/spans/pending:1',
-      ),
-      { status: 400, method: 'PATCH' },
-    );
+    const e = Object.assign(new Error('HTTP 400 The edit this one depends on was not saved.'), {
+      status: 400,
+    });
     expect(humanizeError(e)).toBe('Depends on an edit that was not saved.');
-    expect(
-      humanizeError(
-        Object.assign(new Error('HTTP 400 Request validation failed. tokens: should be a uuid'), {
-          status: 400,
-        }),
-      ),
-    ).toBe('Depends on an edit that was not saved.');
+  });
+
+  // Q1-IGT-POLISH-1: a comment on an unanalyzed word's morpheme sent its
+  // derived id, and the 400 was read as a refused create the user never made.
+  it('reads a request the server could not parse as the caller fallback, not a lost edit', () => {
+    const e = Object.assign(
+      new Error('HTTP 400 Request validation failed. entity-id: should be a uuid'),
+      { status: 400, method: 'POST' },
+    );
+    expect(humanizeError(e)).toBe('Something went wrong.');
+    expect(humanizeError(e, 'Failed to post the comment.')).toBe('Failed to post the comment.');
   });
 
   // A few reads are POSTs: a query, signing in, looking an invite up. Nothing
