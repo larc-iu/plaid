@@ -124,6 +124,7 @@ export default {
       kind: 'inherent',
       why: 'Names Plaid users. Neither format has a place for whose work is reviewed.',
     },
+    'project.plaidSettings': PLAID_SETTING,
     'project.foreignConfig': {
       carried: false,
       kind: 'foreign',
@@ -181,6 +182,11 @@ export default {
       carried: 'changed',
       how: "FLEx itself ties a word field mapped to pos, or a morpheme field mapped to msa, to its part-of-speech list, and the field's tagset fills that list (project.tagset). A tagset on any other annotation field is not written, since a .flextext item names no list.",
       ruling: TAGSET_RULING,
+    },
+    'layers.splitOnSpace': {
+      carried: false,
+      kind: 'foreign',
+      why: 'plaid-ud’s editing rule on the word layer.',
     },
     'layers.foreignTokenLayer': {
       carried: false,

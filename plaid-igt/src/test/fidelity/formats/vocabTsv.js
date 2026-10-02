@@ -58,6 +58,7 @@ export default {
     'project.compose': NOT_A_VOCABULARY,
     'project.exportPresets': NOT_A_VOCABULARY,
     'project.reviewedMembers': NOT_A_VOCABULARY,
+    'project.plaidSettings': NOT_A_VOCABULARY,
     'project.foreignConfig': foreign("Another app's project configuration."),
 
     // Layers
@@ -72,6 +73,7 @@ export default {
     'layers.fieldOrder': NOT_A_VOCABULARY,
     'layers.fieldLang': NOT_A_VOCABULARY,
     'layers.fieldTagset': NOT_A_VOCABULARY,
+    'layers.splitOnSpace': foreign('plaid-ud’s editing rule on the word layer.'),
     'layers.foreignTokenLayer': foreign('A token layer another app uses.'),
     'layers.unscopedSpanLayer': foreign('A span layer another app made.'),
     'layers.relationLayer': foreign('Relations belong to plaid-ud.'),

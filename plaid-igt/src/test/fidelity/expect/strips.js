@@ -134,6 +134,17 @@ export const STRIPS = {
     if (s.config?.plaid) delete s.config.plaid.review;
     pruneEmpty(s.config, 'plaid');
   },
+  'project.plaidSettings': (s) => {
+    if (s.config?.plaid) {
+      delete s.config.plaid.tartan;
+      delete s.config.plaid.research;
+    }
+    pruneEmpty(s.config, 'plaid');
+  },
+  'layers.splitOnSpace': (s) => {
+    const wl = wordLayer(s);
+    if (wl?.config?.plaid) delete wl.config.plaid.splitOnSpace;
+  },
   'project.foreignConfig': (s) => {
     omitKeys(s.config, (ns) => ns !== 'igt' && ns !== 'plaid');
   },

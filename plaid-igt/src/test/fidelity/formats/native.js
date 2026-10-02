@@ -62,6 +62,7 @@ export default {
       ruling: 'docs/native-format.md, Provenance',
     },
     // Every namespace but igt, plaid without its review lists (otherConfig).
+    'project.plaidSettings': carried,
     'project.foreignConfig': carried,
 
     // Layers
@@ -78,6 +79,7 @@ export default {
     'layers.fieldLang': carried,
     'layers.fieldTagset': carried,
     // Other apps' layers, their config verbatim (otherLayers in project.json).
+    'layers.splitOnSpace': carried,
     'layers.foreignTokenLayer': carried,
     'layers.unscopedSpanLayer': carried,
     'layers.relationLayer': carried,

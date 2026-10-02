@@ -231,6 +231,11 @@ export const FEATURES = [
     detect: (s) => (nonEmptyObject(s.config?.plaid?.review) ? 1 : 0),
   },
   {
+    key: 'project.plaidSettings',
+    what: 'the project’s shared plaid settings: tartan hidden, research opt-in',
+    detect: (s) => count(['tartan', 'research'], (k) => s.config?.plaid?.[k] != null),
+  },
+  {
     key: 'project.foreignConfig',
     what: 'project config another app keeps under its own namespace',
     detect: (s) => count(Object.keys(s.config || {}), (ns) => ns !== 'igt' && ns !== 'plaid'),
@@ -317,6 +322,12 @@ export const FEATURES = [
     key: 'layers.fieldTagset',
     what: 'an annotation field governed by a tagset',
     detect: (s) => count(spanLayers(s), (l) => !!l.config?.igt?.tagset),
+  },
+  {
+    key: 'layers.splitOnSpace',
+    what: 'the word layer splits a word at a typed space (plaid-ud declares it)',
+    detect: (s) => (wordLayer(s)?.config?.plaid?.splitOnSpace === true ? 1 : 0),
+    foreign: true,
   },
   {
     key: 'layers.foreignTokenLayer',

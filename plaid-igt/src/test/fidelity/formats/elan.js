@@ -184,6 +184,7 @@ export default {
       kind: 'inherent',
       why: 'Names project members, which an .eaf has no place for.',
     },
+    'project.plaidSettings': PROJECT_SETTING,
     'project.foreignConfig': {
       carried: false,
       kind: 'foreign',
@@ -229,6 +230,11 @@ export default {
       kind: 'ruled',
       why: 'A LINGUISTIC_TYPE could name a tagset through CONTROLLED_VOCABULARY_REF, and no tagset is written for it to name (project.tagset), so a field comes back governed by none.',
       ruling: TAGSET_RULING,
+    },
+    'layers.splitOnSpace': {
+      carried: false,
+      kind: 'foreign',
+      why: 'plaid-ud’s editing rule on the word layer, which an .eaf has no place for.',
     },
     'layers.foreignTokenLayer': {
       carried: false,

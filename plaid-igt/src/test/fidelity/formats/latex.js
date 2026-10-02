@@ -64,6 +64,7 @@ export default {
       'The preset decides what the book holds, but the preset itself is not written into it.',
     ),
     'project.reviewedMembers': PROJECT_CONFIG,
+    'project.plaidSettings': PROJECT_CONFIG,
     'project.foreignConfig': foreign("Another app's project configuration."),
 
     // Layers
@@ -98,6 +99,7 @@ export default {
     },
     'layers.fieldLang': PROJECT_CONFIG,
     'layers.fieldTagset': PROJECT_CONFIG,
+    'layers.splitOnSpace': foreign('plaid-ud’s editing rule on the word layer.'),
     'layers.foreignTokenLayer': foreign(
       'A token layer another app uses. The export reads the IGT roles only.',
     ),

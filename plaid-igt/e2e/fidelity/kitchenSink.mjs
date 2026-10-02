@@ -242,6 +242,9 @@ async function configureMain(client, projectId, contributorId) {
     REVIEW_KEY,
     withReviewedUser(project.config?.plaid?.[REVIEW_KEY], contributorId, true),
   );
+  // The shared plaid settings plaid-ui's General page writes.
+  await client.projects.setConfig(projectId, PLAID_NAMESPACE, 'tartan', false);
+  await client.projects.setConfig(projectId, PLAID_NAMESPACE, 'research', { telemetry: true });
   // Another app keeping its own project settings.
   await client.projects.setConfig(projectId, 'ud', 'serviceDefaults', {
     parse: { service: { serviceId: 'stanza' }, params: {} },
@@ -257,6 +260,8 @@ async function addForeignLayers(client, projectId) {
   const { text, byRole } = layerIds(project);
   const words = await client.tokenLayers.create(text.id, 'Words', 'any', byRole('word').id);
   await client.tokenLayers.setConfig(words.id, PLAID_NAMESPACE, 'role', 'syntactic-word');
+  // plaid-ud's editing rule on the shared word layer (udProjectSetup.js).
+  await client.tokenLayers.setConfig(byRole('word').id, PLAID_NAMESPACE, 'splitOnSpace', true);
   const lemma = await client.spanLayers.create(words.id, 'Lemma');
   await client.spanLayers.setConfig(lemma.id, 'ud', 'lemma', true);
   const upos = await client.spanLayers.create(words.id, 'UPOS');

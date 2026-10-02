@@ -121,6 +121,7 @@ export default {
       kind: 'inherent',
       why: 'It names users of this server. CLDF has no place for it.',
     },
+    'project.plaidSettings': PLAID_SETTING,
     'project.foreignConfig': {
       carried: false,
       kind: 'foreign',
@@ -180,6 +181,11 @@ export default {
       carried: false,
       kind: 'inherent',
       why: 'A field’s tagset has no place in CLDF, and the import creates fields without one.',
+    },
+    'layers.splitOnSpace': {
+      carried: false,
+      kind: 'foreign',
+      why: 'plaid-ud’s editing rule on the word layer. CLDF has no place for it.',
     },
     'layers.foreignTokenLayer': FOREIGN_LAYER,
     'layers.unscopedSpanLayer': FOREIGN_LAYER,
