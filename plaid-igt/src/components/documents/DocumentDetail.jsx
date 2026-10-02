@@ -63,12 +63,14 @@ const TABS = [
   { value: 'details', label: 'Details' },
 ];
 
-// Tabs that get the wide column instead of the form-width one. Both are
+// Tabs whose body gets the wide column instead of the form-width one. Both are
 // horizontally scrolling views -- the interlinear editor and the media
 // timeline (whose content is `duration * pixelsPerSecond` wide, with the
 // container acting as the viewport) -- so every extra pixel is another slice
 // visible without scrolling. The form-shaped tabs stay narrow because long
-// input rows are harder to read, not easier.
+// input rows are harder to read, not easier. Only the body narrows: the page
+// and its header keep one width and one left edge, so the breadcrumb, title,
+// tabs and History stay where they are when the tab changes.
 const WIDE_TABS = new Set(['analyze', 'media']);
 
 const NO_SUBSCRIBE = () => () => {};
@@ -413,9 +415,7 @@ const DocumentEditor = () => {
           minHeight: '100vh',
         }}
       >
-        <div
-          className={`mx-auto px-4 py-8 ${WIDE_TABS.has(activeTab) ? 'max-w-[1700px]' : 'max-w-5xl'}`}
-        >
+        <div className="mx-auto max-w-[1700px] px-4 py-8">
           {/* While the initial repair runs the tabs are inert and the body
               waits: reconcile writes, so no tab may be opened and edited while
               it is still healing. The strip stays put, so the page doesn't
@@ -448,95 +448,97 @@ const DocumentEditor = () => {
             }
           />
 
-          <HistoricalBanner entry={selectedEntry} loading={loadingSnapshot} className="mb-4" />
+          <div className={WIDE_TABS.has(activeTab) ? undefined : 'max-w-5xl'}>
+            <HistoricalBanner entry={selectedEntry} loading={loadingSnapshot} className="mb-4" />
 
-          {!isViewingHistorical && permissions.isReadOnly && (
-            <Notice tone="info" className="mb-4">
-              <p className="font-medium">Read-only</p>
-              <p className="text-xs">You have reader access to this project.</p>
-            </Notice>
-          )}
+            {!isViewingHistorical && permissions.isReadOnly && (
+              <Notice tone="info" className="mb-4">
+                <p className="font-medium">Read-only</p>
+                <p className="text-xs">You have reader access to this project.</p>
+              </Notice>
+            )}
 
-          {/* A run the linguist may well have closed the dialog on, or that
+            {/* A run the linguist may well have closed the dialog on, or that
               a previous page started. Without this the document just stops
               accepting edits. */}
-          {writeLock.held && <RunBanner {...writeLock.held} />}
+            {writeLock.held && <RunBanner {...writeLock.held} />}
 
-          <DocumentProvider
-            value={{
-              doc,
-              client,
-              readOnly,
-              asOf,
-              comments,
-              // Whether this user may edit at all, ignoring any run in flight.
-              // What gates a run's own controls, so the button carrying its
-              // progress does not vanish the moment the run starts.
-              canWrite: permissions.canWrite && !isViewingHistorical,
-              canManage: permissions.canManage,
-              writeLock: writeLock.held,
-              acquireWriteLock: writeLock.acquire,
-              assistantOnline: !!assistantAvailable,
-              // How a tab sends the reader to another tab. The window event
-              // the island uses stays the island's: it is not React and has no
-              // context to read.
-              goToTab: setActiveTab,
-            }}
-          >
-            {showReconcileSpinner && <Loading label="Checking this document…" className="px-0" />}
+            <DocumentProvider
+              value={{
+                doc,
+                client,
+                readOnly,
+                asOf,
+                comments,
+                // Whether this user may edit at all, ignoring any run in flight.
+                // What gates a run's own controls, so the button carrying its
+                // progress does not vanish the moment the run starts.
+                canWrite: permissions.canWrite && !isViewingHistorical,
+                canManage: permissions.canManage,
+                writeLock: writeLock.held,
+                acquireWriteLock: writeLock.acquire,
+                assistantOnline: !!assistantAvailable,
+                // How a tab sends the reader to another tab. The window event
+                // the island uses stays the island's: it is not React and has no
+                // context to read.
+                goToTab: setActiveTab,
+              }}
+            >
+              {showReconcileSpinner && <Loading label="Checking this document…" className="px-0" />}
 
-            {/* Only the active tab's body is mounted. */}
-            {!reconciling && (
-              <div className="pt-2">
-                {activeTab === 'baseline' && <DocumentBaseline />}
-                {activeTab === 'media' && (
-                  <Suspended>
-                    <DocumentMedia />
-                  </Suspended>
-                )}
-                {activeTab === 'tokenize' && <DocumentTokenize />}
-                {activeTab === 'analyze' && <AnalyzeIsland />}
-                {activeTab === 'comments' &&
-                  (isViewingHistorical ? (
-                    <p className="pt-6 text-sm text-muted-foreground">
-                      Comments are not shown at a past state.
-                    </p>
-                  ) : (
+              {/* Only the active tab's body is mounted. */}
+              {!reconciling && (
+                <div className="pt-2">
+                  {activeTab === 'baseline' && <DocumentBaseline />}
+                  {activeTab === 'media' && (
                     <Suspended>
-                      <CommentsTab />
+                      <DocumentMedia />
                     </Suspended>
-                  ))}
-                {activeTab === 'export' && (
-                  <div className="flex flex-col gap-6 pt-4">
-                    <div className="rounded-lg border bg-card p-4">
-                      <ExportRunner
-                        client={client}
-                        project={doc.project}
-                        defaultScope={{ type: 'document', id: doc.id, name: doc.document.name }}
-                        canManage={permissions.canManage}
-                        asOf={asOf}
+                  )}
+                  {activeTab === 'tokenize' && <DocumentTokenize />}
+                  {activeTab === 'analyze' && <AnalyzeIsland />}
+                  {activeTab === 'comments' &&
+                    (isViewingHistorical ? (
+                      <p className="pt-6 text-sm text-muted-foreground">
+                        Comments are not shown at a past state.
+                      </p>
+                    ) : (
+                      <Suspended>
+                        <CommentsTab />
+                      </Suspended>
+                    ))}
+                  {activeTab === 'export' && (
+                    <div className="flex flex-col gap-6 pt-4">
+                      <div className="rounded-lg border bg-card p-4">
+                        <ExportRunner
+                          client={client}
+                          project={doc.project}
+                          defaultScope={{ type: 'document', id: doc.id, name: doc.document.name }}
+                          canManage={permissions.canManage}
+                          asOf={asOf}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {activeTab === 'details' && (
+                    <div className="pt-4">
+                      <DocumentDetailsPage
+                        metadata={DocumentMetadata}
+                        context={{
+                          projectId,
+                          documentId,
+                          doc,
+                          project: doc.project,
+                          pastEntry: selectedEntry,
+                          writeLockHeld: writeLock.held,
+                        }}
                       />
                     </div>
-                  </div>
-                )}
-                {activeTab === 'details' && (
-                  <div className="pt-4">
-                    <DocumentDetailsPage
-                      metadata={DocumentMetadata}
-                      context={{
-                        projectId,
-                        documentId,
-                        doc,
-                        project: doc.project,
-                        pastEntry: selectedEntry,
-                        writeLockHeld: writeLock.held,
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-          </DocumentProvider>
+                  )}
+                </div>
+              )}
+            </DocumentProvider>
+          </div>
         </div>
       </div>
     </>
