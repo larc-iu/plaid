@@ -23,7 +23,7 @@ from ..core.tools import ToolError
 
 from .plan import ANALYSIS, KIND, TEXT_SHAPE, WORD_SHAPE, analysed_morphemes, reshaped_subjects
 from .project import (IgtDoc, Sentence, Word, Morpheme, Link, parse_ref, resolve, mwe_ref, REVIEWABLE,
-                      segmentation, split_sentences, split_words, word_ref)
+                      join_morphemes, segmentation, split_sentences, split_words, word_ref)
 from .lexview import morph_type
 from .reads import t_plan_status
 from .workspace import Workspace, _need, _refs, _sentence_of, _words_of
@@ -209,12 +209,13 @@ def analysis_op(ws: Workspace, head: str, surface: str, word_id: str, text_id: s
         note = f' (note: forms "{joined}" differ from the surface "{surface}"; that is allowed for allomorphy)'
     else:
         note = ''
-    desc = '-'.join(m['form'] for m in out)
+    types = [m.get('morph_type') for m in out]
+    desc = join_morphemes(list(zip([m['form'] for m in out], types)))
     gloss_bits = []
     for f in ws.project.fields_by_scope('Morpheme'):
         vals = [next((fv['value'] for fv in m['fields'] if fv['layer_id'] == f.layer_id), '_') for m in out]
         if any(v not in ('', '_') for v in vals):
-            gloss_bits.append(f'{f.name} {"-".join(v or "_" for v in vals)}')
+            gloss_bits.append(f'{f.name} {join_morphemes(list(zip([v or "_" for v in vals], types)))}')
     op = {'kind': 'set_analysis', 'word_id': word_id, 'text_id': text_id, 'begin': begin, 'end': end,
           'morpheme_layer_id': ws.project.morpheme_layer_id, 'existing': existing, 'morphemes': out,
           'label': f'{head}: ' + (f'{current_seg} → ' if current_seg else '')

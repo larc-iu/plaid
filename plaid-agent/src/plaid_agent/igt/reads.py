@@ -17,7 +17,7 @@ from ..core.args import clamp_limit, read_int
 from ..core.limits import READ_LIMITS
 from ..core.tools import ToolError, truncate
 
-from .project import (Word, Morpheme, document_lines, joiner, render_overview,
+from .project import (Word, Morpheme, document_lines, joiner_between, render_overview,
                       render_word, segmentation, word_ref)
 from .lexview import LexView, _num_key, entry_line
 from .vocab import RESERVED_ITEM_KEYS, all_examples, arrange_as_tree, homograph_group, references_to
@@ -167,14 +167,16 @@ def _bracket_line(w: Word, hit: Morpheme, field: Optional[str]) -> str:
     """The word's segmentation (field=None) or one morpheme field's values,
     joined as in the interlinear view, with the hit morpheme in [brackets]."""
     out = ''
-    for i, m in enumerate(w.morphemes):
-        if i:
-            out += joiner(w.morphemes[i - 1].morph_type, m.morph_type)
+    pieces = []
+    for m in w.morphemes:
         if field is None:
-            piece = m.form
+            pieces.append(m.form)
         else:
             sp = m.fields.get(field)
-            piece = sp.value if sp and sp.value != '' else '_'
+            pieces.append(sp.value if sp and sp.value != '' else '_')
+    for i, (m, piece) in enumerate(zip(w.morphemes, pieces)):
+        if i:
+            out += joiner_between(pieces[i - 1], w.morphemes[i - 1].morph_type, piece, m.morph_type)
         out += f'[{piece}]' if m is hit else piece
     return out
 

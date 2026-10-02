@@ -11,7 +11,7 @@ from ..core.limits import SAMPLE_LINES
 from ..core.plan import PLAN_MAX_OPS, by_document, labelled
 from ..core.replace import replacer as core_replacer
 from .plan import SCOPES, analysed_morphemes, move_phrase, settle_merges
-from .project import word_ref
+from .project import join_morphemes, word_ref
 from ..core.tools import ToolError
 from .lexicon import _meta_patch, _refuse_doomed_entry, _refuse_removing_survivor
 from .tools import (t_set_analysis, check_respell_overlap, span_op, has_own_form, morpheme_form_op,
@@ -507,7 +507,8 @@ def _set_analysis_for_form_q(ws: Workspace, form: str, morphemes: list, skip_ana
     for w in words:
         chain = sorted(chains.get(w['id']) or [], key=lambda m: (m.get('precedence') or 0, m.get('id')))
         existing = [{'id': m['id'], 'span_ids': spans.get(m['id']) or []} for m in chain]
-        seg = '-'.join(((m.get('metadata') or {}).get('form') or m.get('value') or '') for m in chain) if chain else ''
+        seg = join_morphemes([((m.get('metadata') or {}).get('form') or m.get('value') or '',
+                               (m.get('metadata') or {}).get('morphType')) for m in chain])
         had_values = sum(len(spans.get(m['id']) or []) for m in chain)
         head = ws.corpus.label_ref(w['document'], w['id'], budget) + f' "{w.get("value") or ""}"'
         op, note = analysis_op(ws, head, w.get('value') or '', w['id'], w['text'], w['begin'], w['end'],

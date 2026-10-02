@@ -60,6 +60,28 @@ def joiner(prev_type, next_type):
     return '=' if is_clitic(prev_type) or is_clitic(next_type) else '-'
 
 
+def joiner_between(prev_text, prev_type, next_text, next_type) -> str:
+    """The joint to write between two adjacent pieces of a word: nothing when
+    either side already carries a marker on the edge that would meet it (a
+    form stored as "m-", a gloss imported as "-PL"), else :func:`joiner`.
+    plaid-igt's ``joinerBetween`` (``domain/affixMarkers.js``): a second
+    marker made "m-" + "ohpmooit" read "m--ohpmooit"."""
+    if (prev_text or '').endswith(('-', '=')) or (next_text or '').startswith(('-', '=')):
+        return ''
+    return joiner(prev_type, next_type)
+
+
+def join_morphemes(items) -> str:
+    """``[(text, morph type)]`` joined with the joint each pair calls for
+    (plaid-igt's ``joinMorphemes``)."""
+    out = ''
+    for i, (text, mtype) in enumerate(items):
+        if i:
+            out += joiner_between(items[i - 1][0], items[i - 1][1], text, mtype)
+        out += text
+    return out
+
+
 # --- project ----------------------------------------------------------------
 
 @dataclass
@@ -580,24 +602,17 @@ MISSING = '_'
 
 
 def segmentation(w: Word) -> str:
-    out = ''
-    for i, m in enumerate(w.morphemes):
-        if i:
-            out += joiner(w.morphemes[i - 1].morph_type, m.morph_type)
-        out += m.form or '?'
-    return out
+    return join_morphemes([(m.form or '?', m.morph_type) for m in w.morphemes])
 
 
 def morpheme_field_line(w: Word, name: str) -> Optional[str]:
     if not any(name in m.fields for m in w.morphemes):
         return None
-    out = ''
-    for i, m in enumerate(w.morphemes):
-        if i:
-            out += joiner(w.morphemes[i - 1].morph_type, m.morph_type)
+    items = []
+    for m in w.morphemes:
         sp = m.fields.get(name)
-        out += (_mark(sp.value, sp.metadata) if sp and sp.value != '' else MISSING)
-    return out
+        items.append((_mark(sp.value, sp.metadata) if sp and sp.value != '' else MISSING, m.morph_type))
+    return join_morphemes(items)
 
 
 def segmentation_mark(w: Word) -> str:

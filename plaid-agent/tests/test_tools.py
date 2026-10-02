@@ -903,3 +903,28 @@ def test_dropping_a_new_entry_takes_a_multi_word_expression_on_it_along():
     with pytest.raises(ValueError, match='does not create'):
         execute_plan(c, [orphan], source='s', label='l')
     assert c.batches == []
+
+
+def test_a_form_that_carries_its_affix_marker_gets_no_second_one():
+    """Forms imported as FLEx writes them alone ("m-", "-ar") carry their
+    marker, and every place the assistant joins a word's pieces added its own:
+    "m--ohpmooit" on plan cards, reads and cited examples (H8 polish). The
+    joint is left out where a side already has a marker, as plaid-igt's
+    joinerBetween does."""
+    from fixtures import document_raw
+    from plaid_agent.igt.citations import _word_payload
+    from plaid_agent.igt.project import join_morphemes, segmentation
+    assert join_morphemes([('m-', 'prefix'), ('ohpmooit', None)]) == 'm-ohpmooit'
+    assert join_morphemes([('i', None), ('=m', 'enclitic'), ('-haa', 'suffix')]) == 'i=m-haa'
+    assert join_morphemes([('ka', None), ('ni', 'enclitic')]) == 'ka=ni'
+    raw = document_raw()
+    morphs = raw['text_layers'][0]['token_layers'][2]['tokens']
+    morphs[1]['metadata'] = {'form': '-di', 'morphType': 'suffix'}
+    w = scan_ws(FakeClient(documents={'d1': raw}))
+    word = w.doc('d1').sentences[0].words[0]
+    assert segmentation(word) == 'Ali-di'
+    assert _word_payload(word, w.project, pieces=True)['joiners'] == ['']
+    out = call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w1',
+                                        'morphemes': [{'form': 'Al'}, {'form': '-i', 'type': 'suffix'}]})
+    assert 'Planned' in out
+    assert 'Ali-di → Al-i' in w.ops[0]['label'] and '--' not in w.ops[0]['label']

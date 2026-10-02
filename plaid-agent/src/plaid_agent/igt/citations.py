@@ -19,7 +19,7 @@ from typing import Any, Dict, List
 
 from ..core.citations import bare_re, brace_re, resolve_citations as core_resolve
 from ..core.limits import MAX_FOCUS
-from .project import Sentence, Word, joiner, parse_ref, resolve, segmentation
+from .project import Sentence, Word, join_morphemes, joiner_between, parse_ref, resolve, segmentation
 from .workspace import Workspace
 
 REF = r's\d+(?:\.w\d+(?:\.m\d+)?)?'
@@ -77,10 +77,11 @@ def _word_payload(w: Word, project, pieces: bool = False) -> Dict[str, Any]:
     """A word's cells, in the grid's row order (see :func:`tiers`). Morpheme
     rows are joined strings, as the grid shows them; ``pieces`` also sends
     them morpheme by morpheme, for a word whose morpheme is highlighted."""
-    joiners = [joiner(a.morph_type, b.morph_type) for a, b in zip(w.morphemes, w.morphemes[1:])]
+    joiners = [joiner_between(a.form, a.morph_type, b.form, b.morph_type)
+               for a, b in zip(w.morphemes, w.morphemes[1:])]
 
     def joined(parts: List[str]) -> str:
-        return ''.join(p if i == 0 else joiners[i - 1] + p for i, p in enumerate(parts))
+        return join_morphemes(list(zip(parts, [m.morph_type for m in w.morphemes])))
 
     lines: List[Dict[str, Any]] = []
     for o in project.orthographies:
