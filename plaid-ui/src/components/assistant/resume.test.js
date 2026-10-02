@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rewindForRetry, stoppedIn } from './resume.js';
+import { hidesStopped, retryNote, rewindForRetry, stoppedIn } from './resume.js';
 
 const conv = (messages, display) => ({ id: 'c1', messages, display });
 
@@ -143,5 +143,25 @@ describe('rewindForRetry and attachments', () => {
     expect(r.text).toBe('count these');
     expect(r.files).toBe(files);
     expect(r.conv.display).toEqual([]);
+  });
+});
+
+// H8-ASSISTANT-4: a stop is recorded as an error item, and was then read as a
+// turn that failed ("Stopped." over "That turn did not finish.").
+describe('retryNote', () => {
+  const user = { kind: 'user', text: 'count' };
+  const stop = { kind: 'error', stopped: true, text: 'Stopped.' };
+
+  it('says the reader stopped a stopped turn, after a reload too, and draws the stop once', () => {
+    expect(retryNote([user, stop], null)).toBe('You stopped this turn.');
+    expect(retryNote([user], { convId: 'c1', steps: [] })).toBe('You stopped this turn.');
+    expect(hidesStopped([user, stop], 1)).toBe(true);
+    expect(hidesStopped([user, stop], 0)).toBe(false);
+  });
+
+  it('says a turn that failed did not finish, and one with no answer had none', () => {
+    expect(retryNote([user, { kind: 'error', text: 'x' }], null)).toBe('That turn did not finish.');
+    expect(hidesStopped([user, { kind: 'error', text: 'x' }], 1)).toBe(false);
+    expect(retryNote([user], null)).toBe('No answer came back for this message.');
   });
 });

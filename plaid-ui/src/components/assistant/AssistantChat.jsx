@@ -7,7 +7,7 @@ import { notifyError, notifyWarning } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
 import { AssistantComposer } from './AssistantComposer.jsx';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
-import { rewindForRetry, stoppedIn } from './resume.js';
+import { hidesStopped, retryNote, rewindForRetry, stoppedIn } from './resume.js';
 import {
   atProjectCap,
   couldNotOpen,
@@ -875,37 +875,41 @@ export const AssistantChat = ({
         <div className={cn('flex-1 overflow-y-auto', compact ? 'px-3 py-3' : 'px-4 py-4')}>
           <div className="mx-auto flex max-w-3xl flex-col gap-5">
             {display.length === 0 && !busy && renderEmpty?.(chrome)}
-            {display.map((d, i) => (
-              <Turn
-                key={i}
-                item={d}
-                projectId={projectId}
-                adapter={adapter}
-                onFocusHere={subject?.onFocusHere}
-                results={results}
-                fromAnotherModel={
-                  !!d.model && !!previousModel(display, i) && d.model !== previousModel(display, i)
-                }
-                movedHere={movedHere(display, i)}
-                reachChanged={reachChanged(display, i)}
-                homeName={projectName}
-                citeNames={d.citations?.length ? projectNamesAt(display, i) : null}
-                canWrite={canWrite}
-                contributor={contributor}
-                busy={!!busy}
-                interrupted={!!d.interrupted}
-                applying={!!d.plan && applyingPlanId === d.plan.id}
-                onApprove={(opts) => approve(d.plan, opts)}
-                onDiscard={() => discard(i)}
-                onOpenPlan={() =>
-                  client.events?.record?.('plan.opened', {
-                    projectId,
-                    targetId: d.plan.id,
-                    data: { conversation: active?.id ?? null },
-                  })
-                }
-              />
-            ))}
+            {display.map((d, i) =>
+              canRetryTurn && hidesStopped(display, i) ? null : (
+                <Turn
+                  key={i}
+                  item={d}
+                  projectId={projectId}
+                  adapter={adapter}
+                  onFocusHere={subject?.onFocusHere}
+                  results={results}
+                  fromAnotherModel={
+                    !!d.model &&
+                    !!previousModel(display, i) &&
+                    d.model !== previousModel(display, i)
+                  }
+                  movedHere={movedHere(display, i)}
+                  reachChanged={reachChanged(display, i)}
+                  homeName={projectName}
+                  citeNames={d.citations?.length ? projectNamesAt(display, i) : null}
+                  canWrite={canWrite}
+                  contributor={contributor}
+                  busy={!!busy}
+                  interrupted={!!d.interrupted}
+                  applying={!!d.plan && applyingPlanId === d.plan.id}
+                  onApprove={(opts) => approve(d.plan, opts)}
+                  onDiscard={() => discard(i)}
+                  onOpenPlan={() =>
+                    client.events?.record?.('plan.opened', {
+                      projectId,
+                      targetId: d.plan.id,
+                      data: { conversation: active?.id ?? null },
+                    })
+                  }
+                />
+              ),
+            )}
             {canRetryTurn && stoppedHere && stoppedHere.steps.length > 0 && (
               <div className="flex flex-col gap-1 text-sm text-muted-foreground">
                 {stoppedHere.steps.map((m, i) => (
@@ -917,13 +921,7 @@ export const AssistantChat = ({
             )}
             {canRetryTurn && (
               <div className="flex items-center gap-3 rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
-                <span className="flex-1">
-                  {lastKind === 'error'
-                    ? 'That turn did not finish.'
-                    : stoppedHere
-                      ? 'You stopped this turn.'
-                      : 'No answer came back for this message.'}
-                </span>
+                <span className="flex-1">{retryNote(display, stoppedHere)}</span>
                 <Button
                   type="button"
                   size="sm"
