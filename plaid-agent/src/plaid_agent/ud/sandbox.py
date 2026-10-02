@@ -65,6 +65,12 @@ def view(doc: UdDoc) -> Dict[str, Any]:
         words = []
         for w in s.words:
             review = {f: prov_state(sp.metadata) for f, sp in w.fields.items() if f != 'form' and sp.value}
+            # Each feature is a span of its own. The bundle reads as waiting
+            # while any of them is.
+            states = [prov_state(sp.metadata) for sp in w.spans('features')]
+            if states:
+                review['features'] = next((st for st in ('machine', 'contributed') if st in states),
+                                          states[0])
             if w.relation_id:
                 review['deprel'] = prov_state(w.relation_metadata)
             words.append({

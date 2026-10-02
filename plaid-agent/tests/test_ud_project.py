@@ -137,7 +137,9 @@ def test_a_sentence_renders_as_conllu_with_a_range_line(doc):
     assert out.count('# sent_id') == 1
     body = [l for l in lines if l and not l.startswith('#')]
     assert body[0].split() == list(('ID', 'FORM', 'LEMMA', 'UPOS', 'XPOS', 'FEATS', 'HEAD', 'DEPREL'))
-    assert body[1].split() == ['1', 'Vamos', 'ir', 'VERB', '_', 'Number=Plur', '0', 'root']
+    # Every Features span of the word, joined as the app's export joins them
+    # (H4-UD-3: one span per field kept only the last feature).
+    assert body[1].split() == ['1', 'Vamos', 'ir', 'VERB', '_', 'Mood=Ind|Number=Plur', '0', 'root']
     assert body[2].split() == ['2-3', 'al', '_', '_', '_', '_', '_', '_']
     assert body[3].split() == ['2', 'a', 'a', 'ADP', '_', '_', '4', 'case']
 

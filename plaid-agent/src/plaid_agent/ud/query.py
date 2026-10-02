@@ -111,7 +111,7 @@ def _ref_index(ws: Workspace, doc_ids: List[str]) -> Dict[str, str]:
                 for w in t.words:
                     wr = f'{tag}{word_ref(s, w)}'
                     refs[w.id] = wr
-                    for field, sp in w.fields.items():
+                    for field, sp in w.all_spans():
                         refs[sp.id] = f'{wr} {field}'
                     if w.relation_id:
                         refs[w.relation_id] = f'{wr} {w.deprel or "dep"}'

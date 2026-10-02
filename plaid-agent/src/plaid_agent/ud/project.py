@@ -43,6 +43,10 @@ MISSING = '_'
 
 #: Span layers under the syntactic-word layer, by their ``config.ud`` flag.
 SPAN_KEYS = ('form', 'lemma', 'upos', 'xpos', 'features')
+#: The one span layer a word holds SEVERAL spans of: one per ``Key=Value``
+#: pair, as the app writes and reads them (plaid-ud's ``updateAnnotation``,
+#: the importer, the FEATS cell, Grew). FEATS is their join.
+FEATURES = 'features'
 #: The relation layer's flag, on the lemma span layer.
 RELATION_KEY = 'dependency'
 #: The ENHANCED relation layer's flag, beside it on the lemma span layer. The
@@ -63,6 +67,37 @@ UNIVERSAL_DEPRELS = (
     'parataxis', 'punct', 'reparandum', 'root', 'vocative', 'xcomp')
 
 OPEN, CLOSED = 'open', 'closed'
+
+
+def normalize_feature(raw) -> Optional[Tuple[str, str, str]]:
+    """``(key, value, "key=value")`` for a typed or stored pair, both halves
+    trimmed, or None when there is no complete pair. plaid-ud's
+    ``normalizeFeature`` (``src/utils/feats.js``), which every writer of a
+    feature there goes through."""
+    text = '' if raw is None else str(raw)
+    if '=' not in text:
+        return None
+    key, value = text.split('=', 1)
+    key, value = key.strip(), value.strip()
+    if not key or not value:
+        return None
+    return key, value, f'{key}={value}'
+
+
+def feature_key(field: str, value) -> Optional[str]:
+    """Which feature a span of ``field`` holding ``value`` is, for naming the
+    span a plan writes to: a word holds one span per field, except features,
+    where it holds one per pair. None for every other field."""
+    if field != FEATURES:
+        return None
+    pair = normalize_feature(value)
+    return pair[0] if pair else (value or '')
+
+
+def feature_refusal(pair: str) -> Optional[str]:
+    """What is wrong with a normalized pair, or None. plaid-ud's
+    ``featureRefusal``: CoNLL-U spells no space inside either half."""
+    return 'A feature name and value cannot contain spaces.' if re.search(r'\s', pair) else None
 
 
 #: A lemma copied from its word's form is a rule's guess, not the approver's
@@ -240,8 +275,10 @@ class Word:
     id: str                       # the token id on the syntactic-word layer
     index: int                    # its CoNLL-U id within the sentence, 1-based
     form: str
-    fields: Dict[str, Span]       # 'lemma' -> Span, for the five span layers
+    fields: Dict[str, Span]       # 'lemma' -> Span, for the single-valued span layers
     token: 'Token' = None         # the surface token it belongs to
+    #: Its Features spans, one per ``Key=Value`` pair, in the layer's order.
+    features: List[Span] = dc_field(default_factory=list)
     head: Optional[int] = None    # the CoNLL-U id of its head, 0 for the root
     deprel: Optional[str] = None
     relation_id: Optional[str] = None
@@ -263,16 +300,36 @@ class Word:
     #: what a writer names.
     extra_edges: List[Tuple[int, str]] = dc_field(default_factory=list)
 
-    def value(self, name: str) -> str:
+    def spans(self, name: str) -> List[Span]:
+        """The word's spans of one field that hold a value: every feature
+        pair for ``features``, at most one span for any other field."""
+        if name == FEATURES:
+            return sorted((sp for sp in self.features if sp.value), key=lambda sp: sp.value)
         sp = self.fields.get(name)
-        return sp.value if sp and sp.value else ''
+        return [sp] if sp and sp.value else []
+
+    def all_spans(self) -> List[Tuple[str, Span]]:
+        """``(field, span)`` for every span the word holds, valueless ones
+        included."""
+        return list(self.fields.items()) + [(FEATURES, sp) for sp in self.features]
+
+    def feature_span(self, key: str) -> Optional[Span]:
+        """The span holding this feature, or None."""
+        return next((sp for sp in self.features
+                     if (normalize_feature(sp.value) or (None,))[0] == key), None)
+
+    def value(self, name: str) -> str:
+        """A field's value. FEATS is the word's pairs joined by ``|``, sorted
+        as the app's export sorts them."""
+        return '|'.join(sp.value for sp in self.spans(name))
 
     def marked(self, name: str) -> str:
-        """A field's value with its review mark, or ``_`` when it is empty."""
-        sp = self.fields.get(name)
-        if not sp or not sp.value:
+        """A field's value with its review mark, or ``_`` when it is empty.
+        Each feature pair carries its own mark, since each is its own span."""
+        found = self.spans(name)
+        if not found:
             return MISSING
-        return sp.value + review_mark(sp.metadata)
+        return '|'.join(sp.value + review_mark(sp.metadata) for sp in found)
 
     @property
     def is_part_of_mwt(self) -> bool:
@@ -366,20 +423,27 @@ class UdDoc:
         return None
 
 
-def _spans_by_token(token_layer, span_layers: Dict[str, str]) -> Dict[str, Dict[str, Span]]:
-    """token id -> {field name: Span}, over the project's five span layers."""
+def _spans_by_token(token_layer, span_layers: Dict[str, str]) -> Tuple[Dict[str, Dict[str, Span]],
+                                                                         Dict[str, List[Span]]]:
+    """``(token id -> {field name: Span}, token id -> [feature Span])`` over
+    the project's span layers. Features are a list: a word holds one span per
+    pair, and keeping one per field read only the last of them."""
     by_id = {lid: name for name, lid in span_layers.items()}
     out: Dict[str, Dict[str, Span]] = {}
+    feats: Dict[str, List[Span]] = {}
     for sl in token_layer.get('span_layers') or []:
         name = by_id.get(sl['id'])
         if not name:
             continue
         for sp in sl.get('spans') or []:
             for tid in sp.get('tokens') or []:
-                out.setdefault(tid, {})[name] = Span(
-                    sp['id'], sp.get('value') if sp.get('value') is not None else '',
-                    sp.get('metadata'), sl['id'])
-    return out
+                span = Span(sp['id'], sp.get('value') if sp.get('value') is not None else '',
+                            sp.get('metadata'), sl['id'])
+                if name == FEATURES:
+                    feats.setdefault(tid, []).append(span)
+                else:
+                    out.setdefault(tid, {})[name] = span
+    return out, feats
 
 
 def _relations(token_layer, relation_layer_id: Optional[str]) -> List[dict]:
@@ -407,7 +471,7 @@ def parse_document(raw: dict, project: UdProject) -> UdDoc:
         return UdDoc(raw['id'], raw.get('name') or '', text.get('id'), body, [],
                      raw.get('metadata') or {}, raw.get('version'))
 
-    spans = _spans_by_token(word_layer, project.span_layers)
+    spans, feats = _spans_by_token(word_layer, project.span_layers)
     # The syntactic words of one surface token share its extent exactly (the
     # full-width rule), so the extent is the key, and `precedence` is the only
     # thing that orders them.
@@ -438,7 +502,8 @@ def parse_document(raw: dict, project: UdProject) -> UdDoc:
             for w in words_at.get((t['begin'], t['end']), []):
                 fields = spans.get(w['id'], {})
                 form = fields['form'].value if fields.get('form') and fields['form'].value else surface
-                word = Word(id=w['id'], index=index, form=form, fields=fields, token=tok)
+                word = Word(id=w['id'], index=index, form=form, fields=fields, token=tok,
+                            features=feats.get(w['id'], []))
                 index += 1
                 tok.words.append(word)
                 if fields.get('lemma'):

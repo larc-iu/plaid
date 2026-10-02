@@ -110,7 +110,9 @@ def document_raw():
                          {'id': 'sp-u4', 'value': 'PUNCT', 'tokens': ['uw-4']}]},
                      {'id': XPOS, 'spans': []},
                      {'id': FEATS, 'spans': [
-                         {'id': 'sp-x1', 'value': 'Number=Plur', 'tokens': ['uw-1']}]},
+                         # One span per feature, as the app writes them.
+                         {'id': 'sp-x1', 'value': 'Number=Plur', 'tokens': ['uw-1']},
+                         {'id': 'sp-x2', 'value': 'Mood=Ind', 'tokens': ['uw-1']}]},
                  ]},
             ]}],
     }

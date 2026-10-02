@@ -242,7 +242,7 @@ def test_a_change_made_by_name_beats_a_scope_by_the_kind_s_own_declaration():
         == entity_of({'kind': 'set_deprel', 'relation_id': 'r1'}) \
         == entity_of({'kind': 'del_relation', 'relation_id': 'r1'}) == ('relation', 'r1')
     assert entity_of({'kind': 'set_head', 'word_id': 'w1'}) is None   # it makes the relation
-    assert entity_of({'kind': 'set_span', 'layer_id': 'L', 'token_id': 't'}) == ('span', 'L', 't')
+    assert entity_of({'kind': 'set_span', 'layer_id': 'L', 'token_id': 't'}) == ('span', 'L', 't', None)
     assert entity_of({'kind': 'add_comment'}) is None
     declared = {n for n, k in KIND.items() if k.extra.get('entity')}
     assert declared == {'set_span', 'set_head', 'del_relation', 'set_deprel'}

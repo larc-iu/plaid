@@ -12,6 +12,8 @@ any size can be searched: what is capped is the number of CHANGES one plan
 may make, which is what the user has to be able to approve.
 """
 
+import re
+from collections import Counter
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..core import opkind, work
@@ -21,8 +23,8 @@ from ..core.plan import by_document
 from ..core.replace import replacer as core_replacer
 from .corpus import Corpus, rx
 from .plan import DOCUMENT_SHAPE, KIND, SENTENCE_SHAPE, WORD_SHAPE
-from .project import UdProject
-from .tools import FIELDS, ToolError, Workspace, _check_value
+from .project import FEATURES, UdProject, feature_key, feature_refusal, normalize_feature
+from .tools import FIELDS, ToolError, Workspace, _check_feature, _check_value
 
 REPLACE_FIELDS = FIELDS + ('deprel',)
 REPLACE_MAX = 5000   # changes one plan may make; past it, narrow and go in passes
@@ -106,6 +108,7 @@ def resolve_replace(client, project: UdProject, op: Dict[str, Any]) -> List[Dict
         else:
             out.append({'kind': 'set_span', 'layer_id': ch['layer_id'], 'token_id': ch['token_id'],
                         'span_id': ch['id'], 'value': ch['new'], 'field': field,
+                        'feature': feature_key(field, ch['old']),
                         'document_id': ch['document_id'], 'ref': None,
                         'label': f'{field} "{ch["old"]}" → "{ch["new"]}"'})
     return out
@@ -146,6 +149,8 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
         bad = sorted({ch['new'] for ch in found if ch['new']})
         for value in bad:
             _check_value(ws, field, value)
+    if field == FEATURES:
+        _check_features(ws, c, found, document_id)
     docs = sorted({ch['document_id'] for ch in found if ch['document_id']})
     _clear_of_reshapes(ws, docs)
     ws.note_staged_versions({d: versions.get(d) for d in docs})
@@ -174,6 +179,39 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
             + f'{counts}\nFor example:\n  '
             + '\n  '.join(sample) + (f'\n  … {len(found) - SAMPLE_LINES} more' if len(found) > SAMPLE_LINES else '')
             + '\nsearch shows every match with its reference.')
+
+
+def _check_features(ws: Workspace, c: Corpus, found: List[Dict[str, Any]],
+                    document_id: Optional[str]) -> None:
+    """Each feature is its own span, holding one ``Feature=Value``. A
+    replacement may change the value or the name, or clear the pair, but
+    what it leaves must be one pair, and a name it changes to must not be one
+    the word already holds: the word would then have two values of it."""
+    renamed: Counter = Counter()
+    for ch in found:
+        if not ch['new']:
+            continue
+        pair = normalize_feature(ch['new'])
+        if not pair or '|' in ch['new']:
+            raise ToolError(f'"{ch["old"]}" would become "{ch["new"]}", which is not one feature. '
+                            f'Each feature is written Feature=Value on its own.')
+        refusal = feature_refusal(pair[2])
+        if refusal:
+            raise ToolError(f'"{ch["old"]}" would become "{ch["new"]}". {refusal}')
+        _check_feature(ws, pair[0], pair[1])
+        if pair[0] != feature_key(FEATURES, ch['old']):
+            renamed[(ch['token_id'], pair[0])] += 1
+    for key in sorted({k for _t, k in renamed}):
+        where = [c.field(FEATURES, '?s', value=rx(f'^{re.escape(key)}\\s*=', regex=True,
+                                                  case_sensitive=True)),
+                 c.on('?s'), c.word('?t')]
+        if document_id:
+            where.append(['in', '?s.doc', [document_id]])
+        holding = {row[0] for row in c.group(where, ['?t'])}
+        twice = [t for (t, k), n in renamed.items() if k == key and (n > 1 or t in holding)]
+        if twice:
+            raise ToolError(f'This would give {len(twice)} word(s) a second {key}. Narrow the '
+                            f'pattern, or change those words with set_feature.')
 
 
 # What an op that rewrites a whole document does, in the words the refusal

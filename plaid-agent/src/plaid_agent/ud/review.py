@@ -21,13 +21,15 @@ REVIEW_FIELDS = FIELDS + ('deprel',)
 WAITING = ('machine', 'contributed')
 
 
-def reviewable(w: Word, field: str):
-    """(span, state) for a field whose value is waiting for review, else None."""
-    sp = w.fields.get(field)
-    if not sp or not sp.value:
-        return None
-    state = prov_state(sp.metadata)
-    return (sp, state) if state in WAITING else None
+def reviewable(w: Word, field: str) -> List[tuple]:
+    """``[(span, state)]`` for the field's values waiting for review: at most
+    one for most fields, one per pair for features."""
+    out = []
+    for sp in w.spans(field):
+        state = prov_state(sp.metadata)
+        if state in WAITING:
+            out.append((sp, state))
+    return out
 
 
 def relation_waiting(w: Word) -> Optional[str]:
@@ -56,9 +58,8 @@ def confirm_targets(words: List[Tuple[Sentence, Word]], fields) -> List[tuple]:
         for f in fields:
             if f == 'deprel':
                 continue
-            hit = reviewable(w, f)
-            if hit:
-                out.append((sentence, w, f, hit[0].id, None))
+            for sp, _state in reviewable(w, f):
+                out.append((sentence, w, f, sp.id, None))
         if 'deprel' in fields and relation_waiting(w):
             out.append((sentence, w, 'deprel', None, w.relation_id))
     return out
@@ -74,13 +75,13 @@ def discard_targets(words: List[Tuple[Sentence, Word]], fields) -> Tuple[List[tu
         for f in fields:
             if f == 'deprel':
                 continue
-            hit = reviewable(w, f)
-            if not hit or hit[1] != 'machine':
-                continue
-            if f == 'lemma' and vouched_arc_hangs_on(sentence, w):
-                spared += 1
-                continue
-            out.append((sentence, w, f, hit[0], None))
+            for sp, state in reviewable(w, f):
+                if state != 'machine':
+                    continue
+                if f == 'lemma' and vouched_arc_hangs_on(sentence, w):
+                    spared += 1
+                    continue
+                out.append((sentence, w, f, sp, None))
         if 'deprel' in fields and relation_waiting(w) == 'machine':
             out.append((sentence, w, 'deprel', None, w.relation_id))
     return out, spared

@@ -31,7 +31,7 @@ from .project import LEMMA_FROM_FORM
 from ..core.plan import (CONFIRM, Minter, PlanError, Resolution, Stamps, TrackingBatcher, check_reach,
                          apply_add_comment, apply_restore_document, applying,
                          docs_of_op, expand_ops)
-from .project import load_document, word_ref
+from .project import feature_key, load_document, word_ref
 from .review import all_words, confirm_targets, discard_targets
 
 # `.shape` and `.sentences` are imported where they are used rather than here:
@@ -310,7 +310,10 @@ def _refs_phrase(members, limit: int = 8) -> str:
 
 
 def _set_span_label(first, members) -> str:
-    what = f'{first["field"]} = "{first["value"]}"' if first.get('value') else f'clear {first["field"]}'
+    if first.get('feature') is not None:
+        what = first['value'] if first.get('value') else f'remove {first["feature"]}'
+    else:
+        what = f'{first["field"]} = "{first["value"]}"' if first.get('value') else f'clear {first["field"]}'
     return f'{what} on {len(members)} words ({_refs_phrase(members)})'
 
 
@@ -335,7 +338,9 @@ def _confirm_label(first, members) -> str:
 # the same way here, and `entity_of` is the only reader.
 
 def _span_entity(op):
-    return ('span', op.get('layer_id'), op.get('token_id'))
+    """A word holds one span per field, except features, where it holds one
+    per pair: there the pair's name says which span (``feature``)."""
+    return ('span', op.get('layer_id'), op.get('token_id'), op.get('feature'))
 
 
 def _relation_entity(op):
@@ -375,6 +380,7 @@ def _resolve_discard_scope(res: Resolution, op):
         else:
             yield {'kind': 'set_span', 'layer_id': span.layer_id, 'token_id': w.id,
                    'span_id': span.id, 'value': '', 'field': f, 'document_id': did,
+                   'feature': feature_key(f, span.value),
                    'ref': ref, 'label': f'discard the unconfirmed {f} on {ref}'}
 
 
@@ -390,8 +396,7 @@ KIND = ok.registry([
     # guideline has the same shape whatever the project annotates.
     *_guidelines.kinds(OpKind),
     OpKind('set_span', _FIELD_VALUE, required=('layer_id', 'token_id'), apply=_apply_set_span,
-           target=lambda op: ('span', op.get('layer_id'), op.get('token_id')),
-           token_keys=('token_id',), extra={'entity': _span_entity},
+           target=_span_entity, token_keys=('token_id',), extra={'entity': _span_entity},
            deletes=lambda op: ([op['span_id']] if op.get('span_id') and (op.get('value') or '') == '' else []),
            compact_each=('token_id', 'span_id', 'ref'), compact_label=_set_span_label,
            summary=_set_span_summary),

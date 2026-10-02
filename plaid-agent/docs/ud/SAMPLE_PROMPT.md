@@ -130,7 +130,7 @@ PLAN: set one annotation column on one or more words. An empty value clears it. 
 
 ### set_feature
 
-PLAN: set or remove ONE Feature=Value inside the features of one or more words, keeping the rest of the bundle as it is (set_field replaces the whole bundle). An empty value removes the feature. The bundle is kept in CoNLL-U order.
+PLAN: set or remove ONE Feature=Value on one or more words, keeping their other features as they are (set_field replaces them all). An empty value removes the feature.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `refs` (array of string, required): Word references in the same document, e.g. ["s3.w2", "s3.w5"].
@@ -407,7 +407,7 @@ Document "Viaje" (2 sentences, 7 words)
 # sent_id = s1
 # text = Vamos al mar.
 ID	FORM	LEMMA	UPOS	XPOS	FEATS	HEAD	DEPREL
-1	Vamos	ir	VERB	_	Number=Plur	0	root
+1	Vamos	ir	VERB	_	Mood=Ind|Number=Plur	0	root
 2-3	al	_	_	_	_	_	_
 2	a	a	ADP	_	_	4	case
 3	el	el	DET	_	_	4	det

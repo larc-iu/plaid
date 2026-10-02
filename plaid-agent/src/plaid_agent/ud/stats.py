@@ -54,8 +54,7 @@ def _awaiting_in(doc: UdDoc, field: str, state: str) -> List[tuple]:
                 if w.relation_id and prov_state(w.relation_metadata) == state:
                     out.append((s, w))
                 continue
-            sp = w.fields.get(field)
-            if sp and sp.value and prov_state(sp.metadata) == state:
+            if any(prov_state(sp.metadata) == state for sp in w.spans(field)):
                 out.append((s, w))
     return out
 
@@ -141,6 +140,21 @@ def _split_features(rows: List[tuple]) -> List[tuple]:
     return sorted(counts.items(), key=lambda kv: -kv[1])
 
 
+def _bundles(c: Corpus) -> List[tuple]:
+    """Whole FEATS strings over the corpus, by how many words carry each. A
+    feature is a span of its own, so a word's bundle is the join of its spans,
+    sorted as the export sorts them."""
+    by_word: Dict[str, List[str]] = defaultdict(list)
+    for word, value, _n in c.group([c.word('?t'), c.field('features', '?s'), c.on('?s')],
+                                   ['?t', '?s.value']):
+        if value:
+            by_word[word].append(value)
+    counts: Dict[str, int] = defaultdict(int)
+    for values in by_word.values():
+        counts['|'.join(sorted(values))] += 1
+    return sorted(counts.items(), key=lambda kv: -kv[1])
+
+
 def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
                      limit: int = None) -> str:
     """The commonest values of one column."""
@@ -165,6 +179,8 @@ def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
             rows = [(r[0], r[-1]) for r in c.form_values()]
         elif what == 'deprel':
             rows = [(r[0], r[-1]) for r in c.group([c.dep('?r')], ['?r.value'])]
+        elif what == 'feature-bundles':
+            rows = _bundles(c)
         else:
             rows = [(r[0], r[-1]) for r in c.group([c.field(column, '?s')], ['?s.value'])]
         rows = [(v, n) for v, n in rows if v]

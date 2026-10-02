@@ -23,8 +23,9 @@ from ..core.workspace import BaseWorkspace
 from ..core.tools import ToolError, server_refused
 from .plan import (KIND, RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, docs_of_op,
                    scope_clears)
-from .project import (Sentence, Token, UdDoc, UdProject, Word, load_document, render_document,
-                      resolve, word_ref)
+from .project import (FEATURES, Sentence, Token, UdDoc, UdProject, Word, feature_key,
+                      feature_refusal, load_document, normalize_feature, render_document, resolve,
+                      word_ref)
 from .review import (REVIEW_FIELDS, all_words, confirm_targets, counts_phrase, discard_targets,
                      per_field)
 
@@ -223,7 +224,7 @@ def _words_by_id(ws: 'Workspace', ids) -> List[Any]:
 def _words_work(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
     """A token's words, when it is cut again: their values and their heads."""
     return [x for w in _words_by_id(ws, op.get('existing_word_ids'))
-            for x in [sp.id for sp in w.fields.values()] + [w.relation_id]]
+            for x in [sp.id for _f, sp in w.all_spans()] + [w.relation_id]]
 
 
 _NONE = None
@@ -413,6 +414,8 @@ def t_set_field(ws: Workspace, document: str = None, refs=None, field: str = Non
     doc = ws.doc(document)
     layer_id = _field_layer(ws, field)
     value = '' if value is None else str(value)
+    if field == FEATURES:
+        return _set_features(ws, doc, layer_id, refs, value)
     _check_value(ws, field, value)
     words = _words(ws, doc, refs)
     staged = []
@@ -429,60 +432,142 @@ def t_set_field(ws: Workspace, document: str = None, refs=None, field: str = Non
         word_ref(ws.sentence_of(doc, w), w) for w in words)
 
 
-def _features(bundle: str) -> List[tuple]:
-    """A FEATS string as (feature, value) pairs, in the order written."""
-    out = []
-    for pair in (bundle or '').split('|'):
-        if pair and '=' in pair:
-            k, v = pair.split('=', 1)
-            out.append((k, v))
-        elif pair:
-            out.append((pair, ''))
+def _pairs(bundle: str) -> Dict[str, str]:
+    """A FEATS string as ``{feature: value}``, each pair read as the app reads
+    one. A pair it cannot read, or a feature named twice, is refused."""
+    out: Dict[str, str] = {}
+    for raw in (bundle or '').split('|'):
+        if not raw.strip():
+            continue
+        pair = normalize_feature(raw)
+        if not pair:
+            raise ToolError(f'"{raw}" is not a feature: write each one as Feature=Value, '
+                            f'joined by |, e.g. Case=Nom|Number=Sing.')
+        refusal = feature_refusal(pair[2])
+        if refusal:
+            raise ToolError(f'"{raw}": {refusal}')
+        if pair[0] in out:
+            raise ToolError(f'{pair[0]} is named twice. A word holds one value of each feature.')
+        out[pair[0]] = pair[1]
     return out
 
 
-def _bundle(pairs: List[tuple]) -> str:
-    """Pairs as a FEATS string, ordered as CoNLL-U orders them: by feature,
-    case-insensitively."""
-    return '|'.join(f'{k}={v}' if v else k for k, v in sorted(pairs, key=lambda kv: kv[0].casefold()))
+def _check_feature(ws: Workspace, feature: str, value: str) -> None:
+    """Refuse a pair a CLOSED feature inventory does not list."""
+    inventory = ws.project.vocab.get('feats') or {}
+    if not (inventory and ws.project.modes.get('feats') == 'closed' and value):
+        return
+    if feature not in inventory:
+        raise ToolError(f'"{feature}" is not in this project\'s feature inventory, which is closed. '
+                        f'Features: ' + ', '.join(sorted(inventory)))
+    allowed = inventory.get(feature) or []
+    if allowed and value not in allowed:
+        raise ToolError(f'"{value}" is not a value of {feature} here. Allowed: ' + ', '.join(allowed))
+
+
+def _is_feature_op(op: Dict[str, Any], layer_id: str, word_id: str) -> bool:
+    return (op.get('kind') == 'set_span' and op.get('layer_id') == layer_id
+            and op.get('token_id') == word_id and op.get('feature') is not None)
+
+
+def _planned_features(ws: Workspace, layer_id: str, w: Word) -> Dict[str, str]:
+    """The word's features once the plan runs, ``{feature: value}``: what is
+    stored, with every planned write to one of its pairs applied."""
+    out: Dict[str, str] = {}
+    for sp in w.features:
+        pair = normalize_feature(sp.value)
+        if pair:
+            out[pair[0]] = pair[1]
+    for op in ws.ops:
+        if _is_feature_op(op, layer_id, w.id):
+            pair = normalize_feature(op.get('value'))
+            if pair:
+                out[op['feature']] = pair[1]
+            else:
+                out.pop(op['feature'], None)
+    return out
+
+
+def _feature_ops(ws: Workspace, doc: UdDoc, layer_id: str, w: Word,
+                 want: Dict[str, Optional[str]]) -> tuple:
+    """What a word needs for its features to be ``want`` (a value, or None to
+    remove one): ``(ops to stage, planned ops to drop)``. Each feature is its
+    own span, so a change is a create, an update or a delete of the one span
+    holding that feature, as the app's FEATS cell writes it. Removing a
+    feature only this plan adds drops the planned add, since nothing stored
+    is there to delete."""
+    planned = _planned_features(ws, layer_id, w)
+    ref = word_ref(ws.sentence_of(doc, w), w)
+    stage, drop = [], []
+    for key, value in want.items():
+        if (planned.get(key) or None) == (value or None):
+            continue
+        sp = w.feature_span(key)
+        if not value and sp is None:
+            drop += [op for op in ws.ops if _is_feature_op(op, layer_id, w.id) and op['feature'] == key]
+            continue
+        stage.append({'kind': 'set_span', 'layer_id': layer_id, 'token_id': w.id,
+                      'span_id': sp.id if sp else None, 'value': f'{key}={value}' if value else '',
+                      'field': FEATURES, 'feature': key, 'document_id': doc.id, 'ref': ref,
+                      'label': f'{key}={value}' if value else f'remove {key}'})
+    return stage, drop
+
+
+def _stage_features(ws: Workspace, changes: List[tuple]) -> List[str]:
+    """Stage every word's feature ops as one batch, then drop the planned adds
+    a removal undoes. The refs of the words that change, in order."""
+    ws.add_ops([op for _ref, stage, _drop in changes for op in stage])
+    dropped = {id(op) for _ref, _stage, drop in changes for op in drop}
+    if dropped:
+        ws.ops[:] = [op for op in ws.ops if id(op) not in dropped]
+    return [ref for ref, stage, drop in changes if stage or drop]
+
+
+def _set_features(ws: Workspace, doc: UdDoc, layer_id: str, refs, value: str) -> str:
+    """set_field on features: the word's whole FEATS becomes ``value``. Each
+    pair is its own span, so this writes the pairs that differ and removes
+    the ones ``value`` leaves out."""
+    pairs = _pairs(value)
+    for k, v in pairs.items():
+        _check_feature(ws, k, v)
+    words = _words(ws, doc, refs)
+    changes = []
+    for w in words:
+        planned = _planned_features(ws, layer_id, w)
+        want: Dict[str, Optional[str]] = {k: None for k in planned if k not in pairs}
+        want.update(pairs)
+        stage, drop = _feature_ops(ws, doc, layer_id, w, want)
+        changes.append((word_ref(ws.sentence_of(doc, w), w), stage, drop))
+    changed = _stage_features(ws, changes)
+    bundle = '|'.join(f'{k}={v}' for k, v in sorted(pairs.items(), key=lambda kv: f'{kv[0]}={kv[1]}'))
+    if not changed:
+        return (f'Nothing to change: features are already "{bundle}" on every word named.' if bundle
+                else 'Nothing to change: none of the words named has features.')
+    what = f'features = "{bundle}"' if bundle else 'features cleared'
+    return f'Planned {what} on {len(changed)} word(s): ' + ', '.join(changed)
 
 
 def t_set_feature(ws: Workspace, document: str = None, refs=None, feature: str = None,
                   value: str = None) -> str:
-    """PLAN: one Feature=Value inside the FEATS bundle, leaving the rest as
-    they are. set_field on features replaces the whole bundle."""
+    """PLAN: one Feature=Value on each word named, leaving its other features
+    as they are. set_field on features replaces them all."""
     feature = (feature or '').strip()
     if not feature or '=' in feature or '|' in feature:
         raise ToolError('Give feature: one feature name, like Number (the value goes in value).')
     value = '' if value is None else str(value).strip()
-    inventory = ws.project.vocab.get('feats') or {}
-    if inventory and ws.project.modes.get('feats') == 'closed' and value:
-        if feature not in inventory:
-            raise ToolError(f'"{feature}" is not in this project\'s feature inventory, which is closed. '
-                            f'Features: ' + ', '.join(sorted(inventory)))
-        allowed = inventory.get(feature) or []
-        if allowed and value not in allowed:
-            raise ToolError(f'"{value}" is not a value of {feature} here. Allowed: ' + ', '.join(allowed))
+    if value:
+        refusal = feature_refusal(f'{feature}={value}')
+        if refusal or '|' in value:
+            raise ToolError(refusal or 'Give value: one value, like Sing. Set each feature on its own.')
+    _check_feature(ws, feature, value)
     doc = ws.doc(document)
-    layer_id = ws.project.layer('features')
+    layer_id = ws.project.layer(FEATURES)
     words = _words(ws, doc, refs)
-    staged, changed = [], []
+    changes = []
     for w in words:
-        current = ws.planned_value(layer_id, w.id, w.value('features'))
-        pairs = [(k, v) for k, v in _features(current) if k != feature]
-        if value:
-            pairs.append((feature, value))
-        new = _bundle(pairs)
-        if new == current:
-            continue
-        sp = w.fields.get('features')
-        ref = word_ref(ws.sentence_of(doc, w), w)
-        staged.append({'kind': 'set_span', 'layer_id': layer_id, 'token_id': w.id,
-                       'span_id': sp.id if sp else None, 'value': new, 'field': 'features',
-                       'document_id': doc.id, 'ref': ref,
-                       'label': f'{feature}={value}' if value else f'remove {feature}'})
-        changed.append(ref)
-    ws.add_ops(staged)
+        stage, drop = _feature_ops(ws, doc, layer_id, w, {feature: value or None})
+        changes.append((word_ref(ws.sentence_of(doc, w), w), stage, drop))
+    changed = _stage_features(ws, changes)
     if not changed:
         return (f'Nothing to change: {feature}={value} is already set on every word named.' if value
                 else f'Nothing to change: none of the words named has {feature}.')
@@ -753,6 +838,7 @@ def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field:
             else:
                 staged.append({'kind': 'set_span', 'layer_id': span.layer_id, 'token_id': w.id,
                                'span_id': span.id, 'value': '', 'field': f, 'document_id': doc.id,
+                               'feature': feature_key(f, span.value),
                                'ref': ref, 'label': f'discard the unconfirmed {f} on {ref}'})
         ws.add_ops(staged)
         n = len(targets)

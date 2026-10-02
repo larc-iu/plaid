@@ -94,9 +94,8 @@ TOOLS = [
          'value': {'type': 'string', 'description': 'The new value, or "" to clear the column.'}},
         ['document', 'refs', 'field']),
     _fn('set_feature',
-        'PLAN: set or remove ONE Feature=Value inside the features of one or more words, keeping the '
-        'rest of the bundle as it is (set_field replaces the whole bundle). An empty value removes the '
-        'feature. The bundle is kept in CoNLL-U order.',
+        'PLAN: set or remove ONE Feature=Value on one or more words, keeping their other features as '
+        'they are (set_field replaces them all). An empty value removes the feature.',
         {'document': _DOC, 'refs': _REFS,
          'feature': {'type': 'string', 'description': 'The feature name, e.g. Number.'},
          'value': {'type': 'string', 'description': 'The value, e.g. Sing; "" removes the feature.'}},

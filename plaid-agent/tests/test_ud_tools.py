@@ -1362,19 +1362,112 @@ def test_search_matches_case_only_when_asked(ws):
 
 
 
-def test_set_feature_edits_one_feature_and_keeps_the_bundle_in_order(ws):
+def test_set_feature_writes_the_one_span_holding_that_feature(ws):
+    """Each feature is a span of its own, as the app writes them (H4-UD-3).
+    s1.w1 holds Number=Plur (sp-x1) and Mood=Ind (sp-x2). The assistant wrote
+    a joined bundle into whichever span it read last, so the word ended up with
+    Number=Plur and Number=Sing at once."""
     out = run(ws, 'set_feature', document='Viaje', refs=['s1.w1'], feature='Gender', value='Masc')
     assert out == 'Planned Gender=Masc on 1 word(s): s1.w1'
-    assert ws.ops[0]['value'] == 'Gender=Masc|Number=Plur' and ws.ops[0]['span_id'] == 'sp-x1'
-    # A second edit in the same turn reads the planned bundle, not the stored one.
+    assert ws.ops[0]['span_id'] is None and ws.ops[0]['value'] == 'Gender=Masc'
     run(ws, 'set_feature', document='Viaje', refs=['s1.w1'], feature='Number', value='Sing')
-    assert len(ws.ops) == 1 and ws.ops[0]['value'] == 'Gender=Masc|Number=Sing'
-    run(ws, 'set_feature', document='Viaje', refs=['s1.w1'], feature='Gender', value='')
-    assert ws.ops[0]['value'] == 'Number=Sing'
-    # The fixture's inventory is a suggestion, so an unlisted value is allowed.
-    assert 'Planned Number=Dual' in run(ws, 'set_feature', document='Viaje', refs=['s1.w1'], feature='Number', value='Dual')
+    assert len(ws.ops) == 2
+    assert ws.ops[1]['span_id'] == 'sp-x1' and ws.ops[1]['value'] == 'Number=Sing'
+    # A second edit of the same feature in the turn replaces the first.
+    run(ws, 'set_feature', document='Viaje', refs=['s1.w1'], feature='Number', value='Dual')
+    assert len(ws.ops) == 2 and ws.ops[1]['value'] == 'Number=Dual'
     assert 'already set' in run(ws, 'set_feature', document='Viaje', refs=['s1.w1'], feature='Number', value='Dual')
+    # Removing a feature only the plan adds drops the planned add.
+    run(ws, 'set_feature', document='Viaje', refs=['s1.w1'], feature='Gender', value='')
+    assert [op['value'] for op in ws.ops] == ['Number=Dual']
+    # Removing a stored one deletes its span, and leaves the others alone.
+    run(ws, 'set_feature', document='Viaje', refs=['s1.w1'], feature='Mood', value='')
+    assert ws.ops[-1]['span_id'] == 'sp-x2' and ws.ops[-1]['value'] == ''
     assert 'Give feature' in run(ws, 'set_feature', document='Viaje', refs=['s1.w1'], feature='Number=Sing')
+    assert 'one value' in run(ws, 'set_feature', document='Viaje', refs=['s1.w1'], feature='Number', value='Sing|Plur')
+    execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
+    assert ws.client.updates('spans') == [('sp-x1', 'Number=Dual')]
+    assert ws.client.payloads('spans.delete') == ['sp-x2']
+    assert not [p for p in ws.client.payloads('spans.create')]
+
+
+def test_a_read_shows_every_feature_of_a_word(ws):
+    out = run(ws, 'read_document', document='Viaje')
+    assert 'Mood=Ind|Number=Plur' in out
+
+
+def test_set_field_on_features_writes_each_pair_as_its_own_span(ws):
+    out = run(ws, 'set_field', document='Viaje', refs=['s1.w1', 's1.w4'], field='features',
+              value='Number=Plur | Case=Nom')
+    assert out == 'Planned features = "Case=Nom|Number=Plur" on 2 word(s): s1.w1, s1.w4'
+    by_word = {}
+    for op in ws.ops:
+        by_word.setdefault(op['token_id'], []).append((op['span_id'], op['value']))
+    # s1.w1 keeps Number=Plur as it is, loses Mood, gains Case.
+    assert sorted(by_word['uw-1'], key=str) == sorted([(None, 'Case=Nom'), ('sp-x2', '')], key=str)
+    assert sorted(by_word['uw-3'], key=str) == sorted([(None, 'Case=Nom'), (None, 'Number=Plur')], key=str)
+    assert 'named twice' in run(ws, 'set_field', document='Viaje', refs=['s1.w1'], field='features',
+                                value='Number=Plur|Number=Sing')
+    assert 'not a feature' in run(ws, 'set_field', document='Viaje', refs=['s1.w1'], field='features',
+                                  value='Plur')
+    run(ws, 'set_field', document='Viaje', refs=['s1.w1'], field='features', value='')
+    assert sorted((op['span_id'], op['value']) for op in ws.ops if op['token_id'] == 'uw-1') \
+        == [('sp-x1', ''), ('sp-x2', '')]
+
+
+def test_discarding_machine_features_takes_every_one_of_them():
+    """A word's two machine-made features are two spans. Named by the word
+    alone, the second discard superseded the first and one stayed."""
+    from ud_fixtures import document_raw
+    raw = document_raw()
+    feats = next(sl for sl in raw['text_layers'][0]['token_layers'][2]['span_layers'] if sl['id'] == 'u-feats')
+    for sp in feats['spans']:
+        sp['metadata'] = {'prov': 'inferred', 'provSource': 'service:ud:parse'}
+    client = ud_client(documents={'ud1': raw})
+    w = Workspace(client, load_project(client, PID))
+    run(w, 'discard_predictions', document='Viaje', refs=['s1.w1'], field='features')
+    assert sorted(op['span_id'] for op in w.ops) == ['sp-x1', 'sp-x2']
+    client2 = ud_client(documents={'ud1': raw})
+    w2 = Workspace(client2, load_project(client2, PID))
+    run(w2, 'discard_predictions', document='Viaje', field='features')
+    execute_plan(w2.client, w2.ops, source='s', label='l', project=w2.project)
+    assert sorted(w2.client.payloads('spans.delete')) == ['sp-x1', 'sp-x2']
+
+
+def _feature_engine(ws, spans, holding=()):
+    """A fake engine for a replacement over Features: span rows, and the
+    words already holding a feature when asked which."""
+    from ud_fixtures import FEATS
+
+    def engine(body):
+        if body.get('return') == 'entities':
+            return {'return': 'entities', 'results': [[{'id': i, 'value': v, 'document': 'ud1', 'layer': FEATS,
+                                                        'tokens': [t]},
+                                                       {'id': t, 'document': 'ud1', 'begin': 0, 'end': 1}]
+                                                      for i, v, t in spans]}
+        return {'return': 'aggregate', 'results': [[t, 1] for t in holding]}
+    ws.client.query = engine
+
+
+def test_a_replacement_over_features_leaves_one_feature_per_span(ws):
+    _feature_engine(ws, [('sp-x1', 'Number=Plur', 'uw-1')])
+    assert 'not one feature' in run(ws, 'replace_in_field', field='features', pattern='Number=Plur',
+                                    replacement='Number=Plur|Person=1')
+    _feature_engine(ws, [('sp-x2', 'Mood=Ind', 'uw-1')], holding=['uw-1'])
+    assert 'a second Number' in run(ws, 'replace_in_field', field='features', pattern='Mood=Ind',
+                                    replacement='Number=Sing')
+    _feature_engine(ws, [('sp-x1', 'Number=Plur', 'uw-1')])
+    assert run(ws, 'replace_in_field', field='features', pattern='Plur', replacement='Sing').startswith('Planned 1')
+    execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
+    assert ws.client.updates('spans') == [('sp-x1', 'Number=Sing')]
+
+
+def test_feature_bundles_across_the_corpus_are_counted_by_word(ws):
+    rows = [['uw-1', 'Number=Plur', 1], ['uw-1', 'Mood=Ind', 1], ['uw-9', 'Mood=Ind', 1],
+            ['uw-9', 'Number=Plur', 1], ['uw-3', 'Number=Sing', 1]]
+    ws.client.query = lambda body: {'return': 'aggregate', 'results': rows}
+    out = run(ws, 'frequency_list', what='feature-bundles')
+    assert '2  Mood=Ind|Number=Plur' in out and '1  Number=Sing' in out
 
 
 def test_a_change_made_by_name_beats_a_scope_at_approval(ws):
