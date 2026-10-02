@@ -29,6 +29,17 @@ function analyse(rule) {
     else if (block.type === 'without') withouts.push(block.items);
     else if (block.type === 'global') globals.push(...block.items);
   }
+  for (const item of [...positive, ...withouts.flat()]) {
+    if (
+      item.kind === 'featcmp' &&
+      (isFeatsWhole(item.left.feat) || isFeatsWhole(item.right.feat))
+    ) {
+      throw new GrewUnsupportedError(
+        'feats-cmp',
+        'Comparing FEATS as a whole across nodes is not supported. Compare one feature (X.Number = Y.Number).',
+      );
+    }
+  }
   a = {
     positive,
     withouts,
@@ -49,6 +60,12 @@ function lexConstraintsOf(items) {
   const out = [];
   const add = (node, feat, op, value) => {
     if (!value || value.type !== 'lexref') return;
+    if (isFeatsWhole(feat)) {
+      throw new GrewUnsupportedError(
+        'feats-lexicon',
+        'A lexicon field cannot be matched against FEATS. Match one feature (X [Number=lex.field]).',
+      );
+    }
     if (op !== '=') {
       throw new GrewUnsupportedError('lexicon-op', 'A lexicon field can only be matched with `=`.');
     }
@@ -372,7 +389,29 @@ function isNextLive(g, l, r, nodes) {
 const compare = (x, op, n) =>
   ({ '=': x === n, '<': x < n, '<=': x <= n, '>': x > n, '>=': x >= n })[op];
 
+// `FEATS` names the word's features as a whole, as the search compiler reads
+// it (compile.js `emitFeatsWhole`): each feature is its "Key=Value", and a
+// constraint holds when one of them meets it.
+const isFeatsWhole = (name) => String(name).toLowerCase() === 'feats';
+
+function checkFeatsWhole(node, fi) {
+  const pairs = [...node.feats].map(([key, value]) => `${key}=${value}`);
+  switch (fi.op) {
+    case 'defined':
+      return pairs.length > 0;
+    case 'undefined':
+      return pairs.length === 0;
+    case '=':
+      return pairs.some((p) => matchValue(p, fi.value));
+    case '<>':
+      return pairs.some((p) => !matchValue(p, fi.value));
+    default:
+      return false;
+  }
+}
+
 function checkFeatItem(node, fi) {
+  if (isFeatsWhole(fi.name)) return checkFeatsWhole(node, fi);
   const v = getFeat(node, fi.name);
   switch (fi.op) {
     case 'defined':

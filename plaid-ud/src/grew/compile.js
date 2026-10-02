@@ -6,6 +6,7 @@
 //   node  X            -> a token ?n_X on the morpheme/syntactic-word layer
 //   upos/xpos/lemma    -> one span each, covering the token, on its span layer
 //   FEATS Key=Value    -> one span per feature on the FEATS layer (value "Key=Value")
+//   FEATS              -> any one of those spans, its whole "Key=Value"
 //   form               -> the morpheme token's surface `value`
 //   edge X-[r]->Y      -> a relation on the (lemma-hosted) deprel layer, with
 //                         source = X's lemma span, target = Y's lemma span
@@ -21,6 +22,9 @@ import {
   featDefinedRegex,
   featNeqRegex,
   featEqValue,
+  featValueRegex,
+  featurePairRegex,
+  otherFeaturePairRegex,
   negatedLabelRegex,
   notExactlyRegex,
   featuresLabelRegex,
@@ -38,6 +42,9 @@ const MAX_LEXICON_VALUES = 500;
 const MAX_LINEAR_DISTANCE = 50;
 const MAX_BRANCHES = 128;
 const MAX_DEPTH = 64;
+
+const mentionsLexicon = (v) =>
+  !!v && (v.type === 'lexref' || (v.type === 'disj' && v.items.some(mentionsLexicon)));
 
 // A grouped count's rows as `{ value, count }`. Counting by an edge's label
 // brings the layer back beside the value, and a relation of the enhanced layer
@@ -316,6 +323,15 @@ class Compiler {
       return { variable, where: [['span', span, { value: { var: variable } }]] };
     }
 
+    // FEATS as a whole: every feature span of the word, each its own group.
+    if (lower === 'feats') {
+      const span = this.fresh('grp');
+      const FEATS = this.layerId('featuresLayer', 'Features');
+      this.where.push(['span', span, { layer: FEATS, value: ANY_VALUE }]);
+      this.where.push(['covers', span, this.nodeTok(node, ctx)]);
+      return { variable, where: [['span', span, { value: { var: variable } }]] };
+    }
+
     // A FEATS key: the span's value is the whole `Key=Value`, so the group is
     // that string. Counting `Number` gives `Number=Sing` and `Number=Plur`,
     // which is the honest answer and the one the picker's values look like.
@@ -438,6 +454,7 @@ class Compiler {
     const lower = name.toLowerCase();
 
     if (lower === 'form') return this.emitFormFeat(tv, fi, ctx);
+    if (lower === 'feats') return this.emitFeatsWhole(tv, fi, ctx);
 
     if (COLUMN_FEATS[lower]) {
       const layer = this.layerId(COLUMN_FEATS[lower], lower);
@@ -481,6 +498,38 @@ class Compiler {
     if (fi.op === 'defined') value = { regex: featDefinedRegex(name) };
     else if (fi.op === '<>') value = { regex: featNeqRegex(name, this.litValue(fi.value)) };
     else value = this.featValueConstraint(name, fi.value);
+    ctx.list.push(['span', av, { layer: FEATS, value }]);
+    ctx.list.push(['covers', av, tv]);
+  }
+
+  // `FEATS` names no feature: it is the word's features as a whole, each read
+  // as its stored "Key=Value", and a constraint holds when one of them meets
+  // it. So `[FEATS=re"Number"]` finds a word with any Number, `[FEATS=
+  // "Number=Sing"]` one with exactly that feature, `[FEATS]` a word with a
+  // feature and `[!FEATS]` one with none. The quick search, Count by FEATS and
+  // its narrowing all write this. The local matcher reads it the same way
+  // (rewrite/match.js `checkFeatsWhole`).
+  emitFeatsWhole(tv, fi, ctx) {
+    const FEATS = this.layerId('featuresLayer', 'Features');
+    const av = this.fresh('f');
+    if (fi.op === 'undefined') {
+      ctx.list.push([
+        'not',
+        ['span', av, { layer: FEATS, value: { regex: featurePairRegex } }],
+        ['covers', av, tv],
+      ]);
+      return;
+    }
+    if (mentionsLexicon(fi.value)) {
+      throw new GrewUnsupportedError(
+        'feats-lexicon',
+        'A lexicon field cannot be matched against FEATS. Match one feature (X [Number=lex.field]).',
+      );
+    }
+    let value;
+    if (fi.op === '<>') value = { regex: otherFeaturePairRegex(this.litValue(fi.value)) };
+    else if (fi.op === '=') value = this.valueConstraint(fi.value, ctx);
+    if (value === undefined) value = { regex: featurePairRegex };
     ctx.list.push(['span', av, { layer: FEATS, value }]);
     ctx.list.push(['covers', av, tv]);
   }
@@ -551,6 +600,12 @@ class Compiler {
       throw new GrewUnsupportedError(
         'form-cmp',
         'Comparing `form` across nodes is not supported. Compare `lemma` instead.',
+      );
+    }
+    if (lower === 'feats') {
+      throw new GrewUnsupportedError(
+        'feats-cmp',
+        'Comparing FEATS as a whole across nodes is not supported. Compare one feature (X.Number = Y.Number).',
       );
     }
     if (COLUMN_FEATS[lower])
@@ -1038,7 +1093,7 @@ class Compiler {
       return v.items.map((it) => featEqValue(name, it.value));
     if (v.type === 'regex') {
       const r = this.regexConstraint(v);
-      return { regex: `${featDefinedRegex(name)}(?:${r.regex})`, flags: r.flags };
+      return { regex: featValueRegex(name, r.regex), flags: r.flags };
     }
     if (v.type === 'any') return { regex: featDefinedRegex(name) };
     throw new GrewUnsupportedError('feature-value', `Unsupported feature value for ${name}.`);
