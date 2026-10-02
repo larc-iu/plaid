@@ -75,8 +75,19 @@ function stubClient({
   guidelines = [],
   guidelinesFail = false,
   delays = {},
+  // Reads that fail with a transient error the first n times: { 'documents.get': n, ... }.
+  flaky = {},
 }) {
   const calls = [];
+  const left = { ...flaky };
+  const blip = (name) => {
+    if (!left[name]) return;
+    left[name] -= 1;
+    // A dropped connection, as fetch reports it, or a gateway's 502.
+    throw left[name] % 2
+      ? new TypeError('Failed to fetch')
+      : Object.assign(new Error('HTTP 502'), { status: 502 });
+  };
   // The `layers` each document read named, by document id.
   const readLayers = new Map();
   return {
@@ -85,6 +96,7 @@ function stubClient({
     guidelines: {
       list: async (projectId, opts) => {
         calls.push(['guidelines.list', projectId, opts]);
+        blip('guidelines.list');
         if (guidelinesFail) throw new Error('guideline boom');
         return guidelines;
       },
@@ -92,11 +104,13 @@ function stubClient({
     comments: {
       list: async (projectId, { documentId } = {}) => {
         calls.push(['comments.list', projectId, documentId]);
+        blip('comments.list');
         if (commentsFail) throw new Error('comment boom');
         return comments[documentId] || [];
       },
       listInVocab: async (vocabId) => {
         calls.push(['comments.listInVocab', vocabId]);
+        blip('comments.listInVocab');
         if (vocabCommentsFail) throw new Error('vocab comment boom');
         return vocabComments[vocabId] || [];
       },
@@ -119,6 +133,7 @@ function stubClient({
         calls.push(asOf ? ['documents.get', id, asOf] : ['documents.get', id]);
         readLayers.set(id, layers ?? null);
         if (delays[id]) await new Promise((r) => setTimeout(r, delays[id]));
+        blip('documents.get');
         if (failIds.includes(id)) throw new Error('boom');
         return JSON.parse(JSON.stringify(docs.find((d) => d.id === id)));
       },
@@ -130,6 +145,7 @@ function stubClient({
         // the reads of the entries are counted.
         if (!includeItems) return { id, timeModified: null };
         calls.push(asOf ? ['vocabLayers.get', id, asOf] : ['vocabLayers.get', id]);
+        blip('vocabLayers.get');
         if (vocabFails) throw new Error('vocab boom');
         return JSON.parse(JSON.stringify(asOf && vocabThen ? vocabThen : vocab));
       },
@@ -1068,6 +1084,81 @@ describe('runExport — native plaid-igt-json', () => {
         },
       }),
     ).rejects.toThrow('The recording of "A" could not be read: boom');
+  });
+});
+
+describe('runExport — a read that fails for a moment', () => {
+  const archive = () => ({
+    ...newPreset('plaid-igt-json', discoverExportLayers(PROJECT), 'n'),
+    options: { includeMedia: true },
+  });
+  const media = (failures) => {
+    let n = failures;
+    return async () => {
+      if (n > 0) {
+        n -= 1;
+        throw Object.assign(new Error('media fetch failed (502)'), { status: 502 });
+      }
+      return { bytes: new Uint8Array([1]), ext: '.wav', mime: 'audio/wav' };
+    };
+  };
+  const RETRY = { retryDelaysMs: [0, 0, 0] };
+
+  it('reads it again and finishes, for every read the archive makes', async () => {
+    const docs = [rawDoc('d1', 'A', 'hi', '/media/d1/song.wav')];
+    const client = stubClient({
+      docs,
+      flaky: {
+        'documents.get': 2,
+        'comments.list': 1,
+        'guidelines.list': 1,
+        'vocabLayers.get': 2,
+        'comments.listInVocab': 1,
+      },
+    });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: archive(),
+      scope: { type: 'project' },
+      fetchMedia: media(2),
+      ...RETRY,
+    });
+    const entries = await unzipBlob(result.blob);
+    expect(Object.keys(entries)).toContain('documents/A.json');
+    expect(Object.keys(entries).some((p) => p.startsWith('media/'))).toBe(true);
+    expect(Object.keys(entries)).toContain('vocabularies/Lexicon.json');
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('fails once the retries are spent, after four reads', async () => {
+    const docs = [rawDoc('d1', 'A', 'hi')];
+    const client = stubClient({ docs, flaky: { 'documents.get': 9 } });
+    await expect(
+      runExport({
+        client,
+        project: PROJECT,
+        preset: plainPreset(),
+        scope: { type: 'project' },
+        ...RETRY,
+      }),
+    ).rejects.toThrow('"A" could not be read');
+    expect(client.calls.filter(([m]) => m === 'documents.get')).toHaveLength(4);
+  });
+
+  it('does not read again after an error that is not passing', async () => {
+    const docs = [rawDoc('d1', 'A', 'hi')];
+    const client = stubClient({ docs, failIds: ['d1'] });
+    await expect(
+      runExport({
+        client,
+        project: PROJECT,
+        preset: plainPreset(),
+        scope: { type: 'project' },
+        ...RETRY,
+      }),
+    ).rejects.toThrow('"A" could not be read: boom');
+    expect(client.calls.filter(([m]) => m === 'documents.get')).toHaveLength(1);
   });
 });
 

@@ -49,7 +49,7 @@ import {
 import { sanitizeFilename, dedupeFilenames, assembleZip } from './files.js';
 import { formatExt } from './presets.js';
 import { countOf } from '@ui/lib/plural.js';
-import { humanizeError } from '@ui/lib/errors.js';
+import { humanizeError, isUnreachable } from '@ui/lib/errors.js';
 
 export class ExportCancelled extends Error {
   constructor() {
@@ -59,6 +59,28 @@ export class ExportCancelled extends Error {
 }
 
 const toJson = (obj) => JSON.stringify(obj, null, 2);
+
+// A read is tried again after a dropped connection or a 502, 503 or 504, at
+// the client's own pacing for an answer that never came (1 s, 3 s, 9 s, each
+// jittered), since an export fails on any read it cannot make and one blip
+// would otherwise throw away a long run. The client itself retries a GET only
+// on a 503, and the recording is read with plain fetch.
+export const READ_RETRY_DELAYS_MS = [1000, 3000, 9000];
+const passing = (error) =>
+  isUnreachable(error) || /fetch failed|ECONNRESET|socket hang up/i.test(String(error?.message));
+
+async function readAgainOnBlip(read, delaysMs, checkStop) {
+  for (let i = 0; ; i += 1) {
+    try {
+      return await read();
+    } catch (error) {
+      if (!passing(error) || i >= delaysMs.length) throw error;
+      const delay = Math.round(delaysMs[i] * (0.5 + Math.random()));
+      if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+      checkStop();
+    }
+  }
+}
 
 // An XML writer drops the control characters XML cannot hold (xmlEscape), and
 // the export names where it did.
@@ -133,7 +155,9 @@ async function fetchDocumentMedia(client, mediaUrl) {
   const res = await fetch(`${client.baseUrl}${mediaUrl}`, {
     headers: { Authorization: `Bearer ${client.token}` },
   });
-  if (!res.ok) throw new Error(`media fetch failed (${res.status})`);
+  if (!res.ok) {
+    throw Object.assign(new Error(`media fetch failed (${res.status})`), { status: res.status });
+  }
   const contentType = res.headers.get('content-type');
   return {
     bytes: new Uint8Array(await res.arrayBuffer()),
@@ -254,10 +278,12 @@ export async function runExport({
   onProgress = () => {},
   shouldStop = () => false,
   fetchMedia = fetchDocumentMedia,
+  retryDelaysMs = READ_RETRY_DELAYS_MS,
 }) {
   const checkStop = () => {
     if (shouldStop()) throw new ExportCancelled();
   };
+  const reading = (read) => readAgainOnBlip(read, retryDelaysMs, checkStop);
   const ext = formatExt(preset.format);
   const layers = discoverExportLayers(project);
   const warnings = [];
@@ -325,7 +351,16 @@ export async function runExport({
   if (wantVocabTsvs || isNative || wantCldfDictionary || wantLexicon || wantEntries) {
     // A historical export carries the vocabularies as they were at the same
     // time as the documents.
-    const loaded = await loadProjectVocabularies(client, project, asOf);
+    // The loader goes on past a vocabulary it cannot read, so each of its
+    // reads is the one tried again.
+    const vocabLayers = {
+      get: (...args) => reading(() => client.vocabLayers.get(...args)),
+    };
+    const loaded = await loadProjectVocabularies(
+      Object.create(client, { vocabLayers: { value: vocabLayers } }),
+      project,
+      asOf,
+    );
     // Every document of the export is handed these entry lists, so each index
     // over them is built once for the run rather than once per document.
     vocabs = Object.values(shareVocabularies(loaded.vocabularies));
@@ -359,7 +394,7 @@ export async function runExport({
   let guidelines = [];
   if (isNative && !asOf) {
     try {
-      guidelines = await client.guidelines.list(project.id, { includeBodies: true });
+      guidelines = await reading(() => client.guidelines.list(project.id, { includeBodies: true }));
     } catch (err) {
       throw new Error(`The guidelines could not be read: ${humanizeError(err)}`, { cause: err });
     }
@@ -402,10 +437,10 @@ export async function runExport({
   // documents at a time. A read's failure is kept for its turn in the loop,
   // where it fails the export.
   const readDoc = async (id) => {
-    const raw = await client.documents.get(id, true, asOf || undefined, readLayers);
+    const raw = await reading(() => client.documents.get(id, true, asOf || undefined, readLayers));
     let comments = null;
     if (wantComments) {
-      comments = await client.comments.list(project.id, { documentId: id }).then(
+      comments = await reading(() => client.comments.list(project.id, { documentId: id })).then(
         (list) => ({ list }),
         (error) => ({ error }),
       );
@@ -456,7 +491,11 @@ export async function runExport({
     let mediaType = '';
     if (includeMedia && igtDoc.raw?.mediaUrl) {
       try {
-        const { bytes, ext: mediaExt, mime } = await fetchMedia(client, igtDoc.raw.mediaUrl);
+        const {
+          bytes,
+          ext: mediaExt,
+          mime,
+        } = await reading(() => fetchMedia(client, igtDoc.raw.mediaUrl));
         // An .eaf names its recording, and an ELAN import keeps that name in a
         // Media file field. Written back under it, with the extension of what
         // is stored, since a recording may have been converted on the way in.
@@ -687,7 +726,7 @@ export async function runExport({
       let vocabComments = [];
       if (!asOf) {
         try {
-          vocabComments = await loadVocabComments(client, vocab.id, authorNames);
+          vocabComments = await reading(() => loadVocabComments(client, vocab.id, authorNames));
         } catch (err) {
           throw new Error(
             `The comments on "${vocabName}" could not be read: ${humanizeError(err)}`,
