@@ -27,7 +27,7 @@ from .project import (FEATURES, Sentence, Token, UdDoc, UdProject, Word, feature
                       feature_refusal, load_document, normalize_feature, render_document, resolve,
                       word_ref)
 from .review import (REVIEW_FIELDS, all_words, confirm_targets, counts_phrase, discard_targets,
-                     per_field)
+                     left_phrase, per_field)
 
 # What counts as one change here, appended to the plan-is-full refusal.
 PLAN_NOTE = ("A whole document's review (confirm or discard_predictions without refs) counts as one "
@@ -786,9 +786,10 @@ def t_confirm(ws: Workspace, document: str = None, refs=None, field: str = None,
     doc = ws.doc(document)
     fields = _review_fields(field)
     if refs:
-        targets = confirm_targets(_named(ws, doc, refs), fields)
+        targets, left = confirm_targets(_named(ws, doc, refs), fields, ws.project)
         if not targets:
-            return 'Nothing to confirm: every value named is already a person\'s work or confirmed.'
+            return (' '.join(x for x in (left_phrase(left), 'Nothing else to confirm.') if x) if left
+                    else 'Nothing to confirm: every value named is already a person\'s work or confirmed.')
         staged = []
         for sentence, w, f, span_id, relation_id in targets:
             ref = word_ref(sentence, w)
@@ -796,17 +797,20 @@ def t_confirm(ws: Workspace, document: str = None, refs=None, field: str = None,
                            'token_id': w.id, 'document_id': doc.id, 'ref': ref,
                            'label': f'confirm the head of {ref}' if f == 'deprel' else f'confirm {f} on {ref}'})
         ws.add_ops(staged)
-        return f'Planned confirming {len(targets)} value(s).'
+        return f'Planned confirming {len(targets)} value(s).' + (f' {left_phrase(left)}' if left else '')
     fields = _scope_fields(ws, 'confirm_scope', doc, fields)
-    targets = confirm_targets(_whole_document(ws, doc), fields)
+    targets, left = confirm_targets(_whole_document(ws, doc), fields, ws.project)
     if not targets:
-        return f'Nothing in "{doc.name}" is waiting for review.'
+        return (f'{left_phrase(left)} Nothing else in "{doc.name}" is waiting for review.' if left
+                else f'Nothing in "{doc.name}" is waiting for review.')
     counts = per_field(targets)
+    off = f', {len(left)} off the list left unconfirmed' if left else ''
     ws.add_op({'kind': 'confirm_scope', 'document_id': doc.id, 'fields': fields,
                'count': len(targets), 'per_field': counts, 'ref': None,
-               'label': f'confirm {len(targets)} values in "{doc.name}" ({counts_phrase(counts)})'})
+               'label': f'confirm {len(targets)} values in "{doc.name}" ({counts_phrase(counts)}{off})'})
     return (f'Planned confirming {len(targets)} value(s) in "{doc.name}": {counts_phrase(counts)}. '
-            f'That is one planned change covering the whole document.')
+            f'That is one planned change covering the whole document.'
+            + (f' {left_phrase(left)}' if left else ''))
 
 
 def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field: str = None,

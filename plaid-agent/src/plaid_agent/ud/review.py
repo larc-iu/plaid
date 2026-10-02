@@ -50,19 +50,41 @@ def vouched_arc_hangs_on(sentence: Sentence, w: Word) -> bool:
                for o in sentence.words)
 
 
-def confirm_targets(words: List[Tuple[Sentence, Word]], fields) -> List[tuple]:
-    """``(sentence, word, field, span_id|None, relation_id|None)`` for every
-    value among ``words`` that a confirmation reaches."""
-    out = []
+def confirm_targets(words: List[Tuple[Sentence, Word]], fields, project) -> Tuple[List[tuple], List[tuple]]:
+    """``(targets, left)``. ``targets``: ``(sentence, word, field,
+    span_id|None, relation_id|None)`` for every value among ``words`` that a
+    confirmation reaches. ``left``: ``(sentence, word, field, value)`` for a
+    value waiting for review that the layer's closed list does not take. A
+    machine value off the list is exempt from it only while unreviewed, so
+    confirming it is refused, and with it the whole batch: it stays
+    unreviewed, as the app's Accept leaves it."""
+    out, left = [], []
     for sentence, w in words:
         for f in fields:
             if f == 'deprel':
                 continue
             for sp, _state in reviewable(w, f):
-                out.append((sentence, w, f, sp.id, None))
+                if project.allows(f, sp.value):
+                    out.append((sentence, w, f, sp.id, None))
+                else:
+                    left.append((sentence, w, f, sp.value))
         if 'deprel' in fields and relation_waiting(w):
-            out.append((sentence, w, 'deprel', None, w.relation_id))
-    return out
+            if project.allows('deprel', w.deprel):
+                out.append((sentence, w, 'deprel', None, w.relation_id))
+            else:
+                left.append((sentence, w, 'deprel', w.deprel))
+    return out, left
+
+
+def left_phrase(left: List[tuple], limit: int = 5) -> str:
+    """The values a confirmation leaves for being off a closed list, each
+    with its column and word: ``VBD (xpos, s2.w3)``. '' when there are none."""
+    if not left:
+        return ''
+    from .project import word_ref
+    items = [f'{value} ({f}, {word_ref(s, w)})' for s, w, f, value in left]
+    more = f', and {len(items) - limit} more' if len(items) > limit else ''
+    return 'Not on the list, left unconfirmed: ' + ', '.join(items[:limit]) + more + '.'
 
 
 def discard_targets(words: List[Tuple[Sentence, Word]], fields) -> Tuple[List[tuple], int]:

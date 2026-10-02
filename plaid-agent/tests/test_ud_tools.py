@@ -1510,3 +1510,48 @@ def test_a_head_on_a_word_whose_old_head_a_reshape_takes_is_not_deleted_twice(ws
     execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
     deleted = [p for kind, p in ws.client.writes if kind == 'relations.delete']
     assert head['relation_id'] not in deleted
+
+
+def _closed_ws(upos_values, deprel_values=None):
+    """The fixture with a value-set rule stored on UPOS (and on the tree's
+    layer), as plaid-ud declares one for a closed list, and r-3 machine-made."""
+    from ud_fixtures import FakeClient, document_raw, project_raw
+    proj = project_raw()
+    word_layer = proj['text_layers'][0]['token_layers'][2]
+    for sl in word_layer['span_layers']:
+        if sl['id'] == UPOS:
+            sl['constraints'] = {'ud': [{'type': 'value-set', 'values': upos_values}]}
+        if sl['id'] == LEMMA and deprel_values is not None:
+            sl['relation_layers'][0]['constraints'] = {'ud': [
+                {'type': 'value-set', 'values': deprel_values, 'delimiters': ':', 'parts': 'first'}]}
+    raw = document_raw()
+    rel = next(r for sl in raw['text_layers'][0]['token_layers'][2]['span_layers'] if sl['id'] == LEMMA
+               for rl in sl['relation_layers'] for r in rl['relations'] if r['id'] == 'r-3')
+    rel['metadata'] = {'prov': 'inferred', 'provSource': 'service:ud:parse'}
+    client = FakeClient(project=proj, documents={'ud1': raw})
+    return Workspace(client, load_project(client, PID))
+
+
+def test_confirm_leaves_a_machine_value_off_a_closed_list_and_names_it():
+    """A machine value off a closed list is exempt from it only while it is
+    unreviewed, so confirming it is refused, and with it the whole batch at
+    approval (REV-UD-UMR F4). It is left unconfirmed and named, as the app's
+    Accept does (28534191), and the rest is confirmed."""
+    ws = _closed_ws(['VERB', 'ADP', 'DET', 'PUNCT'], deprel_values=['root', 'case', 'det', 'punct'])
+    out = run(ws, 'confirm', document='Viaje', refs=['s1.w4'])
+    assert 'Not on the list, left unconfirmed: NOUN (upos, s1.w4), obl (deprel, s1.w4).' in out
+    assert 'Nothing else to confirm' in out and ws.ops == []
+    # The whole document: one scope, which says what it leaves, and at
+    # approval confirms nothing off the list.
+    out = run(ws, 'confirm', document='Viaje')
+    assert 'Not on the list, left unconfirmed: NOUN (upos, s1.w4), obl (deprel, s1.w4).' in out
+    ws2 = _closed_ws(['VERB', 'ADP', 'DET', 'PUNCT'])
+    out = run(ws2, 'confirm', document='Viaje')
+    assert out.startswith('Planned confirming 1 value(s)') and 'NOUN (upos, s1.w4)' in out
+    assert 'off the list left unconfirmed' in ws2.ops[0]['label']
+    execute_plan(ws2.client, ws2.ops, source='s', label='l', project=ws2.project)
+    patched = [i for i, _ in ws2.client.patches('spans')] + [i for i, _ in ws2.client.patches('relations')]
+    assert 'sp-u3' not in patched and 'r-3' in patched
+    # On the list, it is confirmed as before.
+    ws3 = _closed_ws(['NOUN'])
+    assert run(ws3, 'confirm', document='Viaje', refs=['s1.w4']) == 'Planned confirming 2 value(s).'

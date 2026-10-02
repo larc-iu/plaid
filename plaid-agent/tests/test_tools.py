@@ -253,6 +253,33 @@ def test_confirm_collects_unconfirmed_machine_pieces():
     assert call_tool(w3, 'confirm', {'document': 'd1', 'refs': ['s1.w3']}).startswith('Nothing to confirm')
 
 
+def test_confirm_leaves_a_machine_value_off_a_closed_tagset_and_names_it():
+    """A machine value off a closed tagset is exempt from it only while it is
+    unreviewed, so confirming it is refused, and with it the whole batch at
+    approval (REV-UD-UMR F4, the igt side). It is left unconfirmed and named,
+    and the rest is confirmed."""
+    from fixtures import MGLOSS
+    c = FakeClient(documents={'d1': _machine_doc()})
+    w = scan_ws(c)
+    w.project.field_by_layer(MGLOSS).value_sets = [{'type': 'value-set', 'values': ['Ali', 'PST'],
+                                                    'delimiters': '.'}]
+    out = call_tool(w, 'confirm', {'document': 'd1', 'refs': ['s1.w1']})
+    assert 'Not in the tagset, left unconfirmed: ERG (Morph Gloss, di).' in out
+    op = w.ops[0]
+    assert op['span_ids'] == ['sp-g1'] and 'left' not in op
+    assert op['label'].endswith(', 1 not in the tagset left unconfirmed')
+    w2 = scan_ws(c)
+    w2.project.field_by_layer(MGLOSS).value_sets = w.project.field_by_layer(MGLOSS).value_sets
+    out = call_tool(w2, 'confirm', {'document': 'd1', 'refs': ['s1'], 'field': 'Morph Gloss'})
+    assert out == 'Not in the tagset, left unconfirmed: ERG (Morph Gloss, di). Nothing else awaits review there.'
+    assert w2.ops == []
+    # Listed, it is confirmed as before.
+    w3 = scan_ws(c)
+    w3.project.field_by_layer(MGLOSS).value_sets = [{'type': 'value-set', 'values': ['Ali', 'ERG']}]
+    call_tool(w3, 'confirm', {'document': 'd1', 'refs': ['s1.w1']})
+    assert sorted(w3.ops[0]['span_ids']) == ['sp-g1', 'sp-m1b']
+
+
 def test_discard_analysis_mirrors_the_editor():
     c = FakeClient(documents={'d1': _machine_doc()})
     w = scan_ws(c)

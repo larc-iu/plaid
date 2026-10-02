@@ -31,6 +31,7 @@ from dataclasses import dataclass, field as dc_field
 from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client import ROLES, find_by_role
+from plaid_client.constraints import value_set_allows
 from plaid_client.provenance import stamp_inferred
 from plaid_client.workflows.messages import setup_incomplete
 
@@ -160,6 +161,15 @@ class UdProject:
     # The project's own annotation manual. Loaded with the project because the
     # prompt names it every turn; see plaid_agent.core.guidelines.
     guidelines: List[Guideline] = dc_field(default_factory=list)
+    #: The value-set rules stored on each field's layer, any app's, as core
+    #: enforces them: 'upos', 'xpos', ... and 'deprel' for the tree's layer.
+    value_sets: Dict[str, List[dict]] = dc_field(default_factory=dict)
+
+    def allows(self, field: str, value) -> bool:
+        """Whether the layer's stored rules take ``value`` once it is a
+        person's: a machine value off a closed list is exempt only while it is
+        unreviewed, so confirming it is refused."""
+        return all(value_set_allows(c, value) for c in self.value_sets.get(field) or ())
 
     def read_layer_ids(self) -> List[str]:
         """The layers a document read has to carry, for ``?layers=``.
@@ -210,11 +220,13 @@ def load_project(client, project_id: str) -> UdProject:
 
     span_layers: Dict[str, str] = {}
     configs: Dict[str, dict] = {}
+    value_sets: Dict[str, List[dict]] = {}
     for sl in word.get('span_layers') or []:
         for key in SPAN_KEYS:
             if _ud(sl.get('config'), key) is True:
                 span_layers[key] = sl['id']
                 configs[key] = sl.get('config') or {}
+                value_sets[key] = _value_sets(sl)
     missing = [k for k in SPAN_KEYS if k not in span_layers]
     if missing:
         raise setup_incomplete('missing the ' + ', '.join(missing) + ' layer'
@@ -228,6 +240,7 @@ def load_project(client, project_id: str) -> UdProject:
         for rl in sl.get('relation_layers') or []:
             if _ud(rl.get('config'), RELATION_KEY) is True:
                 relation_layer_id, relation_config = rl['id'], rl.get('config') or {}
+                value_sets['deprel'] = _value_sets(rl)
             elif _ud(rl.get('config'), ENHANCED_KEY) is True:
                 enhanced_layer_id = rl['id']
     if not relation_layer_id:
@@ -256,7 +269,13 @@ def load_project(client, project_id: str) -> UdProject:
             'deprel': _descriptions(relation_config),
         },
         guidelines=guidelines,
+        value_sets=value_sets,
     )
+
+
+def _value_sets(layer) -> List[dict]:
+    return [c for cs in ((layer or {}).get('constraints') or {}).values() for c in (cs or [])
+            if isinstance(c, dict) and c.get('type') == 'value-set']
 
 
 # --- document ---------------------------------------------------------------

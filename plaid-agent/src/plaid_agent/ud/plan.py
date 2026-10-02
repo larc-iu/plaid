@@ -358,7 +358,8 @@ def _resolve_confirm_scope(res: Resolution, op):
     did = op['document_id']
     doc = res.document(did)
     fields = list(op.get('fields') or [])
-    for sentence, w, f, span_id, relation_id in confirm_targets(all_words(doc), fields):
+    targets, _left = confirm_targets(all_words(doc), fields, res.project)
+    for sentence, w, f, span_id, relation_id in targets:
         ref = word_ref(sentence, w)
         yield {'kind': 'confirm', 'span_id': span_id, 'relation_id': relation_id,
                'token_id': w.id, 'document_id': did, 'ref': ref,

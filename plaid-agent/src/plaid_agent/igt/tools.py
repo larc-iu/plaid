@@ -12,6 +12,7 @@ respelling cannot overlap another) live here.
 import copy
 from typing import Any, Dict, List, Optional
 
+from plaid_client.constraints import value_set_allows
 from plaid_client.provenance import prov_state, MACHINE
 
 from ..core import history, opkind
@@ -699,21 +700,31 @@ PIECE_KEYS = ('span_ids', 'token_ids', 'link_ids')
 
 
 def _empty_pieces() -> Dict[str, Any]:
-    return {'span_ids': [], 'token_ids': [], 'link_ids': [], 'on': {}}
+    return {'span_ids': [], 'token_ids': [], 'link_ids': [], 'on': {}, 'left': []}
 
 
 def _has_pieces(pieces) -> bool:
     return any(pieces[k] for k in PIECE_KEYS)
 
 
-def _review_pieces(obj, f=None, into=None) -> Dict[str, list]:
+def _review_pieces(obj, f=None, into=None, project=None) -> Dict[str, list]:
     """Ids of the pieces of a sentence, word, or morpheme (a sentence includes
     its words) that await review: spans (only field ``f`` when given), links,
     multi-word expressions, and token metadata (only when no field is named).
-    A multi-word expression is listed once however many members are seen."""
+    A multi-word expression is listed once however many members are seen.
+
+    A value the field's closed tagset does not take is left out and listed
+    under ``left`` as ``(value, field, what it is on)``: off the list, a
+    machine value is exempt only while it is unreviewed, so confirming it is
+    refused, and with it the whole batch. It stays unreviewed, as the app's
+    own confirm leaves it."""
     out = into if into is not None else _empty_pieces()
     for name, sp in obj.fields.items():
         if (f is None or name == f.name) and _needs_review(sp.metadata):
+            field = project.field_by_layer(sp.layer_id) if project is not None else None
+            if field is not None and not all(value_set_allows(c, sp.value) for c in field.value_sets):
+                out['left'].append((sp.value, name, _what(obj)[:40]))
+                continue
             out['span_ids'].append(sp.id)
             # Which token carries it. A span on a token another op in the plan
             # deletes is gone without ever being named, and confirming it after
@@ -722,7 +733,7 @@ def _review_pieces(obj, f=None, into=None) -> Dict[str, list]:
     if isinstance(obj, Sentence):
         if f is None or f.scope != 'Sentence':
             for w in obj.words:
-                _review_pieces(w, f, out)
+                _review_pieces(w, f, out, project)
         return out
     if f is None:
         if obj.link and _needs_review(obj.link.metadata):
@@ -735,7 +746,7 @@ def _review_pieces(obj, f=None, into=None) -> Dict[str, list]:
             out['token_ids'].append(obj.id)
     if isinstance(obj, Word):
         for m in obj.morphemes:
-            _review_pieces(m, f, out)
+            _review_pieces(m, f, out, project)
     return out
 
 
@@ -752,14 +763,31 @@ def _what(obj) -> str:
     return obj.text if isinstance(obj, Sentence) else (obj.surface if isinstance(obj, Word) else obj.form)
 
 
-def _document_confirm_op(ws: Workspace, doc: IgtDoc, f) -> Optional[Dict[str, Any]]:
+def _left_phrase(left: List[tuple], limit: int = 5) -> str:
+    """What a confirmation leaves for being off a closed tagset, each value
+    with its field and what it is on: ``PST (Gloss, ka)``. '' for none."""
+    if not left:
+        return ''
+    items = [f'{value} ({field}, {what})' if what else f'{value} ({field})' for value, field, what in left]
+    more = f', and {len(items) - limit} more' if len(items) > limit else ''
+    return 'Not in the tagset, left unconfirmed: ' + ', '.join(items[:limit]) + more + '.'
+
+
+def _left_label(left: List[tuple]) -> str:
+    return f', {len(left)} not in the tagset left unconfirmed' if left else ''
+
+
+def _document_confirm_op(ws: Workspace, doc: IgtDoc, f, left: List[tuple]) -> Optional[Dict[str, Any]]:
     pieces = _empty_pieces()
     for s in doc.sentences:
-        _review_pieces(s, f, pieces)
+        _review_pieces(s, f, pieces, ws.project)
+    mine = pieces.pop('left')
+    left.extend(mine)
     if not _has_pieces(pieces):
         return None
     return {'kind': 'confirm', **pieces, 'doc': doc.id,
-            'label': f'{ws.doc_label(doc.id)}: confirm {_pieces_label(pieces)}' + (f' ({f.name})' if f else '')}
+            'label': f'{ws.doc_label(doc.id)}: confirm {_pieces_label(pieces)}' + (f' ({f.name})' if f else '')
+                     + _left_label(mine)}
 
 
 def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: Optional[str] = None,
@@ -770,6 +798,7 @@ def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: O
     the whole project is asked for in words, never staged by omission."""
     f = ws.project.field(field) if field else None
     staged: List[Dict[str, Any]] = []
+    left: List[tuple] = []
     refs = _refs(refs)
     if refs and not document:
         raise ToolError('refs need a document')
@@ -809,14 +838,16 @@ def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: O
                 raise ToolError(f'{len(ids)} documents, more than the {MAX_SCOPE_DOCS} one plan covers.')
             docs = [ws.doc(did) for did in ids]
         for doc in docs:
-            op = _document_confirm_op(ws, doc, f)
+            op = _document_confirm_op(ws, doc, f, left)
             if op:
                 staged.append(op)
     elif refs:
         doc = ws.doc(document)
         for ref in refs:
             obj = resolve(doc, ref)
-            pieces = _review_pieces(obj, f)
+            pieces = _review_pieces(obj, f, project=ws.project)
+            mine = pieces.pop('left')
+            left.extend(mine)
             if not _has_pieces(pieces):
                 continue
             # `named`: the model chose this material by reference, so it is a
@@ -825,9 +856,9 @@ def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: O
             # document names nothing and carries no such flag.
             staged.append({'kind': 'confirm', **pieces, 'named': True,
                            'label': f'{ws.doc_label(doc.id)} {ref} "{_what(obj)[:40]}": confirm {_pieces_label(pieces)}'
-                                    + (f' ({f.name})' if f else '')})
+                                    + (f' ({f.name})' if f else '') + _left_label(mine)})
     else:
-        op = _document_confirm_op(ws, ws.doc(document), f)
+        op = _document_confirm_op(ws, ws.doc(document), f, left)
         if op:
             staged.append(op)
     ws.add_ops(staged)
@@ -836,8 +867,12 @@ def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: O
         return sum(len(v) for k, v in op.items() if k.endswith('_ids'))
     n = sum(size(op) for op in staged)
     if not staged:
+        if left:
+            return _left_phrase(left) + ' Nothing else awaits review there.'
         return 'Nothing to confirm: no annotations awaiting review there.'
     out = ws.planned_note(len(staged)) + f' ({n} annotation{"s" if n != 1 else ""} will be marked verified.)'
+    if left:
+        out += ' ' + _left_phrase(left)
     if not document and len(staged) > 1:
         out += '\n' + by_document([ws.doc_label(op['doc']) for op in staged for _ in range(size(op))])
     return out
