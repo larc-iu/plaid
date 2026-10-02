@@ -333,12 +333,15 @@ async function applyToDocument(client, docId, doc, rows) {
     return;
   }
 
-  // Past MAX_BATCH_OPS the requests before a refused one landed.
+  // Past MAX_BATCH_OPS the requests before a refused one landed: the client
+  // counts what they stored (`committed`). A first request refused leaves the
+  // document unchanged.
   await client.documents.locked(docId, async () => {
     try {
       await client.batched(queueChanges);
     } catch (e) {
-      e.partial = true;
+      e.partial = (e.committed ?? 0) > 0;
+      e.unsure = !e.partial && e.status === 0;
       throw e;
     }
   });

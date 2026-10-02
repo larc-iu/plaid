@@ -377,13 +377,31 @@ test('a new word goes with its lemma span in one batch', async () => {
   assert.deepEqual(calls.at(-1).args[0][0].tokens, [morpheme.id]);
 });
 
-test('tokenizing goes with its lemma spans in one batch', async () => {
+// The lemma spans go in a request after the tokens, by the ids minted for
+// their morphemes: one request for both would have to fit the server's cap on
+// a request's body (REV-DEBT-R2 F1).
+test('tokenizing sends the tokens, then their lemma spans', async () => {
   const { doc, release, calls } = open();
   release();
   await doc.clearTokens();
   const body = doc.layerInfo.textLayer.text.body;
-  const sent = await oneBatch(doc, calls, () => doc.tokenize(body));
-  assert.deepEqual(sent.slice(-1), ['spans.bulkCreate']);
+  const orig = doc._client.batched;
+  const batches = [];
+  doc._client.batched = async (fn) => {
+    const from = calls.length;
+    try {
+      return await orig(fn);
+    } finally {
+      batches.push(calls.slice(from).map((c) => c.call));
+    }
+  };
+  assert.equal(await doc.tokenize(body), true);
+  assert.deepEqual(batches, [
+    ['tokens.bulkCreate', 'tokens.bulkCreate', 'tokens.bulkCreate'],
+    ['spans.bulkCreate'],
+  ]);
+  const morphemes = new Set(doc.layerInfo.morphemeTokenLayer.tokens.map((t) => t.id));
+  assert.ok(calls.at(-1).args[0].every((span) => morphemes.has(span.tokens[0])));
 });
 
 test("a word's new parts go with their Form and Lemma spans in one batch", async () => {

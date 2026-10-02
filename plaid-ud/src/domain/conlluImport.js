@@ -193,9 +193,9 @@ export async function importConlluDocument(
       );
     }
 
-    // The text and every token, span and relation are made in ONE batch below,
-    // each under an id minted here, so a span names its morpheme and a
-    // relation its lemma spans by those ids.
+    // The text and every token, span and relation are made under an id minted
+    // here, so a span names its morpheme and a relation its lemma spans by
+    // those ids without waiting for the server's answer.
     const textId = uuidv7();
 
     // Sentences carry arbitrary `# k = v` metadata; words carry the MWT
@@ -383,8 +383,12 @@ export async function importConlluDocument(
       }
     }
 
-    // Everything in one atomic batch: the text, sentences -> words ->
-    // morphemes, the annotation spans, then the relations.
+    // Three requests, one after another: the text with sentences -> words ->
+    // morphemes, then the annotation spans, then the relations. One request
+    // for the whole would have to fit the server's cap on a request's body
+    // (about 870 bytes a word), which a document of 12,000 words does not.
+    // A refusal of any of them is taken back by the catch, which deletes the
+    // document.
     await client.batched(async (b) => {
       b.texts.create(textLayer.id, createdDocumentId, hierarchy.text, undefined, undefined, {
         id: textId,
@@ -392,9 +396,13 @@ export async function importConlluDocument(
       b.tokens.bulkCreate(sentenceOps);
       if (wordOps.length > 0) b.tokens.bulkCreate(wordOps);
       if (morphemeOps.length > 0) b.tokens.bulkCreate(morphemeOps);
+    });
+    await client.batched(async (b) => {
       for (const ops of [formOps, lemmaOps, uposOps, xposOps, featOps]) {
         if (ops.length) b.spans.bulkCreate(ops);
       }
+    });
+    await client.batched(async (b) => {
       if (relationOps.length > 0) b.relations.bulkCreate(relationOps);
       if (enhancedOps.length > 0) b.relations.bulkCreate(enhancedOps);
     });

@@ -458,3 +458,51 @@ test('apply: every relation delete goes before an edge is moved or made, so no r
   const ops = client.batches.flat().filter((op) => op.startsWith('relations.'));
   assert.deepEqual(ops, ['relations.delete', 'relations.setTarget']);
 });
+
+// REV-DEBT-R2 F2: a rewrite past MAX_BATCH_OPS goes in several requests under
+// the lock. A refusal of the first, with nothing stored (`committed` 0), says
+// the document is unchanged; one after a part landed says partly changed.
+const bigSetup = (refusal) => {
+  // One word a sentence: a rule applies at most 1,000 times in a sentence.
+  const n = 1100;
+  const raw = rawDocFromConllu(
+    Array.from({ length: n }, (_, i) =>
+      [`# text = w${i}`, `1\tw${i}\tw${i}\tDET\t_\t_\t0\troot\t_\t_`, ''].join('\n'),
+    ).join('\n'),
+    'doc1',
+  );
+  const client = stubClient(raw);
+  client.refuse = () => true;
+  const batched = client.batched;
+  client.batched = async (fn) => {
+    try {
+      return await batched(fn);
+    } catch (e) {
+      throw Object.assign(e, refusal);
+    }
+  };
+  const project = {
+    id: 'p1',
+    name: 'P',
+    maintainers: [],
+    writers: [],
+    readers: [],
+    textLayers: raw.textLayers,
+  };
+  return { client, project, layerInfo: getUdLayerInfo(raw) };
+};
+
+for (const [what, refusal, partial, unsure] of [
+  ['a first request refused, nothing stored', { status: 409, committed: 0 }, false, false],
+  ['a later request refused after a part landed', { status: 409, committed: 1000 }, true, false],
+  ['a first request whose answer never came', { status: 0, committed: 0 }, false, true],
+]) {
+  test(`apply past the batch limit: ${what}`, async () => {
+    const { client, project, layerInfo } = bigSetup(refusal);
+    const grs = parseGrs('pattern { X [upos=DET] } commands { X.upos = PRON }');
+    const plan = await planRewrite(client, { project, user: null, layerInfo, grs });
+    const out = await applyRewrite(client, { rows: plan.rows, docs: plan.docs, label: 'Rewrite' });
+    assert.equal(out.failed.partial, partial);
+    assert.equal(out.failed.unsure, unsure);
+  });
+}

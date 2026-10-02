@@ -396,10 +396,8 @@ export class ConlluDocument extends DocumentModel {
   // Token operations
   // ============================================================
 
-  // Whitespace-tokenize the document body into the full sentence > word >
-  // morpheme hierarchy. Issues a single atomic batch (sentences -> words
-  // -> morphemes) and follows up with default lemma spans for each
-  // morpheme.
+  // Tokenize the document body into the full sentence > word > morpheme
+  // hierarchy, with a default lemma span on each morpheme.
   async tokenize(textContent) {
     const info = this.layerInfo;
     const text = info.textLayer?.text;
@@ -466,9 +464,11 @@ export class ConlluDocument extends DocumentModel {
       }
     });
 
-    // One batch: every row is made under the id this page minted, so the
-    // default lemma spans name their morphemes in the same request, and a
-    // refusal leaves no word without its lemma.
+    // Every row is made under the id this page minted, so the default lemma
+    // spans name their morphemes without waiting for an answer. They go in a
+    // request of their own after the tokens: one request for both would have
+    // to fit the server's cap on a request's body. A refusal of the second
+    // refetches the document, which shows the words without their lemmas.
     return this._queueWrite(label, async () => {
       const bulk = (layer, rows) =>
         rows.map(({ id, begin, end }) => ({
@@ -484,6 +484,8 @@ export class ConlluDocument extends DocumentModel {
           b.tokens.bulkCreate(bulk(wordTokenLayer, words));
           b.tokens.bulkCreate(bulk(morphemeTokenLayer, morphemes));
         }
+      });
+      await this._client.batched(async (b) => {
         if (lemmas.length) {
           b.spans.bulkCreate(
             lemmas.map((span) => ({
