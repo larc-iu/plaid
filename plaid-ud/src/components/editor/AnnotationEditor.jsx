@@ -342,7 +342,7 @@ export const AnnotationEditor = () => {
     recut: (snapshot, key) => {
       const { data } = cellOf(key);
       return snapshot != null && data && shapeOf(data) !== snapshot
-        ? { unit: 'word', text: data.wordForm }
+        ? { unit: 'word', text: data.wordForm, ids: [data.token.id] }
         : null;
     },
     entityIds: (key) => {

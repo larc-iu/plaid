@@ -128,7 +128,8 @@ export const shapeOf = (doc, key) => {
 };
 
 /**
- * What the cell is on now, as `{ unit, text }`, when the word under `shape`
+ * What the cell is on now, as `{ unit, text, ids }` (`ids` the re-cut row,
+ * which names who re-cut it), when the word under `shape`
  * was split or joined since (its text changed), or its morpheme re-segmented
  * (its form changed), or its sentence split, joined or respelled, else null.
  */
@@ -136,13 +137,15 @@ export const recutOf = (doc, shape) => {
   if (!shape) return null;
   if (shape.sentenceId) {
     const text = sentenceTextNow(doc, shape.sentenceId);
-    return text != null && text !== shape.sentence ? { unit: 'sentence', text } : null;
+    return text != null && text !== shape.sentence
+      ? { unit: 'sentence', text, ids: [shape.sentenceId] }
+      : null;
   }
   const now = wordNow(doc, shape.wordId, shape.rowId);
   if (!now) return null;
-  if (now.word !== shape.word) return { unit: 'word', text: now.word };
+  if (now.word !== shape.word) return { unit: 'word', text: now.word, ids: [shape.wordId] };
   if (shape.morpheme != null && now.morpheme != null && now.morpheme !== shape.morpheme) {
-    return { unit: 'morpheme', text: now.morpheme };
+    return { unit: 'morpheme', text: now.morpheme, ids: [shape.rowId] };
   }
   return null;
 };

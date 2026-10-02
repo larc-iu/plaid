@@ -48,6 +48,33 @@ describe('announceCells', () => {
     expect(said).toEqual([['warn', 'b changed this to DOG.']]);
   });
 
+  // H10-CONC-1, H11-MULTI-1: a newer change elsewhere (a create whose
+  // description names only its layer, a bulk op) is not who changed this cell.
+  it('names nobody when no change names the cell, however recent the others', async () => {
+    const { announce, said } = setup([
+      {
+        user: { id: 'c@x.com', displayName: 'c' },
+        ops: [{ description: 'Create span in layer L' }],
+      },
+      { user: { id: 'd@x.com', displayName: 'd' }, ops: [{ description: 'span s9' }] },
+    ]);
+    announce({ kind: 'conflict', key: 'k', typed: 'x', stored: 'DOG', entityIds: ['s1'] });
+    await flush();
+    expect(said).toEqual([['warn', 'Someone changed this to DOG.']]);
+  });
+
+  it('says You for the same account in another tab, unless someone else wrote since', async () => {
+    const mine = { user: { id: 'a@b.com', displayName: 'a' }, ops: [{ description: 'span s1' }] };
+    const other = { user: { id: 'c@x.com', displayName: 'c' }, ops: [{ description: 'Bulk' }] };
+    const first = setup([mine, other]);
+    first.announce({ kind: 'conflict', key: 'k', typed: 'x', stored: 'DOG', entityIds: ['s1'] });
+    const second = setup([other, mine]);
+    second.announce({ kind: 'conflict', key: 'k', typed: 'x', stored: 'DOG', entityIds: ['s1'] });
+    await flush();
+    expect(first.said).toEqual([['warn', 'You changed this to DOG.']]);
+    expect(second.said).toEqual([['warn', 'Someone changed this to DOG.']]);
+  });
+
   it('names a re-cut word, and says someone when nobody else is in the log', async () => {
     const { announce, said } = setup();
     announce({

@@ -4,24 +4,34 @@
 // A cell edit refused because someone else changed the cell first shows the
 // stored value, with the refused one under it. A toast names the change:
 // "b changed this to NOUN." The name comes from the document's audit log: the
-// newest change by another user that wrote one of the cell's entities (its
-// span or token), else the newest change by another user at all.
+// newest change whose operations name one of the cell's entities (its span or
+// token). No match names nobody ("Someone"): the newest change by anyone else
+// may have touched another cell entirely.
 
 import { settledId } from '../domain/pendingIds.js';
 
 const RECENT = 50;
 
+/** What `whoChanged` answers for a change made by the same account. */
+const YOU = 'You';
+
 /**
  * The display name of whoever last changed one of `entityIds` in the
- * document, else of whoever last changed anything in it but `me`, or null.
+ * document, `YOU` when that was `me` (another tab or a run under the same
+ * account) and nobody else wrote since, or null when the log names nobody.
  */
 async function whoChanged(client, documentId, entityIds, me) {
   const ids = (entityIds ?? []).filter(Boolean);
+  if (ids.length === 0) return null;
   const page = await client.documents.auditPage(documentId, { order: 'desc', limit: RECENT });
-  const others = (page?.entries ?? []).filter((e) => e.user?.id && e.user.id !== me);
+  const entries = (page?.entries ?? []).filter((e) => e.user?.id);
   const wrote = (e) => (e.ops ?? []).some((op) => ids.some((id) => op.description?.includes(id)));
-  const entry = others.find(wrote) ?? others[0];
-  return entry ? entry.user.displayName || entry.user.id : null;
+  const at = entries.findIndex(wrote);
+  if (at < 0) return null;
+  const entry = entries[at];
+  if (entry.user.id !== me) return entry.user.displayName || entry.user.id;
+  // Ours, but a later change by someone else that names no id may be the one.
+  return entries.slice(0, at).some((e) => e.user.id !== me) ? null : YOU;
 }
 
 // A value that already ends a sentence ("He is tall.") takes no second period.
@@ -67,7 +77,10 @@ export const conflictNoteParts = (typed) => ({
  */
 export const announceCells = (context) => (event) => {
   if (event.kind === 'conflict') {
-    const ids = (event.entityIds ?? []).filter(Boolean).map(settledId);
+    // A re-cut is named by the change that split, joined or re-segmented its row.
+    const ids = [...(event.entityIds ?? []), ...(event.recut?.ids ?? [])]
+      .filter(Boolean)
+      .map(settledId);
     Promise.resolve()
       .then(() => whoChanged(context.client, context.documentId, ids, context.me))
       .catch(() => null)

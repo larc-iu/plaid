@@ -45,7 +45,9 @@ function mount() {
   const client = makeFakeClient();
   client.query = async () => ({ results: [] });
   client.documents.auditPage = async () => ({
-    entries: [{ user: { id: 'b@x.com', displayName: 'b' }, ops: [] }],
+    entries: [
+      { user: { id: 'b@x.com', displayName: 'b' }, ops: [{ description: 'Split token s-2' }] },
+    ],
     nextCursor: null,
   });
   const doc = new IgtDocument({

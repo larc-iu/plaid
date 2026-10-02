@@ -134,7 +134,8 @@ describe('a transcript row whose edit lost to another change of its segment', ()
 
     expect(row(r.container, 2).value).toBe('deux');
     expect(noteOf(r.container, 2)).toBe('Yours: dos · Enter to keep yours');
-    expect(toasts.warn).toEqual(['b changed this to deux.']);
+    // A text save names the text, not the segment, so the log names nobody.
+    expect(toasts.warn).toEqual(['Someone changed this to deux.']);
     expect(toasts.error).toEqual([]);
     expect(server.body).toBe('one deux three');
     await r.unmount();

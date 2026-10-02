@@ -58,8 +58,9 @@ export class CellEngine {
    *   row is gone.
    * - `shape(key)`: an opaque snapshot of what the value is typed for (the
    *   word, the morpheme, the sentence), or null.
-   * - `recut(snapshot, key)`: `{ unit, text }` when what the cell is on was
-   *   split, joined or respelled since `snapshot`, else null.
+   * - `recut(snapshot, key)`: `{ unit, text, ids }` when what the cell is on
+   *   was split, joined or respelled since `snapshot` (`ids` the row's, so the
+   *   toast can name who), else null.
    * - `view(key, canonical)`: the drawn cell, a CellView, or null.
    * - `announce(event)`: hears `{ kind: 'conflict', key, typed, stored, recut,
    *   entityIds }`, `{ kind: 'keptInCell', key, field }` and `{ kind: 'lost',

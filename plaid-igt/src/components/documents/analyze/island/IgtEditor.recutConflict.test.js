@@ -30,7 +30,10 @@ function mount() {
   client.query = async () => ({ results: [] });
   client.documents.auditPage = async () => ({
     entries: [
-      { user: { id: 'b@x.com', displayName: 'b' }, ops: [{ description: 'Split token w-1' }] },
+      {
+        user: { id: 'b@x.com', displayName: 'b' },
+        ops: [{ description: 'Split token w-1' }, { description: 'Update token m-1' }],
+      },
     ],
     nextCursor: null,
   });
