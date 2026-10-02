@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useManagedProject } from '@ui/hooks/useManagedProject.js';
 import { expectStored, isConfigConflict } from '@ui/domain/configCells.js';
 import { getUmrLayerInfo, readIlgConfig, UMR_NAMESPACE } from '../../utils/umrLayerUtils.js';
-import { HEADERS, proposeIlg } from '../../domain/ilg.js';
+import { HEADERS, proposeIlg, resolveIlg } from '../../domain/ilg.js';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
@@ -32,10 +32,14 @@ export const UmrSettings = () => {
   const [rows, setRows] = useState([]);
   const [saving, setSaving] = useState(false);
 
-  // Seed from the stored mapping, else the proposal, and re-seed on reload.
+  // Seed from the lines the canvas and the export draw (the stored mapping,
+  // a line whose layer is gone taking the proposal's layer for it, else the
+  // proposal), and re-seed on reload. An archive import or a project copy
+  // gives layers new ids, and the raw mapping showed those lines with no
+  // source.
   useEffect(() => {
     if (!project) return;
-    setRows(readIlgConfig(project) || proposeIlg(layerInfo));
+    setRows(resolveIlg(readIlgConfig(project), layerInfo));
   }, [project, layerInfo]);
 
   const sources = useMemo(() => {
