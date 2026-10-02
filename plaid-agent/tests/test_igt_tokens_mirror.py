@@ -39,6 +39,10 @@ TOKENS = [
     '😀', '👍🏽', '©', '®', '™', '‼', '↔', '⌚', '〰', '〽', '⁉', '→', '=', '+', '$', '€', '§', '¶',
     '«', '»', '¿', '¡', '–', '—', '…', '。', '、', '、。', '٪', '٫', '·', '•', '★', '☆', '♪', '✓',
     'ʼ', '’', '‍', '¨', '^', '`', '~', '|', '\\', '°', '±', '×', '÷',
+    # New in Unicode 16, which the app's node has and Python 3.12's
+    # unicodedata (15.0) does not (REV-AGENT F2): Garay hyphen, a
+    # legacy-computing symbol, a control picture.
+    '\U00010d6e', '\U0001cc00', '\u2427', 'ab\U00010d6e',
 ]
 TEXTS = [
     "Ali-di gam akuna.", "k'a b'ok?", "¿Qué tal? Bien.", "ab`cd ef", "a∅b ∅ c",
