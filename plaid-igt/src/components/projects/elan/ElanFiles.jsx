@@ -99,6 +99,7 @@ export const ElanFiles = ({
   onRemoveEaf = null,
   onRemoveMedia = null,
   onConvert = null,
+  onStopConverting = null,
   recordMediaName = true,
   onRecordMediaName = null,
 }) => {
@@ -283,10 +284,26 @@ export const ElanFiles = ({
       {converting ? (
         <div className="flex flex-col gap-1" aria-live="polite">
           <Progress value={converting.fraction * 100} label="Conversion progress" />
-          <p className="text-xs text-muted-foreground">
-            Converting {converting.name}
-            {converting.total > 1 ? ` (${converting.index + 1} of ${converting.total})` : ''}.
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-xs text-muted-foreground">
+              {converting.stopping
+                ? 'Stopping.'
+                : `Converting ${converting.name}${
+                    converting.total > 1 ? ` (${converting.index + 1} of ${converting.total})` : ''
+                  }.`}
+            </p>
+            {onStopConverting && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-auto"
+                onClick={onStopConverting}
+                disabled={converting.stopping}
+              >
+                Stop
+              </Button>
+            )}
+          </div>
         </div>
       ) : (
         toConvert.length > 0 && (

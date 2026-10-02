@@ -15,39 +15,58 @@ import { notifyError, notifyWarning } from '@/utils/feedback';
 import { transcodeToMp3 } from '@/domain/media/transcodeToMp3';
 
 export function useRecordingConversion(setMediaFiles) {
-  // {name, fraction, index, total} while a conversion runs, else null.
+  // {name, fraction, index, total, stopping} while a conversion runs, else null.
   const [converting, setConverting] = useState(null);
-  const stopRef = useRef(false);
+  const abortRef = useRef(null);
 
-  /** Convert `files` in place, one after another. Failures are reported and skipped. */
+  /**
+   * Convert `files` in place, one after another. Failures are reported and
+   * skipped. A stop ends the file being converted (its original stays in the
+   * batch) and the ones after it, and keeps the ones already converted.
+   */
   const convertRecordings = async (files) => {
-    stopRef.current = false;
+    const controller = new AbortController();
+    abortRef.current = controller;
     const failed = [];
+    let done = 0;
     for (const [index, file] of files.entries()) {
-      if (stopRef.current) break;
-      setConverting({ name: file.name, fraction: 0, index, total: files.length });
+      if (controller.signal.aborted) break;
+      setConverting({ name: file.name, fraction: 0, index, total: files.length, stopping: false });
       try {
         const converted = await transcodeToMp3(file, {
+          signal: controller.signal,
           onProgress: (fraction) => setConverting((c) => (c ? { ...c, fraction } : c)),
         });
         if (converted) {
           setMediaFiles((prev) => prev.map((f) => (f === file ? converted : f)));
+          done += 1;
         }
       } catch (error) {
         console.error('Converting a recording failed:', error);
         failed.push(file.name);
       }
     }
+    if (abortRef.current === controller) abortRef.current = null;
     setConverting(null);
     if (failed.length) {
       notifyError(
         `${failed.join(', ')} ${failed.length === 1 ? 'is' : 'are'} unchanged.`,
         'Failed to convert',
       );
+    } else if (controller.signal.aborted) {
+      notifyWarning(`Converted ${done} of ${files.length}.`, 'Conversion stopped');
     } else if (files.length > 1) {
       notifyWarning(`Converted ${files.length} recordings.`, 'Recordings');
     }
   };
 
-  return { converting, convertRecordings, stopConverting: () => (stopRef.current = true) };
+  // A recording is decoded whole before it is encoded, and the decode cannot
+  // be interrupted, so the stop is said at once and lands when it ends.
+  const stopConverting = () => {
+    if (!abortRef.current) return;
+    abortRef.current.abort();
+    setConverting((c) => (c ? { ...c, stopping: true } : c));
+  };
+
+  return { converting, convertRecordings, stopConverting };
 }

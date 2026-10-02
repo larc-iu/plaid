@@ -428,6 +428,7 @@ export const ImportElanDocuments = () => {
                   onRemoveEaf={batch.removeEaf}
                   onRemoveMedia={batch.removeMedia}
                   onConvert={conversion.convertRecordings}
+                  onStopConverting={conversion.stopConverting}
                   recordMediaName={batch.recordMediaName}
                   onRecordMediaName={batch.setRecordMediaName}
                 />
