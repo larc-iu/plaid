@@ -15,7 +15,6 @@ ops with a :class:`TrackingBatcher` and a :class:`Stamps`, and lets
 :class:`PlanError` out.
 """
 
-import hashlib
 import json
 import logging
 import unicodedata
@@ -26,6 +25,8 @@ from typing import Any, Dict, Iterable, List, Optional
 # created_id is plaid_client's reader of a create response, kept here for a plan that reads one.
 from plaid_client import DocumentLockLost, PlaidAPIError, created_id, metadata_ops, uuid7  # noqa: F401
 from plaid_client.client import MAX_BATCH_OPS
+from plaid_client.http import minted_taken
+from plaid_client.ids import drawn_uuid7
 from plaid_client.service import locked_for_writes
 
 from .opkind import MEMBER, ROW
@@ -96,18 +97,12 @@ class Minter:
         if u.version != 7:
             raise ValueError(f'a plan draws its ids from a UUIDv7, not {seed!r}')
         self.seed = str(u)
-        top = u.int >> 64
-        # The millisecond and the counter within it, as one number to count on from.
-        self._at = ((top >> 16) << 12) | (top & 0xFFF)
         self._n = 0
         self._drawn: set = set()
 
     def __call__(self) -> str:
         n, self._n = self._n, self._n + 1
-        at = self._at + 1 + n
-        rand = int.from_bytes(hashlib.sha256(f'{self.seed}/{n}'.encode()).digest()[:8], 'big') >> 2
-        value = ((at >> 12) << 80) | (0x7 << 76) | ((at & 0xFFF) << 64) | (0b10 << 62) | rand
-        made = str(uuid.UUID(int=value))
+        made = drawn_uuid7(self.seed, n)
         self._drawn.add(made)
         return made
 
@@ -116,10 +111,10 @@ class Minter:
         taken: an earlier run of the plan made that row. Its answer was lost,
         or the service stopped before the record said so, and the key that
         would have replayed it is gone or was never the plan's (a batch of
-        comments alone takes one of its own)."""
-        data = getattr(error, 'response_data', None)
-        return (isinstance(error, PlaidAPIError) and error.status == 409 and isinstance(data, dict)
-                and data.get('error') == 'id-taken' and data.get('id') in self._drawn)
+        comments alone takes one of its own). Not when that row has been
+        deleted since. The client's rule (``minted_taken``)."""
+        return isinstance(error, PlaidAPIError) and minted_taken(
+            error.status, getattr(error, 'response_data', None), self._drawn)
 
     def once(self, create):
         """Run ``create()``, a write made on the client that makes rows under

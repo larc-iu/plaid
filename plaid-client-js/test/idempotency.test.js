@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PlaidClient, MAX_BATCH_OPS, uuidv7, wasReplayed } from "../src/index.js";
-import { retryUnknown, isUnknownOutcome } from "../src/http.js";
+import { retryUnknown, isUnknownOutcome, mintedTaken } from "../src/http.js";
 
 const KEY = "idempotency-key";
 
@@ -683,4 +683,19 @@ test("what a failed split batch saved is marked when a saved request was replaye
   }
   assert.equal(caught.committed, MAX_BATCH_OPS);
   assert.equal(wasReplayed(caught.committedResults), true);
+});
+
+test("a taken id is made only when it was minted and its row is not deleted", () => {
+  // The Python twin is plaid_client.http.minted_taken (R1-DEBT-CORE-6).
+  const mine = new Set(["a", "b"]);
+  assert.equal(mintedTaken(409, { error: "id-taken", id: "a" }, mine), true);
+  assert.equal(
+    mintedTaken(409, { error: "id-taken", id: "a", deleted: true }, mine),
+    false,
+  );
+  assert.equal(mintedTaken(409, { error: "id-taken", id: "c" }, mine), false);
+  assert.equal(mintedTaken(409, { error: "Document version mismatch" }, mine), false);
+  assert.equal(mintedTaken(422, { error: "id-taken", id: "a" }, mine), false);
+  assert.equal(mintedTaken(409, { error: "id-taken", id: "a" }, null), false);
+  assert.equal(mintedTaken(409, null, mine), false);
 });

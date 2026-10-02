@@ -187,6 +187,17 @@ def is_unknown_outcome(error):
     return getattr(error, 'status', None) in (0, 502, 504)
 
 
+def minted_taken(status, data, minted) -> bool:
+    """Whether a create refused with ``status`` and body ``data`` was made by
+    an earlier send of the same work: ``409 id-taken`` for an id in
+    ``minted``, the ids the work minted for its creates, and not for a row
+    deleted since (there is nothing to go on with). The one rule for a lost
+    answer's create, here for ``operation(minted=)`` and for the assistants'
+    plans. The JS twin is ``mintedTaken``."""
+    return (status == 409 and isinstance(data, dict) and data.get('error') == 'id-taken'
+            and not data.get('deleted') and bool(minted) and data.get('id') in minted)
+
+
 def retry_unknown(attempt, delays=None, on_retry=None):
     """Run ``attempt``, sending it again after each delay in ``delays``
     (seconds, default ``UNKNOWN_RETRY_DELAYS_S``) while it fails with an
@@ -973,11 +984,11 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
                     if keyed else retry_while_busy(attempt, on_retry=on_retry))
     except PlaidAPIError as e:
         data = e.response_data if isinstance(e.response_data, dict) else {}
-        # Only a single create: a bulk refused whole made none of its rows.
-        # Never a deleted row: there is nothing to open.
-        if (e.status == 409 and data.get('error') == 'id-taken'
-                and not data.get('deleted')
-                and minted and data.get('id') in minted
+        # Answered as made only for a single create, the one whose answer is
+        # the id alone. A bulk or a batch taken so is made whole (it is one
+        # transaction), and a caller that sends one decides what it answers
+        # (minted_taken, as an assistant's plan does).
+        if (minted_taken(e.status, data, minted)
                 and isinstance(request_body, dict) and request_body.get('id') == data.get('id')):
             if stamped_group is not None:
                 stamped_group['written'] = True

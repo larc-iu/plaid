@@ -79,6 +79,18 @@ def test_a_plans_ids_are_uuidv7s_in_order_after_its_own_and_the_same_every_time(
     assert ms(ids[-1]) - ms(seed) in (1, 2)
 
 
+def test_a_taken_id_whose_row_was_deleted_is_not_taken_as_made():
+    """R1-DEBT-CORE-6: the client's rule (plaid_client.http.minted_taken). A
+    row deleted since an earlier run made it is not made for this plan, and
+    the plan stops rather than writing on past it."""
+    m = Minter(uuid7())
+    made = m()
+    taken = {'error': 'id-taken', 'id': made}
+    assert m.made(PlaidAPIError('HTTP 409', status=409, response_data=taken))
+    assert not m.made(PlaidAPIError('HTTP 409', status=409, response_data={**taken, 'deleted': True}))
+    assert not m.made(PlaidAPIError('HTTP 409', status=409, response_data={**taken, 'id': uuid7()}))
+
+
 def test_a_seed_that_is_not_a_uuidv7_is_refused():
     with pytest.raises(ValueError):
         Minter(str(uuid.uuid4()))

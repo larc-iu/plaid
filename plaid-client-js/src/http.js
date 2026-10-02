@@ -277,6 +277,22 @@ export function isUnknownOutcome(error) {
 }
 
 /**
+ * Whether a create refused with `status` and body `data` was made by an
+ * earlier send of the same work: `409 id-taken` for an id in `minted` (a Set
+ * of the ids the work minted for its creates), and not for a row deleted
+ * since (there is nothing to go on with). The one rule for a lost answer's
+ * create. The Python twin is `minted_taken`.
+ */
+export function mintedTaken(status, data, minted) {
+  return (
+    status === 409 &&
+    data?.error === "id-taken" &&
+    !data.deleted &&
+    !!minted?.has(data.id)
+  );
+}
+
+/**
  * Run `attempt`, sending it again after each delay in `delaysMs` while it
  * fails with an unknown outcome. Only for a keyed write, whose resend is
  * answered from the first send when that one landed. Not when the browser
@@ -819,13 +835,11 @@ export async function makeRequest(client, method, path, options = {}) {
 
     if (!response.ok) {
       const errorData = await parseErrorBody(response);
-      // Only a single create: a bulk refused whole made none of its rows.
-      // Never a deleted row: there is nothing to open.
+      // Answered as made only for a single create, the one whose answer is
+      // the id alone. A bulk or a batch taken so is made whole (it is one
+      // transaction), and a caller that sends one decides what it answers.
       if (
-        response.status === 409 &&
-        errorData?.error === "id-taken" &&
-        !errorData.deleted &&
-        minted?.has(errorData.id) &&
+        mintedTaken(response.status, errorData, minted) &&
         requestBody?.id === errorData.id
       ) {
         if (stampedGroup) stampedGroup.written = true;
