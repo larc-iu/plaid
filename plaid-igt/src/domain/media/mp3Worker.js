@@ -6,60 +6,15 @@
 // solid CPU, which is exactly the kind of work that must not run on the thread
 // painting the page.
 
-import { Mp3Encoder } from '@breezystack/lamejs';
+import { encodeMp3 } from './mp3Encode.js';
 
-// LAME's frame size. Anything else just gets buffered into these internally.
-const BLOCK = 1152;
-const PROGRESS_EVERY = 200; // blocks, ~14 s of audio at 16 kHz
-
-/** Float samples in [-1, 1] to 16-bit PCM, which is what the encoder takes. */
-const toPcm = (samples, from, count, into) => {
-  for (let i = 0; i < count; i++) {
-    const s = Math.max(-1, Math.min(1, samples[from + i]));
-    into[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-  }
-  return count === into.length ? into : into.subarray(0, count);
-};
-
-function encode(samples, sampleRate, bitrateKbps) {
-  const encoder = new Mp3Encoder(1, sampleRate, bitrateKbps);
-  const parts = [];
-  const pcm = new Int16Array(BLOCK);
-  let bytes = 0;
-  const blocks = Math.ceil(samples.length / BLOCK);
-
-  for (let b = 0; b < blocks; b++) {
-    const from = b * BLOCK;
-    const chunk = encoder.encodeBuffer(
-      toPcm(samples, from, Math.min(BLOCK, samples.length - from), pcm),
-    );
-    if (chunk.length) {
-      parts.push(chunk);
-      bytes += chunk.length;
-    }
-    if (b % PROGRESS_EVERY === 0) self.postMessage({ type: 'progress', done: b, total: blocks });
-  }
-
-  const tail = encoder.flush();
-  if (tail.length) {
-    parts.push(tail);
-    bytes += tail.length;
-  }
-
-  const out = new Uint8Array(bytes);
-  let at = 0;
-  for (const part of parts) {
-    out.set(part, at);
-    at += part.length;
-  }
-  return out;
-}
-
-// A stop terminates the worker: the loop above reads no message until it ends.
+// A stop terminates the worker: the encode reads no message until it ends.
 self.onmessage = ({ data }) => {
   if (data.type !== 'run') return;
   try {
-    const mp3 = encode(data.samples, data.sampleRate, data.bitrateKbps);
+    const mp3 = encodeMp3(data.samples, data.sampleRate, data.bitrateKbps, (done, total) =>
+      self.postMessage({ type: 'progress', done, total }),
+    );
     self.postMessage({ type: 'result', mp3 }, [mp3.buffer]);
   } catch (error) {
     self.postMessage({ type: 'error', message: error?.message ?? String(error) });

@@ -1,35 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { Mp3Encoder } from '@breezystack/lamejs';
 import { mp3NameFor, estimateMp3Bytes, MP3_BITRATE_KBPS } from './transcodeToMp3.js';
+import { encodeMp3, ENCODER_DELAY } from './mp3Encode.js';
 
-// The worker's encode loop, which cannot be imported here (it installs a
-// self.onmessage handler on load). Kept identical to mp3Worker.js so this
-// tests the same arithmetic: block size, PCM scaling, and the flush.
+const encode = (samples, sampleRate = 16000) => encodeMp3(samples, sampleRate, MP3_BITRATE_KBPS);
 const BLOCK = 1152;
-const encode = (samples, sampleRate = 16000) => {
-  const encoder = new Mp3Encoder(1, sampleRate, MP3_BITRATE_KBPS);
-  const parts = [];
-  const pcm = new Int16Array(BLOCK);
-  for (let from = 0; from < samples.length; from += BLOCK) {
-    const count = Math.min(BLOCK, samples.length - from);
-    for (let i = 0; i < count; i++) {
-      const s = Math.max(-1, Math.min(1, samples[from + i]));
-      pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-    }
-    const chunk = encoder.encodeBuffer(count === BLOCK ? pcm : pcm.subarray(0, count));
-    if (chunk.length) parts.push(chunk);
-  }
-  const tail = encoder.flush();
-  if (tail.length) parts.push(tail);
-  const bytes = parts.reduce((n, p) => n + p.length, 0);
-  const out = new Uint8Array(bytes);
-  let at = 0;
-  for (const p of parts) {
-    out.set(p, at);
-    at += p.length;
-  }
-  return out;
-};
 
 /** A 440 Hz tone, the length of `seconds` at 16 kHz. */
 const tone = (seconds) => {
@@ -67,6 +42,36 @@ describe('mp3 encoding', () => {
   it('clamps samples outside [-1, 1] rather than wrapping them', () => {
     const loud = new Float32Array(BLOCK * 2).fill(4);
     expect(encode(loud).length).toBeGreaterThan(0);
+  });
+});
+
+// The conversion promises the original's timing. LAME's output plays
+// ENCODER_DELAY samples late and lamejs writes no tag a decoder could trim it
+// by, so the encoder is fed the recording without that many samples at the
+// front. Decoded in Chromium, speech placed at 1, 60 and 110 s comes back
+// 1105 samples late before and 0 after (plaid-igt/out/FX-W2-MEDIA/mp3lag.mjs,
+// the hunter's cross-correlation). Node has no MP3 decoder, so this pins what
+// the encoder is fed.
+describe('mp3 timing', () => {
+  const raw = (samples) => {
+    const encoder = new Mp3Encoder(1, 16000, MP3_BITRATE_KBPS);
+    const pcm = Int16Array.from(samples, (s) => (s < 0 ? s * 0x8000 : s * 0x7fff));
+    const parts = [];
+    for (let from = 0; from < pcm.length; from += BLOCK) {
+      parts.push(encoder.encodeBuffer(pcm.subarray(from, Math.min(pcm.length, from + BLOCK))));
+    }
+    parts.push(encoder.flush());
+    return Uint8Array.from(parts.flatMap((p) => [...p]));
+  };
+
+  it('feeds the encoder the recording less its delay', () => {
+    const samples = tone(3);
+    expect(ENCODER_DELAY).toBe(1105);
+    expect(encode(samples)).toEqual(raw(samples.subarray(ENCODER_DELAY)));
+  });
+
+  it('copes with a recording shorter than the delay', () => {
+    expect(() => encode(new Float32Array(100))).not.toThrow();
   });
 });
 
