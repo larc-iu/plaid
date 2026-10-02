@@ -462,8 +462,10 @@ export const alignmentMutations = {
 
     // A refused insert is made again where the segment goes in the body as
     // stored, when it still fits there. It only adds text, so it overwrites
-    // nothing.
+    // nothing. The cross-talk rule is asked again of the document as stored,
+    // where a segment made meanwhile may be one it overlaps.
     const replan = (fresh) => {
+      if (crossTalkProblem(fresh, { timeBegin, timeEnd, speaker })) return { conflict: null };
       const again = planCreate(fresh, trimmed, timeBegin);
       return again.error ? { conflict: null } : { plan: again };
     };
@@ -546,12 +548,20 @@ export const alignmentMutations = {
       if (!replannedMetadata(mine, was, found.segment.metadata)) {
         return { conflict: { stored: over, mine: trimmed } };
       }
-      const again = planEdit(fresh, found.segment, gaps, trimmed, timeBegin);
-      return again.error
+      const patch = rowPatch(mine, was, this.editStamp(found.segment.metadata));
+      // The segment as this write would leave it, held to the cross-talk rule
+      // on the document as stored: a speaker given elsewhere meanwhile may
+      // make the overlap a same-voice one.
+      const after = mergeMetadata(found.segment.metadata, patch);
+      const overlap = crossTalkProblem(
+        fresh,
+        { timeBegin: after.timeBegin ?? 0, timeEnd: after.timeEnd ?? 0, speaker: after.speaker },
+        found.segment,
+      );
+      const again = overlap ? null : planEdit(fresh, found.segment, gaps, trimmed, timeBegin);
+      return !again || again.error
         ? { conflict: { stored: over, mine: trimmed } }
-        : {
-            plan: { ...again, patch: rowPatch(mine, was, this.editStamp(found.segment.metadata)) },
-          };
+        : { plan: { ...again, patch } };
     };
 
     return this._showRowEdit('Failed to edit alignment', {

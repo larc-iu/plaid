@@ -138,7 +138,9 @@ export function rangeProblem(
  * overlap and may not, named by its times. For a change to a stored segment,
  * `was` is the segment as stored now, and an overlap it already had is not
  * this change's doing, so it does not count. Speaker edits and new segments
- * go through here, since the speaker is half of the cross-talk rule.
+ * go through here, since the speaker is half of the cross-talk rule. `was` is
+ * compared by speaker only, so a candidate with `was` keeps `was`'s times: a
+ * time move goes through `rangeProblem`.
  */
 export function overlapProblem(tokens, candidate, { was = null, format = String } = {}) {
   const begin = timeBeginOf(candidate);
