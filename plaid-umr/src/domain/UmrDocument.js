@@ -487,17 +487,18 @@ export class UmrDocument extends DocumentModel {
   // An edit refused because the document moved on goes again by itself
   // unless what changed meanwhile is in a sentence it writes (Luke's ruling,
   // 2026-10-03, umrRebase.js). An edit that writes no sentence's rows gets
-  // plaid-ui's rule by layer. The sentences an edit writes are read once,
-  // from the document it was made on and the one it made.
+  // plaid-ui's rule by layer. What an edit writes is read once, from the
+  // document it was made on and the one it made, and where it stands is
+  // read again on each check (a join or split may have moved it).
   _resendable(unsent, footprint, now) {
     if (!this._editScopes.has(unsent)) {
       const made = unsent.made;
       const base = unsent.origin ?? unsent.base;
       this._editScopes.set(unsent, made && base ? editScopes(base, made) : null);
     }
-    const scopes = this._editScopes.get(unsent);
-    if (!scopes) return super._resendable(unsent, footprint, now);
-    return resendableBySentence(footprint, scopes, unsent.base, now);
+    const edit = this._editScopes.get(unsent);
+    if (!edit) return super._resendable(unsent, footprint, now);
+    return resendableBySentence(footprint, edit, unsent.base, now);
   }
 
   // ----- reconcile on open -----
@@ -1555,6 +1556,13 @@ export class UmrDocument extends DocumentModel {
 
   // An edge from one node to another of the same sentence. A second edge into
   // a node is a re-entrancy. Resolves to the edge id, or false.
+  /** Whether an edge `role` runs from `sourceId` to `targetId`. */
+  hasEdge(sourceId, targetId, role) {
+    const source = this.node(sourceId);
+    const target = settledId(targetId);
+    return !!source?.out.some((e) => settledId(e.target) === target && e.role === role);
+  }
+
   // `onRefused` is called when the server refused it after it was shown.
   async createEdge(sourceId, targetId, role, { onRefused = null } = {}) {
     role = nfc(role);
@@ -1568,6 +1576,12 @@ export class UmrDocument extends DocumentModel {
     }
     if (source.sentence !== target.sentence) {
       this.setError('An edge joins two nodes of one sentence.');
+      return false;
+    }
+    // The same edge twice, as createTriple refuses it: the file would write
+    // the relation twice.
+    if (this.hasEdge(source.id, target.id, role)) {
+      this.setError(`${source.var} ${role} ${target.var} is already there.`);
       return false;
     }
     if (this.wouldCycle(source.id, target.id, role)) {
@@ -1610,7 +1624,12 @@ export class UmrDocument extends DocumentModel {
         recheck: (fresh) => {
           const from = fresh.node(source.id);
           const to = fresh.node(target.id);
-          return !!from && !!to && !fresh.wouldCycle(from.id, to.id, role);
+          return (
+            !!from &&
+            !!to &&
+            !fresh.hasEdge(from.id, to.id, role) &&
+            !fresh.wouldCycle(from.id, to.id, role)
+          );
         },
       },
     );
@@ -2192,6 +2211,7 @@ export class UmrDocument extends DocumentModel {
     const meta = { group: g };
     // A triple between two constants belongs to no sentence by itself: the
     // one whose block it was made from writes it.
+    const block = isConst(source) && isConst(target) ? this.sentence(sentenceIndex ?? 1) : null;
     if (isConst(source) && isConst(target)) meta.sentences = [sentenceIndex ?? 1];
     const stamp = this.writer.createStamp;
     // A constant no triple has used yet is made here, the way the importer
@@ -2248,6 +2268,25 @@ export class UmrDocument extends DocumentModel {
         this._settle(ids);
       },
       `Add ${rel} from ${s?.var || source} to ${t?.var || target}`,
+      {
+        // Sent again on a later version: its node ends still there, a
+        // constant it makes still missing, and a sentence named by number
+        // still the same sentence (a join or split before it renumbers
+        // them).
+        recheck: (fresh) => {
+          const endHolds = (x, node) =>
+            isConst(x) ? !!node === !!fresh.constantNode(x) : !!fresh.node(node.id);
+          if (!endHolds(source, s) || !endHolds(target, t)) return false;
+          if (!block) return true;
+          const now = fresh.sentence(block.index);
+          return (
+            !!now &&
+            settledId(now.tokenId) === settledId(block.tokenId) &&
+            now.begin === block.begin &&
+            now.end === block.end
+          );
+        },
+      },
     );
     return ok ? settledId(tripleId) : false;
   }

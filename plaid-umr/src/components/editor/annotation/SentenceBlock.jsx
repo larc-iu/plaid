@@ -776,8 +776,16 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         return;
       }
       closeEditor();
+      // Not when the edge it would make is there now (the other person made
+      // the same one).
       const roleAgain = offerAgain(() =>
-        (p.edgeId ? doc.edge(p.edgeId) : doc.node(p.sourceId) && doc.node(p.targetId))
+        (
+          p.edgeId
+            ? doc.edge(p.edgeId)
+            : doc.node(p.sourceId) &&
+              doc.node(p.targetId) &&
+              !doc.hasEdge(p.sourceId, p.targetId, role)
+        )
           ? { kind: 'role', pending: p, x: ed.x, y: ed.y, value: role }
           : null,
       );

@@ -281,6 +281,7 @@ const movedTo = (doc, nodeId, sentence) => ({
     return n && n.id === nodeId ? { ...n, sentence } : n;
   },
   edge: (id) => doc.edge(id),
+  hasEdge: (...args) => doc.hasEdge(...args),
   wouldCycle: (...args) => doc.wouldCycle(...args),
 });
 

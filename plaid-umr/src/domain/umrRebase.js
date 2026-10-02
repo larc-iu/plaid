@@ -160,29 +160,37 @@ function scopesOf(ids, a, b) {
 
 /**
  * The sentences (and constants) a UMR edit writes, from the document it was
- * made on and the one it made. Null when it writes no UMR row, or one that
- * belongs to no sentence: such an edit gets the rule by layer.
+ * made on and the one it made: `{ scopes, ids }`, `ids` the rows it changes.
+ * Null when it writes no UMR row, or one that belongs to no sentence: such
+ * an edit gets the rule by layer.
  */
 export function editScopes(base, made) {
   const a = umrRows(base);
   const b = umrRows(made);
-  const changed = changedRows(a, b);
-  if (!changed.size) return null;
-  return scopesOf(changed, a, b);
+  const ids = changedRows(a, b);
+  if (!ids.size) return null;
+  const scopes = scopesOf(ids, a, b);
+  return scopes ? { scopes, ids } : null;
 }
 
 /**
- * Whether an edit that writes `scopes` (editScopes) and `footprint`
+ * Whether an edit that writes `edit` (editScopes) and `footprint`
  * (rebase.js footprintOf) can go again by itself on `now`, the document read
- * after its refusal, having been checked against `before`. No UMR row that
- * changed in between may belong to a sentence it writes, be a row it names
- * or removes, or name a row it removes. The rest of what changed is judged
- * by the rule by layer.
+ * after its refusal, having been checked against `before`. Its sentences are
+ * the ones it was made in and the ones its rows, and the rows it names,
+ * stand in now and stood in at `before`: another app may have joined or
+ * split sentences under it since. No UMR row that changed in between may
+ * belong to one of them, be a row it names or removes, or name a row it
+ * removes. The rest of what changed is judged by the rule by layer.
  */
-export function resendableBySentence(footprint, scopes, before, now) {
-  if (!footprint || !scopes) return false;
+export function resendableBySentence(footprint, edit, before, now) {
+  if (!footprint || !edit) return false;
   const a = umrRows(before);
   const b = umrRows(now);
+  const scopes = new Set(edit.scopes);
+  for (const id of [...edit.ids, ...footprint.names]) {
+    for (const row of [a.rows.get(id), b.rows.get(id)]) row?.scopes?.forEach((x) => scopes.add(x));
+  }
   const skip = new Set();
   for (const id of changedRows(a, b)) {
     // A row this page made that the server has not answered for is its
@@ -193,7 +201,7 @@ export function resendableBySentence(footprint, scopes, before, now) {
     if (rows.some((r) => r.names.some((n) => footprint.removed.has(n)))) return false;
     const theirs = scopesOf([id], a, b);
     if (!theirs) return false;
-    for (const s of theirs) if (scopes.has(s)) return false;
+    for (const x of theirs) if (scopes.has(x)) return false;
     skip.add(id);
   }
   return apart(footprint, before, now, { skip });

@@ -14,6 +14,7 @@ import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
 import { rawFromPlan } from './rawFromPlan.js';
 import { twoWriterCore } from './twoWriterCore.js';
+import { mergeSentence } from './igtEdits.js';
 
 const FIXTURE = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -345,4 +346,76 @@ test('a refused edit tells the screen so, and one sent again does not', async ()
     }),
   );
   assert.equal(told, 1);
+});
+
+// Review round (REV-FX-UMR3). Another app's write straight into the store: a
+// version bump that changes no UMR row.
+const igtWrite = (core, fn) => {
+  fn(core.raw);
+  core.version += 1;
+};
+const setConceptRaw = (raw, id, value) => {
+  for (const tl of raw.textLayers)
+    for (const l of tl.tokenLayers)
+      for (const sl of l.spanLayers || [])
+        for (const s of sl.spans) if (s.id === id) s.value = value;
+};
+
+test('F1: after a join puts two sentences together, a change in the other half conflicts', async () => {
+  const { core, a } = await start();
+  const mine = leaf(a.doc, 3);
+  const theirs = leaf(a.doc, 2);
+  igtWrite(core, (raw) => mergeSentence(raw, 3));
+  igtWrite(core, (raw) => setConceptRaw(raw, theirs.id, 'theirs'));
+  const now = stored(core);
+  assert.equal(now.node(mine.id).sentence, now.node(theirs.id).sentence, 'one sentence now');
+  assert.equal(await a.doc.setConcept(mine.id, 'mine'), false);
+  assert.equal(refusals(a).length, 1);
+  assert.ok(!conceptsOf(stored(core), now.node(mine.id).sentence).includes('mine'));
+});
+
+test('F1: a join elsewhere does not refuse an edit in a sentence nobody changed', async () => {
+  const { core, a } = await start();
+  const theirs = leaf(a.doc, 2);
+  igtWrite(core, (raw) => mergeSentence(raw, 3));
+  igtWrite(core, (raw) => setConceptRaw(raw, theirs.id, 'theirs'));
+  assert.ok(await a.doc.setConcept(leaf(a.doc, 6).id, 'mine'));
+  assert.deepEqual(refusals(a), []);
+});
+
+test('F2: an edge another person made meanwhile is not made twice', async () => {
+  const { core, a, b } = await start();
+  const [x, y] = unrelated(a.doc, 1);
+  assert.ok(await b.doc.createEdge(x.id, y.id, ':ARG1'));
+  let told = 0;
+  assert.equal(
+    await a.doc.createEdge(x.id, y.id, ':ARG1', { onRefused: () => (told += 1) }),
+    false,
+  );
+  assert.equal(told, 1);
+  // Sent again by hand on what is now shown: refused before it is sent.
+  const before = core.writes.length;
+  assert.equal(await a.doc.createEdge(x.id, y.id, ':ARG1'), false);
+  assert.equal(core.writes.length, before);
+  assert.match(String(a.doc.error), /is already there/);
+  const twins = stored(core)
+    .node(x.id)
+    .out.filter((e) => e.target === y.id && e.role === ':ARG1');
+  assert.equal(twins.length, 1);
+});
+
+test('a triple between two constants is not sent again after the sentences were renumbered', async () => {
+  const { core, a } = await start();
+  const add = () =>
+    a.doc.createTriple({
+      source: 'document-creation-time',
+      target: 'root',
+      rel: ':before',
+      sentenceIndex: 4,
+    });
+  igtWrite(core, (raw) => mergeSentence(raw, 2));
+  assert.equal(await add(), false);
+  assert.equal(refusals(a).length, 1);
+  // Read again, it goes, under the sentence as it is now numbered.
+  assert.ok(await add());
 });
