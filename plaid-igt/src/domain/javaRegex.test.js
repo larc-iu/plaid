@@ -36,7 +36,7 @@ describe('translatePattern', () => {
     expect(tr('\\bx').server).toBe(`(?:(?<=${W})(?!${W})|(?<!${W})(?=${W}))x`);
   });
 
-  it('writes a letter in any case as the letters Java folds it with, and no flag', () => {
+  it('writes a letter in any case as the letters it folds with, and no flag', () => {
     expect(tr('k', { literal: true, caseInsensitive: true }).server).toBe('[Kk\u212a]');
     expect(tr('(?i)k').server).toBe('[Kk\u212a]');
     expect(tr('(?i)[a-c]').server).toBe('[A-Ca-c]');
@@ -293,26 +293,33 @@ describe('translatePattern against Java itself', () => {
     const translated = cases.map(({ p, opts }) => ({ p, opts, ...translatePattern(p, opts) }));
     for (const t of translated) expect([t.p, t.error]).toEqual([t.p, null]);
     const hex = (s) => Buffer.from(s, 'utf8').toString('hex');
-    const lines = [];
-    for (const t of translated) for (const s of subjects) lines.push(`${hex(t.server)}\t${hex(s)}`);
     // Vitest runs from the package root.
     const tool = path.resolve('tools/JavaRegex.java');
-    const out = execFileSync('java', [tool, 'oracle'], {
-      input: `${lines.join('\n')}\n`,
-      encoding: 'utf8',
-      maxBuffer: 1 << 26,
-    })
-      .trim()
-      .split('\n');
+    const java = (lines) =>
+      execFileSync('java', [tool, 'oracle'], {
+        input: `${lines.join('\n')}\n`,
+        encoding: 'utf8',
+        maxBuffer: 1 << 26,
+      })
+        .trim()
+        .split('\n');
+    // A character newer than the server's Java's Unicode tables is a known
+    // difference (the header says so): leave out what Java reads as unassigned.
+    const assigned = java(subjects.map((s) => `${hex('\\p{Cn}')}\t${hex(s)}`));
+    const known = subjects.filter((s, i) => assigned[i] === '0');
+    expect(known.length).toBeGreaterThan(subjects.length * 0.9);
+    const lines = [];
+    for (const t of translated) for (const s of known) lines.push(`${hex(t.server)}\t${hex(s)}`);
+    const out = java(lines);
     expect(out).toHaveLength(lines.length);
     const differ = [];
     let k = 0;
     for (const t of translated) {
       const re = new RegExp(t.source, 'u');
-      for (const s of subjects) {
-        const java = out[k++];
+      for (const s of known) {
+        const server = out[k++];
         const js = re.test(s) ? '1' : '0';
-        if (java !== js) differ.push({ pattern: t.p, opts: t.opts, value: s, java, js });
+        if (server !== js) differ.push({ pattern: t.p, opts: t.opts, value: s, java: server, js });
       }
     }
     expect(differ.slice(0, 10)).toEqual([]);

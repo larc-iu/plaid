@@ -18,8 +18,10 @@
 //   .                                    a class without Java's line ends
 //   $ \Z                                 a lookahead for one final line end
 //   (?i) and the "any case" match        each letter becomes the class of
-//                                        letters Java folds it with
-//                                        (javaCaseFolds.js), so neither engine
+//                                        letters Unicode's simple case folding
+//                                        makes equal (javaCaseFolds.js, from
+//                                        tools/caseFolds.mjs: ı and İ stay
+//                                        apart from i), so neither engine
 //                                        folds case itself and the server gets
 //                                        no flag
 // What is left out (nested classes, `&&`, possessive and atomic groups, `\G`,
@@ -130,7 +132,7 @@ const loadFolds = () => {
   for (const cls of foldClasses) for (const cp of cls) foldOf.set(cp, cls);
 };
 
-// The ranges plus every letter Java folds together with one inside them.
+// The ranges plus every letter that folds together with one inside them.
 const folded = (ranges) => {
   loadFolds();
   const extra = [];

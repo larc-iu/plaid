@@ -13,8 +13,8 @@ import { PatternError } from '../../../domain/javaRegex.js';
 const S = `(?:(?!)${String.fromCodePoint(0x10ffff)})?`;
 
 describe('buildMatchSpec', () => {
-  // The server gets no case flag: each letter is written as the letters Java
-  // folds it with, which the browser reads the same way.
+  // The server gets no case flag: each letter is written as the letters it
+  // folds with, which the browser reads the same way.
   it('contains is a literal in any case, with no flag', () => {
     expect(buildMatchSpec('a.b(c', 'contains')).toEqual({ regex: '[Aa]\\x2e[Bb]\\x28[Cc]' + S });
     expect(buildMatchSpec('ц', 'contains')).toEqual({ regex: '[Цц]' + S });

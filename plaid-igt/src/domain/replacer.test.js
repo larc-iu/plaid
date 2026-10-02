@@ -14,6 +14,20 @@ describe('buildReplacer', () => {
   // "any case" finds Kalamang for ka, and respelling it galamang was a
   // capital lost. Typed in small letters, the replacement takes each match's
   // capitals. Typed with a capital in either box, it is written as typed.
+  // Any case is Unicode's simple case folding: ı and İ are letters of their
+  // own in Turkic orthographies and are not an i (ruled 2026-10-02, REV-W2
+  // Q1), while ſ and the Kelvin sign still fold with s and k.
+  it('folds case as Unicode does, leaving ı and İ alone', () => {
+    expect(run('i', 'contains', 'e', ['kıt', 'İstanbul', 'kit', 'Iris']).out).toEqual([
+      null,
+      null,
+      'ket',
+      'Eres',
+    ]);
+    expect(run('s', 'contains', 'z', ['\u017f']).out).toEqual(['z']);
+    expect(run('k', 'contains', 'g', ['\u212a']).out).toEqual(['G']);
+  });
+
   it('keeps the capitals of each match on an any-case match', () => {
     expect(run('ka', 'contains', 'ga', ['Kalamang', 'KALAMANG', 'kalamang', 'kaKa']).out).toEqual([
       'Galamang',

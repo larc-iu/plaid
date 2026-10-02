@@ -96,26 +96,42 @@ def test_a_local_match_is_a_match_in_java():
     java = shutil.which('java')
     assert java, 'java is needed to check the translator against the server\'s engine'
     usable = [(p, o) for p, o in CASES if _ours(p, o)['error'] is None]
-    lines = []
-    for p, o in usable:
-        server = translate(p, **_options(o)).server
-        for s in SUBJECTS:
-            lines.append(f"{server.encode('utf-8').hex()}\t{s.encode('utf-8').hex()}")
-    run = subprocess.run([java, JAVA_TOOL, 'oracle'], input='\n'.join(lines) + '\n',
-                         capture_output=True, text=True, timeout=300)
-    assert run.returncode == 0, run.stderr
-    answers = run.stdout.split()
+
+    def oracle(lines):
+        run = subprocess.run([java, JAVA_TOOL, 'oracle'], input='\n'.join(lines) + '\n',
+                             capture_output=True, text=True, timeout=300)
+        assert run.returncode == 0, run.stderr
+        return run.stdout.split()
+
+    def hexed(server, s):
+        return f"{server.encode('utf-8').hex()}\t{s.encode('utf-8').hex()}"
+
+    # A character newer than the server's Java's Unicode tables is a known
+    # difference (the module says so): leave out what Java reads as unassigned.
+    assigned = oracle([hexed(r'\p{Cn}', s) for s in SUBJECTS])
+    known = [s for s, a in zip(SUBJECTS, assigned) if a == '0']
+    assert len(known) > 0.9 * len(SUBJECTS)
+    servers = [translate(p, **_options(o)).server for p, o in usable]
+    lines = [hexed(server, s) for server in servers for s in known]
+    answers = oracle(lines)
     assert len(answers) == len(lines)
     differ = []
     k = 0
     for p, o in usable:
         m = matcher(p, **_options(o))
-        for s in SUBJECTS:
+        for s in known:
             mine = '1' if m(s) else '0'
             if answers[k] != mine:
                 differ.append((p, o, s, answers[k], mine))
             k += 1
     assert differ[:10] == []
+
+
+def test_any_case_folds_as_unicode_does():
+    # Simple case folding: ı and İ are not an i (ruled 2026-10-02, REV-W2 Q1).
+    assert translate('i', literal=True, case_insensitive=True).server == '[Ii]' + S
+    assert matcher('i', literal=True, case_insensitive=True)('kıt') is False
+    assert matcher('s', literal=True, case_insensitive=True)('\u017f') is True
 
 
 def test_the_server_cap_is_core_s():

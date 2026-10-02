@@ -16,7 +16,8 @@ differs is written out in a form both engines read the same way (``\\w`` and
 or connector in any script, Java's explicit classes for ``\\s \\h \\v``,
 lookarounds over that ``\\w`` for ``\\b``, Java's line ends
 for ``.`` and ``$``, and each letter of a case-insensitive pattern as the
-class of letters Java folds it with, so neither engine folds case itself and
+class of letters Unicode's simple case folding makes equal (ı and İ stay apart
+from i), so neither engine folds case itself and
 the server gets no flag). What it cannot write out the same way is refused
 with a message. The local side uses the ``regex`` package, which reads
 ``\\p{..}`` and lookbehinds of any length.
