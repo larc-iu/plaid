@@ -1,4 +1,4 @@
-import { cpSlice, createdIds } from '@larc-iu/plaid-client';
+import { cpSlicer, createdIds } from '@larc-iu/plaid-client';
 // By its real path rather than through `@ui`, for the same reason
 // ConlluDocument.js gives: the `node --test` suite has no alias.
 import { normalizeFeature } from '../utils/feats.js';
@@ -227,9 +227,12 @@ export async function importConlluDocument(
     );
     const morphemeOps = [];
     const morphemeMeta = []; // parallel to morphemeOps
+    // One code-point spread of the text for every word. `cpSlice` spreads the
+    // whole text per call, which on a 20,000-word file was 30 s.
+    const sliceText = cpSlicer(hierarchy.text);
     hierarchy.sentences.forEach((s, sentIdx) => {
       s.words.forEach((w) => {
-        const wordSubstring = cpSlice(hierarchy.text, w.begin, w.end);
+        const wordSubstring = sliceText(w.begin, w.end);
         w.morphemes.forEach((m) => {
           morphemeOps.push({
             tokenLayerId: morphemeTokenLayer.id,
