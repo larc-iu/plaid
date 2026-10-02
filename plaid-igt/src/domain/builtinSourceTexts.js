@@ -15,6 +15,7 @@ import s9 from './mutations/analysisCopy.js?raw';
 import s10 from './mutations/vocab.js?raw';
 import s11 from './mwe.js?raw';
 import s12 from './precedent.js?raw';
+import s26 from './punctuationClasses.js?raw';
 import s13 from './tagsets.js?raw';
 import s14 from './virtualMorpheme.js?raw';
 import s15 from './vocabDictionary.js?raw';
@@ -40,6 +41,7 @@ export const SOURCE_TEXTS = {
   'plaid-igt/src/domain/mutations/vocab.js': s10,
   'plaid-igt/src/domain/mwe.js': s11,
   'plaid-igt/src/domain/precedent.js': s12,
+  'plaid-igt/src/domain/punctuationClasses.js': s26,
   'plaid-igt/src/domain/tagsets.js': s13,
   'plaid-igt/src/domain/virtualMorpheme.js': s14,
   'plaid-igt/src/domain/vocabDictionary.js': s15,

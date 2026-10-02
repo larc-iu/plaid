@@ -20,6 +20,7 @@ import pytest
 from node_exe import node_or_skip
 from plaid_agent.igt.project import split_words
 from plaid_client.workflows.igt import is_token_ignored
+from plaid_client.workflows.igt.punctuation_classes import PICTOGRAPHIC, PUNCT_OR_SYMBOL
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUNNER = os.path.join(HERE, 'igt_tokens_mirror.mjs')
@@ -59,6 +60,14 @@ def app(tmp_path_factory):
     run = subprocess.run([node, RUNNER, str(path)], capture_output=True, text=True, timeout=120)
     assert run.returncode == 0, run.stderr
     return json.loads(run.stdout)
+
+
+def test_both_read_the_same_character_table(app):
+    """The rule's classes are one generated table, pinned to one Unicode
+    version, not the runtime's: node 24.21 (Unicode 17) reads ★ as no
+    pictograph where the table, and node 24.1, read it as one."""
+    assert [list(r) for r in PUNCT_OR_SYMBOL] == app['tables']['punctOrSymbol']
+    assert [list(r) for r in PICTOGRAPHIC] == app['tables']['pictographic']
 
 
 def test_is_token_ignored_answers_as_the_app_does(app):

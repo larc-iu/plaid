@@ -16,6 +16,7 @@
 
 import { ROLES, findByRole } from '@larc-iu/plaid-client';
 import { isZeroMorph } from './zeroMorph.js';
+import { isPictograph, isPunctOrSymbol } from './punctuationClasses.js';
 
 /** plaid-igt's private config namespace (distinct from the reserved `plaid`). */
 export const IGT_NAMESPACE = 'igt';
@@ -62,9 +63,13 @@ export const readIgnoredTokens = (config) => readIgt(config, 'ignoredTokens') ??
 // while being the most meaning-bearing character in the app: without this it
 // would lose its annotation cells the same way, and trimIgnoredEdges would eat
 // the zero off a form like `ta∅`.
-const PUNCT_CHAR_RE = /[\p{P}\p{S}]/u;
-const PICTOGRAPH_RE = /\p{Extended_Pictographic}/u;
-const isPunctChar = (c) => PUNCT_CHAR_RE.test(c) && !PICTOGRAPH_RE.test(c) && !isZeroMorph(c);
+//
+// Both classes come from one generated table (punctuationClasses.js), never
+// the runtime's `\p{}`: those move with the browser's Unicode version (★ is a
+// pictograph in Unicode 16 and not in 17), and a word reference counts words
+// past the ignored tokens, so it would mean different words in different
+// browsers and to the agent. plaid-client-py reads the same table.
+const isPunctChar = (c) => isPunctOrSymbol(c) && !isPictograph(c) && !isZeroMorph(c);
 
 /**
  * Has the project declared this character LETTER-LIKE?

@@ -7,6 +7,7 @@
 // the surface it came from (the text says "За", the analysis stores "за").
 
 import { countOf } from '@ui/lib/plural.js';
+import { isPictograph, isPunctOrSymbol } from '../domain/punctuationClasses.js';
 
 /**
  * A reusable UTF-16 index → code-point index converter for one string.
@@ -88,10 +89,8 @@ export const surfaceOf = (word) =>
     .join('');
 
 // Punctuation and symbols, minus emoji: the same rule the app's ignored-token
-// config applies to whole tokens (domain/igtConfig.js).
-const PUNCT_RE = /[\p{P}\p{S}]/u;
-const PICTOGRAPH_RE = /\p{Extended_Pictographic}/u;
-const isPunct = (c) => PUNCT_RE.test(c) && !PICTOGRAPH_RE.test(c);
+// config applies to whole tokens (domain/igtConfig.js), from its table.
+const isPunct = (c) => isPunctOrSymbol(c) && !isPictograph(c);
 
 /** The whitespace-delimited runs of body[begin, end), as UTF-16 spans. */
 function textRuns(body, begin, end) {
