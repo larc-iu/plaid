@@ -10,7 +10,7 @@ import { containsToken } from '../../utils/udLayerUtils.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
-import { canEditProject } from '@ui/domain/permissions.js';
+import { canEditProject, readOnlyReason } from '@ui/domain/permissions.js';
 import { NOT_SET_UP } from '@ui/domain/setupGuard.js';
 import { TokenVisualizer } from './TokenVisualizer.jsx';
 import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
@@ -318,9 +318,7 @@ export const TextEditor = () => {
 
   return (
     <div>
-      {!canEdit && (
-        <Notice className="mb-3">Read-only. You have reader access to this project.</Notice>
-      )}
+      {!canEdit && <Notice className="mb-3">Read-only. {readOnlyReason(project, user)}</Notice>}
 
       {setupIncomplete && (
         <Notice tone="warning" className="mb-3">

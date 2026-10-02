@@ -4,7 +4,7 @@ import { Notice } from '@ui/components/shared/Notice.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { useReconcileOnOpen } from '@ui/hooks/useReconcileOnOpen.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
-import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
+import { canEditProject, canManageProject, readOnlyReason } from '@ui/domain/permissions.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
 import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
@@ -123,7 +123,7 @@ export const AnnotationEditor = () => {
   // shell's banner, over every tab.
   const readOnlyBanner = !selectedEntry && !canEdit && (
     <Notice tone="info" className="mt-4">
-      Read-only. You have reader access to this project.
+      Read-only. {readOnlyReason(project, user)}
     </Notice>
   );
 

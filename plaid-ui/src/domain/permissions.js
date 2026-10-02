@@ -34,6 +34,13 @@ export const canManageProject = (project, user) =>
 export const canReadProject = (project, user) =>
   !!(canEditProject(project, user) || inList(project?.readers, user?.id));
 
+// Why a document is read-only for someone who cannot write it: a reader, or
+// someone who holds no role any more (removed while the page was open).
+export const readOnlyReason = (project, user) =>
+  canReadProject(project, user)
+    ? 'You have reader access to this project.'
+    : 'You no longer have access to this project.';
+
 // Explicit membership, for a member table or an "add me to this project" offer,
 // is `projectRole` in `@larc-iu/plaid-client`. It is not repeated here.
 

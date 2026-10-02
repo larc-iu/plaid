@@ -4,6 +4,7 @@ import {
   canManageProject,
   canReadProject,
   canManageVocabulary,
+  readOnlyReason,
 } from './permissions.js';
 
 // What each grant means, in the one place that decides it. The document editor
@@ -76,5 +77,13 @@ describe('vocabulary access', () => {
     expect(canManageVocabulary(vocab, as('x'))).toBe(false);
     expect(canManageVocabulary(null, as('m'))).toBe(false);
     expect(canManageVocabulary(vocab, null)).toBe(false);
+  });
+});
+
+describe('why a document is read-only', () => {
+  it('says reader access to a reader, and no access to someone with no role', () => {
+    const p = { maintainers: ['m'], writers: ['w'], readers: ['r'] };
+    expect(readOnlyReason(p, as('r'))).toBe('You have reader access to this project.');
+    expect(readOnlyReason(p, as('gone'))).toBe('You no longer have access to this project.');
   });
 });

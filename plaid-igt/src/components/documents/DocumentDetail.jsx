@@ -31,6 +31,7 @@ const CommentsTab = lazyNamed(() => import('./comments/CommentsTab.jsx'), 'Comme
 import { CommentStore } from '@ui/domain/CommentStore';
 import { useCommentStore } from '@ui/domain/useCommentStore';
 import { useDocumentPermissions } from './hooks/useDocumentPermissions.js';
+import { readOnlyReason } from '@ui/domain/permissions.js';
 import { useWriteLock } from '@ui/hooks/useWriteLock.js';
 import { useResumedRun } from '@ui/hooks/useResumedRun.js';
 import { RunBanner } from '@ui/components/services/RunBanner.jsx';
@@ -462,11 +463,7 @@ const DocumentEditor = () => {
             {!isViewingHistorical && permissions.isReadOnly && (
               <Notice tone="info" className="mb-4">
                 <p className="font-medium">Read-only</p>
-                <p className="text-xs">
-                  {permissions.canRead
-                    ? 'You have reader access to this project.'
-                    : 'You no longer have access to this project.'}
-                </p>
+                <p className="text-xs">{readOnlyReason(docProject, user)}</p>
               </Notice>
             )}
 

@@ -21,7 +21,7 @@ import { EditorLegend } from './annotation/EditorLegend.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 // Raised here, dismissed by DocumentEditorShell: the notice outlives this tab.
 import { useReconcileOnOpen } from '@ui/hooks/useReconcileOnOpen.js';
-import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
+import { canEditProject, canManageProject, readOnlyReason } from '@ui/domain/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { readMetadataFields } from '../../utils/udMetadata.js';
 import { makeValidators } from '../../utils/udVocabMode.js';
@@ -478,7 +478,7 @@ export const AnnotationEditor = () => {
   // shell's banner, over every tab.
   const readOnlyBanner = !selectedEntry && !canEdit && (
     <Notice tone="info" className="mt-4">
-      Read-only. You have reader access to this project.
+      Read-only. {readOnlyReason(project, user)}
     </Notice>
   );
 
