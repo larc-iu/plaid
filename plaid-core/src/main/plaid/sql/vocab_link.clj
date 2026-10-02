@@ -222,7 +222,7 @@
       [tx db {:type :vocab-link/create
               :project project-id
               :document doc-id
-              :description (str "Create vocab mapping"
+              :description (str "Create vocab mapping " new-id
                                 (when (seq metadata)
                                   (str " with " (count metadata) " metadata keys")))
               :user user-id}]

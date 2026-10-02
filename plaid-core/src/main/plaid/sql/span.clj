@@ -195,7 +195,7 @@
                          (:project_id (psc/fetch-by-id db :span_layers layer)))
               :document (when-let [t (first tokens)]
                           (:document_id (psc/fetch-by-id db :tokens t)))
-              :description (str "Create span with " (count tokens)
+              :description (str "Create span " new-id " with " (count tokens)
                                 " tokens in layer " layer)
               :user user-id}]
       ;; Validation inside the body (task #47).

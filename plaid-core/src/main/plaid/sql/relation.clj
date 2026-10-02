@@ -142,7 +142,7 @@
                          (:project_id (psc/fetch-by-id db :relation_layers layer)))
               :document (when source
                           (:document_id (psc/fetch-by-id db :spans source)))
-              :description (str "Create relation from span " source
+              :description (str "Create relation " new-id " from span " source
                                 " to span " target " in layer " layer)
               :user user-id}]
       ;; Validation inside the body (task #47).
