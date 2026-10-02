@@ -498,3 +498,30 @@ test('deleteWord mirrors the server cascade locally before the round trip', asyn
   server.resolve({});
   assert.equal(await pending, true);
 });
+
+// Q2-UD-POLISH-4: a machine value off a closed list is refused once it is
+// accepted, which refused the whole batch. It is left out and named, and the
+// rest of the word is accepted.
+test('confirmTokens leaves a machine value off a closed list unreviewed and accepts the rest', async () => {
+  const raw = rawDocFromConllu(INPUT, 'mut-doc');
+  const xposLayer = raw.textLayers[0].tokenLayers[2].spanLayers.find((l) => l.config?.ud?.xpos);
+  xposLayer.config = {
+    ...xposLayer.config,
+    ud: { ...xposLayer.config.ud, vocab: ['DT'], vocabMode: 'closed' },
+  };
+  const client = provClient();
+  const doc = asAnn(raw, client);
+  const errors = [];
+  doc.onError = (msg) => errors.push(msg);
+  const machine = { prov: 'inferred', provSource: 'service:stanza-parser' };
+  const noun = doc.layerInfo.uposLayer.spans.find((s) => s.value === 'NOUN');
+  noun.metadata = { ...machine };
+  const nn = doc.layerInfo.xposLayer.spans.find((s) => s.value === 'NN');
+  nn.metadata = { ...machine };
+
+  assert.equal(await doc.confirmTokens(noun.tokens), false);
+  const patched = client.calls.filter((c) => c[0] === 'spans.patchMetadata').map((c) => c[1]);
+  assert.deepEqual(patched, [noun.id]);
+  assert.deepEqual(errors, ['Not on the list, not accepted: NN (XPOS, perro).']);
+  assert.deepEqual(doc.layerInfo.xposLayer.spans.find((s) => s.id === nn.id).metadata, machine);
+});

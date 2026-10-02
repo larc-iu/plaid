@@ -48,6 +48,7 @@ import {
   describeReconcile as describeUdReconcile,
 } from '../utils/udReconcile.js';
 import { validateConlluDocument } from './validate.js';
+import { makeValidators } from '../utils/udVocabMode.js';
 import { importConlluDocument } from './conlluImport.js';
 import { buildSentenceRows } from './sentenceRows.js';
 import { buildConllu, conlluLosses } from './conlluSerialize.js';
@@ -1942,13 +1943,26 @@ export class ConlluDocument extends DocumentModel {
       info.featuresLayer,
     ].filter(Boolean);
 
+    // A value off a closed list is exempt from the list while it is the
+    // machine's, and refused once it is accepted, which refused the whole
+    // batch. Such a value is left unreviewed, and the rest is accepted.
+    const validators = makeValidators(info);
+    const closedField = new Map([
+      [info.uposLayer?.id, ['UPOS', validators.upos]],
+      [info.xposLayer?.id, ['XPOS', validators.xpos]],
+    ]);
+    const left = [];
+
     // Machine-unverified spans on the target tokens.
     const spanPatchById = new Map();
     for (const layer of spanLayers) {
+      const [label, refuse] = closedField.get(layer.id) || [];
       for (const span of layer.spans || []) {
         if (Array.isArray(span.tokens) && span.tokens.some((t) => idSet.has(t))) {
           const verify = this.writer.confirmStamp(span.metadata);
-          if (verify) spanPatchById.set(span.id, verify);
+          if (!verify) continue;
+          if (refuse?.(span.value)) left.push({ label, value: span.value, token: span.tokens[0] });
+          else spanPatchById.set(span.id, verify);
         }
       }
     }
@@ -1959,16 +1973,27 @@ export class ConlluDocument extends DocumentModel {
       (info.lemmaLayer?.spans || []).map((s) => [s.id, s.tokens || []]),
     );
     const relPatchById = new Map();
-    const allRelations = dependencyRelationLayers(info).flatMap((l) => l.relations || []);
-    for (const rel of allRelations) {
-      const targetTokens = lemmaTokensBySpan.get(rel.target) || [];
-      if (targetTokens.some((t) => idSet.has(t))) {
-        const verify = this.writer.confirmStamp(rel.metadata);
-        if (verify) relPatchById.set(rel.id, verify);
+    for (const layer of dependencyRelationLayers(info)) {
+      const basic = layer.id === info.relationLayer?.id;
+      for (const rel of layer.relations || []) {
+        const targetTokens = lemmaTokensBySpan.get(rel.target) || [];
+        if (targetTokens.some((t) => idSet.has(t))) {
+          const verify = this.writer.confirmStamp(rel.metadata);
+          if (!verify) continue;
+          if (basic && validators.deprel(rel.value)) {
+            left.push({ label: 'DEPREL', value: rel.value, token: targetTokens[0] });
+          } else relPatchById.set(rel.id, verify);
+        }
       }
     }
+    if (left.length) {
+      this.clearError();
+      this.setError(this._offListLeft(left));
+    }
 
-    if (spanPatchById.size === 0 && relPatchById.size === 0) return true; // nothing to confirm
+    // Nothing to confirm. A value left on a closed list is not confirmed, so
+    // the caller does not move on as if it were.
+    if (spanPatchById.size === 0 && relPatchById.size === 0) return left.length === 0;
 
     // Optimistic: stamp confirmed locally so the inferred styling clears now.
     this._applyRawPatch((next, infoNext) => {
@@ -1992,7 +2017,7 @@ export class ConlluDocument extends DocumentModel {
       }
     });
 
-    return this._queueWrite(
+    const landed = await this._queueWrite(
       label,
       () =>
         this._client.batched(async (b) => {
@@ -2006,6 +2031,22 @@ export class ConlluDocument extends DocumentModel {
       'Accept predicted annotations',
       { kind: 'review' },
     );
+    return landed && left.length === 0;
+  }
+
+  // What Accept left unreviewed for being off a closed list: each value, its
+  // list and its word, the first few of them.
+  _offListLeft(left) {
+    const tokens = new Map((this.layerInfo.morphemeTokenLayer?.tokens || []).map((t) => [t.id, t]));
+    const body = this.body;
+    const items = left.map(({ label, value, token }) => {
+      const t = tokens.get(token);
+      const form = t ? cpSlice(body, t.begin, t.end) : '';
+      return form ? `${value} (${label}, ${form})` : `${value} (${label})`;
+    });
+    const shown = items.slice(0, 5).join(', ');
+    const more = items.length > 5 ? `, and ${items.length - 5} more` : '';
+    return `Not on the list, not accepted: ${shown}${more}.`;
   }
 
   // Throw away the unreviewed MACHINE proposal on the given tokens: delete the
