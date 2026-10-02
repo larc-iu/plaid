@@ -4,6 +4,7 @@ import {
   createdId,
   createdIds,
   cpSlice,
+  cpSlicer,
   isMachine,
   isReviewed,
   mergeMetadata,
@@ -459,11 +460,13 @@ export class ConlluDocument extends DocumentModel {
     const sentences = sentenceRanges.map(([begin, end]) => ({ id: pendingId(), begin, end }));
     const words = wordRanges.map(([begin, end]) => ({ id: pendingId(), begin, end }));
     const morphemes = wordRanges.map(([begin, end]) => ({ id: pendingId(), begin, end }));
+    // One code-point spread of the body for every word, not one per word.
+    const sliceBody = cpSlicer(body);
     const lemmas = lemmaLayer?.id
       ? morphemes.map((m, i) => ({
           id: pendingId(),
           tokens: [m.id],
-          value: cpSlice(body, wordRanges[i][0], wordRanges[i][1]),
+          value: sliceBody(wordRanges[i][0], wordRanges[i][1]),
           metadata: LEMMA_FROM_FORM,
         }))
       : [];
