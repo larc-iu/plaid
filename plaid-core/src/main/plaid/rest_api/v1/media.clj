@@ -61,11 +61,20 @@
           (media/delete-media-file! document-id))
         result))))
 
+(defn- deleting-in-this-batch?
+  "Whether an earlier delete in the same atomic batch already took this
+  document's recording. Its file waits for the commit, so it is still on
+  disk, but the recording is gone for the rest of the batch."
+  [document-id]
+  (some #(= document-id (::deletes (meta %)))
+        (some-> op/*deferred-files* deref)))
+
 (defn delete!
   "Delete the media of `document-id`, as one operation in the audit log
   (`:media/delete`). The file goes once the operation is durable: in an
   atomic batch a later failure rolls the batch back, and nothing brings a
-  file back."
+  file back. A second delete of it in the same batch is refused 404, as a
+  delete of anything already gone is."
   [db document-id user-id]
   (let [result (op/submit-operation!
                 [_tx db {:type :media/delete
@@ -73,11 +82,13 @@
                          :document document-id
                          :description (str "Delete media file of document " document-id)
                          :user user-id}]
-                (when-not (media/media-exists? document-id)
+                (when (or (not (media/media-exists? document-id))
+                          (deleting-in-this-batch? document-id))
                   (refused! {:error-kind :not-found :error "No media file found"}))
                 nil)]
     (when (:success result)
-      (op/after-commit! (fn [] (media/delete-media-file! document-id))))
+      (op/after-commit! (with-meta (fn [] (media/delete-media-file! document-id))
+                          {::deletes document-id})))
     result))
 
 (defn get-project-id-from-document

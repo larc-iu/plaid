@@ -115,3 +115,28 @@
           (is (= 423 (:status r))))
         (is (nil? (media-url did)) "the stored file was taken back out")
         (is (empty? (media-ops did)))))))
+
+(deftest a-second-delete-in-one-batch-is-refused
+  ;; The file goes after the batch commits, so the second delete used to find
+  ;; it still there and was recorded too (REV-MEDIA-5). It answers 404, as a
+  ;; delete of anything else already gone does, and the batch rolls back.
+  (with-media-dir
+    (fn []
+      (let [pid (create-test-project admin-request "Media batch")
+            did (create-test-document admin-request pid "Story")
+            path (str "/api/v1/documents/" did "/media")]
+        (is (= 201 (:status (upload! admin-request did "take1.mp3" "first"))))
+        (let [v (version did)
+              r (api-call admin-request {:method :post :path "/api/v1/batch"
+                                         :body [{:path path :method "delete"}
+                                                {:path path :method "delete"}]})]
+          (is (= 404 (:status r)))
+          (is (some? (media-url did)) "the batch rolled back, so the recording stays")
+          (is (= v (version did)))
+          (is (= ["media/upload"] (map first (media-ops did)))))
+        (testing "one delete in a batch still goes through"
+          (let [r (api-call admin-request {:method :post :path "/api/v1/batch"
+                                           :body [{:path path :method "delete"}]})]
+            (is (= 200 (:status r)))
+            (is (nil? (media-url did)))
+            (is (= ["media/upload" "media/delete"] (map first (media-ops did))))))))))
