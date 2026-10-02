@@ -43,8 +43,9 @@ export function ServiceRunButton({
 
   // A tooltip that only repeats a visible label is noise. It earns its place
   // when the button is an icon, or when a run is on and it can say how far.
-  if (!iconOnly && !running) return button;
-
+  // The tree is the same either way, so the button keeps focus when a run
+  // starts and ends under it.
+  const tip = iconOnly || running;
   const status = running
     ? `${label}, ${formatElapsed(progress.elapsedMs)}${
         Number.isFinite(percent) ? `, ${Math.round(percent)}%` : ''
@@ -55,7 +56,7 @@ export function ServiceRunButton({
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>{button}</TooltipTrigger>
-        <TooltipContent>{status}</TooltipContent>
+        {tip && <TooltipContent>{status}</TooltipContent>}
       </Tooltip>
     </TooltipProvider>
   );
