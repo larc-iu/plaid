@@ -238,8 +238,6 @@ Splitting a sentence removes the enhanced relations that would cross the new bou
 
 On export, DEPS lists every relation of the enhanced graph for each word.
 
-A project made before enhanced dependencies existed gains them the first time one of its maintainers opens a document or runs an import.
-Until then its editor has no enhanced gestures, and an import into it drops DEPS with a notice.
 Empty nodes are not supported, so an elided predicate cannot be added, and gapping stays as the tree's `orphan` relation.
 
 == Metadata
