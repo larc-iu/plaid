@@ -606,9 +606,10 @@ def test_an_unconfirmed_value_is_a_negated_clause(ws):
 def test_a_literal_pattern_is_escaped_and_a_whole_match_is_anchored():
     from plaid_agent.ud.corpus import rx
     # Written out for the server: each letter in any case, no flag.
-    assert rx('a.b') == {'regex': r'[Aa]\x2e[Bb]'}
-    assert rx('run', whole=True, case_sensitive=True)['regex'] == r'^(?:run)\z'
-    assert rx('a.b', regex=True, case_sensitive=True) == {'regex': r'a[^\x0a\x0d\x{85}\x{2028}\x{2029}]b'}
+    s = '(?:(?!)' + chr(0x10FFFF) + ')?'
+    assert rx('a.b') == {'regex': r'[Aa]\x2e[Bb]' + s}
+    assert rx('run', whole=True, case_sensitive=True)['regex'] == r'^(?:run)\z' + s
+    assert rx('a.b', regex=True, case_sensitive=True) == {'regex': r'a[^\x0a\x0d\x{85}\x{2028}\x{2029}]b' + s}
 
 
 def test_search_refuses_a_column_it_cannot_search(ws):

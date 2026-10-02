@@ -9,17 +9,20 @@ import {
 } from './searchQueries.js';
 import { PatternError } from '../../../domain/javaRegex.js';
 
+// The never-matching branch every server pattern ends in (javaRegex.js).
+const S = `(?:(?!)${String.fromCodePoint(0x10ffff)})?`;
+
 describe('buildMatchSpec', () => {
   // The server gets no case flag: each letter is written as the letters Java
   // folds it with, which the browser reads the same way.
   it('contains is a literal in any case, with no flag', () => {
-    expect(buildMatchSpec('a.b(c', 'contains')).toEqual({ regex: '[Aa]\\x2e[Bb]\\x28[Cc]' });
-    expect(buildMatchSpec('ц', 'contains')).toEqual({ regex: '[Цц]' });
+    expect(buildMatchSpec('a.b(c', 'contains')).toEqual({ regex: '[Aa]\\x2e[Bb]\\x28[Cc]' + S });
+    expect(buildMatchSpec('ц', 'contains')).toEqual({ regex: '[Цц]' + S });
   });
   it('exact is a literal, regex is read as Java syntax', () => {
     expect(buildMatchSpec('M.PL', 'exact')).toBe('M.PL');
-    expect(buildMatchSpec('^nac', 'regex')).toEqual({ regex: '^nac' });
-    expect(buildMatchSpec('\\p{L}', 'regex')).toEqual({ regex: '\\p{L}' });
+    expect(buildMatchSpec('^nac', 'regex')).toEqual({ regex: '^nac' + S });
+    expect(buildMatchSpec('\\p{L}', 'regex')).toEqual({ regex: '\\p{L}' + S });
   });
   it("throws a PatternError for a pattern it cannot read the server's way", () => {
     expect(() => buildMatchSpec('[[:alpha:]]', 'regex')).toThrow(PatternError);

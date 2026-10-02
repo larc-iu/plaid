@@ -37,7 +37,7 @@
 import FOLDS from './javaCaseFolds.js';
 
 /** The server refuses a longer pattern (plaid.query.clauses/regex-max-len). */
-export const SERVER_PATTERN_MAX = 512;
+export const SERVER_PATTERN_MAX = 4096;
 
 export class PatternError extends Error {
   constructor(message) {
@@ -686,6 +686,14 @@ const encodeSet = (node, engine) => {
 };
 
 const END = { java: '\\z', js: '$' };
+
+// Java reads a pattern by UTF-16 units unless the pattern itself holds a
+// character outside the BMP: then its lookbehinds and \b step back a whole
+// code point, as JS and Python do. A branch that never matches, holding one
+// such character written as itself (an escape does not count), switches the
+// server's pattern to that reading, so Adlam, Osage or CJK Extension B letters
+// stay letters on both sides of a lookbehind (REV-W2 F2).
+const SUPPLEMENTARY = `(?:(?!)${String.fromCodePoint(0x10ffff)})?`;
 const WORD_CLASS = `[${WORD_PROPS.map((n) => `\\p{${n}}`).join('')}]`;
 
 const emit = (node, engine) => {
@@ -770,7 +778,7 @@ export function translatePattern(
       const body = emit(ast, engine);
       return whole ? `^(?:${body})${END[engine]}` : body;
     };
-    const server = wrap('java');
+    const server = wrap('java') + SUPPLEMENTARY;
     if (server.length > SERVER_PATTERN_MAX) fail('The pattern is too long.');
     return { server, source: wrap('js'), error: null };
   } catch (err) {

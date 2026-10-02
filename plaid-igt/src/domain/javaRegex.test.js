@@ -1,12 +1,22 @@
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import FOLDS from './javaCaseFolds.js';
 import { translatePattern, SERVER_PATTERN_MAX } from './javaRegex.js';
 
 const W = '[\\p{L}\\p{M}\\p{Nd}\\p{Pc}]';
 
-const tr = (p, o) => translatePattern(p, o);
+// Every server pattern ends in a never-matching branch holding one character
+// outside the BMP, which puts Java's lookbehinds on code points (REV-W2 F2).
+// The cases below read what comes before it.
+const S = `(?:(?!)${String.fromCodePoint(0x10ffff)})?`;
+const tr = (p, o) => {
+  const t = translatePattern(p, o);
+  if (t.server === null) return t;
+  expect(t.server.endsWith(S)).toBe(true);
+  return { ...t, server: t.server.slice(0, -S.length) };
+};
 
 describe('translatePattern', () => {
   it('sends plain text as it is', () => {
@@ -78,12 +88,24 @@ describe('translatePattern', () => {
     }
   });
 
+  // The server's cap is core's plaid.query.clauses/regex-max-len. The client
+  // refuses first, so a cap left behind here is the one that holds.
+  it("takes the server's own cap", () => {
+    const clauses = readFileSync(
+      path.resolve('../plaid-core/src/main/plaid/query/clauses.clj'),
+      'utf8',
+    );
+    const [, cap] = clauses.match(/\(def regex-max-len (\d+)\)/);
+    expect(SERVER_PATTERN_MAX).toBe(Number(cap));
+    expect(tr('\\bko\\b|\\bka\\b|\\bta\\b').error).toBeNull();
+  });
+
   it('refuses a pattern longer than the server takes', () => {
     const long = 'a'.repeat(SERVER_PATTERN_MAX + 1);
     expect(tr(long).error).toBe('The pattern is too long.');
-    expect(tr('a'.repeat(200), { literal: true, caseInsensitive: true }).error).toBe(
-      'The pattern is too long.',
-    );
+    expect(
+      tr('a'.repeat(SERVER_PATTERN_MAX / 4), { literal: true, caseInsensitive: true }).error,
+    ).toBe('The pattern is too long.');
   });
 });
 
@@ -138,6 +160,14 @@ describe('translatePattern against Java itself', () => {
       'цвез',
       'ЦӀуьд',
       'ñaa',
+      // Outside the BMP: Adlam, CJK Extension B, Osage. Java's lookbehind
+      // stepped back one UTF-16 unit and \b read them otherwise (REV-W2 F2).
+      '\u{1e900}x',
+      'a\u{1e900}\u{1e901}x',
+      '\u{1e900}\u{1e901} \u{1e902}',
+      '\u{20000}x',
+      'x\u{20000}',
+      '\u{104b0}\u{104d8}',
       'Ñu',
       'ə\u0301mə',
       'اَتےِ',
@@ -163,6 +193,12 @@ describe('translatePattern against Java itself', () => {
     '\\p{Z}',
     '\\p{C}',
     '\\bko\\b',
+    '\\bx',
+    'x\\b',
+    '\\b\\w+\\b',
+    '(?<=\\p{L})x',
+    '(?<!\\p{L})x',
+    '(?<=\\w)',
     '\\b',
     '^\\w+$',
     '\\w',

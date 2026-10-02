@@ -13,6 +13,7 @@ oracle, through plaid-igt/tools/JavaRegex.java).
 
 import json
 import os
+import re
 import shutil
 import subprocess
 
@@ -29,10 +30,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RUNNER = os.path.join(HERE, 'java_regex_mirror.mjs')
 IGT = os.path.join(HERE, '..', '..', 'plaid-igt')
 JAVA_TOOL = os.path.join(IGT, 'tools', 'JavaRegex.java')
+#: The never-matching branch every server pattern ends in (java_regex._SUPPLEMENTARY).
+S = '(?:(?!)' + chr(0x10FFFF) + ')?'
 
 PATTERNS = [
     r'\p{L}', r'\p{Lu}', r'\pL', r'\p{IsL}', r'\p{gc=Lu}', r'\P{L}', r'[\p{L}\d]', r'[^\p{L}]',
-    r'\p{M}', r'\p{N}', r'\p{P}', r'\p{Z}', r'\p{C}', r'\bko\b', r'\b', r'^\w+$',
+    r'\p{M}', r'\p{N}', r'\p{P}', r'\p{Z}', r'\p{C}', r'\bko\b', r'\b', r'^\w+$', r'\bx', r'x\b', r'\b\w+\b', r'(?<=\p{L})x', r'(?<!\p{L})x',
     r'\w', r'\W', r'\d', r'\D', r'\s', r'\S', r'\h', r'\H', r'\v', r'\V', r'.$', r'\w+$', r'a$',
     r'^$', r'a\Z', r'a\z', r'\Aa', r'.', r'^.$', r'(?s)^.$', r'(?s:a.)', r'(?i)a', r'(?i)k',
     r'(?i)s', r'(?i)i', r'(?i)ß', r'(?i)ẞ', r'(?i)σ', r'(?i)ǆ', r'(?i)[a-z]', r'(?i)[^a-z]',
@@ -53,6 +56,9 @@ CASES = ([[p, {}] for p in PATTERNS]
             ['a' * (SERVER_PATTERN_MAX + 1), {}]])
 
 SUBJECTS = [
+    # Outside the BMP: Adlam, CJK Extension B, Osage (REV-W2 F2).
+    '\U0001e900x', 'a\U0001e900\U0001e901x', '\U0001e900\U0001e901 \U0001e902', '\U00020000x', 'x\U00020000',
+    '\U000104b0\U000104d8',
     'Kalamang', 'KALAMANG', 'kĭkoⁿtu´', 'ayiⁿdŭko´', 'dŭko', 'ko', 'koko', 'a\n', 'a\r\n',
     'a\r', 'a\u0085', 'a ', 'ab\n', '\n', '', 'x', '_', 'a b', 'a b', 'a\tb',
     'x\u000bx', '٣', '😀', 'a😀b', 'aa', 'abab', 'ka-t', 'ba-ba', 'ba-bo', 'a.b', 'a$b', '[x]',
@@ -112,9 +118,18 @@ def test_a_local_match_is_a_match_in_java():
     assert differ[:10] == []
 
 
+def test_the_server_cap_is_core_s():
+    # The client refuses first, so a cap left behind here is the one that holds.
+    clauses = open(os.path.join(HERE, '..', '..', 'plaid-core', 'src', 'main', 'plaid', 'query',
+                                'clauses.clj'), encoding='utf-8').read()
+    cap = int(re.search(r'\(def regex-max-len (\d+)\)', clauses).group(1))
+    assert SERVER_PATTERN_MAX == cap
+    assert translate(r'\bko\b|\bka\b|\bta\b').server.endswith(S)
+
+
 def test_search_and_replace_read_a_pattern_alike():
     # The hunter's cases: Python's re read \w and [[:alpha:]] otherwise.
-    assert rx(r'^\w+', regex=True, case_sensitive=True) == {'regex': r'^[\p{L}\p{M}\p{Nd}\p{Pc}]+'}
+    assert rx(r'^\w+', regex=True, case_sensitive=True) == {'regex': r'^[\p{L}\p{M}\p{Nd}\p{Pc}]+' + S}
     rewrite = replacer(r'^\w+$', 'X', True, False, True)
     assert rewrite('abc') == 'X'
     # A word character in any script (ruled 2026-10-02).

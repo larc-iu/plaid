@@ -30,7 +30,7 @@ import regex
 from .java_case_folds import FOLDS
 
 #: The server refuses a longer pattern (plaid.query.clauses/regex-max-len).
-SERVER_PATTERN_MAX = 512
+SERVER_PATTERN_MAX = 4096
 
 
 class PatternError(ValueError):
@@ -649,6 +649,13 @@ def _encode_set(node, engine):
 
 
 _END = {'java': '\\z', 'py': '\\Z'}
+
+#: Java reads a pattern by UTF-16 units unless the pattern itself holds a
+#: character outside the BMP: then its lookbehinds and \b step back a whole
+#: code point, as JS and Python do. A branch that never matches, holding one
+#: such character written as itself (an escape does not count), switches the
+#: server's pattern to that reading (REV-W2 F2).
+_SUPPLEMENTARY = '(?:(?!)' + chr(0x10FFFF) + ')?'
 _WORD_CLASS = '[' + ''.join(f'\\p{{{n}}}' for n in WORD_PROPS) + ']'
 
 
@@ -733,7 +740,7 @@ def translate(pattern: str, *, literal: bool = False, case_insensitive: bool = F
         body = _emit(ast, engine)
         return f'^(?:{body}){_END[engine]}' if whole else body
 
-    server = wrap('java')
+    server = wrap('java') + _SUPPLEMENTARY
     # The server counts UTF-16 units.
     if len(server.encode('utf-16-le')) // 2 > SERVER_PATTERN_MAX:
         _fail('The pattern is too long.')
