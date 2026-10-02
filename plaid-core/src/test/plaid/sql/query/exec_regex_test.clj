@@ -129,3 +129,18 @@
          clojure.lang.ExceptionInfo #"flags .* unsupported"
          (ast/expand {"find" ["?s"]
                       "where" [["span" "?s" {"layer" "RxProj/lemma" "value" {"regex" "x" "flags" "g"}}]]})))))
+
+(deftest a-long-any-case-pattern-is-taken
+  ;; The clients send an any-case search as a class per letter (`[wW]`), so a
+  ;; search of about 110 letters passed the old 512-character cap.
+  (let [{:keys [sl]} (build!)
+        any-case (fn [s] (apply str (map #(str "[" (Character/toLowerCase (char %)) (Character/toUpperCase (char %)) "]") s)))
+        long-pattern (str (any-case "walk") "|" (any-case (apply str (repeat 200 "x"))))]
+    (is (< 512 (count long-pattern) 4096))
+    (is (= #{"walking" "walks" "WALK"}
+           (values [["span" "?s" {"layer" sl "value" {"regex" long-pattern}}]]))))
+  (testing "past 4,096 characters is a 400"
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo #"too long \(max 4096"
+         (ast/expand {"find" ["?s"]
+                      "where" [["span" "?s" {"layer" "RxProj/lemma" "value" {"regex" (apply str (repeat 4097 "a"))}}]]})))))

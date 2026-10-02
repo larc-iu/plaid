@@ -271,7 +271,7 @@ https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/regex/Pat
 Matching is a substring search against the decoded value: a pattern matches
 anywhere unless you anchor it with `^` / `$`. Stick to common syntax
 (`. * + ? [ ] ^ $ |`) for patterns that port to other regex engines. A malformed
-pattern, or one longer than 512 characters, is a 400.
+pattern, or one longer than 4,096 characters, is a 400.
 
 [,python]
 ----

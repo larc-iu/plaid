@@ -59,7 +59,9 @@
 ;; Constraint keys whose value may be a regex spec `{:regex "..." :flags "i"?}`
 ;; (compiles to a REGEXP match). Text-valued keys only.
 (def regex-keys #{:value :form :name :body})
-(def regex-max-len 512)
+;; 4096: the clients send a case-insensitive search as a class per letter
+;; (`[aA]`), about four characters a letter.
+(def regex-max-len 4096)
 
 ;; Constraint keys whose value may be a SCALAR VARIABLE: `{:value "?v"}` binds
 ;; `?v` to that column instead of filtering, so the same `?v` in two clauses is a
