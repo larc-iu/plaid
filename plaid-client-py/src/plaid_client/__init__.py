@@ -1,6 +1,5 @@
 from plaid_client.client import PlaidClient
 from plaid_client.document_lock import (
-    DOCUMENT_LOCK_TTL_S,
     DocumentLock,
     DocumentLockLost,
 )
@@ -70,7 +69,6 @@ __all__ = [
     "was_replayed",
     "PlaidClient",
     "PlaidAPIError",
-    "DOCUMENT_LOCK_TTL_S",
     "DocumentLock",
     "DocumentLockLost",
     "BaseService",

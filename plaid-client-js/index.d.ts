@@ -1072,9 +1072,6 @@ export declare class DocumentLockLost extends Error {
   readonly cause?: unknown;
 }
 
-/** The server's default document-lock window, in ms. */
-export const DOCUMENT_LOCK_TTL_MS: 60000;
-
 interface DocumentsBundle {
   checkLock(documentId: string): Promise<any>;
   /**

@@ -4277,11 +4277,7 @@ export { REQUESTED_BY, makeRequester, requesterOf } from "./requester.js";
 // Document locks: `client.documents.locked()` holds one for a block of work and
 // renews it while the block runs. DocumentLockLost is what a write throws once
 // a renewal has failed. See ./documentLock.js.
-export {
-  DOCUMENT_LOCK_TTL_MS,
-  DocumentLock,
-  DocumentLockLost,
-} from "./documentLock.js";
+export { DocumentLock, DocumentLockLost } from "./documentLock.js";
 // Provenance: the cross-app convention for who made an annotation (flat
 // prov/provSource/provConfirmed metadata; absence = a verifier; 'inferred' =
 // a machine; 'contributed' = a person whose work is reviewed), plus the

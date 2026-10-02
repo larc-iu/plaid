@@ -31,20 +31,6 @@ import time
 
 logger = logging.getLogger(__name__)
 
-#: How long plaid-core holds a document lock before it expires, in seconds.
-#: ``plaid.server.locks/default-lock-expiration-ms``. An operator can change it
-#: with ``:plaid.server.locks/config :expiration-ms``, and a server publishes
-#: what it enforces as ``lock_expiration_ms`` in ``GET /info``. This is the
-#: last resort: what a live lock is renewed against is the ``expires_at`` on
-#: the acquire response, which names the moment rather than the window.
-DOCUMENT_LOCK_TTL_S = 60.0
-
-#: Widest lock lifetime we will believe from a server response. Past this the
-#: number is a clock skew between this machine and the server rather than a
-#: configured window, and the documented default is the better guess.
-_MAX_BELIEVABLE_TTL_S = 3600.0
-
-
 class DocumentLockLost(Exception):
     """The lock a ``documents.locked()`` block was holding is no longer held.
 
@@ -64,20 +50,16 @@ class DocumentLockLost(Exception):
         self.cause = cause
 
 
-def lock_ttl_s(expires_at, now_s, fallback=DOCUMENT_LOCK_TTL_S) -> float:
+def lock_ttl_s(expires_at, server_now_s) -> float:
     """How long a freshly taken lock lasts, from the server's own answer.
 
-    ``expires_at`` is the epoch-millisecond stamp the lock endpoints return.
-    Comparing it against this machine's clock is the only way to learn a window
-    an operator has retuned, and it is also the one place a clock skew can get
-    in, so an answer outside a believable band falls back to the documented
-    default rather than to a beat that never fires or fires constantly.
+    ``expires_at`` is the epoch-millisecond moment the lock endpoints return,
+    on the server's clock, so it is read against the server's clock too
+    (``client.server_now()``): this machine's clock being off cannot stretch
+    or shrink the window. It is how a window an operator has retuned
+    (``:plaid.server.locks/config :expiration-ms``) reaches the keeper.
     """
-    if isinstance(expires_at, (int, float)) and not isinstance(expires_at, bool):
-        ttl = expires_at / 1000.0 - now_s
-        if 0 < ttl <= _MAX_BELIEVABLE_TTL_S:
-            return float(ttl)
-    return float(fallback)
+    return expires_at / 1000.0 - server_now_s
 
 
 class LockKeeper:
@@ -95,9 +77,7 @@ class LockKeeper:
                  clock=time.monotonic, sleep=None):
         self._refresh = refresh
         self._document_id = document_id
-        # A window under two seconds leaves no room for a retry; treat it as a
-        # misconfiguration and beat at the documented rate instead.
-        self._ttl_s = float(ttl_s) if ttl_s >= 2.0 else DOCUMENT_LOCK_TTL_S
+        self._ttl_s = float(ttl_s)
         self._on_lost = on_lost
         self._clock = clock
         self._done = threading.Event()

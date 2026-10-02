@@ -17,11 +17,13 @@ import assert from "node:assert/strict";
 
 import PlaidClient from "../src/index.js";
 import {
-  DOCUMENT_LOCK_TTL_MS,
   DocumentLockLost,
   LockKeeper,
   lockTtlMs,
 } from "../src/documentLock.js";
+
+// What plaid-core holds a lock for by default.
+const TTL_MS = 60000;
 
 /**
  * A clock the keeper's own sleeps advance, plus a stop after N of them.
@@ -46,7 +48,7 @@ class FakeClock {
 const keeperOn = (
   clock,
   refresh,
-  ttlMs = DOCUMENT_LOCK_TTL_MS,
+  ttlMs = TTL_MS,
   onLost = null,
 ) =>
   new LockKeeper(refresh, "d1", ttlMs, {
@@ -61,34 +63,23 @@ const rejectWith = (error) => async () => {
 
 // --- reading the window the server actually gave us -------------------------
 
-test("the window comes from the server's own expiresAt", () => {
+test("the window comes from the server's own expiresAt, on the server's clock", () => {
   // An operator who retunes :plaid.server.locks/config :expiration-ms changes
   // the only number that matters here. /info publishes the window; the acquire
-  // response names the moment, which is what a renewal plans against.
+  // response names the moment, which is what a renewal plans against, read
+  // against the server's clock (`serverNow`), so this machine's clock cannot
+  // skew it.
   assert.equal(lockTtlMs(45000, 0), 45000);
   assert.equal(lockTtlMs(120000, 60000), 60000);
-});
-
-test("an unbelievable expiry falls back to the documented default", () => {
-  // A clock skew between this machine and the server is the one thing that can
-  // produce these, and either a beat that never fires or one that fires
-  // constantly is worse than the documented 60 seconds.
-  assert.equal(lockTtlMs(undefined, 0), DOCUMENT_LOCK_TTL_MS);
-  assert.equal(lockTtlMs(1000, 5000), DOCUMENT_LOCK_TTL_MS);
-  assert.equal(lockTtlMs(99999999999, 0), DOCUMENT_LOCK_TTL_MS);
-  assert.equal(lockTtlMs("soon", 0), DOCUMENT_LOCK_TTL_MS);
 });
 
 test("the beat is half the window and the retry a tenth", () => {
   const short = new LockKeeper(async () => {}, "d1", 20000);
   assert.equal(short.intervalMs, 10000);
   assert.equal(short.retryMs, 2000);
-  // A window too short to leave room for a retry is a misconfiguration, not an
-  // instruction to hammer the server.
-  assert.equal(
-    new LockKeeper(async () => {}, "d1", 500).intervalMs,
-    DOCUMENT_LOCK_TTL_MS / 2,
-  );
+  // A window too short to leave room for a retry still beats at most once a
+  // second.
+  assert.equal(new LockKeeper(async () => {}, "d1", 500).intervalMs, 1000);
 });
 
 // --- the beat ---------------------------------------------------------------
@@ -128,7 +119,7 @@ test("failures that outlast the window lose the lock", async () => {
   const lost = [];
   const err = new Error("Network error");
   err.status = 0;
-  const keeper = keeperOn(clock, rejectWith(err), DOCUMENT_LOCK_TTL_MS, (l) =>
+  const keeper = keeperOn(clock, rejectWith(err), TTL_MS, (l) =>
     lost.push(l),
   );
   await keeper.run();
@@ -160,7 +151,7 @@ test("a 423 loses the lock at once", async () => {
  */
 const isLock = (url) => new URL(url).pathname.endsWith("/lock");
 
-function stubbedClient(lockReplies) {
+function stubbedClient(lockReplies, { skewMs = null } = {}) {
   const client = new PlaidClient("http://plaid.internal:8085", "tok");
   const sent = [];
   let locks = 0;
@@ -171,10 +162,13 @@ function stubbedClient(lockReplies) {
       ok: true,
       status: 200,
       headers: {
-        get: (n) =>
-          String(n).toLowerCase() === "content-type"
-            ? "application/json"
-            : null,
+        get: (n) => {
+          const name = String(n).toLowerCase();
+          if (name === "content-type") return "application/json";
+          if (name === "date" && skewMs !== null)
+            return new Date(Date.now() + skewMs).toUTCString();
+          return null;
+        },
       },
       json: async () => body,
       text: async () => "{}",
@@ -199,7 +193,7 @@ function stubbedClient(lockReplies) {
       return ok({
         "lock-id": "L1",
         "user-id": "me",
-        "expires-at": Date.now() + reply,
+        "expires-at": Date.now() + (skewMs ?? 0) + reply,
       });
     }
     return ok({});
@@ -246,6 +240,23 @@ test("a block renews while it runs, and stops renewing on the way out", async ()
     const after = sent.length;
     await advance(120000);
     assert.equal(sent.length, after);
+  });
+});
+
+test("a server clock half an hour ahead of this machine's does not stretch the beat", async () => {
+  await withStub(async () => {
+    // The lock's expiresAt is the server's moment. Read against this
+    // machine's clock it looked 31 minutes away, and the block went 15
+    // minutes between renewals of a one-minute lock.
+    const { client, sent } = stubbedClient([60000], { skewMs: 30 * 60000 });
+    await client.documents.locked("d1", async () => {
+      for (let i = 0; i < 4; i++) await advance(30000);
+    });
+    const locks = sent.filter((r) => isLock(r.url));
+    assert.deepEqual(
+      locks.map((r) => r.method),
+      ["POST", "POST", "POST", "POST", "POST", "DELETE"],
+    );
   });
 });
 
@@ -521,6 +532,33 @@ test("an acquire never answered releases what it may hold", async () => {
       "the lock it took unseen is released, not left to expire",
     );
   } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("an acquire made offline is not sent again", async () => {
+  // The request never left, as any write's resend rule has it (retryUnknown).
+  const realFetch = globalThis.fetch;
+  const had = Object.getOwnPropertyDescriptor(globalThis.navigator, "onLine");
+  Object.defineProperty(globalThis.navigator, "onLine", {
+    value: false,
+    configurable: true,
+  });
+  try {
+    const core = lostAnswerCore(3);
+    globalThis.fetch = core.fetch;
+    const client = new PlaidClient("http://plaid.internal:8085", "tok");
+    await assert.rejects(
+      client.documents.locked("d1", async () => assert.fail("the block ran"), {
+        keepAlive: false,
+        acquireRetryMs: 0,
+      }),
+      (e) => e.status === 0 && e.offline === true,
+    );
+    assert.equal(core.acquires.length, 1);
+  } finally {
+    if (had) Object.defineProperty(globalThis.navigator, "onLine", had);
+    else delete globalThis.navigator.onLine;
     globalThis.fetch = realFetch;
   }
 });

@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client.client import PlaidClient  # noqa: E402
 from plaid_client.document_lock import (  # noqa: E402
-    DOCUMENT_LOCK_TTL_S, DocumentLockLost, LockKeeper, lock_ttl_s,
+    DocumentLockLost, LockKeeper, lock_ttl_s,
 )
 from plaid_client.http import PlaidAPIError  # noqa: E402
 
@@ -54,39 +54,34 @@ class FakeClock:
         return False
 
 
-def _keeper(clock, refresh, ttl_s=DOCUMENT_LOCK_TTL_S, lost=None):
+# What plaid-core holds a lock for by default.
+TTL_S = 60.0
+
+
+def _keeper(clock, refresh, ttl_s=TTL_S, lost=None):
     return LockKeeper(refresh, 'd1', ttl_s, clock=clock.now, sleep=clock.sleep,
                       on_lost=lost.append if lost is not None else None)
 
 
 # --- reading the window the server actually gave us --------------------------
 
-def test_the_window_comes_from_the_servers_own_expires_at():
+def test_the_window_comes_from_the_servers_own_expires_at_on_the_servers_clock():
     # An operator who retunes :plaid.server.locks/config :expiration-ms changes
     # the only number that matters here. /info publishes the window; the acquire
-    # response names the moment, which is what a renewal plans against.
+    # response names the moment, which is what a renewal plans against, read
+    # against the server's clock (server_now), so this machine's clock cannot
+    # skew it.
     assert lock_ttl_s(45_000, 0.0) == 45.0
     assert lock_ttl_s(120_000, 60.0) == 60.0
-
-
-def test_an_unbelievable_expiry_falls_back_to_the_documented_default():
-    # A clock skew between this machine and the server is the one thing that can
-    # produce these, and either a beat that never fires or one that fires
-    # constantly is worse than the documented 60 seconds.
-    assert lock_ttl_s(None, 0.0) == DOCUMENT_LOCK_TTL_S
-    assert lock_ttl_s(1000, 500.0) == DOCUMENT_LOCK_TTL_S       # already past
-    assert lock_ttl_s(99_999_999_999, 0.0) == DOCUMENT_LOCK_TTL_S  # hours away
-    assert lock_ttl_s('soon', 0.0) == DOCUMENT_LOCK_TTL_S
-    assert lock_ttl_s(True, 0.0) == DOCUMENT_LOCK_TTL_S
 
 
 def test_the_beat_is_half_the_window_and_the_retry_a_tenth():
     short = LockKeeper(lambda _: None, 'd1', 20.0)
     assert short.interval_s == 10.0
     assert short.retry_s == 2.0
-    # A window too short to leave room for a retry is a misconfiguration, not an
-    # instruction to hammer the server.
-    assert LockKeeper(lambda _: None, 'd1', 0.5).interval_s == DOCUMENT_LOCK_TTL_S / 2
+    # A window too short to leave room for a retry still beats at most once a
+    # second.
+    assert LockKeeper(lambda _: None, 'd1', 0.5).interval_s == 1.0
 
 
 # --- the beat ----------------------------------------------------------------
@@ -486,6 +481,34 @@ def test_an_acquire_never_answered_releases_what_it_may_hold(monkeypatch):
     assert ran == []
     assert len(core.acquires) == 3
     assert core.holder is None, 'the lock it took unseen is released, not left to expire'
+
+
+def test_a_server_clock_half_an_hour_ahead_does_not_stretch_the_window(monkeypatch):
+    # expires_at is the server's moment. Read against this machine's clock it
+    # looked 31 minutes away, and the block went 15 minutes between renewals
+    # of a one-minute lock.
+    from datetime import datetime, timedelta, timezone
+    from email.utils import format_datetime
+    monkeypatch.setattr('plaid_client.client.LockKeeper', _ManualKeeper)
+    server_now = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(minutes=30)
+
+    class _Skewed(_Resp):
+        headers = {'content-type': 'application/json', 'Date': format_datetime(server_now, usegmt=True)}
+
+    class _Core(_PerHolderCore):
+        def request(self, **kw):
+            resp = super().request(**kw)
+            body = resp.json() if isinstance(resp, _Resp) else None
+            if kw.get('method') == 'POST' and body and 'lock-id' in body:
+                return _Skewed(dict(body, **{'expires-at': int(server_now.timestamp() * 1000) + 60_000}))
+            return resp
+
+    client = PlaidClient('http://plaid.internal:8085', 'tok')
+    client.session = _Core()
+    with client.documents.locked('d1'):
+        pass
+    (keeper,) = _ManualKeeper.made
+    assert 55 < keeper.ttl_s <= 61
 
 
 def test_the_refusal_names_the_holder_and_no_document_id(monkeypatch):

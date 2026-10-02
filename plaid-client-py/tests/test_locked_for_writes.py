@@ -11,6 +11,7 @@ batch is refused with a 409.
 import json
 import os
 import sys
+import time
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -49,7 +50,8 @@ def _server(version):
             sent.append({'method': method, 'url': url})
             path = urlparse(url).path
             if path.endswith('/lock'):
-                return _Resp({'lock-id': 'L1'} if method == 'POST' else {})
+                return _Resp({'lock-id': 'L1', 'expires-at': int(time.time() * 1000) + 60_000}
+                             if method == 'POST' else {})
             if method == 'GET':
                 return _Resp({'document/id': 'd1', 'document/version': state['version']})
             state['version'] += 1

@@ -18,7 +18,7 @@ from plaid_client.http import (
     PlaidAPIError, make_request, queue_request, extract_document_versions,
     restamp_document_version, BatchRef, make_batch_ref, rebase_refs, _unsendable,
     list_all, list_page, iter_pages, build_api_error, retry_while_busy,
-    retry_unknown, next_idempotency_key, merge_versions, is_replayed, NO_PIN,
+    retry_unknown, is_unknown_outcome, next_idempotency_key, merge_versions, is_replayed, NO_PIN,
     IDEMPOTENCY_HEADER, DEFAULT_TIMEOUT_S, DEFAULT_BATCH_TIMEOUT_S,
 )
 from plaid_client.ids import uuid7
@@ -1903,15 +1903,9 @@ class TokenLayersResource(_ConstraintMethods, _Resource):
                                            parent_token_layer_id=parent_token_layer_id), audit_message=audit_message)
 
 
-#: Tries a :meth:`DocumentsResource.locked` block makes at an acquire whose
-#: outcome is unknown, and the pause before the next, which grows by this much
-#: each time.
-LOCK_ACQUIRE_ATTEMPTS = 3
+#: The pause before sending again an acquire whose outcome is unknown, which
+#: grows by this much each time (three sends in all).
 LOCK_ACQUIRE_RETRY_S = 0.5
-
-# The HTTP status of a request that may or may not have reached the server: no
-# answer at all (0), or a proxy's 502 or 504.
-_UNKNOWN_OUTCOME_STATUSES = (0, 502, 504)
 
 
 class DocumentsResource(_Resource):
@@ -1987,35 +1981,33 @@ class DocumentsResource(_Resource):
         """The acquire of a :meth:`locked` block, under the holder id it minted.
 
         An acquire whose outcome is unknown (no answer, a timeout, a 502 or a
-        504) may have taken the lock. It is sent again under the same id, which
-        the server answers 200 while that holder has it. When every attempt is
-        unknown, the lock it may hold is released on the way out, so it does
-        not stand in everyone's way until it expires.
+        504) may have taken the lock. It is sent again under the same id as
+        any write is (``retry_unknown``), which the server answers 200 while
+        that holder has it. When every send is unknown, the lock it may hold
+        is released on the way out, so it does not stand in everyone's way
+        until it expires.
         """
-        for attempt in range(LOCK_ACQUIRE_ATTEMPTS):
-            try:
-                return self.acquire_lock(document_id, new_lock_id=lock_id)
-            except PlaidAPIError as e:
-                if e.status == 423:
-                    data = e.response_data or {}
-                    holder = data.get('user-id') or data.get('user_id') or 'another user'
-                    raise PlaidAPIError(
-                        f"This document is being edited by {holder}. "
-                        f"Try again once they're done.",
-                        status=423, url=e.url, method=e.method,
-                        response_data=e.response_data, status_text=e.status_text,
-                        original_error=e) from e
-                if e.status not in _UNKNOWN_OUTCOME_STATUSES:
-                    raise
-                if attempt + 1 < LOCK_ACQUIRE_ATTEMPTS:
-                    time.sleep(LOCK_ACQUIRE_RETRY_S * (attempt + 1))
-                    continue
+        try:
+            return retry_unknown(
+                lambda: self.acquire_lock(document_id, new_lock_id=lock_id),
+                delays=[LOCK_ACQUIRE_RETRY_S, 2 * LOCK_ACQUIRE_RETRY_S])
+        except PlaidAPIError as e:
+            if e.status == 423:
+                data = e.response_data or {}
+                holder = data.get('user-id') or data.get('user_id') or 'another user'
+                raise PlaidAPIError(
+                    f"This document is being edited by {holder}. "
+                    f"Try again once they're done.",
+                    status=423, url=e.url, method=e.method,
+                    response_data=e.response_data, status_text=e.status_text,
+                    original_error=e) from e
+            if is_unknown_outcome(e):
                 try:
                     self.release_lock(document_id, lock_id)
                 except Exception as release_err:
                     logging.getLogger(__name__).warning(
                         "Failed to release lock on document %s: %s", document_id, release_err)
-                raise
+            raise
 
     @contextmanager
     def locked(self, document_id: str, *, keep_alive: bool = True):
@@ -2075,7 +2067,7 @@ class DocumentsResource(_Resource):
         lock_id = (info or {}).get('lock_id') or minted
         keeper = None
         if keep_alive:
-            ttl_s = lock_ttl_s((info or {}).get('expires_at'), time.time())
+            ttl_s = lock_ttl_s(info['expires_at'], client.server_now().timestamp())
             client.document_lock_lost = None
             keeper = LockKeeper(
                 lambda doc_id: self.renew_lock(doc_id, lock_id), document_id, ttl_s,

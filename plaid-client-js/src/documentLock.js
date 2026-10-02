@@ -1,3 +1,5 @@
+import { isUnknownOutcome, retryUnknown } from "./http.js";
+
 /**
  * Keeping a document lock alive for as long as a `locked()` block runs.
  *
@@ -28,21 +30,6 @@
  */
 
 /**
- * How long plaid-core holds a document lock before it expires, in ms.
- * `plaid.server.locks/default-lock-expiration-ms`. An operator can change it
- * with `:plaid.server.locks/config :expiration-ms`, and a server publishes what
- * it enforces as `lockExpirationMs` in `GET /info`. This is the last resort:
- * what a live lock is renewed against is the `expiresAt` on the acquire
- * response, which names the moment rather than the window.
- */
-export const DOCUMENT_LOCK_TTL_MS = 60000;
-
-// Widest lock lifetime we will believe from a server response. Past this the
-// number is a clock skew between this machine and the server rather than a
-// configured window, and the documented default is the better guess.
-const MAX_BELIEVABLE_TTL_MS = 3600000;
-
-/**
  * The lock a `documents.locked()` block was holding is no longer held.
  *
  * Thrown by the keep-alive when it cannot renew the lock, and then by the
@@ -62,23 +49,18 @@ export class DocumentLockLost extends Error {
 /**
  * How long a freshly taken lock lasts, from the server's own answer.
  *
- * `expiresAt` is the epoch-millisecond stamp the lock endpoints return.
- * Comparing it against this machine's clock is the only way to learn a window
- * an operator has retuned, and it is also the one place a clock skew can get
- * in, so an answer outside a believable band falls back to the documented
- * default rather than to a beat that never fires or fires constantly.
+ * `expiresAt` is the epoch-millisecond moment the lock endpoints return, on
+ * the server's clock, so it is read against the server's clock too
+ * (`client.serverNow()`): this machine's clock being off cannot stretch or
+ * shrink the window. It is how a window an operator has retuned
+ * (`:plaid.server.locks/config :expiration-ms`) reaches the keeper.
  *
- * @param {number|undefined} expiresAt
- * @param {number} nowMs
- * @param {number} [fallback]
+ * @param {number} expiresAt
+ * @param {number} serverNowMs
  * @returns {number}
  */
-export function lockTtlMs(expiresAt, nowMs, fallback = DOCUMENT_LOCK_TTL_MS) {
-  if (typeof expiresAt === "number" && Number.isFinite(expiresAt)) {
-    const ttl = expiresAt - nowMs;
-    if (ttl > 0 && ttl <= MAX_BELIEVABLE_TTL_MS) return ttl;
-  }
-  return fallback;
+export function lockTtlMs(expiresAt, serverNowMs) {
+  return expiresAt - serverNowMs;
 }
 
 /**
@@ -100,9 +82,7 @@ export class LockKeeper {
   ) {
     this._refresh = refresh;
     this._documentId = documentId;
-    // A window under two seconds leaves no room for a retry; treat it as a
-    // misconfiguration and beat at the documented rate instead.
-    this._ttlMs = ttlMs >= 2000 ? ttlMs : DOCUMENT_LOCK_TTL_MS;
+    this._ttlMs = ttlMs;
     this._onLost = onLost;
     this._clock = clock;
     this._sleep = sleep || ((ms) => this._defaultSleep(ms));
@@ -219,15 +199,10 @@ export class DocumentLock {
 }
 
 /**
- * Tries a `locked()` block makes at an acquire whose outcome is unknown, and the
- * pause before the next, which grows by this much each time.
+ * The pause before sending again an acquire whose outcome is unknown, which
+ * grows by this much each time (three sends in all).
  */
-export const LOCK_ACQUIRE_ATTEMPTS = 3;
 export const LOCK_ACQUIRE_RETRY_MS = 500;
-
-// The HTTP status of a request that may or may not have reached the server: no
-// answer at all (0), or a proxy's 502 or 504.
-const UNKNOWN_OUTCOME_STATUSES = new Set([0, 502, 504]);
 
 function mintLockId() {
   return globalThis.crypto.randomUUID();
@@ -237,45 +212,41 @@ function mintLockId() {
  * The acquire of a `locked()` block, under the holder id it minted.
  *
  * An acquire whose outcome is unknown (no answer, a timeout, a 502 or a 504)
- * may have taken the lock. It is sent again under the same id, which the server
- * answers 200 while that holder has it. When every attempt is unknown, the lock
- * it may hold is released on the way out, so it does not stand in everyone's
- * way until it expires.
+ * may have taken the lock. It is sent again under the same id as any write is
+ * (`retryUnknown`), which the server answers 200 while that holder has it.
+ * When every send is unknown, the lock it may hold is released on the way
+ * out, so it does not stand in everyone's way until it expires.
  */
 async function takeLock(client, documentId, lockId, retryMs) {
-  for (let attempt = 0; ; attempt += 1) {
-    try {
-      return await client.documents.acquireLock(documentId, undefined, lockId);
-    } catch (error) {
-      if (error?.status === 423) {
-        // The error body is raw JSON off the wire, so it is still kebab-cased.
-        const body = error.responseData || {};
-        const holder = body.userId || body["user-id"] || "another user";
-        const readable = new Error(
-          `This document is being edited by ${holder}. Try again once they're done.`,
-        );
-        readable.status = 423;
-        readable.statusText = error.statusText;
-        readable.url = error.url;
-        readable.method = error.method;
-        readable.responseData = error.responseData;
-        readable.cause = error;
-        throw readable;
-      }
-      if (!UNKNOWN_OUTCOME_STATUSES.has(error?.status)) throw error;
-      if (attempt + 1 < LOCK_ACQUIRE_ATTEMPTS) {
-        await new Promise((resolve) =>
-          setTimeout(resolve, retryMs * (attempt + 1)),
-        );
-        continue;
-      }
+  try {
+    return await retryUnknown(
+      () => client.documents.acquireLock(documentId, undefined, lockId),
+      { delaysMs: [retryMs, 2 * retryMs] },
+    );
+  } catch (error) {
+    if (error?.status === 423) {
+      // The error body is raw JSON off the wire, so it is still kebab-cased.
+      const body = error.responseData || {};
+      const holder = body.userId || body["user-id"] || "another user";
+      const readable = new Error(
+        `This document is being edited by ${holder}. Try again once they're done.`,
+      );
+      readable.status = 423;
+      readable.statusText = error.statusText;
+      readable.url = error.url;
+      readable.method = error.method;
+      readable.responseData = error.responseData;
+      readable.cause = error;
+      throw readable;
+    }
+    if (isUnknownOutcome(error) && !error.offline) {
       try {
         await client.documents.releaseLock(documentId, lockId);
       } catch {
         /* the lock expires on its own */
       }
-      throw error;
     }
+    throw error;
   }
 }
 
@@ -300,7 +271,7 @@ export async function withDocumentLock(
   const lockId = info?.lockId ?? minted;
   let keeper = null;
   if (keepAlive) {
-    const ttlMs = lockTtlMs(info?.expiresAt, Date.now());
+    const ttlMs = lockTtlMs(info.expiresAt, client.serverNow().getTime());
     client.documentLockLost = null;
     keeper = new LockKeeper(
       (id) => client.documents.renewLock(id, lockId),
