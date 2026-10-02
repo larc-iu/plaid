@@ -123,18 +123,20 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
   };
 
   const plan = r.plan;
-  const selectedRows = plan ? plan.rows.filter((x) => r.selected.has(x.id)) : [];
+  // What an Apply sends: the selected rows a stopped Apply has not already
+  // sent or skipped (`applied`), so the count and the confirm say what is left.
+  const selectedRows = plan ? plan.rows.filter((x) => r.selected.has(x.id) && !x.applied) : [];
   const targetLabel = plan?.target?.kind === 'morpheme' ? 'morpheme form' : plan?.target?.field;
 
   const doApply = async () => {
     // Ticking a flagged row by hand does not make it writable: the same rule
     // that stops it being typed stops it being bulk-written.
     const writable = selectedRows.filter((x) => !x.invalid);
-    const res = await r.run('Apply', () =>
+    const res = await r.run('Apply', (onProgress) =>
       applyField(
         client,
         { rows: writable, versions: plan.versions, replan: plan.replan },
-        { label: `Replace “${plan.find}” → “${plan.repl}” in ${targetLabel}` },
+        { label: `Replace “${plan.find}” → “${plan.repl}” in ${targetLabel}`, onProgress },
       ),
     );
     if (!res) return;
@@ -204,7 +206,7 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
           </Button>
         </div>
       </div>
-      <Progress text={r.progress} />
+      <Progress text={r.progress} startedAt={r.startedAt} />
       {plan && (
         <>
           <ApplyBar

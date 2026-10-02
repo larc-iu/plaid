@@ -220,3 +220,64 @@ describe('a run that stops partway', () => {
     );
   });
 });
+
+describe('an apply in progress', () => {
+  it('says which document it is on, out of how many, and the lexicon step', async () => {
+    const { client } = serverAndClient({ a: 1, b: 1 });
+    const word = (docId) => ({
+      docId,
+      docName: `Doc ${docId}`,
+      id: `w-${docId}`,
+      textId: `t-${docId}`,
+      begin: 0,
+      end: 6,
+      old: 'garden',
+      new: 'yard',
+      morphemes: [],
+    });
+    const said = [];
+    await applyRespell(
+      client,
+      { rows: [word('a'), word('b')], lexiconRows: [], versions: { a: 1, b: 1 } },
+      {
+        includeMorphemes: false,
+        includeLexicon: false,
+        label: 'Respell',
+        onProgress: (...args) => said.push(args),
+      },
+    );
+    expect(said).toEqual([
+      [1, 2],
+      [2, 2],
+    ]);
+    const fieldSaid = [];
+    const { client: c2 } = serverAndClient({ a: 1 });
+    await applyField(
+      c2,
+      { rows: [spanRow('a', 's1', 'CAT', 'FELINE')], versions: { a: 1 } },
+      { label: 'Replace', onProgress: (...args) => fieldSaid.push(args) },
+    );
+    expect(fieldSaid).toEqual([[1, 1]]);
+  });
+
+  it('does not count the rows a stopped apply sent or skipped a second time', async () => {
+    const { server, client } = serverAndClient({ a: 1, b: 1 });
+    server.fail = {
+      doc: 'b',
+      error: Object.assign(new Error('HTTP 500'), { status: 500, method: 'POST' }),
+    };
+    const rows = [spanRow('a', 's1', 'CAT', 'FELINE'), spanRow('b', 's2', 'CAT', 'FELINE')];
+    await applyField(client, { rows, versions: { a: 1, b: 1 } }, { label: 'Replace' });
+    // What the panels count for the Apply button and its confirm.
+    expect(rows.filter((r) => !r.applied).map((r) => r.id)).toEqual(['s2']);
+  });
+
+  it('a document whose answer was lost is not called failed', () => {
+    const error = Object.assign(new Error('Network error'), { status: 0, method: 'POST' });
+    notifyStopped({ docName: 'Laa kthee', error }, '404 words in 1 document respelled');
+    expect(feedback.notifyWarning).toHaveBeenLastCalledWith(
+      '404 words in 1 document respelled. No answer for “Laa kthee”, which may or may not be changed. The documents after it were not changed.',
+      'Stopped early',
+    );
+  });
+});

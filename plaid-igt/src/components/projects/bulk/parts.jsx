@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Link } from 'react-router-dom';
 import { FileText, ArrowRight } from 'lucide-react';
 import { Input } from '@ui/components/ui/input';
@@ -25,6 +25,8 @@ import { ListPager } from '@ui/components/shared/list-search';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { TALL_LIST_PAGE_SIZE, usePagedList } from '@ui/hooks/usePagedList';
 import { cn } from '@ui/lib/utils';
+import { formatElapsed } from '@ui/hooks/useRunProgress.js';
+import { isOnline, onOnlineChange, retryingText } from '@ui/lib/retrying.js';
 import { MATCH_TYPES } from '../search/searchQueries.js';
 import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from '../search/hitLinks.js';
@@ -255,7 +257,35 @@ export const SubstitutionFields = ({
   </div>
 );
 
-export const Progress = ({ text }) => (text ? <Loading label={text} className="p-0" /> : null);
+// The run's line: what it is doing, a clock that ticks whether or not
+// anything is said, and the retrying text while the browser has no network
+// (the client sends a write again until it is answered).
+export const Progress = ({ text, startedAt }) => {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!startedAt) return undefined;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [startedAt]);
+  const online = useSyncExternalStore(onOnlineChange, isOnline);
+  if (!text) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <Loading label={text} className="p-0" />
+      {!online && (
+        <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+          {retryingText()}
+        </span>
+      )}
+      {startedAt && (
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {formatElapsed(now - startedAt)}
+        </span>
+      )}
+    </div>
+  );
+};
 
 // ---- respell -------------------------------------------------------------------
 

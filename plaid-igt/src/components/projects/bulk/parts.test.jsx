@@ -113,3 +113,14 @@ describe('Progress', () => {
     await view.unmount();
   });
 });
+
+describe('the run line', () => {
+  it('says what the run is doing beside a clock counting from its start', async () => {
+    const view = await renderComponent(
+      <Progress text="Applying to document 3 of 67…" startedAt={Date.now() - 65_000} />,
+    );
+    expect(document.body.textContent).toContain('Applying to document 3 of 67…');
+    expect(document.body.textContent).toContain('1:05');
+    await view.unmount();
+  });
+});

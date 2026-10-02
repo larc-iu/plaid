@@ -244,7 +244,7 @@ async function unchangedEntries(client, lexiconRows) {
 export async function applyRespell(
   client,
   { rows, lexiconRows, versions, replan },
-  { includeMorphemes, includeLexicon, label },
+  { includeMorphemes, includeLexicon, label, onProgress },
 ) {
   const byDoc = rowsByDoc(rows.filter((r) => !r.applied));
   const out = {
@@ -260,7 +260,9 @@ export async function applyRespell(
   const morphemesOf = (docRows) => (includeMorphemes ? docRows.flatMap((r) => r.morphemes) : []);
 
   await writeAcrossDocuments(client, label, 'respell', async () => {
+    let n = 0;
     for (const [docId, docRows] of byDoc) {
+      onProgress?.((n += 1), byDoc.size);
       const res = await sendDocument(client, {
         docId,
         version: versions?.[docId],
@@ -290,6 +292,7 @@ export async function applyRespell(
     if (includeLexicon) {
       try {
         const open = lexiconRows.filter((r) => !r.applied && !r.locked);
+        if (open.length) onProgress?.('Respelling lexicon entries…');
         const kept = await unchangedEntries(client, open);
         const keptSet = new Set(kept);
         for (const r of open) {
@@ -354,7 +357,7 @@ const landedValue = (row, now) => now.old === row.new;
 // later apply of the same plan, as Respell's are, so Apply again after a
 // stop partway sends only the documents that did not land. A stop after a
 // document landed resolves with `failed` (see stoppedOrDone).
-export async function applyField(client, { rows, versions, replan }, { label }) {
+export async function applyField(client, { rows, versions, replan }, { label, onProgress }) {
   let changed = 0;
   let skipped = 0;
   let failed = null;
@@ -372,7 +375,10 @@ export async function applyField(client, { rows, versions, replan }, { label }) 
       }
     });
   await writeAcrossDocuments(client, label, 'replace', async () => {
-    for (const [docId, docRows] of rowsByDoc(rows.filter((r) => !r.applied))) {
+    const byDoc = rowsByDoc(rows.filter((r) => !r.applied));
+    let n = 0;
+    for (const [docId, docRows] of byDoc) {
+      onProgress?.((n += 1), byDoc.size);
       const out = await sendDocument(client, {
         docId,
         version: versions?.[docId],
@@ -439,13 +445,20 @@ const signatureNow = (doc, wordId) => {
 // already been surfaced through doc.onError). Earlier documents keep their
 // changes, and the count reports how far it got. Returns { changed, skipped,
 // failedDoc }.
-export async function applyReanalyze(client, { rows, docs }, { analysis, label, onError }) {
+export async function applyReanalyze(
+  client,
+  { rows, docs },
+  { analysis, label, onError, onProgress },
+) {
   const docById = new Map(docs.map((d) => [d.id, d]));
   let changed = 0;
   let skipped = 0;
   let failedDoc = null;
   await writeAcrossDocuments(client, label, 'reanalyze', async () => {
-    for (const [docId, docRows] of rowsByDoc(rows)) {
+    const byDoc = rowsByDoc(rows);
+    let at = 0;
+    for (const [docId, docRows] of byDoc) {
+      onProgress?.((at += 1), byDoc.size);
       const doc = docById.get(docId);
       if (!doc) continue;
       // A refusal because the document changed is this run's to handle, and

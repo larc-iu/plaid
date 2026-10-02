@@ -65,7 +65,7 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
 
   const doApply = async () => {
     if (!target || targetBad.length) return;
-    const res = await r.run('Apply', () =>
+    const res = await r.run('Apply', (onProgress) =>
       applyReanalyze(
         client,
         { rows: selectedRows, docs: plan.docs },
@@ -73,6 +73,7 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
           analysis: target.analysis,
           label: `Re-analyze “${plan.form}” as ${label(target.analysis)}`,
           onError: (msg) => notifyError(msg, 'Failed to re-analyze'),
+          onProgress,
         },
       ),
     );
@@ -119,7 +120,7 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
           of their own.
         </p>
       </div>
-      <Progress text={r.progress} />
+      <Progress text={r.progress} startedAt={r.startedAt} />
       {plan && (
         <>
           {plan.candidates.length === 0 ? (

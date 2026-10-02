@@ -410,7 +410,7 @@ export const MergePanel = ({ project, client }) => {
           </Button>
         </div>
       )}
-      <Progress text={r.progress} />
+      <Progress text={r.progress} startedAt={r.startedAt} />
       {plan && survivor && (
         <ApplyBar
           count={losers.length}

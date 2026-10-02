@@ -80,16 +80,18 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
   };
 
   const plan = r.plan;
-  const selectedRows = plan ? plan.rows.filter((x) => r.selected.has(x.id)) : [];
+  // What an Apply sends: the selected rows a stopped Apply has not already
+  // sent or skipped (`applied`), so the count and the confirm say what is left.
+  const selectedRows = plan ? plan.rows.filter((x) => r.selected.has(x.id) && !x.applied) : [];
   const openLex = plan ? plan.lexiconRows.filter((x) => !x.locked) : [];
-  const selectedLex = openLex.filter((x) => r.selected.has(x.id));
+  const selectedLex = openLex.filter((x) => r.selected.has(x.id) && !x.applied);
   const morphCount = includeMorphemes
     ? selectedRows.reduce((a, x) => a + x.morphemes.length, 0)
     : 0;
   const total = selectedRows.length + (includeLexicon ? selectedLex.length : 0);
 
   const doApply = async () => {
-    const res = await r.run('Apply', () =>
+    const res = await r.run('Apply', (onProgress) =>
       applyRespell(
         client,
         {
@@ -102,6 +104,7 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
           includeMorphemes,
           includeLexicon,
           label: `Respell “${plan.find}” → “${plan.repl}”`,
+          onProgress,
         },
       ),
     );
@@ -156,7 +159,7 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
           lexicon links. Text outside words (punctuation between them, gaps) is left alone.
         </p>
       </div>
-      <Progress text={r.progress} />
+      <Progress text={r.progress} startedAt={r.startedAt} />
       {plan && (
         <>
           <ApplyBar
