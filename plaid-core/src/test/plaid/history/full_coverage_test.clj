@@ -432,6 +432,9 @@
             ;; ---- layer constraints ----
             _ (assert-ok (constraints-call :put "span-layers" slB "fc" {:constraints [{:type "single-span"}]})) ; layer/set-constraints
             _ (assert-status 204 (constraints-call :delete "span-layers" slB "fc" nil)) ; layer/delete-constraints
+            ;; a doubled span for the repair to join: a repair that changes
+            ;; nothing is not recorded
+            _ (create-span admin-request slA [t2] "DUP")
             _ (assert-ok (constraints-call :post "span-layers" slA "repair" {:constraints [{:type "single-span"}]})) ; layer/repair-constraints
             _ (assert-ok (constraints-call :put "span-layers" slA "fc" {:constraints [{:type "single-span"}]}))
             tx (-> (create-token admin-request tklA text-id 23 26) :body :id)
