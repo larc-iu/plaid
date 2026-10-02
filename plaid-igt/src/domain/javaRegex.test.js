@@ -4,6 +4,8 @@ import path from 'node:path';
 import FOLDS from './javaCaseFolds.js';
 import { translatePattern, SERVER_PATTERN_MAX } from './javaRegex.js';
 
+const W = '[\\p{L}\\p{M}\\p{Nd}\\p{Pc}]';
+
 const tr = (p, o) => translatePattern(p, o);
 
 describe('translatePattern', () => {
@@ -13,21 +15,22 @@ describe('translatePattern', () => {
   });
 
   it('writes out what the two engines read differently', () => {
-    expect(tr('\\w').server).toBe('[0-9A-Z_a-z]');
+    // A word character in any script (ruled 2026-10-02).
+    expect(tr('\\w').server).toBe(W);
+    expect(tr('\\W').server).toBe('[^\\p{L}\\p{M}\\p{Nd}\\p{Pc}]');
+    expect(tr('\\d').server).toBe('\\p{Nd}');
     expect(tr('\\s').server).toBe('[\\x09-\\x0d\\x20]');
     expect(tr('.').server).toBe('[^\\x0a\\x0d\\x{85}\\x{2028}\\x{2029}]');
     expect(tr('.').source).toBe('[^\\x0a\\x0d\\u{85}\\u{2028}\\u{2029}]');
     expect(tr('a$').server).toBe('a(?=(?:\\x0d\\x0a|[\\x0a\\x0d\\x{85}\\x{2028}\\x{2029}])?\\z)');
-    expect(tr('\\bx').server).toBe(
-      '(?:(?<=[0-9A-Z_a-z])(?![0-9A-Z_a-z])|(?<![0-9A-Z_a-z])(?=[0-9A-Z_a-z]))x',
-    );
+    expect(tr('\\bx').server).toBe(`(?:(?<=${W})(?!${W})|(?<!${W})(?=${W}))x`);
   });
 
   it('writes a letter in any case as the letters Java folds it with, and no flag', () => {
     expect(tr('k', { literal: true, caseInsensitive: true }).server).toBe('[Kk\u212a]');
     expect(tr('(?i)k').server).toBe('[Kk\u212a]');
     expect(tr('(?i)[a-c]').server).toBe('[A-Ca-c]');
-    expect(tr('(?i)\\w').server).toBe('[0-9A-Z_a-z]');
+    expect(tr('(?i)\\w').server).toBe(W);
     expect(tr('a(?i)b(?-i)c').server).toBe('a[Bb]c');
     expect(tr('(?i:a)b').server).toBe('(?:[Aa])b');
   });
@@ -54,6 +57,7 @@ describe('translatePattern', () => {
       '(?>a)': '(?>...) is not supported.',
       '\\G': '\\G is not supported.',
       '\\B': '\\B is not supported.',
+      '[\\W]': '\\W is not supported in [...]. Use [^\\w...] instead.',
       '(a)?\\1': '\\1 must refer to a group that always matches before it.',
       '(?:(a)|b)\\1': '\\1 must refer to a group that always matches before it.',
       '(?i)(a)\\1': 'A back reference cannot be used with (?i).',
@@ -231,6 +235,11 @@ describe('translatePattern against Java itself', () => {
     '(?<=a|bc)d',
     '\\bتے\\b',
     '\\bə\u0301mə\\b',
+    '[\\w-]+',
+    '\\d+',
+    '[^\\w]',
+    '\\bцу',
+    'ا\\b',
     '[\\p{Lu}\\p{Nd}]',
     '\\p{Ll}\\p{Lu}',
   ];

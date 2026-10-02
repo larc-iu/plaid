@@ -97,13 +97,19 @@ describe('buildReplacer, read as the server reads it', () => {
     expect(run('\\p{Lu}', 'regex', 'x', ['Ñu']).out).toEqual(['xu']);
   });
 
-  it('takes \\b as a boundary of [0-9A-Za-z_], as \\w is', () => {
-    expect(run('\\bko\\b', 'regex', 'KO', ['ko', 'kĭkoⁿtu´', 'ayiⁿdŭko´', 'koko']).out).toEqual([
-      'KO',
-      'kĭKOⁿtu´',
-      'ayiⁿdŭKO´',
+  // A word character is a letter, mark, digit or connector in any script
+  // (ruled 2026-10-02), so ĭ and ŭ are inside the word, not a boundary.
+  it('takes \\w and \\b in any script', () => {
+    expect(
+      run('\\bko\\b', 'regex', 'KO', ['ko', 'kĭkoⁿtu´', 'ayiⁿdŭko´', 'koko', 'ŭ ko´']).out,
+    ).toEqual(['KO', null, null, null, 'ŭ KO´']);
+    expect(run('^\\w+$', 'regex', 'x', ['Цвез', 'ЦӀуьд', 'كتاب', 'a b']).out).toEqual([
+      'x',
+      'x',
+      'x',
       null,
     ]);
+    expect(run('\\d', 'regex', '#', ['٣ and 3']).out).toEqual(['# and #']);
   });
 
   it('reads \\h, \\s, . and $ as Java does', () => {

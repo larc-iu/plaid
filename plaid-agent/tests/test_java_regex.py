@@ -40,9 +40,9 @@ PATTERNS = [
     r'(?<x>ba)-\k<x>', r'a{2}', r'a{1,2}', r'a+?', r'(?:ab|ba)+', r'[a-c]', r'[^a-c]', r'[-a]',
     r'[a-]', r'[\]]', r'[\w-]', r'[.]', r'\$', r'\.', r'\Qa.b\E', r'\x41', r'\x{1F600}',
     r'😀', r'\0101', r'\cA', r']', r'}', r'(?=a)a', r'(?!a).', r'(?<=a)b', r'(?<!a)b',
-    r'(?<=\ba)b', r'(?<=a|bc)d', r'\bتے\b', r'\bə́mə\b', r'[\p{Lu}\p{Nd}]', '\\s*=', r'\ ', r'\#',
+    r'(?<=\ba)b', r'(?<=a|bc)d', r'[\w-]+', r'\d+', r'[^\w]', r'\bцу', r'\bتے\b', r'\bə́mə\b', r'[\p{Lu}\p{Nd}]', '\\s*=', r'\ ', r'\#',
     # Refused, with the same message in both clients.
-    '[[:alpha:]]', r'\p{IsLatin}', '(?m)^a', 'a*+', '(?>a)', r'\G', r'\B', r'(a)?\1', r'(?i)(a)\1',
+    '[[:alpha:]]', r'\p{IsLatin}', '(?m)^a', 'a*+', '(?>a)', r'\G', r'\B', r'[\W]', r'(a)?\1', r'(?i)(a)\1',
     r'(?i)\p{Lu}', '(?<=a*)b', '*a', 'a{', '(a', 'a)', '[a', '[z-a]', 'a{3,2}', '\\', r'\y',
 ]
 CASES = ([[p, {}] for p in PATTERNS]
@@ -114,10 +114,12 @@ def test_a_local_match_is_a_match_in_java():
 
 def test_search_and_replace_read_a_pattern_alike():
     # The hunter's cases: Python's re read \w and [[:alpha:]] otherwise.
-    assert rx(r'^\w+', regex=True, case_sensitive=True) == {'regex': '^[0-9A-Z_a-z]+'}
+    assert rx(r'^\w+', regex=True, case_sensitive=True) == {'regex': r'^[\p{L}\p{M}\p{Nd}\p{Pc}]+'}
     rewrite = replacer(r'^\w+$', 'X', True, False, True)
     assert rewrite('abc') == 'X'
-    assert rewrite('añb') == 'añb'
+    # A word character in any script (ruled 2026-10-02).
+    assert rewrite('añb') == 'X'
+    assert rewrite('a b') == 'a b'
     assert replacer(r'\p{L}', 'x', True, False, True)('ñ1') == 'x1'
     assert replacer('ka', 'ga', False, False)('KAlamang') == 'galamang'
     with pytest.raises(ToolError, match='Nested'):

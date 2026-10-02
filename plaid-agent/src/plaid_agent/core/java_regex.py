@@ -11,8 +11,10 @@ the same text to both found one set of values and rewrote another.
 This is the same translator as the browser client's ``javaRegex.js`` (Search
 and Bulk Edit there), kept in step by ``tests/test_java_regex.py``:
 the pattern is parsed as Java syntax, and every construct whose meaning
-differs is written out in a form both engines read the same way (explicit
-ASCII classes for ``\\w \\d \\s``, lookarounds for ``\\b``, Java's line ends
+differs is written out in a form both engines read the same way (``\\w`` and
+``\\d`` as Unicode categories, so a word character is a letter, mark, digit
+or connector in any script, Java's explicit classes for ``\\s \\h \\v``,
+lookarounds over that ``\\w`` for ``\\b``, Java's line ends
 for ``.`` and ``$``, and each letter of a case-insensitive pattern as the
 class of letters Java folds it with, so neither engine folds case itself and
 the server gets no flag). What it cannot write out the same way is refused
@@ -43,14 +45,15 @@ class Translated(NamedTuple):
 
 
 MAX_CP = 0x10FFFF
-WORD = [(0x30, 0x39), (0x41, 0x5A), (0x5F, 0x5F), (0x61, 0x7A)]
-DIGIT = [(0x30, 0x39)]
+#: A word character in any script (letter, mark, decimal digit, connector such
+#: as _), written as categories, which every engine reads.
+WORD_PROPS = ['L', 'M', 'Nd', 'Pc']
 SPACE = [(0x09, 0x0D), (0x20, 0x20)]
 HSPACE = [(0x09, 0x09), (0x20, 0x20), (0xA0, 0xA0), (0x1680, 0x1680), (0x180E, 0x180E),
           (0x2000, 0x200A), (0x202F, 0x202F), (0x205F, 0x205F), (0x3000, 0x3000)]
 VSPACE = [(0x0A, 0x0D), (0x85, 0x85), (0x2028, 0x2029)]
 LINE_END = [(0x0A, 0x0A), (0x0D, 0x0D), (0x85, 0x85), (0x2028, 0x2029)]
-ESCAPE_SETS = {'d': DIGIT, 'w': WORD, 's': SPACE, 'h': HSPACE, 'v': VSPACE}
+ESCAPE_SETS = {'s': SPACE, 'h': HSPACE, 'v': VSPACE}
 
 CATEGORIES = set('L Lu Ll Lt Lm Lo M Mn Mc Me N Nd Nl No P Pc Pd Ps Pe Pi Pf Po '
                  'S Sm Sc Sk So Z Zs Zl Zp C Cc Cf Co'.split())
@@ -245,9 +248,18 @@ class _Parser:
             if self.at_end():
                 _fail('\\c needs a character.')
             return {'cp': self.take() ^ 64}
+        if name in ('d', 'D'):
+            return {'fixed': [], 'props': [{'name': 'Nd', 'negated': name == 'D'}]}
+        if name == 'w':
+            return {'fixed': [], 'props': [{'name': n, 'negated': False} for n in WORD_PROPS]}
+        if name == 'W':
+            if in_class:
+                _fail('\\W is not supported in [...]. Use [^\\w...] instead.')
+            return {'negated_set': True, 'fixed': [],
+                    'props': [{'name': n, 'negated': False} for n in WORD_PROPS]}
         if name in ESCAPE_SETS:
             return {'fixed': ESCAPE_SETS[name], 'props': []}
-        if name in ('D', 'W', 'S', 'H', 'V'):
+        if name in ('S', 'H', 'V'):
             return {'fixed': _complement(ESCAPE_SETS[name.lower()]), 'props': []}
         if name in ('p', 'P'):
             return {'fixed': [], 'props': [self.prop(name == 'P')]}
@@ -504,7 +516,7 @@ class _Parser:
                 elif 'nodes' in e:
                     nodes = e['nodes']
                 else:
-                    nodes = [_set(fixed=e['fixed'], props=e['props'])]
+                    nodes = [_set(negated=bool(e.get('negated_set')), fixed=e['fixed'], props=e['props'])]
             elif c in _QUANT:
                 self.nothing_to_repeat(c)
             else:
@@ -637,7 +649,7 @@ def _encode_set(node, engine):
 
 
 _END = {'java': '\\z', 'py': '\\Z'}
-_WORD_CLASS = '[0-9A-Z_a-z]'
+_WORD_CLASS = '[' + ''.join(f'\\p{{{n}}}' for n in WORD_PROPS) + ']'
 
 
 def _is_atom(node, body):

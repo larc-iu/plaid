@@ -10,8 +10,11 @@
 // So nothing is left to either engine's dialect. The pattern is parsed as Java
 // syntax, and every construct whose meaning differs is written out in a form
 // both engines read the same way:
-//   \w \d \s \h \v and their negations   explicit ASCII-or-Java classes
-//   \b                                   lookarounds over [0-9A-Z_a-z]
+//   \w \d                                any script: [\p{L}\p{M}\p{Nd}\p{Pc}] and
+//                                        \p{Nd} (ruled 2026-10-02: Plaid's
+//                                        users write Lezgi, Hijazi, Saraiki)
+//   \s \h \v and their negations         Java's explicit classes
+//   \b                                   lookarounds over that \w
 //   .                                    a class without Java's line ends
 //   $ \Z                                 a lookahead for one final line end
 //   (?i) and the "any case" match        each letter becomes the class of
@@ -48,13 +51,11 @@ const fail = (message) => {
 };
 
 const MAX_CP = 0x10ffff;
-const WORD = [
-  [0x30, 0x39],
-  [0x41, 0x5a],
-  [0x5f, 0x5f],
-  [0x61, 0x7a],
-];
-const DIGIT = [[0x30, 0x39]];
+// A word character in any script (letter, mark, decimal digit, connector
+// such as _), and a digit in any script. Written as categories, which every
+// engine reads.
+const WORD_PROPS = ['L', 'M', 'Nd', 'Pc'];
+const prop = (name, negated = false) => ({ name, negated });
 const SPACE = [
   [0x09, 0x0d],
   [0x20, 0x20],
@@ -82,7 +83,7 @@ const LINE_END = [
   [0x85, 0x85],
   [0x2028, 0x2029],
 ];
-const ESCAPE_SETS = { d: DIGIT, w: WORD, s: SPACE, h: HSPACE, v: VSPACE };
+const ESCAPE_SETS = { s: SPACE, h: HSPACE, v: VSPACE };
 
 // General categories every engine reads by the same name. Cs and Cn are left
 // out: they depend most on the Unicode version.
@@ -263,13 +264,19 @@ function parse(pattern, caseInsensitive) {
         return { cp: cps[i++] ^ 64 };
       }
       case 'd':
+        return { fixed: [], props: [prop('Nd')] };
+      case 'D':
+        return { fixed: [], props: [prop('Nd', true)] };
       case 'w':
+        return { fixed: [], props: WORD_PROPS.map((n) => prop(n)) };
+      case 'W':
+        // Not a word character in any of four categories: a class of its own.
+        if (inClass) fail('\\W is not supported in [...]. Use [^\\w...] instead.');
+        return { negatedSet: true, fixed: [], props: WORD_PROPS.map((n) => prop(n)) };
       case 's':
       case 'h':
       case 'v':
         return { fixed: ESCAPE_SETS[name], props: [] };
-      case 'D':
-      case 'W':
       case 'S':
       case 'H':
       case 'V':
@@ -525,7 +532,7 @@ function parse(pattern, caseInsensitive) {
         if (e.cp !== undefined) nodes = [charNode(e.cp)];
         else if (e.node) nodes = [e.node];
         else if (e.nodes) nodes = e.nodes;
-        else nodes = [setNode({ fixed: e.fixed, props: e.props })];
+        else nodes = [setNode({ negated: !!e.negatedSet, fixed: e.fixed, props: e.props })];
       } else if (isQuantChar(c)) {
         fail(`Nothing to repeat before ${ch(c)}. Write \\${ch(c)} for the character.`);
       } else nodes = [charNode(c)];
@@ -679,7 +686,7 @@ const encodeSet = (node, engine) => {
 };
 
 const END = { java: '\\z', js: '$' };
-const WORD_CLASS = '[0-9A-Z_a-z]';
+const WORD_CLASS = `[${WORD_PROPS.map((n) => `\\p{${n}}`).join('')}]`;
 
 const emit = (node, engine) => {
   switch (node.t) {
