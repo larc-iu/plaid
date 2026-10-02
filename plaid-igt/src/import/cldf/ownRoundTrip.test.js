@@ -131,6 +131,66 @@ describe('words that share a whitespace run', () => {
   });
 });
 
+describe('an unanalyzed word that holds a joint', () => {
+  // "nak-kinkin" and "o-" are words nobody segmented. Analyzed_Word gives each
+  // as itself, and read as joints that made two morphemes, one of them empty.
+  const body = 'nak-kinkin o- (tik-in) uno-dos';
+  const plain = (id, begin, content, morphemes = []) => ({
+    id,
+    begin,
+    end: begin + content.length,
+    content,
+    metadata: {},
+    annotations: {},
+    orthographies: {},
+    morphemes,
+  });
+  const glossed = (id, begin, content) =>
+    plain(id, begin, content, [
+      {
+        id: `${id}a`,
+        content: 'uno',
+        metadata: { form: 'uno' },
+        annotations: { Gloss: { value: 'one' } },
+      },
+      {
+        id: `${id}b`,
+        content: 'dos',
+        metadata: { form: 'dos' },
+        annotations: { Gloss: { value: 'two' } },
+      },
+    ]);
+  const tokens = [
+    plain('w1', 0, 'nak-kinkin'),
+    plain('w2', 11, 'o-'),
+    plain('w3', 15, '(tik-in)'),
+    glossed('w4', 24, 'uno-dos'),
+  ];
+  const doc = {
+    document: { id: 'd1', name: 'Joints', mediaUrl: null, metadata: {} },
+    body,
+    sortedSentences: [makeSentence({ begin: 0, end: body.length, tokens })],
+    alignmentTokens: [],
+  };
+
+  it('comes back unanalyzed, and an analysis with values comes back', () => {
+    const { build } = exportThenRead([doc]);
+    const [d] = build.documents;
+    expect(d.words.map((w) => d.body.slice(w.begin, w.end))).toEqual([
+      'nak-kinkin',
+      'o-',
+      '(tik-in)',
+      'uno-dos',
+    ]);
+    expect(d.words.map((w) => w.morphemes.map((m) => m.form))).toEqual([
+      [],
+      [],
+      [],
+      ['uno', 'dos'],
+    ]);
+  });
+});
+
 describe('alignSurfaces', () => {
   it('matches a space in a surface against the line break the word spans', () => {
     const body = 'ab 1\n23 uno';

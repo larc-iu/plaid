@@ -144,7 +144,7 @@ describe('buildCldfDataset — examples', () => {
       documents: [{ igtDoc: doc }],
       options: { ...OPTIONS, translationField: null },
     }).files;
-    expect(columnNamed(unbound, 'examples.csv', 'Translated_Text')).toBeUndefined();
+    expect(columnNamed(unbound, 'examples.csv', 'Translated_Text')).toBeTruthy();
   });
 
   it('writes no example for a sentence that is only whitespace, which Primary_Text cannot hold', () => {
@@ -252,6 +252,60 @@ describe('buildCldfDataset — examples', () => {
   it('can take Primary_Text from an orthography instead of the baseline', () => {
     const { files } = build({ options: { ...OPTIONS, primaryText: 'Translit' } });
     expect(table(files, 'examples.csv')[0].Primary_Text).toBe('perros-translit');
+  });
+
+  it('takes the baseline text for a sentence with no value in the orthography, and says how many', () => {
+    const doc = makeFixtureDoc();
+    const [first] = doc.sortedSentences;
+    const bare = {
+      ...first,
+      id: 's-bare',
+      tokens: first.tokens.map((t) => ({ ...t, orthographies: {} })),
+    };
+    bare.pieces = [
+      { type: 'token', ...bare.tokens[0] },
+      { type: 'gap', content: ' ', isToken: false },
+      { type: 'token', ...bare.tokens[1] },
+      { type: 'gap', content: '.', isToken: false },
+    ];
+    doc.sortedSentences = [first, bare];
+    const { files, warnings } = build({
+      documents: [{ igtDoc: doc }],
+      options: { ...OPTIONS, primaryText: 'Translit' },
+    });
+    expect(table(files, 'examples.csv').map((r) => r.Primary_Text)).toEqual([
+      'perros-translit',
+      'perros corren.',
+    ]);
+    expect(warnings).toContain(
+      '1 sentence has no text in the Translit orthography, and its Primary_Text is the baseline text.',
+    );
+  });
+
+  it('keeps the interlinear columns pycldf reads, even empty or unbound', () => {
+    // One untokenized sentence: no word, no gloss, no translation.
+    const doc = makeFixtureDoc();
+    const [first] = doc.sortedSentences;
+    doc.sortedSentences = [
+      {
+        ...first,
+        tokens: [],
+        annotations: {},
+        pieces: [{ type: 'gap', content: 'perros corren.', isToken: false }],
+      },
+    ];
+    for (const options of [OPTIONS, { ...OPTIONS, glossField: null, translationField: null }]) {
+      const { files } = build({ documents: [{ igtDoc: doc }], options });
+      for (const name of ['Analyzed_Word', 'Gloss', 'Translated_Text']) {
+        expect(columnNamed(files, 'examples.csv', name), name).toBeTruthy();
+      }
+    }
+  });
+
+  it('writes an unbound gloss as one empty slot per word, so it aligns', () => {
+    const { files } = build({ options: { ...OPTIONS, glossField: null } });
+    const [row] = table(files, 'examples.csv');
+    expect(row.Gloss.split('\t')).toHaveLength(row.Analyzed_Word.split('\t').length);
   });
 
   it('numbers examples and contributions per document', () => {

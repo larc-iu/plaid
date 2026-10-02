@@ -34,7 +34,6 @@ import {
   tokensIn,
   wordsWithMorphemes,
 } from './snap.js';
-import { DEFAULT_IGNORED_TOKENS, isTokenIgnored } from '../../../domain/igtConfig.js';
 
 // ---- reading ---------------------------------------------------------------------
 
@@ -144,15 +143,6 @@ function entryLabels(items) {
   }
   return labels;
 }
-
-const newMorpheme = (word, precedence, form) => ({
-  key: newKey('morpheme'),
-  layer: 'token:morpheme',
-  begin: word.begin,
-  end: word.end,
-  precedence,
-  metadata: { form },
-});
 
 // ---- one annotation per token --------------------------------------------------
 
@@ -502,25 +492,8 @@ export default {
       },
     },
     {
-      keys: ['token.unanalyzedWord'],
-      // A word whose text holds - or = gains the stored morphemes Analyzed_Word
-      // implies, split at them. Any other stays unanalyzed, as does a word the
-      // imported project skips by the default rule it is given
-      // (token.ignoredWord). Precedence starts at 1, as the editor's.
-      apply(expected) {
-        for (const d of docs(expected)) {
-          for (const { word, morphemes } of wordsWithMorphemes(d)) {
-            if (morphemes.length) continue;
-            const text = surface(d, word);
-            if (isTokenIgnored(text, DEFAULT_IGNORED_TOKENS) || !/[-=]/.test(text)) continue;
-            text.split(/[-=]/).forEach((form, i) => d.tokens.push(newMorpheme(word, i + 1, form)));
-          }
-        }
-      },
-    },
-    {
       keys: ['token.ignoredWord', 'token.morphemeFormEmpty', 'token.morphemeFormAbsent'],
-      // A word with no morpheme was settled by the token.unanalyzedWord step.
+      // A word with no morpheme stays unanalyzed (token.unanalyzedWord).
       // A morpheme with no form takes its word's
       // text. A word whose morphemes are all empty keeps only its first,
       // holding the word's text. The text is still the source's at this point.
@@ -614,21 +587,23 @@ export default {
       },
     },
     {
-      keys: ['token.singleStoredMorpheme'],
-      // A word's only morpheme whose form is then the word's text and on which
-      // no field holds a value is no analysis: the import leaves the word
-      // unanalyzed. The text is still the source's here, and values are as
-      // they come back.
+      keys: ['token.singleStoredMorpheme', 'token.segmentedWord'],
+      // A word's morphemes on which no field holds a value, whose forms joined
+      // by a joint each spell the word's text, are no analysis: the import
+      // leaves the word unanalyzed. The text is still the source's here, and
+      // values are as they come back.
       apply(expected) {
         for (const d of docs(expected)) {
           const valued = new Set(
             d.spans.filter((sp) => hasValue(sp.value)).flatMap((sp) => sp.tokens),
           );
           const bare = new Set();
+          const escape = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           for (const { word, morphemes } of wordsWithMorphemes(d)) {
-            const [only] = morphemes;
-            if (morphemes.length !== 1 || valued.has(only.key)) continue;
-            if (only.metadata.form === surface(d, word)) bare.add(only);
+            if (!morphemes.length || morphemes.some((m) => valued.has(m.key))) continue;
+            const forms = morphemes.map((m) => String(m.metadata.form ?? ''));
+            const spelled = new RegExp(`^${forms.map(escape).join('[-=]')}$`, 'u');
+            if (spelled.test(surface(d, word))) morphemes.forEach((m) => bare.add(m));
           }
           removeTokens(expected, d, (t) => bare.has(t));
         }

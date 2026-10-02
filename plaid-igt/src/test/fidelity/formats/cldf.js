@@ -417,15 +417,17 @@ export default {
       why: 'Word metadata other than orthography values is not written.',
       ruling: 'user, 2026-09-17: metadata no field declares is exported by the native archive only',
     },
-    'token.segmentedWord': carried,
+    'token.segmentedWord': {
+      carried: 'changed',
+      how: 'Comes back, unless no field holds a value on any of its morphemes and their forms joined by their joints spell the word’s text ("nak" and "kinkin" in nak-kinkin). Analyzed_Word cannot tell that from a word nobody analyzed whose text holds a joint, and the import reads it as no analysis: the word comes back unanalyzed. The preset panel lists this loss (INHERENT_LOSSES).',
+    },
     'token.singleStoredMorpheme': {
       carried: 'changed',
       how: 'Comes back, unless its form (or, with no form, its word’s text) is the word’s text and no field holds a value on it. Analyzed_Word cannot tell that from a word nobody analyzed, and the import reads it as no analysis: the word comes back unanalyzed. The preset panel lists this loss (INHERENT_LOSSES).',
     },
-    'token.unanalyzedWord': {
-      carried: 'changed',
-      how: 'Comes back unanalyzed, unless its text holds - or =, which Analyzed_Word reads as joints: then it comes back split into stored morphemes at them. A word the imported project skips as punctuation comes back unanalyzed too (token.ignoredWord).',
-    },
+    // A word whose text holds - or = included: the import reads the word's
+    // own text beside its analysis (Surface_Word) as no analysis.
+    'token.unanalyzedWord': carried,
     'token.morphemeForm': {
       carried: 'changed',
       how: 'Comes back as it was, unless the form spells a "-" or a "=". Those are the joints BETWEEN morphemes in Analyzed_Word, so a form spelling one is read back as a joint: "perro" and "-s" go out as "perro--s" and come back as three morphemes, the middle one with an empty form.',

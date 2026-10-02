@@ -624,10 +624,11 @@ export function buildCldfDocuments(dataset, options = {}) {
 
       const glosses = list(examples, row, 'gloss');
       const surfaces = ownExamples ? String(row[SURFACE_COLUMN] ?? '') : '';
-      const exact =
-        surfaces && surfaces.split('\t').length === analyzed.length
-          ? alignSurfaces(body, beginU16, beginU16 + text.length, surfaces.split('\t'))
-          : null;
+      const surfaceList =
+        surfaces && surfaces.split('\t').length === analyzed.length ? surfaces.split('\t') : null;
+      const exact = surfaceList
+        ? alignSurfaces(body, beginU16, beginU16 + text.length, surfaceList)
+        : null;
       const { spans, warnings: alignWarnings } =
         exact ?? alignWords(body, beginU16, beginU16 + text.length, analyzed);
       for (const w of alignWarnings) {
@@ -696,18 +697,27 @@ export function buildCldfDocuments(dataset, options = {}) {
         // One piece that is only the word again, with no values, is no
         // segmentation: Analyzed_Word gives an unsegmented word as itself, and
         // such a word has no morpheme of its own.
+        // Our own export writes a word nobody segmented the same way, also when
+        // its text holds a joint ("nak-kinkin", "o-"), and writes the word's
+        // text beside it: an analysis that is the word's own text and holds no
+        // value is that word. A joint at an edge makes an empty piece, which
+        // is no morpheme unless it holds a value.
+        const unvalued = morphemes.every((m) => !Object.keys(m.fields).length);
         const [only] = morphemes;
         const bare =
-          morphemes.length === 1 &&
-          !only.morphType &&
-          !Object.keys(only.fields).length &&
-          only.form === body.slice(span.beginU16, span.endU16);
+          (morphemes.length === 1 &&
+            !only.morphType &&
+            unvalued &&
+            only.form === body.slice(span.beginU16, span.endU16)) ||
+          (unvalued && surfaceList?.[wi] === word);
         words.push({
           begin: toCp(span.beginU16),
           end: toCp(span.endU16),
           sentenceIndex: si,
           fields: wordFields,
-          morphemes: bare ? [] : morphemes,
+          morphemes: bare
+            ? []
+            : morphemes.filter((m) => m.form !== '' || Object.keys(m.fields).length),
         });
       });
     });

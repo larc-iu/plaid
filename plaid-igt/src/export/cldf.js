@@ -347,7 +347,7 @@ const INHERENT_LOSSES = [
   'Vocabulary links from words and morphemes to their entries',
   'Provenance marks: machine-made and confirmed values arrive looking hand-made',
   'Morpheme types, except the clitics the joints in the aligned cell still carry',
-  'One-morpheme analyses that repeat the word and hold no values: they come back unanalyzed',
+  'Analyses with no values that only repeat the word, or split it at its own - or =: they come back unanalyzed',
 ];
 
 // ---- the dataset ------------------------------------------------------------
@@ -417,6 +417,8 @@ export function buildCldfDataset({
   const contributionRows = [];
   // Sentences with words or values whose Primary_Text would be empty.
   let leftOut = 0;
+  // Sentences with no text in the chosen orthography, written with the baseline's.
+  let fellBack = 0;
   const exampleRows = [];
   const mediaRows = [];
   // Which example row a token sits in, so a sense's promoted examples can name
@@ -484,10 +486,15 @@ export function buildCldfDataset({
     const surfaceWords = !o.primaryText || o.primaryText === BASELINE;
     (igtDoc.sortedSentences || []).forEach((sentence, i) => {
       const tokens = sentence.tokens || [];
-      // Primary_Text is required, so a sentence with no text there (one that
-      // is only whitespace, or has no value in the chosen orthography) is no
-      // example. Position and ID keep the sentence's place in its text.
-      const primaryText = primaryTextOf(sentence, o.primaryText);
+      // Primary_Text is required. A sentence with no value in the chosen
+      // orthography takes the baseline's text, and one that is only
+      // whitespace is no example. Position and ID keep the sentence's place in
+      // its text.
+      let primaryText = primaryTextOf(sentence, o.primaryText);
+      if (primaryText === '' && !surfaceWords) {
+        primaryText = primaryTextOf(sentence, BASELINE);
+        if (primaryText !== '') fellBack += 1;
+      }
       if (primaryText === '') {
         const said = Object.values(sentence.annotations || {}).some(
           (a) => String(a?.value ?? '').trim() !== '',
@@ -505,7 +512,8 @@ export function buildCldfDataset({
         Language_ID: objId,
         Primary_Text: primaryText,
         Analyzed_Word: analyzed.join('\t'),
-        Gloss: o.glossField ? glosses.join('\t') : '',
+        // Unbound, one empty slot per word, so the line still aligns.
+        Gloss: glosses.join('\t'),
         Translated_Text: translated,
         Meta_Language_ID: hasMeta ? metaId : '',
         LGR_Conformance: lgrConformance(tokens, o.glossField, o.glossScope),
@@ -559,6 +567,11 @@ export function buildCldfDataset({
     });
   });
 
+  if (fellBack) {
+    warnings.push(
+      `${fellBack} sentence${fellBack === 1 ? ' has' : 's have'} no text in the ${o.primaryText} orthography, and ${fellBack === 1 ? 'its' : 'their'} Primary_Text is the baseline text.`,
+    );
+  }
   if (leftOut) {
     warnings.push(
       `${leftOut} sentence${leftOut === 1 ? ' has' : 's have'} no text in the Primary_Text line and ${leftOut === 1 ? 'was' : 'were'} left out.`,
@@ -744,11 +757,12 @@ export function buildCldfDataset({
       col('ID', { required: true, propertyUrl: 'id' }),
       col('Language_ID', { required: true, propertyUrl: 'languageReference' }),
       col('Primary_Text', { required: true, propertyUrl: 'primaryText' }),
-      col('Analyzed_Word', { propertyUrl: 'analyzedWord', separator: '\t' }),
-      // A bound line stays when every value in it is empty: pycldf's
-      // Example.igt reads it by name and fails when the column is not there.
-      col('Gloss', { propertyUrl: 'gloss', separator: '\t', keep: !!o.glossField }),
-      col('Translated_Text', { propertyUrl: 'translatedText', keep: !!o.translationField }),
+      // The interlinear lines stay when every value in them is empty, bound or
+      // not: pycldf's Example.igt reads each by name and fails when the column
+      // is not there.
+      col('Analyzed_Word', { propertyUrl: 'analyzedWord', separator: '\t', keep: true }),
+      col('Gloss', { propertyUrl: 'gloss', separator: '\t', keep: true }),
+      col('Translated_Text', { propertyUrl: 'translatedText', keep: true }),
       col('Meta_Language_ID', { propertyUrl: 'metaLanguageReference' }),
       col('LGR_Conformance', { propertyUrl: 'lgrConformance' }),
       col('Comment', { propertyUrl: 'comment' }),
