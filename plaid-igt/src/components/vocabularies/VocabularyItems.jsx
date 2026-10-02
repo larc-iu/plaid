@@ -1405,7 +1405,19 @@ export const VocabularyItems = ({
 
             <TabsContent value="entry">
               <div className="flex flex-col gap-4">
-                {entryEditor}
+                {/* An entry the URL names that is not among the entries: deleted
+                    elsewhere (a save to it is refused), or not made yet at the
+                    past state shown. No form, so nothing invites edits that
+                    cannot land. */}
+                {selectedItem ? (
+                  entryEditor
+                ) : (
+                  <div className="flex min-h-[12rem] items-center justify-center rounded-lg border border-dashed bg-card/50">
+                    <p className="text-sm text-muted-foreground">
+                      {past ? 'Not in the vocabulary at this time.' : 'This entry was deleted.'}
+                    </p>
+                  </div>
+                )}
                 {selectedItem && (
                   <>
                     <ExamplesPanel

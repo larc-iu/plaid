@@ -271,6 +271,36 @@ describe('the entry form', () => {
     await view.unmount();
   });
 
+  it('takes the form away from an entry deleted elsewhere once a save to it is refused', async () => {
+    const { client, holds } = stub([
+      { id: 'a', form: 'uno' },
+      { id: 'b', form: 'dos' },
+    ]);
+    const refused = deferred();
+    holds.push(refused);
+    const view = await mount(client, '/vocabularies/v1?item=a');
+    // Someone else deletes "uno".
+    client.vocabLayers.get = async () => ({
+      id: 'v1',
+      name: 'Lexicon',
+      config: {},
+      items: [{ id: 'b', form: 'dos' }],
+    });
+    await view.step(() => setValue(glossInput(), 'one'));
+    await view.step(() => button('Save').click());
+    await view.step(async () => {
+      refused.reject(new Error('Changed or removed by someone else.'));
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(listed()).toEqual(['dos']);
+    expect(formInput()).toBeNull();
+    expect(button('Save')).toBeUndefined();
+    expect(button('Delete')).toBeUndefined();
+    expect(document.body.textContent).toContain('This entry was deleted.');
+    expect(hasUnsavedDraft()).toBeFalsy();
+    await view.unmount();
+  });
+
   it('saves an entry whose older roleset the rule would refuse, when the roleset is untouched', async () => {
     // "look after-01" was accepted before rolesets were checked. The band
     // that could mend it is not even on screen here (no UMR project links
