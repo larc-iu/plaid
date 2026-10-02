@@ -47,6 +47,23 @@ describe('useBaselineOperations', () => {
     h.unmount();
   });
 
+  it('sends nothing for a save with nothing changed, and leaves the box', async () => {
+    const doc = withDigest({ body: 'the fish' });
+    const h = await mountDocumentHook(useBaselineOperations, { doc });
+    await act(async () => h.api.handleEdit());
+    await act(async () => h.api.handleSave());
+    expect(doc.editBaselineText).not.toHaveBeenCalled();
+    expect(h.api.isEditing).toBe(false);
+    // Typed and taken back is no change either.
+    await act(async () => h.api.handleEdit());
+    await act(async () => h.api.handleTextChange(typed('the fishy')));
+    await act(async () => h.api.handleTextChange(typed('the fish')));
+    await act(async () => h.api.handleSave());
+    expect(doc.editBaselineText).not.toHaveBeenCalled();
+    expect(h.api.isEditing).toBe(false);
+    h.unmount();
+  });
+
   it('keeps a letter deleted inside a word where it was deleted', async () => {
     const doc = withDigest({ body: 'aa aa aa' });
     const h = await mountDocumentHook(useBaselineOperations, { doc });

@@ -63,6 +63,12 @@ export const useBaselineOperations = () => {
   const shown = (text) => text.replace(/\r\n?/g, '\n');
 
   const handleSave = async () => {
+    // Nothing changed (or typed and taken back): nothing to send, and no
+    // operation is written for it.
+    if (editLog.gaps().length === 0 || editedText === base) {
+      handleCancel();
+      return;
+    }
     // Editing the baseline of an already-tokenized doc can delete or mis-align
     // existing tokens (and their annotations) in the changed/removed regions.
     // Text added at the end of the body leaves existing tokens untouched, so
