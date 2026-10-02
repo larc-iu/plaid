@@ -30,9 +30,9 @@ for, most of them only because a sibling before them came or went. With
 changes is a row of its own.
 """
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-from plaid_client.workflows.umr import Graph, parse_penman
+from plaid_client.workflows.umr import Graph, cycle_edges, parse_penman
 from plaid_client.workflows.umr.graph import next_order
 
 from .project import Sentence, UmrDoc, UmrProject, attrs_change, penman_of, reachable_from_root
@@ -108,10 +108,14 @@ class GraphDiff:
     order than they are stored in, when that order was not applied (no
     ``reorder``), so the tool can say so rather than let it pass unnoticed."""
 
-    def __init__(self, ops: List[Dict[str, Any]], errors: List[str], order_kept: List[str] = None):
+    def __init__(self, ops: List[Dict[str, Any]], errors: List[str], order_kept: List[str] = None,
+                 refused: Optional[str] = None):
         self.ops = ops
         self.errors = errors
         self.order_kept = order_kept or []
+        #: Why a text that reads is refused all the same (a new edge that
+        #: would close a cycle), with no ops.
+        self.refused = refused
 
     @property
     def changes(self) -> int:
@@ -319,6 +323,16 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
                 'ref': f's{sentence.index}.{parsed.root}', 'span_id': new_root.id,
                 'umr_set': {'root': True},
                 'label': f'{parsed.root} becomes the root of s{sentence.index}'})
+
+    # A new edge that would close a cycle UMR does not allow is refused, as
+    # Text mode refuses it (the app's rule, `cycle_edges`). One the graph
+    # already held stays: an imported file may bring such a cycle.
+    closing = set(cycle_edges(parsed))
+    for op in edges_add:
+        edge = (op['source_var'], op['role'], op['target_var'])
+        if edge in closing and op.get('renamed_edge') is None:
+            return GraphDiff([], [], refused=f'{edge[1]} from {edge[0]} to {edge[2]} would '
+                                             f'close a cycle.')
 
     # Deletes first, so a variable a new node takes is free; then the marks
     # that must come off before another node wears one; then the rest.

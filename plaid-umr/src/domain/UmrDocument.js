@@ -58,6 +58,7 @@ import {
 } from './format/umrFile.js';
 import {
   conceptProblem,
+  cycleEdges,
   relationProblem as relationFormProblem,
   attrValueProblem as valueFormProblem,
   nfc,
@@ -2474,20 +2475,7 @@ export class UmrDocument extends DocumentModel {
         if (bad) errors.push({ message: `${v}: ${bad}` });
       });
     });
-    const reaches = (from, to) => {
-      const seen = new Set();
-      const stack = [from];
-      while (stack.length) {
-        const v = stack.pop();
-        if (v === to) return true;
-        if (seen.has(v)) continue;
-        seen.add(v);
-        parsed.nodes.get(v)?.children.forEach((c) => {
-          if (c.kind === 'node' && !CYCLE_ROLES.has(c.rel)) stack.push(c.value);
-        });
-      }
-      return false;
-    };
+    const closing = new Set(cycleEdges(parsed).map((e) => e.join(' ')));
     const added = [
       ...plan.edgesAdd,
       ...plan.create.flatMap((c) =>
@@ -2495,7 +2483,7 @@ export class UmrDocument extends DocumentModel {
       ),
     ];
     added.forEach((e) => {
-      if (!CYCLE_ROLES.has(e.role) && reaches(e.targetVar, e.sourceVar)) {
+      if (closing.has(`${e.sourceVar} ${e.role} ${e.targetVar}`)) {
         errors.push({
           message: `${e.role} from ${e.sourceVar} to ${e.targetVar} would close a cycle.`,
         });

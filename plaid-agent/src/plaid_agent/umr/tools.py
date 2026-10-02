@@ -428,6 +428,8 @@ def t_apply_penman(ws: Workspace, document: str = None, sentence=None, text: str
     diff = plan_penman(doc, s, text, ws.project, reorder=str(reorder).strip().lower() == 'true')
     if diff.errors:
         raise ToolError('The graph could not be read. ' + diff.errors[0])
+    if diff.refused:
+        raise ToolError(diff.refused)
     # The order the text writes children in is not applied without reorder.
     # Said, so a user who asked for a new order is not told it was done.
     kept = ''

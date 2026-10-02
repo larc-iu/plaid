@@ -62,6 +62,36 @@ CYCLE_ROLES = frozenset({':quote', ':modal-predicate'})
 MISSING = '_'
 
 
+def cycle_edges(graph: 'penman.Graph') -> List[Tuple[str, str, str]]:
+    """The edges of a parsed graph that close a cycle UMR does not allow: an
+    edge whose target reaches its source again through edges with no cycle
+    role (:data:`CYCLE_ROLES`), a node's edge to itself included. An edge with
+    a cycle role closes none. ``cycleEdges`` in plaid-umr's ``format/penman.js``
+    is the rule the canvas and Text mode refuse by; this is its twin, for the
+    Draft service and the assistant. Each as ``(source, rel, target)``, in the
+    graph's node and child order."""
+    nodes = graph.nodes
+
+    def reaches(start: str, goal: str) -> bool:
+        seen = set()
+        stack = [start]
+        while stack:
+            v = stack.pop()
+            if v == goal:
+                return True
+            if v in seen:
+                continue
+            seen.add(v)
+            node = nodes.get(v)
+            for c in node.children if node is not None else ():
+                if c.kind == penman.NODE and c.rel not in CYCLE_ROLES:
+                    stack.append(c.value)
+        return False
+
+    return [(v, c.rel, c.value) for v, node in nodes.items() for c in node.children
+            if c.kind == penman.NODE and c.rel not in CYCLE_ROLES and reaches(c.value, v)]
+
+
 def group_of(rel: str) -> str:
     """Which document-level group a relation belongs to, for one written by a
     path that did not record it."""

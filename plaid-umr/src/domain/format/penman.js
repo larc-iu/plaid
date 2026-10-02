@@ -12,6 +12,8 @@
 // read as a reference, so the caller sees the dangling edge rather than a
 // silent atom.
 
+import { CYCLE_ROLES } from './inventory.js';
+
 /**
  * `text` in Unicode NFC, which the format requires of the whole file
  * (umr-file-format.md, validate.py `unicode-normalization`). Every string
@@ -449,6 +451,44 @@ function walk(graph, visit) {
       stack.push({ variable: child.value, next: 0 });
     }
   }
+}
+
+/**
+ * The edges of a parsed graph that close a cycle UMR does not allow: an edge
+ * whose target reaches its source again through edges with no cycle role
+ * (CYCLE_ROLES), a node's edge to itself included. An edge with a cycle role
+ * closes none. The canvas, Text mode, the Draft service and the assistant
+ * refuse by it (plaid_client.workflows.umr `cycle_edges` is its twin).
+ *
+ * @param {{nodes: Map}} graph
+ * @returns {Array<[string, string, string]>} [source, rel, target], in the
+ *   graph's node and child order
+ */
+export function cycleEdges(graph) {
+  const nodes = graph?.nodes ?? new Map();
+  const reaches = (from, to) => {
+    const seen = new Set();
+    const stack = [from];
+    while (stack.length) {
+      const v = stack.pop();
+      if (v === to) return true;
+      if (seen.has(v)) continue;
+      seen.add(v);
+      nodes.get(v)?.children.forEach((c) => {
+        if (c.kind === 'node' && !CYCLE_ROLES.has(c.rel)) stack.push(c.value);
+      });
+    }
+    return false;
+  };
+  const out = [];
+  nodes.forEach((node, v) =>
+    node.children.forEach((c) => {
+      if (c.kind === 'node' && !CYCLE_ROLES.has(c.rel) && reaches(c.value, v)) {
+        out.push([v, c.rel, c.value]);
+      }
+    }),
+  );
+  return out;
 }
 
 /**

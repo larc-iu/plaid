@@ -50,7 +50,7 @@ from plaid_client.service import machine_detail, requester_message
 from plaid_client.workflows.llm import (ChatModel, UnansweredRun, add_model_arguments,
                                         setup_service)
 from plaid_client.workflows.umr import (DraftProgress, anchor_pieces, begin_draft,
-                                        draft_params, finish_draft, join_flat_graph,
+                                        cycle_edges, draft_params, finish_draft, join_flat_graph,
                                         next_variable, parse_penman, project_language, run_label,
                                         unknown_relation_problem)
 from plaid_client.workflows.umr.inventory import (ATTRIBUTE_VALUES, edge_only,
@@ -288,6 +288,12 @@ def validate_graph(graph, alignment=None) -> Optional[str]:
             closed = ATTRIBUTE_VALUES.get(child.rel)
             if closed and value not in closed:
                 return f"{value} is not a value of {child.rel}."
+    # A cycle UMR does not allow, refused as the canvas and Text mode refuse
+    # the edge that closes it (cycle_edges, the app's rule).
+    closing = cycle_edges(graph)
+    if closing:
+        source, rel, target = closing[0]
+        return f"{rel} from {source} to {target} would close a cycle."
     return None
 
 
