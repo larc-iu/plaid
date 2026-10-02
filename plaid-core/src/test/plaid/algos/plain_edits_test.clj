@@ -136,14 +136,18 @@
     (is (= ["cax ydog" "cax" "ydog"] (edit "|cat||dog|" [(rep 2 1 "x y")])))))
 
 (deftest a-sentence-keeps-to-the-words-edges
-  ;; the sentence before holds the stretch typed over, and the letters typed
-  ;; against the next word go with it into the next sentence
+  ;; `a ` typed over as words of its own is read as a whole-body save reads
+  ;; it (REV-F-TEXT-CORE): `a` typed over as the first `XZ`, which keeps its
+  ;; token in its sentence, and the rest typed before `dog`, the letters
+  ;; against it going with it into the next sentence
   (let [{:keys [body tokens]} (doc "|köye| |a| /|dog|")
         r (ta/plain-edits body tokens [(rep 5 2 "XZ XZ XZ")] #{:s} #{:w})
         at (fn [id] (let [t (some #(when (= id (:token/id %)) %) (:tokens r))] [(:token/begin t) (:token/end t)]))]
     (is (= "köye XZ XZ XZdog" (:text/body (:text r))))
-    (is (= [11 16] (at [:w 2]) (at [:s 1])))
-    (is (= [0 11] (at [:s 0])))))
+    (is (= [5 7] (at [:w 1])))
+    (is (= [11 16] (at [:w 2])))
+    (is (= [8 16] (at [:s 1])))
+    (is (= [0 8] (at [:s 0])))))
 
 (deftest a-sentence-or-a-segment-typed-over-exactly-keeps-its-token
   ;; L1: `kai\n` (all of sentence 1) typed over as `-`, which touches `dog`
@@ -454,12 +458,9 @@
   ;; chinese_tlp: `远离 人烟 千 里 之外` typed over as `q `
   (is (= ["在 q  的" "在" "q" nil nil nil nil "的"]
          (edit "|在| |远离| |人烟| |千| |里| |之外| |的|" [(rep 2 12 "q ")])))
-  ;; more new words than old: the last old word goes to the new word left
-  ;; sharing most letters with it, the first on a tie, and the other new
-  ;; words are in no word, as a word typed apart is (H1-IGT-TEXT-1: it held
-  ;; the rest, so `jadi` pasted over as `xy\njjadi` was one token across a
-  ;; line break)
-  (is (= ["a x y z b" "a" "x" "y" "b"] (edit "|a| |cat| |eel| |b|" [(rep 2 7 "x y z")])))
+  ;; more new words than old, as a whole-body save reads it: the last old
+  ;; word holds the rest
+  (is (= ["a x y z b" "a" "x" "y z" "b"] (edit "|a| |cat| |eel| |b|" [(rep 2 7 "x y z")])))
   (is (= ["a x y zeel b" "a" "x" "zeel" "b"] (edit "|a| |cat| |eel| |b|" [(rep 2 7 "x y zeel")])))
   (is (= ["wa xy\njjadi ma" "wa" "jjadi" "ma"] (edit "|wa|\n|jadi| |ma|" [(rep 0 10 "wa xy\njjadi ma")]))))
 
@@ -569,8 +570,9 @@
          (edit "|wa| |me| |sekarang| |wandi|\n|jadi| |ma| |parlure|\n"
                [(rep 0 37 "wa me sekarang wandi xy\njjadi ma parlure\nz")])))
   ;; a phrase (a word holding a space) next to its twin, one of them deleted:
-  ;; one keeps its token whole, the first as the text cannot tell which
-  (is (= ["a thee da. b" "a" "thee da" nil "b"]
+  ;; one keeps its token whole (the text cannot tell which, the save keeps
+  ;; the second)
+  (is (= ["a thee da. b" "a" nil "thee da" "b"]
          (edit "|a| |thee da| |thee da|. |b|" [(rep 0 20 "a thee da. b")])))
   ;; a word deleted before punctuation: the word before keeps off it
   (is (= ["on köye. a" "on" "köye" nil "a"] (edit "|on| |köye| |tat|. |a|" [(rep 0 14 "on köye. a")]))))
@@ -620,3 +622,36 @@
     (testing "no layer splits on space: nothing is made"
       (let [r (ta/plain-edits "wonderful" [(t :s :s 0 9) (t :w :w 0 9)] [(ins 6 " ")] #{:s} #{:w} {:children #{:x}})]
         (is (nil? (:made r)))))))
+
+(deftest a-paste-over-several-words-reads-as-a-whole-body-save
+  ;; REV-F-TEXT-CORE F1 to F5: one replace over several words, the paste a
+  ;; Baseline or a row sends, is read as the whole-body save of the same
+  ;; change reads it, so a repeated word, a second change, a word inserted
+  ;; beside a respelled one or a script without spaces moves and deletes
+  ;; no word the save keeps
+  (doseq [[s new] [;; F1: a word that repeats, two changes
+                   ["|ba|\n/|xa|\n/|cat| |xa| |xa| |end|" "xa\nxa\ncat xa end"]
+                   ["|kon| |the| |the|\n/|kon|" "kon jalan the\nשלום"]
+                   ["|a| |a| |b|" "x a bb"]
+                   ["|jalan| |jalan| |ke| |pasar|\n/|saya| |makan| |nasi|" "jalang jalan ke pasar\nsaya makan nasih"]
+                   ["|jalab| |jalan| |ke| |pasar|\n/|saya| |makan| |nasi|" "jalan jalan ke pasar\nsaya makan nasih"]
+                   ["|I| |saw| |the| |the| |dog|\n/|it| |ran|" "I saw teh the dog\nit run"]
+                   ;; F2: inside a stretch
+                   ["|na| |kon| |tok| |ma|" "na oke kan tak ma"]
+                   ["|the| |cat| |sat| |down|" "the c at sit down"]
+                   ["|x| |cat,| |tat| |y|" "x a b c y"]
+                   ;; F3: a word inserted beside a respelled one
+                   ["|the| |cat| |sat| |down|" "the big cot sat down"]
+                   ["|na| |kon| |tok| |ma|" "na oke kan tok ma"]
+                   ;; F4: a run with punctuation typed over
+                   ["|x| |cat|, |tat| |y|" "x dog, rat y"]
+                   ;; F5: a script without spaces, two changes
+                   ["|你||好||吗||。|/|我||很||好||。|" "你好嗎。我很好！"]
+                   ["|你||好||吗||。|\n/|我||很||好||。|" "你好嗎。\n我很好！"]]]
+    (let [{:keys [body]} (doc s)]
+      (is (= (save s new) (edit s [(rep 0 (cp/cp-count body) new)])) (str (pr-str s) " -> " (pr-str new)))))
+  (testing "what the save keeps there"
+    (is (= ["xa\nxa\ncat xa end" "xa" "xa" "cat" nil "xa" "end"] (save "|ba|\n/|xa|\n/|cat| |xa| |xa| |end|" "xa\nxa\ncat xa end")))
+    (is (= ["x a bb" "x" "a" "bb"] (save "|a| |a| |b|" "x a bb")))
+    (is (= ["na oke kan tak ma" "na" "kan" "tak" "ma"] (save "|na| |kon| |tok| |ma|" "na oke kan tak ma")))
+    (is (= ["你好嗎。我很好！" "你" "好" "嗎" "。" "我" "很" "好" "！"] (save "|你||好||吗||。|/|我||很||好||。|" "你好嗎。我很好！")))))
