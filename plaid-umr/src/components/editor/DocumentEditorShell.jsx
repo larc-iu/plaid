@@ -68,7 +68,7 @@ const DocumentEditor = () => {
   // The document now, for the comment store's error channel, which is set once.
   const docRef = useRef(null);
   docRef.current = doc;
-  const [project, setProject] = useState(null);
+  const [loadedProject, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
@@ -109,6 +109,10 @@ const DocumentEditor = () => {
 
   // Re-render on any mutation of the shared document (see useDocumentModel).
   useDocumentModel(doc);
+  // The document's copy of the project once there is one: it reads it again
+  // while open and after a refused write, so a member demoted or removed
+  // meanwhile gets the read-only page without a reload.
+  const project = doc?.project ?? loadedProject;
 
   // A service run that writes takes the document read-only for as long as it
   // writes: the run outlives its dialog and ends in a reload, so anything
@@ -187,11 +191,9 @@ const DocumentEditor = () => {
     const client = getClient();
     if (!client) return;
     try {
-      const [projectData] = await Promise.all([
-        client.projects.get(projectId),
-        doc ? doc.reload() : Promise.resolve(),
-      ]);
-      setProject(projectData);
+      // The document keeps the project the page reads (see `project` above).
+      if (doc) await Promise.all([doc.refreshProject(), doc.reload()]);
+      else setProject(await client.projects.get(projectId));
     } catch (err) {
       if (err.status === 401) {
         logout();
@@ -275,10 +277,7 @@ const DocumentEditor = () => {
     canWrite: canEditProject(project, user) && !pastEntry,
     // The document's copy of the project, which it reads again while open, so
     // a change of whose work is reviewed reaches the dock.
-    contributor:
-      !!(doc?.project ?? project) &&
-      !!user &&
-      isReviewed(doc?.project ?? project, user.id, { isAdmin: !!user.isAdmin }),
+    contributor: !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin }),
     onApplied: reload,
     onFocusHere: focusHere,
     // What `@` offers in the composer: this document's sentences, by the same

@@ -95,6 +95,17 @@ function operationLabel(errorLabel) {
 // How often a document a screen holds reads its project again.
 const PROJECT_READ_EVERY_MS = 60_000;
 
+const ROLE_LISTS = ['maintainers', 'writers', 'readers'];
+
+// The project with `userId` in none of its role lists.
+const withoutMember = (project, userId) => {
+  const next = { ...project };
+  for (const key of ROLE_LISTS) {
+    if (Array.isArray(project[key])) next[key] = project[key].filter((id) => id !== userId);
+  }
+  return next;
+};
+
 export class DocumentModel {
   constructor({ raw, client = null, projectId = null, project = null, user = null, asOf = null }) {
     this._raw = raw;
@@ -384,7 +395,16 @@ export class DocumentModel {
    * Quiet on failure: the copy stays as it was. Answers whether it changed.
    */
   async refreshProject() {
-    const project = await this._readProject();
+    return this._takeProject(await this._readProject());
+  }
+
+  /**
+   * Keep a new copy of the project, wherever it was read (`refreshProject`, a
+   * subclass's `_adoptReload`), and tell the screen: who may write is read off
+   * it, so a member demoted while the page is open gets the read-only page at
+   * once. Answers whether it changed.
+   */
+  _takeProject(project) {
     if (!project || sameConfig(project, this._project)) return false;
     this._project = project;
     this._adoptProject(project);
@@ -398,11 +418,18 @@ export class DocumentModel {
     return true;
   }
 
+  // The project as the server has it now. Refused outright (403) means this
+  // person holds no role in it any more (an admin reads every project), so
+  // the copy kept is the one they hold no role in. Any other failure keeps
+  // the copy as it was.
   async _readProject() {
     if (!this._client?.projects?.get || !this._projectId || this._asOf) return null;
     try {
       return await this._client.projects.get(this._projectId);
     } catch (err) {
+      if (statusOf(err) === 403 && this._project && this._user?.id) {
+        return withoutMember(this._project, this._user.id);
+      }
       console.warn('Could not read the project again:', err);
       return null;
     }
@@ -728,6 +755,10 @@ export class DocumentModel {
           if (made && created.has(made)) recordSettled([[made, made]]);
           // The rows it made are not on the server otherwise.
           for (const id of created) if (id !== made) this._refusedIds.add(id);
+          // Refused for a missing permission: whoever changed this person's
+          // role, the page is put in step with it now rather than within the
+          // minute (a reader's page offers nothing to edit).
+          if (statusOf(err) === 403) this.refreshProject();
           this._writeFailed(label, err, conflictHandled && statusOf(err) === 409);
         },
         resync: () => (unsent.stale ? undefined : this._reloadAfterFailure(conflict)),

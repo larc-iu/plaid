@@ -481,8 +481,9 @@ export class IgtDocument extends DocumentModel {
         this._readProject(),
         loadProjectVocabularies(this._client, this._project, at),
       ]);
-      // The raw swap that follows re-derives everything that reads it.
-      if (project) this._project = project;
+      // Told to the screen now: a refetch after a refusal can end without a
+      // raw swap, and the minute's read would then find nothing new.
+      this._takeProject(project);
       this._vocabularies = mergeRawVocabLinks(updated, reloaded);
       if (failedCount > 0 && this.onError) {
         this.onError(
