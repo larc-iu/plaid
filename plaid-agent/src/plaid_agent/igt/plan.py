@@ -549,7 +549,11 @@ def _resolve_bulk_scope(res: Resolution, op):
     if fn is None:
         raise ValueError(f'unknown corpus-wide tool {op.get("tool")!r}')
     try:
-        return fn(res.ws, dict(op.get('args') or {}), CANDIDATE_MAX)
+        found = fn(res.ws, dict(op.get('args') or {}), CANDIDATE_MAX)
+        # Rebuilt now, outside add_op: held to the layers' lists as staged.
+        for o in found:
+            res.ws.refuse_off_list(o)
+        return found
     except ToolError as e:
         raise ValueError(str(e)) from e
 
@@ -1385,15 +1389,10 @@ def create_document(client, project, name: str, text: str, metadata: Dict[str, A
         new_id.once(lambda: client.documents.create(project.id, name, metadata, id=doc_id))
     else:
         new_id.once(lambda: client.documents.create(project.id, name, id=doc_id))
-    try:
-        _seed_text(client, project, doc_id, text, new_id)
-    except Exception:
-        # No orphan half-document: best effort, the original error is what matters.
-        try:
-            client.documents.delete(doc_id)
-        except Exception:
-            pass
-        raise
+    # A failure here leaves the document as made: the plan approved again
+    # draws the same ids, takes it as made and finishes it. Deleted, its id
+    # would be refused as taken on every approval after.
+    _seed_text(client, project, doc_id, text, new_id)
     return doc_id
 
 
@@ -1424,7 +1423,7 @@ def _seed_text(client, project, doc_id: str, text: str, new_id) -> str:
             batch.tokens.bulk_create(sentences)
             if words:
                 batch.tokens.bulk_create(words)
-    new_id.once(tokens)
+    new_id.once(tokens, whole=True)
     return text_id
 
 
@@ -1519,7 +1518,7 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
                         'id': new_id()}
                        for wb, we in split_words(new_body, gb, ge, project.ignored_cfg))
     if creates:
-        new_id.once(lambda: client.tokens.bulk_create(creates))
+        new_id.once(lambda: client.tokens.bulk_create(creates), whole=True)
 
 
 def _region_edits(old: str, new: str, at: int) -> List[Dict[str, Any]]:

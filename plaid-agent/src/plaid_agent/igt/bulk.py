@@ -248,6 +248,10 @@ def _stage(ws: Workspace, tool: str, args: Dict[str, Any], staged: List[Dict[str
         ws.add_ops(kept)
         return _bulk_note(ws, kept, what) + left_for_analysis(len(staged) - len(kept))
     _clear_of_reshapes(ws, docs)
+    # Staged as one scope, its ops never pass add_op, so the values they would
+    # write are held to their layers' lists here, as op by op under the cap.
+    for op in staged:
+        ws.refuse_off_list(op)
     counts: Dict[str, int] = {}
     for op in staged:
         counts[op['kind']] = counts.get(op['kind'], 0) + 1

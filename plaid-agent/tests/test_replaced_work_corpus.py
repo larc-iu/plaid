@@ -231,3 +231,31 @@ def test_every_app_holds_its_plan_to_the_cap(app, monkeypatch):
     plan, _store = _plan(spec, spec['client']())
     [doc] = plan['documents']
     assert 'sentences' not in doc and doc['version'] is not None
+
+
+def test_a_corpus_wide_change_past_the_cap_is_held_to_the_layers_list(monkeypatch):
+    """REV-DEBT-R1 F1: past the plan cap a corpus-wide change is staged as one
+    scope op and rebuilt at approval. The values it would write are held to
+    the layer's stored list as it is planned, as op by op under the cap, and
+    again when it is rebuilt."""
+    from fixtures import GLOSS
+    from plaid_agent.igt import bulk
+    from plaid_agent.igt.toolkit import call_tool
+    rows = [_gloss_row('sp-g1', 'Ali', 'w-1'), _gloss_row('sp-g2', 'Ali', 'w-2')]
+    for cap in (None, 1):
+        if cap:
+            monkeypatch.setattr(bulk, 'PLAN_MAX_OPS', cap)
+        _c, ws = _igt_ws(monkeypatch, rows)
+        ws.project.field_by_layer(GLOSS).value_sets = [{'type': 'value-set', 'values': ['Ali']}]
+        out = call_tool(ws, 'replace_in_field', {'field': 'Gloss', 'pattern': 'Ali', 'replacement': 'Bob'})
+        assert '"Bob" is not on the list Gloss is held to' in out and ws.ops == [], (cap, out)
+    # And the rebuild at approval refuses what the list no longer takes.
+    _c, ws = _igt_ws(monkeypatch, rows)
+    call_tool(ws, 'replace_in_field', {'field': 'Gloss', 'pattern': 'Ali', 'replacement': 'Bob'})
+    [scope] = ws.ops
+    assert scope['kind'] == 'bulk_scope'
+    from plaid_agent.igt.plan import Resolution, _resolve_bulk_scope
+    res = Resolution(ws.client, ws.project, None)
+    res.ws.project.field_by_layer(GLOSS).value_sets = [{'type': 'value-set', 'values': ['Ali']}]
+    with pytest.raises(ValueError, match='not on the list'):
+        _resolve_bulk_scope(res, scope)
