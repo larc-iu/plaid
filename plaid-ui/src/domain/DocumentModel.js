@@ -360,11 +360,12 @@ export class DocumentModel {
   /**
    * Run `fn`, a grid cell's write, inside `handlesConflicts`, and answer what
    * became of it: `{ landed: true, value }`, where `value` is what `fn`
-   * answered, or `{ landed: false, status, error, readBack, uncertain }`.
+   * answered, or `{ landed: false, status, error, readBack }`.
    * `error` is the refusal of a write `fn` queued, its own and not a later
    * write's. `readBack` says the document was read again after the refusal,
-   * so what it holds is what the server holds, and `uncertain` that the
-   * write may have landed with its answer lost. The cell engine
+   * so what it holds is what the server holds. A write whose answer was lost
+   * is sent again until it is answered (`resendWhenBack`), so it never ends
+   * here unknown. The cell engine
    * (cells/CellEngine.js) takes it from here.
    */
   cellWrite(fn) {
@@ -386,7 +387,6 @@ export class DocumentModel {
         status: statusOf(error) ?? null,
         error,
         readBack: !this.outOfStep,
-        uncertain: error ? isUnknownOutcome(error) : false,
       };
     });
   }

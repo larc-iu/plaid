@@ -73,7 +73,7 @@ describe('cellWrite', () => {
     server.values.gloss = 'HOUND';
     server.version += 1;
     const outcome = await doc.cellWrite(() => doc.set('gloss', 'DOG'));
-    expect(outcome).toMatchObject({ landed: false, status: 409, readBack: true, uncertain: false });
+    expect(outcome).toMatchObject({ landed: false, status: 409, readBack: true });
     expect(outcome.error.status).toBe(409);
     expect(errors).toEqual([]);
     expect(doc.error).toBe('');
@@ -86,7 +86,7 @@ describe('cellWrite', () => {
     const { server, doc, errors } = open();
     server.fail.push(failing(500));
     const outcome = await doc.cellWrite(() => doc.set('gloss', 'DOG'));
-    expect(outcome).toMatchObject({ landed: false, status: 500, uncertain: false });
+    expect(outcome).toMatchObject({ landed: false, status: 500 });
     expect(errors.map((e) => e.err.status)).toEqual([500]);
   });
 

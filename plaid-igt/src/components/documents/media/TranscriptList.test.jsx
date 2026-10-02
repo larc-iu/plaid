@@ -25,7 +25,7 @@ function makeDoc({ body, tokens }) {
     cellWrite: (fn) =>
       Promise.resolve(fn()).then((value) =>
         value === false
-          ? { landed: false, status: null, error: null, readBack: true, uncertain: false }
+          ? { landed: false, status: null, error: null, readBack: true }
           : { landed: true, value },
       ),
     editAlignment: vi.fn(async () => true),
