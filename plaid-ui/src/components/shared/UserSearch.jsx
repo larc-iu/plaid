@@ -12,6 +12,7 @@ export const UserSearch = ({ client, search, renderAction }) => {
   return (
     <div className="flex flex-col gap-2">
       <SearchInput
+        ref={search.inputRef}
         placeholder="Search users by name…"
         value={query}
         onChange={setQuery}

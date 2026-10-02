@@ -53,7 +53,7 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
       setUpdatingUser(userId);
       await client.vocabLayers.addMaintainer(vocabularyId, userId);
       await onDataUpdate();
-      search.setQuery('');
+      search.added();
       notifySuccess('Maintainer added');
     } catch (err) {
       console.error('Error adding maintainer:', err);

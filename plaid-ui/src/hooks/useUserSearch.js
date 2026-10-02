@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export const USER_SEARCH_LIMIT = 25;
 
@@ -8,7 +8,10 @@ export const USER_SEARCH_LIMIT = 25;
 // the box is touched, an empty box browses the first page, and the ids in
 // `excludeIds` (the people already on the list) are dropped. A caller who may
 // not browse the directory (403) gets `denied` rather than an error.
+// `added()` after someone is added empties the box and puts focus back in it,
+// where the control that added them, now gone from the results, had it.
 export function useUserSearch({ client, excludeIds }) {
+  const inputRef = useRef(null);
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
   const [active, setActive] = useState(false);
@@ -67,6 +70,11 @@ export function useUserSearch({ client, excludeIds }) {
     debounced,
     active,
     activate: () => setActive(true),
+    inputRef,
+    added: () => {
+      setQuery('');
+      inputRef.current?.focus();
+    },
     results,
     loading,
     denied,

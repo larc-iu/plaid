@@ -66,6 +66,12 @@ export const ProjectAccessScreen = ({
       currentUserId: user?.id,
       onDataUpdate,
     });
+  // Adding from the search: the row and its menu go once the person is on the
+  // project, so the search takes focus, emptied for the next one.
+  const add = async (userId, newRole) => {
+    await grant(userId, newRole);
+    search.added();
+  };
 
   return (
     <div className="flex flex-col gap-6 pt-4 [&>*+*]:border-t [&>*+*]:pt-6">
@@ -135,7 +141,7 @@ export const ProjectAccessScreen = ({
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>Add as…</DropdownMenuLabel>
                 {GRANT_ROLES.map((role) => (
-                  <DropdownMenuItem key={role} onSelect={() => grant(u.id, role)}>
+                  <DropdownMenuItem key={role} onSelect={() => add(u.id, role)}>
                     {cap(role)}
                   </DropdownMenuItem>
                 ))}
