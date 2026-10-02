@@ -255,9 +255,11 @@ def test_every_app_function_is_ported_or_exempted():
     for mod in ('vocabDictionary', 'vocabFields'):
         names = surface[mod]
         assert len(names) > 10, f'the surface report for {mod} came back suspiciously small: {names}'
+    # The sense tree lives in plaid_client.workflows.igt.senses, which the
+    # services read too, and vocab.py re-exports it.
     ported = {n for n, o in vars(vocab_module).items()
               if not n.startswith('_') and inspect.isfunction(o)
-              and o.__module__ == vocab_module.__name__}
+              and o.__module__ in (vocab_module.__name__, 'plaid_client.workflows.igt.senses')}
     missing = [n for n in exported
                if n not in SURFACE_EXEMPT
                and SURFACE_ALIAS.get(n, _snake(n)) not in ported]

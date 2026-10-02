@@ -80,6 +80,22 @@ def test_a_broken_parent_leaves_the_entry_in_the_model_s_reach():
     assert [e['id'] for e in llm.vocab_entries(cycle, 'L')] == ['f1', 'f2']
 
 
+def test_entries_read_the_sense_tree_as_the_app_does():
+    """R1-DEBT-CORE-9: one Python reading of the sense tree, the app's
+    (plaid_client.workflows.igt.senses). A sense made by hand carries no morph
+    type and is read by its headword's, and an item under a cycle is a sense
+    of the cycle member it names."""
+    items = [{'id': 'h', 'form': 'kwatha', 'metadata': {'morphType': 'stem', 'gloss': 'do'}},
+             {'id': 's', 'form': 'kwatha', 'metadata': {'gloss': 'make', 'parent': 'h'}}]
+    assert [e['type'] for e in llm.vocab_entries(items, 'L')] == ['stem', 'stem']
+
+    below = [{'id': 'a', 'form': 'nya', 'metadata': {'parent': 'b'}},
+             {'id': 'b', 'form': 'nyo', 'metadata': {'parent': 'a', 'gloss': 'x'}},
+             {'id': 'c', 'form': 'nya', 'metadata': {'parent': 'a', 'gloss': 'y'}}]
+    # `a` holds no gloss and its sense `c` spells it, so it is left out
+    assert [e['id'] for e in llm.vocab_entries(below, 'L')] == ['b', 'c']
+
+
 def test_rank_examples_prefers_shared_forms_then_character_overlap():
     pool = [{'words': ['kedi', 'uyuyor'], 'line': 'b'}, {'words': ['ev', 'geliyor'], 'line': 'a'},
             {'words': ['evler', 'geliyorum'], 'line': 'c'}]

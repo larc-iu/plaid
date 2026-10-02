@@ -107,6 +107,20 @@ def test_a_sense_takes_its_headword():
     assert boot.headwords_of([VOCAB]) == {'i1': 'bark', 'i2': 'bark'}
 
 
+def test_a_sense_tree_with_a_cycle_is_read_as_the_app_reads_it():
+    # R1-DEBT-CORE-9: the app's buildSenseTree (plaid_client.workflows.igt.senses)
+    # makes every member of a cycle an entry, its own headword, and a sense
+    # hanging from one takes that one's form, unless the walk that found the
+    # cycle came through it (listed first), which cuts it loose too. The
+    # app's validator clears the cycle the next time a maintainer opens the
+    # vocabulary.
+    a = {'id': 'a', 'form': 'ada', 'metadata': {'parent': 'b'}}
+    b = {'id': 'b', 'form': 'bada', 'metadata': {'parent': 'a'}}
+    c = {'id': 'c', 'form': 'cada', 'metadata': {'parent': 'a'}}
+    assert boot.headwords_of([{'id': 'v', 'items': [a, b, c]}]) == {'a': 'ada', 'b': 'bada', 'c': 'ada'}
+    assert boot.headwords_of([{'id': 'v', 'items': [c, a, b]}]) == {'a': 'ada', 'b': 'bada', 'c': 'cada'}
+
+
 # --- the run ------------------------------------------------------------------------
 
 def test_the_skeleton_names_who_asked_in_history_and_on_what_it_writes():
@@ -118,6 +132,27 @@ def test_the_skeleton_names_who_asked_in_history_and_on_what_it_writes():
         'UMR skeleton from glosses of sentence 1, requested by second']
     for op in _ops(service.client, 'spans.bulk_create'):
         assert op['metadata']['provDetail']['requestedBy'] == 'second@x.com'
+
+
+@pytest.mark.parametrize('failing', ['project', 'vocab'])
+def test_a_project_or_vocabulary_that_cannot_be_read_fails_the_run(failing):
+    # R1-DEBT-CORE-16: the run went on without headwords or the project's
+    # gloss mapping, wrote skeletons named from the wrong glosses and
+    # reported success.
+    from plaid_client.http import PlaidAPIError
+    service = _service()
+
+    def refuse(*args, **kwargs):
+        raise PlaidAPIError('HTTP 403 Forbidden', status=403)
+
+    if failing == 'project':
+        service.client.projects.get = refuse
+    else:
+        service.client.vocab_layers.get = refuse
+    helper = servicetest.run(service, REQUEST)
+
+    assert helper.results == [] and helper.errors
+    assert service.client.writes == []
 
 
 def test_the_skeleton_names_this_files_version_and_no_model():

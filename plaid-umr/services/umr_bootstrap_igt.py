@@ -82,6 +82,7 @@ from plaid_client.workflows.umr import (DraftProgress, begin_draft, draft_params
                                         next_variable, run_label, unknown_relation_problem)
 from plaid_client.workflows.igt.glossing import (GLOSS_ABBREVIATIONS, PERSON_NUMBER,
                                                  can_name_word, gloss_morphemes, line_flags)
+from plaid_client.workflows.igt.senses import build_sense_tree
 from plaid_client.workflows.umr.inventory import attribute_value_problem
 from plaid_client.workflows.umr.layers import lexical_gloss_layers
 
@@ -369,22 +370,14 @@ def concept_from(text: str) -> str:
 
 
 def headwords_of(vocabularies) -> Dict[str, str]:
-    """Every entry's headword form by entry id: an entry's own form, or the
-    form at the top of a sense's parent chain (src/domain/vocabLexicon.js)."""
+    """Every entry's headword form by entry id: an entry's own form, or its
+    entry's, as the app's sense tree reads it (src/domain/vocabLexicon.js)."""
     out = {}
     for vocab in vocabularies or []:
-        items = vocab.get('items') or []
-        by_id = {it['id']: it for it in items if it.get('id')}
+        items = [it for it in vocab.get('items') or [] if it.get('id')]
+        tree = build_sense_tree(items)
         for it in items:
-            cur, seen = it, set()
-            while cur and cur['id'] not in seen:
-                seen.add(cur['id'])
-                parent = (cur.get('metadata') or {}).get('parent')
-                up = by_id.get(parent) if parent else None
-                if not up:
-                    break
-                cur = up
-            out[it['id']] = (cur or it).get('form') or it.get('form') or ''
+            out[it['id']] = (tree.entry_of(it['id']) or it).get('form') or it.get('form') or ''
     return out
 
 
@@ -512,18 +505,17 @@ class UmrBootstrapService(BaseService):
             return
 
         # The project's vocabularies, for the headword a linked word takes,
-        # and its gloss-line mapping, for which layers are glosses.
+        # and its gloss-line mapping, for which layers are glosses. A read that
+        # fails fails the run: skeletons named from the wrong gloss lines cost
+        # more to clean up than a second request.
         headwords: Dict[str, str] = {}
         project = None
         if run.project_id:
             run.progress.report(DraftProgress.READ, 0.5, 'Reading the vocabularies…')
-            try:
-                project = self.client.projects.get(run.project_id)
-                vocabularies = [self.client.vocab_layers.get(v['id'], include_items=True)
-                                for v in (project.get('vocabs') or []) if v.get('id')]
-                headwords = headwords_of(vocabularies)
-            except Exception as exc:
-                print(f'Could not read the vocabularies: {exc}')
+            project = self.client.projects.get(run.project_id)
+            vocabularies = [self.client.vocab_layers.get(v['id'], include_items=True)
+                            for v in (project.get('vocabs') or []) if v.get('id')]
+            headwords = headwords_of(vocabularies)
         links = links_by_token(run.layers)
         listed = listed_forms(headwords)
         glosses = lexical_gloss_layers(project, run.layers)

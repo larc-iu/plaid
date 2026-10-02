@@ -51,6 +51,7 @@ from plaid_client.service import locked_for_writes, machine_detail, requester_me
 from plaid_client.workflows.requester import requester_of
 from plaid_client.workflows.llm import (NOT_ASKED, ChatModel, UnansweredRun,
                                         add_model_arguments, setup_service)
+from plaid_client.workflows.igt.senses import build_sense_tree, morph_type_of
 from plaid_client.workflows.igt import (
     derive, field_layer_id, select_targets, word_state, parse_interleaved, align_words, analysis_for,
     ANALYZE_REQUEST_FIELDS, read_skip_word_ids,
@@ -157,51 +158,29 @@ def vocab_entries(items, vocab_name) -> List[dict]:
     its own form, so dropping it would take that form out of the model's reach
     entirely.
 
-    A parent counts only where it names a different item that exists and its
-    chain reaches a root. Reading the raw key instead let a self-parent or a
-    cycle make an entry its own sense, which hid it from the model, and the
-    analyst saw that form come back unglossed with no reason given.
-
-    NOT byte-for-byte the app's buildSenseTree, which memoises and so cuts a
-    cycle only along the chain it first reached it by: an item hanging BELOW a
-    cycle stays a sense there if the cycle was resolved first, and is an entry
-    here whatever the order. The difference runs one way only, since a chain
-    that is acyclic from an item cannot be cut by a walk passing through it, so
-    this can only ever show the model one entry too many, never hide one. Being
-    order-independent is worth more here than matching a quirk of a state the
-    app's validator clears the next time a maintainer opens the vocabulary."""
-    by_id = {it['id']: it for it in items}
-
-    def parent_of(it):
-        p = (it.get('metadata') or {}).get('parent')
-        return p if p and p != it.get('id') and p in by_id else None
-
-    def is_sense(it):
-        seen = {it['id']}
-        cur = parent_of(it)
-        while cur:
-            if cur in seen:
-                return False          # a cycle: the app calls all of them entries
-            seen.add(cur)
-            cur = parent_of(by_id[cur])
-        return parent_of(it) is not None
-
+    Which item is a sense of which, and the morph type an item is read by
+    (its own, else its headword's), are the app's sense tree
+    (plaid_client.workflows.igt.senses): a parent that names the item itself,
+    nothing, or lies on a cycle makes an entry."""
+    items = [it for it in items if it.get('id')]
+    tree = build_sense_tree(items)
     sense_forms = {}
     for it in items:
-        if is_sense(it):
-            sense_forms.setdefault(parent_of(it), set()).add((it.get('form') or '').casefold())
+        parent = tree.parent_of.get(it['id'])
+        if parent:
+            sense_forms.setdefault(parent, set()).add((it.get('form') or '').casefold())
     covered = {it['id'] for it in items
-               if (it.get('form') or '').casefold() in sense_forms.get(it.get('id'), ())}
+               if (it.get('form') or '').casefold() in sense_forms.get(it['id'], ())}
     entries = []
     for it in items:
         meta = it.get('metadata') or {}
         gloss = _field(meta, 'gloss')
-        if not gloss and it.get('id') in covered:
+        if not gloss and it['id'] in covered:
             continue
         entries.append({
             'id': it['id'], 'form': it.get('form') or '', 'vocab': vocab_name or '',
             'gloss': gloss, 'pos': _field(meta, 'pos', 'part of speech'),
-            'type': _field(meta, 'morphType', 'morph type'), 'count': 0,
+            'type': morph_type_of(tree, it['id']), 'count': 0,
         })
     return entries
 

@@ -379,14 +379,12 @@ class UmrDraftService(BaseService):
 
         # The project's language, the one thing the prompt needs that the
         # document does not carry. Context only: a project that has not set one
-        # is drafted without it rather than refused.
+        # is drafted without it rather than refused. A read that fails fails
+        # the run.
         language = ''
         if run.project_id:
             progress.report(DraftProgress.READ, 0.5, 'Reading the project…')
-            try:
-                language = project_language(self.client.projects.get(run.project_id))
-            except Exception as exc:
-                print(f'Could not read the project language: {exc}')
+            language = project_language(self.client.projects.get(run.project_id))
         progress.report(DraftProgress.READ, 1.0, 'Reading the document…')
 
         stamp_detail = machine_detail(self.version, **self.model.describe(),

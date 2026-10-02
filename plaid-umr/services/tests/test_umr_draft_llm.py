@@ -313,6 +313,23 @@ def test_the_scope_of_one_sentence_drafts_only_that_sentence():
         ['s2b', 's2d', 's2n']
 
 
+def test_a_project_that_cannot_be_read_fails_the_run_without_asking_the_model():
+    # R1-DEBT-CORE-16, the same read as the skeleton's: a failed read of the
+    # project is not a project with no language.
+    from plaid_client.http import PlaidAPIError
+    service = _service()
+
+    def refuse(*args, **kwargs):
+        raise PlaidAPIError('HTTP 403 Forbidden', status=403)
+
+    service.client.projects.get = refuse
+    helper = servicetest.run(service, REQUEST)
+
+    assert helper.results == [] and helper.errors
+    assert service.client.writes == []
+    assert service.model.calls == []
+
+
 def test_a_sentence_number_the_document_lacks_is_refused_without_writing():
     service = _service()
     helper = servicetest.run(service, {**REQUEST, 'scope': 'sentence', 'sentence': 4})
