@@ -12,7 +12,7 @@
 // document read. Nothing in here goes through `client.withOperation`.
 
 import { clipText } from '../lib/text.js';
-import { isIdTaken, isUnknownOutcome, isUnreachable } from '../lib/errors.js';
+import { isIdTaken, isUnknownOutcome } from '../lib/errors.js';
 import { isPendingId, newId, recordSettled } from './pendingIds.js';
 
 // Comments sort oldest-first by (createdAt, id), matching the server's keyset
@@ -382,67 +382,57 @@ export class CommentStore {
     this._insert(optimistic);
     this._emit();
 
-    try {
-      const created = await this._client.comments.create(
+    const send = () =>
+      this._client.comments.create(
         entityType,
         entityId,
         text,
         caption ? { anchorLabel: caption, id } : { id },
       );
-      return this._posted(said, id, created);
-    } catch (err) {
+    let err = null;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return this._posted(said, id, await send());
+      } catch (e) {
+        err = e;
+      }
       // No answer came even after the client's own resends. The comment stays
-      // on screen as sending, and the thread is read once the server can be
-      // reached again (the `online` event, or a read that succeeds): kept when
-      // the server has it, taken off otherwise.
-      if (isUnknownOutcome(err)) {
-        this._unconfirmed.set(said, id);
-        const landed = await this._whenReachable(entityType, entityId, id);
-        if (landed) return this._posted(said, id, landed);
-        this._forget(id);
-        this._fail('Failed to post comment', err);
-        this._emit();
-        return null;
-      }
-      this._forget(id);
-      // The same words posted before under this id, whose answer was lost:
-      // that post landed, and it is the comment.
-      if (isIdTaken(err)) {
-        try {
-          return this._posted(said, id, await this._client.comments.get(id));
-        } catch (readErr) {
-          console.error('Could not read a comment that was posted already:', readErr);
-        }
-      }
-      this._fail('Failed to post comment', err);
-      this._emit();
-      return null;
+      // on screen as sending, and the same post goes again under the same id
+      // once the server can be reached (the `online` event, or a back-off), as
+      // every other write does, for as long as a screen shows this store. A
+      // post that had landed is then answered `id-taken`.
+      if (!isUnknownOutcome(err)) break;
+      this._unconfirmed.set(said, id);
+      if (!(await this._whenReachable(attempt))) break;
     }
+    this._forget(id);
+    // The same words posted before under this id, whose answer was lost: that
+    // post landed, and it is the comment.
+    if (isIdTaken(err)) {
+      try {
+        return this._posted(said, id, await this._client.comments.get(id));
+      } catch (readErr) {
+        console.error('Could not read a comment that was posted already:', readErr);
+      }
+    }
+    this._fail('Failed to post comment', err);
+    this._emit();
+    return null;
   }
 
-  // The comment `id` from the thread on `entityId`, read once the server can
-  // be reached, or null when the thread holds none (or no screen shows this
-  // store any more). Waits for the `online` event or a back-off, whichever
-  // comes first, and reads again while the read itself gets no answer.
-  async _whenReachable(entityType, entityId, id) {
-    for (let attempt = 0; ; attempt += 1) {
-      await new Promise((resolve) => {
-        const done = () => {
-          clearTimeout(timer);
-          globalThis.removeEventListener?.('online', done);
-          resolve();
-        };
-        const timer = setTimeout(done, Math.min(2000 * 2 ** attempt, 30000));
-        globalThis.addEventListener?.('online', done);
-      });
-      if (this._listeners.size === 0) return null;
-      try {
-        const thread = await this._readThread(entityType, entityId);
-        return thread.find((c) => c.id === id) ?? null;
-      } catch (readErr) {
-        if (!isUnknownOutcome(readErr) && !isUnreachable(readErr)) return null;
-      }
-    }
+  // Waits for the `online` event or the back-off of try `attempt`, whichever
+  // comes first. False when no screen shows this store any more.
+  async _whenReachable(attempt) {
+    await new Promise((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        globalThis.removeEventListener?.('online', done);
+        resolve();
+      };
+      const timer = setTimeout(done, Math.min(2000 * 2 ** attempt, 30000));
+      globalThis.addEventListener?.('online', done);
+    });
+    return this._listeners.size > 0;
   }
 
   // The server's row for a post, in place of the one shown while it went.

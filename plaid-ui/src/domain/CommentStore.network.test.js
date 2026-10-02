@@ -5,9 +5,10 @@ import { newId } from './pendingIds.js';
 // A comment post whose answer was lost (V5, H5-1): posted again it was stored
 // twice. A post names the id of the comment it makes, and the client sends a
 // write whose answer was lost again under the same key, so it lands once.
-// When even that gives up, posting the same words again names the same id,
-// and a post that had landed is answered 409 `id-taken` and kept. And a
-// Comments tab opened after comments were made elsewhere (H7-4).
+// When even that gives up, the store posts it again under the same id once the
+// server can be reached, while a screen shows it, and a post that had landed is
+// answered 409 `id-taken` and kept. Posting the same words again names the same
+// id too. And a Comments tab opened after comments were made elsewhere (H7-4).
 
 const ME = 'me@example.com';
 let seq = 0;
@@ -87,11 +88,8 @@ describe('a post whose answer was lost', () => {
       const { store, errors } = open(client);
       await store.load();
       client.state.loseNext = { error: lost(status) };
-      // The thread cannot be read either, so the post is not confirmed.
-      const list = client.comments.list;
-      client.comments.list = async () => Promise.reject(lost(status)());
+      // No screen shows the store, so it does not wait to post it again.
       expect(await store.post('token', 't1', 'Is this right?')).toBe(null);
-      client.comments.list = list;
       expect(errors).toHaveLength(1);
       const posted = await store.post('token', 't1', 'Is this right?');
       expect(posted?.body).toBe('Is this right?');
@@ -103,38 +101,44 @@ describe('a post whose answer was lost', () => {
   }
 
   // REV-idempotency F5, REV2 G5: taken off the screen as failed while the
-  // server had it, and the read after the last resend came inside the same
-  // outage. The comment stays as sending until the thread can be read.
-  it('stays as sending through the outage, and is kept once the thread read holds it', async () => {
-    vi.useFakeTimers();
-    const client = fakeClient();
-    const { store, errors } = open(client);
-    store.subscribe(() => {});
-    await store.load();
-    client.state.loseNext = { error: lost(502) };
-    const list = client.comments.list;
-    let down = 2;
-    client.comments.list = async (...args) => {
-      if (down > 0) {
-        down -= 1;
-        throw lost(0)();
-      }
-      return list(...args);
-    };
-    const posting = store.post('token', 't1', 'Is this a loan word?');
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(store.threadFor('t1').map((c) => [c.body, isPending(c)])).toEqual([
-      ['Is this a loan word?', true],
-    ]);
-    await vi.advanceTimersByTimeAsync(20000);
-    const posted = await posting;
-    expect(posted?.body).toBe('Is this a loan word?');
-    expect(errors).toEqual([]);
-    expect(store.threadFor('t1').map((c) => [c.body, isPending(c)])).toEqual([
-      ['Is this a loan word?', false],
-    ]);
-    expect(client.state.rows).toHaveLength(1);
-  });
+  // server had it. R2-DEBT-APPS-14: a post the server never got was dropped
+  // once the thread read lacked it, the one write that gave up. It stays as
+  // sending and goes again under its id until it is answered.
+  for (const stored of [true, false]) {
+    it(`stays as sending through the outage and is posted again under its id (${stored ? 'it had landed' : 'it had not'})`, async () => {
+      vi.useFakeTimers();
+      const client = fakeClient();
+      const { store, errors } = open(client);
+      store.subscribe(() => {});
+      await store.load();
+      client.state.loseNext = { error: lost(502), stored };
+      const create = client.comments.create;
+      let down = 2;
+      client.comments.create = vi.fn(async (...args) => {
+        if (create.mock.calls.length && down > 0) {
+          down -= 1;
+          throw lost(0)();
+        }
+        return create(...args);
+      });
+      const posting = store.post('token', 't1', 'Is this a loan word?');
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(store.threadFor('t1').map((c) => [c.body, isPending(c)])).toEqual([
+        ['Is this a loan word?', true],
+      ]);
+      await vi.advanceTimersByTimeAsync(20000);
+      const posted = await posting;
+      expect(posted?.body).toBe('Is this a loan word?');
+      expect(errors).toEqual([]);
+      expect(store.threadFor('t1').map((c) => [c.body, isPending(c)])).toEqual([
+        ['Is this a loan word?', false],
+      ]);
+      expect(client.state.rows).toHaveLength(1);
+      const ids = new Set(client.comments.create.mock.calls.map((c) => c[3].id));
+      expect(ids.size).toBe(1);
+      expect(client.comments.create.mock.calls.length).toBe(4);
+    });
+  }
 
   it('is read at once when the browser says it is back online', async () => {
     vi.useFakeTimers();
@@ -143,10 +147,9 @@ describe('a post whose answer was lost', () => {
     store.subscribe(() => {});
     await store.load();
     client.state.loseNext = { error: lost(0) };
-    const reads = client.comments.list.mock.calls.length;
     const posting = store.post('token', 't1', 'Back');
     await vi.advanceTimersByTimeAsync(100);
-    expect(client.comments.list.mock.calls.length).toBe(reads);
+    expect(client.comments.create).toHaveBeenCalledTimes(1);
     window.dispatchEvent(new Event('online'));
     await vi.advanceTimersByTimeAsync(0);
     expect((await posting)?.body).toBe('Back');
@@ -185,17 +188,17 @@ describe('a post whose answer was lost', () => {
     expect(ids[0]).not.toBe(ids[1]);
   });
 
-  it('is not read again after a refusal, whose outcome is known', async () => {
+  it('is not posted again after a refusal, whose outcome is known', async () => {
     const client = fakeClient();
     const { store } = open(client);
+    store.subscribe(() => {});
     await store.load();
-    const reads = client.comments.list.mock.calls.length;
     client.state.loseNext = {
       stored: false,
       error: () => Object.assign(new Error('HTTP 400 bad'), { status: 400, method: 'POST' }),
     };
     expect(await store.post('token', 't1', 'x')).toBe(null);
-    expect(client.comments.list.mock.calls.length).toBe(reads);
+    expect(client.comments.create).toHaveBeenCalledTimes(1);
   });
 });
 
