@@ -103,3 +103,48 @@ describe('TokenRow line names', () => {
     await r.unmount();
   });
 });
+
+// The joints between morphemes: by morph type where the morphemes are
+// tokens, and none added where a stored line's items carry their own, as a
+// .umr file writes them (Q3-UMR-POLISH-5).
+describe('TokenRow joints', () => {
+  const joints = (r) => texts(r.container, '.umr-morph-joiner');
+
+  it('draws the morph types’ joints where the morphemes are tokens', async () => {
+    const s = sentence();
+    s.morphemes[1].morphType = 'enclitic';
+    const r = await renderComponent(<TokenRow sentence={s} wordRef={() => undefined} />);
+    expect(joints(r)).toEqual(['=']);
+    await r.unmount();
+  });
+
+  it('adds none beside the joints a stored line carries', async () => {
+    const r = await renderComponent(
+      <TokenRow
+        sentence={{
+          words: [
+            { id: 'w1', index: 1, begin: 0, end: 13, text: 'tsɨmɨntsarara' },
+            { id: 'w2', index: 2, begin: 14, end: 18, text: 'siánígíí' },
+            { id: 'w3', index: 3, begin: 19, end: 22, text: 'nuu' },
+          ],
+          morphemes: [],
+          ilg: [
+            {
+              header: 'Morphemes',
+              key: 'morphemes',
+              lang: null,
+              perWord: [
+                ['ts-', 'ɨmɨntsara', '-ra'],
+                ['si-', '’án', '=ígíí'],
+                ['nu', 'u'],
+              ],
+            },
+          ],
+        }}
+        wordRef={() => undefined}
+      />,
+    );
+    expect(joints(r)).toEqual(['', '', '', '', '-']);
+    await r.unmount();
+  });
+});

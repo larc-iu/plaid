@@ -88,7 +88,7 @@ export const TokenRow = React.memo(function TokenRow({
                     <React.Fragment key={ci}>
                       {ci > 0 && (
                         <span className="umr-morph-joiner" aria-hidden="true">
-                          {joiners[i]?.[ci] || '-'}
+                          {jointBefore(joiners, block, i, ci)}
                         </span>
                       )}
                       <div className="umr-morph-col">
@@ -174,6 +174,21 @@ const groupByScope = (lines) => {
     else blocks.push({ morpheme, lines: [line] });
   });
   return blocks;
+};
+
+// The joint drawn before column `ci` of word `i`: the one the morph types
+// give where the morphemes are tokens (morphemeJoinersFor), else a '-',
+// unless a stored line's items already carry their joints (`ts- ɨmɨntsara
+// -ra`, `si- ’án =ígíí`, as a .umr file writes them), where a second one
+// would be drawn beside each.
+const jointBefore = (joiners, block, i, ci) => {
+  const known = joiners[i]?.[ci];
+  if (known != null) return known;
+  const carried = block.lines.some((line) => {
+    const items = line.perWord[i] || [];
+    return /[-=]$/.test(items[ci - 1] ?? '') || /^[-=]/.test(items[ci] ?? '');
+  });
+  return carried ? '' : '-';
 };
 
 // How many columns one word needs: the longest of its morpheme lines. They
