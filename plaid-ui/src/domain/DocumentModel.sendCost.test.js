@@ -39,3 +39,50 @@ describe('a send that lands', () => {
     expect(doc.raw.rows).toEqual([{ id, value: 'x' }]);
   });
 });
+
+// REV-FX-UI F1: one refused create left the whole diff on every later send.
+describe('a send after a refused create', () => {
+  it('diffs the document only when the edit names the refused row', async () => {
+    const c = client();
+    const doc = new DocumentModel({ raw: { id: 'd1', rows: [] }, client: c, user: { id: 'u' } });
+    doc._canWrite = () => true;
+    doc.onError = () => {};
+    doc._fetch = async () => ({ id: 'd1', rows: [] });
+    const refused = newId();
+    doc._applyRawPatch((raw) => {
+      raw.rows.push({ id: refused, value: 'x' });
+    });
+    await doc._queueWrite('Failed to add a row', async () => {
+      throw Object.assign(new Error('HTTP 422'), {
+        status: 422,
+        responseData: { violations: [{}] },
+      });
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(doc._refusedIds.has(refused)).toBe(true);
+    spies.footprintOf.mockClear();
+    spies.pendingIdsOf.mockClear();
+    const id = newId();
+    doc._applyRawPatch((raw) => {
+      raw.rows = raw.rows.filter((r) => r.id !== refused);
+      raw.rows.push({ id, value: 'y' });
+    });
+    await doc._queueWrite('Failed to add a row', async () => {});
+    expect(spies.footprintOf).not.toHaveBeenCalled();
+    expect(spies.pendingIdsOf).not.toHaveBeenCalled();
+  });
+});
+
+// REV-FX-UI F2: the copy kept a metadata key named `__proto__` as the copy's
+// prototype instead of a key.
+describe('the copy a patch is made on', () => {
+  it('keeps a key named __proto__ as a key', () => {
+    const raw = JSON.parse('{"id":"d1","rows":[],"metadata":{"__proto__":{"x":1},"note":"n"}}');
+    const doc = new DocumentModel({ raw, user: { id: 'u' } });
+    doc._applyRawPatch((next) => {
+      next.metadata.note = 'm';
+    });
+    expect(Object.keys(doc.raw.metadata)).toEqual(['__proto__', 'note']);
+    expect(JSON.stringify(doc.raw.metadata)).toBe('{"__proto__":{"x":1},"note":"m"}');
+  });
+});

@@ -23,7 +23,7 @@ import {
 } from './textDirection.js';
 import { WriteQueue } from './WriteQueue.js';
 import { newId, recordSettled, settleIds } from './pendingIds.js';
-import { createdIdsOf, footprintOf, pendingIdsOf, resendable } from './rebase.js';
+import { createdIdsOf, footprintOf, namesAnyOf, pendingIdsOf, resendable } from './rebase.js';
 
 // A copy of a document read from the server, which is plain JSON. A walk
 // rather than a JSON round trip, which took five times as long on a document
@@ -39,7 +39,17 @@ const cloneRaw = (value) => {
     const out = {};
     for (const key of Object.keys(value)) {
       const v = value[key];
-      if (v !== undefined) out[key] = cloneRaw(v);
+      if (v === undefined) continue;
+      // An own `__proto__` key (JSON.parse makes one) would set the copy's
+      // prototype by assignment.
+      if (key === '__proto__') {
+        Object.defineProperty(out, key, {
+          value: cloneRaw(v),
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+      } else out[key] = cloneRaw(v);
     }
     return out;
   }
@@ -746,6 +756,10 @@ export class DocumentModel {
   // Whether `unsent` names a row an edit refused before it made.
   _namesRefused(unsent) {
     if (this._refusedIds.size === 0) return false;
+    // The whole diff only when the edit names a refused id at all: one
+    // refused create would otherwise cost every later send of the page a
+    // read of the whole document twice (REV-FX-UI F1).
+    if (!unsent.made || !namesAnyOf(unsent.made, this._refusedIds)) return false;
     const summary = this._summary(unsent);
     if (!summary) return false;
     for (const id of summary.named) {

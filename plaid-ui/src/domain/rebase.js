@@ -284,6 +284,24 @@ function entityIdsOf(raw) {
   return ids;
 }
 
+// Whether any string anywhere in `raw` is one of `ids`. Stops at the first.
+// A cheap test before `pendingIdsOf`, which reads every entity twice.
+export function namesAnyOf(raw, ids) {
+  if (!ids?.size) return false;
+  const stack = [raw];
+  while (stack.length) {
+    const v = stack.pop();
+    if (typeof v === 'string') {
+      if (ids.has(v)) return true;
+    } else if (Array.isArray(v)) {
+      for (const x of v) stack.push(x);
+    } else if (v !== null && typeof v === 'object') {
+      for (const x of Object.values(v)) stack.push(x);
+    }
+  }
+  return false;
+}
+
 // The pending ids an edit made (rows it added under an id the server has not
 // given yet), from the document before its patch and after it: what
 // `pendingIdsOf` answers as `created`, for every send, at a fraction of the
