@@ -1,8 +1,10 @@
 """Write proposed analyses onto a document.
 
 A plan is ``{'word': <derive word>, 'analysis': <analysis_for result>}``.
-Per word: the existing default morpheme becomes the first slot (its form,
-morphType and provenance patched), further slots are created, every
+Per word: the existing first morpheme becomes the first slot (its form,
+morphType and provenance patched), or, for a word nobody has segmented, its
+virtual morpheme is created as the first slot under an id minted here, so
+its gloss goes in the same batch. Further slots are created, every
 morpheme in the chosen gloss field gets a span, and any morpheme or gloss
 the proposal replaces is deleted first. Two atomic batches per chunk,
 because created morphemes' ids are needed before their glosses can be
@@ -15,6 +17,7 @@ first), ``provDetail.value`` on each gloss span. Callers are expected to
 have applied the write contract already (:func:`select_targets`).
 """
 
+from plaid_client.ids import uuid7
 from plaid_client.metadata_ops import metadata_ops
 from plaid_client.provenance import stamp_inferred
 
@@ -83,8 +86,17 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
                                           'boundaries': ''.join(a['joiners']),
                                           **({'surfaceMismatch': True} if a['surface_mismatch'] else {}),
                                           **({'degraded': True} if a['degraded'] else {})}
-                b.tokens.patch_metadata(m0['id'], metadata_ops({
-                    'form': a['segments'][0], 'morphType': a['types'][0], **m0_stamp}))
+                m0_id = m0['id']
+                if m0.get('virtual'):
+                    m0_id = uuid7()
+                    meta = {'form': a['segments'][0], **m0_stamp}
+                    if a['types'][0]:
+                        meta['morphType'] = a['types'][0]
+                    b.tokens.create(morph_layer_id, text_id, w['token']['begin'], w['token']['end'],
+                                    precedence=1, metadata=meta, id=m0_id)
+                else:
+                    b.tokens.patch_metadata(m0_id, metadata_ops({
+                        'form': a['segments'][0], 'morphType': a['types'][0], **m0_stamp}))
                 idx += 1
                 for j in range(1, len(a['segments'])):
                     meta = {'form': a['segments'][j],
@@ -97,7 +109,7 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
                     created.append((idx, a['glosses'][j]))
                     idx += 1
                 if a['glosses'][0]:
-                    b.spans.create(gloss_layer_id, [m0['id']], a['glosses'][0],
+                    b.spans.create(gloss_layer_id, [m0_id], a['glosses'][0],
                                    stamp_inferred(source, detail={**detail, 'value': a['glosses'][0]}))
                     idx += 1
         results = b.results

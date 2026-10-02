@@ -130,7 +130,7 @@ def test_an_analysis_lands_stamped_machine_made_and_never_confirmed():
     assert result['status'] == 'success'
     assert result['sentences'] == 1 and result['sentences_sent'] == 1
     assert result['words_written'] == 2 and result['words_replaced'] == 0
-    assert result['skipped'] == {'protected': 0, 'no_morpheme': 0, 'unaligned': 0}
+    assert result['skipped'] == {'protected': 0, 'unaligned': 0}
     assert result['sentences_failed'] == []
     assert result['translation_field_missing'] is None
     assert 'stopped' not in result
@@ -170,6 +170,33 @@ def test_an_analysis_lands_stamped_machine_made_and_never_confirmed():
         assert meta['provDetail']['value'] == value
 
     assert service.client.operations == ['PolyGloss analysis (2 words)']
+
+
+def test_a_freshly_tokenized_document_is_analyzed():
+    """A word nobody has segmented has no morpheme token (its morpheme is
+    virtual, as the editor derives it). The service read such a word as
+    having no morpheme and skipped it, so a freshly tokenized document gave
+    "Nothing to analyze" (R1-DEBT-CORE-1). Its first slot is now created."""
+    doc = _document()
+    doc['text_layers'][0]['token_layers'][2]['tokens'] = []
+    service = _service(documents=[doc])
+    helper = servicetest.run(service, REQUEST)
+
+    assert helper.errors == []
+    [result] = helper.results
+    assert result['status'] == 'success' and result['words_written'] == 2
+    assert result['skipped'] == {'protected': 0, 'unaligned': 0}
+    assert not [c for kind, c in service.client.calls if kind == 'tokens.patch_metadata']
+    created = [c for kind, c in service.client.calls if kind == 'tokens.create']
+    assert [(c['args'][2], c['args'][3]) for c in created] == [(0, 2), (3, 10), (3, 10)]
+    firsts = [c for c in created if c['kwargs'].get('precedence') == 1]
+    assert [c['kwargs']['metadata']['form'] for c in firsts] == ['ev', 'gel']
+    ids = [c['kwargs']['id'] for c in firsts]
+    assert all(i and not i.startswith('virtual:') for i in ids)
+    glossed = {call['args'][1][0]: call['args'][2] for kind, call in service.client.calls
+               if kind == 'spans.create'}
+    assert glossed[ids[0]] == 'house' and glossed[ids[1]] == 'come'
+    assert 'PROG' in glossed.values()
 
 
 def test_the_analysis_names_who_asked_in_history_and_on_what_it_writes():

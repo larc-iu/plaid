@@ -2,7 +2,8 @@
 classify words under the provenance write contract.
 
 ``derive`` mirrors the IGT app's ``derive.js`` for the pieces a service
-needs (sentences > words > morphemes, with every span and link attached),
+needs (sentences > words > morphemes, with every span and link attached,
+and the virtual morpheme of a word nobody has segmented),
 ``word_state`` mirrors its ``isUnanalyzedWord`` + provenance voting, and
 ``is_token_ignored`` mirrors ``igtConfig.js``'s ignored-token rule.
 """
@@ -39,6 +40,21 @@ def is_token_ignored(content, cfg):
     if cfg.get('type') == 'blacklist':
         return content in (cfg.get('blacklist') or [])
     return False
+
+
+# --- the virtual morpheme (mirrors plaid-igt domain/virtualMorpheme.js) --------
+
+VIRTUAL_PREFIX = 'virtual:'
+
+
+def virtual_morpheme(word_token):
+    """The morpheme of a word nobody has segmented. It is not stored: it is
+    the word, with the word's extent, no form of its own and no annotation,
+    and its id names the word. The first write makes it a real token
+    (:func:`plaid_client.workflows.igt.write.write_analyses`)."""
+    return {'id': VIRTUAL_PREFIX + word_token['id'], 'virtual': True,
+            'text': word_token.get('text'), 'begin': word_token['begin'], 'end': word_token['end'],
+            'precedence': 1, 'metadata': {}}
 
 
 # --- document walking ----------------------------------------------------------
@@ -93,7 +109,8 @@ def derive(doc, word_layer_id, morpheme_layer_id, sentence_layer_id, *,
            gloss_field, translation_field=None, orthography=''):
     """-> (sentences, gloss_layer_id). Each sentence: {id, translation,
     words:[{token, surface, text, morphs:[token], spans:[...], links:[...],
-    morph_spans:{mid:[...]}, morph_links:{mid:[...]}}]}.
+    morph_spans:{mid:[...]}, morph_links:{mid:[...]}}]}. A word nobody has
+    segmented has one morpheme, its virtual one (:func:`virtual_morpheme`).
 
     ``text`` is the word as the proposer should see it: the baseline surface,
     or the named word orthography when ``orthography`` is given. Ignored
@@ -155,7 +172,7 @@ def derive(doc, word_layer_id, morpheme_layer_id, sentence_layer_id, *,
             text = surface
             if orth_key:
                 text = (w.get('metadata') or {}).get(orth_key) or surface
-            ms = morphs_by_extent.get((w['begin'], w['end']), [])
+            ms = morphs_by_extent.get((w['begin'], w['end'])) or [virtual_morpheme(w)]
             ws.append({
                 'token': w, 'text_id': text_id, 'surface': surface, 'text': text, 'morphs': ms,
                 'spans': word_spans.get(w['id'], []), 'links': word_links.get(w['id'], []),
@@ -169,8 +186,7 @@ def derive(doc, word_layer_id, morpheme_layer_id, sentence_layer_id, *,
 # --- the write contract, per word ----------------------------------------------
 
 def word_state(w):
-    """'unanalyzed' | 'machine' | 'protected' | 'nomorph' (no morpheme token to
-    write into — healed by the editor on open; skipped here).
+    """'unanalyzed' | 'machine' | 'protected'.
 
     Only what a write replaces votes: every non-default morpheme and every
     span and link on a morpheme, each with its provenance state. Word-scope
@@ -180,8 +196,6 @@ def word_state(w):
     'protected' as soon as one piece is human-made, contributed or
     verified."""
     ms = w['morphs']
-    if not ms:
-        return 'nomorph'
     votes = []
     for m in ms:
         meta = m.get('metadata') or {}
@@ -204,17 +218,15 @@ def select_targets(sentences, overwrite=False):
     ones always, protected ones only with ``overwrite``. Stamps each word's
     ``state`` and returns ``(targets, skipped)`` where targets is
     ``[(sentence, [word indices])]`` over sentences with at least one target
-    and skipped counts ``{'protected', 'no_morpheme'}``."""
-    skipped = {'protected': 0, 'no_morpheme': 0}
+    and skipped counts ``{'protected'}``."""
+    skipped = {'protected': 0}
     targets = []
     for s in sentences:
         idxs = []
         for i, w in enumerate(s['words']):
             st = word_state(w)
             w['state'] = st
-            if st == 'nomorph':
-                skipped['no_morpheme'] += 1
-            elif st == 'protected' and not overwrite:
+            if st == 'protected' and not overwrite:
                 skipped['protected'] += 1
             else:
                 idxs.append(i)

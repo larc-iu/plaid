@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from plaid_client.workflows.igt import (
     field_layer_id,
     ParsedWord, parse_interleaved, align_words, analysis_for, clitic_types,
-    derive, word_state, select_targets, is_token_ignored, chunk_plans, write_analyses,
+    derive, word_state, select_targets, is_token_ignored, chunk_plans, write_analyses, virtual_morpheme,
     normalize_tagset, read_tagsets, tagset_for, vocab_tagset_for, governed_fields, mode_rule, value_lines,
 )
 
@@ -162,19 +162,26 @@ def test_word_state_votes_by_provenance():
     assert word_state(words_of(doc)[0]['words'][1]) == 'machine'
     doc['text_layers'][0]['token_layers'][2]['tokens'][1]['metadata'] = {'form': 'gel', **VERIFIED}
     assert word_state(words_of(doc)[0]['words'][1]) == 'protected'
+    # A word nobody has segmented has no morpheme token. It reads as the app
+    # reads it, with its virtual morpheme, and is there to analyze (R1-DEBT-CORE-1).
     doc['text_layers'][0]['token_layers'][2]['tokens'] = []
-    assert word_state(words_of(doc)[0]['words'][0]) == 'nomorph'
+    [w0, w1] = words_of(doc)[0]['words']
+    assert w0['morphs'] == [{'id': 'virtual:w1', 'virtual': True, 'text': 't', 'begin': 0, 'end': 2,
+                             'precedence': 1, 'metadata': {}}]
+    assert word_state(w0) == word_state(w1) == 'unanalyzed'
+    targets, skipped = select_targets(words_of(doc))
+    assert [idxs for _, idxs in targets] == [[0, 1]] and skipped == {'protected': 0}
 
 
 def test_select_targets_applies_the_write_contract():
     s = words_of(raw_doc())
     targets, skipped = select_targets(s, overwrite=False)
     assert [(sent['id'], idxs) for sent, idxs in targets] == [('s1', [0])]
-    assert skipped == {'protected': 1, 'no_morpheme': 0}
+    assert skipped == {'protected': 1}
     assert s[0]['words'][1]['state'] == 'protected'
     targets, skipped = select_targets(s, overwrite=True)
     assert [idxs for _, idxs in targets] == [[0, 1]]
-    assert skipped == {'protected': 0, 'no_morpheme': 0}
+    assert skipped == {'protected': 0}
 
 
 def test_chunk_plans_respects_the_op_budget():
@@ -223,7 +230,7 @@ def _word(surface, morphs, spans=(), links=(), morph_spans=None, morph_links=Non
 
 
 def test_word_state_on_hand_built_words():
-    assert word_state(_word('abc', [])) == 'nomorph'
+    assert word_state(_word('abc', [virtual_morpheme({'id': 'w', 'begin': 0, 'end': 3})])) == 'unanalyzed'
     m0 = {'id': 'm0', 'metadata': {}}
     assert word_state(_word('abc', [m0])) == 'unanalyzed'
     assert word_state(_word('abc', [{'id': 'm0', 'metadata': {'form': 'abc'}}])) == 'unanalyzed'
@@ -369,3 +376,53 @@ def _plan(word_id):
                      'joiners': ['-'], 'surface_mismatch': False, 'degraded': False},
         'sentence_id': 's1',
     }
+
+
+def test_write_analyses_makes_the_first_morpheme_of_a_word_nobody_segmented():
+    """Its morpheme is virtual, so there is nothing to patch: the first slot
+    is created under a minted id, and its gloss names that id in the same
+    batch. Patching the virtual id reached the server as a token that does
+    not exist."""
+    class _Batch:
+        def __init__(self, log):
+            self.log = log
+            self.results = []
+            self.tokens = _Rec(log, 'tokens')
+            self.spans = _Rec(log, 'spans')
+
+    class _Rec:
+        def __init__(self, log, name):
+            self._log, self._name = log, name
+
+        def __getattr__(self, method):
+            return lambda *a, **k: self._log.append((self._name, method, a, k))
+
+    class _Client:
+        def __init__(self):
+            self.batches = []
+
+        @contextlib.contextmanager
+        def batched(self):
+            b = _Batch([])
+            self.batches.append(b)
+            yield b
+            b.results = [{'body': {'id': f'new-{i}'}} for i in range(len(b.log))]
+
+    m0 = virtual_morpheme({'id': 'w1', 'begin': 0, 'end': 3})
+    plan = {'word': {'text_id': 't1', 'morphs': [m0], 'morph_spans': {m0['id']: []},
+                     'token': {'id': 'w1', 'begin': 0, 'end': 3}},
+            'analysis': {'segments': ['ab', 'c'], 'glosses': ['A', 'C'], 'types': ['stem', None],
+                         'joiners': ['-'], 'surface_mismatch': False, 'degraded': False}}
+    client = _Client()
+    write_analyses(client, [plan], 'gloss-layer', 'morph-layer', 'service:x', {})
+    first = client.batches[0].log
+    creates = [c for c in first if c[:2] == ('tokens', 'create')]
+    assert len(creates) == 2 and not [c for c in first if c[1] == 'patch_metadata']
+    made = creates[0][3]['id']
+    assert made and not made.startswith('virtual:')
+    assert creates[0][2] == ('morph-layer', 't1', 0, 3)
+    assert creates[0][3]['precedence'] == 1 and creates[0][3]['metadata']['form'] == 'ab'
+    assert creates[0][3]['metadata']['morphType'] == 'stem'
+    [gloss] = [c for c in first if c[:2] == ('spans', 'create')]
+    assert gloss[2][:3] == ('gloss-layer', [made], 'A')
+    assert all('virtual:' not in repr(c) for b in client.batches for c in b.log)
