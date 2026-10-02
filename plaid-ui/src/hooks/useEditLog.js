@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
+  editLogCanStep,
   editLogGaps,
   rebaseEditLog,
   recordEdit,
@@ -17,6 +18,12 @@ import {
  * an undo, redo or drop, which happen away from the selection before them. A
  * textarea with its own onKeyDown, onSelect, onMouseUp or onFocus calls
  * `capture(event)` from it instead.
+ *
+ * An undo or redo the log cannot place (it keeps no state with that text: one
+ * reaching back before someone else's text was taken in, or past what the log
+ * keeps) is refused: cancelled before it happens when the log keeps no state
+ * at all, else the box is put back to the text it had, so the undo does
+ * nothing. It is never recorded from a guess.
  */
 export function useEditLog(base = '', digest = null) {
   const logRef = useRef(null);
@@ -31,11 +38,27 @@ export function useEditLog(base = '', digest = null) {
     return next;
   }, []);
 
-  const capture = useCallback((event) => {
-    const el = event?.currentTarget ?? event?.target;
-    if (!el || typeof el.selectionStart !== 'number') return;
-    selection.current = { start: el.selectionStart, end: el.selectionEnd };
+  // the box an undo with nowhere to go is cancelled on
+  const guarded = useRef(null);
+  const refuse = useCallback((event) => {
+    const back = event.inputType === 'historyUndo';
+    if (!back && event.inputType !== 'historyRedo') return;
+    if (!editLogCanStep(logRef.current, back)) event.preventDefault();
   }, []);
+
+  const capture = useCallback(
+    (event) => {
+      const el = event?.currentTarget ?? event?.target;
+      if (!el || typeof el.selectionStart !== 'number') return;
+      selection.current = { start: el.selectionStart, end: el.selectionEnd };
+      if (guarded.current !== el && typeof el.addEventListener === 'function') {
+        guarded.current?.removeEventListener('beforeinput', refuse);
+        el.addEventListener('beforeinput', refuse);
+        guarded.current = el;
+      }
+    },
+    [refuse],
+  );
 
   const record = useCallback(
     (prev, next, caretAfter, inputType = null) =>
@@ -47,7 +70,20 @@ export function useEditLog(base = '', digest = null) {
     (event) => {
       const el = event.target;
       const caret = typeof el.selectionEnd === 'number' ? el.selectionEnd : el.value.length;
-      record(logRef.current.body, el.value, caret, event.nativeEvent?.inputType ?? null);
+      const before = selection.current;
+      const now = record(
+        logRef.current.body,
+        el.value,
+        caret,
+        event.nativeEvent?.inputType ?? null,
+      );
+      if (now.body !== el.value) {
+        // refused: the box goes back to the text the log makes, before the
+        // change handler reads it
+        el.value = now.body;
+        const end = Math.min(before.end, el.value.length);
+        el.setSelectionRange(Math.min(before.start, end), end);
+      }
       capture(event);
     },
     [record, capture],

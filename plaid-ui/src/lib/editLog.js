@@ -93,10 +93,10 @@ function atWordEdge(prev, next, change) {
 }
 
 // The selection before a change explains it only for what is typed, pasted,
-// cut or deleted over that selection. These inputs happen somewhere else: a
-// drop and the delete of a drag where the mouse says, an undo or redo where
-// the history says, and the selection before them is stale.
-const NOT_AT_SELECTION = new Set(['historyUndo', 'historyRedo', 'insertFromDrop', 'deleteByDrag']);
+// cut or deleted over that selection. A drop and the delete of a drag happen
+// where the mouse says, and the selection before them is stale. (An undo or
+// redo is never read here, see `recordEdit`.)
+const NOT_AT_SELECTION = new Set(['insertFromDrop', 'deleteByDrag']);
 
 // The change read from a selection that was typed, pasted or deleted over:
 // [start, end) of `prev` gave way to next[start, caretAfter). Null when that
@@ -170,7 +170,7 @@ const shown = (text) => (text.includes('\r') ? text.replace(/\r\n?/g, '\n') : te
 
 /** A log of no edits over `base`, whose digest is `digest` (null if not known). */
 export function startEditLog(base, digest = null) {
-  return { base, digest, ops: [], raw: base, body: shown(base) };
+  return { base, digest, ops: [], raw: base, body: shown(base), past: [], future: [] };
 }
 
 // `op`, a change of the box's value `shown(raw)`, as a change of `raw`. Each
@@ -205,54 +205,83 @@ function onRaw(raw, op) {
 const COMPACT_AT = 128;
 
 // An undo or redo puts the box back to a text it showed before, and the log
-// saw that text, so it goes back (or forward) to the state it was in then
-// rather than reading the change from the caret, which a browser leaves at
-// the start of what it put back for one kind of delete and at the end for
-// another. `past` holds the states the log came through, the latest last,
-// `future` the ones undone, the next to redo last. Only when no state has
-// the box's new text (an undo past a send or a rebase, or past what the log
-// keeps) is the change read as any other. At most `HISTORY` states are kept,
-// fewer when they hold more than `HISTORY_CHARS` UTF-16 units of text.
+// saw that text, so it goes back (or forward) to the state it was in then.
+// The caret cannot tell where an undo put text back (a browser leaves it at
+// the start of what it restored for one kind of delete and at the end for
+// another), so an undo or redo no kept state has the text of is refused, never
+// guessed: `recordEdit` answers the log unchanged, and the box is put back
+// (`useEditLog`). `past` holds the states the log came through, the latest
+// last, `future` the ones undone, the next to redo last, at most `HISTORY` of
+// each. A state is its ops over the log's base and the length and fingerprint
+// of the text they make, so a long text keeps as many states as a short one.
 const HISTORY = 200;
-const HISTORY_CHARS = 8_000_000;
-const stateOf = (log) => ({ ops: log.ops, raw: log.raw, body: log.body });
-const bounded = (states) => {
-  const out = states.length > HISTORY ? states.slice(-HISTORY) : states;
-  let size = out.reduce((n, s) => n + s.body.length, 0);
-  let drop = 0;
-  while (size > HISTORY_CHARS && drop < out.length - 1) {
-    size -= out[drop].body.length;
-    drop += 1;
+// FNV-1a over UTF-16 units: a candidate state's text is only built when its
+// length and fingerprint match.
+function fingerprint(text) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
+  return h >>> 0;
+}
+// The text `ops` make of `base`, built once from their net gaps rather than
+// op by op, so checking a kept state of a long text stays quick.
+function textOf(base, ops) {
+  const gaps = composeTextEdits(base, ops);
+  const astral = /[\uD800-\uDFFF]/.test(base);
+  const chars = astral ? [...base] : null;
+  const part = (from, to) => (astral ? chars.slice(from, to).join('') : base.slice(from, to));
+  let out = '';
+  let at = 0;
+  for (const gap of gaps) {
+    out += part(at, gap.start) + gap.value;
+    at = gap.end;
   }
-  return drop ? out.slice(drop) : out;
-};
+  return out + part(at, astral ? chars.length : base.length);
+}
+const stateOf = (log) => ({ ops: log.ops, length: log.body.length, hash: fingerprint(log.body) });
+const kept = (states) => (states.length > HISTORY ? states.slice(-HISTORY) : states);
+
+// The log moved back (or forward) to the latest kept state whose text is
+// `next`, or null when none is.
+function movedInHistory(log, next, back) {
+  const past = log.past ?? [];
+  const future = log.future ?? [];
+  const from = back ? past : future;
+  const hash = fingerprint(next);
+  let raw = null;
+  const i = from.findLastIndex((state) => {
+    if (state.length !== next.length || state.hash !== hash) return false;
+    raw = textOf(log.base, state.ops);
+    return shown(raw) === next;
+  });
+  if (i < 0) return null;
+  const passed = [stateOf(log), ...from.slice(i + 1).reverse()];
+  const to = kept([...(back ? future : past), ...passed]);
+  const ops = from[i].ops;
+  return back
+    ? { ...log, ops, raw, body: next, past: from.slice(0, i), future: to }
+    : { ...log, ops, raw, body: next, past: to, future: from.slice(0, i) };
+}
+
+/** Whether the log can take an undo (`back`) or a redo: it keeps a state to go to. */
+export const editLogCanStep = (log, back) => (back ? log.past : log.future)?.length > 0;
 
 /**
  * The log with the change from `prev` to `next` recorded (see `inferEdit`).
  * `prev` is what the box showed, which is the log's body. When it is not, the
  * change is read from the body instead, so the log still makes `next`. An
  * undo or redo (`inputType` `historyUndo`, `historyRedo`) takes the log back
- * or forward to the state that had `next`, when it kept one.
+ * or forward to the kept state that had `next`, and when there is none the
+ * log is answered unchanged: its body is then not `next`, and the box must be
+ * put back to it.
  */
 export function recordEdit(log, prev, prevSel, next, caretAfter, inputType = null) {
   next = shown(next);
-  const past = log.past ?? [];
-  const future = log.future ?? [];
+  if (next === log.body) return log;
   const back = inputType === 'historyUndo';
-  if (back || inputType === 'historyRedo') {
-    const from = back ? past : future;
-    const i = from.findLastIndex((state) => state.body === next);
-    if (i >= 0) {
-      const passed = [stateOf(log), ...from.slice(i + 1).reverse()];
-      const to = [...(back ? future : past), ...passed];
-      return back
-        ? { ...log, ...from[i], past: from.slice(0, i), future: to }
-        : { ...log, ...from[i], past: bounded(to), future: from.slice(0, i) };
-    }
-  }
+  if (back || inputType === 'historyRedo') return movedInHistory(log, next, back) ?? log;
   const out = changed(log, prev, prevSel, next, caretAfter, inputType);
   if (out === log) return log;
-  return { ...out, past: bounded([...past, stateOf(log)]), future: [] };
+  return { ...out, past: kept([...(log.past ?? []), stateOf(log)]), future: [] };
 }
 
 // The log with the change read from the box (see `inferEdit`).
@@ -293,14 +322,31 @@ export const editLogIsEmpty = (log) => editLogGaps(log).length === 0;
  * Split the log at a send. `sent` is what to send: the base, its digest and
  * the gaps. `rest` is a new log over the text the gaps make, for what is typed
  * while the save is on its way, with its digest unknown until the answer
- * comes (`settleEditLog`). When the save does not land, `unsendEditLog` puts
- * the two back together.
+ * comes (`settleEditLog`). Its kept states are the log's, over its new base,
+ * so an undo can still go back past the send. When the save does not land,
+ * `unsendEditLog` puts the two back together.
  */
 export function sendEditLog(log) {
+  const gaps = editLogGaps(log);
   return {
-    sent: { base: log.base, digest: log.digest, gaps: editLogGaps(log) },
-    rest: startEditLog(log.raw, null),
+    sent: { base: log.base, digest: log.digest, gaps },
+    rest: overBase(
+      startEditLog(log.raw, null),
+      gapsToOps(undoGaps(log.base, gaps)),
+      log.past,
+      log.future,
+    ),
   };
+}
+
+// `log` keeping `past` and `future`, states over another base, which `toBase`
+// (ops over the log's base) takes to.
+function overBase(log, toBase, past = [], future = []) {
+  const moved = (state) => ({
+    ...state,
+    ops: gapsToOps(composeTextEdits(log.base, [...toBase, ...state.ops])),
+  });
+  return { ...log, past: past.map(moved), future: future.map(moved) };
 }
 
 /** The log after a send, with the digest of its base from the answer. */
@@ -308,21 +354,26 @@ export const settleEditLog = (rest, digest) => ({ ...rest, digest });
 
 /** The sent gaps and the edits made since, as one log over the sent base again. */
 export function unsendEditLog(sent, rest) {
-  const ops = [...gapsToOps(sent.gaps), ...rest.ops];
-  return { base: sent.base, digest: sent.digest, ops, raw: rest.raw, body: rest.body };
+  const toRest = gapsToOps(sent.gaps);
+  const ops = [...toRest, ...rest.ops];
+  const back = { base: sent.base, digest: sent.digest, ops, raw: rest.raw, body: rest.body };
+  return overBase(back, toRest, rest.past, rest.future);
 }
 
 /**
  * The log moved onto `stored`, the body someone else saved over its base,
  * whose digest is `storedDigest`: a log over `stored` with our changes moved
- * onto it (see `rebaseEdits`), or `{ conflict: true }`.
+ * onto it (see `rebaseEdits`), or `{ conflict: true }`. When `stored` is the
+ * log's base nothing moves and the log keeps its states. Otherwise it keeps
+ * none, so an undo that reaches back before the rebase is refused.
  */
 export function rebaseEditLog(log, stored, storedDigest = null) {
+  if (stored === log.base) return { ...log, digest: storedDigest };
   const result = rebaseEdits(log.base, editLogGaps(log), stored);
   if (result.conflict) return { conflict: true };
   const ops = gapsToOps(result.gaps);
   const raw = applyTextOps(stored, ops);
-  return { base: stored, digest: storedDigest, ops, raw, body: shown(raw) };
+  return { ...startEditLog(stored, storedDigest), ops, raw, body: shown(raw) };
 }
 
 // The gaps that take the text `gaps` make of `base` back to `base`, in code

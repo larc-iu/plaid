@@ -433,7 +433,7 @@ describe('the edit log', () => {
       ['one two\n', 7, 7, 'historyUndo'],
       ['one yes two\n', 7, 7, 'insertText'],
     ]);
-    // a redo the box cannot have (its redo was dropped) is read as a change
+    // a redo the log has no state for is refused: the log stays as it was
     const after = recordEdit(
       log,
       'one yes two\n',
@@ -442,37 +442,123 @@ describe('the edit log', () => {
       12,
       'historyRedo',
     );
-    expect(editLogGaps(after)).toEqual([
-      { start: 3, end: 3, value: ' yes' },
-      { start: 7, end: 7, value: 'x' },
-    ]);
+    expect(after).toBe(log);
+    expect(editLogBody(after)).toBe('one yes two\n');
   });
 
-  it('keeps a bounded history, and reads an undo past it from the caret', () => {
-    let log = startEditLog('', 'd0');
-    let value = '';
+  // Delete `n` times at `at`, and the Ctrl+Z steps that undo them, as Chrome
+  // reports them: each one leaves the caret at the start of what it put back.
+  const forwardDeletes = (log, value, at, n) => {
+    const steps = [];
+    for (let i = 0; i < n; i += 1) {
+      const next = value.slice(0, at) + value.slice(at + 1);
+      log = recordEdit(log, value, { start: at, end: at }, next, at, 'deleteContentForward');
+      steps.push(value);
+      value = next;
+    }
+    return { log, value, steps };
+  };
+  const undoAll = (log, value, at, steps) => {
+    for (const back of [...steps].reverse()) {
+      log = recordEdit(log, value, { start: at, end: at }, back, at, 'historyUndo');
+      value = back;
+    }
+    return { log, value };
+  };
+  const text = 'bestauna bobi emun kabon taruo\n';
+
+  it('keeps its states when moved onto the text it is over already (REV2-F-EDITLOG G1)', () => {
+    const d = forwardDeletes(startEditLog(text, 'd0'), text, 14, 5);
+    const moved = rebaseEditLog(d.log, text, 'd1');
+    expect(moved.digest).toBe('d1');
+    const u = undoAll(moved, d.value, 14, d.steps);
+    expect(u.value).toBe(text);
+    expect(editLogIsEmpty(u.log)).toBe(true);
+  });
+
+  it('keeps its states through a save that does not land (REV2-F-EDITLOG G1, repro A)', () => {
+    const d = forwardDeletes(startEditLog(text, 'd0'), text, 19, 6);
+    const { sent, rest } = sendEditLog(d.log);
+    const back = unsendEditLog(sent, rest);
+    expect(back.base).toBe(text);
+    const u = undoAll(back, d.value, 19, d.steps);
+    expect(editLogIsEmpty(u.log)).toBe(true);
+  });
+
+  it('keeps its states through a save that lands while typing goes on (REV2-F-EDITLOG G1, repros B and C)', () => {
+    // type ` q` at the end, save, Delete five times at `emun` while the save is
+    // on its way, it lands (the stored text is what was sent), Ctrl+Z five times
+    let log = startEditLog(text, 'd0');
+    const typed = `${text}q`;
+    const end = text.length;
+    log = recordEdit(log, text, { start: end, end }, typed, end + 1, 'insertText');
+    const { rest } = sendEditLog(log);
+    const d = forwardDeletes(rest, typed, 14, 5);
+    const landed = rebaseEditLog(settleEditLog(d.log, 'd1'), typed, 'd1');
+    const u = undoAll(landed, d.value, 14, d.steps);
+    expect(u.value).toBe(typed);
+    expect(editLogIsEmpty(u.log)).toBe(true);
+    // one more Ctrl+Z goes back past the save: the `q` goes, as an edit of the
+    // stored text
+    const past = recordEdit(u.log, typed, { start: end, end }, text, end, 'historyUndo');
+    expect(editLogGaps(past)).toEqual([{ start: end, end: end + 1, value: '' }]);
+  });
+
+  it('refuses an undo that reaches back before another user’s text was taken in', () => {
+    const d = forwardDeletes(startEditLog(text, 'd0'), text, 14, 5);
+    const theirs = `Z${text}`;
+    const moved = rebaseEditLog(d.log, theirs, 'd1');
+    expect(moved.past).toEqual([]);
+    const shownNow = editLogBody(moved);
+    const restored = `Z${d.steps[4]}`;
+    const after = recordEdit(moved, shownNow, { start: 15, end: 15 }, restored, 15, 'historyUndo');
+    expect(after).toBe(moved);
+    expect(editLogBody(after)).toBe(shownNow);
+  });
+
+  it('keeps 200 states however long the text, and refuses an undo past them (REV2-F-EDITLOG G2)', () => {
+    // a word deleted by Delete on a long text, then 150 letters typed
+    // elsewhere, then every step undone one at a time as the app does
+    const line = 'ya bobi emun kabon taruo\n';
+    const base = line.repeat(6000); // 150,000 units
+    const at = 3 + 5;
+    let log = startEditLog(base, 'd0');
+    let value = base;
+    const steps = [];
+    for (let i = 0; i < 5; i += 1) {
+      const next = value.slice(0, at) + value.slice(at + 1);
+      log = recordEdit(log, value, { start: at, end: at }, next, at, 'deleteContentForward');
+      steps.push(value);
+      value = next;
+    }
+    for (let i = 0; i < 150; i += 1) {
+      const end = value.length;
+      const next = `${value}q`;
+      log = recordEdit(log, value, { start: end, end }, next, end + 1, 'insertText');
+      steps.push(value);
+      value = next;
+    }
+    expect(log.past.length).toBe(155);
+    while (steps.length) {
+      const back = steps.pop();
+      log = recordEdit(log, value, { start: at, end: at }, back, at, 'historyUndo');
+      expect(editLogBody(log)).toBe(back);
+      value = back;
+    }
+    expect(editLogIsEmpty(log)).toBe(true);
+    // past 200 kept states an undo is refused, never guessed
+    log = startEditLog('', 'd0');
+    value = '';
     for (let i = 0; i < 300; i += 1) {
       log = recordEdit(log, value, { start: i, end: i }, `${value}a`, i + 1, 'insertText');
       value += 'a';
     }
     expect(log.past.length).toBe(200);
-    // Ctrl+Z of the whole run in one step: no kept state has the empty text
-    log = recordEdit(log, value, { start: 300, end: 300 }, '', 0, 'historyUndo');
-    expect(editLogIsEmpty(log)).toBe(true);
-    // a log started at a send has no history, and still reads an undo
-    const { rest } = sendEditLog(log);
-    const after = recordEdit(rest, '', { start: 0, end: 0 }, 'b', 1, 'historyUndo');
-    expect(editLogGaps(after)).toEqual([{ start: 0, end: 0, value: 'b' }]);
+    const refused = recordEdit(log, value, { start: 300, end: 300 }, '', 0, 'historyUndo');
+    expect(refused).toBe(log);
   });
 
   it('never reads a stale selection as a wide replace', () => {
-    // the selection still covers `cats` when Ctrl+Z takes back the `s`
-    // typed before: one letter goes, not the word
-    expect(inferEdit('the cats', { start: 4, end: 8 }, 'the cat', 7, 'historyUndo')).toEqual({
-      type: 'delete',
-      index: 7,
-      value: 1,
-    });
     // a selection left from before, with the caret after an insert elsewhere
     expect(inferEdit('one two three', { start: 0, end: 3 }, 'one two xthree', 9)).toEqual({
       type: 'insert',
@@ -541,13 +627,17 @@ describe('sending and rebasing a log', () => {
       digest: 'd0',
       gaps: [{ start: 7, end: 7, value: 's' }],
     });
-    expect(rest).toEqual({
+    expect(rest).toMatchObject({
       base: 'the dogs',
       digest: null,
       ops: [],
       raw: 'the dogs',
       body: 'the dogs',
+      future: [],
     });
+    // the state before the send, over the sent text
+    expect(rest.past).toHaveLength(1);
+    expect(applyTextOps(rest.base, rest.past[0].ops)).toBe('the dog');
     let after = recordEdit(rest, 'the dogs', { start: 0, end: 3 }, 'a dogs', 1);
     expect(editLogGaps(after)).toEqual([{ start: 0, end: 3, value: 'a' }]);
     // landed: the rest's base is what is stored now
@@ -567,12 +657,14 @@ describe('sending and rebasing a log', () => {
     let log = startEditLog('the dog ran', 'd0');
     log = recordEdit(log, 'the dog ran', { start: 7, end: 7 }, 'the dogs ran', 8);
     const moved = rebaseEditLog(log, 'a dog ran', 'd1');
-    expect(moved).toEqual({
+    expect(moved).toMatchObject({
       base: 'a dog ran',
       digest: 'd1',
       ops: [{ type: 'insert', index: 5, value: 's' }],
       raw: 'a dogs ran',
       body: 'a dogs ran',
+      past: [],
+      future: [],
     });
     expect(rebaseEditLog(log, 'the cat ran', 'd1')).toEqual({ conflict: true });
   });

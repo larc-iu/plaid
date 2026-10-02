@@ -73,7 +73,15 @@ describe('useEditLog', () => {
     expect(api.log.base).toBe('a dog sat');
 
     await view.step(() => api.reset('new', 'd9'));
-    expect(api.log).toEqual({ base: 'new', digest: 'd9', ops: [], raw: 'new', body: 'new' });
+    expect(api.log).toEqual({
+      base: 'new',
+      digest: 'd9',
+      ops: [],
+      raw: 'new',
+      body: 'new',
+      past: [],
+      future: [],
+    });
     await view.unmount();
   });
 
@@ -93,6 +101,34 @@ describe('useEditLog', () => {
     });
     await view.step(() => input(el, base, 8, 'historyUndo', 2));
     expect(api.log.body).toBe(base);
+    expect(api.gaps()).toEqual([]);
+    await view.unmount();
+  });
+
+  it('refuses an undo it cannot place: cancelled with no state to go to, else the box is put back (REV2-F-EDITLOG)', async () => {
+    const view = await renderComponent(<Box base="one two" onApi={(next) => (api = next)} />);
+    const el = view.container.querySelector('textarea');
+    await view.step(() => {
+      el.setSelectionRange(7, 7);
+      el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    const undo = () =>
+      new InputEvent('beforeinput', { inputType: 'historyUndo', cancelable: true, bubbles: true });
+    let event = undo();
+    el.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    await view.step(() => input(el, 'one twox', 8, 'insertText'));
+    event = undo();
+    el.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    // a text the log never had (a browser undo stack out of step with it)
+    await view.step(() => input(el, 'one wox', 4, 'historyUndo'));
+    expect(el.value).toBe('one twox');
+    expect(api.log.body).toBe('one twox');
+    expect(api.gaps()).toEqual([{ start: 7, end: 7, value: 'x' }]);
+    // one it had
+    await view.step(() => input(el, 'one two', 7, 'historyUndo'));
+    expect(el.value).toBe('one two');
     expect(api.gaps()).toEqual([]);
     await view.unmount();
   });
