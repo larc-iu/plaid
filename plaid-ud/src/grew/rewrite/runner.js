@@ -57,7 +57,7 @@ async function findDocs(client, grs, layerInfo, projectId) {
 
 // Preview rows for `grs` over the project. Each row is one sentence with at
 // least one rule application: { id, docId, docName, text, applications,
-// changes, warnings, error, writes, nodes }. `docs` maps document id to the
+// changes, error, writes, nodes }. `docs` maps document id to the
 // loaded ConlluDocument (the apply step writes as its `writer`).
 export async function planRewrite(client, { project, user, layerInfo, grs }, onProgress) {
   const projectId = project.id;
@@ -100,14 +100,24 @@ export async function planRewrite(client, { project, user, layerInfo, grs }, onP
             ...base,
             applications: 0,
             changes: [],
-            warnings: [],
             writes: null,
             nodes: before.nodes,
             error: refusal,
           });
           return;
         }
-        const { changes, writes, warnings } = diffGraphs(before, after, doc.layerInfo);
+        const { changes, writes, errors } = diffGraphs(before, after, doc.layerInfo);
+        if (errors.length) {
+          rows.push({
+            ...base,
+            applications: 0,
+            changes: [],
+            writes: null,
+            nodes: before.nodes,
+            error: errors.join(' '),
+          });
+          return;
+        }
         // A rule can apply and leave nothing to do: an `E:` edge the tree
         // already gives the enhanced graph is one. That is not a change. A
         // write with no line of its own (a stale suppressor swept up) still
@@ -122,7 +132,6 @@ export async function planRewrite(client, { project, user, layerInfo, grs }, onP
           ...base,
           applications: applications.length,
           changes,
-          warnings,
           writes,
           nodes: before.nodes,
           error: null,
@@ -133,7 +142,6 @@ export async function planRewrite(client, { project, user, layerInfo, grs }, onP
           ...base,
           applications: 0,
           changes: [],
-          warnings: [],
           writes: null,
           nodes: before.nodes,
           error: e.message,

@@ -521,7 +521,7 @@ Several rules can be written as `rule name { ... }` blocks, which are tried in o
 Some things to know before applying:
 
 * The changes count as yours. A rule that changes a value a parser wrote confirms it, the same as editing it by hand.
-* Grew does not require a tree, and neither does a rule. A relation added to a word that already has a head gives it a second one, and the preview warns that the word has 2 heads.
+* Grew does not require a tree, but a UD project does: one head a word, the root included, and no cycle. A sentence the rule would leave with a word of 2 heads, or with a cycle, is an error in the preview, and Apply changes the other sentences.
 * Where a vocabulary is closed (see <<_suggestions_or_rules>>), a sentence in which the rule writes a value off the list is refused, and the preview shows which value.
 * Each document is changed in one step, recorded in its history as **Rewrite:** followed by the rule names. To undo a rewrite, restore the document to the entry before it (see <<_restoring_an_earlier_state>>).
 * If someone else changes a document between your preview and your apply, that document is left untouched and the run stops there. Documents already done stay changed. The preview then runs again, so you can apply the rest.

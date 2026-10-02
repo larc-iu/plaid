@@ -34,7 +34,7 @@ const COLUMN_LAYER = {
 export function diffGraphs(before, after, layerInfo) {
   const changes = [];
   const writes = { tokens: [], lemmaCreates: [], main: [] };
-  const warnings = [];
+
   const layer = (key) => layerInfo[key]?.id;
   const formOf = (g, id) => (id === ANCHOR ? '(root)' : (g.nodes.get(id)?.form ?? '?'));
   const serverSrc = (e) => (e.src === ANCHOR ? e.tgt : e.src);
@@ -387,16 +387,63 @@ export function diffGraphs(before, after, layerInfo) {
     });
   }
 
-  // --- what Grew allows and UD does not: one head a word, as the editor has it ---
-  // Being the root counts. A word the rule leaves rooted AND headed carries two
-  // relations into a HEAD column that holds one, and the export drops whichever
-  // it reads second, so it is worth saying before the rule is applied.
-  const heads = new Map();
-  for (const e of after.edges.values())
-    if (!isEnhancedLabel(e.label)) heads.set(e.tgt, (heads.get(e.tgt) || 0) + 1);
-  for (const [id, n] of heads) if (n > 1) warnings.push(`${formOf(after, id)} has ${n} heads.`);
+  // --- what Grew allows and the project's rules refuse ---
+  // One head a word (being the root counts) and no cycle in the tree. The
+  // server refuses a write that breaks either, so the sentence is an error the
+  // preview leaves out, and Apply writes the rest. What the stored tree
+  // already breaks is not the rule's doing and is not counted against it.
+  const errors = [];
+  const tree = (g) => {
+    const count = new Map();
+    const headOf = new Map();
+    for (const e of g.edges.values()) {
+      if (isEnhancedLabel(e.label)) continue;
+      count.set(e.tgt, (count.get(e.tgt) || 0) + 1);
+      headOf.set(e.tgt, e.src);
+    }
+    return { count, headOf };
+  };
+  const was = tree(before);
+  const now = tree(after);
+  for (const [id, n] of now.count) {
+    if (n > 1 && n > (was.count.get(id) || 0))
+      errors.push(`${formOf(after, id)} would have ${n} heads.`);
+  }
+  if (!errors.length) {
+    const known = new Set(cyclesOf(was.headOf).map((c) => [...c].sort().join(' ')));
+    for (const cycle of cyclesOf(now.headOf)) {
+      if (known.has([...cycle].sort().join(' '))) continue;
+      const forms = cycle.map((id) => formOf(after, id));
+      errors.push(
+        forms.length === 1
+          ? `${forms[0]} would head itself.`
+          : `${forms.join(', ')} would form a cycle.`,
+      );
+    }
+  }
 
-  return { changes, writes, warnings };
+  return { changes, writes, errors };
+}
+
+// Each cycle of a one-head-a-word tree (`headOf` maps a word to its head), as
+// its words in the order the heads lead. A word walked from leads either to
+// the anchor or into a cycle.
+function cyclesOf(headOf) {
+  const out = [];
+  const done = new Set();
+  for (const start of headOf.keys()) {
+    const path = [];
+    const onPath = new Map();
+    let cur = start;
+    while (cur !== undefined && cur !== ANCHOR && !done.has(cur) && !onPath.has(cur)) {
+      onPath.set(cur, path.length);
+      path.push(cur);
+      cur = headOf.get(cur);
+    }
+    if (cur !== undefined && onPath.has(cur)) out.push(path.slice(onPath.get(cur)));
+    path.forEach((id) => done.add(id));
+  }
+  return out;
 }
 
 // A span write for one column value on a word.

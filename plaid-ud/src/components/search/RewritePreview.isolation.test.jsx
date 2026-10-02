@@ -25,7 +25,6 @@ describe('rewrite preview change lines', () => {
           parts: ['', 'قال', ' → ', 'الرئيس', ': ', 'nsubj', ' removed'],
         },
       ],
-      warnings: [],
       error: null,
     };
     const view = await renderComponent(

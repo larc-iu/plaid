@@ -241,7 +241,7 @@ for (const [name, src] of RULES) {
     const { graph: after, applications } = rewriteSentence(parseGrs(src), before);
     assert.ok(applications.length > 0, 'the rule must do something, or it tests nothing');
 
-    const { writes, warnings } = diffGraphs(before, after, li);
+    const { writes, errors } = diffGraphs(before, after, li);
     applyWrites(li, writes);
     const doc = documentGraph(raw);
 
@@ -276,9 +276,9 @@ for (const [name, src] of RULES) {
     );
 
     // 3. and it survives a trip through the column. A rule may leave a word
-    // with two heads, which Grew allows and the preview warns about: the HEAD
-    // column holds one, so that sentence cannot round trip and is not asked to.
-    if (warnings.some((w) => /\d heads/.test(w))) return;
+    // with two heads, which Grew allows and the preview refuses as an error:
+    // the HEAD column holds one, so that sentence is not asked to round trip.
+    if (errors.length) return;
     // 3. and it survives a trip through the column
     const reread = documentGraph(rawDocFromConllu(doc.doc.toConllu(), 'd', { enhanced: true }));
     assert.deepEqual(reread.tree.sort(), doc.tree.sort(), 'the tree after a round trip');

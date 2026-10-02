@@ -58,7 +58,7 @@ test('column and FEATS changes become span writes with the old metadata', () => 
   assert.equal(r.writes.main[3].layer, 'features-layer');
   assert.equal(r.writes.main[4].value, 'Gender=Fem');
   assert.equal(r.writes.tokens.length + r.writes.lemmaCreates.length, 0);
-  assert.deepEqual(r.warnings, []);
+  assert.deepEqual(r.errors, []);
 });
 
 test('a missing column is created; a form equal to the text drops the Form span', () => {
@@ -138,11 +138,54 @@ test('del_node deletes the token (or just the word of a multi-word token) and no
   assert.deepEqual(r.writes.tokens, [{ op: 'deleteToken', id: r.before.order[2] }]);
 });
 
-test('a second head is applied as written and flagged', () => {
+// The project's rules allow one head a word and no cycle, so a sentence the
+// rule leaves with either is an error, never a write the server refuses.
+test('a second head is an error', () => {
   const r = run(
     'pattern { V [upos=VERB]; D [upos=DET] } commands { add_edge V -[det]-> D } strat main { rule }',
   );
-  assert.deepEqual(r.warnings, ['el has 2 heads.']);
+  assert.deepEqual(r.errors, ['el would have 2 heads.']);
+});
+
+test('a root that gains a head is an error: being the root counts', () => {
+  const r = run(
+    'pattern { V [upos=VERB]; N [upos=NOUN] } commands { add_edge N -[dep]-> V } strat main { rule }',
+  );
+  assert.deepEqual(r.errors, ['vio would have 2 heads.']);
+});
+
+test('a cycle is an error', () => {
+  const r = run(
+    'pattern { N [upos=NOUN]; D [form="el"]; V [upos=VERB]; e: V -[nsubj]-> N } commands { del_edge e; add_edge D -[dep]-> N } strat main { rule }',
+  );
+  assert.equal(r.errors.length, 1);
+  assert.match(r.errors[0], /^(el, perro|perro, el) would form a cycle\.$/);
+});
+
+test('a word made its own head is an error', () => {
+  const r = run(
+    'pattern { D [form="el"]; N [upos=NOUN]; e: N -[det]-> D } commands { del_edge e; add_edge D -[dep]-> D } strat main { rule }',
+  );
+  assert.deepEqual(r.errors, ['el would head itself.']);
+});
+
+test("a cycle the stored tree already holds is not the rule's error", () => {
+  const doc = new ConlluDocument({
+    raw: rawDocFromConllu(
+      [
+        '# text = a b c',
+        '1\ta\ta\tX\t_\t_\t2\tdep\t_\t_',
+        '2\tb\tb\tX\t_\t_\t1\tdep\t_\t_',
+        '3\tc\tc\tVERB\t_\t_\t0\troot\t_\t_',
+      ].join('\n'),
+    ),
+  });
+  const before = graphFromSentence(doc.sentences[0]);
+  const { graph: after } = rewriteSentence(
+    parseGrs('pattern { V [upos=VERB] } without { V [lemma="see"] } commands { V.lemma = "see" }'),
+    before,
+  );
+  assert.deepEqual(diffGraphs(before, after, doc.layerInfo).errors, []);
 });
 
 test('the root is a self-loop on the server: a root move writes both endpoints', () => {
@@ -174,5 +217,5 @@ test('the root is a self-loop on the server: a root move writes both endpoints',
   assert.equal(r.writes.main[1].node, dog);
   assert.equal(r.writes.main[2].node, dog);
   assert.equal(r.writes.main[1].id, r.writes.main[2].id);
-  assert.deepEqual(r.warnings, []);
+  assert.deepEqual(r.errors, []);
 });

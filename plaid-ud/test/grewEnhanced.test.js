@@ -291,7 +291,7 @@ test('a rule adds the shared subject to the enhanced layer, once', () => {
   assert.equal(w.layer, r.li.enhancedRelationLayer.id);
   assert.equal(w.value, 'nsubj');
   // An extra head in the enhanced graph is what the graph is for.
-  assert.deepEqual(r.warnings, []);
+  assert.deepEqual(r.errors, []);
 });
 
 test('the same rule finds nothing to do where the edge already is', () => {

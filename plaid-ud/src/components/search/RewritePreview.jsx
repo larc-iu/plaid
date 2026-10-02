@@ -55,7 +55,6 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
   const chosen = applicable.filter((r) => selected.has(r.key));
   const chosenDocs = new Set(chosen.map((r) => r.docId));
   const errors = rows.length - applicable.length;
-  const warned = rows.filter((r) => r.warnings.length).length;
 
   const setMany = (keys, on) => {
     const next = new Set(selected);
@@ -79,8 +78,7 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
           {rows.length === 0
             ? 'No sentences to change.'
             : `${plural(rows.length, 'sentence')} in ${plural(new Set(rows.map((r) => r.docId)).size, 'document')}, ${chosen.length} selected` +
-              (errors ? `, ${plural(errors, 'error')}` : '') +
-              (warned ? `, ${plural(warned, 'warning')}` : '')}
+              (errors ? `, ${plural(errors, 'error')}` : '')}
         </p>
         {rows.length > 0 && (
           <div className="flex items-center gap-2">
@@ -154,11 +152,6 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
                     {r.changes.map((c, i) => (
                       <p key={i} className="text-xs">
                         {c.parts.map((part, j) => (j % 2 ? <bdi key={j}>{part}</bdi> : part))}
-                      </p>
-                    ))}
-                    {r.warnings.map((w, i) => (
-                      <p key={i} className="text-xs text-warning-foreground">
-                        {w}
                       </p>
                     ))}
                     {r.error && <p className="text-xs text-destructive">{r.error}</p>}
