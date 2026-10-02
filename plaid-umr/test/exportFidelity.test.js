@@ -143,7 +143,8 @@ test('a graph kept as text is written only while the sentence has no nodes', () 
   assert.match(broken.penmanOf(1), /^\(s1l \/ leave-02/);
   assert.match(broken.toUmr(), /\(s1l \/ leave-02 :ARG0 \(s1p \/ person\)/);
   const r = structuredClone(rawOf(file('(s1x / say-01)', 's1x: 2-2')));
-  r.textLayers[0].tokenLayers[0].tokens[0].metadata.umr.rawGraph =
+  // The sentence's record, a token of the node layer that carries metadata.
+  r.textLayers[0].tokenLayers[2].tokens.find((t) => t.metadata?.umr).metadata.umr.rawGraph =
     '(s1l / leave-02 :ARG0 (s1p / person)';
   const out = new UmrDocument({ raw: r }).toUmr();
   assert.match(out, /\(s1x \/ say-01\)/);

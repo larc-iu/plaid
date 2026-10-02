@@ -120,9 +120,9 @@ test('when IGT adds a sentence before them, held relations follow the renumbered
   assert.ok(kept.has('s37i2'));
   await moved._reconcile();
   const patch = calls.find(
-    (c) => c.name === 'tokens.patchMetadata' && c.args[0] === moved.sentence(39).tokenId,
+    (c) => c.name === 'tokens.patchMetadata' && c.args[0] === moved.sentence(39).recordToken,
   );
-  assert.ok(patch, 'the sentence that holds them is patched');
+  assert.ok(patch, 'the record that holds them is patched');
   const held = patch.args[1][0].value;
   const renamed = new Map(
     calls

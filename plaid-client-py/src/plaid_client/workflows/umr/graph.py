@@ -21,10 +21,14 @@ this reads, so there is one answer to every question the shape raises:
 * an unaligned node belongs to the sentence it records while that sentence is
   alive, unless its anchor begins in a LATER one (IGT's split keeps a
   sentence's token on the left, which is new text typed in before it);
-* a sentence token's record (the file's ``snt`` number, gloss and metadata
-  lines, a graph kept as text) left on such new text is read with the graph it
-  describes, when the variables there say so without doubt, and a triple
-  between two constants names its sentences by the number their variables
+* a sentence's record (the file's ``snt`` number, gloss and metadata lines, a
+  graph kept as text, the triples between two constants its block writes) is a
+  token of the node layer that carries ``umr`` metadata, read with the
+  sentence it begins in, the first one there being the sentence's own. One
+  left on new text typed in before its sentence is read with the graph it
+  describes, when the variables there say so without doubt;
+* a triple between two constants belongs to the sentences whose records list
+  it, and to those its own ``sentences`` names by the number their variables
   carry.
 
 The readers that used to hold a copy of these rules each: this module, the two
@@ -181,10 +185,13 @@ class Sentence:
     meta: List[Any] = dc_field(default_factory=list)
     raw_graph: Optional[str] = None
     raw_alignment: Optional[str] = None
-    #: The sentence token whose metadata holds this sentence's record, None for
-    #: a sentence that records nothing (one made in Plaid). Another sentence's
-    #: token when IGT's split left the record on new text before this one.
+    #: The token of this sentence's record, None for a sentence that records
+    #: nothing (one made in Plaid). One standing before this sentence when
+    #: it was left on new text typed in before it.
     record_token: Optional[str] = None
+    #: The records after the first that stand in this sentence: one joined to
+    #: the sentence before it in another app holds both until it is split.
+    other_records: List[str] = dc_field(default_factory=list)
     nodes: List[Node] = dc_field(default_factory=list)
     edges: List[Edge] = dc_field(default_factory=list)
     triples: List[Triple] = dc_field(default_factory=list)
@@ -380,12 +387,18 @@ def _tokens_of(layer) -> List[dict]:
 _NUMBERED = re.compile(r'^s([0-9]+)([^\W\d_].*)$')
 
 
+def is_record_token(token: dict) -> bool:
+    """Whether a token of the UMR node layer is a sentence's record, not an
+    anchor (``isRecordToken``)."""
+    return isinstance((token.get('metadata') or {}).get('umr'), dict)
+
+
 def _record_fields(holder: Optional[dict], begin: int, end: int, body: str) -> dict:
-    """What a sentence token records of the sentence it describes, as the
-    sentence's fields (``recordFields`` in sentenceGraph.js)."""
+    """What a record says of the sentence it describes, as the sentence's
+    fields (``recordFields`` in sentenceGraph.js)."""
     meta = umr_metadata(holder) if holder else {}
     return dict(
-        record_token=holder['id'] if holder and meta else None,
+        record_token=holder['id'] if holder else None,
         text=meta.get('text') or body[begin:end].rstrip('\n'),
         snt=meta.get('snt') or None, stored_ilg=list(meta.get('ilg') or []),
         meta=list(meta.get('meta') or []), raw_graph=meta.get('rawGraph'),
@@ -469,7 +482,7 @@ def _records_follow_their_graphs(sentences: List[Sentence], tokens: Dict[str, di
     position and its stored ``snt``."""
     by_file = _numbered_by_file(sentences)
     for i, s in enumerate(sentences):
-        if s.record_token != s.id or s.nodes:
+        if not s.record_token or s.nodes:
             continue
         j = i + 1
         while j < len(sentences) and not sentences[j].record_token and not sentences[j].nodes:
@@ -485,10 +498,13 @@ def _records_follow_their_graphs(sentences: List[Sentence], tokens: Dict[str, di
         stored = str(number) == str(s.snt)
         if not (stored if by_file else stored and number == s.index):
             continue
-        for key, value in _record_fields(tokens[s.id], to.begin, to.end, body).items():
+        for key, value in _record_fields(tokens[s.record_token], to.begin, to.end, body).items():
             setattr(to, key, value)
-        for key, value in _record_fields(None, s.begin, s.end, body).items():
+        following = s.other_records[0] if s.other_records else None
+        for key, value in _record_fields(following and tokens[following],
+                                         s.begin, s.end, body).items():
             setattr(s, key, value)
+        s.other_records = s.other_records[1:]
 
 
 def _sentence_number_reader(sentences: List[Sentence]):
@@ -538,7 +554,7 @@ def read_document(raw: dict, layers: UmrLayers,
     for i, token in enumerate(sentence_tokens, start=1):
         sentences.append(Sentence(
             id=token['id'], index=i, begin=token['begin'], end=token['end'],
-            **_record_fields(token, token['begin'], token['end'], body)))
+            **_record_fields(None, token['begin'], token['end'], body)))
     by_token_id = {s.id: s for s in sentences}
 
     def sentence_of(begin: int) -> Optional[Sentence]:
@@ -546,6 +562,18 @@ def read_document(raw: dict, layers: UmrLayers,
             if begins_in(begin, s.begin, s.end):
                 return s
         return None
+
+    # Each record is read with the sentence its token begins in, in text order.
+    records = {t['id']: t for t in _tokens_of(layers.node_layer) if is_record_token(t)}
+    for token in records.values():
+        s = sentence_of(token['begin'])
+        if s is None:
+            continue
+        if s.record_token:
+            s.other_records.append(token['id'])
+        else:
+            for key, value in _record_fields(token, s.begin, s.end, body).items():
+                setattr(s, key, value)
 
     for token in _tokens_of(layers.word_layer):
         s = sentence_of(token['begin'])
@@ -613,7 +641,16 @@ def read_document(raw: dict, layers: UmrLayers,
             node.sentence = s.index
             s.nodes.append(node)
 
-    _records_follow_their_graphs(sentences, {t['id']: t for t in sentence_tokens}, body)
+    _records_follow_their_graphs(sentences, records, body)
+    # The triples between two constants each sentence's records list.
+    listed_in: Dict[str, set] = {}
+    for s in sentences:
+        for rid in [s.record_token, *s.other_records]:
+            if not rid:
+                continue
+            listed = umr_metadata(records[rid]).get('triples')
+            for tid in listed if isinstance(listed, list) else []:
+                listed_in.setdefault(tid, set()).add(s.index)
 
     relations: List[dict] = []
     doc_relations: List[dict] = []
@@ -657,11 +694,13 @@ def read_document(raw: dict, layers: UmrLayers,
         if later > 0:
             triple.blocks = [later]
         elif source.constant and target.constant:
-            # By the number each had when it was written: after another app
-            # added or removed a sentence before it, the one whose variables
-            # still carry it.
-            blocks = dict.fromkeys(number_now(n) for n in triple.sentences)
-            triple.blocks = [n for n in blocks if 1 <= n <= len(sentences)]
+            # The sentences whose records list it, and those it names by the
+            # number each had when it was written: after another app added or
+            # removed a sentence before it, the one whose variables still
+            # carry it.
+            blocks = set(listed_in.get(rel['id']) or ())
+            blocks.update(number_now(n) for n in triple.sentences)
+            triple.blocks = sorted(n for n in blocks if 1 <= n <= len(sentences))
         for n in triple.blocks:
             sentences[n - 1].triples.append(triple)
 

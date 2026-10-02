@@ -108,7 +108,7 @@ def _document():
             'text': {'id': 'tx', 'body': BODY},
             'token_layers': [
                 {'id': 'sent', 'config': {'plaid': {'role': 'sentence'}}, 'tokens': [
-                    {'id': 's1', 'begin': 0, 'end': 17, 'metadata': {'umr': {'snt': 1}}},
+                    {'id': 's1', 'begin': 0, 'end': 17},
                     {'id': 's2', 'begin': 17, 'end': 31}]},
                 {'id': 'word', 'config': {'plaid': {'role': 'word'}}, 'tokens': [
                     {'id': 'w1', 'begin': 0, 'end': 3}, {'id': 'w2', 'begin': 4, 'end': 7},
@@ -123,7 +123,9 @@ def _document():
                     {'id': 'n2', 'begin': 4, 'end': 7},     # dog
                     {'id': 'n3', 'begin': 20, 'end': 23},   # ran
                     {'id': 'n4', 'begin': 17, 'end': 31},   # the whole of sentence 2
-                    {'id': 'n5', 'begin': 0, 'end': 0}],    # a constant
+                    {'id': 'n5', 'begin': 0, 'end': 0},     # a constant
+                    # sentence 1's record
+                    {'id': 'r1', 'begin': 0, 'end': 17, 'metadata': {'umr': {'snt': 1}}}],
                  'span_layers': [
                      {'id': 'concept', 'config': {'umr': {'concepts': True}}, 'spans': [
                          {'id': 'c-b', 'value': 'bark-01', 'tokens': ['n1'],

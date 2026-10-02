@@ -51,13 +51,17 @@ const FILE =
 
 const REPORT = { version: 4, at: '2026-09-28T05:22:03Z', against: { id: 'd2', name: 'lunch' } };
 
+// The sentences' records: the tokens of the node layer that carry metadata.
+const recordsOf = (raw) => raw.textLayers[0].tokenLayers[2].tokens.filter((t) => t.metadata?.umr);
+const anchorsOf = (raw) => raw.textLayers[0].tokenLayers[2].tokens.filter((t) => !t.metadata?.umr);
+
 function annotatedRaw() {
   const raw = rawFromPlan(planImport(parseUmrFile(FILE).sentences, []));
   raw.metadata = { umr: { adjudication: REPORT }, other: { kept: true } };
   const sentences = raw.textLayers[0].tokenLayers[0].tokens;
-  sentences[0].metadata.umr.adjudication = { at: REPORT.at, index: 1 };
+  sentences[0].metadata = { umr: { adjudication: { at: REPORT.at, index: 1 } } };
   // A relation the file wrote onto a node of the unreadable graph, held by name.
-  sentences[1].metadata.umr.held = [
+  recordsOf(raw)[1].metadata.umr.held = [
     { source: 's1s', rel: ':before', target: 's2b', group: 'temporal' },
   ];
   return raw;
@@ -78,7 +82,7 @@ function applyPlan(raw, plan) {
     l.relations = l.relations.filter((r) => alive.has(r.source) && alive.has(r.target));
   });
   const updates = new Map(plan.sentenceUpdates.map((u) => [u.id, u.metadata]));
-  text.tokenLayers[0].tokens.forEach((t) => {
+  [...text.tokenLayers[0].tokens, ...nodeLayer.tokens].forEach((t) => {
     if (updates.has(t.id)) t.metadata = applyMetadataOps(t.metadata, updates.get(t.id));
   });
   out.metadata = applyMetadataOps(out.metadata, plan.documentOps);
@@ -94,7 +98,7 @@ describe('what a text-only copy leaves out', () => {
     const plan = textOnlyPlan(raw);
     assert.deepEqual(
       plan.nodeTokenIds,
-      raw.textLayers[0].tokenLayers[2].tokens.map((t) => t.id),
+      anchorsOf(raw).map((t) => t.id),
     );
     const after = new UmrDocument({ raw: applyPlan(raw, plan) });
     assert.equal(after.graph.nodesById.size, 0);
@@ -103,26 +107,27 @@ describe('what a text-only copy leaves out', () => {
       before.sentences.map((s) => s.words.map((w) => w.text)),
     );
     // The file's own sentence records are the text, not the graph.
-    const [s1, s2] = applyPlan(raw, plan).textLayers[0].tokenLayers[0].tokens;
-    assert.equal(s1.metadata.umr.snt, raw.textLayers[0].tokenLayers[0].tokens[0].metadata.umr.snt);
+    const [s1, s2] = recordsOf(applyPlan(raw, plan));
+    assert.equal(s1.metadata.umr.snt, recordsOf(raw)[0].metadata.umr.snt);
     assert.ok('snt' in s2.metadata.umr);
   });
 
   test('a graph kept as text, its held relations and the comparison report go too', () => {
     const raw = annotatedRaw();
-    const [s1, s2] = raw.textLayers[0].tokenLayers[0].tokens;
-    assert.ok(s2.metadata.umr.rawGraph, 'the fixture keeps sentence 2 as text');
+    const [s1] = raw.textLayers[0].tokenLayers[0].tokens;
+    const [, r2] = recordsOf(raw);
+    assert.ok(r2.metadata.umr.rawGraph, 'the fixture keeps sentence 2 as text');
     const plan = textOnlyPlan(raw);
     assert.deepEqual(plan.sentenceUpdates, [
-      { id: s1.id, metadata: [{ op: 'delete', path: ['umr', 'adjudication'] }] },
       {
-        id: s2.id,
+        id: r2.id,
         metadata: [
           { op: 'delete', path: ['umr', 'rawGraph'] },
           { op: 'delete', path: ['umr', 'rawAlignment'] },
           { op: 'delete', path: ['umr', 'held'] },
         ],
       },
+      { id: s1.id, metadata: [{ op: 'delete', path: ['umr', 'adjudication'] }] },
     ]);
     assert.deepEqual(plan.documentOps, [{ op: 'delete', path: ['umr', 'adjudication'] }]);
     const after = applyPlan(raw, plan);
@@ -192,7 +197,7 @@ describe('copying as text only', () => {
     const client = fakeClient(raw);
     const created = await copyTextOnly(client, docThatCopies({ id: 'd9' }), ' lunch (second) ');
     assert.deepEqual(created, { id: 'd9', name: 'lunch (second)' });
-    const nodes = raw.textLayers[0].tokenLayers[2].tokens.length;
+    const nodes = anchorsOf(raw).length;
     assert.deepEqual(client.log, [
       ['begin', 'Copy "lunch" as "lunch (second)", text only'],
       ['get', 'd9', true],

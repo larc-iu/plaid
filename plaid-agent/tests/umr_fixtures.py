@@ -60,8 +60,8 @@ def document_raw():
             'text': {'id': TEXT_ID, 'body': BODY},
             'token_layers': [
                 {'id': SENT_LAYER, 'config': {'plaid': {'role': 'sentence'}}, 'tokens': [
-                    {'id': 'ms-1', 'begin': 0, 'end': 17, 'metadata': {'umr': {'snt': 1}}},
-                    {'id': 'ms-2', 'begin': 17, 'end': 31, 'metadata': {'umr': {'snt': 2}}}],
+                    {'id': 'ms-1', 'begin': 0, 'end': 17},
+                    {'id': 'ms-2', 'begin': 17, 'end': 31}],
                  'span_layers': []},
                 {'id': WORD_LAYER, 'config': {'plaid': {'role': 'word'}}, 'tokens': [
                     {'id': 'mw-1', 'begin': 0, 'end': 3},
@@ -85,7 +85,10 @@ def document_raw():
                     {'id': 'mn-1', 'begin': 8, 'end': 14},   # barked
                     {'id': 'mn-2', 'begin': 4, 'end': 7},    # dog
                     {'id': 'mn-3', 'begin': 20, 'end': 23},  # ran
-                    {'id': 'mn-4', 'begin': 17, 'end': 19}],  # It
+                    {'id': 'mn-4', 'begin': 17, 'end': 19},  # It
+                    # The sentences' records, over their sentences.
+                    {'id': 'mr-1', 'begin': 0, 'end': 17, 'metadata': {'umr': {'snt': 1}}},
+                    {'id': 'mr-2', 'begin': 17, 'end': 31, 'metadata': {'umr': {'snt': 2}}}],
                  'span_layers': [
                      {'id': CONCEPT_LAYER, 'config': {'umr': {'concepts': True}}, 'spans': [
                          {'id': 'mc-b', 'value': 'bark-01', 'tokens': ['mn-1'],

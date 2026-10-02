@@ -8,13 +8,9 @@ import { UMR_NAMESPACE, missingUmrLayerLabels, getUmrLayerInfo } from '../utils/
 import { parseUmrFile } from './format/umrFile.js';
 import { nfc } from './format/penman.js';
 import { DOC_CONSTANTS } from './format/inventory.js';
-import {
-  buildDocumentGraph,
-  KEPT_VARIABLE,
-  NUMBERED_VARIABLE,
-  wordForFile,
-} from './sentenceGraph.js';
+import { buildDocumentGraph, KEPT_VARIABLE, wordForFile } from './sentenceGraph.js';
 import { createOnce } from '../../../plaid-ui/src/lib/createOnce.js';
+import { pendingId } from '../../../plaid-ui/src/domain/pendingIds.js';
 import { humanizeError } from '../../../plaid-ui/src/lib/errors.js';
 
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -95,9 +91,9 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
       textId = textResponse.id;
     }
 
-    // Tokens: sentences, words and node anchors in one atomic batch. Onto an
-    // existing document, the anchors alone, and the sentences take what the
-    // file said about them.
+    // Tokens: sentences, words, node anchors and the sentences' records in
+    // one atomic batch. Onto an existing document, the anchors and records
+    // alone: a sentence that has a record takes what the file said in it.
     const sentenceOps = existing
       ? []
       : plan.sentences.map((s) => ({
@@ -105,8 +101,25 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
           text: textId,
           begin: s.begin,
           end: s.end,
-          metadata: { [UMR_NAMESPACE]: s.meta },
         }));
+    // The triples between two constants under ids made here, so each
+    // sentence's record can list the ones its block writes.
+    const tripleIds = plan.triples.map(() => pendingId());
+    const recordOf = (s) => {
+      const listed = s.triples.map((ref) => (typeof ref === 'number' ? tripleIds[ref] : ref));
+      return listed.length ? { ...s.meta, triples: listed } : s.meta;
+    };
+    const had = existing ? existing.graph.sentences : [];
+    const recordOps = plan.sentences
+      .filter((s) => !had[s.index - 1]?.recordToken)
+      .map((s) => ({
+        id: pendingId(),
+        tokenLayerId: layerInfo.nodeTokenLayer.id,
+        text: textId,
+        begin: s.begin,
+        end: s.end,
+        metadata: { [UMR_NAMESPACE]: recordOf(s) },
+      }));
     const wordOps = existing
       ? []
       : plan.sentences.flatMap((s) =>
@@ -127,22 +140,21 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
       if (sentenceOps.length) b.tokens.bulkCreate(sentenceOps);
       if (wordOps.length) b.tokens.bulkCreate(wordOps);
       if (pieceOps.length) b.tokens.bulkCreate(pieceOps);
-      if (existing) {
-        plan.sentences.forEach((s) => {
-          const token = existing.graph.sentences[s.index - 1];
-          if (token) {
-            b.tokens.patchMetadata(token.tokenId, [
-              { op: 'set', path: [UMR_NAMESPACE], value: s.meta },
-            ]);
-          }
-        });
-      }
+      if (recordOps.length) b.tokens.bulkCreate(recordOps);
+      plan.sentences.forEach((s) => {
+        const record = had[s.index - 1]?.recordToken;
+        if (record) {
+          b.tokens.patchMetadata(record, [
+            { op: 'set', path: [UMR_NAMESPACE], value: recordOf(s) },
+          ]);
+        }
+      });
     });
-    // The anchors' ids: after the sentence and word creates, before any
-    // sentence metadata patches.
+    // The anchors' ids: after the sentence and word creates, before the
+    // records.
     const pieceIndex = (sentenceOps.length ? 1 : 0) + (wordOps.length ? 1 : 0);
     const pieceIds = pieceOps.length ? createdIds(tokenResults[pieceIndex]) : [];
-    createdTokenIds = pieceIds;
+    createdTokenIds = [...pieceIds, ...(existing ? recordOps.map((r) => r.id) : [])];
     if (pieceIds.length !== pieceOps.length) {
       throw new Error(
         `The server returned ${pieceIds.length} anchor ids for ${pieceOps.length} anchors.`,
@@ -190,7 +202,8 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
       value: e.role,
       metadata: { [UMR_NAMESPACE]: { order: e.order } },
     }));
-    const tripleOps = plan.triples.map((t) => ({
+    const tripleOps = plan.triples.map((t, i) => ({
+      id: tripleIds[i],
       relationLayerId: layerInfo.documentGraphLayer.id,
       source: spanOf(t.source),
       target: spanOf(t.target),
@@ -374,23 +387,15 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
     return pieces.length - 1;
   };
 
-  // The number a triple between two constants records for each sentence
-  // that writes it, in the numbering the variables go by, which is what the
-  // reader follows (sentenceGraph.js sentenceNumberReader): the file's
-  // number where the sentence's variables carry it, in a document numbered
-  // by position. A file whose numbers skip one (snt1, snt2, snt4) is read by
-  // position, its variables are renumbered to match, and the triples must
-  // follow them rather than slip onto the sentence before.
-  const byFile = String(parsedSentences[0]?.snt ?? 1) !== '1';
-  const tripleNumber = (ps, index) => {
-    if (byFile || ps.snt == null) return index;
-    const carried = new Set();
-    ps.graph?.nodes?.forEach((_, v) => {
-      const m = NUMBERED_VARIABLE.exec(v);
-      if (m) carried.add(Number(m[1]));
-    });
-    return carried.size === 1 && carried.has(Number(ps.snt)) ? Number(ps.snt) : index;
-  };
+  // The triples between two constants the document already has, by name,
+  // for a sentence's record to list when attaching.
+  const existingConstantTriples = new Map();
+  (existing?.constants || []).forEach((c) =>
+    c.docOut.forEach((t) => {
+      const target = existing.nodesById.get(t.target);
+      if (target?.constant) existingConstantTriples.set(`${c.var} ${t.rel} ${target.var}`, t.id);
+    }),
+  );
 
   parsedSentences.forEach((ps, i) => {
     const index = i + 1;
@@ -427,7 +432,10 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
     // would go stale at the next edit in IGT.
     const sentenceText = (ps.sentenceText || '').trim();
     if (!existing && sentenceText && sentenceText !== line) meta.text = sentenceText;
-    sentences.push({ index, begin, end, words, meta });
+    // `triples`: the triples between two constants this sentence's block
+    // writes, as indexes into the plan's triples or, attaching, the ids of
+    // ones the document has. The import lists them in the sentence's record.
+    sentences.push({ index, begin, end, words, meta, triples: [] });
 
     // Any graph with a parse error is kept as text, a graph whose root could
     // not be found too: `((s2d / ...` lost the whole sentence.
@@ -554,21 +562,26 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
           return;
         }
         const sig = `${source} ${rel} ${target}`;
-        if (existingTriples.has(`${a} ${rel} ${b}`)) return;
+        // The same triple in several sentences is one relation. One between
+        // two constants is listed in the record of every sentence that
+        // writes it.
         const constantOnly = DOC_CONSTANTS.includes(a) && DOC_CONSTANTS.includes(b);
-        const seen = tripleBySig.get(sig);
-        if (seen) {
-          // The same triple in several sentences is one relation; a triple
-          // between two constants remembers every sentence that writes it.
-          const n = tripleNumber(parsedSentences[index - 1], index);
-          if (constantOnly && !seen.meta.sentences.includes(n)) seen.meta.sentences.push(n);
+        const list = sentences[index - 1].triples;
+        const listed = (ref) => {
+          if (constantOnly && !list.includes(ref)) list.push(ref);
+        };
+        if (existingTriples.has(`${a} ${rel} ${b}`)) {
+          const had = existingConstantTriples.get(`${a} ${rel} ${b}`);
+          if (had) listed(had);
           return;
         }
-        const meta = { group };
-        if (constantOnly) meta.sentences = [tripleNumber(parsedSentences[index - 1], index)];
-        const triple = { source, target, rel, meta };
-        tripleBySig.set(sig, triple);
-        triples.push(triple);
+        if (tripleBySig.has(sig)) {
+          listed(tripleBySig.get(sig));
+          return;
+        }
+        tripleBySig.set(sig, triples.length);
+        listed(triples.length);
+        triples.push({ source, target, rel, meta: { group } });
       });
     });
   });

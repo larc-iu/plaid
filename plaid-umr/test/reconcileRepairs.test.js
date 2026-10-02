@@ -79,8 +79,8 @@ function load(edit = null) {
 // whose first sentence IGT deleted stores numbers that start at 2, and is not
 // renumbered (reconcileNarrowings.test.js).
 const madeInPlaid = (L) =>
-  L.sentences.tokens.forEach((t) => {
-    delete t.metadata.umr.snt;
+  L.nodes.tokens.forEach((t) => {
+    if (t.metadata?.umr) delete t.metadata.umr.snt;
   });
 
 const byVar = (doc, v) => [...doc.graph.nodesById.values()].find((n) => n.var === v);

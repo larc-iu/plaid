@@ -6,8 +6,9 @@
 //
 // Each case is a small imported file, changed as IGT changes it:
 //   prepend       a sentence typed in before the first and split off, which
-//                 keeps the first sentence's token (and record, and the
-//                 record of its unaligned node) on the new text
+//                 keeps the first sentence's token (and the record of its
+//                 unaligned node) on the new text, and the sentence's record
+//                 cut onto it too
 //   excerpt       the same over a file numbered from snt5
 //   between       a sentence typed in between the first two
 //   later         a boundary moved two characters later, over an unaligned
@@ -89,9 +90,12 @@ Gloss: Veli slept .
 
 const fromText = (text) =>
   rawFromPlan(planImport(parseUmrFile(text).sentences, []));
-// A sentence added in IGT and annotated stores nothing on its token.
+// A sentence added in IGT and annotated has no record.
 const added = (raw, i) => {
-  delete role(raw, "sentence").tokens[i].metadata.umr;
+  const s = role(raw, "sentence").tokens[i];
+  nodeLayer(raw).tokens = nodeLayer(raw).tokens.filter(
+    (t) => !(t.metadata?.umr && t.begin >= s.begin && t.begin < s.end),
+  );
 };
 const role = (raw, r) =>
   raw.textLayers[0].tokenLayers.find((l) => l.config?.plaid?.role === r);
@@ -129,12 +133,12 @@ function insertAfterFirst(raw) {
 const CASES = {
   prepend: () => {
     const raw = fromText(`${block(1)}\n${block(2)}`);
-    insertSentenceAtStart(raw);
+    insertSentenceAtStart(raw, undefined, { recordCut: true });
     return raw;
   },
   excerpt: () => {
     const raw = fromText(`${block(5)}\n${block(6)}`);
-    insertSentenceAtStart(raw);
+    insertSentenceAtStart(raw, undefined, { recordCut: true });
     return raw;
   },
   between: () => {
@@ -168,7 +172,7 @@ const CASES = {
   bareShifted: () => {
     const raw = fromText(`${block(1)}\n${bare(2)}\n${block(3)}`);
     added(raw, 2);
-    insertSentenceAtStart(raw);
+    insertSentenceAtStart(raw, undefined, { recordCut: true });
     return raw;
   },
   gone: () => {

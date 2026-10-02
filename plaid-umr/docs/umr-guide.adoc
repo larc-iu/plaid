@@ -225,7 +225,9 @@ A node anchored to words follows its words.
 Letters typed at an anchored word's edge or inside it, a space included, stay in the nodes anchored to it.
 A node anchored to no word belongs to the sentence it was made in and stands over the whole of it, so an edit anywhere in the text leaves it where it belongs.
 Two sentences joined into one bring their nodes together in it, where they are two graphs until the annotator joins them, which the sentence's header counts and the Validation tab lists.
-Splitting it again where they were joined gives each sentence its own nodes back, with their edges.
+Splitting it again where they were joined gives each sentence its own nodes back, with their edges, and its own imported lines: its number, its gloss and metadata lines, a graph kept as text with the relations held for it, and its document-level relations between constants such as `(root :modal author)`.
+While the two are one sentence, the export writes the first one's lines.
+**Clear sentences** in Plaid IGT, then splitting the text again where the sentences were, gives every sentence its lines back in the same way.
 A sentence split in Plaid IGT or UD deletes the edges that would join nodes of the two new sentences, in the same step.
 Opening a document as a maintainer deletes, once for the project, such edges an earlier split left behind.
 A sentence's text deleted takes that sentence's nodes with it, and its history keeps them.
@@ -240,7 +242,7 @@ Variables are not renumbered in a document whose first `# :: snt` number, as imp
 A graph kept as text is mended under the names it has, even when sentences were added or removed before it since the import. The next time the document is opened, its variables take the sentence's number.
 
 When a sentence is typed in before an existing one in Plaid IGT, the existing sentence keeps its imported lines: its number, its gloss and metadata lines, and its document-level relations.
-The history entry of the next opening names the repair: `moved the stored lines of 1 sentence to the sentence they describe`.
+If the lines were left on the new sentence, the next opening moves them back, and its history entry names the repair: `moved the stored lines of 1 sentence to the sentence they describe`.
 
 An addition cut off partway (a closed tab, a lost connection) leaves nothing behind once the document is opened again.
 A node picked from a vocabulary entry that has since been deleted no longer names it.

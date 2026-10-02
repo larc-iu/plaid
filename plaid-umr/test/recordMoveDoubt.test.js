@@ -2,8 +2,8 @@
 // stay (sentenceGraph.js recordsFollowTheirGraphs), and what number a triple
 // between two constants records at import (umrImport.js).
 //
-// A sentence typed in before an existing one in IGT takes that one's token
-// and its record, and the record then follows the graph it describes. The
+// A record left on new text typed in before its sentence (see
+// igtInsertSentence.js) follows the graph it describes. The
 // same shape (a sentence with a record and no nodes, then one with nodes and
 // no record) also arises from a sentence the file left with no graph, or
 // whose graph was deleted, followed by one added in IGT and annotated. Only
@@ -58,9 +58,13 @@ Gloss: ${words}
 
 const role = (raw, r) => raw.textLayers[0].tokenLayers.find((l) => l.config?.plaid?.role === r);
 const fromText = (text) => rawFromPlan(planImport(parseUmrFile(text).sentences, []));
-// A sentence added in IGT stores nothing on its token.
+// A sentence added in IGT has no record.
 const added = (raw, i) => {
-  delete role(raw, 'sentence').tokens[i].metadata.umr;
+  const s = role(raw, 'sentence').tokens[i];
+  const nodes = raw.textLayers[0].tokenLayers.find((l) => l.config?.umr?.nodes);
+  nodes.tokens = nodes.tokens.filter(
+    (t) => !(t.metadata?.umr && t.begin >= s.begin && t.begin < s.end),
+  );
 };
 
 function open(raw) {
@@ -81,6 +85,11 @@ function applyPatches(raw, calls) {
     ]),
   ]);
   calls.forEach(({ name, args }) => {
+    if (name === 'tokens.update') {
+      const target = all.find((x) => x.id === args[0]);
+      [target.begin, target.end] = [args[1], args[2]];
+      return;
+    }
     if (!name.endsWith('.patchMetadata')) return;
     const target = all.find((x) => x.id === args[0]);
     target.metadata = applyMetadataOps(target.metadata || {}, args[1]);
@@ -145,7 +154,7 @@ test('a sentence added after one with no graph, then one typed in before both, m
 
 test('two sentences typed in before the first, with no open between, still move its stored lines once', async () => {
   const raw = fromText(`${block(1, { modal: true })}\n${block(2)}`);
-  const kept = insertSentenceAtStart(raw, 'Bir .');
+  const kept = insertSentenceAtStart(raw, 'Bir .', { recordCut: true });
   // The second one is typed in before the first new one, which takes the
   // token again; the first new one is now a bare sentence with no nodes.
   const sentences = role(raw, 'sentence').tokens;
@@ -153,13 +162,16 @@ test('two sentences typed in before the first, with no open between, still move 
   const text = 'İki .';
   const shift = [...text].length + 1;
   layer.text.body = `${text}\n${layer.text.body}`;
+  // The record, cut onto the first new one, is cut onto this one in turn.
+  const record = layer.tokenLayers.flatMap((l) => l.tokens).find((t) => t.metadata?.umr?.snt === 1);
   layer.tokenLayers.forEach((l) =>
     l.tokens.forEach((t) => {
-      if (t.id === kept) return;
+      if (t.id === kept || t === record) return;
       t.begin += shift;
       t.end += shift;
     }),
   );
+  record.end = shift - 1;
   const oldEnd = sentences.find((t) => t.id === kept).end;
   sentences.find((t) => t.id === kept).end = shift - 1;
   sentences.push({ id: 'igt-right-2', begin: shift, end: oldEnd + shift });

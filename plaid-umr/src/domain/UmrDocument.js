@@ -35,16 +35,18 @@ import {
   groupOf,
   variablesSharedInSentence,
   keepUnchangedSentences,
+  keptVariables,
   KEPT_VARIABLE,
 } from './sentenceGraph.js';
 import { CYCLE_ROLES, DOC_CONSTANTS } from './format/inventory.js';
 import {
   describeUmrReconcile,
   planEntryUnlink,
+  planRecordHome,
   planRecordMoves,
   planRenumber,
   planStrayTokens,
-  planTripleNumbers,
+  planTripleRecords,
   planUnalignedHeal,
 } from './umrReconcile.js';
 import {
@@ -494,7 +496,11 @@ export class UmrDocument extends DocumentModel {
   //   added or removed a sentence before it) is renumbered.
   // - A sentence's record (its file number, gloss and metadata lines, held
   //   relations) left on new text IGT split off before it moves to it, and a
-  //   triple between two constants takes the numbers its sentences have now.
+  //   triple between two constants listed by sentence number goes into the
+  //   records of those sentences.
+  // - A record still on a sentence token, where UMR kept it before records
+  //   had tokens of their own, moves to a record token over its sentence,
+  //   in a batch of its own before the rest is planned.
   // - A node picked from a vocabulary entry that was deleted forgets it.
   //
   // First, for a maintainer, the rule core holds on UMR relations (a relation
@@ -535,20 +541,30 @@ export class UmrDocument extends DocumentModel {
         return { ...ruled, refreshError };
       }
     }
+    let homed;
+    try {
+      homed = await this._recordsHome();
+    } catch (error) {
+      if (error?.status === 423) return { findings: [], deferred: true, interrupted: true };
+      return { findings: [], error };
+    }
+    if (homed) {
+      try {
+        await this._reload();
+      } catch (refreshError) {
+        return { ...ruled, recordsHomed: homed, refreshError };
+      }
+    }
     const graph = this.graph;
     const { remove, rebind, resize, unanchor } = planUnalignedHeal(graph, UMR_NAMESPACE);
     const strays = await this._leftoverTokens(planStrayTokens(this.layerInfo));
     const removed = new Set(remove);
     // A graph kept as text still names its variables, and a renumbered node
     // must not take one of them.
-    const keptNames = new Set();
-    graph.sentences.forEach((s) => {
-      if (s.nodes.length || typeof s.rawGraph !== 'string') return;
-      for (const m of s.rawGraph.matchAll(KEPT_VARIABLE)) keptNames.add(m[1]);
-    });
+    const keptNames = keptVariables(graph);
     const renumber = planRenumber(graph, removed, keptNames);
     const recordMoves = planRecordMoves(graph);
-    const tripleNumbers = planTripleNumbers(graph, UMR_NAMESPACE);
+    const tripleRecords = planTripleRecords(graph, UMR_NAMESPACE);
     // An entry counts as deleted only when the vocabulary the node picked it
     // from was read and lacks it (planEntryUnlink). The vocabularies are read
     // only when a node names an entry, so an open waits on no read it does
@@ -568,9 +584,9 @@ export class UmrDocument extends DocumentModel {
       !strays.length &&
       !renumber.length &&
       !recordMoves.length &&
-      !tripleNumbers.length &&
+      !tripleRecords.triples.length &&
       !unlink.length;
-    if (nothing) return ruled;
+    if (nothing) return homed ? { ...ruled, recordsHomed: homed } : ruled;
     const unanchored = new Set(unanchor.map((u) => u.nodeId));
     // A node that lost its word is named as it is called from now on.
     const renamed = new Map(renumber.map((r) => [r.nodeId, r.to]));
@@ -584,7 +600,8 @@ export class UmrDocument extends DocumentModel {
       renumbered: renumber.length,
       unlinked: unlink.length,
       recordsMoved: recordMoves.length,
-      triplesMoved: tripleNumbers.length,
+      recordsHomed: homed,
+      triplesMoved: tripleRecords.triples.length,
     };
     // The History entry takes its label from the first write, so the label
     // goes on before any: past 1000 operations the batch is several requests,
@@ -610,20 +627,35 @@ export class UmrDocument extends DocumentModel {
       renumber.forEach(({ nodeId, to }) => change(nodeId, { var: to }));
       unlink.forEach((nodeId) => change(nodeId, entryRecord(null)));
       const heldRenamed = this._heldRenamed(renumber);
-      const tokensById = new Map(this.layerInfo.sentenceTokenLayer.tokens.map((t) => [t.id, t]));
+      // Every metadata change of one record in one patch.
+      const recordOf = new Map(heldRenamed.map(([id, held]) => [id, { held }]));
+      tripleRecords.records.forEach((triples, id) =>
+        recordOf.set(id, { ...recordOf.get(id), triples }),
+      );
+      const info = this.layerInfo;
       await this._client.batched(async (b) => {
         if (tokenIds.length) b.tokens.bulkDelete(tokenIds);
-        // The record first, then the held relations renamed on it.
-        recordMoves.forEach(({ from, to }) => {
-          const record = tokensById.get(from).metadata[UMR_NAMESPACE];
-          b.tokens.patchMetadata(to, [{ op: 'set', path: [UMR_NAMESPACE], value: record }]);
-          b.tokens.patchMetadata(from, [{ op: 'delete', path: [UMR_NAMESPACE] }]);
-        });
-        tripleNumbers.forEach(({ relationId, sentences }) =>
-          b.relations.patchMetadata(relationId, umrOps({ sentences })),
+        recordMoves.forEach(({ id, begin, end }) => b.tokens.update(id, begin, end));
+        if (tripleRecords.newRecords.length) {
+          b.tokens.bulkCreate(
+            tripleRecords.newRecords.map((r) => ({
+              id: pendingId(),
+              tokenLayerId: info.nodeTokenLayer.id,
+              text: info.textLayer.text.id,
+              begin: r.begin,
+              end: r.end,
+              metadata: { [UMR_NAMESPACE]: { triples: r.triples } },
+            })),
+          );
+        }
+        tripleRecords.triples.forEach(({ relationId, sentences }) =>
+          b.relations.patchMetadata(
+            relationId,
+            umrOps({ sentences: sentences.length ? sentences : undefined }),
+          ),
         );
+        recordOf.forEach((changes, id) => b.tokens.patchMetadata(id, umrOps(changes)));
         metaOf.forEach((changes, nodeId) => b.spans.patchMetadata(nodeId, umrOps(changes)));
-        heldRenamed.forEach(([tokenId, held]) => b.tokens.patchMetadata(tokenId, umrOps({ held })));
         resize.forEach(({ nodeId, pieceId, begin, end, extra }) => {
           b.tokens.update(pieceId, begin, end);
           if (extra) {
@@ -686,8 +718,9 @@ export class UmrDocument extends DocumentModel {
   }
 
   // The held relations (sentenceGraph `held`) that name a renumbered node,
-  // with the new names: `[sentenceTokenId, held]` for each sentence whose
-  // list changes. A name two renumbered nodes share is left as it is.
+  // with the new names: `[recordId, held]` for each record whose list
+  // changes, a record waiting in a joined sentence included. A name two
+  // renumbered nodes share is left as it is.
   _heldRenamed(renumber) {
     const to = new Map();
     renumber.forEach((r) =>
@@ -695,18 +728,49 @@ export class UmrDocument extends DocumentModel {
     );
     const rename = (name) => to.get(name) || name;
     const out = [];
-    this.sentences.forEach((s) => {
-      if (!s.held.length) return;
-      const held = s.held.map((h) => ({
+    (this.graph.records || []).forEach(({ id, record }) => {
+      const had = Array.isArray(record.held) ? record.held : [];
+      if (!had.length) return;
+      const held = had.map((h) => ({
         ...h,
         source: rename(h.source),
         target: rename(h.target),
       }));
-      if (held.some((h, i) => h.source !== s.held[i].source || h.target !== s.held[i].target)) {
-        out.push([s.tokenId, held]);
+      if (held.some((h, i) => h.source !== had[i].source || h.target !== had[i].target)) {
+        out.push([id, held]);
       }
     });
     return out;
+  }
+
+  // The records still on sentence tokens (umrReconcile.js planRecordHome),
+  // each moved to a record token over its sentence in one batch. Resolves to
+  // how many moved.
+  async _recordsHome() {
+    const info = this.layerInfo;
+    const moves = planRecordHome(info, UMR_NAMESPACE);
+    if (!moves.length) return 0;
+    await this._client.batched(async (b) => {
+      b.tokens.bulkCreate(
+        moves.map((m) => ({
+          id: pendingId(),
+          tokenLayerId: info.nodeTokenLayer.id,
+          text: info.textLayer.text.id,
+          begin: m.begin,
+          end: m.end,
+          metadata: { [UMR_NAMESPACE]: m.record },
+        })),
+      );
+      b.tokens.bulkUpdate(
+        moves.map((m) => ({
+          id: m.tokenId,
+          metadata: m.keep
+            ? [{ op: 'set', path: [UMR_NAMESPACE], value: m.keep }]
+            : [{ op: 'delete', path: [UMR_NAMESPACE] }],
+        })),
+      );
+    });
+    return moves.length;
   }
 
   describeReconcile(result) {
@@ -2460,8 +2524,8 @@ export class UmrDocument extends DocumentModel {
   }
 
   // What an apply to `sentence` does to the held relations (see applyPenman):
-  // `heldTriples`, the rows to create, under pending ids, and `sentenceOps`,
-  // the metadata ops on the sentence tokens that held them. `idByVar` is the
+  // `heldTriples`, the rows to create, under pending ids, and `recordOps`,
+  // the metadata ops on the records that held them. `idByVar` is the
   // sentence's names after the apply, new nodes included.
   _heldResolved(sentence, plan, idByVar) {
     const fresh = new Set(plan.create.map((c) => c.var));
@@ -2478,9 +2542,10 @@ export class UmrDocument extends DocumentModel {
     const add = (tokenId, changes) =>
       opsByToken.set(tokenId, { ...opsByToken.get(tokenId), ...changes });
     if (fresh.size) {
-      this.sentences.forEach((s) => {
-        if (!s.held.length) return;
-        const keep = s.held.filter((h) => {
+      (this.graph.records || []).forEach(({ id, record }) => {
+        const held = Array.isArray(record.held) ? record.held : [];
+        if (!held.length) return;
+        const keep = held.filter((h) => {
           const source = idOf(h.source);
           const target = idOf(h.target);
           if (!source || !target || !(fresh.has(h.source) || fresh.has(h.target))) return true;
@@ -2493,14 +2558,14 @@ export class UmrDocument extends DocumentModel {
           });
           return false;
         });
-        if (keep.length !== s.held.length) add(s.tokenId, { held: keep.length ? keep : undefined });
+        if (keep.length !== held.length) add(id, { held: keep.length ? keep : undefined });
       });
     }
     // The graph kept as text, mended: its text is no longer what is kept.
     if (fresh.size && !sentence.nodes.length && typeof sentence.rawGraph === 'string') {
-      add(sentence.tokenId, { rawGraph: undefined, rawAlignment: undefined });
+      add(sentence.recordToken, { rawGraph: undefined, rawAlignment: undefined });
     }
-    return { heldTriples, sentenceOps: [...opsByToken].map(([id, c]) => [id, umrOps(c)]) };
+    return { heldTriples, recordOps: [...opsByToken].map(([id, c]) => [id, umrOps(c)]) };
   }
 
   /**
@@ -2672,14 +2737,14 @@ export class UmrDocument extends DocumentModel {
     // a triple: they are the file's, not this writer's. A graph mended here
     // also stops keeping its old text, which would otherwise come back if
     // the graph were emptied.
-    const { heldTriples, sentenceOps } = this._heldResolved(sentence, plan, idByVar);
+    const { heldTriples, recordOps } = this._heldResolved(sentence, plan, idByVar);
 
     this._applyRawPatch((next, infoNext) => {
       const layers = this._layers(infoNext);
       heldTriples.forEach((t) => layers.triples.push({ ...t }));
-      const sentenceTokens = infoNext.sentenceTokenLayer?.tokens || [];
-      sentenceOps.forEach(([id, ops]) => {
-        const token = sentenceTokens.find((x) => x.id === id);
+      const recordTokens = infoNext.nodeTokenLayer?.tokens || [];
+      recordOps.forEach(([id, ops]) => {
+        const token = recordTokens.find((x) => x.id === id);
         if (token) token.metadata = applyMetadataOps(token.metadata, ops);
       });
       spanOps.forEach(([id, ops]) => {
@@ -2777,7 +2842,7 @@ export class UmrDocument extends DocumentModel {
             edges: newEdges.length ? bulk(newEdges, info.relationLayer.id) : null,
             triples: heldTriples.length ? bulk(heldTriples, info.documentGraphLayer.id) : null,
           };
-          sentenceOps.forEach(([id, ops]) => b.tokens.patchMetadata(settledId(id), ops));
+          recordOps.forEach(([id, ops]) => b.tokens.patchMetadata(settledId(id), ops));
           return at;
         };
         // The server's ids for `list`, the rows op `at` of `results` made.
@@ -2809,7 +2874,7 @@ export class UmrDocument extends DocumentModel {
           (newNodes.length ? 1 : 0) +
           (newEdges.length ? 1 : 0) +
           (heldTriples.length ? 1 : 0) +
-          sentenceOps.length;
+          recordOps.length;
         if (opCount <= MAX_BATCH_OPS) {
           let at = {};
           const results = await client.batched((b) => {
@@ -2854,7 +2919,7 @@ export class UmrDocument extends DocumentModel {
             adopt(secondPass, nodeOp, newNodes, 'node');
           }
           stage = 'edges';
-          if (newEdges.length || heldTriples.length || sentenceOps.length) {
+          if (newEdges.length || heldTriples.length || recordOps.length) {
             let at = {};
             const thirdPass = await client.batched((b) => {
               at = queueEdges(b, serverId);

@@ -24,8 +24,11 @@ def _gapped_raw():
     tl['text']['body'] = body
     layers = {layer['id']: layer for layer in tl['token_layers']}
     sents = layers[SENT_LAYER]['tokens']
-    sents[1]['metadata'] = {'umr': {'snt': 3}}
-    sents.append({'id': 'ms-3', 'begin': 31, 'end': 42, 'metadata': {'umr': {'snt': 4}}})
+    sents.append({'id': 'ms-3', 'begin': 31, 'end': 42})
+    records = {t['id']: t for t in layers[NODE_LAYER]['tokens'] if (t.get('metadata') or {}).get('umr')}
+    records['mr-2']['metadata'] = {'umr': {'snt': 3}}
+    layers[NODE_LAYER]['tokens'].append(
+        {'id': 'mr-3', 'begin': 31, 'end': 42, 'metadata': {'umr': {'snt': 4}}})
     layers[WORD_LAYER]['tokens'] += [{'id': 'mw-9', 'begin': 31, 'end': 33},
                                      {'id': 'mw-10', 'begin': 34, 'end': 39},
                                      {'id': 'mw-11', 'begin': 40, 'end': 41}]

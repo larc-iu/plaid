@@ -6,41 +6,51 @@
 // app's annotation stay.
 //
 // What goes:
-//   - every token on the UMR node layer, which takes the concept spans, the
+//   - every anchor on the UMR node layer, which takes the concept spans, the
 //     edges and the document-level relations with it
-//   - on each sentence token, the graph a file carried that could not be read
-//     (`rawGraph`, `rawAlignment`), the relations held for it (`held`), and a
-//     comparison report's row (`adjudication`)
+//   - in each sentence's record, the graph a file carried that could not be
+//     read (`rawGraph`, `rawAlignment`), the relations held for it (`held`)
+//     and the triples between constants its block wrote (`triples`)
+//   - on each sentence token, a comparison report's row (`adjudication`)
 //   - the comparison report on the document (`adjudication`), since the copy
 //     was never compared
 // The sentence's own record (`snt`, `text`, `ilg`, `meta`) stays: it is the
 // text, not the graph.
 import { getUmrLayerInfo, UMR_NAMESPACE } from '../utils/umrLayerUtils.js';
+import { isRecordToken } from './sentenceGraph.js';
+
+/** The record keys that hold graph, not text. */
+const RECORD_GRAPH_KEYS = ['rawGraph', 'rawAlignment', 'held', 'triples'];
 
 /** The sentence token keys that hold graph, not text. */
-const SENTENCE_GRAPH_KEYS = ['rawGraph', 'rawAlignment', 'held', 'adjudication'];
+const SENTENCE_GRAPH_KEYS = ['adjudication'];
 
 // Keeps each bulk update well inside what one request should carry.
 const SENTENCE_CHUNK = 500;
 
+// The ops deleting `keys` from a token's UMR metadata, as a bulk update's
+// entry, or nothing when it holds none of them.
+const without = (token, keys) => {
+  const umr = token.metadata?.[UMR_NAMESPACE];
+  if (!umr || typeof umr !== 'object') return [];
+  const ops = keys.filter((k) => k in umr).map((k) => ({ op: 'delete', path: [UMR_NAMESPACE, k] }));
+  return ops.length ? [{ id: token.id, metadata: ops }] : [];
+};
+
 /**
  * What leaving the graphs out of `raw` (a document read with its body) takes:
  * `{ nodeTokenIds, sentenceUpdates, documentOps }`, each empty when there is
- * nothing to do.
+ * nothing to do. `sentenceUpdates` covers the records and the sentence
+ * tokens alike.
  */
 export function textOnlyPlan(raw) {
   const info = getUmrLayerInfo(raw);
-  const nodeTokenIds = (info.nodeTokenLayer?.tokens || []).map((t) => t.id);
-  const sentenceUpdates = [];
-  (info.sentenceTokenLayer?.tokens || []).forEach((token) => {
-    const umr = token.metadata?.[UMR_NAMESPACE];
-    if (!umr || typeof umr !== 'object') return;
-    const ops = SENTENCE_GRAPH_KEYS.filter((k) => k in umr).map((k) => ({
-      op: 'delete',
-      path: [UMR_NAMESPACE, k],
-    }));
-    if (ops.length) sentenceUpdates.push({ id: token.id, metadata: ops });
-  });
+  const nodeTokens = info.nodeTokenLayer?.tokens || [];
+  const nodeTokenIds = nodeTokens.filter((t) => !isRecordToken(t)).map((t) => t.id);
+  const sentenceUpdates = [
+    ...nodeTokens.filter(isRecordToken).flatMap((t) => without(t, RECORD_GRAPH_KEYS)),
+    ...(info.sentenceTokenLayer?.tokens || []).flatMap((t) => without(t, SENTENCE_GRAPH_KEYS)),
+  ];
   const documentOps =
     raw?.metadata?.[UMR_NAMESPACE] && 'adjudication' in raw.metadata[UMR_NAMESPACE]
       ? [{ op: 'delete', path: [UMR_NAMESPACE, 'adjudication'] }]

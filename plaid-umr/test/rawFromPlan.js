@@ -8,16 +8,24 @@ export function rawFromPlan(plan) {
   let n = 0;
   const id = () => `id${++n}`;
   const textId = id();
-  const sentenceTokens = plan.sentences.map((s) => ({
-    id: id(),
-    begin: s.begin,
-    end: s.end,
-    metadata: { [UMR_NAMESPACE]: s.meta },
-  }));
+  const sentenceTokens = plan.sentences.map((s) => ({ id: id(), begin: s.begin, end: s.end }));
   const wordTokens = plan.sentences.flatMap((s) =>
     s.words.map((w) => ({ id: id(), begin: w.begin, end: w.end })),
   );
   const pieceTokens = plan.pieces.map((p) => ({ id: id(), begin: p.begin, end: p.end }));
+  // Each sentence's record, a token of the node layer over the sentence
+  // (umrImport.js), listing the triples between two constants its block
+  // writes by their ids.
+  const tripleIds = plan.triples.map(() => id());
+  const recordTokens = plan.sentences.map((s) => {
+    const triples = s.triples.map((ref) => (typeof ref === 'number' ? tripleIds[ref] : ref));
+    return {
+      id: id(),
+      begin: s.begin,
+      end: s.end,
+      metadata: { [UMR_NAMESPACE]: triples.length ? { ...s.meta, triples } : s.meta },
+    };
+  });
   // `home` is the sentence a node aligned to no word belongs to, which the
   // import records as that sentence's token id (umrImport.js). The record is
   // what says the node is aligned to nothing, so a raw document without it
@@ -40,8 +48,8 @@ export function rawFromPlan(plan) {
     value: e.role,
     metadata: { [UMR_NAMESPACE]: { order: e.order } },
   }));
-  const triples = plan.triples.map((t) => ({
-    id: id(),
+  const triples = plan.triples.map((t, i) => ({
+    id: tripleIds[i],
     source: spanOf(t.source),
     target: spanOf(t.target),
     value: t.rel,
@@ -62,7 +70,7 @@ export function rawFromPlan(plan) {
           {
             id: id(),
             config: { [UMR_NAMESPACE]: { nodes: true } },
-            tokens: pieceTokens,
+            tokens: [...pieceTokens, ...recordTokens],
             spanLayers: [
               {
                 id: id(),

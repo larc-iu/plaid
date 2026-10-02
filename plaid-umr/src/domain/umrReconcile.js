@@ -45,10 +45,16 @@
 // cut off after its first request) is removed, a variable whose sentence
 // number no longer matches its sentence is renumbered, a sentence's record
 // left on new text split off before it moves to the sentence it describes, a
-// triple between two constants takes its sentences' numbers now, and a node
-// picked from a vocabulary entry that is gone forgets the entry.
+// triple between two constants listed by sentence number goes into those
+// sentences' records, and a node picked from a vocabulary entry that is gone
+// forgets the entry.
 
-import { NUMBERED_VARIABLE, numberedByFile, sentenceNumberReader } from './sentenceGraph.js';
+import {
+  NUMBERED_VARIABLE,
+  isRecordToken,
+  numberedByFile,
+  sentenceNumberReader,
+} from './sentenceGraph.js';
 import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 
 /**
@@ -136,7 +142,42 @@ export function planUnalignedHeal(graph, namespace) {
  */
 export function planStrayTokens(layerInfo) {
   const used = new Set((layerInfo.conceptLayer?.spans || []).flatMap((s) => s.tokens || []));
-  return (layerInfo.nodeTokenLayer?.tokens || []).filter((t) => !used.has(t.id)).map((t) => t.id);
+  return (layerInfo.nodeTokenLayer?.tokens || [])
+    .filter((t) => !used.has(t.id) && !isRecordToken(t))
+    .map((t) => t.id);
+}
+
+/** What a sentence's record holds of its file block (sentenceGraph.js). */
+const RECORD_KEYS = ['snt', 'text', 'ilg', 'meta', 'rawGraph', 'rawAlignment', 'held'];
+
+/**
+ * The sentence records still on sentence tokens, where UMR kept them until
+ * 2026-10: each becomes a record token over its sentence (sentenceGraph.js),
+ * which a join of two sentences in another app does not delete. `keep` is
+ * what stays on the sentence token (a comparison report's row), null when
+ * nothing does. A pass that has moved them finds none.
+ *
+ * @returns {{ tokenId: string, begin: number, end: number, record: object, keep: object|null }[]}
+ */
+export function planRecordHome(layerInfo, namespace) {
+  return (layerInfo.sentenceTokenLayer?.tokens || []).flatMap((t) => {
+    const meta = t.metadata?.[namespace];
+    if (!meta || typeof meta !== 'object') return [];
+    const record = Object.fromEntries(
+      RECORD_KEYS.filter((k) => k in meta).map((k) => [k, meta[k]]),
+    );
+    if (!Object.keys(record).length) return [];
+    const rest = Object.fromEntries(Object.entries(meta).filter(([k]) => !(k in record)));
+    return [
+      {
+        tokenId: t.id,
+        begin: t.begin,
+        end: t.end,
+        record,
+        keep: Object.keys(rest).length ? rest : null,
+      },
+    ];
+  });
 }
 
 /**
@@ -182,43 +223,84 @@ export function planRenumber(graph, skip = new Set(), reserved = new Set()) {
 
 /**
  * The sentence records to move to the sentence they describe, as the reader
- * found them (sentenceGraph.js `recordsFollowTheirGraphs`): IGT's split kept
- * a sentence's token, and the record on it, on the new text typed in before
- * it. Each is `{ from, to }`, sentence token ids.
+ * found them (sentenceGraph.js `recordsFollowTheirGraphs`): a record left on
+ * new text IGT split off before its sentence. Each is the record's token
+ * with the extent of the sentence it now stands over.
  *
- * @returns {{ from: string, to: string }[]}
+ * @returns {{ id: string, begin: number, end: number }[]}
  */
 export function planRecordMoves(graph) {
-  return (graph.sentences || [])
-    .filter((s) => s.recordToken && s.recordToken !== s.tokenId)
-    .map((s) => ({ from: s.recordToken, to: s.tokenId }));
+  const sentences = graph.sentences || [];
+  return (graph.records || [])
+    .filter((r) => {
+      const s = sentences[r.sentence - 1];
+      return r.own && !(r.begin >= s.begin && r.begin < s.end);
+    })
+    .map((r) => {
+      const s = sentences[r.sentence - 1];
+      return { id: r.id, begin: s.begin, end: s.end };
+    });
 }
 
 /**
- * The triples between two constants whose stored sentence numbers no longer
- * name the sentences whose blocks write them, after another app added or
- * removed a sentence before those: each with the numbers it is read by now
- * (sentenceGraph.js `sentenceNumberReader`), written in the same pass that
- * renumbers the variables.
+ * The triples between two constants that still list their sentences by
+ * number (one made on the canvas or by a script), put into those sentences'
+ * records, which follow their sentences through a join and a split in
+ * another app where a number cannot. Each number is read as the reader reads
+ * it (sentenceNumberReader). A number that names no sentence stays where it
+ * is.
  *
- * @returns {{ relationId: string, sentences: number[] }[]}
+ * @returns {{
+ *   triples: { relationId: string, sentences: number[] }[],
+ *   records: Map<string, string[]>,
+ *   newRecords: { sentence: number, begin: number, end: number, triples: string[] }[],
+ * }} `triples` the numbers each triple keeps (none: the key goes),
+ *   `records` each record's whole new list, `newRecords` the records to make
+ *   for sentences that have none
  */
-export function planTripleNumbers(graph, namespace) {
-  const numberNow = sentenceNumberReader(graph.sentences || []);
-  const out = [];
+export function planTripleRecords(graph, namespace) {
+  const sentences = graph.sentences || [];
+  const numberNow = sentenceNumberReader(sentences);
+  const triples = [];
+  const records = new Map();
+  const fresh = new Map();
+  const listOf = (s) => {
+    if (!s.recordToken) {
+      if (!fresh.has(s.index)) fresh.set(s.index, []);
+      return fresh.get(s.index);
+    }
+    if (!records.has(s.recordToken)) {
+      const own = (graph.records || []).find((r) => r.id === s.recordToken);
+      const had = own?.record?.triples;
+      records.set(s.recordToken, Array.isArray(had) ? [...had] : []);
+    }
+    return records.get(s.recordToken);
+  };
   const seen = new Set();
   (graph.constants || []).forEach((c) =>
     c.docOut.forEach((t) => {
       if (seen.has(t.id) || !graph.nodesById.get(t.target)?.constant) return;
       seen.add(t.id);
       const stored = t.metadata?.[namespace]?.sentences || [];
-      const now = [...new Set(stored.map(numberNow))];
-      if (now.length !== stored.length || now.some((n, i) => n !== stored[i])) {
-        out.push({ relationId: t.id, sentences: now });
-      }
+      const named = stored.filter((n) => sentences[numberNow(n) - 1]);
+      if (!named.length) return;
+      named.forEach((n) => {
+        const list = listOf(sentences[numberNow(n) - 1]);
+        if (!list.includes(t.id)) list.push(t.id);
+      });
+      triples.push({ relationId: t.id, sentences: stored.filter((n) => !named.includes(n)) });
     }),
   );
-  return out;
+  // A record that already listed every triple it was given is not written.
+  records.forEach((list, id) => {
+    const had = (graph.records || []).find((r) => r.id === id)?.record?.triples || [];
+    if (list.length === had.length) records.delete(id);
+  });
+  const newRecords = [...fresh].map(([index, list]) => {
+    const s = sentences[index - 1];
+    return { sentence: index, begin: s.begin, end: s.end, triples: list };
+  });
+  return { triples, records, newRecords };
 }
 
 /**
@@ -254,6 +336,7 @@ export function describeUmrReconcile({
   renumbered = 0,
   unlinked = 0,
   recordsMoved = 0,
+  recordsHomed = 0,
   triplesMoved = 0,
   rulesDeclared = false,
   rulesRepaired = false,
@@ -287,6 +370,11 @@ export function describeUmrReconcile({
       `put ${nodes(resized)} back over ${resized === 1 ? 'its sentence' : 'their sentences'}`,
     );
   }
+  if (recordsHomed) {
+    parts.push(
+      `moved the stored lines of ${countOf(recordsHomed, 'sentence', 'sentences')} off the sentence tokens`,
+    );
+  }
   if (recordsMoved) {
     parts.push(
       recordsMoved === 1
@@ -296,7 +384,7 @@ export function describeUmrReconcile({
   }
   if (triplesMoved) {
     parts.push(
-      `moved ${countOf(triplesMoved, 'document-level relation', 'document-level relations')} between constants to ${triplesMoved === 1 ? 'its sentences' : 'their sentences'}`,
+      `put ${countOf(triplesMoved, 'document-level relation', 'document-level relations')} between constants in the records of ${triplesMoved === 1 ? 'its sentences' : 'their sentences'}`,
     );
   }
   if (renumbered) {

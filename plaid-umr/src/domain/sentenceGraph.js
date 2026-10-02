@@ -16,15 +16,26 @@
 //            metadata.umr = { order }
 //   triple = a relation in the document-graph layer, value = the relation,
 //            metadata.umr = { group, sentences? } where `group` is temporal,
-//            modal or coref and `sentences` lists, for a triple between two
-//            constants (which belongs to no sentence by itself), the
-//            sentences whose blocks write it
-//   sentence token metadata.umr = { snt, text?, ilg, meta, rawGraph?,
-//            rawAlignment?, held? } where the raw pair holds a graph the
-//            parser could not read, kept as text so nothing is lost, and
-//            `held` the document-level relations this sentence's block
-//            wrote that name a node of such a graph, by name: [{ source,
-//            rel, target, group }], made real when the graph is mended
+//            modal or coref. A triple between two constants belongs to no
+//            sentence by itself: the records of the sentences whose blocks
+//            write it list it (`triples` below), and one just made lists
+//            those sentences by number (`sentences`) until reconcile puts it
+//            in their records
+//   record = a token in the UMR node layer that carries metadata.umr (an
+//            anchor carries none) = { snt?, text?, ilg?, meta?, rawGraph?,
+//            rawAlignment?, held?, triples? }: what a sentence's file block
+//            said beyond its graph. The raw pair holds a graph the parser
+//            could not read, kept as text so nothing is lost, `held` the
+//            document-level relations this sentence's block wrote that name
+//            a node of such a graph, by name: [{ source, rel, target, group
+//            }], made real when the graph is mended, and `triples` the ids of
+//            the triples between two constants the block writes. A record
+//            belongs to the sentence its token begins in. Its token stands
+//            over the text of its sentence and is no sentence token, so
+//            another app joining two sentences (which deletes the second
+//            sentence token) leaves both records standing over their own
+//            halves, and a split back where they were gives each its own
+//            sentence again
 //
 // By its real path rather than through `@ui`: the node suite has no alias.
 import { cpSlicer } from '@larc-iu/plaid-client';
@@ -43,15 +54,21 @@ const overlaps = (a, b) => a.begin < b.end && b.begin < a.end;
 
 const byBegin = (a, b) => a.begin - b.begin || a.end - b.end;
 
-// What a sentence token records of the sentence it describes (the file's
-// number, its text where that is not the words, its gloss lines, its other
-// metadata lines, a graph kept as text and the relations held on it), as the
-// sentence object's fields. `recordToken` is the token whose metadata holds
-// them, null for a sentence that records nothing (one made in Plaid).
+/** Whether a token of the UMR node layer is a sentence's record, not an anchor. */
+export const isRecordToken = (token) => {
+  const meta = token?.metadata?.[UMR_NAMESPACE];
+  return !!meta && typeof meta === 'object';
+};
+
+// What a record says of the sentence it describes (the file's number, its
+// text where that is not the words, its gloss lines, its other metadata
+// lines, a graph kept as text and the relations held on it), as the sentence
+// object's fields. `recordToken` is the record's token, null for a sentence
+// that records nothing (one made in Plaid).
 function recordFields(holder, sentence, slice) {
   const meta = umrMeta(holder);
   return {
-    recordToken: holder && Object.keys(meta).length ? holder.id : null,
+    recordToken: holder ? holder.id : null,
     text: meta.text || slice(sentence.begin, sentence.end).replace(/\n+$/, ''),
     // What an import stored, and (once the words are known) the lines the
     // mapping resolves them and the layers into (`ilg`).
@@ -98,16 +115,17 @@ export function numberedByFile(sentences) {
   return !!first && String(first.snt) !== '1';
 }
 
-// IGT splits a sentence keeping its token on the LEFT, so a sentence typed
-// in before an existing one and split off takes that one's token, and with
-// it everything the token records of it: its file number, gloss lines,
-// metadata lines and held relations, while its words and its graph are in
-// the right half, which is born recording nothing. The record goes with the
-// graph it describes: a sentence that records something and has no nodes,
-// followed (past any sentences that record nothing and have no nodes either,
-// several typed in at once) by one that records nothing and whose nodes'
-// variables carry the first one's number. Reconcile then moves the record
-// there for good.
+// A record can stand over new text typed in before its sentence: IGT types
+// a sentence in before the first one by growing the first sentence over the
+// new text and splitting it off, and core cuts a token of exactly the split
+// sentence's extent (the record's) at the split, so the record is left on
+// the new text, the left half, while its words and its graph are in the
+// right half, which records nothing. The record goes with the graph it
+// describes: a sentence that records something and has no nodes, followed
+// (past any sentences that record nothing and have no nodes either, several
+// typed in at once) by one that records nothing and whose nodes' variables
+// carry the first one's number. Reconcile then moves the record there for
+// good.
 //
 // The number must say so without doubt, since a sentence the file left with
 // no graph (or one whose graph was deleted) followed by one added in IGT and
@@ -119,7 +137,7 @@ export function numberedByFile(sentences) {
 function recordsFollowTheirGraphs(sentences, slice, tokensById) {
   const byFile = numberedByFile(sentences);
   sentences.forEach((s, i) => {
-    if (s.recordToken !== s.tokenId || s.nodes.length) return;
+    if (!s.recordToken || s.nodes.length) return;
     let j = i + 1;
     while (j < sentences.length && !sentences[j].recordToken && !sentences[j].nodes.length) j++;
     const to = sentences[j];
@@ -128,8 +146,10 @@ function recordsFollowTheirGraphs(sentences, slice, tokensById) {
     if (number === null || number === to.index) return;
     const stored = String(number) === String(s.snt);
     if (!(byFile ? stored : stored && number === s.index)) return;
-    Object.assign(to, recordFields(tokensById.get(s.tokenId), to, slice));
-    Object.assign(s, recordFields(null, s, slice));
+    Object.assign(to, recordFields(tokensById.get(s.recordToken), to, slice));
+    const [next = null, ...rest] = s.otherRecords;
+    Object.assign(s, recordFields(next && tokensById.get(next), s, slice));
+    s.otherRecords = rest;
   });
 }
 
@@ -200,7 +220,11 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
     tokenId: token.id,
     begin: token.begin,
     end: token.end,
-    ...recordFields(token, token, slice),
+    ...recordFields(null, token, slice),
+    // The records after the first that stand in this sentence: a sentence
+    // joined to the one before it in another app holds both records until
+    // it is split again. The first is the sentence's own (`recordToken`).
+    otherRecords: [],
     words: [],
     morphemes: [],
     ilg: [],
@@ -210,6 +234,15 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
   }));
   const sentenceOf = (piece) => sentences.find((s) => beginsIn(piece, s));
   const byTokenId = new Map(sentences.map((s) => [s.tokenId, s]));
+  // Each record is read with the sentence its token begins in, in text order.
+  const recordTokens = nodeTokens.filter(isRecordToken).sort(byBegin);
+  const recordsById = new Map(recordTokens.map((t) => [t.id, t]));
+  recordTokens.forEach((token) => {
+    const s = sentenceOf(token);
+    if (!s) return;
+    if (s.recordToken) s.otherRecords.push(token.id);
+    else Object.assign(s, recordFields(token, s, slice));
+  });
   // Whether a word of the text overlaps the piece.
   const overWord = (piece) => {
     const s = sentenceOf(piece);
@@ -310,7 +343,29 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
     }
   });
 
-  recordsFollowTheirGraphs(sentences, slice, new Map(sentenceTokens.map((t) => [t.id, t])));
+  recordsFollowTheirGraphs(sentences, slice, recordsById);
+  // Every record with the sentence it is read with, for reconcile.
+  const records = sentences.flatMap((s) =>
+    [s.recordToken, ...s.otherRecords].filter(Boolean).map((id, k) => {
+      const token = recordsById.get(id);
+      return {
+        id,
+        sentence: s.index,
+        own: k === 0,
+        begin: token.begin,
+        end: token.end,
+        record: umrMeta(token),
+      };
+    }),
+  );
+  // The triples between two constants each sentence's records list.
+  const listedIn = new Map();
+  records.forEach(({ sentence, record }) =>
+    (Array.isArray(record.triples) ? record.triples : []).forEach((id) => {
+      if (!listedIn.has(id)) listedIn.set(id, new Set());
+      listedIn.get(id).add(sentence);
+    }),
+  );
 
   // Edges, attached to the head's sentence.
   relations.forEach((rel) => {
@@ -333,8 +388,9 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
 
   // Document-level triples, attached to the LATER of the two sentences
   // involved: the one whose block the file writes them in. A triple between
-  // two constants belongs to the sentences its metadata lists, by the
-  // number each had when it was written (sentenceNumberReader).
+  // two constants belongs to the sentences whose records list it, and to
+  // those its own metadata lists by the number each had when it was written
+  // (sentenceNumberReader), until reconcile puts it in their records.
   const numberNow = sentenceNumberReader(sentences);
   docRelations.forEach((rel) => {
     const source = nodesById.get(rel.source);
@@ -355,9 +411,9 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
     if (later > 0) {
       sentences[later - 1].triples.push(triple);
     } else if (source.constant && target.constant) {
-      new Set((meta.sentences || []).map(numberNow)).forEach((n) =>
-        sentences[n - 1]?.triples.push(triple),
-      );
+      const blocks = new Set(listedIn.get(rel.id) || []);
+      (meta.sentences || []).forEach((n) => blocks.add(numberNow(n)));
+      [...blocks].sort((a, b) => a - b).forEach((n) => sentences[n - 1]?.triples.push(triple));
     }
   });
 
@@ -382,7 +438,7 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
 
   const chains = corefChains(docRelations, nodesById);
 
-  return { sentences, constants, nodesById, chains };
+  return { sentences, constants, nodesById, chains, records };
 }
 
 /**
@@ -921,6 +977,23 @@ function fileNumbers(sentences) {
 // A variable a graph kept as text defines: the name before a slash after an
 // opening bracket.
 export const KEPT_VARIABLE = /\(\s*([^\s/()"]+)\s*\//g;
+
+/**
+ * The variables the graphs kept as text still define: a sentence's own, while
+ * it has no nodes, and that of every record waiting in a sentence joined to
+ * the one before it, which a split gives its sentence back. A renumbered
+ * node must not take one of them.
+ */
+export function keptVariables(graph) {
+  const names = new Set();
+  const bySentence = graph.sentences || [];
+  (graph.records || []).forEach(({ sentence, own, record }) => {
+    if (typeof record.rawGraph !== 'string') return;
+    if (own && bySentence[sentence - 1]?.nodes.length) return;
+    for (const m of record.rawGraph.matchAll(KEPT_VARIABLE)) names.add(m[1]);
+  });
+  return names;
+}
 
 // A sentence's nodes as parsePenman's map, each node's attributes and
 // in-sentence edges in their stored order. `keep` picks the nodes.

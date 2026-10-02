@@ -80,7 +80,7 @@ test('the same file starting at snt1 with a sentence IGT added before it is renu
   assert.equal(result.renumbered, 4);
   assert.equal(
     doc.describeReconcile(result),
-    'Repaired: moved the stored lines of 1 sentence to the sentence they describe, renumbered 4 variables to match the sentences',
+    'Repaired: renumbered 4 variables to match the sentences',
   );
 });
 
@@ -271,7 +271,7 @@ s1k: 2-2
   ]);
   assert.equal(
     doc.describeReconcile(result),
-    'Repaired: rebound 1 unaligned node to the sentence it is in, moved the stored lines of 1 sentence to the sentence they describe, renumbered 4 variables to match the sentences',
+    'Repaired: rebound 1 unaligned node to the sentence it is in, renumbered 4 variables to match the sentences',
   );
 });
 
