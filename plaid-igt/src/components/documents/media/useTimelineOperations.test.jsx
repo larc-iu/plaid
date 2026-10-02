@@ -437,3 +437,34 @@ describe('useTimelineOperations: resizing a segment', () => {
     await h.unmount();
   });
 });
+
+// A drag that ends a hair inside a neighbouring segment made a selection the
+// save then refused, after the text was typed. The selection stops at the
+// neighbours' edges as it is drawn, as a dragged edge does.
+describe('useTimelineOperations: a drag beside other segments', () => {
+  const seg = (id, timeBegin, timeEnd) => ({ id, metadata: { timeBegin, timeEnd } });
+
+  it('stops at the edge of the segment before it and of the one after it', async () => {
+    const ops = makeOps({ alignmentTokens: [seg('a', 4, 6.2), seg('b', 9, 12)] });
+    const h = await mount(ops);
+    await mouse(h, 'mousedown', 80);
+    await mouse(h, 'mousemove', 61);
+    expect(h.api.tempSelection).toEqual({ start: 6.2, end: 8 });
+    await mouse(h, 'mouseup', 61);
+    expect(ops.setSelection).toHaveBeenLastCalledWith({ start: 6.2, end: 8 });
+
+    await mouse(h, 'mousedown', 70);
+    await mouse(h, 'mouseup', 95);
+    expect(ops.setSelection).toHaveBeenLastCalledWith({ start: 7, end: 9 });
+    await h.unmount();
+  });
+
+  it('leaves a drag that starts inside a segment as drawn', async () => {
+    const ops = makeOps({ alignmentTokens: [seg('a', 4, 6.2)] });
+    const h = await mount(ops);
+    await mouse(h, 'mousedown', 50);
+    await mouse(h, 'mouseup', 80);
+    expect(ops.setSelection).toHaveBeenLastCalledWith({ start: 5, end: 8 });
+    await h.unmount();
+  });
+});

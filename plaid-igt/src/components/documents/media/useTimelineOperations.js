@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
-import { clampResize } from '../../../domain/alignmentTimes.js';
+import { clampResize, freeStretch } from '../../../domain/alignmentTimes.js';
 import { useWaveform } from './useWaveform.js';
 
 // Constants
@@ -307,6 +307,19 @@ export const useTimelineOperations = (mediaOps) => {
     }
   }, [doc, handleAlignmentCreated]);
 
+  // Where the drag from `dragStart` has reached at `time`: stopped at the
+  // edges of the segments either side, as a dragged edge is (freeStretch), so
+  // a slip of a pixel into a neighbour never makes a selection the save then
+  // refuses.
+  const dragRange = useCallback(
+    (time) => {
+      const free = freeStretch(doc.alignmentTokens || [], dragStart);
+      const reached = free ? Math.min(free.ceiling, Math.max(free.floor, time)) : time;
+      return { start: Math.min(dragStart, reached), end: Math.max(dragStart, reached) };
+    },
+    [doc, dragStart],
+  );
+
   const handleMouseMove = useCallback(
     (event) => {
       if (isResizing) {
@@ -316,14 +329,10 @@ export const useTimelineOperations = (mediaOps) => {
 
       if (!isDragging) return;
 
-      const time = getTimeFromPosition(event.clientX);
-
       // Create temporary selection for visual feedback
-      const start = Math.min(dragStart, time);
-      const end = Math.max(dragStart, time);
-      setTempSelection({ start, end });
+      setTempSelection(dragRange(getTimeFromPosition(event.clientX)));
     },
-    [isResizing, isDragging, getTimeFromPosition, dragStart, handleResizeMove],
+    [isResizing, isDragging, getTimeFromPosition, dragRange, handleResizeMove],
   );
 
   const handleMouseUp = useCallback(
@@ -335,9 +344,7 @@ export const useTimelineOperations = (mediaOps) => {
 
       if (!isDragging) return;
 
-      const time = getTimeFromPosition(event.clientX);
-      const start = Math.min(dragStart, time);
-      const end = Math.max(dragStart, time);
+      const { start, end } = dragRange(getTimeFromPosition(event.clientX));
 
       setIsDragging(false);
       setTempSelection(null);
@@ -356,7 +363,7 @@ export const useTimelineOperations = (mediaOps) => {
       isResizing,
       isDragging,
       getTimeFromPosition,
-      dragStart,
+      dragRange,
       handleTimelineClick,
       handleSelectionCreate,
     ],

@@ -8,11 +8,12 @@
 // itself, and an unlabelled segment cannot be told apart from its neighbour,
 // so those overlaps are the slip of a dragged edge and are stopped. Every
 // writer of timeBegin/timeEnd or of the speaker goes through here: the
-// timeline drag (clamped live), the transcript's time boxes and the domain
-// method behind both, a new segment and a speaker edit (refused with the
-// reason), and the load-time validator (reported, for data
-// that got in some other way). The ELAN export puts each speaker on its own
-// tier, where cross-talk is legal, and must drop a time for same-tier overlap.
+// timeline drags (an edge and a new selection, clamped live), the
+// transcript's time boxes and the domain method behind both, a new segment
+// and a speaker edit (refused with the reason), and the load-time validator
+// (reported, for data that got in some other way). The ELAN export puts each
+// speaker on its own tier, where cross-talk is legal, and must drop a time
+// for same-tier overlap.
 
 /**
  * Does this alignment token carry a real stretch of time? Both exporters ask
@@ -84,6 +85,26 @@ export function clampResize(
     return Math.max(floor, 0, Math.min(time, timeEndOf(token) - minWidth));
   }
   return Math.min(ceiling, duration, Math.max(time, timeBeginOf(token) + minWidth));
+}
+
+/**
+ * Where a new segment dragged out from `origin` may reach: from the end of
+ * the last segment before it to the start of the first one after it. A new
+ * segment carries no speaker yet, so it may overlap nothing. Null when
+ * `origin` lies inside a segment, where the drag is drawn as it is (cross-talk
+ * with that segment, which the save checks once a speaker is given).
+ */
+export function freeStretch(tokens, origin) {
+  let floor = 0;
+  let ceiling = Infinity;
+  for (const t of tokens || []) {
+    const begin = timeBeginOf(t);
+    const end = timeEndOf(t);
+    if (begin < origin && origin < end) return null;
+    if (end <= origin) floor = Math.max(floor, end);
+    else ceiling = Math.min(ceiling, begin);
+  }
+  return { floor, ceiling };
 }
 
 /**

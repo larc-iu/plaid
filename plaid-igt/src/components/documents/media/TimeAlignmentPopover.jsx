@@ -41,15 +41,23 @@ export const TimeAlignmentPopover = ({
   const [speaker, setSpeaker] = useState('');
   const [saving, setSaving] = useState(false);
   const textareaRef = useRef(null);
+  // New text typed and not yet saved or cancelled. It outlives the popover:
+  // one closed by a new drag (to fix a selection a save refused, say) opens
+  // again with the text in it.
+  const draftRef = useRef('');
+  const typeText = (value) => {
+    draftRef.current = value;
+    setText(value);
+  };
 
   const { createAlignment, alignBaseline, getAvailableText, getAvailableTextBoundaries, canAlign } =
     useAlignmentEditor(selection, onAlignmentCreated);
 
-  // A fresh popover every time it opens.
+  // A fresh popover every time it opens, with any new text not yet saved.
   useEffect(() => {
     if (open) {
       setMode('new');
-      setText('');
+      setText(draftRef.current);
       setAvailable('');
       setPicked(null);
       setSpeaker(getStickySpeaker());
@@ -73,12 +81,13 @@ export const TimeAlignmentPopover = ({
 
   const handleModeChange = (newMode) => {
     setMode(newMode);
-    setText('');
+    setText(newMode === 'new' ? draftRef.current : '');
     setAvailable(newMode === 'align' ? getAvailableText() : '');
     setPicked(null);
   };
 
   const handleCancel = () => {
+    draftRef.current = '';
     setText('');
     setPicked(null);
     setMode('new');
@@ -121,6 +130,7 @@ export const TimeAlignmentPopover = ({
       if (!ok) return; // the document toasted the reason
       setStickySpeaker(sp);
       notifySuccess(mode === 'align' ? 'Text aligned' : 'Segment created');
+      if (mode !== 'align') draftRef.current = '';
       setText('');
       setPicked(null);
       setMode('new');
@@ -245,7 +255,7 @@ export const TimeAlignmentPopover = ({
                     ref={textareaRef}
                     placeholder="Text of this segment"
                     value={text}
-                    onChange={(e) => setText(e.target.value)}
+                    onChange={(e) => typeText(e.target.value)}
                     rows={3}
                     className="max-h-48"
                     required
