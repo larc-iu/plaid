@@ -122,7 +122,6 @@ export const AssistantComposer = ({
           {choice.canChoose && (
             <AssistantPicker
               assistants={choice.assistants}
-              stranded={choice.stranded}
               value={service.serviceId}
               onChange={choice.choose}
               disabled={!canSend}

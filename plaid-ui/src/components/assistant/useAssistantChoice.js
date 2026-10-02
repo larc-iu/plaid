@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { assistantsAmong, strandedAssistants } from './useAssistantAvailable.js';
+import { assistantsAmong } from './useAssistantAvailable.js';
 import { serviceCache } from './jobs.js';
 
 // Which assistant answers: discovery, the choice a reader may still make, and
@@ -51,7 +51,6 @@ export const useAssistantChoice = ({ client, projectId, app, meta }) => {
   // record is namespaced by the app, the same value the service advertises, so
   // another app's assistant could not find one of ours.
   const assistants = useMemo(() => assistantsAmong(services, app), [services, app]);
-  const stranded = useMemo(() => strandedAssistants(services), [services]);
   const pinned = meta?.serviceId
     ? (assistants.find((s) => s.serviceId === meta.serviceId) ?? null)
     : null;
@@ -62,7 +61,6 @@ export const useAssistantChoice = ({ client, projectId, app, meta }) => {
     discovering,
     refresh,
     assistants,
-    stranded,
     service,
     choose,
     canChoose: !pinned && assistants.length > 1,

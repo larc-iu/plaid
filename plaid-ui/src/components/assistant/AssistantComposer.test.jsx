@@ -17,7 +17,6 @@ const SECOND = { serviceId: 'b', serviceName: 'Assistant two' };
 const choiceOf = (over = {}) => ({
   service: SERVICE,
   assistants: [SERVICE],
-  stranded: [],
   choose: vi.fn(),
   canChoose: false,
   wentOffline: false,

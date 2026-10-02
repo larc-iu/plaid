@@ -95,14 +95,6 @@ describe('useAssistantChoice', () => {
     await unmount();
   });
 
-  it('names the assistants running from before extras.app apart', async () => {
-    const client = fakeClient([svc('old', { extras: { model: 'm', tasks: ['assist'] } })]);
-    const { box, read, unmount } = await mount(client);
-    expect(box.choice.stranded.map((s) => s.serviceId)).toEqual(['old']);
-    expect(read()).toBe('none/fixed/online');
-    await unmount();
-  });
-
   it('shows what it already knew while it re-checks', async () => {
     // Switching tabs used to blank the picker on every visit.
     serviceCache.set('p1', [svc('igt:cached')]);

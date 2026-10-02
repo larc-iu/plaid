@@ -104,7 +104,6 @@ export const AssistantTab = ({
             {choice.canChoose && (
               <AssistantPicker
                 assistants={choice.assistants}
-                stranded={choice.stranded}
                 value={choice.service?.serviceId}
                 onChange={choice.choose}
                 disabled={busy}

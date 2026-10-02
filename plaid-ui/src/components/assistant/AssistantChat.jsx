@@ -810,25 +810,10 @@ export const AssistantChat = ({
           {choice.discovering && !choice.services.length ? (
             <span className="text-muted-foreground">Looking for an assistant…</span>
           ) : !service ? (
-            choice.stranded.length ? (
-              // One IS online. It just predates `extras.app`, so it cannot be
-              // told which app a conversation belongs to. Saying none is online
-              // sent operators to start a second, which collides on the service
-              // id and 409s.
-              <span className="text-muted-foreground">
-                {choice.stranded.length === 1
-                  ? 'An assistant is'
-                  : `${choice.stranded.length} assistants are`}{' '}
-                running from before this version. Restart{' '}
-                {choice.stranded.length === 1 ? 'it' : 'them'} with{' '}
-                <code className="rounded bg-muted px-1">{adapter.command} --model …</code>.
-              </span>
-            ) : (
-              <span className="text-muted-foreground">
-                No assistant is online for this project. An operator can start one with{' '}
-                <code className="rounded bg-muted px-1">{adapter.command} --model …</code>.
-              </span>
-            )
+            <span className="text-muted-foreground">
+              No assistant is online for this project. An operator can start one with{' '}
+              <code className="rounded bg-muted px-1">{adapter.command} --model …</code>.
+            </span>
           ) : (
             renderIdentity?.(chrome)
           )}
