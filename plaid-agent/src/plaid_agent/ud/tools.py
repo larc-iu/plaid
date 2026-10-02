@@ -277,9 +277,10 @@ REPLACES = {
     'del_relation': lambda ws, op: [op.get('relation_id')],
     'set_deprel': lambda ws, op: [op.get('relation_id')],
     'set_words': _words_work,
-    # The relations a cut or a join leaves spanning two sentences go with it.
+    # The relations a cut leaves spanning two sentences go with it.
     'split_sentence': lambda ws, op: list(op.get('relation_ids') or []),
-    'merge_sentences': lambda ws, op: list(op.get('relation_ids') or []),
+    # A join only widens a sentence, so it takes no relation.
+    'merge_sentences': _NONE,
     'confirm': _NONE, 'add_comment': _NONE,
     # Resolved when approved, from the documents as they are then, and a
     # restore puts back what was there: none of them names what it replaces

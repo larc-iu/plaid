@@ -42,7 +42,7 @@ from plaid_agent.igt import vocab as vocab_module
 from plaid_agent.igt.vocab import (
     build_sense_tree, build_item_numbers, plan_delete_refs,
     plan_merge_refs, plan_sense_drop, next_sense_order, descendants_of, references_to,
-    morph_type_of,
+    morph_type_of, example_refs, with_parent_set,
     validate_vocab_refs, homograph_group, plan_homograph_order, homograph_of,
     arrange_as_tree, normalize_vocab_fields)
 
@@ -112,6 +112,13 @@ def _case(seed: int) -> dict:
             meta['gloss'] = r.choice(FORMS)
         if r.random() < 0.3:
             meta['morphType'] = r.choice(['stem', 'suffix', '', None, 3])
+        if r.random() < 0.3:
+            # Promoted examples: references, a FLEx import's text entries,
+            # and the junk exampleRefs leaves out.
+            meta['examples'] = r.choice([
+                [{'document': 'd1', 'token': 't1'}, {'text': 'a', 'translation': 'b'}],
+                [{'document': 'd1'}, {'document': ' ', 'token': 't'}, 'x', None],
+                'notalist', []])
         items.append({'id': i, 'form': r.choice(FORMS), 'metadata': meta})
     move = r.choice(ids)
     return {
@@ -163,6 +170,8 @@ def _python_side(c: dict) -> dict:
         'nextSenseOrder': next_sense_order(t, c['orderParent']),
         'descendantsOf': [x['id'] for x in descendants_of(t, c['orderParent'])],
         'morphTypeOf': {it['id']: morph_type_of(t, it['id']) for it in c['items']},
+        'exampleRefs': {it['id']: example_refs(it) for it in c['items']},
+        'withParentSet': {it['id']: with_parent_set(t, it, c['orderParent']) for it in c['items']},
         'referencesTo': [[x['item']['id'], x['field']['name'] if x['field'] else None]
                          for x in references_to(c['items'], c['fields'], c['orderParent'])],
         'planDeleteRefs': plan_delete_refs(c['items'], c['fields'], c['deleted']),
@@ -304,7 +313,7 @@ def test_the_two_runners_cover_the_same_functions(compared):
     'itemNumbers', 'homographOf', 'homographGroup', 'planHomographOrder',
     'planSenseDrop', 'nextSenseOrder', 'descendantsOf', 'referencesTo',
     'planDeleteRefs', 'planMergeRefs', 'validateVocabRefs', 'validateVocabRefsFindings',
-    'arrangeAsTree',
+    'arrangeAsTree', 'morphTypeOf', 'exampleRefs', 'withParentSet',
     'normalizeVocabFields',
 ])
 def test_the_port_matches_the_app(compared, key):

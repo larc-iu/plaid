@@ -336,8 +336,6 @@ def t_read_guideline(ws, title: str) -> str:
 # once a person has approved it, and who drafted it is a history question the
 # audit log answers (the operation group's message begins "Assistant:").
 
-WRITE_NAMES = ('add_guideline', 'revise_guideline', 'rewrite_guideline')
-
 # Long enough for a real convention, short enough that the model writes a
 # guideline rather than an essay. The server's own ceiling is far higher.
 DRAFT_BODY_CHARS = 4000
