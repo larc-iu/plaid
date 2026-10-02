@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { arrowStep } from '@ui/lib/bidi.js';
+import { isImeKey } from '@ui/lib/chords.js';
 import {
   curvePath,
   layoutSentence,
@@ -924,7 +925,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       unfocus();
       return;
     }
-    if (editor || menu || e.isComposing) return;
+    if (editor || menu || isImeKey(e)) return;
     // A text box inside the block owns its keys. The bare letters below are
     // `outsideText` in the table, and this is where that is kept.
     if (e.target.closest?.('input, textarea, [contenteditable="true"]')) return;

@@ -1,6 +1,7 @@
 import * as React from 'react';
 import * as PopoverPrimitive from '@radix-ui/react-popover';
 import { cn } from '../../lib/utils.js';
+import { isImeKey } from '../../lib/chords.js';
 import { normalizeOptions, flattenOptions, defaultFilter } from './comboboxOptions.js';
 
 // A text input with a list of suggestions under it, and no opinion about what
@@ -118,6 +119,9 @@ export const Combobox = React.forwardRef(function Combobox(
   };
 
   const handleKeyDown = (event) => {
+    // An input method's keys (the Enter that picks a candidate) are its own,
+    // for this list and for the call site alike.
+    if (isImeKey(event)) return;
     onKeyDown?.(event, {
       open: isOpen,
       activeOption,

@@ -11,6 +11,7 @@ import {
 import { NO_OPTIONS, tabTooSoon } from './cellInput.js';
 import { useEditorSession, controlledField } from './editorSession.js';
 import { caretAtArrowEdge } from '@ui/lib/bidi.js';
+import { isImeKey } from '@ui/lib/chords.js';
 import { textIncludes } from '@ui/domain/collation.js';
 import { useConflictCell } from '@ui/hooks/useConflictCell.js';
 import { ConflictNote } from '@ui/components/shared/conflict-note.jsx';
@@ -248,6 +249,8 @@ export const EditableCell = React.memo(
     };
 
     const handleKeyDown = (e) => {
+      // An input method's keys (the Enter that picks a candidate) are its own.
+      if (isImeKey(e)) return;
       // A character typed before the deferred select has run (a busy page delays
       // it) still lands on a selected cell, so it replaces the value as it
       // would a moment later, rather than going in wherever a click left the

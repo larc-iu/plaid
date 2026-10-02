@@ -152,6 +152,14 @@ export function chordsOf(e) {
 /** Is this keydown only a modifier on its way down, with the chord still to come? */
 export const isModifierKeydown = (e) => BARE_MODIFIERS.has(e?.key);
 
+/**
+ * Whether a keydown belongs to an input method (IME) composing text: the
+ * Enter that picks a candidate, say, which is not the Enter that commits a
+ * value. A React event carries the flag on its native event, and Chrome also
+ * reports such keys as keyCode 229.
+ */
+export const isImeKey = (e) => !!(e?.nativeEvent ?? e)?.isComposing || e?.keyCode === 229;
+
 /** Is this keydown the chord? `chord` must already be canonical. */
 export const matchesChord = (chord, e) => chordsOf(e).includes(chord);
 

@@ -127,6 +127,26 @@ describe('Combobox keyboard state', () => {
     await v.unmount();
   });
 
+  // R2-DEBT-APPS-8: the Enter that picks an IME candidate committed the
+  // half-composed value in every combobox cell.
+  it('leaves an input method its keys, and does not hand them to the call site', async () => {
+    const submitted = [];
+    const seen = [];
+    const v = await mount({
+      autoHighlight: true,
+      onKeyDown: (event) => seen.push(event.key),
+      onSubmit: (value) => submitted.push(value),
+    });
+    await v.focus();
+    await v.press('Enter', { isComposing: true });
+    await v.press('Enter', { keyCode: 229 });
+    expect(submitted).toEqual([]);
+    expect(seen).toEqual([]);
+    await v.press('Enter');
+    expect(submitted).toEqual(['NOUN']);
+    await v.unmount();
+  });
+
   it('leaves a key alone once the call site has taken it', async () => {
     const submitted = [];
     const v = await mount({

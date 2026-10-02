@@ -11,6 +11,7 @@ import {
 import { readFieldLang, readVocabFields } from '@/domain/igtConfig';
 import { notifyError, notifyInfo } from '@/utils/feedback';
 import { arrowStep, caretAtArrowEdge } from '@ui/lib/bidi.js';
+import { isImeKey } from '@ui/lib/chords.js';
 import { keys } from '@/lib/keymap.js';
 import { namesPendingId, settleKey } from '@ui/domain/pendingIds.js';
 import { cellByKey, morphFormOf, sameCell } from './shared.js';
@@ -148,9 +149,8 @@ export const cells = {
 
   // While an IME composition is open, Enter picks a candidate, Escape cancels
   // it and Tab may convert: none of them is the editor's until it closes.
-  // Chrome reports such keys as keyCode 229 as well as isComposing.
   _composing(e) {
-    return !!e.isComposing || e.keyCode === 229;
+    return isImeKey(e);
   },
 
   _basicKeydown(e) {
