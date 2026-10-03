@@ -82,8 +82,8 @@
                             "status of any user. All other users may only modify their own display "
                             "name or password. A user's ID is their email address and is fixed for "
                             "the life of the account: it is what they log in with, so no endpoint "
-                            "changes it. A password change needs a signed-in session: one signed "
-                            "with a named API token is refused (403).")
+                            "changes it. A password or admin status change needs a signed-in session: "
+                            "one signed with a named API token is refused (403).")
               :parameters {:body [:map
                                   [:password {:optional true} string?]
                                   [:display-name {:optional true} string?]
@@ -96,7 +96,7 @@
                                is-self? (= id current-user-id)
                                is-admin? (user/admin? current-user)]
                            (cond
-                             (and (some? password) (api-token/named-token? request))
+                             (and (or (some? password) (some? is-admin)) (api-token/named-token? request))
                              api-token/session-only-refusal
 
                              is-admin?
@@ -133,8 +133,9 @@
                              "memberships and vocab maintainerships, and revokes their API tokens. The "
                              "email address stays reserved and the user remains visible in listings with a "
                              "<body>deactivated-at</body> timestamp. Reversible via the activate endpoint, "
-                             "which restores login only (not memberships or tokens).")
-               :middleware [pra/wrap-admin-required]
+                             "which restores login only (not memberships or tokens). Needs a signed-in session: a "
+                             "request signed with a named API token is refused (403).")
+               :middleware [pra/wrap-admin-required api-token/wrap-session-required]
                :handler (fn [{{{:keys [id]} :path} :parameters db :db user-id :user/id}]
                           (let [{:keys [success code error]} (user/deactivate db id user-id)]
                             (if success
@@ -219,8 +220,9 @@
      {:post {:summary (str "Reactivate a deactivated user, restoring their ability to log in. Project "
                            "memberships, vocab maintainerships, and API tokens removed at deactivation "
                            "are NOT restored — re-grant them deliberately. 400 if the user is not "
-                           "deactivated.")
-             :middleware [pra/wrap-admin-required]
+                           "deactivated. Needs a signed-in session: a request signed with a named API token is "
+                           "refused (403).")
+             :middleware [pra/wrap-admin-required api-token/wrap-session-required]
              :handler (fn [{{{:keys [id]} :path} :parameters db :db user-id :user/id}]
                         (let [{:keys [success code error]} (user/reactivate db id user-id)]
                           (if success

@@ -313,3 +313,50 @@
       (create-and-login! "cred-other@example.com" "original-password")
       (assert-ok (api-call as-tok {:method :patch :path "/api/v1/users/cred-other@example.com"
                                    :body {:display-name "Renamed by admin script"}})))))
+
+(deftest an-admins-named-token-cannot-change-who-is-admin-or-who-may-log-in
+  ;; A leaked admin token that may not mint an admin invite must not make an
+  ;; admin some other way, nor bring a deactivated login back.
+  (let [tok (-> (mint! admin-request "admin@example.com" "admin-svc") :body :token)
+        as-tok (token-req-fn tok)
+        target "tok-target@example.com"
+        _ (create-and-login! target "original-password")
+        admin? (fn [] (-> (api-call admin-request {:method :get :path (str "/api/v1/users/" target)})
+                          :body :user/is-admin))
+        deactivated? (fn [] (some? (-> (api-call admin-request {:method :get :path (str "/api/v1/users/" target)})
+                                       :body :user/deactivated-at)))]
+    (testing "setting is-admin is refused, alone or beside a name change"
+      (doseq [body [{:is-admin true} {:is-admin true :display-name "Someone"} {:is-admin false}]]
+        (let [r (api-call as-tok {:method :patch :path (str "/api/v1/users/" target) :body body})]
+          (assert-forbidden r)
+          (is (re-find session-only (-> r :body :error)))))
+      (is (not (admin?))))
+    (testing "and inside a batch"
+      (let [r (rest-handler (-> (mock/request :post "/api/v1/batch")
+                                (mock/header "accept" "application/edn")
+                                (mock/json-body [{:path (str "/api/v1/users/" target) :method "patch"
+                                                  :body {:is-admin true}}])
+                                (mock/header "authorization" (str "Bearer " tok))))]
+        (is (not= 200 (:status r))))
+      (is (not (admin?))))
+    (testing "deactivating is refused"
+      (let [r (api-call as-tok {:method :delete :path (str "/api/v1/users/" target)})]
+        (assert-forbidden r)
+        (is (re-find session-only (-> r :body :error))))
+      (is (not (deactivated?))))
+    (testing "reactivating is refused"
+      (assert-no-content (api-call admin-request {:method :delete :path (str "/api/v1/users/" target)}))
+      (let [r (api-call as-tok {:method :post :path (str "/api/v1/users/" target "/activate")})]
+        (assert-forbidden r)
+        (is (re-find session-only (-> r :body :error))))
+      (let [r (rest-handler (-> (mock/request :post "/api/v1/batch")
+                                (mock/header "accept" "application/edn")
+                                (mock/json-body [{:path (str "/api/v1/users/" target "/activate") :method "post"}])
+                                (mock/header "authorization" (str "Bearer " tok))))]
+        (is (not= 200 (:status r))))
+      (is (deactivated?)))
+    (testing "the session may still do all of it"
+      (assert-ok (api-call admin-request {:method :post :path (str "/api/v1/users/" target "/activate")}))
+      (assert-ok (api-call admin-request {:method :patch :path (str "/api/v1/users/" target)
+                                          :body {:is-admin true}}))
+      (is (admin?)))))

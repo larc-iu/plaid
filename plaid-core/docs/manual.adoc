@@ -82,8 +82,8 @@ Named API tokens are not affected: revoke one with `api_tokens.revoke` (`apiToke
 
 A named API token acts as its owner in every request but a few, since it is handed to services and scripts and never expires.
 It cannot change a password (its owner's, or for an admin anyone's), mint or revoke API tokens, or mint an invite of any kind (`POST /invites`: a link to a project, a signup link or a password reset link).
-An admin's named token also cannot create an account (`POST /users`, which sets a password).
-An invite or an account made with the token would leave a login that outlives revoking it.
+An admin's named token also cannot create an account (`POST /users`, which sets a password), make or unmake an admin (`is-admin` in `PATCH /users/:id`), or deactivate or reactivate an account (`DELETE /users/:id`, `POST /users/:id/activate`).
+An invite, an account, an admin or a reactivated login made with the token would outlive revoking it.
 Each of these answers 403 "This needs a signed-in session, not an API token." and changes nothing.
 Sign-in tokens are not limited this way.
 
