@@ -438,7 +438,7 @@ def test_a_reshape_will_not_join_a_plan_that_annotates_the_token_it_deletes(ws):
     then refused by validate_ops. Both orders are the certain-delete funnel's
     now, and UD supplies the wording."""
     run(ws, 'set_field', document='Viaje', refs=['s1.w2'], field='upos', value='ADP')
-    out = run(ws, 'set_words', document='Viaje', ref='s1.w2', forms=['a', 'el'])
+    out = run(ws, 'set_words', document='Viaje', ref='s1.w2', forms=['a', 'e', 'l'])
     assert 'writes to one of its words' in out, out
     assert not any(op.get('kind') == 'set_words' for op in ws.ops)
 
@@ -447,7 +447,7 @@ def test_the_same_token_is_not_reshaped_twice(ws):
     """Two reshapes delete its words twice and create both sets, so the token
     ends up holding the union or the batch fails outright."""
     run(ws, 'set_words', document='Viaje', ref='s1.w2-3', forms=['al'])
-    out = run(ws, 'set_words', document='Viaje', ref='s1.w2', forms=['a', 'el'])
+    out = run(ws, 'set_words', document='Viaje', ref='s1.w2', forms=['a', 'e', 'l'])
     assert 'reshapes' in out.lower(), out
 
 

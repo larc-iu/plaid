@@ -265,9 +265,11 @@ def _words_by_id(ws: 'Workspace', ids) -> List[Any]:
 
 
 def _words_work(ws: 'Workspace', op: Dict[str, Any]) -> List[str]:
-    """A token's words, when it is cut again: their values and their heads."""
+    """A token's words, when it is cut again: their values, and every arc
+    hanging off them (``relation_ids``), the ones they head as well as their
+    own heads, since the delete of their lemma spans takes both."""
     return [x for w in _words_by_id(ws, op.get('existing_word_ids'))
-            for x in [sp.id for _f, sp in w.all_spans()] + [w.relation_id]]
+            for x in [sp.id for _f, sp in w.all_spans()] + [w.relation_id]] + list(op.get('relation_ids') or [])
 
 
 _NONE = None
@@ -629,11 +631,62 @@ def _head_id(head) -> int:
                         '(1, 2, 3 …), or 0 for the root. It is a plain number, not a reference.') from None
 
 
+def _other_roots(ws: Workspace, sentence: Sentence, word: Word) -> List[Word]:
+    """The words of ``sentence`` other than ``word`` that are its root once
+    the plan as it stands is applied: a stored root the plan gives no head
+    and does not unhead, and a word the plan makes the root."""
+    roots = {w.id for w in sentence.words if w.relation_id and w.head == 0}
+    for o in ws.ops:
+        if o.get('kind') == 'set_head':
+            if o.get('head_id') == o.get('word_id'):
+                roots.add(o['word_id'])
+            else:
+                roots.discard(o.get('word_id'))
+        elif o.get('kind') == 'del_relation':
+            roots.discard(o.get('word_id'))
+    return [w for w in sentence.words if w.id in roots and w.id != word.id]
+
+
 def t_set_head(ws: Workspace, document: str = None, ref: str = None, head=None,
-               deprel: str = None) -> str:
+               deprel: str = None, old_root_head=None, old_root_deprel: str = None) -> str:
     doc = ws.doc(document)
     word = _words(ws, doc, [ref])[0]
     sentence = ws.sentence_of(doc, word)
+    if head is not None and _head_id(head) == 0:
+        # A sentence has one root. A second is never staged: the old root
+        # takes the head the model names for it, in the same plan and after
+        # the new root (so the tree's cycle rule sees the new root first), or
+        # the call is refused.
+        others = _other_roots(ws, sentence, word)
+        if len(others) > 1:
+            raise ToolError(f's{sentence.index} already has {len(others)} roots ('
+                            + ', '.join(word_ref(sentence, w) for w in others)
+                            + '). Give each of them a head first (set_head).')
+        if others and old_root_head is None:
+            old = others[0]
+            raise ToolError(f'{word_ref(sentence, old)} ("{old.form}") is the root of s{sentence.index}, and a '
+                            f'sentence has one. To make {word_ref(sentence, word)} the root instead, say where '
+                            f'{word_ref(sentence, old)} goes: old_root_head (its new head\'s id, often '
+                            f'{word.index}) and old_root_deprel.')
+        if others:
+            old = others[0]
+            if not (old_root_deprel or '').strip():
+                raise ToolError('Give old_root_deprel: the relation the old root takes to its new head.')
+            if _head_id(old_root_head) == 0:
+                raise ToolError('old_root_head is the old root\'s new head word, not 0: a sentence has one root.')
+            with ws.staging():
+                note = _stage_head(ws, doc, word, sentence, head, deprel)
+                old_note = _stage_head(ws, doc, old, sentence, old_root_head, old_root_deprel)
+            return f'{note} {old_note}'
+    elif old_root_head is not None or old_root_deprel:
+        raise ToolError('old_root_head and old_root_deprel go with head 0, when another word is the root.')
+    return _stage_head(ws, doc, word, sentence, head, deprel)
+
+
+def _stage_head(ws: Workspace, doc: UdDoc, word: Word, sentence: Sentence, head, deprel: Optional[str]) -> str:
+    """Stage ``word``'s head ``head`` (a CoNLL-U id, 0 for the root) with
+    ``deprel``, refusing what a tree cannot hold."""
+    ref = word_ref(sentence, word)
     if head is None:
         raise ToolError('Give head: the CoNLL-U id of the head word in the same sentence, or 0 for the root.')
     head = _head_id(head)

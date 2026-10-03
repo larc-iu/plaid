@@ -204,10 +204,11 @@ def test_a_head_that_would_close_a_cycle_is_refused():
     # w4 hangs below its head, so that head cannot hang below w4
     out = run(ws, 'set_head', document='Viaje', ref=f's1.w{head.index}', head=4, deprel='obl')
     assert 'cycle' in out and not ws.ops
-    # once w4 hangs elsewhere, it can
-    run(ws, 'set_head', document='Viaje', ref='s1.w4', head=0)
-    assert run(ws, 'set_head', document='Viaje', ref=f's1.w{head.index}', head=4,
-               deprel='obl').startswith('Planned')
+    # once w4 is the root, its old head can hang below it: one call, which
+    # names where the old root goes, since a sentence has one root
+    assert head.head == 0
+    out = run(ws, 'set_head', document='Viaje', ref='s1.w4', head=0, old_root_head=4, old_root_deprel='obl')
+    assert out.startswith('Planned') and [op['kind'] for op in ws.ops] == ['set_head', 'set_head']
 
 
 def test_an_open_list_takes_anything(ws):

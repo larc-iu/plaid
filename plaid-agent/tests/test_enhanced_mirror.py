@@ -39,7 +39,7 @@ import pytest
 from plaid_agent.ud.plan import execute_plan
 from plaid_agent.ud.project import deps_of, load_project
 from plaid_agent.ud.sentences import t_merge_sentences, t_split_sentence
-from plaid_agent.ud.tools import Workspace, t_del_relation, t_set_head
+from plaid_agent.ud.tools import Workspace, _stage_head, _words, t_del_relation
 from ud_fixtures import (DEPREL, ENHANCED, FEATS, FORM, LEMMA, PID, SENT_LAYER, TEXT_ID,
                          TEXT_LAYER, TOK_LAYER, UPOS, WORD_LAYER, XPOS, FakeClient, project_raw)
 
@@ -247,7 +247,13 @@ def _python_side(raw: dict) -> dict:
         if a['kind'] == 'del':
             t_del_relation(ws, document=NAME, refs=[a['ref']])
         else:
-            t_set_head(ws, document=NAME, ref=a['ref'], head=a['head'], deprel=a['deprel'])
+            # The write itself, as the editor's createRelation makes it for the
+            # same gesture. A second root, which the tool refuses unless the old
+            # root's new place is named (test_ud_tools), is still a head write
+            # whose sweep the two must agree on.
+            d = ws.doc(NAME)
+            w = _words(ws, d, [a['ref']])[0]
+            _stage_head(ws, d, w, ws.sentence_of(d, w), a['head'], a['deprel'])
         execute_plan(client, ws.ops, source='s', label='l', project=ws.project)
         heads[a['key']] = _deletes(client)
     deps, has_enhanced, suppressor_of = [], [], {}

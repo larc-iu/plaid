@@ -139,12 +139,14 @@ PLAN: set or remove ONE Feature=Value on one or more words, keeping their other 
 
 ### set_head
 
-PLAN: give one word its head and its relation to it. head is the CoNLL-U id of another word in the SAME sentence, or 0 to make this word the sentence root (deprel "root"). A word has one head, so this replaces whatever head it had.
+PLAN: give one word its head and its relation to it. head is the CoNLL-U id of another word in the SAME sentence, or 0 to make this word the sentence root (deprel "root"). A word has one head, so this replaces whatever head it had. A sentence has one root: making a word the root when another word is the root needs old_root_head and old_root_deprel, where the old root goes.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `ref` (string, required): The dependent word, e.g. "s3.w2".
 - `head` (integer, required): The head word's CoNLL-U id, or 0 for the root.
 - `deprel` (string): The relation label, e.g. nsubj, obj, det.
+- `old_root_head` (integer): With head 0 only: the CoNLL-U id of the current root's new head.
+- `old_root_deprel` (string): With head 0 only: the current root's relation to its new head.
 
 ### del_relation
 
@@ -194,7 +196,7 @@ PLAN: have the project's parser re-parse whole documents. This REWRITES each doc
 
 ### set_words
 
-PLAN: say which WORDS a token holds. Two or more makes it a multi-word token (Spanish "al" holding "a" and "el"); one collapses it back to a plain token. This REPLACES the token's words, so it discards their lemma, UPOS, XPOS, features and heads, and seeds each new word's lemma from its form. Use it to fix segmentation, never to change one value.
+PLAN: say which WORDS a token holds, and how each is spelled. Two or more makes it a multi-word token (Spanish "al" holding "a" and "el"); one collapses it back to a plain token. As many forms as the token has words RESPELLS them: each keeps its lemma, UPOS, XPOS, features and heads, and only its form changes (this is how to fix a word's spelling). Another number REPLACES the token's words, so it discards their lemma, UPOS, XPOS, features and heads, and seeds each new word's lemma from its form. Never use it to change a lemma, a tag or a feature.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `ref` (string, required): The token: "s3.w2", or "s3.w2-3" if it is already a multi-word token.

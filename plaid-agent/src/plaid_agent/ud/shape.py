@@ -6,11 +6,16 @@ it is a multi-word token: Spanish "al" holds "a" and "el". Both words cover
 the whole token (the full-width rule), and what tells them apart is their
 order and their Form span.
 
-**It throws the token's annotation away, and says so.** The words are deleted
-and remade, which cascades their lemma, UPOS, XPOS and features, and the
-dependencies hanging off their lemma spans. That is right: a resegmentation
-invalidates the analysis of what was segmented. It is also exactly the kind of
-thing a user must see before approving, so the plan says how much goes.
+**As many forms as the token has words respells them in place**: each word
+keeps its token and everything on it, and only its Form span is written. A
+set_words that changes nothing is refused.
+
+**Another number throws the token's annotation away, and says so.** The words
+are deleted and remade, which cascades their lemma, UPOS, XPOS and features,
+and the dependencies hanging off their lemma spans. That is right: a
+resegmentation invalidates the analysis of what was segmented. It is also
+exactly the kind of thing a user must see before approving, so the plan says
+how much goes, on the card's row as well as in the reply.
 
 It mirrors ``ConlluDocument.setWordMorphemes``, which is what the editor does
 for the same gesture. Divergence here would mean two ways of building a
@@ -20,7 +25,7 @@ multi-word token that a later read cannot tell apart.
 from typing import Any, Dict, List
 
 
-from .project import LEMMA_FROM_FORM, Token, UdDoc, Word, resolve
+from .project import LEMMA_FROM_FORM, Token, UdDoc, Word, resolve, word_ref
 from .tools import ToolError, Workspace
 
 
@@ -45,6 +50,11 @@ def t_set_words(ws: Workspace, document: str = None, ref: str = None, forms=None
     if not clean:
         raise ToolError('Give forms: the words this token holds, in order, as a list of strings.')
     sentence = next(s for s in doc.sentences if any(t is token for t in s.tokens))
+    if clean == [w.form for w in token.words]:
+        raise ToolError(f'Nothing to change: "{token.surface}" in s{sentence.index} already holds '
+                        + ' + '.join(f'"{f}"' for f in clean) + '.')
+    if len(clean) == len(token.words):
+        return _respell(ws, doc, sentence, token, clean)
 
     annotated = sum(1 for w in token.words for f in ('lemma', 'upos', 'xpos', 'features')
                     if w.value(f))
@@ -56,11 +66,19 @@ def t_set_words(ws: Workspace, document: str = None, ref: str = None, forms=None
     arcs = [w.relation_id for w in sentence.words
             if w.relation_id and (w.index in indexes or w.head in indexes)]
     heads = len(arcs)
+    # The enhanced graph's extra edges hang off the same lemma spans, and go
+    # the same way.
+    extras = sum(1 for w in sentence.words for head, _rid in w.extra_edges
+                 if w.index in indexes or head in indexes)
     lost = []
     if annotated:
         lost.append(f'{annotated} annotation value(s)')
     if heads:
         lost.append(f'{heads} dependenc' + ('y' if heads == 1 else 'ies'))
+    if extras:
+        lost.append(f'{extras} enhanced dependenc' + ('y' if extras == 1 else 'ies'))
+    becomes = (f'{token.surface!r} becomes ' + ' + '.join(repr(f) for f in clean)
+               if len(clean) > 1 else f'{token.surface!r} becomes one word {clean[0]!r}')
 
     ws.add_op({
         'kind': 'set_words', 'token_id': token.id, 'text_id': doc.text_id,
@@ -72,8 +90,9 @@ def t_set_words(ws: Workspace, document: str = None, ref: str = None, forms=None
         'word_layer_id': ws.project.word_layer_id,
         'form_layer_id': ws.project.layer('form'), 'lemma_layer_id': ws.project.layer('lemma'),
         'document_id': doc.id,
-        'label': (f'{token.surface!r} becomes ' + ' + '.join(repr(f) for f in clean)
-                  if len(clean) > 1 else f'{token.surface!r} becomes one word {clean[0]!r}'),
+        # What goes is on the row the user approves, not only in the reply
+        # the model may or may not pass on.
+        'label': becomes + (f' (discards {" and ".join(lost)})' if lost else ''),
         'ref': f's{sentence.index}.{token.ref_range}'})
 
     what = ('one word' if len(clean) == 1
@@ -83,6 +102,32 @@ def t_set_words(ws: Workspace, document: str = None, ref: str = None, forms=None
         out += (' This replaces the token\'s words, so it discards ' + ' and '.join(lost)
                 + ' on them. Their lemmas are seeded from the new forms.')
     return out
+
+
+def _respell(ws: Workspace, doc: UdDoc, sentence, token: Token, forms: List[str]) -> str:
+    """As many forms as the token has words respells them in place, as the
+    editor's ``_respellWords`` does: each word keeps its token and everything
+    on it, its lemma, tags, features and arcs, and only its Form is written.
+    A word whose form is the token's own text, alone in its token, carries no
+    Form span."""
+    is_mwt = len(forms) > 1
+    layer = ws.project.layer('form')
+    staged = []
+    for w, form in zip(token.words, forms):
+        want = form if (is_mwt or form != token.surface) else ''
+        sp = w.fields.get('form')
+        have = sp.value if sp and sp.value else ''
+        if have == want:
+            continue
+        ref = word_ref(sentence, w)
+        staged.append({'kind': 'set_span', 'layer_id': layer, 'token_id': w.id,
+                       'span_id': sp.id if sp else None, 'value': want, 'field': 'form',
+                       'document_id': doc.id, 'ref': ref,
+                       'label': f'form "{w.form}" → "{form}"'})
+    ws.add_ops(staged)
+    return (f'Planned respelling "{token.surface}" in s{sentence.index} as '
+            + ' + '.join(f'"{f}"' for f in forms)
+            + '. Its words keep their annotation and dependencies: only their forms change.')
 
 
 def apply_set_words(op: Dict[str, Any], b, stamp) -> List[str]:
