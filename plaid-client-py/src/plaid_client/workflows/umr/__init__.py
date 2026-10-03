@@ -3,7 +3,7 @@ Uniform Meaning Representation: one reading of the storage model.
 
 A UMR graph is stored as annotation over the shared substrate: one token per
 contiguous anchor piece, one concept span per graph node carrying
-``metadata.umr = {var, attrs, root?, sentence?, constant?}``, one relation per
+``metadata.umr = {var, attrs, root?, sentence?, words?, constant?}``, one relation per
 sentence-level edge and one per document-level triple. Reading that back is a
 set of rules with no obvious home (which layer is which, what an unaligned node
 looks like, where a document-level triple is written, how a variable is minted,
@@ -39,7 +39,8 @@ from .graph import (COREF_RELATIONS, CYCLE_ROLES, DOC_CONSTANTS, Edge, GROUPS, M
                     Morpheme, Node, Piece, Sentence, Triple, UmrDocument, Word,
                     alignment_of, cycle_edges, file_numbers, group_of, next_order, penman_nodes, penman_of,
                     place_attributes, read_document, reachable_from_root, roots_of,
-                    sentence_penman, triple_sentence_number, with_attribute)
+                    sentence_penman, triple_sentence_number, with_attribute,
+                    words_under)
 from .flat import join_flat_graph
 from .inventory import DOC_RELATIONS, unknown_doc_relation_problem, unknown_relation_problem
 from .layers import (GlossLayer, UMR_NAMESPACE, UmrLayers, gloss_values, project_language,
@@ -63,7 +64,7 @@ __all__ = [
     # graph
     'Piece', 'Word', 'Morpheme', 'Edge', 'Triple', 'Node', 'Sentence', 'UmrDocument',
     'read_document', 'roots_of', 'alignment_of', 'group_of', 'file_numbers',
-    'triple_sentence_number', 'cycle_edges',
+    'triple_sentence_number', 'cycle_edges', 'words_under',
     'DOC_CONSTANTS', 'GROUPS', 'COREF_RELATIONS', 'CYCLE_ROLES', 'MISSING',
     'penman_nodes', 'penman_of', 'sentence_penman', 'reachable_from_root',
     'next_order', 'place_attributes', 'with_attribute',

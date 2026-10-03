@@ -54,6 +54,7 @@ import {
   isRecordToken,
   numberedByFile,
   sentenceNumberReader,
+  wordsUnder,
 } from './sentenceGraph.js';
 import { countOf } from '../../../plaid-ui/src/lib/plural.js';
 
@@ -205,11 +206,10 @@ export function planWordSplits(graph, namespace) {
     if (!cuts.length) return;
     // The words the node stands on once cut, which it records from then on.
     const at = new Map(cuts.map((c) => [c.pieceId, c]));
-    const words = node.pieces
-      .map((p) => at.get(p.id) || p)
-      .flatMap((p) => sentence.words.filter((w) => w.begin < p.end && p.begin < w.end))
-      .map((w) => w.id)
-      .filter((id, i, all) => all.indexOf(id) === i);
+    const words = wordsUnder(
+      node.pieces.map((p) => at.get(p.id) || p),
+      sentence.words,
+    );
     cuts.forEach((c) => out.push({ nodeId: node.id, ...c, words }));
   });
   return out;

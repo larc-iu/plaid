@@ -32,7 +32,7 @@ from plaid_client.service import (batch_body_budget, locked_for_writes, partly_w
 from plaid_client.service_schema import Param
 
 from ..requester import Requester, requester_of
-from .graph import Sentence, UmrDocument, read_document
+from .graph import Sentence, UmrDocument, read_document, words_under
 from .layers import UMR_NAMESPACE, UmrLayers, gloss_values, resolve_layers
 
 
@@ -205,6 +205,14 @@ def _sentence_writes(layers: UmrLayers, plan: dict, frag: dict) -> dict:
     turned into batch refs when the sentence is queued."""
     nodes = []
     for node in plan['nodes']:
+        meta = node['meta']
+        # An aligned node records its words, as the app's writers do
+        # (``words_under``). One aligned to none records its sentence instead.
+        if 'sentence' not in meta:
+            words = words_under([plan['pieces'][i] for i in node['piece_indexes']],
+                                plan['sentence'].words)
+            if words:
+                meta = {**meta, 'words': words}
         prediction = {'value': node['concept']}
         attrs = [{'rel': a['rel'], 'value': a['value']}
                  for a in node['meta'].get('attrs') or []]
@@ -213,7 +221,7 @@ def _sentence_writes(layers: UmrLayers, plan: dict, frag: dict) -> dict:
         nodes.append(({
             'span_layer_id': layers.concept_layer['id'],
             'value': node['concept'],
-            'metadata': {**_predicted(frag, prediction), UMR_NAMESPACE: node['meta']},
+            'metadata': {**_predicted(frag, prediction), UMR_NAMESPACE: meta},
         }, list(node['piece_indexes'])))
     edges = [({
         'relation_layer_id': layers.relation_layer['id'],

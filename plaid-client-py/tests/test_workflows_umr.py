@@ -417,12 +417,32 @@ def test_a_drafted_graph_is_written_as_anchors_then_nodes_then_edges():
     assert [s['tokens'] for s in spans] == [[{'$ref': 1, 'index': 0}], [{'$ref': 1, 'index': 1}]]
     # The provenance stamp is FLAT and the app's own half sits beside it.
     # provDetail records what was drafted, per item.
+    # An aligned node records the words it stands on (words_under).
     assert spans[0]['metadata'] == {'prov': 'inferred', 'provDetail': {'value': 'dog'},
-                                    'umr': {'var': 's1d'}}
+                                    'umr': {'var': 's1d', 'words': ['w2']}}
+    assert spans[1]['metadata']['umr'] == {'var': 's1b', 'words': ['w3']}
     [[edge]] = client.payloads('relations.bulk_create')
     assert (edge['source'], edge['target'], edge['value']) == (
         {'$ref': 2, 'index': 1}, {'$ref': 2, 'index': 0}, ':ARG0')
     assert edge['metadata']['provDetail'] == {'value': ':ARG0'}
+
+
+def test_a_drafted_node_aligned_to_no_word_records_its_sentence_and_no_words():
+    from plaid_client.testing import FakeClient
+    raw = _without_triples(_document())
+    _machine_drafted(raw)
+    doc = _read(raw)
+    plans = [{'sentence': doc.sentences[0], 'pieces': [(0, 17), (0, 7)],
+              'nodes': [{'concept': 'thing', 'meta': {'var': 's1t', 'sentence': 's1'},
+                         'piece_indexes': [0]},
+                        {'concept': 'the-dog', 'meta': {'var': 's1d'}, 'piece_indexes': [1]}],
+              'edges': []}]
+    client = FakeClient([raw])
+    write_graphs(client, resolve_layers(raw), plans, {'prov': 'inferred'})
+    [spans] = client.payloads('spans.bulk_create')
+    assert spans[0]['metadata']['umr'] == {'var': 's1t', 'sentence': 's1'}
+    # Both words it stands on, in text order.
+    assert spans[1]['metadata']['umr'] == {'var': 's1d', 'words': ['w1', 'w2']}
 
 
 def test_a_draft_that_fails_partway_writes_nothing():
@@ -449,7 +469,7 @@ def _many_plans(count):
     for i in range(count):
         old = [_types.SimpleNamespace(piece_ids=[f'old-{i}-a']),
                _types.SimpleNamespace(piece_ids=[f'old-{i}-b'])]
-        sentence = _types.SimpleNamespace(index=i + 1, nodes=old, redraftable=True)
+        sentence = _types.SimpleNamespace(index=i + 1, nodes=old, words=[], redraftable=True)
         plans.append({'sentence': sentence, 'pieces': [(i * 20, i * 20 + 3), (i * 20 + 4, i * 20 + 9)],
                       'nodes': [{'concept': 'dog', 'meta': {'var': f's{i}d'}, 'piece_indexes': [0]},
                                 {'concept': 'bark-01', 'meta': {'var': f's{i}b'},

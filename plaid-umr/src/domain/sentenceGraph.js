@@ -54,6 +54,21 @@ const overlaps = (a, b) => a.begin < b.end && b.begin < a.end;
 
 const byBegin = (a, b) => a.begin - b.begin || a.end - b.end;
 
+/**
+ * The words a node's anchor `pieces` stand on: the ids of the `words` that
+ * overlap a piece, in text order, each once. What an aligned node reads as
+ * its words, and what every writer records on it as `words` (umrReconcile.js
+ * planWordSplits). `words_under` in plaid_client.workflows.umr is its twin,
+ * for the Python writers, held to it by plaid-agent's
+ * test_umr_words_mirror.py.
+ */
+export function wordsUnder(pieces, words) {
+  return [...words]
+    .sort(byBegin)
+    .filter((w) => pieces.some((p) => overlaps(p, w)))
+    .map((w) => w.id);
+}
+
 /** Whether a token of the UMR node layer is a sentence's record, not an anchor. */
 export const isRecordToken = (token) => {
   const meta = token?.metadata?.[UMR_NAMESPACE];
@@ -427,11 +442,7 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
       // it stands and not what it is about: it aligns to nothing and lights
       // up no word.
       node.alignment = node.aligned ? alignmentOf(node, s.words) : [];
-      node.wordIds = node.aligned
-        ? node.pieces
-            .flatMap((p) => s.words.filter((w) => overlaps(p, w)).map((w) => w.id))
-            .filter((id, i, arr) => arr.indexOf(id) === i)
-        : [];
+      node.wordIds = node.aligned ? wordsUnder(node.pieces, s.words) : [];
     });
     s.nodes.sort(nodeOrder);
     s.edges.sort((a, b) => a.order - b.order);

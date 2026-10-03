@@ -337,6 +337,21 @@ def _overlaps(a_begin: int, a_end: int, b_begin: int, b_end: int) -> bool:
     return a_begin < b_end and b_begin < a_end
 
 
+def words_under(pieces, words: List[Word]) -> List[str]:
+    """The words a node's anchor pieces stand on: the ids of the ``words`` that
+    overlap a piece, in text order, each once. ``pieces`` are ``(begin, end)``
+    extents. What an aligned node reads as its words, and what every writer
+    records on it as ``metadata.umr.words``, which tells a word split under the
+    node later from words it was aligned to on purpose (a split keeps the
+    word's id on its left half). ``wordsUnder`` in plaid-umr's
+    ``sentenceGraph.js`` is the rule the app writes by, and this is its twin, for
+    the Draft and skeleton services, held to it by plaid-agent's
+    ``test_umr_words_mirror.py``."""
+    extents = [tuple(p) for p in pieces]
+    return [w.id for w in sorted(words, key=lambda w: (w.begin, w.end))
+            if any(_overlaps(b, e, w.begin, w.end) for b, e in extents)]
+
+
 def alignment_of(node: Node, words: List[Word]) -> List[Tuple[int, int]]:
     """The 1-based inclusive word ranges a node's pieces cover. Asked only of a
     node aligned to words: one aligned to none stands over its whole sentence,
