@@ -20,6 +20,22 @@
 
 const codePoints = (s) => [...s];
 
+// The last body split into code points, kept: an edit log composes the same
+// long body once for each of its kept states, and splitting it each time made
+// a save on a long text block the page (H31-TEXT-1). Frozen, as every caller
+// shares it.
+let lastBody = null;
+let lastPoints = Object.freeze([]);
+
+/** The code points of `body`, as a frozen array shared with other callers. */
+export function bodyCodePoints(body) {
+  if (body !== lastBody) {
+    lastPoints = Object.freeze(codePoints(body));
+    lastBody = body;
+  }
+  return lastPoints;
+}
+
 function opName(op) {
   return JSON.stringify(op);
 }
@@ -98,7 +114,7 @@ function cutAt(segs, at) {
  * malformed or out-of-bounds op.
  */
 export function composeTextEdits(body, ops) {
-  const old = codePoints(body);
+  const old = bodyCodePoints(body);
   let segs = old.length ? [{ old: true, start: 0, end: old.length }] : [];
   let len = old.length;
   for (const op of ops) {

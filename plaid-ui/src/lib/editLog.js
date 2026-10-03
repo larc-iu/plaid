@@ -20,6 +20,7 @@
 import { cpLength, utf16ToCp } from '../../../plaid-client-js/src/codepoint.js';
 import {
   applyTextOps,
+  bodyCodePoints,
   composeTextEdits,
   gapsToOps,
 } from '../../../plaid-client-js/src/textEdits.js';
@@ -227,7 +228,7 @@ function fingerprint(text) {
 function textOf(base, ops) {
   const gaps = composeTextEdits(base, ops);
   const astral = /[\uD800-\uDFFF]/.test(base);
-  const chars = astral ? [...base] : null;
+  const chars = astral ? bodyCodePoints(base) : null;
   const part = (from, to) => (astral ? chars.slice(from, to).join('') : base.slice(from, to));
   let out = '';
   let at = 0;
@@ -339,7 +340,7 @@ export function sendEditLog(log) {
 // back as typed, so a moved state's gap came out wider than its change
 // (REV3-F-EDITLOG L1). Trimming only shrinks what a gap deletes.
 function trimGaps(base, gaps) {
-  const chars = [...base];
+  const chars = bodyCodePoints(base);
   return gaps.flatMap((g) => {
     const old = chars.slice(g.start, g.end);
     const value = [...g.value];
@@ -411,7 +412,7 @@ export function rebaseEditLog(log, stored, storedDigest = null) {
 // The gaps that take the text `gaps` make of `base` back to `base`, in code
 // points of that text.
 function undoGaps(base, gaps) {
-  const chars = [...base];
+  const chars = bodyCodePoints(base);
   let shift = 0;
   return gaps.map((g) => {
     const start = g.start + shift;
