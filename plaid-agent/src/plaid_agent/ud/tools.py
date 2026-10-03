@@ -24,7 +24,7 @@ from ..core.provenance import unmark
 from ..core.tools import ToolError, server_refused
 from .plan import (KIND, RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, contributed_work, docs_of_op,
                    scope_clears)
-from .project import (FEATURES, Sentence, Token, UdDoc, UdProject, Word, feats_order, feature_key,
+from .project import (FEATURES, VIRTUAL_REFUSAL, Sentence, Token, UdDoc, UdProject, Word, feats_order, feature_key,
                       feature_refusal, load_document, normalize_feature, render_document, resolve,
                       word_ref)
 from .review import (REVIEW_FIELDS, all_words, confirm_targets, counts_phrase, discard_targets,
@@ -431,8 +431,15 @@ def _words(ws: Workspace, doc: UdDoc, refs) -> List[Word]:
         if isinstance(thing, Token):
             raise ToolError(f'{ref} is a multi-word token, which carries no annotation of its own. '
                             f'Name its words: ' + ', '.join(f's?.w{w.index}' for w in thing.words))
+        refuse_virtual(thing, str(ref))
         out.append(thing)
     return out
+
+
+def refuse_virtual(word: Word, ref: str) -> None:
+    """A stand-in word (no UD word yet) is read, never written."""
+    if word.virtual:
+        raise ToolError(VIRTUAL_REFUSAL.format(ref=ref, form=word.form))
 
 
 def _field_layer(ws: Workspace, field: str) -> str:
@@ -687,6 +694,7 @@ def _stage_head(ws: Workspace, doc: UdDoc, word: Word, sentence: Sentence, head,
     """Stage ``word``'s head ``head`` (a CoNLL-U id, 0 for the root) with
     ``deprel``, refusing what a tree cannot hold."""
     ref = word_ref(sentence, word)
+    refuse_virtual(word, ref)
     if head is None:
         raise ToolError('Give head: the CoNLL-U id of the head word in the same sentence, or 0 for the root.')
     head = _head_id(head)
@@ -704,6 +712,8 @@ def _stage_head(ws: Workspace, doc: UdDoc, word: Word, sentence: Sentence, head,
     if head != 0 and deprel == 'root':
         raise ToolError('The deprel "root" belongs to head 0. Give the head word\'s id.')
     head_word = sentence.word(head) if head else word
+    if head_word.virtual:
+        refuse_virtual(head_word, word_ref(sentence, head_word))
     lemma, head_lemma = word.fields.get('lemma'), head_word.fields.get('lemma')
     # The suppressors this write leaves stranded: the one over the relation it
     # replaces, and one already lying over the pair it creates, which would

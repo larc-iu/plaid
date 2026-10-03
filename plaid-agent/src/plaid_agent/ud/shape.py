@@ -44,6 +44,9 @@ def t_set_words(ws: Workspace, document: str = None, ref: str = None, forms=None
     from .tools import _guards
     _guards(ws, doc)
     token = _token_of(ws, doc, ref)
+    from .tools import refuse_virtual
+    for w in token.words:
+        refuse_virtual(w, ref)
     if isinstance(forms, str):
         forms = [forms]
     clean = [f.strip() for f in (forms or []) if isinstance(f, str) and f.strip()]

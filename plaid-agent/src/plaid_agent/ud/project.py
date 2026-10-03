@@ -324,6 +324,11 @@ class Word:
     #: a suppressor it is an arc. ``enhanced`` is what a reader prints, this is
     #: what a writer names.
     extra_edges: List[Tuple[int, str]] = dc_field(default_factory=list)
+    #: A stand-in for a surface token that has no UD word yet (another app
+    #: made it after the last UD open): the one word the seed on a writer's
+    #: open would make, with no annotation and an id that is no token's, as
+    #: plaid-ud's sentenceRows.js shows it. Read, numbered, never written.
+    virtual: bool = False
 
     def spans(self, name: str) -> List[Span]:
         """The word's spans of one field that hold a value: every feature
@@ -479,6 +484,21 @@ def _relations(token_layer, relation_layer_id: Optional[str]) -> List[dict]:
     return []
 
 
+VIRTUAL_PREFIX = 'virtual:'
+
+
+def virtual_word_id(token_id: str) -> str:
+    """The stand-in word's id for a surface token with no UD word, the app's
+    own (sentenceRows.js ``virtualWord``)."""
+    return f'{VIRTUAL_PREFIX}{token_id}'
+
+
+#: What a write naming a stand-in word answers, as the app's grid answers it.
+VIRTUAL_REFUSAL = ('{ref} ("{form}") has no UD word yet: another app made it since the document was last '
+                   'opened for annotation. Tell the user to open the document in the app to annotate it, '
+                   'then ask again.')
+
+
 def load_document(client, project: UdProject, document_id: str) -> UdDoc:
     raw = client.documents.get(document_id, include_body=True,
                                layers=project.read_layer_ids())
@@ -524,7 +544,13 @@ def parse_document(raw: dict, project: UdProject) -> UdDoc:
             surface = ''.join(chars[t['begin']:t['end']])
             tok = Token(id=t['id'], begin=t['begin'], end=t['end'], surface=surface,
                         metadata=t.get('metadata') or {})
-            for w in words_at.get((t['begin'], t['end']), []):
+            stored = words_at.get((t['begin'], t['end']), [])
+            if not stored:
+                # No UD word yet: the stand-in the app's grid and export show.
+                tok.words.append(Word(id=virtual_word_id(t['id']), index=index, form=surface, fields={},
+                                      token=tok, virtual=True))
+                index += 1
+            for w in stored:
                 fields = spans.get(w['id'], {})
                 form = fields['form'].value if fields.get('form') and fields['form'].value else surface
                 word = Word(id=w['id'], index=index, form=form, fields=fields, token=tok,
