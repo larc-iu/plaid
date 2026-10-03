@@ -3,18 +3,28 @@
 // the layers under the word layer, and the node layer is a root layer
 // (H5-UMR-2). The open puts the node on the half its word's letters are in:
 // the half with the most letters, the first of them on a tie. The export
-// then aligns it to that word alone. Only the words at either end of an
-// anchor are read so: a run of words with no space between them there is
-// read as one word split, and a node anchored to such a run on purpose (two
-// words IGT tokenized with no space between, `do` and `n't`) is put on one
-// of them too, since nothing stored tells the two apart.
+// then aligns it to that word alone. A node records the words it was
+// aligned to, and a split keeps a word's id on its left half, so only a
+// word the node does not record, touching a recorded one, is read as a half.
+// A node aligned on purpose to several touching words (`do` and `n't`, or
+// any compound in a text with no spaces, as Chinese is) is left as it is
+// (H34-UMR-1, where every such node was cut to one word on each open).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseUmrFile } from '../src/domain/format/umrFile.js';
-import { planImport } from '../src/domain/umrImport.js';
+import { importUmrDocument, planImport } from '../src/domain/umrImport.js';
+import { getUmrLayerInfo } from '../src/utils/umrLayerUtils.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
 import { rawFromPlan } from './rawFromPlan.js';
-import { openInUmr, openWritesNothing, splitWord, wordsOf } from './igtEdits.js';
+import { twoWriterCore } from './twoWriterCore.js';
+import {
+  deleteText,
+  layersOf,
+  openInUmr,
+  openWritesNothing,
+  splitWord,
+  wordsOf,
+} from './igtEdits.js';
 
 const SEP = '#'.repeat(80);
 const FILE = `${SEP}
@@ -93,4 +103,145 @@ test('a node over two words a space apart, none split, is left as it is', async 
   assert.equal(alignment(raw).get('s1b'), '1-2');
   await openInUmr(raw);
   assert.equal(alignment(raw).get('s1b'), '1-2');
+});
+
+test('the record follows the cut, so a second open writes nothing', async () => {
+  const raw = load();
+  const w = word(raw, 'ikian,');
+  splitWord(raw, w.id, w.begin + 5);
+  await openInUmr(raw);
+  const doc = new UmrDocument({ raw: structuredClone(raw) });
+  const node = doc.graph.sentences[0].nodes.find((n) => n.var === 's1i');
+  assert.deepEqual(node.metadata.umr.words, node.wordIds);
+  assert.ok(await openWritesNothing(raw));
+});
+
+test('a node that records no words is never cut', async () => {
+  const raw = load();
+  layersOf(raw).concepts.spans.forEach((s) => delete s.metadata.umr.words);
+  const w = word(raw, 'ikian,');
+  splitWord(raw, w.id, w.begin + 5);
+  const result = await openInUmr(raw);
+  assert.ok(!result.wordSplits);
+  assert.equal(alignment(raw).get('s1i'), '2-3');
+});
+
+// A text with no spaces between its words, as a Chinese IGT text is.
+const SPACELESS = `${SEP}
+# :: snt1
+Index: 1 2 3 4
+Words: 能 谈得 来 吗
+
+# sentence level graph:
+(s1n / 能-01
+    :ARG0 (s1t / 谈得来)
+    :mod (s1d / 谈得)
+    :mod (s1p / 能谈得))
+
+# alignment:
+s1n: 1-1
+s1t: 2-3
+s1d: 2-2
+s1p: 1-2
+
+# document level annotation:
+(s1s0 / sentence)
+`;
+
+function spaceless() {
+  const raw = rawFromPlan(planImport(parseUmrFile(SPACELESS).sentences, []));
+  for (;;) {
+    const ws = wordsOf(raw);
+    const gap = ws.findIndex((w, i) => i > 0 && ws[i - 1].end < w.begin);
+    if (gap < 0) return raw;
+    deleteText(raw, ws[gap - 1].end, ws[gap].begin);
+  }
+}
+
+test('a node aligned to touching words in a text with no spaces keeps them all', async () => {
+  const raw = spaceless();
+  assert.equal(raw.textLayers[0].text.body.split('\n')[0], '能谈得来吗');
+  assert.equal(alignment(raw).get('s1t'), '2-3');
+  assert.equal(alignment(raw).get('s1p'), '1-2');
+  assert.ok(await openWritesNothing(raw));
+  assert.equal(alignment(raw).get('s1t'), '2-3');
+});
+
+test('in a text with no spaces, only a word really split is cut', async () => {
+  const raw = spaceless();
+  const w = word(raw, '谈得');
+  splitWord(raw, w.id, w.begin + 1);
+  const result = await openInUmr(raw);
+  // `s1d` stood on 谈得, and `s1p` on 能谈得, whose last word was split. `s1t`
+  // stood on 谈得来, where the split is in the middle and nothing is cut.
+  assert.equal(result.wordSplits, 2);
+  const at = alignment(raw);
+  assert.equal(at.get('s1d'), '2-2');
+  assert.equal(at.get('s1p'), '1-2');
+  assert.equal(at.get('s1t'), '2-4');
+  assert.ok(await openWritesNothing(raw));
+});
+
+test('a node anchored on the canvas to touching words keeps them on the next open', async () => {
+  const core = twoWriterCore(spaceless());
+  const page = await core.open('a');
+  const s = page.doc.sentence(1);
+  const node = s.nodes.find((n) => n.var === 's1n');
+  const words = s.words.slice(1, 4).map((w) => w.id);
+  assert.ok(await page.doc.setAnchor(node.id, words));
+  const made = await page.doc.createNode({
+    sentenceIndex: 1,
+    concept: 'new',
+    wordIds: s.words.slice(0, 2).map((w) => w.id),
+  });
+  assert.ok(made);
+  page.release();
+  const raw = core.raw;
+  assert.equal(alignment(raw).get('s1n'), '2-4');
+  assert.equal(alignment(raw).get('s1n2'), '1-2');
+  assert.ok(await openWritesNothing(raw));
+  assert.equal(alignment(raw).get('s1n'), '2-4');
+});
+
+test('a node anchored again to both halves of a split word keeps them', async () => {
+  const raw = load();
+  const w = word(raw, 'ikian,');
+  splitWord(raw, w.id, w.begin + 5);
+  const core = twoWriterCore(raw);
+  const page = await core.open('a');
+  const node = page.doc.sentence(1).nodes.find((n) => n.var === 's1i');
+  // The same words as are under it already, but not the words it records.
+  assert.ok(await page.doc.setAnchor(node.id, [...node.wordIds]));
+  page.release();
+  // `both`, on `tsa ikian,`, is cut. `s1i` is not.
+  assert.equal((await openInUmr(core.raw)).wordSplits, 1);
+  assert.equal(alignment(core.raw).get('s1i'), '2-3');
+  assert.equal(alignment(core.raw).get('s1b'), '1-2');
+});
+
+test('an import onto a document with words records the words each node is aligned to', async () => {
+  // The document's own words, with no graph yet: what an IGT text is.
+  const raw = spaceless();
+  const L = layersOf(raw);
+  L.nodes.tokens = [];
+  L.concepts.spans = [];
+  L.relations.relations = [];
+  L.triples.relations = [];
+  const core = twoWriterCore(raw);
+  const body = raw.textLayers[0].text.body;
+  const { attached } = await importUmrDocument(
+    core.client('a'),
+    'p',
+    'doc',
+    SPACELESS,
+    getUmrLayerInfo(raw),
+    { into: raw.id },
+  );
+  assert.ok(attached);
+  assert.equal(core.raw.textLayers[0].text.body, body);
+  const doc = new UmrDocument({ raw: structuredClone(core.raw) });
+  const node = doc.graph.sentences[0].nodes.find((n) => n.var === 's1t');
+  assert.deepEqual(node.metadata.umr.words, node.wordIds);
+  assert.equal(node.wordIds.length, 2);
+  assert.ok(await openWritesNothing(core.raw));
 });

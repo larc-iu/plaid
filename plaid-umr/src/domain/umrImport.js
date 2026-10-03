@@ -167,14 +167,28 @@ async function importDocument(client, projectId, name, text, layerInfo, options)
     const sentenceIds = existing
       ? existing.graph.sentences.map((s) => s.tokenId)
       : createdIds(tokenResults[0]);
+    // The words by their position in text order (planImport), for the
+    // aligned nodes to record.
+    const wordIds = existing
+      ? plan.sentences.flatMap((s) => s.words.map((w) => w.id))
+      : wordOps.length
+        ? createdIds(tokenResults[sentenceOps.length ? 1 : 0])
+        : [];
+    if (!existing && wordIds.length !== wordOps.length) {
+      throw new Error(
+        `The server returned ${wordIds.length} word ids for ${wordOps.length} words.`,
+      );
+    }
+    const metaOf = (n) => {
+      if (n.home) return { ...n.meta, sentence: sentenceIds[n.home - 1] };
+      return n.words.length ? { ...n.meta, words: n.words.map((k) => wordIds[k]) } : n.meta;
+    };
     const toCreate = plan.nodes.filter((n) => !n.existingId);
     const spanOps = toCreate.map((n) => ({
       spanLayerId: layerInfo.conceptLayer.id,
       tokens: n.pieceIndexes.map((i) => pieceIds[i]),
       value: n.concept,
-      metadata: {
-        [UMR_NAMESPACE]: n.home ? { ...n.meta, sentence: sentenceIds[n.home - 1] } : n.meta,
-      },
+      metadata: { [UMR_NAMESPACE]: metaOf(n) },
     }));
     let spanIds = [];
     if (spanOps.length) {
@@ -366,11 +380,22 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
 
   // `home` is the sentence an UNALIGNED node belongs to, by number: its
   // anchor is a point, so it records its sentence's token once that exists
-  // (see umrReconcile.js).
-  const addNode = (key, concept, meta, pieceIndexes, existingId = null, home = null) => {
+  // (see umrReconcile.js). `words` are the words an aligned node records
+  // (planWordSplits), as positions among all the sentences' words in text
+  // order, which is the order the import makes them in.
+  const addNode = (
+    key,
+    concept,
+    meta,
+    pieceIndexes,
+    existingId = null,
+    home = null,
+    words = [],
+  ) => {
     nodeIndex.set(key, nodes.length);
-    nodes.push({ key, concept, meta, pieceIndexes, existingId, home });
+    nodes.push({ key, concept, meta, pieceIndexes, existingId, home, words });
   };
+  let wordCount = 0;
   // Constants the document already has, and the triples it already holds
   // (by the variables' names), when attaching.
   const existingConstants = new Map((existing?.constants || []).map((c) => [c.var, c.id]));
@@ -407,12 +432,14 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
       const have = existing.sentences[i];
       begin = have.begin;
       end = have.end;
-      have.words.forEach((w) => words.push({ index: w.index, begin: w.begin, end: w.end }));
+      have.words.forEach((w) =>
+        words.push({ index: w.index, begin: w.begin, end: w.end, at: wordCount++, id: w.id }),
+      );
     } else {
       let cursor = begin;
       ps.words.forEach((w, wi) => {
         const len = cpLength(w);
-        words.push({ index: wi + 1, begin: cursor, end: cursor + len });
+        words.push({ index: wi + 1, begin: cursor, end: cursor + len, at: wordCount++ });
         cursor += len + 1;
       });
       // The sentence takes the newline after it, so the layer tiles the text.
@@ -460,6 +487,7 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
         }
         const ranges = ps.alignment?.get(v) || [];
         const pieceIndexes = [];
+        const aligned = [];
         ranges.forEach(([a, b]) => {
           const first = words[a - 1];
           const last = words[b - 1];
@@ -476,6 +504,7 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
             return;
           }
           pieceIndexes.push(addPiece(first.begin, last.end));
+          words.slice(a - 1, b).forEach((w) => aligned.includes(w.at) || aligned.push(w.at));
         });
         // A node the file aligns to no word stands over its whole sentence,
         // which is what keeps it alive through an edit to the text around it
@@ -502,7 +531,7 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
         // The file's root is data: a graph with a cycle no :quote explains
         // has no root by derivation, and the file says which node it is.
         if (v === ps.graph.root) meta.root = true;
-        addNode(key, node.concept, meta, pieceIndexes, null, unaligned ? index : null);
+        addNode(key, node.concept, meta, pieceIndexes, null, unaligned ? index : null, aligned);
       });
     }
 

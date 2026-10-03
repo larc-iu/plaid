@@ -82,9 +82,12 @@ test('setAnchor makes the new pieces before the span takes them', async () => {
     'operation',
     'tokens.bulkCreate',
     'spans.setTokens',
+    'spans.patchMetadata',
     'tokens.bulkDelete',
   ]);
-  assert.deepEqual(calls[3].args[0], oldPieceIds);
+  // The words it is aligned to, recorded (planWordSplits).
+  assert.deepEqual(calls[3].args[1], [{ op: 'set', path: ['umr', 'words'], value: [other.id] }]);
+  assert.deepEqual(calls[4].args[0], oldPieceIds);
   // Adjacent words make one piece, a gap makes two.
   const [w1, w2, , w4] = s1.words;
   await doc.setAnchor(node.id, [w1.id, w2.id, w4.id]);

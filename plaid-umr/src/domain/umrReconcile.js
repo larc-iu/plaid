@@ -156,40 +156,61 @@ export function planUnalignedHeal(graph, namespace) {
  * letters and digits, the first on a tie (`a.` keeps `a`, `tsa` split as `t`
  * and `sa` keeps `sa`).
  *
- * A word split leaves its halves with no space between them, so a run of
- * such words at either end of an anchor piece is read as one word split.
- * Only the ends: a piece covers one stretch of text, and a run in its middle
- * could not be dropped without cutting it in two. A node anchored on purpose
- * to two words IGT tokenized with no space between them (`do` and `n't`) is
- * put on one of them too: nothing stored tells the two apart.
+ * A node records the words it was aligned to (`words`, their ids). A split
+ * keeps the word's id on its left half and gives the right half a new one,
+ * so a word under the anchor that the node does not record, right after a
+ * recorded one with no space between them, is a half of that word. Only
+ * those are cut: a node aligned on purpose to several touching words (`do`
+ * and `n't`, or the words of a text with no spaces, as Chinese is) records
+ * each of them and is left as it is. A node that records no words is never
+ * cut. Only the ends of a piece: a piece covers one stretch of text, and a
+ * half in its middle could not be dropped without cutting it in two.
  *
- * @returns {{ nodeId: string, pieceId: string, begin: number, end: number }[]}
+ * @param {{ sentences: Array, nodesById: Map }} graph from buildDocumentGraph
+ * @param {string} namespace the metadata namespace a node records in
+ * @returns {{ nodeId: string, pieceId: string, begin: number, end: number, words: string[] }[]}
+ *   `words` is what the node records from then on, the same on every piece
+ *   of one node
  */
-export function planWordSplits(graph) {
+export function planWordSplits(graph, namespace) {
   const letters = (w) => [...w.text].filter((c) => /[\p{L}\p{N}]/u.test(c)).length;
   const kept = (run) => run.reduce((best, w) => (letters(w) > letters(best) ? w : best));
   const out = [];
   graph.nodesById.forEach((node) => {
     if (node.constant || !node.aligned || node.sentence == null) return;
+    const recorded = new Set(node.metadata?.[namespace]?.words || []);
+    if (!recorded.size) return;
     const sentence = graph.sentences[node.sentence - 1];
+    const cuts = [];
     node.pieces.forEach((piece) => {
       const words = sentence.words.filter((w) => w.begin < piece.end && piece.begin < w.end);
       if (words.length < 2) return;
       if (words[0].begin !== piece.begin || words.at(-1).end !== piece.end) return;
-      // The words in runs with no space between them.
-      const runs = [[words[0]]];
-      words.slice(1).forEach((w) => {
-        const run = runs.at(-1);
-        if (run.at(-1).end === w.begin) run.push(w);
-        else runs.push([w]);
+      // Each recorded word with the halves split off it: the words after it
+      // it does not record, touching it and each other.
+      const groups = [];
+      words.forEach((w) => {
+        const group = groups.at(-1);
+        const half = group && !recorded.has(w.id) && group.at(-1).end === w.begin;
+        if (half && recorded.has(group[0].id)) group.push(w);
+        else groups.push([w]);
       });
-      const first = runs[0];
-      const last = runs.at(-1);
+      const first = groups[0];
+      const last = groups.at(-1);
       const begin = first.length > 1 ? kept(first).begin : piece.begin;
       const end = last.length > 1 ? kept(last).end : piece.end;
       if (begin === piece.begin && end === piece.end) return;
-      out.push({ nodeId: node.id, pieceId: piece.id, begin, end });
+      cuts.push({ pieceId: piece.id, begin, end });
     });
+    if (!cuts.length) return;
+    // The words the node stands on once cut, which it records from then on.
+    const at = new Map(cuts.map((c) => [c.pieceId, c]));
+    const words = node.pieces
+      .map((p) => at.get(p.id) || p)
+      .flatMap((p) => sentence.words.filter((w) => w.begin < p.end && p.begin < w.end))
+      .map((w) => w.id)
+      .filter((id, i, all) => all.indexOf(id) === i);
+    cuts.forEach((c) => out.push({ nodeId: node.id, ...c, words }));
   });
   return out;
 }
@@ -450,7 +471,11 @@ export function describeUmrReconcile({
     );
   }
   if (wordSplits) {
-    parts.push(`put ${countOf(wordSplits, 'node', 'nodes')} on one half of a word split in two`);
+    parts.push(
+      wordSplits === 1
+        ? 'put 1 node on one half of its word, which was split'
+        : `put ${wordSplits} nodes on one half of their words, which were split`,
+    );
   }
   if (recordsHomed) {
     parts.push(

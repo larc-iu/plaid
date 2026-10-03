@@ -37,7 +37,9 @@ export function rawFromPlan(plan) {
     metadata: {
       [UMR_NAMESPACE]: node.home
         ? { ...node.meta, sentence: sentenceTokens[node.home - 1].id }
-        : node.meta,
+        : node.words?.length
+          ? { ...node.meta, words: node.words.map((k) => wordTokens[k].id) }
+          : node.meta,
     },
   }));
   const spanOf = (key) => spans[plan.nodeIndex.get(key)].id;

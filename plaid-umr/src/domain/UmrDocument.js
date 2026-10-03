@@ -588,7 +588,7 @@ export class UmrDocument extends DocumentModel {
     const renumber = planRenumber(graph, removed, keptNames);
     const recordMoves = planRecordExtents(graph);
     const tripleRecords = planTripleRecords(graph, UMR_NAMESPACE);
-    const wordSplits = planWordSplits(graph).filter((w) => !removed.has(w.nodeId));
+    const wordSplits = planWordSplits(graph, UMR_NAMESPACE).filter((w) => !removed.has(w.nodeId));
     // An entry counts as deleted only when the vocabulary the node picked it
     // from was read and lacks it (planEntryUnlink). The vocabularies are read
     // only when a node names an entry, so an open waits on no read it does
@@ -652,6 +652,8 @@ export class UmrDocument extends DocumentModel {
         change(nodeId, { sentence: sentenceTokenId }),
       );
       renumber.forEach(({ nodeId, to }) => change(nodeId, { var: to }));
+      // A node put on one half of its word records that half from then on.
+      wordSplits.forEach(({ nodeId, words }) => change(nodeId, { words }));
       unlink.forEach((nodeId) => change(nodeId, entryRecord(null)));
       const heldRenamed = this._heldRenamed(renumber);
       // Every metadata change of one record in one patch.
@@ -1071,6 +1073,12 @@ export class UmrDocument extends DocumentModel {
     }
   }
 
+  // The ids of the sentence's words among `wordIds`, in text order: what an
+  // aligned node records (planWordSplits).
+  _wordsChosen(sentence, wordIds) {
+    return sentence.words.filter((w) => wordIds.includes(w.id)).map((w) => w.id);
+  }
+
   // Whether `sentence`, as an edit saw it, and its words `wordIds` stand in
   // `fresh` (a later read, see DocumentModel's `recheck`) as they stood: the
   // same sentence at the same place, and each word over the same text. The
@@ -1149,6 +1157,9 @@ export class UmrDocument extends DocumentModel {
     // A node aligned to no word records its sentence, which is what says so
     // (see _reconcile): its anchor covers the whole sentence.
     if (!wordIds.length) meta.sentence = sentence.tokenId;
+    // An aligned node records its words, which tells a word split under it
+    // later from words it was aligned to on purpose (planWordSplits).
+    else meta.words = this._wordsChosen(sentence, wordIds);
     // The node and its edge are this writer's work: their create stamp, flat
     // beside the app's own `umr` namespace (null for a verifier).
     const stamp = this.writer.createStamp;
@@ -1473,9 +1484,13 @@ export class UmrDocument extends DocumentModel {
     const node = this.node(nodeId);
     const sentence = node ? this.sentence(node.sentence) : null;
     if (!sentence) return false;
-    const same =
-      wordIds.length === (node.wordIds || []).length &&
-      wordIds.every((id) => node.wordIds.includes(id));
+    const sameAs = (ids) =>
+      wordIds.length === ids.length && wordIds.every((id) => ids.includes(id));
+    // The words it records (planWordSplits) differ from the words under it
+    // when one was split since the last open: aligning it to both halves
+    // then is a change.
+    const recorded = umrOf(node).words;
+    const same = sameAs(node.wordIds || []) && (!recorded || !wordIds.length || sameAs(recorded));
     if (same) return false;
     const label = 'Failed to change the anchor';
     if (!this._canWrite(label)) return false;
@@ -1494,12 +1509,16 @@ export class UmrDocument extends DocumentModel {
     // loses its words and dropped when it gains some.
     const span = this._layers(info).spans.find((s) => s.id === node.id);
     const home = umrOf(span).sentence;
-    const recorded = wordIds.length ? undefined : sentence.tokenId;
+    const recordedSentence = wordIds.length ? undefined : sentence.tokenId;
+    // The words an aligned node records (planWordSplits), gone when it has
+    // none.
+    const wordRecord = wordIds.length ? this._wordsChosen(sentence, wordIds) : undefined;
     // Anchoring a drafted node is a person's decision about it, so it
     // carries the writer's edit stamp like any other edit. The sentence is
     // written only when it changes: dropped when words come, set when they go.
     const metaOps = [
-      ...(home !== recorded ? umrOps({ sentence: recorded }) : []),
+      ...(home !== recordedSentence ? umrOps({ sentence: recordedSentence }) : []),
+      ...(wordRecord || recorded ? umrOps({ words: wordRecord }) : []),
       ...this._editStampOps(node.metadata),
     ];
     const patchMeta = metaOps.length > 0;
@@ -2767,15 +2786,20 @@ export class UmrDocument extends DocumentModel {
     const keptWords = kept ? readAlignment(kept) : null;
     // The words the kept block gives a variable, as anchor pieces: none for
     // a variable it aligns to nothing (`0-0`) or does not name.
+    // With them, the ids of those words, which an aligned node records
+    // (planWordSplits).
     const keptPieces = (v) => {
       const ranges = keptWords?.get(v) || [];
       const pieces = [];
+      const ids = [];
       ranges.forEach(([a, b]) => {
         const first = sentence.words[a - 1];
         const last = sentence.words[b - 1];
-        if (first && last && a <= b) pieces.push({ begin: first.begin, end: last.end });
+        if (!first || !last || a > b) return;
+        pieces.push({ begin: first.begin, end: last.end });
+        sentence.words.slice(a - 1, b).forEach((w) => ids.includes(w.id) || ids.push(w.id));
       });
-      return pieces;
+      return { pieces, ids };
     };
     // The new nodes, each on its own new anchor pieces.
     const newNodes = plan.create.map((c) => {
@@ -2783,9 +2807,10 @@ export class UmrDocument extends DocumentModel {
       // mending said which words it covers: only then does it record its
       // sentence (see _reconcile), since the record is what says a node is
       // aligned to nothing, whatever its anchor covers.
-      const words = keptPieces(c.var);
+      const { pieces: words, ids } = keptPieces(c.var);
       const meta = { var: c.var, attrs: c.attrs };
       if (!words.length) meta.sentence = sentence.tokenId;
+      else meta.words = ids;
       if (plan.root === c.var) meta.root = true;
       const node = {
         id: pendingId(),
