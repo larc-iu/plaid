@@ -676,13 +676,21 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     if (next) setEditor(next);
   };
   // A new node's concept, again: under its parent while that is there, on
-  // the words of it still in the sentence.
+  // the words of it still in the sentence, with the vocabulary entry it was
+  // picked from.
   const newNodeAgain = (newNode, at) =>
     offerAgain(() => {
       if (newNode.parentId && !doc.node(newNode.parentId)) return null;
       const words = doc.sentence(newNode.sentenceIndex)?.words || [];
       const wordIds = newNode.wordIds.filter((id) => words.some((w) => w.id === id));
-      return { kind: 'new', parentId: newNode.parentId, wordIds, ...at, value: newNode.concept };
+      return {
+        kind: 'new',
+        parentId: newNode.parentId,
+        wordIds,
+        ...at,
+        value: newNode.concept,
+        entry: newNode.entry,
+      };
     });
 
   const commitEditor = async (text, option = null) => {
@@ -808,7 +816,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       const newNode = {
         sentenceIndex: sentence.index,
         concept: text,
-        entry: entryPicked(text, option),
+        entry: entryFor(ed, text, option),
         wordIds: ed.wordIds,
         parentId: ed.parentId,
       };
@@ -823,11 +831,12 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       }
     } else if (ed.kind === 'concept') {
       closeEditor();
+      const entry = entryFor(ed, text, option);
       await doc.setConcept(ed.nodeId, text, {
-        entry: entryPicked(text, option),
+        entry,
         onRefused: offerAgain(() =>
           doc.node(ed.nodeId)
-            ? { kind: 'concept', nodeId: ed.nodeId, x: ed.x, y: ed.y, value: text }
+            ? { kind: 'concept', nodeId: ed.nodeId, x: ed.x, y: ed.y, value: text, entry }
             : null,
         ),
       });
@@ -841,6 +850,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // offers that entry's arguments. Typed text names no entry.
   const entryPicked = (text, option) =>
     option?.entryId && option.value === text ? option.entryId : null;
+  // The same, in an editor opened again after a refusal (offerAgain): its
+  // text is what was picked, and Enter on it unchanged keeps the entry.
+  const entryFor = (ed, text, option) =>
+    entryPicked(text, option) ?? (ed.entry && text === ed.value ? ed.entry : null);
 
   // A new node's word, named by its number: one the sentence has. Typed
   // before a word was dropped on, a number names a word, never a concept.

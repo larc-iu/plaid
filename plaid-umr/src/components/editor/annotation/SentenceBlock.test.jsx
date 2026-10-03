@@ -5,6 +5,7 @@ import { ConfirmProvider } from '@ui/components/shared/ConfirmProvider.jsx';
 import { useMemo } from 'react';
 import { SentenceBlock as Block } from './SentenceBlock.jsx';
 import { keys } from '../../../lib/keymap.js';
+import { buildLexicon } from '../../../domain/vocabLexicon.js';
 
 // The canvas hands a block the live document, and the block reads the whole
 // document's nodes from `doc.graph` when it needs them. A test builds the map
@@ -2109,6 +2110,96 @@ describe('SentenceBlock, a typed edit the server refused', () => {
     await r.step(() => press(editorInput(r), 'Enter'));
     await r.step(() => wait(20));
     expect(editorInput(r)).toBeNull();
+    await r.unmount();
+  });
+  // H34-UMR-2: Enter on the editor opened again sends the entry the concept
+  // was picked from, not the concept alone.
+  const lexicon = buildLexicon([
+    {
+      name: 'V',
+      items: [{ id: 'ent1', form: 'depart', metadata: { umr: { roleset: 'depart-01' } } }],
+    },
+  ]);
+
+  it('opens a concept picked from an entry again with its entry', async () => {
+    const { sentence, nodesById } = fixture();
+    const sent = [];
+    const doc = docStub({
+      node: (id) => nodesById.get(id),
+      setConcept: async (id, text, { entry, onRefused }) => {
+        sent.push([text, entry]);
+        await wait(5);
+        onRefused?.();
+        return false;
+      },
+    });
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={doc}
+        dataVersion={1}
+        readOnly={false}
+        sentence={sentence}
+        nodesById={nodesById}
+        lexicon={lexicon}
+      />,
+    );
+    const node = all(r.container, '.umr-node')[0];
+    await r.step(() => node.focus());
+    await r.step(() => press(node, 'Enter'));
+    await r.step(() => type(editorInput(r), 'depart-01'));
+    await r.step(() => press(editorInput(r), 'Enter'));
+    await r.step(() => wait(20));
+    expect(editorInput(r)?.value).toBe('depart-01');
+    await r.step(() => press(editorInput(r), 'Enter'));
+    await r.step(() => wait(20));
+    expect(sent).toEqual([
+      ['depart-01', 'ent1'],
+      ['depart-01', 'ent1'],
+    ]);
+    // Changed in the editor opened again, it names no entry.
+    await r.step(() => type(editorInput(r), 'go-01'));
+    await r.step(() => press(editorInput(r), 'Enter'));
+    await r.step(() => wait(20));
+    expect(sent.at(-1)).toEqual(['go-01', null]);
+    await r.unmount();
+  });
+
+  it("opens a new node's concept picked from an entry again with its entry", async () => {
+    const { sentence, nodesById } = fixture();
+    const empty = { ...sentence, nodes: [], edges: [], roots: [] };
+    const made = [];
+    const doc = docStub({
+      sentence: () => empty,
+      node: () => null,
+      createNode: async (args) => {
+        made.push([args.concept, args.entry]);
+        await wait(5);
+        args.onRefused?.();
+        return false;
+      },
+    });
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={doc}
+        dataVersion={1}
+        readOnly={false}
+        sentence={empty}
+        nodesById={nodesById}
+        lexicon={lexicon}
+      />,
+    );
+    const stop = r.container.querySelector('.umr-graph');
+    await r.step(() => stop.focus());
+    await r.step(() => press(stop, 'n'));
+    await r.step(() => type(editorInput(r), 'depart-01'));
+    await r.step(() => press(editorInput(r), 'Enter'));
+    await r.step(() => wait(20));
+    await r.step(() => press(editorInput(r), 'Enter'));
+    await r.step(() => wait(20));
+    expect(made).toEqual([
+      ['depart-01', 'ent1'],
+      ['depart-01', 'ent1'],
+    ]);
     await r.unmount();
   });
 });
