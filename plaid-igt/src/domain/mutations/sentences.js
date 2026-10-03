@@ -40,7 +40,7 @@ export const clearSentencesFits = (info) => {
 };
 
 export const TOO_MANY_SENTENCES =
-  'This document has too many sentences to reset in one request. Split it into shorter documents.';
+  'This document has too many sentences to reset. Split it into shorter documents.';
 
 export const sentenceMutations = {
   async mergeSentence(sentenceId) {
