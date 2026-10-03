@@ -52,7 +52,7 @@ from plaid_client.workflows.llm import (ChatModel, UnansweredRun, add_model_argu
 from plaid_client.workflows.umr import (DraftProgress, anchor_pieces, begin_draft,
                                         cycle_edges, draft_params, finish_draft, join_flat_graph,
                                         next_variable, parse_penman, project_language, run_label,
-                                        unknown_relation_problem)
+                                        tree_edges, unknown_relation_problem)
 from plaid_client.workflows.umr.inventory import (ATTRIBUTE_VALUES, edge_only,
                                                   list_item_problem,
                                                   node_under_attribute_problem)
@@ -247,53 +247,110 @@ def plan_sentence(graph, alignment, sentence, taken):
 _MODEL_VARIABLE = re.compile(r'[a-z][0-9]*')
 
 
-def validate_graph(graph, alignment=None) -> Optional[str]:
+def _inverse_of(rel: str) -> str:
+    """``:ARG0`` for ``:ARG0-of`` and the other way round."""
+    return rel[:-3] if rel.endswith('-of') else rel + '-of'
+
+
+def merge_restated_edges(graph) -> int:
+    """Drop every edge that states again a relation the graph already has the
+    other way round: ``(p / person :ARG0-of (g / go-01 :ARG0 p))`` says
+    ``g :ARG0 p`` twice, once as an inverse role. It is the commonest cycle a
+    model writes, and it is one relation, not two, so the copy that is not
+    where its node is written out goes (the bare ``p``), and the graph is
+    drafted. A cycle left after that is a real one, refused by
+    :func:`validate_graph`. Returns how many edges were dropped."""
+    nodes = graph.nodes
+    tree = tree_edges(graph)
+    drop = set()
+    for var, node in nodes.items():
+        for i, child in enumerate(node.children):
+            if child.kind != 'node' or (var, i) in drop or child.value == var:
+                continue
+            other = nodes.get(child.value)
+            if other is None:
+                continue
+            for j, back in enumerate(other.children):
+                if (back.kind == 'node' and back.value == var
+                        and back.rel == _inverse_of(child.rel)
+                        and (child.value, j) not in drop):
+                    # Keep the edge the node is written out at, so the graph
+                    # stays one tree with the same shape.
+                    drop.add((child.value, j) if (var, i) in tree else (var, i))
+                    break
+    for var, node in nodes.items():
+        node.children = [c for i, c in enumerate(node.children) if (var, i) not in drop]
+    return len(drop)
+
+
+def _namer(graph, alignment=None, sentence=None):
+    """How a refusal names a node of the reply: by its concept, with the words
+    it is aligned to (``person ("ikian")``), never by the reply's variable,
+    which the requester never sees: stored variables are minted afresh."""
+    words = sentence.words if sentence is not None else []
+
+    def name(var):
+        node = graph.nodes.get(var)
+        concept = (node.concept if node is not None else '') or 'a node'
+        said = [w.text for begin, end in (alignment or {}).get(var) or []
+                for w in words[begin - 1:end]]
+        return f'{concept} ("{" ".join(said)}")' if said else concept
+    return name
+
+
+def validate_graph(graph, alignment=None, sentence=None) -> Optional[str]:
     """What is wrong with a parsed graph, in one line for the requester, or
     None. Everything here would otherwise land as an unreadable node the
     annotator has to find and delete. A relation UMR does not have is refused
     with the inventory's own check, the one the assistant's guard uses, and so
     is a value outside an attribute's closed set.
 
-    ``alignment`` is the reply's alignment block as read: a value the block
-    lists as a variable is one the graph never defined, not an atom."""
+    A node is named by its concept and the words of ``sentence`` it is
+    aligned to, never by the reply's own variable. ``alignment`` is the
+    reply's alignment block as read: a value the block lists as a variable is
+    one the graph never defined, not an atom."""
     aligned = set(alignment or ())
+    name = _namer(graph, alignment, sentence)
     if graph.errors:
-        return graph.errors[0].message
+        # The parser's own message quotes the reply, which goes to the
+        # operator's log instead.
+        return 'The reply is not a readable graph.'
     if not graph.root or graph.root not in graph.nodes:
         return 'The reply carries no graph.'
     for var, node in graph.nodes.items():
         if not node.concept:
-            return f"The node {var} has no concept."
+            return 'A node of the reply has no concept.'
         for child in node.children:
             if not str(child.rel).startswith(':'):
-                return f"The relation {child.rel} on {var} does not start with a colon."
+                return f"The relation {child.rel} on {name(var)} does not start with a colon."
             unknown = unknown_relation_problem(child.rel)
             if unknown:
                 return unknown
             if child.kind == 'node' and child.value not in graph.nodes:
-                return f"{var} {child.rel} names {child.value}, which no node defines."
+                return f"{name(var)} {child.rel} names a node the reply does not define."
             if child.kind == 'node':
                 under = node_under_attribute_problem(child.rel, node.concept)
                 if under:
-                    return f"{var}: {under}"
+                    return f"{name(var)}: {under}"
                 continue
             value = str(child.value)
             if edge_only(child.rel, node.concept):
                 if value in aligned or _MODEL_VARIABLE.fullmatch(value):
-                    return f"{var} {child.rel} names {value}, which no node defines."
-                return f"{var} {child.rel} takes a node, not the value {value}."
+                    return f"{name(var)} {child.rel} names a node the reply does not define."
+                return f"{name(var)} {child.rel} takes a node, not the value {value}."
             listed = list_item_problem(child.rel, value)
             if listed:
-                return f"{var}: {listed}"
+                return f"{name(var)}: {listed}"
             closed = ATTRIBUTE_VALUES.get(child.rel)
             if closed and value not in closed:
                 return f"{value} is not a value of {child.rel}."
     # A cycle UMR does not allow, refused as the canvas and Text mode refuse
-    # the edge that closes it (cycle_edges, the app's rule).
+    # the edge that closes it (cycle_edges, the app's rule). A relation stated
+    # both ways is one relation (merge_restated_edges, called first).
     closing = cycle_edges(graph)
     if closing:
         source, rel, target = closing[0]
-        return f"{rel} from {source} to {target} would close a cycle."
+        return f"{name(source)} {rel} {name(target)} would close a cycle."
     return None
 
 
@@ -436,11 +493,13 @@ class UmrDraftService(BaseService):
             # layout: joined here, then read and checked like any other.
             graph = parse_penman(join_flat_graph(graph_text))
             alignment = parse_alignment(alignment_text)
-            problem = validate_graph(graph, alignment)
+            merge_restated_edges(graph)
+            problem = validate_graph(graph, alignment, sentence)
             if problem:
                 # The reply itself goes to the operator's log: what the model
                 # wrote is what anyone improving the prompt needs to see.
-                print(f'Reply for sentence {sentence.index} refused ({problem}):\n{reply.text}')
+                detail = f'{problem} {graph.errors[0].message}' if graph.errors else problem
+                print(f'Reply for sentence {sentence.index} refused ({detail}):\n{reply.text}')
                 failures.append({'sentence': sentence.index, 'reason': problem})
                 continue
             pieces, nodes, edges = plan_sentence(graph, alignment, sentence, run.taken)
@@ -450,7 +509,7 @@ class UmrDraftService(BaseService):
 
         finish_draft(self.client, response_helper, run, plans, failures, frag,
                      service_id=self.service_id,
-                     operation=run_label('UMR draft', plans),
+                     operation=lambda written: run_label('UMR draft', written),
                      writing=f"Writing {len(plans)} graph{'' if len(plans) == 1 else 's'}…",
                      not_drafted=not_drafted, ended=ended)
 

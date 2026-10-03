@@ -14,11 +14,11 @@ umr = servicetest.load_service(SERVICES / 'umr_draft_llm.py')
 
 
 @pytest.mark.parametrize('parent, rel, why', [
-    ('eat-01', ':aspect', "v1: ':aspect' takes a value, not a node."),
-    ('eat-01', ':li', "v1: ':li' takes a value, not a node."),
-    ('eat-01', ':refer-number', "v1: ':refer-number' takes a value, not a node."),
-    ('have-polarity-91', ':ARG2', "v1: ':ARG2' takes a value, not a node."),
-    ('name', ':op1', "v1: ':op1' takes a value, not a node."),
+    ('eat-01', ':aspect', "eat-01: ':aspect' takes a value, not a node."),
+    ('eat-01', ':li', "eat-01: ':li' takes a value, not a node."),
+    ('eat-01', ':refer-number', "eat-01: ':refer-number' takes a value, not a node."),
+    ('have-polarity-91', ':ARG2', "have-polarity-91: ':ARG2' takes a value, not a node."),
+    ('name', ':op1', "name: ':op1' takes a value, not a node."),
 ])
 def test_a_node_under_a_relation_that_takes_a_value_is_refused(parent, rel, why):
     graph = umr.parse_penman(f'(v1 / {parent} {rel} (v2 / thing))')
