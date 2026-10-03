@@ -1,4 +1,4 @@
-"""The agent's reading of a pattern (core/java_regex.py) against plaid-igt's
+"""The agent's reading of a pattern (core/java_regex.py) against plaid-ui's
 (src/domain/javaRegex.js) and against Java itself.
 
 A replace finds its values with the server's search, which runs Java's
@@ -8,7 +8,8 @@ word forms in Java and 27,016 in Python's ``re`` (H23-SEARCH-3). Both clients
 now write the pattern out themselves, in a form both engines read the same
 way. So: the two clients write the same pattern for the server (the mirror),
 and for every value the local pattern matches exactly when Java's matches (the
-oracle, through plaid-igt/tools/JavaRegex.java).
+oracle, through plaid-ui/tools/JavaRegex.java, which compiles as the server
+does, with UNICODE_CHARACTER_CLASS).
 """
 
 import json
@@ -28,8 +29,8 @@ from plaid_agent.core.tools import ToolError
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUNNER = os.path.join(HERE, 'java_regex_mirror.mjs')
-IGT = os.path.join(HERE, '..', '..', 'plaid-igt')
-JAVA_TOOL = os.path.join(IGT, 'tools', 'JavaRegex.java')
+UI = os.path.join(HERE, '..', '..', 'plaid-ui')
+JAVA_TOOL = os.path.join(UI, 'tools', 'JavaRegex.java')
 #: The never-matching branch every server pattern ends in (java_regex._SUPPLEMENTARY).
 S = '(?:(?!)' + chr(0x10FFFF) + ')?'
 
@@ -44,8 +45,15 @@ PATTERNS = [
     r'[a-]', r'[\]]', r'[\w-]', r'[.]', r'\$', r'\.', r'\Qa.b\E', r'\x41', r'\x{1F600}',
     r'😀', r'\0101', r'\cA', r']', r'}', r'(?=a)a', r'(?!a).', r'(?<=a)b', r'(?<!a)b',
     r'(?<=\ba)b', r'(?<=a|bc)d', r'[\w-]+', r'\d+', r'[^\w]', r'\bцу', r'\bتے\b', r'\bə́mə\b', r'[\p{Lu}\p{Nd}]', '\\s*=', r'\ ', r'\#',
+    # Scripts, by every spelling Java takes, and Java's Unicode classes.
+    r'\p{IsArabic}', r'^\p{IsArabic}+$', r'\p{IsCyrillic}', r'^\p{IsHan}+$', r'\p{sc=Devanagari}',
+    r'\P{script=Latin}', r'[\p{IsGreek}\p{IsCyrillic}]', r'[^\p{IsLatin}\s]', r'\p{IsCommon}',
+    r'\p{IsInherited}', r'^\p{IsArab}\p{M}*$', r'\p{Isarabic}', r'\p{Script=Arab}', r'\p{IsHebrew}+',
+    r'\P{IsOld_Italic}', r'\p{IsSignWriting}', r'(?i)\p{IsGreek}', r'\p{GC=Lu}', r'(?U)\w',
+    r'^[\w\s]+$', r'\S+', r'^\s$', r'\b\w', r'^\W+$', r'\w\b', r'a{1,2}?b', r'^.{2}$',
     # Refused, with the same message in both clients.
-    '[[:alpha:]]', r'\p{IsLatin}', '(?m)^a', 'a*+', '(?>a)', r'\G', r'\B', r'[\W]', r'(a)?\1', r'(?i)(a)\1',
+    '[[:alpha:]]', r'\p{InCyrillic}', r'\p{blk=Cyrillic}', r'\p{Alpha}', r'\p{Arabic}',
+    r'\p{IsAlphabetic}', r'\p{IsUnknown}', r'\p{scx=Arabic}', r'\p{javaLowerCase}', '(?-U)a', '(?m)^a', 'a*+', '(?>a)', r'\G', r'\B', r'[\W]', r'(a)?\1', r'(?i)(a)\1',
     r'(?i)\p{Lu}', '(?<=a*)b', '*a', 'a{', '(a', 'a)', '[a', '[z-a]', 'a{3,2}', '\\', r'\y',
 ]
 CASES = ([[p, {}] for p in PATTERNS]
@@ -65,6 +73,12 @@ SUBJECTS = [
     '{x}', 'a|b', '?a', '?', 'é', 'é', 'x​y', 'x　y', 'Цвез', 'цвез', 'ЦӀуьд',
     'ñaa', 'Ñu', 'ə́mə', 'اَتےِ', 'sbj:3.PFV', '12', 'a\u0000b', 'x\u0085', 'Number = Sing',
     'a#b', 'x y', 'run', 'Run', 'running',
+    # Java's Unicode \\w and \\s: a joiner inside a Persian word, a letter number,
+    # an alphabetic symbol, other spaces.
+    'می\u200cخواهم', 'x\u200dy', 'Ⅶ', 'Ⓐb', '\u0345', 'a\u202fb', 'a\u2007b', 'x\u180ey',
+    # Several scripts, with their marks and digits.
+    'الكتاب', 'Цвет', '汉字', 'हिन्दी', '१२', 'שָׁלוֹם', 'Ελληνικά', 'ქართული', 'ሰላም', 'ไทย',
+    'カタカナ', 'ひらがな', 'ㄅㄆ', 'Ꭰꭰ', '\U0001e950', 'abc١', 'ⁿ', '´', 'ǅ',
 ] + [c for cls in FOLDS for c in cls]
 
 
@@ -92,39 +106,68 @@ def test_the_agent_sends_the_server_what_the_app_sends(tmp_path):
     assert differ == []
 
 
-def test_a_local_match_is_a_match_in_java():
+def _oracle(lines):
     java = shutil.which('java')
     assert java, 'java is needed to check the translator against the server\'s engine'
-    usable = [(p, o) for p, o in CASES if _ours(p, o)['error'] is None]
+    run = subprocess.run([java, JAVA_TOOL, 'oracle'], input='\n'.join(lines) + '\n',
+                         capture_output=True, text=True, timeout=300)
+    assert run.returncode == 0, run.stderr
+    return run.stdout.split()
 
-    def oracle(lines):
-        run = subprocess.run([java, JAVA_TOOL, 'oracle'], input='\n'.join(lines) + '\n',
-                             capture_output=True, text=True, timeout=300)
-        assert run.returncode == 0, run.stderr
-        return run.stdout.split()
 
-    def hexed(server, s):
-        return f"{server.encode('utf-8').hex()}\t{s.encode('utf-8').hex()}"
+def _hexed(pattern, s):
+    return f"{pattern.encode('utf-8').hex()}\t{s.encode('utf-8').hex()}"
 
+
+def _differences(rows):
+    """Java's answer for each (pattern, options, pattern sent to Java) on each
+    subject, against the local matcher's."""
     # A character newer than the server's Java's Unicode tables is a known
     # difference (the module says so): leave out what Java reads as unassigned.
-    assigned = oracle([hexed(r'\p{Cn}', s) for s in SUBJECTS])
+    assigned = _oracle([_hexed(r'\p{Cn}', s) for s in SUBJECTS])
     known = [s for s, a in zip(SUBJECTS, assigned) if a == '0']
     assert len(known) > 0.9 * len(SUBJECTS)
-    servers = [translate(p, **_options(o)).server for p, o in usable]
-    lines = [hexed(server, s) for server in servers for s in known]
-    answers = oracle(lines)
+    lines = [_hexed(sent, s) for _, _, sent in rows for s in known]
+    answers = _oracle(lines)
     assert len(answers) == len(lines)
     differ = []
     k = 0
-    for p, o in usable:
+    for p, o, _ in rows:
         m = matcher(p, **_options(o))
         for s in known:
             mine = '1' if m(s) else '0'
             if answers[k] != mine:
                 differ.append((p, o, s, answers[k], mine))
             k += 1
-    assert differ[:10] == []
+    return differ
+
+
+def test_a_local_match_is_a_match_in_java():
+    usable = [(p, o) for p, o in CASES if _ours(p, o)['error'] is None]
+    assert _differences([(p, o, translate(p, **_options(o)).server) for p, o in usable])[:10] == []
+
+
+def test_a_local_match_is_what_the_server_finds_for_the_typed_pattern():
+    # A script's query sends the typed pattern, which the server compiles with
+    # UNICODE_CHARACTER_CLASS. \w, \d, \s, \b and scripts read the same here.
+    # (?i) is left out: Java folds İ and ı with i, the translators do not
+    # (ruled 2026-10-02). The suffix puts the typed lookbehinds on code points.
+    typed = [(p, o, p + S) for p, o in CASES
+             if not o and _ours(p, o)['error'] is None and not re.search(r'\(\?[a-zU]*i', p)]
+    assert len(typed) > 100
+    assert _differences(typed)[:10] == []
+
+
+def test_every_script_the_server_knows_is_read():
+    java = shutil.which('java')
+    assert java
+    run = subprocess.run([java, JAVA_TOOL, 'scripts'], capture_output=True, text=True, timeout=120)
+    assert run.returncode == 0, run.stderr
+    names = [line.split('\t')[0] for line in run.stdout.split('\n') if line]
+    assert len(names) > 150
+    for name in names:
+        server = translate(rf'\p{{Is{name}}}').server
+        assert server.upper().startswith(rf'\P{{SC={name}}}'), name
 
 
 def test_any_case_folds_as_unicode_does():
@@ -145,12 +188,15 @@ def test_the_server_cap_is_core_s():
 
 def test_search_and_replace_read_a_pattern_alike():
     # The hunter's cases: Python's re read \w and [[:alpha:]] otherwise.
-    assert rx(r'^\w+', regex=True, case_sensitive=True) == {'regex': r'^[\p{L}\p{M}\p{Nd}\p{Pc}]+' + S}
+    assert rx(r'^\w+', regex=True, case_sensitive=True) == {
+        'regex': r'^[\x{200c}\x{200d}\p{IsAlphabetic}\p{M}\p{Nd}\p{Pc}]+' + S}
     rewrite = replacer(r'^\w+$', 'X', True, False, True)
     assert rewrite('abc') == 'X'
     # A word character in any script (ruled 2026-10-02).
     assert rewrite('añb') == 'X'
     assert rewrite('a b') == 'a b'
+    # Java's Unicode \w takes a joiner inside a Persian word.
+    assert rewrite('می\u200cخواهم') == 'X'
     assert replacer(r'\p{L}', 'x', True, False, True)('ñ1') == 'x1'
     assert replacer('ka', 'ga', False, False)('KAlamang') == 'galamang'
     with pytest.raises(ToolError, match='Nested'):

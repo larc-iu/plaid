@@ -2,25 +2,30 @@
 for this process.
 
 The server matches a query's ``{"regex": ...}`` with Java's
-``java.util.regex``, and a replace rewrites the values it found here, in
-Python. The two dialects disagree: ``\\w`` and ``\\b`` are ASCII in Java and
-Unicode in Python, ``[[:alpha:]]`` is a POSIX class in one and a nested set in
-the other, ``\\p{L}`` and ``\\h`` exist only in Java. So a replace that handed
-the same text to both found one set of values and rewrote another.
+``java.util.regex``, compiled with ``UNICODE_CHARACTER_CLASS``, and a replace
+rewrites the values it found here, in Python. The two dialects disagree:
+``[[:alpha:]]`` is a POSIX class in one and a nested set in the other,
+``\\p{L}``, ``\\p{IsArabic}`` and ``\\h`` exist only in Java, ``\\w`` and
+``\\s`` take other characters in each, and ``$`` and ``.`` know other line
+ends. So a replace that handed the same text to both found one set of values
+and rewrote another.
 
-This is the same translator as the browser client's ``javaRegex.js`` (Search
-and Bulk Edit there), kept in step by ``tests/test_java_regex.py``:
-the pattern is parsed as Java syntax, and every construct whose meaning
-differs is written out in a form both engines read the same way (``\\w`` and
-``\\d`` as Unicode categories, so a word character is a letter, mark, digit
-or connector in any script, Java's explicit classes for ``\\s \\h \\v``,
-lookarounds over that ``\\w`` for ``\\b``, Java's line ends
-for ``.`` and ``$``, and each letter of a case-insensitive pattern as the
-class of letters Unicode's simple case folding makes equal (ı and İ stay apart
-from i), so neither engine folds case itself and
-the server gets no flag). What it cannot write out the same way is refused
-with a message. The local side uses the ``regex`` package, which reads
-``\\p{..}`` and lookbehinds of any length.
+This is the same translator as the browser's ``javaRegex.js`` in plaid-ui,
+which every app's regex box goes through, kept in step by
+``tests/test_java_regex.py``: the pattern is parsed as Java syntax, and every
+construct whose meaning differs is written out in a form both engines read
+the same way. ``\\w`` is Java's Unicode word character (Alphabetic, a mark, a
+decimal digit, a connector or a joiner), ``\\d`` a decimal digit in any
+script, ``\\s`` Unicode white space, ``\\h \\v`` Java's explicit classes,
+``\\b`` lookarounds over that ``\\w``, a script typed ``\\p{IsArabic}`` or
+``\\p{sc=Arabic}`` as ``\\p{sc=Arabic}``, ``.`` and ``$`` Java's line ends, and
+each letter of a case-insensitive pattern the class of letters Unicode's simple
+case folding makes equal (ı and İ stay apart from i, where Java's own flag
+would fold them, ruled 2026-10-02), so neither engine folds case itself and the
+server gets no flag. What it cannot write out the same way (a block such as
+``\\p{InCyrillic}``, a POSIX class, a nested set) is refused with a message.
+The local side uses the ``regex`` package, which reads ``\\p{..}`` and
+lookbehinds of any length.
 """
 
 import functools
@@ -46,10 +51,15 @@ class Translated(NamedTuple):
 
 
 MAX_CP = 0x10FFFF
-#: A word character in any script (letter, mark, decimal digit, connector such
-#: as _), written as categories, which every engine reads.
-WORD_PROPS = ['L', 'M', 'Nd', 'Pc']
-SPACE = [(0x09, 0x0D), (0x20, 0x20)]
+#: Java's Unicode word character (UNICODE_CHARACTER_CLASS): Alphabetic, a mark,
+#: a decimal digit, a connector such as _, or a joiner. Written as properties
+#: every engine reads, and the two joiners as themselves.
+WORD_PROPS = ['Alphabetic', 'M', 'Nd', 'Pc']
+JOINERS = [(0x200C, 0x200D)]
+#: Unicode's White_Space, which is Java's Unicode \s.
+SPACE = [(0x09, 0x0D), (0x20, 0x20), (0x85, 0x85), (0xA0, 0xA0), (0x1680, 0x1680),
+         (0x2000, 0x200A), (0x2028, 0x2029), (0x202F, 0x202F), (0x205F, 0x205F),
+         (0x3000, 0x3000)]
 HSPACE = [(0x09, 0x09), (0x20, 0x20), (0xA0, 0xA0), (0x1680, 0x1680), (0x180E, 0x180E),
           (0x2000, 0x200A), (0x202F, 0x202F), (0x205F, 0x205F), (0x3000, 0x3000)]
 VSPACE = [(0x0A, 0x0D), (0x85, 0x85), (0x2028, 0x2029)]
@@ -59,6 +69,50 @@ ESCAPE_SETS = {'s': SPACE, 'h': HSPACE, 'v': VSPACE}
 CATEGORIES = set('L Lu Ll Lt Lm Lo M Mn Mc Me N Nd Nl No P Pc Pd Ps Pe Pi Pf Po '
                  'S Sm Sc Sk So Z Zs Zl Zp C Cc Cf Co'.split())
 CASED = {'Lu', 'Ll', 'Lt'}
+
+#: The Unicode scripts the server's Java knows (Unicode 15.0), by the name JS
+#: reads and Java's four-letter alias. Java finds a script by either, in any
+#: case. The same table as javaRegex.js.
+SCRIPTS = {}
+for _entry in (
+    'Common:Zyyy Latin:Latn Greek:Grek Cyrillic:Cyrl Armenian:Armn Hebrew:Hebr '
+    'Arabic:Arab Syriac:Syrc Thaana:Thaa Devanagari:Deva Bengali:Beng Gurmukhi:Guru '
+    'Gujarati:Gujr Oriya:Orya Tamil:Taml Telugu:Telu Kannada:Knda Malayalam:Mlym '
+    'Sinhala:Sinh Thai Lao:Laoo Tibetan:Tibt Myanmar:Mymr Georgian:Geor Hangul:Hang '
+    'Ethiopic:Ethi Cherokee:Cher Canadian_Aboriginal:Cans Ogham:Ogam Runic:Runr '
+    'Khmer:Khmr Mongolian:Mong Hiragana:Hira Katakana:Kana Bopomofo:Bopo Han:Hani Yi:Yiii '
+    'Old_Italic:Ital Gothic:Goth Deseret:Dsrt Inherited:Zinh Tagalog:Tglg Hanunoo:Hano '
+    'Buhid:Buhd Tagbanwa:Tagb Limbu:Limb Tai_Le:Tale Linear_B:Linb Ugaritic:Ugar '
+    'Shavian:Shaw Osmanya:Osma Cypriot:Cprt Braille:Brai Buginese:Bugi Coptic:Copt '
+    'New_Tai_Lue:Talu Glagolitic:Glag Tifinagh:Tfng Syloti_Nagri:Sylo Old_Persian:Xpeo '
+    'Kharoshthi:Khar Balinese:Bali Cuneiform:Xsux Phoenician:Phnx Phags_Pa:Phag Nko:Nkoo '
+    'Sundanese:Sund Batak:Batk Lepcha:Lepc Ol_Chiki:Olck Vai:Vaii Saurashtra:Saur '
+    'Kayah_Li:Kali Rejang:Rjng Lycian:Lyci Carian:Cari Lydian:Lydi Cham Tai_Tham:Lana '
+    'Tai_Viet:Tavt Avestan:Avst Egyptian_Hieroglyphs:Egyp Samaritan:Samr Mandaic:Mand '
+    'Lisu Bamum:Bamu Javanese:Java Meetei_Mayek:Mtei Imperial_Aramaic:Armi '
+    'Old_South_Arabian:Sarb Inscriptional_Parthian:Prti Inscriptional_Pahlavi:Phli '
+    'Old_Turkic:Orkh Brahmi:Brah Kaithi:Kthi Meroitic_Hieroglyphs:Mero '
+    'Meroitic_Cursive:Merc Sora_Sompeng:Sora Chakma:Cakm Sharada:Shrd Takri:Takr '
+    'Miao:Plrd Caucasian_Albanian:Aghb Bassa_Vah:Bass Duployan:Dupl Elbasan:Elba '
+    'Grantha:Gran Pahawh_Hmong:Hmng Khojki:Khoj Linear_A:Lina Mahajani:Mahj '
+    'Manichaean:Mani Mende_Kikakui:Mend Modi Mro:Mroo Old_North_Arabian:Narb '
+    'Nabataean:Nbat Palmyrene:Palm Pau_Cin_Hau:Pauc Old_Permic:Perm Psalter_Pahlavi:Phlp '
+    'Siddham:Sidd Khudawadi:Sind Tirhuta:Tirh Warang_Citi:Wara Ahom '
+    'Anatolian_Hieroglyphs:Hluw Hatran:Hatr Multani:Mult Old_Hungarian:Hung '
+    'SignWriting:Sgnw Adlam:Adlm Bhaiksuki:Bhks Marchen:Marc Newa Osage:Osge Tangut:Tang '
+    'Masaram_Gondi:Gonm Nushu:Nshu Soyombo:Soyo Zanabazar_Square:Zanb '
+    'Hanifi_Rohingya:Rohg Old_Sogdian:Sogo Sogdian:Sogd Dogra:Dogr Gunjala_Gondi:Gong '
+    'Makasar:Maka Medefaidrin:Medf Elymaic:Elym Nandinagari:Nand '
+    'Nyiakeng_Puachue_Hmong:Hmnp Wancho:Wcho Yezidi:Yezi Chorasmian:Chrs Dives_Akuru:Diak '
+    'Khitan_Small_Script:Kits Vithkuqi:Vith Old_Uyghur:Ougr Cypro_Minoan:Cpmn Tangsa:Tnsa '
+    'Toto Kawi Nag_Mundari:Nagm'
+).split():
+    _name, _, _alias = _entry.partition(':')
+    SCRIPTS[_name.upper()] = _name
+    if _alias:
+        SCRIPTS[_alias.upper()] = _name
+#: How Java spells a property this module writes, where it differs.
+JAVA_PROPS = {'Alphabetic': 'IsAlphabetic'}
 MAX_COUNT = 1000
 
 
@@ -186,18 +240,37 @@ class _Parser:
                 _fail('\\p needs a category, such as \\p{L}.')
             name = chr(self.take())
         shown = f"\\{'P' if negated else 'p'}{{{name}}}"
-        cat = name
-        if cat.startswith('Is'):
-            cat = cat[2:]
-        elif cat.startswith('gc='):
-            cat = cat[3:]
-        elif cat.startswith('general_category='):
-            cat = cat[17:]
-        if cat not in CATEGORIES:
-            _fail(f'{shown} is not supported. Use a category such as \\p{{L}}.')
-        if self.flags['ci'] and cat in CASED:
+        # Java's reading: `key=value` with the key in any case, `In` a block,
+        # `Is` a category or a script, and a bare name a category.
+        key, eq, value = name.partition('=')
+        key = key.lower() if eq else None
+
+        def script(s):
+            return SCRIPTS.get(s.upper())
+        found = None
+        if key in ('gc', 'general_category'):
+            if value in CATEGORIES:
+                found = value
+        elif key in ('sc', 'script'):
+            if script(value):
+                found = f'sc={script(value)}'
+        elif key in ('blk', 'block') or (key is None and name.startswith('In')):
+            _fail(f'{shown} is a block, which is not supported. '
+                  'Use a script such as \\p{IsCyrillic}.')
+        elif key is None and name.startswith('Is'):
+            rest = name[2:]
+            if rest in CATEGORIES:
+                found = rest
+            elif script(rest):
+                found = f'sc={script(rest)}'
+        elif key is None and name in CATEGORIES:
+            found = name
+        if not found:
+            _fail(f'{shown} is not supported. '
+                  'Use a category such as \\p{L} or a script such as \\p{IsArabic}.')
+        if self.flags['ci'] and found in CASED:
             _fail(f'{shown} cannot be used with (?i).')
-        return {'name': cat, 'negated': negated}
+        return {'name': found, 'negated': negated}
 
     def escape(self, in_class):
         if self.at_end():
@@ -252,11 +325,11 @@ class _Parser:
         if name in ('d', 'D'):
             return {'fixed': [], 'props': [{'name': 'Nd', 'negated': name == 'D'}]}
         if name == 'w':
-            return {'fixed': [], 'props': [{'name': n, 'negated': False} for n in WORD_PROPS]}
+            return {'fixed': JOINERS, 'props': [{'name': n, 'negated': False} for n in WORD_PROPS]}
         if name == 'W':
             if in_class:
                 _fail('\\W is not supported in [...]. Use [^\\w...] instead.')
-            return {'negated_set': True, 'fixed': [],
+            return {'negated_set': True, 'fixed': JOINERS,
                     'props': [{'name': n, 'negated': False} for n in WORD_PROPS]}
         if name in ESCAPE_SETS:
             return {'fixed': ESCAPE_SETS[name], 'props': []}
@@ -386,8 +459,11 @@ class _Parser:
                 nxt['dotall'] = on
             elif c == 'u':
                 continue
+            elif c == 'U' and on:
+                # The server compiles every pattern with UNICODE_CHARACTER_CLASS.
+                continue
             else:
-                _fail(f'(?{c}) is not supported.')
+                _fail(f"(?{'' if on else '-'}{c}) is not supported.")
         return nxt
 
     def parse_group(self):
@@ -473,7 +549,7 @@ class _Parser:
                 _fail(f'A count above {MAX_COUNT} is not supported.')
             if hi is not None and hi < lo:
                 _fail(f'In {{{a},{b}}} the first number is larger.')
-            self.i = j
+            self.i = j + 1
         else:
             return None
         if c != 0x7B:
@@ -627,14 +703,15 @@ def _encode_char(cp, engine):
     return f'\\u{cp:04x}' if cp <= 0xFFFF else f'\\U{cp:08x}'
 
 
-def _prop(p):
-    return f"\\{'P' if p['negated'] else 'p'}{{{p['name']}}}"
+def _prop(p, engine):
+    name = (engine == 'java' and JAVA_PROPS.get(p['name'])) or p['name']
+    return f"\\{'P' if p['negated'] else 'p'}{{{name}}}"
 
 
 def _encode_set(node, engine):
     ranges, props, negated = node['ranges'], node['props'], node['negated']
     if not ranges and len(props) == 1 and not negated:
-        return _prop(props[0])
+        return _prop(props[0], engine)
     if not ranges and not props:
         return _encode_set({'ranges': [(0, MAX_CP)], 'props': [], 'negated': False}, engine) if negated else '(?!)'
     if not negated and not props and len(ranges) == 1 and ranges[0][0] == ranges[0][1]:
@@ -645,7 +722,7 @@ def _encode_set(node, engine):
         if hi > lo:
             out += ('-' if hi > lo + 1 else '') + _encode_char(hi, engine)
     for p in props:
-        out += _prop(p)
+        out += _prop(p, engine)
     return out + ']'
 
 
@@ -657,7 +734,8 @@ _END = {'java': '\\z', 'py': '\\Z'}
 #: such character written as itself (an escape does not count), switches the
 #: server's pattern to that reading (REV-W2 F2).
 _SUPPLEMENTARY = '(?:(?!)' + chr(0x10FFFF) + ')?'
-_WORD_CLASS = '[' + ''.join(f'\\p{{{n}}}' for n in WORD_PROPS) + ']'
+_WORD_SET = {'ranges': JOINERS, 'props': [{'name': n, 'negated': False} for n in WORD_PROPS],
+             'negated': False}
 
 
 def _is_atom(node, body):
@@ -683,7 +761,7 @@ def _emit(node, engine):
         ends = _encode_set({'ranges': LINE_END, 'props': [], 'negated': False}, engine)
         return f'(?=(?:\\x0d\\x0a|{ends})?{_END[engine]})'
     if t == 'wordb':
-        w = _WORD_CLASS
+        w = _encode_set(_WORD_SET, engine)
         return f'(?:(?<={w})(?!{w})|(?<!{w})(?={w}))'
     if t == 'backref':
         return f"(?:\\{node['n']})"

@@ -5,13 +5,15 @@
 // agree: `\p{L}` matched every letter on the server and nothing here, so a
 // `without` clause the search honoured blocked nothing in a rewrite.
 //
-// The reading is igt's translator (plaid-igt/src/domain/javaRegex.js), the one
-// every Plaid regex box goes through: `\w` and `\d` read any script, `(?i)`
-// and the `i` flag fold case the same way on both sides, and a construct the
-// two dialects read differently is refused with a message. It imports nothing,
-// so the node test suite can load it by its real path.
+// The reading is plaid-ui's translator (plaid-ui/src/domain/javaRegex.js), the
+// one every Plaid regex box goes through: `\w`, `\d`, `\s` and `\b` read
+// every script as the server reads them, a script such as `\p{IsArabic}` reads
+// the same on both sides, `(?i)` and the `i` flag fold case the same way on
+// both sides, and a construct the two dialects read differently is refused
+// with a message. It is imported by a relative path, so the node test suite
+// can load it.
 
-import { translatePattern } from '../../../plaid-igt/src/domain/javaRegex.js';
+import { translatePattern } from '../../../plaid-ui/src/domain/javaRegex.js';
 import { GrewUnsupportedError } from './errors.js';
 import { normalizeFlags } from './regex.js';
 

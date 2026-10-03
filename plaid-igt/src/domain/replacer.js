@@ -8,7 +8,7 @@
 // pattern that Search sends to the server, so a value is rewritten here
 // exactly when the server's search finds it.
 
-import { translatePattern } from './javaRegex.js';
+import { translatePattern } from '@ui/domain/javaRegex.js';
 
 /**
  * Fill a value that is not there. The three search match types all skip an

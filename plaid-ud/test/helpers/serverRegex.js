@@ -1,9 +1,11 @@
 // A pattern the Grew compiler sends to the server (Java syntax), read in JS
 // for the tests that stand in for the server. It covers only what reaches the
 // server: the translator's output (src/grew/userRegex.js), which writes `\z`
-// for the end and `\x{…}` for a code point, and the compiler's own regexes
-// (src/grew/regex.js), which JS reads as Java does.
-export const serverRegExp = (pattern, flags = '') => {
+// for the end, `\x{…}` for a code point and `\p{IsAlphabetic}` for what JS
+// calls `\p{Alphabetic}`, and the compiler's own regexes (src/grew/regex.js),
+// which JS reads as Java does.
+export const serverRegExp = (typed, flags = '') => {
+  const pattern = typed.replaceAll('\\p{IsAlphabetic}', '\\p{Alphabetic}');
   let out = '';
   for (let i = 0; i < pattern.length; i += 1) {
     const c = pattern[i];

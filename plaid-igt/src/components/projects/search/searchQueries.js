@@ -11,11 +11,11 @@
 // Match semantics: exact = literal equality (case-sensitive);
 // contains = the text as a substring, in any case;
 // regex = the user's pattern, read as Java syntax, case-sensitive.
-// contains and regex go through translatePattern (domain/javaRegex.js), which
+// contains and regex go through translatePattern (plaid-ui domain/javaRegex.js), which
 // writes the pattern out for the server and for the browser alike, so Bulk
 // Edit's rows (planned in the browser) are the values Search finds.
 
-import { PatternError, translatePattern } from '../../../domain/javaRegex.js';
+import { PatternError, translatePattern } from '@ui/domain/javaRegex.js';
 
 // The case behaviour differs between these and it changes what comes back, so
 // the label says it rather than leaving it to be discovered: `contains` folds

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseAndCompile } from '../src/grew/index.js';
-import { translatePattern } from '../../plaid-igt/src/domain/javaRegex.js';
+import { translatePattern } from '../../plaid-ui/src/domain/javaRegex.js';
 
 // Stable, readable layer ids so compiled output is deterministic.
 const LI = {

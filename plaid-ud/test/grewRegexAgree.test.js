@@ -91,11 +91,15 @@ test('a rewrite matches the words the search finds, regex for regex', () => {
   agree('pattern { X [lemma=/^дом$/i] }', ['Дом']);
   agree('pattern { X [lemma=re"(?i)^КЪ"] }', ['къа']);
   agree('pattern { X [lemma=re"^КЪ"] }', []);
+  // A script reads the same on both sides, by any name Java takes.
+  agree(String.raw`pattern { X [lemma=re"^\\p{IsArabic}+$"] }`, ['حضرت']);
+  agree(String.raw`pattern { X [lemma=re"\\p{sc=Cyrillic}"] }`, ['къа', 'Дом']);
+  agree(String.raw`pattern { X [lemma=re"^\\P{IsCyrl}+$"] }`, ['حضرت', '13', 'a_b', 'x-y']);
 });
 
 test('a regex the two engines would read apart is refused where it is written', () => {
   for (const text of [
-    String.raw`pattern { X [lemma=re"\\p{IsArabic}"] }`,
+    String.raw`pattern { X [lemma=re"\\p{InArabic}"] }`,
     'pattern { X [lemma=re"a++"] }',
     'pattern { X [lemma=re".*{.*"] }',
   ]) {

@@ -7,7 +7,7 @@ import {
   freqQueries,
   metadataHitsQuery,
 } from './searchQueries.js';
-import { PatternError } from '../../../domain/javaRegex.js';
+import { PatternError } from '@ui/domain/javaRegex.js';
 
 // The never-matching branch every server pattern ends in (javaRegex.js).
 const S = `(?:(?!)${String.fromCodePoint(0x10ffff)})?`;

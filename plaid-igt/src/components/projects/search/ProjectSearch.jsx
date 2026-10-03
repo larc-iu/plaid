@@ -18,7 +18,7 @@ import { cn } from '@ui/lib/utils';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { MATCH_TYPES, searchDomains } from './searchQueries.js';
-import { PatternError } from '../../../domain/javaRegex.js';
+import { PatternError } from '@ui/domain/javaRegex.js';
 import { runHitsSearch, runFreqSearch } from './searchRunner.js';
 import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from './hitLinks.js';

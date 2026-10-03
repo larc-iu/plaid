@@ -286,9 +286,11 @@ Name a category or script when you mean one, such as `\p{L}` for any letter or
 Unicode's folding, so `^istanbul$` with `i` matches `İstanbul`.
 
 These are the readings of a pattern sent to the API. The search boxes in
-Plaid's apps rewrite what a person types before they send it, and do not read
-every class the same way, so a pattern typed in an app can find a little
-less or more than the same pattern sent from a script.
+Plaid's apps rewrite what a person types before they send it, and read `\w`,
+`\d`, `\s`, `\b` and scripts the same way. Their case-insensitive match
+differs: it keeps `ı` and `İ` apart from `i`. A pattern they cannot rewrite
+the same way, such as a block (`\p{InCyrillic}`) or a POSIX class, is refused
+in the box with a message.
 
 [,python]
 ----

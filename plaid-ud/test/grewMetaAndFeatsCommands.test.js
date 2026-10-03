@@ -4,7 +4,7 @@ import { ConlluDocument } from '../src/domain/ConlluDocument.js';
 import { rawDocFromConllu } from './helpers/rawDoc.js';
 import { parseAndCompile } from '../src/grew/index.js';
 import { parseGrs } from '../src/grew/parser.js';
-import { translatePattern } from '../../plaid-igt/src/domain/javaRegex.js';
+import { translatePattern } from '../../plaid-ui/src/domain/javaRegex.js';
 import { graphFromSentence } from '../src/grew/rewrite/graph.js';
 import { rewriteSentence } from '../src/grew/rewrite/engine.js';
 import { GrewUnsupportedError } from '../src/grew/errors.js';

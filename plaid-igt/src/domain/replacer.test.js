@@ -103,7 +103,7 @@ describe('buildReplacer, filling a blank', () => {
 
 // Search finds the documents on the server (Java) and these rows are planned
 // in the browser. Each case here is one where the two dialects disagreed
-// before both read the pattern through translatePattern; javaRegex.oracle.test.js
+// before both read the pattern through translatePattern; plaid-ui javaRegex.test.js
 // checks the same agreement against Java itself.
 describe('buildReplacer, read as the server reads it', () => {
   it('matches Unicode categories', () => {
@@ -128,9 +128,23 @@ describe('buildReplacer, read as the server reads it', () => {
 
   it('reads \\h, \\s, . and $ as Java does', () => {
     expect(run('\\h', 'regex', '_', ['a\u00a0b', 'ahb']).out).toEqual(['a_b', null]);
-    expect(run('\\s', 'regex', '_', ['a\u00a0b', 'a\tb']).out).toEqual([null, 'a_b']);
+    // Java's Unicode \s, which the server reads (UNICODE_CHARACTER_CLASS).
+    expect(run('\\s', 'regex', '_', ['a\u00a0b', 'a\tb', 'a\u200bb']).out).toEqual([
+      'a_b',
+      'a_b',
+      null,
+    ]);
     expect(run('a.b', 'regex', '_', ['a\u0085b', 'a-b']).out).toEqual([null, '_']);
     expect(run('a$', 'regex', 'b', ['a\n', 'a']).out).toEqual(['b\n', 'b']);
+  });
+
+  it('reads a script and \\w as Java does', () => {
+    expect(run('\\p{IsCyrillic}+', 'regex', 'x', ['Цвез', 'abc']).out).toEqual(['x', null]);
+    expect(run('^\\w+$', 'regex', 'x', ['می\u200cخواهم', 'Ⅶ', 'a b']).out).toEqual([
+      'x',
+      'x',
+      null,
+    ]);
   });
 
   it('takes (?i) in any case, as an any-case match does', () => {
@@ -142,7 +156,7 @@ describe('buildReplacer, read as the server reads it', () => {
     expect(run('[[:alpha:]]', 'regex', 'x', ['a']).error).toBe(
       'Nested [...] is not supported. Write \\[ for a [.',
     );
-    expect(run('\\p{IsLatin}', 'regex', 'x', ['a']).error).toMatch(/not supported/);
+    expect(run('\\p{InLatin}', 'regex', 'x', ['a']).error).toMatch(/block, which is not supported/);
     expect(run('(a)?\\1', 'regex', 'x', ['a']).error).toMatch(/always matches/);
   });
 });

@@ -17,7 +17,7 @@
 // case-insensitive literal, `exact` is whole-value equality, `regex` is a
 // Java pattern with $1-style groups in the replacement. The documents come
 // from the server's search and the rows from buildReplacer in the browser,
-// and both read the pattern through translatePattern (domain/javaRegex.js),
+// and both read the pattern through translatePattern (plaid-ui domain/javaRegex.js),
 // so they match the same values.
 
 import { cpSlice } from '@larc-iu/plaid-client';
