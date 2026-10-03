@@ -153,6 +153,7 @@ Deleting the space between two words keeps them two words. Merge them on the Tok
 New text with a space between it and every word is in no word. The Tokenize tab makes words of it.
 A word goes, along with its annotations, only when all its text is deleted.
 Pasting the text back with words added, removed or changed changes only those words. Every other word keeps its analysis.
+A paste with several changes near a repeated word, or in a text written without spaces, can also replace one word beside a change, and that word loses its analysis.
 
 **Ctrl/Cmd+Z** in the box undoes typing, and **Ctrl/Cmd+Shift+Z** redoes it, up to 200 steps back.
 An undo the box cannot place exactly, such as one reaching back past a save that took in someone else's text, does nothing.
@@ -183,6 +184,7 @@ The first 69 milliseconds play as silence.
 A server refuses a file over its own size limit, and the offer says so before the upload starts rather than after it.
 
 When someone else deletes or replaces the recording while you have the tab open, the tab says **Recording deleted** or **Recording replaced** after your next change.
+Deleting a recording someone else has replaced since the tab showed it is refused with `Replaced elsewhere. Showing the current recording.`, and the tab shows their recording.
 
 === Transcript
 
@@ -305,6 +307,7 @@ A service run that stops partway says how many sentences and words it wrote. Run
 A service run on a document that already holds annotations asks first, with a count of what a new segmentation would delete.
 On a document that is one sentence, a service that finds the same sentence leaves it and its words as they are. One that splits it makes the words again, and their analyses are lost.
 **Clear tokens** and **Reset sentences**, beside it, start over.
+**Reset sentences** is refused on a document of more than about a thousand sentences, and its confirmation says to split the document.
 **Split at segments** adds a sentence break wherever a segment from the Media tab starts, so a recording cut into utterances becomes one sentence per utterance.
 It only adds breaks, never removes one, and a segment that starts inside a word is left alone.
 
@@ -709,6 +712,8 @@ A field with no language goes out under the project's meta language.
 Alongside the fields sits the **ignored tokens** rule, usually punctuation, so those tokens carry no word-level annotation and host no morphemes.
 Its exceptions are the **characters that behave as letters**: one character each, and each one joins the word around it instead of splitting it, stays on the word's form in the lexicon, and can be annotated.
 An orthography that writes a glottal stop or an ejective with an apostrophe needs that character listed here.
+A change to the rule that hides words already annotated is held with a count, `Not saved. This change hides the annotations on 12 words.`, until you press **Save** beside it, and **Cancel** puts the rule back.
+Their annotations are still stored, and show again if the rule changes back.
 
 This section also holds the project's **tagsets** (see <<_tagsets>>) and the **document metadata** fields shown on every document's Details tab.
 
@@ -830,6 +835,8 @@ A merge's preview counts the links in documents you can open. The message after 
 Respelling and replacing ask how to match, with the same three kinds the Search tab offers.
 Contains ignores case, and keeps each match's capitals when both boxes are typed in small letters: `ka` to `ga` makes `Kalamang` `Galamang`.
 Is exactly and matches a regular expression do not, and here a match is a write.
+A respelling or replacement that leaves a word, a morpheme form or a lexicon entry empty is listed, marked, and skipped.
+One that leaves a field value empty clears it.
 
 A long preview is paged.
 A document's heading ticks every match in that document, not only the ones on the page.
@@ -859,6 +866,9 @@ A change to something a person made or accepted is marked **Accepted**, counted 
 A replacement across the corpus counts the values it replaces that a person made or accepted, and says so on its row.
 Approved changes are written under your own account, recorded as the assistant's work accepted by you, and show as accepted.
 Tick **Record as human-made** before approving to record them as your own work instead, with no machine marking.
+If your work is reviewed in this project, what you approve is your own contribution and waits for a reviewer, as anything you enter does.
+A confirmation you approve then makes the machine's values your contribution and leaves other contributors' work for a reviewer, and the applied card says how many of each.
+A confirmation that wrote nothing is faded on the card and marked `(nothing written)`.
 Reading needs Reader access, and applying a plan needs Writer.
 
 Approving a plan after a sentence it changes has been edited is refused, and the card then reads **Out of date**.
@@ -1069,6 +1079,9 @@ Each field's tier is named after the field. When fields on two levels share a na
 See <<_latex_book>>.
 * **Plaid IGT JSON** (`.zip`): a lossless archive you can import again later.
 
+Every format but the archive writes the words as the Analyze grid shows them, so a word the ignored tokens rule covers goes out with no annotations, even where some are stored on it.
+Copying a sentence does the same.
+
 An export holds everything its preset names, or it fails.
 When a document, a vocabulary or a recording cannot be read, nothing is downloaded, and the export panel says which.
 The panel also lists the warnings of a finished export until you dismiss them.
@@ -1135,7 +1148,9 @@ The other two do not.
 Ignoring case never makes the dotless ı or the dotted İ an i, since they are letters of their own in Turkic orthographies.
 
 A regular expression is read the same way in Search, in Bulk Edit, in a vocabulary's **Replace**, and by the Assistant.
-`\w` is a letter, mark, digit or underscore in any script, `\d` a digit in any script, and `\b` the edge of a word.
+`\w` is a letter, mark, digit or underscore in any script, the zero-width joiner and non-joiner included, `\d` a digit in any script, `\s` any space, the no-break space included, and `\b` the edge of a word.
+`\p{IsArabic}` or `\p{sc=Arabic}` is any character of the Arabic script, and the same holds for every script.
+A Unicode block such as `\p{InArabic}` is refused.
 `(?i)` at the start ignores case in any script.
 A pattern that cannot be read the same way everywhere, such as `[[:alpha:]]`, is refused with a message saying why.
 
@@ -1223,6 +1238,7 @@ Members are found by their email address.
 When you only have Reader access, the editor shows everything, but a banner says so and its controls are inert.
 When a maintainer makes you a Reader, or removes you, while you have a document open, the page turns read-only after your next edit is refused, or within a minute.
 A member who was removed is told `You no longer have access to this project.`
+When someone deletes a document you have open, your next edit on it is not saved, and the page turns read-only for every role, administrators included, with `This document was deleted.`
 
 **Invitation links** let people join without an administrator creating each account.
 A maintainer mints a link that grants a role on the project, good for a set number of uses and a set number of days.
