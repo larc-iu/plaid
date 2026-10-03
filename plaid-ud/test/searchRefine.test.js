@@ -47,7 +47,7 @@ test("a brace in any of Grew's four contexts is not a brace", () => {
   // PARSED, as a silently different search. The block's end is lexed now.
   const cases = [
     'pattern { V [lemma=re".*}.*"] }',
-    'pattern { V [lemma=re".*{.*"] }',
+    'pattern { V [lemma=re".*[{].*"] }',
     'pattern { V [form=/a\\}b/] }',
     'pattern { V [form=/a\\{b/] }',
     "pattern { V [form=/o'clock/] }",

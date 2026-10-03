@@ -18,7 +18,6 @@
 
 import { GrewUnsupportedError } from './errors.js';
 import {
-  normalizeFlags,
   featDefinedRegex,
   featNeqRegex,
   featEqValue,
@@ -30,6 +29,7 @@ import {
   featuresLabelRegex,
 } from './regex.js';
 import { splitLabel, compactLabel, bareLabel } from './edgeLabel.js';
+import { localRegExp, serverRegex } from './userRegex.js';
 
 const COLUMN_FEATS = { upos: 'uposLayer', xpos: 'xposLayer', lemma: 'lemmaLayer' };
 
@@ -80,7 +80,7 @@ const labelCanBeRoot = (label) => {
   }
   if (label.type === 'regex') {
     try {
-      return new RegExp(label.pattern, normalizeFlags(label.flags)).test('root');
+      return localRegExp(label).test('root');
     } catch {
       return true;
     }
@@ -1090,17 +1090,16 @@ class Compiler {
       return v.items.map((it) => featEqValue(name, it.value));
     if (v.type === 'regex') {
       const r = this.regexConstraint(v);
-      return { regex: featValueRegex(name, r.regex), flags: r.flags };
+      return { regex: featValueRegex(name, r.regex) };
     }
     if (v.type === 'any') return { regex: featDefinedRegex(name) };
     throw new GrewUnsupportedError('feature-value', `Unsupported feature value for ${name}.`);
   }
 
+  // A person's regex, as the translator writes it for the server
+  // (userRegex.js). It folds case itself, so it goes with no flags.
   regexConstraint(v) {
-    const flags = normalizeFlags(v.flags);
-    const c = { regex: v.pattern };
-    if (flags) c.flags = flags;
-    return c;
+    return { regex: serverRegex(v) };
   }
 
   refuseLexicon() {

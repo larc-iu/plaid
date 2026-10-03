@@ -6,7 +6,8 @@
 // what is "supported" — that judgement belongs to compile.js (search) and the
 // rewrite engine (rules), which walk this AST and throw GrewUnsupportedError
 // for the residue. So e.g. labeled transitive edges, edge-feature labels, or
-// an `add_node` command parse fine here and may be rejected later.
+// an `add_node` command parse fine here and may be rejected later. The one
+// exception is a regex, which is read here (parseRegex) so its error has a line.
 //
 // Two entry points share one grammar:
 //   parse(src)    — a REQUEST: pattern/with/without/global blocks (the search box)
@@ -17,6 +18,7 @@
 import { lex, TT } from './lexer.js';
 import { GrewParseError, GrewUnsupportedError } from './errors.js';
 import { BLOCK_TYPES } from './ast.js';
+import { regexError } from './userRegex.js';
 
 const STRAT_OPS = new Set(['Onf', 'Iter', 'Seq', 'Alt', 'Pick', 'Try', 'Empty']);
 const FIELD_SEP = '\t';
@@ -572,6 +574,18 @@ function createParser(src) {
     return { name, op: 'defined', value: null };
   }
 
+  // A regex is read here, where its line is known, by the one reading the
+  // search and the rewrite share (userRegex.js), so a pattern neither can read
+  // stops with a caret under it.
+  function parseRegex() {
+    const tok = peek();
+    const r = next().value;
+    const value = { type: 'regex', pattern: r.pattern, flavor: r.flavor, flags: r.flags };
+    const error = regexError(value);
+    if (error) fail(error, tok);
+    return value;
+  }
+
   function parseValueExpr() {
     const items = [parseValueAtom()];
     while (at(TT.PIPE)) {
@@ -587,10 +601,7 @@ function createParser(src) {
       return { type: 'any' };
     }
     if (at(TT.STRING)) return { type: 'lit', value: next().value };
-    if (at(TT.REGEX)) {
-      const r = next().value;
-      return { type: 'regex', pattern: r.pattern, flavor: r.flavor, flags: r.flags };
-    }
+    if (at(TT.REGEX)) return parseRegex();
     if (at(TT.IDENT) && at(TT.DOT, 1)) {
       // `lex.field`: a lexicon reference (only meaningful in a rule).
       const lex = next().value;
@@ -656,10 +667,7 @@ function createParser(src) {
   }
 
   function parseLabelExpr() {
-    if (at(TT.REGEX)) {
-      const r = next().value;
-      return { type: 'regex', pattern: r.pattern, flavor: r.flavor, flags: r.flags };
-    }
+    if (at(TT.REGEX)) return parseRegex();
     let negated = false;
     if (at(TT.CARET)) {
       next();

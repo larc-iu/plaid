@@ -13,6 +13,7 @@
 import { GrewUnsupportedError } from '../errors.js';
 import { getFeat, liveNodes, liveWords, structureEdges, sortedEdges } from './graph.js';
 import { splitLabel, isEnhancedLabel, bareLabel } from '../edgeLabel.js';
+import { localRegExp } from '../userRegex.js';
 
 const analysed = new WeakMap();
 
@@ -444,21 +445,10 @@ function matchValue(actual, value) {
   }
 }
 
-const regexCache = new Map();
-// A user regex is a substring search, case-insensitive on the `i` flag only:
-// the same reading the server gives the search box (compile.js passes the
-// pattern through, and Plaid runs it as a find), so a rule matches what the
+// A user regex is a substring search, read by the translator the search's
+// compiler also sends through (userRegex.js), so a rule matches what the
 // search that found the sentence matched.
-function toRegExp(v) {
-  const flags = v.flags && v.flags.includes('i') ? 'i' : '';
-  const key = `${flags}/${v.pattern}`;
-  let re = regexCache.get(key);
-  if (!re) {
-    re = new RegExp(v.pattern, flags);
-    regexCache.set(key, re);
-  }
-  return re;
-}
+const toRegExp = localRegExp;
 
 // Does an edge label satisfy a Label AST? `-[nsubj]->` is the exact label;
 // `-[1=nsubj]->` is the main type, any subtype. An edge of the enhanced graph

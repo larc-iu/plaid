@@ -4,6 +4,7 @@ import { ConlluDocument } from '../src/domain/ConlluDocument.js';
 import { rawDocFromConllu } from './helpers/rawDoc.js';
 import { parseAndCompile } from '../src/grew/index.js';
 import { parseGrs } from '../src/grew/parser.js';
+import { translatePattern } from '../../plaid-igt/src/domain/javaRegex.js';
 import { graphFromSentence } from '../src/grew/rewrite/graph.js';
 import { rewriteSentence } from '../src/grew/rewrite/engine.js';
 import { GrewUnsupportedError } from '../src/grew/errors.js';
@@ -32,7 +33,9 @@ test('a global metadata value is sent as a literal, one beginning with ? include
     sent_id: { literal: ['?a', 'b'] },
   });
   // A regex and a not-equal stay regexes.
-  assert.deepEqual(metadataOf('global { sent_id = /^\\?/ }'), { sent_id: { regex: '^\\?' } });
+  assert.deepEqual(metadataOf('global { sent_id = /^\\?/ }'), {
+    sent_id: { regex: translatePattern('^\\?').server },
+  });
   assert.ok(metadataOf('global { sent_id <> "?a" }').sent_id.regex);
 });
 

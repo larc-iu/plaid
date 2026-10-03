@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseAndCompile } from '../src/grew/index.js';
+import { translatePattern } from '../../plaid-igt/src/domain/javaRegex.js';
 
 // Stable, readable layer ids so compiled output is deterministic.
 const LI = {
@@ -99,14 +100,16 @@ test('upos<> uses a not-exactly regex', () => {
   assert.deepEqual(span[2], { layer: 'UPOS', value: { regex: '^(?!VERB$)' } });
 });
 
+// A person's regex goes to the server as the shared translator writes it,
+// case folding included, so it carries no flags.
 test('regex and pcre values', () => {
   assert.deepEqual(
     clauses(compile('pattern { X [lemma=re"^be"] }').query.where, 'span')[0][2].value,
-    { regex: '^be' },
+    { regex: translatePattern('^be').server },
   );
   assert.deepEqual(
     clauses(compile('pattern { X [lemma=/be/i] }').query.where, 'span')[0][2].value,
-    { regex: 'be', flags: 'i' },
+    { regex: translatePattern('be', { caseInsensitive: true }).server },
   );
 });
 

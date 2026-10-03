@@ -8,6 +8,7 @@ import { quickPattern } from '../src/grew/quickSearch.js';
 import { refinePattern } from '../src/components/search/refine.js';
 import { graphFromSentence } from '../src/grew/rewrite/graph.js';
 import { findMatches } from '../src/grew/rewrite/match.js';
+import { serverRegExp } from './helpers/serverRegex.js';
 
 // The search compiler and the local rewrite matcher read one Grew pattern
 // alike on FEATS: the words a search finds are the words a rule rewrites.
@@ -15,7 +16,7 @@ import { findMatches } from '../src/grew/rewrite/match.js';
 // FEATS layer holds one `Key=Value` span per feature, or a whole bundle where
 // an old import wrote one), the regexes with JS's engine, which reads every
 // construct these patterns use (anchors, lookahead, lookbehind, classes) as
-// Java does.
+// Java does once helpers/serverRegex.js has read the translator's \z.
 
 const CONLLU = [
   '# text = the dog saw a cat sings',
@@ -57,8 +58,7 @@ const valueOk = (actual, c) => {
   if (c === undefined) return true;
   if (typeof c === 'string') return actual === c;
   if (Array.isArray(c)) return c.includes(actual);
-  if (c.regex !== undefined)
-    return new RegExp(c.regex, c.flags?.includes('i') ? 'i' : '').test(actual);
+  if (c.regex !== undefined) return serverRegExp(c.regex, c.flags).test(actual);
   throw new Error(`no such value constraint in this test: ${JSON.stringify(c)}`);
 };
 
