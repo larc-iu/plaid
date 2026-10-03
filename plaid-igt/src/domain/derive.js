@@ -58,10 +58,39 @@ export function deriveAlignmentTokens(layerInfo) {
     .sort((a, b) => a.begin - b.begin);
 }
 
+/**
+ * A word token as an export or a copy shows it when the ignored-tokens rule
+ * excludes it: the Analyze grid draws such a word as an inert column with no
+ * values, so it carries none here either (no field values, orthographies,
+ * lexicon link or morphemes). Whatever is stored on it stays stored, and the
+ * native archive, which is a backup and not a view, keeps it.
+ */
+export const bareIgnoredToken = (token) => ({
+  ...token,
+  annotations: Object.fromEntries(Object.keys(token.annotations || {}).map((k) => [k, null])),
+  orthographies: Object.fromEntries(Object.keys(token.orthographies || {}).map((k) => [k, ''])),
+  vocabItem: null,
+  morphemes: [],
+});
+
+/** A derived sentence with every ignored word bare (bareIgnoredToken). */
+export const bareIgnoredSentence = (sentence, ignoredCfg) => {
+  const bare = (t) => (isTokenIgnored(t.content, ignoredCfg) ? bareIgnoredToken(t) : t);
+  return {
+    ...sentence,
+    tokens: (sentence.tokens || []).map(bare),
+    ...(sentence.pieces
+      ? { pieces: sentence.pieces.map((p) => (p.type === 'token' ? bare(p) : p)) }
+      : {}),
+  };
+};
+
 // Build the sentence > token > morpheme view, plus lookup maps and the
 // binary-search findSentenceForToken function. Returns one bundle so all
-// derivations share one traversal.
-export function deriveSentences(raw, layerInfo, vocabularies) {
+// derivations share one traversal. With `bareIgnored`, the view an export
+// reads: every word the ignored-tokens rule excludes is bare
+// (bareIgnoredToken), as the Analyze grid shows it.
+export function deriveSentences(raw, layerInfo, vocabularies, { bareIgnored = false } = {}) {
   const primaryTextLayer = layerInfo.primaryTextLayer;
   const primaryTokenLayer = layerInfo.primaryTokenLayer;
   const sentenceTokenLayer = layerInfo.sentenceTokenLayer;
@@ -207,11 +236,14 @@ export function deriveSentences(raw, layerInfo, vocabularies) {
     while (ti < sortedTokens.length && sortedTokens[ti].begin < sentence.end) {
       const t = sortedTokens[ti];
       if (t.begin >= sentence.begin && t.end <= sentence.end) {
-        tokensInSentence.push({
+        const token = {
           ...t,
           annotations: annotationsFor(t.id, wordSpanMaps),
           morphemes: morphemesOf(t),
-        });
+        };
+        tokensInSentence.push(
+          bareIgnored && isTokenIgnored(t.content, ignoredCfg) ? bareIgnoredToken(token) : token,
+        );
       }
       ti++;
     }

@@ -15,10 +15,15 @@ import {
 } from '@ui/components/ui/select';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 import { fieldNameLang } from '@/domain/fieldNames';
-import { IGNORED_TOKEN_MODES, defaultIgnoredTokensSetup } from '@/domain/igtConfig';
+import {
+  IGNORED_TOKEN_MODES,
+  defaultIgnoredTokensSetup,
+  storedIgnoredTokens,
+} from '@/domain/igtConfig';
 import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { scopeBadgeClass } from '@/domain/scopeColors';
+import { countOf } from '@ui/lib/plural.js';
 
 // A field's identity is its (scope, name) pair: the same name can exist at
 // two scopes (a FieldWorks import gives "Gloss" and "POS" at both Word and
@@ -52,6 +57,9 @@ const splitEntries = (text) =>
     .map((e) => e.trim())
     .filter((e) => e.length > 0);
 const sameChars = (a, b) => a.length === b.length && a.every((c, i) => c === b[i]);
+// Two ignored-token rules (the shape edited here) that store the same.
+const sameRule = (a, b) =>
+  JSON.stringify(storedIgnoredTokens(a)) === JSON.stringify(storedIgnoredTokens(b));
 
 export const FieldsManager = ({
   initialData,
@@ -63,6 +71,11 @@ export const FieldsManager = ({
   // the count; when absent (setup mode — no layers exist yet), deletion is
   // immediate.
   onCountFieldUsage,
+  // Async (before, after) => number|null: how many words that carry
+  // annotations a change of the ignored-tokens rule (both in the shape edited
+  // here) would hide. When provided (settings mode), such a change waits for a
+  // Save that names the count, and one that hides nothing saves at once.
+  onCountHiddenWords,
   // Async (field, 'up'|'down'). When provided (settings mode) the server owns
   // the order and a move is a shift of the field's span layer; the table then
   // re-syncs from the project. When absent (setup mode) the list order is the
@@ -99,6 +112,18 @@ export const FieldsManager = ({
     exceptionsTextRef.current = text;
     setExceptionsText(text);
   };
+  // The explicit list as TYPED, for the same reason, and so a comma can be
+  // typed before the next entry.
+  const [explicitText, setExplicitText] = useState('');
+  const explicitTextRef = useRef('');
+  const writeExplicitText = (text) => {
+    explicitTextRef.current = text;
+    setExplicitText(text);
+  };
+  // A change of the ignored-tokens rule that hides annotated words, held for
+  // a Save: { next, hidden } (hidden null when it could not be counted).
+  const [heldIgnored, setHeldIgnored] = useState(null);
+  const ignoredSeq = useRef(0);
 
   // Define scope options (morpheme layer is always present)
   const scopeOptions = [
@@ -139,6 +164,10 @@ export const FieldsManager = ({
         if (!sameChars(incoming, exceptionChars(exceptionsTextRef.current))) {
           writeExceptionsText(incoming.join(', '));
         }
+        const incomingExplicit = loadedIgnored.explicitIgnoredTokens || [];
+        if (!sameChars(incomingExplicit, splitEntries(explicitTextRef.current))) {
+          writeExplicitText(incomingExplicit.join(', '));
+        }
         setIsInitialized(true);
       } catch (error) {
         console.error('Failed to load fields configuration:', error);
@@ -146,6 +175,7 @@ export const FieldsManager = ({
         setFields(DEFAULT_FIELDS);
         setIgnoredTokens(defaultIgnoredTokensSetup());
         writeExceptionsText('');
+        writeExplicitText('');
         setIsInitialized(true);
 
         if (onError) {
@@ -355,12 +385,61 @@ export const FieldsManager = ({
     );
   };
 
+  // The rule as the section shows it: a held change, else what is saved.
+  const shownIgnored = heldIgnored?.next ?? ignoredTokens;
+
+  // Every change of the ignored-tokens rule comes here. One that hides words
+  // carrying annotations is held until Save, with the count, and one that
+  // hides none saves at once. Only the latest change acts, since a count can
+  // take a moment and the lists are typed.
+  const changeIgnored = async (next) => {
+    if (sameRule(next, ignoredTokens)) {
+      dropHeldIgnored();
+      return;
+    }
+    const seq = (ignoredSeq.current += 1);
+    if (!onCountHiddenWords) {
+      await saveChanges(fields, next);
+      return;
+    }
+    let hidden;
+    try {
+      hidden = await onCountHiddenWords(ignoredTokens, next);
+    } catch (error) {
+      console.error('Failed to count the annotated words:', error);
+      hidden = null;
+    }
+    if (seq !== ignoredSeq.current) return;
+    if (hidden === 0) {
+      setHeldIgnored(null);
+      await saveChanges(fields, next);
+    } else {
+      setHeldIgnored({ next, hidden });
+    }
+  };
+
+  // Typed back to what is saved: nothing to save, and nothing held.
+  const dropHeldIgnored = () => {
+    ignoredSeq.current += 1;
+    setHeldIgnored(null);
+  };
+
+  const saveHeldIgnored = async () => {
+    const { next } = heldIgnored;
+    dropHeldIgnored();
+    await saveChanges(fields, next);
+  };
+
+  // The lists go back to what is saved.
+  const cancelHeldIgnored = () => {
+    dropHeldIgnored();
+    writeExceptionsText((ignoredTokens.unicodePunctuationExceptions || []).join(', '));
+    setRejectedExceptions([]);
+    writeExplicitText((ignoredTokens.explicitIgnoredTokens || []).join(', '));
+  };
+
   const handleIgnoredTokensModeChange = async (mode) => {
-    const updatedIgnoredTokens = {
-      ...ignoredTokens,
-      mode,
-    };
-    await saveChanges(fields, updatedIgnoredTokens);
+    await changeIgnored({ ...shownIgnored, mode });
   };
 
   // The list is single CHARACTERS, each of which behaves as a letter (see
@@ -373,24 +452,16 @@ export const FieldsManager = ({
     writeExceptionsText(text);
     const chars = exceptionChars(text);
     setRejectedExceptions(rejectedEntries(text));
-    if (sameChars(chars, ignoredTokens.unicodePunctuationExceptions || [])) return;
-    await saveChanges(fields, { ...ignoredTokens, unicodePunctuationExceptions: chars });
+    if (sameChars(chars, shownIgnored.unicodePunctuationExceptions || [])) return;
+    await changeIgnored({ ...shownIgnored, unicodePunctuationExceptions: chars });
   };
 
-  const handleExplicitTokensChange = async (tokens) => {
-    const updatedIgnoredTokens = {
-      ...ignoredTokens,
-      explicitIgnoredTokens: tokens,
-    };
-    await saveChanges(fields, updatedIgnoredTokens);
+  const handleExplicitTokensChange = async (text) => {
+    writeExplicitText(text);
+    const tokens = splitEntries(text);
+    if (sameChars(tokens, shownIgnored.explicitIgnoredTokens || [])) return;
+    await changeIgnored({ ...shownIgnored, explicitIgnoredTokens: tokens });
   };
-
-  // Parse a comma-separated string into a trimmed, non-empty array of tags
-  const parseTags = (value) =>
-    value
-      .split(',')
-      .map((tag) => tag.trim())
-      .filter((tag) => tag.length > 0);
 
   // Don't render until initialized
   if (!isInitialized) {
@@ -613,7 +684,7 @@ export const FieldsManager = ({
               type="radio"
               name="ignored-tokens-mode"
               value={IGNORED_TOKEN_MODES.punctuation}
-              checked={ignoredTokens.mode === IGNORED_TOKEN_MODES.punctuation}
+              checked={shownIgnored.mode === IGNORED_TOKEN_MODES.punctuation}
               onChange={() => handleIgnoredTokensModeChange(IGNORED_TOKEN_MODES.punctuation)}
               className="mt-1"
             />
@@ -625,7 +696,7 @@ export const FieldsManager = ({
             </span>
           </label>
 
-          {ignoredTokens.mode === IGNORED_TOKEN_MODES.punctuation && (
+          {shownIgnored.mode === IGNORED_TOKEN_MODES.punctuation && (
             <div className="ml-8 rounded-md border p-4">
               <p className="mb-1 text-sm font-medium">Characters that behave as letters</p>
               <div className="mb-4 text-xs text-muted-foreground">
@@ -654,7 +725,7 @@ export const FieldsManager = ({
               type="radio"
               name="ignored-tokens-mode"
               value={IGNORED_TOKEN_MODES.explicit}
-              checked={ignoredTokens.mode === IGNORED_TOKEN_MODES.explicit}
+              checked={shownIgnored.mode === IGNORED_TOKEN_MODES.explicit}
               onChange={() => handleIgnoredTokensModeChange(IGNORED_TOKEN_MODES.explicit)}
               className="mt-1"
             />
@@ -666,7 +737,7 @@ export const FieldsManager = ({
             </span>
           </label>
 
-          {ignoredTokens.mode === IGNORED_TOKEN_MODES.explicit && (
+          {shownIgnored.mode === IGNORED_TOKEN_MODES.explicit && (
             <div className="ml-8 rounded-md border p-4">
               <p className="mb-1 text-sm font-medium">Ignored tokens</p>
               <div className="mb-4 text-xs text-muted-foreground">
@@ -678,11 +749,29 @@ export const FieldsManager = ({
               </div>
               <Input
                 placeholder="Add tokens to ignore (e.g. . , ; !)"
-                value={(ignoredTokens.explicitIgnoredTokens || []).join(', ')}
-                onChange={(event) =>
-                  handleExplicitTokensChange(parseTags(event.currentTarget.value))
-                }
+                value={explicitText}
+                onChange={(event) => handleExplicitTokensChange(event.currentTarget.value)}
               />
+            </div>
+          )}
+
+          {heldIgnored && (
+            <div
+              role="alert"
+              className="flex flex-wrap items-center gap-3 rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-sm"
+            >
+              <AlertTriangle aria-hidden="true" className="h-4 w-4 text-destructive" />
+              <span className="flex-1">
+                {heldIgnored.hidden == null
+                  ? 'Not saved. The annotated words this change hides could not be counted.'
+                  : `Not saved. This change hides the annotations on ${countOf(heldIgnored.hidden, 'word')}.`}
+              </span>
+              <Button size="sm" variant="outline" onClick={cancelHeldIgnored}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={saveHeldIgnored}>
+                Save
+              </Button>
             </div>
           )}
         </div>

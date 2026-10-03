@@ -473,6 +473,9 @@ export async function runExport({
         vocabularies: rebaseVocabLinks(vocabsById),
         client,
         projectId: project.id,
+        // Every format but the archive shows the words as Analyze does: an
+        // ignored word with no values. The archive is lossless.
+        bareIgnored: !isNative,
       });
     } catch (err) {
       const label = await docLabel(docIds[i]);

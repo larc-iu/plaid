@@ -20,6 +20,7 @@ import { notSetUp } from '@ui/domain/setupGuard.js';
 import { fieldChange } from './fieldChange.js';
 import { queueFieldDeclarations, tagsetRefusal } from '@/domain/igtConstraints';
 import { sameConfig, storedConfig } from '@ui/domain/configCells.js';
+import { annotatedWordFormsQuery, hiddenWordCount } from '@/domain/ignoredChange';
 
 const PREDEFINED = ['Gloss', 'POS', 'Translation', 'Literal Translation', 'Note'];
 const isPredefinedField = (fieldName) => PREDEFINED.includes(fieldName);
@@ -291,6 +292,37 @@ export const FieldsSettings = ({
     return typeof n === 'number' ? n : null;
   };
 
+  // How many words with values a change of the ignored-tokens rule hides
+  // (`before` and `after` in the shape the manager edits). The forms that
+  // carry values are read once and kept for a minute, so the count follows
+  // the typing of a list without a read per keystroke.
+  const formsRef = useRef(null);
+  const handleCountHiddenWords = async (before, after) => {
+    const layers = layersOf(project);
+    if (!layers) return 0;
+    if (!formsRef.current || Date.now() - formsRef.current.at > 60_000) {
+      const ids = (layer) =>
+        (layer?.spanLayers || []).filter((l) => readScope(l.config)).map((l) => l.id);
+      const read = client
+        .query(
+          annotatedWordFormsQuery({
+            wordLayerId: layers.primary.id,
+            morphLayerId: layers.morpheme?.id ?? null,
+            wordSpanLayerIds: ids(layers.primary),
+            morphSpanLayerIds: ids(layers.morpheme),
+          }),
+        )
+        .then((r) => r?.results || []);
+      const entry = { at: Date.now(), read };
+      formsRef.current = entry;
+      read.catch(() => {
+        if (formsRef.current === entry) formsRef.current = null;
+      });
+    }
+    const forms = await formsRef.current.read;
+    return hiddenWordCount(forms, storedIgnoredTokens(before), storedIgnoredTokens(after));
+  };
+
   // A refused save or move: say why, and read the project again, so the
   // table shows what the server holds rather than what was asked for.
   const handleError = (error) => {
@@ -309,6 +341,7 @@ export const FieldsSettings = ({
         onSaveChanges={handleSaveChanges}
         onError={handleError}
         onCountFieldUsage={handleCountFieldUsage}
+        onCountHiddenWords={handleCountHiddenWords}
         onMoveField={handleMoveField}
         tagsetNames={tagsetNames}
         knownLangs={knownLangs}
