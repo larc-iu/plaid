@@ -23,23 +23,38 @@ export const MAINTAINER_HINT = 'Also changes settings and members, and deletes t
 
 const inList = (list, id) => Array.isArray(list) && id != null && list.includes(id);
 
+// The mark on the project a document keeps once the document was deleted
+// while open (DocumentModel `_documentGone`): nobody writes through it, an
+// admin included, and its read-only reason says why. A symbol, so it never
+// reaches the server or a comparison of config.
+export const DOCUMENT_DELETED = Symbol.for('plaid.documentDeleted');
+
+/** `project` marked as seen from a deleted document. */
+export const asDeletedDocument = (project) => ({ ...project, [DOCUMENT_DELETED]: true });
+
+const deleted = (project) => !!project?.[DOCUMENT_DELETED];
+
 export const canEditProject = (project, user) =>
+  !deleted(project) &&
   !!(user?.isAdmin || inList(project?.maintainers, user?.id) || inList(project?.writers, user?.id));
 
 export const canManageProject = (project, user) =>
-  !!(user?.isAdmin || inList(project?.maintainers, user?.id));
+  !deleted(project) && !!(user?.isAdmin || inList(project?.maintainers, user?.id));
 
 // Whether the project opens at all. An admin reads every project, so a screen
 // asking "is this person a member" wants `projectRole` instead.
 export const canReadProject = (project, user) =>
   !!(canEditProject(project, user) || inList(project?.readers, user?.id));
 
-// Why a document is read-only for someone who cannot write it: a reader, or
-// someone who holds no role any more (removed while the page was open).
-export const readOnlyReason = (project, user) =>
-  canReadProject(project, user)
+// Why a document is read-only for someone who cannot write it: it was
+// deleted while open, a reader, or someone who holds no role any more
+// (removed while the page was open).
+export const readOnlyReason = (project, user) => {
+  if (deleted(project)) return 'This document was deleted.';
+  return canReadProject(project, user)
     ? 'You have reader access to this project.'
     : 'You no longer have access to this project.';
+};
 
 // Explicit membership, for a member table or an "add me to this project" offer,
 // is `projectRole` in `@larc-iu/plaid-client`. It is not repeated here.

@@ -6,7 +6,7 @@
 // beside the live document. What a document MEANS (its layers, rows, and every
 // mutation) is the subclass's.
 //
-// Imports four siblings with no imports but each other's, and lib/errors.js,
+// Imports siblings with no imports but each other's and lib/errors.js,
 // which has none, and nothing else: plaid-ud's node suite reaches this file by
 // relative path, where no alias and no package resolves. Errors leave through
 // `onError`.
@@ -24,6 +24,7 @@ import {
 import { WriteQueue } from './WriteQueue.js';
 import { newId, recordSettled, settleIds } from './pendingIds.js';
 import { sameConfig } from './configCells.js';
+import { DOCUMENT_DELETED, asDeletedDocument } from './permissions.js';
 import { createdIdsOf, footprintOf, namesAnyOf, pendingIdsOf, resendable } from './rebase.js';
 
 // A copy of a document read from the server, which is plain JSON. A walk
@@ -423,11 +424,13 @@ export class DocumentModel {
    * once. Answers whether it changed.
    */
   _takeProject(project) {
-    // A deleted document keeps a project this person holds no role in, so
-    // every screen over it is read-only, whatever a later read of the
-    // project says.
-    if (project && this._deleted && this._user?.id) project = withoutMember(project, this._user.id);
-    if (!project || sameConfig(project, this._project)) return false;
+    // A deleted document keeps its project marked so (permissions.js), so
+    // every screen over it is read-only for everyone, an admin included,
+    // and says why, whatever a later read of the project says.
+    if (project && this._deleted) project = asDeletedDocument(project);
+    if (!project) return false;
+    const marked = !!project[DOCUMENT_DELETED] === !!this._project?.[DOCUMENT_DELETED];
+    if (marked && sameConfig(project, this._project)) return false;
     this._project = project;
     this._adoptProject(project);
     // A new data version, so what is derived from the project is derived
@@ -1162,9 +1165,9 @@ export class DocumentModel {
   }
 
   // The document was deleted while it was open (H36-SETTINGS-LIVE-2). Said
-  // once, and from then on the page is read-only, as for someone removed from
-  // the project: the project kept is one this person holds no role in, and
-  // every edit is refused unsent. What the screen shows stays, so what was
+  // once, and from then on the page is read-only for everyone: the project
+  // kept is marked so (permissions.js `asDeletedDocument`), and every edit is
+  // refused unsent. What the screen shows stays, so what was
   // typed can be copied.
   _documentGone() {
     if (this._deleted) return;

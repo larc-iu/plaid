@@ -6,7 +6,7 @@
 // says, and every later edit is refused unsent, with nothing more said.
 import { describe, it, expect, vi } from 'vitest';
 import { DocumentModel } from './DocumentModel.js';
-import { canEditProject } from './permissions.js';
+import { canEditProject, canManageProject, readOnlyReason } from './permissions.js';
 
 const ME = { id: 'b@x.com', isAdmin: false };
 const PROJECT = { id: 'p1', config: {}, maintainers: ['a@x.com'], writers: [ME.id], readers: [] };
@@ -28,7 +28,7 @@ class Doc extends DocumentModel {
   }
 }
 
-const load = ({ readError = unresolved } = {}) => {
+const load = ({ readError = unresolved, user = ME } = {}) => {
   const client = {
     withOperation: (label, fn) => fn(() => {}),
     documents: {
@@ -46,7 +46,7 @@ const load = ({ readError = unresolved } = {}) => {
     client,
     projectId: 'p1',
     project: PROJECT,
-    user: ME,
+    user,
   });
   const errors = [];
   doc.onError = (msg, err, label) => errors.push({ msg, err, label });
@@ -124,5 +124,30 @@ describe('a document deleted while it is open', () => {
     await expect(doc.reload()).rejects.toThrow();
     expect(doc.deleted).toBe(false);
     expect(canEditProject(doc.project, ME)).toBe(true);
+  });
+
+  it('says why on the read-only notice, and stays a project for every other purpose', async () => {
+    const { doc } = load();
+    await doc.set('gloss', 'person');
+    await settle(doc);
+    expect(readOnlyReason(doc.project, ME)).toBe('This document was deleted.');
+    expect(doc.project.id).toBe('p1');
+    expect(doc.project.writers).toEqual([ME.id]);
+    expect(JSON.stringify(doc.project)).toBe(JSON.stringify(PROJECT));
+  });
+
+  it('is read-only for an admin too', async () => {
+    const ADMIN = { id: 'a@b.com', isAdmin: true };
+    const { doc, client } = load({ user: ADMIN });
+    expect(canEditProject(doc.project, ADMIN)).toBe(true);
+    await doc.set('gloss', 'person');
+    await settle(doc);
+    expect(doc.deleted).toBe(true);
+    expect(canEditProject(doc.project, ADMIN)).toBe(false);
+    expect(canManageProject(doc.project, ADMIN)).toBe(false);
+    expect(readOnlyReason(doc.project, ADMIN)).toBe('This document was deleted.');
+    await doc.refreshProject();
+    expect(canEditProject(doc.project, ADMIN)).toBe(false);
+    expect(client.write).toHaveBeenCalledTimes(1);
   });
 });

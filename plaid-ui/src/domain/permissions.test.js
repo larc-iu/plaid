@@ -5,6 +5,7 @@ import {
   canReadProject,
   canManageVocabulary,
   readOnlyReason,
+  asDeletedDocument,
 } from './permissions.js';
 
 // What each grant means, in the one place that decides it. The document editor
@@ -85,5 +86,17 @@ describe('why a document is read-only', () => {
     const p = { maintainers: ['m'], writers: ['w'], readers: ['r'] };
     expect(readOnlyReason(p, as('r'))).toBe('You have reader access to this project.');
     expect(readOnlyReason(p, as('gone'))).toBe('You no longer have access to this project.');
+  });
+});
+
+describe('a deleted document', () => {
+  it('is read-only for every role, an admin included, and says it was deleted', () => {
+    const p = asDeletedDocument({ maintainers: ['m'], writers: ['w'], readers: ['r'] });
+    for (const user of [as('m'), as('w'), as('r'), as('x', true)]) {
+      expect(canEditProject(p, user)).toBe(false);
+      expect(canManageProject(p, user)).toBe(false);
+      expect(readOnlyReason(p, user)).toBe('This document was deleted.');
+    }
+    expect(canReadProject(p, as('r'))).toBe(true);
   });
 });
