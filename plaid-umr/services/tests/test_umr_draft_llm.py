@@ -544,25 +544,114 @@ def test_a_constant_belongs_to_no_sentence_and_does_not_count_as_a_graph():
     assert (result['drafted'], result['skipped']) == (1, 0)
 
 
-def test_a_document_that_moved_while_the_model_ran_is_not_written_to():
-    """The plan points at ids read before the model ran, and was allowed to
-    replace the graphs that were there then. Both are out of date if someone
-    edited the document meanwhile."""
-    service = _service(documents=[_document(version=7), _document(version=8)])
-    helper = servicetest.run(service, REQUEST)
+# --- an edit made while the model ran (H39-AGENT-UMR-2) -------------------------
+#
+# UMR conflicts are per sentence (Luke's ruling, 2026-10-03). The begin read,
+# the version read under the lock and the read again under it are three
+# documents in a row.
 
-    assert helper.errors == ['The document changed while this run was working. Run it again.']
-    assert service.client.writes == []
+TWO = dict(body='The dog barks\nIt runs\n', sentences=[(0, 14), (14, 22)],
+           words=WORDS + [(14, 16), (17, 21)])
+GLOSSES = [{'id': 'g1', 'tokens': ['w1'], 'value': 'DET'},
+           {'id': 'g2', 'tokens': ['w2'], 'value': 'dog'},
+           {'id': 'g3', 'tokens': ['w3'], 'value': 'bark.PRS'}]
+RUN_REPLY = '(v1 / run-02 :ARG0 (v2 / it))\n\n# alignment:\nv1: 2-2\nv2: 1-1\n'
+
+
+def _moved(before, after, model=None, **request):
+    service = _service(documents=[before, after, after], model=model)
+    helper = servicetest.run(service, {**REQUEST, **request})
+    assert helper.errors == []
+    [result] = helper.results
+    return service, result
+
+
+def test_an_edit_to_another_sentence_while_the_model_ran_does_not_stop_the_draft():
+    """It used to: any edit anywhere in the document threw the run away with
+    "The document changed while this run was working. Run it again." """
+    after = _document(version=8, gloss_spans=GLOSSES + [
+        {'id': 'g5', 'tokens': ['w5'], 'value': 'run'}], **TWO)
+    service, result = _moved(_document(**TWO), after, scope='sentence', sentence=1)
+    assert (result['drafted'], result['changed']) == (1, 0)
+    assert result['notice']['title'] == 'Drafted 1 sentence'
+    assert 'sticky' not in result['notice']
+    assert [p['begin'] for p in _ops(service.client, 'tokens.bulk_create')] == [8, 4, 0]
+    # Every write is stamped with the version the plan was checked against.
+    assert {version for kind, _, version in service.client.stamps} == {8}
     assert service.client.kinds[-1] == 'unlock'
+
+
+def test_a_sentence_changed_while_the_model_ran_is_skipped_and_named():
+    after = _document(version=8, gloss_spans=GLOSSES + [
+        {'id': 'g5', 'tokens': ['w5'], 'value': 'run'}], **TWO)
+    service, result = _moved(_document(**TWO), after, model=_Model([GOOD_REPLY, RUN_REPLY]))
+    assert (result['drafted'], result['changed']) == (1, 1)
+    assert result['sentences_changed'] == [2]
+    assert result['notice'] == {
+        'level': 'success', 'title': 'Drafted 1 sentence', 'sticky': True,
+        'message': 'Sentence 2 changed during the run and was not drafted.'}
+    assert service.client.operations == ['UMR draft of sentence 1']
+    concepts = [n['value'] for n in _ops(service.client, 'spans.bulk_create')]
+    assert 'run-02' not in concepts and 'bark-01' in concepts
+
+
+def test_a_text_edit_in_an_earlier_sentence_moves_the_draft_with_its_sentence():
+    """'dog' became 'dogs': sentence 2 is one character later, and unchanged."""
+    after = _document(version=8, body='The dogs barks\nIt runs\n', sentences=[(0, 15), (15, 23)],
+                      words=[(0, 3), (4, 8), (9, 14), (15, 17), (18, 22)])
+    service, result = _moved(_document(**TWO), after, model=_Model([RUN_REPLY]),
+                             scope='sentence', sentence=2)
+    assert (result['drafted'], result['changed']) == (1, 0)
+    pieces = [(p['begin'], p['end']) for p in _ops(service.client, 'tokens.bulk_create')]
+    assert pieces == [(18, 22), (15, 17)]
+    nodes = _ops(service.client, 'spans.bulk_create')
+    assert [n['metadata']['umr']['words'] for n in nodes] == [['w5'], ['w4']]
+
+
+def test_a_run_whose_only_sentence_changed_writes_nothing_and_says_so():
+    after = _document(version=8, gloss_spans=[
+        {'id': 'g1', 'tokens': ['w1'], 'value': 'DET'},
+        {'id': 'g2', 'tokens': ['w2'], 'value': 'hound'},
+        {'id': 'g3', 'tokens': ['w3'], 'value': 'bark.PRS'}])
+    service, result = _moved(_document(), after)
+    assert (result['drafted'], result['changed']) == (0, 1)
+    assert result['notice'] == {
+        'level': 'warning', 'title': 'Nothing drafted', 'sticky': True,
+        'message': 'Sentence 1 changed during the run and was not drafted.'}
+    assert service.client.writes == []
+    assert service.client.operations == []
+    assert service.client.kinds[-1] == 'unlock'
+
+
+def test_a_variable_taken_in_another_sentence_meanwhile_is_minted_again():
+    after = _document(version=8, node_tokens=[('n1', 14, 22)], concept_spans=[
+        {'id': 'c1', 'tokens': ['n1'], 'value': 'bark-01',
+         'metadata': {'umr': {'var': 's1b', 'sentence': 's2'}}}], **TWO)
+    service, result = _moved(_document(**TWO), after, scope='sentence', sentence=1)
+    assert result['drafted'] == 1
+    written = [n['metadata']['umr']['var'] for n in _ops(service.client, 'spans.bulk_create')]
+    assert written == ['s1b2', 's1d', 's1n']
+
+
+def test_a_sentence_given_a_graph_meanwhile_is_not_written_over():
+    """A person drew a node on sentence 1 while the model drafted it."""
+    after = _document(version=8, node_tokens=[('n1', 4, 7)], concept_spans=[
+        {'id': 'c1', 'tokens': ['n1'], 'value': 'dog', 'metadata': {'umr': {'var': 's1d'}}}])
+    service, result = _moved(_document(), after)
+    assert (result['drafted'], result['changed']) == (0, 1)
+    assert service.client.writes == []
 
 
 # --- what the model gets wrong -----------------------------------------------
 
 @pytest.mark.parametrize('reply,fragment', [
-    ('I am sorry, I cannot help with that.', 'opening bracket of the root node'),
-    ('(v1 / bark-01 :ARG0 (v2 / dog)', 'without closing'),
-    ('(v1 / )', 'Expected a concept'),
-    ('(v1 / bark-01 :ARG0 s9x9)\n\n# alignment:\nv1: 1-1\n', "Variable 's9x9' is not defined."),
+    # A reply the reader cannot read is named as that. The reader's own
+    # message quotes the reply and its variables, so it goes to the
+    # operator's log only.
+    ('I am sorry, I cannot help with that.', 'The reply is not a readable graph.'),
+    ('(v1 / bark-01 :ARG0 (v2 / dog)', 'The reply is not a readable graph.'),
+    ('(v1 / )', 'The reply is not a readable graph.'),
+    ('(v1 / bark-01 :ARG0 s9x9)\n\n# alignment:\nv1: 1-1\n', 'The reply is not a readable graph.'),
     # An uppercase letter makes `s1Y` a value, not a variable, as the app
     # reads it, so the edge would land as an attribute.
     ('(v1 / bark-01 :ARG0 s1Y)\n\n# alignment:\nv1: 3-3\n', ':ARG0 takes a node'),
@@ -620,8 +709,7 @@ def test_one_bad_sentence_does_not_throw_away_the_good_ones():
     assert result['notice']['level'] == 'success'
     assert result['notice']['title'] == 'Drafted 1 sentence'
     assert result['notice']['message'] == (
-        "Failed to draft sentence 1: Expected the opening bracket of the root node, "
-        "found 'not a graph'.")
+        "Failed to draft sentence 1: The reply is not a readable graph.")
     assert result['notice']['sticky'] is True
     assert len(_ops(service.client, 'spans.bulk_create')) == 3
     assert service.client.operations == ['UMR draft of sentence 2']
@@ -655,9 +743,9 @@ def test_the_notice_names_every_failed_sentence_with_its_own_reason_and_stays():
     assert [f['sentence'] for f in result['sentences_failed']] == [2, 3, 4]
     assert result['notice'] == {
         'level': 'success', 'title': 'Drafted 1 sentence', 'sticky': True,
-        'message': ("Failed to draft 3 sentences. Sentences 2 and 4: Unexpected content "
-                    "after the topmost closing bracket: '(v2 / dog)'. Sentence 3: v1 :size "
-                    "takes a node, not the value small.")}
+        'message': ("Failed to draft 3 sentences. Sentences 2 and 4: The reply is not a "
+                    "readable graph. Sentence 3: dog (\"dog\") :size takes a node, not the "
+                    "value small.")}
 
 
 def test_every_failure_reason_reaches_the_operators_log(capsys):
@@ -665,7 +753,7 @@ def test_every_failure_reason_reaches_the_operators_log(capsys):
     servicetest.run(service, REQUEST)
 
     log = capsys.readouterr().out
-    assert 'Sentence 1 not drafted: v1 :size takes a node, not the value small.' in log
+    assert 'Sentence 1 not drafted: dog ("dog") :size takes a node, not the value small.' in log
     # And the reply itself, which is what anyone improving the prompt needs.
     assert '(v1 / dog :size small)' in log
 
@@ -685,7 +773,8 @@ def test_a_run_that_drafts_several_sentences_is_counted_in_history():
 def test_a_variable_the_reply_never_defines_is_named_as_that(reply):
     service = _service(model=_Model([reply]))
     [result] = servicetest.run(service, REQUEST).results
-    assert result['sentences_failed'][0]['reason'] == 'v1 :actor names p, which no node defines.'
+    assert result['sentences_failed'][0]['reason'] == (
+        'bark-01 ("barks") :actor names a node the reply does not define.')
 
 
 def _asked_by_second(client):
@@ -735,7 +824,7 @@ def test_a_reply_written_one_block_per_node_is_joined_and_drafted():
     # A block no earlier block uses is a second graph, not part of this one.
     ('(v1 / bark-01 :ARG0 v2)\n(v2 / dog)\n(v3 / cat :ARG0-of v1)\n\n'
      '# alignment:\nv1: 3-3\nv2: 2-2\nv3: 0-0\n',
-     "Unexpected content after the topmost closing bracket: '(v3 / cat :ARG0-of v1)'."),
+     'The reply is not a readable graph.'),
     # Joined, and still refused for a relation UMR does not have.
     ('(v1 / bark-01 :ARG0 v2)\n(v2 / dog :location v3)\n(v3 / yard)\n\n'
      '# alignment:\nv1: 3-3\nv2: 2-2\nv3: 0-0\n',
@@ -743,7 +832,7 @@ def test_a_reply_written_one_block_per_node_is_joined_and_drafted():
     # Joined, and still refused for a variable nothing defines.
     ('(v1 / bark-01 :ARG0 v2)\n(v2 / dog :possessor p)\n\n# alignment:\nv1: 3-3\nv2: 2-2\n'
      'p: 1-1\n',
-     'v2 :possessor names p, which no node defines.'),
+     'dog ("dog") :possessor names a node the reply does not define.'),
 ])
 def test_a_flat_reply_that_is_wrong_once_joined_is_still_refused(reply, reason):
     service = _service(model=_Model([reply]))
@@ -792,7 +881,7 @@ def test_a_reply_never_writes_the_sentences_reserved_variable_or_one_twice():
     service = _service(model=_Model([twice]))
     [result] = servicetest.run(service, REQUEST).results
     assert result['failed'] == 1 and service.client.writes == []
-    assert 'used twice' in result['sentences_failed'][0]['reason']
+    assert result['sentences_failed'][0]['reason'] == 'The reply is not a readable graph.'
 
 
 def test_a_provider_key_never_reaches_the_person_who_asked():
@@ -1061,3 +1150,13 @@ def test_a_run_whose_last_two_sentences_get_no_answer_did_not_stop():
     assert result['notice']['message'] == (
         'Failed to draft 2 sentences. Sentences 2 and 3: The model did not answer within '
         '120 seconds.')
+
+
+def test_a_reply_that_states_a_relation_both_ways_is_drafted_with_it_once():
+    """H39-AGENT-UMR-3: the commonest cycle a model writes. It used to throw
+    the sentence's whole graph away."""
+    reply = '(v1 / dog :ARG0-of (v2 / bark-01 :ARG0 v1))\n\n# alignment:\nv1: 2-2\nv2: 3-3\n'
+    service = _service(model=_Model([reply]))
+    [result] = servicetest.run(service, REQUEST).results
+    assert (result['drafted'], result['failed']) == (1, 0)
+    assert [r['value'] for r in _ops(service.client, 'relations.bulk_create')] == [':ARG0-of']

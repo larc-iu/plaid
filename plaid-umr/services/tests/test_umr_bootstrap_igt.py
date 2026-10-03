@@ -877,3 +877,27 @@ def test_the_default_table_knows_the_abbreviations_igt_knows():
     from plaid_client.workflows.igt.glossing import GLOSS_ABBREVIATIONS
     assert boot._known(boot.ABBREVIATIONS) == GLOSS_ABBREVIATIONS
     assert set(boot.ABBREVIATIONS) <= GLOSS_ABBREVIATIONS
+
+
+# --- an edit made while the run read (H39-AGENT-UMR-2) ---------------------------
+
+def test_a_vocabulary_link_changed_meanwhile_is_a_changed_sentence_and_elsewhere_is_not():
+    """The skeleton writes through the same per-sentence check as Draft. A
+    link is something the skeleton is planned from, so a link changed in the
+    sentence skips it, and an edit outside it does not."""
+    two = dict(body='The dog barks\nIt runs\n', sentences=[(0, 14), (14, 22)],
+               words=draft_tests.WORDS + [(14, 16), (17, 21)],
+               gloss_spans=GLOSSES + [{'id': 'g5', 'tokens': ['w5'], 'value': 'run.PRS'}])
+    before = _document(**two)
+    elsewhere = _document(version=8, **{**two, 'gloss_spans': two['gloss_spans'] + [
+        {'id': 'g4', 'tokens': ['w4'], 'value': '3SG'}]})
+    service = _service(documents=[before, elsewhere, elsewhere])
+    [result] = servicetest.run(service, {**REQUEST, 'scope': 'sentence', 'sentence': 1}).results
+    assert (result['drafted'], result['changed']) == (1, 0)
+
+    relinked = _document(version=8, **two)
+    relinked['text_layers'][0]['token_layers'][1]['vocabs'][0]['vocab_links'][0]['tokens'] = ['w2']
+    service = _service(documents=[before, relinked, relinked])
+    [result] = servicetest.run(service, REQUEST).results
+    assert result['sentences_changed'] == [1] and result['drafted'] == 1
+    assert service.client.operations == ['UMR skeleton from glosses of sentence 2']

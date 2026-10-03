@@ -21,10 +21,11 @@ the writer and the progress budget. A service supplies only its plan per
 sentence.
 """
 
+import bisect
 import contextlib
 import json
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from dataclasses import dataclass, field as dc_field
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 from plaid_client.provenance import PROV_DETAIL_KEY, PROV_KEY, service_source
 from plaid_client.service import (batch_body_budget, locked_for_writes, partly_written,
@@ -32,8 +33,9 @@ from plaid_client.service import (batch_body_budget, locked_for_writes, partly_w
 from plaid_client.service_schema import Param
 
 from ..requester import Requester, requester_of
-from .graph import Sentence, UmrDocument, read_document, words_under
+from .graph import Edge, Sentence, UmrDocument, begins_in, read_document, words_under
 from .layers import UMR_NAMESPACE, UmrLayers, gloss_values, resolve_layers
+from .penman import next_variable
 
 
 def anchor_pieces(ranges, words, sentence_extent) -> List[Tuple[int, int]]:
@@ -124,8 +126,16 @@ def _failure_line(failures: Sequence[dict]) -> str:
     return f'Failed to draft {len(failures)} sentences. {groups}'
 
 
+def _changed_line(changed: Sequence[int]) -> str:
+    """``Sentence 3 changed during the run and was not drafted.``"""
+    if not changed:
+        return ''
+    verb = 'was' if len(changed) == 1 else 'were'
+    return f'{_sentences(changed)} changed during the run and {verb} not drafted.'
+
+
 def build_draft_notice(drafted, skipped, failures: Sequence[dict] = (), kept=0,
-                       linked=0, ended: str = '') -> Dict[str, Any]:
+                       linked=0, ended: str = '', changed: Sequence[int] = ()) -> Dict[str, Any]:
     """The toast the editor shows when a run finishes. The service owns the
     wording and the severity; the editor maps ``level`` to a colour. A run that
     drafted nothing must not congratulate anyone.
@@ -140,7 +150,9 @@ def build_draft_notice(drafted, skipped, failures: Sequence[dict] = (), kept=0,
     notice with failures is ``sticky``: it stays until dismissed, since it is
     the only record of which sentences a run could not draft. ``ended`` is
     the line of a run that stopped before its last sentence (the model did
-    not answer), said after the failures.
+    not answer), said after the failures. ``changed`` are the numbers of the
+    sentences someone changed while the run worked, which it did not write
+    (:func:`finish_draft`).
     """
     def s(n):
         return '' if n == 1 else 's'
@@ -150,11 +162,12 @@ def build_draft_notice(drafted, skipped, failures: Sequence[dict] = (), kept=0,
         held.append(f'Kept {kept} sentence{s(kept)} a person had worked on.')
     if linked:
         held.append(f'Kept {linked} sentence{s(linked)} that another sentence links to.')
-    failed = ([_failure_line(failures)] if failures else []) + ([ended] if ended else [])
+    failed = ([_failure_line(failures)] if failures else []) + (
+        [_changed_line(changed)] if changed else []) + ([ended] if ended else [])
 
     def notice(level, title, parts):
         out = {'level': level, 'title': title, 'message': ' '.join(parts)}
-        if failures or ended:
+        if failed:
             out['sticky'] = True
         return out
 
@@ -175,7 +188,7 @@ def build_draft_notice(drafted, skipped, failures: Sequence[dict] = (), kept=0,
                       + held + failed)
     if held:
         return notice('warning', 'Document not modified', held + failed)
-    if failures:
+    if failed:
         return notice('warning', 'Nothing drafted', failed)
     return notice('warning', 'Nothing to draft', ['The document has no sentences in scope.'])
 
@@ -390,6 +403,9 @@ class DraftRun:
     linked: int
     taken: set
     requester: Requester = Requester()
+    #: Each target's print (:func:`sentence_prints`) in the read the plans are made
+    #: from, by sentence token id.
+    prints: Dict[str, str] = dc_field(default_factory=dict)
 
 
 def begin_draft(client, request_data: Dict[str, Any], response_helper) -> Optional[DraftRun]:
@@ -440,45 +456,56 @@ def begin_draft(client, request_data: Dict[str, Any], response_helper) -> Option
         skipped=0 if overwrite else len([s for s in with_graph if s.redraftable]),
         kept=len([s for s in with_graph if s.person_made]),
         linked=len([s for s in with_graph if not s.redraftable and not s.person_made]),
-        taken=taken, requester=requester_of(client, request_data))
+        taken=taken, requester=requester_of(client, request_data),
+        prints=sentence_prints(raw, layers, document, {s.id for s in targets}))
 
 
 def finish_draft(client, response_helper, run: DraftRun, plans: Sequence[dict],
-                 failures: List[dict], frag: dict, operation: str, writing: str,
+                 failures: List[dict], frag: dict,
+                 operation: Union[str, Callable[[Sequence[dict]], str]], writing: str,
                  not_drafted: Sequence[int] = (), ended: str = '', *, service_id: str) -> None:
     """Write ``plans`` and send the run's report, or send the report alone when
     there is nothing to write.
 
     ``failures`` are ``{'sentence': n, 'reason': str}`` for the sentences the
     service could not plan, each also printed to the operator's log here.
-    ``operation`` names the write in the history (see :func:`run_label`), with
-    the requester added here, as it is to ``frag``'s ``provDetail``.
-    ``writing`` is the progress line while it runs. ``service_id`` is the
-    drafting service's, which the operation names as a service run. The
-    write, and the report after it, cannot be stopped once begun: a stop
-    while the document is half written would leave anchors with no nodes, and
-    one after the last write would call a finished run stopped. The plans were made from the read in
-    :func:`begin_draft`, so nothing is written if the document has moved since.
+    ``operation`` names the write in the history, or makes that name from the
+    plans that are written (see :func:`run_label`), with the requester added
+    here, as it is to ``frag``'s ``provDetail``. ``writing`` is the progress
+    line while it runs. ``service_id`` is the drafting service's, which the
+    operation names as a service run. The write, and the report after it,
+    cannot be stopped once begun: a stop while the document is half written
+    would leave anchors with no nodes, and one after the last write would
+    call a finished run stopped.
+
+    UMR conflicts are per sentence (Luke's ruling, 2026-10-03). The plans were
+    made from the read in :func:`begin_draft`, and when the document has moved
+    since, it is read again under the lock and each plan is written only if
+    its sentence is as it was then (:func:`replan`). An edit to another
+    sentence moves nothing. A sentence changed meanwhile is not written, and
+    the report names it.
 
     A run that stopped before its last sentence names the sentences it never
     asked about in ``not_drafted`` and says why in ``ended``, the notice's
     closing line.
     """
-    drafted = len(plans)
     for failure in failures:
         print(f"Sentence {failure['sentence']} not drafted: {failure['reason']}")
     if not_drafted:
         print(f'Not asked: sentences {", ".join(str(n) for n in not_drafted)}')
+    outcome = {'drafted': 0, 'changed': []}
 
     def complete():
-        notice = build_draft_notice(drafted, run.skipped, failures,
-                                    kept=run.kept, linked=run.linked, ended=ended)
+        drafted, changed = outcome['drafted'], outcome['changed']
+        notice = build_draft_notice(drafted, run.skipped, failures, kept=run.kept,
+                                    linked=run.linked, ended=ended, changed=changed)
         response_helper.progress(100, notice['title'])
         response_helper.complete({'document_id': run.document_id, 'status': 'success',
                                   'sentences': len(run.document.sentences), 'drafted': drafted,
                                   'skipped': run.skipped, 'kept': run.kept,
                                   'linked': run.linked, 'failed': len(failures),
                                   'sentences_failed': list(failures),
+                                  'changed': len(changed), 'sentences_changed': list(changed),
                                   'sentences_not_drafted': list(not_drafted), 'notice': notice})
 
     if not plans:
@@ -488,8 +515,160 @@ def finish_draft(client, response_helper, run: DraftRun, plans: Sequence[dict],
     if frag.get(PROV_KEY):
         frag = {**frag, PROV_DETAIL_KEY: run.requester.detail(frag.get(PROV_DETAIL_KEY))}
     with response_helper.critical():
-        with client.operation(run.requester.label(operation), kind='service-run',
-                              ref=service_source(service_id)):
-            with locked_for_writes(client, run.document_id, run.read_version):
-                write_graphs(client, run.layers, plans, frag, run.progress)
+        with locked_for_writes(client, run.document_id):
+            layers = run.layers
+            now = (getattr(client, 'document_versions', None) or {}).get(run.document_id)
+            if run.read_version and now and now != run.read_version:
+                raw = client.documents.get(run.document_id, include_body=True)
+                layers = resolve_layers(raw)
+                plans, outcome['changed'] = replan(run, plans, raw, layers)
+                # The writes are stamped with the version the plans now stand on.
+                if raw.get('version'):
+                    client.document_versions[run.document_id] = raw['version']
+            if plans:
+                label = operation(plans) if callable(operation) else operation
+                with client.operation(run.requester.label(label), kind='service-run',
+                                      ref=service_source(service_id)):
+                    write_graphs(client, layers, plans, frag, run.progress)
+            outcome['drafted'] = len(plans)
         complete()
+
+
+# --- per-sentence conflicts -------------------------------------------------------
+#
+# Luke's ruling (2026-10-03): UMR conflicts are per sentence. A drafting run
+# that read the document, spent minutes in a model, and finds the document
+# moved writes the sentences nobody changed and names the rest. Which rows are
+# a sentence's is the app's own rule (``plaid-umr`` ``src/domain/umrRebase.js``,
+# read off the graph by ``read_document``, the twin of ``sentenceGraph.js``):
+# its nodes, every edge and triple at either end of one, and its record. Beside
+# those, the run also read the sentence's text, words, morphemes, glosses and
+# vocabulary links, so a change to any of them is a change to the sentence.
+# Offsets are taken from the sentence's start, so a text edit in an earlier
+# sentence moves the sentence without changing it.
+
+
+def _relative(begin: int, end: int, base: int) -> List[int]:
+    return [begin - base, end - base]
+
+
+def _umr_rows(layers: UmrLayers, sentence: Sentence) -> dict:
+    """The sentence's own UMR rows, as ``read_document`` assigns them."""
+    base = sentence.begin
+    records = [sentence.record_token, *sentence.other_records]
+    record_ids = {rid for rid in records if rid}
+    return {
+        'index': sentence.index, 'text': sentence.text, 'records': records,
+        'record_rows': [[t['id'], *_relative(t['begin'], t['end'], base), t.get('metadata')]
+                        for t in (layers.node_layer or {}).get('tokens') or []
+                        if t['id'] in record_ids],
+        'nodes': [[n.id, n.var, n.concept, n.attrs, n.root, n.metadata, n.sentence_token,
+                   [[p.id, *_relative(p.begin, p.end, base)] for p in n.pieces]]
+                  for n in sentence.nodes],
+        'relations': sorted({r.id: [r.id, r.source, r.target,
+                                    r.role if isinstance(r, Edge) else r.rel, r.metadata]
+                             for n in sentence.nodes
+                             for r in (*n.out, *n.into, *n.doc_out, *n.doc_in)}.items()),
+    }
+
+
+def sentence_prints(raw: dict, layers: UmrLayers, document: UmrDocument,
+                    wanted: Optional[set] = None) -> Dict[str, str]:
+    """Everything of each sentence a draft is planned from and writes over,
+    as one string per sentence token id: equal in two reads when nobody
+    changed the sentence between them, wherever it moved to in the text.
+    ``wanted`` limits it to those sentence ids. One pass over the document,
+    however many sentences are asked for."""
+    sentences = [s for s in document.sentences if wanted is None or s.id in wanted]
+    ordered = sorted(document.sentences, key=lambda s: (s.begin, s.end))
+    starts = [s.begin for s in ordered]
+
+    def sentence_of(begin):
+        i = bisect.bisect_right(starts, begin) - 1
+        if i < 0:
+            return None
+        s = ordered[i]
+        return s if begins_in(begin, s.begin, s.end) and (wanted is None or s.id in wanted) else None
+
+    # Every other layer of the text: the tokens that begin in the sentence,
+    # the spans on them, the relations between those spans and the
+    # vocabulary links to them.
+    rows: Dict[str, List[Any]] = {s.id: [] for s in sentences}
+    skip = (layers.node_layer or {}).get('id')
+    for text_layer in (raw or {}).get('text_layers') or []:
+        for token_layer in text_layer.get('token_layers') or []:
+            if token_layer.get('id') == skip:
+                continue
+            layer_id = token_layer.get('id')
+            home: Dict[str, Sentence] = {}
+            for t in token_layer.get('tokens') or []:
+                s = sentence_of(t['begin'])
+                if s is not None:
+                    home[t['id']] = s
+                    rows[s.id].append([layer_id, t['id'], *_relative(t['begin'], t['end'], s.begin),
+                                       t.get('precedence'), t.get('metadata')])
+
+            def homes(token_ids):
+                return {home[t].id for t in token_ids or [] if t in home}
+
+            for span_layer in token_layer.get('span_layers') or []:
+                span_home: Dict[str, set] = {}
+                for sp in span_layer.get('spans') or []:
+                    span_home[sp['id']] = homes(sp.get('tokens'))
+                    for sid in span_home[sp['id']]:
+                        rows[sid].append([span_layer['id'], sp['id'], sp.get('value'),
+                                          sp.get('metadata'), sp.get('tokens')])
+                for relation_layer in span_layer.get('relation_layers') or []:
+                    for r in relation_layer.get('relations') or []:
+                        for sid in (span_home.get(r.get('source')) or set()) | (
+                                span_home.get(r.get('target')) or set()):
+                            rows[sid].append([relation_layer['id'], r['id'], r.get('value'),
+                                              r.get('metadata'), r.get('source'), r.get('target')])
+            for vocab in token_layer.get('vocabs') or []:
+                for link in vocab.get('vocab_links') or []:
+                    for sid in homes(link.get('tokens')):
+                        rows[sid].append([link.get('id'), (link.get('vocab_item') or {}).get('id'),
+                                          link.get('tokens'), link.get('metadata')])
+    return {s.id: json.dumps([_umr_rows(layers, s), rows[s.id]], sort_keys=True, default=str)
+            for s in sentences}
+
+
+def replan(run: DraftRun, plans: Sequence[dict], raw: dict,
+           layers: UmrLayers) -> Tuple[List[dict], List[int]]:
+    """``plans`` against ``raw``, a read taken after the document moved:
+    ``(plans to write, numbers of the sentences changed meanwhile)``.
+
+    A plan is written when its sentence is still there and as it was when the
+    run read it (:func:`sentence_prints`). Its anchors move with the sentence,
+    and it now replaces the sentence as it stands. A variable it minted that a
+    node made meanwhile has taken is minted again. Every other plan is left
+    out, and its sentence is named by the number the run drafted it as."""
+    document = read_document(raw, layers, gloss=gloss_values(raw, layers))
+    by_id = {s.id: s for s in document.sentences}
+    prints = sentence_prints(raw, layers, document, {p['sentence'].id for p in plans})
+    kept: List[dict] = []
+    changed: List[int] = []
+    for plan in plans:
+        old = plan['sentence']
+        new = by_id.get(old.id)
+        if new is None or prints.get(old.id) != run.prints.get(old.id):
+            changed.append(old.index)
+            continue
+        shift = new.begin - old.begin
+        kept.append({**plan, 'sentence': new,
+                     'pieces': [(begin + shift, end + shift) for begin, end in plan['pieces']]})
+    taken = set(document.taken_variables)
+    for plan in kept:
+        for node in plan['sentence'].nodes:
+            taken.discard(node.var)
+    for plan in kept:
+        nodes = []
+        for node in plan['nodes']:
+            meta = dict(node['meta'])
+            if meta.get('var') in taken:
+                meta['var'] = next_variable(plan['sentence'].index, node['concept'], taken)
+            if meta.get('var'):
+                taken.add(meta['var'])
+            nodes.append({**node, 'meta': meta})
+        plan['nodes'] = nodes
+    return kept, changed

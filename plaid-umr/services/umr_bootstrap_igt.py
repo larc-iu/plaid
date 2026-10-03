@@ -538,7 +538,7 @@ class UmrBootstrapService(BaseService):
                               detail=machine_detail(self.version, model=None, method='glosses'))
         finish_draft(self.client, response_helper, run, plans, failures, frag,
                      service_id=self.service_id,
-                     operation=run_label('UMR skeleton from glosses', plans),
+                     operation=lambda written: run_label('UMR skeleton from glosses', written),
                      writing=f"Writing {len(plans)} skeleton{'' if len(plans) == 1 else 's'}…")
 
 
