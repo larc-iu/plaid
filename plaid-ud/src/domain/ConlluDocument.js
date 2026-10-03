@@ -116,29 +116,6 @@ export class ConlluDocument extends DocumentModel {
     return this._writer;
   }
 
-  // A project UD has not adopted is only looked at, from every screen and not
-  // only Annotate (_reconcile): its sentences and words may be another app's,
-  // and a Clear tokens there takes that app's annotation with them.
-  _canWrite(label) {
-    if (!super._canWrite(label)) return false;
-    if (this.layerInfo.isConfigured) return true;
-    const err = new Error('This project is not set up for UD.');
-    this._error = `${label}: ${err.message}`;
-    this._errorCause = err;
-    if (this.onError) this.onError(this._error, err, label);
-    this._emit();
-    return false;
-  }
-
-  // A word another app made has no UD word until a writer's open seeds one
-  // (_reconcile). The grid shows it in the meantime as the seed would make it
-  // (sentenceRows.js), and nothing is written to it: its id is no token's.
-  _refuseVirtual(label, ids) {
-    if (!ids.some(isVirtualWordId)) return false;
-    this.setError(`${label}: Reopen the document to annotate this word.`);
-    return true;
-  }
-
   // Import a CoNLL-U text into a new document in the given project. The work
   // is `importConlluDocument`, which reads no loaded document at all: this is
   // the name every caller knows it by.
@@ -1239,7 +1216,6 @@ export class ConlluDocument extends DocumentModel {
     }
 
     const label = `Failed to update ${field}`;
-    if (this._refuseVirtual(label, [tokenId])) return false;
     if (!this._canWrite(label)) return false;
     if (field === 'features') {
       // Adding a name the token already carries overwrites that value rather
@@ -1513,7 +1489,6 @@ export class ConlluDocument extends DocumentModel {
     }
 
     const label = 'Failed to create relation';
-    if (this._refuseVirtual(label, [sourceSpanId, targetSpanId])) return false;
     if (!this._canWrite(label)) return false;
     // Optimistic, as every write is: the relation (and a lemma span for a
     // word that had none) shows under a pending id before the round trip,
@@ -1622,7 +1597,6 @@ export class ConlluDocument extends DocumentModel {
     }
 
     const label = 'Failed to create enhanced relation';
-    if (this._refuseVirtual(label, [sourceSpanId, targetSpanId])) return false;
     if (!this._canWrite(label)) return false;
     // Optimistic, for createRelation's reason.
     const {
@@ -2112,4 +2086,67 @@ export class ConlluDocument extends DocumentModel {
       this.layerInfo.isConfigured ? conlluLosses({ sentences: this.sentences }) : [],
     );
   }
+}
+
+// UD's own writes, each refused at one door before it plans anything:
+//
+// - in a project UD has not adopted, which is only looked at (_reconcile). Its
+//   sentences and words may be another app's, and a Clear tokens there took
+//   that app's annotation with them. The document's own writes (rename, copy,
+//   text direction, delete) are the shared Details page's and are not UD's, so
+//   they stay as they are in every other app.
+// - naming a word that has no UD word yet (sentenceRows.js), whose id is no
+//   token's. The grid shows it until a writer's open seeds it. Accept and
+//   Discard leave such ids out rather than refusing, since a sentence's
+//   Accept names every word in it.
+const UD_WRITES = [
+  'setDocumentMetadata',
+  'setSentenceMetadata',
+  'saveText',
+  'tokenize',
+  'clearTokens',
+  'toggleSentenceBoundary',
+  'setWordMorphemes',
+  'deleteWord',
+  'createWord',
+  'updateAnnotation',
+  'deleteFeature',
+  'createRelation',
+  'createEnhancedRelation',
+  'setRelationSuppressed',
+  'updateRelation',
+  'deleteRelation',
+  'confirmTokens',
+  'discardTokens',
+];
+const SKIPS_STAND_INS = new Set(['confirmTokens', 'discardTokens']);
+
+const namesStandIn = (arg) => {
+  if (isVirtualWordId(arg)) return true;
+  if (Array.isArray(arg)) return arg.some(namesStandIn);
+  return Boolean(arg && typeof arg === 'object' && isVirtualWordId(arg.id));
+};
+
+// Said every time, as a refused write is: a second try gets an answer too.
+const refuse = (doc, message) => {
+  doc._error = message;
+  doc._errorCause = null;
+  if (doc.onError) doc.onError(message);
+  doc._emit();
+  return false;
+};
+
+for (const name of UD_WRITES) {
+  const write = ConlluDocument.prototype[name];
+  ConlluDocument.prototype[name] = async function guarded(...args) {
+    if (!this._asOf && !this.layerInfo.isConfigured) {
+      return refuse(this, 'This project is not set up for UD.');
+    }
+    if (SKIPS_STAND_INS.has(name)) {
+      args[0] = (args[0] || []).filter((id) => !isVirtualWordId(id));
+    } else if (args.some(namesStandIn)) {
+      return refuse(this, 'Reopen the document to annotate this word.');
+    }
+    return write.apply(this, args);
+  };
 }

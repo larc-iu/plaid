@@ -119,7 +119,39 @@ test("a writer's edit of such a word is refused before any request", async () =>
   assert.equal(await doc.updateAnnotation(virtual, 'upos', 'NOUN'), false);
   assert.equal(await doc.createRelation(barks, virtual, 'nsubj'), false);
   assert.equal(await doc.createEnhancedRelation(barks, virtual, 'nsubj'), false);
+  // Every UD write is refused at one door (REV-FX3-UD R3), the ones that take
+  // a word or a list of ids included.
+  assert.equal(await doc.deleteWord(virtual), false);
+  assert.equal(await doc.setWordMorphemes({ id: virtual }, ['do', 'g']), false);
+  assert.equal(await doc.deleteFeature(virtual), false);
   assert.deepEqual(calls, []);
-  assert.equal(errors.length, 3);
+  assert.equal(errors.length, 6);
   assert.ok(errors.every((m) => m.endsWith('Reopen the document to annotate this word.')));
+});
+
+test('Accept and Discard leave a stand-in out rather than refusing', async () => {
+  const calls = [];
+  const client = new Proxy(
+    {},
+    {
+      get: (_t, key) => {
+        calls.push(String(key));
+        return () => Promise.resolve({});
+      },
+    },
+  );
+  const errors = [];
+  const doc = new ConlluDocument({
+    raw: bare(['dog']),
+    client,
+    project: { id: 'p1', maintainers: ['m@x'], writers: [] },
+    user: { id: 'm@x' },
+  });
+  doc.onError = (message) => errors.push(message);
+  const virtual = doc.sentences[0].tokens[1].token.id;
+  // Only the stand-in: nothing left to accept, nothing sent, nothing said.
+  assert.equal(await doc.confirmTokens([virtual]), false);
+  assert.equal(await doc.discardTokens([virtual]), false);
+  assert.deepEqual(calls, []);
+  assert.deepEqual(errors, []);
 });

@@ -95,3 +95,22 @@ test('every write to a document of a project not set up for UD is refused', asyn
     errors.join(),
   );
 });
+
+// REV-FX3-UD R4: what is the document's and not UD's (its name, its text
+// direction, a copy) is written in such a project as in any other, and as the
+// Details page's Delete always was.
+test('a document-level write in a project not set up for UD goes through', async () => {
+  const calls = [];
+  const doc = new ConlluDocument({
+    raw: igtOnly(),
+    client: recordingClient(calls),
+    project: { id: 'p1', maintainers: ['m@x'], writers: [] },
+    user: { id: 'm@x' },
+  });
+  const errors = [];
+  doc.onError = (message) => errors.push(message);
+  await doc.rename('A new name');
+  assert.equal(doc.name, 'A new name');
+  assert.deepEqual(errors, []);
+  assert.ok(calls.includes('documents.update'), calls.join());
+});
