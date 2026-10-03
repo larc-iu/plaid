@@ -29,7 +29,7 @@ function referenceRows(body, info) {
   const sentences = [...(info.sentenceTokenLayer?.tokens || [])].sort(byPosition);
   const words = [...(info.wordTokenLayer?.tokens || [])].sort(byPosition);
   const morphemes = [...(info.morphemeTokenLayer?.tokens || [])].sort(byPosition);
-  if (morphemes.length === 0) return [];
+  if (!info.morphemeTokenLayer) return [];
   const idx = {
     form: spanIndex(info.formLayer),
     lemma: spanIndex(info.lemmaLayer),
@@ -75,9 +75,14 @@ function referenceRows(body, info) {
     let n = 0;
     if (inSentence.length) {
       inSentence.forEach((w) => {
-        const ms = morphemes.filter((m) => containsToken(w, m));
+        const stored = morphemes.filter((m) => containsToken(w, m));
+        // A word with no UD word yet stands in for the one the seed makes.
+        const ms = stored.length
+          ? stored
+          : [{ id: `virtual:${w.id}`, begin: w.begin, end: w.end, precedence: 0 }];
         ms.forEach((m, i) => {
           const e = entry(m, n + 1, w);
+          if (!stored.length) e.virtual = true;
           e.isFirstMorphemeOfWord = i === 0;
           e.wordHasMultipleMorphemes = ms.length > 1;
           entries.push(e);

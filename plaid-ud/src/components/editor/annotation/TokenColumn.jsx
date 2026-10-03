@@ -5,10 +5,10 @@ import { provCellTitle, provMark } from '../../../utils/provenanceUi.js';
 import { resolveColor } from '../../../utils/udVocab.js';
 import { EditableCell } from './EditableCell.jsx';
 import { FeaturesCell } from './FeaturesCell.jsx';
-import { useEditorSession } from './editorSession.js';
+import { EditorSessionContext, useEditorSession } from './editorSession.js';
 
-// Token Column component
-export const TokenColumn = React.memo(
+// One word's column: its form and its annotation cells.
+const Column = React.memo(
   ({
     data,
     index,
@@ -232,3 +232,30 @@ export const TokenColumn = React.memo(
   // which are now read from the session: a context change re-renders its
   // readers whatever a comparator says, which is what it was for.
 );
+
+// The session a word with no UD word yet is shown under (sentenceRows.js): its
+// cells are read-only, since its id is no token's. A writer's next open seeds
+// it, and it is then a word like any other.
+const READ_ONLY_HANDLERS = {
+  isReadOnly: true,
+  onAnnotationUpdate: null,
+  onFeatureDelete: null,
+  onConfirmTokens: null,
+  onDiscardTokens: null,
+  onPrecedent: undefined,
+};
+
+export const TokenColumn = React.memo((props) => {
+  const session = useEditorSession();
+  const virtual = Boolean(props.data.virtual);
+  const readOnly = useMemo(
+    () => (virtual ? { ...session, ...READ_ONLY_HANDLERS } : null),
+    [virtual, session],
+  );
+  if (!readOnly) return <Column {...props} />;
+  return (
+    <EditorSessionContext.Provider value={readOnly}>
+      <Column {...props} />
+    </EditorSessionContext.Provider>
+  );
+});

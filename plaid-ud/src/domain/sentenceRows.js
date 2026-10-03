@@ -44,6 +44,25 @@ export const tokensWithin = (sorted, parent) => {
   return out;
 };
 
+// A word another app made (igt's Tokenize, an import into it) has no UD word
+// under it until a writer opens the document and the repair on open seeds one
+// (ConlluDocument._reconcile). A reader never seeds, and neither does an
+// export. So every row stands in for the seed: the word gets the one 1:1 UD
+// word the seed would make, under an id that is no token's, with no
+// annotation. The grid, the export and a reader's view then show the words a
+// writer's open shows, and nothing is written.
+const VIRTUAL = 'virtual:';
+
+/** Whether a row's word id is a stand-in for a word that has no UD word yet. */
+export const isVirtualWordId = (id) => typeof id === 'string' && id.startsWith(VIRTUAL);
+
+const virtualWord = (word) => ({
+  id: `${VIRTUAL}${word.id}`,
+  begin: word.begin,
+  end: word.end,
+  precedence: 0,
+});
+
 /** The sentence rows for a document body under the given layer info. */
 export function buildSentenceRows(body, layerInfo) {
   if (!body) return [];
@@ -65,7 +84,7 @@ export function buildSentenceRows(body, layerInfo) {
   const wordTokens = [...(wordTokenLayer?.tokens || [])].sort(byPosition);
   const morphemeTokens = [...(morphemeTokenLayer?.tokens || [])].sort(byPosition);
 
-  if (morphemeTokens.length === 0) return [];
+  if (!morphemeTokenLayer) return [];
 
   // One code-point spread of the body for every slice below. `cpSlice`
   // spreads the whole body per call.
@@ -128,9 +147,11 @@ export function buildSentenceRows(body, layerInfo) {
 
     if (wordsInSentence.length > 0) {
       wordsInSentence.forEach((word) => {
-        const wordMorphemes = tokensWithin(morphemeTokens, word);
+        const stored = tokensWithin(morphemeTokens, word);
+        const wordMorphemes = stored.length > 0 ? stored : [virtualWord(word)];
         wordMorphemes.forEach((morpheme, i) => {
           const entry = buildMorphemeEntry(morpheme, tokenIndex + 1, word);
+          if (stored.length === 0) entry.virtual = true;
           entry.isFirstMorphemeOfWord = i === 0;
           entry.wordHasMultipleMorphemes = wordMorphemes.length > 1;
           morphemeEntries.push(entry);

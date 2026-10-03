@@ -48,7 +48,7 @@ import {
 import { validateConlluDocument } from './validate.js';
 import { makeValidators } from '../utils/udVocabMode.js';
 import { importConlluDocument } from './conlluImport.js';
-import { buildSentenceRows } from './sentenceRows.js';
+import { buildSentenceRows, isVirtualWordId } from './sentenceRows.js';
 import { buildConllu, conlluLosses } from './conlluSerialize.js';
 import { basicTokenize, newlineSentenceRanges } from '../utils/basicTokenize.js';
 import { normalizeFeature, featureRefusal } from '../utils/feats.js';
@@ -128,6 +128,15 @@ export class ConlluDocument extends DocumentModel {
     if (this.onError) this.onError(this._error, err, label);
     this._emit();
     return false;
+  }
+
+  // A word another app made has no UD word until a writer's open seeds one
+  // (_reconcile). The grid shows it in the meantime as the seed would make it
+  // (sentenceRows.js), and nothing is written to it: its id is no token's.
+  _refuseVirtual(label, ids) {
+    if (!ids.some(isVirtualWordId)) return false;
+    this.setError(`${label}: Reopen the document to annotate this word.`);
+    return true;
   }
 
   // Import a CoNLL-U text into a new document in the given project. The work
@@ -1230,6 +1239,7 @@ export class ConlluDocument extends DocumentModel {
     }
 
     const label = `Failed to update ${field}`;
+    if (this._refuseVirtual(label, [tokenId])) return false;
     if (!this._canWrite(label)) return false;
     if (field === 'features') {
       // Adding a name the token already carries overwrites that value rather
@@ -1503,6 +1513,7 @@ export class ConlluDocument extends DocumentModel {
     }
 
     const label = 'Failed to create relation';
+    if (this._refuseVirtual(label, [sourceSpanId, targetSpanId])) return false;
     if (!this._canWrite(label)) return false;
     // Optimistic, as every write is: the relation (and a lemma span for a
     // word that had none) shows under a pending id before the round trip,
@@ -1611,6 +1622,7 @@ export class ConlluDocument extends DocumentModel {
     }
 
     const label = 'Failed to create enhanced relation';
+    if (this._refuseVirtual(label, [sourceSpanId, targetSpanId])) return false;
     if (!this._canWrite(label)) return false;
     // Optimistic, for createRelation's reason.
     const {
