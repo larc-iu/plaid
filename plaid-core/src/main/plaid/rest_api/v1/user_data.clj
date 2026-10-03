@@ -2,10 +2,21 @@
   "REST surface for private per-user key/value storage: `/users/:user-id/data`.
   The owning user or a global admin may read and write; nobody else can see
   that a key exists. Values are arbitrary JSON, stored and returned verbatim."
-  (:require [plaid.rest-api.v1.api-token :refer [self-or-admin]]
+  (:require [plaid.rest-api.v1.api-token :as api-token :refer [self-or-admin]]
             [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.pagination :as pagination]
             [plaid.sql.user-data :as user-data]))
+
+(defn- wrap-own-writes-for-named-tokens
+  "Refuse a write to another user's private data when the request is signed
+  with a named API token, as an admin's would otherwise be allowed. A token
+  writes its own owner's data (Luke, 2026-10-03)."
+  [handler]
+  (fn [{{{:keys [user-id]} :path} :parameters :as request}]
+    (if (and (api-token/named-token? request)
+             (not= user-id (pra/->user-id request)))
+      api-token/session-only-refusal
+      (handler request))))
 
 (def user-data-routes
   ["/users/:user-id/data"
@@ -47,14 +58,20 @@
                          {:status 200 :body entry}
                          {:status 404 :body {:error "No such entry"}}))}
       :put {:summary (str "Create or replace one private data entry. The body is the value: any JSON "
-                          "(object, array, or scalar), up to 1 MB. Not audited.")
+                          "(object, array, or scalar), up to 1 MB. Not audited. An admin's "
+                          "write to another user's data needs a signed-in session: one signed "
+                          "with a named API token is refused (403).")
+            :middleware [wrap-own-writes-for-named-tokens]
             :parameters {:body any?}
             :handler (fn [{{{:keys [user-id key]} :path body :body} :parameters db :db}]
                        (let [{:keys [error] :as result} (user-data/put! db user-id key body)]
                          (case error
                            :too-large {:status 413 :body {:error (str "Value exceeds " user-data/max-value-bytes " bytes")}}
                            nil {:status 200 :body result})))}
-      :delete {:summary "Delete one private data entry."
+      :delete {:summary (str "Delete one private data entry. An admin's delete of another user's "
+                             "entry needs a signed-in session: one signed with a named API token "
+                             "is refused (403).")
+               :middleware [wrap-own-writes-for-named-tokens]
                :handler (fn [{{{:keys [user-id key]} :path} :parameters db :db}]
                           (if (pos? (user-data/delete! db user-id key))
                             {:status 204}

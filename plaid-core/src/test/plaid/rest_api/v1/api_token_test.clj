@@ -377,3 +377,30 @@
     (testing "the token may still read them, and the session clear them"
       (assert-ok (api-call as-tok {:method :get :path "/api/v1/admin/rate-limits"}))
       (assert-ok (api-call admin-request {:method :delete :path "/api/v1/admin/rate-limits"})))))
+
+(deftest an-admins-named-token-writes-only-its-owners-private-data
+  ;; Luke, 2026-10-03 (REV-FX3-CORE F2): another user's private data is out
+  ;; of a named token's reach. Its owner's own stays in it.
+  (let [tok (-> (mint! admin-request "admin@example.com" "admin-svc") :body :token)
+        as-tok (token-req-fn tok)
+        other "/api/v1/users/user1@example.com/data/igt:x"
+        mine "/api/v1/users/admin@example.com/data/igt:x"]
+    (assert-ok (api-call user1-request {:method :put :path other :body {:a 1}}))
+    (testing "writing and deleting another user's entry is refused"
+      (doseq [req [{:method :put :path other :body {:a 2}} {:method :delete :path other}]]
+        (let [r (api-call as-tok req)]
+          (assert-forbidden r)
+          (is (re-find session-only (-> r :body :error))))))
+    (testing "and inside a batch"
+      (let [r (rest-handler (-> (mock/request :post "/api/v1/batch")
+                                (mock/header "accept" "application/edn")
+                                (mock/json-body [{:path other :method "put" :body {:a 3}}])
+                                (mock/header "authorization" (str "Bearer " tok))))]
+        (is (not= 200 (:status r)))))
+    (testing "the entry is as user1 left it"
+      (is (= {"a" 1} (-> (api-call user1-request {:method :get :path other}) :body :value))))
+    (testing "its owner's own data it still writes"
+      (assert-ok (api-call as-tok {:method :put :path mine :body {:b 1}}))
+      (assert-no-content (api-call as-tok {:method :delete :path mine})))
+    (testing "a session still writes another user's"
+      (assert-ok (api-call admin-request {:method :put :path other :body {:a 4}})))))
