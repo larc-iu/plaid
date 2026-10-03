@@ -83,3 +83,48 @@ def test_a_root_the_plan_already_moved_is_not_counted(ws):
 def test_old_root_arguments_belong_to_head_0(ws):
     out = run(ws, 'set_head', document='Viaje', ref='s1.w4', head=1, deprel='obj', old_root_head=4)
     assert 'go with head 0' in out and ws.ops == []
+
+
+# --- a merge and a replacement keep the one-root rule (REV-FX3-AGENT-5, -6) ------
+
+def test_a_merge_of_two_rooted_sentences_is_refused_unless_one_root_is_placed(ws):
+    # s2 "Corre ." with a root too, so both sentences have one.
+    from ud_fixtures import document_raw
+    raw = document_raw()
+    words = raw['text_layers'][0]['token_layers'][2]
+    lemma = next(sl for sl in words['span_layers'] if sl['id'] == 'u-lemma')
+    lemma['spans'].append({'id': 'sp-l5', 'value': 'correr', 'tokens': ['uw-5']})
+    lemma['relation_layers'][0]['relations'].append({'id': 'r-5', 'source': 'sp-l5', 'target': 'sp-l5',
+                                                     'value': 'root'})
+    c = ud_client(documents={'ud1': raw})
+    w2 = Workspace(c, load_project(c, PID))
+    out = run(w2, 'merge_sentences', document='Viaje', ref='s2')
+    assert 'each have a root ("Vamos" and "Corre")' in out and 'root_head' in out, out
+    assert w2.ops == []
+    out = run(w2, 'merge_sentences', document='Viaje', ref='s2', root_head='s1.w1', root_deprel='parataxis')
+    assert out.startswith('Planned: s1 and s2 become one sentence, and s2.w1 ("Corre") parataxis of s1.w1'), out
+    assert [op['kind'] for op in w2.ops] == ['merge_sentences', 'set_head']
+    payload = w2.plan_payload()
+    c.calls.clear()
+    execute_plan(c, payload['ops'], source='s', label='l', project=w2.project)
+    kinds = [k for k, _ in c.writes]
+    # The merge, then the old root's self-relation goes and its new arc is drawn.
+    assert kinds.index('tokens.merge') < kinds.index('relations.delete') < kinds.index('relations.create')
+
+
+def test_a_merge_where_one_sentence_has_no_root_needs_nothing(ws):
+    out = run(ws, 'merge_sentences', document='Viaje', ref='s2')
+    assert out.startswith('Planned: s1 and s2 become one sentence.'), out
+    client = ud_client()
+    fresh = Workspace(client, load_project(client, PID))
+    out = run(fresh, 'merge_sentences', document='Viaje', ref='s2', root_head='s1.w1', root_deprel='parataxis')
+    assert 'do not' in out
+
+
+def test_a_deprel_replacement_never_makes_or_unmakes_a_root():
+    from plaid_agent.ud.bulk import changes, root_rule, replacer
+    rel = lambda i, v, s, t: [{'id': i, 'value': v, 'document': 'd', 'source': s, 'target': t}]  # noqa: E731
+    rows = [rel('r1', 'acl', 'a', 'b'), rel('r2', 'root', 'c', 'c')]
+    assert 'belongs to head 0' in root_rule(changes(rows, 'deprel', replacer('acl', 'root', False, True, False)))
+    assert 'relabel 1 root' in root_rule(changes(rows, 'deprel', replacer('root', 'dep', False, True, False)))
+    assert root_rule(changes(rows, 'deprel', replacer('acl', 'acl:relcl', False, True, False))) is None

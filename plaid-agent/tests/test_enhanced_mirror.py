@@ -38,7 +38,7 @@ import pytest
 
 from plaid_agent.ud.plan import execute_plan
 from plaid_agent.ud.project import deps_of, load_project
-from plaid_agent.ud.sentences import t_merge_sentences, t_split_sentence
+from plaid_agent.ud.sentences import merge_op, t_split_sentence
 from plaid_agent.ud.tools import Workspace, _stage_head, _words, t_del_relation
 from ud_fixtures import (DEPREL, ENHANCED, FEATS, FORM, LEMMA, PID, SENT_LAYER, TEXT_ID,
                          TEXT_LAYER, TOK_LAYER, UPOS, WORD_LAYER, XPOS, FakeClient, project_raw)
@@ -277,7 +277,10 @@ def _python_side(raw: dict) -> dict:
             splits[str(t.begin)] = _sent(client)
         if s.index > 1:
             client, ws = _workspace(raw)
-            t_merge_sentences(ws, document=NAME, ref=f's{s.index}')
+            # The merge itself, as the editor's toggle sends it. Two roots,
+            # which the tool asks the model to settle (test_ud_respell_and_root),
+            # do not change what the merge sends.
+            ws.add_op(merge_op(ws, ws.doc(NAME), f's{s.index}')[0])
             execute_plan(client, ws.ops, source='s', label='l', project=ws.project)
             merges[str(s.tokens[0].begin)] = _sent(client)
     return {'deps': deps, 'hasEnhanced': has_enhanced, 'suppressorOf': suppressor_of,

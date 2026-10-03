@@ -211,10 +211,12 @@ PLAN: start a new sentence at this word, so the sentence it is in becomes two. A
 
 ### merge_sentences
 
-PLAN: join this sentence onto the one before it, so the two become one. Name the SECOND of them: "s3" joins s2 and s3. Nothing is lost, since merging only widens a sentence. Sentences after it renumber, so this is the ONLY change a plan may carry for this document.
+PLAN: join this sentence onto the one before it, so the two become one. Name the SECOND of them: "s3" joins s2 and s3. Nothing is lost, since merging only widens a sentence. A sentence has one root: when both have one, root_head and root_deprel say where one of them goes. Sentences after it renumber, so this is the ONLY change a plan may carry for this document.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `ref` (string, required): The second of the two sentences, "s3".
+- `root_head` (string): When both sentences have a root: a word of one of them, "s2.w3", that takes the OTHER sentence's root as its dependent.
+- `root_deprel` (string): The relation the demoted root takes to root_head.
 
 ### query_help
 

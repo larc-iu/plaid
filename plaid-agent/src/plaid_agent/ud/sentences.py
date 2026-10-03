@@ -30,9 +30,9 @@ the relations a cut can orphan are exactly the ones inside the sentence being
 cut. One whose head points nowhere is left alone rather than guessed at.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-from .project import Sentence, UdDoc, Word, resolve
+from .project import Sentence, UdDoc, Word, resolve, word_ref
 from .tools import ToolError, Workspace
 
 
@@ -191,9 +191,62 @@ def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> st
             f'Sentences after it renumber.')
 
 
-def t_merge_sentences(ws: Workspace, document: str = None, ref: str = None) -> str:
-    """PLAN: join the named sentence onto the one before it."""
-    doc = ws.doc(document)
+def _root_of(sentence) -> Optional[Word]:
+    return next((w for w in sentence.words if w.relation_id and w.head == 0), None)
+
+
+def _merged_root_op(ws: Workspace, doc, before, sentence, root_head, root_deprel) -> Optional[Dict[str, Any]]:
+    """A sentence has one root, and two sentences joined would have two. When
+    both have one, the merge names where one of them goes: ``root_head``, a
+    word of either sentence, takes the OTHER sentence's root as its dependent
+    with ``root_deprel``. Staged with the merge as one head write
+    (``with_merge``): its ids name the same words before and after."""
+    from .tools import refuse_virtual
+    roots = [_root_of(before), _root_of(sentence)]
+    if root_head is None and not root_deprel:
+        if all(roots):
+            raise ToolError(
+                f's{before.index} and s{sentence.index} each have a root ("{roots[0].form}" and '
+                f'"{roots[1].form}"), and a sentence has one. Say where one of them goes: root_head (a word of '
+                f'one sentence, e.g. s{before.index}.w{roots[0].index}) takes the other sentence\'s root as '
+                f'its dependent, with root_deprel.')
+        return None
+    if not all(roots):
+        raise ToolError('root_head and root_deprel are for two sentences that each have a root, and these do not.')
+    deprel = (root_deprel or '').strip()
+    if not deprel or deprel == 'root':
+        raise ToolError('Give root_deprel: the relation the demoted root takes to root_head (not "root").')
+    head = resolve(doc, str(root_head))
+    if not isinstance(head, Word):
+        raise ToolError(f'{root_head} is not a word. Name the word the other root attaches to, like '
+                        f'"s{before.index}.w1".')
+    if head in before.words:
+        dependent, head_sentence = roots[1], before
+    elif head in sentence.words:
+        dependent, head_sentence = roots[0], sentence
+    else:
+        raise ToolError(f'{root_head} is in neither s{before.index} nor s{sentence.index}.')
+    refuse_virtual(head, str(root_head))
+    lemma, head_lemma = dependent.fields.get('lemma'), head.fields.get('lemma')
+    stale = [dependent.suppressor_id,
+             doc.suppressor_over(head_lemma.id if head_lemma else None, lemma.id if lemma else None)]
+    other = sentence if head_sentence is before else before
+    return {'kind': 'set_head', 'word_id': dependent.id, 'head_id': head.id,
+            'lemma_layer_id': ws.project.layer('lemma'), 'relation_layer_id': ws.project.relation_layer_id,
+            'word_form': dependent.form, 'head_form': head.form,
+            'lemma_span_id': lemma.id if lemma else None,
+            'head_lemma_span_id': head_lemma.id if head_lemma else None,
+            'relation_id': dependent.relation_id, 'deprel': deprel, 'document_id': doc.id,
+            'suppressor_ids': [i for i in dict.fromkeys(stale) if i],
+            'with_merge': sentence.id,
+            'label': f'{word_ref(other, dependent)} ("{dependent.form}") {deprel} of '
+                     f'{word_ref(head_sentence, head)} ("{head.form}"), so the joined sentence has one root',
+            'ref': word_ref(other, dependent)}
+
+
+def merge_op(ws: Workspace, doc, ref: str):
+    """``(op, before, sentence)``: the merge of the sentence ``ref`` names
+    onto the one before it, the write the editor's boundary toggle makes."""
     from .tools import _boundary_can_still_move, _guards
     _guards(ws, doc)
     _boundary_can_still_move(ws, doc)
@@ -202,17 +255,22 @@ def t_merge_sentences(ws: Workspace, document: str = None, ref: str = None) -> s
         raise ToolError('s1 has nothing before it to join. Name the SECOND of the two sentences, '
                         'so s3 joins s2 and s3 into one.')
     before = doc.sentences[sentence.index - 2]
-    # Merging only widens a sentence, so no relation can become invalid.
-    ws.add_op({
-        'kind': 'merge_sentences',
-        'document_id': doc.id,
-        'sentence_id': sentence.id,
-        'previous_id': before.id,
-        'ref': ref,
-        'label': f'merge s{before.index} and s{sentence.index}',
-    })
-    return (f'Planned: s{before.index} and s{sentence.index} become one sentence. '
-            f'Sentences after them renumber.')
+    return ({'kind': 'merge_sentences', 'document_id': doc.id, 'sentence_id': sentence.id,
+             'previous_id': before.id, 'ref': ref, 'label': f'merge s{before.index} and s{sentence.index}'},
+            before, sentence)
+
+
+def t_merge_sentences(ws: Workspace, document: str = None, ref: str = None, root_head=None,
+                      root_deprel: str = None) -> str:
+    """PLAN: join the named sentence onto the one before it."""
+    doc = ws.doc(document)
+    op, before, sentence = merge_op(ws, doc, ref)
+    root_op = _merged_root_op(ws, doc, before, sentence, root_head, root_deprel)
+    # Merging only widens a sentence, so no arc becomes invalid. Its roots are
+    # the one rule it can break, settled above.
+    ws.add_ops([op] + ([root_op] if root_op else []))
+    return (f'Planned: s{before.index} and s{sentence.index} become one sentence'
+            + (f', and {root_op["label"]}' if root_op else '') + '. Sentences after them renumber.')
 
 
 def apply_split_sentence(op: Dict[str, Any], b, stamp) -> None:

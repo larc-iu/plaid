@@ -586,8 +586,11 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
         if op.get('kind') in RESHAPES_DOCUMENT:
             moved[op.get('document_id')] = moved.get(op.get('document_id'), 0) + 1
     if moved:
+        # A merge's own head write (``with_merge``, the one root of the joined
+        # sentence) names words by id, which the merge does not renumber.
         others = set().union(*(docs_of_op(op) for op in ops
-                               if op.get('kind') not in RESHAPES_DOCUMENT)) & set(moved)
+                               if op.get('kind') not in RESHAPES_DOCUMENT
+                               and not op.get('with_merge'))) & set(moved)
         if others:
             raise ValueError('this plan both moves a sentence boundary in and edits '
                              + ', '.join(sorted(others))

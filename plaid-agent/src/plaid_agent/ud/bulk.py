@@ -76,8 +76,27 @@ def changes(rows: List[list], field: str, rep: Callable[[str], str]) -> List[Dic
             tok = row[1] if len(row) > 1 and isinstance(row[1], dict) else {}
             entry['token_id'] = tok.get('id')
             entry['layer_id'] = ent.get('layer')
+        else:
+            # A root is a self-relation (head 0), so the label `root` belongs
+            # to it and to nothing else.
+            entry['is_root'] = bool(ent.get('source')) and ent.get('source') == ent.get('target')
         out.append(entry)
     return out
+
+
+def root_rule(found: List[Dict[str, Any]]) -> Optional[str]:
+    """Why a deprel replacement breaks the one-root rule set_head keeps, or
+    None: `root` given to a relation with a head word, or a root relabelled to
+    anything else."""
+    made = sum(1 for ch in found if ch['new'] == 'root' and not ch.get('is_root'))
+    unmade = sum(1 for ch in found if ch.get('is_root') and ch['new'] != 'root')
+    if made:
+        return (f'This would label {made} dependenc{"y" if made == 1 else "ies"} with a head word "root". '
+                'The deprel "root" belongs to head 0: make a word the root with set_head (head 0).')
+    if unmade:
+        return (f'This would relabel {unmade} root{"s" if unmade != 1 else ""} to something else, and a root\'s '
+                'deprel is "root". Give the word a head with set_head instead.')
+    return None
 
 
 def spec_of(op: Dict[str, Any]) -> Tuple[Dict[str, Any], Callable[[str], str]]:
@@ -101,7 +120,12 @@ def resolve_replace(client, project: UdProject, op: Dict[str, Any]) -> List[Dict
     if len(rows) > REPLACE_MAX:
         raise ValueError(f'the replacement now matches more than {REPLACE_MAX} values')
     out = []
-    for ch in changes(rows, field, rep):
+    found = changes(rows, field, rep)
+    if field == 'deprel':
+        refusal = root_rule(found)
+        if refusal:
+            raise ValueError(refusal)
+    for ch in found:
         if field == 'deprel':
             out.append({'kind': 'set_deprel', 'relation_id': ch['id'], 'deprel': ch['new'],
                         'document_id': ch['document_id'], 'ref': None,
@@ -147,7 +171,9 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
                      f'replacement leaves every one of them as it is')
     if field == FEATURES:
         _check_features(ws, c, found, document_id)
-    else:
+    elif field == 'deprel' and root_rule(found):
+        raise ToolError(root_rule(found))
+    if field != FEATURES:
         # A value-set rule refuses what it does not list, whatever the pattern
         # turned the value into. The change is staged as one scope, found
         # again at approval, so it is asked here.

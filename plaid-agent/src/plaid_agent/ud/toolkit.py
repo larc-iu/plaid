@@ -186,10 +186,16 @@ TOOLS = [
     _fn('merge_sentences',
         'PLAN: join this sentence onto the one before it, so the two become one. Name the SECOND '
         'of them: "s3" joins s2 and s3. Nothing is lost, since merging only widens a sentence. '
-        'Sentences after it renumber, so this is the ONLY change a plan may carry for this '
-        'document.',
+        'A sentence has one root: when both have one, root_head and root_deprel say where one '
+        'of them goes. Sentences after it renumber, so this is the ONLY change a plan may carry '
+        'for this document.',
         {'document': _DOC,
-         'ref': {'type': 'string', 'description': 'The second of the two sentences, "s3".'}},
+         'ref': {'type': 'string', 'description': 'The second of the two sentences, "s3".'},
+         'root_head': {'type': 'string', 'description': 'When both sentences have a root: a word of '
+                                                        'one of them, "s2.w3", that takes the OTHER '
+                                                        'sentence\'s root as its dependent.'},
+         'root_deprel': {'type': 'string', 'description': 'The relation the demoted root takes to '
+                                                          'root_head.'}},
         ['document', 'ref']),
     _fn('query_help',
         'The Plaid query language, and this project\'s layer names. Call it before writing a '
