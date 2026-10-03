@@ -428,7 +428,10 @@ def _streamed(litellm, kwargs, abandoned: Optional[threading.Event] = None):
     next chunk."""
     chunks: List[Any] = []
     try:
-        stream = litellm.completion(**kwargs, stream=True)
+        # The provider's own count of what it sent, in its last chunk. A
+        # provider that has no such option has it dropped, not refused.
+        stream = litellm.completion(**kwargs, stream=True, stream_options={'include_usage': True},
+                                    drop_params=True)
         if hasattr(stream, 'choices'):
             return stream  # a whole response (a test double, a provider that ignored stream=)
         for chunk in stream:
@@ -451,8 +454,9 @@ def _streamed(litellm, kwargs, abandoned: Optional[threading.Event] = None):
 
 def _joined(litellm, chunks, messages):
     """The chunks of a streamed reply as one response. The text and the finish
-    reason are read here. The usage is the last one a chunk carried, or else
-    litellm's count from the chunks (``stream_chunk_builder``)."""
+    reason are read here. The usage is the last one a chunk carried, or else,
+    for a model litellm knows, its count and price from the chunks
+    (``stream_chunk_builder``)."""
     text = []
     finish = None
     usage = None
@@ -467,19 +471,17 @@ def _joined(litellm, chunks, messages):
             if getattr(choice, 'finish_reason', None):
                 finish = choice.finish_reason
     hidden: Dict[str, Any] = {}
+    # litellm's builder counts what the provider did not and prices the
+    # reply, for a model it knows. For one it does not (a model the operator
+    # serves), each of its lookups prints litellm's help text into the log.
     builder = getattr(litellm, 'stream_chunk_builder', None)
-    if chunks and callable(builder):
+    priced = getattr(litellm, 'model_cost', None) or {}
+    model = str(next((getattr(c, 'model', '') for c in chunks if getattr(c, 'model', '')), ''))
+    if chunks and callable(builder) and model in priced:
         try:
             built = builder(chunks, messages=messages)
             usage = usage or getattr(built, 'usage', None)
             hidden = getattr(built, '_hidden_params', None) or {}
-            # A model litellm has no price for is a provider the operator
-            # runs, and asking prints litellm's help text into the log.
-            priced = getattr(litellm, 'model_cost', None) or {}
-            model = str(getattr(built, 'model', '') or '')
-            if (not hidden.get('response_cost') and (model in priced or model.split('/')[-1] in priced)
-                    and callable(getattr(litellm, 'completion_cost', None))):
-                hidden = {**hidden, 'response_cost': litellm.completion_cost(completion_response=built)}
         except Exception:  # noqa: BLE001 - accounting only: the reply stands without it
             pass
     message = SimpleNamespace(content=''.join(text))
