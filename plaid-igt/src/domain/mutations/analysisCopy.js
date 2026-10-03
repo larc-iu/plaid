@@ -336,8 +336,12 @@ export const analysisCopyMutations = {
       );
     };
     const carries = todo.map(firstCarries);
+    // The first morpheme is the copy's, so it carries the copy's stamp (a
+    // machine copy makes a machine morpheme), never the requester's.
     const { ids: firstIds, creates: firstCreates } = this._planMorphemes(
       todo.map((p, i) => (carries[i] ? p.m0.id : null)),
+      undefined,
+      { stamp },
     );
     const createdFirst = new Map(firstCreates.map((c) => [c.id, c]));
     const words = [];

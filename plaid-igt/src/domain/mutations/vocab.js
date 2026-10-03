@@ -132,11 +132,12 @@ export const vocabMutations = {
       // by the form the word gives it. Those morphemes are made in the same
       // batch as the links to them, so a refused link leaves no bare morpheme
       // behind. A proposal whose word is gone drops out rather than linking to
-      // nothing.
-      const { ids: tokenIds, creates: morphemeCreates } = this._planMorphemes([
-        ...creates.map((c) => c.tokenId),
-        ...replaces.map((r) => r.tokenId),
-      ]);
+      // nothing. A morpheme made for a machine link is machine-made too.
+      const { ids: tokenIds, creates: morphemeCreates } = this._planMorphemes(
+        [...creates.map((c) => c.tokenId), ...replaces.map((r) => r.tokenId)],
+        undefined,
+        { stamp: metadata },
+      );
       creates.forEach((c, i) => {
         c.tokenId = tokenIds[i];
       });

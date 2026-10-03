@@ -44,14 +44,15 @@ export const pendingMutations = {
    * The tokens `ids` name, morpheme or word, with a pending morpheme planned
    * for each unanalyzed word among them (one per word however often it is
    * named). `metadataFor(virtualId)` gives a new morpheme's metadata, the
-   * writer's create stamp added. Returns `{ ids, creates }`: `ids` positional,
-   * null where one names nothing; `creates` for `_showMorphemes` and
-   * `_sendMorphemes`.
+   * write's stamp added: `stamp` when given, the provenance of the write the
+   * morpheme is made for (a machine link or copy makes a machine morpheme),
+   * else the writer's create stamp. Returns `{ ids, creates }`: `ids`
+   * positional, null where one names nothing; `creates` for `_showMorphemes`
+   * and `_sendMorphemes`.
    */
-  _planMorphemes(idsIn, metadataFor = () => undefined) {
+  _planMorphemes(idsIn, metadataFor = () => undefined, { stamp = this.createStamp } = {}) {
     const info = this.layerInfo;
     const words = new Map((info.primaryTokenLayer?.tokens || []).map((t) => [t.id, t]));
-    const stamp = this.createStamp;
     const creates = [];
     const planned = new Map();
     const ids = idsIn.map((id) => {
@@ -67,7 +68,7 @@ export const pendingMutations = {
         begin: word.begin,
         end: word.end,
         precedence: 1,
-        metadata: stamp || meta ? { ...(meta || {}), ...(stamp || {}) } : {},
+        metadata: { ...(meta || {}), ...(stamp || {}) },
       };
       creates.push(create);
       planned.set(id, create.id);
