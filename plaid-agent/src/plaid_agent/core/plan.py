@@ -31,7 +31,7 @@ from plaid_client.service import locked_for_writes
 
 from .opkind import MEMBER, ROW
 from plaid_client.services import UNKNOWN_OUTCOME, requester_message
-from plaid_client.provenance import (confirmed_inferred, stamp_contributed, PROV_KEY, PROV_SOURCE_KEY,
+from plaid_client.provenance import (confirmed_inferred, contribute_on_edit, stamp_contributed, PROV_KEY, PROV_SOURCE_KEY,
                                      PROV_CONFIRMED_KEY, PROV_PROB_KEY, PROV_DETAIL_KEY)
 
 # How an approval is recorded. 'verified' is the default: the assistant made
@@ -599,6 +599,35 @@ class Stamps:
         # Every key goes: what an earlier producer recorded (its detail, its
         # probability) describes a value this write replaces.
         return {**CLEAR_PROV, **self.stamp()}
+
+    def confirm(self, contributed_work: bool) -> Optional[Dict[str, Any]]:
+        """What a confirmation patches onto one piece awaiting review, or None
+        when this approval leaves it alone. ``contributed_work`` says the piece
+        is a contributor's unreviewed work rather than machine output.
+
+        The editor's rule (``WriterPolicy.confirm_stamp``): a contributor
+        accepting a machine proposal makes it their own contribution, never a
+        verification, and a contributor reviews no one's work, theirs or
+        another contributor's. Any other approval confirms it."""
+        if not self.contributed:
+            return dict(CONFIRM)
+        if contributed_work:
+            return None
+        return contribute_on_edit(None, self.contributor)
+
+
+def confirm_note(accepted: int, left: int) -> Optional[str]:
+    """The applied note of a contributor's approval of confirmations: how many
+    became their own contribution and how many were left for a reviewer.
+    None when there were none."""
+    if not accepted and not left:
+        return None
+    bits = []
+    if accepted:
+        bits.append(f'{accepted} annotation{"s" if accepted != 1 else ""} accepted as your contribution')
+    if left:
+        bits.append(f'{left} contributor\'s annotation{"s" if left != 1 else ""} left for a reviewer')
+    return ', '.join(bits)
 
 
 # --- storing a large plan ---------------------------------------------------------

@@ -28,8 +28,8 @@ from plaid_client import metadata_ops, uuid7
 
 from .project import LEMMA_FROM_FORM
 
-from ..core.plan import (CONFIRM, Minter, PlanError, Resolution, Stamps, TrackingBatcher, check_reach,
-                         apply_add_comment, apply_restore_document, applying,
+from ..core.plan import (Minter, PlanError, Resolution, Stamps, TrackingBatcher, check_reach,
+                         apply_add_comment, apply_restore_document, applying, confirm_note,
                          docs_of_op, expand_ops)
 from .project import feature_key, load_document, word_ref
 from .review import all_words, confirm_targets, discard_targets
@@ -88,6 +88,10 @@ class Context:
         self.notes = notes
         self.b = b
         self.restores: List[Dict[str, Any]] = []
+        # A contributor's approval of confirmations: values made their own
+        # contribution, and another contributor's work left for a reviewer.
+        self.confirm_accepted = 0
+        self.confirm_left = 0
         # A word's lemma span, by word id: the one it has or the id of the
         # one this plan creates.
         self.lemma_at: Dict[str, str] = {}
@@ -142,11 +146,27 @@ def _apply_set_deprel(ctx: Context, op) -> int:
 
 
 def _apply_confirm(ctx: Context, op) -> int:
+    # What the piece gets is the approver's to say (`Stamps.confirm`): a
+    # contributor's approval makes a machine value their own contribution and
+    # leaves a contributor's work (`contributed`, read as the plan was made)
+    # for a reviewer.
+    frag = ctx.stamps.confirm(bool(op.get('contributed')))
+    if frag is None:
+        ctx.confirm_left += 1
+        return 0
+    if ctx.stamps.contributed:
+        ctx.confirm_accepted += 1
     if op.get('span_id'):
-        ctx.b.update('spans', op['span_id'], metadata=metadata_ops(CONFIRM))
+        ctx.b.update('spans', op['span_id'], metadata=metadata_ops(frag))
     else:
-        ctx.b.update('relations', op['relation_id'], metadata=metadata_ops(CONFIRM))
+        ctx.b.update('relations', op['relation_id'], metadata=metadata_ops(frag))
     return 1
+
+
+def contributed_work(state) -> Dict[str, Any]:
+    """The key a confirm op carries for a contributor's work, which a
+    contributor's approval leaves for a reviewer. Nothing for machine output."""
+    return {'contributed': True} if state == 'contributed' else {}
 
 
 def _apply_set_words(ctx: Context, op) -> int:
@@ -359,10 +379,10 @@ def _resolve_confirm_scope(res: Resolution, op):
     doc = res.document(did)
     fields = list(op.get('fields') or [])
     targets, _left = confirm_targets(all_words(doc), fields, res.project)
-    for sentence, w, f, span_id, relation_id in targets:
+    for sentence, w, f, span_id, relation_id, state in targets:
         ref = word_ref(sentence, w)
         yield {'kind': 'confirm', 'span_id': span_id, 'relation_id': relation_id,
-               'token_id': w.id, 'document_id': did, 'ref': ref,
+               'token_id': w.id, 'document_id': did, 'ref': ref, **contributed_work(state),
                'label': f'confirm the head of {ref}' if f == 'deprel' else f'confirm {f} on {ref}'}
 
 
@@ -424,7 +444,8 @@ KIND = ok.registry([
     # seen to delete the value, which is named nowhere else.
     OpKind('confirm', ('confirmation', 'confirmations'), apply=_apply_confirm,
            token_keys=('span_id', 'relation_id', 'token_id'),
-           compact_each=('span_id', 'relation_id', 'token_id', 'ref'), compact_label=_confirm_label),
+           compact_each=('span_id', 'relation_id', 'token_id', 'ref', 'contributed'),
+           compact_label=_confirm_label),
     OpKind('run_parse', ('parsed document', 'parsed documents'), stage=PARSE, apply=_apply_run_parse,
            required=('document_ids', 'service_id', 'project_id', 'language'),
            shape=DOCUMENT_SHAPE, summary=_run_parse_summary),
@@ -755,6 +776,9 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None,
         # all: it is another service rewriting whole documents, under its own
         # document lock, for as long as that takes.
         ok.run_stage(KIND, ctx, ops, PARSE, finish=lambda op: True)
+        said = confirm_note(ctx.confirm_accepted, ctx.confirm_left)
+        if said:
+            notes.append(said)
 
     result = dict(counts)
     if notes:

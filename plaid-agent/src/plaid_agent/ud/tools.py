@@ -22,7 +22,7 @@ from ..core.plan import by_document
 from ..core.workspace import BaseWorkspace
 from ..core.provenance import unmark
 from ..core.tools import ToolError, server_refused
-from .plan import (KIND, RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, docs_of_op,
+from .plan import (KIND, RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, contributed_work, docs_of_op,
                    scope_clears)
 from .project import (FEATURES, Sentence, Token, UdDoc, UdProject, Word, feats_order, feature_key,
                       feature_refusal, load_document, normalize_feature, render_document, resolve,
@@ -828,10 +828,11 @@ def t_confirm(ws: Workspace, document: str = None, refs=None, field: str = None,
             return (' '.join(x for x in (left_phrase(left), 'Nothing else to confirm.') if x) if left
                     else 'Nothing to confirm: every value named is already a person\'s work or confirmed.')
         staged = []
-        for sentence, w, f, span_id, relation_id in targets:
+        for sentence, w, f, span_id, relation_id, state in targets:
             ref = word_ref(sentence, w)
             staged.append({'kind': 'confirm', 'span_id': span_id, 'relation_id': relation_id,
                            'token_id': w.id, 'document_id': doc.id, 'ref': ref,
+                           **contributed_work(state),
                            'label': f'confirm the head of {ref}' if f == 'deprel' else f'confirm {f} on {ref}'})
         ws.add_ops(staged)
         return f'Planned confirming {len(targets)} value(s).' + (f' {left_phrase(left)}' if left else '')

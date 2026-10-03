@@ -52,8 +52,9 @@ def vouched_arc_hangs_on(sentence: Sentence, w: Word) -> bool:
 
 def confirm_targets(words: List[Tuple[Sentence, Word]], fields, project) -> Tuple[List[tuple], List[tuple]]:
     """``(targets, left)``. ``targets``: ``(sentence, word, field,
-    span_id|None, relation_id|None)`` for every value among ``words`` that a
-    confirmation reaches. ``left``: ``(sentence, word, field, value)`` for a
+    span_id|None, relation_id|None, state)`` for every value among ``words``
+    that a confirmation reaches, ``state`` its provenance state (machine or
+    contributed). ``left``: ``(sentence, word, field, value)`` for a
     value waiting for review that the layer's closed list does not take. A
     machine value off the list is exempt from it only while unreviewed, so
     confirming it is refused, and with it the whole batch: it stays
@@ -63,14 +64,15 @@ def confirm_targets(words: List[Tuple[Sentence, Word]], fields, project) -> Tupl
         for f in fields:
             if f == 'deprel':
                 continue
-            for sp, _state in reviewable(w, f):
+            for sp, state in reviewable(w, f):
                 if project.allows(f, sp.value):
-                    out.append((sentence, w, f, sp.id, None))
+                    out.append((sentence, w, f, sp.id, None, state))
                 else:
                     left.append((sentence, w, f, sp.value))
-        if 'deprel' in fields and relation_waiting(w):
+        state = relation_waiting(w) if 'deprel' in fields else None
+        if state:
             if project.allows('deprel', w.deprel):
-                out.append((sentence, w, 'deprel', None, w.relation_id))
+                out.append((sentence, w, 'deprel', None, w.relation_id, state))
             else:
                 left.append((sentence, w, 'deprel', w.deprel))
     return out, left

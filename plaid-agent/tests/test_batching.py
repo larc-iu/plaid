@@ -3,6 +3,7 @@ set_analysis over several words, and set_morpheme for one morpheme's form
 or type without rewriting its chain."""
 
 import pytest
+from plaid_client.testing import as_fragment
 
 from fixtures import scan_ws, FakeClient
 
@@ -55,7 +56,7 @@ def test_set_morpheme_changes_form_or_type_in_place():
     call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's2.w1.m2', 'form': 'är', 'type': ''})
     assert [o['kind'] for o in w.ops] == ['set_morph_type', 'set_morpheme_form']  # the type op was replaced (last wins)
     assert w.ops[0]['morph_type'] is None and '(cleared)' in w.ops[0]['label']
-    assert w.ops[1] == {'kind': 'set_morpheme_form', 'morpheme_id': 'm-4b', 'form': 'är',
+    assert w.ops[1] == {'kind': 'set_morpheme_form', 'morpheme_id': 'm-4b', 'form': 'är', 'restamp': True,
                         'label': 'Text 1 s2.w1.m2 (in "Gam-ar"): morpheme form "ar" → "är"', 'change_at': 31}
     assert 'superseded' in call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's2.w1.m2', 'form': 'är'})  # last wins
     assert call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's2.w1.m2', 'form': 'ar'}).startswith('Planned 0')
@@ -63,12 +64,14 @@ def test_set_morpheme_changes_form_or_type_in_place():
     assert 'Unknown morph type' in call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's2.w1.m2', 'type': 'sufix'})
     assert 'Give form and/or type' in call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's2.w1.m2'})
     # Applied as ONE metadata patch on the morpheme (the two ops merge into
-    # one bulk entry, in plan order); a rewrite of the chain supersedes both.
+    # one bulk entry, in plan order), stamped as the approved correction it
+    # is; a rewrite of the chain supersedes both.
     w.ops[1]['form'] = 'är'
     c = w.client
     execute_plan(c, w.ops, source='s', label='l')
-    both = [{'op': 'delete', 'path': ['morphType']}, {'op': 'set', 'path': ['form'], 'value': 'är'}]
-    assert ('m-4b', both) in c.patches('tokens')
+    [patch] = [p for tid, p in c.patches('tokens') if tid == 'm-4b']
+    assert as_fragment(patch) == {'morphType': None, 'form': 'är', 'prov': 'inferred', 'provSource': 's',
+                                  'provConfirmed': True, 'provProb': None, 'provDetail': None}
     # A rewrite of the chain deletes every morpheme after the first, so the two
     # form changes above are writes to something that will not be there. The
     # tools refuse the pair as it is staged; this is the backstop under that.

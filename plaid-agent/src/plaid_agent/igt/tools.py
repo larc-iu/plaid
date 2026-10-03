@@ -13,7 +13,7 @@ import copy
 from typing import Any, Dict, List, Optional
 
 from plaid_client.constraints import value_set_allows
-from plaid_client.provenance import prov_state, MACHINE
+from plaid_client.provenance import prov_state, CONTRIBUTED_STATE, MACHINE
 
 from ..core import history, opkind
 from ..core.args import whole
@@ -718,7 +718,7 @@ PIECE_KEYS = ('span_ids', 'token_ids', 'link_ids')
 
 
 def _empty_pieces() -> Dict[str, Any]:
-    return {'span_ids': [], 'token_ids': [], 'link_ids': [], 'on': {}, 'left': []}
+    return {'span_ids': [], 'token_ids': [], 'link_ids': [], 'on': {}, 'left': [], 'contributed': []}
 
 
 def _has_pieces(pieces) -> bool:
@@ -730,6 +730,9 @@ def _review_pieces(obj, f=None, into=None, project=None) -> Dict[str, list]:
     its words) that await review: spans (only field ``f`` when given), links,
     multi-word expressions, and token metadata (only when no field is named).
     A multi-word expression is listed once however many members are seen.
+    Each piece that is a contributor's work, not machine output, is listed
+    again under ``contributed``: a contributor's approval leaves it for a
+    reviewer (``Stamps.confirm``).
 
     A value the field's closed tagset does not take is left out and listed
     under ``left`` as ``(value, field, what it is on)``: off the list, a
@@ -744,6 +747,7 @@ def _review_pieces(obj, f=None, into=None, project=None) -> Dict[str, list]:
                 out['left'].append((sp.value, name, _what(obj)[:40]))
                 continue
             out['span_ids'].append(sp.id)
+            _note_contributed(out, sp.id, sp.metadata)
             # Which token carries it. A span on a token another op in the plan
             # deletes is gone without ever being named, and confirming it after
             # the delete fails the whole batch.
@@ -756,16 +760,24 @@ def _review_pieces(obj, f=None, into=None, project=None) -> Dict[str, list]:
     if f is None:
         if obj.link and _needs_review(obj.link.metadata):
             out['link_ids'].append(obj.link.id)
+            _note_contributed(out, obj.link.id, obj.link.metadata)
             out['on'][obj.link.id] = obj.id
         for l in getattr(obj, 'mwes', ()):
             if _needs_review(l.metadata) and l.id not in out['link_ids']:
                 out['link_ids'].append(l.id)
+                _note_contributed(out, l.id, l.metadata)
         if _needs_review(obj.metadata):
             out['token_ids'].append(obj.id)
+            _note_contributed(out, obj.id, obj.metadata)
     if isinstance(obj, Word):
         for m in obj.morphemes:
             _review_pieces(m, f, out, project)
     return out
+
+
+def _note_contributed(out, piece_id: str, metadata) -> None:
+    if prov_state(metadata) == CONTRIBUTED_STATE:
+        out['contributed'].append(piece_id)
 
 
 def _pieces_label(pieces: Dict[str, list]) -> str:
@@ -977,7 +989,9 @@ def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] =
     refuse_shape_and_analysis(ws, w.id, word_ref_, analysing=True)
     staged: List[Dict[str, Any]] = []
     if new is not None and new != m.form:
-        staged.append(morpheme_form_op(ws, doc, word_ref_, w, m, new))
+        # A correction of this one morpheme: stamped when applied, unlike a
+        # respelling carried into the forms.
+        staged.append({**morpheme_form_op(ws, doc, word_ref_, w, m, new), 'restamp': True})
     if type is not None:
         if t != (m.morph_type or None):
             staged.append({'kind': 'set_morph_type', 'morpheme_id': m.id, 'morph_type': t,

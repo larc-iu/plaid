@@ -50,7 +50,8 @@ wire's key recasing):
   delete_entry    {item_id, links: [link_id]}
   rename_entry    {item_id, form}
   rename_document {document_id, name}
-  set_morpheme_form {morpheme_id, form}   (a respelling carried into a morpheme's own form, with no restamp, as in Bulk Edit)
+  set_morpheme_form {morpheme_id, form, restamp?}   (a respelling carried into a morpheme's own form, with no restamp, as in
+                   Bulk Edit, or with restamp true a direct correction of one morpheme, stamped as every rewrite is)
   split_word      {word_id, position, morpheme_ids}          (coincident morphemes deleted first, as the editor does)
   merge_words     {word_id, other_ids, morpheme_ids, spans: [{layer_id, keep_id, value|null, delete_ids}],
                    links: {keep_id, delete_ids}, mwe_ids}     (the collapsed expressions' links deleted, then
@@ -70,7 +71,7 @@ wire's key recasing):
   discard_analysis {word_id, link_ids, span_ids, morpheme_ids, reset_first_id|null, renumber: [{id, precedence}]}
   link_phrase     {token_ids: [word ids], item_id|null, new_entry_key|null, existing_link_id|null}
                   (a multi-word expression: one link over two or more words, and unlink with token_ids is one too)
-  set_morph_type  {morpheme_id, morph_type|null}
+  set_morph_type  {morpheme_id, morph_type|null}   (stamped as every rewrite is)
   add_comment     {entity_type, entity_id, body, anchor_label, document_id}   (unaudited, as every comment)
   restore_document {document_id, as_of}   (the server's own restore, always a plan of its own)
   delete_word may carry link_ids: multi-word expressions the deletion would leave with one member.
@@ -91,9 +92,9 @@ from plaid_client import PlaidAPIError, metadata_ops, uuid7
 
 from plaid_client.service import requester_message
 
-from ..core.plan import (CLEAR_PROV, CONFIRM, Minter, PlanError, PlanOutOfDate, Stamps,  # noqa: F401 - PlanError is re-exported
+from ..core.plan import (CLEAR_PROV, Minter, PlanError, PlanOutOfDate, Stamps,  # noqa: F401 - PlanError is re-exported
                          TrackingBatcher, apply_add_comment, apply_restore_document, applying,
-                         check_reach, expand_ops)
+                         check_reach, confirm_note, expand_ops)
 from .vocab import parent_of
 
 # How a kind tags what it does to the shape of the text. RESHAPES is every
@@ -156,6 +157,10 @@ class Context:
         # discard that deletes the same span, a merge beside a delete of the
         # same entry. Each pair is a whole plan refused after approval.
         self.gone: set = set()
+        # A contributor's approval of confirmations: pieces made their own
+        # contribution, and another contributor's work left for a reviewer.
+        self.confirm_accepted = 0
+        self.confirm_left = 0
 
     def defer(self, op, when: str = 'second') -> None:
         self.later.setdefault(when, []).append(op)
@@ -309,7 +314,11 @@ def _apply_unlink(ctx: Context, op) -> int:
 
 
 def _apply_set_morph_type(ctx: Context, op) -> int:
-    ctx.b.update('tokens', op['morpheme_id'], metadata=metadata_ops({'morphType': op.get('morph_type') or None}))
+    # Only a direct correction stages one (set_morpheme), so it is stamped as
+    # the editor's setMorphemeType stamps it: the approved type is reviewed
+    # work, and a re-analysis without Overwrite leaves it alone.
+    ctx.b.update('tokens', op['morpheme_id'],
+                 metadata=metadata_ops({'morphType': op.get('morph_type') or None, **ctx.restamp()}))
     return 1
 
 
@@ -379,7 +388,12 @@ def _apply_rename_document(ctx: Context, op) -> int:
 
 
 def _apply_set_morpheme_form(ctx: Context, op) -> int:
-    ctx.b.update('tokens', op['morpheme_id'], metadata=metadata_ops({'form': op['form']}))
+    # A respelling carried into a morpheme's form changes no analysis and is
+    # not stamped, as in Bulk Edit. A direct correction of one morpheme
+    # (``restamp``, set_morpheme) is, as the editor's updateMorphemeForm
+    # stamps it.
+    stamp = ctx.restamp() if op.get('restamp') else {}
+    ctx.b.update('tokens', op['morpheme_id'], metadata=metadata_ops({'form': op['form'], **stamp}))
     return 1
 
 
@@ -436,14 +450,37 @@ def _apply_edit_text(ctx: Context, op) -> int:
 
 
 def _apply_confirm(ctx: Context, op) -> int:
+    # What each piece gets is the approver's to say (`Stamps.confirm`): a
+    # contributor's approval makes a machine proposal their own contribution
+    # and leaves a contributor's work (`contributed`, read as the plan was
+    # made) for a reviewer.
+    theirs = set(op.get('contributed') or [])
+    written = 0
+
+    def stamp_of(i):
+        nonlocal written
+        frag = ctx.stamps.confirm(i in theirs)
+        if frag is None:
+            ctx.confirm_left += 1
+            return None
+        written += 1
+        if ctx.stamps.contributed:
+            ctx.confirm_accepted += 1
+        return frag
+
     for tid in op.get('token_ids') or []:
-        ctx.b.update('tokens', tid, metadata=metadata_ops(CONFIRM))
+        frag = stamp_of(tid)
+        if frag is not None:
+            ctx.b.update('tokens', tid, metadata=metadata_ops(frag))
     for lid in op.get('link_ids') or []:
-        ctx.b.add(lambda batch, i=lid: batch.vocab_links.patch_metadata(i, metadata_ops(CONFIRM)))
+        frag = stamp_of(lid)
+        if frag is not None:
+            ctx.b.add(lambda batch, i=lid, f=frag: batch.vocab_links.patch_metadata(i, metadata_ops(f)))
     for sid in op.get('span_ids') or []:
-        ctx.b.update('spans', sid, metadata=metadata_ops(CONFIRM))
-    return (len(op.get('token_ids') or []) + len(op.get('link_ids') or [])
-            + len(op.get('span_ids') or []))
+        frag = stamp_of(sid)
+        if frag is not None:
+            ctx.b.update('spans', sid, metadata=metadata_ops(frag))
+    return written
 
 
 def _apply_discard_analysis(ctx: Context, op) -> int:
@@ -1338,6 +1375,9 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
             finally:
                 client.strict_mode_document_id = held
             b.finish(op)
+        said = confirm_note(ctx.confirm_accepted, ctx.confirm_left)
+        if said:
+            notes.append(said)
     result = dict(counts)
     if notes:
         result['notes'] = notes
