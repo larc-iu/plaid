@@ -94,7 +94,7 @@ from plaid_client.service import requester_message
 
 from ..core.plan import (CLEAR_PROV, Minter, PlanError, PlanOutOfDate, Stamps,  # noqa: F401 - PlanError is re-exported
                          TrackingBatcher, apply_add_comment, apply_restore_document, applying,
-                         check_reach, confirm_note, expand_ops)
+                         check_reach, confirm_note, ConfirmRows, expand_ops)
 from .project import is_virtual, virtual_morpheme_id
 from .vocab import parent_of
 
@@ -162,6 +162,7 @@ class Context:
         # contribution, and another contributor's work left for a reviewer.
         self.confirm_accepted = 0
         self.confirm_left = 0
+        self.confirm_rows = ConfirmRows()
         # The morpheme made for each unsegmented word's derived one, by the
         # derived id, so every write naming it names the one token.
         self.materialized: Dict[str, str] = {}
@@ -546,6 +547,7 @@ def _apply_confirm(ctx: Context, op) -> int:
         frag = stamp_of(sid)
         if frag is not None:
             ctx.b.update('spans', sid, metadata=metadata_ops(frag))
+    ctx.confirm_rows.add(op, written)
     return written
 
 
@@ -1451,7 +1453,10 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
         said = confirm_note(ctx.confirm_accepted, ctx.confirm_left)
         if said:
             notes.append(said)
+        unwritten = ctx.confirm_rows.unwritten()
     result = dict(counts)
+    if unwritten:
+        result['unwritten'] = unwritten
     if notes:
         result['notes'] = notes
     return result

@@ -616,6 +616,37 @@ class Stamps:
         return contribute_on_edit(None, self.contributor)
 
 
+def confirm_preview(machine: int, theirs: int) -> str:
+    """What a staged confirmation will do when the requester's work is
+    reviewed, for the tool's answer: their approval makes the machine's
+    annotations their own contribution and leaves contributors' work for a
+    reviewer (``Stamps.confirm``)."""
+    bits = []
+    if machine:
+        bits.append(f'{machine} machine annotation{"s" if machine != 1 else ""} will become your contribution')
+    if theirs:
+        bits.append(f'{theirs} contributor\'s annotation{"s" if theirs != 1 else ""} '
+                    f'{"are" if theirs != 1 else "is"} left for a reviewer')
+    return ', '.join(bits) + '. Your work is reviewed in this project, so nothing is marked verified.'
+
+
+class ConfirmRows:
+    """Which card rows of confirmations wrote something under this approval.
+    A contributor's approval leaves another contributor's work alone, so a row
+    of only that wrote nothing, and the card must not show it as applied."""
+
+    def __init__(self):
+        self.written: Dict[Any, int] = {}
+
+    def add(self, op: Dict[str, Any], n: int) -> None:
+        row = op.get(ROW)
+        if row is not None:
+            self.written[row] = self.written.get(row, 0) + n
+
+    def unwritten(self) -> List[Any]:
+        return sorted(r for r, n in self.written.items() if not n)
+
+
 def confirm_note(accepted: int, left: int) -> Optional[str]:
     """The applied note of a contributor's approval of confirmations: how many
     became their own contribution and how many were left for a reviewer.

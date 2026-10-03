@@ -18,7 +18,7 @@ from plaid_client.provenance import prov_state, CONTRIBUTED_STATE, MACHINE
 from ..core import history, opkind
 from ..core.args import whole
 from ..core.limits import MAX_SCOPE_DOCS
-from ..core.plan import by_document, change_of, labelled
+from ..core.plan import by_document, change_of, confirm_preview, labelled
 from ..core.provenance import unmark
 from ..core.tools import ToolError
 
@@ -904,7 +904,11 @@ def t_confirm(ws: Workspace, document: Optional[str] = None, refs=None, field: O
         if left:
             return _left_phrase(left) + ' Nothing else awaits review there.'
         return 'Nothing to confirm: no annotations awaiting review there.'
-    out = ws.planned_note(len(staged)) + f' ({n} annotation{"s" if n != 1 else ""} will be marked verified.)'
+    if ws.requester_reviewed():
+        theirs = sum(len(op.get('contributed') or []) for op in staged)
+        out = ws.planned_note(len(staged)) + f' ({confirm_preview(n - theirs, theirs)})'
+    else:
+        out = ws.planned_note(len(staged)) + f' ({n} annotation{"s" if n != 1 else ""} will be marked verified.)'
     if left:
         out += ' ' + _left_phrase(left)
     if not document and len(staged) > 1:

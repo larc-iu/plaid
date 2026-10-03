@@ -18,7 +18,7 @@ from ..core import docload, opkind
 from ..core.args import whole
 from ..core.limits import MAX_SCOPE_DOCS, OVERVIEW_DOCS
 from ..core.history import doc_label
-from ..core.plan import by_document
+from ..core.plan import by_document, confirm_preview
 from ..core.workspace import BaseWorkspace
 from ..core.provenance import unmark
 from ..core.tools import ToolError, server_refused
@@ -854,6 +854,7 @@ def _many(ws: Workspace, documents, field: str, one) -> str:
     kind = 'confirm' if one is t_confirm else 'discard'
     ids = _scope_documents(ws, documents, kind, fields)
     planned = 0
+    theirs = 0
     per_doc: List[str] = []  # one name per value, for the exact count by document
     with ws.staging():
         for did in ids:
@@ -861,13 +862,16 @@ def _many(ws: Workspace, documents, field: str, one) -> str:
             one(ws, document=did, field=field)
             if len(ws.ops) > before:
                 n = ws.ops[-1].get('count') or 0
+                theirs += ws.ops[-1].get('contributed_count') or 0
                 planned += n
                 # By label, not by name: two documents may share a name.
                 per_doc += [doc_label(ws, did)] * n
     if not per_doc:
         return f'Nothing is waiting for review in the {len(ids)} document(s) named.'
     verb = 'confirming' if kind == 'confirm' else 'discarding'
-    return (f'Planned {verb} {planned} value(s), one planned change per document. '
+    reviewed = (confirm_preview(planned - theirs, theirs) + ' '
+                if kind == 'confirm' and ws.requester_reviewed() else '')
+    return (f'Planned {verb} {planned} value(s), one planned change per document. ' + reviewed
             + by_document(per_doc))
 
 
@@ -898,7 +902,8 @@ def t_confirm(ws: Workspace, document: str = None, refs=None, field: str = None,
                            **contributed_work(state),
                            'label': f'confirm the head of {ref}' if f == 'deprel' else f'confirm {f} on {ref}'})
         ws.add_ops(staged)
-        return f'Planned confirming {len(targets)} value(s).' + (f' {left_phrase(left)}' if left else '')
+        return (f'Planned confirming {len(targets)} value(s).' + _reviewed_phrase(ws, targets)
+                + (f' {left_phrase(left)}' if left else ''))
     fields = _scope_fields(ws, 'confirm_scope', doc, fields)
     targets, left = confirm_targets(_whole_document(ws, doc), fields, ws.project)
     if not targets:
@@ -908,10 +913,20 @@ def t_confirm(ws: Workspace, document: str = None, refs=None, field: str = None,
     off = f', {len(left)} off the list left unconfirmed' if left else ''
     ws.add_op({'kind': 'confirm_scope', 'document_id': doc.id, 'fields': fields,
                'count': len(targets), 'per_field': counts, 'ref': None,
+               **({'contributed_count': k} if (k := sum(1 for t in targets if t[5] == 'contributed')) else {}),
                'label': f'confirm {len(targets)} values in "{doc.name}" ({counts_phrase(counts)}{off})'})
     return (f'Planned confirming {len(targets)} value(s) in "{doc.name}": {counts_phrase(counts)}. '
-            f'That is one planned change covering the whole document.'
+            f'That is one planned change covering the whole document.' + _reviewed_phrase(ws, targets)
             + (f' {left_phrase(left)}' if left else ''))
+
+
+def _reviewed_phrase(ws: Workspace, targets) -> str:
+    """What a confirmation does when the requester's work is reviewed, or ''
+    for a verifier, whose approval marks it all verified."""
+    if not ws.requester_reviewed():
+        return ''
+    theirs = sum(1 for t in targets if t[5] == 'contributed')
+    return ' ' + confirm_preview(len(targets) - theirs, theirs)
 
 
 def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field: str = None,

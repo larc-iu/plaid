@@ -254,3 +254,26 @@ describe('expanding a long plan', () => {
     await view.unmount();
   });
 });
+
+// REV-FX3-AGENT-4: a reviewed contributor's confirmation verifies nothing,
+// and what it did is on the card, not only in the model's record.
+describe('an applied plan with notes and rows that wrote nothing', () => {
+  it('shows the notes and marks the rows that wrote nothing', async () => {
+    const p = plan([{ label: 's9.w1: confirm 1 value' }, { label: 's19.w1: confirm 2 values' }]);
+    const view = await mount(p, {
+      status: 'applied',
+      notes: [
+        "2 annotations accepted as your contribution, 1 contributor's annotation left for a reviewer",
+      ],
+      unwritten: [0],
+    });
+    const notes = view.container.querySelector('[data-testid=apply-notes]');
+    expect(notes.textContent).toBe(
+      "2 annotations accepted as your contribution, 1 contributor's annotation left for a reviewer.",
+    );
+    const rows = all(view.container, 'tr[data-written]');
+    expect(rows.map((r) => r.getAttribute('data-written'))).toEqual(['false']);
+    expect(rows[0].textContent).toContain('(nothing written)');
+    await view.unmount();
+  });
+});

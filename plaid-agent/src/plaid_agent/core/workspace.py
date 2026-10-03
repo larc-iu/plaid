@@ -90,6 +90,7 @@ class BaseWorkspace:
         # test) asks no question of who may do what: the server still does.
         self.requester_id: Optional[str] = None
         self._requester_admin: Optional[bool] = None
+        self._requester_reviewed: Optional[bool] = None
         self._doc_list: Optional[List[dict]] = None
         self._docs: Dict[str, Any] = {}
         # The version of each document a corpus-wide change reached, as it
@@ -461,6 +462,24 @@ class BaseWorkspace:
             except Exception:
                 self._requester_admin = False
         return self._requester_admin
+
+    def requester_reviewed(self) -> bool:
+        """Whether the work of the user the turn acts for is reviewed in this
+        project (its ``plaid.review`` lists), asked of the server once. Their
+        approval is then their own contribution, not a verification. The
+        approval asks again (core/service.py ``_reviewed``): this is for what
+        a tool tells the model. A read that fails answers no."""
+        if self.requester_id is None:
+            return False
+        if self._requester_reviewed is None:
+            try:
+                from plaid_client.provenance import is_reviewed
+                project = self.client.projects.get(self.project.id)
+                self._requester_reviewed = bool(is_reviewed(project, self.requester_id,
+                                                            is_admin=self.requester_is_admin()))
+            except Exception:  # noqa: BLE001 - the tool's wording only
+                self._requester_reviewed = False
+        return self._requester_reviewed
 
     def add_op(self, op: Dict[str, Any]) -> None:
         """Append a plan op. An op on a target the plan already touches

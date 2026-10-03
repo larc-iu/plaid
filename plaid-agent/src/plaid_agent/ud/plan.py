@@ -29,7 +29,7 @@ from plaid_client import metadata_ops, uuid7
 from .project import LEMMA_FROM_FORM
 
 from ..core.plan import (Minter, PlanError, Resolution, Stamps, TrackingBatcher, check_reach,
-                         apply_add_comment, apply_restore_document, applying, confirm_note,
+                         apply_add_comment, apply_restore_document, applying, confirm_note, ConfirmRows,
                          docs_of_op, expand_ops)
 from .project import feature_key, load_document, word_ref
 from .review import all_words, confirm_targets, discard_targets
@@ -92,6 +92,7 @@ class Context:
         # contribution, and another contributor's work left for a reviewer.
         self.confirm_accepted = 0
         self.confirm_left = 0
+        self.confirm_rows = ConfirmRows()
         # A word's lemma span, by word id: the one it has or the id of the
         # one this plan creates.
         self.lemma_at: Dict[str, str] = {}
@@ -151,6 +152,7 @@ def _apply_confirm(ctx: Context, op) -> int:
     # leaves a contributor's work (`contributed`, read as the plan was made)
     # for a reviewer.
     frag = ctx.stamps.confirm(bool(op.get('contributed')))
+    ctx.confirm_rows.add(op, 0 if frag is None else 1)
     if frag is None:
         ctx.confirm_left += 1
         return 0
@@ -779,8 +781,11 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None,
         said = confirm_note(ctx.confirm_accepted, ctx.confirm_left)
         if said:
             notes.append(said)
+        unwritten = ctx.confirm_rows.unwritten()
 
     result = dict(counts)
+    if unwritten:
+        result['unwritten'] = unwritten
     if notes:
         result['notes'] = notes
     return result

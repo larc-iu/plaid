@@ -762,6 +762,10 @@ class BaseAssistantService(BaseService):
             return
         self._remember_applied(plan_id)
         notes = counts.pop('notes', [])
+        # Card rows that wrote nothing under this approval (a contributor's
+        # confirmation of only other contributors' work), which the card does
+        # not show as applied.
+        unwritten = counts.pop('unwritten', [])
         note = f'(note) The plan was approved and applied: {summary}.' + (' ' + '; '.join(notes) if notes else '')
         # `_write` returns False without raising when the conversation has moved
         # on, so the 'applied' status can fail to reach the record while the
@@ -773,7 +777,8 @@ class BaseAssistantService(BaseService):
         # and what applying dropped (a change a later one superseded, say),
         # since each change's outcome is otherwise the plan's.
         outcome = {'as_human': as_human, **({'contributed': True} if contributor else {}),
-                   **({'apply_notes': notes} if notes else {})}
+                   **({'apply_notes': notes} if notes else {}),
+                   **({'unwritten': unwritten} if unwritten else {})}
         if not settled(settle_plan(conv, index, 'applied', note, **outcome)):
             response_helper.error(
                 'The changes were applied, but this conversation was changed elsewhere and does not '

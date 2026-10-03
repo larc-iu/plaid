@@ -24,6 +24,11 @@ export const PlanCard = ({
   // changes), and whether the server went quiet on the rest.
   written,
   outcome,
+  // An applied plan: what applying it said (a contributor's confirmation
+  // accepted as their contribution, a change another one superseded), and
+  // the rows it wrote nothing for.
+  notes,
+  unwritten,
   unknown = false,
   recordedAsHuman,
   interrupted,
@@ -68,6 +73,11 @@ export const PlanCard = ({
   // Stopped partway, and settled so: finishing it is a new plan.
   const partial = status === 'partial';
   const writtenRows = useMemo(() => new Set(partial ? written || [] : []), [partial, written]);
+  const applied = status === 'applied';
+  const unwrittenRows = useMemo(
+    () => new Set(applied ? unwritten || [] : []),
+    [applied, unwritten],
+  );
   return (
     <div
       className={cn(
@@ -119,6 +129,13 @@ export const PlanCard = ({
           {unknown && ' The server did not answer for the rest.'}
         </p>
       )}
+      {applied && notes?.length > 0 && (
+        <div className="mt-2 text-xs text-muted-foreground" data-testid="apply-notes">
+          {notes.map((n, i) => (
+            <p key={i}>{n.charAt(0).toUpperCase() + n.slice(1)}.</p>
+          ))}
+        </div>
+      )}
       {rewrites > 0 && (
         <p className="mt-1.5 flex items-center gap-1.5 text-xs text-warning-foreground">
           <PenLine className="h-3.5 w-3.5 shrink-0" />
@@ -167,7 +184,14 @@ export const PlanCard = ({
                     row={r}
                     projectId={projectId}
                     adapter={adapter}
-                    written={partial ? writtenRows.has(r.index) : undefined}
+                    written={
+                      partial
+                        ? writtenRows.has(r.index)
+                        : unwrittenRows.has(r.index)
+                          ? false
+                          : undefined
+                    }
+                    nothingWritten={unwrittenRows.has(r.index)}
                   />
                 ))}
               </Fragment>
@@ -248,8 +272,10 @@ export const PlanCard = ({
 // panel's one link that behaved differently from the rest of the app, and it
 // left the thread behind on a navigation the panel is built to survive.
 // On a plan that stopped partway, `written` says whether this change was
-// written in full: a check if so, faded if not.
-const ChangeRow = ({ row, projectId, adapter, written }) => {
+// written in full: a check if so, faded if not. On an applied plan,
+// `nothingWritten` marks a change that wrote nothing (a contributor's
+// confirmation of other contributors' work only), faded and said so.
+const ChangeRow = ({ row, projectId, adapter, written, nothingWritten = false }) => {
   const place = adapter.changePlace(projectId, row.where);
   return (
     <tr
@@ -297,6 +323,7 @@ const ChangeRow = ({ row, projectId, adapter, written }) => {
           </Badge>
         )}
         {row.change ?? row.label}
+        {nothingWritten && <span className="ml-1.5">(nothing written)</span>}
       </td>
     </tr>
   );
