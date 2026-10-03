@@ -11,7 +11,7 @@ import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
 import { canEditProject, readOnlyReason } from '@ui/domain/permissions.js';
-import { NOT_SET_UP } from '@ui/domain/setupGuard.js';
+import { NotSetUpForUd } from './NotSetUpForUd.jsx';
 import { TokenVisualizer } from './TokenVisualizer.jsx';
 import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
 import { ParseDialog } from './services/ParseDialog.jsx';
@@ -296,8 +296,15 @@ export const TextEditor = () => {
   // handlers are withheld (it already null-guards every interaction). A service
   // run writing to this document folds in the same way: it ends in a reload
   // that would discard anything typed underneath it.
+  //
+  // A project UD has not adopted is only looked at, here as in Annotate: its
+  // sentences and words may be another app's, and a Clear tokens there takes
+  // that app's annotation with them. The document model refuses the same
+  // writes (ConlluDocument._canWrite).
+  const setupIncomplete = !layerInfo.isConfigured;
   const canEdit = canEditProject(project, user);
-  const readOnly = !canEdit || !!writeLockHeld;
+  const canWrite = canEdit && !setupIncomplete;
+  const readOnly = !canWrite || !!writeLockHeld;
 
   // Project-level misconfig: the three token layers exist but their
   // overlap-mode / parent chain doesn't match the UD layout. Runtime
@@ -314,15 +321,13 @@ export const TextEditor = () => {
         layerInfo.morphemeTokenLayer.parentTokenLayer !== layerInfo.wordTokenLayer.id),
   );
 
-  const setupIncomplete = !layerInfo.isConfigured;
-
   return (
     <div>
       {!canEdit && <Notice className="mb-3">Read-only. {readOnlyReason(project, user)}</Notice>}
 
       {setupIncomplete && (
         <Notice tone="warning" className="mb-3">
-          {NOT_SET_UP}
+          <NotSetUpForUd project={project} user={user} />
         </Notice>
       )}
 
@@ -369,7 +374,7 @@ export const TextEditor = () => {
               </Button>
             )}
 
-            {canEdit && (
+            {canWrite && (
               <TokenizeDialog
                 tokenize={services.tokenize}
                 text={rawText}
@@ -387,7 +392,7 @@ export const TextEditor = () => {
               />
             )}
 
-            {canEdit && hasText && (
+            {canWrite && hasText && (
               <ParseDialog
                 parse={services.parse}
                 isDiscovering={services.isDiscovering}

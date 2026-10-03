@@ -116,6 +116,20 @@ export class ConlluDocument extends DocumentModel {
     return this._writer;
   }
 
+  // A project UD has not adopted is only looked at, from every screen and not
+  // only Annotate (_reconcile): its sentences and words may be another app's,
+  // and a Clear tokens there takes that app's annotation with them.
+  _canWrite(label) {
+    if (!super._canWrite(label)) return false;
+    if (this.layerInfo.isConfigured) return true;
+    const err = new Error('This project is not set up for UD.');
+    this._error = `${label}: ${err.message}`;
+    this._errorCause = err;
+    if (this.onError) this.onError(this._error, err, label);
+    this._emit();
+    return false;
+  }
+
   // Import a CoNLL-U text into a new document in the given project. The work
   // is `importConlluDocument`, which reads no loaded document at all: this is
   // the name every caller knows it by.

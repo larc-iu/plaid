@@ -53,3 +53,45 @@ test("a maintainer's open of a document in a project not set up for UD writes no
     [],
   );
 });
+
+// H33-UD-2: no screen writes in such a project, the Text Editor included. Its
+// Clear tokens deleted every sentence by role, and the server took the other
+// app's words, morphemes and glosses with them. Every route in is refused at
+// the model, before any patch or request.
+test('every write to a document of a project not set up for UD is refused', async () => {
+  const calls = [];
+  const errors = [];
+  const doc = new ConlluDocument({
+    raw: igtOnly(),
+    client: recordingClient(calls),
+    project: { id: 'p1', maintainers: ['m@x'], writers: [] },
+    user: { id: 'm@x' },
+  });
+  doc.onError = (message) => errors.push(message);
+  const before = JSON.stringify(doc.layerInfo.wordTokenLayer.tokens);
+  const sentence = doc.layerInfo.sentenceTokenLayer.tokens[0];
+  const word = doc.layerInfo.wordTokenLayer.tokens[0];
+  const writes = {
+    clearTokens: () => doc.clearTokens(),
+    tokenize: () => doc.tokenize('el perro'),
+    toggleSentenceBoundary: () => doc.toggleSentenceBoundary(3),
+    createWord: () => doc.createWord(0, 2, 'el perro'),
+    deleteWord: () => doc.deleteWord(word.id),
+    setWordMorphemes: () => doc.setWordMorphemes(word, ['e', 'l']),
+    setDocumentMetadata: () => doc.setDocumentMetadata('k', 'v'),
+    setSentenceMetadata: () => doc.setSentenceMetadata(sentence.id, 'k', 'v'),
+    saveText: () => doc.saveText({ edits: [], base: 'el perro', raw: 'el gato' }),
+  };
+  for (const [name, write] of Object.entries(writes)) {
+    assert.equal(await write(), false, name);
+  }
+  assert.deepEqual(calls, []);
+  assert.equal(JSON.stringify(doc.layerInfo.wordTokenLayer.tokens), before);
+  // Each says why. The ones that need the syntactic-word layer were already
+  // refused for its absence.
+  assert.equal(errors.length, Object.keys(writes).length);
+  assert.ok(
+    errors.every((m) => /not (fully )?set up/.test(m)),
+    errors.join(),
+  );
+});

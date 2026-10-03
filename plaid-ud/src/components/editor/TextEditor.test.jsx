@@ -17,17 +17,17 @@ vi.mock('./services/TokenizeDialog.jsx', () => ({ TokenizeDialog: () => null }))
 const { TextEditor } = await import('./TextEditor.jsx');
 const { hasUnsavedDraft } = await import('@ui/hooks/useUnsavedDraft.js');
 
-const setup = (body, { writers = ['u1'] } = {}) => {
+const setup = (body, { writers = ['u1'], maintainers = [], isConfigured = true } = {}) => {
   editor.current = {
     projectId: 'p1',
     documentId: 'd1',
-    project: { id: 'p1', name: 'P', writers, readers: [], maintainers: [] },
+    project: { id: 'p1', name: 'P', writers, readers: [], maintainers },
     doc: {
       id: 'd1',
       name: 'D',
       isSaving: false,
       layerInfo: {
-        isConfigured: true,
+        isConfigured,
         textLayer: { id: 't', text: body ? { id: 'x', body } : null },
       },
     },
@@ -117,6 +117,36 @@ describe('the Text Editor buttons', () => {
     const classes = clear.className.split(/\s+/);
     expect(classes).toContain('text-destructive');
     expect(classes).not.toContain('bg-destructive');
+    await view.unmount();
+  });
+});
+
+// H33-UD-2: in a project UD has not adopted the tab is read-only, as Annotate
+// is. Its sentences and words may be another app's, and Clear tokens took that
+// app's annotation with them.
+describe('the Text Editor in a project not set up for UD', () => {
+  const buttons = (root) => [...root.querySelectorAll('button')].map((b) => b.textContent.trim());
+
+  it('locks the text and offers no write, to a writer', async () => {
+    setup('The saved text.', { isConfigured: false });
+    const view = await mount();
+    expect(view.container.querySelector('textarea').readOnly).toBe(true);
+    expect(buttons(view.container)).not.toContain('Save');
+    expect(buttons(view.container)).not.toContain('Clear tokens');
+    expect(view.container.textContent).toContain(
+      'This project is not set up for UD. A project maintainer can set it up.',
+    );
+    await view.unmount();
+  });
+
+  it('links a maintainer to the set-up page', async () => {
+    setup('The saved text.', { isConfigured: false, writers: [], maintainers: ['u1'] });
+    const view = await mount();
+    expect(view.container.querySelector('textarea').readOnly).toBe(true);
+    const link = [...view.container.querySelectorAll('a')].find(
+      (a) => a.textContent === 'Set it up',
+    );
+    expect(link.getAttribute('href')).toBe('/projects/p1/configuration');
     await view.unmount();
   });
 });

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ConlluDocument } from './ConlluDocument.js';
+import { rawDocFromConllu } from '../../test/helpers/rawDoc.js';
 
 // What a failed mutation REPORTS. The document shows nothing itself: it hands
 // the screen three things through `onError`, the composed message, the raw
@@ -8,11 +9,12 @@ import { ConlluDocument } from './ConlluDocument.js';
 // Handing over one composed string once lost both halves: the toast read the
 // status out of it and replaced the whole sentence, label included.
 
+// A document of a project set up for UD: one in a project that is not is
+// refused before any write (ConlluDocument._canWrite).
 const RAW = {
+  ...rawDocFromConllu('# text = a\n1\ta\ta\tX\t_\t_\t0\troot\t_\t_', 'Test'),
   id: 'doc-1',
-  name: 'Test',
   project: { id: 'proj-1' },
-  textLayers: [],
 };
 
 const failingClient = (err) => ({

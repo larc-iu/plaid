@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { needsReview } from '@larc-iu/plaid-client';
 import { ParseDialog } from './services/ParseDialog.jsx';
 import { SentenceRow } from './annotation/SentenceRow.jsx';
@@ -21,8 +21,9 @@ import { EditorLegend } from './annotation/EditorLegend.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 // Raised here, dismissed by DocumentEditorShell: the notice outlives this tab.
 import { useReconcileOnOpen } from '@ui/hooks/useReconcileOnOpen.js';
-import { canEditProject, canManageProject, readOnlyReason } from '@ui/domain/permissions.js';
+import { canEditProject, readOnlyReason } from '@ui/domain/permissions.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
+import { NotSetUpForUd } from './NotSetUpForUd.jsx';
 import { readMetadataFields } from '../../utils/udMetadata.js';
 import { makeValidators } from '../../utils/udVocabMode.js';
 import { buildAnchorIndex, anchorCaption } from '../../domain/commentAnchors.js';
@@ -491,22 +492,9 @@ export const AnnotationEditor = () => {
         <div className="flex justify-center py-16">
           <Notice tone="warning" className="max-w-lg p-4">
             <p className="font-medium">Not set up for UD</p>
-            {canManageProject(project, user) ? (
-              <p className="mt-1">
-                This project is not set up for UD.{' '}
-                <Link
-                  className="font-medium underline underline-offset-2"
-                  to={`/projects/${projectId}/configuration`}
-                >
-                  Set it up
-                </Link>
-                .
-              </p>
-            ) : (
-              <p className="mt-1">
-                This project is not set up for UD. A project maintainer can set it up.
-              </p>
-            )}
+            <p className="mt-1">
+              <NotSetUpForUd project={project} user={user} />
+            </p>
           </Notice>
         </div>
       </div>
