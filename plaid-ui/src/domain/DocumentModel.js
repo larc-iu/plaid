@@ -79,6 +79,18 @@ const dependencyError = () =>
     status: 400,
   });
 
+// What every edit is refused with once the document is known to be deleted
+// (`_documentGone`), unsent. `deleted` lets the screen tell it from a refusal
+// the server made.
+const DELETED = 'This document was deleted.';
+const deletedError = () => Object.assign(new Error(DELETED), { deleted: true });
+
+// Whether a read of the document was refused because it is gone: 404, or the
+// core's 403 for an id it cannot place in a project (`unresolved`, the
+// ruling on unknown ids).
+const isDocumentGone = (err) =>
+  statusOf(err) === 404 || (statusOf(err) === 403 && err?.responseData?.unresolved === true);
+
 // How many waiting edits keep the document they were made on, for telling
 // whether a change elsewhere touched them (rebase.js). One past that is
 // treated as touched: a long offline queue must not hold a copy of the
@@ -172,6 +184,8 @@ export class DocumentModel {
     // The pending ids of rows made by edits that were refused: the server
     // never made them, and an edit that names one is refused unsent.
     this._refusedIds = new Set();
+    // Whether a read of the document found it deleted (`_documentGone`).
+    this._deleted = false;
     // The screen's error channel, `(message, err, label)`: the label is what
     // was being done and `err` the client's error, for the screen to word.
     // Null until the screen wires it. The domain layer shows nothing itself.
@@ -205,6 +219,10 @@ export class DocumentModel {
   }
   get asOf() {
     return this._asOf;
+  }
+  /** True once a read of the document found it deleted. Nothing writes through it then. */
+  get deleted() {
+    return this._deleted;
   }
   get isSaving() {
     return this._writes.isSaving;
@@ -405,6 +423,10 @@ export class DocumentModel {
    * once. Answers whether it changed.
    */
   _takeProject(project) {
+    // A deleted document keeps a project this person holds no role in, so
+    // every screen over it is read-only, whatever a later read of the
+    // project says.
+    if (project && this._deleted && this._user?.id) project = withoutMember(project, this._user.id);
     if (!project || sameConfig(project, this._project)) return false;
     this._project = project;
     this._adoptProject(project);
@@ -582,8 +604,10 @@ export class DocumentModel {
   // edit reach one would otherwise write a plan made against the past into
   // the current document. Says why on the error channel when it refuses.
   _canWrite(label) {
-    if (!this._asOf) return true;
-    const err = new Error('An earlier state of the document cannot be edited.');
+    if (!this._asOf && !this._deleted) return true;
+    const err = this._deleted
+      ? deletedError()
+      : new Error('An earlier state of the document cannot be edited.');
     this._error = `${label}: ${err.message}`;
     this._errorCause = err;
     if (this.onError) this.onError(this._error, err, label);
@@ -597,6 +621,14 @@ export class DocumentModel {
   // `handled` is a conflict the screen reports itself (`handlesConflicts`).
   _writeFailed(label, err, handled = false) {
     console.error(`${label}:`, err);
+    // Held back unsent once the document was found deleted, which was said
+    // once already (`_documentGone`).
+    if (err?.deleted) {
+      this._handledCause = null;
+      this._error = `${label}: ${err.message}`;
+      this._errorCause = err;
+      return;
+    }
     if (handled) {
       this._error = '';
       this._handledCause = err;
@@ -717,6 +749,8 @@ export class DocumentModel {
     return this._writes.push(
       async () => {
         this._unsent = this._unsent.filter((u) => u !== unsent);
+        // The document was found deleted since it was queued.
+        if (this._deleted) throw deletedError();
         // Planned on a document that turned out to have changed elsewhere
         // (`_reloadAfterFailure`): refused like the edit that found it out,
         // without being sent, and already off the screen.
@@ -758,10 +792,11 @@ export class DocumentModel {
           // Refused for a missing permission: whoever changed this person's
           // role, the page is put in step with it now rather than within the
           // minute (a reader's page offers nothing to edit).
-          if (statusOf(err) === 403) this.refreshProject();
+          if (statusOf(err) === 403 && !this._deleted) this.refreshProject();
           this._writeFailed(label, err, conflictHandled && statusOf(err) === 409);
         },
-        resync: () => (unsent.stale ? undefined : this._reloadAfterFailure(conflict)),
+        resync: () =>
+          unsent.stale || this._deleted ? undefined : this._reloadAfterFailure(conflict),
       },
     );
   }
@@ -1111,11 +1146,31 @@ export class DocumentModel {
   }
 
   // Every read of the document goes through here, and settles the rows it
-  // holds that an edit made and was refused for.
+  // holds that an edit made and was refused for. A read that finds the
+  // document deleted says so (`_documentGone`) and still throws, so the
+  // caller's own failure path runs.
   async _fetch() {
-    const raw = await this._client.documents.get(this.id, true, this._asOf || undefined);
+    let raw;
+    try {
+      raw = await this._client.documents.get(this.id, true, this._asOf || undefined);
+    } catch (err) {
+      if (!this._asOf && isDocumentGone(err)) this._documentGone();
+      throw err;
+    }
     this._settleFound(raw);
     return raw;
+  }
+
+  // The document was deleted while it was open (H36-SETTINGS-LIVE-2). Said
+  // once, and from then on the page is read-only, as for someone removed from
+  // the project: the project kept is one this person holds no role in, and
+  // every edit is refused unsent. What the screen shows stays, so what was
+  // typed can be copied.
+  _documentGone() {
+    if (this._deleted) return;
+    this._deleted = true;
+    if (!this._takeProject(this._project)) this._emit();
+    if (this.onError) this.onError(DELETED, null, 'Read-only');
   }
 
   // A row an edit made under the id this page minted, and that the edit was
