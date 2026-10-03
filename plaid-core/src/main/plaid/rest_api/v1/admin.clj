@@ -15,6 +15,7 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [plaid.media.storage :as media]
+            [plaid.rest-api.v1.api-token :as api-token]
             [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.pagination :as pagination]
             [plaid.rest-api.v1.rate-limit :as rl]
@@ -258,7 +259,10 @@
                        :body (rl/snapshot)})}
      :delete {:summary (str "Forget recorded failures. With <code>ip</code>, clears that "
                             "address, narrowed to one account with <code>user-id</code>. With "
-                            "neither, clears every bucket. Only ever unblocks.")
+                            "neither, clears every bucket. Only ever unblocks. Needs a "
+                            "signed-in session: a request signed with a named API token is "
+                            "refused (403), since the limits are the brake on guessing passwords.")
+              :middleware [api-token/wrap-session-required]
               :parameters {:query [:map
                                    [:ip {:optional true} string?]
                                    [:user-id {:optional true} string?]]}

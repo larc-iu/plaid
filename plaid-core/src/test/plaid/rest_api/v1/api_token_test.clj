@@ -360,3 +360,20 @@
       (assert-ok (api-call admin-request {:method :patch :path (str "/api/v1/users/" target)
                                           :body {:is-admin true}}))
       (is (admin?)))))
+
+(deftest an-admins-named-token-cannot-clear-the-login-rate-limits
+  ;; REV-FX3-CORE F2: the limits are the brake on guessing passwords.
+  (let [tok (-> (mint! admin-request "admin@example.com" "admin-svc") :body :token)
+        as-tok (token-req-fn tok)]
+    (testing "refused, alone and in a batch"
+      (let [r (api-call as-tok {:method :delete :path "/api/v1/admin/rate-limits"})]
+        (assert-forbidden r)
+        (is (re-find session-only (-> r :body :error))))
+      (let [r (rest-handler (-> (mock/request :post "/api/v1/batch")
+                                (mock/header "accept" "application/edn")
+                                (mock/json-body [{:path "/api/v1/admin/rate-limits" :method "delete"}])
+                                (mock/header "authorization" (str "Bearer " tok))))]
+        (is (not= 200 (:status r)))))
+    (testing "the token may still read them, and the session clear them"
+      (assert-ok (api-call as-tok {:method :get :path "/api/v1/admin/rate-limits"}))
+      (assert-ok (api-call admin-request {:method :delete :path "/api/v1/admin/rate-limits"})))))
