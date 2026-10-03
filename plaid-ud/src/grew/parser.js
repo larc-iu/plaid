@@ -19,6 +19,7 @@ import { lex, TT } from './lexer.js';
 import { GrewParseError, GrewUnsupportedError } from './errors.js';
 import { BLOCK_TYPES } from './ast.js';
 import { regexError } from './userRegex.js';
+import { splitLabel } from './edgeLabel.js';
 
 const STRAT_OPS = new Set(['Onf', 'Iter', 'Seq', 'Alt', 'Pick', 'Try', 'Empty']);
 const FIELD_SEP = '\t';
@@ -586,6 +587,25 @@ function createParser(src) {
     return value;
   }
 
+  // An edge label regex opening with `E:` (or `^E:`) asks the enhanced graph,
+  // and the search and the rewrite match what follows the prefix
+  // (edgeLabel.js splitLabel). That cut pattern is read here too, so its error
+  // has the label's caret.
+  function parseLabelRegex() {
+    const tok = peek();
+    const value = parseRegex();
+    const { enhanced } = splitLabel(value);
+    if (enhanced && enhanced !== value) {
+      const error = regexError(enhanced);
+      if (error)
+        fail(
+          `After the E: prefix, ${error.replace(/^[A-Z](?=[a-z])/, (c) => c.toLowerCase())}`,
+          tok,
+        );
+    }
+    return value;
+  }
+
   function parseValueExpr() {
     const items = [parseValueAtom()];
     while (at(TT.PIPE)) {
@@ -667,7 +687,7 @@ function createParser(src) {
   }
 
   function parseLabelExpr() {
-    if (at(TT.REGEX)) return parseRegex();
+    if (at(TT.REGEX)) return parseLabelRegex();
     let negated = false;
     if (at(TT.CARET)) {
       next();

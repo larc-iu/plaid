@@ -112,3 +112,30 @@ test('a regex the two engines would read apart is refused where it is written', 
   // On an edge label too.
   assert.throws(() => parse('pattern { X -[re"a++"]-> Y }'), GrewParseError);
 });
+
+// REV-FX3-UD R6: a label pattern opening with `E:` is matched after the
+// prefix, so that is what is read, and its error carries the label's caret.
+test('an edge label regex is read after its E: prefix where it is written', () => {
+  for (const [text, col] of [
+    ['pattern { X -[re"^E:*"]-> Y }', 15],
+    ['pattern { X -[re"E:+"]-> Y }', 15],
+    ['pattern { X -[re"^E:{2}"]-> Y }', 15],
+  ]) {
+    assert.throws(
+      () => parse(text),
+      (e) =>
+        e instanceof GrewParseError &&
+        e.col === col &&
+        e.message.startsWith('After the E: prefix, nothing to repeat before'),
+      text,
+    );
+  }
+  assert.throws(
+    () => parseGrs('rule r { pattern { e: X -[re"^E:*"]-> Y } commands { del_edge e } }'),
+    (e) => e instanceof GrewParseError && e.message.startsWith('After the E: prefix'),
+  );
+  // What reads well after the prefix, and a plain pattern, still parse.
+  parse('pattern { X -[re"^E:nsubj"]-> Y }');
+  parse('pattern { X -[re"^nsubj:*"]-> Y }');
+  parse('pattern { X -[re"E:obl:.*"]-> Y }');
+});
