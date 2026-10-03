@@ -106,6 +106,9 @@ export const ProjectDocumentsPage = ({
     } catch (err) {
       console.error(`Failed to set the project up for ${setup.app}:`, err);
       notifyError(humanizeError(err, 'Failed to set up the project.'));
+      // What landed before the failure is shown, not the copy the button was
+      // pressed on.
+      await fetchProjectAndDocuments();
     } finally {
       setSettingUp(false);
     }

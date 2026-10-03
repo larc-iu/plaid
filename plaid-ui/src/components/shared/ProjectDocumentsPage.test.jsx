@@ -156,6 +156,35 @@ describe('a project the app has no layers in', () => {
     await view.unmount();
   });
 
+  // A set-up whose layers landed before a later step failed: the page shows
+  // the project as it is now, not the copy the button was pressed on.
+  it('reads the project again after a set-up that failed', async () => {
+    const stored = { current: project('maintainer', false) };
+    auth.getClient.mockReturnValue({
+      projects: {
+        get: vi.fn(async () => stored.current),
+        listDocuments: vi.fn(async () => DOCS),
+        myLastEdits: async () => ({}),
+      },
+      query: async () => ({ results: [] }),
+    });
+    const view = await renderComponent(page());
+    await view.step(settle);
+    adopt.mockImplementationOnce(async () => {
+      stored.current = project('maintainer', true);
+      throw new Error('the rules could not be declared');
+    });
+    const button = all(view.container, 'button').find((b) => b.textContent === 'Set up for XY');
+    await view.step(async () => {
+      button.click();
+      await settle();
+      await settle();
+    });
+    expect(view.container.textContent).not.toContain('Not set up for XY');
+    expect(names(view.container)).toEqual(['Zeta', 'Mid', 'Alpha']);
+    await view.unmount();
+  });
+
   it('tells anyone else to ask a maintainer, with no button', async () => {
     const view = await mount(project('writer', false));
     expect(view.container.textContent).toContain('A project maintainer can set it up.');
