@@ -69,8 +69,18 @@ export const Change = ({ from, to }) => (
 // the same to draw, and a document heading appears wherever its rows begin on
 // the page. The heading's tick and count still speak for the WHOLE document,
 // not for the part of it on screen: selection is what gets applied, and it must
-// not depend on where the reader happened to be standing.
-export const MatchGroups = ({ projectId, rows, selected, toggle, toggleMany, renderRow, dim }) => {
+// not depend on where the reader happened to be standing. A row that
+// `selectable` refuses (one that would never be written) cannot be ticked.
+export const MatchGroups = ({
+  projectId,
+  rows,
+  selected,
+  toggle,
+  toggleMany,
+  renderRow,
+  dim,
+  selectable = () => true,
+}) => {
   const groups = useMemo(() => groupByDoc(rows), [rows]);
   const flat = useMemo(() => groups.flatMap((g) => g.rows.map((r) => ({ g, r }))), [groups]);
   const paged = usePagedList(flat, {
@@ -89,7 +99,7 @@ export const MatchGroups = ({ projectId, rows, selected, toggle, toggleMany, ren
           // A document heading opens the page it continues onto, so a reader
           // who turns the page mid-document still sees which one they are in.
           const head = i === 0 || paged.pageItems[i - 1].g !== g;
-          const ids = head ? g.rows.map((x) => x.id) : null;
+          const ids = head ? g.rows.filter(selectable).map((x) => x.id) : null;
           const on = ids ? ids.filter((id) => selected.has(id)).length : 0;
           return (
             <Fragment key={r.id}>
@@ -99,18 +109,23 @@ export const MatchGroups = ({ projectId, rows, selected, toggle, toggleMany, ren
                     checked={on === ids.length && ids.length > 0}
                     indeterminate={on > 0 && on < ids.length}
                     onChange={(v) => toggleMany(ids, v)}
+                    disabled={ids.length === 0}
                     aria-label={`Select all in ${g.docName}`}
                   />
                   <FileText className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-medium">{g.docName}</span>
                   <span className="text-xs text-muted-foreground">
-                    {on} of {countOf(ids.length, 'match', 'matches')} selected
+                    {on} of {countOf(g.rows.length, 'match', 'matches')} selected
                   </span>
                 </div>
               )}
               <div className={cn('flex items-start gap-3 px-3 py-2', dim?.(r) && 'opacity-60')}>
                 <div className="pt-0.5">
-                  <Checkbox checked={selected.has(r.id)} onChange={(v) => toggle(r.id, v)} />
+                  <Checkbox
+                    checked={selectable(r) && selected.has(r.id)}
+                    onChange={(v) => toggle(r.id, v)}
+                    disabled={!selectable(r)}
+                  />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">{renderRow(r)}</div>
@@ -136,8 +151,16 @@ export const MatchGroups = ({ projectId, rows, selected, toggle, toggleMany, ren
   );
 };
 
-export const SelectionSummary = ({ rows, selected, setSelected, extra }) => {
-  const ids = rows.map((r) => r.id);
+// `selectable` as MatchGroups': select all ticks only the rows that can be
+// written, and the count is of those.
+export const SelectionSummary = ({
+  rows,
+  selected,
+  setSelected,
+  extra,
+  selectable = () => true,
+}) => {
+  const ids = rows.filter(selectable).map((r) => r.id);
   const on = ids.filter((id) => selected.has(id)).length;
   const docs = new Set(rows.map((r) => r.docId).filter(Boolean)).size;
   return (

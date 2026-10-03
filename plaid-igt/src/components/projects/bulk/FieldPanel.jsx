@@ -46,6 +46,17 @@ const tagsetForTarget = (target, layerInfo, project) => {
   return t ? { ...t, name: readTagsetName(layer.config) } : null;
 };
 
+// "3 values replaced and 2 cleared in Gloss", or with `will`, "… will be
+// replaced …". A clear is a row whose replacement leaves nothing.
+const changeText = (replaced, cleared, field, will = false) => {
+  const be = will ? ' will be' : '';
+  const parts = [];
+  if (replaced || !cleared) parts.push(`${countOf(replaced, 'value')}${be} replaced`);
+  if (cleared)
+    parts.push(replaced ? `${cleared}${be} cleared` : `${countOf(cleared, 'value')}${be} cleared`);
+  return `${parts.join(' and ')} in ${field}`;
+};
+
 // One field match: the word (and morpheme) it sits under as context, then the
 // field's before → after.
 const FieldChange = ({ row, target }) => {
@@ -136,6 +147,9 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
   // sent or skipped (`applied`), so the count and the confirm say what is left.
   const selectedRows = plan ? plan.rows.filter((x) => r.selected.has(x.id) && !x.applied) : [];
   const targetLabel = plan?.target?.kind === 'morpheme' ? 'morpheme form' : plan?.target?.field;
+  const writableRows = selectedRows.filter((x) => !x.invalid);
+  const clearing = writableRows.filter((x) => x.kind === 'span' && blank(x.new)).length;
+  const willChange = changeText(writableRows.length - clearing, clearing, targetLabel, true);
 
   const doApply = async () => {
     // Ticking a flagged row by hand does not make it writable: the same rule
@@ -145,7 +159,12 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
       applyField(
         client,
         { rows: writable, versions: plan.versions, replan: plan.replan },
-        { label: `Replace “${plan.find}” → “${plan.repl}” in ${targetLabel}`, onProgress },
+        {
+          label: blank(plan.repl)
+            ? `Clear “${plan.find}” in ${targetLabel}`
+            : `Replace “${plan.find}” → “${plan.repl}” in ${targetLabel}`,
+          onProgress,
+        },
       ),
     );
     if (!res) return;
@@ -154,7 +173,7 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
       // The plan stays, so Apply again sends what did not land.
       notifyStopped(
         res.failed,
-        `${countOf(res.changed, 'value')} replaced in ${targetLabel}`,
+        changeText(res.changed - (res.cleared ?? 0), res.cleared ?? 0, targetLabel),
         skipped,
       );
       return;
@@ -162,8 +181,8 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
     if (!res.changed && skipped) notifyWarning(skipped.trim(), 'Nothing replaced');
     else
       notifySuccess(
-        `${countOf(res.changed, 'value')} replaced in ${targetLabel}.${skipped}`,
-        'Replaced',
+        `${changeText(res.changed - (res.cleared ?? 0), res.cleared ?? 0, targetLabel)}.${skipped}`,
+        res.cleared && res.cleared === res.changed ? 'Cleared' : 'Replaced',
       );
     r.setPlan(null);
   };
@@ -222,9 +241,14 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
             count={selectedRows.filter((x) => !x.invalid).length}
             busy={r.busy}
             onApply={doApply}
-            summary={`${countOf(selectedRows.filter((x) => !x.invalid).length, 'value')} in ${targetLabel} will be replaced.`}
+            summary={`${willChange}.`}
           >
-            <SelectionSummary rows={plan.rows} selected={r.selected} setSelected={r.setSelected} />
+            <SelectionSummary
+              rows={plan.rows}
+              selected={r.selected}
+              setSelected={r.setSelected}
+              selectable={(x) => !x.invalid}
+            />
           </ApplyBar>
           {plan.rows.some((x) => x.invalid === 'tagset') && (
             <p className="rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-sm text-destructive">
@@ -237,6 +261,7 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
             <p className="py-6 text-center text-sm text-muted-foreground">No matching values.</p>
           )}
           <MatchGroups
+            selectable={(x) => !x.invalid}
             projectId={projectId}
             rows={plan.rows}
             selected={r.selected}

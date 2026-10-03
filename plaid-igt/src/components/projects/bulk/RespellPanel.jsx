@@ -94,6 +94,10 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
   };
 
   const plan = r.plan;
+  // A row that would empty a word, a form or an entry, or an entry of a
+  // vocabulary this person does not maintain, cannot be ticked.
+  const selectableRow = (x) =>
+    x.kind === 'lexicon' ? !x.locked && !x.invalid : !respellBarred(x, includeMorphemes);
   // What an Apply sends: the selected rows a stopped Apply has not already
   // sent or skipped (`applied`), so the count and the confirm say what is left.
   // A barred row is never sent, even when ticked by hand.
@@ -194,6 +198,7 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
             }.`}
           >
             <SelectionSummary
+              selectable={selectableRow}
               rows={[...plan.rows, ...plan.lexiconRows]}
               selected={r.selected}
               setSelected={r.setSelected}
@@ -203,6 +208,7 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
             <p className="py-6 text-center text-sm text-muted-foreground">No matching words.</p>
           )}
           <MatchGroups
+            selectable={selectableRow}
             projectId={projectId}
             rows={plan.rows}
             selected={r.selected}

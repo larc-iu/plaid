@@ -363,7 +363,7 @@ const clears = (row) => row.kind === 'span' && blank(row.new);
 // one batch carrying the version the preview read. A document changed since
 // then is read again, and only the values that still read as the preview
 // showed them are replaced (see sendDocument). Returns { changed, skipped,
-// failed }.
+// failed }, and `cleared`, how many of `changed` were cleared, when any were.
 //
 // A row that landed or was skipped is marked `applied` and left out of a
 // later apply of the same plan, as Respell's are, so Apply again after a
@@ -371,6 +371,7 @@ const clears = (row) => row.kind === 'span' && blank(row.new);
 // document landed resolves with `failed` (see stoppedOrDone).
 export async function applyField(client, { rows, versions, replan }, { label, onProgress }) {
   let changed = 0;
+  let cleared = 0;
   let skipped = 0;
   let failed = null;
   // A span the replacement empties is deleted in the same batch, and a
@@ -380,12 +381,12 @@ export async function applyField(client, { rows, versions, replan }, { label, on
     if (!docRows.length) return Promise.resolve([]);
     return client.batched(async (b) => {
       const spanRows = docRows.filter((r) => r.kind !== 'morphForm' && !clears(r));
-      const cleared = docRows.filter(clears);
+      const clearRows = docRows.filter(clears);
       const morphRows = docRows.filter((r) => r.kind === 'morphForm');
       for (const part of chunk(spanRows)) {
         b.spans.bulkUpdate(part.map((r) => ({ id: r.id, value: r.new })));
       }
-      for (const part of chunk(cleared)) b.spans.bulkDelete(part.map((r) => r.id));
+      for (const part of chunk(clearRows)) b.spans.bulkDelete(part.map((r) => r.id));
       for (const part of chunk(morphRows)) {
         b.tokens.bulkUpdate(
           part.map((r) => ({ id: r.id, metadata: [{ op: 'set', path: ['form'], value: r.new }] })),
@@ -413,10 +414,14 @@ export async function applyField(client, { rows, versions, replan }, { label, on
       if (!out) return;
       docRows.forEach((r) => (r.applied = true));
       changed += out.sent.length;
+      cleared += out.sent.filter(clears).length;
       skipped += out.skipped.length;
     }
   });
-  return stoppedOrDone({ changed, skipped, ...(failed ? { failed } : {}) }, changed);
+  return stoppedOrDone(
+    { changed, skipped, ...(cleared ? { cleared } : {}), ...(failed ? { failed } : {}) },
+    changed,
+  );
 }
 
 // ---- reanalyze --------------------------------------------------------------

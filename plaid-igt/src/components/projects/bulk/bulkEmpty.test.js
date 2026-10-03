@@ -156,6 +156,7 @@ describe('Replace in a field to nothing', () => {
       { label: 'Replace' },
     );
     expect(out.changed).toBe(2);
+    expect(out.cleared).toBe(2);
     const updates = client.calls.filter((c) => c.kind === 'spans.bulkUpdate');
     expect(updates).toEqual([]);
     const deletes = client.calls.filter((c) => c.kind === 'spans.bulkDelete');

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all, texts } from '@ui/test/renderComponent.jsx';
 import { TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
-import { MatchGroups, Progress } from './parts.jsx';
+import { MatchGroups, Progress, SelectionSummary } from './parts.jsx';
 
 // A sweep over a corpus previews thousands of matches, and every row carries a
 // change grid, a marked sentence and a link into Analyze. The list is paged, so
@@ -34,6 +34,7 @@ const mount = (rows, selected = new Set(), handlers = {}) =>
         toggle={handlers.toggle ?? (() => {})}
         toggleMany={handlers.toggleMany ?? (() => {})}
         renderRow={(r) => <span data-row={r.id}>{r.new}</span>}
+        selectable={handlers.selectable}
       />
     </MemoryRouter>,
   );
@@ -94,6 +95,42 @@ describe('MatchGroups', () => {
     expect(heads[0]).toContain('Doc one');
     expect(heads[1]).toContain('Doc two');
     expect(rowCount(container)).toBe(6);
+    await unmount();
+  });
+});
+
+// A row that would never be written (an emptied word, a value outside the
+// tagset) cannot be ticked, so what is ticked is what Apply counts.
+describe('rows that cannot be selected', () => {
+  const rows = rowsIn('d1', 'Doc one', 4).map((r, i) => (i < 2 ? { ...r, invalid: 'empty' } : r));
+  const selectable = (r) => !r.invalid;
+
+  it("are disabled, and the heading's tick leaves them out", async () => {
+    let asked = null;
+    const { container, unmount } = await mount(rows, new Set(), {
+      selectable,
+      toggleMany: (ids) => (asked = ids),
+    });
+    const boxes = all(container, 'input[type="checkbox"]');
+    expect(boxes.slice(1).map((b) => b.disabled)).toEqual([true, true, false, false]);
+    boxes[0].click();
+    expect(asked).toEqual(['d1-r2', 'd1-r3']);
+    await unmount();
+  });
+
+  it('select all ticks only the rows that can be written, and the count agrees', async () => {
+    let chosen = null;
+    const { container, step, unmount } = await renderComponent(
+      <SelectionSummary
+        rows={rows}
+        selected={new Set(['d1-r0', 'd1-r2'])}
+        setSelected={(s) => (chosen = s)}
+        selectable={selectable}
+      />,
+    );
+    expect(container.textContent).toContain('4 matches in 1 document, 1 selected');
+    await step(async () => all(container, 'button')[0].click());
+    expect([...chosen]).toEqual(['d1-r2', 'd1-r3']);
     await unmount();
   });
 });
