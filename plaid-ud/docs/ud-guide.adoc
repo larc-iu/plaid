@@ -122,6 +122,7 @@ A word whose DEPS is empty, in a sentence where other words have one, has no hea
 = Tokenizing Text (Text Editor)
 
 The **Text Editor** tab is where raw text becomes tokens.
+In a project not set up for UD it is read-only, as Annotate is, and says `This project is not set up for UD.` A maintainer's **Set it up** link there opens the page with **Set up for UD**.
 
 == Entering and Tokenizing Text
 
@@ -141,6 +142,7 @@ On a project whose tokens are shared with another app, the split holds for that 
 Deleting the space between two tokens keeps them two tokens. Merge them to make one.
 A token goes, along with its annotations, only when all its text is deleted.
 Pasting the text back with words added, removed or changed changes only those tokens. Every other token keeps its annotations.
+A paste with several changes near a repeated word, or in a text written without spaces, can also replace one token beside a change, and that token loses its annotations.
 
 **Ctrl/Cmd+Z** in the editor undoes typing, and **Ctrl/Cmd+Shift+Z** redoes it, up to 200 steps back.
 An undo the editor cannot place exactly, such as one reaching back past a save that took in someone else's text, does nothing.
@@ -185,6 +187,8 @@ It shows each sentence as a row of editable cells above an interactive dependenc
 Sentences come 25 to a page, with a pager above and below them.
 A document reopens on the page you left it on, and anything that reaches a particular sentence (a search result, a review sweep, a link from the assistant) turns to its page first.
 Sentence numbers belong to the document, not the page, so sentence 40 is sentence 40 wherever it is shown.
+
+A token another app added after the document was opened shows only its form, and its cells cannot be edited. An edit on it says `Reopen the document to annotate this word.` Opening the document again makes it a word like the others.
 
 == Tag and Lemma Editing
 
@@ -341,6 +345,8 @@ Each sentence's `# text` is its text as it stands, spaces included, and a multi-
 
 To export a whole project, use its **Import and export** tab, which packages every document into one ZIP of `.conllu` files.
 
+A token another app added, in a document nobody with Writer access has opened here since, is exported with its form and `_` in every other column. Text in no token, such as punctuation another app left out of its words, is in `# text` and has no row.
+
 = Guidelines
 
 The **Guidelines** tab is the project's own annotation manual: the conventions the people working on it have agreed to, written down where everyone can read them.
@@ -392,7 +398,13 @@ A change to something a person made or accepted is marked **Accepted**, counted 
 A replacement across the corpus counts the values it replaces that a person made or accepted, and says so on its row.
 Approved changes are written under your own account, recorded as the assistant's work accepted by you, and show as accepted.
 Tick **Record as human-made** before approving to record them as your own work instead.
+If your work is reviewed in this project, what you approve is your own contribution and waits for a reviewer, as anything you enter does.
+A confirmation you approve then makes the machine's values your contribution and leaves other contributors' work for a reviewer, and the applied card says how many of each.
+A confirmation that wrote nothing is faded on the card and marked `(nothing written)`.
 Reading needs Reader access, and applying a plan needs Writer.
+
+The assistant respells a token's words in place: a word whose form changes keeps its lemma, tags, features and relations.
+Its plans leave each sentence one root. Asked to make another word the root, it gives the old root a head in the same plan. Joining two sentences that each have a root, it gives one of the roots a head in the same plan.
 
 Approving a plan after a sentence it changes has been edited is refused, and the card then reads **Out of date**.
 An edit to another sentence does not stop it.
@@ -501,6 +513,9 @@ It does not run a search of its own: it writes the Grew pattern and hands it to 
 
 A regular expression on a feature (`X [Number=re"^S"]`) is searched for in the feature's value, where `^` and `$` mark its start and end.
 
+In a regular expression, `\w`, `\d` and `\s` take every script, `\s` the no-break space too, and `\p{IsArabic}` or `\p{sc=Arabic}` is any character of the Arabic script, and the same for every script. A construct the search cannot read, such as a Unicode block (`\p{InArabic}`) or a possessive quantifier, is refused with a caret under it.
+A token another app added is not searched until someone with Writer access opens its document.
+
 === Counting instead of reading
 
 After a search, **Count by** re-runs the same pattern as a tally: pick a pattern node and a field (`V.upos`, `S.lemma`, `V.FEATS`, or a named edge's `e.label`) and the result is a sortable table of values with how many matches each accounts for.
@@ -599,6 +614,7 @@ Add members from the project's **Access** settings by searching for a name or em
 When you only have Reader access, the editor shows everything but its controls are inert.
 When a maintainer makes you a Reader, or removes you, while you have a document open, the page turns read-only after your next edit is refused, or within a minute.
 A member who was removed is told `You no longer have access to this project.`
+When someone deletes a document you have open, your next edit on it is not saved, and the page turns read-only for every role, administrators included, with `This document was deleted.`
 
 Each member also has a **Review work** checkbox, independent of their role.
 Tick it and everything that person enters is marked as needing review until someone else confirms it (see <<_machine_vs_human_annotations>>).
