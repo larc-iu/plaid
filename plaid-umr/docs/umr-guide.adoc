@@ -223,8 +223,8 @@ Opening the document here puts right what such an edit left behind, in one entry
 
 A node anchored to words follows its words.
 Letters typed at an anchored word's edge or inside it, a space included, stay in the nodes anchored to it.
-A word split in two in Plaid IGT (`ikian,` into `ikian` and `,`) keeps its nodes on the half with the most letters, the first half on a tie, from the next opening here.
-A node anchored to two words with no space between them (`do` and `n't`) is put on one of them in the same way, since nothing tells it from a word split in two.
+A word split in two (`ikian,` into `ikian` and `,`) keeps its nodes on the half with the most letters, the first half on a tie, from the next opening here.
+A node aligned to several words with no space between them (`do` and `n't`, or the words of a text written without spaces) keeps all of them. Only a word split after the node was aligned is cut.
 A node made with no word belongs to the sentence it was made in and stands over the whole of it, so an edit anywhere in the text leaves it where it belongs.
 A node whose words are all taken off its anchor (**u**) stands over the text they had, as one whose words are deleted does, so a sentence split elsewhere leaves it, with its edges, on the side of that text.
 Two sentences joined into one bring their nodes together in it, where they are two graphs until the annotator joins them, which the sentence's header counts and the Validation tab lists.
@@ -303,6 +303,7 @@ An edge an imported file brought there is kept, and the Validation tab lists it.
 
 An edge that would close a cycle is refused, except through `:quote` or `:modal-predicate`, whether it is drawn or relabelled.
 The assistant and **Draft** refuse such a sentence too.
+A relation a draft states in both directions is written once.
 
 While **u** or **Add a child** waits for its click, the arrows still move and Escape leaves it.
 Other keys do nothing until it ends, except the digits, Backspace and Enter of **u**.
@@ -431,9 +432,10 @@ An edit is refused when, since the page last read the document, another person c
 A change to another sentence's graph, or annotation this edit does not touch such as a gloss in Plaid IGT, is no conflict: the edit is saved, and the page shows both.
 Two people adding the same constant (`author`) for the first time at once conflict, while relations to a constant that is there already from two sentences do not.
 A refused edit says `Changed elsewhere. Now showing the latest version. Redo your edit.`, and the page then shows their change.
-While you are still in that sentence, a concept or relation typed for it opens again in its editor with what was typed, and Enter saves it.
+While you are still in that sentence, a concept or relation typed for it opens again in its editor with what was typed, a concept with the vocabulary entry it was picked from, and Enter saves it.
 When a maintainer makes you a Reader, or removes you, while you have a document open, the page turns read-only after your next edit is refused, or within a minute.
 A member who was removed is told `You no longer have access to this project.`
+When someone deletes a document you have open, your next edit on it is not saved, and the page turns read-only for every role, administrators included, with `This document was deleted.`
 
 **Settings → Access** manages the project's members and invitation links, and makes named tokens for scripts and services.
 A link whose maker no longer has the access it grants reads **inactive** and does not work until they get that access back. Revoking it ends it for good.
@@ -451,9 +453,11 @@ A draft stops early when the model gives no answer for two sentences in a row. I
 **Stop** ends a draft within about a second, even while the model has not answered.
 A draft writes each sentence's graph whole. If it fails partway, the message says how many sentences were drafted.
 A draft that cannot read the project fails and writes nothing.
-The operator sets how long one reply may take (`--timeout`, 120 seconds by default). A reply that does not come in time is asked for once more, then its sentence is reported as not drafted.
+A sentence someone changes while the draft runs is not drafted, and the report names it. An edit to another sentence does not stop the draft.
+The operator sets how long the model may send nothing (`--timeout`, 120 seconds by default). A reply that stops that long is asked for once more, then its sentence is reported as not drafted.
 A second drafting method, **Skeleton from glosses**, needs no model: it writes one anchored node per word that is linked to a vocabulary entry or carries a gloss, with the headword or the gloss's lexical part as the concept and the grammatical abbreviations (`3SG`, `NEG`, `HAB`) as attributes, and marks the word carrying tense or aspect as the root. It draws no relations.
 It fails and writes nothing when it cannot read the project or one of its vocabularies.
+Like **Draft**, it leaves out a sentence someone changes while it runs, and names it.
 
 == Compare
 
