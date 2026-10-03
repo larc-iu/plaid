@@ -98,10 +98,13 @@ def t_set_analysis(ws: Workspace, document: str, ref: Optional[str] = None, morp
         seen.add(w.id)
         refuse_shape_and_analysis(ws, w.id, r, analysing=True)
         out = parse_analysis(ws, item.get('morphemes'))
-        existing = [{'id': m.id, 'span_ids': [sp.id for sp in m.fields.values()]} for m in w.morphemes]
+        # A derived morpheme (an unsegmented word's) is stored nowhere, so
+        # there is nothing for the analysis to keep or delete.
+        existing = [{'id': m.id, 'span_ids': [sp.id for sp in m.fields.values()]} for m in w.morphemes
+                    if not m.virtual]
         had_values = sum(1 for m in w.morphemes for sp in m.fields.values() if sp.value != '')
         op, note = analysis_op(ws, f'{ws.doc_label(doc.id)} {r} "{w.surface}"', w.surface, w.id, w.text_id, w.begin,
-                               w.end, existing, segmentation(w) if w.morphemes else '', had_values, out)
+                               w.end, existing, segmentation(w) if existing else '', had_values, out)
         staged.append(op)
         if note:
             notes.append(f'{r}{note}' if len(items) > 1 else note)
@@ -504,7 +507,8 @@ def edit_planned_morpheme(ws: Workspace, doc: IgtDoc, ref: str, place: _Place, *
     head = f'{ws.doc_label(doc.id)} s{si}.w{wi} "{w.surface}"'
     had_values = sum(1 for sm in w.morphemes for sp in sm.fields.values() if sp.value != '')
     rebuilt, _note = analysis_op(ws, head, w.surface, w.id, w.text_id, w.begin, w.end,
-                                 place.analysis.get('existing') or [], segmentation(w) if w.morphemes else '',
+                                 place.analysis.get('existing') or [],
+                                 segmentation(w) if place.analysis.get('existing') else '',
                                  had_values, morphemes)
     if form is not None:
         for i, op in enumerate(ws.ops):

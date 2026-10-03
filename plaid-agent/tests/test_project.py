@@ -32,8 +32,10 @@ def test_parse_document_numbers_words_skipping_punctuation_and_attaches_everythi
     assert w1.morphemes[1].fields['Morph Gloss'].value == 'ERG' and w1.morphemes[1].link.form == '-di'
     # A morpheme with no metadata.form shows the word surface (the editor's default morpheme).
     assert s1.words[1].morphemes[0].form == 'gam'
-    # A word with no morpheme tokens at all.
-    assert s1.words[2].morphemes == []
+    # A word with no morpheme tokens at all reads as the editor derives it:
+    # one morpheme, the whole word, stored nowhere.
+    [m] = s1.words[2].morphemes
+    assert (m.id, m.index, m.form, m.virtual, m.fields, m.link) == ('virtual:w-3', 1, 'akuna', True, {}, None)
     assert s1.fields['Translation'].value == 'Ali saw a fish.'
 
 
@@ -67,7 +69,8 @@ def test_refs_resolve_and_fail_helpfully():
     assert isinstance(resolve(d, 's1'), Sentence)
     assert isinstance(resolve(d, 's1.w2'), Word) and resolve(d, 's1.w2').surface == 'gam'
     assert isinstance(resolve(d, 's2.w1.m2'), Morpheme) and resolve(d, 's2.w1.m2').form == 'ar'
-    for bad, msg in (('s3', 'has 2 sentences'), ('s1.w9', 'has 3 words'), ('s1.w3.m1', 'has 0 morphemes'),
+    assert resolve(d, 's1.w3.m1').virtual  # an unsegmented word's derived morpheme
+    for bad, msg in (('s3', 'has 2 sentences'), ('s1.w9', 'has 3 words'), ('s1.w3.m2', 'has 1 morphemes'),
                      ('w1', 'Bad reference')):
         try:
             resolve(d, bad)

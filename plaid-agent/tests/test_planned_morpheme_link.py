@@ -177,7 +177,9 @@ def test_a_place_the_planned_analysis_does_not_have_is_refused():
 
 def test_without_a_planned_analysis_the_refusal_says_how_to_link_a_new_morpheme():
     w = scan_ws(FakeClient())
-    out = call_tool(w, 'link_entry', _link('s1.w3.m1', 'vi-gam'))
+    # m1 of an unsegmented word is the word itself (the editor's derived
+    # morpheme), so only a later place is a morpheme the word does not have.
+    out = call_tool(w, 'link_entry', _link('s1.w3.m2', 'vi-gam'))
     assert 'plan its analysis first (set_analysis), then link sN.wN.mN in the same plan' in out
     assert w.ops == []
 

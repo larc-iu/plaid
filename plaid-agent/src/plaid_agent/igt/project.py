@@ -370,6 +370,31 @@ class Morpheme:
     metadata: dict
     fields: Dict[str, Span] = field(default_factory=dict)
     link: Optional[Link] = None
+    #: The morpheme of a word nobody has segmented: stored nowhere, derived
+    #: as the editor derives it (plaid-igt's virtualMorpheme.js), and made
+    #: by the first write that names it.
+    virtual: bool = False
+
+
+# A word nobody has segmented has no morpheme token. The editor shows one all
+# the same, the whole word, under this id (plaid-igt's virtualMorpheme.js), and
+# its first write makes it. The assistant reads and writes it the same way.
+VIRTUAL_PREFIX = 'virtual:'
+
+
+def virtual_morpheme_id(word_id: str) -> str:
+    return f'{VIRTUAL_PREFIX}{word_id}'
+
+
+def is_virtual(token_id) -> bool:
+    return isinstance(token_id, str) and token_id.startswith(VIRTUAL_PREFIX)
+
+
+def stored_morphemes(w: 'Word') -> List['Morpheme']:
+    """A word's stored morphemes, without the derived one of a word nobody
+    has segmented. What counts and searches morphemes reads, as the query
+    engine, which sees only what is stored, does."""
+    return [m for m in w.morphemes if not m.virtual]
 
 
 @dataclass
@@ -537,6 +562,10 @@ def parse_document(raw: dict, project: IgtProject) -> IgtDoc:
                     form=form if form not in (None, '') else (surface if len(chain) == 1 else ''),
                     morph_type=mm.get('morphType'), metadata=mm,
                     fields=morph_spans.get(m['id'], {}), link=morph_links.get(m['id'])))
+            if not chain and morph_layer is not None:
+                # Unsegmented: the editor's derived morpheme, the whole word.
+                morphemes.append(Morpheme(id=virtual_morpheme_id(w['id']), index=1, form=surface,
+                                          morph_type=None, metadata={}, virtual=True))
             ws.append(Word(
                 id=w['id'], index=len(ws) + 1, surface=surface, begin=w['begin'], end=w['end'],
                 text_id=text.get('id'), metadata=meta,

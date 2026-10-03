@@ -35,7 +35,8 @@ ENTRY_REMOVALS = ('rename_entry', 'delete_entry')
 MAINTAINERS_ONLY = ('Only a maintainer of the lexicon "{lexicon}" can rename, delete or merge its entries, '
                     'and the person you are acting for does not maintain it. Nothing was planned. '
                     'Tell them a maintainer of that lexicon has to make this change.')
-from .project import IgtProject, IgtDoc, Morpheme, Sentence, Word, load_document, render_document, resolve
+from .project import (IgtProject, IgtDoc, Morpheme, Sentence, Word, is_virtual, load_document, render_document,
+                      resolve)
 from .lexview import LexView, _dict_hits, entry_line
 from .vocab import RESERVED_ITEM_KEYS, fields_for_item
 
@@ -44,6 +45,16 @@ MAX_DOCS_PER_SEARCH = 1000
 # What counts as one change here, appended to the plan-is-full refusal.
 PLAN_NOTE = ('A corpus-wide replace or respell counts as one change, and so does a whole '
              "document's confirm, however many values it covers.")
+
+# The keys of a change that may name an unsegmented word's derived morpheme.
+VIRTUAL_KEYS = ('token_id', 'morpheme_id')
+
+
+def virtual_at(project: IgtProject, w: Word) -> Dict[str, Any]:
+    """Where the derived morpheme of the word ``w`` is made: the morpheme
+    layer, at the word's extent."""
+    return {'layer_id': project.morpheme_layer_id, 'text_id': w.text_id, 'begin': w.begin, 'end': w.end}
+
 
 # Parsed documents, shared across turns and users of this process. See
 # plaid_agent.core.docload for what the key covers and what it does not.
@@ -200,6 +211,9 @@ class Workspace(BaseWorkspace):
             return 'span', sp.id, f'{head}, {detail}', m.form if m else w.surface
         if isinstance(obj, Sentence):
             return 'token', s.id, f'Sentence {s.index}', s.text
+        if m and m.virtual:
+            raise ToolError(f'{ref}: "{w.surface}" is not segmented yet, so its morpheme is the word itself. '
+                            f'Comment on the word ({ref.rsplit(".", 1)[0]}).')
         if m:
             return 'token', m.id, f'{m.form}, in {w.surface}, {where}', m.form
         return 'token', w.id, f'{w.surface}, {where}', w.surface
@@ -473,6 +487,7 @@ class Workspace(BaseWorkspace):
         self._patch_version += 1
 
     def add_op(self, op: Dict[str, Any]) -> None:
+        self.place_virtual(op)
         with self.superseding([op]):
             super().add_op(op)
             # A new analysis of a word (or a discard of it) replaces the one a
@@ -487,6 +502,22 @@ class Workspace(BaseWorkspace):
         # it, not a reason to refuse it.
         with self.superseding(ops):
             super().add_ops(ops)
+
+    def place_virtual(self, op: Dict[str, Any]) -> None:
+        """Note on ``op`` the word an unsegmented word's derived morpheme is
+        made on (``virtual_at``), when it writes to one: the morpheme is
+        stored nowhere, so the executor makes it from this when the plan is
+        applied. A change built from a query notes it where it is built."""
+        if op.get('virtual_at'):
+            return
+        for key in VIRTUAL_KEYS:
+            if not is_virtual(op.get(key)):
+                continue
+            hit = _found(self, op[key])
+            if hit is None or hit[1] is None:
+                raise ToolError(f'{op.get("label") or "That change"}: the word it is on was not read in this turn')
+            op['virtual_at'] = virtual_at(self.project, hit[1])
+            return
 
     @staticmethod
     def moot_under(op: Dict[str, Any], rewritten: set) -> bool:
@@ -851,7 +882,9 @@ def _analysis(morphemes) -> List[str]:
 
 
 def _morphemes(ws: Workspace, ids) -> List[Morpheme]:
-    return [hit[2] for hit in (_found(ws, i) for i in ids or []) if hit and hit[2] is not None]
+    """The stored morphemes among ``ids``: a derived one holds no work."""
+    return [hit[2] for hit in (_found(ws, i) for i in ids or [])
+            if hit and hit[2] is not None and not hit[2].virtual]
 
 
 def _word_and_analysis(ws: Workspace, op: Dict[str, Any]) -> List[str]:

@@ -95,6 +95,7 @@ from plaid_client.service import requester_message
 from ..core.plan import (CLEAR_PROV, Minter, PlanError, PlanOutOfDate, Stamps,  # noqa: F401 - PlanError is re-exported
                          TrackingBatcher, apply_add_comment, apply_restore_document, applying,
                          check_reach, confirm_note, expand_ops)
+from .project import is_virtual, virtual_morpheme_id
 from .vocab import parent_of
 
 # How a kind tags what it does to the shape of the text. RESHAPES is every
@@ -161,6 +162,9 @@ class Context:
         # contribution, and another contributor's work left for a reviewer.
         self.confirm_accepted = 0
         self.confirm_left = 0
+        # The morpheme made for each unsegmented word's derived one, by the
+        # derived id, so every write naming it names the one token.
+        self.materialized: Dict[str, str] = {}
 
     def defer(self, op, when: str = 'second') -> None:
         self.later.setdefault(when, []).append(op)
@@ -177,6 +181,29 @@ class Context:
 
 # --- what each kind does -----------------------------------------------------------
 
+def _token(ctx: Context, op, token_id: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+    """The token a write names: a stored one as it is, and the derived
+    morpheme of an unsegmented word (``virtual:<word id>``) made first, in
+    the write's own batch, as the editor makes it (``_planMorphemes``): the
+    word's extent, first in its chain, with ``metadata`` (a form or a type
+    the write gives it) and the plan's stamp. Made once, however many writes
+    name it. ``op['virtual_at']`` is the word's extent, noted as the op was
+    staged."""
+    if not is_virtual(token_id):
+        return token_id
+    if token_id in ctx.materialized:
+        return ctx.materialized[token_id]
+    at = op.get('virtual_at')
+    if not at:
+        raise ValueError(f'{op.get("label") or op.get("kind")}: names the morpheme of an unsegmented word '
+                         'without the word it is made on')
+    made = ctx.materialized[token_id] = ctx.b.new_id()
+    meta = {**(metadata or {}), **ctx.stamp()}
+    ctx.b.add(lambda batch: batch.tokens.create(at['layer_id'], at['text_id'], at['begin'], at['end'],
+                                                precedence=1, metadata=meta or None, id=made))
+    return made
+
+
 def _apply_set_span(ctx: Context, op) -> int:
     span_id, value = op.get('span_id'), op.get('value') or ''
     if span_id and value == '':
@@ -184,7 +211,8 @@ def _apply_set_span(ctx: Context, op) -> int:
     elif span_id:
         ctx.b.update('spans', span_id, value=value, metadata=metadata_ops(ctx.restamp()))
     elif value != '':
-        ctx.b.add(lambda batch, o=op, v=value: batch.spans.create(o['layer_id'], [o['token_id']], v, ctx.stamp(),
+        token = _token(ctx, op, op['token_id'])
+        ctx.b.add(lambda batch, o=op, v=value: batch.spans.create(o['layer_id'], [token], v, ctx.stamp(),
                                                                   id=ctx.b.new_id()))
     else:
         return 0  # nothing to clear
@@ -192,7 +220,9 @@ def _apply_set_span(ctx: Context, op) -> int:
 
 
 def _apply_set_analysis(ctx: Context, op) -> int:
-    existing = op.get('existing') or []
+    # An unsegmented word's derived morpheme is stored nowhere: the analysis
+    # makes its whole chain.
+    existing = [m for m in op.get('existing') or [] if not is_virtual(m.get('id'))]
     morphemes = op.get('morphemes') or []
     layer, text_id = op['morpheme_layer_id'], op['text_id']
     begin, end = op['begin'], op['end']
@@ -294,7 +324,7 @@ def _apply_link(ctx: Context, op) -> int:
             ctx.planned_links.append(op)
             ctx.defer(op)
         return 1
-    return _link(ctx, op, [op['token_id']])
+    return _link(ctx, op, [_token(ctx, op, op['token_id'])])
 
 
 def _apply_link_phrase(ctx: Context, op) -> int:
@@ -317,8 +347,13 @@ def _apply_set_morph_type(ctx: Context, op) -> int:
     # Only a direct correction stages one (set_morpheme), so it is stamped as
     # the editor's setMorphemeType stamps it: the approved type is reviewed
     # work, and a re-analysis without Overwrite leaves it alone.
-    ctx.b.update('tokens', op['morpheme_id'],
-                 metadata=metadata_ops({'morphType': op.get('morph_type') or None, **ctx.restamp()}))
+    morph_type = op.get('morph_type') or None
+    mid = op['morpheme_id']
+    if is_virtual(mid) and mid not in ctx.materialized:
+        _token(ctx, op, mid, {'morphType': morph_type} if morph_type else None)
+        return 1
+    ctx.b.update('tokens', _token(ctx, op, mid),
+                 metadata=metadata_ops({'morphType': morph_type, **ctx.restamp()}))
     return 1
 
 
@@ -392,21 +427,31 @@ def _apply_set_morpheme_form(ctx: Context, op) -> int:
     # not stamped, as in Bulk Edit. A direct correction of one morpheme
     # (``restamp``, set_morpheme) is, as the editor's updateMorphemeForm
     # stamps it.
+    mid = op['morpheme_id']
+    if is_virtual(mid) and mid not in ctx.materialized:
+        _token(ctx, op, mid, {'form': op['form']})
+        return 1
     stamp = ctx.restamp() if op.get('restamp') else {}
-    ctx.b.update('tokens', op['morpheme_id'], metadata=metadata_ops({'form': op['form'], **stamp}))
+    ctx.b.update('tokens', _token(ctx, op, mid), metadata=metadata_ops({'form': op['form'], **stamp}))
     return 1
 
 
+def _stored(ids) -> List[str]:
+    """The morphemes among ``ids`` that are stored: an unsegmented word's
+    derived one is named by the guards and deleted by no one."""
+    return [i for i in ids or [] if not is_virtual(i)]
+
+
 def _apply_split_word(ctx: Context, op) -> int:
-    if op.get('morpheme_ids'):
-        ctx.b.add(lambda batch, o=op: batch.tokens.bulk_delete(list(o['morpheme_ids'])))
+    if _stored(op.get('morpheme_ids')):
+        ctx.b.add(lambda batch, o=op: batch.tokens.bulk_delete(_stored(o['morpheme_ids'])))
     ctx.b.add(lambda batch, o=op: batch.tokens.split(o['word_id'], o['position'], id=ctx.b.new_id()))
     return 1
 
 
 def _merge(ctx: Context, op, key: str, others: List[str]) -> int:
-    if op.get('morpheme_ids'):
-        ctx.b.add(lambda batch, o=op: batch.tokens.bulk_delete(list(o['morpheme_ids'])))
+    if _stored(op.get('morpheme_ids')):
+        ctx.b.add(lambda batch, o=op: batch.tokens.bulk_delete(_stored(o['morpheme_ids'])))
     # A multi-word expression made only of the merged words would sit on one
     # word after the merge, which is no expression: it goes first.
     for lid in op.get('mwe_ids') or []:
@@ -612,7 +657,7 @@ KIND = ok.registry([
     OpKind('set_span', ('field value', 'field values'), required=('layer_id', 'token_id'),
            apply=_apply_set_span, target=lambda op: ('span', op.get('layer_id'), op.get('token_id')),
            at=('token_id',), at_kind=TOKEN, token_keys=('token_id',), deletes=_set_span_deletes,
-           compact_each=('token_id', 'span_id', 'value', 'doc')),
+           compact_each=('token_id', 'span_id', 'value', 'doc', 'virtual_at')),
     OpKind('set_analysis', ('analysis', 'analyses'),
            required=('word_id', 'text_id', 'begin', 'end', 'morpheme_layer_id', 'morphemes'),
            apply=_apply_set_analysis, target=lambda op: ('analysis', op.get('word_id')),
@@ -702,7 +747,7 @@ KIND = ok.registry([
     OpKind('set_morpheme_form', ('morpheme form', 'morpheme forms'), required=('morpheme_id', 'form'),
            apply=_apply_set_morpheme_form, target=lambda op: ('morph_form', op.get('morpheme_id')),
            at=('morpheme_id',), at_kind=TOKEN, token_keys=('morpheme_id',),
-           compact_each=('morpheme_id', 'form', 'doc')),
+           compact_each=('morpheme_id', 'form', 'doc', 'virtual_at')),
     OpKind('set_morph_type', ('morpheme type', 'morpheme types'), required=('morpheme_id',),
            apply=_apply_set_morph_type, target=lambda op: ('morph_type', op.get('morpheme_id')),
            at=('morpheme_id',), at_kind=TOKEN, token_keys=('morpheme_id',)),
@@ -976,11 +1021,20 @@ def refuse_two_links(ops: List[Dict[str, Any]]) -> None:
 
 
 def analysed_morphemes(ops: List[Dict[str, Any]]) -> set:
-    """The stored morphemes the plan's analyses rewrite: an analysis keeps
-    the first of its word's chain, with the values and type it gives it, and
-    deletes the rest. A change of its own to any of them is moot."""
-    return {m.get('id') for op in ops if op.get('kind') == 'set_analysis'
-            for m in op.get('existing') or []} - {None}
+    """The morphemes the plan's analyses rewrite: an analysis keeps the first
+    of its word's stored chain, with the values and type it gives it, and
+    deletes the rest. Of a word nobody had segmented, it replaces the derived
+    morpheme (``virtual:<word id>``). A change of its own to any of them is
+    moot."""
+    out = set()
+    for op in ops:
+        if op.get('kind') != 'set_analysis':
+            continue
+        existing = op.get('existing') or []
+        out.update(m.get('id') for m in existing)
+        if not existing and op.get('word_id'):
+            out.add(virtual_morpheme_id(op['word_id']))
+    return out - {None}
 
 
 def planned_morpheme(ops: List[Dict[str, Any]], link: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -1086,11 +1140,9 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
     removed = removed_entries(ops)
     # Morphemes another op rewrites wholesale (set_analysis replaces the chain,
     # discard_analysis deletes or resets it): a form patch on them is moot.
-    rewritten = set()
+    rewritten = set(analysed_morphemes(ops))
     for op in ops:
-        if op.get('kind') == 'set_analysis':
-            rewritten.update(m['id'] for m in op.get('existing') or [])
-        elif op.get('kind') == 'discard_analysis':
+        if op.get('kind') == 'discard_analysis':
             rewritten.update(op.get('morpheme_ids') or [])
             if op.get('reset_first_id'):
                 rewritten.add(op['reset_first_id'])

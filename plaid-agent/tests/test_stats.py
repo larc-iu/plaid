@@ -44,8 +44,10 @@ def test_frequency_list():
 def test_worklist_kinds():
     w = ws()
     out = call_tool(w, 'worklist', {'kind': 'unglossed'})
-    assert out.startswith('3 morphemes without a Morph Gloss value across 2 distinct forms')
-    assert '  2\tgam\ts1.w2.m1, s2.w1.m1' in out
+    # An unsegmented word's derived morpheme (akuna) is unglossed work, as
+    # its empty cell in the editor's grid is.
+    assert out.startswith('4 morphemes without a Morph Gloss value across 3 distinct forms')
+    assert '  2\tgam\ts1.w2.m1, s2.w1.m1' in out and '  1\takuna\ts1.w3.m1' in out
     out = call_tool(w, 'worklist', {'kind': 'unglossed', 'field': 'Gloss'})
     assert '3 words without a Gloss value' in out and 'akuna' in out
     out = call_tool(w, 'worklist', {'kind': 'unglossed', 'field': 'Translation'})

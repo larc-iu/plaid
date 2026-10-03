@@ -17,7 +17,7 @@ from ..core.args import clamp_limit, read_int
 from ..core.limits import READ_LIMITS
 from ..core.tools import ToolError, truncate
 
-from .project import (Word, Morpheme, document_lines, joiner_between, render_overview,
+from .project import (Word, Morpheme, document_lines, joiner_between, render_overview, stored_morphemes,
                       render_word, segmentation, word_ref)
 from .lexview import LexView, _num_key, entry_line
 from .vocab import RESERVED_ITEM_KEYS, all_examples, arrange_as_tree, homograph_group, references_to
@@ -104,7 +104,7 @@ def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document
                 if where_l == 'baseline':
                     hit = match(w.surface)
                 elif where_l == 'morpheme':
-                    hit = any(match(m.form) for m in w.morphemes)
+                    hit = any(match(m.form) for m in stored_morphemes(w))
                 elif field.scope == 'Word':
                     sp = w.fields.get(field.name)
                     hit = bool(sp and match(sp.value))
@@ -215,7 +215,7 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
                         if not match(w.surface):
                             continue
                     elif where_l == 'morpheme':
-                        hit_morphs = [m for m in w.morphemes if match(m.form)]
+                        hit_morphs = [m for m in stored_morphemes(w) if match(m.form)]
                         if not hit_morphs:
                             continue
                     elif field.scope == 'Word':

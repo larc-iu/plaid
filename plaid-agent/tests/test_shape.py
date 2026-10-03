@@ -21,7 +21,9 @@ def test_split_word_by_left_part_or_length():
                            '(word values and link go to the left part)')
     w2 = ws()
     call_tool(w2, 'split_word', {'document': 'd1', 'ref': 's1.w3', 'at': '3'})
-    assert w2.ops[0]['position'] == 14 and w2.ops[0]['morpheme_ids'] == [] and '(its' not in w2.ops[0]['label']
+    # An unsegmented word's derived morpheme is named for the guards, and
+    # deleted by no one when applied (test_virtual_morpheme.py).
+    assert w2.ops[0]['position'] == 14 and w2.ops[0]['morpheme_ids'] == ['virtual:w-3'] and '(its' not in w2.ops[0]['label']
     assert 'between 1 and 4' in call_tool(w2, 'split_word', {'document': 'd1', 'ref': 's1.w3', 'at': 5})
     assert 'not the start of' in call_tool(w2, 'split_word', {'document': 'd1', 'ref': 's1.w3', 'at': 'xy'})
     # A later split or delete of the same word replaces the earlier one; a merge refuses it.
@@ -63,7 +65,7 @@ def test_delete_word_and_sentence_ops():
     w = ws()
     out = call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w3', 's1.w1']})
     assert 'Planned 2 changes' in out
-    assert w.ops[0] == {'kind': 'delete_word', 'word_id': 'w-3', 'morpheme_ids': [], 'link_ids': [],
+    assert w.ops[0] == {'kind': 'delete_word', 'word_id': 'w-3', 'morpheme_ids': ['virtual:w-3'], 'link_ids': [],
                         'label': 'Text 1 s1.w3 "akuna": delete the word token (the text is unchanged)'}
     assert w.ops[1]['word_id'] == 'w-1' and w.ops[1]['morpheme_ids'] == ['m-1a', 'm-1b'] and 'analysis, values, and link are deleted' in w.ops[1]['label']
 
@@ -365,7 +367,7 @@ def test_append_and_retype_plan_ops_and_guards():
     assert 'Planned 1 change' in out
     op = w3.ops[0]
     assert (op['begin'], op['end'], op['old'], op['new'], op['sentence_id']) == (0, 17, 'Ali-di gam akuna.', 'Ali-di gam akuna gam.', 's-1')
-    assert op['word_ids'] == ['w-1', 'w-2', 'w-3'] and op['morpheme_ids'] == ['m-1a', 'm-1b', 'm-2']
+    assert op['word_ids'] == ['w-1', 'w-2', 'w-3'] and op['morpheme_ids'] == ['m-1a', 'm-1b', 'm-2', 'virtual:w-3']
     assert op['label'].startswith('Text 1 s1: retype "Ali-di gam akuna." → "Ali-di gam akuna gam." (Changed words keep')
     assert call_tool(w3, 'retype_sentence', {'document': 'd1', 'ref': 's2', 'text': 'Gam-ar.'}).startswith('Planned 0')
     # Same sentence again: last wins (same region), then a respelling inside it is refused.

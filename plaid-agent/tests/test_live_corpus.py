@@ -138,6 +138,9 @@ def test_bulk_tools_plan_the_same_ops(proj):
     same_ops(proj, 'set_field_for_form', {'form': 'gam', 'field': 'Gloss', 'value': 'fish'})
     same_ops(proj, 'set_field_for_form', {'form': 'ali', 'field': 'Gloss', 'value': 'Ali2', 'only_empty': False})
     same_ops(proj, 'set_field_for_form', {'form': 'di', 'field': 'Morph Gloss', 'value': 'OBL', 'only_empty': False})
+    # akuna has no morpheme token: both paths reach its derived morpheme.
+    b = same_ops(proj, 'set_field_for_form', {'form': 'akuna', 'field': 'Morph Gloss', 'value': 'go'})
+    assert [op['token_id'] for op in b.ops] == [f'virtual:{proj.ids["w-3"]}']
     same_ops(proj, 'set_analysis_for_form', {'form': 'GAM', 'morphemes': [{'form': 'gam', 'fields': {'Morph Gloss': 'fish'}}]})
     same_ops(proj, 'set_analysis_for_form', {'form': 'gam', 'morphemes': [{'form': 'gam'}], 'skip_analyzed': True})
     same_ops(proj, 'set_analysis_for_form', {'form': 'Ali-di', 'morphemes': [{'form': 'Ali'}, {'form': 'di', 'type': 'suffix', 'fields': {'Morph Gloss': 'ERG'}}]})
@@ -200,3 +203,29 @@ def test_multi_word_expressions_and_review_match_the_scan(review_proj):
     b = same_ops(proj, 'confirm', {'documents': ['all']})
     assert b.ops[-1]['link_ids'] == [proj.ids['l-mwe']] and b.ops[-1]['span_ids'] == [proj.ids['sp-g1']]
     assert [d['id'] for d in b.plan_payload()['documents']] == [proj.ids['d1']]
+
+
+def test_a_value_on_an_unsegmented_words_morpheme_is_written_with_the_morpheme(live_client):
+    """Applied against the real core: the morpheme the editor derives is made
+    at the word's extent, first in its chain, with the gloss on it, in one
+    batch the core's morpheme-layer rules accept."""
+    from plaid_agent.igt.plan import execute_plan
+    # A project of its own: the module's is read by every other test here,
+    # and `seed` replaces a project of the same name.
+    s = seed(live_client, project_raw(), {'d1': document_raw()}, {VOCAB: lexicon_raw()},
+             name='igt-agent test, derived morpheme')
+    try:
+        c = s.client
+        p = load_project(c, s.project_id)
+        w = Workspace(c, p)
+        out = call_tool(w, 'set_field_for_form', {'form': 'akuna', 'field': 'Morph Gloss', 'value': 'go'})
+        assert 'Planned 1 change' in out, out
+        execute_plan(c, w.plan_payload()['ops'], source='service:igt:assist:x', label='l', project=p)
+        d = load_document(c, p, s.ids['d1'])
+        [m] = d.sentences[0].words[2].morphemes
+        assert not m.virtual and m.index == 1 and m.form == 'akuna' and m.fields['Morph Gloss'].value == 'go'
+        assert m.metadata.get('provConfirmed') is True
+        out = call_tool(Workspace(c, p), 'worklist', {'kind': 'unglossed'})
+        assert 'akuna' not in out
+    finally:
+        s.delete()

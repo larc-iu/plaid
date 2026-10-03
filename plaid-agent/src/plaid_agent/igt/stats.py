@@ -11,7 +11,8 @@ from typing import Any, Dict, List, Optional
 
 from plaid_client.provenance import prov_state, CONTRIBUTED_STATE, PROV_SOURCE_KEY
 
-from .project import IgtDoc, Sentence, Word, REVIEWABLE, mwe_form, render_word, segmentation, word_ref
+from .project import (IgtDoc, Sentence, Word, REVIEWABLE, mwe_form, render_word, segmentation, stored_morphemes,
+                      word_ref)
 from ..core.tools import ToolError, truncate
 from .lexview import entry_line
 from .workspace import Workspace, _matcher
@@ -54,7 +55,7 @@ def _linked(w: Word) -> bool:
 def _doc_numbers(doc: IgtDoc, project) -> Dict[str, Any]:
     words = [w for s in doc.sentences for w in s.words]
     forms = Counter(w.surface.casefold() for w in words)
-    morphs = [m for w in words for m in w.morphemes]
+    morphs = [m for w in words for m in stored_morphemes(w)]
     mforms = Counter(m.form.casefold() for m in morphs)
     out: Dict[str, Any] = {
         'sentences': len(doc.sentences), 'words': len(words), 'forms': len(forms),
@@ -84,7 +85,7 @@ def _sum_numbers(rows: List[Dict[str, Any]], project, docs: List[IgtDoc]) -> Dic
         total[k] = sum(r[k] for r in rows)
     words = [w for d in docs for s in d.sentences for w in s.words]
     forms = Counter(w.surface.casefold() for w in words)
-    mforms = Counter(m.form.casefold() for w in words for m in w.morphemes)
+    mforms = Counter(m.form.casefold() for w in words for m in stored_morphemes(w))
     total['forms'] = len(forms)
     total['hapax'] = sum(1 for c in forms.values() if c == 1)
     total['morpheme_forms'] = len(mforms)
@@ -242,7 +243,7 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
                     counts[k] += 1
                     spread[k].add(d.id)
                 elif what_l == 'morpheme':
-                    for m in w.morphemes:
+                    for m in stored_morphemes(w):
                         if not m.form:
                             continue
                         k = m.form.casefold()
@@ -256,7 +257,7 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
                     else:
                         empty += 1
                 else:
-                    for m in w.morphemes:
+                    for m in stored_morphemes(w):
                         sp = m.fields.get(field.name)
                         if sp and sp.value != '':
                             counts[sp.value] += 1

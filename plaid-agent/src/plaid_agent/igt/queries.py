@@ -24,6 +24,7 @@ from ..core.limits import ROW_LIMIT
 from ..core.plan import labelled
 from ..core.tools import ToolError
 from .corpus import Corpus, RENDER_DOC_BUDGET, Unanalyzed, review_stamps
+from .project import virtual_morpheme_id
 from .workspace import Workspace
 
 MORE_DOCS_NOTE = '  … more hits in other documents (name a document, or narrow the pattern)'
@@ -288,9 +289,14 @@ def q_worklist(ws: Workspace, kind: str, f, lvl: str, user: Optional[str] = None
     else:
         if kind == 'unlinked':
             where = c.in_word('?m', '?w') + [['not', ['vocab-link', '?m', '?v']], ['not', ['vocab-link', '?w', '?v2']]]
+            bare = c.bare_word('?w') + [['not', ['vocab-link', '?w', '?v2']]]
         else:
             where = [c.morph('?m'), ['not', c.span('?s', f.layer_id), ['covers', '?s', '?m']]]
+            bare = c.bare_word('?w')
         rows = c.group(where, ['?m.metadata.form', '?m.value', '?m.doc'])
+        # A word nobody has segmented has the derived morpheme the editor
+        # shows (the whole word), with no value and no link of its own.
+        rows += [(None, value, doc, n) for value, doc, n in c.group(bare, ['?w.value', '?w.doc'])]
         counts = Counter()
         by_doc = []
         for form, value, doc, n in rows:
@@ -945,12 +951,18 @@ def q_set_field_for_form(ws: Workspace, form: str, f, value: str, only_empty: bo
     without = c.entities(unit + [['not', c.span('?s', f.layer_id), ['covers', '?s', '?u']]], ['?u'], cap + 1,
                          [['?u.doc'], ['?u.begin']])
     rows = [(u, s) for u, s in with_span] + [(u, None) for (u,) in without]
-    # Both reads cap CANDIDATES, not matches, and they are ordered by document.
+    # A word of that form nobody has segmented: its morpheme is the derived
+    # one the editor shows, stored nowhere and so holding no value, which the
+    # plan makes when it writes the value (``virtual_at``).
+    bare = c.entities(c.bare_word('?u', value=spec), ['?u'], cap + 1,
+                      [['?u.doc'], ['?u.begin']]) if f.scope == 'Morpheme' else []
+    rows += [(_derived_morpheme(ws, u), None) for (u,) in bare if isinstance(u, dict) and not c.ignored(u.get('value'))]
+    # Every read caps CANDIDATES, not matches, and they are ordered by document.
     # Past the cap the later documents were never looked at, so a form whose
     # first `cap` occurrences all hold the value already would answer "nothing
     # to change" for a corpus full of changes. The same refusal
     # `q_replace_in_field` gives for the same shape.
-    if len(with_span) > cap or len(without) > cap:
+    if len(with_span) > cap or len(without) > cap or len(bare) > cap:
         raise ToolError(f'"{form}" occurs more than {cap} times, which is more than one pass can '
                         f'read, so setting {f.name} across the project here would only see part of '
                         f'the corpus. Narrow it to a document and go in passes.')
@@ -968,7 +980,7 @@ def q_set_field_for_form(ws: Workspace, form: str, f, value: str, only_empty: bo
         if old is not None:
             ws.note_metadata(old.id, old.metadata)
         op = {'kind': 'set_span', 'layer_id': f.layer_id, 'token_id': tok['id'], 'span_id': old.id if old else None,
-              'value': value, 'doc': tok['document'],
+              'value': value, 'doc': tok['document'], **({'virtual_at': tok['virtual_at']} if 'virtual_at' in tok else {}),
               **labelled(f'{head} "{what[:40]}"',
                          f'{f.name} ' + (f'"{old.value}" → "{value}"' if old and old.value != '' else f'= "{value}"')
                          + (' (cleared)' if value == '' else '')),
@@ -978,6 +990,15 @@ def q_set_field_for_form(ws: Workspace, form: str, f, value: str, only_empty: bo
     for op in staged:
         op.pop('_pos', None)
     return staged
+
+
+def _derived_morpheme(ws: Workspace, word: Dict[str, Any]) -> Dict[str, Any]:
+    """The derived morpheme of an unsegmented word a query returned, shaped
+    as a morpheme row: the word's own id, extent and surface under the
+    editor's derived id, and where the plan makes it (``virtual_at``)."""
+    return {**word, 'id': virtual_morpheme_id(word['id']), 'metadata': {},
+            'virtual_at': {'layer_id': ws.project.morpheme_layer_id, 'text_id': word.get('text'),
+                           'begin': word.get('begin'), 'end': word.get('end')}}
 
 
 def q_analysis_targets(ws: Workspace, form: str, skip_analyzed: bool, cap: int):

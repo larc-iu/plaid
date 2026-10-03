@@ -73,6 +73,16 @@ class Corpus(BaseCorpus):
         vs = {'doc': {'var': f'?xd{tag}'}, 'begin': {'var': f'?xb{tag}'}, 'end': {'var': f'?xe{tag}'}}
         return [['token', mvar, {'layer': self.M, **vs}], ['token', wvar, {'layer': self.W, **vs}]]
 
+    def bare_word(self, var: str = '?w', **c) -> List[list]:
+        """A word token ``var`` nobody has segmented: no morpheme token at
+        its extent. The editor shows it one morpheme all the same, the whole
+        word (``project.virtual_morpheme_id``), which the engine cannot see."""
+        if not self.M:
+            raise ToolError('This project has no morpheme layer.')
+        vs = {'doc': {'var': '?bxd'}, 'begin': {'var': '?bxb'}, 'end': {'var': '?bxe'}}
+        return [self.word(var, **c), ['token', var, {'layer': self.W, **vs}],
+                ['not', ['token', '?bxm', {'layer': self.M, **vs}]]]
+
     def morph_form_clauses(self, var: str, spec: Dict[str, Any]) -> list:
         """Match a morpheme by its FORM: the stored metadata.form, or, for a
         morpheme without one, the surface it inherits from its word."""
