@@ -3,7 +3,8 @@
   with a ud-shaped and an igt-shaped stack on one text, declares every
   constraint type, and runs random steps through the REST surface: span,
   relation and link writes, child token creates, sentence and word splits,
-  merges and shifts, text saves, restores, and batches of them. After every
+  merges and shifts, text saves, restores, relations written in an import
+  operation, and batches of them. After every
   step a checker written apart from `plaid.sql.constraints.layer` reads the
   document's rows and asserts:
 
@@ -156,7 +157,7 @@
 
 (defn- violations
   "Every broken rule in `snap`, as maps {:type :ids}."
-  [{:keys [sl wl swl ml gloss lemma mgloss deps enh]} snap]
+  [{:keys [sl wl swl ml gloss lemma mgloss deps enh exempt]} snap]
   (let [of-layer (fn [k l] (filter #(= l (:layer (val %))) (get snap k)))
         extents (fn [l] (set (map (fn [[_ t]] [(:b t) (:e t)]) (of-layer :tokens l))))
         coext (fn [child parent]
@@ -181,7 +182,10 @@
                                     b (ancestor-of snap sl (place snap (:t r)))]
                               :when (or (nil? a) (nil? b) (not= a b))]
                           {:type :same-ancestor :ids #{rid}}))
-        dep-rels (of-layer :relations deps)]
+        dep-rels (of-layer :relations deps)
+        ;; A relation an import, a copy or a restore wrote, with the ends
+        ;; it left, counts toward neither max-in-degree nor acyclic.
+        counted-rels (remove (fn [[rid r]] (= (get (some-> exempt deref) rid) [(:s r) (:t r)])) dep-rels)]
     (concat
      (coext swl wl) (coext ml wl)
      (single-span gloss) (single-span lemma) (single-span mgloss)
@@ -191,9 +195,9 @@
      (for [[id r] dep-rels
            :when (and (value-bad? (:value r) deprels ":" true) (not (machine? snap id)))]
        {:type :value-set :ids #{id}})
-     (for [[_ rs] (group-by (comp :t val) dep-rels) :when (> (count rs) 1)]
+     (for [[_ rs] (group-by (comp :t val) counted-rels) :when (> (count rs) 1)]
        {:type :max-in-degree :ids (set (map key rs))})
-     (when (has-cycle? (for [[_ r] dep-rels :when (not= (:s r) (:t r))] [(:s r) (:t r)]))
+     (when (has-cycle? (for [[_ r] counted-rels :when (not= (:s r) (:t r))] [(:s r) (:t r)]))
        [{:type :acyclic :ids #{}}])
      (same-ancestor deps) (same-ancestor enh)
      (single-link wl) (single-link ml))))
@@ -398,7 +402,7 @@
   (let [words (of-layer snap :tokens wl)
         lemmas (of-layer snap :spans lemma)
         value (fn [] (if (chance r 0.8) (pick r gloss-values) (pick r ["XYZ" "N..V" "" nil "N.V"])))]
-    (case (n-of r 12)
+    (case (n-of r 13)
       0 (when-let [s (pick r (of-layer snap :spans gloss))]
           {:path (str "/api/v1/spans/" s) :method "PATCH" :body {:value (value)}})
       1 (when-let [t (pick r (concat words (of-layer snap :tokens ml)))]
@@ -435,7 +439,10 @@
       10 (when-let [s (pick r (of-layer snap :spans mgloss))]
            {:path (str "/api/v1/spans/" s "/metadata") :method "PUT" :body {"prov" "inferred" "provSource" "m"}})
       11 (when-let [s (pick r (of-layer snap :spans gloss))]
-           {:path (str "/api/v1/spans/" s "/metadata") :method "PUT" :body {"provConfirmed" true "prov" "inferred"}}))))
+           {:path (str "/api/v1/spans/" s "/metadata") :method "PUT" :body {"provConfirmed" true "prov" "inferred"}})
+      ;; A new source keeps the head count and makes the head a person's.
+      12 (when-let [rel (pick r (of-layer snap :relations deps))]
+           {:path (str "/api/v1/relations/" rel "/source") :method "PUT" :body {:span-id (pick r lemmas)}}))))
 
 (defn- structural-op
   "A write that reshapes tokens, as a batch entry, or nil."
@@ -470,6 +477,38 @@
                         2 (if (< p n) (str (subs body 0 p) (pick r ["a" " "]) (subs body (inc p))) body))]
               {:path (str "/api/v1/texts/" txt) :method "PATCH" :body {:body new}}))))
 
+(defn- import-op
+  "One to three relations on Deps made in an import operation, as a batch,
+  or nil. Values are listed ones, so only max-in-degree and acyclic see
+  the import's exemption."
+  [r {:keys [lemma deps]} snap]
+  (let [lemmas (of-layer snap :spans lemma)]
+    (when (seq lemmas)
+      (vec (for [_ (range (inc (n-of r 3)))]
+             {:path "/api/v1/relations" :method "POST"
+              :body {:layer-id deps :source-id (pick r lemmas) :target-id (pick r lemmas)
+                     :value (pick r deprels)}})))))
+
+(defn- note-exempt!
+  "Fold the step's relation writes into `exempt` {id [source target]}: a
+  write in an import operation, a copy or a restore sets a relation's ends
+  as exempt, and any other write that leaves other ends ends it."
+  [exempt ts0]
+  (doseq [w (psc/q db {:select [:aw.target_id :aw.post_image :o.op_type :og.kind]
+                       :from [[:audit_writes :aw]]
+                       :join [[:operations :o] [:= :o.id :aw.op_id]]
+                       :left-join [[:operation_groups :og] [:= :og.id :o.group_id]]
+                       :where [:and [:> :o.ts ts0] [:= :aw.target_table "relations"]]
+                       :order-by [:o.ts :aw.seq]})
+          :let [p (some-> (:post_image w) psc/read-json)
+                rid (str (:target_id w))]
+          :when p]
+    (let [ends [(str (:source_span_id p)) (str (:target_span_id p))]]
+      (if (or (= "import" (:kind w)) (#{"document/copy" "document/restore"} (:op_type w)))
+        (vswap! exempt assoc rid ends)
+        (when (not= ends (get @exempt rid))
+          (vswap! exempt dissoc rid))))))
+
 (defn- send! [{:keys [path method body]}]
   (call (keyword (str/lower-case method)) path body))
 
@@ -483,7 +522,8 @@
 
 (defn- run-seed [seed steps]
   (let [r (SplittableRandom. (long seed))
-        cfg (setup! r)
+        exempt (volatile! {})
+        cfg (assoc (setup! r) :exempt exempt)
         doc (:doc cfg)
         history (volatile! [(last-ts)])
         stats (volatile! {:refused 0 :accepted 0 :remedied 0})
@@ -493,7 +533,7 @@
       (when (< i steps)
         (let [before (snapshot doc)
               ts0 (last-ts)
-              kind (n-of r 10)
+              kind (n-of r 11)
               [what resp]
               (cond
                 (< kind 4) (let [op (word-op r cfg before)] [op (when op (send! op))])
@@ -503,10 +543,19 @@
                                                              (word-op r cfg before)
                                                              (structural-op r cfg before (body-of (:txt cfg)))))))]
                              [ops (when (seq ops) (call :post "/api/v1/batch" ops))])
+                (= kind 10) (let [ops (import-op r cfg before)]
+                              [[:import ops]
+                               (when (seq ops)
+                                 (call :post (str "/api/v1/batch?group-id=" (random-uuid)
+                                                  "&group-message=Import&group-kind=import")
+                                       ops))])
                 :else (let [at (pick r @history)]
                         [[:restore at]
                          (when (and (seq at) (hread/exists-at? db doc (java.time.Instant/parse at)))
                            (call :post (str "/api/v1/documents/" doc "/restore?as-of=" at)))]))
+              _ (when (and resp (< (:status resp) 400))
+                  (note-exempt! exempt ts0)
+                  (when (= :import (first what)) (vswap! stats update :imports (fnil inc 0))))
               after (snapshot doc)
               status (:status resp)]
           (let [left (violations cfg after)
@@ -556,4 +605,5 @@
         (fn [] (vswap! totals #(merge-with + % (run-seed (+ 1000 seed) 40))))))
     (testing "the steps exercise refusals, acceptances and remedies"
       (is (pos? (:refused @totals 0)) (pr-str @totals))
-      (is (pos? (:remedied @totals 0)) (pr-str @totals)))))
+      (is (pos? (:remedied @totals 0)) (pr-str @totals))
+      (is (pos? (:imports @totals 0)) (pr-str @totals)))))

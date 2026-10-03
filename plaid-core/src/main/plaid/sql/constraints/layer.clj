@@ -356,7 +356,7 @@
 (defn- in-degree-chunk
   "The relations of layer `lid` into the spans `ch`."
   [lid ch]
-  {:select [:id :target_span_id :document_id]
+  {:select [:id :source_span_id :target_span_id :document_id]
    :from :relations
    :where [:and [:= (unindexed :relation_layer_id) lid] [:in :target_span_id ch]]})
 
@@ -437,10 +437,12 @@
   "A span is the target of at most `max` relations of the layer. As for a
   value list, a relation an import, a copy or a restore wrote (its endpoints
   as that write left them) is exempt: a span such a write gave a second
-  head keeps it. A person's write is refused when it leaves a span more
-  than `max` heads and more than it had before the transaction, so moving
-  one of the heads an import gave a span is taken, and adding one is not
-  (H35-CORE-4). A declaration counts only the relations people wrote."
+  head keeps it. A person's write is refused when it leaves a span over
+  `max` with more heads than it had before the transaction, or with more
+  than `max` heads that people wrote (read by their ends, as a declaration
+  reads them). So replacing one of the heads an import gave a span is
+  taken (H35-CORE-4), and adding one, or replacing all of them with
+  people's, is not. A declaration counts only the relations people wrote."
   [{:keys [tx mode] :as ctx} {:keys [layer params] :as c}]
   (let [lid (:id layer)
         mx (get params "max")
@@ -492,11 +494,22 @@
                        gone (count (filter (fn [n] (and (= t (pre-target n))
                                                         (or (:deleted? n) (not (ids (u (:id n)))))))
                                            noted))]
-                   (+ (- (count rs) brought) gone)))]
+                   (+ (- (count rs) brought) gone)))
+        ;; The heads people wrote, by their ends as a declaration reads
+        ;; them: a relation whose ends this transaction set is the import's
+        ;; only when an import, a copy or a restore set them, and any other
+        ;; is read from the log.
+        edge-noted (set (keep (fn [n] (when (seq (get-in n [:kinds :edge])) (u (:id n)))) noted))
+        people (fn [rs]
+                 (let [imp (into (set exempt)
+                                 (import-set-ids tx :relations (remove #(edge-noted (u (:id %))) rs)
+                                                 :key-of ends-key))]
+                   (count (remove #(imp (u (:id %))) rs))))]
     (for [[t rs] over
           :when (if all?
                   (> (count (remove #(imported (u (:id %))) rs)) mx)
-                  (> (count rs) (before t rs)))]
+                  (or (> (count rs) (before t rs))
+                      (> (people rs) mx)))]
       (violation c (:document_id (first rs)) t (map :id rs) :count (count rs)))))
 
 ;; ============================================================

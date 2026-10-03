@@ -334,6 +334,49 @@
         (let [other (id (rel! {:deps deps :span span} "ran" "Dogs"))]
           (assert-status 422 (call :put (str "/api/v1/relations/" other "/target") {:span-id (span "sat")})))))))
 
+(deftest a-person-may-not-replace-every-imported-head-with-their-own
+  ;; REV-FX3-CORE F1: counting only whether the heads went up let a person
+  ;; swap both of an import's heads for heads of their own, which check then
+  ;; reported and a declaration refused.
+  (doseq [[case-name steps]
+          [["P1: two batches, each deleting one imported head and making one"
+            (fn [{:keys [a c rel-op]}]
+              [[200 [{:path (str "/api/v1/relations/" a) :method "DELETE"} (rel-op "Dogs" "sat")]]
+               [422 [{:path (str "/api/v1/relations/" c) :method "DELETE"} (rel-op "ran" "sat")]]])]
+           ["P2: one batch replacing both"
+            (fn [{:keys [a c rel-op]}]
+              [[422 [{:path (str "/api/v1/relations/" a) :method "DELETE"}
+                     {:path (str "/api/v1/relations/" c) :method "DELETE"}
+                     (rel-op "Dogs" "sat") (rel-op "ran" "sat")]]])]
+           ["P3: a new source for each imported head"
+            (fn [{:keys [a c span]}]
+              [[200 [{:path (str "/api/v1/relations/" a "/source") :method "PUT" :body {:span-id (span "Dogs")}}]]
+               [422 [{:path (str "/api/v1/relations/" c "/source") :method "PUT" :body {:span-id (span "ran")}}]]])]
+           ["a cascade from a span delete, then from a token delete"
+            (fn [{:keys [span tok rel-op]}]
+              [[200 [{:path (str "/api/v1/spans/" (span "The")) :method "DELETE"} (rel-op "Dogs" "sat")]]
+               [422 [{:path (str "/api/v1/tokens/" (tok "cat")) :method "DELETE"} (rel-op "ran" "sat")]]])]]]
+    (with-clean-db
+      (fn []
+        (let [{:keys [deps span tok]} (setup!)
+              import-q (str "?group-id=" (random-uuid) "&group-message=Import&group-kind=import")
+              rel-op (fn [a b] {:path "/api/v1/relations" :method "POST"
+                                :body {:layer-id deps :source-id (span a) :target-id (span b) :value "x"}})
+              check (fn [] (-> (call :post (str "/api/v1/relation-layers/" deps "/constraints/check")
+                                     {:constraints [{:type "max-in-degree" :max 1}]})
+                               :body :violation-count))]
+          (assert-status 200 (declare! "relation" deps "ud" [{:type "max-in-degree" :max 1}]))
+          (let [r (batch [(rel-op "The" "sat") (rel-op "cat" "sat")] import-q)
+                [a c] (map (comp str :id :body) (:body r))]
+            (assert-status 200 r)
+            (testing case-name
+              (doseq [[status ops] (steps {:a a :c c :span span :tok tok :rel-op rel-op})]
+                (is (= status (:status (batch ops))) (pr-str ops))
+                (is (zero? (check)) "check agrees with what the write left"))
+              (testing "and the rule list can still be declared"
+                (assert-status 200 (declare! "relation" deps "ud" [{:type "max-in-degree" :max 1}
+                                                                   {:type "acyclic"}]))))))))))
+
 (deftest relabelled-imported-heads-stay-imported
   ;; REV-FX-CORE F3: a re-declaration refused heads an import wrote once a
   ;; person relabelled them.

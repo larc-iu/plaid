@@ -2105,7 +2105,7 @@ Three kinds of write keep a value outside a `value-set` list:
 A value kept this way does not stop the list from being declared again later, and any later edit of it is checked.
 
 The `acyclic` and `max-in-degree` rules take the last two the same way: a relation an import, a copy or a restore wrote does not count against them, so a cycle or a second head an import brings stands (a file that stores an inverse role in the direction it was written, say), and so does one a restore brings back, while one a later write makes is refused.
-For `max-in-degree` a person may move one of the heads an import gave a span, by deleting it and making a new one or by moving its source, since the span has no more heads than before. A write that gives such a span another head is refused.
+For `max-in-degree` a person may replace one of the heads an import gave a span, by deleting it and making a new one or by moving its source, since the span has no more heads than before. A write that gives such a span another head is refused, and so is one that leaves it more than `max` heads people wrote, such as replacing a second imported head.
 Only a write that can close a cycle is checked against `acyclic`: one that makes a relation, moves one of its ends, or moves its value from one in `except-values` to one that counts. Relabelling a relation between counted values, or confirming it, is not refused even when it lies on a stored cycle.
 A relabel keeps an imported relation imported for both rules.
 Declaring either rule again over such data refuses only a cycle made wholly of relations other writes made, or a span that more than `max` such relations point at.
