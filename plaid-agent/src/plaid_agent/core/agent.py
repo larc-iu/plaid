@@ -13,6 +13,7 @@ one read without re-reading.
 
 import json
 import threading
+from types import SimpleNamespace
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
@@ -241,7 +242,10 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
     seam = False  # a tool call or reasoning came after the last text piece
     last = 0.0
     try:
-        stream = litellm.completion(**kwargs, stream=True)
+        # The provider's own count of what it sent, the thinking included, in
+        # its last chunk. A provider that has no such option has it dropped
+        # (``litellm.drop_params``), not refused.
+        stream = litellm.completion(**kwargs, stream=True, stream_options={'include_usage': True})
         if hasattr(stream, 'choices'):
             return stream  # a whole response (a test double, a provider that ignored stream=)
         for chunk in stream:
@@ -279,12 +283,63 @@ def _complete_once(cfg: ModelConfig, kwargs: Dict[str, Any], on_text: Callable[[
         return litellm.completion(**kwargs)
     if text:
         on_text(text)
-    resp = litellm.stream_chunk_builder(chunks, messages=kwargs.get('messages'))
+    # litellm's builder, for a model litellm knows. For one it does not (a
+    # model the operator serves), each of its lookups printed litellm's
+    # "Provider List" help text into the service log on every reply, so the
+    # reply is put together here.
+    model = str(next((getattr(c, 'model', '') for c in chunks if getattr(c, 'model', '')), '')
+                or kwargs.get('model') or '')
+    priced = getattr(litellm, 'model_cost', None) or {}
+    if model in priced or model.split('/')[-1] in priced:
+        resp = litellm.stream_chunk_builder(chunks, messages=kwargs.get('messages'))
+    else:
+        resp = _assembled(chunks)
     choices = getattr(resp, 'choices', None) or []
     msg = getattr(choices[0], 'message', None) if choices else None
     if text and msg is not None:
         msg.content = text
     return resp
+
+
+def _assembled(chunks: List[Any]):
+    """A streamed reply put together from its chunks, as litellm's builder
+    would for the fields this module reads: the text, the tool calls (their
+    pieces joined by index), the reasoning, the finish reason, and the usage
+    the provider's last chunk carried."""
+    text: List[str] = []
+    reasoning: List[str] = []
+    calls: Dict[int, Dict[str, Any]] = {}
+    finish = None
+    usage = None
+    for chunk in chunks:
+        usage = getattr(chunk, 'usage', None) or usage
+        for choice in getattr(chunk, 'choices', None) or []:
+            delta = getattr(choice, 'delta', None)
+            if getattr(choice, 'finish_reason', None):
+                finish = choice.finish_reason
+            if delta is None:
+                continue
+            if getattr(delta, 'content', None):
+                text.append(delta.content)
+            if getattr(delta, 'reasoning_content', None):
+                reasoning.append(delta.reasoning_content)
+            for i, tc in enumerate(getattr(delta, 'tool_calls', None) or []):
+                index = getattr(tc, 'index', None)
+                call = calls.setdefault(index if index is not None else i,
+                                        {'id': None, 'name': '', 'arguments': ''})
+                call['id'] = getattr(tc, 'id', None) or call['id']
+                fn = getattr(tc, 'function', None)
+                if fn is not None:
+                    call['name'] += getattr(fn, 'name', None) or ''
+                    call['arguments'] += getattr(fn, 'arguments', None) or ''
+    tool_calls = [SimpleNamespace(id=c['id'], type='function',
+                                  function=SimpleNamespace(name=c['name'], arguments=c['arguments']))
+                  for _i, c in sorted(calls.items())] or None
+    message = SimpleNamespace(role='assistant', content=''.join(text) or None, tool_calls=tool_calls,
+                              reasoning_content=''.join(reasoning) or None)
+    return SimpleNamespace(choices=[SimpleNamespace(index=0, message=message,
+                                                    finish_reason=finish or ('tool_calls' if tool_calls else 'stop'))],
+                           usage=usage)
 
 
 # Delta fields that are not the reply's text. Text on either side of one is
@@ -389,11 +444,13 @@ def usage_of(resp) -> Optional[Dict[str, int]]:
     schemas. It is the number that decides whether the next turn fits, which is
     why it is worth keeping.
 
-    A streamed call's usage is usually litellm's own reconstruction from the
-    chunks rather than the provider's count (that needs `stream_options`, which
-    not every provider accepts), so treat it as close and not exact. For "how
-    full is this thread" that is entirely adequate, and it is the reason nothing
-    here is presented to the reader as a precise figure.
+    A streamed call asks the provider for its own count (`stream_options`),
+    which includes a reasoning model's thinking. A provider without that option
+    has it dropped, and then a model litellm knows is counted by litellm from
+    the chunks, and one it does not is unreported. Treat the figure as close
+    and not exact: for "how full is this thread" that is entirely adequate, and
+    it is the reason nothing here is presented to the reader as a precise
+    figure.
     """
     u = getattr(resp, 'usage', None)
     if u is None:

@@ -173,12 +173,35 @@ def test_streaming_hands_out_the_text_so_far_and_rebuilds_the_response(monkeypat
     monkeypatch.setattr(agent.litellm, 'completion', fake_completion)
     monkeypatch.setattr(agent.litellm, 'stream_chunk_builder',
                         lambda chunks, messages=None: SimpleNamespace(rebuilt=len(chunks), messages=messages))
+    monkeypatch.setitem(agent.litellm.model_cost, 'm', {})
     texts = []
     cfg = agent.ModelConfig(model='m')
     out = agent._complete(cfg, {'model': 'm', 'messages': [{'role': 'user', 'content': 'hi'}]}, texts.append)
-    assert seen_kwargs['stream'] is True
+    assert seen_kwargs['stream'] is True and seen_kwargs['stream_options'] == {'include_usage': True}
     assert texts[-1] == 'Hello world' and texts == sorted(texts, key=len), 'the whole text so far, growing'
+    # A model litellm prices is rebuilt by litellm.
     assert out.rebuilt == 4 and out.messages == [{'role': 'user', 'content': 'hi'}]
+
+
+def test_a_model_litellm_does_not_know_is_put_together_without_its_builder(monkeypatch):
+    """litellm's builder looked up a served model's provider on every reply and
+    printed its "Provider List" help into the log. The provider's own usage
+    (its last chunk, thinking included) is the count kept."""
+    from litellm.types.utils import Usage
+    monkeypatch.setattr(agent, 'STREAM_INTERVAL_S', 0)
+    monkeypatch.setattr(agent.litellm, 'stream_chunk_builder',
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError('builder used')))
+    last = _real_chunk(content=None)
+    last.usage = Usage(prompt_tokens=120, completion_tokens=900, total_tokens=1020)
+    chunks = [_real_chunk(reasoning_content='think'), _real_chunk(content='Hi.'),
+              _tool_chunk(), last]
+    monkeypatch.setattr(agent.litellm, 'completion', lambda **kw: iter(chunks))
+    out = agent._complete(agent.ModelConfig(model='local-qwen'), {'model': 'local-qwen', 'messages': []},
+                          lambda t: None)
+    msg = out.choices[0].message
+    assert msg.content == 'Hi.' and msg.reasoning_content == 'think'
+    assert [(c.id, c.function.name, c.function.arguments) for c in msg.tool_calls] == [('call_1', 'concordance', '{}')]
+    assert agent.usage_of(out) == {'sent': 120, 'received': 900}
 
 
 def _real_chunk(**delta):
