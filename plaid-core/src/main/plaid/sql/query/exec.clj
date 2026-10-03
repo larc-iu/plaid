@@ -63,7 +63,7 @@
 
 (defn- cached-pattern ^Pattern [^String p]
   (or (.get pattern-cache p)
-      (let [compiled (Pattern/compile p)]
+      (let [compiled (clauses/compile-regex p)]
         ;; bounded: stop caching past the cap (patterns past it still compile,
         ;; just uncached) so adversarial distinct patterns can't grow it forever
         (when (< (.size pattern-cache) pattern-cache-max)

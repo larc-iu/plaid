@@ -144,3 +144,40 @@
          clojure.lang.ExceptionInfo #"too long \(max 4096"
          (ast/expand {"find" ["?s"]
                       "where" [["span" "?s" {"layer" "RxProj/lemma" "value" {"regex" (apply str (repeat 4097 "a"))}}]]})))))
+
+(deftest word-and-digit-classes-read-every-script
+  ;; Ruled 2026-10-02: `\w`, `\d` and `\b` read any script, as the apps'
+  ;; translators do. Under Java's defaults `^\w+$` found only the ASCII value.
+  (let [pid  (h/create-test-project admin-request "RxScripts")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (id (h/create-token-layer admin-request txtl "words"))
+        sl   (id (h/create-span-layer admin-request tokl "form"))
+        doc  (h/create-test-document admin-request pid "d")
+        text (id (h/create-text admin-request txtl doc "a b c d e f"))
+        mk   (fn [b v] (h/create-span admin-request sl [(id (h/create-token admin-request tokl text b (inc b)))] v))]
+    (mk 0 "الكتاب")
+    (mk 2 "кьил")
+    (mk 4 "鳥")
+    (mk 6 "٣٤")
+    (mk 8 "walk")
+    (mk 10 "a-b")
+    (testing "\\w is a letter, mark, digit or connector in any script"
+      (is (= #{"الكتاب" "кьил" "鳥" "٣٤" "walk"}
+             (values [["span" "?s" {"layer" sl "value" {"regex" "^\\w+$"}}]]))))
+    (testing "\\W is the rest"
+      (is (= #{"a-b"}
+             (values [["span" "?s" {"layer" sl "value" {"regex" "\\W"}}]]))))
+    (testing "\\d is a decimal digit in any script"
+      (is (= #{"٣٤"}
+             (values [["span" "?s" {"layer" sl "value" {"regex" "^\\d+$"}}]]))))
+    (testing "\\b sees a boundary next to a non-Latin letter"
+      (is (= #{"الكتاب"}
+             (values [["span" "?s" {"layer" sl "value" {"regex" "\\bال"}}]]))))
+    (testing "with the i flag too"
+      (is (= #{"кьил"}
+             (values [["span" "?s" {"layer" sl "value" {"regex" "^КЬ\\w+$" "flags" "i"}}]]))))))
+
+(deftest the-unicode-reading-adds-nothing-to-the-length-cap
+  (testing "a pattern of exactly 4,096 characters is taken"
+    (is (ast/expand {"find" ["?s"]
+                     "where" [["span" "?s" {"layer" "RxProj/lemma" "value" {"regex" (apply str (repeat 4096 "a"))}}]]}))))

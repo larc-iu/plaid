@@ -63,6 +63,15 @@
 ;; (`[aA]`), about four characters a letter.
 (def regex-max-len 4096)
 
+(defn compile-regex
+  "The one way a query pattern is compiled, at validation and in the REGEXP
+  function alike. `UNICODE_CHARACTER_CLASS` reads `\\w`, `\\d`, `\\s`, `\\b` and
+  the POSIX classes over every script (ruled 2026-10-02: Plaid's users write
+  Lezgi, Hijazi, Saraiki), as the apps' pattern translators do. The flag is not
+  written into the pattern, so it does not count against `regex-max-len`."
+  ^java.util.regex.Pattern [^String p]
+  (java.util.regex.Pattern/compile p java.util.regex.Pattern/UNICODE_CHARACTER_CLASS))
+
 ;; Constraint keys whose value may be a SCALAR VARIABLE: `{:value "?v"}` binds
 ;; `?v` to that column instead of filtering, so the same `?v` in two clauses is a
 ;; column-equality join (e.g. two spans with the *same* value). Scalar vars are a

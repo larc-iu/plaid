@@ -108,7 +108,7 @@
       (err! :validate (str label " regex is too long (max " clauses/regex-max-len " chars)")))
     (when (and flags (or (not (string? flags)) (not (re-matches #"i*" flags))))
       (err! :validate (str label " regex flags " (pr-str flags) " unsupported (only \"i\")")))
-    (try (re-pattern regex)
+    (try (clauses/compile-regex regex)
          (catch java.util.regex.PatternSyntaxException e
            (err! :validate (str label " has an invalid regex: " (.getMessage e)))))))
 

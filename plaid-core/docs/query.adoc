@@ -273,6 +273,15 @@ anywhere unless you anchor it with `^` / `$`. Stick to common syntax
 (`. * + ? [ ] ^ $ |`) for patterns that port to other regex engines. A malformed
 pattern, or one longer than 4,096 characters, is a 400.
 
+Character classes read every script. Patterns are compiled with Java's
+`UNICODE_CHARACTER_CLASS`, so `\w` is a letter, mark, digit or connector such
+as `_` in any script, `\d` is a decimal digit in any script, `\s` is any Unicode
+white space, and `\b` is a boundary next to such a `\w`. On Arabic text
+`^\w+$` matches `الكتاب`, and `\d` matches `٣`. The POSIX classes such as
+`\p{Alpha}` and `\p{Punct}` take their Unicode meaning too. Name a category or
+script when you mean one, such as `\p{L}` for any letter or `\p{IsArabic}` for
+Arabic. The `i` flag folds case in every script.
+
 [,python]
 ----
 ["span",  "?s", {"layer": "Lemma", "value": {"regex": "^walk"}}]
