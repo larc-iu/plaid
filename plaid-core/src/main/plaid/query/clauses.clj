@@ -67,7 +67,7 @@
   "The one way a query pattern is compiled, at validation and in the REGEXP
   function alike. `UNICODE_CHARACTER_CLASS` reads `\\w`, `\\d`, `\\s`, `\\b` and
   the POSIX classes over every script (ruled 2026-10-02: Plaid's users write
-  Lezgi, Hijazi, Saraiki), as the apps' pattern translators do. The flag is not
+  Lezgi, Hijazi, Saraiki), with Java's Unicode definitions. The flag is not
   written into the pattern, so it does not count against `regex-max-len`."
   ^java.util.regex.Pattern [^String p]
   (java.util.regex.Pattern/compile p java.util.regex.Pattern/UNICODE_CHARACTER_CLASS))
