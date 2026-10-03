@@ -437,12 +437,18 @@
   "A span is the target of at most `max` relations of the layer. As for a
   value list, a relation an import, a copy or a restore wrote (its endpoints
   as that write left them) is exempt: a span such a write gave a second
-  head keeps it, and a person's write that gives one is refused. A
-  declaration counts only the relations people wrote."
+  head keeps it. A person's write is refused when it leaves a span more
+  than `max` heads and more than it had before the transaction, so moving
+  one of the heads an import gave a span is taken, and adding one is not
+  (H35-CORE-4). A declaration counts only the relations people wrote."
   [{:keys [tx mode] :as ctx} {:keys [layer params] :as c}]
   (let [lid (:id layer)
         mx (get params "max")
-        rows (if (= :all mode)
+        all? (= :all mode)
+        noted (when-not all? (notes-of ctx "relations" lid))
+        exempt (when-not all?
+                 (reproduced-ids tx (remove :deleted? noted) [:edge-groups]))
+        rows (if all?
                (psc/q tx {:select [:id :source_span_id :target_span_id :value :document_id]
                           :from :relations
                           :where (where-and [:= :relation_layer_id lid]
@@ -453,9 +459,9 @@
                                                                                     (doc-clause ctx :document_id))
                                                                   :group-by [:target_span_id]
                                                                   :having [:> [:count :*] mx]}])})
-               (let [noted (live-with ctx "relations" lid [:edge])
-                     exempt (reproduced-ids tx noted [:edge-groups])
-                     cands (map :id (remove #(exempt (u (:id %))) noted))]
+               (let [cands (->> (live-with ctx "relations" lid [:edge])
+                                (remove #(exempt (u (:id %))))
+                                (map :id))]
                  (when (seq cands)
                    (let [targets (map :target_span_id
                                       (q-chunks tx (fn [ch] {:select [:target_span_id] :from :relations
@@ -465,13 +471,32 @@
         over (filter (fn [[_ rs]] (> (count rs) mx)) (group-by (comp u :target_span_id) rows))
         ;; A declaration counts only the relations people wrote: a span an
         ;; import, a copy or a restore gave its extra heads keeps them.
-        imported (if (and (= :all mode) (seq over))
+        imported (if (and all? (seq over))
                    ;; By the ends only: a relabel of an imported head
                    ;; leaves it imported (REV-FX-CORE F3).
                    (import-set-ids tx :relations (mapcat second over) :key-of ends-key)
-                   #{})]
+                   #{})
+        note-of (into {} (map (fn [n] [(u (:id n)) n])) noted)
+        pre-target (fn [n] (some-> (get-in n [:pre :target_span_id]) u))
+        ;; How many heads the span had before the transaction: those it has
+        ;; now, less the ones a person's write in it brought, plus the ones
+        ;; the transaction deleted or moved away. A write left unnoted makes
+        ;; the count smaller, so the write is refused as before.
+        before (fn [t rs]
+                 (let [ids (set (map (comp u :id) rs))
+                       brought (count (filter (fn [r]
+                                                (let [id (u (:id r))
+                                                      n (note-of id)]
+                                                  (and n (not (exempt id)) (not= t (pre-target n)))))
+                                              rs))
+                       gone (count (filter (fn [n] (and (= t (pre-target n))
+                                                        (or (:deleted? n) (not (ids (u (:id n)))))))
+                                           noted))]
+                   (+ (- (count rs) brought) gone)))]
     (for [[t rs] over
-          :when (> (count (remove #(imported (u (:id %))) rs)) mx)]
+          :when (if all?
+                  (> (count (remove #(imported (u (:id %))) rs)) mx)
+                  (> (count rs) (before t rs)))]
       (violation c (:document_id (first rs)) t (map :id rs) :count (count rs)))))
 
 ;; ============================================================

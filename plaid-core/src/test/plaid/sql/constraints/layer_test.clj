@@ -279,6 +279,61 @@
       (let [c (id (rel! s "sat" "The" ":ARG0"))]
         (assert-status 422 (call :put (str "/api/v1/relations/" c "/source") {:span-id (span "cat")}))))))
 
+(deftest a-person-may-move-the-head-of-a-word-an-import-gave-two
+  ;; H35-CORE-4: a write that left a span over the limit was refused even
+  ;; when it did not add to the heads an import gave it, so the move a ud
+  ;; editor makes (delete the old head, create the new one) was refused while
+  ;; check and a declaration accepted the result.
+  (let [{:keys [deps span]} (setup!)
+        import-q (str "?group-id=" (random-uuid) "&group-message=Import&group-kind=import")
+        rel-op (fn [a b] {:path "/api/v1/relations" :method "POST"
+                          :body {:layer-id deps :source-id (span a) :target-id (span b) :value "x"}})
+        heads (fn [] (set (map (comp str :source_span_id)
+                               (psc/q db {:select [:source_span_id] :from :relations
+                                          :where [:= :target_span_id (span "sat")]}))))]
+    (assert-status 200 (declare! "relation" deps "ud" [{:type "max-in-degree" :max 1}]))
+    (let [r (batch [(rel-op "The" "sat") (rel-op "cat" "sat")] import-q)
+          [a _c] (map (comp str :id :body) (:body r))]
+      (assert-status 200 r)
+      (testing "a batch that deletes one imported head and makes a new one"
+        (assert-status 200 (batch [{:path (str "/api/v1/relations/" a) :method "DELETE"}
+                                   (rel-op "Dogs" "sat")]))
+        (is (= #{(span "cat") (span "Dogs")} (heads))))
+      (testing "moving the source of the remaining imported head"
+        (let [c (-> (psc/q1 db {:select [:id] :from :relations
+                                :where [:and [:= :target_span_id (span "sat")]
+                                        [:= :source_span_id (span "cat")]]})
+                    :id str)
+              d (-> (psc/q1 db {:select [:id] :from :relations
+                                :where [:and [:= :target_span_id (span "sat")]
+                                        [:= :source_span_id (span "Dogs")]]})
+                    :id str)]
+          (assert-status 204 (call :delete (str "/api/v1/relations/" d)))
+          (assert-status 200 (call :put (str "/api/v1/relations/" c "/source") {:span-id (span "ran")}))
+          (is (= #{(span "ran")} (heads)))))
+      (testing "and check agrees with the writes"
+        (is (zero? (-> (call :post (str "/api/v1/relation-layers/" deps "/constraints/check")
+                             {:constraints [{:type "max-in-degree" :max 1}]})
+                       :body :violation-count)))))))
+
+(deftest a-person-may-move-an-imported-head-beside-another
+  ;; The hunter's set_source step: the moved head is a person's now, and the
+  ;; other is still the import's.
+  (let [{:keys [deps span]} (setup!)
+        import-q (str "?group-id=" (random-uuid) "&group-message=Import&group-kind=import")
+        rel-op (fn [a b] {:path "/api/v1/relations" :method "POST"
+                          :body {:layer-id deps :source-id (span a) :target-id (span b) :value "x"}})]
+    (assert-status 200 (declare! "relation" deps "ud" [{:type "max-in-degree" :max 1}]))
+    (let [r (batch [(rel-op "The" "sat") (rel-op "cat" "sat")] import-q)
+          [a _c] (map (comp str :id :body) (:body r))]
+      (assert-status 200 r)
+      (assert-status 200 (call :put (str "/api/v1/relations/" a "/source") {:span-id (span "Dogs")}))
+      (testing "a head a person adds to the word is still refused"
+        (assert-status 422 (rel! {:deps deps :span span} "ran" "sat")))
+      (testing "and so is a move that brings a head to it"
+        (let [other (id (rel! {:deps deps :span span} "ran" "Dogs"))]
+          (assert-status 422 (call :put (str "/api/v1/relations/" other "/target") {:span-id (span "sat")})))))))
+
 (deftest relabelled-imported-heads-stay-imported
   ;; REV-FX-CORE F3: a re-declaration refused heads an import wrote once a
   ;; person relabelled them.
