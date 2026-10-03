@@ -153,7 +153,16 @@ test('a node whose word was deleted becomes an ordinary unaligned node, named in
   assert.equal(label, 'Repaired: 1 node lost its word (s2y2)');
   assert.deepEqual(
     calls.filter((c) => c.name === 'spans.patchMetadata').map((c) => c.args),
-    [[node.id, [{ op: 'set', path: ['umr', 'sentence'], value: sentence.tokenId }]]],
+    // It records its sentence, and the words it recorded go.
+    [
+      [
+        node.id,
+        [
+          { op: 'set', path: ['umr', 'sentence'], value: sentence.tokenId },
+          { op: 'delete', path: ['umr', 'words'] },
+        ],
+      ],
+    ],
   );
   // Its anchor stays over the word's text: stretched over the sentence, a
   // split of the sentence before that text would leave it on the left and

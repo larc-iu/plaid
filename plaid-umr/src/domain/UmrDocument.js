@@ -649,8 +649,12 @@ export class UmrDocument extends DocumentModel {
       rebind.forEach(({ nodeId, sentenceTokenId }) =>
         change(nodeId, { sentence: sentenceTokenId }),
       );
+      // Unaligned, it records its sentence and no words.
       unanchor.forEach(({ nodeId, sentenceTokenId }) =>
-        change(nodeId, { sentence: sentenceTokenId }),
+        change(nodeId, {
+          sentence: sentenceTokenId,
+          ...(umrOf(this.node(nodeId)).words ? { words: undefined } : {}),
+        }),
       );
       renumber.forEach(({ nodeId, to }) => change(nodeId, { var: to }));
       // A node put on one half of its word records that half from then on.
@@ -1125,6 +1129,9 @@ export class UmrDocument extends DocumentModel {
     const sentence = this.sentence(sentenceIndex);
     if (!sentence || !concept) return false;
     if (parentId && !role) return false;
+    // Only words the sentence still has: a word another app deleted since the
+    // drop leaves the node aligned to the rest, or to none.
+    wordIds = wordIds.filter((id) => sentence.words.some((w) => w.id === id));
     const refused = this._refused(
       conceptProblem(concept),
       parentId
@@ -1479,6 +1486,11 @@ export class UmrDocument extends DocumentModel {
     const node = this.node(nodeId);
     const sentence = node ? this.sentence(node.sentence) : null;
     if (!sentence) return false;
+    // Only words the sentence still has. Words asked for that are all gone
+    // change nothing, rather than leave the node aligned to none.
+    const asked = wordIds.length;
+    wordIds = wordIds.filter((id) => sentence.words.some((w) => w.id === id));
+    if (asked && !wordIds.length) return false;
     const sameAs = (ids) =>
       wordIds.length === ids.length && wordIds.every((id) => ids.includes(id));
     // The words it records (planWordSplits) differ from the words under it

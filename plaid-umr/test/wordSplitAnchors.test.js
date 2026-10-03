@@ -19,6 +19,8 @@ import { rawFromPlan } from './rawFromPlan.js';
 import { twoWriterCore } from './twoWriterCore.js';
 import {
   deleteText,
+  deleteWord,
+  mergeWords,
   layersOf,
   openInUmr,
   openWritesNothing,
@@ -148,8 +150,8 @@ s1p: 1-2
 (s1s0 / sentence)
 `;
 
-function spaceless() {
-  const raw = rawFromPlan(planImport(parseUmrFile(SPACELESS).sentences, []));
+function spaceless(text = SPACELESS) {
+  const raw = rawFromPlan(planImport(parseUmrFile(text).sentences, []));
   for (;;) {
     const ws = wordsOf(raw);
     const gap = ws.findIndex((w, i) => i > 0 && ws[i - 1].end < w.begin);
@@ -173,7 +175,9 @@ test('in a text with no spaces, only a word really split is cut', async () => {
   splitWord(raw, w.id, w.begin + 1);
   const result = await openInUmr(raw);
   // `s1d` stood on 谈得, and `s1p` on 能谈得, whose last word was split. `s1t`
-  // stood on 谈得来, where the split is in the middle and nothing is cut.
+  // stood on 谈得来, whose FIRST word was split: the halves 谈 and 得 tie on
+  // letters, the first wins, and its anchor still begins where it did, so
+  // nothing is cut (the next test has halves that do not tie).
   assert.equal(result.wordSplits, 2);
   const at = alignment(raw);
   assert.equal(at.get('s1d'), '2-2');
@@ -244,4 +248,108 @@ test('an import onto a document with words records the words each node is aligne
   assert.deepEqual(node.metadata.umr.words, node.wordIds);
   assert.equal(node.wordIds.length, 2);
   assert.ok(await openWritesNothing(core.raw));
+});
+
+const UNEQUAL = `${SEP}
+# :: snt1
+Index: 1 2 3
+Words: 能 谈得来 吗
+
+# sentence level graph:
+(s1n / 能-01
+    :ARG0 (s1t / 谈得来吗)
+    :mod (s1p / 能谈得来))
+
+# alignment:
+s1n: 1-1
+s1t: 2-3
+s1p: 1-2
+
+# document level annotation:
+(s1s0 / sentence)
+`;
+
+test('a split word at the start of an anchor keeps its half with more letters, so the anchor loses the other', async () => {
+  const raw = spaceless(UNEQUAL);
+  const w = word(raw, '谈得来');
+  splitWord(raw, w.id, w.begin + 1);
+  await openInUmr(raw);
+  const at = alignment(raw);
+  // 谈|得来 at the start of `s1t`: 得来 has more letters, and 谈 is dropped.
+  assert.equal(at.get('s1t'), '3-4');
+  // At the end of `s1p` the half kept is the last, so its anchor is whole.
+  assert.equal(at.get('s1p'), '1-3');
+  assert.ok(await openWritesNothing(raw));
+});
+
+// REV-FX3-UMR F1: words reshaped under a node by something other than a
+// split (a merge then a split, or a word deleted and made again) leave a
+// recorded id that is gone, and the node is not cut.
+test('a merge then a split inside a two-word alignment cuts nothing', async () => {
+  const raw = spaceless(UNEQUAL);
+  const core = twoWriterCore(raw);
+  const page = await core.open('a');
+  const s = page.doc.sentence(1);
+  const node = s.nodes.find((n) => n.var === 's1n');
+  // 能|谈得来, aligned on purpose.
+  assert.ok(await page.doc.setAnchor(node.id, [s.words[0].id, s.words[1].id]));
+  page.release();
+  const fixed = core.raw;
+  mergeWords(fixed, word(fixed, '能').id, word(fixed, '谈得来').id);
+  const merged = word(fixed, '能谈得来');
+  splitWord(fixed, merged.id, merged.begin + 3);
+  assert.equal(alignment(fixed).get('s1n'), '1-2');
+  const result = await openInUmr(fixed);
+  assert.ok(!result.wordSplits);
+  assert.equal(alignment(fixed).get('s1n'), '1-2');
+});
+
+test('a word deleted and made again over its text at the end of an alignment cuts nothing', async () => {
+  const raw = spaceless(UNEQUAL);
+  const w = word(raw, '吗');
+  deleteWord(raw, w.id);
+  layersOf(raw).word.tokens.push({ id: 'remade', begin: w.begin, end: w.end });
+  assert.equal(alignment(raw).get('s1t'), '2-3');
+  const result = await openInUmr(raw);
+  assert.ok(!result.wordSplits);
+  assert.equal(alignment(raw).get('s1t'), '2-3');
+});
+
+// REV-FX3-UMR F3: a node the open makes unaligned records its sentence and no words.
+test('a node whose word is deleted records no words once the open unaligns it', async () => {
+  const raw = spaceless(UNEQUAL);
+  deleteWord(raw, word(raw, '能').id);
+  await openInUmr(raw);
+  const span = layersOf(raw).concepts.spans.find((x) => x.metadata.umr.var === 's1n');
+  assert.ok(span.metadata.umr.sentence);
+  assert.equal(span.metadata.umr.words, undefined);
+});
+
+// REV-FX3-UMR F2: words asked for that the sentence no longer has.
+test('a node made on words that are gone is aligned to the rest, or to none', async () => {
+  const core = twoWriterCore(spaceless(UNEQUAL));
+  const page = await core.open('a');
+  const s = page.doc.sentence(1);
+  const ghost = await page.doc.createNode({
+    sentenceIndex: 1,
+    concept: 'ghost',
+    wordIds: ['gone'],
+  });
+  const some = await page.doc.createNode({
+    sentenceIndex: 1,
+    concept: 'some',
+    wordIds: ['gone', s.words[2].id],
+  });
+  const node = s.nodes.find((n) => n.var === 's1n');
+  assert.equal(await page.doc.setAnchor(node.id, ['gone']), false);
+  page.release();
+  const doc = new UmrDocument({ raw: structuredClone(core.raw) });
+  const g = doc.node(ghost.nodeId);
+  assert.equal(g.aligned, false);
+  assert.equal(g.metadata.umr.words, undefined);
+  assert.ok(g.metadata.umr.sentence);
+  const m = doc.node(some.nodeId);
+  assert.deepEqual(m.wordIds, [s.words[2].id]);
+  assert.deepEqual(m.metadata.umr.words, [s.words[2].id]);
+  assert.equal(alignment(core.raw).get('s1n'), '1-1');
 });

@@ -164,7 +164,8 @@ export function planUnalignedHeal(graph, namespace) {
  * those are cut: a node aligned on purpose to several touching words (`do`
  * and `n't`, or the words of a text with no spaces, as Chinese is) records
  * each of them and is left as it is. A node that records no words is never
- * cut. Only the ends of a piece: a piece covers one stretch of text, and a
+ * cut, nor one that records a word that is gone (merged away, or deleted and
+ * made again). Only the ends of a piece: a piece covers one stretch of text, and a
  * half in its middle could not be dropped without cutting it in two.
  *
  * @param {{ sentences: Array, nodesById: Map }} graph from buildDocumentGraph
@@ -182,6 +183,12 @@ export function planWordSplits(graph, namespace) {
     const recorded = new Set(node.metadata?.[namespace]?.words || []);
     if (!recorded.size) return;
     const sentence = graph.sentences[node.sentence - 1];
+    // A recorded word that is no longer a word of the sentence was merged
+    // away or deleted and made again under the node, and a word with a new
+    // id beside it may be its own text rather than a half. A split never
+    // takes an id away, so such a node is left as it is, record and all,
+    // until it is aligned again.
+    if ([...recorded].some((id) => !sentence.words.some((w) => w.id === id))) return;
     const cuts = [];
     node.pieces.forEach((piece) => {
       const words = sentence.words.filter((w) => w.begin < piece.end && piece.begin < w.end);
