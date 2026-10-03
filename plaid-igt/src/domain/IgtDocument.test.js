@@ -3,6 +3,7 @@ import { applyMetadataOps, metadataOps } from '@larc-iu/plaid-client';
 import { IgtDocument } from './IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
 import { planMorphTypeSync } from './igtReconcile.js';
+import { clearSentencesFits, TOO_MANY_SENTENCES } from './mutations/sentences.js';
 
 // Build a doc wired to a fake client. `raw`/`project`/`vocabularies` overridable.
 function makeDoc({ raw, project, vocabularies, client } = {}) {
@@ -1397,8 +1398,54 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     expect(k).not.toContain('tokens.bulkCreate');
     const merges = doc.client.calls.filter((c) => c.kind === 'tokens.merge');
     expect(merges.map((c) => c.args)).toEqual([['s-1', 's-2']]);
-    const dels = doc.client.calls.filter((c) => c.kind === 'spans.delete');
-    expect(dels.map((c) => c.args[0]).sort()).toEqual(['tr-1', 'tr-2']);
+    const dels = doc.client.calls.filter((c) => c.kind === 'spans.bulkDelete');
+    expect(dels.map((c) => [...c.args[0]].sort())).toEqual([['tr-1', 'tr-2']]);
+  });
+
+  // Reset to single sentence is one batch (one request: the client splits a
+  // batch past the server's 1000 ops, and the parts do not land together), or
+  // it is refused before anything is shown or sent.
+  const manySentences = (n, fields) => {
+    const raw = buildRawDoc({
+      body: 'a'.repeat(n),
+      words: [],
+      morphemes: [],
+      sentFields: fields,
+      sentences: Array.from({ length: n }, (_, i) => ({ id: `s-${i}`, begin: i, end: i + 1 })),
+    });
+    raw.textLayers[0].tokenLayers[0].spanLayers.forEach((sl, f) => {
+      sl.spans = Array.from({ length: n }, (_, i) => ({
+        id: `sp-${f}-${i}`,
+        tokens: [`s-${i}`],
+        value: 'x',
+      }));
+    });
+    return raw;
+  };
+  const ops = (client) =>
+    client.calls.filter((c) => c.kind === 'tokens.merge' || c.kind.startsWith('spans.')).length;
+
+  it('clearSentences on a long document with two sentence fields is one request', async () => {
+    const raw = manySentences(400, ['Translation', 'Note']);
+    const client = makeFakeClient({ reloadDoc: raw });
+    const doc = makeDoc({ raw, client });
+    expect(await doc.clearSentences()).toBe(true);
+    expect(kinds(client).filter((k) => k === 'batch.submit')).toHaveLength(1);
+    // 800 spans in two bulk deletes, and 399 merges: under the cap.
+    expect(ops(client)).toBe(401);
+    expect(client.calls.filter((c) => c.kind === 'spans.delete')).toEqual([]);
+  });
+
+  it('clearSentences past the cap is refused, with nothing sent and nothing changed', async () => {
+    const raw = manySentences(1002, ['Translation']);
+    const client = makeFakeClient({ reloadDoc: raw });
+    const doc = makeDoc({ raw, client });
+    expect(clearSentencesFits(doc.layerInfo)).toBe(false);
+    expect(await doc.clearSentences()).toBe(false);
+    expect(doc.error).toBe(TOO_MANY_SENTENCES);
+    expect(ops(client)).toBe(0);
+    expect(doc.sentences).toHaveLength(1002);
+    expect(doc.layerInfo.spanLayers.sentence[0].spans).toHaveLength(1002);
   });
 
   it('createAlignment inserts text + creates the alignment token', async () => {

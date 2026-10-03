@@ -14,6 +14,7 @@ import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { notifySuccess } from '@/utils/feedback';
 import { splitPointsFromSegments } from '@/domain/segments.js';
+import { clearSentencesFits, TOO_MANY_SENTENCES } from '@/domain/mutations/sentences.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { TokenizeDialog } from './TokenizeDialog.jsx';
@@ -321,6 +322,7 @@ export function DocumentTokenize() {
         }}
         title="Reset sentences?"
         confirmLabel="Reset"
+        confirmDisabled={confirmClear === 'sentences' && !clearSentencesFits(layers)}
         onConfirm={() => {
           setConfirmClear(null);
           ops.handleClearSentences();
@@ -332,6 +334,9 @@ export function DocumentTokenize() {
           translations) are deleted with their sentences.
         </p>
         <p>Words, morphemes, and their annotations are unchanged.</p>
+        {confirmClear === 'sentences' && !clearSentencesFits(layers) && (
+          <p className="text-destructive">{TOO_MANY_SENTENCES}</p>
+        )}
       </ConfirmDeleteDialog>
 
       {/* Single-token delete confirm: only opens when the token carries

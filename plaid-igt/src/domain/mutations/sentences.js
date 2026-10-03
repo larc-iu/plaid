@@ -13,6 +13,34 @@ import { newHalfMetadata, survivingProvenance, survivorPatch } from '../tokenRes
 import { reparentSpans } from './reparent.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
+import { chunk } from '../bulk.js';
+
+// plaid-core's max-batch-ops. A batch past it is split into several requests,
+// which do not land together, so a reset that needs more is refused instead.
+const MAX_BATCH_OPS = 1000;
+
+// The sentence spans a reset deletes: every value on one of `sentenceIds`.
+const sentenceSpanIds = (info, sentenceIds) =>
+  (info.spanLayers?.sentence || []).flatMap((sl) =>
+    (sl.spans || [])
+      .filter((sp) => (sp.tokens || []).some((t) => sentenceIds.has(t)))
+      .map((sp) => sp.id),
+  );
+
+/**
+ * Can Reset to single sentence go out as ONE batch for this layer info? It is
+ * one bulk delete per chunk of sentence spans and one merge per sentence after
+ * the first. A longer document cannot, and is told to be split instead.
+ */
+export const clearSentencesFits = (info) => {
+  const tokens = info?.sentenceTokenLayer?.tokens || [];
+  if (tokens.length <= 1) return true;
+  const spans = sentenceSpanIds(info, new Set(tokens.map((t) => t.id)));
+  return chunk(spans).length + tokens.length - 1 <= MAX_BATCH_OPS;
+};
+
+export const TOO_MANY_SENTENCES =
+  'This document has too many sentences to reset in one request. Split it into shorter documents.';
 
 export const sentenceMutations = {
   async mergeSentence(sentenceId) {
@@ -159,15 +187,17 @@ export const sentenceMutations = {
     if (sentenceTokens.length === 0) return false;
     const label = 'Failed to clear sentences';
     if (!this._canWrite(label)) return false;
+    // One batch or nothing: split past the cap, a failure after the first
+    // part would leave the translations deleted and the sentences half merged.
+    if (!clearSentencesFits(info)) {
+      this.setError(TOO_MANY_SENTENCES);
+      return false;
+    }
 
     const first = sentenceTokens[0];
     const last = sentenceTokens[sentenceTokens.length - 1];
     const sentenceIds = new Set(sentenceTokens.map((s) => s.id));
-    const spanIds = (info.spanLayers?.sentence || []).flatMap((sl) =>
-      (sl.spans || [])
-        .filter((sp) => (sp.tokens || []).some((t) => sentenceIds.has(t)))
-        .map((sp) => sp.id),
-    );
+    const spanIds = sentenceSpanIds(info, sentenceIds);
     const gone = new Set(spanIds);
     this._applyRawPatch((next, infoNext) => {
       const layer = infoNext.sentenceTokenLayer;
@@ -180,7 +210,7 @@ export const sentenceMutations = {
     });
     return this._queueWrite(label, () =>
       this._client.batched(async (b) => {
-        spanIds.forEach((id) => b.spans.delete(settledId(id)));
+        for (const part of chunk(spanIds)) b.spans.bulkDelete(part.map(settledId));
         // Sequential merges into the first sentence in begin-order; the server
         // processes batch ops in order, so each merge sees the widened extent.
         for (let i = 1; i < sentenceTokens.length; i++) {
