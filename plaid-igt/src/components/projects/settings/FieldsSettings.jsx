@@ -20,7 +20,12 @@ import { notSetUp } from '@ui/domain/setupGuard.js';
 import { fieldChange } from './fieldChange.js';
 import { queueFieldDeclarations, tagsetRefusal } from '@/domain/igtConstraints';
 import { sameConfig, storedConfig } from '@ui/domain/configCells.js';
-import { annotatedWordFormsQuery, hiddenWordCount } from '@/domain/ignoredChange';
+import {
+  annotatedCounts,
+  annotatedWordsQueries,
+  newlyIgnoredForms,
+  wordFormsQuery,
+} from '@/domain/ignoredChange';
 
 const PREDEFINED = ['Gloss', 'POS', 'Translation', 'Literal Translation', 'Note'];
 const isPredefinedField = (fieldName) => PREDEFINED.includes(fieldName);
@@ -293,34 +298,47 @@ export const FieldsSettings = ({
   };
 
   // How many words with values a change of the ignored-tokens rule hides
-  // (`before` and `after` in the shape the manager edits). The forms that
-  // carry values are read once and kept for a minute, so the count follows
-  // the typing of a list without a read per keystroke.
+  // (`before` and `after` in the shape the manager edits), in two reads
+  // (domain/ignoredChange.js): the project's word forms, read once and kept
+  // for a minute, then the annotated words of only the forms the change newly
+  // ignores. A form's count is kept with the forms, so typing a list asks
+  // about each new entry once.
   const formsRef = useRef(null);
   const handleCountHiddenWords = async (before, after) => {
     const layers = layersOf(project);
     if (!layers) return 0;
     if (!formsRef.current || Date.now() - formsRef.current.at > 60_000) {
-      const ids = (layer) =>
-        (layer?.spanLayers || []).filter((l) => readScope(l.config)).map((l) => l.id);
-      const read = client
-        .query(
-          annotatedWordFormsQuery({
-            wordLayerId: layers.primary.id,
-            morphLayerId: layers.morpheme?.id ?? null,
-            wordSpanLayerIds: ids(layers.primary),
-            morphSpanLayerIds: ids(layers.morpheme),
-          }),
-        )
-        .then((r) => r?.results || []);
-      const entry = { at: Date.now(), read };
+      const read = client.query(wordFormsQuery(layers.primary.id)).then((r) => r?.results || []);
+      const entry = { at: Date.now(), read, counts: new Map() };
       formsRef.current = entry;
       read.catch(() => {
         if (formsRef.current === entry) formsRef.current = null;
       });
     }
-    const forms = await formsRef.current.read;
-    return hiddenWordCount(forms, storedIgnoredTokens(before), storedIgnoredTokens(after));
+    const entry = formsRef.current;
+    const forms = newlyIgnoredForms(
+      await entry.read,
+      storedIgnoredTokens(before),
+      storedIgnoredTokens(after),
+    );
+    const unknown = forms.filter((f) => !entry.counts.has(f));
+    if (unknown.length) {
+      const ids = (layer) =>
+        (layer?.spanLayers || []).filter((l) => readScope(l.config)).map((l) => l.id);
+      const queries = annotatedWordsQueries(
+        {
+          wordLayerId: layers.primary.id,
+          morphLayerId: layers.morpheme?.id ?? null,
+          wordSpanLayerIds: ids(layers.primary),
+          morphSpanLayerIds: ids(layers.morpheme),
+        },
+        unknown,
+      );
+      const results = [];
+      for (const q of queries) results.push((await client.query(q))?.results || []);
+      for (const [form, n] of annotatedCounts(unknown, results)) entry.counts.set(form, n);
+    }
+    return forms.reduce((n, f) => n + (entry.counts.get(f) ?? 0), 0);
   };
 
   // A refused save or move: say why, and read the project again, so the

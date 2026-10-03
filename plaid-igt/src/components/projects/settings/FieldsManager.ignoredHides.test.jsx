@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { FieldsManager } from './FieldsManager';
-import { annotatedWordFormsQuery, hiddenWordCount } from '@/domain/ignoredChange';
+import { annotatedCounts, annotatedWordsQueries, newlyIgnoredForms } from '@/domain/ignoredChange';
 import { storedIgnoredTokens } from '@/domain/igtConfig';
 
 // A word the ignored-tokens rule excludes is drawn with no values, and exports
@@ -22,9 +22,13 @@ const FORMS = [
   ['dog', 2],
   ["'", 1],
 ];
+const ANNOTATED = new Map(FORMS);
 const counter = () =>
   vi.fn(async (before, after) =>
-    hiddenWordCount(FORMS, storedIgnoredTokens(before), storedIgnoredTokens(after)),
+    newlyIgnoredForms(FORMS, storedIgnoredTokens(before), storedIgnoredTokens(after)).reduce(
+      (n, f) => n + ANNOTATED.get(f),
+      0,
+    ),
   );
 
 const mount = async (ignoredTokens) => {
@@ -138,34 +142,89 @@ describe('a rule change that hides annotated words', () => {
   });
 });
 
-describe('hiddenWordCount', () => {
-  const punct = (whitelist) => ({ type: 'unicodePunctuation', whitelist });
-  it('counts only the words the new rule ignores and the old one did not', () => {
-    expect(hiddenWordCount(FORMS, punct(["'"]), punct([]))).toBe(1);
-    expect(hiddenWordCount(FORMS, punct([]), punct(["'"]))).toBe(0);
-    expect(hiddenWordCount(FORMS, punct([]), { type: 'blacklist', blacklist: ['uh', 'dog'] })).toBe(
-      6,
+describe('while the count runs', () => {
+  it('shows the change at once as counting, with Save disabled until the count lands', async () => {
+    let answer;
+    const onSaveChanges = vi.fn(async () => {});
+    const { container, step, unmount } = await renderComponent(
+      <FieldsManager
+        initialData={{ fields: [], ignoredTokens: { ...PUNCT, explicitIgnoredTokens: ['uh'] } }}
+        onSaveChanges={onSaveChanges}
+        onCountHiddenWords={() => new Promise((resolve) => (answer = resolve))}
+        projectId="p1"
+      />,
     );
+    const explicitRadio = all(container, 'input[type="radio"]').find(
+      (r) => r.value === 'explicit-list',
+    );
+    await step(async () => explicitRadio.click());
+    // The radio stays where it was clicked, and the list it would apply shows.
+    expect(explicitRadio.checked).toBe(true);
+    expect(input(container, 'Add tokens').value).toBe('uh');
+    expect(container.textContent).toContain('Counting the annotated words this change hides');
+    expect(button(container, 'Save').disabled).toBe(true);
+    await step(async () => answer(4));
+    expect(container.textContent).toContain('hides the annotations on 4 words');
+    expect(button(container, 'Save').disabled).toBe(false);
+    expect(onSaveChanges).not.toHaveBeenCalled();
+    await unmount();
   });
 });
 
-describe('annotatedWordFormsQuery', () => {
-  it('counts words, with each kind of value in its own branch', () => {
-    const q = annotatedWordFormsQuery({
-      wordLayerId: 'w',
-      morphLayerId: 'm',
-      wordSpanLayerIds: ['g'],
-      morphSpanLayerIds: ['mg'],
-    });
-    expect(q.return).toEqual({ group: ['?val'], aggregates: [['count']] });
-    const [, , or] = q.where;
-    expect(or[0]).toBe('or');
-    expect(or.slice(1)).toHaveLength(4);
+describe('newlyIgnoredForms', () => {
+  const punct = (whitelist) => ({ type: 'unicodePunctuation', whitelist });
+  it('picks only the forms the new rule ignores and the old one did not', () => {
+    expect(newlyIgnoredForms(FORMS, punct(["'"]), punct([]))).toEqual(["'"]);
+    expect(newlyIgnoredForms(FORMS, punct([]), punct(["'"]))).toEqual([]);
+    expect(
+      newlyIgnoredForms(FORMS, punct([]), { type: 'blacklist', blacklist: ['uh', 'dog'] }),
+    ).toEqual(['uh', 'dog']);
+  });
+});
+
+describe('annotatedWordsQueries', () => {
+  const layers = {
+    wordLayerId: 'w',
+    morphLayerId: 'm',
+    wordSpanLayerIds: ['g'],
+    morphSpanLayerIds: ['mg'],
+  };
+
+  it('never nests a morpheme in its word, which ran past the time limit on large projects', () => {
+    const [q] = annotatedWordsQueries(layers, ['uh']);
+    expect(JSON.stringify(q)).not.toContain('within');
+    // A morpheme is found by its own surface, which is its word's.
+    const [, ...branches] = q.where[0];
+    expect(branches).toHaveLength(4);
+    for (const b of branches) {
+      expect(b[0]).toEqual([
+        'token',
+        expect.any(String),
+        expect.objectContaining({ value: ['uh'], doc: { var: '?d' }, begin: { var: '?b' } }),
+      ]);
+    }
+    expect(q.return).toEqual({ group: ['?val', '?d', '?b'], aggregates: [['count']] });
   });
 
-  it('asks the link branch twice when it is the only one', () => {
-    const q = annotatedWordFormsQuery({ wordLayerId: 'w' });
-    const [, , or] = q.where;
-    expect(or.slice(1)).toEqual([[['link-token', '?wl', '?t']], [['link-token', '?wl', '?t']]]);
+  it('asks about the forms in chunks, and the link branch twice when it is the only one', () => {
+    const forms = Array.from({ length: 450 }, (_, i) => `f${i}`);
+    expect(annotatedWordsQueries(layers, forms)).toHaveLength(3);
+    const [q] = annotatedWordsQueries({ wordLayerId: 'w' }, ['uh']);
+    const [, a, b] = q.where[0];
+    expect(a).toEqual(b);
+  });
+
+  it('counts a word once however much it carries, and a form with none as 0', () => {
+    const rows = [
+      ['uh', 'd1', 0, 3],
+      ['uh', 'd1', 9, 1],
+      ['uh', 'd2', 4, 2],
+    ];
+    expect(annotatedCounts(['uh', '('], [rows])).toEqual(
+      new Map([
+        ['uh', 3],
+        ['(', 0],
+      ]),
+    );
   });
 });

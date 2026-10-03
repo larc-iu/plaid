@@ -121,7 +121,8 @@ export const FieldsManager = ({
     setExplicitText(text);
   };
   // A change of the ignored-tokens rule that hides annotated words, held for
-  // a Save: { next, hidden } (hidden null when it could not be counted).
+  // a Save: { next, hidden } (hidden undefined while it is counted, null when
+  // it could not be).
   const [heldIgnored, setHeldIgnored] = useState(null);
   const ignoredSeq = useRef(0);
 
@@ -402,6 +403,8 @@ export const FieldsManager = ({
       await saveChanges(fields, next);
       return;
     }
+    // Shown at once, as counting, so the choice stays where it was made.
+    setHeldIgnored({ next, hidden: undefined });
     let hidden;
     try {
       hidden = await onCountHiddenWords(ignoredTokens, next);
@@ -762,14 +765,20 @@ export const FieldsManager = ({
             >
               <AlertTriangle aria-hidden="true" className="h-4 w-4 text-destructive" />
               <span className="flex-1">
-                {heldIgnored.hidden == null
-                  ? 'Not saved. The annotated words this change hides could not be counted.'
-                  : `Not saved. This change hides the annotations on ${countOf(heldIgnored.hidden, 'word')}.`}
+                {heldIgnored.hidden === undefined
+                  ? 'Counting the annotated words this change hides…'
+                  : heldIgnored.hidden === null
+                    ? 'Not saved. The annotated words this change hides could not be counted.'
+                    : `Not saved. This change hides the annotations on ${countOf(heldIgnored.hidden, 'word')}.`}
               </span>
               <Button size="sm" variant="outline" onClick={cancelHeldIgnored}>
                 Cancel
               </Button>
-              <Button size="sm" onClick={saveHeldIgnored}>
+              <Button
+                size="sm"
+                onClick={saveHeldIgnored}
+                disabled={heldIgnored.hidden === undefined}
+              >
                 Save
               </Button>
             </div>
