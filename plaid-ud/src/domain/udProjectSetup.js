@@ -201,12 +201,18 @@ export const createUdProject = (client, projectName) =>
  * set-up is one batch: it lands whole or not at all, and a layer is never left
  * without the flag or role a re-run would find it by.
  *
+ * The plan is made from the project as it is now, read here, never from the
+ * page's copy: a set-up another tab or maintainer ran since, or this page's
+ * own earlier click whose batch landed before a later step failed, has
+ * already made the layers, and a plan from the old copy made them twice.
+ *
  * @param {object} client - PlaidClient instance
- * @param {object} project - the project, as read
+ * @param {object} page - the project as the page read it (only its id is used)
  * @returns {Promise<void>}
  */
-export const adoptSubstrate = (client, project) =>
+export const adoptSubstrate = (client, page) =>
   client.withOperation('Set the project up for UD', async () => {
+    const project = await client.projects.get(page.id);
     const textLayers = project?.textLayers || [];
     const baseline = findByRole(textLayers, ROLES.BASELINE);
     // Two text layers with no baseline role between them is not a project any

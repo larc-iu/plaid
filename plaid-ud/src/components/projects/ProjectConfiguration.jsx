@@ -77,6 +77,14 @@ export const ProjectConfiguration = () => {
     } catch (err) {
       console.error('Failed to set the project up for UD:', err);
       notifyError(err, 'Failed to set up the project');
+      // The layers may have landed before a later step failed. Show the
+      // project as it is now, not the copy the button was pressed on.
+      try {
+        const fresh = await getClient()?.projects.get(projectId);
+        if (fresh) setProject(fresh);
+      } catch (readErr) {
+        console.error('Failed to re-read the project:', readErr);
+      }
     } finally {
       setSaving(false);
     }
@@ -169,11 +177,13 @@ export const ProjectConfiguration = () => {
                 tokens)
               </li>
               <li>Span layers on words: Form, Lemma, UPOS, XPOS, Features</li>
-              <li>Dependency relation layer on the Lemma layer</li>
+              <li>Dependency and enhanced dependency relation layers on the Lemma layer</li>
             </ul>
-            <Button className="self-start" onClick={handleSetUp} disabled={saving}>
-              {saving ? 'Saving…' : 'Set up for UD'}
-            </Button>
+            {!info.isConfigured && (
+              <Button className="self-start" onClick={handleSetUp} disabled={saving}>
+                {saving ? 'Saving…' : 'Set up for UD'}
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
