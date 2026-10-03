@@ -74,22 +74,36 @@
   (`:media/delete`). The file goes once the operation is durable: in an
   atomic batch a later failure rolls the batch back, and nothing brings a
   file back. A second delete of it in the same batch is refused 404, as a
-  delete of anything already gone is."
-  [db document-id user-id]
-  (let [result (op/submit-operation!
-                [_tx db {:type :media/delete
-                         :project (doc/project-id db document-id)
-                         :document document-id
-                         :description (str "Delete media file of document " document-id)
-                         :user user-id}]
-                (when (or (not (media/media-exists? document-id))
-                          (deleting-in-this-batch? document-id))
-                  (refused! {:error-kind :not-found :error "No media file found"}))
-                nil)]
-    (when (:success result)
-      (op/after-commit! (with-meta (fn [] (media/delete-media-file! document-id))
-                          {::deletes document-id})))
-    result))
+  delete of anything already gone is.
+
+  `media-version`, when given, names the recording the caller means: the
+  `?v=` of the `media-url` it holds. A delete is refused 409 when the stored
+  recording is another one (replaced since the caller read the document), and
+  the refusal carries the current `media-url`. Without it the delete takes
+  whatever is stored. An upload takes no such check: one made over a stale
+  page is refused as `:exists` already."
+  ([db document-id user-id] (delete! db document-id user-id nil))
+  ([db document-id user-id media-version]
+   (let [result (op/submit-operation!
+                 [_tx db {:type :media/delete
+                          :project (doc/project-id db document-id)
+                          :document document-id
+                          :description (str "Delete media file of document " document-id)
+                          :user user-id}]
+                 (when (or (not (media/media-exists? document-id))
+                           (deleting-in-this-batch? document-id))
+                   (refused! {:error-kind :not-found :error "No media file found"}))
+                 (when (and (some? media-version)
+                            (not= media-version (media/media-version document-id)))
+                   (throw (ex-info "The recording changed"
+                                   {:code 409
+                                    :plaid/body {:media-changed true
+                                                 :media-url (media/media-url document-id)}})))
+                 nil)]
+     (when (:success result)
+       (op/after-commit! (with-meta (fn [] (media/delete-media-file! document-id))
+                           {::deletes document-id})))
+     result)))
 
 (defn get-project-id-from-document
   "Get project ID from document ID for auth middleware"
@@ -271,10 +285,16 @@
                           {:status 400
                            :body {:error "No file provided in multipart upload"}})))}
 
-     :delete {:summary "Delete media file for a document"
+     :delete {:summary (str "Delete media file for a document. <body>media-version</body> names the "
+                            "recording meant, the <body>?v=</body> of the document's "
+                            "<body>media-url</body>: when the stored recording is another one, the "
+                            "delete is refused 409 with <body>media-changed</body> and the current "
+                            "<body>media-url</body>. Without it the stored recording is deleted.")
               :middleware [[pra/wrap-writer-required get-project-id-from-document]]
-              :handler (fn [{{{:keys [document-id]} :path} :parameters db :db user-id :user/id}]
-                         (let [result (delete! db document-id user-id)]
+              :parameters {:query [:map [:media-version {:optional true} [:string {:min 1}]]]}
+              :handler (fn [{{{:keys [document-id]} :path {:keys [media-version]} :query} :parameters
+                             db :db user-id :user/id}]
+                         (let [result (delete! db document-id user-id media-version)]
                            (if (:success result)
                              (prm/assoc-document-version-in-header {:status 204} db document-id)
                              {:status (:code result 500)

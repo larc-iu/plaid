@@ -1115,7 +1115,14 @@ interface DocumentsBundle {
       onProgress?: (progress: { loaded: number; total: number | null }) => void;
     },
   ): Promise<any>;
-  deleteMedia(documentId: string, auditMessage?: string): Promise<any>;
+  deleteMedia(
+    documentId: string,
+    auditMessage?: string,
+    options?: {
+      /** The recording meant, the `?v=` of the document's `mediaUrl`. A 409 when the stored one is another. */
+      mediaVersion?: string;
+    },
+  ): Promise<any>;
   setMetadata(
     documentId: string,
     body: any,

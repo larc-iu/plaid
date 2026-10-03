@@ -2129,11 +2129,17 @@ class DocumentsResource(_Resource):
                              body={'file': file}, form_data=True, no_batch=True,
                              audit_message=audit_message, on_upload_progress=on_progress)
 
-    def delete_media(self, document_id: str, audit_message=None) -> Any:
+    def delete_media(self, document_id: str, audit_message=None,
+                     media_version: str = None) -> Any:
         """Delete media file for a document.
 
         Args:
             document_id: The document ID
+            audit_message: Custom audit-log message for this write
+            media_version: The recording meant, the ``?v=`` of the document's
+                ``media_url``. The delete is refused with a 409
+                (``media-changed``, and the current ``media-url``) when the
+                stored recording is another one.
         """
         # No flag: the upload above is multipart and cannot be batched, but a
         # DELETE carries no blob, so the batch transport takes it. It is a
@@ -2141,6 +2147,7 @@ class DocumentsResource(_Resource):
         # the file removal happens outside the server's transaction, so a batch
         # that aborts after this op does not bring the file back.
         return self._request('DELETE', f'/api/v1/documents/{document_id}/media',
+                             query_params={'media-version': media_version},
                              audit_message=audit_message)
 
     def get(self, document_id: str, *, include_body: bool | None = None,

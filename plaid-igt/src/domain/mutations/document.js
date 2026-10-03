@@ -17,7 +17,7 @@ import {
 } from '@larc-iu/plaid-client';
 import { lineSentenceRanges } from '../../utils/tokenizationUtils.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
-import { isTextChanged } from '@ui/lib/errors.js';
+import { isTextChanged, statusOf } from '@ui/lib/errors.js';
 import { sendTextPlan } from '@ui/lib/textSave.js';
 import { pendingId } from '@ui/domain/pendingIds.js';
 import { mergeText, rebaseEdits } from '@ui/lib/textMerge.js';
@@ -396,10 +396,13 @@ export const documentMutations = {
   },
 
   // The speech-detection cuts were measured on the recording, so they go with
-  // it, in the same operation.
+  // it, in the same operation. The delete names the recording on screen, so
+  // one replaced by someone else since is refused rather than deleted, and
+  // the refetch after the refusal shows the current one.
   async deleteMedia() {
     const label = 'Failed to delete media';
     if (!this._canWrite(label)) return false;
+    const mediaVersion = mediaVersionOf(this._raw?.mediaUrl);
     const ops =
       this._raw?.metadata?.[VAD_METADATA_KEY] != null
         ? metadataOps({ [VAD_METADATA_KEY]: null })
@@ -409,8 +412,30 @@ export const documentMutations = {
       if (ops.length) next.metadata = applyMetadataOps(next.metadata, ops);
     });
     return this._queueWrite(label, async () => {
-      await this._client.documents.deleteMedia(this.id);
+      try {
+        await this._client.documents.deleteMedia(this.id, undefined, { mediaVersion });
+      } catch (err) {
+        throw recordingReplaced(err) ?? err;
+      }
       if (ops.length) await this._client.documents.patchMetadata(this.id, ops);
     });
   },
 };
+
+// The `?v=` of a document's media URL, which names the recording it holds.
+function mediaVersionOf(mediaUrl) {
+  if (!mediaUrl) return undefined;
+  const query = String(mediaUrl).split('?')[1] ?? '';
+  return new URLSearchParams(query).get('v') || undefined;
+}
+
+// A delete refused because the stored recording is another one, worded for
+// the screen. Not a status the toast words as a conflict: the page refetches
+// and shows the current recording, which is what the message says.
+function recordingReplaced(err) {
+  if (statusOf(err) !== 409 || !err?.responseData?.['media-changed']) return null;
+  return Object.assign(new Error('Replaced elsewhere. Showing the current recording.'), {
+    cause: err,
+    mediaChanged: true,
+  });
+}

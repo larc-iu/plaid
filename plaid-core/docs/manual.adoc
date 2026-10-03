@@ -209,6 +209,7 @@ Per-page variants (e.g. `list_documents_page` / `listDocumentsPage`) are availab
 
 Every write to the database is recorded in an append-only **audit log** which provides an account of who performed every change.
 Uploading and deleting a document's recording are recorded too, as operations of type `media/upload` and `media/delete`, and each moves the document's version. The recording itself is a file, not part of the log, so time travel and a restore cannot bring back a deleted one.
+A delete may name the recording it means with `media-version`, the `?v=` of the document's `media-url` (`mediaVersion` / `media_version` in the clients). It is refused with 409, `media-changed` and the current `media-url` when the stored recording is another one, so a page still showing a replaced recording cannot delete its replacement.
 Audit history is retained indefinitely — it is both the forensic record and the source for document time travel (see below), so pruning it trades away history. Operators monitor disk via the `/health` endpoint's `audit` block.
 
 The log can be queried like so:
@@ -319,7 +320,7 @@ The reference is free text of at most 1024 characters, and a longer one is refus
 === Custom messages for single writes
 
 For a single write, you can replace its auto-generated `description` by passing a message as the `audit_message` / `auditMessage` argument of a write method that has one.
-It is the last argument of most writes. In JavaScript, `projects.delete` and `documents.uploadMedia` take an options object after it, and user-data and comment writes take none:
+It is the last argument of most writes. In JavaScript, `projects.delete`, `documents.uploadMedia` and `documents.deleteMedia` take an options object after it, and user-data and comment writes take none:
 
 [,python]
 ----

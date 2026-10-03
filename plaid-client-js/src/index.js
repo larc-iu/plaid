@@ -2131,15 +2131,21 @@ class PlaidClient {
       /**
        * Delete media file for a document
        * @param {string} documentId - The document ID
+       * @param {string} [auditMessage] - Audit message for this write
+       * @param {{mediaVersion?: string}} [options] - `mediaVersion`: the
+       *   recording meant, the `?v=` of the document's `mediaUrl`. The delete
+       *   is refused with a 409 (`media-changed`, and the current `media-url`)
+       *   when the stored recording is another one.
        */
       // The upload above is multipart and cannot be batched, but a DELETE
       // carries no blob, so the batch transport takes it. It is a write
       // of the document's own data and queues like any other. Note that the
       // file removal happens outside the server's transaction, so a batch that
       // aborts after this op does not bring the file back.
-      deleteMedia: (documentId, auditMessage) =>
+      deleteMedia: (documentId, auditMessage, { mediaVersion } = {}) =>
         this._request("DELETE", `/api/v1/documents/${documentId}/media`, {
           auditMessage,
+          queryParams: { "media-version": mediaVersion },
         }),
       /**
        * Replace all metadata for a document.
