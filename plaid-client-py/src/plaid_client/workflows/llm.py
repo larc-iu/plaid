@@ -22,17 +22,24 @@ need it installed.
         if reply.truncated: ...            # the model ran out of room
         reply.text
 
-Every call has a deadline (``--timeout``, :data:`DEFAULT_TIMEOUT_S` unless the
-operator says otherwise), and a call that passes ``should_stop`` ends with
-:class:`~plaid_client.services.ServiceCancelled` within a second of a stop,
-even while the provider has not answered.
+Every call is streamed, as the assistants' calls are (plaid-agent's
+``core/agent.py``), and its deadline (``--timeout``, :data:`DEFAULT_TIMEOUT_S`
+unless the operator says otherwise) is the longest SILENCE allowed, not the
+length of the reply: a reasoning model that thinks for five minutes while
+sending tokens all along is answering. A call that passes ``should_stop`` ends
+with :class:`~plaid_client.services.ServiceCancelled` within a second of a
+stop, even while the provider has not answered, and a stream is closed at its
+next chunk. The temperature is the provider's own unless the operator sets one:
+greedy decoding (0) sent a reasoning model round the same lines of thought
+until its token limit.
 """
 
 import random
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Optional
+from types import SimpleNamespace
+from typing import Any, Callable, Dict, List, Optional
 
 from plaid_client.services import ServiceCancelled
 
@@ -43,10 +50,12 @@ from plaid_client.services import ServiceCancelled
 RETRIES = 3
 RETRY_BASE_S = 2.0
 
-#: Seconds one model call may take before it is abandoned, unless the operator
-#: sets ``--timeout``. Without a deadline the provider SDK's own applies, and
-#: litellm's is 6000 s: an endpoint that accepts the request and never answers
-#: held the document's write lock for most of an hour per sentence.
+#: Seconds a model call may go without sending anything before it is
+#: abandoned, unless the operator sets ``--timeout``. The call is streamed, so
+#: this is a gap between chunks, not a cap on the reply. Without a deadline
+#: the provider SDK's own applies, and litellm's is 6000 s: an endpoint that
+#: accepts the request and never answers held the document's write lock for
+#: most of an hour per sentence.
 DEFAULT_TIMEOUT_S = 120.0
 
 #: A timed-out call is tried again at most this many times. A model that did
@@ -146,14 +155,34 @@ def _timeout_errors(litellm) -> tuple:
         out.append(APITimeoutError)
     except ImportError:  # pragma: no cover - litellm depends on openai
         pass
+    try:  # a stream that goes silent ends in the HTTP library's own read timeout
+        from httpx import TimeoutException
+        out.append(TimeoutException)
+    except ImportError:  # pragma: no cover - the openai SDK depends on httpx
+        pass
     return tuple(e for e in out if isinstance(e, type) and issubclass(e, Exception))
 
 
+def _timed_out(e: BaseException, timeouts: tuple) -> bool:
+    """Whether ``e``, or an error it was raised from, is one of ``timeouts``.
+    A stream that goes silent after it has begun is not raised as a timeout:
+    litellm wraps the read timeout in ``MidStreamFallbackError``, a
+    "service unavailable", with the timeout as its cause."""
+    seen = set()
+    while e is not None and id(e) not in seen and timeouts:
+        if isinstance(e, timeouts):
+            return True
+        seen.add(id(e))
+        e = e.__cause__ or e.__context__
+    return False
+
+
 def is_timeout(e: BaseException, litellm=None) -> bool:
-    """Whether the call passed its deadline without an answer."""
+    """Whether the call passed its deadline without an answer: no reply began
+    in time, or a reply that had begun went silent for the deadline."""
     if litellm is None:
         import litellm
-    return isinstance(e, _timeout_errors(litellm))
+    return _timed_out(e, _timeout_errors(litellm))
 
 
 def retrying(call: Callable[[], Any], *, model: str, timeout: Optional[float] = None,
@@ -183,7 +212,7 @@ def retrying(call: Callable[[], Any], *, model: str, timeout: Optional[float] = 
         try:
             return call()
         except Exception as e:
-            if timeouts_of and isinstance(e, timeouts_of):
+            if _timed_out(e, timeouts_of):
                 timeouts += 1
                 if timeouts > timeout_retries:
                     raise
@@ -227,7 +256,7 @@ class ChatModel:
     endpoint with the operator's key.
     """
 
-    def __init__(self, model, api_base=None, api_key=None, temperature=0.0,
+    def __init__(self, model, api_base=None, api_key=None, temperature=None,
                  max_tokens=None, retries=RETRIES, timeout=DEFAULT_TIMEOUT_S):
         self.model = model
         self.timeout = timeout
@@ -257,20 +286,24 @@ class ChatModel:
 
     def complete(self, system: str, user: str,
                  should_stop: Optional[Callable[[], bool]] = None) -> Reply:
-        """One chat completion, retried while the provider is rate limiting.
+        """One chat completion, streamed, retried while the provider is rate
+        limiting.
 
         ``should_stop`` is read about once a second while the call waits and
         before every retry, and a True ends the call with ``ServiceCancelled``
         (pass ``lambda: response_helper.cancelled``). Without it a stop is
         noticed only after the model answers or the deadline passes. A call
-        that times out is tried once more, then raises :class:`ModelTimeout`.
+        that goes silent for the deadline is tried once more, then raises
+        :class:`ModelTimeout`. The temperature is sent only when the operator
+        chose one.
         """
         import litellm  # only the running service needs it
         kwargs: Dict[str, Any] = {
             'model': self.model,
             'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}],
-            'temperature': self.temperature,
         }
+        if self.temperature is not None:
+            kwargs['temperature'] = self.temperature
         if self.timeout:
             kwargs['timeout'] = self.timeout
         # The retries are this class's alone. The OpenAI SDK under litellm
@@ -335,16 +368,19 @@ class ChatModel:
     def _call(self, litellm, kwargs, should_stop):
         """One provider call. With ``should_stop`` it runs on a worker thread
         so the stop can be seen while the provider is silent: litellm offers
-        no way to interrupt a request in flight, so a stopped call is left to
-        finish or time out on its own, and its answer is dropped."""
+        no way to interrupt a request in flight, so a stopped call stops
+        reading its stream at the next chunk (which ends the request at the
+        provider), or is left to time out on its own, and its answer is
+        dropped."""
         if should_stop is None:
-            return litellm.completion(**kwargs)
+            return _streamed(litellm, kwargs)
         done = threading.Event()
+        abandoned = threading.Event()
         box: Dict[str, Any] = {}
 
         def work():
             try:
-                box['value'] = litellm.completion(**kwargs)
+                box['value'] = _streamed(litellm, kwargs, abandoned)
             except BaseException as e:  # handed to the waiting thread as is
                 box['error'] = e
             finally:
@@ -352,7 +388,9 @@ class ChatModel:
 
         threading.Thread(target=work, name='model-call', daemon=True).start()
         while not done.wait(STOP_POLL_S):
-            self._check_stop(should_stop)
+            if should_stop():
+                abandoned.set()
+                raise ServiceCancelled('The requester stopped this request')
         if 'error' in box:
             raise box['error']
         return box['value']
@@ -376,6 +414,79 @@ class ChatModel:
             pass
 
 
+def _streamed(litellm, kwargs, abandoned: Optional[threading.Event] = None):
+    """One call, streamed, read back as one response: ``choices[0]`` with the
+    reply's text as ``message.content`` and its ``finish_reason``, and the
+    usage. The deadline in ``kwargs['timeout']`` is the provider SDK's read
+    timeout, which every chunk resets, the thinking a reasoning model streams
+    before its answer included.
+
+    A provider that refuses to stream (an error before the first chunk that is
+    neither a timeout nor one that passes) is asked again without streaming,
+    as the assistants' calls are (plaid-agent ``core/agent.py``
+    ``_complete_once``). Once ``abandoned`` is set the stream is closed at its
+    next chunk."""
+    chunks: List[Any] = []
+    try:
+        stream = litellm.completion(**kwargs, stream=True)
+        if hasattr(stream, 'choices'):
+            return stream  # a whole response (a test double, a provider that ignored stream=)
+        for chunk in stream:
+            if abandoned is not None and abandoned.is_set():
+                close = getattr(stream, 'close', None)
+                if callable(close):
+                    close()
+                raise ServiceCancelled('The requester stopped this request')
+            chunks.append(chunk)
+    except ServiceCancelled:
+        raise
+    except Exception as e:
+        if chunks or is_timeout(e, litellm) or isinstance(e, transient_errors(litellm)):
+            raise
+        if abandoned is not None and abandoned.is_set():
+            raise ServiceCancelled('The requester stopped this request') from e
+        return litellm.completion(**kwargs)
+    return _joined(litellm, chunks, kwargs.get('messages'))
+
+
+def _joined(litellm, chunks, messages):
+    """The chunks of a streamed reply as one response. The text and the finish
+    reason are read here. The usage is the last one a chunk carried, or else
+    litellm's count from the chunks (``stream_chunk_builder``)."""
+    text = []
+    finish = None
+    usage = None
+    for chunk in chunks:
+        if getattr(chunk, 'usage', None):
+            usage = chunk.usage
+        for choice in getattr(chunk, 'choices', None) or []:
+            delta = getattr(choice, 'delta', None)
+            piece = getattr(delta, 'content', None) if delta is not None else None
+            if piece:
+                text.append(piece)
+            if getattr(choice, 'finish_reason', None):
+                finish = choice.finish_reason
+    hidden: Dict[str, Any] = {}
+    builder = getattr(litellm, 'stream_chunk_builder', None)
+    if chunks and callable(builder):
+        try:
+            built = builder(chunks, messages=messages)
+            usage = usage or getattr(built, 'usage', None)
+            hidden = getattr(built, '_hidden_params', None) or {}
+            # A model litellm has no price for is a provider the operator
+            # runs, and asking prints litellm's help text into the log.
+            priced = getattr(litellm, 'model_cost', None) or {}
+            model = str(getattr(built, 'model', '') or '')
+            if (not hidden.get('response_cost') and (model in priced or model.split('/')[-1] in priced)
+                    and callable(getattr(litellm, 'completion_cost', None))):
+                hidden = {**hidden, 'response_cost': litellm.completion_cost(completion_response=built)}
+        except Exception:  # noqa: BLE001 - accounting only: the reply stands without it
+            pass
+    message = SimpleNamespace(content=''.join(text))
+    return SimpleNamespace(choices=[SimpleNamespace(message=message, finish_reason=finish)],
+                           usage=usage, _hidden_params=hidden)
+
+
 def provider_secrets(api_key=None, environ=None):
     """Everything that must be kept out of what a requester is shown.
 
@@ -396,7 +507,8 @@ def add_model_arguments(parser, default_service_id: Optional[str] = None) -> Non
     parser.add_argument('--api-base', default=None,
                         help='Provider base URL (OpenAI-compatible servers, proxies)')
     parser.add_argument('--api-key', default=None, help="Provider API key (else the provider's env var)")
-    parser.add_argument('--temperature', type=float, default=0.0)
+    parser.add_argument('--temperature', type=float, default=None,
+                        help="Sampling temperature (default: the provider's own)")
     parser.add_argument('--max-tokens', type=int, default=None)
     add_timeout_argument(parser)
     parser.add_argument('--service-id', default=None,
@@ -408,11 +520,11 @@ def add_model_arguments(parser, default_service_id: Optional[str] = None) -> Non
 
 
 def add_timeout_argument(parser) -> None:
-    """``--timeout``, the seconds one model call may take. Its own function so
+    """``--timeout``, the seconds a model call may stay silent. Its own function so
     a model caller that does not use :func:`add_model_arguments` (the
     assistants in plaid-agent) takes the same flag with the same default."""
     parser.add_argument('--timeout', type=float, default=DEFAULT_TIMEOUT_S,
-                        help=f'Seconds to wait for one model reply before giving up '
+                        help=f'Seconds the model may send nothing before a reply is given up '
                              f'(tried once more after a timeout; default {DEFAULT_TIMEOUT_S:g})')
 
 

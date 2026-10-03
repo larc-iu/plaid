@@ -203,9 +203,13 @@ def test_a_stop_before_the_call_asks_nothing(monkeypatch):
 
 def test_a_provider_error_reaches_the_caller_through_the_worker_thread(monkeypatch):
     monkeypatch.setattr(llm, 'STOP_POLL_S', 0.01)
-    _install(monkeypatch, _fake_litellm([ValueError('bad request')]))
+    # Refused as a stream, then refused again unstreamed: the second refusal is
+    # the one that reaches the caller.
+    fake = _fake_litellm([ValueError('bad request'), ValueError('bad request')])
+    _install(monkeypatch, fake)
     with pytest.raises(ValueError, match='bad request'):
         llm.ChatModel('openai/x').complete('sys', 'user', should_stop=lambda: False)
+    assert [c.get('stream') for c in fake.calls] == [True, None]
 
 
 def test_the_timeout_flag_reaches_the_model():
@@ -294,3 +298,157 @@ def test_one_retry_loop_decides_for_every_caller_of_a_model(no_sleep):
     assert len(calls) == 1
     assert llm.is_timeout(_Timeout('late'), fake) and not llm.is_timeout(_RateLimited('x'), fake)
     assert llm.transient_errors(fake) == (_RateLimited,)
+
+
+# --- streaming (H39-AGENT-UMR-1) ------------------------------------------------
+
+def _chunk(content=None, finish_reason=None, reasoning=None, usage=None):
+    delta = types.SimpleNamespace(content=content, reasoning_content=reasoning)
+    choice = types.SimpleNamespace(delta=delta, finish_reason=finish_reason)
+    return types.SimpleNamespace(choices=[choice], usage=usage)
+
+
+class _Stream:
+    """A provider's stream: yields its chunks, and records being closed."""
+
+    def __init__(self, chunks, between=None):
+        self.chunks = list(chunks)
+        self.between = between
+        self.closed = False
+        self.read = 0
+
+    def __iter__(self):
+        for chunk in self.chunks:
+            if self.closed:
+                return
+            if self.between and self.read:
+                self.between()
+            self.read += 1
+            yield chunk
+
+    def close(self):
+        self.closed = True
+
+
+def test_every_call_is_streamed_and_read_back_as_one_reply(monkeypatch):
+    # A reasoning model thinks for minutes before it writes a word. Unstreamed,
+    # the whole of it had to arrive inside --timeout, and no sentence did.
+    stream = _Stream([_chunk(reasoning='Hmm. '), _chunk(reasoning='The root is go-01.'),
+                      _chunk('(s1g / go-01'), _chunk(')'), _chunk(finish_reason='stop'),
+                      types.SimpleNamespace(choices=[], usage=_Usage(40, 900))])
+    fake = _fake_litellm([stream])
+    _install(monkeypatch, fake)
+    model = llm.ChatModel('openai/x')
+    reply = model.complete('sys', 'user')
+    assert fake.calls[0]['stream'] is True
+    assert reply.text == '(s1g / go-01)' and reply.truncated is False
+    assert reply.usage == {'prompt_tokens': 40, 'completion_tokens': 900}
+    assert '40 prompt + 900 completion tokens' in model.usage_line()
+
+
+def test_a_streamed_reply_cut_off_at_the_token_limit_says_so(monkeypatch):
+    _install(monkeypatch, _fake_litellm([_Stream([_chunk('(s1g / go'), _chunk(finish_reason='length')])]))
+    reply = llm.ChatModel('openai/x').complete('sys', 'user')
+    assert reply.truncated is True and reply.text == '(s1g / go'
+
+
+def test_a_stop_closes_the_stream_at_its_next_chunk(monkeypatch):
+    # Closing the stream is what ends the request at the provider: a stopped
+    # run must not leave the model thinking in a slot for minutes.
+    monkeypatch.setattr(llm, 'STOP_POLL_S', 0.01)
+    stop = {'asked': False}
+    gate = threading.Event()
+
+    def between():
+        stop['asked'] = True
+        gate.wait(0.5)
+
+    stream = _Stream([_chunk(reasoning='a')] * 50, between=between)
+    _install(monkeypatch, _fake_litellm([stream]))
+    with pytest.raises(ServiceCancelled):
+        llm.ChatModel('openai/x').complete('sys', 'user', should_stop=lambda: stop['asked'])
+    gate.set()
+    deadline = time.monotonic() + 2
+    while not stream.closed and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert stream.closed and stream.read < 50
+
+
+def test_a_timeout_in_the_middle_of_a_stream_is_tried_once_more(monkeypatch, no_sleep):
+    class _Broken(_Stream):
+        def __iter__(self):
+            yield _chunk(reasoning='thinking')
+            raise _Timeout('read timed out')
+
+    fake = _fake_litellm([_Broken([]), _Stream([_chunk('ok'), _chunk(finish_reason='stop')])])
+    _install(monkeypatch, fake)
+    assert llm.ChatModel('openai/x').complete('sys', 'user').text == 'ok'
+    assert len(fake.calls) == 2
+
+
+def test_the_temperature_is_the_providers_unless_the_operator_sets_one(monkeypatch):
+    # Greedy decoding sent a reasoning model round the same lines until its
+    # token limit (51,000 tokens and counting at temperature 0).
+    fake = _fake_litellm([_response('a'), _response('b')])
+    _install(monkeypatch, fake)
+    llm.ChatModel('openai/x').complete('sys', 'user')
+    llm.ChatModel('openai/x', temperature=0.6).complete('sys', 'user')
+    assert 'temperature' not in fake.calls[0]
+    assert fake.calls[1]['temperature'] == 0.6
+    parser = argparse.ArgumentParser()
+    llm.add_model_arguments(parser)
+    assert parser.parse_args(['--model', 'm']).temperature is None
+    assert parser.parse_args(['--model', 'm', '--temperature', '0']).temperature == 0.0
+
+
+def test_the_deadline_is_a_silence_not_the_length_of_the_reply():
+    """Through the real litellm and openai SDK against a local server that
+    streams for three times the deadline, one chunk at a time: the reply is
+    whole. A server that then goes silent for longer than the deadline is a
+    timeout."""
+    litellm = pytest.importorskip('litellm')
+    import http.server
+    import json as _json
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        silent = False
+
+        def log_message(self, *a):
+            pass
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers.get('Content-Length') or 0))
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.end_headers()
+
+            def send(delta, finish=None):
+                body = {'id': 'c', 'object': 'chat.completion.chunk', 'created': 0, 'model': 'x',
+                        'choices': [{'index': 0, 'delta': delta, 'finish_reason': finish}]}
+                self.wfile.write(f'data: {_json.dumps(body)}\n\n'.encode())
+                self.wfile.flush()
+
+            if Handler.silent:
+                time.sleep(2.5)
+                return
+            for i in range(12):
+                send({'reasoning_content': f'step {i}. '})
+                time.sleep(0.25)
+            send({'content': 'done'})
+            send({}, 'stop')
+            self.wfile.write(b'data: [DONE]\n\n')
+
+    server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f'http://127.0.0.1:{server.server_address[1]}/v1'
+    try:
+        model = llm.ChatModel('openai/x', api_base=base, api_key='k', timeout=1)
+        began = time.monotonic()
+        assert model.complete('sys', 'user').text == 'done'
+        assert time.monotonic() - began > 2.5
+        Handler.silent = True
+        with pytest.raises(llm.ModelTimeout):
+            llm.ChatModel('openai/x', api_base=base, api_key='k', timeout=1).complete('sys', 'user')
+    finally:
+        server.shutdown()
+    assert litellm  # imported for real, not the fake
