@@ -165,6 +165,8 @@ class Context:
         # The morpheme made for each unsegmented word's derived one, by the
         # derived id, so every write naming it names the one token.
         self.materialized: Dict[str, str] = {}
+        # The morph type each analysed word's new chain gives each morpheme.
+        self.chain_types: Dict[str, List[Optional[str]]] = {}
 
     def defer(self, op, when: str = 'second') -> None:
         self.later.setdefault(when, []).append(op)
@@ -263,6 +265,7 @@ def _apply_set_analysis(ctx: Context, op) -> int:
                 b.add(lambda batch, i=made, fv=fv: batch.spans.create(
                     fv['layer_id'], [i], fv['value'], ctx.stamp(), id=b.new_id()))
     ctx.chains[op['word_id']] = slots
+    ctx.chain_types[op['word_id']] = [m.get('morph_type') for m in morphemes]
     return 1
 
 
@@ -310,6 +313,16 @@ def _link_planned_morpheme(ctx: Context, op) -> None:
     ctx.drop('vocab_links', op.get('existing_link_id'))
     ctx.b.add(lambda batch, e=entry, m=slots[k - 1]: batch.vocab_links.create(
         e, [m], ctx.stamp(), id=ctx.b.new_id()))
+    types = ctx.chain_types.get(op['analysis_word_id']) or []
+    if op.get('morph_type') and (types[k - 1] if k <= len(types) else None) != op['morph_type']:
+        _cache_morph_type(ctx, slots[k - 1], op['morph_type'])
+
+
+def _cache_morph_type(ctx: Context, morpheme_id: str, morph_type: str) -> None:
+    """The morpheme's cached type, written with the link that gives it, so
+    nothing is left for a repair on the next open (``morph_type``, noted at
+    staging)."""
+    ctx.b.update('tokens', morpheme_id, metadata=metadata_ops({'morphType': morph_type}))
 
 
 def _apply_link(ctx: Context, op) -> int:
@@ -324,7 +337,15 @@ def _apply_link(ctx: Context, op) -> int:
             ctx.planned_links.append(op)
             ctx.defer(op)
         return 1
-    return _link(ctx, op, [_token(ctx, op, op['token_id'])])
+    t = op.get('morph_type')
+    if is_virtual(op['token_id']) and op['token_id'] not in ctx.materialized:
+        # Made with the type, as the editor's _planLinkMany makes it.
+        return _link(ctx, op, [_token(ctx, op, op['token_id'], {'morphType': t} if t else None)])
+    token = _token(ctx, op, op['token_id'])
+    n = _link(ctx, op, [token])
+    if t:
+        _cache_morph_type(ctx, token, t)
+    return n
 
 
 def _apply_link_phrase(ctx: Context, op) -> int:

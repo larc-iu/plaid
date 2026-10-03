@@ -115,3 +115,44 @@ def test_reads_and_counts_are_unchanged():
     w = scan_ws(FakeClient())
     out = call_tool(w, 'read_document', {'document': 'd1'})
     assert '  w3 akuna\n' in out  # nothing after the surface, as for a word with a stored default morpheme
+
+
+# --- the morph-type cache a link writes (REV-FX3-AGENT-2) ----------------------
+
+def test_a_link_writes_the_entrys_morph_type_with_it_as_the_editor_does():
+    """A morpheme linked to an entry goes by the entry's type, and its cached
+    morphType is written in the same batch. Left stale, the next person who
+    merely opened the document wrote it under their own name."""
+    w = scan_ws(FakeClient())
+    call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w3.m1'], 'entry_id': 'vi-erg'})  # derived
+    call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s2.w1.m2'], 'entry_id': 'vi-erg'})  # stored, enclitic
+    call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w2'], 'entry_id': 'vi-erg'})     # a word: no type
+    _counts, c = _applied(w)
+    _mid, meta = _made_morpheme(c)
+    assert meta == {'morphType': 'suffix', **STAMP}
+    assert [(tid, as_fragment(p)) for tid, p in c.patches('tokens')] == [('m-4b', {'morphType': 'suffix'})]
+
+
+def test_a_link_whose_entry_agrees_with_the_cache_or_has_no_type_writes_none():
+    w = scan_ws(FakeClient())
+    call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s2.w1.m1'], 'entry_id': 'vi-gam'})  # gam has no type
+    assert 'morph_type' not in w.ops[0]
+    _counts, c = _applied(w)
+    assert not c.patches('tokens')
+
+
+def test_a_link_to_a_morpheme_of_a_planned_analysis_writes_its_type():
+    w = scan_ws(FakeClient())
+    call_tool(w, 'set_analysis', {'document': 'd1', 'ref': 's1.w3', 'morphemes': [{'form': 'aku'}, {'form': 'na'}]})
+    call_tool(w, 'link_entry', {'document': 'd1', 'refs': ['s1.w3.m2'], 'entry_id': 'vi-erg'})
+    _counts, c = _applied(w)
+    made = [p['kwargs']['id'] for p in c.payloads('tokens.create')]
+    assert [(tid, as_fragment(p)) for tid, p in c.patches('tokens')] == [(made[1], {'morphType': 'suffix'})]
+
+
+# --- the card's accepted-work flag (REV-FX3-AGENT-3) ------------------------------
+
+def test_a_change_on_a_derived_morpheme_replaces_no_accepted_work():
+    w = scan_ws(FakeClient())
+    call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's1.w3.m1', 'type': 'stem', 'form': 'akun'})
+    assert not any(op.get('replaces_work') for op in w.plan_payload()['ops'])

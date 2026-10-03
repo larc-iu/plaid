@@ -38,7 +38,7 @@ MAINTAINERS_ONLY = ('Only a maintainer of the lexicon "{lexicon}" can rename, de
 from .project import (IgtProject, IgtDoc, Morpheme, Sentence, Word, is_virtual, load_document, render_document,
                       resolve)
 from .lexview import LexView, _dict_hits, entry_line
-from .vocab import RESERVED_ITEM_KEYS, fields_for_item
+from .vocab import PARENT_KEY, RESERVED_ITEM_KEYS, fields_for_item, morph_type_of
 
 MAX_DOCS_PER_SEARCH = 1000
 
@@ -488,6 +488,7 @@ class Workspace(BaseWorkspace):
 
     def add_op(self, op: Dict[str, Any]) -> None:
         self.place_virtual(op)
+        self.place_morph_type(op)
         with self.superseding([op]):
             super().add_op(op)
             # A new analysis of a word (or a discard of it) replaces the one a
@@ -518,6 +519,47 @@ class Workspace(BaseWorkspace):
                 raise ToolError(f'{op.get("label") or "That change"}: the word it is on was not read in this turn')
             op['virtual_at'] = virtual_at(self.project, hit[1])
             return
+
+    def entry_morph_type(self, item_id: Optional[str], new_entry_key: Optional[str]) -> Optional[str]:
+        """The morph type an entry gives a morpheme linked to it: its own,
+        else its headword's (``morph_type_of``), for a stored entry or one the
+        plan creates."""
+        if item_id:
+            view = self.view_of_item(item_id, removed=True)
+            return morph_type_of(view.tree, item_id) if view else None
+        e = self.new_entries.get(new_entry_key) if new_entry_key else None
+        if not e:
+            return None
+        meta = e.get('metadata') or {}
+        own = meta.get('morphType')
+        if isinstance(own, str) and own:
+            return own
+        parent = meta.get(PARENT_KEY)
+        return self.entry_morph_type(parent, None) if parent and parent not in self.new_entries else (
+            self.entry_morph_type(None, parent) if parent else None)
+
+    def place_morph_type(self, op: Dict[str, Any]) -> None:
+        """Note on a link to a morpheme the type its entry gives it
+        (``morph_type``), when the morpheme's cached ``morphType`` does not
+        already say so, so the link writes the cache in its own batch, as the
+        editor's link paths do (``morphTypeCache`` in mutations/vocab.js).
+        Left stale, the next person to open the document would write it
+        under their own name. A word token takes no type."""
+        if op.get('kind') != 'link':
+            return
+        t = self.entry_morph_type(op.get('item_id'), op.get('new_entry_key'))
+        if op.get('analysis_word_id'):
+            planned = planned_morpheme(self.ops + [op], op)
+            have = (planned or {}).get('morph_type')
+        else:
+            hit = _found(self, op.get('token_id'))
+            if hit is None or hit[2] is None:
+                return
+            have = (hit[2].metadata or {}).get('morphType')
+        if t and (have or None) != t:
+            op['morph_type'] = t
+        else:
+            op.pop('morph_type', None)
 
     @staticmethod
     def moot_under(op: Dict[str, Any], rewritten: set) -> bool:
@@ -930,8 +972,10 @@ REPLACES = {
     'set_analysis': _replaced_analysis,
     'discard_analysis': lambda ws, op: (list(op.get('span_ids') or []) + list(op.get('link_ids') or [])
                                         + _analysis(_morphemes(ws, op.get('morpheme_ids')))),
-    'set_morpheme_form': lambda ws, op: [op.get('morpheme_id')],
-    'set_morph_type': lambda ws, op: [op.get('morpheme_id')],
+    # An unsegmented word's derived morpheme is stored nowhere and holds no
+    # one's work: its empty metadata is not a person's.
+    'set_morpheme_form': lambda ws, op: [i for i in [op.get('morpheme_id')] if not is_virtual(i)],
+    'set_morph_type': lambda ws, op: [i for i in [op.get('morpheme_id')] if not is_virtual(i)],
     'set_orthography': _replaced_orthography,
     'link': lambda ws, op: [op.get('existing_link_id')],
     'link_phrase': lambda ws, op: [op.get('existing_link_id')],
