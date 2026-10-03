@@ -62,6 +62,13 @@ const morphFormOf = (m) => {
 const hasOwnForm = (m) =>
   !!m?.metadata && Object.prototype.hasOwnProperty.call(m.metadata, 'form') && m.metadata.form;
 
+// A form a replacement empties (nothing left, or only spaces). A word, a
+// morpheme form and a lexicon entry cannot be spelled with nothing: a word
+// replaced by nothing is deleted with its whole analysis, and an entry always
+// has a form. A row that would write one is shown and never written, as the
+// vocabulary's own Replace does (planVocabReplace).
+export const blank = (s) => (s ?? '').trim() === '';
+
 const sentenceContext = (doc, s, idx, marks) => ({
   docId: doc.id,
   docName: doc.document?.name || '(untitled)',
@@ -81,7 +88,10 @@ const sentenceContext = (doc, s, idx, marks) => ({
 // display (`chain`, null when the word is a single derived morpheme, i.e. the
 // chain IS the word): [{ joiner, own, old, new }], where a derived morpheme
 // follows the baseline (its `new` is the word's) and an own form gets its own
-// rewrite or stays put.
+// rewrite or stays put. A row whose word the substitution empties is
+// `invalid: 'empty'`, and one that empties an own morpheme form carries
+// `emptiesForm`, which bars it only while morpheme forms are respelled too
+// (respellBarred).
 export function collectRespellRows(doc, apply) {
   const rows = [];
   const textId = doc.layerInfo.primaryTextLayer?.text?.id;
@@ -113,12 +123,19 @@ export function collectRespellRows(doc, apply) {
         new: next,
         morphemes,
         chain: chain.length > 1 || chain.some((c) => c.own) ? chain : null,
+        ...(blank(next) ? { invalid: 'empty' } : {}),
+        ...(morphemes.some((m) => blank(m.new)) ? { emptiesForm: true } : {}),
         ...sentenceContext(doc, s, idx, [{ begin: t.begin, end: t.end }]),
       });
     }
   });
   return rows;
 }
+
+// A respell row that is never written: its word would be emptied, or, with
+// morpheme forms respelled too, one of its own forms would.
+export const respellBarred = (row, includeMorphemes) =>
+  !!row.invalid || (includeMorphemes && !!row.emptiesForm);
 
 // The morpheme chain of a respell row as before/after strings, honoring the
 // "also respell morpheme forms" choice (with it off, own forms keep their
@@ -149,6 +166,7 @@ export function collectLexiconRows(vocabularies, apply, canRespellIn = () => tru
         vocabName: vocab.name,
         old: it.form,
         new: next,
+        ...(blank(next) ? { invalid: 'empty' } : {}),
         ...(locked ? { locked: true } : {}),
       });
     }
@@ -184,15 +202,25 @@ const glossReadingAfter = (morphemes, m, field, apply) =>
   );
 
 // Spans (or morpheme forms) in `doc` whose value changes. A morpheme span's
-// row carries the `reading` its new value is checked by (readingTagset). `target` is a
+// row carries the `reading` its new value is checked by (readingTagset). A
+// span the replacement empties is cleared (the runner deletes it, since an
+// annotation is never stored as ''), and a morpheme form it empties is
+// `invalid: 'empty'`. `target` is a
 // Search-tab domain: { kind: 'span', layerId, scope, field } or
 // { kind: 'morpheme' } (morpheme forms live in token metadata).
 export function collectFieldRows(doc, target, apply) {
   const rows = [];
-  const push = (s, idx, entity, old, marks, extra = {}) => {
+  const push = (s, idx, entity, old, marks, extra = {}, isForm = false) => {
     const next = apply(old);
     if (next == null) return;
-    rows.push({ id: entity.id, old, new: next, ...extra, ...sentenceContext(doc, s, idx, marks) });
+    rows.push({
+      id: entity.id,
+      old,
+      new: next,
+      ...extra,
+      ...(isForm && blank(next) ? { invalid: 'empty' } : {}),
+      ...sentenceContext(doc, s, idx, marks),
+    });
   };
   (doc.sentences || []).forEach((s, idx) => {
     if (target.kind === 'span' && target.scope === 'sentence') {
@@ -212,7 +240,7 @@ export function collectFieldRows(doc, target, apply) {
           // Only a morpheme's own form can be rewritten; a derived one is the
           // word's surface and belongs to the respell operation.
           if (!hasOwnForm(m)) continue;
-          push(s, idx, m, m.metadata.form, mark, { kind: 'morphForm', word: t.content });
+          push(s, idx, m, m.metadata.form, mark, { kind: 'morphForm', word: t.content }, true);
         } else if (target.kind === 'span' && target.scope === 'morpheme') {
           const span = m.annotations?.[target.field];
           if (span?.id) {

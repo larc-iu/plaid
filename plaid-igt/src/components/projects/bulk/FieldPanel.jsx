@@ -19,7 +19,7 @@ import {
   tagsetEnforces,
 } from '@/domain/tagsets';
 import { searchDomains } from '../search/searchQueries.js';
-import { buildReplacer } from './bulkPlan.js';
+import { blank, buildReplacer } from './bulkPlan.js';
 import { planField, applyField } from './bulkRunner.js';
 import { notifyStopped, countOf, skippedNote, useRun } from './bulkShared.js';
 import { scopeTextClass } from '@/domain/scopeColors';
@@ -63,8 +63,14 @@ const FieldChange = ({ row, target }) => {
   return (
     <>
       <ChangeGrid lines={lines} />
-      {row.invalid && (
+      {row.invalid === 'tagset' && (
         <p className="mt-1 text-xs text-destructive">Outside the tagset, so it will be skipped.</p>
+      )}
+      {row.invalid === 'empty' && (
+        <p className="mt-1 text-xs text-destructive">Empty form, so it will be skipped.</p>
+      )}
+      {!row.invalid && row.kind === 'span' && blank(row.new) && (
+        <p className="mt-1 text-xs text-muted-foreground">Clears the value.</p>
       )}
     </>
   );
@@ -112,10 +118,13 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
     // An enforcing tagset refuses the values this replace would produce. Flag
     // rows and leave them unticked rather than blocking the whole preview: the
     // rest of the replace is usually fine, and seeing WHICH values are refused
-    // is how you decide whether to fix the replacement or the tagset.
+    // is how you decide whether to fix the replacement or the tagset. A value
+    // the replacement empties is cleared, which no tagset refuses.
     const rows = tagsetEnforces(tagset)
       ? plan.rows.map((x) =>
-          isValueAllowed(x.new, readingTagset(tagset, x.reading)) ? x : { ...x, invalid: true },
+          x.invalid || blank(x.new) || isValueAllowed(x.new, readingTagset(tagset, x.reading))
+            ? x
+            : { ...x, invalid: 'tagset' },
         )
       : plan.rows;
     r.setPlan({ ...plan, rows, find, repl, target, tagset });
@@ -217,11 +226,11 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
           >
             <SelectionSummary rows={plan.rows} selected={r.selected} setSelected={r.setSelected} />
           </ApplyBar>
-          {plan.rows.some((x) => x.invalid) && (
+          {plan.rows.some((x) => x.invalid === 'tagset') && (
             <p className="rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              {countOf(plan.rows.filter((x) => x.invalid).length, 'value')} would fall outside the{' '}
-              <strong>{plan.tagset?.name ?? 'field'}</strong> tagset and cannot be written. Those
-              rows are marked and will be skipped.
+              {countOf(plan.rows.filter((x) => x.invalid === 'tagset').length, 'value')} would fall
+              outside the <strong>{plan.tagset?.name ?? 'field'}</strong> tagset and cannot be
+              written. Those rows are marked and will be skipped.
             </p>
           )}
           {plan.rows.length === 0 && (

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Button } from '@ui/components/ui/button';
 import { cn } from '@ui/lib/utils';
 import { notifySuccess, notifyWarning } from '@/utils/feedback';
-import { buildReplacer, chainText } from './bulkPlan.js';
+import { buildReplacer, chainText, respellBarred } from './bulkPlan.js';
 import { planRespell, applyRespell } from './bulkRunner.js';
 import { notifyStopped, countOf, skippedNote, useRun } from './bulkShared.js';
 import { scopeTextClass } from '@/domain/scopeColors';
@@ -23,21 +23,29 @@ import {
 const RespellChange = ({ row, includeMorphemes }) => {
   const chain = row.chain ? chainText(row.chain, includeMorphemes) : null;
   return (
-    <ChangeGrid
-      lines={[
-        { label: 'Word', cls: scopeTextClass('word'), from: row.old, to: row.new },
-        ...(chain
-          ? [
-              {
-                label: 'Morphemes',
-                cls: scopeTextClass('morpheme'),
-                from: chain.old,
-                to: chain.new,
-              },
-            ]
-          : []),
-      ]}
-    />
+    <>
+      <ChangeGrid
+        lines={[
+          { label: 'Word', cls: scopeTextClass('word'), from: row.old, to: row.new },
+          ...(chain
+            ? [
+                {
+                  label: 'Morphemes',
+                  cls: scopeTextClass('morpheme'),
+                  from: chain.old,
+                  to: chain.new,
+                },
+              ]
+            : []),
+        ]}
+      />
+      {row.invalid === 'empty' && (
+        <p className="mt-1 text-xs text-destructive">Empty word, so it will be skipped.</p>
+      )}
+      {!row.invalid && includeMorphemes && row.emptiesForm && (
+        <p className="mt-1 text-xs text-destructive">Empty morpheme form, so it will be skipped.</p>
+      )}
+    </>
   );
 };
 
@@ -74,16 +82,27 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
     );
     if (!plan) return;
     r.setPlan({ ...plan, find, repl });
+    // A row that would empty a word, a form or an entry is listed, not ticked.
     r.setSelected(
-      new Set([...plan.rows, ...plan.lexiconRows.filter((x) => !x.locked)].map((x) => x.id)),
+      new Set(
+        [
+          ...plan.rows.filter((x) => !respellBarred(x, includeMorphemes)),
+          ...plan.lexiconRows.filter((x) => !x.locked && !x.invalid),
+        ].map((x) => x.id),
+      ),
     );
   };
 
   const plan = r.plan;
   // What an Apply sends: the selected rows a stopped Apply has not already
   // sent or skipped (`applied`), so the count and the confirm say what is left.
-  const selectedRows = plan ? plan.rows.filter((x) => r.selected.has(x.id) && !x.applied) : [];
-  const openLex = plan ? plan.lexiconRows.filter((x) => !x.locked) : [];
+  // A barred row is never sent, even when ticked by hand.
+  const selectedRows = plan
+    ? plan.rows.filter(
+        (x) => r.selected.has(x.id) && !x.applied && !respellBarred(x, includeMorphemes),
+      )
+    : [];
+  const openLex = plan ? plan.lexiconRows.filter((x) => !x.locked && !x.invalid) : [];
   const selectedLex = openLex.filter((x) => r.selected.has(x.id) && !x.applied);
   const morphCount = includeMorphemes
     ? selectedRows.reduce((a, x) => a + x.morphemes.length, 0)
@@ -215,15 +234,20 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
                 {plan.lexiconRows.map((x) => (
                   <div key={x.id} className="flex items-center gap-3 px-3 py-2">
                     <Checkbox
-                      checked={!x.locked && r.selected.has(x.id)}
+                      checked={!x.locked && !x.invalid && r.selected.has(x.id)}
                       onChange={(v) => r.toggle(x.id, v)}
-                      disabled={!includeLexicon || x.locked}
+                      disabled={!includeLexicon || x.locked || !!x.invalid}
                     />
                     <Change from={x.old} to={x.new} />
                     <span className="text-xs text-muted-foreground">
                       {x.vocabName}
                       {x.locked && ' · maintainers only'}
                     </span>
+                    {x.invalid === 'empty' && (
+                      <span className="text-xs text-destructive">
+                        Empty form, so it will be skipped.
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>

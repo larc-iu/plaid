@@ -27,6 +27,8 @@ import {
   collectFieldRows,
   collectOccurrenceRows,
   respellOps,
+  respellBarred,
+  blank,
 } from './bulkPlan.js';
 
 // Every apply, under one operation. The writes reach documents no editor has
@@ -101,8 +103,9 @@ async function atVersion(client, docId, version, send) {
 // read as the preview showed them (`same(previewRow, freshRow)`) are sent
 // once more, as re-planned, at the version just read. A row that already
 // reads as the preview's new value (`landed(previewRow, nowRow)`, against the
-// re-read's `now`, every entity as it reads) is counted as sent: it is this
-// run's own write from an attempt whose answer was lost. The rest are
+// re-read's `now`, every entity as it reads, and undefined for one that is
+// gone) is counted as sent: it is this run's own write from an attempt whose
+// answer was lost. The rest are
 // skipped, and every row but those when the document is refused a second
 // time. `send(rows)` makes the writes. Resolves to { sent, skipped }, both
 // lists of the preview's rows.
@@ -124,7 +127,7 @@ async function sendDocument(client, { docId, version, rows, replan, same, landed
   const kept = rows.filter((r) => freshById.has(r.id) && same(r, freshById.get(r.id)));
   const keptSet = new Set(kept);
   const already = rows.filter(
-    (r) => !keptSet.has(r) && landed && fresh.now?.has(r.id) && landed(r, fresh.now.get(r.id)),
+    (r) => !keptSet.has(r) && landed && fresh.now && landed(r, fresh.now.get(r.id)),
   );
   const alreadySet = new Set(already);
   const skipped = rows.filter((r) => !keptSet.has(r) && !alreadySet.has(r));
@@ -200,6 +203,7 @@ const sameRespell = (includeMorphemes) => (a, b) =>
 // A respell row already reads as respelled: the word, and when they are
 // respelled too, its morpheme forms.
 const landedRespell = (includeMorphemes) => (row, now) =>
+  !!now &&
   now.old === row.new &&
   (!includeMorphemes ||
     (row.morphemes || []).every(
@@ -246,7 +250,9 @@ export async function applyRespell(
   { rows, lexiconRows, versions, replan },
   { includeMorphemes, includeLexicon, label, onProgress },
 ) {
-  const byDoc = rowsByDoc(rows.filter((r) => !r.applied));
+  // A row that would empty a word or a form is never written, whoever ticked it.
+  const writable = (r) => !respellBarred(r, includeMorphemes);
+  const byDoc = rowsByDoc(rows.filter((r) => !r.applied && writable(r)));
   const out = {
     docsChanged: 0,
     wordsChanged: 0,
@@ -272,11 +278,14 @@ export async function applyRespell(
         landed: landedRespell(includeMorphemes),
         // Every chunk of morpheme forms rides in the same batch as the text
         // edit, so the document lands whole or not at all.
-        send: (toSend) =>
-          client.batched(async (b) => {
+        send: (planned) => {
+          const toSend = planned.filter(writable);
+          if (!toSend.length) return Promise.resolve([]);
+          return client.batched(async (b) => {
             b.texts.update(toSend[0].textId, respellOps(toSend));
             for (const part of chunk(morphemesOf(toSend))) b.tokens.bulkUpdate(formPatches(part));
-          }),
+          });
+        },
       }).catch((error) => {
         out.failed = { docName: docRows[0]?.docName ?? null, error };
         return null;
@@ -291,7 +300,7 @@ export async function applyRespell(
     }
     if (includeLexicon) {
       try {
-        const open = lexiconRows.filter((r) => !r.applied && !r.locked);
+        const open = lexiconRows.filter((r) => !r.applied && !r.locked && !r.invalid);
         if (open.length) onProgress?.('Respelling lexicon entries…');
         const kept = await unchangedEntries(client, open);
         const keptSet = new Set(kept);
@@ -344,8 +353,11 @@ export async function planField(client, project, target, { find, matchType, appl
 // A value still reads as the preview showed it.
 const sameValue = (a, b) => a.old === b.old && a.new === b.new;
 
-// A value already reads as the preview's new one.
-const landedValue = (row, now) => now.old === row.new;
+// A value already reads as the preview's new one. A cleared span is gone.
+const landedValue = (row, now) => (now ? now.old === row.new : clears(row));
+
+// A span row the replacement empties: the span is deleted, never stored as ''.
+const clears = (row) => row.kind === 'span' && blank(row.new);
 
 // Span values, or morpheme forms, one document at a time, each document's in
 // one batch carrying the version the preview read. A document changed since
@@ -361,21 +373,28 @@ export async function applyField(client, { rows, versions, replan }, { label, on
   let changed = 0;
   let skipped = 0;
   let failed = null;
-  const send = (docRows) =>
-    client.batched(async (b) => {
-      const spanRows = docRows.filter((r) => r.kind !== 'morphForm');
+  // A span the replacement empties is deleted in the same batch, and a
+  // morpheme form it empties is never written (collectFieldRows marks it).
+  const send = (planned) => {
+    const docRows = planned.filter((r) => !r.invalid);
+    if (!docRows.length) return Promise.resolve([]);
+    return client.batched(async (b) => {
+      const spanRows = docRows.filter((r) => r.kind !== 'morphForm' && !clears(r));
+      const cleared = docRows.filter(clears);
       const morphRows = docRows.filter((r) => r.kind === 'morphForm');
       for (const part of chunk(spanRows)) {
         b.spans.bulkUpdate(part.map((r) => ({ id: r.id, value: r.new })));
       }
+      for (const part of chunk(cleared)) b.spans.bulkDelete(part.map((r) => r.id));
       for (const part of chunk(morphRows)) {
         b.tokens.bulkUpdate(
           part.map((r) => ({ id: r.id, metadata: [{ op: 'set', path: ['form'], value: r.new }] })),
         );
       }
     });
+  };
   await writeAcrossDocuments(client, label, 'replace', async () => {
-    const byDoc = rowsByDoc(rows.filter((r) => !r.applied));
+    const byDoc = rowsByDoc(rows.filter((r) => !r.applied && !r.invalid));
     let n = 0;
     for (const [docId, docRows] of byDoc) {
       onProgress?.((n += 1), byDoc.size);
