@@ -25,16 +25,16 @@ Words: 200 dead , 1,500 feared missing in Philippines landslide .
                 :op1 "Philippines"))))
 
 # alignment:
-s1a: 0-0
-s1n: 0-0
 s1p: 1-1
-s1p3: 1-1
+s1l: 9-9
+s1a: 0-0
 s1d: 2-2
-s1p2: 4-4
+s1p3: 1-1
 s1f: 5-5
 s1m: 6-6
+s1p2: 4-4
 s1c: 8-8
-s1l: 9-9
+s1n: 0-0
 
 # document level annotation:
 (s1s0 / sentence
@@ -71,12 +71,12 @@ Words: TACLOBAN , Philippines , Feb 17 , 2006 .
         :year 2006))
 
 # alignment:
-s2h: 1-1
-s2n: 0-0
-s2n2: 0-0
 s2p: 0-0
 s2t: 0-0
+s2h: 1-1
+s2n: 0-0
 s2c2: 3-3
+s2n2: 0-0
 s2d: 5-8
 
 # document level annotation:
@@ -131,27 +131,27 @@ Words: About 200 people were believed killed and 1,500 others were missing in th
     :aspect performance)
 
 # alignment:
-s3a2: 1-1
-s3d: 0-0
-s3n: 0-0
+s3s: 29-29
+s3o2: 27-28
 s3n2: 0-0
-s3p2: 0-0
-s3p: 3-3
+s3a: 7-7
 s3b: 5-5
 s3k: 6-6
-s3a: 7-7
-s3o: 9-9
+s3p: 3-3
+s3a2: 1-1
 s3m: 11-11
-s3c2: 14-14
+s3p2: 0-0
+s3o: 9-9
 s3c: 15-15
+s3n: 0-0
+s3c2: 14-14
+s3d: 0-0
 s3f: 17-17
 s3h: 18-18
-s3l: 20-20
 s3b2: 21-21
-s3e: 23-23
+s3l: 20-20
 s3v: 24-24
-s3o2: 27-28
-s3s: 29-29
+s3e: 23-23
 
 # document level annotation:
 (s3s0 / sentence
@@ -218,25 +218,25 @@ Words: Eyewitnesses said only a few houses were left standing after the landslid
     :aspect performance)
 
 # alignment:
-s4n: 0-0
-s4n3: 0-0
-s4p: 1-1
-s4s2: 0-0
-s4t: 0-0
-s4w: 0-0
 s4s: 2-2
-s4o: 3-3
-s4a: 4-5
-s4h2: 6-6
-s4l: 8-8
-s4s3: 9-9
+s4p: 1-1
+s4w: 0-0
 s4l2: 12-12
+s4t: 0-0
+s4l: 8-8
 s4h: 13-13
 s4v: 15-15
 s4h3: 20-20
-s4c: 23-23
+s4n: 0-0
+s4s2: 0-0
 s4i2: 24-24
 s4n2: 26-26
+s4c: 23-23
+s4n3: 0-0
+s4s3: 9-9
+s4h2: 6-6
+s4a: 4-5
+s4o: 3-3
 
 # document level annotation:
 (s4s0 / sentence
@@ -290,20 +290,20 @@ Words: " There are about 1,500 missing , 200 dead , " Richard Gordon , the head 
     :aspect performance)
 
 # alignment:
-s5a: 0-0
-s5n: 0-0
-s5n2: 0-0
-s5p2: 0-0
-s5p3: 0-0
-s5a2: 3-3
-s5m: 5-5
-s5d: 8-8
+s5s: 22-22
 s5p: 11-12
+s5n: 0-0
 s5h: 15-15
 s5o: 18-20
-s5s: 22-22
-s5r: 25-25
+s5n2: 0-0
+s5a: 0-0
+s5p2: 0-0
+s5a2: 3-3
+s5m: 5-5
+s5p3: 0-0
+s5d: 8-8
 s5i2: 26-26
+s5r: 25-25
 
 # document level annotation:
 (s5s0 / sentence
@@ -352,20 +352,20 @@ Words: The first footage from the devastated village showed a sea of mud coverin
     :aspect state)
 
 # alignment:
-s6o: 2-2
-s6f: 3-3
-s6d: 6-6
-s6v: 7-7
 s6s: 8-8
+s6f: 3-3
+s6v: 7-7
+s6d: 6-6
+s6o: 2-2
 s6s2: 10-10
 s6m: 12-12
 s6c: 13-13
 s6t: 14-14
 s6i2: 16-16
+s6f2: 20-20
 s6l: 17-17
 s6g: 18-18
 s6v2: 19-19
-s6f2: 20-20
 
 # document level annotation:
 (s6s0 / sentence
@@ -404,16 +404,16 @@ Words: Only a few sheets of tin roofing and the occasional coconut tree could be
     :aspect state)
 
 # alignment:
-s7o2: 1-1
-s7a2: 2-3
-s7s2: 4-4
-s7t: 6-6
-s7r: 7-7
-s7a: 8-8
-s7o: 10-10
-s7c: 11-11
-s7t2: 12-12
 s7s: 15-15
+s7a: 8-8
+s7r: 7-7
+s7t: 6-6
+s7s2: 4-4
+s7a2: 2-3
+s7t2: 12-12
+s7c: 11-11
+s7o: 10-10
+s7o2: 1-1
 
 # document level annotation:
 (s7s0 / sentence
@@ -453,22 +453,22 @@ Words: Tiny groups of mud - spattered survivors were also shown , walking throug
     :aspect performance)
 
 # alignment:
-s8e: 0-0
-s8p: 0-0
-s8t2: 1-1
-s8g: 2-2
-s8m: 4-4
-s8s3: 6-6
-s8s2: 7-7
-s8a2: 9-9
 s8s: 10-10
+s8g: 2-2
+s8t2: 1-1
+s8p: 0-0
+s8s2: 7-7
+s8e: 0-0
+s8s3: 6-6
+s8m: 4-4
 s8w: 12-12
 s8t: 13-13
 s8m2: 15-15
-s8a: 17-17
 s8s4: 18-18
 s8s5: 21-21
 s8d: 24-24
+s8a: 17-17
+s8a2: 9-9
 
 # document level annotation:
 (s8s0 / sentence
@@ -528,24 +528,24 @@ Words: In a televised address to the nation , President Gloria Arroyo said rescu
     :aspect performance)
 
 # alignment:
-s9h: 0-0
+s9s: 12-12
+s9p: 10-11
 s9n: 0-0
-s9t2: 3-3
-s9a4: 4-4
+s9h: 0-0
 s9n2: 7-7
 s9p2: 9-9
-s9p: 10-11
-s9s: 12-12
-s9r2: 13-13
-s9t: 14-14
 s9r: 16-16
+s9t: 14-14
+s9r2: 13-13
 s9a: 19-19
+s9a2: 25-25
 s9a3: 22-22
 s9l: 24-24
-s9a2: 25-25
 s9s2: 26-26
 s9c: 29-29
 s9c2: 32-32
+s9a4: 4-4
+s9t2: 3-3
 
 # document level annotation:
 (s9s0 / sentence
@@ -603,21 +603,21 @@ Words: " I have ordered the Coast Guard and our entire naval force in the ( cent
     :aspect performance)
 
 # alignment:
-s10n: 0-0
-s10n3: 0-0
+s10s: 26-26
 s10p: 2-2
 s10o: 4-4
-s10a2: 6-7
 s10a: 8-8
-s10p2: 9-9
-s10e: 10-10
-s10n2: 11-11
+s10a2: 6-7
+s10n: 0-0
 s10f: 12-12
-s10c: 16-17
+s10p2: 9-9
+s10n2: 11-11
+s10e: 10-10
 s10r: 19-19
+s10c: 16-17
+s10n3: 0-0
 s10h: 20-20
 s10a3: 22-22
-s10s: 26-26
 
 # document level annotation:
 (s10s0 / sentence
@@ -669,20 +669,20 @@ Words: " Naval ships will be used as floating hospitals and command centres for 
     :aspect performance)
 
 # alignment:
-s11o: 0-0
-s11p: 0-0
-s11p2: 0-0
 s11s: 0-0
-s11n: 2-2
-s11s2: 3-3
+s11p: 0-0
 s11u: 6-6
-s11f: 8-8
-s11h: 9-9
+s11o: 0-0
+s11s2: 3-3
+s11n: 2-2
 s11a: 10-10
-s11c2: 11-11
+s11h: 9-9
+s11f: 8-8
 s11c: 12-12
-s11r: 14-14
+s11c2: 11-11
 s11a2: 15-15
+s11r: 14-14
+s11p2: 0-0
 s11r2: 16-16
 
 # document level annotation:
@@ -749,23 +749,23 @@ Words: Leyte Governor Rosette Lerias said the latest census indicated there were
     :aspect performance)
 
 # alignment:
-s12g: 0-0
+s12s: 5-5
+s12p: 3-4
+s12n: 0-0
 s12h: 0-0
 s12i2: 1-1
-s12n: 0-0
 s12n2: 0-0
-s12n3: 0-0
 s12p3: 2-2
-s12p: 3-4
-s12s: 5-5
-s12l: 7-7
-s12c: 8-8
+s12g: 0-0
 s12i3: 9-9
+s12c: 8-8
+s12l: 7-7
 s12e: 10-11
-s12h3: 13-13
-s12p2: 16-16
-s12l2: 17-17
 s12h2: 19-19
+s12n3: 0-0
+s12h3: 13-13
+s12l2: 17-17
+s12p2: 16-16
 s12b: 20-20
 s12l3: 22-22
 
@@ -811,12 +811,12 @@ Words: She described the village as totally flattened .
     :aspect performance)
 
 # alignment:
-s13e: 0-0
-s13p: 1-1
 s13d: 2-2
+s13p: 1-1
 s13v: 4-4
-s13t: 6-6
 s13f: 7-7
+s13e: 0-0
+s13t: 6-6
 
 # document level annotation:
 (s13s0 / sentence
@@ -878,24 +878,24 @@ Words: " It was like mud running down the mountain and it covered the village in
     :modal-strength full-affirmative)
 
 # alignment:
-s14e: 0-0
-s14s3: 0-0
-s14s4: 0-0
-s14t2: 0-0
-s14t: 2-2
+s14s: 19-19
+s14p2: 18-18
+s14a: 9-9
 s14r: 4-4
+s14t: 2-2
 s14m: 5-5
 s14r2: 6-6
 s14d: 7-7
 s14m2: 8-8
-s14a: 9-9
 s14c: 11-11
 s14v: 13-13
 s14m3: 15-15
-s14p2: 18-18
-s14s: 19-19
+s14t2: 0-0
+s14s3: 0-0
 s14q: 21-21
 s14p: 22-22
+s14s4: 0-0
+s14e: 0-0
 
 # document level annotation:
 (s14s0 / sentence
@@ -940,23 +940,23 @@ Words: Experts blamed deforestation for the tragedy , which came after days of r
     :modal-strength full-affirmative)
 
 # alignment:
-s15d2: 0-0
-s15e: 0-0
-s15h2: 0-0
-s15m: 0-0
-s15p: 1-1
-s15t3: 0-0
-s15v: 0-0
 s15b: 2-2
+s15p: 1-1
+s15e: 0-0
 s15d: 3-3
 s15t: 6-6
 s15c: 9-9
 s15a: 10-10
-s15m2: 11-11
 s15r: 13-13
-s15t2: 17-17
+s15h2: 0-0
+s15v: 0-0
 s15h: 18-18
+s15t2: 17-17
+s15m: 0-0
 s15u: 20-20
+s15m2: 11-11
+s15t3: 0-0
+s15d2: 0-0
 
 # document level annotation:
 (s15s0 / sentence
@@ -1024,36 +1024,36 @@ Words: Lerias said that many Guinsaugon residents had been evacuated after lands
     :aspect performance)
 
 # alignment:
-s16d: 0-0
-s16i4: 0-0
-s16n: 0-0
-s16n2: 0-0
-s16n3: 0-0
-s16n4: 0-0
-s16p: 1-1
-s16p4: 0-0
-s16r: 0-0
 s16s: 2-2
-s16m: 4-4
-s16h: 5-5
-s16p2: 6-6
+s16p: 1-1
+s16n: 0-0
+s16u: 25-25
 s16e: 9-9
+s16h: 5-5
+s16n2: 0-0
+s16p2: 6-6
+s16r: 0-0
+s16m: 4-4
 s16a: 10-10
+s16k: 17-17
 s16l: 11-11
+s16p3: 21-21
+s16m2: 18-19
+s16i2: 23-23
+s16n3: 0-0
 s16e2: 12-13
 s16w: 15-15
-s16k: 17-17
-s16m2: 18-19
-s16p3: 21-21
-s16i2: 23-23
-s16u: 25-25
-s16m3: 27-27
 s16r2: 29-29
+s16p4: 0-0
+s16i4: 0-0
+s16m3: 27-27
+s16d: 0-0
 s16f: 30-30
-s16r4: 33-33
 s16a2: 36-36
-s16c3: 38-38
+s16r4: 33-33
 s16c2: 40-40
+s16c3: 38-38
+s16n4: 0-0
 
 # document level annotation:
 (s16s0 / sentence
@@ -1136,29 +1136,29 @@ Words: A mild 2.6 - magnitude earthquake which struck before the landslide may a
     :aspect performance)
 
 # alignment:
-s17h: 0-0
+s17s: 29-29
+s17p: 30-31
 s17n: 0-0
+s17h: 0-0
+s17o: 38-38
+s17v: 37-37
+s17g: 36-36
+s17h2: 33-33
+s17h3: 15-15
+s17e: 6-6
+s17s2: 3-5
 s17r: 0-0
 s17m: 2-2
-s17s2: 3-5
-s17e: 6-6
 s17s3: 8-8
 s17b: 9-9
 s17l: 11-11
-s17a: 13-13
-s17h3: 15-15
 s17s4: 16-17
 s17w: 19-19
 s17m2: 21-21
 s17c: 23-23
 s17d: 24-24
 s17v2: 27-27
-s17s: 29-29
-s17p: 30-31
-s17h2: 33-33
-s17g: 36-36
-s17v: 37-37
-s17o: 38-38
+s17a: 13-13
 
 # document level annotation:
 (s17s0 / sentence
@@ -1218,18 +1218,18 @@ Words: " The area could have really been ready for a landslide because of the am
     :modal-strength full-affirmative)
 
 # alignment:
+s18s: 34-34
+s18p: 33-33
 s18n: 0-0
-s18a2: 3-3
+s18a: 18-18
 s18r: 8-8
+s18a2: 3-3
 s18l: 11-11
 s18v: 15-15
 s18r3: 17-17
-s18a: 18-18
-s18m: 23-23
-s18e: 24-24
 s18h: 29-29
-s18p: 33-33
-s18s: 34-34
+s18e: 24-24
+s18m: 23-23
 
 # document level annotation:
 (s18s0 / sentence
@@ -1273,23 +1273,23 @@ Words: Army Colonel Nestor Sadirin , head of a rescue task force , said 16 dead 
     :aspect performance)
 
 # alignment:
-s19a: 1-1
-s19h: 0-0
-s19n: 0-0
-s19c: 2-2
-s19p: 3-4
-s19h2: 6-6
-s19r: 9-9
-s19t: 10-10
-s19f: 11-11
 s19s: 13-13
-s19d: 15-15
-s19b: 16-16
-s19r2: 19-19
-s19s2: 20-21
+s19p: 3-4
+s19n: 0-0
+s19h: 0-0
+s19a: 1-1
+s19c: 2-2
+s19h2: 6-6
+s19f: 11-11
+s19t: 10-10
+s19r: 9-9
 s19a2: 22-22
-s19p2: 24-24
+s19r2: 19-19
+s19b: 16-16
+s19d: 15-15
+s19s2: 20-21
 s19r3: 25-25
+s19p2: 24-24
 
 # document level annotation:
 (s19s0 / sentence
@@ -1350,25 +1350,25 @@ Words: Leyte Congressman Roger Mercado said in a radio interview that the villag
         :modal-strength full-affirmative))
 
 # alignment:
-s20b: 0-0
+s20a: 20-20
+s20s: 5-5
+s20p: 0-0
+s20n: 3-4
 s20h: 0-0
 s20i2: 1-1
 s20n2: 0-0
-s20p: 0-0
-s20p4: 0-0
 s20c: 2-2
-s20n: 3-4
-s20s: 5-5
-s20r: 8-8
-s20i3: 9-9
-s20v: 12-12
 s20p2: 15-15
-s20a: 20-20
+s20v: 12-12
+s20p4: 0-0
+s20b: 0-0
 s20e: 21-21
 s20f: 22-22
-s20a2: 24-26
-s20p3: 28-28
 s20b2: 31-31
+s20p3: 28-28
+s20a2: 24-26
+s20i3: 9-9
+s20r: 8-8
 
 # document level annotation:
 (s20s0 / sentence
@@ -1436,34 +1436,34 @@ Words: Lerias called for more rescuers to come to the site to help look for bodi
     :modal-strength full-affirmative)
 
 # alignment:
-s21d2: 0-0
-s21h: 0-0
-s21h4: 0-0
-s21n: 0-0
-s21o: 0-0
-s21p: 1-1
-s21r: 0-0
 s21c: 2-2
-s21m: 4-4
+s21p: 1-1
+s21n: 0-0
 s21p2: 5-5
+s21r: 0-0
+s21h: 0-0
+s21m: 4-4
 s21c2: 7-7
 s21s: 10-10
 s21h2: 12-12
 s21l: 13-13
 s21b: 15-15
-s21h3: 17-17
-s21e2: 18-18
-s21m2: 19-19
-s21e: 20-20
 s21w: 23-23
+s21e: 20-20
+s21m2: 19-19
+s21e2: 18-18
+s21h3: 17-17
 s21m3: 26-26
-s21p4: 29-29
-s21s2: 30-30
-s21m4: 32-33
-s21m5: 35-35
 s21d: 37-37
-s21m6: 39-39
+s21m4: 32-33
+s21d2: 0-0
+s21m5: 35-35
 s21a: 40-40
+s21m6: 39-39
+s21s2: 30-30
+s21p4: 29-29
+s21h4: 0-0
+s21o: 0-0
 
 # document level annotation:
 (s21s0 / sentence
@@ -1518,26 +1518,26 @@ Words: Volunteer rescue teams from the country's mining companies , skilled in d
     :modal-strength full-affirmative)
 
 # alignment:
-s22h: 0-0
+s22s: 27-27
+s22p: 29-29
 s22n: 0-0
-s22v: 1-1
-s22r: 2-2
-s22t: 3-3
+s22h: 0-0
 s22c2: 6-6
-s22m: 7-7
+s22p2: 28-28
+s22g: 22-22
+s22t: 3-3
+s22r: 2-2
+s22v: 1-1
 s22c: 8-8
+s22m: 7-7
 s22s2: 10-10
 s22d: 12-12
 s22t2: 13-13
 s22e: 15-15
 s22r2: 17-17
 s22p3: 18-18
-s22a2: 21-21
-s22g: 22-22
 s22a: 25-25
-s22s: 27-27
-s22p2: 28-28
-s22p: 29-29
+s22a2: 21-21
 
 # document level annotation:
 (s22s0 / sentence
@@ -1589,19 +1589,19 @@ Words: Gordon said the Red Cross said was trying to dispatch sniffer dogs to hun
     :modal-strength full-affirmative)
 
 # alignment:
-s23n: 0-0
-s23n2: 0-0
-s23p: 1-1
-s23s4: 0-0
 s23s: 2-2
-s23o: 4-5
+s23p: 1-1
+s23n: 0-0
 s23s2: 6-6
+s23o: 4-5
+s23n2: 0-0
 s23t: 8-8
 s23d: 10-10
-s23s3: 11-11
 s23d2: 12-12
+s23s3: 11-11
 s23h: 14-14
 s23p2: 16-16
+s23s4: 0-0
 
 # document level annotation:
 (s23s0 / sentence
@@ -1646,23 +1646,23 @@ Words: Military helicopters were able to reach the area despite heavy clouds but
     :modal-strength full-affirmative)
 
 # alignment:
-s24d: 0-0
-s24m: 1-1
-s24n: 0-0
-s24w: 0-0
-s24h: 2-2
 s24r: 6-6
+s24h: 2-2
+s24m: 1-1
 s24a: 8-8
-s24h2: 10-10
+s24w: 0-0
 s24c: 11-11
-s24f: 14-14
+s24h2: 10-10
 s24c2: 15-15
+s24f: 14-14
 s24a2: 16-16
 s24f3: 17-17
-s24a3: 20-20
-s24n2: 24-24
-s24f2: 25-25
+s24n: 0-0
 s24c4: 26-26
+s24a3: 20-20
+s24f2: 25-25
+s24d: 0-0
+s24n2: 24-24
 
 # document level annotation:
 (s24s0 / sentence
@@ -1707,25 +1707,25 @@ Words: Lerias said a smaller landslide later in the afternoon caused no damage b
     :modal-strength full-affirmative)
 
 # alignment:
-s25d: 0-0
-s25e: 0-0
+s25s: 2-2
+s25p: 1-1
+s25n: 0-0
+s25d2: 12-12
+s25l: 5-5
+s25s2: 4-4
 s25h: 0-0
 s25m: 0-0
-s25n: 0-0
-s25p: 1-1
-s25r: 0-0
-s25s: 2-2
-s25s2: 4-4
-s25l: 5-5
+s25e: 0-0
 s25l2: 6-7
+s25d: 0-0
 s25a: 9-9
-s25d2: 12-12
 s25l3: 14-14
-s25m2: 15-15
-s25p2: 18-18
 s25w: 19-19
-s25n2: 23-23
+s25p2: 18-18
+s25r: 0-0
+s25m2: 15-15
 s25d3: 24-24
+s25n2: 23-23
 
 # document level annotation:
 (s25s0 / sentence
@@ -1762,17 +1762,17 @@ Words: Relief groups called for drinking water , food , blankets and body bags t
     :modal-strength full-affirmative)
 
 # alignment:
-s26r: 1-1
-s26g: 2-2
 s26c: 3-3
-s26d: 5-5
+s26g: 2-2
+s26r: 1-1
+s26b: 16-16
+s26a: 11-11
 s26w: 6-6
+s26d: 5-5
 s26f: 8-8
 s26b2: 10-10
-s26a: 11-11
-s26b4: 12-12
 s26b3: 13-13
-s26b: 16-16
+s26b4: 12-12
 s26s: 19-19
 
 # document level annotation:
@@ -1825,28 +1825,28 @@ Words: Provincial board member Eva Dumol said in a radio interview that heavy eq
     :modal-strength full-affirmative)
 
 # alignment:
-s27e2: 0-0
-s27h: 0-0
-s27h3: 0-0
-s27n2: 0-0
-s27p: 0-0
-s27p2: 1-1
-s27b: 2-2
-s27m: 3-3
-s27n: 4-5
 s27s: 6-6
-s27r: 9-9
-s27i2: 10-10
-s27h2: 12-12
-s27e: 13-13
-s27a2: 16-16
-s27a: 19-19
-s27c: 21-22
-s27b2: 23-23
-s27l: 24-24
+s27p: 0-0
+s27n: 4-5
+s27h: 0-0
+s27b: 2-2
+s27p2: 1-1
+s27m: 3-3
 s27s2: 27-27
-s27s4: 30-30
+s27e: 13-13
+s27h2: 12-12
+s27h3: 0-0
+s27a: 19-19
+s27a2: 16-16
+s27c: 21-22
+s27l: 24-24
+s27b2: 23-23
+s27e2: 0-0
 s27a3: 31-31
+s27s4: 30-30
+s27n2: 0-0
+s27i2: 10-10
+s27r: 9-9
 
 # document level annotation:
 (s27s0 / sentence
@@ -1884,14 +1884,14 @@ Words: More than 5,000 people were killed in a combined flood and mudslide on Le
     :modal-strength full-affirmative)
 
 # alignment:
-s28m2: 1-2
-s28n: 0-0
-s28p: 4-4
 s28k: 6-6
 s28c: 9-9
 s28f: 10-10
 s28m: 12-12
+s28p: 4-4
+s28m2: 1-2
 s28i2: 14-14
+s28n: 0-0
 s28d: 16-17
 
 # document level annotation:

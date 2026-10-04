@@ -540,9 +540,23 @@ function expansionSites(graph) {
  * @returns {string}
  */
 export function serializePenman(graph, options = {}) {
-  const indent = options.indent ?? 4;
+  return writePenman(graph, options.indent ?? 4).text;
+}
+
+/**
+ * The variables serializePenman writes out, in the order it writes them: the
+ * order of a sentence's lines in the file's alignment block.
+ *
+ * @param {{root: string|null, nodes: Map}} graph
+ * @returns {string[]}
+ */
+export function penmanOrder(graph) {
+  return writePenman(graph, 0).order;
+}
+
+function writePenman(graph, indent) {
   const { root, nodes } = graph || {};
-  if (!root || !nodes || !nodes.has(root)) return '';
+  if (!root || !nodes || !nodes.has(root)) return { text: '', order: [] };
   const sites = expansionSites(graph);
   const written = new Set([root]);
 
@@ -571,5 +585,8 @@ export function serializePenman(graph, options = {}) {
     return out;
   }
 
-  return lines(root, 0).join('\n');
+  const text = lines(root, 0).join('\n');
+  // In the order each was added: the root, then each node where it is
+  // written out, depth first.
+  return { text, order: [...written] };
 }

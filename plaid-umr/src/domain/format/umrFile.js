@@ -10,7 +10,14 @@
 // Sanapaná still has UMR 1.0's '-1--1' for unaligned. Each tolerance used
 // leaves a warning behind, and writing always produces the modern spelling.
 
-import { nfc, parsePenman, penmanProblems, serializePenman, relationProblem } from './penman.js';
+import {
+  nfc,
+  parsePenman,
+  penmanOrder,
+  penmanProblems,
+  serializePenman,
+  relationProblem,
+} from './penman.js';
 
 const SEPARATOR = '#'.repeat(80);
 
@@ -502,13 +509,18 @@ function ilgLinesToWrite(sentence) {
 const formatSpans = (spans) =>
   !spans || !spans.length ? '0-0' : spans.map(([begin, end]) => `${begin}-${end}`).join(',');
 
+// One line a node, in the order the graph above writes them out, as the
+// released files list them: an export imported and exported again lists them
+// the same way. A node the graph does not write follows, then a variable only
+// the alignment names.
 function serializeAlignment(sentence) {
   const alignment = sentence.alignment ?? new Map();
   const lines = [];
   const written = new Set();
   const nodes = sentence.graph?.nodes;
   if (nodes) {
-    for (const variable of nodes.keys()) {
+    for (const variable of [...penmanOrder(sentence.graph), ...nodes.keys()]) {
+      if (written.has(variable)) continue;
       written.add(variable);
       lines.push(`${variable}: ${formatSpans(alignment.get(variable))}`);
     }

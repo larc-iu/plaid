@@ -166,13 +166,38 @@ def _format_spans(spans) -> str:
     return ','.join(f'{begin}-{end}' for begin, end in spans)
 
 
+def _penman_order(graph) -> List[str]:
+    """``penmanOrder`` in penman.js: the variables the graph writes out, in the
+    order it writes them. Every node the root reaches is written at its edge
+    marked ``inline`` (see ``to_umr_sentences``), depth first."""
+    if not graph or not graph.root or graph.root not in graph.nodes:
+        return []
+    order = [graph.root]
+    seen = {graph.root}
+
+    def walk(variable):
+        for child in graph.nodes[variable].children:
+            if (child.kind == 'node' and child.inline and child.value in graph.nodes
+                    and child.value not in seen):
+                seen.add(child.value)
+                order.append(child.value)
+                walk(child.value)
+
+    walk(graph.root)
+    return order
+
+
 def _serialize_alignment(sentence) -> List[str]:
+    """One line a node, in the order the graph above writes them out, as the
+    app's export lists them (``serializeAlignment`` in umrFile.js)."""
     alignment = sentence.get('alignment') or {}
     lines = []
     written = set()
     graph = sentence.get('graph')
     if graph and graph.nodes:
-        for variable in graph.nodes:
+        for variable in [*_penman_order(graph), *graph.nodes]:
+            if variable in written:
+                continue
             written.add(variable)
             lines.append(f'{variable}: {_format_spans(alignment.get(variable))}')
     for variable, spans in alignment.items():
