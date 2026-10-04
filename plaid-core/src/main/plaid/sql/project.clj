@@ -499,10 +499,17 @@
 
   A project already being deleted answers 404, as a removed one does."
   [db eid user-id]
+  ;; The row names the project by its name too: once the removal has run it is
+  ;; all that is left of the project, and an id names nothing a reader knows.
+  ;; A missing project fails inside the operation, before anything is written
+  ;; under this description.
   (submit-operation! [tx db {:type :project/delete
                              :project eid
                              :document nil
-                             :description (str "Delete project " eid)
+                             :description (let [pname (:name (psc/fetch-by-id db :projects eid))]
+                                            (if pname
+                                              (str "Delete project \"" pname "\" (" eid ")")
+                                              (str "Delete project " eid)))
                              :user user-id}]
                      (let [existing (psc/fetch-by-id tx :projects eid)]
                        (when (or (nil? existing) (some? (:deleted_at existing)))

@@ -66,6 +66,9 @@
           (str "expected exactly 1 audit row (the project delete), got "
                (count writes) " by table: " (frequencies (map :target_table writes))))
       (is (= 1 (count deletes)) "the sole audit row is a delete")
+      ;; Once the removal has run, the row is all that is left of the
+      ;; project, so it names it.
+      (is (= (str "Delete project \"AuditCascadeProj\" (" proj ")") (:description op)))
       (is (= "projects" (:target_table (first deletes)))
           "the audited delete targets the project")
       (is (= proj (:target_id (first deletes))))
