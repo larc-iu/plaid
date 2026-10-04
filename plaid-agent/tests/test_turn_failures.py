@@ -346,3 +346,49 @@ def test_an_empty_reply_is_a_failed_turn_with_its_own_line(monkeypatch):
     assert conv['display'][-1] == {'kind': 'error', 'text': EMPTY_REPLY, 'model': 'fake/model',
                                    'version': _service().version, 'service': 'igt:assist:fake'}
     assert conv['messages'] == [], 'the message leaves the transcript, so Retry sends it once'
+
+
+# --- H38: a successful plan call repeated word for word -------------------------
+
+def test_a_plan_call_repeated_to_no_effect_is_not_staged_again_and_ends_the_turn(monkeypatch):
+    """One turn staged the same set_field seven times, each superseding the
+    last. The second identical call that leaves the plan as it was answers
+    that nothing was staged again, and the guard counts it as it counts a
+    repeated failure."""
+    def call_tool(ws, name, args):
+        ws.ops[:] = [o for o in ws.ops if o != {'kind': 'x', **args}] + [{'kind': 'x', **args}]
+        return 'Planned. 1 earlier planned change on the same target superseded.'
+
+    same = '{"what": "a", "n": 1}'
+    script = Script(*([_resp(calls=[_call(1, 'plan_a', same)]), _resp(calls=[_call(2, 'plan_b', '{}')])]
+                      + [_resp(calls=[_call(i, 'plan_a', '{"n": 1,  "what": "a"}')]) for i in range(3, 6)]
+                      + [_resp('Planned it.')]))
+    ws = Ws()
+    turn = _turn(monkeypatch, script, call_tool, ws=ws)
+    assert script.calls == 6, 'the first call, another, three repeats, and the reply'
+    assert turn.text == 'Planned it.\n\n*(Stopped after the same step was repeated 3 times.)*'
+    results = [m['content'] for m in turn.messages if m.get('role') == 'tool']
+    assert results[:2] == ['Planned. 1 earlier planned change on the same target superseded.'] * 2
+    assert results[2:] == [agent.ALREADY_PLANNED] * 3
+    assert len(ws.ops) == 2 and not any(s.get('failed') for s in turn.steps)
+
+
+def test_the_same_plan_call_after_the_plan_changed_is_staged_again(monkeypatch):
+    """Planning a value, then another over it, then the first again is a
+    change of mind, not a loop."""
+    def call_tool(ws, name, args):
+        ws.ops[:] = [{'kind': 'x', **args}]
+        return 'Planned.'
+
+    script = Script(_resp(calls=[_call(1, 'plan_a', '{"v": 1}')]), _resp(calls=[_call(2, 'plan_a', '{"v": 2}')]),
+                    _resp(calls=[_call(3, 'plan_a', '{"v": 1}')]), _resp('Done.'))
+    ws = Ws()
+    turn = _turn(monkeypatch, script, call_tool, ws=ws)
+    assert turn.text == 'Done.' and ws.ops == [{'kind': 'x', 'v': 1}]
+    assert agent.ALREADY_PLANNED not in [m['content'] for m in turn.messages if m.get('role') == 'tool']
+
+
+def test_a_read_repeated_is_not_a_plan_repeat(monkeypatch):
+    script = Script(*([_resp(calls=[_call(i, 'read', '{}')]) for i in range(4)] + [_resp('Found it.')]))
+    turn = _turn(monkeypatch, script)
+    assert turn.text == 'Found it.'

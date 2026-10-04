@@ -24,7 +24,7 @@ import litellm
 # TIMEOUT_RETRIES are imported for the docstrings and tests that name them.
 from plaid_client.workflows.llm import RETRIES, TIMEOUT_RETRIES, is_timeout, retrying, transient_errors  # noqa: F401
 
-from .trace import Tracer, summarize_steps, trace_step
+from .trace import META_TOOLS, PLAN, Tracer, summarize_steps, trace_step
 
 try:  # litellm raises the openai SDK's exception classes, its own included
     from openai import OpenAIError as _ProviderError
@@ -416,6 +416,19 @@ EMPTY_REPLY = 'The model returned an empty reply.'
 # same way.
 REPEATED_FAILURES = 3
 
+# What a plan call repeated word for word in one turn answers when it leaves
+# the plan as it was: nothing is staged again, and the repeat counts toward
+# the guard above. One turn was seen staging the same change seven times,
+# each copy superseding the last.
+ALREADY_PLANNED = ('Nothing was staged again: the same call earlier in this turn left the plan as it is now. '
+                   'Do not repeat it. Plan the next change or reply to the user.')
+
+
+def _plan_snapshot(ws: Any) -> List[str]:
+    """The plan as it stands, to tell whether a call changed it. In any order:
+    a change staged again over itself may move to the end of the plan."""
+    return sorted(json.dumps(op, sort_keys=True, default=str) for op in getattr(ws, 'ops', None) or [])
+
 
 def model_failure_line(e: BaseException, timeout: Optional[float] = None) -> Optional[str]:
     """One plain line for a failure of the model provider, or None when the
@@ -569,10 +582,14 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
     new: List[Dict[str, Any]] = []
     trace: List[Dict[str, Any]] = []
     rounds = 0
-    # The call that last failed and how many times running, as (name, raw
-    # arguments). Only an IDENTICAL repeat counts: a model that changes its
-    # arguments after a refusal is trying something else.
-    failing: Dict[str, Any] = {'call': None, 'times': 0}
+    # The call that last failed (or was a plan call repeated to no effect)
+    # and how many times running, as (name, arguments). Only an IDENTICAL
+    # repeat counts: a model that changes its arguments after a refusal is
+    # trying something else.
+    failing: Dict[str, Any] = {'call': None, 'times': 0, 'repeated': False}
+    # The plan calls this turn has made that went through, by (name,
+    # arguments), so the same one again can be told apart.
+    made: set = set()
     spend = Spend()
 
     def ask_for_the_reply(kwargs: Dict[str, Any], nudge: str) -> str:
@@ -634,6 +651,8 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
             name = c['function']['name']
             raw = c['function']['arguments'] or '{}'
             planned = 0
+            key = (name, raw)
+            repeated = False
             try:
                 args = json.loads(raw)
                 if not isinstance(args, dict):
@@ -641,24 +660,34 @@ def run_turn(cfg: ModelConfig, kit: Toolkit, ws: Any, system: str, transcript: L
             except json.JSONDecodeError as e:
                 args, result = {}, f'Error: arguments were not valid JSON ({e})'
             else:
+                key = (name, json.dumps(args, sort_keys=True, default=str))
+                plan_call = kit.tracer.kind(name) == PLAN and name not in META_TOOLS
+                before = _plan_snapshot(ws) if plan_call and key in made else None
                 on_progress(min(85, 8 + rounds * 5), kit.tracer.progress(name, args))
                 planned_before = len(ws.ops)
                 result = kit.call_tool(ws, name, args)
                 planned = len(ws.ops) - planned_before
                 if planned:
                     on_progress(min(85, 8 + rounds * 5), planned_progress(len(ws.ops)))
+                if plan_call and not str(result).startswith('Error'):
+                    made.add(key)
+                    if before is not None and _plan_snapshot(ws) == before:
+                        result, repeated = ALREADY_PLANNED, True
             failed = str(result).startswith('Error')
             trace.append(trace_step(kit.tracer, c['id'], name, args, failed=failed, planned=planned))
             new.append({'role': 'tool', 'tool_call_id': c['id'], 'content': result})
-            if failed and failing['call'] == (name, raw):
+            if (failed or repeated) and failing['call'] == key and failing['repeated'] == repeated:
                 failing['times'] += 1
             else:
-                failing['call'], failing['times'] = ((name, raw), 1) if failed else (None, 0)
+                failing.update(call=key if failed or repeated else None, times=1 if failed or repeated else 0,
+                               repeated=repeated)
         if failing['times'] >= REPEATED_FAILURES:
-            text = ask_for_the_reply(kwargs, '(system) The same tool call has failed '
+            what = 'been repeated' if failing['repeated'] else 'failed'
+            text = ask_for_the_reply(kwargs, f'(system) The same tool call has {what} '
                                              f'{REPEATED_FAILURES} times in a row. Do not call it again. '
                                              'Reply now with what you found and what remains to do.')
-            return TurnResult(text + f'\n\n*(Stopped after the same step failed {REPEATED_FAILURES} times.)*',
+            line = 'was repeated' if failing['repeated'] else 'failed'
+            return TurnResult(text + f'\n\n*(Stopped after the same step {line} {REPEATED_FAILURES} times.)*',
                               new, trace, spend.usage())
         if rounds >= cfg.max_steps:
             text = ask_for_the_reply(kwargs, '(system) You have used the tool budget for this turn. '
