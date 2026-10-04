@@ -113,8 +113,10 @@ describe('what every document can do as a document', () => {
   it('copies to a new document and answers with its id and its name', async () => {
     const { doc, client } = load();
     expect(await doc.copyTo('  One (copy)  ')).toEqual({ id: 'd2', name: 'One (copy)' });
+    // No label of its own: History shows the server's description of the
+    // copy, which names the source and the new name.
     expect(client.calls).toEqual([
-      ['operation', 'Copy document'],
+      ['operation', null],
       ['copy', 'd1', 'One (copy)'],
     ]);
     // The document copied from is untouched.

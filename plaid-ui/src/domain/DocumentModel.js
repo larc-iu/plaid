@@ -351,7 +351,10 @@ export class DocumentModel {
       async () => {
         created = await this._client.documents.copy(this.id, next);
       },
-      undefined,
+      // No label: the copy's History then shows the server's description,
+      // `Copy "<source>" as "<name>"`, where a label would say only "Copy
+      // document".
+      null,
       { shown: false },
     );
     return ok && created?.id ? { ...created, name: next } : null;
