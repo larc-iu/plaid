@@ -643,3 +643,49 @@ def test_a_refused_relabel_after_a_block_that_ended_well_still_raises():
         with client.operation('Merge') as op:
             client.spans.set_metadata('S1', {'a': 1})
             op.set_message('Merged 2')
+
+
+# The kinds are the server's closed list (plaid.sql.operation-group/kinds).
+# The client refuses any other when the operation begins, so a script with a
+# misspelt kind stops before its first write instead of failing at it.
+def _core_kinds():
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[2] / 'plaid-core' / 'src' / 'main' / 'plaid' / 'sql'
+           / 'operation_group.clj').read_text()
+    body = re.search(r'\(def kinds.*?#\{([^}]*)\}', src, re.S).group(1)
+    return re.findall(r'"([^"]+)"', body)
+
+
+def test_begin_operation_takes_every_kind_the_server_takes():
+    kinds = _core_kinds()
+    assert len(kinds) >= 7, kinds
+    for kind in kinds:
+        client = _client()
+        client.begin_operation('x', kind=kind)
+        assert client._operation_group['kind'] == kind
+
+
+def test_an_unknown_kind_raises_before_anything_is_written():
+    client = _client()
+    with pytest.raises(ValueError, match=r'Unknown operation kind "imports"\. It is one of: assistant-plan, service-run'):
+        client.begin_operation('Import', kind='imports')
+    assert client._operation_group is None
+    ran = []
+    with pytest.raises(ValueError, match='Unknown operation kind'):
+        with client.operation('Import', kind='Import'):
+            ran.append(1)
+    assert ran == []
+    assert client._operation_group is None
+    # A nested one is refused too, and leaves the outer one as it was.
+    client.begin_operation('outer', kind='import')
+    with pytest.raises(ValueError, match='Unknown operation kind'):
+        client.begin_operation('inner', kind='nope')
+    assert client._operation_group['depth'] == 1
+
+
+def test_the_fake_client_refuses_an_unknown_kind_too():
+    from plaid_client.testing import FakeClient
+    fake = FakeClient({})
+    with pytest.raises(ValueError, match='Unknown operation kind'):
+        with fake.operation('x', kind='bulk_edit'):
+            pass

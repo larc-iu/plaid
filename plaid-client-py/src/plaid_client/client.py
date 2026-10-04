@@ -32,6 +32,20 @@ MAX_BATCH_OPS = 1000
 # How long ``admin.backup()`` waits for the server to finish writing a backup:
 # minutes on a large database, past the usual per-request timeout.
 BACKUP_TIMEOUT_S = 30 * 60
+# The kinds an operation may say it is (``?group-kind=``), the server's closed
+# list (plaid.sql.operation-group/kinds). An operation of any other kind is
+# refused when it begins, before it writes anything.
+_OPERATION_KINDS = ('assistant-plan', 'service-run', 'import', 'bulk-edit',
+                    'guess-adoption', 'repair', 'review')
+
+
+def _check_operation_kind(kind) -> None:
+    """Raise ``ValueError`` for a ``kind`` the server would refuse."""
+    if kind is not None and str(kind) not in _OPERATION_KINDS:
+        raise ValueError(f'Unknown operation kind "{kind}". It is one of: '
+                         f'{", ".join(_OPERATION_KINDS)}.')
+
+
 from plaid_client import services as svc
 
 
@@ -3937,7 +3951,8 @@ class PlaidClient:
         ``kind`` says what kind of operation this is, for a program reading
         the log: one of ``assistant-plan``, ``service-run``, ``import``,
         ``bulk-edit``, ``guess-adoption``, ``repair`` or ``review`` (the server
-        refuses any other). ``ref`` is a short string naming what the operation came from,
+        refuses any other, and so does this method: any other kind raises
+        ``ValueError`` here, before anything is written). ``ref`` is a short string naming what the operation came from,
         in the shape its kind documents (the core manual, "Kinds of
         operation"). Both are recorded from the first write like the label,
         and a nested operation keeps the outer one's.
@@ -3968,7 +3983,11 @@ class PlaidClient:
 
         Returns:
             The operation's group id.
+
+        Raises:
+            ValueError: ``kind`` is not one of the kinds listed above.
         """
+        _check_operation_kind(kind)
         frame = {'keys': keys or None, 'count': 0, 'minted': set(minted) if minted else None,
                  'depth': 1, 'owned': False}
         open_group = self._operation_group
@@ -4068,7 +4087,10 @@ class PlaidClient:
 
         Args:
             message: Human label for the operation (shown as the audit-log entry).
-            kind: Optional. What kind of operation this is.
+            kind: Optional. What kind of operation this is: one of
+                ``assistant-plan``, ``service-run``, ``import``, ``bulk-edit``,
+                ``guess-adoption``, ``repair`` or ``review``. Any other raises
+                ``ValueError`` before the block runs.
             ref: Optional. What the operation refers to.
             group_id: Optional. Adopt an existing group id (see ``begin_operation``).
             keys: Optional. A seed from ``key_seed()`` (see ``begin_operation``).

@@ -7,6 +7,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert';
+import { readFileSync } from 'node:fs';
 import { PlaidClient } from '../src/index.js';
 import { reportRequestEvent } from '../src/services.js';
 
@@ -470,4 +471,46 @@ test('withOperation: a refused relabel does not replace the error fn threw', asy
   }), /plan failed/);
   assert.deepStrictEqual(calls, ['PUT', 'PATCH']);
   assert.strictEqual(client.operationGroup, null);
+});
+
+// The kinds are the server's closed list (plaid.sql.operation-group/kinds).
+// The client refuses any other when the operation begins, so a script with a
+// misspelt kind stops before its first write instead of failing at it.
+
+const CORE_KINDS = (() => {
+  const src = readFileSync(
+    new URL('../../plaid-core/src/main/plaid/sql/operation_group.clj', import.meta.url),
+    'utf8',
+  );
+  const set = src.match(/\(def kinds[\s\S]*?#\{([^}]*)\}/)[1];
+  return [...set.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+})();
+
+test('beginOperation takes every kind the server takes', () => {
+  assert.ok(CORE_KINDS.length >= 7, CORE_KINDS.join(','));
+  for (const kind of CORE_KINDS) {
+    const client = makeClient();
+    client.beginOperation('x', { kind });
+    assert.strictEqual(client.operationGroup.kind, kind);
+  }
+});
+
+test('an unknown kind throws before anything is written', async () => {
+  const client = makeClient();
+  assert.throws(
+    () => client.beginOperation('Import', { kind: 'imports' }),
+    /Unknown operation kind "imports"\. It is one of: assistant-plan, service-run/,
+  );
+  assert.strictEqual(client.operationGroup, null);
+  let ran = false;
+  await assert.rejects(
+    client.withOperation('Import', async () => { ran = true; }, { kind: 'Import' }),
+    /Unknown operation kind/,
+  );
+  assert.strictEqual(ran, false);
+  assert.strictEqual(client.operationGroup, null);
+  // A nested one is refused too, and leaves the outer one as it was.
+  client.beginOperation('outer', { kind: 'import' });
+  assert.throws(() => client.beginOperation('inner', { kind: 'nope' }), /Unknown operation kind/);
+  assert.strictEqual(client.operationGroup.depth, 1);
 });

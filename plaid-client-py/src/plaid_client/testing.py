@@ -1006,6 +1006,8 @@ class FakeClient:
 
     @contextlib.contextmanager
     def operation(self, message, *, kind=None, ref=None, group_id=None, keys=None, minted=None):
+        # The real client refuses a kind the server would, before the block.
+        _client._check_operation_kind(kind)
         self.operations.append(message)
         self.operation_tags.append({'kind': kind, 'ref': ref})
         self.operation_labels.append(message)

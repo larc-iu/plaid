@@ -134,6 +134,21 @@ async function anonymousGet(baseUrl, path, options = {}) {
 const MAX_BATCH_OPS = 1000;
 
 /**
+ * The kinds an operation may say it is (`?group-kind=`), the server's closed
+ * list (plaid.sql.operation-group/kinds). An operation of any other kind is
+ * refused when it begins, before it writes anything.
+ */
+const OPERATION_KINDS = [
+  "assistant-plan",
+  "service-run",
+  "import",
+  "bulk-edit",
+  "guess-adoption",
+  "repair",
+  "review",
+];
+
+/**
  * How long `admin.backup()` waits for the server to finish writing a backup:
  * minutes on a large database, past the usual per-request timeout.
  */
@@ -3697,6 +3712,7 @@ class PlaidClient {
    * `kind` says what kind of operation this is, for a program reading the
    * log: one of `assistant-plan`, `service-run`, `import`, `bulk-edit`,
    * `guess-adoption`, `repair` or `review` (the server refuses any other).
+   * Any other kind throws here, before anything is written.
    * `ref` is a short string naming what the operation came from, in the
    * shape its kind documents (the core manual, "Kinds of operation"). Both
    * are recorded from the first write like the label, and a nested operation
@@ -3716,6 +3732,11 @@ class PlaidClient {
    * @returns {string} The operation's group id.
    */
   beginOperation(message, { id, kind, ref, keys, minted } = {}) {
+    if (kind != null && !OPERATION_KINDS.includes(String(kind))) {
+      throw new Error(
+        `Unknown operation kind "${kind}". It is one of: ${OPERATION_KINDS.join(", ")}.`,
+      );
+    }
     const frame = {
       keys: keys || null,
       count: 0,
@@ -3813,7 +3834,7 @@ class PlaidClient {
    *
    * @param {string} message - Human label for the operation.
    * @param {function} fn - The work to run; receives `setMessage(msg)` to refine the label once the outcome is known.
-   * @param {object} [opts] - Optional `{ kind, ref, id, keys }`, as for beginOperation.
+   * @param {object} [opts] - Optional `{ kind, ref, id, keys }`, as for beginOperation. `kind` is one of `assistant-plan`, `service-run`, `import`, `bulk-edit`, `guess-adoption`, `repair` or `review`, and any other throws before `fn` runs.
    * @returns {Promise<any>} Whatever `fn` resolves to.
    */
   async withOperation(message, fn, { kind, ref, id, keys, minted } = {}) {

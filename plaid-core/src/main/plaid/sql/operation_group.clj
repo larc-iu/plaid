@@ -16,8 +16,10 @@
   "What a group may say it is (`?group-kind=`), the whole vocabulary. A
   closed list rather than any string because readers count operations by
   kind: `assistant_plan` next to `assistant-plan` would split one count in
-  two, and nothing would say so. A new kind is a new entry here and in the
-  manual's list (\"Kinds of operation\").
+  two, and nothing would say so. A new kind is a new entry here, in the
+  manual's list (\"Kinds of operation\"), and in both clients' lists, which
+  refuse any other kind when an operation begins (their operation tests read
+  this set).
 
     assistant-plan  an approved assistant plan being applied
     service-run     one run of a service, the service's writes included
