@@ -5,7 +5,16 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { applyTextOps, gapsToOps } from '@larc-iu/plaid-client';
 import { IgtDocument } from './IgtDocument.js';
-import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
+import { buildRawDoc as buildDoc, makeFakeClient, resetIds } from './test-helpers.js';
+
+// These tests are of the edit's own send: "Tokenize new text" is off, so
+// typing adds no words (newTextWords and its batch have tests of their own).
+const buildRawDoc = (opts) => {
+  const raw = buildDoc(opts);
+  const words = raw.textLayers[0].tokenLayers.find((l) => l.id === 'wordL');
+  words.config.igt.tokenizeNewText = false;
+  return raw;
+};
 import { digestOf, segmentServer } from '../test/segmentServer.js';
 
 function makeDoc({ raw, client }) {

@@ -31,6 +31,7 @@ import {
   readScope,
   readOrthographies,
   readIgnoredTokens,
+  readTokenizeNewText,
   readDocumentMetadata,
   IGT_NAMESPACE,
   readVocabFields,
@@ -148,6 +149,8 @@ export function buildProjectFile({
         morpheme: fields.morphFields.map(fieldRow('Morpheme')),
       },
       ignoredTokens: readIgnoredTokens(wordLayer?.config) ?? null,
+      // Only when Baseline saves leave new text without words.
+      ...(readTokenizeNewText(wordLayer?.config) ? {} : { tokenizeNewText: false }),
       documentMetadata: readDocumentMetadata(project?.config) ?? [],
       autoAnalysis: igtConfig('autoAnalysis'),
       tagsets: igtConfig('tagsets'),

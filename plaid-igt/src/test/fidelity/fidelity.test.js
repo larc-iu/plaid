@@ -484,6 +484,7 @@ const CONFIG_KEYS = {
     'layers.ignoredTokensLetterLike',
     'layers.ignoredTokensBlacklist',
   ),
+  'tokenLayers igt.tokenizeNewText': covers('layers.tokenizeNewTextOff'),
   'tokenLayers igt.orthographies': covers('layers.orthography'),
   'spanLayers igt.lang': covers('layers.fieldLang'),
   'spanLayers igt.scope': covers(
@@ -515,6 +516,7 @@ const IDENTIFIERS = {
   PRESERVE_ON_SPLIT_KEY: 'preserveOnSplit',
   REVIEW_KEY: 'review',
   IMPORT_KEY: 'import',
+  TOKENIZE_NEW_TEXT_KEY: 'tokenizeNewText',
 };
 
 // Call sites that write back whatever an archive holds, key by key, rather

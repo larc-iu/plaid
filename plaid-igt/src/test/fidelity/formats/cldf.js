@@ -150,6 +150,11 @@ export default {
       kind: 'inherent',
       why: 'Ignored-token settings have no place in CLDF. The import writes the default punctuation rule in place of a blacklist.',
     },
+    'layers.tokenizeNewTextOff': {
+      carried: false,
+      kind: 'inherent',
+      why: 'A setting on the word layer. CLDF has no place for it, and the import leaves it on.',
+    },
     'layers.fieldSentence': {
       carried: 'changed',
       how: 'A sentence field comes back only when at least one sentence has a non-empty value in it. The field bound to Translated_Text comes back named Translation and the one bound to Comment named Note, whatever they were called. Every other sentence field comes back under its own name, except that one wanting a name a bound field already took keeps its column name instead (Sentence_Translation). Its config comes back as { scope }, plus lang as layers.fieldLang says.',

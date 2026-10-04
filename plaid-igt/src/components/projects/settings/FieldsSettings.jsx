@@ -12,6 +12,8 @@ import {
   ignoredTokensSetup,
   defaultIgnoredTokensSetup,
   storedIgnoredTokens,
+  readTokenizeNewText,
+  TOKENIZE_NEW_TEXT_KEY,
   IGT_NAMESPACE,
 } from '@/domain/igtConfig';
 import { readTagsetName } from '@/domain/tagsets';
@@ -341,6 +343,27 @@ export const FieldsSettings = ({
     return forms.reduce((n, f) => n + (entry.counts.get(f) ?? 0), 0);
   };
 
+  // "Tokenize new text" on the word layer, written over what this page read,
+  // so a change saved elsewhere since is refused (409) rather than written
+  // over.
+  const tokenizeNewText = readTokenizeNewText(layersOf(project)?.primary?.config);
+  const handleTokenizeNewTextChange = (next) =>
+    inTurn(async () => {
+      const primary = layersOf(project)?.primary;
+      if (!primary) throw new Error(notSetUp('No baseline text layer found in project'));
+      await client.tokenLayers.setConfig(
+        primary.id,
+        IGT_NAMESPACE,
+        TOKENIZE_NEW_TEXT_KEY,
+        next,
+        undefined,
+        { expected: storedConfig(primary, IGT_NAMESPACE, TOKENIZE_NEW_TEXT_KEY) },
+      );
+      await Promise.resolve(onProjectUpdate?.()).catch((err) =>
+        console.error('Failed to reload the project:', err),
+      );
+    });
+
   // A refused save or move: say why, and read the project again, so the
   // table shows what the server holds rather than what was asked for.
   const handleError = (error) => {
@@ -366,6 +389,8 @@ export const FieldsSettings = ({
         violations={violations}
         projectId={projectId}
         showTitle={false}
+        tokenizeNewText={tokenizeNewText}
+        onTokenizeNewTextChange={handleTokenizeNewTextChange}
       />
     </div>
   );

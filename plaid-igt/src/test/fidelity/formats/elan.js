@@ -213,6 +213,11 @@ export default {
       kind: 'inherent',
       why: 'A setting on the word layer. An .eaf has no place for it, and the import writes the default punctuation rule in place of a blacklist.',
     },
+    'layers.tokenizeNewTextOff': {
+      carried: false,
+      kind: 'inherent',
+      why: 'A setting on the word layer. An .eaf has no place for it, and the import leaves it on.',
+    },
     'layers.fieldSentence': carried,
     'layers.fieldWord': carried,
     'layers.fieldMorpheme': carried,

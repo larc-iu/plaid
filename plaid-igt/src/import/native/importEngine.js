@@ -46,7 +46,9 @@ import {
 } from './references.js';
 import {
   IGT_NAMESPACE,
+  TOKENIZE_NEW_TEXT_KEY,
   findBaselineTextLayer,
+  findWordTokenLayer,
   readScope,
   ignoredTokensSetup,
   readImportState,
@@ -943,6 +945,13 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
     ['documentMetadata', schema.documentMetadata],
   ]) {
     if (value != null) await client.projects.setConfig(projectId, IGT_NAMESPACE, key, value);
+  }
+  // "Tokenize new text" is on unless the word layer says false.
+  if (schema.tokenizeNewText === false) {
+    const words = findWordTokenLayer(findBaselineTextLayer(project.textLayers || [])?.tokenLayers);
+    if (words) {
+      await client.tokenLayers.setConfig(words.id, IGT_NAMESPACE, TOKENIZE_NEW_TEXT_KEY, false);
+    }
   }
 
   // The project's annotation manual. Nothing in the archive points at a

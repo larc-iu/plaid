@@ -92,6 +92,10 @@ export const FieldsManager = ({
   violations = {},
   projectId,
   showTitle = true,
+  // Whether a Baseline save splits the text it adds into words, and the save
+  // of a change of it, async, throwing when refused. Settings mode only.
+  tokenizeNewText = true,
+  onTokenizeNewTextChange,
 }) => {
   const [fields, setFields] = useState([]);
   const [ignoredTokens, setIgnoredTokens] = useState(defaultIgnoredTokensSetup);
@@ -125,6 +129,10 @@ export const FieldsManager = ({
   // it could not be).
   const [heldIgnored, setHeldIgnored] = useState(null);
   const ignoredSeq = useRef(0);
+  // "Tokenize new text" as changed here, shown at once and put back when the
+  // save is refused. Null: what is saved.
+  const [tokenizeChanged, setTokenizeChanged] = useState(null);
+  const tokenizeShown = tokenizeChanged ?? tokenizeNewText;
 
   // Define scope options (morpheme layer is always present)
   const scopeOptions = [
@@ -441,6 +449,18 @@ export const FieldsManager = ({
     writeExplicitText((ignoredTokens.explicitIgnoredTokens || []).join(', '));
   };
 
+  const handleTokenizeNewTextChange = async (next) => {
+    setTokenizeChanged(next);
+    try {
+      await onTokenizeNewTextChange(next);
+    } catch (error) {
+      if (onError) onError(error);
+      else notifyError(error, 'Not saved');
+    } finally {
+      setTokenizeChanged(null);
+    }
+  };
+
   const handleIgnoredTokensModeChange = async (mode) => {
     await changeIgnored({ ...shownIgnored, mode });
   };
@@ -682,6 +702,24 @@ export const FieldsManager = ({
         </div>
 
         <div className="flex flex-col gap-6">
+          {onTokenizeNewTextChange && (
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                checked={tokenizeShown}
+                onChange={(event) => handleTokenizeNewTextChange(event.currentTarget.checked)}
+                className="mt-1"
+              />
+              <span>
+                <span className="text-sm font-medium">Tokenize new text</span>
+                <span className="block text-xs text-muted-foreground">
+                  Text saved on the Baseline tab is split into words, except in sentences without
+                  spaces.
+                </span>
+              </span>
+            </label>
+          )}
+
           <label className="flex items-start gap-3">
             <input
               type="radio"
@@ -694,7 +732,7 @@ export const FieldsManager = ({
             <span>
               <span className="text-sm font-medium">Unicode punctuation (recommended)</span>
               <span className="block text-xs text-muted-foreground">
-                Automatically ignore all Unicode punctuation characters (category 'P')
+                Ignore punctuation and symbols, except ∅ and pictographs such as ★
               </span>
             </span>
           </label>

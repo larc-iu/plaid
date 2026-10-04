@@ -152,6 +152,11 @@ export default {
       kind: 'inherent',
       why: 'A .flextext declares no tokenization rule.',
     },
+    'layers.tokenizeNewTextOff': {
+      carried: false,
+      kind: 'inherent',
+      why: 'A setting on the word layer. A .flextext has no place for it, and the import leaves it on.',
+    },
     'layers.fieldSentence': {
       carried: 'changed',
       how: 'Each sentence field goes out as the phrase <item type="gls">, <item type="lit"> or <item type="note"> the preset maps it to (by default lit for a name with "literal", gls for one with "translation" or "gloss", note otherwise). The field name is not written, only the item type and its writing system.',

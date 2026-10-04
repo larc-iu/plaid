@@ -222,7 +222,8 @@ async function configureMain(client, projectId, contributorId) {
   await set('compose', { codes: [{ code: 'kk', char: 'ʞ', description: 'turned k' }] });
 
   const project = await client.projects.get(projectId);
-  const { span } = layerIds(project);
+  const { span, byRole } = layerIds(project);
+  await client.tokenLayers.setConfig(byRole('word').id, IGT_NAMESPACE, 'tokenizeNewText', false);
   await client.spanLayers.setConfig(span('word', 'POS').id, IGT_NAMESPACE, 'tagset', 'POS');
   await client.spanLayers.setConfig(
     span('morpheme', 'Gloss').id,

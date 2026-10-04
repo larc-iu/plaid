@@ -76,6 +76,7 @@ export default {
     ),
     'layers.ignoredTokensLetterLike': PROJECT_CONFIG,
     'layers.ignoredTokensBlacklist': PROJECT_CONFIG,
+    'layers.tokenizeNewTextOff': PROJECT_CONFIG,
     'layers.fieldSentence': {
       carried: 'changed',
       how: 'A sentence field shows as the label of its free line ("Translation: ..."), in a sentence where its value is not empty.',

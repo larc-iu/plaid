@@ -76,6 +76,7 @@ export default {
     'layers.ignoredTokensPunctuation': carried,
     'layers.ignoredTokensLetterLike': carried,
     'layers.ignoredTokensBlacklist': carried,
+    'layers.tokenizeNewTextOff': carried,
     'layers.fieldSentence': carried,
     'layers.fieldWord': carried,
     'layers.fieldMorpheme': carried,

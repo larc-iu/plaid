@@ -67,6 +67,7 @@ export default {
     'layers.ignoredTokensPunctuation': NOT_A_VOCABULARY,
     'layers.ignoredTokensLetterLike': NOT_A_VOCABULARY,
     'layers.ignoredTokensBlacklist': NOT_A_VOCABULARY,
+    'layers.tokenizeNewTextOff': NOT_A_VOCABULARY,
     'layers.fieldSentence': NOT_A_VOCABULARY,
     'layers.fieldWord': NOT_A_VOCABULARY,
     'layers.fieldMorpheme': NOT_A_VOCABULARY,

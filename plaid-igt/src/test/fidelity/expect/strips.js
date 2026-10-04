@@ -170,6 +170,10 @@ export const STRIPS = {
     const cfg = wordLayer(s)?.config?.igt;
     if (cfg?.ignoredTokens?.type === 'blacklist') delete cfg.ignoredTokens;
   },
+  'layers.tokenizeNewTextOff': (s) => {
+    const cfg = wordLayer(s)?.config?.igt;
+    if (cfg?.tokenizeNewText === false) delete cfg.tokenizeNewText;
+  },
   'layers.fieldLang': (s) => {
     for (const l of s.layers) if (l.key.startsWith('span:')) delete l.config?.igt?.lang;
   },

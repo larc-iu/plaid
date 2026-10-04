@@ -270,6 +270,11 @@ export const FEATURES = [
     detect: (s) => (ignoredConfig(s)?.type === 'blacklist' ? 1 : 0),
   },
   {
+    key: 'layers.tokenizeNewTextOff',
+    what: 'a Baseline save leaves the text it adds without words',
+    detect: (s) => (wordLayer(s)?.config?.igt?.tokenizeNewText === false ? 1 : 0),
+  },
+  {
     key: 'layers.fieldSentence',
     what: 'an annotation field at sentence scope',
     detect: (s) => count(fieldLayers(s), (l) => l.config?.igt?.scope === 'Sentence'),

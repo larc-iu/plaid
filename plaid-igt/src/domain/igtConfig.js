@@ -55,6 +55,14 @@ export const readOrthographies = (config) => readIgt(config, 'orthographies') ??
 /** A word token layer's ignored-tokens config: {type, ...}, or null. */
 export const readIgnoredTokens = (config) => readIgt(config, 'ignoredTokens') ?? null;
 
+/**
+ * The word token layer's config key (under `igt`) for whether a Baseline save
+ * gives the text it adds words from the built-in tokenizer. On unless it holds
+ * `false`, so a project that never set it tokenizes.
+ */
+export const TOKENIZE_NEW_TEXT_KEY = 'tokenizeNewText';
+export const readTokenizeNewText = (config) => readIgt(config, TOKENIZE_NEW_TEXT_KEY) !== false;
+
 // "Punctuation" for the ignore rule: Unicode punctuation and symbols, EXCEPT
 // pictographs (emoji) and the zero morph. An emoji token in an object-language
 // transcript is a word-like unit a linguist may well want to gloss (an

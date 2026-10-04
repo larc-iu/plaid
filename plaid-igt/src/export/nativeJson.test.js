@@ -827,3 +827,25 @@ describe("other apps' layers", () => {
     expect(warnings).toHaveLength(1);
   });
 });
+
+describe('buildProjectFile — "Tokenize new text"', () => {
+  const build = (project) =>
+    buildProjectFile({
+      project,
+      documents: [],
+      vocabularies: [],
+      asOf: null,
+      exportedAt: '2026-10-04T00:00:00.000Z',
+    });
+
+  it('says so when Baseline saves leave new text without words', () => {
+    const project = buildProject();
+    const words = project.textLayers[0].tokenLayers.find((l) => l.config?.plaid?.role === 'word');
+    words.config = { ...words.config, igt: { ...words.config.igt, tokenizeNewText: false } };
+    expect(build(project).schema.tokenizeNewText).toBe(false);
+  });
+
+  it('says nothing when it is on', () => {
+    expect('tokenizeNewText' in build(buildProject()).schema).toBe(false);
+  });
+});

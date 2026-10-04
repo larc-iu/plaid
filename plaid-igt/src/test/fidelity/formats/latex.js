@@ -78,6 +78,7 @@ export default {
     ),
     'layers.ignoredTokensLetterLike': PROJECT_CONFIG,
     'layers.ignoredTokensBlacklist': PROJECT_CONFIG,
+    'layers.tokenizeNewTextOff': PROJECT_CONFIG,
     'layers.fieldSentence': {
       carried: 'changed',
       how: 'The first sentence field with a value in a sentence, in the preset\'s order, is its free translation, in quotes and unlabeled. Every other one follows under its name ("Note: ...").',

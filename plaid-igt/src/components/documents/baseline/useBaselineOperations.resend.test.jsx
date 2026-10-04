@@ -9,7 +9,16 @@ import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import { mountDocumentHook } from '../../../test/mountDocumentHook.jsx';
 import { useBaselineOperations } from './useBaselineOperations.js';
 import { IgtDocument } from '@/domain/IgtDocument.js';
-import { buildRawDoc, resetIds } from '@/domain/test-helpers.js';
+import { buildRawDoc as buildDoc, resetIds } from '@/domain/test-helpers.js';
+
+// These tests are of the edit's own send: "Tokenize new text" is off, so
+// typing adds no words (newTextWords and its batch have tests of their own).
+const buildRawDoc = (opts) => {
+  const raw = buildDoc(opts);
+  const words = raw.textLayers[0].tokenLayers.find((l) => l.id === 'wordL');
+  words.config.igt.tokenizeNewText = false;
+  return raw;
+};
 import { segmentServer } from '@/test/segmentServer.js';
 
 const toasts = vi.hoisted(() => ({ list: [] }));

@@ -2284,3 +2284,25 @@ describe('planVocabRelink, references in metadata', () => {
     });
   });
 });
+
+describe('runNativeImport — "Tokenize new text"', () => {
+  it('turns it off on the word layer when the archive has it off', async () => {
+    const archive = buildArchive();
+    archive.manifest.schema = { ...archive.manifest.schema, tokenizeNewText: false };
+    const client = stubClient();
+    await runNativeImport({ client, projectId: 'newp', archive });
+    const writes = argsOf(client, 'tokenLayers.setConfig').filter(
+      (a) => a[2] === 'tokenizeNewText',
+    );
+    expect(writes).toEqual([['new-wl', 'igt', 'tokenizeNewText', false]]);
+  });
+
+  it('leaves it on when the archive says nothing of it', async () => {
+    const client = stubClient();
+    await runNativeImport({ client, projectId: 'newp', archive: buildArchive() });
+    const writes = argsOf(client, 'tokenLayers.setConfig').filter(
+      (a) => a[2] === 'tokenizeNewText',
+    );
+    expect(writes).toEqual([]);
+  });
+});
