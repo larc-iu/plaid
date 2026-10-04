@@ -281,10 +281,11 @@ export const TextEditor = () => {
   const hasTokens = sentenceTokens.length > 0 || wordTokens.length > 0 || morphemeTokens.length > 0;
 
   // The tokens are always at their places in the stored body, which comes in
-  // the same render as they do. It is what the box's text is measured against
-  // for "Unsaved changes", and what the token view moves them from.
+  // the same render as they do. It is what the token view moves them from.
   const originalTokenizedText = hasTokens ? serverText : '';
-  const isTextDirty = Boolean(originalTokenizedText) && rawText !== originalTokenizedText;
+  // Typed and not saved, with or without tokens: the measure Save and the
+  // leave guard use, for "Unsaved changes" and Tokenize's "Save the text first".
+  const isTextDirty = rawText !== log.base;
   // Typed over a body that has changed since, and not put onto it: the two
   // changed the same passage.
   const behind = !sending && rawText !== log.base && Boolean(serverText) && log.base !== serverText;

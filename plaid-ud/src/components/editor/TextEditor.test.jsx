@@ -12,7 +12,13 @@ const editor = vi.hoisted(() => ({ current: null }));
 vi.mock('@ui/hooks/useDocumentEditor.js', () => ({ useDocumentEditor: () => editor.current }));
 vi.mock('./TokenVisualizer.jsx', () => ({ TokenVisualizer: () => null }));
 vi.mock('./services/ParseDialog.jsx', () => ({ ParseDialog: () => null }));
-vi.mock('./services/TokenizeDialog.jsx', () => ({ TokenizeDialog: () => null }));
+const tokenizeProps = vi.hoisted(() => ({ current: null }));
+vi.mock('./services/TokenizeDialog.jsx', () => ({
+  TokenizeDialog: (props) => {
+    tokenizeProps.current = props;
+    return null;
+  },
+}));
 
 const { TextEditor } = await import('./TextEditor.jsx');
 const { hasUnsavedDraft } = await import('@ui/hooks/useUnsavedDraft.js');
@@ -82,6 +88,31 @@ describe('the Text Editor', () => {
     const view = await mount();
     await view.step(() => typeInto(view.container.querySelector('textarea'), 'Hello.'));
     expect(hasUnsavedDraft()).toBe('The text you have typed');
+    await view.unmount();
+  });
+
+  // H31-TEXT polish: the status said "Unsaved changes" only on a tokenized
+  // document, though Save and the leave guard counted typed text on any.
+  it('says Unsaved changes on a document with no tokens, and asks for a save before Tokenize', async () => {
+    setup('The saved text.');
+    const view = await mount();
+    const box = view.container.querySelector('textarea');
+    expect(view.container.textContent).not.toContain('Unsaved changes');
+    expect(tokenizeProps.current.blockedHint).toBe(null);
+    await view.step(() => typeInto(box, 'The saved text. And more.'));
+    expect(view.container.textContent).toContain('Unsaved changes');
+    expect(tokenizeProps.current.blockedHint).toBe('Save the text first.');
+    await view.step(() => typeInto(box, 'The saved text.'));
+    expect(view.container.textContent).not.toContain('Unsaved changes');
+    expect(tokenizeProps.current.blockedHint).toBe(null);
+    await view.unmount();
+  });
+
+  it('says Unsaved changes on a document with no text saved yet', async () => {
+    setup('');
+    const view = await mount();
+    await view.step(() => typeInto(view.container.querySelector('textarea'), 'Hello.'));
+    expect(view.container.textContent).toContain('Unsaved changes');
     await view.unmount();
   });
 });
