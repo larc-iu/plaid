@@ -106,6 +106,61 @@ export const changeLines = (summary, layers = {}, roleWords = {}) => {
   return lines;
 };
 
+// The same lines, split by what the restore does to each row: a row made since
+// is removed, one deleted since is brought back, one changed since is changed
+// back. A list that summed the three read the same whether a restore took 24
+// tokens away or put 24 back. Only the groups with lines are returned, as
+// `[{ heading, lines }]`.
+const GROUPS = [
+  ['deleted', 'Removed'],
+  ['inserted', 'Brought back'],
+  ['updated', 'Changed back'],
+];
+
+const onlyKind = (summary, kind) => {
+  const one = (c) => (c ? { [kind]: c[kind] ?? 0 } : c);
+  const perLayer = (t) =>
+    t && { byLayer: (t.byLayer || []).map((e) => ({ layerId: e.layerId, [kind]: e[kind] ?? 0 })) };
+  return {
+    texts: one(summary.texts),
+    tokens: perLayer(summary.tokens),
+    spans: perLayer(summary.spans),
+    relations: perLayer(summary.relations),
+    vocabLinks: one(summary.vocabLinks),
+    // The name and the metadata are set back, never made or deleted.
+    ...(kind === 'updated'
+      ? { name: summary.name, documentMetadata: summary.documentMetadata }
+      : {}),
+  };
+};
+
+export const changeGroups = (summary, layers = {}, roleWords = {}) =>
+  summary
+    ? GROUPS.map(([kind, heading]) => ({
+        heading,
+        lines: changeLines(onlyKind(summary, kind), layers, roleWords),
+      })).filter((g) => g.lines.length > 0)
+    : [];
+
+// A restore leaves the recording as it is: the file is not part of the
+// document's history. Said only when the recording was added, replaced or
+// deleted after `asOf`, read from the document's audit `entries` (each with
+// `ops`, each op with `type` and `time`). `hasRecording` is whether the
+// document has one now. Returns `{ note }` for a recording that is not
+// changed, `{ gap }` for a deleted one that cannot come back, or null.
+const MEDIA_OPS = new Set(['media/upload', 'media/delete']);
+
+export const recordingNote = (entries, asOf, hasRecording) => {
+  if (!asOf) return null;
+  const since = (entries || []).some((e) =>
+    (e.ops || []).some((op) => MEDIA_OPS.has(op.type) && (op.time || e.time) > asOf),
+  );
+  if (!since) return null;
+  return hasRecording
+    ? { note: 'The recording is not changed.' }
+    : { gap: 'The deleted recording cannot come back.' };
+};
+
 // What the restore cannot bring back: its layer is gone, or a vocabulary entry
 // it pointed at no longer exists.
 export const skippedLines = (skipped) =>

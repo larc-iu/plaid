@@ -15,10 +15,11 @@ import { Loading } from './Loading.jsx';
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
 import {
-  changeLines,
+  changeGroups,
   historyMessage,
   indexLayers,
   latestState,
+  recordingNote,
   restoreError,
   skippedLines,
 } from '../../domain/restoreSummary.js';
@@ -45,6 +46,9 @@ export const RestoreDialog = ({
   onRestored,
 }) => {
   const [preview, setPreview] = useState(null);
+  // The recording's changes since the chosen moment (the document's audit,
+  // media operations only), or null until read or when it cannot be read.
+  const [mediaEntries, setMediaEntries] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const asOf = entry?.time ?? null;
@@ -62,6 +66,15 @@ export const RestoreDialog = ({
     let cancelled = false;
     setPreview(null);
     setError('');
+    setMediaEntries(null);
+    Promise.resolve()
+      .then(() =>
+        client.documents.audit(documentId, asOf, undefined, ['media/upload', 'media/delete']),
+      )
+      .then((entries) => {
+        if (!cancelled) setMediaEntries(entries || []);
+      })
+      .catch(() => {});
     const dryRun = () => client.documents.restore(documentId, asOf, { dryRun: true });
     // In strict mode the dry run carries the version this page last read, so
     // a stale page is refused with a 409, and asking again with the same
@@ -86,8 +99,9 @@ export const RestoreDialog = ({
 
   const confirm = useConfirm();
   const layers = indexLayers(raw, readRole, layerWords);
-  const lines = changeLines(preview, layers, roleWords);
-  const gaps = skippedLines(preview?.skipped);
+  const groups = changeGroups(preview, layers, roleWords);
+  const recording = preview ? recordingNote(mediaEntries, asOf, !!raw?.mediaUrl) : null;
+  const gaps = [...skippedLines(preview?.skipped), ...(recording?.gap ? [recording.gap] : [])];
 
   const close = () => {
     if (busy) return;
@@ -187,20 +201,22 @@ export const RestoreDialog = ({
 
           {!error && !preview && <Loading label="Comparing…" className="p-0" />}
 
-          {preview && lines.length === 0 && (
+          {preview && groups.length === 0 && (
             <p className="text-sm text-muted-foreground">Nothing differs from the current state.</p>
           )}
 
-          {preview && lines.length > 0 && (
-            <div>
-              <p className="mb-1 text-sm font-medium">Changes</p>
+          {groups.map((g) => (
+            <div key={g.heading}>
+              <p className="mb-1 text-sm font-medium">{g.heading}</p>
               <ul className="ml-5 list-disc space-y-0.5 text-sm">
-                {lines.map((l) => (
+                {g.lines.map((l) => (
                   <li key={l}>{l}</li>
                 ))}
               </ul>
             </div>
-          )}
+          ))}
+
+          {recording?.note && <p className="text-sm text-muted-foreground">{recording.note}</p>}
 
           {gaps.length > 0 && (
             <ul className="ml-5 list-disc space-y-0.5 text-sm text-destructive">
@@ -215,7 +231,7 @@ export const RestoreDialog = ({
           <Button variant="outline" onClick={close} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={restore} disabled={busy || !preview || lines.length === 0}>
+          <Button onClick={restore} disabled={busy || !preview || groups.length === 0}>
             {busy ? 'Restoring…' : 'Restore'}
           </Button>
         </DialogFooter>

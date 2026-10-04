@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
+  changeGroups,
   changeLines,
   historyMessage,
   indexLayers,
   latestState,
+  recordingNote,
   restoreError,
   skippedLines,
 } from './restoreSummary.js';
@@ -132,6 +134,75 @@ describe('changeLines', () => {
   it('lists nothing for an empty or absent summary', () => {
     expect(changeLines(null, layers, {})).toEqual([]);
     expect(changeLines({}, layers, {})).toEqual([]);
+  });
+});
+
+describe('changeGroups', () => {
+  const layers = indexLayers(raw, readRole);
+
+  it('says what is removed, what is brought back and what is changed back', () => {
+    const summary = {
+      name: true,
+      texts: { updated: 1 },
+      tokens: { byLayer: [{ layerId: 'word', inserted: 2, deleted: 24 }] },
+      spans: { byLayer: [{ layerId: 'gloss', deleted: 3, updated: 1 }] },
+      relations: { byLayer: [{ layerId: 'dep', deleted: 18 }] },
+      vocabLinks: { inserted: 1 },
+      documentMetadata: true,
+    };
+    expect(changeGroups(summary, layers, { word: ['word', 'words'] })).toEqual([
+      {
+        heading: 'Removed',
+        lines: ['24 words', '3 annotations in Gloss', '18 relations in Dependencies'],
+      },
+      { heading: 'Brought back', lines: ['2 words', '1 vocabulary link'] },
+      {
+        heading: 'Changed back',
+        lines: [
+          'The document name',
+          'The text, and the words read from it',
+          '1 annotation in Gloss',
+          'Metadata',
+        ],
+      },
+    ]);
+  });
+
+  it('leaves out an empty group, and has none for an empty or absent summary', () => {
+    expect(
+      changeGroups({ relations: { byLayer: [{ layerId: 'dep', deleted: 2 }] } }, layers),
+    ).toEqual([{ heading: 'Removed', lines: ['2 relations in Dependencies'] }]);
+    expect(changeGroups({}, layers)).toEqual([]);
+    expect(changeGroups(null, layers)).toEqual([]);
+  });
+});
+
+describe('recordingNote', () => {
+  const asOf = '2026-09-01T10:00:00.000000000Z';
+  const upload = (time) => ({ time, ops: [{ type: 'media/upload', time }] });
+  const remove = (time) => ({ time, ops: [{ type: 'media/delete', time }] });
+
+  it('says the recording is not changed when it was added after the moment', () => {
+    expect(recordingNote([upload('2026-09-01T11:00:00.000000000Z')], asOf, true)).toEqual({
+      note: 'The recording is not changed.',
+    });
+  });
+
+  it('says a recording deleted after the moment cannot come back', () => {
+    expect(recordingNote([remove('2026-09-01T11:00:00.000000000Z')], asOf, false)).toEqual({
+      gap: 'The deleted recording cannot come back.',
+    });
+  });
+
+  it('says nothing when the recording did not change after the moment', () => {
+    expect(
+      recordingNote([upload(asOf), upload('2026-09-01T09:00:00.000000000Z')], asOf, true),
+    ).toBe(null);
+    expect(recordingNote([], asOf, true)).toBe(null);
+    expect(recordingNote(null, asOf, false)).toBe(null);
+    expect(
+      recordingNote([{ time: '2026-09-02T00:00:00Z', ops: [{ type: 'span/create' }] }], asOf, true),
+    ).toBe(null);
   });
 });
 

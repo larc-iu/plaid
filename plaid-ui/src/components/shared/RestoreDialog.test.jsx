@@ -11,14 +11,14 @@ const conflict = () => new Error('HTTP 409 Document version mismatch at http://x
 const summary = { name: true };
 const entry = { time: '2026-09-01T00:00:00.000000001Z', label: 'Set a span' };
 
-const mount = (client, onRestored) =>
+const mount = (client, onRestored, raw = {}) =>
   renderComponent(
     <RestoreDialog
       open
       onOpenChange={() => {}}
       client={client}
       documentId="d1"
-      raw={{}}
+      raw={raw}
       roleWords={{}}
       entry={entry}
       onRestored={onRestored}
@@ -92,5 +92,41 @@ describe('RestoreDialog', () => {
     expect(restore.mock.calls[2]).toEqual(['d1', entry.time, { dryRun: true }]);
     expect(byText(document.body, 'li', 'The document name')).toBeNull();
     expect(byText(document.body, 'li', 'The text')).not.toBeNull();
+  });
+
+  it('heads each kind of change, and says a recording added since is not changed', async () => {
+    const restore = vi.fn().mockResolvedValue({ texts: { inserted: 1 }, name: true });
+    const audit = vi.fn().mockResolvedValue([
+      {
+        time: '2026-09-02T00:00:00.000000000Z',
+        ops: [{ type: 'media/upload', time: '2026-09-02T00:00:00.000000000Z' }],
+      },
+    ]);
+    view = await mount({ documents: { restore, audit } }, vi.fn(), { mediaUrl: '/m?v=2' });
+    await settle(view);
+
+    expect(audit).toHaveBeenCalledWith('d1', entry.time, undefined, [
+      'media/upload',
+      'media/delete',
+    ]);
+    expect(byText(document.body, 'p', 'Brought back')).not.toBeNull();
+    expect(byText(document.body, 'p', 'Changed back')).not.toBeNull();
+    expect(byText(document.body, 'p', 'Removed')).toBeNull();
+    expect(byText(document.body, 'p', 'The recording is not changed.')).not.toBeNull();
+  });
+
+  it('says a recording deleted since cannot come back', async () => {
+    const restore = vi.fn().mockResolvedValue({ name: true });
+    const audit = vi.fn().mockResolvedValue([
+      {
+        time: '2026-09-02T00:00:00.000000000Z',
+        ops: [{ type: 'media/delete', time: '2026-09-02T00:00:00.000000000Z' }],
+      },
+    ]);
+    view = await mount({ documents: { restore, audit } }, vi.fn(), {});
+    await settle(view);
+
+    expect(byText(document.body, 'li', 'The deleted recording cannot come back.')).not.toBeNull();
+    expect(byText(document.body, 'p', 'The recording is not changed.')).toBeNull();
   });
 });
