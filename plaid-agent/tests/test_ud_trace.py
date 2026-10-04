@@ -71,3 +71,18 @@ def test_every_declared_tool_has_a_progress_line_of_its_own():
     missing = [t['function']['name'] for t in TOOLS
                if TRACER.progress(t['function']['name'], {}) == f"{t['function']['name']}…"]
     assert missing == [], f'no progress line for: {missing}'
+
+
+def test_a_respell_reads_as_one_and_a_reshape_as_a_reshape():
+    """As many forms as the reference has words respells them in place (the
+    words keep their annotation), so the step does not read as a new split
+    (REV-FX3-AGENT polish)."""
+    a = {'ref': 's1.w2-3', 'forms': ['a', 'él'], 'document': 'Viaje'}
+    assert describe_step('set_words', a) == 'Planned respelling s1.w2-3 → “a” + “él” in “Viaje”'
+    assert TRACER.progress('set_words', a) == 'Respelling a token…'
+    assert describe_step('set_words', {'ref': 's1.w4', 'forms': ['mares']}) == \
+        'Planned respelling s1.w4 → “mares”'
+    assert describe_step('set_words', {'ref': 's1.w2-3', 'forms': ['al']}) == \
+        'Planned s1.w2-3 as one word “al”'
+    assert describe_step('set_words', {'ref': 's1.w4', 'forms': ['a', 'l']}) == 'Planned s1.w4 as 2 words'
+    assert TRACER.progress('set_words', {'ref': 's1.w4', 'forms': ['a', 'l']}) == 'Reshaping a token…'

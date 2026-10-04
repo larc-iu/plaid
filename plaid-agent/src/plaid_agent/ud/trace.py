@@ -7,7 +7,8 @@ no line of its own falls back to its name, and ``tests/test_ud_trace.py`` fails
 if any declared tool reaches that fallback.
 """
 
-from typing import Any, Dict
+import re
+from typing import Any, Dict, List
 
 from ..core.trace import count, in_doc, plural, q, tracer_for
 from .toolkit import WEB_TOOLS, WRITE_TOOLS
@@ -21,6 +22,24 @@ def across(a: Dict[str, Any]) -> str:
     if isinstance(docs, str) or (len(docs) == 1 and str(docs[0]).lower() == 'all'):
         return ' across every document with something waiting'
     return f' across {plural(len(docs), "document")}'
+
+
+def _forms(a: Dict[str, Any]) -> List[str]:
+    forms = a.get('forms') or []
+    if isinstance(forms, str):
+        forms = [forms]
+    return [f.strip() for f in forms if isinstance(f, str) and f.strip()]
+
+
+def _respells(a: Dict[str, Any]) -> bool:
+    """Whether set_words gives the token as many forms as its reference has
+    words (``s1.w2-3`` two, ``s1.w4`` one), which respells them in place
+    rather than reshaping the token (see ``shape.t_set_words``)."""
+    m = re.search(r'w(\d+)(?:-(\d+))?$', str(a.get('ref') or ''))
+    if not m:
+        return False
+    first, last = int(m.group(1)), int(m.group(2) or m.group(1))
+    return last >= first and len(_forms(a)) == last - first + 1
 
 
 def describe_step(name: str, a: Dict[str, Any]) -> str:
@@ -108,7 +127,9 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
         return (f'Planned replacing {q(a.get("pattern"))} with {q(a.get("replacement"))} in every '
                 f'{a.get("field")}{in_doc(a)}')
     if name == 'set_words':
-        forms = a.get('forms') or []
+        forms = _forms(a)
+        if _respells(a):
+            return f'Planned respelling {a.get("ref")} → {" + ".join(q(f) for f in forms)}{in_doc(a)}'
         if len(forms) == 1:
             return f'Planned {a.get("ref")} as one word {q(forms[0])}{in_doc(a)}'
         return f'Planned {a.get("ref")} as {plural(len(forms), "word")}{in_doc(a)}'
@@ -162,7 +183,7 @@ _PROGRESS = {
     'recent_changes': lambda a: 'Reading the change history…',
     'comments': lambda a: 'Reading the comments…',
     'run_parse': lambda a: 'Checking the parser…',
-    'set_words': lambda a: 'Reshaping a token…',
+    'set_words': lambda a: 'Respelling a token…' if _respells(a) else 'Reshaping a token…',
     'plan_status': lambda a: 'Reviewing the plan…',
     'web_search': lambda a: f'Searching the web for "{a.get("query", "")}"…',
     'read_url': lambda a: f'Reading {a.get("url", "")}…',
