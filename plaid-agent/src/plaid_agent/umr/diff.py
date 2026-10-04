@@ -60,12 +60,16 @@ def _placed_key(attrs) -> list:
     return sorted((a.get('order') or 0, str(a.get('rel')), str(a.get('value'))) for a in attrs)
 
 
-def _keep_places(old, node, old_edge_order: Dict[str, int]) -> Tuple[List[dict], Dict[str, int]]:
+def _keep_places(old, node, old_edge_order: Dict[str, int],
+                 freed: Dict[str, List[int]]) -> Tuple[List[dict], Dict[str, int]]:
     """``node``'s attributes, and the order of each relation it adds, when the
     children ``old`` already has keep their places and new ones go after them
     all, in the order the text writes them. An attribute keeps its place when
     ``old`` has one of that relation (its value may change), as the editor
-    places them."""
+    places them. A relation to a child whose old relation the text drops
+    (``freed``, by the child's variable) is a role change and takes that
+    relation's place, as a relabel on the canvas does."""
+    freed = {var: list(orders) for var, orders in freed.items()}
     free = [(a.get('rel'), a.get('order') or 0) for a in old.attrs]
     tail = next_order(old)
     attrs: List[dict] = []
@@ -74,8 +78,11 @@ def _keep_places(old, node, old_edge_order: Dict[str, int]) -> Tuple[List[dict],
         if child.kind == 'node':
             key = f'{child.rel} {child.value}'
             if key not in old_edge_order and key not in new_edges:
-                new_edges[key] = tail
-                tail += 1
+                if freed.get(child.value):
+                    new_edges[key] = freed[child.value].pop(0)
+                else:
+                    new_edges[key] = tail
+                    tail += 1
             continue
         at = next((i for i, (rel, _o) in enumerate(free) if rel == child.rel), None)
         if at is None:
@@ -199,13 +206,20 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
                      for e in old.out
                      if doc.nodes_by_id.get(e.target) is not None
                      and doc.nodes_by_id[e.target].sentence == sentence.index]
+        next_by_key = {f'{e["role"]} {e["target"]}': e for e in edges}
+        # The children whose relation the text drops, by variable: one the
+        # text relates again by another role keeps its place.
+        freed: Dict[str, List[int]] = {}
+        for edge, key in old_edges:
+            if key not in next_by_key:
+                freed.setdefault(doc.nodes_by_id[edge.target].var, []).append(edge.order or 0)
         if reorder:
             changed_attrs = _attr_key(old.attrs) != _attr_key(attrs) or \
                 _placed_key(old.attrs) != _placed_key(attrs)
             new_edge_order = {f'{e["role"]} {e["target"]}': e['order'] for e in edges}
         else:
             stored_order = {key: e.order for e, key in old_edges}
-            attrs, new_edge_order = _keep_places(old, node, stored_order)
+            attrs, new_edge_order = _keep_places(old, node, stored_order, freed)
             changed_attrs = _placed_key(old.attrs) != _placed_key(attrs)
             if _order_differs(old, node, stored_order):
                 order_kept.append(var)
@@ -222,7 +236,6 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject,
                 'umr_set': {'attrs': attrs},
                 'label': f'{var}: {attrs_change(old.attrs, attrs)}'})
 
-        next_by_key = {f'{e["role"]} {e["target"]}': e for e in edges}
         for edge, key in old_edges:
             wanted = next_by_key.get(key)
             if wanted is None:

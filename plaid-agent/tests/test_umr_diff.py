@@ -327,3 +327,22 @@ def test_an_order_the_text_writes_but_does_not_apply_is_said(ws):
     # With reorder the order is applied, so nothing is "kept".
     doc = ws.doc('Story')
     assert plan_penman(doc, doc.sentences[0], text, ws.project, reorder=True).order_kept == []
+
+
+def test_a_role_change_keeps_the_childs_place(ws):
+    """A role change is a delete and a create between the same two nodes. The
+    create went after every sibling, so the export listed the relabelled role
+    last, where a relabel on the canvas keeps its place (H39 polish)."""
+    b = ws.doc('Story').nodes_by_id['mc-b']
+    was = next(e.order for e in b.out if e.role == ':ARG0')
+    tail = max([e.order for e in b.out] + [a.get('order') or 0 for a in b.attrs]) + 1
+    text = SENTENCE_1_PENMAN.replace(':ARG0', ':actor').replace(
+        ':aspect performance)', ':aspect performance\n    :place (s1y / yard))')
+    diff = diff_for(ws, text)
+    made = {op['target_var']: op['order'] for op in diff.ops if op['kind'] == 'create_edge'}
+    assert made == {'s1d': was, 's1y': tail}
+    assert 'delete_edge' in kinds(diff)
+    # With reorder the text's own order is what is written.
+    doc = ws.doc('Story')
+    diff = plan_penman(doc, doc.sentences[0], text, ws.project, reorder=True)
+    assert {op['target_var']: op['order'] for op in diff.ops if op['kind'] == 'create_edge'}['s1d'] == 0
