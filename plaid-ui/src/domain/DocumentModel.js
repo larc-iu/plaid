@@ -105,6 +105,16 @@ function operationLabel(errorLabel) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+// What the document says while an edit waits for someone else's lock on it
+// to go (WriteQueue `resendWhileLocked`). Not "try again": it goes again
+// by itself.
+export const LOCKED_WAITING =
+  'This document is being edited right now (by another user or a service). Saving once it is free.';
+
+// A refusal for someone else's lock on the document, which goes again by
+// itself. Not the client's own lock lapsing (DocumentLockLost).
+const isLockedByOther = (err) => statusOf(err) === 423 && err?.name !== 'DocumentLockLost';
+
 // How often a document a screen holds reads its project again.
 const PROJECT_READ_EVERY_MS = 60_000;
 
@@ -159,6 +169,17 @@ export class DocumentModel {
       reloadDrained: () => this._reloadDrained(),
       onOutOfStep: (err) => this._reportOutOfStep(err),
       onOfflineChange: () => this._emit(),
+      // An edit waiting out another's lock says so where a refusal would,
+      // and stops saying so once it is sent.
+      onLockedChange: (locked) => {
+        if (locked) {
+          this._error = LOCKED_WAITING;
+          this._errorCause = null;
+        } else if (this._error === LOCKED_WAITING) {
+          this._error = '';
+        }
+        this._emit();
+      },
     });
     // The patches an edit showed, until its send starts (`_queueWrite`), so a
     // refetch can show them again on top of what it read (`_showUnsent`).
@@ -238,6 +259,11 @@ export class DocumentModel {
   // reachable again. The save-status pills say "Offline, retrying".
   get isOffline() {
     return this._writes.isOffline;
+  }
+  // True while an edit waits for someone else's lock on the document to go,
+  // to be sent once it has. `error` is LOCKED_WAITING meanwhile.
+  get isLocked() {
+    return this._writes.isLocked;
   }
   // True once a refetch after a refused edit was given up (the server failed
   // it time after time), until a later one lands: what the screen shows may
@@ -782,6 +808,7 @@ export class DocumentModel {
       {
         shown,
         resendWhenBack: (err) => isUnknownOutcome(err),
+        resendWhileLocked: isLockedByOther,
         refused: (err) => {
           // A conflict, or what the edit names was deleted meanwhile: either
           // way someone else changed the document.

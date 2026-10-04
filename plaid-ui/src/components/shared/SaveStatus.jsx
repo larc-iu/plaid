@@ -9,7 +9,8 @@ const noSnapshot = () => 0;
  * save pill of their own (plaid-ud, plaid-umr). An edit is on screen before it
  * is sent, so a save on its way says nothing. What it does say is that a
  * write or a refetch is being sent again until the server answers
- * (DocumentModel `isOffline`), while editing goes on.
+ * (DocumentModel `isOffline`), or waits for someone else's lock on the
+ * document to go (`isLocked`), while editing goes on.
  *
  * Always a live region, empty or not, so a screen reader hears it appear.
  */
@@ -19,18 +20,20 @@ export const SaveStatus = ({ doc }) => {
   useSyncExternalStore(onOnlineChange, isOnline);
   if (!doc) return null;
   const offline = doc.isSaving && doc.isOffline;
+  const locked = doc.isSaving && !offline && doc.isLocked;
+  const waiting = offline || locked;
   return (
     <span
       role="status"
       aria-live="polite"
-      data-state={offline ? 'offline' : 'idle'}
+      data-state={offline ? 'offline' : locked ? 'locked' : 'idle'}
       className={
-        offline
+        waiting
           ? 'whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground'
           : undefined
       }
     >
-      {offline ? retryingText() : ''}
+      {offline ? retryingText() : locked ? 'In use elsewhere, waiting' : ''}
     </span>
   );
 };

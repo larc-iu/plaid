@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { DocumentModel } from './DocumentModel.js';
+import { DocumentModel, LOCKED_WAITING } from './DocumentModel.js';
 
 // A document's writes on a bad network and against other people's edits
 // (the concurrency campaign of 2026-09-29): a write that never left the
@@ -537,5 +537,53 @@ describe('a write whose screen shows its conflict itself', () => {
     expect(await doc.set('gloss', 'DOG')).toBe(false);
     expect(errors.map((e) => e.err.status)).toEqual([409]);
     expect(doc.error).not.toBe('');
+  });
+});
+
+// H35-CORE: a write refused 423 while someone else held the document's lock
+// left the banner "Try again in a moment" up after the lock was gone, and its
+// cell unsent until the person pressed Enter on it again.
+describe('a write refused for another lock', () => {
+  const locked = () =>
+    Object.assign(new Error('HTTP 423 Document d1 is locked by b@x.com'), {
+      status: 423,
+      method: 'PATCH',
+    });
+
+  it('waits, saying so, and is sent once the lock is gone, with the edits behind it', async () => {
+    const { server, doc, errors } = open();
+    doc._writes._retryDelay = () => 5;
+    // Held until the lock goes, however long the wait.
+    for (let i = 0; i < 10000; i++) server.fail.push({ error: locked });
+    const saved = doc.set('gloss', 'DOG');
+    const later = doc.set('pos', 'N');
+    await flush();
+    expect(doc.isLocked).toBe(true);
+    expect(doc.isOffline).toBe(false);
+    expect(doc.error).toBe(LOCKED_WAITING);
+    expect(doc.raw.values).toEqual({ gloss: 'DOG', pos: 'N' });
+    server.fail.length = 0;
+    expect(await saved).toBe(true);
+    expect(await later).toBe(true);
+    expect(server.values).toEqual({ gloss: 'DOG', pos: 'N' });
+    expect(server.writes).toBe(2);
+    expect(errors).toEqual([]);
+    expect(doc.isLocked).toBe(false);
+    expect(doc.error).toBe('');
+  });
+
+  it("is refused as before when the page's own lock lapsed", async () => {
+    const { server, doc, errors } = open();
+    doc._writes._retryDelay = () => 0;
+    server.fail.push({
+      error: () =>
+        Object.assign(new Error('The lock on document d1 lapsed'), {
+          name: 'DocumentLockLost',
+          status: 423,
+        }),
+    });
+    expect(await doc.set('gloss', 'DOG')).toBe(false);
+    expect(errors).toHaveLength(1);
+    expect(doc.isLocked).toBe(false);
   });
 });

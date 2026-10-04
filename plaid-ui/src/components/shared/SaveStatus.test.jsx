@@ -39,6 +39,18 @@ describe('SaveStatus', () => {
     await view.unmount();
   });
 
+  it('says the document is in use while an edit waits for another lock, and goes quiet once sent', async () => {
+    const doc = fakeDoc();
+    const view = await renderComponent(<SaveStatus doc={doc} />);
+    await view.step(() => doc.set({ isSaving: true, isLocked: true }));
+    const status = view.container.querySelector('[role="status"]');
+    expect(status.textContent).toBe('In use elsewhere, waiting');
+    expect(status.dataset.state).toBe('locked');
+    await view.step(() => doc.set({ isSaving: false, isLocked: false }));
+    expect(status.textContent).toBe('');
+    await view.unmount();
+  });
+
   it('says the connection is gone while a refetch waits for it, and goes quiet once it is back', async () => {
     const doc = fakeDoc();
     const view = await renderComponent(<SaveStatus doc={doc} />);

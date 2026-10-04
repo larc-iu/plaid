@@ -58,6 +58,13 @@
 // after the queue is let go too: the page is still open, and useSavingGuard
 // keeps the close-tab question on until the send lands.
 //
+// A send refused because someone else holds the document's lock (423) goes
+// again the same way when the caller's `resendWhileLocked(err)` says so,
+// waiting a little longer each time up to a few seconds, until the lock is
+// gone: a lock is held while one write or one service run lands, and a 423
+// writes nothing. Meanwhile `isLocked` is true (not `isOffline`: the
+// server answered), and `onLockedChange(locked)` runs as it starts and ends.
+//
 // Once the page is being unloaded (`pagehide`), no send starts. Leaving the
 // page aborts the send in flight, and the one behind it would otherwise go
 // out after the person agreed to leave. A page brought back from the
@@ -74,6 +81,9 @@ const FINAL_STATUSES = new Set([401, 403, 404]);
 // How long to wait before a send or a refetch goes again: 1 s, 2 s, 4 s and
 // so on, then every 30 s.
 const backoff = (attempt) => Math.min(1000 * 2 ** attempt, 30000);
+
+// The longest wait between two sends of a write refused for another's lock.
+const LOCKED_WAIT_MAX = 5000;
 
 // How many tries a refetch gets when it fails for a reason other than the
 // network.
@@ -105,7 +115,8 @@ export class WriteQueue {
    * wait in milliseconds before each retry. `onOutOfStep(err)` runs when a
    * refetch is given up for good, the screen still showing what the server
    * may not have. `onOfflineChange(offline)` runs when a refetch starts or
-   * stops waiting out the network.
+   * stops waiting out the network. `onLockedChange(locked)` runs when a send
+   * starts and stops waiting out another's lock.
    */
   constructor({
     onSavingChange = null,
@@ -113,6 +124,7 @@ export class WriteQueue {
     retryDelay = backoff,
     onOutOfStep = null,
     onOfflineChange = null,
+    onLockedChange = null,
   } = {}) {
     this._tail = Promise.resolve();
     // Sends waiting or in flight.
@@ -132,6 +144,8 @@ export class WriteQueue {
     this._onOutOfStep = onOutOfStep;
     this._onOfflineChange = onOfflineChange;
     this._offline = false;
+    this._onLockedChange = onLockedChange;
+    this._locked = false;
     // Whether `onOutOfStep` has been told since a refetch last landed.
     this._outOfStep = false;
     // Whether a refetch was answered with a status no retry can change
@@ -189,6 +203,21 @@ export class WriteQueue {
     return this._outOfStep || this._refetchRefused;
   }
 
+  /**
+   * True while a send waits for another's lock on the document to go
+   * (`resendWhileLocked`). Editing goes on meanwhile.
+   */
+  get isLocked() {
+    return this._locked;
+  }
+
+  _setLocked(locked) {
+    if (this._locked === locked) return;
+    this._locked = locked;
+    if (this._onLockedChange) this._onLockedChange(locked);
+    this._listeners.forEach((fn) => fn());
+  }
+
   _setOffline(offline) {
     if (this._offline === offline) return;
     this._offline = offline;
@@ -224,8 +253,19 @@ export class WriteQueue {
    * `resync()` refetches what it showed. `resendWhenBack(err)` says whether a
    * failed send goes again until it is answered: true for a lost answer to a
    * send whose requests are keyed, so a resend writes nothing twice.
+   * `resendWhileLocked(err)` says whether a send refused for another's lock
+   * goes again until the lock is gone.
    */
-  push(send, { refused = null, resync = null, shown = true, resendWhenBack = null } = {}) {
+  push(
+    send,
+    {
+      refused = null,
+      resync = null,
+      shown = true,
+      resendWhenBack = null,
+      resendWhileLocked = null,
+    } = {},
+  ) {
     const entry = { shown };
     this._waiting.add(entry);
     this._count += 1;
@@ -235,7 +275,7 @@ export class WriteQueue {
       this._waiting.delete(entry);
       await untilShown();
       try {
-        await this._sendUntilBack(send, resendWhenBack);
+        await this._sendUntilBack(send, resendWhenBack, resendWhileLocked);
         return true;
       } catch (err) {
         // Its own refetch below stands in for one asked for earlier.
@@ -262,14 +302,26 @@ export class WriteQueue {
   }
 
   // Run `send`, and again each time it fails in a way `resendWhenBack` allows,
-  // once the network is back. `isOffline` holds while it waits.
-  async _sendUntilBack(send, resendWhenBack) {
+  // once the network is back, or in a way `resendWhileLocked` allows, a little
+  // later. `isOffline` or `isLocked` holds while it waits.
+  async _sendUntilBack(send, resendWhenBack, resendWhileLocked) {
     for (let attempt = 0; ; attempt += 1) {
       try {
         await send();
         if (attempt) this._setOffline(false);
+        this._setLocked(false);
         return;
       } catch (err) {
+        if (resendWhileLocked?.(err)) {
+          this._setOffline(false);
+          this._setLocked(true);
+          await new Promise((resolve) =>
+            setTimeout(resolve, Math.min(this._retryDelay(attempt), LOCKED_WAIT_MAX)),
+          );
+          await untilShown();
+          continue;
+        }
+        this._setLocked(false);
         if (!resendWhenBack?.(err)) {
           if (attempt) this._setOffline(false);
           throw err;

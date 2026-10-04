@@ -203,6 +203,57 @@ describe('WriteQueue', () => {
     expect(reloadDrained).toHaveBeenCalledTimes(1);
   });
 
+  // H35-CORE: a write refused 423 while someone else held the lock stayed
+  // refused, its cell unsent until the person pressed Enter again.
+  it('sends a write refused for another lock again until the lock is gone, in order', async () => {
+    const lockedSeen = [];
+    const q = new WriteQueue({ retryDelay: () => 5, onLockedChange: (l) => lockedSeen.push(l) });
+    const refused = vi.fn();
+    const locked = () => Object.assign(new Error('HTTP 423 locked by b@x.com'), { status: 423 });
+    let held = true;
+    const sent = [];
+    const a = q.push(
+      async () => {
+        if (held) throw locked();
+        sent.push('a');
+      },
+      { refused, resendWhileLocked: (err) => err.status === 423 },
+    );
+    const b = q.push(async () => sent.push('b'));
+    await flush();
+    expect(q.isLocked).toBe(true);
+    expect(q.isOffline).toBe(false);
+    expect(q.isSaving).toBe(true);
+    held = false;
+    expect(await a).toBe(true);
+    expect(await b).toBe(true);
+    expect(sent).toEqual(['a', 'b']);
+    expect(refused).not.toHaveBeenCalled();
+    expect(q.isLocked).toBe(false);
+    expect(lockedSeen).toEqual([true, false]);
+  });
+
+  it('refuses a 423 at once when the caller does not wait it out, and stops waiting on another refusal', async () => {
+    const q = new WriteQueue({ retryDelay: () => 0 });
+    const locked = () => Object.assign(new Error('HTTP 423 locked'), { status: 423 });
+    expect(
+      await q.push(async () => {
+        throw locked();
+      }),
+    ).toBe(false);
+    let n = 0;
+    const c = q.push(
+      async () => {
+        n += 1;
+        throw n === 1 ? locked() : boom500();
+      },
+      { resendWhileLocked: (err) => err.status === 423 },
+    );
+    expect(await c).toBe(false);
+    expect(n).toBe(2);
+    expect(q.isLocked).toBe(false);
+  });
+
   it('is offline while a refetch waits for the server, and says so to whoever watches', async () => {
     const offlineSeen = [];
     const q = new WriteQueue({
