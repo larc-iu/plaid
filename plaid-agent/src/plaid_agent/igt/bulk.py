@@ -19,7 +19,7 @@ from .tools import (t_set_analysis, check_respell_overlap, span_op, has_own_form
                     parse_analysis, analysis_op, no_scope_reaches, refuse_shape_and_analysis,
                     edit_planned_morpheme, left_for_analysis, _planned_place)
 from .lexview import entry_line
-from .workspace import Workspace, op_target
+from .workspace import Workspace, _matcher, op_target
 from .vocab import plan_delete_refs, plan_merge_refs, ref_ids
 from .stats import _analyzed, _docs
 
@@ -385,6 +385,13 @@ def t_copy_to_orthography(ws: Workspace, orthography: str, source: str = 'baseli
     return _bulk_note(ws, staged, 'words')
 
 
+def _form_matcher(form: str):
+    """Whether a value is the form, case folded as the server folds it (Java's
+    simple case folding), so a scan of one document reaches the words the
+    project-wide query would."""
+    return _matcher(form, False, whole=True)
+
+
 def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_empty: bool = True,
                          document: Optional[str] = None) -> str:
     """PLAN: one field value on every occurrence of a form (morpheme form for
@@ -392,9 +399,10 @@ def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_
     f = ws.project.field(field)
     if f.scope == 'Sentence':
         raise ToolError(f'"{f.name}" is a sentence field; use set_field with sentence references')
-    key = (form or '').strip().casefold()
-    if not key:
+    form = (form or '').strip()
+    if not form:
         raise ToolError('Give a form.')
+    same = _form_matcher(form)
     value = '' if value is None else unmark(str(value), f.name)
     staged: List[Dict[str, Any]] = []
     if not ws.use_scan(document):
@@ -412,13 +420,13 @@ def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_
                     for k, pm in enumerate(planned[w.id].get('morphemes') or [], start=1):
                         cur = next((fv.get('value') or '' for fv in pm.get('fields') or []
                                     if fv.get('layer_id') == f.layer_id), '')
-                        if (pm.get('form') or '').casefold() == key and cur != value and not (only_empty and cur):
+                        if same(pm.get('form')) and cur != value and not (only_empty and cur):
                             edits.append((doc, f'{word_ref(s, w)}.m{k}'))
                     continue
                 if f.scope == 'Word':
-                    units = [(w, word_ref(s, w), w.surface)] if w.surface.casefold() == key else []
+                    units = [(w, word_ref(s, w), w.surface)] if same(w.surface) else []
                 else:
-                    units = [(m, f'{word_ref(s, w)}.m{m.index}', m.form) for m in w.morphemes if m.form.casefold() == key]
+                    units = [(m, f'{word_ref(s, w)}.m{m.index}', m.form) for m in w.morphemes if same(m.form)]
                 for u, ref, what in units:
                     old = u.fields.get(f.name)
                     cur = ws.planned_value(f.layer_id, u.id, old.value if old else '')
@@ -442,16 +450,17 @@ def t_set_analysis_for_form(ws: Workspace, form: str, morphemes: list, document:
     """PLAN: apply one analysis (segmentation + morpheme fields) to every
     occurrence of a word form. With skip_analyzed=true, words that already
     have an analysis are left alone."""
-    key = (form or '').strip().casefold()
-    if not key:
+    form = (form or '').strip()
+    if not form:
         raise ToolError('Give a form.')
     if not ws.use_scan(document):
         return _set_analysis_for_form_q(ws, form, morphemes, bool(skip_analyzed))
+    same = _form_matcher(form)
     targets = []
     for doc in _docs(ws, document):
         for s in doc.sentences:
             for w in s.words:
-                if w.surface.casefold() != key:
+                if not same(w.surface):
                     continue
                 if skip_analyzed and _analyzed(w):
                     continue

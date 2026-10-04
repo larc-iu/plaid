@@ -288,7 +288,7 @@ def _analyses_of_one(ws: Workspace, form: str, document: Optional[str]) -> str:
     if not ws.use_scan(document):
         from .queries import q_analyses_of
         return q_analyses_of(ws, form)
-    key = form.casefold()
+    same = _matcher(form, False, whole=True)
     docs = [ws.doc(document)] if document else ws.all_docs()
     mfields = [f.name for f in ws.project.fields_by_scope('Morpheme')]
     wfields = [f.name for f in ws.project.fields_by_scope('Word')]
@@ -299,7 +299,7 @@ def _analyses_of_one(ws: Workspace, form: str, document: Optional[str]) -> str:
         for s in doc.sentences:
             for w in s.words:
                 ref = f'{tag}{word_ref(s, w)}'
-                if w.surface.casefold() == key:
+                if same(w.surface):
                     parts = []
                     seg = segmentation(w)
                     if len(w.morphemes) > 1 or (w.morphemes and seg != w.surface):
@@ -324,7 +324,7 @@ def _analyses_of_one(ws: Workspace, form: str, document: Optional[str]) -> str:
                         parts.append('mlinks=' + ' '.join(mlinks))
                     word_tally.setdefault(' | '.join(parts) or '(unanalyzed)', []).append(ref)
                 for m in w.morphemes:
-                    if m.form.casefold() == key:
+                    if same(m.form):
                         parts = []
                         if m.morph_type:
                             parts.append(f'type={m.morph_type}')

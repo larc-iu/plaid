@@ -403,3 +403,25 @@ def test_set_analysis_for_form_shows_the_guards_the_real_plan(monkeypatch):
     w.ops.clear()
     assert call_tool(w, 'split_word', {'document': 'd1', 'ref': 's1.w2', 'at': 1}).startswith('Planned')
     assert 'its analysis cannot also change' in call_tool(w, 'set_analysis_for_form', analysis)
+
+
+def test_every_occurrence_of_a_form_folds_case_as_the_server_does():
+    """Naming a document scans it, and the scan used Python's full casefold,
+    under which "Straß" is "STRASS". The project-wide query reads the form
+    with the server's Java simple case folding, which does not make them
+    equal, so the same request reached different words with and without a
+    document named (H37 polish)."""
+    c = FakeClient()
+    c._documents['d1']['text_layers'][0]['text']['body'] = 'Ali-di gam Straß. Gam-ar.'
+    w = ws(c)
+    assert 'Nothing to change' in call_tool(w, 'set_field_for_form', {'form': 'STRASS', 'field': 'Gloss',
+                                                                     'value': 'street', 'document': 'd1'})
+    assert 'Nothing to change' not in call_tool(w, 'set_analysis_for_form', {
+        'form': 'straẞ', 'document': 'd1', 'morphemes': [{'form': 'straß', 'fields': {'Morph Gloss': 'street'}}]})
+    w = ws(c)
+    assert 'Nothing to change' in call_tool(w, 'set_analysis_for_form', {
+        'form': 'strasse', 'document': 'd1', 'morphemes': [{'form': 'x'}]})
+    call_tool(w, 'set_field_for_form', {'form': ' STRAß ', 'field': 'Gloss', 'value': 'street', 'document': 'd1'})
+    assert w.ops[-1]['token_id'] == 'w-3'
+    assert 's1.w3' not in call_tool(w, 'analyses_of', {'form': 'strass', 'document': 'd1'})
+    assert 's1.w3' in call_tool(w, 'analyses_of', {'form': 'STRAß', 'document': 'd1'})
