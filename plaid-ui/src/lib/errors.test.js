@@ -48,6 +48,17 @@ describe('what a person is told', () => {
     expect(humanizeError(taken(true))).toBe('This was deleted.');
   });
 
+  // H36: an upload over a recording someone else added since. "Redo your
+  // edit" would mean deleting theirs.
+  it('says another recording was added, not to redo the upload', () => {
+    const exists = Object.assign(httpError(409, 'Media file already exists'), {
+      responseData: { error: 'Media file already exists', 'media-exists': true, 'media-url': '/m' },
+    });
+    expect(humanizeError(exists)).toBe('Another recording was added elsewhere. Now showing it.');
+    expect(isChangedElsewhere(exists)).toBe(true);
+    expect(humanizeError(httpError(409, 'conflict'))).toMatch(/Redo your edit/);
+  });
+
   it('says the same sentence for a status whether or not the object carries it', () => {
     const withObject = humanizeError(httpError(403));
     const withMessage = humanizeError(httpError(403).message);

@@ -2127,6 +2127,8 @@ class PlaidClient {
         }),
       /**
        * Upload a media file for a document. Uses Apache Tika for content validation.
+       * A document that already has a recording refuses it with a 409
+       * (`media-exists`, and the current `media-url`): delete that one first.
        * @param {string} documentId - The document ID
        * @param {File} file - The file to upload
        * @param {string} [auditMessage] - Custom audit-log message for this write

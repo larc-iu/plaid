@@ -149,6 +149,11 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
     return error.responseData?.deleted ? 'This was deleted.' : 'This was saved already.';
   }
   if (isKeyReused(error)) return 'This change was not sent: try it again.';
+  // An upload over a recording someone else added since this page read the
+  // document. Not "Redo your edit": redoing it would mean deleting theirs.
+  if (statusOf(error) === 409 && error?.responseData?.['media-exists'] === true) {
+    return 'Another recording was added elsewhere. Now showing it.';
+  }
   // The server words the first violation by layer name, never by app.
   if (isConstraintViolation(error)) {
     const said = String(error.responseData.error ?? '').trim();

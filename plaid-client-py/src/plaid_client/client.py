@@ -2127,6 +2127,8 @@ class DocumentsResource(_Resource):
     def upload_media(self, document_id: str, file, audit_message=None, *,
                      on_progress=None) -> Any:
         """Upload a media file for a document. Uses Apache Tika for content validation.
+        A document that already has a recording refuses it with a 409
+        (``media-exists``, and the current ``media-url``): delete that one first.
 
         Args:
             document_id: The document ID

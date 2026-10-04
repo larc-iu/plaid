@@ -143,7 +143,14 @@
           (is (= 201 (:status (upload! "clip.mp3" "first"))))
 
           (testing "a second upload is 409 while the first is still there"
-            (is (= 409 (:status (upload! "clip.mp3" "second")))))
+            (let [res (upload! "clip.mp3" "second")
+                  body (parse-response-body res)]
+              (is (= 409 (:status res)))
+              ;; Named as a recording already there, with its URL, so a page
+              ;; that read the document before it was added can say so.
+              (is (true? (:media-exists body)))
+              (is (str/starts-with? (str (:media-url body))
+                                    (str "/api/v1/documents/" did "/media?v=")))))
 
           (testing "over the configured limit is 413, and says what the limit is"
             (is (= 204 (:status (rest-handler (admin-request :delete media-path)))))

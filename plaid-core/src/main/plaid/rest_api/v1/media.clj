@@ -49,7 +49,13 @@
       {:success false
        :code (get error-status (:error-kind stored) 500)
        :error (:error stored)
-       :error-body (select-keys stored [:max-bytes :size])}
+       ;; A recording someone else added since the caller read the document
+       ;; is named as such, with its `media-url`, as a delete's
+       ;; `media-changed` is, so the page can say so and show it.
+       :error-body (cond-> (select-keys stored [:max-bytes :size])
+                     (= :exists (:error-kind stored))
+                     (assoc :media-exists true
+                            :media-url (media/media-url document-id)))}
       (let [result (op/submit-operation!
                     [_tx db {:type :media/upload
                              :project (doc/project-id db document-id)
@@ -252,7 +258,9 @@
                           (error-response result))))}
 
      :put {:plaid/idempotency false
-           :summary "Upload a media file for a document. Uses Apache Tika for content validation."
+           :summary (str "Upload a media file for a document. Uses Apache Tika for content validation. "
+                         "A document that already has one refuses it 409, with "
+                         "<body>media-exists</body> and the current <body>media-url</body>.")
            :middleware [[pra/wrap-writer-required get-project-id-from-document]]
            :parameters {:path [:map [:document-id :uuid]]}
            :openapi {:requestBody {:content {"multipart/form-data"
