@@ -53,6 +53,8 @@ import FOLDS from './javaCaseFolds.js';
 /** The server refuses a longer pattern (plaid.query.clauses/regex-max-len). */
 export const SERVER_PATTERN_MAX = 4096;
 
+const TOO_LONG = `The pattern is too long. The limit is ${SERVER_PATTERN_MAX} characters, and each \\b, \\s, \\w, $ or . counts as 30 to 230.`;
+
 export class PatternError extends Error {
   constructor(message) {
     super(message);
@@ -865,7 +867,10 @@ export function translatePattern(
       return whole ? `^(?:${body})${END[engine]}` : body;
     };
     const server = wrap('java') + SUPPLEMENTARY;
-    if (server.length > SERVER_PATTERN_MAX) fail('The pattern is too long.');
+    // The cap counts the pattern as sent, where \b, \s, \w, $ and . are
+    // spelled out as classes of 30 to 230 characters each (and \B, \S, \W, \h
+    // likewise), so the message names them.
+    if (server.length > SERVER_PATTERN_MAX) fail(TOO_LONG);
     return { server, source: wrap('js'), error: null };
   } catch (err) {
     if (err instanceof PatternError) return { server: null, source: null, error: err.message };

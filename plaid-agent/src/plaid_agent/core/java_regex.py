@@ -822,7 +822,8 @@ def translate(pattern: str, *, literal: bool = False, case_insensitive: bool = F
     server = wrap('java') + _SUPPLEMENTARY
     # The server counts UTF-16 units.
     if len(server.encode('utf-16-le')) // 2 > SERVER_PATTERN_MAX:
-        _fail('The pattern is too long.')
+        _fail(f'The pattern is too long. The limit is {SERVER_PATTERN_MAX} characters, and each '
+              r'\b, \s, \w, $ or . counts as 30 to 230.')
     return Translated(server, wrap('py'))
 
 

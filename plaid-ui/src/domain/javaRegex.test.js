@@ -161,12 +161,24 @@ describe('translatePattern', () => {
     expect(tr('\\bko\\b|\\bka\\b|\\bta\\b').error).toBeNull();
   });
 
+  const TOO_LONG =
+    'The pattern is too long. The limit is 4096 characters, and each \\b, \\s, \\w, $ or . counts as 30 to 230.';
+
   it('refuses a pattern longer than the server takes', () => {
     const long = 'a'.repeat(SERVER_PATTERN_MAX + 1);
-    expect(tr(long).error).toBe('The pattern is too long.');
+    expect(tr(long).error).toBe(TOO_LONG);
     expect(
       tr('a'.repeat(SERVER_PATTERN_MAX / 4), { literal: true, caseInsensitive: true }).error,
-    ).toBe('The pattern is too long.');
+    ).toBe(TOO_LONG);
+  });
+
+  it('counts each construct the message names as 30 to 230 characters', () => {
+    const base = tr('a').server.length;
+    for (const p of ['\\b', '\\s', '\\w', '$', '.']) {
+      const grows = tr(`a${p}`).server.length - base;
+      expect(grows, p).toBeGreaterThanOrEqual(30);
+      expect(grows, p).toBeLessThanOrEqual(230);
+    }
   });
 });
 
