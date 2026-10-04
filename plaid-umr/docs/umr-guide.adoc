@@ -136,7 +136,7 @@ Older files are read as they are: an obsolete gloss header is written back in it
 A document's **Export** tab shows it as `.umr`, to copy or download.
 **Import and export** exports every document of the project as a zip.
 
-The file is written in the 2026 UMR file format: a sentence's graph in PENMAN with children in the order they were made, an alignment line for every node (`0-0` for an unaligned one), and the document-level block with the temporal, modal and coreference triples of that sentence.
+The file is written in the 2026 UMR file format: a sentence's graph in PENMAN with children in the order they were made, an alignment line for every node, in the order the graph writes them (`0-0` for an unaligned one), and the document-level block with the temporal, modal and coreference triples of that sentence.
 Each sentence starts with a bare `# :: snt1` line.
 The sentence's text is written on a `Sentence:` line after the gloss lines of the words and morphemes, only when it is not the words joined by spaces (`Sentence: Ali, eve gitti.` under `Words: Ali eve gitti`).
 A sentence whose text has more items than its words, such as punctuation standing apart (`Tu viens ?`) or a word holding a space, has no `Sentence:` line.
@@ -223,7 +223,7 @@ Opening the document here puts right what such an edit left behind, in one entry
 
 A node anchored to words follows its words.
 Letters typed at an anchored word's edge or inside it, a space included, stay in the nodes anchored to it.
-A word split in two (`ikian,` into `ikian` and `,`) keeps its nodes on the half with the most letters, the first half on a tie, from the next opening here.
+A word split in two (`ikian,` into `ikian` and `,`) keeps its nodes on the half with the most letters, vowel signs and other marks counted with them, the first half on a tie, from the next opening here.
 A node aligned to several words with no space between them (`do` and `n't`, or the words of a text written without spaces) keeps all of them. Only a word split after the node was aligned is cut.
 A node made with no word belongs to the sentence it was made in and stands over the whole of it, so an edit anywhere in the text leaves it where it belongs.
 A node whose words are all taken off its anchor (**u**) stands over the text they had, as one whose words are deleted does, so a sentence split elsewhere leaves it, with its edges, on the side of that text.
@@ -260,6 +260,8 @@ Every edit is written as it happens and lands in the document's history. There i
 An edit that gets no answer, because the connection is down or the server does not reply, is sent again until the server answers, and the edits made after it wait their turn.
 Meanwhile the page reads **Offline, retrying**, or **Can't reach the server, retrying** while the browser is online, and closing the tab asks first.
 An edit that reached the server before its answer was lost is not saved twice.
+An edit made while the document is locked, by another user's script or a service, is not refused.
+The page reads **In use elsewhere, waiting**, the edit is saved by itself once the lock is gone, and closing the tab meanwhile asks first.
 Focus a node by clicking it or with the arrows, then the keys below act on it.
 The default shortcuts are listed here. Arrows, Tab, Enter and Escape are fixed, and every other key can be rebound under your profile.
 **? Keys and marks** over the sentences lists every key, with any you have rebound.
@@ -293,7 +295,7 @@ In a right-to-left document the arrows follow the screen, so Alt+Right moves ear
 * Drag the grip on a node's lower edge onto another node for an edge (a second edge into a node is a re-entrancy), onto a word for a new node anchored there, or onto empty space for an abstract node. The relation is asked at the drop.
 * **n** makes a node with no parent, from a focused node, the sentence, or an empty sentence's graph. A double-click on a word or on empty space does the same. Either way the concept picker opens, prefilled with the word when there is one.
 * Drag the grip under a node onto another node, a word, empty space or a margin constant to make a relation from it.
-* **r** adds a second parent to the focused node: pick the parent from the list of the sentence's nodes, or click it, then give the relation.
+* **r** adds a second parent to the focused node: pick the parent from the list of the sentence's nodes (the node itself included), or click it, then give the relation.
 
 A relation that takes a value does not take a node: `:aspect` and the other attributes with a set of values, `:li`, `:list-item`, `:wiki`, a name's `:op1`, `:op2` and so on, and `:ARG2` of `have-polarity-91`.
 A new edge there, made, moved or relabeled, is refused with `':aspect' takes a value, not a node.`
@@ -301,7 +303,7 @@ So is a concept change that would put a node there, such as `and` with a node un
 The assistant and **Draft** refuse it too.
 An edge an imported file brought there is kept, and the Validation tab lists it.
 
-An edge that would close a cycle is refused, except through `:quote` or `:modal-predicate`, whether it is drawn or relabelled.
+An edge that would close a cycle is refused, except through `:quote` or `:modal-predicate`, whether it is drawn or relabelled. An edge from a node to itself takes only `:quote` or `:modal-predicate`.
 The assistant and **Draft** refuse such a sentence too.
 A relation a draft states in both directions is written once.
 
@@ -394,6 +396,7 @@ A service's run is recorded under the service's account, and its entry names the
 Selecting an entry shows the document as it was then, read-only, on Annotate, Export and Details.
 Compare and Comments are not shown at a past state.
 **Restore** returns the document to that state as a new operation, so nothing is lost.
+Its dialog lists the changes under **Removed** (made since that moment), **Brought back** (deleted since) and **Changed back**.
 
 An entry that is one of these kinds is marked with it:
 
@@ -432,7 +435,7 @@ An edit is refused when, since the page last read the document, another person c
 A change to another sentence's graph, or annotation this edit does not touch such as a gloss in Plaid IGT, is no conflict: the edit is saved, and the page shows both.
 Two people adding the same constant (`author`) for the first time at once conflict, while relations to a constant that is there already from two sentences do not.
 A refused edit says `Changed elsewhere. Now showing the latest version. Redo your edit.`, and the page then shows their change.
-While you are still in that sentence, a concept or relation typed for it opens again in its editor with what was typed, a concept with the vocabulary entry it was picked from, and Enter saves it.
+While you are still in that sentence, a concept or relation typed for it opens again in its editor with what was typed, a concept with the vocabulary entry it was picked from, a new child with its relation, and Enter saves it.
 When a maintainer makes you a Reader, or removes you, while you have a document open, the page turns read-only after your next edit is refused, or within a minute.
 A member who was removed is told `You no longer have access to this project.`
 When someone deletes a document you have open, your next edit on it is not saved, and the page turns read-only for every role, administrators included, with `This document was deleted.`
