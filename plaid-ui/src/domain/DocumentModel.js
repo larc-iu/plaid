@@ -170,7 +170,8 @@ export class DocumentModel {
       onOutOfStep: (err) => this._reportOutOfStep(err),
       onOfflineChange: () => this._emit(),
       // An edit waiting out another's lock says so where a refusal would,
-      // and stops saying so once it is sent.
+      // and stops saying so once it is sent. A new data version too, since a
+      // screen that draws `error` with its data (igt's grid) draws only then.
       onLockedChange: (locked) => {
         if (locked) {
           this._error = LOCKED_WAITING;
@@ -178,6 +179,7 @@ export class DocumentModel {
         } else if (this._error === LOCKED_WAITING) {
           this._error = '';
         }
+        this._lockChanges++;
         this._emit();
       },
     });
@@ -192,6 +194,9 @@ export class DocumentModel {
     this._holds = 0;
     // How many times a read of the project changed it (`refreshProject`).
     this._projectReads = 0;
+    // How often an edit started or stopped waiting out another's lock
+    // (`onLockedChange`), which moves `dataVersion` too.
+    this._lockChanges = 0;
     // The History label a screen gave the writes it is making (`labelled`).
     this._operation = null;
     this._conflictHandled = false;
@@ -219,7 +224,7 @@ export class DocumentModel {
   }
   /** The document's data version, which a new copy of the project also moves. */
   get dataVersion() {
-    return this._dataVersion + this._projectReads;
+    return this._dataVersion + this._projectReads + this._lockChanges;
   }
   get raw() {
     return this._raw;

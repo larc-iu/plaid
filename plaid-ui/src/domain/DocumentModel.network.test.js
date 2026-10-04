@@ -557,8 +557,12 @@ describe('a write refused for another lock', () => {
     for (let i = 0; i < 10000; i++) server.fail.push({ error: locked });
     const saved = doc.set('gloss', 'DOG');
     const later = doc.set('pos', 'N');
+    const shown = doc.dataVersion;
     await flush();
     expect(doc.isLocked).toBe(true);
+    // A screen that draws the error with its data (igt's grid) draws again.
+    expect(doc.dataVersion).toBeGreaterThan(shown);
+    const waiting = doc.dataVersion;
     expect(doc.isOffline).toBe(false);
     expect(doc.error).toBe(LOCKED_WAITING);
     expect(doc.raw.values).toEqual({ gloss: 'DOG', pos: 'N' });
@@ -570,6 +574,7 @@ describe('a write refused for another lock', () => {
     expect(errors).toEqual([]);
     expect(doc.isLocked).toBe(false);
     expect(doc.error).toBe('');
+    expect(doc.dataVersion).toBeGreaterThan(waiting);
   });
 
   it("is refused as before when the page's own lock lapsed", async () => {
