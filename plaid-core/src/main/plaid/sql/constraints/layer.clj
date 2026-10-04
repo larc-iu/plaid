@@ -743,31 +743,29 @@
 
 (def ^:private crossing-sql
   "The relations of a layer in one document whose two places are not in one
-  token of the ancestor layer, worked out in SQLite: a relation layer's
-  spans with their place (the smallest begin of their tokens), the nearest
-  ancestor token starting at or before it by an index seek, whether it
-  reaches past the place, and the relations whose two ends differ. Tens of
-  thousands of index seeks, and only the violations leave the database."
-  (str "WITH place AS ("
-       " SELECT st.span_id AS span_id, min(t.begin) AS p"
-       " FROM spans s JOIN span_tokens st ON st.span_id = s.id JOIN tokens t ON t.id = st.token_id"
-       " WHERE s.span_layer_id = ? AND s.document_id = ? GROUP BY st.span_id),"
-       " cand AS ("
-       " SELECT place.span_id AS span_id, place.p AS p,"
-       " (SELECT a.id FROM tokens a WHERE a.token_layer_id = ? AND a.document_id = ? AND a.begin <= place.p"
-       " ORDER BY a.begin DESC LIMIT 1) AS a"
-       " FROM place),"
-       " anc AS ("
-       " SELECT cand.span_id AS span_id, CASE WHEN tok.end_ > cand.p THEN cand.a END AS a"
-       " FROM cand LEFT JOIN tokens tok ON tok.id = cand.a)"
-       " SELECT r.id AS id FROM relations r"
-       " LEFT JOIN anc s ON s.span_id = r.source_span_id"
-       " LEFT JOIN anc t ON t.span_id = r.target_span_id"
-       " WHERE r.relation_layer_id = ? AND r.document_id = ?"
-       " AND (s.a IS NULL OR t.a IS NULL OR s.a <> t.a)"))
+  token of the ancestor layer, worked out in SQLite: the layer's relations
+  in the document by their index, each end's place (the smallest begin of
+  its span's tokens) by an index seek, then the nearest ancestor token
+  starting at or before each place by an index seek, and whether it reaches
+  past the place. Both steps are materialized once and every lookup is a
+  correlated seek from one relation, so no plan joins two whole sets.
+  Joining a materialized set of spans let SQLite, with statistics from a
+  tiny document, scan 50,000 spans per relation: 100 s on the nightly
+  (37213142098). Only the violations leave the database."
+  (let [place (fn [end] (str "(SELECT min(t.begin) FROM span_tokens st JOIN tokens t ON t.id = st.token_id"
+                             " WHERE st.span_id = r." end ")"))
+        anc (fn [p] (str "(SELECT CASE WHEN a.end_ > e." p " THEN a.id END FROM tokens a"
+                         " WHERE a.token_layer_id = ? AND a.document_id = ? AND a.begin <= e." p
+                         " ORDER BY a.begin DESC LIMIT 1)"))]
+    (str "WITH e AS MATERIALIZED ("
+         " SELECT r.id AS id, " (place "source_span_id") " AS sp, " (place "target_span_id") " AS tp"
+         " FROM relations r INDEXED BY idx_relations_layer_doc"
+         " WHERE r.relation_layer_id = ? AND r.document_id = ?),"
+         " x AS MATERIALIZED (SELECT e.id AS id, " (anc "sp") " AS sa, " (anc "tp") " AS ta FROM e)"
+         " SELECT id FROM x WHERE sa IS NULL OR ta IS NULL OR sa <> ta")))
 
-(defn- crossing-in-sql [tx lid sl al doc]
-  (psc/q tx [crossing-sql (str sl) (str doc) (str al) (str doc) (str lid) (str doc)]))
+(defn- crossing-in-sql [tx lid _sl al doc]
+  (psc/q tx [crossing-sql (str lid) (str doc) (str al) (str doc) (str al) (str doc)]))
 
 (defn- check-same-ancestor [{:keys [tx mode] :as ctx} {:keys [layer params] :as c}]
   (let [lid (:id layer)

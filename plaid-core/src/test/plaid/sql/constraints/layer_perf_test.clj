@@ -118,7 +118,37 @@
                                               :path (str "/api/v1/" kind "-layers/" layer "/constraints/" ns)
                                               :body {:constraints cs}})))
 
-(deftest a-text-save-on-50000-words-spends-under-a-second-on-the-rules
+(defn- stale-statistics!
+  "Statistics gathered on a tiny document, as an earlier test in the same
+  JVM leaves them (`with-clean-db` deletes rows, not `sqlite_stat1`). With
+  them SQLite judged the 50,000 spans small and planned same-ancestor's
+  whole-document query as a scan per relation: 100 s on the nightly
+  (37213142098), where a run of this namespace alone took 0.3 s."
+  []
+  (let [p (create-test-project admin-request "Tiny")
+        d (create-test-document admin-request p "d")
+        tl (id (create-text-layer admin-request p "T"))
+        wl (id (create-token-layer-opts admin-request tl "W" {:overlap-mode "non-overlapping"}))
+        sl (id (create-span-layer admin-request wl "L"))
+        rl (id (create-relation-layer admin-request sl "R"))
+        tx (id (create-text admin-request tl d "a b c"))
+        toks (for [i [0 2 4]]
+               (id (api-call admin-request {:method :post :path "/api/v1/tokens"
+                                            :body {:token-layer-id wl :text tx :begin i :end (inc i)}})))
+        sps (vec (for [t toks]
+                   (id (api-call admin-request {:method :post :path "/api/v1/spans"
+                                                :body {:span-layer-id sl :tokens [t] :value "x"}}))))]
+    (assert-status 201 (api-call admin-request {:method :post :path "/api/v1/relations"
+                                                :body {:layer-id rl :source-id (sps 0) :target-id (sps 1) :value "x"}}))
+    (psc/execute! db ["ANALYZE"])))
+
+(defn- fresh-statistics!
+  "Statistics of the data as it is, so the fixture's wipe of 50,000 words,
+  which the stale ones make take minutes, plans well."
+  []
+  (psc/execute! db ["ANALYZE"]))
+
+(defn- text-save-with-rules []
   (let [{:keys [txt body sl swl span-layers deps]} (build!)
         save! (fn [new-body] (is (:success (text/update-body db txt new-body user))))
         [plain-ms plain-finish] (timed-finish #(save! (str "x" body)))]
@@ -135,6 +165,12 @@
                         plain-ms plain-finish ruled-ms ruled-finish))
       (is (< (- ruled-finish plain-finish) 1000)
           (str "the rules added " (- ruled-finish plain-finish) " ms to a text save")))))
+
+(deftest a-text-save-on-50000-words-spends-under-a-second-on-the-rules
+  (stale-statistics!)
+  (try
+    (text-save-with-rules)
+    (finally (fresh-statistics!))))
 
 (deftest a-1000-op-batch-spends-under-100-ms-on-the-rules
   (let [proj (create-test-project admin-request "Batch")
