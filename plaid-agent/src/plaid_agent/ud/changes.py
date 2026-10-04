@@ -65,7 +65,9 @@ def locate(ws, op: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             target = resolve(doc, ref)
         except (ValueError, IndexError):
             return where
-        where['surface'] = getattr(target, 'form', None) or getattr(target, 'text', '') or ''
+        # A word has a form, a multiword token a surface, a sentence a text.
+        where['surface'] = (getattr(target, 'form', None) or getattr(target, 'surface', None)
+                            or getattr(target, 'text', '') or '')
         index = getattr(target, 'index', None)
         if '.' in ref and index is not None:
             where['word'] = index

@@ -286,7 +286,7 @@ def test_a_plan_never_confirms_what_it_deletes(ws):
     counts = execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
     assert ws.client.batches[0] == [('spans.delete', 'sp-u3')]
     assert 'the plan deletes what it confirms' in ' '.join(counts.get('notes') or [])
-    assert counts['field values'] == 1
+    assert counts['cleared values'] == 1
 
 
 def test_a_confirmation_and_a_discard_of_one_document_refuse_each_other(ws):
@@ -470,7 +470,7 @@ def test_discarding_a_whole_document_is_one_scope_op_that_clears_at_approval(ws)
     assert ws.ops[0]['kind'] == 'discard_scope' and ws.ops[0]['per_field'] == {'upos': 1}
     assert summarize(ws.ops) == '1 cleared value'
     counts = execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
-    assert counts == {'field values': 1}
+    assert counts == {'cleared values': 1}, 'as the card counts it'
     assert ws.client.batches[0] == [('spans.delete', 'sp-u3')]
 
 
@@ -527,7 +527,7 @@ def test_a_head_on_an_unannotated_word_makes_its_lemma_first(ws):
 
 
 def test_replacing_a_head_deletes_the_old_relation_in_the_same_batch(ws):
-    run(ws, 'set_head', document='Viaje', ref='s1.w4', head=1, deprel='obj')
+    run(ws, 'set_head', document='Viaje', ref='s1.w4', head=2, deprel='obj')
     execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
     last = ws.client.batches[-1]
     assert [kind for kind, _ in last] == ['relations.delete', 'relations.create']

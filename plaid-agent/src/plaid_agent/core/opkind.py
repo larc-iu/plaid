@@ -484,4 +484,8 @@ def run_stage(kinds: Dict[str, 'OpKind'], ctx, ops, stage: str, finish=None) -> 
             ctx.b.finish(op)
         n = 1 if n is None else n
         if n:
-            ctx.counts[spec.noun[1]] += n
+            # Counted as the card counts it (``summary``), so what the user
+            # approved and what the applied message says are the same nouns.
+            for noun, k in (spec.summary(op, n) if spec.summary else [(spec.noun, n)]):
+                if k:
+                    ctx.counts[noun[1]] += k

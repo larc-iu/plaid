@@ -117,8 +117,10 @@ def test_a_ud_head_counts_once_its_batch_stood(monkeypatch):
     from plaid_agent.ud.tools import Workspace
     client = ud_client()
     ws = Workspace(client, load_project(client, PID))
-    for ref in ('s2.w2', 's1.w4'):
-        assert 'Planned' in call_tool(ws, 'set_head', {'document': 'Viaje', 'ref': ref, 'head': 1,
+    # s1.w4 is under word 1 already, and a relabel is an update in place, so
+    # it takes word 2 as its new head.
+    for ref, head in (('s2.w2', 1), ('s1.w4', 2)):
+        assert 'Planned' in call_tool(ws, 'set_head', {'document': 'Viaje', 'ref': ref, 'head': head,
                                                      'deprel': 'dep'})
     assert len(ws.ops) == 2
     _budget(monkeypatch, 1)
@@ -147,8 +149,9 @@ def test_a_ud_plan_removes_every_head_before_it_draws_one(monkeypatch):
     from plaid_agent.ud.tools import Workspace
     client = ud_client()
     ws = Workspace(client, load_project(client, PID))
+    # New heads, not relabels (both words are under word 1 already).
     for ref in ('s1.w4', 's1.w5'):
-        call_tool(ws, 'set_head', {'document': 'Viaje', 'ref': ref, 'head': 1, 'deprel': 'dep'})
+        call_tool(ws, 'set_head', {'document': 'Viaje', 'ref': ref, 'head': 2, 'deprel': 'dep'})
     call_tool(ws, 'del_relation', {'document': 'Viaje', 'refs': ['s1.w2']})
     assert [op['kind'] for op in ws.ops] == ['set_head', 'set_head', 'del_relation']
     _budget(monkeypatch, 1)

@@ -251,12 +251,20 @@ def _unhead_set_head(ctx: Context, op) -> None:
     pass before any relation is drawn (see ``UNHEAD``). An old relation
     another op of the plan takes away (a reshape of its head's token) is not
     deleted again."""
+    if op.get('relabel'):
+        return  # the relation stays and takes the new label
     if op.get('relation_id') and not ctx.removed_by_others(op, op['relation_id']):
         ctx.b.add(lambda batch, i=op['relation_id']: batch.relations.delete(i))
     _suppressors(ctx, op)
 
 
 def _apply_set_head(ctx: Context, op) -> int:
+    if op.get('relabel') and op.get('relation_id') and not ctx.removed_by_others(op, op['relation_id']):
+        # The same head with a new label is the relation's own value, as the
+        # editor's `updateRelation` writes it, so History reads a relabel and
+        # not a removal and a creation.
+        ctx.b.update('relations', op['relation_id'], value=op['deprel'], metadata=metadata_ops(ctx.restamp()))
+        return 1
     _seed_lemmas(ctx, op)
     # One head per word: the old relation went in the pass before
     # (``_unhead_set_head``), so no batch boundary finds the word twice
@@ -282,6 +290,7 @@ def _apply_run_parse(ctx: Context, op) -> int:
 
 _FIELD_VALUE = ('field value', 'field values')
 _CLEARED = ('cleared value', 'cleared values')
+_DEPENDENCY = ('dependency', 'dependencies')
 _RELABELED = ('relabeled dependency', 'relabeled dependencies')
 _REMOVED_DEP = ('removed dependency', 'removed dependencies')
 
@@ -423,12 +432,14 @@ KIND = ok.registry([
            deletes=lambda op: ([op['span_id']] if op.get('span_id') and (op.get('value') or '') == '' else []),
            compact_each=('token_id', 'span_id', 'ref'), compact_label=_set_span_label,
            summary=_set_span_summary),
-    OpKind('set_head', ('dependency', 'dependencies'), stage=IDS, apply=_apply_set_head,
+    OpKind('set_head', _DEPENDENCY, stage=IDS, apply=_apply_set_head,
            required=('word_id', 'head_id', 'lemma_layer_id', 'relation_layer_id', 'deprel'),
            target=lambda op: ('head', op.get('word_id')),
            token_keys=('word_id', 'head_id'),
            extra={'entity': _relation_entity, UNHEAD: _unhead_set_head},
-           deletes=lambda op: [op.get('relation_id')] + list(op.get('suppressor_ids') or []),
+           deletes=lambda op: ([] if op.get('relabel') else [op.get('relation_id')])
+           + list(op.get('suppressor_ids') or []),
+           summary=lambda op, n: [(_RELABELED if op.get('relabel') else _DEPENDENCY, n)],
            compact_each=('word_id', 'head_id', 'word_form', 'head_form', 'lemma_span_id',
                          'head_lemma_span_id', 'relation_id', 'suppressor_ids', 'ref'),
            compact_label=_set_head_label),

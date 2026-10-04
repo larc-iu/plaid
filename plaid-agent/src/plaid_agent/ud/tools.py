@@ -735,6 +735,8 @@ def _stage_head(ws: Workspace, doc: UdDoc, word: Word, sentence: Sentence, head,
                'head_lemma_span_id': head_lemma.id if head_lemma else None,
                'relation_id': word.relation_id, 'deprel': deprel, 'document_id': doc.id,
                'suppressor_ids': [i for i in dict.fromkeys(stale) if i],
+               # The same head: the stored relation takes the new label.
+               **({'relabel': True} if relabel else {}),
                'label': (f'{word_ref(sentence, word)} root' if head == 0
                          else f'{word_ref(sentence, word)} {deprel} of word {head}'),
                'ref': word_ref(sentence, word)})
