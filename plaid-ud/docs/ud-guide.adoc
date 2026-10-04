@@ -104,7 +104,7 @@ If you already have annotated data, you can import it instead of typing it in.
 
 Open the project's **Import and export** tab and drop `.conllu` files on it, one or many, or a ZIP of them.
 Each `# newdoc` boundary inside a file becomes its own document.
-A document too large for the server is not imported, and its row says `This document is too large to save in one request. Split it into shorter documents.`
+A document too large for the server is not imported, and its row says `This file is too large to import. Split it into shorter documents.`
 The same tab exports the whole project as a ZIP of `.conllu` files.
 
 [WARNING]
@@ -116,6 +116,7 @@ A `SpaceAfter=No` is not counted as dropped: the text keeps the spacing, and the
 
 The DEPS column is read into the enhanced dependency graph (see <<_enhanced_dependencies>>).
 An enhanced dependency whose head is an empty node is dropped along with the node.
+A relation with no HEAD (`_` beside a DEPREL), or whose HEAD or DEPS head is not a row of the sentence or is the word's own row, is dropped, and the import says how many.
 A word whose only enhanced heads were empty nodes keeps the relation its tree gives it, which for a gapped clause is `orphan`.
 A word whose DEPS is empty, in a sentence where other words have one, has no head in the enhanced graph: its tree relation is one the graph leaves out. In a sentence with no DEPS at all, the file simply says nothing about the enhanced graph and every word follows its tree.
 
@@ -157,6 +158,7 @@ There are two ways to turn saved text into tokens, and both are runs (see <<_ser
 * **Parse** does the whole job at once. Where your project has a parsing service connected, for example the bundled Stanza parser, it fills in the entire document: sentences, tokens, words, every annotation, and the dependency tree. This gives you a first draft to correct by hand, and is the fastest way to get started.
 
 Each button opens a dialog naming the method it will use and the options that method offers.
+While the text has changes not yet saved, both buttons say `Save the text first.`
 A document that already has tokens cannot be tokenized again. **Tokenize** says to clear the tokens first, and **Clear tokens** beside it does that, after asking.
 Clearing takes the annotations on those tokens with them, and cannot be undone.
 
@@ -318,6 +320,8 @@ A cell is saved when you leave it, and a relation when you draw or change it. Th
 A save that gets no answer, because the connection is down or the server does not reply, is sent again until the server answers, and the edits made after it wait their turn.
 Meanwhile the page reads **Offline, retrying**, or **Can't reach the server, retrying** while the browser is online, and closing the tab asks first.
 A save that reached the server before its answer was lost is not saved twice.
+A save made while the document is locked, by another user's script or a service, is not refused.
+The page reads **In use elsewhere, waiting**, the edit is saved by itself once the lock is gone, and closing the tab meanwhile asks first.
 
 Two people can have one document open, and neither page shows the other's edits as they are made.
 An edit is refused when someone else changed the same kind of annotation in the document since the page loaded (a lemma, a head, the words), even on another word.
@@ -513,7 +517,7 @@ It does not run a search of its own: it writes the Grew pattern and hands it to 
 
 A regular expression on a feature (`X [Number=re"^S"]`) is searched for in the feature's value, where `^` and `$` mark its start and end.
 
-In a regular expression, `\w`, `\d` and `\s` take every script, `\s` the no-break space too, and `\p{IsArabic}` or `\p{sc=Arabic}` is any character of the Arabic script, and the same for every script. A construct the search cannot read, such as a Unicode block (`\p{InArabic}`) or a possessive quantifier, is refused with a caret under it.
+In a regular expression, `\w`, `\d` and `\s` take every script, `\s` the no-break space too, and `\p{IsArabic}` or `\p{sc=Arabic}` is any character of the Arabic script, and the same for every script. A construct the search cannot read, such as a Unicode block (`\p{InArabic}`) or a possessive quantifier, is refused with a caret under it. A pattern is limited to 4096 characters, and each `\b`, `\s`, `\w`, `$` or `.` in it counts as 30 to 230 of them.
 A token another app added is not searched until someone with Writer access opens its document.
 
 === Counting instead of reading
@@ -594,6 +598,7 @@ An assistant plan that stopped partway is listed as `Assistant, partly applied:`
 Maintainers can put a document back the way it was.
 While viewing a historical state, choose **Restore**.
 Before anything is written, the dialog lists what would change: sentences, tokens, words, annotations in each field, and dependency relations.
+It lists them under **Removed** (made since that moment), **Brought back** (deleted since) and **Changed back**.
 
 Restoring is one entry in the history, so the state from just before it stays available.
 The toast that confirms a restore also offers **Undo** for fifteen seconds.
@@ -610,7 +615,7 @@ Projects are shared by adding members with a role:
 * **Writer**: can edit documents and annotations.
 * **Maintainer**: can also change project settings, manage members, and delete the project.
 
-Add members from the project's **Access** settings by searching for a name or email address.
+Add members from the project's **Access** settings by searching for a name, matched anywhere in it, or an email address, matched from its start. Type `@` to match anywhere in an email address.
 When you only have Reader access, the editor shows everything but its controls are inert.
 When a maintainer makes you a Reader, or removes you, while you have a document open, the page turns read-only after your next edit is refused, or within a minute.
 A member who was removed is told `You no longer have access to this project.`
