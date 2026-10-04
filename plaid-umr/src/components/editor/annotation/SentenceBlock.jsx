@@ -648,9 +648,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     setEditor({ kind: 'role', pending, ...at, value: pending.edgeId ? pending.role : '' });
 
   // The concept for a node about to exist: a word of the sentence, picked by
-  // its number, or any concept typed. Then its role, unless it has no parent.
-  const askNewNode = (parentId, wordIds, at, initial = '') =>
-    setEditor({ kind: 'new', parentId, wordIds, ...at, value: initial });
+  // its number, or any concept typed. Then its role, unless it has no parent
+  // or the role is known (`role`, a child opened again after a refusal).
+  const askNewNode = (parentId, wordIds, at, initial = '', role = undefined) =>
+    setEditor({ kind: 'new', parentId, wordIds, ...at, value: initial, role });
 
   // A document-level triple about to exist (`triple: { source, target,
   // group }`, either end a node id or a constant's name), or an existing one
@@ -677,7 +678,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   };
   // A new node's concept, again: under its parent while that is there, on
   // the words of it still in the sentence, with the vocabulary entry it was
-  // picked from.
+  // picked from and the relation typed for it.
   const newNodeAgain = (newNode, at) =>
     offerAgain(() => {
       if (newNode.parentId && !doc.node(newNode.parentId)) return null;
@@ -690,6 +691,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         ...at,
         value: newNode.concept,
         entry: newNode.entry,
+        role: newNode.role,
       };
     });
 
@@ -779,7 +781,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
           ...p.newNode,
           role,
           onShown: focusWhenDrawn,
-          onRefused: newNodeAgain(p.newNode, { x: ed.x, y: ed.y }),
+          onRefused: newNodeAgain({ ...p.newNode, role }, { x: ed.x, y: ed.y }),
         });
         return;
       }
@@ -810,7 +812,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       // senses first, as a drop on the word does. Its form is almost never
       // the concept.
       if (picked) {
-        askNewNode(ed.parentId, [picked.id], { x: ed.x, y: ed.y }, picked.text);
+        askNewNode(ed.parentId, [picked.id], { x: ed.x, y: ed.y }, picked.text, ed.role);
         return;
       }
       const newNode = {
@@ -820,13 +822,16 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         wordIds: ed.wordIds,
         parentId: ed.parentId,
       };
-      if (ed.parentId) {
+      // A child opened again after a refusal (newNodeAgain) has the relation
+      // typed for it already.
+      if (ed.parentId && !ed.role) {
         askRole({ newNode }, { x: ed.x, y: ed.y });
       } else {
+        const child = ed.parentId ? { ...newNode, role: ed.role } : newNode;
         doc.createNode({
-          ...newNode,
+          ...child,
           onShown: focusWhenDrawn,
-          onRefused: newNodeAgain(newNode, { x: ed.x, y: ed.y }),
+          onRefused: newNodeAgain(child, { x: ed.x, y: ed.y }),
         });
       }
     } else if (ed.kind === 'concept') {
@@ -1249,12 +1254,14 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     setMode(null);
     closeEditor();
   };
-  // What the list offers: every other node of the sentence, and for a move
-  // not the parent it has or a node under it.
+  // What the list offers: every node of the sentence for a second parent,
+  // the node itself too (an edge to itself under a cycle role, as Text mode
+  // takes it, wouldCycle), and for a move every other node but the parent it
+  // has or a node under it.
   const targetOptions = (ed) => {
     const edge = ed.purpose === 'move' ? treeEdgeInto(ed.nodeId) : null;
     const fits = (n) =>
-      n.id !== ed.nodeId &&
+      (ed.purpose !== 'move' || n.id !== ed.nodeId) &&
       n.var &&
       (!edge || (n.id !== edge.source && !doc.wouldCycle?.(n.id, ed.nodeId, edge.role)));
     return [
@@ -1280,10 +1287,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       const edge = treeEdgeInto(nodeId);
       if (edge && targetId !== nodeId) doc.moveEdge(edge.id, targetId);
       focusNode(nodeId);
-    } else if (targetId !== nodeId) {
-      askRole({ sourceId: targetId, targetId: nodeId }, positionBelow(targetId));
     } else {
-      focusNode(nodeId);
+      askRole({ sourceId: targetId, targetId: nodeId }, positionBelow(targetId));
     }
   };
 
@@ -1940,7 +1945,11 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 position={measured ? layout.nodes.get(node.id) : null}
                 focused={shownFocusId === node.id}
                 dropTarget={overNodeId === node.id}
-                modeTarget={!!mode && mode.nodeId !== node.id && mode.kind !== 'anchor'}
+                modeTarget={
+                  !!mode &&
+                  mode.kind !== 'anchor' &&
+                  (mode.nodeId !== node.id || mode.kind === 'reentrancy')
+                }
                 onFocus={takeFocus}
                 onClick={clickNode}
                 onGripPointerDown={

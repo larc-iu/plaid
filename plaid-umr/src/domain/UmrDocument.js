@@ -928,10 +928,11 @@ export class UmrDocument extends DocumentModel {
   }
 
   // Would an edge from `sourceId` to `targetId` close a cycle the format does
-  // not allow (one through anything but a quote)? True when the target
-  // reaches the source.
+  // not allow (one through anything but a cycle role)? True when the target
+  // reaches the source, a node's edge to itself included. An edge with a
+  // cycle role closes none, to itself either, as Text mode and the official
+  // checks read it (cycleEdges, validate.js `dominates`).
   wouldCycle(sourceId, targetId, role) {
-    if (sourceId === targetId) return true;
     if (CYCLE_ROLES.has(role)) return false;
     const seen = new Set();
     const stack = [this.node(targetId)];

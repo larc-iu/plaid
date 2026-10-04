@@ -318,10 +318,12 @@ test('deleteNode takes a grandchild reachable only through two of its children',
   assert.equal(doc.node(d.nodeId), null);
 });
 
-test('a quote onto itself is still a cycle', () => {
+// As Text mode and the official checks read it (H34-UMR polish).
+test('a quote onto itself closes no cycle, any other role does', () => {
   const { doc } = load();
   const landslide = byVar(doc, 's1l');
-  assert.equal(doc.wouldCycle(landslide.id, landslide.id, ':quote'), true);
+  assert.equal(doc.wouldCycle(landslide.id, landslide.id, ':quote'), false);
+  assert.equal(doc.wouldCycle(landslide.id, landslide.id, ':ARG1'), true);
 });
 
 test('createTriple makes a constant on first use and a chain on coreference', async () => {
@@ -436,7 +438,9 @@ test('copyTo sends the copy and answers with the new document', async () => {
     calls.map((c) => c.name),
     ['operation', 'documents.copy'],
   );
-  assert.equal(calls[0].args[0], 'Copy document');
+  // No label of its own: History shows the server's description of the copy
+  // (c821d508).
+  assert.equal(calls[0].args[0], null);
   assert.deepEqual(calls[1].args, ['doc', 'doc (copy)']);
   // The document copied from is untouched: the copy is a different document.
   assert.equal(doc.name, 'doc');

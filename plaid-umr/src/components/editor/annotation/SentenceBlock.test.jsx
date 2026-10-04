@@ -1583,18 +1583,33 @@ describe('SentenceBlock mode targets from the keyboard', () => {
     await r.unmount();
   });
 
-  it('r lists the other nodes, and a pick asks for the relation', async () => {
+  it('r lists the nodes, itself too, and a pick asks for the relation', async () => {
     const doc = docStub();
     const { r } = await mount(doc);
     const eat = nodeByVar(r.container, 's1e');
     await r.step(() => eat.focus());
     await r.step(() => press(eat, 'r'));
     expect(modeNote(r.container).textContent).toMatch(/Pick or click the second parent/);
-    expect(options()).toEqual(['s1l leave-02', 's1p person']);
+    expect(options()).toEqual(['s1l leave-02', 's1p person', 's1e eat-01']);
     await type(r, input(r.container), 's1p');
     await r.step(() => press(input(r.container), 'Enter'));
     expect(input(r.container).getAttribute('placeholder')).toBe('Relation');
     expect(modeNote(r.container)).toBeNull();
+    await r.unmount();
+  });
+
+  // H34-UMR polish: Text mode takes `(s1e :quote s1e)`, and so does the canvas.
+  it('r on the node itself asks for the relation of an edge to itself', async () => {
+    const doc = docStub({ createEdge: vi.fn(async () => 'e9'), hasEdge: () => false });
+    const { r } = await mount(doc);
+    const eat = nodeByVar(r.container, 's1e');
+    await r.step(() => eat.focus());
+    await r.step(() => press(eat, 'r'));
+    await r.step(() => eat.click());
+    expect(input(r.container).getAttribute('placeholder')).toBe('Relation');
+    await type(r, input(r.container), ':quote');
+    await r.step(() => press(input(r.container), 'Enter'));
+    expect(doc.createEdge).toHaveBeenCalledWith('n3', 'n3', ':quote', expect.anything());
     await r.unmount();
   });
 
@@ -2199,6 +2214,51 @@ describe('SentenceBlock, a typed edit the server refused', () => {
     expect(made).toEqual([
       ['depart-01', 'ent1'],
       ['depart-01', 'ent1'],
+    ]);
+    await r.unmount();
+  });
+
+  // H34-UMR polish: a new child refused and opened again keeps the relation
+  // typed for it, so Enter makes it without asking for the relation again.
+  it('opens a new child again with its relation, and Enter makes it under that relation', async () => {
+    const { sentence, nodesById } = fixture();
+    const made = [];
+    const doc = docStub({
+      sentence: () => sentence,
+      node: (id) => nodesById.get(id),
+      relationProblem: () => null,
+      createNode: async (args) => {
+        made.push([args.concept, args.role, args.parentId]);
+        await wait(5);
+        args.onRefused?.();
+        return false;
+      },
+    });
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={doc}
+        dataVersion={1}
+        readOnly={false}
+        sentence={sentence}
+        nodesById={nodesById}
+      />,
+    );
+    const node = all(r.container, '.umr-node')[0];
+    const parentId = node.dataset.nodeId;
+    await r.step(() => node.focus());
+    await r.step(() => press(node, 'Tab'));
+    await r.step(() => type(editorInput(r), 'dog'));
+    await r.step(() => press(editorInput(r), 'Enter'));
+    expect(editorInput(r)?.getAttribute('placeholder')).toBe('Relation');
+    await r.step(() => type(editorInput(r), ':ARG0'));
+    await r.step(() => press(editorInput(r), 'Enter'));
+    await r.step(() => wait(20));
+    expect(editorInput(r)?.value).toBe('dog');
+    await r.step(() => press(editorInput(r), 'Enter'));
+    await r.step(() => wait(20));
+    expect(made).toEqual([
+      ['dog', ':ARG0', parentId],
+      ['dog', ':ARG0', parentId],
     ]);
     await r.unmount();
   });
