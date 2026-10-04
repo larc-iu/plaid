@@ -57,6 +57,7 @@ import {
   wordsUnder,
 } from './sentenceGraph.js';
 import { countOf } from '../../../plaid-ui/src/lib/plural.js';
+import { isLetterMarkOrNumber } from './letterClasses.js';
 
 /**
  * Where a node aligned to no word stands: one stretch of text from where the
@@ -154,8 +155,8 @@ export function planUnalignedHeal(graph, namespace) {
  * `,`): core splits only the layers under the word layer, and the node layer
  * is a root layer, so a node anchored to the word stands over both halves.
  * Each is put on the half the word's letters are in: the half with the most
- * letters and digits, the first on a tie (`a.` keeps `a`, `tsa` split as `t`
- * and `sa` keeps `sa`).
+ * letters, marks and digits (a vowel sign counts with its letter), the first
+ * on a tie (`a.` keeps `a`, `tsa` split as `t` and `sa` keeps `sa`).
  *
  * A node records the words it was aligned to (`words`, their ids). A split
  * keeps the word's id on its left half and gives the right half a new one,
@@ -175,7 +176,7 @@ export function planUnalignedHeal(graph, namespace) {
  *   of one node
  */
 export function planWordSplits(graph, namespace) {
-  const letters = (w) => [...w.text].filter((c) => /[\p{L}\p{N}]/u.test(c)).length;
+  const letters = (w) => [...w.text].filter(isLetterMarkOrNumber).length;
   const kept = (run) => run.reduce((best, w) => (letters(w) > letters(best) ? w : best));
   const out = [];
   graph.nodesById.forEach((node) => {

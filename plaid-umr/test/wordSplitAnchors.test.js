@@ -353,3 +353,54 @@ test('a node made on words that are gone is aligned to the rest, or to none', as
   assert.deepEqual(m.metadata.umr.words, [s.words[2].id]);
   assert.equal(alignment(core.raw).get('s1n'), '1-1');
 });
+
+// H34-UMR polish: the tie-break counts marks with the letters, from the
+// generated table (letterClasses.js), not the runtime's Unicode classes.
+// `कीं` is one letter and two vowel marks, `खग` two letters.
+const MARKED = `${SEP}
+# :: snt1
+Index: 1
+Words: कींखग
+
+# sentence level graph:
+(s1k / कींखग)
+
+# alignment:
+s1k: 1-1
+
+# document level annotation:
+(s1s0 / sentence)
+`;
+
+test('a vowel mark counts as a letter when a split word picks its half', async () => {
+  const raw = rawFromPlan(planImport(parseUmrFile(MARKED).sentences, []));
+  const w = word(raw, 'कींखग');
+  splitWord(raw, w.id, w.begin + 3);
+  const result = await openInUmr(raw);
+  assert.equal(result.wordSplits, 1);
+  assert.equal(alignment(raw).get('s1k'), '1-1');
+});
+
+test('the letter table is what tools/letterClasses.mjs writes, and the cut reads only it', async () => {
+  const { LETTER_MARK_OR_NUMBER, isLetterMarkOrNumber } = await import(
+    '../src/domain/letterClasses.js'
+  );
+  if (process.versions.unicode === '16.0') {
+    const ranges = [];
+    for (let cp = 0; cp <= 0x10ffff; cp++) {
+      if (!/[\p{L}\p{M}\p{N}]/u.test(String.fromCodePoint(cp))) continue;
+      const last = ranges.at(-1);
+      if (last && last[1] === cp - 1) last[1] = cp;
+      else ranges.push([cp, cp]);
+    }
+    assert.deepEqual(LETTER_MARK_OR_NUMBER, ranges);
+  }
+  assert.equal(isLetterMarkOrNumber('\u0902'), true);
+  assert.equal(isLetterMarkOrNumber('7'), true);
+  assert.equal(isLetterMarkOrNumber(','), false);
+  assert.equal(isLetterMarkOrNumber(''), false);
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../src/domain/umrReconcile.js', import.meta.url), 'utf8');
+  const body = source.slice(source.indexOf('export function planWordSplits'));
+  assert.doesNotMatch(body.slice(0, body.indexOf('\n}\n')), /\\p\{/);
+});
