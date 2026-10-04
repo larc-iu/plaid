@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
+import { importErrorText } from '../../domain/conlluImport.js';
 import { splitConlluByNewdoc } from '../../utils/conlluParser.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { humanizeError } from '../../utils/feedback.jsx';
@@ -59,7 +60,7 @@ const prepareImport = async ({ client, project, projectId }) => {
           warnings: importWarnings || [],
         });
       } catch (err) {
-        push({ key: `${index}-${c}`, name, status: 'rejected', reason: humanizeError(err) });
+        push({ key: `${index}-${c}`, name, status: 'rejected', reason: importErrorText(err) });
       }
     }
   };

@@ -7,9 +7,18 @@ import { getUdLayerInfo, missingUdLayerLabels } from '../utils/udLayerUtils.js';
 import { makeValidators } from '../utils/udVocabMode.js';
 import { parseCoNLLU, buildConlluHierarchy } from '../utils/conlluParser.js';
 import { SUPPRESS_KEY, planEnhancedRow } from './enhancedGraph.js';
-import { humanizeError } from '../../../plaid-ui/src/lib/errors.js';
+import { humanizeError, statusOf } from '../../../plaid-ui/src/lib/errors.js';
 
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const HEADLESS = 'the head is not a row of the sentence.';
+const SELF_HEAD = 'the head is the word itself.';
+// Over the server's cap on a request's body. The person imported a file, so
+// it is said in those words rather than the general wording for a 413.
+const TOO_LARGE_TO_IMPORT = 'This file is too large to import. Split it into shorter documents.';
+
+// What an import that failed says, in place of humanizeError's general words.
+export const importErrorText = (err) =>
+  statusOf(err) === 413 ? TOO_LARGE_TO_IMPORT : humanizeError(err, 'Failed to import.');
 
 const OFF_LIST_FIELDS = [
   ['upos', 'UPOS', (t) => [t.upos]],
@@ -296,37 +305,37 @@ export async function importConlluDocument(
     // Dependency relations, hung on the lemma spans by their minted ids.
     const relationOps = [];
     const enhancedOps = [];
+    // Heads the file names that cannot be written, dropped with a warning:
+    // one that is no row of the sentence, and one that is the row itself
+    // (which would read as a root, the way a root is stored).
+    const dropped = { basicHeadless: 0, basicSelf: 0, enhancedHeadless: 0, enhancedSelf: 0 };
     if (relationLayer) {
       parsedData.sentences.forEach((sentence, sentIdx) => {
         const ids = lemmaSpanIds[sentIdx];
         sentence.tokens.forEach((token, tokIdx) => {
           const targetId = ids[tokIdx];
           if (!token.deprel || !targetId) return;
-          if (token.head === 0) {
-            relationOps.push({
-              relationLayerId: relationLayer.id,
-              source: targetId,
-              target: targetId,
-              value: token.deprel,
-            });
-          } else if (token.head > 0) {
-            const sourceId = ids[token.head - 1];
-            if (sourceId) {
-              relationOps.push({
-                relationLayerId: relationLayer.id,
-                source: sourceId,
-                target: targetId,
-                value: token.deprel,
-              });
-            }
+          if (token.head === token.id) {
+            dropped.basicSelf += 1;
+            return;
           }
+          const sourceId = token.head === 0 ? targetId : ids[token.head - 1];
+          if (!sourceId) {
+            dropped.basicHeadless += 1;
+            return;
+          }
+          relationOps.push({
+            relationLayerId: relationLayer.id,
+            source: sourceId,
+            target: targetId,
+            value: token.deprel,
+          });
         });
       });
       // The enhanced layer's rows, in the same batch as the tree they differ
       // from but in a bulk create of their own: the server takes one layer's
       // relations to a call. A suppressor lies over its row's own basic
       // relation, so it is written only where that relation was.
-      let headlessDeps = 0;
       const basicPairs = new Set(relationOps.map((op) => `${op.source} ${op.target}`));
       parsedData.sentences.forEach((sentence, sentIdx) => {
         const ids = lemmaSpanIds[sentIdx];
@@ -346,9 +355,13 @@ export async function importConlluDocument(
             });
           }
           plan.extras.forEach((e) => {
+            if (e.head === token.id) {
+              dropped.enhancedSelf += 1;
+              return;
+            }
             const sourceId = spanOf(e.head);
             if (!sourceId) {
-              headlessDeps += 1;
+              dropped.enhancedHeadless += 1;
               return;
             }
             enhancedOps.push({
@@ -360,12 +373,15 @@ export async function importConlluDocument(
           });
         });
       });
-      if (headlessDeps > 0) {
-        importWarnings.push(
-          `${count(headlessDeps, 'enhanced dependency', 'enhanced dependencies')} dropped: ` +
-            'the head is not a row of the sentence.',
-        );
-      }
+    }
+    const headWarnings = [
+      [dropped.basicHeadless, 'dependency relation', 'dependency relations', HEADLESS],
+      [dropped.basicSelf, 'dependency relation', 'dependency relations', SELF_HEAD],
+      [dropped.enhancedHeadless, 'enhanced dependency', 'enhanced dependencies', HEADLESS],
+      [dropped.enhancedSelf, 'enhanced dependency', 'enhanced dependencies', SELF_HEAD],
+    ];
+    for (const [n, one, many, why] of headWarnings) {
+      if (n > 0) importWarnings.push(`${count(n, one, many)} dropped: ${why}`);
     }
 
     // Three requests, one after another: the text with sentences -> words ->
@@ -402,7 +418,7 @@ export async function importConlluDocument(
         // Name the partial document so the user can delete it by hand. The
         // original error message stays at the front.
         const wrapped = new Error(
-          `${humanizeError(err, 'Failed to import.')} The partial document “${name.trim()}” ` +
+          `${importErrorText(err)} The partial document “${name.trim()}” ` +
             'was not deleted. Delete it by hand.',
         );
         wrapped.cause = err;
