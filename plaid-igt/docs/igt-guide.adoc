@@ -141,6 +141,8 @@ Every field decides for itself, so a gloss written in English reads left to righ
 The **Baseline** tab holds the raw text you are analyzing, in whatever orthography you work in.
 Paste or type it, one sentence per line, and save.
 On the first save each line becomes a sentence.
+Each save also splits the text it adds into words with the built-in tokenizer, unless the project has **Tokenize new text** off (see <<_annotation>>).
+Words already there are not changed, and text in a script written without spaces between words, such as Chinese, Japanese or Thai, gets no words.
 You can move sentence breaks afterwards on the Tokenize tab.
 
 You can edit the baseline later too.
@@ -150,7 +152,7 @@ A change inside a word, or touching it with no space between, changes that word,
 A space typed inside a word leaves one word with a space in it. Split it on the Tokenize tab to make two words.
 On a project whose words are shared with an app that splits a word at a typed space, a space typed inside a word splits it there: the word and its analysis stay on the part holding most of its letters, and the other part becomes a new word with no analysis.
 Deleting the space between two words keeps them two words. Merge them on the Tokenize tab to make one.
-New text with a space between it and every word is in no word. The Tokenize tab makes words of it.
+New text with a space between it and every word becomes words of its own when **Tokenize new text** is on, and is in no word when it is off. The Tokenize tab makes words of it.
 A word goes, along with its annotations, only when all its text is deleted.
 Pasting the text back with words added, removed or changed changes only those words. Every other word keeps its analysis.
 A paste with several changes near a repeated word, or in a text written without spaces, can also replace one word beside a change, and that word loses its analysis.
@@ -165,6 +167,7 @@ When someone else saved the baseline after you pressed **Edit text**, **Save cha
 When you both changed the same passage, the save is refused, `Changed elsewhere in the same passage.` shows under the box, and your text stays in the box.
 **Cancel** then shows the saved text, and you make the edit again.
 The save is also refused when the text has passages that read the same and your change could be in either of them.
+When the page turns read-only while you edit, because your access was removed or the document was deleted, your text stays in the box, which no longer takes typing, and **Save changes** is off.
 
 A project may define additional **orthographies**, alternate representations of each word such as a phonetic transcription or a practical spelling.
 These appear as their own rows in the Analyze grid (see <<_text_and_vocab>>).
@@ -185,6 +188,7 @@ A server refuses a file over its own size limit, and the offer says so before th
 
 When someone else deletes or replaces the recording while you have the tab open, the tab says **Recording deleted** or **Recording replaced** after your next change.
 Deleting a recording someone else has replaced since the tab showed it is refused with `Replaced elsewhere. Showing the current recording.`, and the tab shows their recording.
+Uploading when someone else has added a recording since the tab showed the upload form is refused with `Another recording was added elsewhere. Now showing it.`, and the tab shows theirs. To replace it, delete it first.
 
 === Transcript
 
@@ -381,6 +385,8 @@ A value is saved when you leave its cell, and there is no save button.
 A save that gets no answer, because the connection is down or the server does not reply, is sent again until the server answers, and the edits made after it wait their turn.
 Meanwhile the save status reads **Offline, retrying**, or **Can't reach the server, retrying** while the browser is online, and closing the tab asks first.
 A save that reached the server before its answer was lost is not saved twice.
+A save made while the document is locked, by another user's script or a service, is not refused.
+The grid reads `This document is being edited right now (by another user or a service). Saving once it is free.`, the edit is saved by itself once the lock is gone, and closing the tab meanwhile asks first.
 
 Two people can have one document open, and neither page shows the other's edits as they are made.
 An edit that reaches the server after someone else changed the document is handled this way:
@@ -709,7 +715,10 @@ The count is checked again when you press **Delete**. If it changed, the dialog 
 Each field records the **language** its values are in, as a writing system tag such as `pmy` or `nl`: a FLEx, ELAN, or CLDF import fills it in from the file, a field made with a tag in parentheses in its name (`Gloss (nl)`) is given that tag, and FLEx and ELAN exports label each field with it.
 A language you clear stays cleared.
 A field with no language goes out under the project's meta language.
+**Tokenize new text**, on by default, splits the text a Baseline save adds into words with the built-in tokenizer, which reads the ignored tokens rule.
+Text in a script written without spaces, such as Chinese or Thai, gets no words.
 Alongside the fields sits the **ignored tokens** rule, usually punctuation, so those tokens carry no word-level annotation and host no morphemes.
+Its **Ignore punctuation and symbols** option takes every punctuation mark and symbol except ∅ and pictographs such as ★.
 Its exceptions are the **characters that behave as letters**: one character each, and each one joins the word around it instead of splitting it, stays on the word's form in the lexicon, and can be annotated.
 An orthography that writes a glottal stop or an ejective with an apostrophe needs that character listed here.
 A change to the rule that hides words already annotated is held with a count, `Not saved. This change hides the annotations on 12 words.`, until you press **Save** beside it, and **Cancel** puts the rule back.
@@ -1153,6 +1162,8 @@ A regular expression is read the same way in Search, in Bulk Edit, in a vocabula
 A Unicode block such as `\p{InArabic}` is refused.
 `(?i)` at the start ignores case in any script.
 A pattern that cannot be read the same way everywhere, such as `[[:alpha:]]`, is refused with a message saying why.
+A pattern is limited to 4096 characters, and each `\b`, `\s`, `\w`, `$` or `.` in it counts as 30 to 230 of them.
+In a replacement in Bulk Edit or a vocabulary's **Replace**, `$1` is the first group and `$&` the whole match.
 
 Results come in two views:
 
@@ -1198,6 +1209,8 @@ Viewing history changes nothing.
 To bring a document back to an earlier state, select that entry and click **Restore**.
 Everything in the document goes back to how it was at that moment: the name, the text, the sentences, words and morphemes, the time alignment, the annotations, the vocabulary links, the metadata, and any layers another app keeps in the same project.
 Before anything is written, a dialog lists what will change, and the restore lands in the history as one more entry, so the state just before it can be restored in turn.
+The dialog lists the changes under **Removed** (made since that moment), **Brought back** (deleted since) and **Changed back**.
+A restore never changes the recording. When it was added or replaced since, the dialog says `The recording is not changed.`, and when it was deleted since, `The deleted recording cannot come back.`
 The message that confirms a restore offers **Undo**, which brings that state back.
 Comments stay attached: whatever the restore brings back keeps the comments it had, and a comment on something the restore removed moves to the Comments tab's Outdated section.
 A field that was deleted after that moment cannot come back, and neither can a link to a vocabulary entry that no longer exists. The dialog says so before you confirm.
@@ -1234,7 +1247,7 @@ Projects are shared by adding members, each with a role:
 A Reader not being able to comment is the one that catches people out, so the role picker on the Access screen says it too, under each level.
 
 Add and manage members under the project's **Settings**, in **Access**.
-Members are found by their email address.
+Members are found by name, matched anywhere in it, or by email address, matched from its start. Type `@` to match anywhere in an email address.
 When you only have Reader access, the editor shows everything, but a banner says so and its controls are inert.
 When a maintainer makes you a Reader, or removes you, while you have a document open, the page turns read-only after your next edit is refused, or within a minute.
 A member who was removed is told `You no longer have access to this project.`
