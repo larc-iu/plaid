@@ -15,24 +15,21 @@
 // built-in tokenizer (the one the Tokenize tab runs, reading the project's
 // ignored tokens). A stretch with a word over any of it is never touched.
 //
-// Left whole: a stretch that is only ignored characters, and every stretch of
-// a spaceless sentence, one whose text (line breaks aside) has letters and no
-// whitespace, such as a line of Chinese. A one-word sentence counts as
-// spaceless too.
+// Left without words: a stretch that is only ignored characters, and a
+// spaceless stretch, one holding a letter of a script written without spaces
+// between words (Han, kana, Thai, Khmer and the like, spacelessScripts.js).
+// The tokenizer cuts at whitespace and punctuation, so in a line that mixes
+// scripts each stretch is judged on its own: `我用 Plaid 写` gives `Plaid`
+// a word, and `我用Plaid写`, one stretch, gets none.
 
-import { cpSlice } from '@larc-iu/plaid-client';
-import { lineSentenceRanges, tokenizeText } from '../utils/tokenizationUtils.js';
+import { tokenizeText } from '../utils/tokenizationUtils.js';
 import { isTokenIgnored } from './igtConfig.js';
+import { isSpacelessScript } from './spacelessScripts.js';
 
 const isSpace = (c) => /\s/u.test(c);
-const SPACE_IN_LINE = /[^\S\n\r\u0085\u2028\u2029]/u;
-const LETTER = /\p{L}/u;
 
-/** A sentence's text, as the spaceless rule reads it. */
-export const isSpaceless = (text) => {
-  const t = String(text ?? '').trim();
-  return LETTER.test(t) && !SPACE_IN_LINE.test(t);
-};
+/** Whether a stretch holds a letter of a script written without spaces. */
+export const isSpaceless = (text) => Array.from(String(text ?? '')).some(isSpacelessScript);
 
 /**
  * The words to create with a save of `gaps` over `base`.
@@ -41,13 +38,11 @@ export const isSpaceless = (text) => {
  * @param {Array<{start:number,end:number,value:string}>} save.gaps - code
  *   points of `base`, in order, not overlapping (plaid-ui's editLog shape)
  * @param {Array<{begin:number,end:number}>} save.words - the words on `base`
- * @param {Array<{begin:number,end:number}>|null} save.sentences - the
- *   sentences on `base`, or null when the save makes them, one a line
  * @param {object|null} save.ignored - the ignored-tokens rule
  * @returns {Array<{begin:number,end:number}>} new words, in code points of
  *   the body the save makes, in order
  */
-export function newTextWords({ base, gaps, words, sentences, ignored }) {
+export function newTextWords({ base, gaps, words, ignored }) {
   const old = Array.from(base ?? '');
   const sorted = [...(gaps || [])].sort((a, b) => a.start - b.start);
   const body = [];
@@ -135,32 +130,12 @@ export function newTextWords({ base, gaps, words, sentences, ignored }) {
   const text = body.join('');
   const found = tokenizeText(text, ignored ?? null, ranges);
 
-  const lines = sentences
-    ? sentenceRanges(sentences, startOf, n)
-    : lineSentenceRanges(text).map(({ begin, end }) => [begin, end]);
-  const spaceless = lines.map(([b, e]) => isSpaceless(cpSlice(text, b, e)));
-  let s = 0;
   const out = [];
   for (const t of found) {
     let has = false;
     for (let x = t.begin; x < t.end && !has; x++) has = typed[x];
-    if (!has || isTokenIgnored(t.text, ignored ?? null)) continue;
-    while (s + 1 < lines.length && lines[s + 1][0] <= t.begin) s++;
-    if (spaceless[s]) continue;
+    if (!has || isTokenIgnored(t.text, ignored ?? null) || isSpaceless(t.text)) continue;
     out.push({ begin: t.begin, end: t.end });
   }
   return out;
-}
-
-// The sentences on the new body, as [begin, end) pairs: each old sentence's
-// start moved by the edit (text typed where two meet goes to the one before),
-// the first at 0.
-function sentenceRanges(sentences, startOf, n) {
-  const starts = [0];
-  for (const s of [...sentences].sort((a, b) => a.begin - b.begin)) {
-    if (s.begin <= 0) continue;
-    const p = startOf(s.begin);
-    if (p > starts[starts.length - 1] && p < n) starts.push(p);
-  }
-  return starts.map((b, i) => [b, i + 1 < starts.length ? starts[i + 1] : n]);
 }

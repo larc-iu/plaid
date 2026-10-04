@@ -97,7 +97,7 @@ describe('a Baseline save with "Tokenize new text"', () => {
     expect(storedWords(server)).toEqual(['uno', 'dos']);
   });
 
-  it('makes no words in a sentence without spaces', async () => {
+  it('makes no words of text in a script written without spaces', async () => {
     const body = '我今天去北京。';
     const server = segmentServer(
       buildRawDoc({ body, words: [], morphemes: [], sentences: [{ id: 's-1', begin: 0, end: 7 }] }),
@@ -117,9 +117,8 @@ describe('a Baseline save with "Tokenize new text"', () => {
     const gaps = [{ start: 3, end: 3, value: ' dos\ntres' }];
     await doc.editBaselineText({ base: 'uno', digest: digestOf('uno'), gaps });
     expect(requests(server)).toEqual([['texts.edit', 'tokens.bulkCreate', 'tokens.bulkCreate']]);
-    // `uno` was there before the save, untyped: it stays as it was. `tres`
-    // is a sentence of its own with no space in it, so spaceless.
-    expect(storedWords(server)).toEqual(['dos']);
+    // `uno` was there before the save, untyped: it stays as it was
+    expect(storedWords(server)).toEqual(['dos', 'tres']);
   });
 
   it('sends a save whose answer was lost again as it was, words and all, under its keys', async () => {

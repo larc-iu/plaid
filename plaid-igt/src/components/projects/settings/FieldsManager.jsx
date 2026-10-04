@@ -713,8 +713,8 @@ export const FieldsManager = ({
               <span>
                 <span className="text-sm font-medium">Tokenize new text</span>
                 <span className="block text-xs text-muted-foreground">
-                  Text saved on the Baseline tab is split into words, except in sentences without
-                  spaces.
+                  Text saved on the Baseline tab is split into words, except in scripts written
+                  without spaces, such as Chinese or Thai.
                 </span>
               </span>
             </label>

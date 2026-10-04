@@ -116,7 +116,7 @@ export const documentMutations = {
     // Minted outside the send, so a resend of it names the same text.
     const newTextId = primaryTextLayer.text?.id ? null : pendingId();
     const words =
-      newTextId && tokenize ? this._newWords('', [{ start: 0, end: 0, value: newBody }], true) : [];
+      newTextId && tokenize ? this._newWords('', [{ start: 0, end: 0, value: newBody }]) : [];
     return this._queueWrite('Failed to save baseline text', async () => {
       const textId = primaryTextLayer.text?.id;
 
@@ -358,23 +358,20 @@ export const documentMutations = {
     const body = applyTextOps(plan.base, gapsToOps(plan.gaps));
     plan.seed =
       cpLength(body) > 0 && (this.layerInfo.sentenceTokenLayer?.tokens || []).length === 0;
-    plan.words = this._newWords(plan.base, plan.gaps, plan.seed);
+    plan.words = this._newWords(plan.base, plan.gaps);
     plan.keys = this._client.keySeed?.() ?? null;
   },
 
   // The words "Tokenize new text" gives a save of `gaps` over `base`, the
   // body stored (newTextWords.js), read off the word layer on screen: none
-  // when the project has it off. `seed`: the save makes the sentences, one a
-  // line.
-  _newWords(base, gaps, seed) {
-    const info = this.layerInfo;
-    const wordLayer = info.primaryTokenLayer;
+  // when the project has it off.
+  _newWords(base, gaps) {
+    const wordLayer = this.layerInfo.primaryTokenLayer;
     if (!wordLayer?.id || !readTokenizeNewText(wordLayer.config)) return [];
     return newTextWords({
       base,
       gaps,
       words: wordLayer.tokens || [],
-      sentences: seed ? null : info.sentenceTokenLayer?.tokens || [],
       ignored: readIgnoredTokens(wordLayer.config),
     });
   },

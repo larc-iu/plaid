@@ -8,13 +8,12 @@ const PUNCT = { type: 'unicodePunctuation', whitelist: [] };
 
 // The new words of typing `value` at `at` (or over [at, end)) in `base`, as
 // their text on the new body.
-function typed(base, at, value, { end = at, words = [], sentences, ignored = PUNCT } = {}) {
+function typed(base, at, value, { end = at, words = [], ignored = PUNCT } = {}) {
   const gaps = [{ start: at, end, value }];
   const out = newTextWords({
     base,
     gaps,
     words,
-    sentences: sentences === undefined ? [{ begin: 0, end: [...base].length }] : sentences,
     ignored,
   });
   const chars = [...base];
@@ -103,18 +102,15 @@ describe('newTextWords', () => {
     ]);
   });
 
-  it('never tokenizes a sentence without spaces', () => {
+  it('never tokenizes a stretch in a script written without spaces', () => {
     const base = '我今天去北京。';
-    expect(typed(base, 7, '\n他明天来，我们走。', { sentences: [{ begin: 0, end: 7 }] })).toEqual(
-      [],
-    );
-    // a new line is a sentence of its own when the save makes the sentences
+    expect(typed(base, 7, '\n他明天来，我们走。')).toEqual([]);
+    expect(typed('', 0, 'ฉันไปบ้าน ສະບາຍດີ ខ្ញុំ これはペンです')).toEqual([]);
     expect(
       newTextWords({
         base: '',
         gaps: [{ start: 0, end: 0, value: '我今天去北京。\nI went home.' }],
         words: [],
-        sentences: null,
         ignored: PUNCT,
       }),
     ).toEqual([
@@ -124,12 +120,25 @@ describe('newTextWords', () => {
     ]);
   });
 
-  it('reads a pasted paragraph of spaceless lines in one sentence as spaceless', () => {
-    expect(isSpaceless('我今天去北京。\n他明天来。\n')).toBe(true);
-    expect(isSpaceless('I went home.\n')).toBe(false);
-    expect(isSpaceless('Hello.\n')).toBe(true);
-    expect(isSpaceless('123 .')).toBe(false);
-    expect(isSpaceless('...')).toBe(false);
+  it('gives a one-word line in a spaced script its word', () => {
+    expect(typed('uno', 3, '\nYes.\ntres')).toEqual(['Yes', 'tres']);
+  });
+
+  it('judges each stretch of a mixed line on its own', () => {
+    expect(typed('', 0, '我用 Plaid 写，hello.')).toEqual(['Plaid', 'hello']);
+    // one stretch holding Han is left whole
+    expect(typed('', 0, '我用Plaid写')).toEqual([]);
+  });
+
+  it('reads the script of the letters, not whitespace or punctuation', () => {
+    expect(isSpaceless('我今天去北京。')).toBe(true);
+    expect(isSpaceless('ペン')).toBe(true);
+    expect(isSpaceless('ກິນ')).toBe(true);
+    expect(isSpaceless('Hello.')).toBe(false);
+    expect(isSpaceless('tres')).toBe(false);
+    expect(isSpaceless('。、・')).toBe(false);
+    expect(isSpaceless('κόσμος привет مرحبا')).toBe(false);
+    expect(isSpaceless('')).toBe(false);
   });
 
   it('measures in code points', () => {
@@ -147,7 +156,6 @@ describe('newTextWords', () => {
         { start: 5, end: 6, value: ' yy ' },
       ],
       words,
-      sentences: [{ begin: 0, end: 8 }],
       ignored: PUNCT,
     });
     const body = 'aa x bb yy cc';
