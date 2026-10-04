@@ -217,10 +217,12 @@ export function readEaf(xmlText, fileName = 'file.eaf') {
 
   // Our own exporter names the second tier of a field name for its scope
   // ("Morpheme Gloss") and says in the HEADER which field it is. Read here so
-  // every later step sees the field's own name.
+  // every later step sees the field's own name. The record is keyed by the
+  // tier name without its speaker suffix, which is the whole TIER_ID when the
+  // tier has no participant (so "Gloss@en" is looked up as written).
   const fieldNames = readElanFieldNames(properties[ELAN_FIELD_NAMES_PROPERTY]);
   for (const tier of tiers) {
-    const field = fieldNames.get(tier.baseName);
+    const field = fieldNames.get(tier.participant ? tier.baseName : tier.id);
     if (field !== undefined) tier.baseName = field;
   }
 

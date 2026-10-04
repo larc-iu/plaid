@@ -7,12 +7,18 @@
 // the field each such tier is: {"Morpheme Gloss": "Gloss"}. The import reads
 // the record, so a round trip keeps both fields' names. Keys are tier names
 // without the speaker suffix.
+//
+// A tier whose name holds "@" is listed even when it is named for its field.
+// ELAN reads `name@speaker` as a speaker suffix, so the import cuts a tier
+// "Gloss@en" written with no speaker to "Gloss" unless the record names it.
 
 export const ELAN_FIELD_NAMES_PROPERTY = 'plaid-igt:fieldNames';
 
 /** The record as written: tier name → field name, or null when there is none. */
 export function writeElanFieldNames(byTierName) {
-  const entries = Object.entries(byTierName).filter(([tier, field]) => tier !== field);
+  const entries = Object.entries(byTierName).filter(
+    ([tier, field]) => tier !== field || tier.includes('@'),
+  );
   return entries.length ? JSON.stringify(Object.fromEntries(entries)) : null;
 }
 

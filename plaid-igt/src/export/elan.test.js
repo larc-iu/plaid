@@ -524,6 +524,41 @@ describe('fields that share a name across scopes', () => {
     expect(tier.baseName).toBe('Gloss');
   });
 
+  it('keeps a field name with "@" whole in a document with no speaker', () => {
+    const doc = makeFixtureDoc({});
+    for (const s of doc.sortedSentences) {
+      for (const w of s.tokens) {
+        w.annotations = { ...w.annotations, Gloss: { value: 'g' }, 'Gloss@en': { value: 'e' } };
+        for (const m of w.morphemes) m.annotations = { 'Gloss@en': { value: 'm' } };
+      }
+    }
+    const opts = {
+      ...SHARED,
+      perSpeaker: false,
+      wordFields: ['Gloss', 'Gloss@en'],
+      morphFields: ['Gloss@en'],
+    };
+    const xml = buildEafDocument(doc, opts, CONTEXT);
+    const dom = parse(xml);
+    expect(tierNamed(dom, 'Gloss@en').getAttribute('PARTICIPANT')).toBeNull();
+    const byId = new Map(readEaf(xml, 'x.eaf').tiers.map((t) => [t.id, t.baseName]));
+    expect(byId.get('Gloss@en')).toBe('Gloss@en');
+    expect(byId.get('Morpheme Gloss@en')).toBe('Gloss@en');
+    expect(byId.get('Gloss')).toBe('Gloss');
+  });
+
+  it('keeps a field name with "@" whole under a speaker', () => {
+    const doc = makeFixtureDoc({});
+    for (const s of doc.sortedSentences) {
+      for (const w of s.tokens) w.annotations = { 'Gloss@en': { value: 'e' } };
+    }
+    doc.alignmentTokens = [makeAlignmentToken('a1', 0, 14, 0.5, 2, 'Ana')];
+    const opts = { ...SHARED, perSpeaker: true, wordFields: ['Gloss@en'], morphFields: [] };
+    const xml = buildEafDocument(doc, opts, CONTEXT);
+    const tier = readEaf(xml, 'x.eaf').tiers.find((t) => t.id === 'Gloss@en@Ana');
+    expect(tier.baseName).toBe('Gloss@en');
+  });
+
   it('writes no field-name record when every tier is named for its field', () => {
     expect(fieldNamesOf(build(makeFixtureDoc({}), OPTIONS))).toBeNull();
   });
