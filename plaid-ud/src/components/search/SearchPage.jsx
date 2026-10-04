@@ -185,6 +185,13 @@ export const SearchPage = () => {
       if (isRewrite) await runPreview();
       else await runSearch();
     } catch (err) {
+      // The last search's results and notes are not this one's. They stay on
+      // screen while it runs and go with its failure.
+      setGroups([]);
+      setCount(0);
+      setTruncated(false);
+      setWarnings([]);
+      setPatternParts(null);
       reportError(err);
     } finally {
       setProgress('');
