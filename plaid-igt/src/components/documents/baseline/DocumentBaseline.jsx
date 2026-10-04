@@ -95,6 +95,7 @@ export function DocumentBaseline() {
                   {...ops.editLogHandlers}
                   onChange={handleTextChange}
                   placeholder="Type or paste the text"
+                  readOnly={readOnly}
                   spellCheck={false}
                   rows={10}
                   className="resize-none overflow-auto font-text"
@@ -127,7 +128,7 @@ export function DocumentBaseline() {
                 <Button variant="outline" onClick={ops.handleCancel} disabled={ops.saving}>
                   <X className="h-4 w-4" /> Cancel
                 </Button>
-                <Button onClick={ops.handleSave} disabled={ops.saving}>
+                <Button onClick={ops.handleSave} disabled={ops.saving || readOnly}>
                   <Save className="h-4 w-4" /> {ops.saving ? 'Saving…' : 'Save changes'}
                 </Button>
               </div>
