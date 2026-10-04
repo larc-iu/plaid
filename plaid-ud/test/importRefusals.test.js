@@ -113,6 +113,37 @@ test('a file with both faults says each once', async () => {
   ]);
 });
 
+// A HEAD of `_` names no head. Read as `0`, it made the row a root.
+test('a HEAD of _ beside a DEPREL is dropped aloud, not imported as a root', async () => {
+  const { warnings, basic, enhanced } = await importOf(
+    [
+      '# text = a b c',
+      '1\ta\t_\tX\t_\t_\t0\troot\t0:root\t_',
+      '2\tb\t_\tX\t_\t_\t_\tdep\t1:dep\t_',
+      '3\tc\t_\tX\t_\t_\t_\t_\t_\t_',
+    ],
+    { enhanced: true },
+  );
+  assert.deepEqual(warnings, ['1 dependency relation dropped: no head is given.']);
+  assert.equal(basic.length, 1);
+  assert.equal(basic[0].value, 'root');
+  // DEPS still states its own edge, which the tree no longer has.
+  assert.deepEqual(
+    enhanced.map((op) => op.value),
+    ['dep'],
+  );
+});
+
+test('an unannotated file, HEAD and DEPREL both _, says nothing', async () => {
+  const { warnings, basic } = await importOf([
+    '# text = a b',
+    '1\ta\t_\t_\t_\t_\t_\t_\t_\t_',
+    '2\tb\t_\t_\t_\t_\t_\t_\t_\t_',
+  ]);
+  assert.deepEqual(warnings, []);
+  assert.deepEqual(basic, []);
+});
+
 // H33-UD polish: a file over the server's cap on a request read "too large
 // to save in one request", which is not what the person did.
 test('an import refused as too large says so in the words of an import', async () => {

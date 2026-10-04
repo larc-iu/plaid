@@ -171,9 +171,10 @@ export function parseCoNLLU(text) {
     // Parse features into array
     const featuresArray = feats === '_' ? [] : feats.split('|');
 
-    // Parse HEAD (0 means root)
-    const headNum = head === '_' ? 0 : parseInt(head);
-    if (isNaN(headNum) || headNum < 0) {
+    // Parse HEAD (0 means root). `_` names no head at all, so the row has no
+    // relation, whatever its DEPREL says: null, never 0.
+    const headNum = head === '_' ? null : parseInt(head);
+    if (headNum !== null && (isNaN(headNum) || headNum < 0)) {
       throw new Error(`Invalid HEAD value: ${head}`);
     }
 

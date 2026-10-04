@@ -105,7 +105,7 @@ export function rawDocFromConllu(conlluText, name = 'doc', { enhanced = false } 
       w.morphemes.forEach((m) => {
         const row = m.row;
         const targetId = lemmaSpanIdByRow.get(row.id);
-        if (!row.deprel || !targetId) return;
+        if (!row.deprel || !targetId || row.head === row.id) return;
         if (row.head === 0) {
           relations.push({ id: id('rel'), source: targetId, target: targetId, value: row.deprel });
         } else if (row.head > 0) {
@@ -130,7 +130,8 @@ export function rawDocFromConllu(conlluText, name = 'doc', { enhanced = false } 
           const targetId = lemmaSpanIdByRow.get(row.id);
           if (!targetId) return;
           const plan = enhancedPlans[sentIdx][row.id - 1];
-          const spanOf = (head) => (head === 0 ? targetId : lemmaSpanIdByRow.get(head));
+          const spanOf = (head) =>
+            head === row.id ? null : head === 0 ? targetId : lemmaSpanIdByRow.get(head);
           const basicSource = row.deprel ? spanOf(row.head) : null;
           if (plan.suppress && basicSource) {
             enhancedRelations.push({

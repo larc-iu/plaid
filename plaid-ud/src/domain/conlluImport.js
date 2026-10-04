@@ -12,6 +12,7 @@ import { humanizeError, statusOf } from '../../../plaid-ui/src/lib/errors.js';
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const HEADLESS = 'the head is not a row of the sentence.';
 const SELF_HEAD = 'the head is the word itself.';
+const NO_HEAD = 'no head is given.';
 // Over the server's cap on a request's body. The person imported a file, so
 // it is said in those words rather than the general wording for a 413.
 const TOO_LARGE_TO_IMPORT = 'This file is too large to import. Split it into shorter documents.';
@@ -305,16 +306,26 @@ export async function importConlluDocument(
     // Dependency relations, hung on the lemma spans by their minted ids.
     const relationOps = [];
     const enhancedOps = [];
-    // Heads the file names that cannot be written, dropped with a warning:
-    // one that is no row of the sentence, and one that is the row itself
-    // (which would read as a root, the way a root is stored).
-    const dropped = { basicHeadless: 0, basicSelf: 0, enhancedHeadless: 0, enhancedSelf: 0 };
+    // Heads that cannot be written, dropped with a warning: a HEAD of `_`
+    // beside a DEPREL, one that is no row of the sentence, and one that is
+    // the row itself (which would read as a root, the way a root is stored).
+    const dropped = {
+      basicNoHead: 0,
+      basicHeadless: 0,
+      basicSelf: 0,
+      enhancedHeadless: 0,
+      enhancedSelf: 0,
+    };
     if (relationLayer) {
       parsedData.sentences.forEach((sentence, sentIdx) => {
         const ids = lemmaSpanIds[sentIdx];
         sentence.tokens.forEach((token, tokIdx) => {
           const targetId = ids[tokIdx];
           if (!token.deprel || !targetId) return;
+          if (token.head === null) {
+            dropped.basicNoHead += 1;
+            return;
+          }
           if (token.head === token.id) {
             dropped.basicSelf += 1;
             return;
@@ -375,6 +386,7 @@ export async function importConlluDocument(
       });
     }
     const headWarnings = [
+      [dropped.basicNoHead, 'dependency relation', 'dependency relations', NO_HEAD],
       [dropped.basicHeadless, 'dependency relation', 'dependency relations', HEADLESS],
       [dropped.basicSelf, 'dependency relation', 'dependency relations', SELF_HEAD],
       [dropped.enhancedHeadless, 'enhanced dependency', 'enhanced dependencies', HEADLESS],
