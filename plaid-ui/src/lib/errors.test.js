@@ -321,7 +321,7 @@ describe('a request too large for the server', () => {
       { status: 413, method: 'POST' },
     );
     expect(humanizeError(err, 'Failed to import.')).toBe(
-      'This document is too large to save in one request. Split it into shorter documents.',
+      'This document is too large to save. Split it into shorter documents.',
     );
   });
 });
