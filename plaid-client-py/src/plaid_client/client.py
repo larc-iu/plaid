@@ -1034,7 +1034,7 @@ class UsersResource(_Resource):
         full flat list.
 
         Args:
-            q: Filter to users whose display name or email contains this text (case-insensitive)
+            q: Filter to users whose display name contains this text, or whose email starts with it (contains it, when the text has an @), case-insensitive
         """
         return list_all(self._client, '/api/v1/users',
                         query={'q': q})
@@ -1044,7 +1044,7 @@ class UsersResource(_Resource):
         """List one page of users (optionally filtered by ``q``).
 
         Args:
-            q: Filter to users whose display name or email contains this text (case-insensitive)
+            q: Filter to users whose display name contains this text, or whose email starts with it (contains it, when the text has an @), case-insensitive
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
         """
@@ -1055,7 +1055,7 @@ class UsersResource(_Resource):
         """Iterate over pages of users, yielding each page's entries list.
 
         Args:
-            q: Filter to users whose display name or email contains this text (case-insensitive)
+            q: Filter to users whose display name contains this text, or whose email starts with it (contains it, when the text has an @), case-insensitive
             page_size: Page size (1..1000)
         """
         return iter_pages(self._client, '/api/v1/users',

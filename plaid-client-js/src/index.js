@@ -1188,14 +1188,14 @@ class PlaidClient {
        * List (or search) users. Transparently follows pagination cursors and
        * returns the full flat array. Admin-or-maintainer only.
        * @param {object} [opts]
-       * @param {string} [opts.q] - Filter to users whose display name or email contains this text (case-insensitive)
+       * @param {string} [opts.q] - Filter to users whose display name contains this text, or whose email starts with it (contains it, when the text has an @), case-insensitive
        */
       list: ({ q } = {}) =>
         listAll(this, "/api/v1/users", { query: { q } }),
       /**
        * Fetch a single page of users (optionally filtered by `q`).
        * @param {object} [opts]
-       * @param {string} [opts.q] - Filter to users whose display name or email contains this text (case-insensitive)
+       * @param {string} [opts.q] - Filter to users whose display name contains this text, or whose email starts with it (contains it, when the text has an @), case-insensitive
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
        * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
@@ -1209,7 +1209,7 @@ class PlaidClient {
       /**
        * Async-iterate users page by page; yields each page's entries array.
        * @param {object} [opts]
-       * @param {string} [opts.q] - Filter to users whose display name or email contains this text (case-insensitive)
+       * @param {string} [opts.q] - Filter to users whose display name contains this text, or whose email starts with it (contains it, when the text has an @), case-insensitive
        * @param {number} [opts.pageSize] - Per-request page size
        * @returns {AsyncGenerator<Array>}
        */

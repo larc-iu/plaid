@@ -303,6 +303,26 @@
       (is (contains? ids "cdarwin@example.com"))
       (is (not (contains? ids "bob@example.com")))))
 
+  ;; H36: "c" matched every account by its ".com", and so added the wrong one.
+  (testing "?q= matches an email only from its start, or anywhere with an @ in it"
+    (rest-handler (-> (admin-request :post "/api/v1/users")
+                      (mock/json-body {:email "reader_1@x.com" :password "password1"
+                                       :is-admin false :display-name "Rea Der"})))
+    (let [ids-for (fn [q] (->> (rest-handler (admin-request :get (str "/api/v1/users?q=" q)))
+                               parse-response-body :entries (map :user/id) set))]
+      (is (not (contains? (ids-for "co") "alice@example.com")) "not by its .com")
+      (is (not (contains? (ids-for "co") "bob@example.com")))
+      (is (not (contains? (ids-for "c") "bob@example.com")))
+      (is (contains? (ids-for "c") "cdarwin@example.com") "by the start of the email and the name")
+      (is (contains? (ids-for "ali") "alice@example.com") "by the start of the email")
+      (is (not (contains? (ids-for "example") "alice@example.com")) "not by the middle")
+      (is (contains? (ids-for "%40example") "alice@example.com") "anywhere with an @")
+      (is (contains? (ids-for "e%40example.com") "alice@example.com"))
+      (is (contains? (ids-for "der") "reader_1@x.com") "by the name, anywhere in it")
+      (is (contains? (ids-for "reader_") "reader_1@x.com"))
+      (is (not (contains? (ids-for "readerx") "reader_1@x.com")) "_ is not a wildcard")
+      (is (empty? (ids-for "%25")) "% is not a wildcard")))
+
   (testing "a non-admin, non-maintainer may NOT list users (403)"
     (let [resp (rest-handler (user1-request :get "/api/v1/users"))]
       (is (= 403 (:status resp)))))

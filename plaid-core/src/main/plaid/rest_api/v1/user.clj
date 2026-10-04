@@ -41,7 +41,8 @@
            ;; open to project AND vocab MAINTAINERS, who need to find users to
            ;; grant project/vocab access — see `wrap-user-directory-access`. Ordinary
            ;; readers/writers still get 403. Optional `?q=` filters to users
-           ;; whose display name OR email contains that text. Returns the
+           ;; whose display name contains that text or whose email starts with
+           ;; it (contains it, when the text has an @). Returns the
            ;; uniform {:entries :next-cursor} envelope (default page 100, max
            ;; 1000).
            :middleware [pra/wrap-user-directory-access]

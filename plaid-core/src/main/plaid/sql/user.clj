@@ -86,10 +86,13 @@
   is the user's email address — rides along as the tiebreaker that makes
   the order total. Index: `idx_users_display_name_id`.
 
-  An optional `:q` filters to users whose display name OR email contains
-  that text (case-insensitive substring). Both, because the
+  An optional `:q` filters to users whose display name contains that
+  text, or whose email starts with it, or, when the text has an `@` in
+  it, whose email contains it (all case-insensitive). Both, because the
   project-permissions UI is used to find a colleague by whichever of the
-  two the searcher happens to know."
+  two the searcher happens to know. Not any part of the email: a one-letter
+  search such as \"c\" matched every account by its \".com\". The text is
+  matched as typed, so `_` and `%` in it are not wildcards."
   ([db]
    (->> (psc/q db {:select [:*] :from [:users] :order-by [:display_name :id]})
         (map row->user)
@@ -103,10 +106,12 @@
                                                                (select-keys public-keys)))}
                              (not (clojure.string/blank? q))
                              (assoc :base-where
-                                    (let [pat (str "%" (clojure.string/lower-case q) "%")]
+                                    (let [q (clojure.string/lower-case q)]
                                       [:or
-                                       [:like [:lower :display_name] pat]
-                                       [:like [:lower :id] pat]]))))))
+                                       [:> [:instr [:lower :display_name] q] 0]
+                                       (if (clojure.string/includes? q "@")
+                                         [:> [:instr [:lower :id] q] 0]
+                                         [:= [:instr [:lower :id] q] 1])]))))))
 
 (defn get-avatar
   "Fetch `id`'s stored profile picture as
