@@ -583,6 +583,18 @@ export class ConlluDocument extends DocumentModel {
     return { annotations: loss.annotations, links: loss.links };
   }
 
+  // What Parse takes the same way, when it makes the sentences: a parser
+  // keeps the sentences and words a document has, and tokenizes from scratch
+  // only when it lacks either. Its breaks are its own, so this is the most
+  // they can take. `{ annotations, links }`.
+  parseLoss() {
+    const { sentenceTokenLayer, wordTokenLayer } = this.layerInfo;
+    if (sentenceTokenLayer?.tokens?.length && wordTokenLayer?.tokens?.length) {
+      return { annotations: 0, links: 0 };
+    }
+    return this.tokenizeLoss(null);
+  }
+
   // Clear all tokens by deleting the sentence (root) tokens, which cascades
   // to words, morphemes, spans and relations server-side, another app's
   // layers nested under them included. Locally the whole cascade goes at once.

@@ -33,6 +33,10 @@ vi.mock('sonner', () => {
   return { toast };
 });
 
+// The question a parse that makes sentences asks first (REV-N5-CORE F3).
+const confirm = vi.hoisted(() => vi.fn(async () => true));
+vi.mock('@ui/components/shared/ConfirmProvider', () => ({ useConfirm: () => confirm }));
+
 const { useEditorServices } = await import('./useEditorServices.js');
 
 const PROJECT_ID = 'p1';
@@ -140,6 +144,7 @@ const makeDoc = (over = {}) => ({
     seq.push('doc:tokenize');
     return true;
   }),
+  parseLoss: vi.fn(() => ({ annotations: 0, links: 0 })),
   ...over,
 });
 
@@ -262,6 +267,43 @@ describe('a parse run that finishes', () => {
     expect(sent[0].params.documentId).toBe(DOC_ID);
     // And the project's language still seeds an argument the app can answer.
     expect(sent[0].params.language).toBe('de');
+    await view.unmount();
+  });
+});
+
+// A parse that tokenizes from scratch makes its own sentences, which can cut
+// relations another layer keeps inside one sentence.
+describe('a parse that makes the sentences', () => {
+  it('runs at once when they can take nothing', async () => {
+    confirm.mockClear();
+    const view = await mount({
+      client: fakeClient({ services: [parseService()], answer: () => ({ parsedSentences: 3 }) }),
+    });
+    await view.step(() => view.api().parse.start());
+    expect(confirm).not.toHaveBeenCalled();
+    expect(sent).toHaveLength(1);
+    await view.unmount();
+  });
+
+  it('asks first with the most they can take, and a No sends nothing', async () => {
+    confirm.mockClear();
+    confirm.mockResolvedValueOnce(false);
+    const doc = makeDoc({ parseLoss: vi.fn(() => ({ annotations: 4, links: 0 })) });
+    const view = await mount({
+      doc,
+      client: fakeClient({ services: [parseService()], answer: () => ({ parsedSentences: 3 }) }),
+    });
+    await view.step(() => view.api().parse.start());
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm.mock.calls[0][0]).toMatchObject({
+      title: 'Parse?',
+      description: 'Deletes up to 4 annotations.',
+      confirmLabel: 'Parse',
+    });
+    expect(sent).toHaveLength(0);
+    expect(acquireWriteLock).not.toHaveBeenCalled();
+    await view.step(() => view.api().parse.start());
+    expect(sent).toHaveLength(1);
     await view.unmount();
   });
 });

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { TASKS } from '@larc-iu/plaid-client';
 import { useServiceRequest } from '@ui/hooks/useServiceRequest.js';
+import { useConfirm } from '@ui/components/shared/ConfirmProvider';
+import { lossPhrase } from '@ui/domain/annotationLoss.js';
 import { useServiceRun } from '@ui/hooks/useServiceRun.js';
 import { useRunProgress } from '@ui/hooks/useRunProgress.js';
 import { notifySuccess } from '../../../utils/feedback.jsx';
@@ -35,6 +37,7 @@ const TOKENIZE_BUILTINS = [
 // the Annotate toolbar's button are the same run, not two.
 export const useEditorServices = ({ client, projectId, doc, project, acquireWriteLock }) => {
   const request = useServiceRequest(client);
+  const confirm = useConfirm();
   const { isDiscovering, discoverServices, cancelRequest, isProcessing } = request;
 
   useEffect(() => {
@@ -129,12 +132,32 @@ export const useEditorServices = ({ client, projectId, doc, project, acquireWrit
     [runBuiltinTokenize, tokenize, doc],
   );
 
+  // A parse that makes the sentences asks first when they can take relations
+  // another layer keeps inside one sentence, as Tokenize does (REV-N5-CORE
+  // F3). Both toolbars start the run here, so both ask.
+  const startParse = useCallback(
+    async (...args) => {
+      const loss = lossPhrase(doc?.parseLoss() ?? {});
+      if (loss) {
+        const ok = await confirm({
+          title: 'Parse?',
+          description: `Deletes up to ${loss}.`,
+          confirmLabel: 'Parse',
+          destructive: true,
+        });
+        if (!ok) return;
+      }
+      return parse.start(...args);
+    },
+    [doc, confirm, parse],
+  );
+
   return {
     isDiscovering,
     isProcessing,
     cancelRequest,
     discoverServices: useCallback(() => discoverServices(projectId), [discoverServices, projectId]),
-    parse,
+    parse: { ...parse, start: startParse },
     // The banner watches whichever run is out: the service's, or the builtin's.
     // A run in flight keeps the runner it started with, whatever the service
     // list says now: a tokenizer coming online (or going away) mid-run must not

@@ -114,3 +114,13 @@ test("Tokenize counts the relations its new sentences cut, and none of UD's own"
   // A service's breaks are not known: the most they can take.
   assert.deepEqual(doc.tokenizeLoss(null), { annotations: 1, links: 0 });
 });
+
+// A parse keeps the sentences and words a document has, and makes its own
+// only when it lacks them. Then it counts like a tokenizer service.
+test('Parse counts only when it makes the sentences', () => {
+  const { doc } = open();
+  assert.deepEqual(doc.parseLoss(), { annotations: 0, links: 0 });
+  doc.layerInfo.sentenceTokenLayer.tokens = [];
+  doc.layerInfo.wordTokenLayer.tokens = [];
+  assert.deepEqual(doc.parseLoss(), { annotations: 1, links: 0 });
+});
