@@ -3730,10 +3730,10 @@ class PlaidClient {
    * matching end, and the outer numbering resumes after it.
    *
    * @param {string} message - Human label for the operation.
-   * @param {object} [opts] - Optional `{ id, kind, ref, keys, minted }`. `id` adopts an existing group id instead of minting one (a service joining the requester's operation; `requestService` propagates an open operation to the service automatically). Python names it `group_id`. `kind`, `ref` and `keys` are described above. `minted` is the ids the operation mints for what it creates: a create refused 409 id-taken for one of them was made by an earlier send of the operation, and answers as made.
+   * @param {object} [opts] - Optional `{ groupId, kind, ref, keys, minted }`. `groupId` adopts an existing group id instead of minting one (a service joining the requester's operation; `requestService` propagates an open operation to the service automatically). Python's is `group_id`. `kind`, `ref` and `keys` are described above. `minted` is the ids the operation mints for what it creates: a create refused 409 id-taken for one of them was made by an earlier send of the operation, and answers as made.
    * @returns {string} The operation's group id.
    */
-  beginOperation(message, { id, kind, ref, keys, minted } = {}) {
+  beginOperation(message, { groupId, kind, ref, keys, minted } = {}) {
     if (kind != null && !OPERATION_KINDS.includes(String(kind))) {
       throw new Error(
         `Unknown operation kind "${kind}". It is one of: ${OPERATION_KINDS.join(", ")}.`,
@@ -3762,7 +3762,7 @@ class PlaidClient {
       return open.id;
     }
     this.operationGroup = {
-      id: id || crypto.randomUUID(),
+      id: groupId ? String(groupId) : crypto.randomUUID(),
       message: message == null ? null : String(message),
       kind: kind == null ? null : String(kind),
       ref: ref == null ? null : String(ref),
@@ -3836,11 +3836,11 @@ class PlaidClient {
    *
    * @param {string} message - Human label for the operation.
    * @param {function} fn - The work to run; receives `setMessage(msg)` to refine the label once the outcome is known.
-   * @param {object} [opts] - Optional `{ kind, ref, id, keys, minted }`, as for beginOperation. `kind` is one of `assistant-plan`, `service-run`, `import`, `bulk-edit`, `guess-adoption`, `repair` or `review`, and any other throws before `fn` runs.
+   * @param {object} [opts] - Optional `{ kind, ref, groupId, keys, minted }`, as for beginOperation. `kind` is one of `assistant-plan`, `service-run`, `import`, `bulk-edit`, `guess-adoption`, `repair` or `review`, and any other throws before `fn` runs.
    * @returns {Promise<any>} Whatever `fn` resolves to.
    */
-  async withOperation(message, fn, { kind, ref, id, keys, minted } = {}) {
-    this.beginOperation(message, { kind, ref, id, keys, minted });
+  async withOperation(message, fn, { kind, ref, groupId, keys, minted } = {}) {
+    this.beginOperation(message, { kind, ref, groupId, keys, minted });
     const group = this.operationGroup;
     // The key frame this call opened is ended by this call, whatever else
     // began or ended meanwhile, not by whichever end comes at its depth.

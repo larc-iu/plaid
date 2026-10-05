@@ -273,7 +273,7 @@ test('group params coexist with strict-mode document-version and a per-call audi
 
 test('beginOperation can adopt an existing group id (service joining the requester)', () => {
   const client = makeClient();
-  const id = client.beginOperation('outer label', { id: '11111111-2222-4333-8444-555555555555' });
+  const id = client.beginOperation('outer label', { groupId: '11111111-2222-4333-8444-555555555555' });
   assert.strictEqual(id, '11111111-2222-4333-8444-555555555555');
   assert.ok(queue(client).every(p => groupIdOf(p) === id));
 });

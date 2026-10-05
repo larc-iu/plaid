@@ -1659,7 +1659,7 @@ export declare class PlaidClient {
   } | null;
   beginOperation(
     message: string,
-    opts?: { id?: string; kind?: OperationKind; ref?: string; keys?: KeySeed; minted?: Set<string> },
+    opts?: { groupId?: string; kind?: OperationKind; ref?: string; keys?: KeySeed; minted?: Set<string> },
   ): string;
   /** A seed for the Idempotency-Keys of an operation that may be run again (see beginOperation's `keys`). */
   keySeed(): KeySeed;
@@ -1667,7 +1667,7 @@ export declare class PlaidClient {
   withOperation<T>(
     message: string,
     fn: (setMessage: (msg: string) => void) => Promise<T> | T,
-    opts?: { kind?: OperationKind; ref?: string; id?: string; keys?: KeySeed; minted?: Set<string> },
+    opts?: { kind?: OperationKind; ref?: string; groupId?: string; keys?: KeySeed; minted?: Set<string> },
   ): Promise<T>;
   operationGroups: OperationGroupsBundle;
 

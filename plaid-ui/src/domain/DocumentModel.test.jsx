@@ -261,7 +261,7 @@ describe('the kind of operation a document writes under', () => {
       ['Rename', undefined],
     ]);
     // Each write is its own operation, whose id every attempt of it joins.
-    expect(opts[0][1].id).toMatch(/^[0-9a-f-]{36}$/);
-    expect(opts[1][1].id).not.toBe(opts[0][1].id);
+    expect(opts[0][1].groupId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(opts[1][1].groupId).not.toBe(opts[0][1].groupId);
   });
 });

@@ -224,7 +224,7 @@ test("inside an operation with keys, the nth write takes <seed>.<n> and its firs
         });
         await client.spans.update("s2", "B");
       },
-      { keys, id },
+      { keys, groupId: id },
     );
   try {
     await run();

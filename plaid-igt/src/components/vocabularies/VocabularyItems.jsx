@@ -575,7 +575,7 @@ export const VocabularyItems = ({
     failure,
     { refused, answered, resync: reread = resync, minted } = {},
   ) => {
-    const once = { id: uuidv7(), keys: client.keySeed?.(), ...(minted ? { minted } : {}) };
+    const once = { groupId: uuidv7(), keys: client.keySeed?.(), ...(minted ? { minted } : {}) };
     return writes.push(() => client.withOperation(label, write, once), {
       refused: async (err) => {
         console.error(`${label}:`, err);
@@ -594,7 +594,7 @@ export const VocabularyItems = ({
   // ref (see the client's beginOperation).
   const sendPlanned = async (label, write, tags) => {
     let error = null;
-    const once = { ...tags, id: uuidv7(), keys: client.keySeed?.() };
+    const once = { ...tags, groupId: uuidv7(), keys: client.keySeed?.() };
     const landed = await writes.push(() => client.withOperation(label, write, once), {
       refused: (err) => {
         error = err;

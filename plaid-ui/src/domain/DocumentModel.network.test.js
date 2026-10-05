@@ -39,11 +39,11 @@ function fakeServer() {
     strictModeDocumentId: 'd1',
     documentVersions: { d1: 1 },
     keySeed: () => ({ seed: `seed${++seeds}`, stamps: new Map() }),
-    withOperation: async (label, fn, { id, keys } = {}) => {
+    withOperation: async (label, fn, { groupId, keys } = {}) => {
       const outermost = frames.length === 0;
       if (outermost) {
         server.labels.push(label);
-        server.groups.push(id);
+        server.groups.push(groupId);
       }
       const frame = outermost || keys ? { keys, n: 0 } : frames.at(-1);
       frames.push(frame);

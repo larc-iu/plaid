@@ -777,7 +777,7 @@ export class DocumentModel {
       this._client.withOperation(operation, send, {
         kind,
         ref,
-        id: unsent.groupId,
+        groupId: unsent.groupId,
         keys: unsent.keys,
         // A create refused 409 id-taken for a row this edit made was made by
         // an earlier send of it, and answers as made (the client).

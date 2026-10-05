@@ -14,7 +14,7 @@ import { fieldPruneWrites } from '@/domain/vocabFieldPrune';
  * queue's (`refused`, `resync`, `shown`). Resolves to whether it landed.
  */
 export const sendKeyed = (queue, client, label, write, opts = {}) => {
-  const once = { id: uuidv7(), keys: client.keySeed?.() };
+  const once = { groupId: uuidv7(), keys: client.keySeed?.() };
   return queue.push(() => client.withOperation(label, write, once), {
     ...opts,
     resendWhenBack: isUnknownOutcome,
@@ -34,7 +34,7 @@ export const sendKeyed = (queue, client, label, write, opts = {}) => {
  */
 export const sendFieldPrune = ({ queue, client, vocabularyId, after, label, refused }) => {
   let updates = null;
-  const once = { id: uuidv7(), keys: client.keySeed?.() };
+  const once = { groupId: uuidv7(), keys: client.keySeed?.() };
   return queue.push(
     async () => {
       if (!updates) {
