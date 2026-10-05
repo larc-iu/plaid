@@ -145,6 +145,25 @@ describe('the reconcile gate', () => {
     await view.unmount();
   });
 
+  it('does not repair the live document again on the way back from a snapshot', async () => {
+    // The rail shows a snapshot as a second document and then the live one
+    // again. A second pass over the live one is planned from what it held when
+    // it loaded, while a restore and the reload after it are under way, and
+    // its writes come back 409.
+    const live = makeDoc();
+    const snapshot = makeDoc({}, '2026-09-01T00:00:00Z');
+    view = await renderComponent(<Probe {...base} doc={live} />);
+    await settle();
+    await view.rerender(<Probe {...base} doc={snapshot} asOf="2026-09-01T00:00:00Z" />);
+    await settle();
+    await view.rerender(<Probe {...base} doc={live} />);
+    await settle();
+    expect(live.reconcileOnOpen).toHaveBeenCalledTimes(1);
+    expect(snapshot.reconcileOnOpen).not.toHaveBeenCalled();
+    expect(api.reconciling).toBe(false);
+    await view.unmount();
+  });
+
   it('names the cause when a repair fails', async () => {
     const doc = makeDoc({ error: new Error('the span layer is gone') });
     view = await renderComponent(<Probe {...base} doc={doc} />);

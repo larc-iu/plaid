@@ -147,6 +147,8 @@ export function useReconcileOnOpen({ doc, asOf, canWrite, enterStrictMode, onFai
     if (reconciledDocRef.current === doc) return undefined;
     reconciledDocRef.current = doc;
     let cancelled = false;
+    // Whether this pass ran to its end. Only a pass cut short is run again.
+    let finished = false;
     setReconciling(true);
     const repair = () =>
       withRepairTimeout(doc.client, repairTimeout(doc), () => doc.reconcileOnOpen());
@@ -206,7 +208,10 @@ export function useReconcileOnOpen({ doc, asOf, canWrite, enterStrictMode, onFai
         // leaves the gate down: the run that replaces it re-arms it
         // synchronously, so clearing it here would flash the editor open in
         // between (StrictMode's double invoke does exactly this in dev).
-        if (!cancelled) setReconciling(false);
+        if (!cancelled) {
+          finished = true;
+          setReconciling(false);
+        }
       }
     })();
     return () => {
@@ -214,8 +219,11 @@ export function useReconcileOnOpen({ doc, asOf, canWrite, enterStrictMode, onFai
       // If this pass was cancelled before it could report (StrictMode's dev
       // double invoke, a quick tab switch), let the next run happen, or the
       // integrity findings are never shown. reconcileOnOpen itself is
-      // idempotent, so re-running is cheap.
-      if (reconciledDocRef.current === doc) reconciledDocRef.current = null;
+      // idempotent, so re-running is cheap. A pass that ended is not run
+      // again when the screen comes back to this document from a snapshot:
+      // it would be planned from what the document held when it loaded,
+      // while a restore's reload is under way, and its writes refused (409).
+      if (!finished && reconciledDocRef.current === doc) reconciledDocRef.current = null;
     };
   }, [doc, asOf, canWrite]);
 
