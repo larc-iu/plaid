@@ -50,7 +50,8 @@ const Row = ({ line }) => {
 };
 
 export const ConlluPreview = ({ content }) => {
-  const lines = content.split('\n');
+  // The file ends with a newline, which ends its last row and starts none.
+  const lines = content.replace(/\n$/, '').split('\n');
   return (
     // Focusable so the sideways scroll can be reached from the keyboard, and a
     // region so the name it is given is announced (a bare `pre` carries none).

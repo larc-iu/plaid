@@ -26,7 +26,8 @@ export const quote = (text) =>
  * is, an escape pair stays a pair, a bare quote becomes `\"` and a newline
  * `\n` (a raw one ends the literal). A lone backslash at the end has nothing
  * to escape and no raw spelling, so it is written as the regex for a
- * backslash. */
+ * backslash. Inside `\Q…\E` neither `\"` nor a newline has a raw spelling:
+ * they read back as a bare quote and as the two characters `\n`. */
 export const regexLiteral = (regex) => {
   const s = String(regex);
   let out = '';

@@ -80,4 +80,15 @@ describe('a comment with no key', () => {
     expect(last.querySelector('bdi').textContent).toBe('שלום');
     await unmount();
   });
+
+  // REV-R4-UD R5: an export ends its last sentence with a blank line and the
+  // file with a newline. The blank line is a row, the final newline is not.
+  it("shows the last sentence's blank line once, and no row for the final newline", async () => {
+    const view = await renderComponent(<ConlluPreview content={`${FILE}\n\n`} />);
+    const rows = all(view.container, '.conllu-row');
+    expect(rows.map((r) => r.textContent).join('\n')).toBe(`${FILE}\n`);
+    expect(rows.at(-1).textContent).toBe('');
+    expect(rows.at(-2).textContent).toBe('#שלום');
+    await view.unmount();
+  });
 });
