@@ -34,6 +34,24 @@ const wordsOf = (text) => {
 };
 
 describe('newTextWords', () => {
+  it('reads a selection typed over and a line pasted over as the server does, trimmed of what they share', () => {
+    // L1-TEXT-2: the gaps as typed repeat the old text at their ends.
+    const line = 'One two three four.';
+    const words = wordsOf('One two three four');
+    expect(typed(line, 0, 'One two and three four.', { end: line.length, words })).toEqual(['and']);
+    expect(typed(line, 4, 'two plus', { end: 7, words })).toEqual(['plus']);
+    expect(
+      typed('alpha beta gam ma delta.', 0, 'alpha beta extra gam ma delta.', {
+        end: 24,
+        words: wordsOf('alpha beta gam ma delta'),
+      }),
+    ).toEqual(['extra']);
+    // A gap that changes nothing makes nothing, and one that types inside a
+    // word it keeps still leaves the letters to the word.
+    expect(typed(line, 4, 'two', { end: 7, words })).toEqual([]);
+    expect(typed(line, 4, 'twoo', { end: 7, words })).toEqual([]);
+  });
+
   it('splits a new sentence typed with spaces into words, leaving punctuation out', () => {
     const base = 'the cat.';
     expect(typed(base, 8, '\nA dog ran, fast.', { words: wordsOf('the cat') })).toEqual([

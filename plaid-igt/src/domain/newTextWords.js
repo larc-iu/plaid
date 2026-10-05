@@ -11,6 +11,11 @@
 //   whole (the server may grow, keep or read the word over any of it);
 // - the text typed against a word's edge with no whitespace between, which
 //   the server gives that word.
+// Each gap is first trimmed of the text its value shares with what it
+// replaces at either end, as the server reads it (plaid-core's `trim-gap`,
+// plaid-ui editLog's `trimGaps`): a selection `two` typed over as
+// `two plus` is `plus` typed after `two`, and a line pasted over itself
+// with a word added is that word typed.
 // What is left over, where the save typed something, is split by the
 // built-in tokenizer (the one the Tokenize tab runs, reading the project's
 // ignored tokens). A stretch with a word over any of it is never touched.
@@ -31,6 +36,34 @@ const isSpace = (c) => /\s/u.test(c);
 /** Whether a stretch holds a letter of a script written without spaces. */
 export const isSpaceless = (text) => Array.from(String(text ?? '')).some(isSpacelessScript);
 
+// `gaps` over the code points `old`, each without the text its value shares
+// with the old at either end, and none that is left with nothing.
+function trimmed(old, gaps) {
+  const out = [];
+  for (const g of gaps || []) {
+    const value = Array.from(g.value ?? '');
+    const k = g.end - g.start;
+    let front = 0;
+    while (front < value.length && front < k && value[front] === old[g.start + front]) front += 1;
+    let back = 0;
+    while (
+      back < value.length - front &&
+      back < k - front &&
+      value[value.length - 1 - back] === old[g.end - 1 - back]
+    ) {
+      back += 1;
+    }
+    if (front + back === value.length && front + back === k) continue;
+    out.push({
+      ...g,
+      start: g.start + front,
+      end: g.end - back,
+      value: value.slice(front, value.length - back).join(''),
+    });
+  }
+  return out;
+}
+
 /**
  * The words to create with a save of `gaps` over `base`.
  * @param {object} save
@@ -44,7 +77,7 @@ export const isSpaceless = (text) => Array.from(String(text ?? '')).some(isSpace
  */
 export function newTextWords({ base, gaps, words, ignored }) {
   const old = Array.from(base ?? '');
-  const sorted = [...(gaps || [])].sort((a, b) => a.start - b.start);
+  const sorted = trimmed(old, gaps).sort((a, b) => a.start - b.start);
   const body = [];
   const typed = [];
   const at = [];

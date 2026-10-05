@@ -70,6 +70,17 @@ describe('a Baseline save with "Tokenize new text"', () => {
     ).toEqual(['uno', 'dos', 'Tres', 'cuatro', 'cinco']);
   });
 
+  it('gives a word to one added by a line pasted over itself (L1-TEXT-2)', async () => {
+    const line = 'One two three four.';
+    const server = segmentServer(tokenized(line));
+    const doc = open(server);
+    const gaps = [{ start: 0, end: 19, value: 'One two and three four.' }];
+    await doc.editBaselineText({ base: line, digest: digestOf(line), gaps });
+    expect(requests(server)).toEqual([['texts.edit', 'tokens.bulkCreate']]);
+    const made = server.sent[0].ops[1].args[0];
+    expect(made.map((w) => [...server.body].slice(w.begin, w.end).join(''))).toEqual(['and']);
+  });
+
   it('is on when the project has never set it', async () => {
     const raw = tokenized('uno');
     expect(wordLayer(raw).config.igt.tokenizeNewText).toBeUndefined();

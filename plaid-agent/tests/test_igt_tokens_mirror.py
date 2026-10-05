@@ -78,6 +78,18 @@ NEW_WORDS = [
      'words': [{'begin': 0, 'end': 2}, {'begin': 6, 'end': 8}], 'ignored': PUNCT},
     {'base': '𝑥 y', 'gaps': [{'start': 1, 'end': 1, 'value': ' 𝑧𝑧 w'}], 'words': [{'begin': 0, 'end': 1}],
      'ignored': PUNCT},
+    # A line pasted over itself with a word added, and a selection typed
+    # over: the gaps repeat the old text at their ends (L1-TEXT-2).
+    {'base': 'One two three four.', 'gaps': [{'start': 0, 'end': 19, 'value': 'One two and three four.'}],
+     'words': [{'begin': 0, 'end': 3}, {'begin': 4, 'end': 7}, {'begin': 8, 'end': 13}, {'begin': 14, 'end': 18}],
+     'ignored': PUNCT},
+    {'base': 'One two three four.', 'gaps': [{'start': 4, 'end': 7, 'value': 'two plus'}],
+     'words': [{'begin': 0, 'end': 3}, {'begin': 4, 'end': 7}, {'begin': 8, 'end': 13}, {'begin': 14, 'end': 18}],
+     'ignored': PUNCT},
+    {'base': 'eta theta', 'gaps': [{'start': 0, 'end': 9, 'value': 'eta new theta'}],
+     'words': [{'begin': 0, 'end': 3}, {'begin': 4, 'end': 9}], 'ignored': PUNCT},
+    {'base': 'One two', 'gaps': [{'start': 4, 'end': 7, 'value': 'two'}],
+     'words': [{'begin': 0, 'end': 3}, {'begin': 4, 'end': 7}], 'ignored': PUNCT},
 ]
 
 
@@ -108,7 +120,28 @@ def _random_new_words(seed: int, n: int):
     return out
 
 
-RANDOM_NEW_WORDS = _random_new_words(7, 600)
+def _random_paste_overs(seed: int, n: int):
+    """A stretch of the body pasted over by itself with some text put
+    inside, as a retyped selection or a corrected line is sent."""
+    rng = random.Random(seed)
+    alphabet = ['a', 'b', 'k', 'o', ' ', ' ', '\n', '.', ',', "'", '水', 'ก']
+    configs = [None, PUNCT, {'type': 'unicodePunctuation', 'whitelist': ["'"]}]
+    out = []
+    for _ in range(n):
+        base = ''.join(rng.choice(alphabet) for _ in range(rng.randint(1, 16)))
+        cfg = rng.choice(configs)
+        words = [{'begin': b, 'end': e} for b, e in split_words(base, 0, len(base), cfg)]
+        start = rng.randint(0, len(base))
+        end = rng.randint(start, len(base))
+        old = base[start:end]
+        cut = rng.randint(0, len(old))
+        added = ''.join(rng.choice(alphabet) for _ in range(rng.randint(1, 6)))
+        out.append({'base': base, 'gaps': [{'start': start, 'end': end, 'value': old[:cut] + added + old[cut:]}],
+                    'words': words, 'ignored': cfg})
+    return out
+
+
+RANDOM_NEW_WORDS = _random_new_words(7, 600) + _random_paste_overs(11, 400)
 
 
 @pytest.fixture(scope='module')
@@ -173,6 +206,10 @@ def test_the_new_words_cases_reach_every_answer(app):
     assert texts[4] == ['I', 'went', 'home', 'Yes']
     assert texts[5] == ['Plaid', 'hello', 'ok']
     assert texts[6] == ["b'ok", "'", '∅', '★']
+    assert texts[10] == ['and']
+    assert texts[11] == ['plus']
+    assert texts[12] == ['new']
+    assert texts[13] == []
 
 
 def test_the_cases_reach_every_answer(app):

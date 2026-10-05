@@ -9,7 +9,9 @@ The project turns it off on the word layer (``config.igt.tokenizeNewText`` is
 body the edit makes, before the server has placed the existing words on it,
 and kept off every position an existing word may end up over: its own text,
 all the text a change types when the change reaches inside a word or takes one
-whole, and text typed against a word's edge with no whitespace between. What
+whole, and text typed against a word's edge with no whitespace between. Each
+gap is first trimmed of the text its value shares with what it replaces at
+either end, as the server reads it (plaid-core's ``trim-gap``). What
 is left, where the edit typed something, is cut by the built-in tokenizer
 (``split_words``). A candidate made only of ignored characters gets no
 word, and neither does one holding a letter of a script written without spaces
@@ -125,6 +127,25 @@ def _gap(g) -> Tuple[int, int, str]:
     return g[0], g[1], g[2] or ''
 
 
+def _trim_gaps(old: str, gaps) -> List[Tuple[int, int, str]]:
+    """``gaps`` over ``old``, each without the text its value shares with the
+    old at either end, as the server reads it (plaid-core's ``trim-gap``),
+    and none that is left with nothing."""
+    out = []
+    for start, end, value in gaps:
+        n, k = len(value), end - start
+        front = 0
+        while front < n and front < k and value[front] == old[start + front]:
+            front += 1
+        back = 0
+        while back < n - front and back < k - front and value[n - 1 - back] == old[end - 1 - back]:
+            back += 1
+        if front + back == n and front + back == k:
+            continue
+        out.append((start + front, end - back, value[front:n - back]))
+    return out
+
+
 def new_text_words(base: str, gaps: Sequence[Any], words: Sequence[Any], ignored: Optional[dict]) -> List[Tuple[int, int]]:
     """The words to create with an edit of ``gaps`` over ``base``.
 
@@ -134,7 +155,7 @@ def new_text_words(base: str, gaps: Sequence[Any], words: Sequence[Any], ignored
     the ignored-tokens rule. Returns ``(begin, end)`` ranges in code points of
     the body the edit makes, in order."""
     old = base or ''
-    srt = sorted((_gap(g) for g in gaps or []), key=lambda g: g[0])
+    srt = sorted(_trim_gaps(old, [_gap(g) for g in gaps or []]), key=lambda g: g[0])
     body: List[str] = []
     typed: List[bool] = []
     at: List[int] = []
