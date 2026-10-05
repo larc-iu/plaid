@@ -30,6 +30,7 @@ import {
 } from './attachments.js';
 import { assertAdapter } from './adapterContract.js';
 import { AssistantMark } from './PlaidMarks.jsx';
+import { DisclosureButton, DisclosureNotice } from './AssistantDisclosure.jsx';
 import { NEARLY_FULL, fullness, latestUsage, totalSpend, usageLabel, usageTitle } from './usage.js';
 import { Turn } from './Turn.jsx';
 import { formatElapsed } from '../../hooks/useRunProgress.js';
@@ -224,6 +225,8 @@ export const AssistantChat = ({
   // How many projects the answering assistant reads at once, home included. An
   // assistant that says nothing reads one, and then the conversation reads one.
   const maxProjects = service?.extras?.maxProjects || null;
+  // The operator's own statement about this assistant, when they gave one.
+  const disclosure = service?.extras?.disclosure?.trim() || null;
 
   // --- the job in flight for the shown conversation ----------------------
   const [input, setInput] = useState('');
@@ -844,6 +847,7 @@ export const AssistantChat = ({
               </Link>
             )}
             <UsageMeter usage={usage} spend={spend} />
+            <DisclosureButton text={disclosure} />
             {renderActions?.(chrome)}
             <Button
               type="button"
@@ -871,6 +875,7 @@ export const AssistantChat = ({
 
         <div className={cn('flex-1 overflow-y-auto', compact ? 'px-3 py-3' : 'px-4 py-4')}>
           <div className="mx-auto flex max-w-3xl flex-col gap-5">
+            {display.length === 0 && !busy && <DisclosureNotice text={disclosure} />}
             {display.length === 0 && !busy && renderEmpty?.(chrome)}
             {display.map((d, i) =>
               canRetryTurn && hidesStopped(display, i) ? null : (

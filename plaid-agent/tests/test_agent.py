@@ -337,3 +337,17 @@ def test_a_turns_step_line_counts_the_changes_its_plan_holds(monkeypatch):
     turn = run_turn(cfg(), kit, ws, 'system', [{'role': 'user', 'content': 'gloss'}])
     assert len(ws.ops) == 3
     assert turn.summary == '3 planned changes · 2 steps'
+
+
+def test_the_operators_disclosure_is_advertised_as_given_and_only_when_given(monkeypatch):
+    """Plaid cannot know where a site's model runs or where what users send
+    goes, so whoever runs the assistant says, and the panel shows it."""
+    from plaid_agent.igt.service import AssistantService
+    monkeypatch.setattr(agent.litellm, 'completion', lambda **kw: SimpleNamespace(choices=[SimpleNamespace()]))
+    svc = AssistantService()
+    svc.setup(service_args(disclosure='  Runs on our own servers.\nNothing leaves them.  '))
+    assert svc.extras['disclosure'] == 'Runs on our own servers.\nNothing leaves them.'
+    for said in (None, '   '):
+        svc = AssistantService()
+        svc.setup(service_args(disclosure=said))
+        assert 'disclosure' not in svc.extras

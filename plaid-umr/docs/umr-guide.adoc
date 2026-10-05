@@ -504,6 +504,12 @@ Asked to set an attribute on every node of a concept, the assistant leaves a nod
 Approved changes are written under your own account, recorded as the assistant's work accepted by you, and show as accepted.
 Tick **Record as human-made** before approving to record them as your own work instead, with no machine marking.
 Reading needs Reader access, and applying a plan needs Writer.
+Asking for a new plan replaces one still waiting.
+The older card then reads **Replaced** and can no longer be approved, and the new plan restates whatever from it should still happen.
+
+Where the assistant's model runs, and where what you send it goes, depends on the Plaid site you use.
+When the people running the site's assistant have said, the panel shows their statement at the start of a new conversation and behind the **About this assistant** button in its header.
+Otherwise, ask the site's administrators.
 
 Approving a plan after a sentence it changes has been edited is refused, and the card then reads **Out of date**.
 An edit to another sentence does not stop it, and an edit to a sentence's glosses in Plaid IGT counts as an edit to that sentence.

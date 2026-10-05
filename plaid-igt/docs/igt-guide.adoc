@@ -897,6 +897,12 @@ If your work is reviewed in this project, what you approve is your own contribut
 A confirmation you approve then makes the machine's values your contribution and leaves other contributors' work for a reviewer, and the applied card says how many of each.
 A confirmation that wrote nothing is faded on the card and marked `(nothing written)`.
 Reading needs Reader access, and applying a plan needs Writer.
+Asking for a new plan replaces one still waiting.
+The older card then reads **Replaced** and can no longer be approved, and the new plan restates whatever from it should still happen.
+
+Where the assistant's model runs, and where what you send it goes, depends on the Plaid site you use.
+When the people running the site's assistant have said, the panel shows their statement at the start of a new conversation and behind the **About this assistant** button in its header.
+Otherwise, ask the site's administrators.
 
 Approving a plan after a sentence it changes has been edited is refused, and the card then reads **Out of date**.
 An edit to another sentence does not stop it.

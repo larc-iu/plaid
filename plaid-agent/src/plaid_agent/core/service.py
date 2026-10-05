@@ -318,6 +318,10 @@ class BaseAssistantService(BaseService):
                                  'offers a picker.')
         parser.add_argument('--service-name', default=None,
                             help=f'Display name (default "{self.APP_LABEL} (<model>)")')
+        parser.add_argument('--disclosure', default=None, metavar='TEXT',
+                            help='What users should know before using this assistant, such as where the '
+                                 'model runs and where what they send it goes. Shown in the Assistant '
+                                 'panel as given, as coming from whoever runs the assistant')
         parser.add_argument('--web-search', default=None, choices=sorted(BACKENDS),
                             help='Let the assistant look things up on the web with this provider. '
                                  'Off unless given: without it the web tools are not offered to the '
@@ -359,6 +363,12 @@ class BaseAssistantService(BaseService):
         # browser offers to add projects only when this is here, and stops at
         # it: the one number, so the control and the service cannot disagree.
         self.extras['max_projects'] = MAX_PROJECTS
+        # The operator's own statement for users (`--disclosure`): Plaid cannot
+        # know where a given site's model runs or where what is sent to it
+        # goes, so whoever runs the assistant says, and the panel shows it.
+        disclosure = (getattr(args, 'disclosure', None) or '').strip()
+        if disclosure:
+            self.extras['disclosure'] = disclosure
         print(f'Model: {self.cfg.model}' + (f' via {self.cfg.api_base}' if self.cfg.api_base else ''))
         window = context_window(self.cfg.model, self.cfg.context_window)
         if self.cfg.context_window:
