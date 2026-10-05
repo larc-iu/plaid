@@ -544,13 +544,17 @@ class PlaidClient {
        * @param {"asc"|"desc"} [opts.order] - "desc" pages newest-first
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @param {number} [opts.opsLimit] - Keep only each entry's oldest N
+       *   operations in `ops` (1..1000). `opCount` on every entry says how
+       *   many it has
+       * @param {string} [opts.entryId] - Read only this entry, not a page
        * @param {string} [opts.itemId] - Only the changes that wrote this one
        *   entry, each with only its operations that did
        * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
        */
       auditPage: (
         id,
-        { startTime, endTime, opTypes, kinds, order, limit, cursor, itemId } = {},
+        { startTime, endTime, opTypes, kinds, order, limit, cursor, opsLimit, entryId, itemId } = {},
       ) =>
         listPage(this, `/api/v1/vocab-layers/${id}/audit`, {
           limit,
@@ -561,6 +565,8 @@ class PlaidClient {
             "op-types": opTypesParam(opTypes),
             kinds: kindsParam(kinds),
             order,
+            "ops-limit": opsLimit,
+            "entry-id": entryId,
             "item-id": itemId,
           },
         }),
@@ -1272,11 +1278,15 @@ class PlaidClient {
        * @param {"asc"|"desc"} [opts.order] - "desc" pages newest-first
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @param {number} [opts.opsLimit] - Keep only each entry's oldest N
+       *   operations in `ops` (1..1000). `opCount` on every entry says how
+       *   many it has
+       * @param {string} [opts.entryId] - Read only this entry, not a page
        * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
        */
       auditPage: (
         userId,
-        { startTime, endTime, opTypes, kinds, order, limit, cursor } = {},
+        { startTime, endTime, opTypes, kinds, order, limit, cursor, opsLimit, entryId } = {},
       ) =>
         listPage(this, `/api/v1/users/${userId}/audit`, {
           limit,
@@ -1287,6 +1297,8 @@ class PlaidClient {
             "op-types": opTypesParam(opTypes),
             kinds: kindsParam(kinds),
             order,
+            "ops-limit": opsLimit,
+            "entry-id": entryId,
           },
         }),
       /**
@@ -1855,9 +1867,13 @@ class PlaidClient {
        *   is what a feed wants. A cursor belongs to the direction that made it.
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @param {number} [opts.opsLimit] - Keep only each entry's oldest N
+       *   operations in `ops` (1..1000). `opCount` on every entry says how
+       *   many it has
+       * @param {string} [opts.entryId] - Read only this entry, not a page
        * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
        */
-      listPage: ({ startTime, endTime, opTypes, kinds, order, limit, cursor } = {}) =>
+      listPage: ({ startTime, endTime, opTypes, kinds, order, limit, cursor, opsLimit, entryId } = {}) =>
         listPage(this, "/api/v1/audit", {
           limit,
           cursor,
@@ -1867,6 +1883,8 @@ class PlaidClient {
             "op-types": opTypesParam(opTypes),
             kinds: kindsParam(kinds),
             order,
+            "ops-limit": opsLimit,
+            "entry-id": entryId,
           },
         }),
       /**
@@ -2224,11 +2242,15 @@ class PlaidClient {
        * @param {"asc"|"desc"} [opts.order] - "desc" pages newest-first
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @param {number} [opts.opsLimit] - Keep only each entry's oldest N
+       *   operations in `ops` (1..1000). `opCount` on every entry says how
+       *   many it has
+       * @param {string} [opts.entryId] - Read only this entry, not a page
        * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
        */
       auditPage: (
         documentId,
-        { startTime, endTime, opTypes, kinds, order, limit, cursor } = {},
+        { startTime, endTime, opTypes, kinds, order, limit, cursor, opsLimit, entryId } = {},
       ) =>
         listPage(this, `/api/v1/documents/${documentId}/audit`, {
           limit,
@@ -2239,6 +2261,8 @@ class PlaidClient {
             "op-types": opTypesParam(opTypes),
             kinds: kindsParam(kinds),
             order,
+            "ops-limit": opsLimit,
+            "entry-id": entryId,
           },
         }),
       /**
@@ -2454,11 +2478,15 @@ class PlaidClient {
        * @param {"asc"|"desc"} [opts.order] - "desc" pages newest-first
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @param {number} [opts.opsLimit] - Keep only each entry's oldest N
+       *   operations in `ops` (1..1000). `opCount` on every entry says how
+       *   many it has
+       * @param {string} [opts.entryId] - Read only this entry, not a page
        * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
        */
       auditPage: (
         projectId,
-        { startTime, endTime, opTypes, kinds, order, limit, cursor } = {},
+        { startTime, endTime, opTypes, kinds, order, limit, cursor, opsLimit, entryId } = {},
       ) =>
         listPage(this, `/api/v1/projects/${projectId}/audit`, {
           limit,
@@ -2469,6 +2497,8 @@ class PlaidClient {
             "op-types": opTypesParam(opTypes),
             kinds: kindsParam(kinds),
             order,
+            "ops-limit": opsLimit,
+            "entry-id": entryId,
           },
         }),
       /**

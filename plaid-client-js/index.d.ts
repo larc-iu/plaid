@@ -923,6 +923,10 @@ interface AuditPageOptions {
   order?: "asc" | "desc";
   limit?: number;
   cursor?: string;
+  /** Keep only each entry's oldest N operations in `ops` (1..1000). Every entry has `opCount`. */
+  opsLimit?: number;
+  /** Read only this entry rather than a page. */
+  entryId?: string;
 }
 
 /** One user's activity over a scope and window. */

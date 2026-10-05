@@ -115,8 +115,15 @@
                      to, each present only when the client gave one
     :audit/batch-id  when the unit is an unlabeled atomic batch
     :audit/api-token present iff the head op ran under a named API token
-                     (server-authoritative; absence marks session activity)"
-  [db units member-rows]
+                     (server-authoritative; absence marks session activity)
+    :audit/op-count  how many members the unit has in this read. More than
+                     `:audit/ops` holds when `ops-limit` cut the list
+
+  `ops-limit`, when given, keeps only a unit's OLDEST `ops-limit` members in
+  `:audit/ops`, its head op first. Everything else on the entry is still
+  worked out from every member. A unit of forty thousand writes is one row
+  in a History list, not forty thousand op summaries to send."
+  [db units member-rows ops-limit]
   (let [by-unit   (group-by row-unit member-rows)
         users     (batch-fetch-by-ids db :users (mapv :user_id member-rows))
         projects  (batch-fetch-by-ids db :projects (mapv :project_id member-rows))
@@ -124,6 +131,7 @@
         tokens    (batch-fetch-by-ids db :api_tokens (mapv :token_id member-rows))
         groups    (batch-fetch-by-ids db :operation_groups (mapv :group_id member-rows))
         batch-end (batch-ends db (keep :batch_id member-rows))
+        shown     (if ops-limit #(into [] (take ops-limit) %) identity)
         ;; the time to read at to see this op done: its own, or its batch's end
         end-time  (fn [row] (or (some-> (:batch_id row) batch-end) (:ts row)))
         op-summary (fn [row]
@@ -161,7 +169,8 @@
                        :audit/documents (->> ops (keep :document_id) distinct
                                              (keep #(select-doc (get documents %)))
                                              vec)
-                       :audit/ops (mapv op-summary ops)}
+                       :audit/ops (mapv op-summary (shown ops))
+                       :audit/op-count (count ops)}
                 (:group_id head) (assoc :audit/group-id unit)
                 (:message group) (assoc :audit/message (:message group))
                 (:kind group) (assoc :audit/kind (:kind group))
@@ -286,6 +295,8 @@
 (defn- ts-max [a b] (if (pos? (compare a b)) a b))
 (defn- ts-min [a b] (if (neg? (compare a b)) a b))
 
+(declare units-page)
+
 (defn- audit-page
   "One page of units in the uniform envelope `{:entries [...] :next-cursor
   [position unit]-or-nil}`. `opts` carries `{:limit n :cursor-vals
@@ -303,8 +314,25 @@
 
   Every operation has a ts of its own (stamped under the write lock,
   strictly increasing), so the position alone orders units. The cursor
-  keeps the unit beside it all the same."
-  [db scope time-range {:keys [limit cursor-vals op-types kinds order]}]
+  keeps the unit beside it all the same.
+
+  `:ops-limit` cuts each entry's `:audit/ops` to its oldest members (see
+  `enrich-units`). `:entry-id` reads that one entry instead of a page, with
+  the members the scope, window and filters keep (none, no entry), which is
+  how a reader fetches the rest of an entry an `:ops-limit` cut: the same
+  entry again, from the time of the last member it holds."
+  [db scope time-range {:keys [limit cursor-vals op-types kinds order ops-limit entry-id]}]
+  (if entry-id
+    (let [members (unit-members db scope time-range op-types kinds [entry-id])]
+      {:entries (if (seq members)
+                  (enrich-units db [{:unit entry-id :head_ts (:ts (first members))}]
+                                members ops-limit)
+                  [])
+       :next-cursor nil})
+    (units-page db scope time-range limit cursor-vals op-types kinds order ops-limit)))
+
+(defn- units-page
+  [db scope time-range limit cursor-vals op-types kinds order ops-limit]
   (let [eff (pagination/clamp-limit limit)
         desc? (= order :desc)
         filters (cond-> (ts-where (first time-range) (second time-range))
@@ -318,10 +346,18 @@
         position (fn [members] (reduce (if desc? ts-max ts-min) (map :ts members)))]
     (loop [edge page-edge
            seen #{}
+           ;; The units already gathered that have more than one member. The
+           ;; walk passes over the rest of their members rather than reading
+           ;; them a chunk at a time: one entry of forty thousand writes was
+           ;; 160 steps of the walk, each a fresh read of the scope.
+           gathered #{}
            picked []
            members-of {}]
       (let [chunk (when (< (count picked) eff)
-                    (walk-ops db scope filters edge desc? walk-chunk))
+                    (walk-ops db scope
+                              (cond-> filters
+                                (seq gathered) (conj [:not-in unit-key (mapv str gathered)]))
+                              edge desc? walk-chunk))
             fresh (->> chunk (map row-unit) (remove seen) distinct vec)
             by-unit (group-by row-unit (unit-members db scope time-range op-types kinds fresh))
             placed (for [u fresh
@@ -331,7 +367,11 @@
             picked (into picked placed)
             members-of (merge members-of (select-keys by-unit (map :unit placed)))]
         (if (and (seq chunk) (= (count chunk) walk-chunk) (< (count picked) eff))
-          (recur (:ts (last chunk)) (into seen fresh) picked members-of)
+          (recur (:ts (last chunk))
+                 (into seen fresh)
+                 (into gathered (filter #(next (by-unit %))) fresh)
+                 picked
+                 members-of)
           ;; The page is full, or the scope ends here.
           (let [units (vec (take eff picked))]
             {:entries (enrich-units db
@@ -339,7 +379,8 @@
                                             {:unit unit
                                              :head_ts (:ts (first (members-of unit)))})
                                           units)
-                                    (mapcat (comp members-of :unit) units))
+                                    (mapcat (comp members-of :unit) units)
+                                    ops-limit)
              :next-cursor (when (= (count units) eff)
                             (let [u (peek units)] [(:position u) (str (:unit u))]))}))))))
 

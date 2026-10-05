@@ -125,3 +125,55 @@
       (let [e (first (:entries (fetch {:limit 1 :order :desc})))]
         (is (= (:op/time (first (:audit/ops e))) (:audit/time e)))
         (is (= 2 (count (:audit/ops e))))))))
+
+(deftest ops-limit-keeps-each-entrys-oldest-operations
+  (let [[p1 _] (build-history! 20261005)
+        fetch (fn [opts] (:entries (audit/get-project-audit-log db p1 nil nil (merge {:limit 1000} opts))))
+        full (fetch {})
+        cut (fetch {:ops-limit 2})]
+    (is (some #(> (count (:audit/ops %)) 2) full) "the history has an entry the limit cuts")
+    (is (= (count full) (count cut)))
+    (doseq [[f c] (map vector full cut)]
+      (is (= (count (:audit/ops f)) (:audit/op-count f) (:audit/op-count c)))
+      (is (= (vec (take 2 (:audit/ops f))) (:audit/ops c)))
+      (is (= (dissoc f :audit/ops) (dissoc c :audit/ops))))))
+
+(deftest entry-id-reads-one-entry-and-the-rest-of-it
+  (let [[p1 _] (build-history! 20261006)
+        fetch (fn [opts] (audit/get-project-audit-log db p1 nil nil (merge {:limit 1000} opts)))
+        full (:entries (fetch {}))
+        big (apply max-key (comp count :audit/ops) full)
+        ops (:audit/ops big)]
+    (is (> (count ops) 3))
+    (testing "the entry alone, as the page has it"
+      (let [{:keys [entries next-cursor]} (fetch {:entry-id (:audit/id big)})]
+        (is (= [big] entries))
+        (is (nil? next-cursor))))
+    (testing "the rest of an entry the limit cut, from the last operation held"
+      (let [held (:audit/ops (first (:entries (fetch {:entry-id (:audit/id big) :ops-limit 2}))))
+            rest-ops (:audit/ops (first (:entries (audit/get-project-audit-log
+                                                   db p1 (:op/time (peek held)) nil
+                                                   {:entry-id (:audit/id big)}))))]
+        (is (= ops (into held (rest rest-ops))))))
+    (testing "an id that is no entry in the scope reads nothing"
+      (is (= [] (:entries (fetch {:entry-id (psc/new-uuid)})))))))
+
+(deftest a-huge-entry-costs-the-walk-a-few-steps
+  ;; One group of many writes, among a few lone writes. The walk passes over
+  ;; a gathered entry's members, so it reads the scope a handful of times,
+  ;; not once per step's worth of the group's writes.
+  (let [p (new-project! "Huge")
+        g (psc/new-uuid)
+        _ (create-doc! p "before")
+        _ (binding [op/*current-group-id* g]
+            (dotimes [i 40] (create-doc! p (str "g" i))))
+        _ (create-doc! p "after")
+        steps (atom 0)
+        walk-ops @#'audit/walk-ops]
+    (with-redefs [audit/walk-chunk 4
+                  audit/walk-ops (fn [& args] (swap! steps inc) (apply walk-ops args))]
+      (let [entries (:entries (audit/get-project-audit-log db p nil nil {:limit 100 :ops-limit 5}))]
+        (is (= 4 (count entries)))
+        (is (= 40 (:audit/op-count (nth entries 2))))
+        (is (= 5 (count (:audit/ops (nth entries 2)))))))
+    (is (< @steps 5))))

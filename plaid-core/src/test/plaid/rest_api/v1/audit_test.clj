@@ -351,3 +351,29 @@
         (is (= [1] (map :operations (-> r :body :entries))))))
     (testing "a bound that is not a time is a 400"
       (is (= 400 (:status (get-project-audit admin-request proj {:start-time "yesterday"})))))))
+
+(defn- read-log [doc query]
+  (api-call admin-request {:method :get
+                           :path (str "/api/v1/documents/" doc "/audit?" query)}))
+
+(deftest document-audit-log-ops-limit-and-entry-id
+  (let [proj (create-test-project admin-request "OpsLimitProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        _ (assert-created (create-text admin-request tl doc "hello"))
+        full (:entries (:body (get-document-audit admin-request doc)))
+        cut-r (read-log doc "ops-limit=1")
+        cut (:entries (:body cut-r))]
+    (assert-ok cut-r)
+    (testing "every entry says how many operations it has, and the limit cuts the list"
+      (is (= (map (comp count :audit/ops) full) (map :audit/op-count full) (map :audit/op-count cut)))
+      (is (every? #(= 1 (count (:audit/ops %))) cut)))
+    (testing "one entry by its id"
+      (let [e (first full)
+            r (read-log doc (str "entry-id=" (:audit/id e)))]
+        (assert-ok r)
+        (is (= [(:audit/id e)] (map :audit/id (:entries (:body r)))))))
+    (testing "a limit outside 1 to 1000 and an id that is no uuid are refused"
+      (is (= 400 (:status (read-log doc "ops-limit=0"))))
+      (is (= 400 (:status (read-log doc "ops-limit=1001"))))
+      (is (= 400 (:status (read-log doc "entry-id=nope")))))))

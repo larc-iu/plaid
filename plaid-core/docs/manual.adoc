@@ -387,6 +387,31 @@ On the wire it is `?kinds=review,guess-adoption`. A kind outside the list is ref
 Unlike the op-type filter, this one keeps or drops an entry whole, since the kind belongs to the operation and not to its individual writes. An entry that is not an operation with a kind (an untagged operation, a batch, a single write) never matches.
 The two filters combine: with both, an entry must be of one of the kinds and still carries only the writes of the op types named.
 
+=== Long entries
+
+An entry carries every one of its operations, and one operation of a machine run can hold tens of thousands of writes.
+Every entry also has `op-count` (`opCount` in JavaScript), how many operations it has in the read.
+A page read takes `ops_limit` / `opsLimit` (1 to 1000), which keeps only each entry's oldest operations in `ops`, the first among them. Every other field of the entry is the same as without it.
+`entry_id` / `entryId` reads that one entry rather than a page (no entries when the window and filters leave none of its operations).
+Together they fetch the rest of an entry the limit cut: read it again from the time of the last operation held, which comes back as the first.
+
+[,python]
+----
+page = c.documents.audit_page(document_id, order="desc", ops_limit=100)
+entry = page["entries"][0]
+more = c.documents.audit_page(document_id, entry_id=entry["id"],
+                              start_time=entry["ops"][-1]["time"], ops_limit=101)
+----
+
+[,javascript]
+----
+const page = await c.documents.auditPage(documentId, { order: "desc", opsLimit: 100 });
+const entry = page.entries[0];
+const more = await c.documents.auditPage(documentId, {
+  entryId: entry.id, startTime: entry.ops.at(-1).time, opsLimit: 101,
+});
+----
+
 === When you last touched each document
 
 `my_last_edits` / `myLastEdits` answers, in one request, when the calling user last wrote to each document in a project.

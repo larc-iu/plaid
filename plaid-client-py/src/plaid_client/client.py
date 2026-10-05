@@ -381,6 +381,7 @@ class VocabLayersResource(_Resource):
                    end_time: str | None = None,
                    op_types: Any = None, kinds: Any = None, order: str | None = None,
                    limit: int | None = None, cursor: str | None = None,
+                   ops_limit: int | None = None, entry_id: str | None = None,
                    item_id: str | None = None) -> Any:
         """One page of the same log, newest-first with ``order='desc'``.
 
@@ -392,13 +393,17 @@ class VocabLayersResource(_Resource):
                 direction that produced it
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
+            ops_limit: Keep only each entry's oldest N operations in
+                ``ops`` (1..1000). ``op_count`` on every entry says how many
+                it has
+            entry_id: Read only this entry, not a page
             item_id: Only the changes that wrote this one entry
         """
         return list_page(self._client, f'/api/v1/vocab-layers/{id}/audit', limit=limit, cursor=cursor,
                          query={'start-time': start_time, 'end-time': end_time,
                                 'op-types': _op_types_param(op_types),
                                 'kinds': _op_types_param(kinds),
-                                'order': order, 'item-id': item_id})
+                                'order': order, 'ops-limit': ops_limit, 'entry-id': entry_id, 'item-id': item_id})
 
     def restore_item(self, id: str, item_id: str, as_of: str, *, dry_run: bool = False,
                      audit_message: str | None = None) -> Any:
@@ -1167,7 +1172,8 @@ class UsersResource(_Resource):
     def audit_page(self, user_id: str, *, start_time: str | None = None,
                    end_time: str | None = None,
                    op_types: Any = None, kinds: Any = None, order: str | None = None,
-                   limit: int | None = None, cursor: str | None = None) -> Any:
+                   limit: int | None = None, cursor: str | None = None,
+                   ops_limit: int | None = None, entry_id: str | None = None) -> Any:
         """One page of the same log, newest-first with ``order='desc'``.
 
         Use this rather than audit() wherever the caller wants the recent end
@@ -1178,12 +1184,16 @@ class UsersResource(_Resource):
                 direction that produced it
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
+            ops_limit: Keep only each entry's oldest N operations in
+                ``ops`` (1..1000). ``op_count`` on every entry says how many
+                it has
+            entry_id: Read only this entry, not a page
         """
         return list_page(self._client, f'/api/v1/users/{user_id}/audit', limit=limit, cursor=cursor,
                          query={'start-time': start_time, 'end-time': end_time,
                                 'op-types': _op_types_param(op_types),
                                 'kinds': _op_types_param(kinds),
-                                'order': order})
+                                'order': order, 'ops-limit': ops_limit, 'entry-id': entry_id})
 
     def get_avatar(self, id: str) -> bytes:
         """Get a user's profile picture as raw bytes.
@@ -2290,7 +2300,8 @@ class DocumentsResource(_Resource):
     def audit_page(self, document_id: str, *, start_time: str | None = None,
                    end_time: str | None = None,
                    op_types: Any = None, kinds: Any = None, order: str | None = None,
-                   limit: int | None = None, cursor: str | None = None) -> Any:
+                   limit: int | None = None, cursor: str | None = None,
+                   ops_limit: int | None = None, entry_id: str | None = None) -> Any:
         """One page of the same log, newest-first with ``order='desc'``.
 
         Use this rather than audit() wherever the caller wants the recent end
@@ -2301,12 +2312,16 @@ class DocumentsResource(_Resource):
                 direction that produced it
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
+            ops_limit: Keep only each entry's oldest N operations in
+                ``ops`` (1..1000). ``op_count`` on every entry says how many
+                it has
+            entry_id: Read only this entry, not a page
         """
         return list_page(self._client, f'/api/v1/documents/{document_id}/audit', limit=limit, cursor=cursor,
                          query={'start-time': start_time, 'end-time': end_time,
                                 'op-types': _op_types_param(op_types),
                                 'kinds': _op_types_param(kinds),
-                                'order': order})
+                                'order': order, 'ops-limit': ops_limit, 'entry-id': entry_id})
 
     def restore(self, document_id: str, as_of: str, *, dry_run: bool = False,
                 audit_message: str | None = None) -> Any:
@@ -2762,7 +2777,8 @@ class ProjectsResource(_Resource):
     def audit_page(self, project_id: str, *, start_time: str | None = None,
                    end_time: str | None = None,
                    op_types: Any = None, kinds: Any = None, order: str | None = None,
-                   limit: int | None = None, cursor: str | None = None) -> Any:
+                   limit: int | None = None, cursor: str | None = None,
+                   ops_limit: int | None = None, entry_id: str | None = None) -> Any:
         """One page of the same log, newest-first with ``order='desc'``.
 
         Use this rather than audit() wherever the caller wants the recent end
@@ -2773,12 +2789,16 @@ class ProjectsResource(_Resource):
                 direction that produced it
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
+            ops_limit: Keep only each entry's oldest N operations in
+                ``ops`` (1..1000). ``op_count`` on every entry says how many
+                it has
+            entry_id: Read only this entry, not a page
         """
         return list_page(self._client, f'/api/v1/projects/{project_id}/audit', limit=limit, cursor=cursor,
                          query={'start-time': start_time, 'end-time': end_time,
                                 'op-types': _op_types_param(op_types),
                                 'kinds': _op_types_param(kinds),
-                                'order': order})
+                                'order': order, 'ops-limit': ops_limit, 'entry-id': entry_id})
 
     def my_last_edits(self, project_id: str) -> Any:
         """When you last wrote to each document in a project, as a
@@ -3583,7 +3603,8 @@ class AuditResource(_Resource):
 
     def list_page(self, *, start_time: str | None = None, end_time: str | None = None,
                   op_types: Any = None, kinds: Any = None, order: str | None = None,
-                  limit: int | None = None, cursor: str | None = None) -> Any:
+                  limit: int | None = None, cursor: str | None = None,
+                  ops_limit: int | None = None, entry_id: str | None = None) -> Any:
         """One page of the instance-wide audit log. Admin only.
 
         Args:
@@ -3591,12 +3612,16 @@ class AuditResource(_Resource):
                 a cursor belongs to the direction that produced it
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
+            ops_limit: Keep only each entry's oldest N operations in
+                ``ops`` (1..1000). ``op_count`` on every entry says how many
+                it has
+            entry_id: Read only this entry, not a page
         """
         return list_page(self._client, '/api/v1/audit', limit=limit, cursor=cursor,
                          query={'start-time': start_time, 'end-time': end_time,
                                 'op-types': _op_types_param(op_types),
                                 'kinds': _op_types_param(kinds),
-                                'order': order})
+                                'order': order, 'ops-limit': ops_limit, 'entry-id': entry_id})
 
     def iter_pages(self, *, start_time: str | None = None, end_time: str | None = None,
                    op_types: Any = None, kinds: Any = None, page_size: int = 1000):

@@ -1186,10 +1186,18 @@ class FakeClient:
         finally:
             self._operation_depth -= 1
 
-    def _audit_page(self, entries, order, limit, cursor, start_time):
+    def _audit_page(self, entries, order, limit, cursor, start_time, ops_limit=None,
+                    entry_id=None):
         """One page of ``entries`` in time order. The cursor is opaque to a
-        caller, so here it is the offset the next page starts at."""
+        caller, so here it is the offset the next page starts at. Every entry
+        has ``op_count``, ``ops_limit`` keeps its oldest operations, and
+        ``entry_id`` reads that one entry, as the server does."""
         self.audit_pages.append({'order': order, 'start_time': start_time})
+        entries = [{**e, 'op_count': len(e.get('ops') or []),
+                    'ops': (e.get('ops') or [])[:ops_limit] if ops_limit else e.get('ops') or []}
+                   for e in entries if not entry_id or e.get('id') == entry_id]
+        if entry_id:
+            return {'entries': entries, 'next_cursor': None}
         entries = sorted(entries, key=lambda e: e.get('time') or '', reverse=(order == 'desc'))
         start = int(cursor) if cursor else 0
         end = start + limit if limit else len(entries)
@@ -1252,10 +1260,12 @@ class FakeClient:
             return _audit_filter(entries, start_time, end_time, op_types, kinds)
 
         def audit_page(self, document_id, *, start_time=None, end_time=None,
-                       op_types=None, kinds=None, order=None, limit=None, cursor=None):
+                       op_types=None, kinds=None, order=None, limit=None, cursor=None,
+                       ops_limit=None, entry_id=None):
             entries = self.audit(document_id, start_time=start_time, end_time=end_time,
                                  op_types=op_types, kinds=kinds)
-            return self._root._audit_page(entries, order, limit, cursor, start_time)
+            return self._root._audit_page(entries, order, limit, cursor, start_time, ops_limit,
+                                          entry_id)
 
         def restore(self, document_id, as_of, *, dry_run=False, audit_message=None):
             """The server's restore, recorded dry or not. Either way it answers
@@ -1293,10 +1303,12 @@ class FakeClient:
             return _audit_filter(spec['audit'], start_time, end_time, op_types, kinds)
 
         def audit_page(self, project_id, *, start_time=None, end_time=None,
-                       op_types=None, kinds=None, order=None, limit=None, cursor=None):
+                       op_types=None, kinds=None, order=None, limit=None, cursor=None,
+                       ops_limit=None, entry_id=None):
             entries = self.audit(project_id, start_time=start_time, end_time=end_time,
                                  op_types=op_types, kinds=kinds)
-            return self._client._audit_page(entries, order, limit, cursor, start_time)
+            return self._client._audit_page(entries, order, limit, cursor, start_time, ops_limit,
+                                            entry_id)
 
         def list_documents(self, id):
             docs = self._client._project(id, f'/api/v1/projects/{id}/documents')['documents']
@@ -1343,10 +1355,11 @@ class FakeClient:
 
         def audit_page(self, id, *, start_time=None, end_time=None,
                        op_types=None, kinds=None, order=None, limit=None, cursor=None,
-                       item_id=None):
+                       ops_limit=None, entry_id=None, item_id=None):
             entries = self.audit(id, start_time=start_time, end_time=end_time, op_types=op_types,
                                  item_id=item_id, kinds=kinds)
-            return self._root._audit_page(entries, order, limit, cursor, start_time)
+            return self._root._audit_page(entries, order, limit, cursor, start_time, ops_limit,
+                                          entry_id)
 
         def restore_item(self, id, item_id, as_of, *, dry_run=False, audit_message=None):
             """The server's entry restore, recorded dry or not. Either way it

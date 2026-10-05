@@ -105,8 +105,18 @@
          [:end-time {:optional true} instant-param]
          [:op-types {:optional true} string?]
          [:kinds {:optional true} string?]
-         [:order {:optional true} [:enum "asc" "desc"]]]
+         [:order {:optional true} [:enum "asc" "desc"]]
+         [:ops-limit {:optional true} [:int {:min 1 :max 1000}]]
+         [:entry-id {:optional true} :uuid]]
         pagination/query-params))
+
+(def ops-limit-doc
+  (str " Pass ?ops-limit=N to carry at most each entry's oldest N operations in "
+       "ops, the first among them. Every entry has op-count, how many operations "
+       "it has in the read. Pass ?entry-id= to read that one entry instead of a "
+       "page (no entries when the window and filters leave none of its "
+       "operations), which with ?start-time= at the last operation held fetches "
+       "the rest of an entry ?ops-limit cut."))
 
 (def order-doc
   (str " Pass ?order=desc to page newest-first, which is what a feed wants; the "
@@ -117,7 +127,7 @@
   "Shared handler body: parse `?op-types=` and `?kinds=`, then page. A
   malformed op type or an unknown kind is a 400 — silently returning nothing
   would look like 'no such activity'."
-  [{:keys [start-time end-time op-types kinds order] :as query} fetch]
+  [{:keys [start-time end-time op-types kinds order ops-limit entry-id] :as query} fetch]
   (let [{invalid :invalid parsed :op-types} (parse-op-types op-types)
         {bad-kind :invalid parsed-kinds :kinds} (parse-kinds kinds)]
     (cond
@@ -138,6 +148,8 @@
        (fn [opts] (fetch (assoc opts
                                 :op-types parsed
                                 :kinds parsed-kinds
+                                :ops-limit ops-limit
+                                :entry-id entry-id
                                 :order (if (= order "desc") :desc :asc))
                          start-time end-time))))))
 
@@ -162,7 +174,7 @@
 (def audit-routes
   [["/projects/:project-id/audit"
     {:parameters {:path [:map [:project-id :uuid]]}
-     :get {:summary    (str "Get audit log for a project. " op-types-doc kinds-doc order-doc)
+     :get {:summary    (str "Get audit log for a project. " op-types-doc kinds-doc order-doc ops-limit-doc)
            :middleware [[pra/wrap-reader-required get-project-id-from-audit-path]]
            :parameters {:query pagination-query}
            :handler    (fn [{{{:keys [project-id]} :path query :query} :parameters db :db}]
@@ -183,7 +195,7 @@
 
    ["/documents/:document-id/audit"
     {:parameters {:path [:map [:document-id :uuid]]}
-     :get {:summary    (str "Get audit log for a document. " op-types-doc kinds-doc order-doc)
+     :get {:summary    (str "Get audit log for a document. " op-types-doc kinds-doc order-doc ops-limit-doc)
            :middleware [[pra/wrap-reader-required get-project-id-from-document]
                         [pra/wrap-entity-required {:table :documents :label "Document" :history? true
                                                    :get-id #(-> % :parameters :path :document-id)}]]
@@ -195,7 +207,7 @@
 
    ["/users/:user-id/audit"
     {:parameters {:path [:map [:user-id string?]]}
-     :get        {:summary    (str "Get audit log for a user's actions. " op-types-doc kinds-doc order-doc)
+     :get        {:summary    (str "Get audit log for a user's actions. " op-types-doc kinds-doc order-doc ops-limit-doc)
                   :middleware [[pra/wrap-admin-required]  ; Only admins can view other users' audit logs
                                [pra/wrap-path-user-required]]
                   :parameters {:query pagination-query}
@@ -217,7 +229,7 @@
                                                                       :daily?      daily})}})}}]
 
    ["/audit"
-    {:get {:summary    (str "Get the audit log across every project. Admin only. " op-types-doc kinds-doc order-doc)
+    {:get {:summary    (str "Get the audit log across every project. Admin only. " op-types-doc kinds-doc order-doc ops-limit-doc)
            :middleware [[pra/wrap-admin-required]]
            :parameters {:query pagination-query}
            :handler    (fn [{{query :query} :parameters db :db}]
