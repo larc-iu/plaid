@@ -84,6 +84,10 @@
         all-ts (mapv :ts (scoped-ops [:= :project_id p1]))
         mid-lo (nth all-ts 20)
         mid-hi (nth all-ts 70)
+        ;; The busiest document: its read walks a UNION subquery, and the
+        ;; groups it shares with other documents show only its own members.
+        d (->> (scoped-ops [:= :project_id p1]) (keep :document_id) frequencies
+               (apply max-key val) key)
         cases [["project" [:= :project_id p1]
                 (fn [opts] (audit/get-project-audit-log db p1 nil nil opts))]
                ["whole server" nil
@@ -93,6 +97,8 @@
                ["project, renames only" [:and [:= :project_id p1] [:= :op_type "document/update"]]
                 (fn [opts] (audit/get-project-audit-log db p1 nil nil
                                                         (assoc opts :op-types ["document/update"])))]
+               ["document" [:= :document_id d]
+                (fn [opts] (audit/get-document-audit-log db d nil nil opts))]
                ["project, in a window" [:and [:= :project_id p1] [:>= :ts mid-lo] [:<= :ts mid-hi]]
                 (fn [opts] (audit/get-project-audit-log db p1 mid-lo mid-hi opts))]]]
     (doseq [[label where fetch] cases
