@@ -2407,23 +2407,31 @@ export class UmrDocument extends DocumentModel {
     const node = gone[0];
     const to = fresh[0];
     if (parsed.nodes.get(to)?.concept !== node.concept) return null;
+    // A node that is its own parent (a `:quote` edge to itself) is written
+    // under its own name on both sides, old and new, so it stands as one
+    // placeholder that the rename does not change.
+    const SELF = '(self)';
     const oldParents = new Set(
       node.in
         .filter((e) => this.node(e.source)?.sentence === sentence.index)
-        .map((e) => `${e.role} ${this.node(e.source).var}`),
+        .map((e) => `${e.role} ${e.source === node.id ? SELF : this.node(e.source).var}`),
     );
     const newParents = new Set();
     parsed.nodes.forEach((parent, v) => {
       parent.children.forEach((child) => {
-        if (child.kind === 'node' && child.value === to) newParents.add(`${child.rel} ${v}`);
+        if (child.kind === 'node' && child.value === to) {
+          newParents.add(`${child.rel} ${v === to ? SELF : v}`);
+        }
       });
     });
     const same =
       oldParents.size === newParents.size && [...oldParents].every((k) => newParents.has(k));
     if (!same) return null;
     // A parentless node is the root or nothing: renaming the root is a
-    // rename, renaming a loose fragment's head is a guess.
-    if (!oldParents.size && !(node.root && parsed.root === to)) return null;
+    // rename, renaming a loose fragment's head is a guess. An edge to itself
+    // makes no node a parent.
+    const parents = [...oldParents].filter((k) => !k.endsWith(` ${SELF}`));
+    if (!parents.length && !(node.root && parsed.root === to)) return null;
     return { nodeId: node.id, from: node.var, to };
   }
 

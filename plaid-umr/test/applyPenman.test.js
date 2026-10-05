@@ -317,6 +317,53 @@ test('a variable typed over is read as a rename', () => {
   );
 });
 
+// A node with an edge to itself (`:quote`, which the canvas makes) names
+// itself as a parent, under the old name in the store and the new one in
+// the text. That is still the same node: a rename, keeping its anchor, its
+// edges, the edge to itself and its document-level relations.
+test('a variable typed over on a node with an edge to itself is a rename', async () => {
+  const file = FILE.replace(':aspect performance\n    :purpose', ':quote s1l\n    :purpose')
+    .replace(':ARG0 s1p :aspect performance)', ':ARG0 s1p :quote s1e)')
+    .replace(
+      '# document level annotation:\n',
+      '# document level annotation:\n(s1s0 / sentence :modal ((author :full-affirmative s1l)))\n',
+    );
+  const { client, calls } = recordingClient();
+  const doc = new UmrDocument({
+    raw: rawFromPlan(planImport(parseUmrFile(file).sentences, [])),
+    client,
+  });
+  doc._reload = async () => {};
+  doc.onError = (msg) => {
+    throw new Error(msg);
+  };
+  const text = doc.penmanOf(1);
+  assert.match(text, /:quote s1l/);
+  assert.match(text, /:quote s1e/);
+  for (const [from, to] of [
+    ['s1l', 's1g'],
+    ['s1e', 's1x'],
+  ]) {
+    const plan = doc.planPenman(1, text.replaceAll(from, to));
+    assert.deepEqual(plan.rename, [{ nodeId: nodeId(doc, from), from, to }]);
+    assert.deepEqual(
+      [plan.delete, plan.create, plan.edgesAdd, plan.edgesDelete, plan.losses],
+      [[], [], [], [], []],
+    );
+  }
+  // Applied, the rename writes the new name and deletes nothing.
+  const leave = nodeId(doc, 's1l');
+  assert.equal(await doc.applyPenman(1, text.replaceAll('s1l', 's1g')), 1);
+  assert.deepEqual(
+    calls.filter((c) => /delete/i.test(c.name)),
+    [],
+  );
+  assert.ok(
+    calls.some((c) => c.name === 'spans.patchMetadata' && c.args[0] === leave),
+    'the new name is written on the node',
+  );
+});
+
 // Anything less clear-cut is what it was: a node gone and a node arrived,
 // and the plan says what the old one takes with it.
 test('the plan names what a deletion takes that the text does not show', () => {
