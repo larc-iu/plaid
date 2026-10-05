@@ -19,7 +19,7 @@ from plaid_client.http import (
     restamp_document_version, BatchRef, make_batch_ref, rebase_refs, _unsendable,
     list_all, list_page, iter_pages, build_api_error, retry_while_busy,
     retry_unknown, is_unknown_outcome, next_idempotency_key, merge_versions, is_replayed, NO_PIN,
-    IDEMPOTENCY_HEADER, DEFAULT_TIMEOUT_S, DEFAULT_BATCH_TIMEOUT_S, wire_timeout,
+    IDEMPOTENCY_HEADER, DEFAULT_TIMEOUT_S, DEFAULT_BATCH_TIMEOUT_S, wire_timeout, query_timeout,
 )
 from plaid_client.ids import uuid7
 from plaid_client.replayed import mark_replayed, was_replayed
@@ -3900,8 +3900,10 @@ class PlaidClient:
         """
         # out_of_band: a query is a read that travels as a POST (see the note
         # at the top of http.py). Made on a batch it goes over the wire like
-        # any read, and it never joins a logical operation.
-        return self._request('POST', '/api/v1/query', body=body, out_of_band=True)
+        # any read, and it never joins a logical operation. It waits past
+        # core's own query limit, so a query too broad answers with core's 408.
+        return self._request('POST', '/api/v1/query', body=body, out_of_band=True,
+                             timeout=query_timeout(self))
 
     def _request(self, method, path, **kwargs):
         return make_request(self, method, path, **kwargs)

@@ -20,6 +20,7 @@ import {
   REPLAYED_HEADER,
   DEFAULT_TIMEOUT_MS,
   DEFAULT_BATCH_TIMEOUT_MS,
+  queryTimeout,
 } from "./http.js";
 import { uuidv7 } from "./ids.js";
 import { constraintsBody } from "./constraints.js";
@@ -3251,9 +3252,14 @@ class PlaidClient {
      */
     // outOfBand: a query is a read that travels as a POST (see the note at
     // the top of http.js). Made on a batch it goes over the wire like any
-    // read, and it never joins a logical operation.
+    // read, and it never joins a logical operation. It waits past core's own
+    // query limit, so a query too broad answers with core's 408.
     this.query = (body) =>
-      this._request("POST", "/api/v1/query", { body, outOfBand: true });
+      this._request("POST", "/api/v1/query", {
+        body,
+        outOfBand: true,
+        timeout: queryTimeout(this),
+      });
 
     // Logical-operation groups (audit-log grouping). There is no create: a
     // group row is made lazily by the first write carrying `?group-id=`

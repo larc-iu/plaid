@@ -78,6 +78,23 @@ DEFAULT_TIMEOUT_S = 30.0
 # nothing and costs a retry stacked on a write that is still running.
 DEFAULT_BATCH_TIMEOUT_S = 180.0
 
+# A query may run for core's own query limit (30 s, ``*query-timeout-ms*`` in
+# plaid.sql.query.exec), and core then answers 408. The client waits a little
+# longer than that, so the caller gets core's 408 for a query too broad and
+# not a timeout of its own that reads like a lost connection.
+DEFAULT_QUERY_TIMEOUT_S = 35.0
+
+
+def query_timeout(client):
+    """The timeout for a query: the client's own, raised to
+    :data:`DEFAULT_QUERY_TIMEOUT_S` when it is shorter. A disabled timeout
+    (None, 0) stays disabled."""
+    t = getattr(client, 'timeout', DEFAULT_TIMEOUT_S)
+    if not t or t <= 0:
+        return t
+    return max(t, DEFAULT_QUERY_TIMEOUT_S)
+
+
 # Retry budget for 503 "Database busy" responses. Plaid serializes writers on a
 # single SQLite write lock; a writer that cannot get it within the server's
 # busy_timeout is refused with 503. That refusal is definitive — the

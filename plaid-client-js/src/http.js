@@ -69,6 +69,23 @@ export const DEFAULT_TIMEOUT_MS = 30000;
 // nothing and costs a retry stacked on a write that is still running.
 export const DEFAULT_BATCH_TIMEOUT_MS = 180000;
 
+// A query may run for core's own query limit (30 s, `*query-timeout-ms*` in
+// plaid.sql.query.exec), and core then answers 408. The client waits a little
+// longer than that, so the caller gets core's 408 for a query too broad and
+// not a timeout of its own that reads like a lost connection.
+export const DEFAULT_QUERY_TIMEOUT_MS = 35000;
+
+/**
+ * The timeout for a query: the client's own, raised to
+ * DEFAULT_QUERY_TIMEOUT_MS when it is shorter. A disabled timeout (0, null)
+ * stays disabled.
+ */
+export function queryTimeout(client) {
+  const t = client.timeout;
+  if (!t || t <= 0) return t;
+  return Math.max(t, DEFAULT_QUERY_TIMEOUT_MS);
+}
+
 /**
  * Note how far the server's clock is from this machine's, from a response's
  * Date header, for `client.serverNow()`. A time the server stamped (an audit
