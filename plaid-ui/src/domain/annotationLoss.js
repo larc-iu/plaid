@@ -18,7 +18,8 @@
 //     it keeps some of its tokens).
 // Splitting a token deletes every relation on a layer that declares
 // `same-ancestor` over the split token's layer and whose ends then lie in
-// different halves.
+// different halves, an end lying where the smallest begin of its span's
+// tokens is (core's place).
 //
 // No bare imports: plaid-ud's node suite imports this file by path.
 
@@ -182,8 +183,10 @@ export const countDeleteLoss = (tokenLayers, tokenIds, options = {}) => {
 /**
  * Count the relations splitting `tokenId` at `position` deletes: those on a
  * relation layer that declares `same-ancestor` over the token's layer (under
- * any app's namespace) whose two ends fall in different halves. An end
- * outside the token is left alone, as an end in no token of that layer is.
+ * any app's namespace) whose two ends fall in different halves. An end lies
+ * at the smallest begin of its span's tokens, as core places it. A relation
+ * with an end outside the token is left alone: it crosses already, or the
+ * end is in no token of that layer, which crosses nothing.
  *
  * @param {object[]} tokenLayers a text layer's token layers, every app's
  * @param {string} tokenId the token split
@@ -202,14 +205,16 @@ export const countSplitLoss = (tokenLayers, tokenId, position, options = {}) => 
 
   const tokenById = new Map();
   for (const tl of layers) for (const t of tl.tokens || []) tokenById.set(t.id, t);
-  // Which half of the split token a span lies in: -1 left, 1 right, 0 neither
-  // (outside it, or across the split point).
+  // Which half of the split token a span falls in, as core places it: by the
+  // smallest begin of its tokens. -1 left, 1 right, 0 outside the token.
   const side = (span) => {
-    const toks = (span?.tokens || []).map((id) => tokenById.get(id)).filter(Boolean);
-    if (!toks.length || !toks.every((t) => within(token, t))) return 0;
-    if (toks.every((t) => t.end <= position)) return -1;
-    if (toks.every((t) => t.begin >= position)) return 1;
-    return 0;
+    const begins = (span?.tokens || [])
+      .map((id) => tokenById.get(id)?.begin)
+      .filter((b) => typeof b === 'number');
+    if (!begins.length) return 0;
+    const place = Math.min(...begins);
+    if (place < token.begin || place >= token.end) return 0;
+    return place < position ? -1 : 1;
   };
   const declares = (rl) =>
     Object.values(rl.constraints || {}).some(

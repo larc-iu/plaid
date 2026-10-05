@@ -142,6 +142,19 @@ describe('countSplitLoss', () => {
     expect(loss.byLayer.get('rl-dep')).toBe(1);
   });
 
+  it('places an end where its span begins, as core does', () => {
+    const layers = make();
+    const syn = layers[3];
+    // A span over all of S1 begins on the left: its relation to a word on the
+    // right crosses, its relation to a word on the left does not.
+    syn.spanLayers[0].spans.push({ id: 'Lall', tokens: ['sw1', 'sw2'], value: 'all' });
+    syn.spanLayers[0].relationLayers[0].relations.push(
+      { id: 'r4', source: 'Lall', target: 'L2', value: 'x' },
+      { id: 'r5', source: 'L1', target: 'Lall', value: 'y' },
+    );
+    expect(countSplitLoss(layers, 'S1', 6).relations).toBe(2); // r1 and r4
+  });
+
   it('is zero when no relation crosses, or the position is not inside', () => {
     expect(countSplitLoss(make(), 'S2', 12).annotations).toBe(0);
     expect(countSplitLoss(make(), 'S1', 0).annotations).toBe(0);

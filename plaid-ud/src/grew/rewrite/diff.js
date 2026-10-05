@@ -23,6 +23,7 @@ import { GrewRuntimeError } from '../errors.js';
 import { isEnhancedLabel, bareLabel } from '../edgeLabel.js';
 import { SUPPRESS_KEY } from '../../domain/enhancedGraph.js';
 import { notSetUp } from '../../../../plaid-ui/src/domain/setupGuard.js';
+import { countDeleteLoss, lossPhrase } from '../../../../plaid-ui/src/domain/annotationLoss.js';
 
 const COLUMN_LAYER = {
   form: 'formLayer',
@@ -106,6 +107,9 @@ export function diffGraphs(before, after, layerInfo) {
   // standing it holds a stretch of text with nothing said about it, and the
   // next open seeds a bare word back into the grid. One syntactic word of a
   // multi-word token going leaves the token, and its other words, alone.
+  // The token takes with it what the text's other layers hold on it, whoever
+  // made them, and the word's line says how much (N1-CASCADE-3).
+  const loss = { annotations: 0, links: 0 };
   {
     const wordCounts = new Map();
     for (const id of before.order) {
@@ -118,11 +122,26 @@ export function diffGraphs(before, after, layerInfo) {
       const wordId = before.nodes.get(id)?.wordId;
       if (wordId) goneCounts.set(wordId, (goneCounts.get(wordId) || 0) + 1);
     }
+    const tokenLayers = layerInfo.textLayer?.tokenLayers || [];
+    const own = layerInfo.morphemeTokenLayer ? [layerInfo.morphemeTokenLayer.id] : [];
     for (const id of deleted) {
       const b = before.nodes.get(id);
       const wholeWord = b.wordId && goneCounts.get(b.wordId) === wordCounts.get(b.wordId);
       if (wholeWord && writes.tokens.some((w) => w.id === b.wordId)) continue;
-      writes.tokens.push({ op: 'deleteToken', id: wholeWord ? b.wordId : id });
+      const tokenId = wholeWord ? b.wordId : id;
+      writes.tokens.push({ op: 'deleteToken', id: tokenId });
+      const lost = countDeleteLoss(tokenLayers, [tokenId], { skip: own });
+      const phrase = lossPhrase(lost);
+      if (!phrase) continue;
+      loss.annotations += lost.annotations;
+      loss.links += lost.links;
+      const at = changes.findIndex((c) => c.kind === 'node' && c.node === id);
+      changes[at] = {
+        kind: 'node',
+        node: id,
+        loss: true,
+        ...line`${b.form}: word deleted, with ${phrase}`,
+      };
     }
   }
 
@@ -414,7 +433,7 @@ export function diffGraphs(before, after, layerInfo) {
     }
   }
 
-  return { changes, writes, errors };
+  return { changes, writes, errors, loss };
 }
 
 // Each cycle of a one-head-a-word tree (`headOf` maps a word to its head), as

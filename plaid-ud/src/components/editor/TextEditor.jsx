@@ -5,7 +5,8 @@ import { Textarea } from '@ui/components/ui/textarea';
 import { cpSlice } from '@larc-iu/plaid-client';
 import { useEditLog } from '@ui/hooks/useEditLog.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { plural } from '@ui/lib/plural.js';
+import { countOf, plural } from '@ui/lib/plural.js';
+import { lossPhrase } from '@ui/domain/annotationLoss.js';
 import { containsToken } from '../../utils/udLayerUtils.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { Notice } from '@ui/components/shared/Notice.jsx';
@@ -20,6 +21,12 @@ import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import { sentenceNumberOf } from './hooks/useSentenceDeepLink.js';
 import { notifyError } from '../../utils/feedback.jsx';
+
+// "a", "a and b", "a, b and c", leaving out the empty ones.
+const listed = (parts) => {
+  const xs = parts.filter(Boolean);
+  return xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`;
+};
 
 export const TextEditor = () => {
   // Project, document, the breadcrumbs/tab strip and the version-counter
@@ -200,11 +207,21 @@ export const TextEditor = () => {
     if (lastSaved) setLastSaved(null);
   };
 
+  // The question names what goes on every layer of the text, whoever made it.
   const handleClearTokens = async () => {
     if (!doc) return;
+    const loss = doc.clearLoss();
+    const what = listed([
+      loss.sentences > 0 && countOf(loss.sentences, 'sentence'),
+      loss.tokens > 0 && countOf(loss.tokens, 'token'),
+      loss.words > 0 && countOf(loss.words, 'word'),
+    ]);
+    const on = lossPhrase(loss);
     const ok = await confirm({
       title: 'Clear all tokens?',
-      description: 'This cannot be undone.',
+      description: what
+        ? `Deletes ${what}${on ? `, with ${on}` : ''}. This cannot be undone.`
+        : 'This cannot be undone.',
       confirmLabel: 'Clear',
       destructive: true,
     });
@@ -219,26 +236,29 @@ export const TextEditor = () => {
 
   // What goes with a token's words, as the question before it goes names it.
   // Null when nothing does. Deleting the token also loses its words' forms
-  // (a multiword token's split, a respelled word).
-  const lossOf = (word, { withForms = false } = {}) => {
+  // (a multiword token's split, a respelled word), and everything the text's
+  // other layers hold on the token.
+  const lossOf = (word, { deleting = false } = {}) => {
     const loss = doc.annotationLossForWord(word);
-    const annotations = loss.annotations + (withForms ? loss.forms : 0);
+    const other = deleting ? doc.otherLossForWord(word) : { annotations: 0, links: 0 };
+    const annotations = loss.annotations + (deleting ? loss.forms : 0) + other.annotations;
     const { relations } = loss;
-    const parts = [
+    const parts = listed([
       annotations > 0 && `${annotations} ${plural(annotations, 'annotation')}`,
       relations > 0 && `${relations} ${plural(relations, 'relation')}`,
-    ].filter(Boolean);
-    if (parts.length === 0) return null;
+      other.links > 0 && `${other.links} ${plural(other.links, 'vocabulary link')}`,
+    ]);
+    if (!parts) return null;
     const surface = cpSlice(serverText, word.begin, word.end);
-    return `Deletes ${parts.join(' and ')} on “${surface}”.`;
+    return `Deletes ${parts} on “${surface}”.`;
   };
 
-  // A token whose words carry annotations asks before it goes. The server
-  // takes its words with everything on them.
+  // A token that carries annotations, on any layer, asks before it goes. The
+  // server takes everything under it with everything on them.
   const handleWordDelete = async (wordId) => {
     if (!doc) return;
     const word = doc.layerInfo.wordTokenLayer?.tokens?.find((t) => t.id === wordId);
-    const loss = word ? lossOf(word, { withForms: true }) : null;
+    const loss = word ? lossOf(word, { deleting: true }) : null;
     if (loss) {
       const ok = await confirm({
         title: 'Delete token?',
@@ -250,7 +270,22 @@ export const TextEditor = () => {
     }
     doc.deleteWord(wordId);
   };
-  const handleSentenceBoundaryToggle = (charPos) => doc?.toggleSentenceBoundary(charPos);
+  // A split that would take relations another layer keeps inside one
+  // sentence asks first. This editor's own dependencies go without asking.
+  const handleSentenceBoundaryToggle = async (charPos) => {
+    if (!doc) return;
+    const loss = lossPhrase(doc.otherLossForSentenceSplit(charPos));
+    if (loss) {
+      const ok = await confirm({
+        title: 'Split sentence?',
+        description: `Deletes ${loss}.`,
+        confirmLabel: 'Split',
+        destructive: true,
+      });
+      if (!ok) return;
+    }
+    return doc.toggleSentenceBoundary(charPos);
+  };
   // As many words as before respells them and keeps what is on them. Another
   // count replaces them, and asks first when that deletes annotations.
   const handleSetWordMorphemes = async (word, forms) => {

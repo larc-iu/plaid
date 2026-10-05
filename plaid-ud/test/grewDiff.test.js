@@ -138,6 +138,57 @@ test('del_node deletes the token (or just the word of a multi-word token) and no
   assert.deepEqual(r.writes.tokens, [{ op: 'deleteToken', id: r.before.order[2] }]);
 });
 
+// N1-CASCADE-3: another layer under the words (any app's) holds a gloss and a
+// vocabulary link on "perro" and a gloss on "del". The line of a word whose
+// token goes says what goes with it, and the row counts it for Apply. A word
+// of a multi-word token goes alone, and takes nothing of theirs.
+test('del_node says what the deleted token takes on the other layers', () => {
+  const raw = rawDocFromConllu(CONLLU);
+  const layers = raw.textLayers[0].tokenLayers;
+  const [sentences, words, synWords] = layers;
+  words.parentTokenLayer = sentences.id;
+  synWords.parentTokenLayer = words.id;
+  const body = raw.textLayers[0].text.body;
+  const word = (form) => words.tokens.find((t) => body.slice(t.begin, t.end) === form);
+  layers.push({
+    id: 'other',
+    parentTokenLayer: words.id,
+    tokens: [
+      { id: 'o1', begin: word('perro').begin, end: word('perro').end },
+      { id: 'o2', begin: word('del').begin, end: word('del').end },
+    ],
+    spanLayers: [
+      {
+        id: 'other-gloss',
+        spans: [
+          { id: 'g1', tokens: ['o1'], value: 'dog' },
+          { id: 'g2', tokens: ['o2'], value: 'of.the' },
+        ],
+      },
+    ],
+    vocabs: [{ id: 'v', vocabLinks: [{ id: 'k', tokens: ['o1'] }] }],
+  });
+  const doc = new ConlluDocument({ raw });
+  const diff = (src) => {
+    const before = graphFromSentence(doc.sentences[0]);
+    const { graph: after } = rewriteSentence(parseGrs(src), before);
+    return diffGraphs(before, after, doc.layerInfo);
+  };
+  let r = diff('pattern { X [form="perro"] } commands { del_node X }');
+  assert.deepEqual(
+    r.changes.map((c) => c.text),
+    ['perro: word deleted, with 1 annotation and 1 vocabulary link'],
+  );
+  assert.equal(r.changes[0].loss, true);
+  assert.deepEqual(r.loss, { annotations: 1, links: 1 });
+  r = diff('pattern { X [form="el"] } commands { del_node X }');
+  assert.deepEqual(
+    r.changes.map((c) => c.text),
+    ['el: word deleted'],
+  );
+  assert.deepEqual(r.loss, { annotations: 0, links: 0 });
+});
+
 // The project's rules allow one head a word and no cycle, so a sentence the
 // rule leaves with either is an error, never a write the server refuses.
 test('a second head is an error', () => {

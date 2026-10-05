@@ -58,7 +58,8 @@ async function findDocs(client, grs, layerInfo, projectId) {
 
 // Preview rows for `grs` over the project. Each row is one sentence with at
 // least one rule application: { id, docId, docName, text, applications,
-// changes, error, writes, nodes }. `docs` maps document id to the
+// changes, error, writes, loss, nodes }, where `loss` counts what the words
+// it deletes take on the text's other layers ({ annotations, links }). `docs` maps document id to the
 // loaded ConlluDocument (the apply step writes as its `writer`).
 export async function planRewrite(client, { project, user, layerInfo, grs }, onProgress) {
   const projectId = project.id;
@@ -105,7 +106,7 @@ export async function planRewrite(client, { project, user, layerInfo, grs }, onP
           });
           return;
         }
-        const { changes, writes, errors } = diffGraphs(before, after, doc.layerInfo);
+        const { changes, writes, errors, loss } = diffGraphs(before, after, doc.layerInfo);
         if (errors.length) {
           rows.push({
             ...base,
@@ -132,6 +133,7 @@ export async function planRewrite(client, { project, user, layerInfo, grs }, onP
           applications: applications.length,
           changes,
           writes,
+          loss,
           nodes: before.nodes,
           error: null,
         });

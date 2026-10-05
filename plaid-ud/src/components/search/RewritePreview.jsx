@@ -5,6 +5,7 @@ import { ListPager } from '@ui/components/shared/list-search';
 import { Button } from '@ui/components/ui/button';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { detectDirection } from '@ui/domain/textDirection.js';
+import { lossPhrase } from '@ui/domain/annotationLoss.js';
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -62,11 +63,25 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
     onSelect(next);
   };
 
+  // What the chosen rows' deleted words take on the text's other layers.
+  const lost = lossPhrase(
+    chosen.reduce(
+      (sum, r) => ({
+        annotations: sum.annotations + (r.loss?.annotations || 0),
+        links: sum.links + (r.loss?.links || 0),
+      }),
+      { annotations: 0, links: 0 },
+    ),
+  );
+
   const confirmApply = async () => {
     const ok = await confirm({
       title: 'Apply changes?',
-      description: `${plural(chosen.length, 'sentence')} in ${plural(chosenDocs.size, 'document')}.`,
+      description:
+        `${plural(chosen.length, 'sentence')} in ${plural(chosenDocs.size, 'document')}.` +
+        (lost ? ` Deletes ${lost} with the deleted words.` : ''),
       confirmLabel: 'Apply',
+      destructive: Boolean(lost),
     });
     if (ok) onApply();
   };
@@ -150,7 +165,7 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
                       )}
                     </div>
                     {r.changes.map((c, i) => (
-                      <p key={i} className="text-xs">
+                      <p key={i} className={`text-xs ${c.loss ? 'text-destructive' : ''}`}>
                         {c.parts.map((part, j) => (j % 2 ? <bdi key={j}>{part}</bdi> : part))}
                       </p>
                     ))}

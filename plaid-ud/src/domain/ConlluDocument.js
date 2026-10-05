@@ -37,6 +37,7 @@ import { expectStored, isConfigConflict } from '../../../plaid-ui/src/domain/con
 import { rebaseEdits } from '../../../plaid-ui/src/lib/textMerge.js';
 import { editLogGaps, storedHolds } from '../../../plaid-ui/src/lib/editLog.js';
 import { applyReshape } from '../../../plaid-ui/src/domain/textReshape.js';
+import { countDeleteLoss, countSplitLoss } from '../../../plaid-ui/src/domain/annotationLoss.js';
 import { ensureLayerConstraints } from '../../../plaid-ui/src/lib/layerConstraints.js';
 import { rulesNotInForce, wantedConstraints } from '../utils/udConstraints.js';
 import {
@@ -498,17 +499,79 @@ export class ConlluDocument extends DocumentModel {
     });
   }
 
+  // The tokens Clear tokens deletes: the sentences, or the words when there
+  // are none, or the syntactic words when there are neither. Everything under
+  // them goes with them.
+  _clearRoots() {
+    const { sentenceTokenLayer, wordTokenLayer, morphemeTokenLayer } = this.layerInfo;
+    const chain = [sentenceTokenLayer, wordTokenLayer, morphemeTokenLayer];
+    const rootIndex = chain.findIndex((layer) => layer?.tokens?.length > 0);
+    return rootIndex === -1 ? null : { chain, rootIndex, roots: chain[rootIndex].tokens };
+  }
+
+  // What Clear tokens deletes, on every layer of the text, whoever made it:
+  // `{ sentences, tokens, words, annotations, links }`. A token's own content
+  // (a sentence's metadata, say) counts as an annotation.
+  clearLoss() {
+    const info = this.layerInfo;
+    const found = this._clearRoots();
+    const loss = countDeleteLoss(
+      info.textLayer?.tokenLayers || [],
+      (found?.roots || []).map((t) => t.id),
+      { content: true },
+    );
+    const of = (layer) => (layer ? loss.byLayer.get(layer.id) || 0 : 0);
+    return {
+      sentences: of(info.sentenceTokenLayer),
+      tokens: of(info.wordTokenLayer),
+      words: of(info.morphemeTokenLayer),
+      annotations: loss.annotations,
+      links: loss.links,
+    };
+  }
+
+  // The layers this editor reads, and so counts itself: the syntactic words
+  // and every span and relation layer on them.
+  _ownLossLayers() {
+    const { morphemeTokenLayer } = this.layerInfo;
+    return morphemeTokenLayer ? [morphemeTokenLayer.id] : [];
+  }
+
+  // What deleting a token takes on the text's other layers, beyond what
+  // `annotationLossForWord` counts: `{ annotations, links }`.
+  otherLossForWord(word) {
+    const loss = countDeleteLoss(this.layerInfo.textLayer?.tokenLayers || [], [word.id], {
+      skip: this._ownLossLayers(),
+    });
+    return { annotations: loss.annotations, links: loss.links };
+  }
+
+  // What splitting the sentence at `charPos` takes on the text's other layers:
+  // the relations a layer keeps inside one sentence that would cross the new
+  // boundary. This editor's own dependencies go without a question.
+  otherLossForSentenceSplit(charPos) {
+    const sentences = this.layerInfo.sentenceTokenLayer?.tokens || [];
+    const containing = sentences.find((s) => s.begin < charPos && charPos < s.end);
+    if (!containing) return { annotations: 0, links: 0 };
+    const loss = countSplitLoss(
+      this.layerInfo.textLayer?.tokenLayers || [],
+      containing.id,
+      charPos,
+      { skip: this._ownLossLayers() },
+    );
+    return { annotations: loss.annotations, links: loss.links };
+  }
+
   // Clear all tokens by deleting the sentence (root) tokens, which cascades
   // to words, morphemes, spans and relations server-side, another app's
   // layers nested under them included. Locally the whole cascade goes at once.
   async clearTokens() {
     const label = 'Failed to clear tokens';
     if (!this._canWrite(label)) return false;
-    const { sentenceTokenLayer, wordTokenLayer, morphemeTokenLayer } = this.layerInfo;
-    const chain = [sentenceTokenLayer, wordTokenLayer, morphemeTokenLayer];
-    const rootIndex = chain.findIndex((layer) => layer?.tokens?.length > 0);
-    if (rootIndex === -1) return false;
-    const roots = chain[rootIndex].tokens.map((t) => t.id);
+    const found = this._clearRoots();
+    if (!found) return false;
+    const { chain, rootIndex } = found;
+    const roots = found.roots.map((t) => t.id);
     this._applyRawPatch((next, infoNext) => {
       const layers = infoNext.textLayer?.tokenLayers || [];
       // The UD layers from the root down, and every layer nested under them.
