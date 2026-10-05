@@ -173,6 +173,21 @@ describe('matchRecordings and RecordingsSummary', () => {
     );
   });
 
+  it('agrees with one sentence timed elsewhere or overlapping', async () => {
+    const docs = [
+      text('a', 'story.wav', {
+        otherRecording: [{ n: 2, mediaName: 'story.MOV' }],
+        timeWarnings: ['Utterance 3 overlaps'],
+      }),
+    ];
+    const r = matchRecordings({ documents: docs, selected: all(docs), mediaFiles: [] });
+    const shown = await show(r);
+    expect(shown).toContain(
+      '1 sentence timed against a second recording (story.MOV) is left untimed.',
+    );
+    expect(shown).toContain('1 sentence overlaps an earlier one in time and is left untimed.');
+  });
+
   it('names recordings chosen with a backup whose texts have no times', async () => {
     const r = matchRecordings({
       documents: [text('a', null)],

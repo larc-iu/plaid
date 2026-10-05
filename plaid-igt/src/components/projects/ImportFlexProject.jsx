@@ -987,12 +987,15 @@ export const RecordingsSummary = ({ recordings, locked, onAdd }) => {
       {elsewhere.length > 0 && (
         <p className="mt-1 text-muted-foreground">
           {countOf(elsewhere.length, 'sentence')} timed against a second recording (
-          {elsewhereNames.join(', ')}) are left untimed.
+          {elsewhereNames.join(', ')}) {elsewhere.length === 1 ? 'is' : 'are'} left untimed.
         </p>
       )}
       {overlapping > 0 && (
         <p className="mt-1 text-muted-foreground">
-          {countOf(overlapping, 'sentence')} overlap an earlier one in time and are left untimed.
+          {countOf(overlapping, 'sentence')}{' '}
+          {overlapping === 1
+            ? 'overlaps an earlier one in time and is left untimed.'
+            : 'overlap an earlier one in time and are left untimed.'}
         </p>
       )}
       {unmatched.length > 0 && (
