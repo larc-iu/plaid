@@ -160,13 +160,18 @@ There are two ways to turn saved text into tokens, and both are runs (see <<_ser
 Each button opens a dialog naming the method it will use and the options that method offers.
 While the text has changes not yet saved, both buttons say `Save the text first.`
 A document that already has tokens cannot be tokenized again. **Tokenize** says to clear the tokens first, and **Clear tokens** beside it does that, after asking.
-Clearing takes the annotations on those tokens with them, and cannot be undone.
+Clearing takes every annotation on those tokens with them, whoever made it.
+The question counts the sentences, tokens and words, and the annotations and vocabulary links on them. It cannot be undone.
+
+**Tokenize** asks first when the sentences it makes would delete annotations that join two places the new sentences separate, and counts them.
+With a tokenizer service the count is the most its sentence breaks could delete.
+**Parse** asks the same, with the most it could delete, when it makes the sentences itself because the document has no sentences or no words.
 
 == Working with Tokens
 
 After tokenizing, the text is shown with each token as a clickable chip:
 
-* A **green** border marks the **first token of each sentence**. Click any token to toggle whether a sentence starts there. This is how you fix sentence boundaries. Splitting a sentence removes the dependency relations that would cross the new boundary, wherever the split is made.
+* A **green** border marks the **first token of each sentence**. Click any token to toggle whether a sentence starts there. This is how you fix sentence boundaries. Splitting a sentence removes the dependency relations that would cross the new boundary, wherever the split is made. When the split would also delete annotations made outside this editor that cross it, it asks first and counts them.
 * A **teal** chip marks a **multi-word token** (a token that contains more than one word).
 
 Hover over a token to open its panel, where you can:
@@ -179,7 +184,8 @@ You can also select a span of text directly to create a new token from it.
 
 Editing a token's words with the same number of words keeps their annotations and relations, and changes only the forms.
 Changing the number of words replaces them, and asks first when annotations would go.
-Deleting a token asks first when anything on its words would go, including the split of a multi-word token or a word's changed form.
+Deleting a token asks first when anything on it would go, including the split of a multi-word token, a word's changed form, and annotations and vocabulary links made outside this editor.
+A vocabulary link or annotation that also covers a token that stays is shortened, and the question says so apart.
 
 = Annotation
 
@@ -559,6 +565,8 @@ commands { add_edge V2 -[E:nsubj]-> S }
 A rule that matches and changes nothing, or that is still matching after 1000 applications in one sentence, stops with an error on that sentence. A sentence with an error cannot be selected, and the rest of the preview is unaffected.
 
 The commands cover features (`X.upos = VERB`, `X.Number = D.Number`, `del_feat X.Number`), relations (`add_edge`, `del_edge`, `e.label = "obj"`, `shift`), and deleting a word (`del_node`). Words cannot be added or reordered, since they come from the text.
+A deleted word whose token carries other annotations says so on its line, for example `loudly: word deleted, with 3 annotations and 2 vocabulary links`, and **Apply** counts them before it runs.
+A rule that deletes several words counts what they share once, and a link or annotation that also covers a word that stays is counted apart as shortened.
 Several rules can be written as `rule name { ... }` blocks, which are tried in order unless a `strat main { ... }` says otherwise. The syntax reference on the Search screen lists every command with examples.
 
 Some things to know before applying:
