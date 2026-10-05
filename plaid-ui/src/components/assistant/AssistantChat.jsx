@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { replyLanded } from './replyLanded.js';
 import { RotateCcw, Check, X, Loader2, PanelRightClose } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '../ui/button.jsx';
@@ -736,6 +737,17 @@ export const AssistantChat = ({
     );
 
   const display = active?.display || [];
+  // A reply that lands is said once to a screen reader, from a region that is
+  // always there. Opening a conversation says nothing: only a turn this panel
+  // was waiting on.
+  const [landed, setLanded] = useState('');
+  const turnSeen = useRef({ busy: null, id: null, length: 0 });
+  useEffect(() => {
+    const id = active?.id ?? null;
+    if (busy) setLanded('');
+    else if (replyLanded(turnSeen.current, { busy, id, display })) setLanded('Reply ready');
+    turnSeen.current = { busy, id, length: display.length };
+  }, [busy, active?.id, display]);
   // A step's output, looked up by the tool call it belongs to. The transcript
   // is where it is stored, so the trace does not carry a second copy.
   const results = useMemo(
@@ -963,6 +975,9 @@ export const AssistantChat = ({
               </div>
             )}
             <div ref={bottomRef} />
+            <span role="status" className="sr-only">
+              {landed}
+            </span>
           </div>
         </div>
 
