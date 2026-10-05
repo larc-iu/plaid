@@ -41,7 +41,7 @@ const OPTIONS = [
     icon: AudioLines,
     title: 'Import from ELAN',
     description:
-      'Create a project from a set of ELAN annotation files (.eaf): each file becomes a document, with its tiers, speakers, and time alignment. Every file must share one tier structure.',
+      'Create a project from a set of ELAN annotation files (.eaf): each file becomes a document, with its tiers, speakers, and time alignment. A tier must mean the same thing in every file.',
   },
   {
     to: '/projects/import-archive',

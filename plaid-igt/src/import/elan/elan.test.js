@@ -6,11 +6,13 @@ import {
   compareSchemas,
   suggestRoles,
   validateRoles,
+  validateBatch,
   nodeLabel,
   ROLES,
 } from './schema.js';
 import {
   buildElanDocuments,
+  buildElanBatch,
   matchMediaFiles,
   readMorphForm,
   alignSegments,
@@ -264,7 +266,7 @@ describe('tier schema', () => {
     expect(build.documents.map((d) => d.sentences.length)).toEqual([1, 1]);
   });
 
-  it('refuses a batch whose files disagree, naming the difference', () => {
+  it('takes a file that lacks some tiers, as rows only some files fill', () => {
     const noGloss = eafXml({
       types: { utterance: null, wd: 'Symbolic_Subdivision' },
       tiers: [
@@ -283,12 +285,14 @@ describe('tier schema', () => {
       readEaf(ANA, 'a2.eaf'),
       readEaf(noGloss, 'odd.eaf'),
     ]);
-    expect(result.consistent).toBe(false);
+    expect(result.consistent).toBe(true);
     expect(result.groups).toHaveLength(2);
-    expect(result.differences).toHaveLength(1);
-    expect(result.differences[0].files).toEqual(['odd.eaf']);
-    expect(result.differences[0].missing.sort()).toEqual(['ft', 'ge', 'mb']);
-    expect(result.differences[0].extra).toEqual([]);
+    const filesOf = (name) => result.nodes.find((n) => n.baseName === name).fileCount;
+    expect(['wd', 'mb', 'ge', 'ft'].map(filesOf)).toEqual([3, 2, 2, 2]);
+    // The odd file's speaker tier is the sentences, as the others' are.
+    const sentences = result.nodes.filter((n) => result.suggested[n.key] === ROLES.UTTERANCE);
+    expect(sentences).toHaveLength(1);
+    expect(sentences[0].tierIds.sort()).toEqual(['Ana', 'Cy']);
   });
 
   it('suggests roles from the tier tree', () => {
@@ -1006,7 +1010,16 @@ describe('tier names differing only in case', () => {
     });
     const result = compareSchemas([readEaf(upper, 'a.eaf'), readEaf(lower, 'b.eaf')]);
     expect(result.consistent).toBe(false);
-    expect(result.differences[0].nearMiss).toEqual(['Phrase']);
+    expect(result.differences).toEqual([
+      {
+        role: ROLES.UTTERANCE,
+        variants: [
+          { name: 'Phrase', files: ['a.eaf'] },
+          { name: 'phrase', files: ['b.eaf'] },
+        ],
+        nearMiss: true,
+      },
+    ]);
   });
 
   it('has no collisions to report in an ordinary file', () => {
@@ -1425,12 +1438,17 @@ describe('round trip through the .eaf exporter', () => {
 // tiers added in ELAN under the segment number, and made-up whole-second
 // times with no recording.
 
-const flexViaElan = ({ media = null } = {}) =>
+// `shape` is how the FLEx export was set up, which varies between the texts of
+// one corpus: 'phrase' exports the phrase line, 'segnum' does not (so the
+// segment number is the phrase tier, under the paragraph), and 'top' exports
+// neither paragraph nor phrase line (the segment number is a top tier).
+const flexViaElan = ({ media = null, shape = 'phrase' } = {}) =>
   eafXml({
     media,
     types: {
       paragraph: null,
       phrase: 'Included_In',
+      'phrase-top': null,
       'phrase-item': 'Symbolic_Association',
       word: 'Symbolic_Subdivision',
       'word-item': 'Symbolic_Association',
@@ -1439,7 +1457,7 @@ const flexViaElan = ({ media = null } = {}) =>
       Mood: 'Symbolic_Association',
       txt: null,
     },
-    tiers: [
+    tiers: reshapeFlexTiers(shape, [
       { id: 'interlinear-text-title-en', type: 'txt', anns: [['t1', 'A walk', 0, 40000]] },
       { id: 'A_paragraph', type: 'paragraph', anns: [['p1', '', 0, 40000]] },
       {
@@ -1548,8 +1566,41 @@ const flexViaElan = ({ media = null } = {}) =>
           ['mt2', 'suffix', 'm2'],
         ],
       },
-    ],
+    ]),
   });
+
+// The phrase line taken out of a flexViaElan file, its children moved onto
+// the segment-number tier as a FLEx export without it writes them.
+function reshapeFlexTiers(shape, tiers) {
+  if (shape === 'phrase') return tiers;
+  const phrase = 'A_phrase-txt-qaa-x-dim';
+  const segnum = 'A_phrase-segnum-en';
+  const phraseTier = tiers.find((t) => t.id === phrase);
+  const numberOf = Object.fromEntries(
+    tiers.find((t) => t.id === segnum).anns.map(([id, , ref]) => [ref, id]),
+  );
+  return tiers
+    .filter((t) => t.id !== phrase && (shape !== 'top' || t.id !== 'A_paragraph'))
+    .map((t) => {
+      if (t.id === segnum) {
+        return {
+          ...t,
+          type: shape === 'top' ? 'phrase-top' : 'phrase',
+          parent: shape === 'top' ? undefined : 'A_paragraph',
+          anns: t.anns.map(([id, value, ref]) => {
+            const [, , begin, end] = phraseTier.anns.find((a) => a[0] === ref);
+            return [id, value, begin, end];
+          }),
+        };
+      }
+      if (t.parent !== phrase) return t;
+      return {
+        ...t,
+        parent: segnum,
+        anns: t.anns.map(([id, value, ref, previous]) => [id, value, numberOf[ref], previous]),
+      };
+    });
+}
 
 describe('a FLEx text brought in with ELAN', () => {
   const setup = (opts) => {
@@ -1639,6 +1690,97 @@ describe('a FLEx text brought in with ELAN', () => {
     expect(doc.alignments.map((a) => [a.timeBegin, a.timeEnd])).toEqual([
       [0, 20],
       [20, 40],
+    ]);
+  });
+});
+
+describe('a batch of FLEx texts exported in different shapes', () => {
+  const batch = () => [
+    readEaf(flexViaElan(), 'a.eaf'),
+    readEaf(flexViaElan(), 'b.eaf'),
+    readEaf(flexViaElan({ shape: 'segnum' }), 'c.eaf'),
+    readEaf(flexViaElan({ shape: 'top' }), 'd.eaf'),
+  ];
+
+  it('is one mapping table, each row holding the tiers of every file it is in', () => {
+    const result = compareSchemas(batch());
+    expect(result.groups).toHaveLength(3);
+    expect(result.consistent).toBe(true);
+    const row = (name) => result.nodes.find((n) => n.baseName === name);
+    const sentences = result.nodes.find((n) => result.suggested[n.key] === ROLES.UTTERANCE);
+    expect(sentences.baseName).toBe('A_phrase-txt-qaa-x-dim');
+    expect(sentences.aliases).toEqual(['A_phrase-segnum-en']);
+    expect(sentences.fileCount).toBe(4);
+    // Mood hangs from the segment number in every shape, which sits at three
+    // different places in the tree, and is still one field.
+    expect(result.nodes.filter((n) => n.baseName === 'Mood')).toHaveLength(1);
+    expect(row('Mood').fileCount).toBe(4);
+    expect(row('Mood').tierIds).toEqual(['Mood']);
+    expect(row('A_paragraph').fileCount).toBe(3);
+    expect(validateBatch(result, result.suggested)).toEqual([]);
+  });
+
+  it('builds every file as it would be built alone', () => {
+    const files = batch();
+    const result = compareSchemas(files);
+    const built = buildElanBatch(result, result.suggested);
+    expect(built.documents.map((d) => d.id)).toEqual(['a.eaf', 'b.eaf', 'c.eaf', 'd.eaf']);
+    const alone = files.map((f) => {
+      const one = compareSchemas([f]);
+      return buildElanDocuments([f], one.nodes, one.suggested).documents[0];
+    });
+    const shapeOf = ({ body, sentences, words }) => ({ body, sentences, words });
+    expect(built.documents.map(shapeOf)).toEqual(alone.map(shapeOf));
+    expect(built.documents[3].sentences[0].fields).toEqual(alone[0].sentences[0].fields);
+    expect(built.stats.files).toBe(4);
+    expect(built.stats.sentences).toBe(8);
+    expect(built.schema.fields.filter((f) => f.name === 'Mood')).toHaveLength(1);
+  });
+
+  it('applies a role chosen on a row to every file in it', () => {
+    const result = compareSchemas(batch());
+    const mood = result.nodes.find((n) => n.baseName === 'Mood').key;
+    const roles = { ...result.suggested, [mood]: ROLES.OFF };
+    const built = buildElanBatch(result, roles);
+    expect(built.documents.every((d) => d.sentences.every((s) => !('Mood' in s.fields)))).toBe(
+      true,
+    );
+    expect(built.stats.skipped.find((s) => s.label === 'Mood').values).toBe(8);
+  });
+
+  it('will not read a segment number as the text when the words are left out', () => {
+    const result = compareSchemas(batch());
+    const words = result.nodes.find((n) => result.suggested[n.key] === ROLES.WORD).key;
+    expect(validateBatch(result, { ...result.suggested, [words]: ROLES.OFF })).toContain(
+      'The sentence tier has a different name in some files, so the sentences are written from the words. Choose a tier for Words.',
+    );
+    // Files that all name it alike read their own sentence tier, as ever.
+    const alike = compareSchemas(batch().slice(0, 2));
+    const alikeWords = alike.nodes.find((n) => alike.suggested[n.key] === ROLES.WORD).key;
+    expect(
+      validateBatch(alike, { ...alike.suggested, [alikeWords]: ROLES.OFF }).some((p) =>
+        p.startsWith('The sentence tier has a different name'),
+      ),
+    ).toBe(false);
+  });
+
+  it('refuses files that make one tier two different things', () => {
+    // `Mood` under the words in one file and under the sentences in the
+    // others: one answer in the mapping table would be wrong for some.
+    const wordMood = flexViaElan().replace(
+      /<TIER TIER_ID="Mood" LINGUISTIC_TYPE_REF="Mood" PARENT_REF="A_phrase-segnum-en">.*?<\/TIER>/,
+      '<TIER TIER_ID="Mood" LINGUISTIC_TYPE_REF="Mood" PARENT_REF="A_word-txt-qaa-x-dim"><ANNOTATION><REF_ANNOTATION ANNOTATION_ID="md9" ANNOTATION_REF="w1"><ANNOTATION_VALUE>x</ANNOTATION_VALUE></REF_ANNOTATION></ANNOTATION></TIER>',
+    );
+    const result = compareSchemas([...batch(), readEaf(wordMood, 'odd.eaf')]);
+    expect(result.consistent).toBe(false);
+    expect(result.differences).toEqual([
+      {
+        tier: 'Mood',
+        variants: [
+          { role: ROLES.SENTENCE_FIELD, files: ['a.eaf', 'b.eaf', 'c.eaf', 'd.eaf'] },
+          { role: ROLES.WORD_FIELD, files: ['odd.eaf'] },
+        ],
+      },
     ]);
   });
 });

@@ -18,8 +18,8 @@
 // says it does not settle (`settles: false`) has what changed printed without
 // failing the run.
 //
-// When an ELAN import refuses the project's own export (the files differ in
-// tier structure), that refusal is reported as a failure and each document is
+// When an ELAN import refuses the project's own export (its files make one
+// tier two different things), that refusal is reported as a failure and each document is
 // then round-tripped on its own, so the rest of what ELAN carries is still
 // checked.
 //

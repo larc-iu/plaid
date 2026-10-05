@@ -1,13 +1,14 @@
 // "Import ELAN" — create a project from a folder of .eaf files.
-// Flow: pick files → read + compare tier structures → review (name, the tier
+// Flow: pick files → read + compare tiers → review (name, the tier
 // mapping, what each tier becomes) → run (shared project setup, then the ELAN
 // import engine) → done.
 //
-// The batch is refused outright unless every file has the same tier structure.
-// One mapping is applied to the whole corpus, so a file with different tiers
-// would be imported under decisions that were never made for it. See
-// import/elan/schema.js for what "the same structure" means (participants are
-// normalized out, so files by different speakers still match).
+// The batch is refused outright when a tier becomes different things in
+// different files. One mapping is applied to the whole corpus, so such a file
+// would be imported under decisions that were never made for it. Files whose
+// trees differ otherwise are one batch: see import/elan/schema.js for how
+// their tiers are matched (participants are normalized out, so files by
+// different speakers still match).
 //
 // Reading the batch and mapping its tiers is `useElanBatch` + `ElanTierReview`,
 // shared with ImportElanDocuments, which runs the same import into a project
@@ -172,8 +173,8 @@ export const ImportElanProject = () => {
             >
               ELAN
             </a>{' '}
-            annotation files. Every file becomes one document. All files must share one tier
-            structure.
+            annotation files. Every file becomes one document. A tier must mean the same thing in
+            every file.
           </p>
           {resumeId && (
             <ResumeBanner
@@ -209,7 +210,7 @@ export const ImportElanProject = () => {
           <div className="flex flex-col gap-6">
             {!batch.comparison.consistent && (
               <SchemaMismatch
-                comparison={batch.comparison}
+                batch={batch}
                 onReset={() => {
                   batch.reset();
                   setStage('pick');

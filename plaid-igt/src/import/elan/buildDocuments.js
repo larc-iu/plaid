@@ -26,7 +26,7 @@
 // stores seconds in metadata.timeBegin/timeEnd.
 
 import { makeCpIndexer, matchesAt, alignWords, alignSurfaces, cutsAWord } from '../align.js';
-import { ROLES, nodeLabel } from './schema.js';
+import { ROLES, nodeLabel, groupRoles, groupValues } from './schema.js';
 import { readAffixMarkers } from '../../domain/affixMarkers.js';
 import { joinPhrase } from '../flex/flextextParser.js';
 import { fieldWorksFieldNames, parseElanFlexTierName, parseFlexTierName } from './tierNaming.js';
@@ -306,7 +306,7 @@ function orderUtterances(utterances) {
 }
 
 /**
- * Build importable documents.
+ * Build importable documents from files that share one tier tree.
  *
  * @param files  parsed .eaf objects (readEaf output)
  * @param nodes  the agreed schema (schema.js tierSchema, one shared shape)
@@ -317,13 +317,119 @@ function orderUtterances(utterances) {
  * @returns {{documents, schema, stats, warnings}}
  */
 export function buildElanDocuments(files, nodes, roles, options = {}) {
+  return {
+    ...buildGroup(files, nodes, roles, options),
+    warnings: batchWarnings(files, options.mediaByFile || null),
+  };
+}
+
+/**
+ * Build a whole batch, whose files may fall into several tier trees: each
+ * group is built on its own tree under the mapping chosen on the rows
+ * (schema.js compareSchemas, groupRoles), and the results are put together as
+ * one build over the files in the order they were chosen.
+ *
+ * @param comparison  compareSchemas output, consistent
+ * @param roles  {rowKey: ROLES.*}
+ * @param options  as buildElanDocuments, with fieldNames filed by row key
+ */
+export function buildElanBatch(comparison, roles, options = {}) {
+  const parts = comparison.groups.map((group) => ({
+    group,
+    built: buildGroup(group.files, group.nodes, groupRoles(group, roles), {
+      ...options,
+      fieldNames: groupValues(group, options.fieldNames || {}),
+    }),
+  }));
+  const order = new Map(comparison.files.map((f, i) => [f, i]));
+  const documents = parts
+    .flatMap(({ group, built }) => built.documents.map((doc, i) => ({ doc, file: group.files[i] })))
+    .sort((a, b) => order.get(a.file) - order.get(b.file))
+    .map(({ doc }) => doc);
+  // One field per scope and name, where the largest group's tree puts it, with
+  // the writing system any group's tier name declares.
+  const mergeFields = (list) => {
+    const byName = new Map();
+    for (const f of list) {
+      const key = `${f.scope}:${f.name}`;
+      const kept = byName.get(key);
+      if (!kept) byName.set(key, { ...f });
+      else if (!kept.lang && f.lang) kept.lang = f.lang;
+    }
+    return [...byName.values()];
+  };
+  const unique = (list, keyOf) => [...new Map(list.map((x) => [keyOf(x), x])).values()];
+  const schemas = parts.map((p) => p.built.schema);
+  const stats = parts.map((p) => p.built.stats);
+  const sum = (key) => stats.reduce((n, s) => n + s[key], 0);
+  const skipped = new Map();
+  for (const s of stats.flatMap((x) => x.skipped)) {
+    const prev = skipped.get(s.label) || { label: s.label, values: 0, tiers: new Set() };
+    prev.values += s.values;
+    for (const t of s.tiers) prev.tiers.add(t);
+    skipped.set(s.label, prev);
+  }
+  return {
+    documents,
+    schema: {
+      baselineLang: schemas[0]?.baselineLang ?? null,
+      fields: mergeFields(schemas.flatMap((s) => s.fields)),
+      orthographies: [...new Set(schemas.flatMap((s) => s.orthographies))],
+      documentMetadata: unique(
+        schemas.flatMap((s) => s.documentMetadata),
+        (m) => m.name,
+      ),
+    },
+    stats: {
+      files: sum('files'),
+      sentences: sum('sentences'),
+      words: sum('words'),
+      morphemes: sum('morphemes'),
+      alignments: sum('alignments'),
+      speakers: [...new Set(stats.flatMap((s) => s.speakers))].sort(),
+      skipped: [...skipped.values()]
+        .map((x) => ({ label: x.label, values: x.values, tiers: [...x.tiers].sort() }))
+        .sort((a, b) => b.values - a.values),
+    },
+    warnings: batchWarnings(comparison.files, options.mediaByFile || null),
+  };
+}
+
+// What is said once for a whole batch rather than once per document.
+function batchWarnings(files, mediaByFile) {
+  const warnings = [];
+  // ANNOTATOR is per-tier in EAF and Plaid has nowhere per-tier to put it, so it
+  // is not imported. Saying so beats dropping a curation record in silence.
+  const annotators = [
+    ...new Set(files.flatMap((f) => f.tiers.map((t) => t.annotator).filter(Boolean))),
+  ].sort();
+  if (annotators.length) {
+    warnings.push(
+      `The .eaf files name an annotator on some tiers (${annotators.join(', ')}). ELAN records that per tier, which has no equivalent here, so it is not imported.`,
+    );
+  }
+
+  // Only the recordings nobody supplied: one that was picked rides along with
+  // its document (mediaFile) and needs no warning.
+  const unsupplied = files.filter((f) => f.media.length && !mediaByFile?.get(f.fileName));
+  if (unsupplied.length) {
+    warnings.push(
+      (files.length === 1
+        ? 'This file names a recording that was not chosen. The document is imported without media'
+        : `${unsupplied.length} of ${files.length} files name a recording that was not chosen. Those documents are imported without media`) +
+        ', which can be attached on the Media tab afterwards.',
+    );
+  }
+  return warnings;
+}
+
+function buildGroup(files, nodes, roles, options = {}) {
   const fieldNames = options.fieldNames || {};
   const mediaByFile = options.mediaByFile || null;
   // The recording's original file name goes in a Media file metadata field
   // unless the person turns that off.
   const recordMediaName = options.recordMediaName !== false;
   const { byRole } = resolveMapping(nodes, roles);
-  const warnings = [];
 
   const utteranceNodes = byRole.get(ROLES.UTTERANCE) || [];
   if (!utteranceNodes.length) throw new Error('No tier is mapped to the sentences.');
@@ -857,29 +963,6 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
 
   // Two files naming the same document both keep that name, as Plaid allows.
 
-  // ANNOTATOR is per-tier in EAF and Plaid has nowhere per-tier to put it, so it
-  // is not imported. Saying so beats dropping a curation record in silence.
-  const annotators = [
-    ...new Set(files.flatMap((f) => f.tiers.map((t) => t.annotator).filter(Boolean))),
-  ].sort();
-  if (annotators.length) {
-    warnings.push(
-      `The .eaf files name an annotator on some tiers (${annotators.join(', ')}). ELAN records that per tier, which has no equivalent here, so it is not imported.`,
-    );
-  }
-
-  // Only the recordings nobody supplied: one that was picked rides along with
-  // its document (mediaFile) and needs no warning.
-  const unsupplied = files.filter((f) => f.media.length && !mediaByFile?.get(f.fileName));
-  if (unsupplied.length) {
-    warnings.push(
-      (files.length === 1
-        ? 'This file names a recording that was not chosen. The document is imported without media'
-        : `${unsupplied.length} of ${files.length} files name a recording that was not chosen. Those documents are imported without media`) +
-        ', which can be attached on the Media tab afterwards.',
-    );
-  }
-
   // `lang` is the writing system the tier's name declares, when it declares
   // one: a corpus prepared for FieldWorks says so (`Translation-gls-nl`), and
   // a field created from that tier can record it instead of being read back
@@ -924,6 +1007,5 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
         .map((x) => ({ label: x.label, values: x.values, tiers: [...x.tiers].sort() }))
         .sort((a, b) => b.values - a.values),
     },
-    warnings,
   };
 }

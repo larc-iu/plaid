@@ -2,14 +2,25 @@
 // import has to pass. Pure.
 //
 // WHY A GATE. Importing a corpus means answering "which tier is the gloss?"
-// once, not once per file, so every file in the batch must have the same tier
-// structure. A batch that does not is refused outright with a report of exactly
-// where the files disagree (see compareSchemas). Accepting a majority and
-// silently skipping the rest would produce a half-imported corpus that looks
-// complete, which is worse than an error.
+// once, not once per file, so every file in the batch must read the same way:
+// a tier name has to become the same thing wherever it appears. A batch that
+// does not is refused outright with a report of exactly where the files
+// disagree (see compareSchemas). Accepting a majority and silently skipping the
+// rest would produce a half-imported corpus that looks complete, which is
+// worse than an error.
 //
-// WHAT "THE SAME STRUCTURE" MEANS. Not the same TIER_IDs: ELAN names tiers
-// `basename@participant`, and a top tier is often just the speaker's name, so
+// The gate compares MAPPINGS, not trees. Files exported from one FLEx project
+// at different times differ in tree shape (a phrase-text tier present or not,
+// a paragraph tier above it or not), and every tier below a moved one sits at
+// a new path. A colleague's 23 such files split ten ways, each importing
+// cleanly on its own. So each tree shape is a GROUP, its roles are suggested
+// on its own tree, and the groups are joined into one mapping table by what
+// their tiers become. A tier only some files have is a row only some files
+// fill, which loses nothing. A tier that becomes different things in
+// different files is the disagreement the gate refuses.
+//
+// WHAT "THE SAME TREE" MEANS, for a group. Not the same TIER_IDs: ELAN names
+// tiers `basename@participant`, and a top tier is often just the speaker's name, so
 // two files recorded with different speakers have no tier names in common while
 // being structurally identical. A schema NODE is therefore
 //
@@ -115,8 +126,14 @@ export function tierSchema(eaf, canonical = null) {
     node.filledCount += tier.annotations.filter((a) => String(a.value ?? '').trim()).length;
   }
 
-  // Depth, for indenting the mapping UI.
-  const list = [...nodes.values()];
+  return orderTree([...nodes.values()]);
+}
+
+/**
+ * Nodes in tree order with their depth set, for the mapping UI: parents before
+ * children, siblings in the order given. Sets `depth` on each node.
+ */
+function orderTree(list) {
   const byKey = new Map(list.map((n) => [n.key, n]));
   for (const node of list) {
     let depth = 0;
@@ -217,12 +234,6 @@ function nearMisses(nodes) {
     });
 }
 
-/** Names in `a` that have a near-miss twin in `b` rather than a real absence. */
-const nearMissesAcross = (a, b) => {
-  const folded = new Set(b.map(foldName));
-  return a.filter((n) => folded.has(foldName(n)));
-};
-
 /** A stable string identifying a schema, for grouping files. */
 export const signatureOf = (nodes) =>
   nodes
@@ -233,14 +244,162 @@ export const signatureOf = (nodes) =>
 /** A human label for a node: the base name, or the speaker-tier placeholder. */
 export const nodeLabel = (node) => node.baseName || '(speaker tier)';
 
+// The roles that give a document its shape. A group has at most one tier in
+// each as suggested, so across groups these rows join by role alone, whatever
+// the tier is called.
+const SPINE = [ROLES.UTTERANCE, ROLES.WORD, ROLES.MORPHEME];
+
+// What a node is across groups: its role for the spine, else its role and
+// name. A tier left out joins only a tier of the same name AND type, since
+// nothing about it says what it is.
+const identityOf = (node, role) => {
+  if (SPINE.includes(role)) return role;
+  if (role === ROLES.OFF) return `${role}\u0000${node.baseName}\u0000${node.typeRef}`;
+  return `${role}\u0000${node.baseName}`;
+};
+
 /**
- * Group parsed files by schema and report whether the batch may proceed.
+ * Join the groups' nodes into one list of ROWS, the mapping table's. The
+ * largest group's nodes are rows as they are. A node of another group joins
+ * the one row with its identity (identityOf), or, when there is none or more
+ * than one, becomes a row of its own under the row its parent joined. Each
+ * group gets `rowOf`, its node keys to row keys.
  *
- * A batch is consistent only when every file has the same schema. When it does
- * not, `differences` names the nodes that separate each minority group from the
- * largest one, in the words the user sees in the mapping table.
+ * A row holds every tier of every file that joined it, and `fileCount` counts
+ * those files. `aliases` are other names a spine row goes by.
+ */
+function joinGroups(groups) {
+  const rows = new Map();
+  const byIdentity = new Map();
+  const suggested = {};
+  groups.forEach((group, gi) => {
+    group.rowOf = new Map();
+    const joined = new Set();
+    for (const node of group.nodes) {
+      const role = group.roles[node.key] ?? ROLES.OFF;
+      const id = identityOf(node, role);
+      const matches = byIdentity.get(id) ?? [];
+      let row = gi > 0 && matches.length === 1 ? rows.get(matches[0]) : null;
+      // Two nodes of one group are two rows, however alike they read.
+      if (row && joined.has(row.key)) row = null;
+      if (row) {
+        for (const id of node.tierIds) {
+          if (!row.tierIds.includes(id)) row.tierIds.push(id);
+        }
+        for (const p of node.participants) {
+          if (!row.participants.includes(p)) row.participants.push(p);
+        }
+        row.annotationCount += node.annotationCount;
+        row.filledCount += node.filledCount;
+        if (node.baseName !== row.baseName && !row.aliases.includes(node.baseName)) {
+          row.aliases.push(node.baseName);
+        }
+      } else {
+        const key = rows.has(node.key) ? `${gi}\u0000${node.key}` : node.key;
+        row = {
+          ...node,
+          key,
+          parentKey: node.parentKey ? (group.rowOf.get(node.parentKey) ?? null) : null,
+          tierIds: [...node.tierIds],
+          participants: [...node.participants],
+          aliases: [],
+          fileCount: 0,
+        };
+        rows.set(key, row);
+        byIdentity.set(id, [...matches, key]);
+        suggested[key] = role;
+      }
+      row.fileCount += group.files.length;
+      joined.add(row.key);
+      group.rowOf.set(node.key, row.key);
+    }
+  });
+  return { rows: orderTree([...rows.values()]), suggested };
+}
+
+const fileNames = (group) => group.files.map((f) => f.fileName);
+
+// Whether a group's text is written from its words under these roles, as
+// buildElanDocuments decides it (textFromWords): a FLEx phrase tier is the
+// sentences and some tier is the words.
+const writtenFromWords = (group, roles) => {
+  const sentences = group.nodes.filter((n) => roles[n.key] === ROLES.UTTERANCE);
+  return (
+    Object.values(roles).includes(ROLES.WORD) &&
+    sentences.every((n) => parseElanFlexTierName(nodeLabel(n))?.level === 'phrase')
+  );
+};
+
+/**
+ * Where the groups disagree about what a tier is.
  *
- * @returns {{consistent, nodes, groups, differences}}
+ * A tier name that becomes one thing in some files and another in others is
+ * the batch the gate exists to refuse: one answer in the mapping table would
+ * be wrong for some of the files. Leaving a tier out is not becoming something
+ * (a segment-number tier is left out where a phrase tier carries the text and
+ * is the sentences where none does).
+ *
+ * The sentence, word and morpheme rows join whatever their tiers are called,
+ * and a name that differs there decides what the text is. That is allowed only
+ * for the sentences of a text made in FLEx, whose text is written from its
+ * words (buildElanDocuments' textFromWords), so the sentence tier's own text is
+ * never read.
+ *
+ * @returns {Array<{tier: string, variants: Array<{role, files}>} |
+ *                 {role, variants: Array<{name, files}>, nearMiss: boolean}>}
+ */
+function disagreements(groups) {
+  const out = [];
+  const rolesByName = new Map();
+  for (const group of groups) {
+    for (const node of group.nodes) {
+      const role = group.roles[node.key] ?? ROLES.OFF;
+      if (role === ROLES.OFF) continue;
+      const name = nodeLabel(node);
+      if (!rolesByName.has(name)) rolesByName.set(name, new Map());
+      const byRole = rolesByName.get(name);
+      byRole.set(role, [...(byRole.get(role) ?? []), ...fileNames(group)]);
+    }
+  }
+  for (const [tier, byRole] of rolesByName) {
+    if (byRole.size < 2) continue;
+    out.push({ tier, variants: [...byRole].map(([role, files]) => ({ role, files })) });
+  }
+
+  const textFromWords = groups.every((group) => writtenFromWords(group, group.roles));
+  for (const role of SPINE) {
+    if (role === ROLES.UTTERANCE && textFromWords) continue;
+    const byName = new Map();
+    for (const group of groups) {
+      for (const node of group.nodes) {
+        if (group.roles[node.key] !== role) continue;
+        const name = nodeLabel(node);
+        byName.set(name, [...(byName.get(name) ?? []), ...fileNames(group)]);
+      }
+    }
+    if (byName.size < 2) continue;
+    out.push({
+      role,
+      variants: [...byName].map(([name, files]) => ({ name, files })),
+      nearMiss: new Set([...byName.keys()].map(foldName)).size === 1,
+    });
+  }
+  return out;
+}
+
+/**
+ * Group parsed files by schema, join the groups into one mapping table, and
+ * report whether the batch may proceed.
+ *
+ * Each group's roles are suggested on its own tree (suggestRoles), and the
+ * rows (`nodes`) carry those suggestions as `suggested`. A batch is consistent
+ * unless a tier name becomes different things in different files, which
+ * `differences` names (see disagreements). A mapping chosen on the rows is
+ * each group's through groupRoles, and a batch is validated and built group by
+ * group (validateBatch, buildElanBatch), since a field is found through its own
+ * file's tree.
+ *
+ * @returns {{consistent, files, nodes, suggested, groups, differences, nearMisses}}
  */
 export function compareSchemas(files, canonical = null) {
   const groups = new Map();
@@ -273,39 +432,60 @@ export function compareSchemas(files, canonical = null) {
     }
   }
   const list = [...groups.values()].sort((a, b) => b.files.length - a.files.length);
+  for (const group of list) group.roles = suggestRoles(group.nodes);
   // Across every group, not just the largest: a name misspelled in one file is
   // exactly what splits a batch in two, and that pair is the one worth showing.
   const misses = nearMisses(list.flatMap((g) => g.nodes));
-  if (list.length <= 1) {
-    return {
-      consistent: true,
-      nodes: list[0]?.nodes ?? [],
-      groups: list,
-      differences: [],
-      nearMisses: misses,
-    };
-  }
-
-  // Describe every minority group against the largest one.
-  const [main, ...rest] = list;
-  const mainKeys = new Set(main.nodes.map((n) => n.key));
-  const differences = rest.map((group) => {
-    const keys = new Set(group.nodes.map((n) => n.key));
-    const missing = main.nodes.filter((n) => !keys.has(n.key)).map(nodeLabel);
-    const extra = group.nodes.filter((n) => !mainKeys.has(n.key)).map(nodeLabel);
-    // "missing Phrase, extra phrase" is a baffling thing to read. Name it for
-    // what it is, since a near miss between files is the likeliest way a batch
-    // fails this gate by accident.
-    const nearMiss = nearMissesAcross(missing, extra);
-    return { files: group.files.map((f) => f.fileName), missing, extra, nearMiss };
-  });
+  const { rows, suggested } = joinGroups(list);
+  const differences = list.length > 1 ? disagreements(list) : [];
   return {
-    consistent: false,
-    nodes: main.nodes,
+    consistent: differences.length === 0,
+    files,
+    nodes: rows,
+    suggested,
     groups: list,
     differences,
     nearMisses: misses,
   };
+}
+
+/** A mapping chosen on the rows, as one group's own: its node keys to roles. */
+export const groupRoles = (group, roles) =>
+  Object.fromEntries(group.nodes.map((n) => [n.key, roles[group.rowOf.get(n.key)] ?? ROLES.OFF]));
+
+/** Values filed under row keys (field names), filed under one group's node keys. */
+export const groupValues = (group, values) =>
+  Object.fromEntries(
+    group.nodes
+      .filter((n) => values[group.rowOf.get(n.key)] !== undefined)
+      .map((n) => [n.key, values[group.rowOf.get(n.key)]]),
+  );
+
+/**
+ * validateRoles over every group of a batch, each problem said once.
+ *
+ * Sentence tiers named differently in different files were joined only
+ * because the text is written from the words (disagreements). A mapping that
+ * drops the words would read each file's own sentence tier instead, which in
+ * some files holds only segment numbers.
+ */
+export function validateBatch(comparison, roles) {
+  const problems = new Set();
+  const sentenceNames = new Set();
+  let fromWords = true;
+  for (const group of comparison.groups) {
+    const own = groupRoles(group, roles);
+    for (const p of validateRoles(group.nodes, own)) problems.add(p);
+    for (const n of group.nodes)
+      if (own[n.key] === ROLES.UTTERANCE) sentenceNames.add(nodeLabel(n));
+    fromWords = fromWords && writtenFromWords(group, own);
+  }
+  if (sentenceNames.size > 1 && !fromWords) {
+    problems.add(
+      'The sentence tier has a different name in some files, so the sentences are written from the words. Choose a tier for Words.',
+    );
+  }
+  return [...problems];
 }
 
 // ---- role suggestion -------------------------------------------------------

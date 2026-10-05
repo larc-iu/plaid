@@ -418,7 +418,7 @@ export const ImportElanDocuments = () => {
           <div className="flex flex-col gap-6">
             {!batch.comparison.consistent && (
               <SchemaMismatch
-                comparison={batch.comparison}
+                batch={batch}
                 onReset={() => {
                   batch.reset();
                   setStage('pick');

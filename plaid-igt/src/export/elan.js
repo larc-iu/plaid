@@ -331,10 +331,9 @@ const refAnnotation = (indent, annId, parentId, value, previousId = null) => [
 ];
 
 // A tier is written even when it holds nothing. Every document of one export
-// then has the same tier structure, which is what an ELAN import needs to read
-// a corpus as one batch: the import refuses files whose structures differ,
-// since one mapping has to fit all of them, and a field no sentence in THIS
-// document fills is still a field of the project.
+// then has the same tiers, so an ELAN import of the corpus reads one tree and
+// one mapping, and a field no sentence in THIS document fills is still a field
+// of the project.
 const tier = (id, typeRef, { parent = null, participant = null, annotations = [] }) => {
   return [
     `  <TIER TIER_ID="${xmlEscape(id)}" LINGUISTIC_TYPE_REF="${xmlEscape(typeRef)}"` +

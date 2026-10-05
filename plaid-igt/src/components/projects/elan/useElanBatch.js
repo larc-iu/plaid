@@ -9,18 +9,8 @@
 import { useMemo, useRef, useState } from 'react';
 import { readEaf } from '@/import/elan/readEaf';
 import { readTextFile } from '@ui/lib/textFile.js';
-import {
-  compareSchemas,
-  suggestRoles,
-  validateRoles,
-  ROLES,
-  SCOPE_OF_ROLE,
-} from '@/import/elan/schema';
-import {
-  buildElanDocuments,
-  defaultFieldName,
-  matchMediaFiles,
-} from '@/import/elan/buildDocuments';
+import { compareSchemas, validateBatch, ROLES, SCOPE_OF_ROLE } from '@/import/elan/schema';
+import { buildElanBatch, defaultFieldName, matchMediaFiles } from '@/import/elan/buildDocuments';
 import { fieldWorksFieldNames } from '@/import/elan/tierNaming';
 
 const EAF = /\.eaf$/i;
@@ -73,8 +63,8 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = newFieldNames 
 
   const nodes = useMemo(() => comparison?.nodes ?? [], [comparison]);
   const problems = useMemo(
-    () => (comparison?.consistent ? validateRoles(nodes, roles) : []),
-    [comparison, nodes, roles],
+    () => (comparison?.consistent ? validateBatch(comparison, roles) : []),
+    [comparison, roles],
   );
 
   // Which recording belongs to which .eaf, recomputed with either list.
@@ -85,7 +75,7 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = newFieldNames 
   const build = useMemo(() => {
     if (!files || !comparison?.consistent || problems.length) return null;
     try {
-      return buildElanDocuments(files, nodes, roles, {
+      return buildElanBatch(comparison, roles, {
         fieldNames,
         mediaByFile: media.byFile,
         recordMediaName,
@@ -94,7 +84,7 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = newFieldNames 
       console.error('ELAN build failed:', e);
       return null;
     }
-  }, [files, comparison, nodes, roles, fieldNames, problems, media, recordMediaName]);
+  }, [files, comparison, roles, fieldNames, problems, media, recordMediaName]);
 
   // Adopt a schema: suggest the roles and field names for it, keeping whatever
   // the user has already chosen for nodes that survive. A merge changes node
@@ -107,7 +97,7 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = newFieldNames 
   // made. A tier the batch no longer has is dropped.
   const applySchema = (parsed, result, given = null) => {
     setComparison(result);
-    const suggested = result.consistent ? suggestRoles(result.nodes) : {};
+    const suggested = result.consistent ? result.suggested : {};
     const roleOf = { ...suggested };
     if (skipEmptyTiers) {
       for (const n of result.nodes) if (!n.annotationCount) roleOf[n.key] = ROLES.OFF;

@@ -59,7 +59,7 @@ const TAGSET_RULING =
 const COMMENTS_RULED = {
   carried: false,
   kind: 'ruled',
-  why: 'Comments go into no interchange format. An ELAN copy would need a tier of its own, present only in commented documents, which the batch import would refuse as a different tier structure.',
+  why: 'Comments go into no interchange format.',
   ruling: 'plaid_comments.md, 2026-08-31, commit 87cb70e3',
 };
 

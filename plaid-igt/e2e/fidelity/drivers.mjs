@@ -31,7 +31,7 @@ import {
 } from '../../src/import/cldf/importEngine.js';
 import { readCldfDataset } from '../../src/import/cldf/readDataset.js';
 import {
-  buildElanDocuments,
+  buildElanBatch,
   defaultFieldName,
   matchMediaFiles,
 } from '../../src/import/elan/buildDocuments.js';
@@ -40,7 +40,7 @@ import {
   runElanImport,
 } from '../../src/import/elan/importEngine.js';
 import { readEaf } from '../../src/import/elan/readEaf.js';
-import { compareSchemas, suggestRoles, validateRoles } from '../../src/import/elan/schema.js';
+import { compareSchemas, validateBatch } from '../../src/import/elan/schema.js';
 import {
   deriveSetupData as nativeSetupData,
   runNativeImport,
@@ -169,7 +169,7 @@ async function importElan(client, bytes, name, shouldStop) {
     .map((p) => new File([entries[p]], p.split('/').pop()));
   if (!files.length) throw new Error('the ELAN export holds no .eaf file');
 
-  // The screen refuses a batch whose files differ in tier structure, and asks
+  // The screen refuses a batch whose files read a tier differently, and asks
   // about tier names that differ only in spelling. Keeping those apart is the
   // choice that decides nothing on the files' behalf.
   const notes = [];
@@ -178,14 +178,13 @@ async function importElan(client, bytes, name, shouldStop) {
     notes.push(`near-miss tier names kept apart: ${JSON.stringify(comparison.nearMisses)}`);
   }
   if (!comparison.consistent) {
-    const why = comparison.differences
-      .map((d) => `${d.files.join(', ')}: missing [${d.missing}] extra [${d.extra}]`)
-      .join('; ');
-    throw new Error(`the ELAN import refuses the batch, tier structures differ: ${why}`);
+    throw new Error(
+      `the ELAN import refuses the batch, files read a tier differently: ${JSON.stringify(comparison.differences)}`,
+    );
   }
   const nodes = comparison.nodes;
-  const roles = suggestRoles(nodes);
-  const problems = validateRoles(nodes, roles);
+  const roles = comparison.suggested;
+  const problems = validateBatch(comparison, roles);
   if (problems.length) {
     throw new Error(`the suggested tier roles are refused: ${JSON.stringify(problems)}`);
   }
@@ -195,7 +194,7 @@ async function importElan(client, bytes, name, shouldStop) {
   if (matched.unmatched.length) {
     notes.push(`recordings no .eaf names: ${matched.unmatched.map((f) => f.name)}`);
   }
-  const build = buildElanDocuments(files, nodes, roles, {
+  const build = buildElanBatch(comparison, roles, {
     fieldNames,
     mediaByFile: matched.byFile,
   });

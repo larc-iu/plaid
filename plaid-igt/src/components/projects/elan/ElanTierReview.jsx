@@ -48,37 +48,47 @@ const ROLE_GROUPS = [
   ],
 ];
 
-export const SchemaMismatch = ({ comparison, onReset }) => (
-  <Panel tone="error" title="These files do not share one tier structure">
-    <p className="mt-1 text-xs">
-      Import each structure separately, or make the tiers match in ELAN first.
-    </p>
-    <ul className="mt-2 flex flex-col gap-2 text-xs">
-      {comparison.differences.map((d, i) => (
-        <li key={i}>
-          <span className="font-medium">
-            {d.files.length} file{d.files.length === 1 ? '' : 's'}
-          </span>{' '}
-          ({d.files.slice(0, 3).join(', ')}
-          {d.files.length > 3 ? `, +${d.files.length - 3} more` : ''}):
-          {d.missing.length > 0 && <> missing {d.missing.join(', ')}.</>}
-          {d.extra.length > 0 && <> extra {d.extra.join(', ')}.</>}
-          {d.nearMiss?.length > 0 && (
-            <>
-              {' '}
-              <span className="font-medium">
-                {d.nearMiss.join(', ')} differs only in how it is spelled
-              </span>
-              , which is likely a typo in the tier name rather than a real difference.
-            </>
-          )}
-        </li>
-      ))}
-    </ul>
-    <Button variant="outline" size="sm" className="mt-3" onClick={onReset}>
-      Choose different files
-    </Button>
-  </Panel>
+const ROLE_LABEL = Object.fromEntries(ROLE_GROUPS.flatMap(([, options]) => options));
+
+const fileList = (files) =>
+  files.slice(0, 3).join(', ') + (files.length > 3 ? `, +${files.length - 3} more` : '');
+
+/** A row's name, with the other names its tier goes by in some files. */
+const rowLabel = (node) => [nodeLabel(node), ...(node.aliases ?? [])].join(' / ');
+
+export const SchemaMismatch = ({ batch, onReset }) => (
+  <>
+    {batch.nearMissGroups.length > 0 && (
+      <NearMisses
+        groups={batch.nearMissGroups}
+        choices={batch.nearMissChoices}
+        undecided={batch.undecidedNearMisses}
+        editable
+        onChoose={batch.chooseNearMiss}
+      />
+    )}
+    <Panel tone="error" title="These files disagree about what a tier is">
+      <p className="mt-1 text-xs">Import them separately, or make the tiers match in ELAN first.</p>
+      <ul className="mt-2 flex flex-col gap-2 text-xs">
+        {batch.comparison.differences.map((d, i) => (
+          <li key={i}>
+            <span className="font-medium">{d.tier ?? ROLE_LABEL[d.role]}</span>:{' '}
+            {d.variants
+              .map((v) =>
+                d.tier
+                  ? `${ROLE_LABEL[v.role]} in ${fileList(v.files)}`
+                  : `“${v.name}” in ${fileList(v.files)}`,
+              )
+              .join(' · ')}
+            {d.nearMiss && '. The names differ only in spelling.'}
+          </li>
+        ))}
+      </ul>
+      <Button variant="outline" size="sm" className="mt-3" onClick={onReset}>
+        Choose different files
+      </Button>
+    </Panel>
+  </>
 );
 
 const NearMisses = ({ groups, choices, undecided, editable, onChoose }) => (
@@ -175,7 +185,9 @@ export const ElanTierReview = ({
         note={
           files.length === 1
             ? `One file, ${nodes.length} tier${nodes.length === 1 ? '' : 's'}.`
-            : `${files.length} files with the same ${nodes.length} tier${nodes.length === 1 ? '' : 's'}.`
+            : nodes.every((n) => (n.fileCount ?? files.length) === files.length)
+              ? `${files.length} files with the same ${nodes.length} tier${nodes.length === 1 ? '' : 's'}.`
+              : `${files.length} files, ${nodes.length} tier${nodes.length === 1 ? '' : 's'}. Not every file has every tier.`
         }
         aside={
           <Button
@@ -198,7 +210,7 @@ export const ElanTierReview = ({
             gives the Media tab its segments, and a field holds one value per sentence, word or
             morpheme.
             {files.length > 1 &&
-              ' Speaker suffixes are ignored when matching, so files by different speakers count as the same structure.'}
+              ' Tiers are matched across files by name and by what they become, wherever they sit in the tree. Speaker suffixes are ignored.'}
           </p>
         )}
         <div className="flex flex-col gap-2">
@@ -214,10 +226,13 @@ export const ElanTierReview = ({
                     node.stereotype ?? 'top level',
                   ].join(' · ')}
                 >
-                  <span className="font-medium">{nodeLabel(node)}</span>
+                  <span className="font-medium">{rowLabel(node)}</span>
                   <span className="ml-2 text-xs text-muted-foreground">
                     {node.annotationCount} annotation{node.annotationCount === 1 ? '' : 's'}
                     {node.participants.length > 1 ? ` · ${node.participants.length} speakers` : ''}
+                    {node.fileCount < files.length
+                      ? ` · in ${node.fileCount} of ${files.length} files`
+                      : ''}
                   </span>
                 </div>
                 {NAMED_ROLES.has(roles[node.key]) &&
