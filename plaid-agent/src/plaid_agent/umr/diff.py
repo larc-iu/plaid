@@ -129,6 +129,11 @@ class GraphDiff:
         return len(self.ops)
 
 
+#: A parent that is the node itself, in `_rename_in`'s parent sets. No
+#: variable holds a bracket.
+_SELF = '(self)'
+
+
 def _rename_in(doc: UmrDoc, sentence: Sentence, parsed: Graph, written) -> Tuple[Any, str]:
     """The one node the text renames and its new variable, or ``(None, '')``.
     plaid-umr's ``UmrDocument._renameIn``: exactly one variable goes and one
@@ -142,18 +147,24 @@ def _rename_in(doc: UmrDoc, sentence: Sentence, parsed: Graph, written) -> Tuple
     node, to = gone[0], fresh[0]
     if parsed.nodes[to].concept != node.concept:
         return None, ''
+    # A node that is its own parent (a `:quote` edge to itself) is written
+    # under its own name on both sides, old and new, so it stands as one
+    # placeholder that the rename does not change.
     old_parents = set()
     for e in node.into:
         source = doc.nodes_by_id.get(e.source)
         if source is not None and source.sentence == sentence.index:
-            old_parents.add(f'{e.role} {source.var}')
-    new_parents = {f'{child.rel} {v}' for v, parent in parsed.nodes.items()
+            old_parents.add(f'{e.role} {_SELF if e.source == node.id else source.var}')
+    new_parents = {f'{child.rel} {_SELF if v == to else v}'
+                   for v, parent in parsed.nodes.items()
                    for child in parent.children if child.kind == 'node' and child.value == to}
     if old_parents != new_parents:
         return None, ''
     # A parentless node is the root or nothing: renaming the root is a
-    # rename, renaming a loose fragment's head is a guess.
-    if not old_parents and not (node.root and parsed.root == to):
+    # rename, renaming a loose fragment's head is a guess. An edge to itself
+    # makes no node a parent.
+    parents = [k for k in old_parents if not k.endswith(f' {_SELF}')]
+    if not parents and not (node.root and parsed.root == to):
         return None, ''
     return node, to
 
