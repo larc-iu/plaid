@@ -265,6 +265,9 @@ export const useMediaOperations = () => {
   // for it left unsaved. This page's own delete is not: it shows at once,
   // and the flag is up while it does.
   const ownDeleteRef = useRef(false);
+  // While this tab is shown, a write refused for a change to the recording
+  // is this notice's to say (mutations/alignment.js).
+  useEffect(() => doc.watchRecording?.(), [doc]);
   const seenMediaRef = useRef({ id: doc.document.id, url: mediaSrcUrl });
   useEffect(() => {
     const seen = seenMediaRef.current;

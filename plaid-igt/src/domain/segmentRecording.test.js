@@ -28,7 +28,9 @@ const serverWith = (segments, body = 'one two three') => {
   return server;
 };
 
-const open = (server) => {
+// `watched`: a Media tab is shown (`watchRecording`), whose notice of the
+// change takes the refusal.
+const open = (server, { watched = true } = {}) => {
   const doc = new IgtDocument({
     raw: structuredClone(server.stored),
     project: { id: 'proj-1', vocabs: [], config: { plaid: {} } },
@@ -44,6 +46,7 @@ const open = (server) => {
   server.client.documentVersions = { [doc.id]: 1 };
   doc.errors = [];
   doc.onError = (msg, err, label) => doc.errors.push([label, err?.message ?? msg]);
+  doc.unwatch = watched ? doc.watchRecording() : () => {};
   return doc;
 };
 
@@ -155,10 +158,45 @@ describe('a segment write against a recording replaced meanwhile', () => {
     await write;
     await idle(doc);
     expect(server.segments().map((t) => t.id)).toEqual(['a-1']);
-    expect(doc.errors).toEqual([
-      ['Failed to align baseline text', 'Replaced elsewhere. Segment not saved.'],
-    ]);
+    expect(doc.errors).toEqual([['Recording replaced', 'Replaced elsewhere. Segment not saved.']]);
     expect(doc.takeRecordingRefusal(R2)).toBeNull();
+  });
+
+  // REV-R4-IGT R4-3: the person left the Media tab before the refusal, or
+  // before its notice was drawn. The document says it.
+  it('with no Media tab shown, the document says the refusal', async () => {
+    const server = serverWith([seg('a-1', 0, 3, 0, 1)]);
+    const doc = open(server, { watched: false });
+    server.otherReplacesMedia(R2);
+    await doc.alignBaseline({ begin: 4, end: 7, timeBegin: 1, timeEnd: 2 });
+    await idle(doc);
+    expect(server.segments().map((t) => t.id)).toEqual(['a-1']);
+    expect(doc.errors).toEqual([['Recording replaced', 'Replaced elsewhere. Segment not saved.']]);
+    expect(doc.error).toBe('');
+    expect(doc.takeRecordingRefusal(R2)).toBeNull();
+  });
+
+  it('a Media tab that goes before its notice took the refusal says it as it goes', async () => {
+    const server = serverWith([seg('a-1', 0, 3, 0, 1)]);
+    const doc = open(server);
+    server.otherReplacesMedia(null);
+    await doc.alignBaseline({ begin: 4, end: 7, timeBegin: 1, timeEnd: 2 });
+    await idle(doc);
+    expect(doc.errors).toEqual([]);
+    doc.unwatch();
+    doc.unwatch();
+    expect(doc.errors).toEqual([['Recording deleted', 'Deleted elsewhere. Segment not saved.']]);
+    expect(doc.takeRecordingRefusal(null)).toBeNull();
+  });
+
+  it('a refusal for a recording changed again since is said, not dropped', async () => {
+    const server = serverWith([seg('a-1', 0, 3, 0, 1)]);
+    const doc = open(server);
+    server.otherReplacesMedia(R2);
+    await doc.alignBaseline({ begin: 4, end: 7, timeBegin: 1, timeEnd: 2 });
+    await idle(doc);
+    expect(doc.takeRecordingRefusal('/api/v1/documents/d/media?v=3-9')).toBeNull();
+    expect(doc.errors).toEqual([['Recording replaced', 'Replaced elsewhere. Segment not saved.']]);
   });
 
   it('a recording left as it was changes nothing', async () => {

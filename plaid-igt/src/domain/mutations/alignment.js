@@ -1193,18 +1193,36 @@ export const alignmentMutations = {
   // The refusal of a write whose times were chosen on the recording `seen`
   // (`recordingOf` the document when it was made), when the document as
   // stored, `raw`, holds another recording or none. Null when it holds that
-  // one, or there was none. `what` is what goes unsaved ("Segment"). While
-  // the page still shows `seen`, the Media tab's notice of the change says
-  // so (`takeRecordingRefusal`), and the refusal is `reported`: no toast of
-  // its own. Otherwise that notice has gone out already, and the refusal is
-  // toasted.
+  // one, or there was none. `what` is what goes unsaved ("Segment").
+  //
+  // The refusal is always said once, as the Media tab's notice of the change
+  // says it ("Recording replaced / Replaced elsewhere. Segment not saved."),
+  // so it is `reported`: the write's own failure makes no toast or banner.
+  // While a Media tab watches the recording (`watchRecording`) and the page
+  // still shows `seen`, that tab's notice of the change takes it
+  // (`takeRecordingRefusal`), and a tab that goes before it does says it as
+  // it goes. Otherwise the document says it now (`onError`).
   _recordingRefusal(seen, raw, what) {
     const now = recordingOf(raw);
     if (!seen || seen === now) return null;
-    const reported = recordingOf(this._raw) === seen;
-    if (reported) this._recordingRefused = { url: now, what };
     const message = `${now ? 'Replaced' : 'Deleted'} elsewhere. ${what} not saved.`;
-    return Object.assign(new Error(message), { changedElsewhere: true, reported });
+    const refused = {
+      url: now,
+      what,
+      message,
+      title: now ? 'Recording replaced' : 'Recording deleted',
+    };
+    if (this._recordingWatchers > 0 && recordingOf(this._raw) === seen) {
+      this._recordingRefused = refused;
+    } else {
+      this._sayRecordingRefusal(refused);
+    }
+    return Object.assign(new Error(message), { changedElsewhere: true, reported: true });
+  },
+
+  _sayRecordingRefusal(refused) {
+    console.error(`${refused.title}: ${refused.message}`);
+    this.onError?.(refused.message, null, refused.title);
   },
 
   // The `recheck` of a write whose times were chosen on the recording `seen`
@@ -1215,6 +1233,26 @@ export const alignmentMutations = {
   },
 
   /**
+   * A Media tab draws the notice of a change to the recording while it is
+   * shown: a write refused for that change is left for it to say
+   * (`takeRecordingRefusal`). Answers the release, which says a refusal
+   * still untaken when the last tab goes.
+   */
+  watchRecording() {
+    this._recordingWatchers = (this._recordingWatchers ?? 0) + 1;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this._recordingWatchers -= 1;
+      if (this._recordingWatchers > 0 || !this._recordingRefused) return;
+      const refused = this._recordingRefused;
+      this._recordingRefused = null;
+      this._sayRecordingRefusal(refused);
+    };
+  },
+
+  /**
    * What a write refused because the recording changed left unsaved
    * ("Segment"), for the Media tab's notice of the change to the recording
    * now at `url`, or null. Answered once.
@@ -1222,7 +1260,11 @@ export const alignmentMutations = {
   takeRecordingRefusal(url) {
     const refused = this._recordingRefused;
     this._recordingRefused = null;
-    return refused && refused.url === (url ?? null) ? refused.what : null;
+    if (!refused) return null;
+    if (refused.url === (url ?? null)) return refused.what;
+    // Refused for a recording since changed again: said on its own.
+    this._sayRecordingRefusal(refused);
+    return null;
   },
 
   // The answer to a row edit's text write shown: what it did to the tokens
