@@ -164,7 +164,8 @@ Clearing takes every annotation on those tokens with them, whoever made it.
 The question counts the sentences, tokens and words, and the annotations and vocabulary links on them. It cannot be undone.
 
 **Tokenize** asks first when the sentences it makes would delete annotations that join two places the new sentences separate, and counts them.
-With a tokenizer service the count is the most its sentence breaks could delete.
+With a tokenizer service the count is the most its sentence breaks could delete, and answering **Tokenize** lets the service delete them.
+When a tokenizer service makes sentences and tokens only, opening the document in the Annotate tab gives each token one word.
 **Parse** asks the same, with the most it could delete, when it makes the sentences itself because the document has no sentences or no words.
 
 == Working with Tokens
