@@ -98,6 +98,12 @@ describe('usageTitle', () => {
     );
   });
 
+  it('says the conversation is past the window rather than at 100%', () => {
+    expect(usageTitle({ sent: 12000, received: 10, window: 10000 }, 0)).toContain(
+      "you have used more than all of this model's available context length (12,000/10,000 tokens).",
+    );
+  });
+
   it('is null with no usage', () => {
     expect(usageTitle(null, 0)).toBeNull();
   });

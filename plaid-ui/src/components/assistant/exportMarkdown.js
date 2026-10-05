@@ -89,7 +89,8 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
     } else {
       out.push('## Assistant', '');
       // What it did before answering, in the service's own words.
-      if (d.stepsSummary) out.push(`*${d.stepsSummary}*`, '');
+      // As the panel shows it: never for a turn that called no tool.
+      if (d.stepsSummary && d.steps?.length > 0) out.push(`*${d.stepsSummary}*`, '');
       if (typeof d.elapsedMs === 'number')
         out.push(`*Answered in ${formatElapsed(d.elapsedMs)}*`, '');
       if (d.contextNote) out.push(`*${d.contextNote}*`, '');

@@ -57,10 +57,12 @@ const thousands = (n) => (n || 0).toLocaleString('en-US');
 export const usageTitle = (usage, spend) => {
   if (!usage) return null;
   const f = fullness(usage);
+  // Past the window the percentage is clamped, so the sentence says so.
+  const share = usage.sent > usage.window ? 'more than all' : `${Math.round(f * 100)}%`;
   const lines =
     f !== null
       ? [
-          `In this conversation, you have used ${Math.round(f * 100)}% of this model's available ` +
+          `In this conversation, you have used ${share} of this model's available ` +
             `context length (${thousands(usage.sent)}/${thousands(usage.window)} tokens).`,
         ]
       : [`${thousands(usage.sent)} tokens on the last turn. This model's limit is not known.`];
