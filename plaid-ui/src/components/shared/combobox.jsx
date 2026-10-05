@@ -153,7 +153,7 @@ export const Combobox = React.forwardRef(function Combobox(
       data-hovered={(index === hovered && index !== active) || undefined}
       className={cn(
         'cursor-pointer whitespace-nowrap rounded-sm px-2 py-1 text-sm',
-        index === active && 'bg-accent text-accent-foreground',
+        index === active && 'bg-accent text-accent-foreground ring-1 ring-inset ring-ring',
         index === hovered && index !== active && 'bg-accent/50',
         optionClassName,
       )}
