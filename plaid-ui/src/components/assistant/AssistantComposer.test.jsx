@@ -87,6 +87,12 @@ const mount = async ({
 beforeEach(() => vi.clearAllMocks());
 
 describe('AssistantComposer', () => {
+  it('names its box, whose placeholder changes with what is going on', async () => {
+    const m = await mount();
+    expect(m.box.getAttribute('aria-label')).toBe('Message');
+    await m.unmount();
+  });
+
   it('sends on Enter', async () => {
     const m = await mount();
     await m.type('gloss it');

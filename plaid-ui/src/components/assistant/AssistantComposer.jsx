@@ -213,6 +213,7 @@ export const AssistantComposer = ({
                 ? 'Approve or discard the plan above, or keep talking'
                 : 'Message the assistant… (Shift+Enter for a new line)'
           }
+          aria-label="Message"
           disabled={!canSend}
           rows={2}
           className="min-h-[2.5rem] flex-1 resize-none border-0 bg-transparent p-1 shadow-none focus-visible:ring-0"
