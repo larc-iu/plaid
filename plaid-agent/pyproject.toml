@@ -12,7 +12,10 @@ requires-python = ">=3.11"
 # pydantic-monty is the sandbox run_code runs in; its worker binary ships in
 # the wheel per platform, and the tool is withheld where it is missing. 1.0
 # renamed the checkout limits (max_duration_secs is refused), so it stays below 1.
-dependencies = ["larc-plaid-client", "litellm>=1.70", "httpx", "pydantic-monty>=0.0.23,<1", "regex"]
+# pypdfium2 (PDFium, Apache-2.0 or BSD-3) reads the PDFs read_url fetches. Never
+# PyMuPDF, which is AGPL.
+dependencies = ["larc-plaid-client", "litellm>=1.70", "httpx", "pydantic-monty>=0.0.23,<1", "regex",
+                "pypdfium2>=5,<6"]
 
 [project.optional-dependencies]
 dev = ["pytest"]

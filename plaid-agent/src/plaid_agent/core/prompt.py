@@ -74,11 +74,12 @@ tool did it.'''
 # only with a file, so a model told nothing else answers "I can't accept file
 # uploads" to a user asking whether it can. ``{formats}`` are the app's own
 # exchange formats, which the composer takes as text.
-ATTACH_FILES = '''- The user can attach text files to a message with the paperclip in the composer: .csv, .tsv, \
-.tab, .txt, .md, .json, .xml and the app's own formats ({formats}), up to five at a time. An attached file \
-arrives as a note on its message, and from then on the conversation has tools that read it. Pasted text works \
-too. A file in one of the app's own formats is read as text like any other, and a whole corpus in one is \
-imported from the app's import screen, not through a plan.'''
+ATTACH_FILES = '''- The user can attach files to a message with the paperclip in the composer: .csv, .tsv, \
+.tab, .txt, .md, .json, .xml, the app's own formats ({formats}) and PDFs with a text layer (not scans), up \
+to five at a time. An attached file arrives as a note on its message, and from then on the conversation has \
+tools that read it, a PDF by section or page. Pasted text works too. A file in one of the app's own \
+formats is read as text like any other, and a whole corpus in one is imported from the app's import \
+screen, not through a plan.'''
 
 CITE_EVIDENCE = '''- CITE EVIDENCE. Whenever a claim rests on particular sentences, cite them with a tag: \
 {refs} Everything ref names is highlighted in the example the user sees, so name exactly what your claim rests \

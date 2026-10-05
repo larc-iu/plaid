@@ -16,9 +16,13 @@ tighter than anywhere else in the service:
 
 HTML is reduced to its text with the standard library rather than a
 readability package: the result feeds a model, which copes with a nav menu at
-the top, and this package still needs only three things installed to ship in the jar.
-PDFs are not read. Most linguistics references are PDFs, so the tool says so
-plainly instead of letting the model guess at a title.
+the top.
+
+Most linguistics references are PDFs, often behind a DOI that leads to a
+repository's landing page. A PDF is fetched whole and handed back as bytes for
+:mod:`.pdftext` to read. A landing page that names its PDF the way scholarly
+indexers read it (``citation_pdf_url``) is followed to the PDF, and any other
+page's links to PDFs are listed after its text and may be opened next.
 """
 
 import ipaddress
@@ -38,13 +42,38 @@ MAX_REDIRECTS = 5
 # blocks or welcomes it is deciding about the same fetcher either way.
 USER_AGENT = 'plaid-agent'
 MAX_BODY_BYTES = 2_000_000   # read this much of a page, then extract and truncate
+# The largest PDF fetched. A born-digital grammar of several hundred pages is
+# tens of megabytes with its fonts and figures, and a scan is more, which has
+# no text to read anyway.
+MAX_PDF_BYTES = 100_000_000
 MAX_RESULTS = 10
 READABLE_TYPES = ('text/html', 'text/plain', 'application/xhtml+xml')
+PDF_TYPES = ('application/pdf', 'application/x-pdf')
+# Types a server gives a file it does not describe, which may be a PDF.
+UNDESCRIBED_TYPES = ('', 'application/octet-stream', 'binary/octet-stream', 'application/download',
+                     'application/force-download')
+# The PDF links listed after a page's text.
+MAX_PDF_LINKS = 10
 URL_RE = re.compile(r'https?://[^\s<>"\'`\])}]+', re.I)
 
 
 class WebError(Exception):
     """A lookup that failed in a way the model should read and act on."""
+
+
+@dataclass
+class Page:
+    """What a fetch brought back. ``pdf`` holds a PDF's bytes, and then
+    ``text`` is empty and ``filename`` is the name the server gave the file.
+    ``via`` is the landing page a PDF was reached from, as ``(url, title)``.
+    ``links`` are the PDFs an HTML page links to."""
+    url: str
+    title: str = ''
+    text: str = ''
+    pdf: Optional[bytes] = None
+    filename: str = ''
+    via: Optional[tuple] = None
+    links: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -190,13 +219,100 @@ def extract(html: str) -> tuple:
     return re.sub(r'\s+', ' ', p.title).strip(), p.text()
 
 
+class _Links(HTMLParser):
+    """A page's ``citation_pdf_url`` and the links on it that end in .pdf."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.citation_pdf = ''
+        self.pdfs: List[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag == 'meta' and (a.get('name') or '').lower() == 'citation_pdf_url' and not self.citation_pdf:
+            self.citation_pdf = (a.get('content') or '').strip()
+        elif tag == 'a':
+            href = (a.get('href') or '').strip()
+            if urlsplit(href).path.lower().endswith('.pdf'):
+                self.pdfs.append(href)
+
+
+def pdf_links(html: str, base: str) -> tuple:
+    """-> (the page's citation_pdf_url or '', [its links to PDFs]), each made
+    absolute against ``base`` and only http(s)."""
+    p = _Links()
+    try:
+        p.feed(html)
+        p.close()
+    except Exception:  # noqa: BLE001 - a malformed page still yields whatever parsed
+        pass
+
+    def absolute(href):
+        try:
+            u = str(httpx.URL(base).join(href))
+        except Exception:  # noqa: BLE001 - a link that is not one is no link
+            return ''
+        return u if urlsplit(u).scheme in ('http', 'https') else ''
+
+    links = []
+    for href in p.pdfs:
+        u = absolute(href)
+        if u and u not in links:
+            links.append(u)
+    return (absolute(p.citation_pdf) if p.citation_pdf else ''), links[:MAX_PDF_LINKS]
+
+
 def _content_type(response) -> str:
     return (response.headers.get('content-type') or '').split(';')[0].strip().lower()
 
 
-def fetch(url: str, cfg: WebConfig, client=None) -> tuple:
-    """-> (final url, title, text). Redirects are followed by hand so that
-    every hop is checked, not just the one the model named."""
+_FILENAME_STAR_RE = re.compile(r"filename\*\s*=\s*([^']*)'[^']*'([^;]+)", re.I)
+_FILENAME_RE = re.compile(r'filename\s*=\s*"?([^";]+)"?', re.I)
+
+
+def pdf_name(response_headers, url: str) -> str:
+    """The name to store a fetched PDF under: the one the server gives it,
+    else the last part of its address, always ending in .pdf."""
+    from urllib.parse import unquote
+    disp = response_headers.get('content-disposition') or ''
+    name = ''
+    m = _FILENAME_STAR_RE.search(disp)
+    if m:
+        try:
+            name = unquote(m.group(2).strip(), encoding=m.group(1) or 'utf-8')
+        except LookupError:
+            name = unquote(m.group(2).strip())
+    if not name:
+        m = _FILENAME_RE.search(disp)
+        name = m.group(1).strip() if m else ''
+    if not name:
+        name = unquote(urlsplit(url).path.rstrip('/').rsplit('/', 1)[-1])
+    name = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', ' ', name).strip(' .')[:120] or 'document'
+    return name if name.lower().endswith('.pdf') else f'{name}.pdf'
+
+
+def _read_pdf(r, seen: str) -> bytes:
+    """A PDF's bytes, refused past the cap."""
+    limit = f'{MAX_PDF_BYTES // 1_000_000} MB'
+    try:
+        declared = int(r.headers.get('content-length') or 0)
+    except ValueError:
+        declared = 0
+    if declared > MAX_PDF_BYTES:
+        raise WebError(f'{seen} is a PDF of {declared / 1_000_000:.0f} MB, over the {limit} this tool reads.')
+    chunks, size = [], 0
+    for chunk in r.iter_bytes():
+        chunks.append(chunk)
+        size += len(chunk)
+        if size > MAX_PDF_BYTES:
+            raise WebError(f'{seen} is a PDF over the {limit} this tool reads.')
+    return b''.join(chunks)
+
+
+def fetch(url: str, cfg: WebConfig, client=None, follow_pdf: bool = True) -> Page:
+    """What one URL holds. Redirects are followed by hand so that every hop
+    is checked, not just the one the model named. A landing page that names
+    its PDF is followed to it unless ``follow_pdf`` is off."""
     seen = check_url(url, cfg)
     owned = client is None
     client = client or httpx.Client(timeout=FETCH_TIMEOUT_S, follow_redirects=False)
@@ -217,13 +333,19 @@ def fetch(url: str, cfg: WebConfig, client=None) -> tuple:
                     if r.status_code >= 400:
                         raise WebError(f'{seen} answered {r.status_code}.')
                     kind = _content_type(r)
+                    if kind in PDF_TYPES or (kind in UNDESCRIBED_TYPES
+                                             and urlsplit(seen).path.lower().endswith('.pdf')):
+                        data = _read_pdf(r, seen)
+                        if not data.startswith(b'%PDF-') and b'%PDF-' not in data[:1024]:
+                            raise WebError(f'{seen} says it is a PDF but is not one.')
+                        return Page(seen, pdf=data, filename=pdf_name(r.headers, seen))
                     # A server that sends no type at all gets the check too:
                     # `kind and ...` skipped it for exactly the servers least
                     # likely to be well behaved, and their bytes went to the
                     # HTML parser on a guess.
                     if kind not in READABLE_TYPES:
                         raise WebError(f'{seen} is {kind or "of no stated type"}, and this tool reads '
-                                       f'HTML and plain text only. '
+                                       f'HTML, plain text and PDF only. '
                                        'Say so rather than guessing at what it contains.')
                     body = b''
                     capped = False
@@ -239,11 +361,26 @@ def fetch(url: str, cfg: WebConfig, client=None) -> tuple:
             # than let the model read a half page as a whole one.
             note = '\n\n[This page is longer than the tool reads; only the beginning was fetched.]' if capped else ''
             if kind == 'text/plain':
-                return seen, '', text.strip() + note
+                return Page(seen, '', text.strip() + note)
             title, out = extract(text)
+            citation_pdf, links = pdf_links(text, seen)
+            if citation_pdf and follow_pdf and canonical(citation_pdf) != canonical(seen):
+                # A landing page that names its PDF: what the user wants is the
+                # PDF. Where it cannot be had, the page is still worth reading,
+                # with the reason beside it.
+                try:
+                    found = fetch(citation_pdf, cfg, client, follow_pdf=False)
+                except WebError as e:
+                    note += f'\n\n[This page names its PDF, {citation_pdf}, which could not be read: {e}]'
+                else:
+                    if found.pdf is not None:
+                        found.via = (seen, title)
+                        return found
             if not out.strip():
                 raise WebError(f'{seen} has no readable text (it may be built entirely by scripts).')
-            return seen, title, out + note
+            if links:
+                out += '\n\nPDF links on this page:\n' + '\n'.join(links)
+            return Page(seen, title, out + note, links=links)
         raise WebError(f'{url} redirected more than {MAX_REDIRECTS} times.')
     finally:
         if owned:
@@ -360,13 +497,16 @@ class WebSession:
         self.read = True
         return results
 
-    def fetch(self, url: str, client=None) -> tuple:
+    def fetch(self, url: str, client=None) -> Page:
         if not self.allowed(url):
             raise WebError('That URL has not come up in this conversation. Only a page from a '
                            'web_search result, or one the user pasted, can be opened. Search for it '
                            'first, or ask the user for the link.')
         out = fetch(url, self.cfg, client)
         self.read = True
+        # A page's links to its PDFs are as good as the page: the model may
+        # open one next.
+        self.offer(out.links)
         return out
 
 

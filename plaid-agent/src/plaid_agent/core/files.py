@@ -16,6 +16,10 @@ is what the person sees on their own message and what a turn resolves against
 the store. The conversation is IN the key, so deleting a conversation's files
 is a listing of keys and no reads at all.
 
+A turn can store a file too: a PDF that ``read_url`` fetched is kept as its
+text, the way an attached one is (:class:`FileKeeper`). Its reference goes on
+the reply, with ``source``, the address it came from, beside the rest.
+
 Why the text stays out of the record: everything in the record is sent to the
 model on every later turn. A table of ten thousand rows put there would be paid
 for once a turn for the rest of the conversation, and it would crowd out the
@@ -42,6 +46,17 @@ DELIMITERS = ',\t;|'
 
 # Rows shown wherever a file is previewed rather than read.
 PREVIEW_ROWS = 5
+
+# The most text one file may hold, in UTF-8 bytes. The composer holds an
+# attachment to the same figure (MAX_BYTES in plaid-ui's attachments.js), and a
+# PDF to it by the text taken out of it rather than by the file.
+MAX_FILE_BYTES = 4_000_000
+
+# What one stored value may weigh when the server does not say, and the room
+# left under the cap for the key and the store's own rounding. The composer
+# cuts with the same two figures.
+VALUE_BYTES = 1_000_000
+VALUE_HEADROOM = 1024
 
 
 class FileGone(Exception):
@@ -171,6 +186,9 @@ class Attachment:
         self.bytes = int(meta.get('bytes') or 0)
         self.lines = int(meta.get('lines') or 0)
         self.chunks = max(1, int(meta.get('chunks') or 1))
+        # Where the file came from when a turn fetched it rather than the user
+        # attaching it: text from the web, read as such.
+        self.source = str(meta.get('source') or '')
         self._read_part = read_part
         self._text: Optional[str] = None
         self._table: Optional[Tuple[List[str], List[Dict[str, Any]]]] = None
@@ -207,6 +225,14 @@ class Attachment:
             if lower.endswith(TABLE_SUFFIXES) or lower.endswith('.json'):
                 self._table = read_table(self.name, self.text())
         return self._table
+
+    def is_pdf(self) -> bool:
+        """Whether this is a PDF's text, laid out with page markers. Asked of
+        the name first, so a text file is never read to find out."""
+        if not self.name.lower().endswith('.pdf'):
+            return False
+        from .pdftext import has_pages
+        return has_pages(self.text().split('\n', 2000)[:2000])
 
     def preview(self, rows: int = PREVIEW_ROWS) -> str:
         """The first lines, as they are written in the file. What a person
@@ -259,6 +285,12 @@ class Attachments:
         untold: Dict[str, Dict[str, Any]] = {}
         items_ = [d for d in display or [] if isinstance(d, dict)]
         for i, item in enumerate(items_):
+            if item.get('kind') == 'assistant':
+                # What a turn fetched and stored, which the model has read.
+                for ref in item.get('files') or []:
+                    if isinstance(ref, dict) and ref.get('id'):
+                        told[str(ref['id'])] = ref
+                continue
             if item.get('kind') != 'user':
                 continue
             # The model read this message only if the assistant answered it,
@@ -279,15 +311,24 @@ class Attachments:
             value = store.read(key)
             return value if isinstance(value, str) else None
 
-        items = [Attachment(ref, read_part) for ref in seen.values()]
-        taken = set()
-        for a in items:
-            name, n = a.name, 2
-            while name.casefold() in taken:
-                name, n = numbered(a.name, n), n + 1
-            a.name = name
-            taken.add(name.casefold())
-        return cls(items)
+        out = cls([])
+        for ref in seen.values():
+            out.add(Attachment(ref, read_part))
+        return out
+
+    def add(self, a: Attachment) -> Attachment:
+        """Take one more file, under a name none of the others has."""
+        taken = {b.name.casefold() for b in self.items}
+        name, n = a.name, 2
+        while name.casefold() in taken:
+            name, n = numbered(a.name, n), n + 1
+        a.name = name
+        self.items.append(a)
+        return a
+
+    def from_source(self, source: str) -> Optional[Attachment]:
+        """The file already stored from this address, if there is one."""
+        return next((a for a in self.items if a.source and a.source == source), None)
 
     def named(self, refs: List[Dict[str, Any]]) -> List[Attachment]:
         """The attachments among these that one message's refs name, in the
@@ -327,3 +368,110 @@ class Attachments:
 
     def __bool__(self) -> bool:
         return bool(self.items)
+
+
+# --- storing a file a turn fetched ------------------------------------------------
+
+def _cost(ch: str) -> int:
+    """What the store counts for one character of a stored string. The same
+    measure as ``storedBytes`` in plaid-ui's attachments.js: the store escapes
+    every non-ASCII character as \\uXXXX (two of them past the BMP), and ``"``,
+    ``\\`` and ``/`` with a backslash."""
+    o = ord(ch)
+    if o > 0xffff:
+        return 12
+    if o > 0x7e:
+        return 6
+    if o in (0x22, 0x5c, 0x2f):
+        return 2
+    if o < 0x20:
+        return 2 if o in (0x08, 0x09, 0x0a, 0x0c, 0x0d) else 6
+    return 1
+
+
+def stored_bytes(text: str) -> int:
+    return 2 + sum(_cost(ch) for ch in text)
+
+
+def chunk(text: str, budget: int) -> List[str]:
+    """The text cut into parts that each fit one stored value, in order."""
+    parts: List[str] = []
+    start, cost = 0, 2
+    for i, ch in enumerate(text):
+        c = _cost(ch)
+        if cost + c > budget and i > start:
+            parts.append(text[start:i])
+            start, cost = i, 2
+        cost += c
+    parts.append(text[start:])
+    return parts
+
+
+def value_budget(client) -> int:
+    """What one stored part may weigh: the server's published cap less the
+    room for the key."""
+    try:
+        cap = (client.server.limits() or {}).get('user_data_value_bytes')
+    except Exception:  # noqa: BLE001 - a server that will not say gets the fallback
+        cap = None
+    return (cap if isinstance(cap, int) and cap > 0 else VALUE_BYTES) - VALUE_HEADROOM
+
+
+class FileKeeper:
+    """Stores the files one turn fetches, beside the conversation, as the
+    composer stores an attachment.
+
+    The parts are written as soon as the file is fetched, so a later tool call
+    in the same turn reads the file like any other. Their references go on the
+    reply (``refs``), which is what makes them the conversation's. A turn that
+    fails or is stopped writes no reply, so it deletes what it stored
+    (``discard``): nothing would name those parts, and they would sit in the
+    store until the conversation went.
+    """
+
+    def __init__(self, store, conv_id: str, budget: Optional[int] = None):
+        self.store = store
+        self.conv_id = conv_id
+        self.budget = budget
+        self.refs: List[Dict[str, Any]] = []
+        self._keys: List[str] = []
+
+    def keep(self, files: 'Attachments', name: str, text: str, source: str = '') -> Attachment:
+        """Store ``text`` as a file of this conversation and add it to
+        ``files``. A file already stored from the same address is that file."""
+        if source:
+            known = files.from_source(source)
+            if known is not None:
+                return known
+        import uuid
+        client = self.store.client
+        if self.budget is None:
+            self.budget = value_budget(client)
+        file_id = str(uuid.uuid4())
+        parts = chunk(text, self.budget)
+        base = file_key(self.store.app, self.store.project_id, self.conv_id, file_id)
+        for n, part in enumerate(parts):
+            key = f'{base}:part:{n}'
+            client.user_data.put(self.store.user_id, key, part)
+            self._keys.append(key)
+        lines = text.count('\n') + (0 if text.endswith('\n') or not text else 1)
+        ref = {'id': file_id, 'name': name, 'bytes': len(text.encode('utf-8')), 'lines': lines,
+               'chunks': len(parts)}
+        if source:
+            ref['source'] = source
+        a = Attachment(ref, lambda fid, n: None)
+        a._text = text
+        files.add(a)
+        # The name the model is told, which `Attachments.of` gives it again
+        # from the same order when the conversation is next read.
+        self.refs.append({**ref, 'name': name})
+        return a
+
+    def discard(self) -> None:
+        for key in self._keys:
+            try:
+                self.store.client.user_data.delete(self.store.user_id, key)
+            except Exception:  # noqa: BLE001 - what is left goes with the conversation
+                pass
+        self._keys = []
+        self.refs = []

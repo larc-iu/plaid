@@ -309,12 +309,21 @@ This is the one place where text by strangers enters a turn, so it is fenced:
   the network the service runs on (loopback, private ranges, link-local, and
   the Plaid server itself). The service usually runs beside Plaid, so an
   unrestricted fetch would be a request-forgery primitive.
-- HTML and plain text only. Most linguistics references are PDFs, and the
-  tool says so rather than letting the model guess at a title.
+- HTML, plain text and PDF. A DOI or a repository's landing page that names
+  its PDF (`citation_pdf_url`) is followed to the PDF, and other links to PDFs
+  on a page are listed after its text and may be opened next. A PDF is read on
+  the service with PDFium (`pypdfium2`, Apache-2.0 or BSD-3, a dependency),
+  up to 100 MB, and its text, laid out with its pages and bookmarked sections
+  marked, is stored with the conversation as a file the way an attachment is
+  (4 MB of text at most). The model is told its sections and reads one with
+  `read_file(name, section=...)` or `page=...`, so a grammar costs the
+  transcript only what is read of it. A scanned PDF has no text layer and is
+  refused in a sentence: there is no OCR.
 - What comes back is labelled untrusted and fenced, and the prompt tells the
   model it is a claim to weigh, never an instruction, and never evidence
   about the language's own data.
-- **A turn that reads the web cannot also plan changes.** The assistant
+- **A turn that reads the web cannot also plan changes.** That includes a
+  later turn that reads a PDF an earlier one fetched. The assistant
   reports what it found and the user asks for the change in the next message.
   So nothing a page says can become a proposed edit in the same breath as
   being read. It is not a complete answer to prompt injection (the page is

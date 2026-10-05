@@ -68,11 +68,11 @@ def test_a_redirect_onto_the_private_network_is_refused(monkeypatch):
         fetch('https://example.org/', CFG, client=transport(handler))
 
 
-def test_a_pdf_is_named_rather_than_guessed_at(monkeypatch):
+def test_a_kind_it_cannot_read_is_named_rather_than_guessed_at(monkeypatch):
     resolving(monkeypatch, {'example.org': '93.184.216.34'})
-    handler = lambda r: httpx.Response(200, headers={'content-type': 'application/pdf'}, content=b'%PDF-1.4')  # noqa: E731
-    with pytest.raises(WebError, match='application/pdf.*HTML and plain text only'):
-        fetch('https://example.org/grammar.pdf', CFG, client=transport(handler))
+    handler = lambda r: httpx.Response(200, headers={'content-type': 'image/png'}, content=b'PNG')  # noqa: E731
+    with pytest.raises(WebError, match='image/png.*HTML, plain text and PDF only'):
+        fetch('https://example.org/figure.png', CFG, client=transport(handler))
 
 
 def test_a_page_comes_back_as_its_title_and_text(monkeypatch):
@@ -80,7 +80,8 @@ def test_a_page_comes_back_as_its_title_and_text(monkeypatch):
     page = b'<html><head><title>Leipzig Rules</title></head><body><nav>Home</nav>' \
            b'<p>ERG marks the ergative.</p><script>x()</script></body></html>'
     handler = lambda r: httpx.Response(200, headers={'content-type': 'text/html'}, content=page)  # noqa: E731
-    url, title, text = fetch('https://example.org/leipzig', CFG, client=transport(handler))
+    page = fetch('https://example.org/leipzig', CFG, client=transport(handler))
+    url, title, text = page.url, page.title, page.text
     assert (url, title) == ('https://example.org/leipzig', 'Leipzig Rules')
     assert text == 'ERG marks the ergative.'
 
@@ -209,7 +210,7 @@ def test_a_page_longer_than_the_cap_says_it_was_cut(monkeypatch):
     monkeypatch.setattr(web, 'MAX_BODY_BYTES', 200)
     page = b'<html><body><p>' + b'word ' * 200 + b'</p></body></html>'
     handler = lambda r: httpx.Response(200, headers={'content-type': 'text/html'}, content=page)  # noqa: E731
-    _, _, text = fetch('https://example.org/long', CFG, client=transport(handler))
+    text = fetch('https://example.org/long', CFG, client=transport(handler)).text
     assert text.endswith('[This page is longer than the tool reads; only the beginning was fetched.]')
 
 

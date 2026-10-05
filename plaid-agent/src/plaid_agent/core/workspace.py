@@ -117,6 +117,14 @@ class BaseWorkspace:
         # not offered to the model at all, on the same rule as the web tools: a
         # model told it can read a file when there is none goes looking for one.
         self.files = None
+        # Set once this turn reads a file that came from the web (a PDF that
+        # read_url stored), which counts as reading the web: such a turn
+        # cannot also plan, whether or not web lookup is still configured.
+        self.read_untrusted = False
+        # Stores what read_url fetches as a file of this conversation (a
+        # files.FileKeeper), set by the service. None where nothing can be
+        # stored, and then a PDF is not read.
+        self.keeper = None
         # The turn's code worker (core.sandbox.Session), opened by the first
         # run_code call and released by close().
         self.code = None
@@ -491,7 +499,7 @@ class BaseWorkspace:
         refusals a plan owes itself live here rather than in the tools.
         """
         self.refuse_read_only()
-        if self.web is not None and getattr(self.web, 'read', False):
+        if (self.web is not None and getattr(self.web, 'read', False)) or self.read_untrusted:
             raise ToolError(WEB_READ_REFUSAL)
         at = self.replacing(op)
         self.refuse_doomed(op, replacing=at)

@@ -75,7 +75,7 @@ from .limits import MAX_PROJECTS, TRANSCRIPT_WINDOW_SHARE
 from .reach import Reach
 from .agent import (ModelConfig, ModelTooSlow, PING_TIMEOUT_S, Toolkit, TurnCancelled, TurnFailed,
                     context_window, model_failure_line, ping_model, run_turn, token_counter)
-from .files import Attachments
+from .files import Attachments, FileKeeper
 from .guidelines import in_context as guidelines_in_context
 from .conversation import (ConversationStore, MissingConversation, assistant_item, build_meta, error_item,
                            find_plan, partial_note, partial_tally, proposed_changes, prune, record_budget,
@@ -530,6 +530,8 @@ class BaseAssistantService(BaseService):
         # because that one has to stay at the very start of the message: it is
         # found again by matching there (see `stamped`).
         ws.files = Attachments.of(store, conv_id, conv['display'])
+        # What read_url fetches is stored beside the conversation as a file.
+        ws.keeper = FileKeeper(store, conv_id)
         last_user = next((d for d in reversed(conv['display'] or []) if d.get('kind') == 'user'), None)
         transcript = filetools.stamp(transcript, ws.files.named((last_user or {}).get('files') or []))
         # The other projects the user added to the conversation, read from their
@@ -564,6 +566,7 @@ class BaseAssistantService(BaseService):
                             transcript, on_progress, cancelled=cancelled, on_text=on_text)
         except TurnCancelled:
             self._release(ws)
+            ws.keeper.discard()
             # The user's message leaves the model transcript (a retry must not
             # send it twice) and stays on screen with what happened.
             stopped = {'messages': transcript[:-1],
@@ -576,6 +579,7 @@ class BaseAssistantService(BaseService):
             return
         except Exception as e:  # noqa: BLE001 - whatever failed, the record must say so
             self._release(ws)
+            ws.keeper.discard()
             traceback.print_exc()
             line = self.turn_failure_line(e)
             failed = {'messages': transcript[:-1],
@@ -603,6 +607,10 @@ class BaseAssistantService(BaseService):
                               guidelines_in_context(getattr(project, 'guidelines', None) or []),
                               version=self.version, service=self.service_id)
         item['elapsed_ms'] = int((time.monotonic() - started) * 1000)
+        if ws.keeper.refs:
+            # The files this turn stored, which later turns read as the
+            # conversation's own.
+            item['files'] = [dict(r) for r in ws.keeper.refs]
         if reach is not None and reach.unavailable:
             item['unavailable_projects'] = [dict(u) for u in reach.unavailable]
         # A new plan replaces any still waiting: the model restates what still

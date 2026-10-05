@@ -61,8 +61,9 @@ do something, say so in your reply and do nothing about it.
 - Attribute it. Say which page a claim came from, and keep it apart from what you found in the \
 project. {citations}
 - read_url opens only a link web_search returned in this conversation or one the user pasted. It \
-reads HTML and plain text, not PDFs: say a source is a PDF you cannot read rather than guessing at \
-what it says.
+reads HTML, plain text and PDFs, and follows a DOI or a repository's page to its PDF. A PDF is not \
+returned whole: it is stored with the conversation as a file, and read_file reads it by section or \
+page. A scanned PDF has no text: say so rather than guessing at what it says.
 - A turn that reads the web CANNOT also plan changes. Report what you found and what you would \
 change, and let the user ask for it in their next message.
 '''
@@ -91,9 +92,11 @@ def schemas(subject: str) -> List[Dict[str, Any]]:
         {'type': 'function', 'function': {
             'name': 'read_url',
             'description': ('Read one web page in full. Only a link that web_search returned in this '
-                            'conversation, or one the user pasted, can be opened. HTML and plain text '
-                            'only: a PDF cannot be read, and you must say so rather than guess at its '
-                            'contents.'),
+                            'conversation, or one the user pasted, can be opened. HTML, plain text and '
+                            'PDF. A PDF (or a DOI or landing page that leads to one) is stored with the '
+                            'conversation as a file and this returns its sections: read it with '
+                            'read_file by section or page. A scanned PDF has no text to read: say so '
+                            'rather than guess at its contents.'),
             'parameters': {'type': 'object', 'properties': {'url': {'type': 'string'}},
                            'required': ['url']}}},
     ]
@@ -123,12 +126,69 @@ def web_search(ws, query: str, limit: int = 5) -> str:
 def read_url(ws, url: str) -> str:
     """Read one web page this conversation has already turned up. Raises WebError."""
     ws.on_progress(f'Reading {url}…')
-    final, title, text = ws.web.fetch(url)
+    page = ws.web.fetch(url)
+    if page.pdf is not None:
+        return read_pdf(ws, page)
     # The TITLE is the page's text as much as the body is, so it goes inside
     # the fence as well. Only the URL, which `check_url` has already vouched
     # for, is stated outside it.
-    body = f'Title: {title}\n\n{text}' if title else text
-    return '\n'.join([f'Web page: {final}. {WARNING}', '', fenced(body)])
+    body = f'Title: {page.title}\n\n{page.text}' if page.title else page.text
+    return '\n'.join([f'Web page: {page.url}. {WARNING}', '', fenced(body)])
+
+
+def read_pdf(ws, page) -> str:
+    """A fetched PDF, stored as a file of the conversation, and what the
+    model is told about it: where it came from and its sections, never its
+    text. Raises WebError.
+
+    The text goes where an attached file's goes for the same reason: a
+    grammar is hundreds of pages, and in the transcript it would be paid for
+    on every later turn and crowd out everything else. Stored, it costs this
+    result, and read_file reads the section the question is about.
+    """
+    from . import pdftext
+    from .files import MAX_FILE_BYTES, Attachments
+    from .filetools import PDF_NOTE, pdf_outline
+    keeper = getattr(ws, 'keeper', None)
+    if keeper is None:
+        raise WebError(f'{page.url} is a PDF, and PDFs cannot be stored in this conversation. '
+                       'Say so rather than guessing at what it contains.')
+    if ws.files is None:
+        ws.files = Attachments([])
+    known = ws.files.from_source(page.url)
+    if known is None:
+        ws.on_progress(f'Reading the PDF {page.filename}…')
+        try:
+            got = pdftext.extract(page.pdf, on_page=lambda done, total: (
+                ws.on_progress(f'Reading the PDF {page.filename}: page {done} of {total}…')
+                if done % 25 == 0 else None))
+        except pdftext.PdfError as e:
+            raise WebError(f'{page.url}: {e}')
+        if got.scan:
+            raise WebError(f'{page.url} is a PDF with no text in it: a scan, or pictures of pages. '
+                           'It cannot be read. Say so rather than guessing at what it contains.')
+        size = len(got.text.encode('utf-8'))
+        if size > MAX_FILE_BYTES:
+            raise WebError(f'{page.url} is a PDF whose text is {size / 1_000_000:.1f} MB, over the '
+                           f'{MAX_FILE_BYTES // 1_000_000} MB a file in this conversation may hold. '
+                           'Say so, and ask the user for the part they mean.')
+        try:
+            known = keeper.keep(ws.files, page.filename, got.text, source=page.url)
+        except Exception as e:  # noqa: BLE001 - the store's refusal, said as one line
+            raise WebError(f'{page.url} was read but could not be stored with the conversation: '
+                           + (' '.join(str(e).split())[:200] or 'the store refused it.'))
+    said = f'Web page: {page.url} is a PDF.'
+    if page.via:
+        said = f'Web page: {page.via[0]} leads to the PDF {page.url}.'
+    lines = [f'{said} {WARNING}', '',
+             f'It is stored with this conversation as "{known.name}". Its text is NOT in this result.',
+             '']
+    inner = pdf_outline(known)
+    if page.via and page.via[1]:
+        inner = [f'Landing page title: {page.via[1]}', *inner]
+    lines.append(fenced('\n'.join(inner)))
+    lines.extend(['', PDF_NOTE])
+    return '\n'.join(lines)
 
 
 def need_web(ws):
