@@ -671,7 +671,7 @@ describe('the vocabulary chapter', () => {
   };
   const choiceFor = (options = {}, vocabs = [VOCAB]) => latexVocabulary(options, vocabs);
 
-  it('defaults to a chapter of the entries the texts use, every vocabulary and field on, no numbers in the texts', () => {
+  it('defaults to a chapter of the entries the texts use, every vocabulary and field on but Morph Type, no numbers in the texts', () => {
     expect(choiceFor()).toEqual({
       include: true,
       scope: 'used',
@@ -685,7 +685,7 @@ describe('the vocabulary chapter', () => {
             { name: 'gloss', label: 'Gloss', on: true },
             { name: 'pos', label: 'POS', on: true },
             { name: 'seeAlso', label: 'See Also', on: true },
-            { name: 'morphType', label: 'Morph Type', on: true },
+            { name: 'morphType', label: 'Morph Type', on: false },
           ],
         },
       ],
@@ -784,10 +784,82 @@ describe('the vocabulary chapter', () => {
     };
     const tex = formatVocabulary({
       vocabularies: [vocab],
-      choice: choiceFor({ vocabulary: { scope: 'all' } }, [vocab]),
+      choice: choiceFor(
+        {
+          vocabulary: {
+            scope: 'all',
+            vocabularies: [{ id: 'v6', fields: [{ name: 'morphType', on: true }] }],
+          },
+        },
+        [vocab],
+      ),
     });
     expect(tex.match(/Morph Type\}\{multi-word expression\}/g)).toHaveLength(2);
     expect(tex).not.toContain('phrase');
+  });
+
+  describe('Status and Morph Type', () => {
+    const vocab = {
+      id: 'v7',
+      name: 'Words',
+      config: { igt: { fields: { gloss: {}, status: {} } } },
+      items: [
+        { id: 's', form: 'kai', metadata: { gloss: 'go', morphType: 'stem', status: 'draft' } },
+        { id: 'r', form: 'tu', metadata: { gloss: 'eat', morphType: 'Root', status: 'draft' } },
+        { id: 'x', form: 'ka', metadata: { gloss: 'NOM', morphType: 'suffix' } },
+        { id: 'b', form: 'pi', metadata: { gloss: 'see', morphType: 'bound root' } },
+      ],
+    };
+    const fieldsOf = (choice) =>
+      Object.fromEntries(choice.vocabularies[0].fields.map((f) => [f.name, f.on]));
+    const ticked = {
+      scope: 'all',
+      vocabularies: [
+        {
+          id: 'v7',
+          on: true,
+          fields: [
+            { name: 'morphType', on: true },
+            { name: 'gloss', on: true },
+            { name: 'status', on: true },
+          ],
+        },
+      ],
+    };
+
+    it('start off in a preset that never chose its fields, and the other fields start on', () => {
+      expect(fieldsOf(latexVocabulary({}, [vocab]))).toEqual({
+        morphType: false,
+        gloss: true,
+        status: false,
+      });
+      const tex = formatVocabulary({
+        vocabularies: [vocab],
+        choice: latexVocabulary({ vocabulary: { scope: 'all' } }, [vocab]),
+      });
+      expect(tex).not.toContain('Morph Type');
+      expect(tex).not.toContain('Status');
+    });
+
+    it('stay as a preset stored them', () => {
+      expect(fieldsOf(latexVocabulary({ vocabulary: ticked }, [vocab]))).toEqual({
+        morphType: true,
+        gloss: true,
+        status: true,
+      });
+    });
+
+    it('print a morph type only when it is not a plain stem or root', () => {
+      const tex = formatVocabulary({
+        vocabularies: [vocab],
+        choice: latexVocabulary({ vocabulary: ticked }, [vocab]),
+      });
+      expect(tex.match(/Morph Type\}\{[^}]*\}/g)).toEqual([
+        'Morph Type}{suffix}',
+        'Morph Type}{bound root}',
+      ]);
+      expect(tex.match(/Status\}\{draft\}/g)).toHaveLength(2);
+    });
   });
 
   it("sets a gloss's abbreviations in small caps as the texts do, and lists them", () => {

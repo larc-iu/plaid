@@ -851,13 +851,22 @@ export function formatAbbreviations(tags, projectConfig) {
 // to (a headword with every sense, when any of them is linked), or all.
 export const VOCAB_SCOPES = Object.freeze({ USED: 'used', ALL: 'all' });
 
+// Fields a preset that never chose its fields leaves out: a status says how
+// far the entry's editing has got, and a morph type is "stem" on most
+// entries, so both read as noise in a book. A preset can still tick them.
+const FIELDS_OFF_BY_DEFAULT = new Set(['status', 'morphType']);
+
+// The morph types of a plain free form. A chapter that prints morph types
+// leaves these out, since nearly every entry has one.
+const PLAIN_MORPH_TYPES = new Set(['stem', 'root']);
+
 /**
  * The preset's vocabulary choices as the project has them now. `vocabs` is
  * the project's list of vocabularies as a project read gives it ({ id, name,
  * config }). The chapter is on by default when there is a vocabulary, every
  * vocabulary and every field it exports is on unless the preset switched it
- * off, the chapter lists the entries the texts use, and the texts show no
- * entry numbers.
+ * off (Status and Morph Type start off), the chapter lists the entries the
+ * texts use, and the texts show no entry numbers.
  */
 export function latexVocabulary(options, vocabs) {
   const saved =
@@ -878,7 +887,7 @@ export function latexVocabulary(options, vocabs) {
         fields: exportedVocabFields(readVocabFields(v.config)).map((f) => ({
           name: f.name,
           label: fieldLabel(f),
-          on: savedFields.find((x) => x?.name === f.name)?.on !== false,
+          on: savedFields.find((x) => x?.name === f.name)?.on ?? !FIELDS_OFF_BY_DEFAULT.has(f.name),
         })),
       };
     }),
@@ -996,8 +1005,10 @@ function vocabularyEntries({ vocab, choice, scope, used, exampleNumbers, collato
         }
         continue;
       }
-      // A morph type goes by its name on screen (multi-word expression).
+      // A morph type goes by its name on screen (multi-word expression), and
+      // a plain stem or root prints none.
       const raw = fieldText(item.metadata?.[f.name]);
+      if (f.name === 'morphType' && PLAIN_MORPH_TYPES.has(raw.trim().toLowerCase())) continue;
       const value = texLine(f.name === 'morphType' ? morphTypeLabel(raw) : raw);
       if (value === '') continue;
       out.push(

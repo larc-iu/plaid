@@ -1187,6 +1187,8 @@ It is on when the project has a vocabulary.
 **Entries** chooses between the entries the texts link to (**Used in the texts**) and every entry (**All**).
 A headword is listed with all its senses when the texts link to it or to any of them.
 Each vocabulary can be switched off, and each of its fields too.
+Status and Morph Type start off.
+A Morph Type of stem or root is not printed.
 The chapter is called "Vocabulary", or, with more than one vocabulary, one chapter per vocabulary under its name.
 Headwords are in alphabetical order for the project's language, an affix such as `-s` under its letters, and headwords spelled alike in the order of their numbers.
 Each headword shows its form, its number as a subscript (kai₁), its gloss and fields, the numbers of the examples promoted to it that are in the book, and then each sense by its number.
