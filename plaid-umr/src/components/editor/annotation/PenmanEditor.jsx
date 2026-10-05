@@ -114,7 +114,10 @@ export function PenmanEditor({
         />
       </div>
       <div className="umr-penman-foot">
-        <span className={`umr-penman-status${problem ? ' umr-penman-status--error' : ''}`}>
+        <span
+          role="status"
+          className={`umr-penman-status${problem ? ' umr-penman-status--error' : ''}`}
+        >
           {problem
             ? `${problem.message}${problem.line ? ` (line ${problem.line})` : ''}`
             : dirty

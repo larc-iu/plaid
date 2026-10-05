@@ -639,6 +639,12 @@
   border-radius: 8px;
   overflow: hidden;
 }
+/* The text box has no ring of its own (it sits flush in the frame), so the
+   frame shows where focus is. */
+.umr-penman:has(.umr-penman-text:focus) {
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 1px hsl(var(--ring));
+}
 .umr-penman-body {
   display: flex;
   background: hsl(var(--muted) / 0.4);

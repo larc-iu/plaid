@@ -27,6 +27,14 @@ const apply = (view) =>
   [...view.container.querySelectorAll('button')].find((b) => b.textContent === 'Apply');
 
 describe('the status line', () => {
+  it('is a status region, so a screen reader hears a refusal or a change', async () => {
+    const view = await render(() => ({ rename: [], losses: [], concept: [] }));
+    const line = view.container.querySelector('.umr-penman-status');
+    expect(line.getAttribute('role')).toBe('status');
+    expect(line.textContent).toBe('As stored.');
+    view.unmount?.();
+  });
+
   it('names every concept change, a swap included', async () => {
     const view = await render(() => ({
       rename: [],
