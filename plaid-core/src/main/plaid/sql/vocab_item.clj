@@ -1,7 +1,8 @@
 (ns plaid.sql.vocab-item
   "Vocab items: the `vocab_items` table, keyed by their vocab via
   `vocab_layer_id`."
-  (:require [clojure.string :as str]
+  (:require [clojure.data.json]
+            [clojure.string :as str]
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.cascade-statistics :as cascade-stats]
             [plaid.sql.common :as psc]
@@ -452,11 +453,90 @@
   (crud/delete-ids! tx :vocab_links link-ids)
   (crud/delete-entity-metadata! tx "vocab-link" link-ids))
 
+(defn- repoint-value
+  "`v` with every string equal to a key of `from->to` replaced by its value,
+  at any depth. In a list, a replaced id the list already holds is dropped,
+  so a list never names the survivor twice."
+  [v from->to]
+  (cond
+    (string? v) (clojure.core/get from->to v v)
+    (map? v) (update-vals v #(repoint-value % from->to))
+    (sequential? v) (let [kept (set (remove from->to (filter string? v)))]
+                      (first
+                       (reduce (fn [[out seen] x]
+                                 (if-let [to (and (string? x) (from->to x))]
+                                   (if (or (kept to) (seen to))
+                                     [out seen]
+                                     [(conj out to) (conj seen to)])
+                                   [(conj out (repoint-value x from->to)) seen]))
+                               [[] #{}]
+                               v)))
+    :else v))
+
+(def ^:private document-held-metadata
+  "Entity type -> [table, the column naming its document]: every entity
+  that carries metadata inside a document."
+  {"document" [:documents :id]
+   "text" [:texts :document_id]
+   "token" [:tokens :document_id]
+   "span" [:spans :document_id]
+   "relation" [:relations :document_id]
+   "vocab-link" [:vocab_links :document_id]})
+
+(defn- repoint-metadata-refs!
+  "Rewrite every metadata value that names a loser to name the survivor
+  instead, wherever the vocabulary can be used: the other entries of the
+  vocabulary, and every entity in a document of a project the vocabulary is
+  linked to. A value names an entry when it is a string equal to the entry's
+  id, at any depth. The survivor's own metadata is left as it is, where the
+  same rewrite would make the entry name itself. Each rewrite is audited as
+  a metadata write. Returns the ids of the documents written."
+  [tx vocab-id survivor-id loser-ids]
+  (let [from->to (zipmap (map str loser-ids) (repeat (str survivor-id)))
+        names-a-loser (into [:or] (map (fn [id] [:> [:instr :em.value id] 0])) (keys from->to))
+        doc-ids {:select [:d.id]
+                 :from [[:documents :d]]
+                 :join [[:project_vocabs :pv] [:= :pv.project_id :d.project_id]]
+                 :where [:= :pv.vocab_layer_id vocab-id]}
+        rows (concat
+              (for [r (psc/q tx {:select [:em.entity_id :em.key :em.value]
+                                 :from [[:entity_metadata :em]]
+                                 :where [:and
+                                         [:= :em.entity_type "vocab-item"]
+                                         [:in :em.entity_id {:select [:id]
+                                                             :from :vocab_items
+                                                             :where [:and [:= :vocab_layer_id vocab-id]
+                                                                     [:<> :id (str survivor-id)]]}]
+                                         names-a-loser]})]
+                (assoc r :entity_type "vocab-item"))
+              (mapcat (fn [[etype [table doc-col]]]
+                        (for [r (psc/q tx {:select [:em.entity_id :em.key :em.value [(keyword (str "x." (name doc-col))) :doc]]
+                                           :from [[:entity_metadata :em]]
+                                           :join [[table :x] [:= :x.id :em.entity_id]]
+                                           :where [:and
+                                                   [:= :em.entity_type etype]
+                                                   [:in (keyword (str "x." (name doc-col))) doc-ids]
+                                                   names-a-loser]})]
+                          (assoc r :entity_type etype)))
+                      document-held-metadata))
+        written (for [{:keys [entity_type entity_id key value doc]} rows
+                      :let [old (clojure.data.json/read-str value)
+                            new (repoint-value old from->to)]
+                      :when (not= old new)]
+                  (do (metadata/patch-metadata! tx entity_type entity_id
+                                                [{:op "set" :path [key] :value new}])
+                      doc))]
+    (vec (keep identity (doall written)))))
+
 (defn merge-into
   "Merge the entries `loser-ids` into the entry `survivor-id`, in ONE
   operation: every link to a loser is re-pointed to the survivor (the link
   keeps its id, its words and its metadata), a link on words the survivor
   is already linked to is deleted instead, and then the losers are deleted.
+
+  Every metadata value elsewhere that names a loser by its id is rewritten
+  to name the survivor (see `repoint-metadata-refs!`), so a reference an
+  app keeps in its own metadata follows the merge as the links do.
 
   Links are read inside the transaction, so a link someone made to a loser
   after the caller planned the merge moves with the rest. That is the point
@@ -465,8 +545,8 @@
 
   The survivor must exist (404) and every loser must be in its vocabulary
   (400). A loser that no longer exists is skipped, as in `bulk-delete`, so
-  a retry of a merge that already landed changes nothing. Metadata that
-  refers to a loser (a sense's parent, a reference field) is the caller's:
+  a retry of a merge that already landed changes nothing. The survivor's
+  own metadata that refers to a loser (its parent was one) is the caller's:
   it rewrites that in the same batch.
 
   Every document holding a moved or deleted link has its version bumped.
@@ -520,8 +600,13 @@
                              (delete-links! tx dups)
                              (crud/delete-entity-metadata! tx "vocab-item" existing-ids)
                              (crud/delete-ids! tx :vocab_items existing-ids)
+                             (let [repointed-docs (if (seq existing-ids)
+                                                    (repoint-metadata-refs! tx layer survivor-id existing-ids)
+                                                    [])]
+                               ;; As strings, so a document named both ways is bumped once.
+                               (op/bump-document-versions! tx (map str (into (mapv :document_id loser-links)
+                                                                             repointed-docs))))
                              (op/touch-vocab-layer! tx layer)
-                             (op/bump-document-versions! tx (mapv :document_id loser-links))
                              {:moved (count moved)
                               :duplicates (count dups)
                               :removed existing-ids}))))))

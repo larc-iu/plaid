@@ -157,3 +157,64 @@
     (testing "the count shown is the count stored"
       (assert-status 204 (del 1))
       (is (not (item-exists? s))))))
+
+(defn- metadata-of [etype id]
+  (into {} (map (fn [{:keys [key value]}] [key (clojure.data.json/read-str value)]))
+        (psc/q db {:select [:key :value] :from :entity_metadata
+                   :where [:and [:= :entity_type etype] [:= :entity_id (str id)]]})))
+
+(defn- put-metadata! [kind id m]
+  (assert-status 200 (api-call admin-request {:method :put
+                                              :path (str "/api/v1/" kind "/" id "/metadata")
+                                              :body m})))
+
+(deftest a-merge-repoints-every-metadata-reference-to-a-loser
+  (let [{:keys [proj vocab docs s l1 l2 x]} (setup!)
+        [{d0 :doc t0 :token} {d1 :doc t1 :token}] docs
+        ;; A document in a project the vocabulary is not linked to.
+        other-proj (create-test-project admin-request "Elsewhere")
+        _ (is (some? proj))
+        other-doc (-> (api-call admin-request {:method :post :path "/api/v1/documents"
+                                               :body {:project-id other-proj :name "E"}})
+                      :body :id)
+        sl1 (str l1) sl2 (str l2) ss (str s)
+        sib (-> (create-vocab-item admin-request vocab "dog") :body :id)]
+    ;; An app's own pointer on a token, as a node picked from an entry keeps it.
+    (put-metadata! "tokens" t0 {"app" {"entry" sl1 "entryVocab" (str vocab) "var" "s1x"}})
+    ;; The same document holds a link that moves.
+    (link! l1 t0)
+    (put-metadata! "tokens" t1 {"refs" [sl2 ss "other"] "note" (str "about " sl1)})
+    (put-metadata! "documents" d1 {"pick" sl2})
+    (put-metadata! "documents" other-doc {"pick" sl1})
+    (put-metadata! "vocab-items" sib {"seeAlso" [sl1 sl2]})
+    (put-metadata! "vocab-items" s {"parent" sl1})
+    (put-metadata! "vocab-items" x {"seeAlso" [sl1]})
+    (let [before (mapv doc-version [d0 d1])
+          resp (merge! admin-request s [l1 l2])]
+      (assert-status 200 resp)
+      (testing "a pointer to a loser now names the survivor"
+        (is (= {"app" {"entry" ss "entryVocab" (str vocab) "var" "s1x"}} (metadata-of "token" t0)))
+        (is (= {"pick" ss} (metadata-of "document" d1))))
+      (testing "a list that already names the survivor drops the loser, and a mention in prose is no reference"
+        (is (= {"refs" [ss "other"] "note" (str "about " sl1)} (metadata-of "token" t1))))
+      (testing "another entry of the vocabulary follows the merge, once"
+        (is (= {"seeAlso" [ss]} (metadata-of "vocab-item" sib))))
+      (testing "the survivor's own reference is the caller's, and other vocabularies and unlinked projects are untouched"
+        (is (= {"parent" sl1} (metadata-of "vocab-item" s)))
+        (is (= {"seeAlso" [sl1]} (metadata-of "vocab-item" x)))
+        (is (= {"pick" sl1} (metadata-of "document" other-doc))))
+      (testing "a document whose metadata was rewritten is bumped"
+        (is (every? true? (map < before (mapv doc-version [d0 d1])))))
+      (testing "the rewrite is in the merge's own audit entry"
+        (let [op-id (:id (psc/q1 db {:select [:id] :from :operations
+                                     :where [:= :op_type "vocab-item/merge-into"]
+                                     :order-by [[:ts :desc]] :limit 1}))
+              rows (set (map (juxt :target_table (comp str :target_id) :change_type)
+                             (psc/q db {:select [:target_table :target_id :change_type] :from :audit_writes
+                                        :where [:= :op_id op-id]})))]
+          (is (contains? rows ["tokens" (str t0) "update"]))
+          (is (= 1 (count (psc/q db {:select [:id] :from :audit_writes
+                                     :where [:and [:= :op_id op-id] [:= :target_id (str d0)]
+                                             [:= :change_type "doc-version-bump"]]})))
+              "a document with a moved link and a rewritten pointer is bumped once")
+          (is (contains? rows ["documents" (str d1) "update"])))))))

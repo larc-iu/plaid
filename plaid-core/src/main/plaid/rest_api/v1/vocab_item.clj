@@ -273,7 +273,7 @@
                           "Every link to a loser is moved to this entry, keeping its id and metadata, except a link on words this entry is already linked to, which is deleted. "
                           "The losers are then deleted. Links are read when the merge runs, so a link made after the caller looked is moved too. "
                           "Every loser must be in this entry's vocabulary. A loser that no longer exists is skipped, so repeating a merge changes nothing. "
-                          "References to a loser inside other entries' metadata are the caller's to rewrite, in the same batch. "
+                          "Metadata naming a loser by its id, in the vocabulary's other entries and in the documents of every project the vocabulary is linked to, is rewritten to name this entry. A reference to a loser in this entry's own metadata is the caller's to rewrite, in the same batch. "
                           "Needs maintainer rights on the vocabulary. Answers {moved, duplicates, removed}: the links moved, the links deleted as duplicates, and the ids of the entries deleted. "
                           "Every document holding a moved or deleted link has its version bumped, and their new versions are returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted).")
             :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id-from-item maintainers-only]]

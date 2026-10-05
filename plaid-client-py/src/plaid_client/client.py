@@ -2995,9 +2995,11 @@ class VocabItemsResource(_Resource):
         which is deleted, and then the losers are deleted. Links are read when
         the merge runs, so one made after the caller looked moves too. Every
         loser must be in the survivor's vocabulary, and a loser that is already
-        gone is skipped, so a repeated merge changes nothing. References to a
-        loser in other entries' metadata are the caller's to rewrite, in the
-        same batch. Needs maintainer rights on the vocabulary.
+        gone is skipped, so a repeated merge changes nothing. Metadata naming a
+        loser by its id, in the vocabulary's other entries and in the documents
+        of every project it is linked to, is rewritten to name the survivor. A
+        reference to a loser in the survivor's own metadata is the caller's to
+        rewrite, in the same batch. Needs maintainer rights on the vocabulary.
 
         Args:
             survivor_id: The entry that stays
