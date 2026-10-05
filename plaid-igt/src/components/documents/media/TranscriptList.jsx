@@ -3,7 +3,7 @@ import { Pause, Play, Trash2, X } from 'lucide-react';
 import { cpSlice, provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { Button } from '@ui/components/ui/button';
 import { Popover, PopoverAnchor, PopoverContent } from '@ui/components/ui/popover';
-import { countAnnotationLossForRange } from '@/domain/annotationLoss.js';
+import { hasLoss, lossPhrase } from '@ui/domain/annotationLoss.js';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Switch } from '@ui/components/ui/switch';
@@ -105,14 +105,13 @@ const autoGrow = (el) => {
   el.style.height = `${el.scrollHeight}px`;
 };
 
-// "3 annotations and 1 link on this text."
+// "3 annotations and 1 vocabulary link on this text." A link or annotation
+// the delete only cuts down is named apart: "Shortens 1 vocabulary link."
 const lossSentence = (loss) => {
   if (!loss) return '';
-  const parts = [];
-  if (loss.annotations)
-    parts.push(`${loss.annotations} annotation${loss.annotations === 1 ? '' : 's'}`);
-  if (loss.links) parts.push(`${loss.links} link${loss.links === 1 ? '' : 's'}`);
-  return `${parts.join(' and ')} on this text.`;
+  const gone = lossPhrase(loss);
+  const cut = lossPhrase(loss.shortened);
+  return [gone && `${gone} on this text.`, cut && `Shortens ${cut}.`].filter(Boolean).join(' ');
 };
 
 const SegmentRow = memo(function SegmentRow({
@@ -463,7 +462,7 @@ const SegmentRow = memo(function SegmentRow({
                 aria-label="Delete segment"
                 onClick={() => {
                   const loss = lossFor(token);
-                  if (loss.annotations + loss.links === 0) onDelete(token.id, { deleteText: true });
+                  if (!hasLoss(loss)) onDelete(token.id, { deleteText: true });
                   else setAskText(loss);
                 }}
               >
@@ -1045,10 +1044,7 @@ export function TranscriptList({
     (id, opts) => opsRef.current.handleDeleteAlignment(id, opts),
     [],
   );
-  const lossFor = useCallback(
-    (t) => countAnnotationLossForRange(doc.layerInfo, doc.vocabularies, t.begin, t.end),
-    [doc],
-  );
+  const lossFor = useCallback((t) => doc.segmentDeleteLoss(t.id), [doc]);
 
   // Entering a proposal selects and (by preference) plays its stretch, the
   // same as entering a segment row.

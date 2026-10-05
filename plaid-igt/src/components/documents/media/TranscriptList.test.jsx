@@ -32,6 +32,12 @@ function makeDoc({ body, tokens }) {
     updateAlignmentSpeaker: vi.fn(async () => true),
     updateAlignmentBounds: vi.fn(async () => true),
     createAlignment: vi.fn(async () => true),
+    // What a segment's trash with its text takes (IgtDocument.segmentDeleteLoss).
+    segmentDeleteLoss: vi.fn(() => ({
+      annotations: 0,
+      links: 0,
+      shortened: { annotations: 0, links: 0 },
+    })),
   };
 }
 
@@ -661,25 +667,19 @@ describe('TranscriptList', () => {
     it('asks in place when the text carries annotations, and can keep the text', async () => {
       const ops = makeOps();
       const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
-      // A word over "the" with one annotation on it, in the shape layerInfo has.
-      const wordLayer = {
-        id: 'wl',
-        tokens: [{ id: 'w1', begin: 0, end: 3 }],
-        spanLayers: [{ spans: [{ id: 's1', tokens: ['w1'], value: 'DET' }] }],
-      };
-      doc.layerInfo = {
-        primaryTextLayer: { tokenLayers: [wordLayer] },
-        primaryTokenLayer: wordLayer,
-        sentenceTokenLayer: { tokens: [] },
-        spanLayers: { sentence: [] },
-      };
-      doc.vocabularies = {};
+      // One annotation on the text, and a link the delete only shortens.
+      doc.segmentDeleteLoss.mockReturnValue({
+        annotations: 1,
+        links: 0,
+        shortened: { annotations: 0, links: 1 },
+      });
       const r = await renderComponent(element(doc, ops));
       click(trashOf(r.container, 'a'));
       await settle();
       expect(ops.handleDeleteAlignment).not.toHaveBeenCalled();
       const pop = document.querySelector('[role="dialog"]');
-      expect(pop.textContent).toContain('1 annotation on this text.');
+      expect(doc.segmentDeleteLoss).toHaveBeenCalledWith('a');
+      expect(pop.textContent).toContain('1 annotation on this text. Shortens 1 vocabulary link.');
       click([...pop.querySelectorAll('button')].find((b) => b.textContent === 'Keep text'));
       await settle();
       expect(ops.handleDeleteAlignment).toHaveBeenCalledWith('a', { deleteText: false });

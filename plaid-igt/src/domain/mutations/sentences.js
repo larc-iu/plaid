@@ -13,7 +13,7 @@ import { newHalfMetadata, survivingProvenance, survivorPatch } from '../tokenRes
 import { reparentSpans } from './reparent.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
-import { countSplitLoss } from '@ui/domain/annotationLoss.js';
+import { countSplitLoss, dropRelations } from '@ui/domain/annotationLoss.js';
 import { chunk } from '../bulk.js';
 
 // The sentence spans a reset deletes: every value on one of `sentenceIds`.
@@ -187,6 +187,12 @@ export const sentenceMutations = {
     this._applyRawPatch((next, infoNext) => {
       const tokens = infoNext.sentenceTokenLayer?.tokens;
       if (!Array.isArray(tokens)) return;
+      // The relations a layer rule keeps inside one sentence that the new
+      // break cuts go in the split's own transaction, whoever made them, so
+      // they leave this copy with it: a later count must not find them
+      // (REV-N5-APPS R3).
+      const layers = infoNext.primaryTextLayer?.tokenLayers || [];
+      dropRelations(layers, countSplitLoss(layers, containing.id, charPos).relationIds);
       const s = tokens.find((t) => t.id === containing.id);
       if (s) {
         s.end = charPos;

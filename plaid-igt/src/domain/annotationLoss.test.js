@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-  countAnnotationLossForRange,
   countAnnotationLossForWord,
   countReTokenizeCut,
   countReTokenizeLoss,
@@ -70,7 +69,7 @@ describe('countAnnotationLossForWord', () => {
   it('counts spans, relations, and links across ALL apps layers', () => {
     const { layerInfo, vocabularies, word } = make();
     // dying: w1, m1, sw1 -> spans s1, s2, s3, s4 + relation r1; link l1
-    expect(countAnnotationLossForWord(layerInfo, vocabularies, word)).toEqual({
+    expect(countAnnotationLossForWord(layerInfo, vocabularies, word)).toMatchObject({
       annotations: 5,
       links: 1,
     });
@@ -80,69 +79,20 @@ describe('countAnnotationLossForWord', () => {
     const { layerInfo, vocabularies } = make();
     const bare = { id: 'w3', begin: 10, end: 12 };
     layerInfo.primaryTokenLayer.tokens.push(bare);
-    expect(countAnnotationLossForWord(layerInfo, vocabularies, bare)).toEqual({
+    expect(countAnnotationLossForWord(layerInfo, vocabularies, bare)).toMatchObject({
       annotations: 0,
       links: 0,
     });
   });
 
   it('handles missing inputs gracefully', () => {
-    expect(countAnnotationLossForWord(null, {}, { id: 'x', begin: 0, end: 1 })).toEqual({
+    expect(countAnnotationLossForWord(null, {}, { id: 'x', begin: 0, end: 1 })).toMatchObject({
       annotations: 0,
       links: 0,
     });
     expect(
       countAnnotationLossForWord({ primaryTokenLayer: { id: 't', tokens: [] } }, null, null),
-    ).toEqual({ annotations: 0, links: 0 });
-  });
-});
-
-// A segment's trash on the Media tab deletes its text when this is zero, and
-// asks first when it is not.
-describe('countAnnotationLossForRange', () => {
-  it('is the sum over every word the stretch touches, even partly', () => {
-    const { layerInfo, vocabularies, word } = make();
-    const one = countAnnotationLossForWord(layerInfo, vocabularies, word);
-    expect(countAnnotationLossForRange(layerInfo, vocabularies, 0, 6)).toEqual(one);
-    expect(countAnnotationLossForRange(layerInfo, vocabularies, 3, 6)).toEqual(one);
-    // Both words: w2 brings its own count (s5, the two relations grounded on
-    // it, and link l2).
-    const two = countAnnotationLossForWord(layerInfo, vocabularies, { id: 'w2', begin: 6, end: 9 });
-    expect(two).toEqual({ annotations: 3, links: 1 });
-    // The relation between the two words goes once, not once for each.
-    expect(countAnnotationLossForRange(layerInfo, vocabularies, 0, 9)).toEqual({
-      annotations: one.annotations + two.annotations - 1,
-      links: one.links + two.links,
-    });
-    expect(countAnnotationLossForRange(layerInfo, vocabularies, 5, 6)).toEqual({
-      annotations: 0,
-      links: 0,
-    });
-  });
-
-  it('adds the spans of a sentence lying wholly inside the stretch, not one it cuts', () => {
-    const { layerInfo, vocabularies } = make();
-    const sentenceLayer = {
-      id: 'tl-sent',
-      tokens: [{ id: 'sent1', begin: 0, end: 9 }],
-      spanLayers: [
-        { id: 'sl-tr', spans: [{ id: 'tr', tokens: ['sent1'], value: 'a translation' }] },
-      ],
-    };
-    const withSentence = {
-      ...layerInfo,
-      primaryTextLayer: {
-        tokenLayers: [sentenceLayer, ...layerInfo.primaryTextLayer.tokenLayers],
-      },
-      sentenceTokenLayer: sentenceLayer,
-    };
-    const plain = countAnnotationLossForRange(layerInfo, vocabularies, 0, 9);
-    const whole = countAnnotationLossForRange(withSentence, vocabularies, 0, 9);
-    expect(whole.annotations).toBe(plain.annotations + 1); // the translation
-    // A stretch that cuts the sentence leaves the translation out of the count.
-    expect(countAnnotationLossForRange(withSentence, vocabularies, 0, 6)).toEqual(
-      countAnnotationLossForRange(layerInfo, vocabularies, 0, 6),
-    );
+    ).toMatchObject({ annotations: 0, links: 0 });
   });
 });
 
@@ -177,22 +127,22 @@ describe('countReTokenizeLoss', () => {
   };
 
   it('is zero for words nobody has annotated', () => {
-    expect(countReTokenizeLoss(oneSentence(), {})).toEqual({ annotations: 0, links: 0 });
+    expect(countReTokenizeLoss(oneSentence(), {})).toMatchObject({ annotations: 0, links: 0 });
   });
 
   it('counts a segmentation with no gloss on it', () => {
     const info = oneSentence({ morph: { form: 'Mimm', morphType: 'stem' } });
-    expect(countReTokenizeLoss(info, {})).toEqual({ annotations: 1, links: 0 });
+    expect(countReTokenizeLoss(info, {})).toMatchObject({ annotations: 1, links: 0 });
   });
 
   it('counts an orthography line on a word', () => {
     const info = oneSentence({ word: { 'orthog:Translit': 'Mimme' } });
-    expect(countReTokenizeLoss(info, {})).toEqual({ annotations: 1, links: 0 });
+    expect(countReTokenizeLoss(info, {})).toMatchObject({ annotations: 1, links: 0 });
   });
 
   it('does not count provenance alone', () => {
     const info = oneSentence({ word: { prov: 'inferred', provSource: 'service:x' } });
-    expect(countReTokenizeLoss(info, {})).toEqual({ annotations: 0, links: 0 });
+    expect(countReTokenizeLoss(info, {})).toMatchObject({ annotations: 0, links: 0 });
   });
 
   it("counts another app's layers nested under the words", () => {
@@ -210,7 +160,7 @@ describe('countReTokenizeLoss', () => {
     };
     const info = oneSentence({ extra: [ud] });
     const vocabularies = { v: { vocabLinks: [{ id: 'k', tokens: ['m1'] }] } };
-    expect(countReTokenizeLoss(info, vocabularies)).toEqual({ annotations: 2, links: 1 });
+    expect(countReTokenizeLoss(info, vocabularies)).toMatchObject({ annotations: 2, links: 1 });
   });
 
   // REV-SVC-2: a person's merge or split of a machine tokenizer's token leaves
@@ -218,18 +168,18 @@ describe('countReTokenizeLoss', () => {
   it('counts a stamped token a person verified or contributed', () => {
     const machine = { prov: 'inferred', provSource: 'service:whisper' };
     const verified = oneSentence({ word: { ...machine, provConfirmed: true } });
-    expect(countReTokenizeLoss(verified, {})).toEqual({ annotations: 1, links: 0 });
+    expect(countReTokenizeLoss(verified, {})).toMatchObject({ annotations: 1, links: 0 });
     const contributed = oneSentence({ word: { prov: 'contributed', provSource: 'user:b@x.com' } });
-    expect(countReTokenizeLoss(contributed, {})).toEqual({ annotations: 1, links: 0 });
+    expect(countReTokenizeLoss(contributed, {})).toMatchObject({ annotations: 1, links: 0 });
     const merged = oneSentence();
     merged.sentenceTokenLayer.tokens[0].metadata = { ...machine, provConfirmed: true };
-    expect(countReTokenizeLoss(merged, {})).toEqual({ annotations: 1, links: 0 });
+    expect(countReTokenizeLoss(merged, {})).toMatchObject({ annotations: 1, links: 0 });
   });
 
   it('is zero when the document has more than one sentence', () => {
     const info = oneSentence({ morph: { form: 'Mimm' } });
     info.sentenceTokenLayer.tokens.push({ id: 'sent2', begin: 9, end: 9 });
-    expect(countReTokenizeLoss(info, {})).toEqual({ annotations: 0, links: 0 });
+    expect(countReTokenizeLoss(info, {})).toMatchObject({ annotations: 0, links: 0 });
   });
 });
 
@@ -294,7 +244,7 @@ describe('countReTokenizeCut', () => {
 
   it('counts what the new breaks can cut, leaving what the reset deletes to the loss count', () => {
     // rw goes with the words the reset deletes. rn stays and can be cut.
-    expect(countReTokenizeCut(doc([{ id: 'S', begin: 0, end: 9 }]))).toEqual({
+    expect(countReTokenizeCut(doc([{ id: 'S', begin: 0, end: 9 }]))).toMatchObject({
       annotations: 1,
       links: 0,
     });
@@ -305,7 +255,7 @@ describe('countReTokenizeCut', () => {
       { id: 'S1', begin: 0, end: 5 },
       { id: 'S2', begin: 5, end: 9 },
     ]);
-    expect(countReTokenizeCut(two)).toEqual({ annotations: 0, links: 0 });
-    expect(countReTokenizeCut(doc([]))).toEqual({ annotations: 0, links: 0 });
+    expect(countReTokenizeCut(two)).toMatchObject({ annotations: 0, links: 0 });
+    expect(countReTokenizeCut(doc([]))).toMatchObject({ annotations: 0, links: 0 });
   });
 });

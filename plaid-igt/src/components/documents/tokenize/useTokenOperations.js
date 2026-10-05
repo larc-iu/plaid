@@ -15,6 +15,7 @@ import { BUILTIN_TOKENIZE_RULE_BASED } from '../../../domain/serviceDefaults.js'
 import { notifySuccess, notifyError, notifyInfo, humanizeError } from '@/utils/feedback';
 import { reloadAfterRun } from '@ui/lib/runReload.js';
 import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
+import { hasLoss } from '@ui/domain/annotationLoss.js';
 
 // The rule-based tokenizer is always available and declares no options.
 const TOKENIZE_BUILTINS = [
@@ -91,7 +92,7 @@ export const useTokenOperations = () => {
   const deleteToken = async (tokenId) => {
     const word = (doc.layerInfo.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
     const loss = countAnnotationLossForWord(doc.layerInfo, doc.vocabularies, word);
-    if (loss.annotations + loss.links === 0) return run(() => doc.deleteToken(tokenId));
+    if (!hasLoss(loss)) return run(() => doc.deleteToken(tokenId));
     setPendingDelete({
       tokenId,
       content: word ? cpSlice(doc.body || '', word.begin, word.end) : 'this token',
@@ -117,7 +118,7 @@ export const useTokenOperations = () => {
   const splitToken = async (tokenId, splitOffset) => {
     const word = (doc.layerInfo.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
     const loss = countSubWordAnnotationLoss(doc.layerInfo, doc.vocabularies, word ? [word] : []);
-    if (loss.annotations + loss.links === 0) return run(() => doc.splitToken(tokenId, splitOffset));
+    if (!hasLoss(loss)) return run(() => doc.splitToken(tokenId, splitOffset));
     setPendingStructural({
       kind: 'split',
       payload: { tokenId, splitOffset },
@@ -130,7 +131,7 @@ export const useTokenOperations = () => {
     const ids = tokenIds instanceof Set ? Array.from(tokenIds) : Array.from(tokenIds || []);
     const words = (doc.layerInfo.primaryTokenLayer?.tokens || []).filter((t) => ids.includes(t.id));
     const loss = countSubWordAnnotationLoss(doc.layerInfo, doc.vocabularies, words);
-    if (loss.annotations + loss.links === 0) return run(() => doc.mergeTokens(ids));
+    if (!hasLoss(loss)) return run(() => doc.mergeTokens(ids));
     setPendingStructural({
       kind: 'merge',
       payload: { ids },

@@ -989,6 +989,56 @@ describe('sentence boundary ops', () => {
     expect(doc.sentences).toHaveLength(1);
   });
 
+  // REV-N5-APPS R3: the relations the split's layer rule deletes leave this
+  // copy with the split, so splitting there again counts nothing.
+  it('a split drops the relations it cuts, and the same split again counts none', async () => {
+    const raw = buildRawDoc({
+      body: 'the cat saw',
+      words: [
+        { id: 'w-1', begin: 0, end: 3 },
+        { id: 'w-2', begin: 4, end: 7 },
+        { id: 'w-3', begin: 8, end: 11 },
+      ],
+    });
+    raw.textLayers[0].tokenLayers.push({
+      id: 'otherW',
+      name: 'Other words',
+      parentTokenLayer: 'sentL',
+      tokens: [
+        { id: 'o-1', begin: 0, end: 3 },
+        { id: 'o-3', begin: 8, end: 11 },
+      ],
+      spanLayers: [
+        {
+          id: 'otherS',
+          spans: [
+            { id: 'os-1', tokens: ['o-1'] },
+            { id: 'os-3', tokens: ['o-3'] },
+          ],
+          relationLayers: [
+            {
+              id: 'ruled',
+              constraints: { other: [{ type: 'same-ancestor', tokenLayer: 'sentL' }] },
+              relations: [{ id: 'r-1', source: 'os-1', target: 'os-3' }],
+            },
+          ],
+        },
+      ],
+      vocabs: [],
+    });
+    const doc = makeDoc({ raw });
+    expect(doc.sentenceSplitLoss([8])).toMatchObject({ annotations: 1 });
+    await doc.splitSentence(8);
+    const ruled = () =>
+      doc.layerInfo.primaryTextLayer.tokenLayers
+        .find((tl) => tl.id === 'otherW')
+        .spanLayers[0].relationLayers[0].relations.map((r) => r.id);
+    expect(ruled()).toEqual([]);
+    await doc.mergeSentence(doc.sentences[1].id);
+    expect(doc.sentences).toHaveLength(1);
+    expect(doc.sentenceSplitLoss([8])).toMatchObject({ annotations: 0 });
+  });
+
   it('mergeSentence reparents the merged-away sentence spans onto prev', async () => {
     // Two sentences; a Translation annotation lives on the SECOND one. After
     // merging it into the first, the server reparents that span onto the

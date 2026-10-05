@@ -107,6 +107,7 @@ export function DocumentTokenize() {
           : '') +
         (lost ? ` Deletes ${lost} that cross the new break${n === 1 ? '' : 's'}.` : ''),
       confirmLabel: 'Split sentences',
+      destructive: Boolean(lost),
     });
     if (!ok) return;
     if (await ops.splitSentencesAt(positions)) {
@@ -354,15 +355,8 @@ export function DocumentTokenize() {
         onConfirm={() => ops.confirmPendingDelete()}
       >
         <p>
-          Deleting <strong>“{ops.pendingDelete?.content}”</strong> also deletes{' '}
-          <strong>
-            {ops.pendingDelete?.annotations || 0} annotation
-            {ops.pendingDelete?.annotations === 1 ? '' : 's'}
-            {ops.pendingDelete?.links
-              ? ` and ${ops.pendingDelete.links} vocabulary link${ops.pendingDelete.links === 1 ? '' : 's'}`
-              : ''}
-          </strong>{' '}
-          on it.
+          Deleting <strong>“{ops.pendingDelete?.content}”</strong>
+          <LossWords loss={ops.pendingDelete} />
         </p>
       </ConfirmDeleteDialog>
 
@@ -394,16 +388,12 @@ export function DocumentTokenize() {
         ) : (
           <p>
             {ops.pendingStructural?.kind === 'merge' ? 'Merging' : 'Splitting'}{' '}
-            <strong>“{ops.pendingStructural?.label}”</strong> discards the morpheme analysis,
-            deleting{' '}
-            <strong>
-              {ops.pendingStructural?.annotations || 0} annotation
-              {ops.pendingStructural?.annotations === 1 ? '' : 's'}
-              {ops.pendingStructural?.links
-                ? ` and ${ops.pendingStructural.links} vocabulary link${ops.pendingStructural.links === 1 ? '' : 's'}`
-                : ''}
-            </strong>{' '}
-            at the morpheme level. Word-level annotations are unchanged.
+            <strong>“{ops.pendingStructural?.label}”</strong>
+            <LossWords
+              loss={ops.pendingStructural}
+              under={ops.pendingStructural?.kind === 'merge' ? 'these words' : 'this word'}
+            />{' '}
+            Word-level annotations are unchanged.
           </p>
         )}
       </ConfirmDeleteDialog>
@@ -451,6 +441,35 @@ export function DocumentTokenize() {
         </p>
       </ConfirmDeleteDialog>
     </TooltipProvider>
+  );
+}
+
+// " deletes 3 annotations and 1 vocabulary link under this word, and shortens
+// 1 vocabulary link." What a delete, split or merge takes, by count only, on
+// whatever layer it lies. `under` names where, for a split or merge, which
+// keeps the words themselves.
+function LossWords({ loss, under = null }) {
+  const gone = lossPhrase(loss || {});
+  const cut = lossPhrase(loss?.shortened || {});
+  const where = under ? ` under ${under}` : ' on it';
+  return (
+    <>
+      {gone ? (
+        <>
+          {' '}
+          deletes <strong>{gone}</strong>
+          {where}
+        </>
+      ) : null}
+      {gone && cut ? ', and' : null}
+      {cut ? (
+        <>
+          {' '}
+          shortens <strong>{cut}</strong>
+        </>
+      ) : null}
+      .
+    </>
   );
 }
 

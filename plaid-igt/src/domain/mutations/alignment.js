@@ -57,6 +57,7 @@ import { newWordsOf, reshapeVocabLinks, wordsOverlap } from './document.js';
 import { getIgtLayerInfo } from '../layerInfo.js';
 import { overlapProblem, rangeProblem } from '../alignmentTimes.js';
 import { notSetUp } from '@ui/domain/setupGuard.js';
+import { countTextDeleteLoss } from '@ui/domain/annotationLoss.js';
 
 // Two ranges [a, b) and [c, d) overlap iff a < d && b > c.
 const findOverlappingAlignment = (tokens, begin, end, excludeId = null) =>
@@ -696,6 +697,23 @@ export const alignmentMutations = {
       speaker,
       recheck: this._sameRecording(recordingOf(this._raw), 'Segment'),
     });
+  },
+
+  // What deleting a segment with its text takes, on every layer of the text:
+  // every token within the stretch the delete removes (the whitespace it
+  // swallows included, so a sentence it completes), whoever made it, with
+  // what is on them (REV-N5-APPS R1). The segment itself is what is asked to
+  // go and is not counted. `{annotations, links, shortened}`.
+  segmentDeleteLoss(alignmentId) {
+    const info = this.layerInfo;
+    const segment = (info.alignmentTokenLayer?.tokens || []).find((t) => t.id === alignmentId);
+    if (!segment) return { annotations: 0, links: 0, shortened: { annotations: 0, links: 0 } };
+    const ranges = planDeleteText(this.body, segment).map((op) => [op.index, op.index + op.value]);
+    const loss = countTextDeleteLoss(info.primaryTextLayer?.tokenLayers || [], ranges, {
+      except: [segment.id],
+      vocabLinks: Object.values(this.vocabularies || {}).flatMap((v) => v?.vocabLinks || []),
+    });
+    return { annotations: loss.annotations, links: loss.links, shortened: loss.shortened };
   },
 
   // Delete a segment. By default only the segment goes and its text stays in

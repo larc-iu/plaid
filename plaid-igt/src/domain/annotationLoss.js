@@ -13,14 +13,16 @@
 import { PROV, isProtected } from '@larc-iu/plaid-client';
 import { countDeleteLoss, countPartitionLoss, hasOwnContent } from '@ui/domain/annotationLoss.js';
 
-const ZERO = () => ({ annotations: 0, links: 0 });
+const ZERO = () => ({ annotations: 0, links: 0, shortened: { annotations: 0, links: 0 } });
 
 const linksOf = (vocabularies) =>
   Object.values(vocabularies || {}).flatMap((v) => v?.vocabLinks || []);
 
 const tokenLayersOf = (layerInfo) => layerInfo?.primaryTextLayer?.tokenLayers || [];
 
-const counted = ({ annotations, links }) => ({ annotations, links });
+// What is deleted, and apart from it what is only cut down (a link over this
+// word and the next keeps the next).
+const counted = ({ annotations, links, shortened }) => ({ annotations, links, shortened });
 
 /**
  * Count the annotations deleting `word` would cascade away.
@@ -35,26 +37,6 @@ export const countAnnotationLossForWord = (layerInfo, vocabularies, word) => {
   if (!layerInfo?.primaryTokenLayer || !word) return ZERO();
   return counted(
     countDeleteLoss(tokenLayersOf(layerInfo), [word.id], { vocabLinks: linksOf(vocabularies) }),
-  );
-};
-
-/**
- * Count what deleting a stretch of the baseline would take: every word
- * overlapping it and all that cascades from those words, plus every sentence
- * lying wholly inside it, which the server deletes with its spans. A segment
- * on the Media tab is such a stretch, and its trash goes straight through
- * when this is zero.
- *
- * @returns {{annotations: number, links: number}}
- */
-export const countAnnotationLossForRange = (layerInfo, vocabularies, begin, end) => {
-  if (!layerInfo || !(end > begin)) return ZERO();
-  const ids = [
-    ...(layerInfo.primaryTokenLayer?.tokens || []).filter((w) => w.begin < end && w.end > begin),
-    ...(layerInfo.sentenceTokenLayer?.tokens || []).filter((s) => s.begin >= begin && s.end <= end),
-  ].map((t) => t.id);
-  return counted(
-    countDeleteLoss(tokenLayersOf(layerInfo), ids, { vocabLinks: linksOf(vocabularies) }),
   );
 };
 

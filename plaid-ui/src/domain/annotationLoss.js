@@ -10,12 +10,13 @@
 // Deleting a token deletes, in the same transaction:
 //   - every token of a layer nested (transitively) under its layer whose
 //     extent lies within it (begin >= its begin, end <= its end),
-//   - every span on a token that goes (one that keeps some of its tokens is
-//     cut down to them, which is counted as well, since it no longer says
-//     what it said),
+//   - every span whose tokens all go (one that keeps some of its tokens is
+//     only cut down to them, and counted apart, as shortened),
 //   - every relation with an end on a span left with no tokens,
-//   - every vocabulary link on a token that goes (cut down, like a span, when
-//     it keeps some of its tokens).
+//   - every vocabulary link whose tokens all go (shortened, like a span, when
+//     it keeps some of them).
+// Deleting a stretch of text deletes every token of every layer that lies
+// within it, and so all of the above for each (countTextDeleteLoss).
 // Splitting a token deletes every relation on a layer that declares
 // `same-ancestor` over the split token's layer and whose ends then lie in
 // different halves, an end lying where the smallest begin of its span's
@@ -31,8 +32,19 @@ const EMPTY = () => ({
   relations: 0,
   content: 0,
   links: 0,
+  // Spans and links that keep some of their tokens: cut down, not deleted.
+  shortened: { annotations: 0, links: 0 },
+  // The relations that go, by id, so a write's own patch can drop them.
+  relationIds: [],
   byLayer: new Map(),
 });
+
+/** Whether a count holds anything a question should name. */
+export const hasLoss = (loss) =>
+  Boolean(
+    loss &&
+      (loss.annotations || loss.links || loss.shortened?.annotations || loss.shortened?.links),
+  );
 
 const bump = (map, key, n = 1) => map.set(key, (map.get(key) || 0) + n);
 
@@ -127,10 +139,11 @@ const skipper = (skip) => {
  *   holds a fresher list than the layers' own `vocabs`
  * @param {boolean|function} [options.content] also count each token that goes
  *   and holds content of its own (true: metadata beyond provenance, or a
- *   predicate on the token)
+ *   predicate on the token and its layer id)
  * @returns {{annotations: number, spans: number, relations: number,
  *   content: number, links: number, byLayer: Map<string, number>}}
- *   `annotations` is spans plus relations plus content. `byLayer` counts the
+ *   `annotations` is spans plus relations plus content, of what is deleted.
+ *   `shortened` counts apart the spans and links only cut down. `byLayer` counts the
  *   tokens, spans and relations that go, by the id of the layer they are on,
  *   and the links by vocabulary id. The given tokens are counted under their
  *   own layer unless `under` is set.
@@ -151,7 +164,7 @@ export const countDeleteLoss = (tokenLayers, tokenIds, options = {}) => {
     for (const t of tl.tokens || []) {
       if (!dying.has(t.id) || skipped(tl.id)) continue;
       bump(result.byLayer, tl.id);
-      if (hasContent(t)) result.content += 1;
+      if (hasContent(t, tl.id)) result.content += 1;
     }
   }
 
@@ -162,8 +175,13 @@ export const countDeleteLoss = (tokenLayers, tokenIds, options = {}) => {
       for (const s of sl.spans || []) {
         const toks = Array.isArray(s.tokens) ? s.tokens : [];
         if (!toks.some((t) => dying.has(t))) continue;
-        if (toks.every((t) => dying.has(t))) emptied.add(s.id);
+        const gone = toks.every((t) => dying.has(t));
+        if (gone) emptied.add(s.id);
         if (skipped(tl.id, sl.id)) continue;
+        if (!gone) {
+          result.shortened.annotations += 1;
+          continue;
+        }
         result.spans += 1;
         bump(result.byLayer, sl.id);
       }
@@ -176,6 +194,7 @@ export const countDeleteLoss = (tokenLayers, tokenIds, options = {}) => {
         for (const r of rl.relations || []) {
           if (!emptied.has(r.source) && !emptied.has(r.target)) continue;
           result.relations += 1;
+          result.relationIds.push(r.id);
           bump(result.byLayer, rl.id);
         }
       }
@@ -197,6 +216,10 @@ export const countDeleteLoss = (tokenLayers, tokenIds, options = {}) => {
       const toks = Array.isArray(link.tokens) ? link.tokens : [];
       if (!toks.some((t) => dying.has(t))) continue;
       seen.add(link.id ?? link);
+      if (!toks.every((t) => dying.has(t))) {
+        result.shortened.links += 1;
+        continue;
+      }
       result.links += 1;
       if (vocabId) bump(result.byLayer, vocabId);
     }
@@ -254,6 +277,7 @@ export const countSplitLoss = (tokenLayers, tokenId, position, options = {}) => 
           const b = side(spanById.get(r.target));
           if (a && b && a !== b) {
             result.relations += 1;
+            result.relationIds.push(r.id);
             bump(result.byLayer, rl.id);
           }
         }
@@ -318,6 +342,7 @@ export const countPartitionLoss = (tokenLayers, layerId, ranges, options = {}) =
           const b = placeOf(tgt);
           if (crosses(now, a, b) || !crosses(after, a, b)) continue;
           result.relations += 1;
+          result.relationIds.push(r.id);
           bump(result.byLayer, rl.id);
         }
       }
@@ -325,6 +350,55 @@ export const countPartitionLoss = (tokenLayers, layerId, ranges, options = {}) =
   }
   result.annotations = result.relations;
   return result;
+};
+
+/**
+ * Count what deleting stretches of the text takes. Core deletes every token,
+ * of every layer, that lies within a deleted stretch (a zero-width one only
+ * strictly inside it), and the rest follows as for a token delete. Tokens
+ * that only overlap a stretch are cut down and stay.
+ *
+ * @param {object[]} tokenLayers a text layer's token layers, every app's
+ * @param {Array<[number, number]>} ranges the deleted stretches, [begin, end)
+ *   in the text as it is before the delete
+ * @param {object} [options] as countDeleteLoss, plus `except`: token ids the
+ *   caller deletes on purpose and does not count (a segment deleted with its
+ *   text)
+ * @returns the same shape as countDeleteLoss
+ */
+export const countTextDeleteLoss = (tokenLayers, ranges, options = {}) => {
+  const { except, ...rest } = options;
+  const skipIds = new Set(except || []);
+  const ids = [];
+  for (const tl of tokenLayers || []) {
+    for (const t of tl.tokens || []) {
+      if (skipIds.has(t.id)) continue;
+      const inside = (ranges || []).some(([b, e]) =>
+        t.begin === t.end ? b < t.begin && t.end < e : b <= t.begin && t.end <= e,
+      );
+      if (inside) ids.push(t.id);
+    }
+  }
+  return countDeleteLoss(tokenLayers, ids, rest);
+};
+
+/**
+ * Drop the relations `ids` from a document's token layers, in place: what a
+ * write's own optimistic patch does with the relations a layer rule deletes in
+ * that write's transaction (the ids a split or partition count found).
+ */
+export const dropRelations = (tokenLayers, ids) => {
+  const gone = new Set(ids || []);
+  if (!gone.size) return;
+  for (const tl of tokenLayers || []) {
+    for (const sl of tl.spanLayers || []) {
+      for (const rl of sl.relationLayers || []) {
+        if (Array.isArray(rl.relations) && rl.relations.some((r) => gone.has(r.id))) {
+          rl.relations = rl.relations.filter((r) => !gone.has(r.id));
+        }
+      }
+    }
+  }
 };
 
 /**
