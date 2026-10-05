@@ -201,7 +201,8 @@ describe('the pinned row, once the heading has scrolled away', () => {
     await scroll();
     const link = view.container.querySelector('[data-testid="tab-row-project"]');
     expect(link.getAttribute('href')).toContain('/projects/p1');
-    expect(link.getAttribute('aria-label')).toBe('Ay');
+    // Named, since a project can turn its tartan off and the link must still say where it goes.
+    expect(link.textContent).toBe('Ay');
   });
 
   it('is never drawn on a strip that is not pinned', async () => {

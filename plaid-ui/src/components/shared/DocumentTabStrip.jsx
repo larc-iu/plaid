@@ -42,8 +42,9 @@ import { useProjectFavicon } from '../../hooks/useProjectFavicon.js';
  * whose body runs to the window's edge (plaid-ud's and plaid-umr's grids).
  *
  * Once the page has scrolled the breadcrumb and heading out of sight, the
- * pinned row starts with the project's tartan, a link back to the project, so
- * leaving a long document does not mean scrolling back to its top.
+ * pinned row starts with the project's name (and tartan, where the project
+ * shows one), a link back to the project, so leaving a long document does not
+ * mean scrolling back to its top.
  *
  * While pinned, the row's height is measured into `--plaid-tab-row-height` on
  * the root, where index.css adds it to the page's scroll padding, so a row
@@ -162,12 +163,12 @@ export const DocumentTabStrip = ({
         {sticky && scrolledPast && (
           <Link
             to={routes.documents(projectId)}
-            title={project?.name}
-            aria-label={project?.name || 'Project'}
+            dir="auto"
             data-testid="tab-row-project"
-            className="-me-3 shrink-0 rounded-sm opacity-80 hover:opacity-100"
+            className="-me-3 flex min-w-0 max-w-[16rem] shrink items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground hover:underline"
           >
-            <ProjectTartan project={project} size={18} />
+            <ProjectTartan project={project} size={14} className="shrink-0" />
+            <span className="truncate">{project?.name || 'Project'}</span>
           </Link>
         )}
         <Tabs

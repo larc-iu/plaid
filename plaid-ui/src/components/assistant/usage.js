@@ -60,11 +60,10 @@ export const usageTitle = (usage, spend) => {
   const lines =
     f !== null
       ? [
-          `This conversation takes up ${Math.round(f * 100)}% of what the model can read at once: ` +
-            `${thousands(usage.sent)} of ${thousands(usage.window)} tokens on the last turn.`,
+          `In this conversation, you have used ${Math.round(f * 100)}% of this model's available ` +
+            `context length (${thousands(usage.sent)}/${thousands(usage.window)} tokens).`,
         ]
       : [`${thousands(usage.sent)} tokens on the last turn. This model's limit is not known.`];
-  lines.push('A token is a word or a piece of one.');
   if (spend) lines.push(`${thousands(spend)} tokens over the whole conversation.`);
   return lines.join('\n');
 };

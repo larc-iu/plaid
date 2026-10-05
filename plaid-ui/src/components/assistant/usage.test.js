@@ -87,9 +87,8 @@ describe('usageTitle', () => {
   it('gives the counts behind the percentage and the conversation total', () => {
     const title = usageTitle({ sent: 42100, received: 900, window: 110000 }, 61000);
     expect(title).toContain(
-      'This conversation takes up 38% of what the model can read at once: 42,100 of 110,000 tokens on the last turn.',
+      "In this conversation, you have used 38% of this model's available context length (42,100/110,000 tokens).",
     );
-    expect(title).toContain('A token is a word or a piece of one.');
     expect(title).toContain('61,000 tokens over the whole conversation.');
   });
 
