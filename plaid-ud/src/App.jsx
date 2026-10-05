@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { lazyNamed } from '@ui/lib/lazyNamed.js';
 import { Suspended } from '@ui/components/shared/Suspended.jsx';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -63,6 +63,12 @@ const ExportEditor = lazyNamed(
 // Bound here, at module scope: App is what renders the AuthProvider, so there
 // is no auth state above it to read.
 const ProtectedRoute = createProtectedRoute(useAuth, { loginPath: '/login' });
+
+// A typed or shared `/settings` link opens the Settings tab's first section.
+const SettingsLink = () => {
+  const { projectId } = useParams();
+  return <Navigate to={`/projects/${projectId}/general`} replace />;
+};
 
 function App() {
   return (
@@ -204,6 +210,7 @@ function App() {
                 </Suspended>
               }
             />
+            <Route path="projects/:projectId/settings" element={<SettingsLink />} />
             <Route
               path="projects/:projectId/general"
               element={

@@ -17,7 +17,7 @@ export const ProjectForm = ({ isOpen, onClose, onSuccess }) => (
       <li>Text layer</li>
       <li>Token hierarchy: Sentences &rarr; Tokens &rarr; Words</li>
       <li>Span layers for Form, Lemma, UPOS, XPOS and Features</li>
-      <li>Relation layer for dependencies</li>
+      <li>Relation layers for dependencies and enhanced dependencies</li>
     </ul>
   </NewProjectDialog>
 );

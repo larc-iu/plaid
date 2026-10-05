@@ -8,7 +8,7 @@ import { Label } from '@ui/components/ui/label';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { utf16ToCp } from '@larc-iu/plaid-client';
 import { tokensWithin } from '../../domain/sentenceRows.js';
-import { notifyError } from '../../utils/feedback.jsx';
+import { notifyError, notifyInfo } from '../../utils/feedback.jsx';
 import { stableKey } from '@ui/domain/pendingIds.js';
 import { useFollowedState } from '@ui/hooks/useFollowedState.js';
 import classes from './TokenVisualizer.module.css';
@@ -60,6 +60,9 @@ export const TokenVisualizer = ({
   const openTimer = useRef(null);
   const closeTimer = useRef(null);
   const panelRef = useRef(null); // the open panel's content, for focus checks
+  // Set by Add word, so the input it adds takes the caret when it mounts.
+  // Opening a panel on hover mounts the inputs too, and must not.
+  const focusAddedWord = useRef(false);
 
   const isTextDirty = Boolean(originalText) && text !== originalText;
   const sortPos = (a, b) =>
@@ -173,6 +176,7 @@ export const TokenVisualizer = ({
     openTimer.current = setTimeout(() => {
       openTimer.current = null;
       const word = wordById.get(id);
+      focusAddedWord.current = false;
       if (word) setDraftForms(currentFormsOf(word)); // seed editor with current words
       setOpenId(id);
     }, OPEN_DELAY);
@@ -238,6 +242,10 @@ export const TokenVisualizer = ({
     const forms = draftForms.map((f) => f.trim()).filter(Boolean);
     const current = currentFormsOf(word).map((f) => f.trim());
     closePanel();
+    const empty = draftForms.length - forms.length;
+    if (empty > 0 && forms.length === 0) notifyInfo('No words. Nothing saved.');
+    else if (empty === 1) notifyInfo('Empty word left out.');
+    else if (empty > 1) notifyInfo(`${empty} empty words left out.`);
     const changed = forms.length > 0 && JSON.stringify(forms) !== JSON.stringify(current);
     if (changed && onSetWordMorphemes) {
       try {
@@ -416,9 +424,12 @@ export const TokenVisualizer = ({
         data-sentence={sentenceToken?.id}
         data-word-id={word.id}
         title={
-          canHandOff
-            ? 'Click to toggle the sentence boundary. Alt+click to annotate this sentence.'
-            : undefined
+          [
+            onSentenceToggle && 'Click to toggle the sentence boundary.',
+            canHandOff && 'Alt+click to annotate this sentence.',
+          ]
+            .filter(Boolean)
+            .join(' ') || undefined
         }
         onClick={(e) => {
           // Alt+click hands over to Annotate, the mirror of Alt+click on a word
@@ -502,6 +513,11 @@ export const TokenVisualizer = ({
                     <div key={i} className="flex items-center gap-2">
                       <Input
                         value={form}
+                        aria-label={`Word ${i + 1}`}
+                        autoFocus={focusAddedWord.current && i === draftForms.length - 1}
+                        onFocus={() => {
+                          focusAddedWord.current = false;
+                        }}
                         spellCheck={false}
                         onChange={(e) =>
                           setDraftForms((prev) =>
@@ -535,7 +551,10 @@ export const TokenVisualizer = ({
                     variant="ghost"
                     size="sm"
                     className="h-7 gap-1 self-start px-2 text-xs"
-                    onClick={() => setDraftForms((prev) => [...prev, ''])}
+                    onClick={() => {
+                      focusAddedWord.current = true;
+                      setDraftForms((prev) => [...prev, '']);
+                    }}
                   >
                     <Plus className="h-3.5 w-3.5" />
                     Add word
@@ -637,6 +656,16 @@ export const TokenVisualizer = ({
     return blocks;
   };
 
+  // Only what works here: a read-only document keeps the hand-off to Annotate.
+  const hint = [
+    onSentenceToggle && 'Click a token to toggle its sentence boundary.',
+    (onSetWordMorphemes || onWordDelete) && 'Hover a token to edit its words or delete it.',
+    onWordCreate && 'Select text to create a token.',
+    onOpenInAnnotate && 'Alt+click a token to annotate its sentence.',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
     <div>
       {isTextDirty && (
@@ -653,10 +682,7 @@ export const TokenVisualizer = ({
         {renderText()}
       </div>
       {renderPanel()}
-      <p className="mt-3 text-xs text-muted-foreground">
-        Click a token to toggle its sentence boundary. Hover a token to edit its words or delete it.
-        Select text to create a token. Alt+click a token to annotate its sentence.
-      </p>
+      {hint && <p className="mt-3 text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 };
