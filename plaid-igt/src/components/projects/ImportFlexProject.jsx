@@ -870,7 +870,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
               <Notice tone="success" className="p-4">
                 <p className="font-medium">Import complete</p>
                 <p className="mt-1">
-                  {results?.imported ?? 0} imported
+                  {(results?.imported ?? 0) - (results?.redone ?? 0)} imported
                   {results?.skipped ? `, ${results.skipped} already present` : ''}
                   {results?.redone ? `, ${results.redone} redone` : ''}.
                 </p>

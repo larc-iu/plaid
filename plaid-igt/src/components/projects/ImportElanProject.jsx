@@ -289,7 +289,7 @@ export const ImportElanProject = () => {
           <div className="flex flex-col gap-4">
             <Panel tone="success" title="Import complete">
               <p className="mt-1 text-xs">
-                {results.imported} imported
+                {results.imported - results.redone} imported
                 {results.skipped ? `, ${results.skipped} already done` : ''}
                 {results.redone ? `, ${results.redone} redone` : ''}.
               </p>

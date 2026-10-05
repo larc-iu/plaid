@@ -277,14 +277,16 @@ async function addRecordingToExisting({ client, existing, doc, results, onProgre
 
 // The document a stopped or failed run was making, in a project open for
 // work. A later run would list it as imported before and keep it, half made.
-// When the delete fails too, it stays, and the error says so.
-async function removeUnfinished(client, documentId, err) {
+// When the delete fails too, it stays, and the error names it
+// (`unfinishedLeft`), so the screen can say so and its retry redo it.
+async function removeUnfinished(client, documentId, name, err) {
   try {
     await client.documents.delete(documentId);
     err.unfinishedRemoved = true;
   } catch (cleanup) {
     console.error('Could not remove the unfinished document:', cleanup);
     err.unfinishedRemoved = false;
+    err.unfinishedLeft = { id: documentId, name };
   }
 }
 
@@ -315,6 +317,9 @@ async function runElanImportImpl({
   // for it as for a finished one, and a run that stops or fails deletes the
   // document it was making, which no one has had the chance to work on.
   projectOpen = false,
+  // Documents a failed run of this screen made and could not remove: no one
+  // has worked on them, so they are redone whatever priorMode says.
+  redo = [],
 }) {
   const project = await client.projects.get(projectId);
   const targets = resolveTargets(project, build);
@@ -362,16 +367,17 @@ async function runElanImportImpl({
     });
     const warn = (text) => note(text, doc.name);
     const existing = prior.find(doc.id);
+    const leftover = !!existing && redo.includes(existing.id);
     // A copy is only a copy of a document that is finished, or one an open
     // project keeps. One a resume left half done is redone, which is what
     // resume has always meant.
     const copyName =
-      priorMode === 'copy' && existing && (prior.done(existing) || projectOpen)
+      priorMode === 'copy' && existing && !leftover && (prior.done(existing) || projectOpen)
         ? unusedName(doc.name, prior.names)
         : null;
     if (!copyName) {
       const proceed = await settlePrior(client, prior, doc.id, results, {
-        replace: priorMode === 'replace',
+        replace: priorMode === 'replace' || leftover,
         keepUnfinished: projectOpen,
       });
       if (!proceed) {
@@ -397,7 +403,7 @@ async function runElanImportImpl({
         warnings: { push: (...w) => w.forEach(warn) },
       });
     } catch (err) {
-      if (projectOpen && making) await removeUnfinished(client, making, err);
+      if (projectOpen && making) await removeUnfinished(client, making, doc.name, err);
       throw err;
     }
     for (const w of doc.warnings) warn(w);

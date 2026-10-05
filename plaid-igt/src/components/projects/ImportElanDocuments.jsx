@@ -92,6 +92,9 @@ export const ImportElanDocuments = () => {
   const [prior, setPrior] = useState(null);
   // What happens to a file an earlier run finished: 'skip', 'replace' or 'copy'.
   const [priorMode, setPriorMode] = useState('skip');
+  // Documents a failed run here made and could not remove. A retry redoes
+  // them rather than keep them, since no one has worked on them.
+  const [leftovers, setLeftovers] = useState([]);
   const stopRef = useRef(false);
 
   const fields = project ? existingFields(project) : { Sentence: [], Word: [], Morpheme: [] };
@@ -213,6 +216,7 @@ export const ImportElanDocuments = () => {
         projectId,
         build: batch.build,
         prior: retrying ? null : prior,
+        redo: leftovers,
         priorMode,
         projectOpen: true,
         shouldStop: () => stopRef.current,
@@ -242,7 +246,12 @@ export const ImportElanDocuments = () => {
       }
     } catch (e) {
       console.error('ELAN import failed:', e);
-      setRunError({ message: humanizeError(e), unfinishedRemoved: e.unfinishedRemoved === true });
+      setRunError({
+        message: humanizeError(e),
+        unfinishedRemoved: e.unfinishedRemoved === true,
+        unfinishedLeft: e.unfinishedLeft ?? null,
+      });
+      if (e.unfinishedLeft) setLeftovers((ids) => [...ids, e.unfinishedLeft.id]);
       setStage('review');
       // What the run made before it stopped is in the project now, and a
       // retry has to see it there rather than make it again.
@@ -459,6 +468,12 @@ export const ImportElanDocuments = () => {
                     <p className="mt-1 text-xs">{runError.message}</p>
                     {runError.unfinishedRemoved && (
                       <p className="mt-1 text-xs">The unfinished document was removed.</p>
+                    )}
+                    {runError.unfinishedLeft && (
+                      <p className="mt-1 text-xs">
+                        The unfinished document “{runError.unfinishedLeft.name}” could not be
+                        removed. Retrying replaces it.
+                      </p>
                     )}
                   </Panel>
                 )}

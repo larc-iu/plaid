@@ -550,6 +550,38 @@ describe('runElanImport', () => {
       expect(client.calls).toContainEqual(['documents.delete', made]);
     });
 
+    // REV-N5-APPS R2: a cleanup delete that failed too left an empty
+    // document, which the retry then kept as if someone had worked on it.
+    it('names the document it could not remove, and a retry redoes it', async () => {
+      const client = stubClient();
+      let stop = false;
+      client.tokens.bulkCreate = async () => {
+        stop = true;
+        return { ids: [] };
+      };
+      client.documents.delete = async () => {
+        throw new Error('offline');
+      };
+      const err = await open(client, { shouldStop: () => stop }).catch((e) => e);
+      expect(err.unfinishedRemoved).toBe(false);
+      const [, , , made] = client.calls.find(([m]) => m === 'documents.create');
+      expect(err.unfinishedLeft).toEqual({ id: made, name: 'Story' });
+
+      const retry = stubClient({
+        documents: [{ id: made, name: 'Story' }],
+        docMetadata: { [made]: { importSource: `${made}:a.eaf` } },
+      });
+      const res = await open(retry, { redo: [made] });
+      expect(res).toMatchObject({ imported: 1, redone: 1, skipped: 0 });
+      expect(retry.calls[0]).toEqual(['documents.delete', made]);
+    });
+
+    it('still keeps an unfinished document a retry was not told to redo', async () => {
+      const client = stubClient(unfinished);
+      expect(await open(client, { redo: ['someone-else'] })).toMatchObject({ skipped: 1 });
+      expect(client.calls.some(([m]) => m === 'documents.delete')).toBe(false);
+    });
+
     it('leaves it in place on a resume, which redoes it', async () => {
       const client = stubClient();
       let stop = false;
