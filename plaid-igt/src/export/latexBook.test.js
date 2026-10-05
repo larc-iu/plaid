@@ -567,7 +567,10 @@ describe('links from the texts to the vocabulary', () => {
   ];
   const VOCABS = [{ id: 'v', name: 'Lexicon', config: {}, items: ITEMS }];
   const ENTRIES = chapterEntryIds(VOCABS, latexVocabulary({}, VOCABS));
+  // A link over a piece of a cell, and a word cell linked to its entry: the
+  // text as it is, and the link laid over it.
   const link = (id, text) => `\\PlaidEntryLink{${entryAnchor(id)}}{${text}}`;
+  const linkedWord = (id, text) => `\\PlaidLinked{${text}}{${link(id, text)}}`;
   // A link as derive gives it: the entry's id and form.
   const entry = (id) => (id ? { id, form: ITEMS.find((it) => it.id === id).form } : null);
   const linked = (w, item, morphemes = []) => ({ ...word(w, morphemes), vocabItem: entry(item) });
@@ -576,7 +579,25 @@ describe('links from the texts to the vocabulary', () => {
     morphemes: token.morphemes.map((m, i) => ({ ...m, vocabItem: entry(ids[i]) })),
   });
   // The example with every link taken out, as it was before there were any.
-  const unlinked = (tex) => unwrapped(tex, 'PlaidEntryLink');
+  const unlinked = (tex) => {
+    const open = '\\PlaidLinked{';
+    let out = tex;
+    for (let at = out.indexOf(open); at >= 0; at = out.indexOf(open)) {
+      // The end of the brace group that opens at `i`.
+      const close = (i) => {
+        let depth = 0;
+        for (let j = i; ; j++) {
+          if (out[j] === '\\') j++;
+          else if (out[j] === '{') depth++;
+          else if (out[j] === '}' && --depth === 0) return j;
+        }
+      };
+      const textEnd = close(at + open.length - 1);
+      const linksEnd = close(textEnd + 1);
+      out = out.slice(0, at) + out.slice(at + open.length, textEnd) + out.slice(linksEnd + 1);
+    }
+    return out;
+  };
 
   it('names each entry by a destination of letters alone, one per entry', () => {
     expect(entryAnchor('k1')).toBe('gldb');
@@ -608,7 +629,7 @@ describe('links from the texts to the vocabulary', () => {
     const sentence = sentenceOf([token, word('mo')]);
     const tex = formatExample(sentence, NO_ORTHOGRAPHY, { entries: ENTRIES });
     expect(lineOf(tex, 'glb')[0]).toBe(
-      `\\PlaidMorphemes{${link('k2a', 'kai')}-${link('na', 'na')}} {}`,
+      `\\PlaidMorphemes{\\PlaidLinked{kai-na}{${link('k2a', 'kai')}\\phantom{-}${link('na', 'na')}}} {}`,
     );
     // No number in the texts, the gloss line untouched, its abbreviations
     // still small caps and the only ones.
@@ -630,9 +651,9 @@ describe('links from the texts to the vocabulary', () => {
     const tex = formatExample(sentenceOf([token, linked('Kai', 'k2')]), NO_ORTHOGRAPHY, {
       entries: ENTRIES,
     });
-    expect(lineOf(tex, 'gla')[0]).toBe(`\\PlaidWord{kena} \\PlaidWord{${link('k2', 'Kai')}}`);
+    expect(lineOf(tex, 'gla')[0]).toBe(`\\PlaidWord{kena} \\PlaidWord{${linkedWord('k2', 'Kai')}}`);
     expect(lineOf(tex, 'glb')[0]).toBe(
-      `\\PlaidMorphemes{${link('k1', 'ke')}-${link('na', 'na')}} {}`,
+      `\\PlaidMorphemes{\\PlaidLinked{ke-na}{${link('k1', 'ke')}\\phantom{-}${link('na', 'na')}}} {}`,
     );
   });
 
@@ -649,7 +670,7 @@ describe('links from the texts to the vocabulary', () => {
     const tex = formatExample(sentence, NO_ORTHOGRAPHY, { entries: ENTRIES });
     // The word's own link wins over the expression's.
     expect(lineOf(tex, 'gla')[0]).toBe(
-      `\\PlaidWord{${link('mwe', 'kai')}} \\PlaidWord{pe} \\PlaidWord{${link('na', 'na')}}`,
+      `\\PlaidWord{${linkedWord('mwe', 'kai')}} \\PlaidWord{pe} \\PlaidWord{${linkedWord('na', 'na')}}`,
     );
   });
 
@@ -664,14 +685,14 @@ describe('links from the texts to the vocabulary', () => {
     };
     const tex = formatExample(sentence, NO_ORTHOGRAPHY, { entries: ENTRIES });
     expect(lineOf(tex, 'gla')[0]).toBe(
-      `\\PlaidWord{${link('mwe', 'kai')}} \\PlaidWord{${link('mwe', 'na')}}`,
+      `\\PlaidWord{${linkedWord('mwe', 'kai')}} \\PlaidWord{${linkedWord('mwe', 'na')}}`,
     );
   });
 
   it('links a word that is its one morpheme on the word line when the morpheme line is not printed', () => {
     const token = linkMorphemes(word('kai', [['kai', 'go']]), ['k1']);
     const tex = formatExample(sentenceOf([token]), NO_ORTHOGRAPHY, { entries: ENTRIES });
-    expect(lineOf(tex, 'gla')[0]).toBe(`\\PlaidWord{${link('k1', 'kai')}}`);
+    expect(lineOf(tex, 'gla')[0]).toBe(`\\PlaidWord{${linkedWord('k1', 'kai')}}`);
     expect(tex).not.toContain('PlaidMorphemes');
   });
 
@@ -679,7 +700,7 @@ describe('links from the texts to the vocabulary', () => {
     const sentence = sentenceOf([linked('kai', 'k1'), { ...word('x'), vocabItem: { id: 'gone' } }]);
     expect(formatExample(sentence, NO_ORTHOGRAPHY)).not.toContain('PlaidEntryLink');
     const tex = formatExample(sentence, NO_ORTHOGRAPHY, { entries: ENTRIES });
-    expect(lineOf(tex, 'gla')[0]).toBe(`\\PlaidWord{${link('k1', 'kai')}} \\PlaidWord{x}`);
+    expect(lineOf(tex, 'gla')[0]).toBe(`\\PlaidWord{${linkedWord('k1', 'kai')}} \\PlaidWord{x}`);
   });
 
   it('keeps a right-to-left word in its script and direction, the link inside', () => {
@@ -688,13 +709,13 @@ describe('links from the texts to the vocabulary', () => {
       entries: ENTRIES,
     });
     expect(lineOf(rtl, 'gla')[0]).toBe(
-      `\\PlaidWord{${link('ar2', '\\PlaidScript{Arabic}{كتب}\\PlaidLTR{2}')}}`,
+      `\\PlaidWord{${linkedWord('ar2', '\\PlaidScript{Arabic}{كتب}\\PlaidLTR{2}')}}`,
     );
     const ltr = formatExample(sentenceOf([linked('كتب', 'ar')]), NO_ORTHOGRAPHY, {
       entries: ENTRIES,
     });
     expect(lineOf(ltr, 'gla')[0]).toBe(
-      `\\PlaidRTL{\\PlaidWord{${link('ar', '\\PlaidScript{Arabic}{كتب}')}}}`,
+      `\\PlaidRTL{\\PlaidWord{${linkedWord('ar', '\\PlaidScript{Arabic}{كتب}')}}}`,
     );
   });
 
@@ -705,7 +726,7 @@ describe('links from the texts to the vocabulary', () => {
       { entries: ENTRIES },
     );
     expect(lineOf(tex, 'gla')[0]).toBe(
-      `\\PlaidWord{{${link('k1', 'kai kai')}}} \\PlaidWord{{}${link('k2', '\\#kai')}}`,
+      `\\PlaidWord{{${linkedWord('k1', 'kai kai')}}} \\PlaidWord{{}${linkedWord('k2', '\\#kai')}}`,
     );
   });
 

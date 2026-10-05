@@ -1507,7 +1507,7 @@ describe('runExport: LaTeX book', () => {
     // The linked word links to its entry (i1, whose destination is gjdb),
     // and shows no number.
     expect(text(entries, 'texts/002-beta.tex')).toContain(
-      '\\gla \\PlaidWord{\\PlaidEntryLink{gjdb}{perro}} \\PlaidWord{yo} //',
+      '\\gla \\PlaidWord{\\PlaidLinked{perro}{\\PlaidEntryLink{gjdb}{perro}}} \\PlaidWord{yo} //',
     );
   });
 
@@ -1527,7 +1527,9 @@ describe('runExport: LaTeX book', () => {
     );
     expect(vocabulary).toContain('\\PlaidEntryTarget{gjdc}{\\PlaidEntryForm{gato}}');
     const texts = text(entries, 'texts/001-beta.tex');
-    expect(texts).toContain('\\gla \\PlaidWord{\\PlaidEntryLink{gjdb}{perro}} \\PlaidWord{yo} //');
+    expect(texts).toContain(
+      '\\gla \\PlaidWord{\\PlaidLinked{perro}{\\PlaidEntryLink{gjdb}{perro}}} \\PlaidWord{yo} //',
+    );
     expect(texts).not.toContain('PlaidHomonym');
   });
 

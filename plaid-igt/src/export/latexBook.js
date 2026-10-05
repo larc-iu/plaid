@@ -278,18 +278,34 @@ const LETTERS = 'abcdefghijklmnop';
 export const entryAnchor = (id) =>
   [...new TextEncoder().encode(String(id))].map((b) => LETTERS[b >> 4] + LETTERS[b & 15]).join('');
 
-// `rendered` as a link to the entry `id` in the vocabulary, when the chapter
-// lists it. A link takes no room, so the columns stay as they were.
-const linkTo = (entries, id, rendered) =>
-  id && entries?.has(id) ? `\\PlaidEntryLink{${entryAnchor(id)}}{${rendered}}` : rendered;
+// The links of a cell are laid over its text, invisible, and the text is set
+// as a cell with no links is: in one piece, so no link breaks a kern, an
+// italic correction or the shaping of a script, and the cell keeps its width.
+// \\PlaidLinked{text}{links}, where the links are \\PlaidEntryLink{name}{piece},
+// a link the size of the piece, and \\phantom{piece}, the room between them.
+const linked = (rendered, links) => `\\PlaidLinked{${rendered}}{${links}}`;
+const linkOver = (entries, id, rendered) =>
+  id && entries?.has(id)
+    ? `\\PlaidEntryLink{${entryAnchor(id)}}{${rendered}}`
+    : `\\phantom{${rendered}}`;
 
-// A word cell, linked to its entry.
+// A word cell, linked to its entry when the chapter lists it.
 const linkedWordCell = (macro, docDir, entries) => (text, id) =>
-  inScript(texWord((t) => linkTo(entries, id, texEscape(t)))(text), texLine(text), docDir, macro);
+  inScript(
+    texWord((t) =>
+      id && entries?.has(id)
+        ? linked(texEscape(t), linkOver(entries, id, texEscape(t)))
+        : texEscape(t),
+    )(text),
+    texLine(text),
+    docDir,
+    macro,
+  );
 
-// A segmented word with each morpheme linked to its entry, joined as the
-// plain line joins them (joinerBetween on the bare forms). Null when the
-// pieces do not spell `text`, so the cell is never other than the plain one.
+// A segmented word with each morpheme linked to its entry, the morphemes
+// joined as the plain line joins them (joinerBetween on the bare forms).
+// Null when the pieces do not spell `text`, so the cell is never other than
+// the plain one.
 const linkedMorphemes = (text, morphemes, entries) => {
   const forms = morphemes.map((m) => texLine(morphFormOf(m)));
   const piece = (i) => ({
@@ -298,12 +314,13 @@ const linkedMorphemes = (text, morphemes, entries) => {
   });
   const joints = forms.map((_, i) => (i === 0 ? '' : joinerBetween(piece(i - 1), piece(i))));
   if (forms.map((f, i) => joints[i] + f).join('') !== text) return null;
-  return forms
+  const links = forms
     .map(
       (form, i) =>
-        `${texEscape(joints[i])}${form === '' ? '' : linkTo(entries, morphemes[i].vocabItem?.id, texEscape(form))}`,
+        `${joints[i] === '' ? '' : `\\phantom{${texEscape(joints[i])}}`}${form === '' ? '' : linkOver(entries, morphemes[i].vocabItem?.id, texEscape(form))}`,
     )
     .join('');
+  return linked(texEscape(text), links);
 };
 
 // ---- one sentence ---------------------------------------------------------
@@ -1263,7 +1280,8 @@ ${scriptFonts(scripts)}
 \\newcommand{\\PlaidExampleRef}[2]{\\hyperlink{plaidex.#1.#2}{#1.#2}} % chapter and example
 \\newcommand{\\PlaidSense}[2]{\\textbf{#1.}~#2}     % a sense, by its number
 \\newcommand{\\PlaidEntryTarget}[2]{\\hypertarget{plaidentry.#1}{#2}} % where a link to an entry goes
-\\newcommand{\\PlaidEntryLink}[2]{\\hyperlink{plaidentry.#1}{#2}}     % a word or morpheme linked to it
+\\newcommand{\\PlaidLinked}[2]{\\leavevmode\\rlap{#2}#1}              % a cell, and over it its links
+\\newcommand{\\PlaidEntryLink}[2]{\\hbox{\\hyperlink{plaidentry.#1}{\\phantom{\\strut #2}}}} % a link to an entry, invisible, the size of #2
 \\newenvironment{PlaidEntryList}{\\begin{multicols}{2}\\raggedright\\small}{\\end{multicols}}
 
 % Text that reads the other way from the text around it. A right-to-left run
