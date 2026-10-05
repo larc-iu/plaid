@@ -81,3 +81,18 @@ test('a multi-word token surface with a tab or newline stays one column', () => 
   const out = build([sentence([tok(1, { word, wordForm: BAD }), tok(2, { word, wordForm: BAD })])]);
   assertShape(out, 1, [2]);
 });
+
+// L3-UD-LIVE-2: CoNLL-U ends every sentence with a blank line, the last one
+// included, and UD's validator asks for it. Without it, two exported files
+// joined with `cat` glued the last word of one to `# newdoc` of the next.
+test('every sentence ends with its blank line, and the file with a newline', () => {
+  for (const n of [1, 2, 3]) {
+    const out = build(Array.from({ length: n }, () => sentence([tok(1)])));
+    assert.ok(out.endsWith('\t_\n\n'), JSON.stringify(out.slice(-12)));
+    assert.ok(!out.endsWith('\n\n\n'), JSON.stringify(out.slice(-12)));
+    assert.equal(out.split('\n\n').length - 1, n, 'one blank line per sentence');
+    const joined = out + out;
+    assert.equal(parseCoNLLU(joined).sentences.length, 2 * n);
+    assert.ok(!/\t_# newdoc/.test(joined));
+  }
+});

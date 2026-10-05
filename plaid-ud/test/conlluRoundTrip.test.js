@@ -26,6 +26,8 @@ const INPUT = conllu([
   '3\tperro\tperro\tNOUN\tNN\tGender=Masc|Number=Sing\t0\troot\t_\t_',
 ]);
 
+// The export ends its last sentence with a blank line and the file with a
+// newline, as CoNLL-U asks (L3-UD-LIVE-2).
 const EXPECTED = conllu([
   '# newdoc id = rt-doc',
   '# sent_id = rt-doc-1',
@@ -34,6 +36,8 @@ const EXPECTED = conllu([
   '1\tde\tde\tADP\t_\t_\t3\tcase\t3:case\t_',
   '2\tel\tel\tDET\t_\tDefinite=Def|PronType=Art\t3\tdet\t3:det\t_',
   '3\tperro\tperro\tNOUN\tNN\tGender=Masc|Number=Sing\t0\troot\t0:root\t_',
+  '',
+  '',
 ]);
 
 test('CoNLL-U survives the parse → document → export round trip', () => {

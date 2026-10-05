@@ -90,8 +90,6 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
   output.push(`# newdoc id = ${docName}`);
 
   sentenceData.forEach((sentence, sentIdx) => {
-    if (sentIdx > 0) output.push('');
-
     const morphemes = sentence.tokens;
     const idByLemmaSpanId = new Map();
     morphemes.forEach((m, i) => {
@@ -232,7 +230,10 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
 
       i += groupLen;
     }
+    // CoNLL-U ends every sentence with a blank line, the last one too, and
+    // the file with a newline, so two files joined end to end stay apart.
+    output.push('');
   });
 
-  return output.join('\n');
+  return `${output.join('\n')}\n`;
 }
