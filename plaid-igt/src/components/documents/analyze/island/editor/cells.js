@@ -21,6 +21,63 @@ import { readCell } from './cellReader.js';
 // move between cells, and the sentence fields' own handlers.
 
 export const cells = {
+  // Escape in a cell with nothing typed in it leaves the cell, as always, and
+  // the next Tab (or Shift+Tab) then leaves the grid: Tab inside it walks every
+  // cell of the document, so this is the keyboard's way past it. Any other key,
+  // a click or focus going anywhere takes it back.
+  _escapeCell(el, reset) {
+    const clean = el.value === (el.dataset.orig ?? '');
+    el.value = el.dataset.orig ?? '';
+    reset?.(el);
+    el.blur();
+    if (clean) this._armGridExit();
+  },
+
+  _armGridExit() {
+    this._gridExitOff?.();
+    const doc = this.container.ownerDocument;
+    const off = () => {
+      doc.removeEventListener('keydown', onKey, true);
+      doc.removeEventListener('focusin', off, true);
+      doc.removeEventListener('pointerdown', off, true);
+      if (this._gridExitOff === off) this._gridExitOff = null;
+    };
+    const onKey = (e) => {
+      off();
+      if (e.key !== 'Tab' || e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = this._pastGrid(e.shiftKey);
+      if (!target) return;
+      e.preventDefault();
+      target.focus();
+    };
+    this._gridExitOff = off;
+    doc.addEventListener('keydown', onKey, true);
+    doc.addEventListener('focusin', off, true);
+    doc.addEventListener('pointerdown', off, true);
+  },
+
+  // The first Tab stop after the grid's sentences, or the last one before them.
+  _pastGrid(back) {
+    const sentences = this.container.querySelectorAll('.igt-sentence');
+    if (!sentences.length) return null;
+    const edge = back ? sentences[0] : sentences[sentences.length - 1];
+    const doc = this.container.ownerDocument;
+    const stops = [
+      ...doc.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]',
+      ),
+    ].filter(
+      (el) =>
+        el.tabIndex >= 0 &&
+        !el.closest('.igt-sentence') &&
+        !el.closest('[hidden], [aria-hidden="true"]') &&
+        el.getClientRects().length > 0 &&
+        edge.compareDocumentPosition(el) &
+          (back ? Node.DOCUMENT_POSITION_PRECEDING : Node.DOCUMENT_POSITION_FOLLOWING),
+    );
+    return (back ? stops[stops.length - 1] : stops[0]) ?? null;
+  },
+
   _onFieldFocus(e) {
     this._rememberForTokenize(e.target);
     this._stampOrig(e.target);
@@ -184,8 +241,7 @@ export const cells = {
       if (this._navMove(e.target, e.shiftKey ? 'prev' : 'next')) e.preventDefault();
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      e.target.value = e.target.dataset.orig ?? '';
-      e.target.blur();
+      this._escapeCell(e.target);
     } else if (e.key === 'ArrowDown') {
       if (this._navMove(e.target, 'down')) e.preventDefault();
     } else if (e.key === 'ArrowUp') {
@@ -702,9 +758,7 @@ export const cells = {
       if (this._navMove(e.target, e.shiftKey ? 'prev' : 'next')) e.preventDefault();
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      e.target.value = e.target.dataset.orig ?? '';
-      this._autoGrow(e.target);
-      e.target.blur();
+      this._escapeCell(e.target, (el) => this._autoGrow(el));
     } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       // Leave the textarea only from its last/first line (caret at the very
       // end/start); inside a multi-line translation the arrows still move the

@@ -86,8 +86,7 @@ export const morphForm = {
       }
       if (e.key === 'Escape') {
         e.preventDefault();
-        e.target.value = e.target.dataset.orig ?? '';
-        e.target.blur();
+        this._escapeCell(e.target);
         return;
       }
       if (this.readOnly) return;

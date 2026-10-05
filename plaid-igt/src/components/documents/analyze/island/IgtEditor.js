@@ -404,6 +404,7 @@ export class IgtEditor {
     // to the next document destroys this one mid-flight), and each of them
     // paints when it lands.
     this._destroyed = true;
+    this._gridExitOff?.();
     this._leavePrecedent();
     this._altsRoot?.remove();
     this._altsRoot = null;
