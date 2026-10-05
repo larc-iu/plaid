@@ -14,7 +14,7 @@ export const EXPORT_FORMATS = [
   { id: 'flextext', label: 'FLEx (.flextext + .lift)', ext: 'flextext', defaultName: 'FLEx' },
   { id: 'cldf', label: 'CLDF TextCorpus (.zip dataset)', ext: 'csv', defaultName: 'CLDF' },
   { id: 'elan', label: 'ELAN annotation file (.eaf)', ext: 'eaf', defaultName: 'ELAN' },
-  { id: 'latex', label: 'LaTeX book (.zip for Overleaf)', ext: 'tex', defaultName: 'LaTeX' },
+  { id: 'latex', label: 'LaTeX book (.zip)', ext: 'tex', defaultName: 'LaTeX' },
   {
     id: 'plaid-igt-json',
     label: 'Plaid IGT JSON (lossless .zip archive)',

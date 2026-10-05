@@ -228,8 +228,8 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
           </p>
         ) : draft.format === 'latex' ? (
           <p className="border-t pt-3 text-xs text-muted-foreground">
-            A .zip of LaTeX source for Overleaf: main.tex with a table of contents, one chapter per
-            document, and a list of abbreviations. It compiles with LuaLaTeX.
+            A .zip of LaTeX source: main.tex with a table of contents, one chapter per document, and
+            a list of abbreviations. It compiles with LuaLaTeX.
           </p>
         ) : draft.format === 'flextext' ? (
           <p className="border-t pt-3 text-xs text-muted-foreground">

@@ -1,5 +1,5 @@
 // The LaTeX book: a project, or the documents chosen, as LaTeX source a person
-// uploads to Overleaf, adds front matter to, and compiles into a book of
+// adds front matter to and compiles with LuaLaTeX into a book of
 // interlinear texts. One chapter per document, one numbered example per
 // sentence, and the example's lines in the order the Analyze tab shows them:
 // the words, each orthography, each word field, the morphemes, each morpheme
@@ -9,7 +9,7 @@
 //   main.tex           preamble, title, table of contents, one \include per text
 //   abbreviations.tex  every gloss abbreviation the texts use
 //   texts/NNN-name.tex one chapter per document, in the order of the export
-//   latexmkrc          makes Overleaf run LuaLaTeX
+//   latexmkrc          makes latexmk (and so Overleaf) run LuaLaTeX
 //   README.txt         how to compile it
 //
 // Glossing is ExPex (\begingl ... \endgl). It takes any number of gloss lines
@@ -795,11 +795,11 @@ const fallbackFonts = (scripts) =>
 function formatMain({ title, chapters, scripts, abbreviations = true }) {
   const includes = chapters.map((c) => `\\include{texts/${c}}`).join('\n');
   return `% ${texLine(title)}
-% Compile with LuaLaTeX. On Overleaf: Menu > Compiler > LuaLaTeX
-% (the latexmkrc file beside this one also asks for it).
+% Compile with LuaLaTeX, twice, or with latexmk, which runs it as often as
+% the table of contents needs: latexmk -lualatex main.tex
 
 \\ifdefined\\directlua\\else
-  \\errmessage{Compile this book with LuaLaTeX. On Overleaf: Menu, Compiler, LuaLaTeX}
+  \\errmessage{Compile this book with LuaLaTeX}
   \\csname @@end\\endcsname
 \\fi
 
@@ -875,6 +875,14 @@ ${scriptFonts(scripts)}
 
 \\usepackage[hidelinks]{hyperref}
 
+% The table of contents is read from the previous run, so the first run
+% leaves it empty, and says so on the page and in the log. latexmk runs
+% LuaLaTeX again by itself.
+\\newcommand{\\PlaidContentsNote}{}
+\\IfFileExists{\\jobname.toc}{}{\\renewcommand{\\PlaidContentsNote}{%
+  \\emph{The table of contents is filled in when the book is compiled again.}%
+  \\GenericWarning{}{LaTeX Warning: The table of contents is empty. Rerun to get cross-references right.}}}
+
 \\begin{document}
 
 % ---- Front matter -----------------------------------------------------------
@@ -885,6 +893,7 @@ ${scriptFonts(scripts)}
 \\date{}
 \\maketitle
 \\tableofcontents
+\\PlaidContentsNote
 ${abbreviations ? '\\include{abbreviations}\n' : ''}% ---- End of front matter ----------------------------------------------------
 
 \\mainmatter
@@ -897,7 +906,7 @@ ${includes}
 `;
 }
 
-const LATEXMKRC = `# Overleaf and latexmk: compile main.tex with LuaLaTeX.
+const LATEXMKRC = `# latexmk: compile main.tex with LuaLaTeX.
 $pdf_mode = 4;
 $pdflatex = 'lualatex %O %S';
 $lualatex = 'lualatex %O %S';
@@ -912,23 +921,27 @@ const formatReadme = ({ title, chapterCount }) =>
     '  main.tex           the book: preamble, front matter, table of contents',
     '  abbreviations.tex  the gloss abbreviations the texts use',
     `  texts/             one chapter per text (${chapterCount})`,
-    '  latexmkrc          compiler setting for Overleaf',
+    '  latexmkrc          makes latexmk use LuaLaTeX',
     '',
-    'On Overleaf:',
-    '  1. New Project > Upload Project, and choose this .zip.',
-    '  2. Menu > Compiler: LuaLaTeX. (latexmkrc also selects it.)',
-    '  3. Recompile.',
-    '',
-    'Elsewhere, with TeX Live 2023 or later:',
+    'To compile, with TeX Live 2023 or later:',
     '  latexmk -lualatex main.tex',
+    '',
+    'latexmk runs LuaLaTeX as many times as the book needs. Run by hand,',
+    'LuaLaTeX has to run twice: the first run leaves the table of contents',
+    'empty, and the second fills it in.',
+    '  lualatex main.tex',
+    '  lualatex main.tex',
+    '',
+    'An online editor that compiles with latexmk works too: upload the .zip',
+    'and set its compiler to LuaLaTeX.',
     '',
     'Front matter (title page, preface, acknowledgments) goes between the',
     '"Front matter" markers in main.tex. The look of each interlinear line is',
     'set by the \\Plaid... commands in the preamble.',
     '',
-    'Fonts: Charis SIL, with Noto fonts for other scripts. Both come with',
-    'Overleaf. Elsewhere, a character no installed font has is left out, and',
-    'the log says so. main.tex names the Noto fonts it looks for.',
+    'Fonts: Charis SIL, with Noto fonts for other scripts. A character no',
+    'installed font has is left out, and the log says so. main.tex names',
+    'the Noto fonts it looks for.',
     '',
   ].join('\n');
 

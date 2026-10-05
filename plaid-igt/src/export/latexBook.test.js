@@ -501,6 +501,27 @@ describe('buildLatexBook', () => {
     expect(files.find((f) => f.path === 'latexmkrc').data).toContain('$pdf_mode = 4;');
   });
 
+  it('says on the contents page and in the log when the table of contents is not filled in yet', () => {
+    const files = buildLatexBook({
+      title: 'Kukama texts',
+      texts: [{ name: 'One', tex: '\\chapter{One}\n' }],
+      projectConfig: {},
+    });
+    const main = files[0].data;
+    // A first run has no .toc to read: the note and a rerun warning stand in.
+    expect(main).toContain('\\IfFileExists{\\jobname.toc}{}{\\renewcommand{\\PlaidContentsNote}{%');
+    expect(main).toContain('Rerun to get cross-references right');
+    // Checked in the preamble, before \tableofcontents opens the .toc for writing.
+    expect(main.indexOf('\\IfFileExists{\\jobname.toc}')).toBeLessThan(
+      main.indexOf('\\begin{document}'),
+    );
+    expect(main).toContain('\\tableofcontents\n\\PlaidContentsNote\n');
+    const readme = files.find((f) => f.path === 'README.txt').data;
+    expect(readme).toContain('latexmk -lualatex main.tex');
+    expect(readme).toContain('LuaLaTeX has to run twice');
+    for (const f of files) expect(f.data).not.toMatch(/overleaf/i);
+  });
+
   it('numbers files wide enough for the whole book', () => {
     expect(chapterFileName(4, 1200, 'A b')).toBe('0005-a-b');
     expect(chapterFileName(0, 3, '')).toBe('001');
