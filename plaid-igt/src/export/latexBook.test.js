@@ -664,10 +664,10 @@ describe('the vocabulary chapter', () => {
           name: 'Kukama & co',
           on: true,
           fields: [
-            { name: 'gloss', on: true },
-            { name: 'pos', on: true },
-            { name: 'seeAlso', on: true },
-            { name: 'morphType', on: true },
+            { name: 'gloss', label: 'Gloss', on: true },
+            { name: 'pos', label: 'POS', on: true },
+            { name: 'seeAlso', label: 'See Also', on: true },
+            { name: 'morphType', label: 'Morph Type', on: true },
           ],
         },
       ],
@@ -748,10 +748,53 @@ describe('the vocabulary chapter', () => {
       choice: choiceFor({ vocabulary: { scope: 'all' } }, [affixes]),
     });
     expect(tex.split('\n').filter((l) => l.startsWith('\\PlaidEntry{'))).toEqual([
-      '\\PlaidEntry{\\PlaidEntryForm{a=}}{\\PlaidEntryGloss{DEF}}',
+      '\\PlaidEntry{\\PlaidEntryForm{a=}}{\\PlaidEntryGloss{\\textsc{def}}}',
       '\\PlaidEntry{\\PlaidEntryForm{ra}}{\\PlaidEntryGloss{go}}',
-      '\\PlaidEntry{\\PlaidEntryForm{-s}}{\\PlaidEntryGloss{PL} \\PlaidEntryField{POS}{sfx}}',
+      '\\PlaidEntry{\\PlaidEntryForm{-s}}{\\PlaidEntryGloss{\\textsc{pl}} \\PlaidEntryField{POS}{sfx}}',
     ]);
+  });
+
+  it('names a morph type as the screen does', () => {
+    const vocab = {
+      id: 'v6',
+      name: 'Phrases',
+      config: {},
+      items: [
+        { id: 'p', form: 'dar vuelta', metadata: { gloss: 'turn', morphType: 'phrase' } },
+        { id: 'q', form: 'dar la vuelta', metadata: { morphType: 'discontiguous phrase' } },
+      ],
+    };
+    const tex = formatVocabulary({
+      vocabularies: [vocab],
+      choice: choiceFor({ vocabulary: { scope: 'all' } }, [vocab]),
+    });
+    expect(tex.match(/Morph Type\}\{multi-word expression\}/g)).toHaveLength(2);
+    expect(tex).not.toContain('phrase');
+  });
+
+  it("sets a gloss's abbreviations in small caps as the texts do, and lists them", () => {
+    const vocab = {
+      id: 'v5',
+      name: 'Glosses',
+      config: { igt: { fields: { gloss: {} } } },
+      items: [
+        { id: 'g', form: 'gi', metadata: { gloss: 'go.PST' } },
+        { id: 'k', form: 'ka', metadata: { gloss: 'NOM', morphType: 'suffix' } },
+        { id: 'k1', form: 'ka', metadata: { gloss: '1SG', parent: 'k' } },
+      ],
+    };
+    const tex = formatVocabulary({
+      vocabularies: [vocab],
+      choice: choiceFor({ vocabulary: { scope: 'all' } }, [vocab]),
+    });
+    expect(tex).toContain('\\PlaidEntryGloss{go.\\textsc{pst}}');
+    expect(tex).toContain('\\PlaidEntryGloss{\\textsc{nom}}');
+    // A sense goes by its headword's morph type.
+    expect(tex).toContain('\\PlaidSense{1.1}{\\PlaidEntryGloss{\\textsc{1sg}}}');
+    const files = buildLatexBook({ title: 'T', texts: [], projectConfig: {}, vocabulary: tex });
+    const abbreviations = files.find((f) => f.path === 'abbreviations.tex').data;
+    expect(abbreviations).toContain('\\textsc{nom}');
+    expect(abbreviations).toContain('\\textsc{1sg}');
   });
 
   it('shows only the fields that are on', () => {

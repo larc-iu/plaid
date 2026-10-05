@@ -9,7 +9,6 @@ import {
   ROW_KINDS,
   VOCAB_SCOPES,
 } from '@/export/latexBook';
-import { fieldLabel } from '@/domain/vocabFields';
 
 const SCOPE_LABEL = {
   [ROW_KINDS.ORTHOGRAPHY]: 'Orthography',
@@ -145,7 +144,7 @@ const VocabularyOptions = ({ choice, onChange }) => {
                           })
                         }
                       />
-                      {fieldLabel(f.name)}
+                      {f.label}
                     </label>
                   ))}
                 </div>

@@ -124,6 +124,22 @@ describe('LatexOptions', () => {
       await view.unmount();
     });
 
+    it('names a field by the label the chapter prints, its language included', async () => {
+      const vocabularies = [
+        { id: 'v3', name: 'Lexicon', config: { igt: { fields: { definition: { lang: 'en' } } } } },
+      ];
+      const view = await renderComponent(
+        <LatexOptions
+          options={defaultLatexOptions(LAYERS)}
+          layers={LAYERS}
+          vocabularies={vocabularies}
+          onChange={() => {}}
+        />,
+      );
+      expect(labelled(view.container, 'Definition (en)')).toBeTruthy();
+      await view.unmount();
+    });
+
     it('stores each choice in the preset', async () => {
       const { view, state, rerender } = await mountWith(defaultLatexOptions(LAYERS));
       await view.step(() => labelled(view.container, 'All').querySelector('input').click());

@@ -29,7 +29,7 @@
 // Pure functions: no DOM, no client.
 
 import { morphFormOf, texCell, texGloss, texWord, wordCells } from '../domain/igtExport.js';
-import { joinerBetween } from '../domain/affixMarkers.js';
+import { canNameWord, joinerBetween, morphTypeLabel } from '../domain/affixMarkers.js';
 import { texEscape, texLine } from '../domain/tex.js';
 import { readTagsets } from '../domain/tagsets.js';
 import { readVocabFields } from '../domain/igtConfig.js';
@@ -41,6 +41,7 @@ import {
   exampleKey,
   exampleRefs,
   fieldsForItem,
+  morphTypeOf,
   refIds,
 } from '../domain/vocabDictionary.js';
 import { detectDirection, userMetadata, RTL } from '@ui/domain/textDirection.js';
@@ -864,6 +865,7 @@ export function latexVocabulary(options, vocabs) {
         on: s?.on !== false,
         fields: exportedVocabFields(readVocabFields(v.config)).map((f) => ({
           name: f.name,
+          label: fieldLabel(f),
           on: savedFields.find((x) => x?.name === f.name)?.on !== false,
         })),
       };
@@ -966,6 +968,12 @@ function vocabularyEntries({ vocab, choice, scope, used, exampleNumbers, collato
     const target = tree.byId.get(id);
     return target ? entryName(target.form ?? '', numbers.get(id)) : '';
   };
+  // The gloss in small caps by the rule the texts' glosses follow, read as
+  // an affix's when the entry can never name a word.
+  const entryGloss = (value, item) => {
+    const bound = !canNameWord(morphTypeOf(tree, item.id), item.form ?? '');
+    return inScript(texGloss(value, [{ text: value, bound }]), value, 'ltr');
+  };
   const parts = (item) => {
     const out = [];
     for (const f of fieldsForItem(fields, item)) {
@@ -976,11 +984,13 @@ function vocabularyEntries({ vocab, choice, scope, used, exampleNumbers, collato
         }
         continue;
       }
-      const value = texLine(fieldText(item.metadata?.[f.name]));
+      // A morph type goes by its name on screen (multi-word expression).
+      const raw = fieldText(item.metadata?.[f.name]);
+      const value = texLine(f.name === 'morphType' ? morphTypeLabel(raw) : raw);
       if (value === '') continue;
       out.push(
         f.name === 'gloss'
-          ? `\\PlaidEntryGloss{${runText(value, 'ltr')}}`
+          ? `\\PlaidEntryGloss{${entryGloss(value, item)}}`
           : `\\PlaidEntryField{${runText(fieldLabel(f), 'ltr')}}{${runText(value, 'ltr')}}`,
       );
     }
@@ -1306,6 +1316,7 @@ export function buildLatexBook({ title, texts, projectConfig, vocabulary = null 
     scripts.add(t.tex);
     tags.push(...smallCapsIn(t.tex));
   }
+  if (vocabulary) tags.push(...smallCapsIn(vocabulary));
   scripts.add(title);
   if (vocabulary) scripts.add(vocabulary);
   return [
