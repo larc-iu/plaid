@@ -25,8 +25,10 @@ export const cells = {
   // the next Tab (or Shift+Tab) then leaves the grid: Tab inside it walks every
   // cell of the document, so this is the keyboard's way past it. Any other key,
   // a click or focus going anywhere takes it back.
-  _escapeCell(el, reset) {
-    const clean = el.value === (el.dataset.orig ?? '');
+  _escapeCell(e, reset) {
+    const el = e.target;
+    // An Escape that let a conflict note go did that and only that.
+    const clean = el.value === (el.dataset.orig ?? '') && !e.igtNoteDismissed;
     el.value = el.dataset.orig ?? '';
     reset?.(el);
     el.blur();
@@ -245,7 +247,7 @@ export const cells = {
       if (this._navMove(e.target, e.shiftKey ? 'prev' : 'next')) e.preventDefault();
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      this._escapeCell(e.target);
+      this._escapeCell(e);
     } else if (e.key === 'ArrowDown') {
       if (this._navMove(e.target, 'down')) e.preventDefault();
     } else if (e.key === 'ArrowUp') {
@@ -762,7 +764,7 @@ export const cells = {
       if (this._navMove(e.target, e.shiftKey ? 'prev' : 'next')) e.preventDefault();
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      this._escapeCell(e.target, (el) => this._autoGrow(el));
+      this._escapeCell(e, (el) => this._autoGrow(el));
     } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       // Leave the textarea only from its last/first line (caret at the very
       // end/start); inside a multi-line translation the arrows still move the

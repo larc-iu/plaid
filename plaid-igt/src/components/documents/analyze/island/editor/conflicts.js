@@ -52,6 +52,8 @@ export const conflicts = {
     if (!c) return;
     if (e.key === 'Escape') {
       this._cells.dismiss(key);
+      // Read by _escapeCell, so this Escape does not also arm the grid leave.
+      e.igtNoteDismissed = true;
       return;
     }
     if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;

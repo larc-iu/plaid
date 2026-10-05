@@ -108,4 +108,18 @@ describe('leaving the Analyze grid', () => {
     key(document.body, { key: 'Tab' });
     expect(document.activeElement.id).toBe('before');
   });
+
+  it('an Escape that lets a conflict note go does not also arm the leave', () => {
+    const el = cell();
+    expect(el.dataset.cellKey).toBeTruthy();
+    const conflictOf = editor._cells.conflictOf.bind(editor._cells);
+    const dismiss = vi.fn();
+    editor._cells.conflictOf = (key) =>
+      key === el.dataset.cellKey ? { typed: 'AAA' } : conflictOf(key);
+    editor._cells.dismiss = dismiss;
+    el.focus();
+    key(el, { key: 'Escape' });
+    expect(dismiss).toHaveBeenCalled();
+    expect(key(document.body, { key: 'Tab' }).defaultPrevented).toBe(false);
+  });
 });
