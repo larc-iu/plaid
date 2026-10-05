@@ -1,6 +1,6 @@
-import { settleKey } from '../pendingIds.js';
+import { namesPendingId, settleKey } from '../pendingIds.js';
 import { setUnsavedDraft } from '../../hooks/useUnsavedDraft.js';
-import { isConstraintViolation } from '../../lib/errors.js';
+import { isConstraintViolation, isGone } from '../../lib/errors.js';
 
 // What becomes of a grid cell's edit that the server refused, one copy for
 // every app's grid (Luke's ruling Q1, 2026-09-29). The engine holds the
@@ -312,7 +312,11 @@ export class CellEngine {
       // The row is gone: there is no cell to put it back into.
       this._conflicts.delete(k);
       this._take(k);
-      if (status === 409) {
+      // Refused as changed elsewhere: the document model leaves the saying
+      // to the cell (DocumentModel `handlesConflicts`). Not a row only a
+      // refused edit made, refused unsent behind it: that edit said so.
+      const madeByRefused = outcome.error?.unsent === true && namesPendingId(key);
+      if ((status === 409 || isGone(outcome.error)) && !madeByRefused) {
         this._announce?.({ kind: 'lost', key, typed, field: ticket.field });
       }
       this._changed(key);
@@ -346,6 +350,11 @@ export class CellEngine {
     }
     if (final) {
       view?.showStored?.(stored, { conflict: false });
+      // What it wrote to was deleted meanwhile, though the cell reads the
+      // same: the typed value is said, as for a row that is gone.
+      if (isGone(outcome.error)) {
+        this._announce?.({ kind: 'lost', key, typed, field: ticket.field });
+      }
       this._changed(key);
       return { kind: 'dropped', typed, stored, status };
     }

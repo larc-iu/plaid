@@ -88,6 +88,67 @@ describe('announceCells', () => {
     expect(said).toEqual([['warn', 'Someone changed this morpheme to si.']]);
   });
 
+  // L2-IGT-MULTI-4: a Bulk Edit respell names no word, but it is who changed
+  // this one when nobody but its author (and this person) wrote since.
+  describe('a change that names no row', () => {
+    const user = (id) => ({ id, displayName: id.split('@')[0] });
+    const bulk = (id) => ({
+      user: user(id),
+      kind: 'bulk-edit',
+      ops: [
+        { type: 'text/update-body', description: 'Update body of text t1' },
+        { type: 'token/bulk-update', description: 'Bulk update 26 tokens' },
+      ],
+    });
+    const gloss = (id, span) => ({
+      user: user(id),
+      ops: [{ type: 'span/update-attributes', description: `Update span ${span}` }],
+    });
+    const base = { kind: 'conflict', key: 'k', typed: 'canine', stored: '', entityIds: ['w1'] };
+    const word = { ...base, recut: { unit: 'word', text: 'kichen', ids: ['w1'] } };
+
+    it('names the author of the newest bulk change', async () => {
+      const { announce, said } = setup([bulk('c@x.com')]);
+      announce(word);
+      await flush();
+      expect(said).toEqual([['warn', 'c changed this word to kichen.']]);
+    });
+
+    it('still names them past later changes of their own and of this person', async () => {
+      const { announce, said } = setup([
+        gloss('a@b.com', 's7'),
+        gloss('c@x.com', 's8'),
+        bulk('c@x.com'),
+      ]);
+      announce(word);
+      await flush();
+      expect(said).toEqual([['warn', 'c changed this word to kichen.']]);
+    });
+
+    it('names nobody once someone else wrote since', async () => {
+      const { announce, said } = setup([gloss('d@x.com', 's9'), bulk('c@x.com')]);
+      announce(word);
+      await flush();
+      expect(said).toEqual([['warn', 'Someone changed this word to kichen.']]);
+    });
+
+    it('takes the type with or without its namespace, and a restore or a text edit', async () => {
+      for (const type of ['bulk-update', 'update-body', 'document/restore']) {
+        const { announce, said } = setup([{ user: user('c@x.com'), ops: [{ type }] }]);
+        announce(word);
+        await flush();
+        expect(said).toEqual([['warn', 'c changed this word to kichen.']]);
+      }
+    });
+
+    it('says You for a bulk change from this account, with nobody else since', async () => {
+      const { announce, said } = setup([bulk('a@b.com')]);
+      announce(word);
+      await flush();
+      expect(said).toEqual([['warn', 'You changed this word to kichen.']]);
+    });
+  });
+
   it('says a value is kept in its cell, and names one that was lost', () => {
     const { announce, said } = setup();
     announce({ kind: 'keptInCell', key: 'k', field: 'Gloss' });

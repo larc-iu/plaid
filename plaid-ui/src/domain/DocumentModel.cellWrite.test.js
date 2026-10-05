@@ -152,4 +152,39 @@ describe('cellWrite', () => {
     expect(await doc.set('gloss', 'DOG')).toBe(false);
     expect(errors.map((e) => e.err.status)).toEqual([409]);
   });
+
+  // L2-IGT-MULTI-3: a cell shows a refusal for a row deleted meanwhile as a
+  // conflict (its note, and the toast naming who cleared it). The document
+  // says nothing of its own, neither a second toast nor a banner.
+  it('answers a refusal for a deleted row as it answers a conflict', async () => {
+    const { server, doc, errors } = open();
+    server.fail.push(() =>
+      Object.assign(new Error('HTTP 403 lacks sufficient privileges'), {
+        status: 403,
+        method: 'PATCH',
+        responseData: { unresolved: true },
+      }),
+    );
+    const outcome = await doc.cellWrite(() => doc.set('gloss', 'DOG'));
+    expect(outcome).toMatchObject({ landed: false, status: 403, readBack: true });
+    expect(errors).toEqual([]);
+    expect(doc.error).toBe('');
+    expect(doc.errorCause?.status).toBe(403);
+  });
+
+  // L2-IGT-MULTI-3: igt's grid draws the banner with its data, so the next
+  // save that clears an error moves the data version, and the banner goes.
+  it('moves the data version when the next save clears an error', async () => {
+    const { server, doc } = open();
+    server.fail.push(failing(500));
+    await doc.set('gloss', 'DOG');
+    expect(doc.error).not.toBe('');
+    const before = doc.dataVersion;
+    const saving = doc.set('pos', 'N');
+    // The optimistic patch is drawn first, with the error still set. The
+    // clear that follows when the save starts moves the version again.
+    expect(doc.error).toBe('');
+    expect(doc.dataVersion).toBeGreaterThan(before + 1);
+    await saving;
+  });
 });

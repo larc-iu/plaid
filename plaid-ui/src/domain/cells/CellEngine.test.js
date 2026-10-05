@@ -109,6 +109,50 @@ describe('a refused edit', () => {
     expect(heard).toEqual([]);
   });
 
+  // L2-IGT-MULTI-3: the document leaves a refusal for a deleted row to the
+  // cell, as it leaves a conflict, so the cell says what was not saved.
+  it('for a row deleted meanwhile (the 403 for an unknown id) is lost, and says so', () => {
+    const gone = {
+      landed: false,
+      status: 403,
+      readBack: true,
+      error: { status: 403, method: 'PATCH', responseData: { unresolved: true } },
+    };
+    const lost = setup({ stored: {} });
+    const t = lost.engine.sending('k', { saved: 'a', typed: 'b', field: 'Gloss' });
+    expect(lost.engine.settle(t, gone).kind).toBe('gone');
+    expect(lost.heard).toEqual([{ kind: 'lost', key: 'k', typed: 'b', field: 'Gloss' }]);
+    // The cell is still drawn and reads as it did: what it wrote to is gone.
+    const views = { k: cellView() };
+    const same = setup({ stored: { k: 'a' }, views });
+    const t2 = same.engine.sending('k', { saved: 'a', typed: 'b', field: 'Gloss' });
+    expect(same.engine.settle(t2, gone).kind).toBe('dropped');
+    expect(same.heard).toEqual([{ kind: 'lost', key: 'k', typed: 'b', field: 'Gloss' }]);
+    expect(views.k.shown).toEqual([['a', false]]);
+  });
+
+  // L2-IGT-MULTI polish: a morpheme split refused, with a form typed into the
+  // new morpheme's cell. The split's own refusal says so: the form, refused
+  // unsent behind it on a row only the split made, adds no second toast.
+  it('for a row only a refused edit made, refused unsent behind it, says nothing', () => {
+    const made = pendingId();
+    const key = `mf:${made}`;
+    const { engine, heard } = setup({ stored: {} });
+    const t = engine.sending(key, { saved: '', typed: 'r', field: 'Morpheme' });
+    const unsent = {
+      landed: false,
+      status: 409,
+      readBack: true,
+      error: { status: 409, unsent: true },
+    };
+    expect(engine.settle(t, unsent).kind).toBe('gone');
+    expect(heard).toEqual([]);
+    // A row the server had, refused unsent the same way, is said.
+    const t2 = engine.sending('mf:m-1', { saved: '', typed: 'r', field: 'Morpheme' });
+    engine.settle(t2, unsent);
+    expect(heard).toEqual([{ kind: 'lost', key: 'mf:m-1', typed: 'r', field: 'Morpheme' }]);
+  });
+
   it('read back holding the typed value landed unheard: nothing put back', () => {
     const views = { k: cellView() };
     const { engine } = setup({ stored: { k: 'b' }, views });

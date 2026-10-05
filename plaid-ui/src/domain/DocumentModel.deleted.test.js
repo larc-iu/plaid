@@ -70,6 +70,8 @@ describe('a document deleted while it is open', () => {
     expect(canEditProject(doc.project, ME)).toBe(false);
     expect(errors.map((e) => e.label)).toEqual(['Failed to set gloss', 'Read-only']);
     expect(errors[1].msg).toBe('This document was deleted.');
+    // The notice says what happened: no banner beside it (L2-IGT-MULTI polish).
+    expect(doc.error).toBe('');
   });
 
   it('stays read-only when the project is read again', async () => {

@@ -5,8 +5,11 @@
 // stored value, with the refused one under it. A toast names the change:
 // "b changed this to NOUN." The name comes from the document's audit log: the
 // newest change whose operations name one of the cell's entities (its span or
-// token). No match names nobody ("Someone"): the newest change by anyone else
-// may have touched another cell entirely.
+// token). Failing that, a change that rewrote rows without naming them (a
+// Bulk Edit, a text edit that re-cut them, a restore), when it is the newest
+// such change and nobody else has written since but its author and this
+// person. Otherwise nobody ("Someone"): the newest change by anyone else may
+// have touched another cell entirely.
 
 import { settledId } from '../domain/pendingIds.js';
 
@@ -27,11 +30,32 @@ async function whoChanged(client, documentId, entityIds, me) {
   const entries = (page?.entries ?? []).filter((e) => e.user?.id);
   const wrote = (e) => (e.ops ?? []).some((op) => ids.some((id) => op.description?.includes(id)));
   const at = entries.findIndex(wrote);
-  if (at < 0) return null;
+  if (at < 0) return wideAuthor(entries, me);
   const entry = entries[at];
   if (entry.user.id !== me) return entry.user.displayName || entry.user.id;
   // Ours, but a later change by someone else that names no id may be the one.
   return entries.slice(0, at).some((e) => e.user.id !== me) ? null : YOU;
+}
+
+// An operation that rewrites rows without naming them: a bulk update, create
+// or delete, a text edit (which re-cuts the words and morphemes in it), a
+// restore. Read off its type, with or without its namespace.
+const WIDE = /(?:^|\/)bulk-[a-z-]+$|(?:^|\/)update-body$|(?:^|\/)restore$/;
+const isWide = (op) => WIDE.test(String(op?.type ?? ''));
+
+/**
+ * Who changed a cell no operation names: the author of the newest change in
+ * `entries` (newest first) holding a wide operation (`isWide`), when every
+ * change since is by that author or by `me`. Null otherwise.
+ */
+function wideAuthor(entries, me) {
+  const at = entries.findIndex((e) => (e.ops ?? []).some(isWide));
+  if (at < 0) return null;
+  const { user } = entries[at];
+  const others = entries.slice(0, at).some((e) => e.user.id !== user.id && e.user.id !== me);
+  if (others) return null;
+  if (user.id !== me) return user.displayName || user.id;
+  return YOU;
 }
 
 // A value that already ends a sentence ("He is tall.") takes no second period.

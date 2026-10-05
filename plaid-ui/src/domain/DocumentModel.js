@@ -67,9 +67,11 @@ const RECONCILE_INTERRUPTED_LABEL = 'Repair on open (interrupted)';
 
 // What an edit planned on an out-of-date document is refused with, unsent: the
 // conflict the edit before it met, so every screen words it the same way.
+// `unsent` tells it from a refusal the server made.
 const conflictError = () =>
   Object.assign(new Error('HTTP 409 The document has changed since this edit was made.'), {
     status: 409,
+    unsent: true,
   });
 
 // What an edit that names a row made by a refused edit is refused with,
@@ -78,6 +80,7 @@ const conflictError = () =>
 const dependencyError = () =>
   Object.assign(new Error('HTTP 400 The edit this one depends on was not saved.'), {
     status: 400,
+    unsent: true,
   });
 
 // What every edit is refused with once the document is known to be deleted
@@ -161,7 +164,7 @@ export class DocumentModel {
     this._writes = new WriteQueue({
       onSavingChange: (saving) => {
         if (saving) {
-          this._error = '';
+          this._dropError();
           this._handledCause = null;
         }
         this._emit();
@@ -177,7 +180,7 @@ export class DocumentModel {
           this._error = LOCKED_WAITING;
           this._errorCause = null;
         } else if (this._error === LOCKED_WAITING) {
-          this._error = '';
+          this._dropError();
         }
         this._lockChanges++;
         this._emit();
@@ -197,6 +200,9 @@ export class DocumentModel {
     // How often an edit started or stopped waiting out another's lock
     // (`onLockedChange`), which moves `dataVersion` too.
     this._lockChanges = 0;
+    // How often an error was cleared (`_dropError`), which moves `dataVersion`
+    // too, so a screen that draws `error` with its data draws it away.
+    this._errorClears = 0;
     // The History label a screen gave the writes it is making (`labelled`).
     this._operation = null;
     this._conflictHandled = false;
@@ -224,7 +230,7 @@ export class DocumentModel {
   }
   /** The document's data version, which a new copy of the project also moves. */
   get dataVersion() {
-    return this._dataVersion + this._projectReads + this._lockChanges;
+    return this._dataVersion + this._projectReads + this._lockChanges + this._errorClears;
   }
   get raw() {
     return this._raw;
@@ -619,8 +625,16 @@ export class DocumentModel {
 
   clearError() {
     if (!this._error) return;
-    this._error = '';
+    this._dropError();
     this._emit();
+  }
+
+  // `error` emptied, with a new data version when it held something (see
+  // `_errorClears`). The caller emits.
+  _dropError() {
+    if (!this._error) return;
+    this._error = '';
+    this._errorClears++;
   }
 
   // A value derived from `_raw`, computed once per data version. Every cached
@@ -659,15 +673,10 @@ export class DocumentModel {
   _writeFailed(label, err, handled = false) {
     console.error(`${label}:`, err);
     // Held back unsent once the document was found deleted, which was said
-    // once already (`_documentGone`).
-    if (err?.deleted) {
-      this._handledCause = null;
-      this._error = `${label}: ${err.message}`;
-      this._errorCause = err;
-      return;
-    }
-    if (handled) {
-      this._error = '';
+    // once already (`_documentGone`), or a refusal the screen says another
+    // way (`reported`, such as igt's recording notice): no banner of its own.
+    if (handled || err?.deleted || err?.reported === true) {
+      this._dropError();
       this._handledCause = err;
       return;
     }
@@ -714,7 +723,9 @@ export class DocumentModel {
   // since, see `_afterConflict`), it is asked again, on that version before
   // the edit: `fresh` is a document of the subclass's own kind (`_snapshot`)
   // over what was read, with the edits ahead of it shown. False refuses the
-  // edit like a conflict. Without one, only what changed in between is
+  // edit like a conflict, and an Error refuses it with that error, which is
+  // asked for even when what changed touches the edit: a refusal with its own
+  // words (igt: a segment drawn on a recording since replaced). Without one, only what changed in between is
   // looked at (rebase.js): by layer, or by entity for a write made inside
   // `resendsByEntity`.
   //
@@ -791,7 +802,7 @@ export class DocumentModel {
         // Planned on a document that turned out to have changed elsewhere
         // (`_reloadAfterFailure`): refused like the edit that found it out,
         // without being sent, and already off the screen.
-        if (unsent.stale) throw conflictError();
+        if (unsent.stale) throw unsent.refusal ?? conflictError();
         // It names a row an edit before it made, and that edit was refused.
         if (this._namesRefused(unsent)) throw dependencyError();
         const before = this._checkedVersion();
@@ -804,7 +815,7 @@ export class DocumentModel {
           const nothingLanded = before != null && this._checkedVersion() === before;
           const next =
             statusOf(err) === 409 && nothingLanded ? await this._afterConflict(unsent) : null;
-          if (next !== 'resend') throw err;
+          if (next !== 'resend') throw unsent.refusal ?? err;
           unsent.keys = this._client?.keySeed?.() ?? null;
           await run();
         }
@@ -816,8 +827,9 @@ export class DocumentModel {
         resendWhileLocked: isLockedByOther,
         refused: (err) => {
           // A conflict, or what the edit names was deleted meanwhile: either
-          // way someone else changed the document.
-          conflict = isChangedElsewhere(err);
+          // way someone else changed the document. So too an edit its own
+          // `recheck` refused (`changedElsewhere`).
+          conflict = isChangedElsewhere(err) || err?.changedElsewhere === true;
           if (cell) cell.error = err;
           const created = this._created(unsent) ?? new Set();
           // Refused because a row it makes is there already under the id this
@@ -831,7 +843,10 @@ export class DocumentModel {
           // role, the page is put in step with it now rather than within the
           // minute (a reader's page offers nothing to edit).
           if (statusOf(err) === 403 && !this._deleted) this.refreshProject();
-          this._writeFailed(label, err, conflictHandled && statusOf(err) === 409);
+          // A cell shows a refusal for a row deleted meanwhile as it shows a
+          // conflict (cells/CellEngine.js), so neither gets a toast or a
+          // banner of its own.
+          this._writeFailed(label, err, conflictHandled && isChangedElsewhere(err));
         },
         resync: () =>
           unsent.stale || this._deleted ? undefined : this._reloadAfterFailure(conflict),
@@ -854,7 +869,11 @@ export class DocumentModel {
       console.error('Reading the document after a refusal failed:', err);
       return null;
     }
-    if (!this._untouched(unsent, updated)) return null;
+    if (!this._untouched(unsent, updated)) {
+      // Refused all the same, with the edit's own reason when it has one.
+      this._recheck(unsent, updated);
+      return null;
+    }
     // What the subclass keeps beside the document is read again first, so
     // the edit is shown again on top of it, as `_showUnsent` does.
     await this._adoptReload(updated);
@@ -881,16 +900,27 @@ export class DocumentModel {
     this._unsent = [];
     for (const u of waiting) {
       if (this._untouched(u, now)) this._unsent.push(u);
-      else u.stale = true;
+      else {
+        u.stale = true;
+        // Its own reason for the refusal, when it has one.
+        this._recheck(u, now);
+      }
     }
   }
 
   // Whether `unsent`'s own `recheck` holds on `raw` (the document it would
-  // now go on, before it). True for an edit without one.
+  // now go on, before it). True for an edit without one. A recheck that
+  // answers an Error refuses the edit with it (`unsent.refusal`) rather than
+  // with the conflict.
   _recheck(unsent, raw) {
     if (!unsent.recheck) return true;
     try {
-      return !!unsent.recheck(this._snapshot(raw, this._asOf));
+      const held = unsent.recheck(this._snapshot(raw, this._asOf));
+      if (held instanceof Error) {
+        unsent.refusal = held;
+        return false;
+      }
+      return !!held;
     } catch (err) {
       console.error('An edit could not be checked again on the latest version:', err);
       return false;
@@ -1207,6 +1237,9 @@ export class DocumentModel {
   _documentGone() {
     if (this._deleted) return;
     this._deleted = true;
+    // The refusal that found it out said only that something was changed or
+    // removed. The notice says what.
+    this._dropError();
     if (!this._takeProject(this._project)) this._emit();
     if (this.onError) this.onError(DELETED, null, 'Read-only');
   }
