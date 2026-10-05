@@ -1,9 +1,11 @@
 (ns plaid.sql.query.exec-closure-paths-test
-  "`related*` compiles four ways, by which of its ends are already bound: the
-  closure of the layer leading the FROM, the closure from one span (forward)
-  or to one span (backward) inside a `not`, and a membership test on the
-  pair. Each is checked here against a closure computed in Clojure, over
-  random graphs with cycles, edge values and a span value to filter on."
+  "`related*` compiles several ways, by which of its ends are already bound
+  and what else the query narrows: the closure of the layer as a table (first
+  in a fixed order, or where SQLite puts it), the closure from or to an end
+  pinned to an id or bound outside a `not`, a membership from the end a `not`
+  body ties to its outer row, and a membership test on a pair. Each is
+  checked here against a closure computed in Clojure, over random graphs with
+  cycles, edge values and a span value to filter on."
   (:require [clojure.set :as set]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing use-fixtures]]
@@ -53,7 +55,7 @@
     (ids-of (h/bulk-create-relations admin-request
                                      (mapv (fn [[s t v]] {:relation-layer-id rl :source (spans s) :target (spans t) :value v})
                                            edges)))
-    {:pid pid :sl sl :rl rl :spans spans :svals svals :edges edges}))
+    {:pid pid :tokl tokl :sl sl :rl rl :toks (mapv str toks) :spans spans :svals svals :edges edges}))
 
 (defn- closure
   "i -> the set of j reached from i in one or more hops over `edges`."
@@ -68,7 +70,7 @@
                      (recur seen' (set/difference (set (mapcat #(get succ % #{}) frontier)) seen')))))]))))
 
 (defn- check-graph! [seed]
-  (let [{:keys [pid sl rl spans svals edges]} (build! seed)
+  (let [{:keys [pid tokl sl rl toks spans svals edges]} (build! seed)
         reach (closure edges)
         reach-det (closure (filter #(= "det" (nth % 2)) edges))
         all (range n-spans)
@@ -98,7 +100,24 @@
       (testing "a not with both ends bound outside, a membership test"
         (is (= (set (for [i all j all :when (not (contains? (reach i) j))] [(spans i) (spans j)]))
                (rows (q ["?a" "?b"] [(sp "?a") (sp "?b") ["not" (rel "?a" "?b")]])))))
-      (testing "two in one query, the second a membership test"
+      (testing "a not with neither end bound outside, from the end its body ties to the outer row"
+        (is (= (set (for [i all :when (not-any? x? (reach i))] (toks i)))
+               (one (q ["?t"] [["token" "?t" {"layer" tokl}]
+                               ["not" (sp "?x") ["covers" "?x" "?t"] (sp "?y" {"value" "x"}) (rel "?x" "?y")]]))))
+        (is (= (set (for [j all :when (not-any? #(and (x? %) (contains? (reach %) j)) all)] (toks j)))
+               (one (q ["?t"] [["token" "?t" {"layer" tokl}]
+                               ["not" (sp "?x") ["covers" "?x" "?t"] (sp "?y" {"value" "x"}) (rel "?y" "?x")]])))))
+      (testing "an end pinned to an id"
+        (let [i (first (filter #(seq (reach %)) all))
+              j (first (filter #(some (fn [k] (contains? (reach k) %)) all) all))]
+          (is (= (set (map spans (reach i)))
+                 (one (q ["?b"] [(sp "?a") ["=" "?a.id" (spans i)] (sp "?b") (rel "?a" "?b")]))))
+          (is (= (set (for [k all :when (contains? (reach k) j)] (spans k)))
+                 (one (q ["?a"] [(sp "?b") ["=" "?b.id" (spans j)] (sp "?a") (rel "?a" "?b")]))))))
+      (testing "a closure beside a narrowing clause"
+        (is (= (set (for [i all :when (x? i) j (reach i)] [(spans i) (spans j)]))
+               (rows (q ["?a" "?b"] [(sp "?a" {"value" "x"}) (sp "?b") (rel "?a" "?b")])))))
+      (testing "two in one query"
         (is (= (set (for [i all k all
                           :when (some #(and (x? %) (contains? (reach %) k)) (reach i))]
                       [(spans i) (spans k)]))

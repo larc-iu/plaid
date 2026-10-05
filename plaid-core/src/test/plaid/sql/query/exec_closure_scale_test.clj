@@ -29,13 +29,17 @@
 
 (defn- build!
   "Sentences of ten words, a POS span on each word and a dependency tree per
-  sentence, every head earlier in the sentence than its dependent. Returns the
-  layers and the expected (ancestor, descendant) pairs."
+  sentence, every head earlier in the sentence than its dependent. Also a
+  sentence token over each sentence and a UPOS span on each word (VERB on
+  every third word, else NOUN), for the shapes ud's Grew search compiles to.
+  Returns the layers and the expected (ancestor, descendant) pairs."
   []
   (let [rnd (java.util.Random. 7)
         pid (h/create-test-project admin-request "Treebank")
         txtl (id (h/create-text-layer admin-request pid "text"))
         tokl (id (h/create-token-layer admin-request txtl "words"))
+        sentl (id (h/create-token-layer admin-request txtl "sentences"))
+        upos (id (h/create-span-layer admin-request tokl "upos"))
         pos (id (h/create-span-layer admin-request tokl "pos"))
         dep (id (h/create-relation-layer admin-request pos "dep"))
         doc (h/create-test-document admin-request pid "d1")
@@ -49,6 +53,17 @@
                                             admin-request
                                             (mapv (fn [[b e]] {:token-layer-id tokl :text text :begin b :end e}) ch))))
                           (partition-all 1000 extents)))
+        _ (ids-of (h/bulk-create-tokens
+                   admin-request
+                   (for [s (range n-sentences)]
+                     {:token-layer-id sentl :text text
+                      :begin (first (extents (* s per-sentence)))
+                      :end (second (extents (dec (* (inc s) per-sentence))))})))
+        verb? (fn [i] (zero? (mod i 3)))
+        _ (doseq [ch (partition-all 1000 (map-indexed vector toks))]
+            (ids-of (h/bulk-create-spans
+                     admin-request
+                     (mapv (fn [[i t]] {:span-layer-id upos :tokens [t] :value (if (verb? i) "VERB" "NOUN")}) ch))))
         spans (vec (mapcat (fn [ch] (ids-of (h/bulk-create-spans
                                              admin-request
                                              (mapv (fn [t] {:span-layer-id pos :tokens [t] :value "X"}) ch))))
@@ -63,7 +78,9 @@
                      (mapv (fn [[d hd]] {:relation-layer-id dep :source (spans hd) :target (spans d) :value "r"}) ch))))
         ancestors (fn [i] (take-while some? (rest (iterate heads i))))
         expected (set (for [i (range n) a (ancestors i)] [(str (spans a)) (str (spans i))]))]
-    {:pid pid :words tokl :pos pos :dep dep :expected expected
+    {:pid pid :words tokl :sentences sentl :upos upos :pos pos :dep dep :expected expected
+     :toks (mapv str toks) :verb? verb?
+     :ancestors (fn [i] (set (ancestors i)))
      :leaves (set (map (comp str spans) (remove (set (vals heads)) (range n))))
      :roots (set (map (comp str spans) (remove (set (keys heads)) (range n))))}))
 
@@ -99,8 +116,13 @@
     (evict-pool!)))
 
 (defn- check-treebank!
-  "Every `related*` shape over the treebank, exact and in time."
-  [{:keys [pid words pos dep expected leaves roots]}]
+  "Every `related*` shape over the treebank, exact and in time. The closure
+  is planned the same on any statistics, and so is every query whose only
+  starting point is the closure or an id it is pinned to. A Grew query that
+  also narrows a node by its UPOS, or whose `without` holds the closure,
+  starts from the narrowing clauses as SQLite plans them, like any query
+  without `related*`: `narrowed?` adds those, timed on statistics of the data."
+  [narrowed? {:keys [pid words sentences upos pos dep expected leaves roots toks verb? ancestors]}]
   (let [q (fn [body] (timed #(qe/run db "admin@example.com" (merge {"scope" {"project-ids" [pid]}} body))))
         pairs (fn [r] (set (map (fn [row] (mapv str row)) (:results r))))
         firsts (fn [r] (set (map (comp str first) (:results r))))]
@@ -152,6 +174,52 @@
                        "limit" 100000})]
         (is (= expected (pairs r)))
         (is (< ms 5000) (str ms " ms"))))
+    ;; the clauses ud's Grew search compiles a node to: its word in the
+    ;; sentence ?S, and its POS span (here the layer the tree is on)
+    (let [n (count toks)
+          node (fn [x] [["token" (str "?n_" x) {"layer" words}] ["within" (str "?n_" x) "?S"]
+                        ["span" (str "?lem_" x) {"layer" pos}] ["covers" (str "?lem_" x) (str "?n_" x)]])
+          upos= (fn [x v] [["span" (str "?u_" x) {"layer" upos "value" v}] ["covers" (str "?u_" x) (str "?n_" x)]])
+          dom (fn [x y] ["related*" (str "?lem_" x) (str "?lem_" y) {"layer" dep}])
+          sent ["token" "?S" {"layer" sentences}]
+          below (fn [i] (set (filter #(contains? (ancestors %) i) (range n))))]
+      (testing "Grew X ->> Y"
+        (let [[r ms] (q {"find" ["?n_X" "?n_Y"]
+                         "where" (concat [sent] (node "X") (node "Y") [(dom "X" "Y") ["!=" "?n_X" "?n_Y"]])
+                         "limit" 100000})]
+          (is (= (set (for [d (range n) a (ancestors d)] [(toks a) (toks d)])) (pairs r)))
+          (is (< ms 5000) (str ms " ms"))))
+      (when narrowed?
+        (testing "Grew Y [upos=NOUN] without { X ->> Y }"
+          (let [[r ms] (q {"find" ["?n_Y"]
+                           "where" (concat [sent ["token" "?n_Y" {"layer" words}] ["within" "?n_Y" "?S"]]
+                                           (upos= "Y" "NOUN")
+                                           [(into ["not"] (concat (node "X") [["span" "?lem_Y" {"layer" pos}]
+                                                                              ["covers" "?lem_Y" "?n_Y"]
+                                                                              (dom "X" "Y")]))])
+                           "limit" 100000})]
+            (is (= (set (for [i (range n) :when (and (not (verb? i)) (empty? (ancestors i)))] (toks i)))
+                   (firsts r)))
+            (is (< ms 5000) (str ms " ms"))))
+        (testing "Grew X [upos=VERB] without { X ->> Y; Y [upos=NOUN] }"
+          (let [[r ms] (q {"find" ["?n_X"]
+                           "where" (concat [sent ["token" "?n_X" {"layer" words}] ["within" "?n_X" "?S"]]
+                                           (upos= "X" "VERB")
+                                           [(into ["not"] (concat [["span" "?lem_X" {"layer" pos}]
+                                                                   ["covers" "?lem_X" "?n_X"]]
+                                                                  (node "Y") (upos= "Y" "NOUN") [(dom "X" "Y")]))])
+                           "limit" 100000})]
+            (is (= (set (for [i (range n) :when (and (verb? i) (not-any? (complement verb?) (below i)))] (toks i)))
+                   (firsts r)))
+            (is (< ms 5000) (str ms " ms"))))
+        (testing "Grew X [upos=VERB]; X ->> Y; Y ->> Z"
+          (let [[r ms] (q {"find" ["?n_X" "?n_Z"]
+                           "where" (concat [sent] (node "X") (upos= "X" "VERB") (node "Y") (node "Z")
+                                           [(dom "X" "Y") (dom "Y" "Z")])
+                           "limit" 100000})]
+            (is (= (set (for [z (range n) y (ancestors z) x (ancestors y) :when (verb? x)] [(toks x) (toks z)]))
+                   (pairs r)))
+            (is (< ms 5000) (str ms " ms"))))))
     (testing "a count of the pairs"
       (let [[r ms] (q {"where" [["span" "?a" {"layer" pos}]
                                 ["span" "?b" {"layer" pos}]
@@ -161,17 +229,17 @@
         (is (< ms 5000) (str ms " ms"))))))
 
 (deftest related-star-over-a-treebank
-  (check-treebank! (build!)))
+  (check-treebank! false (build!)))
 
 (deftest related-star-on-statistics-of-the-treebank
   (let [tb (build!)]
     (psc/execute! db ["ANALYZE"])
     (evict-pool!)
-    (check-treebank! tb)))
+    (check-treebank! true tb)))
 
 (deftest related-star-on-statistics-of-a-near-empty-database
   (tiny-statistics!)
   (let [tb (build!)]
     (is (= "3 1" (:stat (psc/q1 db ["SELECT stat FROM sqlite_stat1 WHERE idx = 'sqlite_autoindex_spans_1'"])))
         "the statistics still say three spans")
-    (check-treebank! tb)))
+    (check-treebank! false tb)))

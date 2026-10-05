@@ -544,24 +544,28 @@
 ;; --- related*: reachability over a relation layer --------------------------
 ;; The closure is a recursive CTE of (src, rid) pairs, src reaching rid in one
 ;; or more hops. Correlated on both ends it ran once per candidate pair of
-;; spans, 16.5 s on 2,000 words (H6-CORE-API-2), so it is computed once, or
-;; once per outer row from that row's one span. Its plan must not depend on the
-;; planner's statistics: on
-;; statistics taken while the tables were nearly empty, SQLite thought the
-;; spans and relations held a row or two, walked the whole relation table once
-;; per pair reached, and scanned the closure once per pair of spans, past the
-;; 30 s limit on 4,000 words (FX5-SCALE). So every step of it names its index
-;; (INDEXED BY) and its loop order (CROSS JOIN), and the closure is never an
-;; inner loop that would need an index SQLite has to decide to build:
-;;   - neither end bound outside this FROM: the closure of the whole layer
-;;     leads the FROM, and every other table follows it in join order (see
-;;     from-clause), each found from the rows before it.
-;;   - inside a `:not`, one end bound by the query outside: the closure from
-;;     that one span (forward from a source, backward from a target) leads the
-;;     subquery's FROM, so each outer row costs the size of its own subtree.
-;;   - both ends already bound, or a second `related*` in one FROM: the pair is
-;;     tested for membership in the closure, an IN that SQLite builds once into
-;;     a keyed table and probes by key.
+;; spans, 16.5 s on 2,000 words (H6-CORE-API-2). Each step names its index
+;; (INDEXED BY) and its loop order (CROSS JOIN): on statistics taken while the
+;; tables were nearly empty, SQLite walked the whole relation table once per
+;; pair reached (FX5-SCALE).
+;;
+;; How the closure meets the rest of the query, by what is already bound:
+;;   - both ends bound outside (a `:not`): a membership test on the pair, an
+;;     IN that SQLite builds once into a keyed table and probes.
+;;   - one end bound outside (a `:not`): the closure from that one span
+;;     (forward from a source, backward from a target) leads the subquery's
+;;     FROM, so each outer row costs its own subtree.
+;;   - neither end bound outside, inside a `:not`: a membership from the end
+;;     the body ties nearer to the outer row (`anchor-end`), the closure from
+;;     or to that span. The layer's closure leading the subquery ran once per
+;;     outer row: Grew's `without { X ->> Y }` passed the 30 s limit (REV-FX6).
+;;   - the top-level query: the closure is a table joined to both ends. It
+;;     leads the FROM in a fixed order (see from-clause) when it starts from an
+;;     end pinned to an id, or when no other clause narrows the query, so the
+;;     plan holds whatever the statistics say. When a clause does narrow it
+;;     (a UPOS value, a lemma), the closure goes where SQLite puts it, which
+;;     starts from that clause: leading with the closure there was slower on
+;;     production's own statistics (REV-FX6 F3).
 
 (def ^:private relation-index
   "The relations indexes a closure walks, from the schema
@@ -578,52 +582,111 @@
   `:value`), as a HoneySQL subquery. `from` is nil for the whole layer, or
   `[:source col]` / `[:target col]` for the closure from (or to) the one span
   `col` names."
-  [st cmap layer-ids from]
-  (let [r0 (next-alias! st "rc0")
-        r1 (next-alias! st "rc1")
-        backward? (= :target (first from))
+  ([st cmap layer-ids from] (closure-subquery st cmap layer-ids from [:src :rid]))
+  ([st cmap layer-ids from cols]
+   (let [r0 (next-alias! st "rc0")
+         r1 (next-alias! st "rc1")
+         backward? (= :target (first from))
         ;; the span a hop reaches: its target going forward, its source going back
-        reached (if backward? :source_span_id :target_span_id)
-        hop (fn [r]
-              (let [s (next-alias! st "rcs")]
-                (cond-> [:and [:in (col r :relation_layer_id) layer-ids]
+         reached (if backward? :source_span_id :target_span_id)
+         hop (fn [r]
+               (let [s (next-alias! st "rcs")]
+                 (cond-> [:and [:in (col r :relation_layer_id) layer-ids]
                          ;; defense-in-depth: the span this hop reaches must
                          ;; itself live in a span layer within scope, so
                          ;; reachability can't cross into an unreadable project
                          ;; even if a relation's endpoints ever did. (Today the
                          ;; relation write-path forbids that, so this is belt &
                          ;; braces — but it makes :related* self-sufficient.)
-                         [:exists {:select [1]
-                                   :from [[:spans s]]
-                                   :where [:and [:= (col s :id) (col r reached)]
-                                           [:in (col s :span_layer_id) (in-scope-layers st :span_layers)]]}]]
-                  (contains? cmap :value)
-                  (conj (atomic-pred (col r :value) (:value cmap) psc/write-json)))))
-        base (case (first from)
-               nil {:select [(col r0 :source_span_id) (col r0 :target_span_id)]
-                    :from [(relations-by r0 :layer)]
-                    :where (hop r0)}
-               :source {:select [(col r0 :source_span_id) (col r0 :target_span_id)]
-                        :from [(relations-by r0 :source)]
-                        :where (conj (hop r0) [:= (col r0 :source_span_id) (second from)])}
-               :target {:select [(col r0 :source_span_id) (col r0 :target_span_id)]
-                        :from [(relations-by r0 :target)]
-                        :where (conj (hop r0) [:= (col r0 :target_span_id) (second from)])})
+                          [:exists {:select [1]
+                                    :from [[:spans s]]
+                                    :where [:and [:= (col s :id) (col r reached)]
+                                            [:in (col s :span_layer_id) (in-scope-layers st :span_layers)]]}]]
+                   (contains? cmap :value)
+                   (conj (atomic-pred (col r :value) (:value cmap) psc/write-json)))))
+         base (case (first from)
+                nil {:select [(col r0 :source_span_id) (col r0 :target_span_id)]
+                     :from [(relations-by r0 :layer)]
+                     :where (hop r0)}
+                :source {:select [(col r0 :source_span_id) (col r0 :target_span_id)]
+                         :from [(relations-by r0 :source)]
+                         :where (conj (hop r0) [:= (col r0 :source_span_id) (second from)])}
+                :target {:select [(col r0 :source_span_id) (col r0 :target_span_id)]
+                         :from [(relations-by r0 :target)]
+                         :where (conj (hop r0) [:= (col r0 :target_span_id) (second from)])})
         ;; the recursive step reads one row of `reach` at a time, so `reach`
         ;; is the outer loop and the next hop is a seek on the index
-        step (if backward?
-               {:select [(col r1 :source_span_id) :reach.rid]
-                :from [:reach]
-                :cross-join [(relations-by r1 :target)]
-                :where (conj (hop r1) [:= (col r1 :target_span_id) :reach.src])}
-               {:select [:reach.src (col r1 :target_span_id)]
-                :from [:reach]
-                :cross-join [(relations-by r1 :source)]
-                :where (conj (hop r1) [:= (col r1 :source_span_id) :reach.rid])})]
+         step (if backward?
+                {:select [(col r1 :source_span_id) :reach.rid]
+                 :from [:reach]
+                 :cross-join [(relations-by r1 :target)]
+                 :where (conj (hop r1) [:= (col r1 :target_span_id) :reach.src])}
+                {:select [:reach.src (col r1 :target_span_id)]
+                 :from [:reach]
+                 :cross-join [(relations-by r1 :source)]
+                 :where (conj (hop r1) [:= (col r1 :source_span_id) :reach.rid])})]
     ;; UNION keeps each pair once, which ends a cycle and keeps one row per match.
-    {:with-recursive [[[:reach {:columns [:src :rid]}] {:union [base step]}]]
-     :select [:src :rid]
-     :from [:reach]}))
+     {:with-recursive [[[:reach {:columns [:src :rid]}] {:union [base step]}]]
+      :select cols
+      :from [:reach]})))
+
+(defn- clause-distances
+  "var -> its distance, in clauses, from the nearest of `seeds`, over the
+  positive clauses `clauses` other than `related*` (whose two ends it is used
+  to choose between)."
+  [clauses seeds]
+  (let [edges (keep (fn [c] (when-not (#{:not :related*} (first c))
+                              (seq (clauses/clause-vars c))))
+                    clauses)
+        nbrs (reduce (fn [m vs] (reduce (fn [m v] (update m v (fnil into #{}) vs)) m vs)) {} edges)]
+    (loop [dist (zipmap seeds (repeat 0)) frontier (set seeds) d 0]
+      (if (empty? frontier)
+        dist
+        (let [nxt (set (remove dist (mapcat nbrs frontier)))]
+          (recur (into dist (map (fn [v] [v (inc d)])) nxt) nxt (inc d)))))))
+
+(defn- narrowing-vars
+  "The vars a clause of `clauses` narrows by a literal an index can start
+  from: a value, form, body or metadata on an entity, or a literal in a
+  comparison or a regex (`?a.id` pinned to an id is one). A relation clause's
+  value, or a `related*` clause's own, is not counted: a dependency label
+  matches a large share of the layer."
+  [clauses]
+  (let [literal? (fn [x] (not (or (symbol? x) (map? x))))
+        narrowing-key? (fn [[k v]] (and (#{:value :form :body :metadata} k)
+                                        (not (and (map? v) (contains? v :var)))))]
+    (into #{}
+          (mapcat (fn [[head & args]]
+                    (cond
+                      (#{:span :token :vocab :document :text :link} head)
+                      (when (and (symbol? (first args)) (some narrowing-key? (second args)))
+                        [(first args)])
+                      (#{:= :in :< :> :<= :>= clauses/op-match} head)
+                      (when (some literal? args)
+                        (keep #(get-in % [::clauses/field :var]) args)))))
+          clauses)))
+
+(defn- pinned-id
+  "The id literal a clause of `clauses` pins var `v` to, by an `=` on `?v.id`."
+  [clauses v]
+  (some (fn [[head x y]]
+          (when (= := head)
+            (let [ref? (fn [r] (= {:var v :path ["id"]} (::clauses/field r)))]
+              (cond (and (ref? x) (string? y)) y
+                    (and (ref? y) (string? x)) x))))
+        clauses))
+
+(defn- anchor-end
+  "Which end of `[:related* a b]` the rows before it fix: the one nearer, in
+  clauses, to one of `seeds` (inside a `not`, the vars bound outside it), :a
+  on a tie, nil when neither end reaches one."
+  [st a b seeds]
+  (let [dist (clause-distances (:clauses @st) seeds)
+        da (get dist a) db (get dist b)]
+    (cond
+      (and da db) (if (<= da db) :a :b)
+      da :a
+      db :b)))
 
 (defn- alias-refs
   "The FROM aliases `term` names in its column references."
@@ -709,18 +772,47 @@
                          outside (:outside @st)
                          a-out? (contains? outside a)
                          b-out? (contains? outside b)]
-                     (if (or (and a-out? b-out?) (:drive @st))
-                       ;; both ends bound already, or another closure leads
-                       ;; this FROM: a membership test on the pair
+                     (cond
+                       (or (and a-out? b-out?) (and (or a-out? b-out?) (:drive @st)))
+                       ;; both ends bound already, or one is and another closure
+                       ;; leads this FROM: a membership test on the pair
                        (add-where! st [:in [:composite (col sa :id) (col sb :id)]
                                        (closure-subquery st cmap layer-ids nil)])
-                       ;; this closure leads the FROM (see from-clause). From
-                       ;; the one end the outer query binds, else of the layer.
-                       (let [from (cond a-out? [:source (col sa :id)]
-                                        b-out? [:target (col sb :id)])
+                       ;; one end bound by the query outside: the closure from it
+                       ;; leads this FROM (see from-clause)
+                       (or a-out? b-out?)
+                       (let [from (if a-out? [:source (col sa :id)] [:target (col sb :id)])
                              rch (next-alias! st "rch")]
                          (add-from! st [(closure-subquery st cmap layer-ids from) rch])
                          (swap! st assoc :drive rch)
+                         (swap! st assoc-in [:keyed-junctions rch] [sa sb])
+                         (add-where! st [:= (col rch :src) (col sa :id)])
+                         (add-where! st [:= (col rch :rid) (col sb :id)]))
+                       ;; neither end bound outside, inside a `not`: the other end
+                       ;; is one of the spans the closure from (or to) the end
+                       ;; the outer row fixes reaches. Leading with the layer's
+                       ;; closure here ran it once per outer row.
+                       (seq (:outside @st))
+                       (case (anchor-end st a b (:outside @st))
+                         :a (add-where! st [:in (col sb :id) (closure-subquery st cmap layer-ids [:source (col sa :id)] [:rid])])
+                         :b (add-where! st [:in (col sa :id) (closure-subquery st cmap layer-ids [:target (col sb :id)] [:src])])
+                         nil (add-where! st [:in [:composite (col sa :id) (col sb :id)]
+                                             (closure-subquery st cmap layer-ids nil)]))
+                       :else
+                       ;; the top-level query: the closure as one more table
+                       ;; joined to both ends. It leads the FROM, in a fixed
+                       ;; order (see from-clause), when it starts from an end
+                       ;; pinned to an id, or when nothing else in the query
+                       ;; narrows it. Otherwise it goes where SQLite puts it,
+                       ;; which then starts from the narrowing clause.
+                       (let [rch (next-alias! st "rch")
+                             lead? (not (:drive @st))
+                             pa (when lead? (pinned-id (:clauses @st) a))
+                             pb (when (and lead? (not pa)) (pinned-id (:clauses @st) b))
+                             from (cond pa [:source pa] pb [:target pb])]
+                         (add-from! st [(closure-subquery st cmap layer-ids from) rch])
+                         (when (and lead? (or from (empty? (narrowing-vars (:clauses @st)))))
+                           (swap! st assoc :drive rch))
                          (swap! st assoc-in [:keyed-junctions rch] [sa sb])
                          (add-where! st [:= (col rch :src) (col sa :id)])
                          (add-where! st [:= (col rch :rid) (col sb :id)]))))
@@ -862,7 +954,7 @@
         ;; the entity vars bound OUTSIDE this :not (correlated when re-stated in it)
         outer-vars (set (keys (:var->alias @outer-st)))
         sub-st (atom (assoc @outer-st :from [] :where [] :scoped #{}
-                            :drive nil :outside outer-vars))]
+                            :drive nil :outside outer-vars :clauses inner))]
     ;; existential (inner-only) vars get a table + scope here; correlated (outer)
     ;; vars are already in var->alias, so ensure-var! no-ops for them. (A nested
     ;; :not's own vars are handled by its recursive compile-not! call, not here.)
@@ -1301,7 +1393,7 @@
         ;; validate already inferred + attached the var-kinds; reuse it (fall back
         ;; to re-inferring if a caller hands us an AST that skipped validate).
         kinds (or (::ast/var-kinds resolved) (clauses/infer-kinds resolved))
-        st (new-state scope kinds)
+        st (doto (new-state scope kinds) (swap! assoc :clauses (:where resolved)))
         constraints (collect-entity-constraints (:where resolved))]
     ;; Pass B: every POSITIVELY-bound var (entity + relationship-introduced) gets
     ;; a table + scope. Vars that appear only inside a :not are existential to the
