@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { isImeKey } from '@ui/lib/chords.js';
 
 // A textarea with syntax highlighting behind it: the text is painted once by
 // `highlight` into a <pre>, and a transparent textarea sits exactly on top so
@@ -47,10 +48,16 @@ export const CodeEditor = ({
   style,
 }) => {
   const textareaRef = useRef(null);
-  // Escape lets the next Tab leave the box. Any other key takes that back.
+  // Escape lets the next Tab leave the box. Any other key, leaving the box or a
+  // click takes that back.
   const leaving = useRef(false);
+  const stay = () => {
+    leaving.current = false;
+  };
 
   const handleKeyDown = (e) => {
+    // An input method's keys are its own: its Escape cancels a composition.
+    if (isImeKey(e)) return;
     onKeyDown?.(e);
     if (e.defaultPrevented) return;
     if (e.key === 'Escape') {
@@ -83,6 +90,8 @@ export const CodeEditor = ({
         value={value}
         onChange={(e) => onValueChange(e.target.value)}
         onKeyDown={handleKeyDown}
+        onBlur={stay}
+        onPointerDown={stay}
         placeholder={placeholder}
         spellCheck={spellCheck}
         autoCapitalize="off"

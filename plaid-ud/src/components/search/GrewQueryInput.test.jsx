@@ -92,4 +92,18 @@ describe('the Grew pattern box and the keyboard', () => {
     expect(key(el, { key: 'Tab' })).toBe(true);
     await view.unmount();
   });
+
+  it('forgets an Escape once the box is left or clicked, and over an input method', async () => {
+    const view = await mount(null);
+    const el = box(view);
+    key(el, { key: 'Escape' });
+    await view.step(() => el.dispatchEvent(new FocusEvent('focusout', { bubbles: true })));
+    expect(key(el, { key: 'Tab' })).toBe(true);
+    key(el, { key: 'Escape' });
+    await view.step(() => el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));
+    expect(key(el, { key: 'Tab' })).toBe(true);
+    key(el, { key: 'Escape', isComposing: true });
+    expect(key(el, { key: 'Tab' })).toBe(true);
+    await view.unmount();
+  });
 });
