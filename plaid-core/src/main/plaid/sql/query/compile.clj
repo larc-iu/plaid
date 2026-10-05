@@ -3,7 +3,9 @@
 
   Structure: tables go in `:from` as a comma-join and every condition goes in a
   single AND-ed `:where` (SQLite/Postgres plan this identically to explicit INNER
-  JOINs, and it keeps the compiler from juggling ON-clause placement).
+  JOINs, and it keeps the compiler from juggling ON-clause placement). The one
+  exception is a FROM that a `related*` closure leads: its tables are held in
+  join order by CROSS JOIN (see from-clause).
 
   Three passes:
     A. scan entity clauses -> per-var constraints (layer-ids, value, doc, begin/end)
@@ -83,6 +85,11 @@
          ;; each `vocab-link` shorthand: its two aliases and the token and
          ;; vocab aliases they join (see distinct-redundant? and first-link-only)
          :shorthand-links []
+         ;; vars bound by an enclosing query: inside a `:not`, the outer ones
+         :outside #{}
+         ;; the alias of the `related*` closure that leads this FROM, if any
+         ;; (see from-clause)
+         :drive nil
          :scoped #{}}))   ; entity vars that have received a scope predicate
 
 (defn- next-alias! [st prefix]
@@ -534,6 +541,139 @@
                                                     [:= (col sup :span_id) super-id]
                                                     [:= (col sup :token_id) (col sub :token_id)]]}]]]}]]))
 
+;; --- related*: reachability over a relation layer --------------------------
+;; The closure is a recursive CTE of (src, rid) pairs, src reaching rid in one
+;; or more hops. Correlated on both ends it ran once per candidate pair of
+;; spans, 16.5 s on 2,000 words (H6-CORE-API-2), so it is computed once, or
+;; once per outer row from that row's one span. Its plan must not depend on the
+;; planner's statistics: on
+;; statistics taken while the tables were nearly empty, SQLite thought the
+;; spans and relations held a row or two, walked the whole relation table once
+;; per pair reached, and scanned the closure once per pair of spans, past the
+;; 30 s limit on 4,000 words (FX5-SCALE). So every step of it names its index
+;; (INDEXED BY) and its loop order (CROSS JOIN), and the closure is never an
+;; inner loop that would need an index SQLite has to decide to build:
+;;   - neither end bound outside this FROM: the closure of the whole layer
+;;     leads the FROM, and every other table follows it in join order (see
+;;     from-clause), each found from the rows before it.
+;;   - inside a `:not`, one end bound by the query outside: the closure from
+;;     that one span (forward from a source, backward from a target) leads the
+;;     subquery's FROM, so each outer row costs the size of its own subtree.
+;;   - both ends already bound, or a second `related*` in one FROM: the pair is
+;;     tested for membership in the closure, an IN that SQLite builds once into
+;;     a keyed table and probes by key.
+
+(def ^:private relation-index
+  "The relations indexes a closure walks, from the schema
+  (20260527120000-initial-schema)."
+  {:layer "idx_relations_layer_doc" :source "idx_relations_source" :target "idx_relations_target"})
+
+(defn- relations-by
+  "A FROM item for `relations` under alias `r`, read through the index on `k`."
+  [r k]
+  [[:raw (str "relations AS " (name r) " INDEXED BY " (relation-index k))]])
+
+(defn- closure-subquery
+  "The (src, rid) closure of relation layers `layer-ids` (and the clause's
+  `:value`), as a HoneySQL subquery. `from` is nil for the whole layer, or
+  `[:source col]` / `[:target col]` for the closure from (or to) the one span
+  `col` names."
+  [st cmap layer-ids from]
+  (let [r0 (next-alias! st "rc0")
+        r1 (next-alias! st "rc1")
+        backward? (= :target (first from))
+        ;; the span a hop reaches: its target going forward, its source going back
+        reached (if backward? :source_span_id :target_span_id)
+        hop (fn [r]
+              (let [s (next-alias! st "rcs")]
+                (cond-> [:and [:in (col r :relation_layer_id) layer-ids]
+                         ;; defense-in-depth: the span this hop reaches must
+                         ;; itself live in a span layer within scope, so
+                         ;; reachability can't cross into an unreadable project
+                         ;; even if a relation's endpoints ever did. (Today the
+                         ;; relation write-path forbids that, so this is belt &
+                         ;; braces — but it makes :related* self-sufficient.)
+                         [:exists {:select [1]
+                                   :from [[:spans s]]
+                                   :where [:and [:= (col s :id) (col r reached)]
+                                           [:in (col s :span_layer_id) (in-scope-layers st :span_layers)]]}]]
+                  (contains? cmap :value)
+                  (conj (atomic-pred (col r :value) (:value cmap) psc/write-json)))))
+        base (case (first from)
+               nil {:select [(col r0 :source_span_id) (col r0 :target_span_id)]
+                    :from [(relations-by r0 :layer)]
+                    :where (hop r0)}
+               :source {:select [(col r0 :source_span_id) (col r0 :target_span_id)]
+                        :from [(relations-by r0 :source)]
+                        :where (conj (hop r0) [:= (col r0 :source_span_id) (second from)])}
+               :target {:select [(col r0 :source_span_id) (col r0 :target_span_id)]
+                        :from [(relations-by r0 :target)]
+                        :where (conj (hop r0) [:= (col r0 :target_span_id) (second from)])})
+        ;; the recursive step reads one row of `reach` at a time, so `reach`
+        ;; is the outer loop and the next hop is a seek on the index
+        step (if backward?
+               {:select [(col r1 :source_span_id) :reach.rid]
+                :from [:reach]
+                :cross-join [(relations-by r1 :target)]
+                :where (conj (hop r1) [:= (col r1 :target_span_id) :reach.src])}
+               {:select [:reach.src (col r1 :target_span_id)]
+                :from [:reach]
+                :cross-join [(relations-by r1 :source)]
+                :where (conj (hop r1) [:= (col r1 :source_span_id) :reach.rid])})]
+    ;; UNION keeps each pair once, which ends a cycle and keeps one row per match.
+    {:with-recursive [[[:reach {:columns [:src :rid]}] {:union [base step]}]]
+     :select [:src :rid]
+     :from [:reach]}))
+
+(defn- alias-refs
+  "The FROM aliases `term` names in its column references."
+  [aliases term]
+  (into #{}
+        (keep (fn [x]
+                (when (keyword? x)
+                  (let [[a c] (str/split (name x) #"\." 2)]
+                    (when c (aliases (keyword a)))))))
+        (tree-seq coll? #(if (map? %) (vals %) (seq %)) term)))
+
+(defn- join-order
+  "The FROM entries in the order the closure aliased `drive` leads: the
+  closure, then repeatedly the first entry joined by an equality to one already
+  placed (a seek), else the first one any condition ties to them, else the
+  first left. Every other table is so found from the rows before it."
+  [from where drive]
+  (let [aliases (set (map second from))
+        terms (map (fn [t] {:refs (alias-refs aliases t)
+                            :eq? (and (vector? t) (= := (first t))
+                                      (= 2 (count (alias-refs aliases t))))})
+                   where)
+        tied? (fn [placed eq-only? a]
+                (some (fn [{:keys [refs eq?]}]
+                        (and (or eq? (not eq-only?))
+                             (contains? refs a)
+                             (some placed (disj refs a))))
+                      terms))]
+    (loop [placed #{drive}
+           order (vec (filter #(= drive (second %)) from))
+           left (remove #(= drive (second %)) from)]
+      (if (empty? left)
+        order
+        (let [e (or (first (filter #(tied? placed true (second %)) left))
+                    (first (filter #(tied? placed false (second %)) left))
+                    (first left))]
+          (recur (conj placed (second e)) (conj order e) (remove #(= (second e) (second %)) left)))))))
+
+(defn- from-clause
+  "The FROM of state `st`: a comma join, or, when a `related*` closure leads
+  it, that closure first and every other table after it in `join-order`, held
+  there by CROSS JOIN, which SQLite never reorders."
+  [st]
+  (let [{:keys [from where drive]} @st]
+    (if-not drive
+      {:from from}
+      (let [[lead & more] (join-order from where drive)]
+        (cond-> {:from [lead]}
+          (seq more) (assoc :join-by (vec (mapcat (fn [e] [:cross-join [e]]) more))))))))
+
 (defn- compile-rel!
   [st constraints clause]
   (let [[head a b] clause
@@ -566,54 +706,24 @@
       :related*    (let [sa (av a) sb (av b)
                          cmap (nth clause 3)
                          layer-ids (vec (::qr/layer-ids cmap))
-                         r0 (next-alias! st "rc0")
-                         r1 (next-alias! st "rc1")
-                         rch (next-alias! st "rch")
-                         ;; per-hop relation filter: in the (scoped) layer set, and
-                         ;; the optional :value. Correlates scope via layer-ids.
-                         ;; `by-source?`: the recursive step finds the next hop by its
-                         ;; source, so the layer term is written `+col`, which SQLite
-                         ;; uses no index for. Otherwise it walked the whole layer once
-                         ;; per pair reached.
-                         hop (fn [r by-source?]
-                               (let [s (next-alias! st "rcs")
-                                     lcol (if by-source?
-                                            [:raw (str "+" (name (col r :relation_layer_id)))]
-                                            (col r :relation_layer_id))]
-                                 (cond-> [:and [:in lcol layer-ids]
-                                          ;; defense-in-depth: the span this hop reaches must
-                                          ;; itself live in a span layer within scope, so
-                                          ;; reachability can't cross into an unreadable project
-                                          ;; even if a relation's endpoints ever did. (Today the
-                                          ;; relation write-path forbids that, so this is belt &
-                                          ;; braces — but it makes :related* self-sufficient.)
-                                          [:exists {:select [1]
-                                                    :from [[:spans s]]
-                                                    :where [:and [:= (col s :id) (col r :target_span_id)]
-                                                            [:in (col s :span_layer_id) (in-scope-layers st :span_layers)]]}]]
-                                   (contains? cmap :value)
-                                   (conj (atomic-pred (col r :value) (:value cmap) psc/write-json)))))]
-                     ;; Transitive reachability over source_span_id -> target_span_id
-                     ;; (>=1 hop), as a table of (src, rid) pairs computed once from
-                     ;; every relation of the layers and joined to both ends. A
-                     ;; recursive CTE correlated on both ends ran once per candidate
-                     ;; pair, quadratic in the spans in scope: 16.5 s on 2,000 words
-                     ;; (H6-CORE-API-2). UNION keeps each pair once, which ends a
-                     ;; cycle and keeps one row per match.
-                     (add-from! st [{:with-recursive
-                                     [[[:reach {:columns [:src :rid]}]
-                                       {:union
-                                        [{:select [(col r0 :source_span_id) (col r0 :target_span_id)]
-                                          :from [[:relations r0]]
-                                          :where (hop r0 false)}
-                                         {:select [:reach.src (col r1 :target_span_id)]
-                                          :from [[:relations r1] :reach]
-                                          :where (conj (hop r1 true) [:= (col r1 :source_span_id) :reach.rid])}]}]]
-                                     :select [:src :rid] :from [:reach]}
-                                    rch])
-                     (swap! st assoc-in [:keyed-junctions rch] [sa sb])
-                     (add-where! st [:= (col rch :src) (col sa :id)])
-                     (add-where! st [:= (col rch :rid) (col sb :id)]))
+                         outside (:outside @st)
+                         a-out? (contains? outside a)
+                         b-out? (contains? outside b)]
+                     (if (or (and a-out? b-out?) (:drive @st))
+                       ;; both ends bound already, or another closure leads
+                       ;; this FROM: a membership test on the pair
+                       (add-where! st [:in [:composite (col sa :id) (col sb :id)]
+                                       (closure-subquery st cmap layer-ids nil)])
+                       ;; this closure leads the FROM (see from-clause). From
+                       ;; the one end the outer query binds, else of the layer.
+                       (let [from (cond a-out? [:source (col sa :id)]
+                                        b-out? [:target (col sb :id)])
+                             rch (next-alias! st "rch")]
+                         (add-from! st [(closure-subquery st cmap layer-ids from) rch])
+                         (swap! st assoc :drive rch)
+                         (swap! st assoc-in [:keyed-junctions rch] [sa sb])
+                         (add-where! st [:= (col rch :src) (col sa :id)])
+                         (add-where! st [:= (col rch :rid) (col sb :id)]))))
       :source   (let [r (av a) s (av b)]
                   (add-where! st [:= (col r :source_span_id) (col s :id)]))
       :target   (let [r (av a) s (av b)]
@@ -751,7 +861,8 @@
         inner-cons (collect-entity-constraints inner)
         ;; the entity vars bound OUTSIDE this :not (correlated when re-stated in it)
         outer-vars (set (keys (:var->alias @outer-st)))
-        sub-st (atom (assoc @outer-st :from [] :where [] :scoped #{}))]
+        sub-st (atom (assoc @outer-st :from [] :where [] :scoped #{}
+                            :drive nil :outside outer-vars))]
     ;; existential (inner-only) vars get a table + scope here; correlated (outer)
     ;; vars are already in var->alias, so ensure-var! no-ops for them. (A nested
     ;; :not's own vars are handled by its recursive compile-not! call, not here.)
@@ -788,7 +899,7 @@
         :else (compile-rel! sub-st constraints c)))
     (anchor-relations! sub-st inner)
     (let [subq (cond-> {:select [1] :where (into [:and] (:where @sub-st))}
-                 (seq (:from @sub-st)) (assoc :from (:from @sub-st)))]
+                 (seq (:from @sub-st)) (merge (from-clause sub-st)))]
       (add-where! outer-st [:not [:exists subq]]))
     ;; advance the outer alias counter past the subquery's, and record the inner
     ;; vars (scoped in the subquery) as scoped so the ACL assert is satisfied.
@@ -1234,14 +1345,14 @@
                 (doseq [link (:shorthand-links @st)]
                   (add-where! st (first-link-only st link))))
             select-kw (if elide? :select :select-distinct)]
-        (vary-meta {select-kw select :from (:from @st) :where (into [:and] (:where @st))}
+        (vary-meta (merge {select-kw select :where (into [:and] (:where @st))} (from-clause st))
                    assoc ::aggregate plan))
       (let [order-pairs (order-projection st (:order-by resolved))
             select (into (find-select st (:find resolved)) (map first) order-pairs)
             directive (mapv second order-pairs)
-            hq (cond-> {:select-distinct select
-                        :from (:from @st)
-                        :where (into [:and] (:where @st))}
+            hq (cond-> (merge {:select-distinct select
+                               :where (into [:and] (:where @st))}
+                              (from-clause st))
                  (:limit resolved) (assoc :limit (:limit resolved)))]
         (cond-> hq
           (seq directive) (vary-meta assoc ::order-by directive))))))
