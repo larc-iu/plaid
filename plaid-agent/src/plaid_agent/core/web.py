@@ -28,6 +28,7 @@ page's links to PDFs are listed after its text and may be opened next.
 import ipaddress
 import re
 import socket
+import time
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from typing import Callable, List, Optional, Set
@@ -46,6 +47,10 @@ MAX_BODY_BYTES = 2_000_000   # read this much of a page, then extract and trunca
 # tens of megabytes with its fonts and figures, and a scan is more, which has
 # no text to read anyway.
 MAX_PDF_BYTES = 100_000_000
+# The longest a PDF's download may take, in seconds. FETCH_TIMEOUT_S bounds
+# each wait for bytes, so without this a server sending a trickle could hold
+# the turn for as long as it liked.
+PDF_DOWNLOAD_S = 120
 MAX_RESULTS = 10
 READABLE_TYPES = ('text/html', 'text/plain', 'application/xhtml+xml')
 PDF_TYPES = ('application/pdf', 'application/x-pdf')
@@ -301,11 +306,14 @@ def _read_pdf(r, seen: str) -> bytes:
     if declared > MAX_PDF_BYTES:
         raise WebError(f'{seen} is a PDF of {declared / 1_000_000:.0f} MB, over the {limit} this tool reads.')
     chunks, size = [], 0
+    deadline = time.monotonic() + PDF_DOWNLOAD_S
     for chunk in r.iter_bytes():
         chunks.append(chunk)
         size += len(chunk)
         if size > MAX_PDF_BYTES:
             raise WebError(f'{seen} is a PDF over the {limit} this tool reads.')
+        if time.monotonic() > deadline:
+            raise WebError(f'{seen} is a PDF that took longer than {PDF_DOWNLOAD_S} seconds to download.')
     return b''.join(chunks)
 
 

@@ -392,8 +392,76 @@ def test_a_pdf_whose_text_is_over_the_file_limit_is_refused(monkeypatch):
     w.web.offer(['https://repo.example/g.pdf'])
     from plaid_agent.igt.toolkit import call_tool
     out = call_tool(w, 'read_url', {'url': 'https://repo.example/g.pdf'})
-    assert 'whose text is 0.0 MB, over the 0 MB a file in this conversation may hold' in out
+    assert 'is a PDF whose text is over the 0.0005 MB a file in this conversation may hold' in out
     assert not w.keeper.refs
+
+
+def test_reading_stops_as_soon_as_the_text_is_over_the_limit():
+    with pytest.raises(pdftext.PdfTooLong, match='over the 0.0005 MB'):
+        pdftext.extract(fixture('sample.pdf'), max_text_bytes=500)
+
+
+# --- PDFium in a process of its own ---------------------------------------------------
+
+def test_several_pdfs_read_at_once_each_come_out_whole():
+    # PDFium is not safe on two threads at once, and the service answers
+    # several requests at once. Each read has a process of its own.
+    from concurrent.futures import ThreadPoolExecutor
+    data = fixture('sample.pdf')
+    with ThreadPoolExecutor(4) as pool:
+        got = list(pool.map(lambda _: pdftext.extract(data), range(4)))
+    assert all(g.text == SAMPLE.text and g.sections == SAMPLE.sections for g in got)
+
+
+def test_a_pdf_that_takes_too_long_is_given_up():
+    with pytest.raises(pdftext.PdfError, match='took longer than 0 seconds'):
+        pdftext.extract(fixture('sample.pdf'), timeout=0.001)
+
+
+def test_a_reader_that_dies_is_said_and_the_service_goes_on(monkeypatch):
+    # What a PDF that crashes PDFium looks like from here: the process ends
+    # with nothing said.
+    monkeypatch.setattr(sys, 'executable', '/bin/false')
+    with pytest.raises(pdftext.PdfError, match='The PDF reader stopped on it'):
+        pdftext.extract(fixture('sample.pdf'))
+
+
+def test_progress_is_told_page_by_page():
+    seen = []
+    pdftext.extract(fixture('sample.pdf'), on_page=lambda done, total: seen.append((done, total)))
+    assert seen == [(n, SAMPLE.pages) for n in range(1, SAMPLE.pages + 1)]
+
+
+def test_a_download_that_trickles_is_given_up(monkeypatch):
+    from plaid_agent.core import web
+    monkeypatch.setattr(web, 'PDF_DOWNLOAD_S', -1)
+    resolving(monkeypatch, {'repo.example': '93.184.216.35'})
+    resp = httpx.Response(200, headers={'content-type': 'application/pdf'}, content=fixture('sample.pdf'))
+    client = httpx.Client(transport=httpx.MockTransport(lambda r: resp), follow_redirects=False)
+    with pytest.raises(WebError, match='took longer than -1 seconds to download'):
+        fetch('https://repo.example/g.pdf', CFG, client=client)
+
+
+def test_a_long_section_of_a_web_pdf_says_where_to_go_on_and_fences_its_title():
+    from plaid_agent.core.limits import MAX_RESULT_CHARS
+    long = ('=== # 9 Complex predicates ===\n=== page 1 ===\n'
+            + '\n'.join(f'ia sofa punit ia namnamin {i}' for i in range(4000))
+            + '\n=== # 10 Clause coordination ===\n=== page 2 ===\nend\n')
+    w = Ws(attached_pdf(long, source='https://repo.example/g.pdf'))
+    out = filetools.t_read_file(w, name='grammar.pdf', section='9')
+    assert len(out) <= MAX_RESULT_CHARS and '[truncated' not in out
+    assert 'Continue with start_line=' in out and '(this section ends at line 4,005)' in out
+    # The PDF's own title is the web's text, so it is inside the fence.
+    before_fence = out.split('untrusted text from the web begins')[0]
+    assert 'Complex predicates' not in before_fence
+    assert 'Complex predicates' in out and w.read_untrusted
+
+
+def test_a_web_pdfs_pages_named_in_a_refusal_are_fenced():
+    w = Ws(attached_pdf(source='https://repo.example/g.pdf'))
+    with pytest.raises(ToolError) as e:
+        filetools.t_read_file(w, name='grammar.pdf', page='999')
+    assert 'untrusted text from the web begins' in str(e.value) and 'has no page 999' in str(e.value)
 
 
 def test_a_pdf_served_as_bytes_of_no_stated_kind_is_still_a_pdf(monkeypatch):
@@ -476,6 +544,51 @@ def test_a_turn_that_fails_after_fetching_leaves_nothing_stored(monkeypatch):
         raise RuntimeError('the model went away')
 
     monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    helper = Helper()
+    _service().process_request(_request(client), helper)
+    assert helper.errors
+    assert client.user_data.list('u@x', prefix='igt:assistant:p1:file:') == []
+
+
+def test_a_turn_whose_reply_is_dropped_takes_back_what_it_stored(monkeypatch):
+    # The user stopped and sent again while the turn ran: the reply is not
+    # written, and nothing else names the file it stored.
+    from test_service_flow import Helper, _request, _seed, _service
+    from plaid_agent.core import service as service_mod
+    from plaid_agent.core.agent import TurnResult
+
+    client = FakeClient()
+    store = _seed(client, request_id='r1')
+
+    def fake_run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text=None):
+        ws.keeper.keep(ws.files, 'g.pdf', SAMPLE.text, source='https://r.example/g.pdf')
+        conv, meta = store.load('c1')
+        store.save('c1', conv, {**meta, 'pending': {'kind': 'turn', 'request_id': 'r2'}})
+        return TurnResult('Read.', [{'role': 'assistant', 'content': 'Read.'}], [])
+
+    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    helper = Helper(request_id='r1')
+    _service().process_request(_request(client), helper)
+    assert client.user_data.list('u@x', prefix='igt:assistant:p1:file:') == []
+
+
+def test_a_turn_whose_reply_the_store_refuses_takes_back_what_it_stored(monkeypatch):
+    from test_service_flow import Helper, _request, _seed, _service
+    from plaid_agent.core import service as service_mod
+    from plaid_agent.core.agent import TurnResult
+
+    client = FakeClient()
+    _seed(client)
+
+    def fake_run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text=None):
+        ws.keeper.keep(ws.files, 'g.pdf', SAMPLE.text, source='https://r.example/g.pdf')
+        return TurnResult('Read.', [{'role': 'assistant', 'content': 'Read.'}], [])
+
+    def refuse(*a, **k):
+        raise ValueError('too large')
+
+    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    monkeypatch.setattr(ConversationStore, 'save', refuse)
     helper = Helper()
     _service().process_request(_request(client), helper)
     assert helper.errors

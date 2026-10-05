@@ -620,8 +620,9 @@ class BaseAssistantService(BaseService):
         done = prune({'messages': transcript + turn.messages, 'display': earlier + [item]},
                      record_budget(client), self.transcript_budget(model, overhead))
         try:
-            self._write(store, conv_id, done,
-                        build_meta(meta, conv_id, done, self.service_id, model, version=self.version), request_id)
+            written = self._write(store, conv_id, done,
+                                  build_meta(meta, conv_id, done, self.service_id, model, version=self.version),
+                                  request_id)
         except Exception as e:  # noqa: BLE001 - the answer is in hand; say so rather than lose it
             # This write is the LAST thing a turn does, and it sat outside the
             # try that catches everything else, so a refused save (too large,
@@ -634,6 +635,9 @@ class BaseAssistantService(BaseService):
                 said = ('The answer is ready, but saving the conversation got no answer. '
                         'It is below, and this turn may not be in the record.')
             else:
+                # The reply that names what this turn stored is not in the
+                # record, so nothing would ever read or delete it.
+                ws.keeper.discard()
                 said = (f'The answer is ready but the conversation could not be saved: '
                         f'{requester_message(e, secrets=self.REQUEST_SECRETS).rstrip(".")}. '
                         f'It is below, and this turn is not in the record.')
@@ -642,6 +646,11 @@ class BaseAssistantService(BaseService):
                                       'citations': item['citations'], 'steps': turn.steps,
                                       'steps_summary': turn.summary})
             return
+        if not written:
+            # The conversation moved on (stopped, resent or deleted), so the
+            # reply was dropped, and with it the only reference to what this
+            # turn stored.
+            ws.keeper.discard()
         response_helper.progress(100, 'Done')
         response_helper.complete({'kind': 'turn', 'message': turn.text, 'plan': item['plan'],
                                   'citations': item['citations'], 'steps': turn.steps, 'steps_summary': turn.summary})

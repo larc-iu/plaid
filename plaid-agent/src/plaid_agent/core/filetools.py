@@ -217,6 +217,10 @@ def t_read_file(ws, name: str = None, start_line: int = None, limit: int = None,
             first, last, what = (pdftext.page_span(lines, page) if page
                                  else pdftext.section_span(lines, section))
         except ValueError as e:
+            if a.source:
+                # The pages and titles it names are the PDF's, from the web.
+                from .webtools import WARNING, fenced
+                raise ToolError(f'"{a.name}", from {a.source}: {WARNING}\n{fenced(f"{e}.")}')
             raise ToolError(f'"{a.name}": {e}.')
         # A page or a section is shown whole unless asked otherwise: what was
         # asked for is all of it, and the result's budget cuts it if need be.
@@ -227,12 +231,20 @@ def t_read_file(ws, name: str = None, start_line: int = None, limit: int = None,
     if start > total:
         return f'"{a.name}" has {total:,} lines, so there is nothing at line {start}.'
     end = min(total, span_end, start + count - 1)
-    header = (f'"{a.name}", {described(a)}. '
-              + (f'{what[0].upper()}{what[1:]}, lines {start:,}–{span_end:,}. ' if what else ''))
+    # What was asked for names the PDF's own titles and page numbers, which
+    # for a file from the web go inside the fence with the rest of its text.
+    said = f'{what[0].upper()}{what[1:]}, lines {start:,}–{span_end:,}. ' if what else ''
+    header = f'"{a.name}", {described(a)}. ' + ('' if a.source else said)
     # As many whole lines as the result can carry, so a long page is cut at a
     # line and the model is told where to go on, rather than truncated.
     width = len(str(end))
-    room = MAX_RESULT_CHARS - len(header) - 200
+    # Room is left for the line saying where to go on, and for a file from
+    # the web, its address, the warning and the fence: past MAX_RESULT_CHARS
+    # the result is cut, and that line with it.
+    room = MAX_RESULT_CHARS - len(header) - len(said) - 200
+    if a.source:
+        from .webtools import WARNING, fenced
+        room -= len(a.source) + len(WARNING) + len(fenced(''))
     shown = []
     for i in range(start, end + 1):
         row = f'{i:>{width}}  {lines[i - 1]}'
@@ -248,10 +260,10 @@ def t_read_file(ws, name: str = None, start_line: int = None, limit: int = None,
     if a.source:
         # Text from the web, wherever it is stored: fenced and labelled as the
         # web tools fence theirs, and a turn that reads it cannot plan.
-        from .webtools import WARNING, fenced
         ws.read_untrusted = True
+        inner = f'{said.strip()}\n{body}' if said else body
         return truncate(f'{header}Lines {start:,}–{end:,} of {total:,}, from {a.source}. {WARNING}\n'
-                        f'{fenced(body)}{more}')
+                        f'{fenced(inner)}{more}')
     return truncate(f'{header}Lines {start:,}–{end:,} of {total:,}:\n{body}{more}')
 
 

@@ -158,20 +158,22 @@ def read_pdf(ws, page) -> str:
     known = ws.files.from_source(page.url)
     if known is None:
         ws.on_progress(f'Reading the PDF {page.filename}…')
+        too_long = WebError(f'{page.url} is a PDF whose text is over the {MAX_FILE_BYTES / 1_000_000:g} MB '
+                            'a file in this conversation may hold. Say so, and ask the user for the '
+                            'part they mean.')
         try:
-            got = pdftext.extract(page.pdf, on_page=lambda done, total: (
+            got = pdftext.extract(page.pdf, max_text_bytes=MAX_FILE_BYTES, on_page=lambda done, total: (
                 ws.on_progress(f'Reading the PDF {page.filename}: page {done} of {total}…')
                 if done % 25 == 0 else None))
+        except pdftext.PdfTooLong:
+            raise too_long
         except pdftext.PdfError as e:
             raise WebError(f'{page.url}: {e}')
         if got.scan:
             raise WebError(f'{page.url} is a PDF with no text in it: a scan, or pictures of pages. '
                            'It cannot be read. Say so rather than guessing at what it contains.')
-        size = len(got.text.encode('utf-8'))
-        if size > MAX_FILE_BYTES:
-            raise WebError(f'{page.url} is a PDF whose text is {size / 1_000_000:.1f} MB, over the '
-                           f'{MAX_FILE_BYTES // 1_000_000} MB a file in this conversation may hold. '
-                           'Say so, and ask the user for the part they mean.')
+        if len(got.text.encode('utf-8')) > MAX_FILE_BYTES:
+            raise too_long
         try:
             known = keeper.keep(ws.files, page.filename, got.text, source=page.url)
         except Exception as e:  # noqa: BLE001 - the store's refusal, said as one line

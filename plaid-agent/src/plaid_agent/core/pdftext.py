@@ -439,9 +439,110 @@ def _sections(doc) -> List[Tuple[int, str, int]]:
     return out
 
 
-def extract(data: bytes, on_page=None) -> PdfText:
-    """The text of a PDF, laid out and marked. Raises :class:`PdfError`.
-    ``on_page(done, total)`` is told as pages are read, for progress."""
+class PdfTooLong(PdfError):
+    """A PDF whose text is over the most a stored file may hold."""
+
+
+#: The longest one PDF may take to read, in seconds. A grammar of a thousand
+#: pages takes well under a minute.
+EXTRACT_TIMEOUT_S = 180
+
+
+def extract(data: bytes, on_page=None, max_text_bytes: int = 0,
+            timeout: float = EXTRACT_TIMEOUT_S) -> PdfText:
+    """The text of a PDF, laid out and marked. Raises :class:`PdfError`, and
+    :class:`PdfTooLong` as soon as the text passes ``max_text_bytes`` (UTF-8,
+    0 for no limit). ``on_page(done, total)`` is told as pages are read.
+
+    PDFium runs in a process of its own, for three reasons. It is not safe to
+    call from two threads at once, and the service answers several requests
+    at once. A damaged or hostile PDF can crash it, which must not take the
+    service down with it. And one can keep it busy for as long as it likes,
+    so the process is killed after ``timeout`` seconds.
+    """
+    import json
+    import os
+    import queue
+    import subprocess
+    import sys
+    import tempfile
+    import threading
+    import time
+
+    with tempfile.TemporaryDirectory(prefix='plaid-pdf-') as tmp:
+        path = os.path.join(tmp, 'in.pdf')
+        with open(path, 'wb') as fh:
+            fh.write(data)
+        proc = subprocess.Popen([sys.executable, '-m', __name__, path, str(int(max_text_bytes or 0))],
+                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL)
+        lines: 'queue.Queue' = queue.Queue()
+
+        def pump():
+            for line in proc.stdout:
+                lines.put(line)
+            lines.put(None)
+
+        threading.Thread(target=pump, name='pdf-reader', daemon=True).start()
+        deadline = time.monotonic() + timeout
+        result = None
+        try:
+            while True:
+                try:
+                    line = lines.get(timeout=max(0.0, deadline - time.monotonic()))
+                except queue.Empty:
+                    raise PdfError(f'It took longer than {int(timeout)} seconds to read, so it was '
+                                   'given up (the file may be damaged).')
+                if line is None:
+                    break
+                try:
+                    msg = json.loads(line)
+                except ValueError:
+                    continue
+                if 'page' in msg and on_page is not None:
+                    on_page(*msg['page'])
+                elif 'ok' in msg or 'error' in msg:
+                    result = msg
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+            proc.wait()
+            proc.stdout.close()
+    if result is None:
+        raise PdfError('The PDF reader stopped on it, so it cannot be read (the file may be damaged).')
+    if 'error' in result:
+        raise (PdfTooLong if result.get('too_long') else PdfError)(result['error'])
+    got = result['ok']
+    return PdfText(text=got['text'], pages=got['pages'],
+                   sections=[tuple(s) for s in got['sections']], empty=got['empty'], scan=got['scan'])
+
+
+def _main(argv: Sequence[str]) -> int:
+    """The reading process: the PDF at ``argv[0]``, its text held to
+    ``argv[1]`` bytes. Writes one JSON line per page read, then one with the
+    text or the error."""
+    import json
+    import sys
+
+    def say(msg):
+        sys.stdout.write(json.dumps(msg) + '\n')
+        sys.stdout.flush()
+
+    with open(argv[0], 'rb') as fh:
+        data = fh.read()
+    try:
+        got = _extract_here(data, on_page=lambda done, total: say({'page': [done, total]}),
+                            max_text_bytes=int(argv[1]))
+    except PdfError as e:
+        say({'error': str(e), 'too_long': isinstance(e, PdfTooLong)})
+        return 0
+    say({'ok': {'text': got.text, 'pages': got.pages, 'sections': got.sections,
+                'empty': got.empty, 'scan': got.scan}})
+    return 0
+
+
+def _extract_here(data: bytes, on_page=None, max_text_bytes: int = 0) -> PdfText:
+    """:func:`extract` in this process."""
     try:
         import pypdfium2 as pdfium
         import pypdfium2.raw as raw
@@ -457,6 +558,7 @@ def extract(data: bytes, on_page=None) -> PdfText:
         total = len(doc)
         pages: List[str] = []
         labels: List[str] = []
+        size = 0
         for i in range(total):
             page = doc[i]
             try:
@@ -467,6 +569,11 @@ def extract(data: bytes, on_page=None) -> PdfText:
                     textpage.close()
             finally:
                 page.close()
+            if max_text_bytes:
+                size += len(pages[-1].encode('utf-8')) + 1
+                if size > max_text_bytes:
+                    raise PdfTooLong(f'Its text is over the {max_text_bytes / 1_000_000:g} MB a file '
+                                     'in this conversation may hold.')
             try:
                 labels.append(doc.get_page_label(i) or '')
             except Exception:  # noqa: BLE001 - no label is the PDF's own count
@@ -705,3 +812,8 @@ def contents(lines: Sequence[str], limit: int = 60) -> List[str]:
 
 def page_count(lines: Sequence[str]) -> int:
     return sum(1 for m in markers(lines) if m.kind == 'page')
+
+
+if __name__ == '__main__':  # pragma: no cover - run by extract() in a process of its own
+    import sys
+    sys.exit(_main(sys.argv[1:]))
