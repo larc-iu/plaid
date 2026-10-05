@@ -138,6 +138,7 @@ export const chrome = {
         class="igt-pager__btn"
         ?disabled=${disabled}
         title=${title}
+        aria-label=${title}
         @click=${(e) => {
           e.stopPropagation();
           this._setPage(target, where === 'bottom');

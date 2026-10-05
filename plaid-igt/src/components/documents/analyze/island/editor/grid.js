@@ -586,6 +586,7 @@ export const grid = {
         data-vocab-opener=${id}
         data-pop-opener=${`vocab:${id}`}
         title="Link to a lexicon entry"
+        aria-label=${`Link ${formText ?? ''} to a lexicon entry`}
         @click=${openerClick}
       >
         link
@@ -600,6 +601,7 @@ export const grid = {
         data-vocab-opener=${id}
         data-pop-opener=${`vocab:${id}`}
         title="Analyze every word spelled like this one, like this one"
+        aria-label=${`Analyze every ${formText ?? ''} like this one`}
         @click=${openerClick}
       >
         analyze
