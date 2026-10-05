@@ -19,7 +19,9 @@
   Guardrails: id/entity results default to `default-limit` rows when no `:limit`
   is given and are hard-capped at `hard-cap`; the envelope carries `:truncated`
   when the (effective) limit was reached. `:count` is capped at `count-cap`.
-  Every query's SQL execution is bounded by `*query-timeout-ms*` (408 on overrun).
+  Every query answers within `*query-timeout-ms*` of its arrival: its wait for a
+  turn in the heavy-query queue (503 when none comes), its wait for a pooled
+  connection and its SQL run all count against that one deadline (408 on overrun).
 
   Errors propagate as `ex-info` with a `:code` (400 author error / 500 compiler
   bug) for the REST layer to map to an HTTP status."
@@ -131,45 +133,69 @@
    :document document/get :text text/get :link vocab-link/get})
 
 (def ^:dynamic *query-timeout-ms*
-  "Wall-clock ceiling for a single query's SQL execution. A query past this is
-  aborted (SQLite `interrupt()`) and reported as a 408. SQLite ignores JDBC
-  `setQueryTimeout` for CPU-bound work, so we use a watchdog + connection
-  interrupt, which IS reliable. Dynamic so tests/operators can rebind it."
+  "Wall-clock ceiling for a single query, from its arrival: the wait for a
+  heavy-query turn, the wait for a pooled connection and the SQL run together.
+  A query past it is aborted (SQLite `interrupt()`) and reported as a 408. The
+  clients wait a little longer than this (35 s), so the 408 reaches them.
+  SQLite ignores JDBC `setQueryTimeout` for CPU-bound work, so we use a
+  watchdog + connection interrupt, which IS reliable. Dynamic so
+  tests/operators can rebind it."
   30000)
+
+(defn- deadline-from-now [] (+ (System/currentTimeMillis) *query-timeout-ms*))
+
+(defn- ms-left [deadline] (max 0 (- deadline (System/currentTimeMillis))))
+
+(defn- time-limit-error []
+  (ex-info (str "Query exceeded the " (quot *query-timeout-ms* 1000)
+                "s time limit — narrow it with more selective clauses or a tighter :scope.")
+           {:code 408 :query-error/stage :exec}))
+
+(defn- connection-by
+  "A pooled connection, or a 408 when none comes before `deadline`. A
+  connection that comes after it is closed again, back to the pool."
+  [db deadline]
+  (let [p (future (jdbc/get-connection db))
+        conn (try (deref p (ms-left deadline) ::late)
+                  (catch java.util.concurrent.ExecutionException e (throw (or (.getCause e) e))))]
+    (when (= conn ::late)
+      (future (try (.close ^java.sql.Connection @p) (catch Throwable _)))
+      (throw (time-limit-error)))
+    conn))
 
 (defn- run-bounded
   "Run `(f conn)` on a dedicated pooled connection, aborting via SQLite's
-  `interrupt()` if it overruns `query-timeout-ms`. Returns `(f conn)`'s value, or
-  throws a 408 `ex-info` on timeout. Any other SQL error propagates as its cause."
-  [db f]
-  (with-open [conn (jdbc/get-connection db)]
-    (let [sqlite (.unwrap conn SQLiteConnection)
-          ndb (.getDatabase sqlite)
-          _ (register-regexp! sqlite)            ; make REGEXP() available for this query
-          done (atom false)
-          worker (promise)
-          fut (future (deliver worker (Thread/currentThread))
-                      (try (f conn)
+  `interrupt()` if it is still running at `deadline` (by default
+  `*query-timeout-ms*` from now). Returns `(f conn)`'s value, or throws a 408
+  `ex-info` on timeout. Any other SQL error propagates as its cause."
+  ([db f] (run-bounded db f (deadline-from-now)))
+  ([db f deadline]
+   (with-open [conn (connection-by db deadline)]
+     (let [sqlite (.unwrap conn SQLiteConnection)
+           ndb (.getDatabase sqlite)
+           _ (register-regexp! sqlite)            ; make REGEXP() available for this query
+           done (atom false)
+           worker (promise)
+           fut (future (deliver worker (Thread/currentThread))
+                       (try (f conn)
                            ;; clear any interrupt before this pooled thread is
                            ;; reused (the watchdog may have set it)
-                           (finally (reset! done true) (Thread/interrupted))))
-          watchdog (future (Thread/sleep *query-timeout-ms*)
-                           (when-not @done
+                            (finally (reset! done true) (Thread/interrupted))))
+           watchdog (future (Thread/sleep (ms-left deadline))
+                            (when-not @done
                              ;; abort SQLite's VM AND interrupt the worker thread,
                              ;; so a runaway Java regex (which SQLite's interrupt
                              ;; can't reach) is killed via interruptible-cs too.
-                             (.interrupt ndb)
-                             (.interrupt ^Thread @worker)))]
-      (try
-        @fut
-        (catch java.util.concurrent.ExecutionException e
-          (let [cause (.getCause e)]
-            (if (and cause (re-find #"(?i)interrupt" (str (.getMessage cause))))
-              (throw (ex-info (str "Query exceeded the " (quot *query-timeout-ms* 1000)
-                                   "s time limit — narrow it with more selective clauses or a tighter :scope.")
-                              {:code 408 :query-error/stage :exec}))
-              (throw cause))))
-        (finally (future-cancel watchdog))))))
+                              (.interrupt ndb)
+                              (.interrupt ^Thread @worker)))]
+       (try
+         @fut
+         (catch java.util.concurrent.ExecutionException e
+           (let [cause (.getCause e)]
+             (if (and cause (re-find #"(?i)interrupt" (str (.getMessage cause))))
+               (throw (time-limit-error))
+               (throw cause))))
+         (finally (future-cancel watchdog)))))))
 
 ;; --- The heavy-query queue ------------------------------------------------
 ;; A counting query (an aggregate, or `return count`) walks everything its
@@ -190,22 +216,26 @@
   (java.util.concurrent.Semaphore. heavy-query-permits true))
 
 (def ^:dynamic *heavy-query-wait-ms*
-  "How long a counting query waits for its turn before the server gives up on
-  it with a 503. Past the client's own 30 s timeout nobody is waiting for the
-  answer any more. Dynamic so tests can shorten it."
+  "The longest a counting query waits for its turn before the server gives up
+  on it with a 503. The wait counts against the query's own deadline
+  (`*query-timeout-ms*`), so it is never longer than what is left of that.
+  Dynamic so tests can shorten it."
   30000)
 
 (defn- run-heavy
   "`run-bounded`, after waiting for one of the `heavy-query-permits`. A query
-  that does not get one within `*heavy-query-wait-ms*` is refused with 503,
-  which both clients retry."
-  [db f]
-  (if (.tryAcquire heavy-queries (long *heavy-query-wait-ms*) java.util.concurrent.TimeUnit/MILLISECONDS)
-    (try
-      (run-bounded db f)
-      (finally (.release heavy-queries)))
-    (throw (ex-info "The server is busy with other large queries. Try again in a moment."
-                    {:code 503 :query-error/stage :queue}))))
+  that does not get one within `*heavy-query-wait-ms*`, or before its
+  `deadline`, is refused with 503. The clients do not retry a query's 503: the
+  queue is full, and the person is told the server is busy."
+  ([db f] (run-heavy db f (deadline-from-now)))
+  ([db f deadline]
+   (if (.tryAcquire heavy-queries (long (min *heavy-query-wait-ms* (ms-left deadline)))
+                    java.util.concurrent.TimeUnit/MILLISECONDS)
+     (try
+       (run-bounded db f deadline)
+       (finally (.release heavy-queries)))
+     (throw (ex-info "The server is busy with other large queries. Try again in a moment."
+                     {:code 503 :query-error/stage :queue})))))
 
 (defn- find-cols
   "Column names for the result envelope: `:find` var names without the `?`."
@@ -294,7 +324,8 @@
      :truncated bool}
   or, for `:return :count`,  {:return :count :count N}."
   [db user-id raw]
-  (let [branches (ast/expand raw)
+  (let [deadline (deadline-from-now)
+        branches (ast/expand raw)
         head (first branches)
         find-vars (:find head)
         return-type (:return head)
@@ -308,7 +339,7 @@
       (let [plan (qc/aggregate-plan (first hqs))
             lim (min (or (:limit head) agg-group-cap) agg-group-cap)
             {:keys [hq read-kws labels]} (aggregate-query hqs plan (inc lim))
-            rows (run-heavy db (fn [conn] (psc/q conn hq)))
+            rows (run-heavy db (fn [conn] (psc/q conn hq)) deadline)
             truncated? (> (count rows) lim)
             rows (vec (take lim rows))]
         {:return :aggregate
@@ -318,7 +349,7 @@
          :truncated truncated?})
 
       (= return-type :count)
-      (let [n (:n (run-heavy db (fn [conn] (psc/q1 conn (count-query hqs)))))]
+      (let [n (:n (run-heavy db (fn [conn] (psc/q1 conn (count-query hqs))) deadline))]
         {:return :count
          :count (min n count-cap)
          :truncated (> n count-cap)})
@@ -330,7 +361,8 @@
             rows (run-bounded db (fn [conn]
                                    (psc/q conn
                                           (assemble hqs (inc lim) order)
-                                          {:uuid-cols (set col-kws)})))
+                                          {:uuid-cols (set col-kws)}))
+                              deadline)
             truncated? (> (count rows) lim)
             rows (vec (take lim rows))
             id-results (mapv (fn [row] (mapv #(get row %) col-kws)) rows)

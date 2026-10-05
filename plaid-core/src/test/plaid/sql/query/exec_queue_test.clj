@@ -92,3 +92,42 @@
                                :parameters {:body (aggregate-body tokl)}})]
             (is (= 503 (:status resp)))
             (is (re-find #"busy" (-> resp :body :error)))))))))
+
+;; REV-R4-UD R1: one deadline covers the queue, the connection and the run, so
+;; core always answers within `*query-timeout-ms*` and the clients' 35 s wait
+;; sees core's own 408 or 503. Before, the run's 30 s started only once the
+;; query had a turn and a connection.
+
+(defn- code-and-ms [f]
+  (let [t0 (System/currentTimeMillis)
+        code (try (f) nil (catch clojure.lang.ExceptionInfo e (:code (ex-data e))))]
+    [code (- (System/currentTimeMillis) t0)]))
+
+(deftest the-wait-for-a-turn-counts-against-the-query-deadline
+  (let [{:keys [tokl]} (build!)]
+    (with-every-permit-taken
+      (fn []
+        (binding [qe/*query-timeout-ms* 300
+                  qe/*heavy-query-wait-ms* 30000]
+          (let [[code ms] (code-and-ms #(qe/run db "admin@example.com" (aggregate-body tokl)))]
+            (is (= 503 code) "no turn before the deadline is the queue's 503")
+            (is (< ms 2000) "refused at the query's deadline, not after the queue's own wait")))))))
+
+(deftest a-run-after-a-wait-gets-only-what-is-left-of-the-deadline
+  (.acquire permits permit-count)
+  (let [released (future (Thread/sleep 400) (.release permits permit-count))]
+    (try
+      (binding [qe/*query-timeout-ms* 600]
+        (let [[code ms] (code-and-ms #(#'qe/run-heavy db (fn [_] (Thread/sleep 5000) :done)))]
+          (is (= 408 code))
+          (is (< ms 900) (str "stopped at the deadline from its arrival, after " ms " ms"))))
+      (finally @released)))
+  (is (= permit-count (.availablePermits permits))))
+
+(deftest the-wait-for-a-connection-counts-against-the-query-deadline
+  (let [slow (reify javax.sql.DataSource
+               (getConnection [_] (Thread/sleep 1500) (.getConnection ^javax.sql.DataSource db)))]
+    (binding [qe/*query-timeout-ms* 200]
+      (let [[code ms] (code-and-ms #(#'qe/run-bounded slow (fn [_] :done)))]
+        (is (= 408 code) "no connection before the deadline is the time limit")
+        (is (< ms 1000))))))

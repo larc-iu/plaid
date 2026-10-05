@@ -1085,9 +1085,15 @@ distinct tuples of the `find` variables.
 There is no cursor yet; to page a large result, add more selective clauses or query
 per project. `count` is bounded separately (above).
 
-Every query is also bounded by a 30-second time limit; a query that exceeds it
-is aborted with HTTP 408. If you hit it, the pattern is too broad: add a more
-selective clause or tighten `scope`.
+Every query is also bounded by a 30-second time limit, counted from its arrival: a
+counting query's wait for its turn (below), the wait for a database connection
+and the run itself all count. A query past it is aborted with HTTP 408. If you
+hit it, the pattern is too broad: add a more selective clause or tighten `scope`.
+The clients wait 35 seconds for a query, so the 408 reaches them.
+
+A counting query (`return: "count"` or an aggregate) waits for one of a few turns
+before it runs. One that gets no turn within its time limit is refused with HTTP
+503, and the clients do not retry it.
 
 Two structural limits bound the pattern itself: an `or` / `seq` expansion of more
 than 128 branches is rejected, as is clause nesting deeper than
