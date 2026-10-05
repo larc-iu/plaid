@@ -135,6 +135,9 @@ class IgtProject:
     # The project's own annotation manual. Loaded with the project because the
     # prompt names it every turn; see plaid_agent.core.guidelines.
     guidelines: List[Guideline] = dataclasses.field(default_factory=list)
+    # "Tokenize new text" on the word layer (``igt.tokenizeNewText``): the text
+    # a plan adds gets words (``new_words.py``). On unless set to false.
+    tokenize_new_text: bool = True
 
     def field(self, name: str) -> Field:
         """Case-insensitive field lookup by display name, falling back to the
@@ -295,6 +298,7 @@ def load_project(client, project_id: str) -> IgtProject:
         fields=fields,
         orthographies=[o['name'] for o in (_igt(word.get('config'), 'orthographies') or [])],
         ignored_cfg=_igt(word.get('config'), 'ignoredTokens'),
+        tokenize_new_text=_igt(word.get('config'), 'tokenizeNewText') is not False,
         vocabs=[_vocab_entry(v) for v in (p.get('vocabs') or [])],
         document_metadata=[m['name'] for m in metadata],
         metadata_tagsets=metadata_tagsets,
@@ -854,6 +858,22 @@ def split_sentences(text: str) -> List[tuple]:
     return out
 
 
+# JavaScript's ``\s`` (and what its ``trim`` strips), which the editor's
+# tokenizer reads. Python's ``str.isspace`` differs at the edges: it takes the
+# information separators U+001C to U+001F and U+0085, and not U+FEFF.
+_JS_SPACE = frozenset('\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006'
+                      '\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff')
+
+
+def is_js_space(c: str) -> bool:
+    """Whitespace as the editor's tokenizer reads it (JavaScript's)."""
+    return c in _JS_SPACE
+
+
+def _blank(text: str, b: int, e: int) -> bool:
+    return all(c in _JS_SPACE for c in text[b:e])
+
+
 def split_words(text: str, begin: int, end: int, cfg) -> List[tuple]:
     """(begin, end) word ranges inside one sentence: whitespace and break
     characters separate words; break characters are not tokens (they stay in
@@ -863,23 +883,23 @@ def split_words(text: str, begin: int, end: int, cfg) -> List[tuple]:
     cur = begin
     while i < end:
         c = text[i]
-        if c.isspace() or _is_break_char(c, cfg):
-            if i > cur and text[cur:i].strip():
+        if c in _JS_SPACE or _is_break_char(c, cfg):
+            if i > cur and not _blank(text, cur, i):
                 out.append(_trimmed(text, cur, i))
             i += 1
-            while i < end and text[i].isspace():
+            while i < end and text[i] in _JS_SPACE:
                 i += 1
             cur = i
         else:
             i += 1
-    if cur < end and text[cur:end].strip():
+    if cur < end and not _blank(text, cur, end):
         out.append(_trimmed(text, cur, end))
     return out
 
 
 def _trimmed(text, b, e):
-    while b < e and text[b].isspace():
+    while b < e and text[b] in _JS_SPACE:
         b += 1
-    while e > b and text[e - 1].isspace():
+    while e > b and text[e - 1] in _JS_SPACE:
         e -= 1
     return (b, e)

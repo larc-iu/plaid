@@ -1497,8 +1497,8 @@ def _entry_links_now(client, project, op) -> List[str]:
 
 def create_document(client, project, name: str, text: str, metadata: Dict[str, Any], new_id):
     """Document + baseline text + sentence and word tokens, tokenized as the
-    editor would (one sentence per line, words split on whitespace and
-    punctuation). Each is made under an id from ``new_id()`` (a :class:`Minter`),
+    editor would (one sentence per line, and the words a Baseline save gives a
+    first text, ``new_words.py``). Each is made under an id from ``new_id()`` (a :class:`Minter`),
     and one an earlier run of the plan made is taken as made. Returns the new
     document id."""
     doc_id = new_id()
@@ -1523,7 +1523,8 @@ def _seed_text(client, project, doc_id: str, text: str, new_id) -> str:
     ``_line_starts`` says), and the last runs to the end of the text. A bulk
     create is one layer, so the sentences and the words are two, in one
     batch."""
-    from .project import split_sentences, split_words
+    from .new_words import project_new_words
+    from .project import split_sentences
     text_id = new_id()
     new_id.once(lambda: client.texts.create(project.text_layer_id, doc_id, text, id=text_id))
     lines = split_sentences(text)
@@ -1535,7 +1536,7 @@ def _seed_text(client, project, doc_id: str, text: str, new_id) -> str:
                   'id': new_id()} for b, e in zip(starts, ends)]
     words = [{'token_layer_id': project.word_layer_id, 'text': text_id, 'begin': wb, 'end': we,
               'id': new_id()}
-             for b, e in lines for wb, we in split_words(text, b, e, project.ignored_cfg)]
+             for wb, we in project_new_words(project, '', [(0, 0, text)], [])]
     def tokens():
         with client.batched() as batch:
             batch.tokens.bulk_create(sentences)
@@ -1567,45 +1568,34 @@ def _line_starts(body: str, begin: int, end: int) -> List[int]:
     return out
 
 
-def _gaps(ranges: List[tuple], begin: int, end: int) -> List[tuple]:
-    """Sub-ranges of [begin, end) no range in ``ranges`` covers."""
-    out = []
-    cur = begin
-    for b, e in sorted(ranges):
-        if e <= cur:
-            continue
-        if b >= end:
-            break
-        if b > cur:
-            out.append((cur, b))
-        cur = max(cur, e)
-    if cur < end:
-        out.append((cur, end))
-    return out
-
-
 def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
     """Replace body[begin:end] (verified to still read ``old``) with ``new``
     as edits at their place (``texts.edit`` with the digest of the body read),
     so no word outside the region can be taken for the one changed, then give
     the edited region the sentence boundaries its line starts call for and
-    word tokens for whatever text in it is untokenized, as the editor's
-    baseline save plus its tokenizer would. What it creates is made under ids
-    from ``new_id()``."""
+    the words a Baseline save gives the text it types (``new_words.py``: the
+    project's "Tokenize new text", none when it is off). What it creates is
+    made under ids from ``new_id()``."""
+    from plaid_client import gaps_to_ops
+    from .new_words import project_new_words
     from .project import find_layer
-    from .project import split_words
     doc_id, text_id, new = op['document_id'], op.get('text_id'), op['new']
     if not text_id:
         _seed_text(client, project, doc_id, new, new_id)
         return
     raw = client.documents.get(doc_id, include_body=True)
-    tl, _ = find_layer(raw.get('text_layers'), project.word_layer_id)
+    tl, read_words = find_layer(raw.get('text_layers'), project.word_layer_id)
     body = ((tl or {}).get('text') or {}).get('body') or ''
     b, e = op['begin'], op['end']
     if body[b:e] != op['old']:
         raise ValueError(f'the text no longer reads "{op["old"][:40]}" at {b}-{e}; the document changed since the plan was made')
     new_body = body[:b] + new + body[e:]
-    client.texts.edit(text_id, _region_edits(op['old'], new, b), None,
+    gaps = _region_gaps(op['old'], new, b)
+    # Measured on the body read, before the server places its words on the
+    # new one, as the Baseline save measures them.
+    planned = project_new_words(project, body, gaps,
+                                [(t['begin'], t['end']) for t in (read_words or {}).get('tokens') or []])
+    client.texts.edit(text_id, gaps_to_ops(gaps), None,
                       base=((tl or {}).get('text') or {}).get('digest'), versioned=True)
     region_end = b + len(new)
 
@@ -1629,27 +1619,32 @@ def _write_text_edit(client, project, op: Dict[str, Any], new_id) -> None:
         sents.extend([(sb, p, sid), (p, se, made)])
         sents.sort()
     words = [(t['begin'], t['end']) for t in (word_layer or {}).get('tokens') or []]
-    creates = []
-    for gb, ge in _gaps(words, b, region_end):
-        # A gap never straddles a sentence boundary (those sit after whitespace).
-        creates.extend({'token_layer_id': project.word_layer_id, 'text': text_id, 'begin': wb, 'end': we,
-                        'id': new_id()}
-                       for wb, we in split_words(new_body, gb, ge, project.ignored_cfg))
+    # A planned word over one the server placed is left out (the app's save
+    # goes again without its words then). A word never straddles a sentence
+    # boundary: those sit after whitespace.
+    creates = [{'token_layer_id': project.word_layer_id, 'text': text_id, 'begin': wb, 'end': we,
+                'id': new_id()}
+               for wb, we in planned if not any(ob < we and wb < oe for ob, oe in words)]
     if creates:
         new_id.once(lambda: client.tokens.bulk_create(creates), whole=True)
 
 
-def _region_edits(old: str, new: str, at: int) -> List[Dict[str, Any]]:
-    """Running edit ops (code points, as Python strings index) that make
-    ``new`` of ``old``, which stands at ``at`` in the body: each stretch that
-    changed, found by a diff of the region alone, so the letters the two share
-    stay where they were and the words over them keep their tokens."""
+def _region_gaps(old: str, new: str, at: int) -> List[Dict[str, Any]]:
+    """The gaps (``{start, end, value}``, code points of the body, as Python
+    strings index) that make ``new`` of ``old``, which stands at ``at`` in the
+    body: each stretch that changed, found by a diff of the region alone, so
+    the letters the two share stay where they were and the words over them
+    keep their tokens."""
     import difflib
-    from plaid_client import gaps_to_ops
-    gaps = [{'start': at + i1, 'end': at + i2, 'value': new[j1:j2]}
+    return [{'start': at + i1, 'end': at + i2, 'value': new[j1:j2]}
             for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, old, new, autojunk=False).get_opcodes()
             if tag != 'equal']
-    return gaps_to_ops(gaps)
+
+
+def _region_edits(old: str, new: str, at: int) -> List[Dict[str, Any]]:
+    """``_region_gaps`` as running edit ops."""
+    from plaid_client import gaps_to_ops
+    return gaps_to_ops(_region_gaps(old, new, at))
 
 
 def summarize(ops: List[Dict[str, Any]]) -> str:

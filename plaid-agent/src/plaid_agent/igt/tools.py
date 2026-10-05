@@ -24,8 +24,9 @@ from ..core.tools import ToolError
 
 from .plan import ANALYSIS, KIND, TEXT_SHAPE, WORD_SHAPE, analysed_morphemes, reshaped_subjects
 from .project import (IgtDoc, Sentence, Word, Morpheme, Link, parse_ref, resolve, mwe_ref, REVIEWABLE,
-                      join_morphemes, segmentation, split_sentences, split_words, word_ref)
+                      join_morphemes, segmentation, split_sentences, word_ref)
 from .lexview import morph_type
+from .new_words import project_new_words
 from .reads import t_plan_status
 from .workspace import Workspace, _need, _refs, _sentence_of, _words_of
 
@@ -686,8 +687,8 @@ def t_set_document_metadata(ws: Workspace, document: str, field: str, value: str
 
 
 def t_create_document(ws: Workspace, name: str, text: str, metadata: Optional[dict] = None) -> str:
-    """PLAN: a new document from raw text. One sentence per line; words are
-    split on whitespace and punctuation the way the editor's tokenizer does."""
+    """PLAN: a new document from raw text. One sentence per line, and the words
+    a Baseline save gives a first text (``new_words.py``)."""
     name = (name or '').strip()
     if not name:
         raise ToolError('name must not be empty')
@@ -703,7 +704,7 @@ def t_create_document(ws: Workspace, name: str, text: str, metadata: Optional[di
             raise ToolError(f'No document metadata field "{k}". Fields: ' + (', '.join(ws.project.document_metadata) or '(none)'))
         meta[n] = '' if v is None else str(v)
     sents = split_sentences(text)
-    words = sum(len(split_words(text, b, e, ws.project.ignored_cfg)) for b, e in sents)
+    words = len(project_new_words(ws.project, '', [(0, 0, text)], []))
     ws.add_op({'kind': 'create_document', 'name': name, 'text': text, 'metadata': meta,
                'label': f'New document "{name}": {len(sents)} sentence{"s" if len(sents) != 1 else ""}, {words} words'})
     return ws.planned_note(1) + f' ({len(sents)} sentences, {words} words will be tokenized.)'

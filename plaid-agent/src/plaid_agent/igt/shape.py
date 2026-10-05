@@ -19,7 +19,8 @@ from plaid_client.constraints import value_set_allows
 from ..core.args import whole
 from ..core.tools import ToolError
 from .plan import reshaped_subjects
-from .project import Sentence, Word, resolve, split_sentences, split_words, word_ref
+from .new_words import project_new_words
+from .project import Sentence, Word, resolve, split_sentences, word_ref
 from .tools import (reshape_guards, refuse_comment_and_text_edit, refuse_shape_and_analysis)
 from .workspace import Workspace, _need, _refs
 
@@ -311,7 +312,8 @@ def t_append_text(ws: Workspace, document: str, text: str) -> str:
     _guard_text_edit(ws, doc.text_id, at, at, f'{ws.doc_label(doc.id)}: append')
     sep = '' if not doc.body or doc.body.endswith('\n') else '\n'
     sents = split_sentences(text)
-    words = sum(len(split_words(text, b, e, ws.project.ignored_cfg)) for b, e in sents)
+    words = len(project_new_words(ws.project, doc.body, [(at, at, sep + text)],
+                                  [(w.begin, w.end) for st in doc.sentences for w in st.words]))
     ws.add_op({'kind': 'edit_text', 'document_id': doc.id, 'text_id': doc.text_id, 'sentence_id': None,
                'begin': at, 'end': at, 'old': '', 'new': sep + text, 'word_ids': [], 'morpheme_ids': [],
                'label': f'{ws.doc_label(doc.id)}: append {len(sents)} sentence{"s" if len(sents) != 1 else ""} '
