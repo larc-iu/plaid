@@ -615,6 +615,22 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
     });
   });
 
+  // Attaching, a sentence's record is replaced by what the file says of it,
+  // and a triple between two constants is shown only where a record lists it.
+  // One the record lists and the file leaves out stays listed: the document
+  // has it, and dropping it from the list would leave it stored and shown
+  // nowhere, exports included.
+  if (existing) {
+    const live = new Set(existingConstantTriples.values());
+    (existing.records || []).forEach(({ sentence, own, record }) => {
+      const list = own ? sentences[sentence - 1]?.triples : null;
+      if (!list || !Array.isArray(record?.triples)) return;
+      record.triples.forEach((id) => {
+        if (live.has(id) && !list.includes(id)) list.push(id);
+      });
+    });
+  }
+
   heldBy.forEach(({ count: n, kept }, index) => {
     const which = [...kept].sort((x, y) => x - y);
     const names =

@@ -283,3 +283,44 @@ test('an import is one operation of kind import, whoever calls it', async () => 
     { label: 'Import UMR document "english"', kind: 'import', ref: 'format:umr' },
   ]);
 });
+
+// N3-IMPORT-OVER-3: attaching a file onto a document that holds a triple
+// between two constants the file leaves out kept the relation stored and
+// dropped it from the sentence's record, so nothing showed it and no export
+// wrote it. The document wins: the record keeps listing it.
+describe('an attach onto a document with a triple between constants', () => {
+  const MODAL = { doc: '(s1s0 / sentence\n    :modal ((root :modal author)))' };
+  const holder = () => {
+    const raw = rawFromPlan(planImport(parseUmrFile(file(MODAL)).sentences, []));
+    const doc = new UmrDocument({ raw });
+    const [tripleId] = doc.graph.records[0].record.triples;
+    return { raw, doc, tripleId };
+  };
+
+  test('the file leaving it out keeps it listed in its sentence', () => {
+    const { doc, tripleId } = holder();
+    assert.ok(tripleId);
+    const plan = planImport(parseUmrFile(file({})).sentences, [], { existing: doc.graph });
+    assert.deepEqual(plan.sentences[0].triples, [tripleId]);
+    assert.equal(plan.triples.length, 0);
+  });
+
+  test('the file restating it lists it once', () => {
+    const { doc, tripleId } = holder();
+    const plan = planImport(parseUmrFile(file(MODAL)).sentences, [], { existing: doc.graph });
+    assert.deepEqual(plan.sentences[0].triples, [tripleId]);
+  });
+
+  test('the export still writes it after the record is replaced', () => {
+    const { raw, doc } = holder();
+    const plan = planImport(parseUmrFile(file({})).sentences, [], { existing: doc.graph });
+    // What the import writes onto the record: the file's lines and the list.
+    const after = structuredClone(raw);
+    const nodeLayer = after.textLayers[0].tokenLayers.find((tl) =>
+      tl.tokens.some((t) => t.id === doc.graph.records[0].id),
+    );
+    const record = nodeLayer.tokens.find((t) => t.id === doc.graph.records[0].id);
+    record.metadata.umr = { ...plan.sentences[0].meta, triples: plan.sentences[0].triples };
+    assert.match(new UmrDocument({ raw: after }).toUmr(), /:modal \(\(root :modal author\)\)/);
+  });
+});
