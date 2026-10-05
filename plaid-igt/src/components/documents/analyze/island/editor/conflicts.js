@@ -21,13 +21,18 @@ export const conflicts = {
   // The note under a cell that lost a conflict, or nothing. It has no `dir`
   // of its own: it hangs from the start of its cell, which is the right edge
   // in a right-to-left sentence, and "Yours" would make it left to right. The
-  // words are left to right and the value takes its own direction.
+  // words are left to right and the value takes its own direction. The hint
+  // after the value shows only while the cell has focus, where Enter does
+  // what it says, so the notes of neighbouring cells do not run over each
+  // other. A screen reader reads it all the same.
   _conflictNote(key) {
     const c = this.readOnly ? null : this._cells.conflictOf(key);
     if (!c) return nothing;
     const { before, value, after } = conflictNoteParts(c.typed);
     return html`<span class="igt-field-conflict" role="status" id=${noteId(this._cells, key)}
-      ><span dir="ltr">${before}<bdi>${value}</bdi>${after}</span></span
+      ><span dir="ltr"
+        >${before}<bdi>${value}</bdi><span class="igt-field-conflict__hint">${after}</span></span
+      ></span
     >`;
   },
 
