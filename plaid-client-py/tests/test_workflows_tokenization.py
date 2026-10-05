@@ -662,3 +662,55 @@ def test_a_machine_stamped_token_alone_is_not_in_the_way():
     doc['text_layers'][0]['token_layers'][1]['tokens'][0]['metadata'] = dict(MACHINE_MADE)
     _, counts = _run(doc, TWO)
     assert counts['sentences_created'] == 2
+
+
+def _with_graph(doc, edge_metadata, *, keeps_within=True):
+    """``doc`` with another app's graph: a root layer of nodes over 'Hello'
+    and 'there', and an edge between them, kept inside one sentence by
+    ``same-ancestor`` over the sentence layer (or not)."""
+    rules = {'umr': [{'type': 'same-ancestor', 'token_layer': 'sentence-layer'}]} if keeps_within else {}
+    doc['text_layers'][0]['token_layers'].append({
+        'id': 'node-layer', 'name': 'Nodes', 'parent_token_layer': None,
+        'tokens': [{'id': 'n0', 'begin': 0, 'end': 5}, {'id': 'n1', 'begin': 6, 'end': 11}],
+        'span_layers': [{'id': 'concept-layer', 'spans': [
+            {'id': 'c0', 'tokens': ['n0'], 'value': 'hello'},
+            {'id': 'c1', 'tokens': ['n1'], 'value': 'there'}],
+            'relation_layers': [{'id': 'edge-layer', 'constraints': rules, 'relations': [
+                {'id': 'e1', 'source': 'c0', 'target': 'c1', 'value': ':ARG0',
+                 'metadata': edge_metadata}]}]}],
+    })
+    return doc
+
+
+def _reset(doc):
+    client = _FakeClient(doc)
+    TokenProcessor().process_tokens(
+        client, 'd1', _two_sentences(), [TokenSpan(text='Hello', start=0, end=5)],
+        'word-layer', 'sentence-layer', _Helper(), text_layer_id='text-layer')
+    return client
+
+
+def test_a_reset_refuses_to_cut_a_human_edge_across_its_new_break():
+    # The nodes are nested in no sentence, so the reset does not delete them.
+    # Core's same-ancestor rule deletes the edge between them once the new
+    # break leaves its ends in two sentences, in the reset's own transaction.
+    # A real core lost it with nothing asked (D7-FAKES).
+    doc = _with_graph(_document('Hello there.', sentences=[(0, 12)], words=[]), {})
+    with pytest.raises(ValueError) as caught:
+        _reset(doc)
+    assert 'Re-tokenizing would delete 1 human-made' in str(caught.value)
+
+
+def test_a_machine_edge_across_the_break_is_not_in_the_way():
+    doc = _with_graph(_document('Hello there.', sentences=[(0, 12)], words=[]),
+                      {'prov': 'inferred', 'provSource': 'service:x'})
+    client = _reset(doc)
+    assert any(c[0] == 'bulk_delete' for c in client.calls)
+
+
+def test_an_edge_no_rule_keeps_in_one_sentence_is_not_counted():
+    doc = _with_graph(_document('Hello there.', sentences=[(0, 12)], words=[]), {},
+                      keeps_within=False)
+    client = _reset(doc)
+    assert any(c[0] == 'bulk_delete' for c in client.calls)
+

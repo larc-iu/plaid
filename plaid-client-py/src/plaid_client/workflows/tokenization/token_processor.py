@@ -186,10 +186,19 @@ class TokenProcessor:
             # or human-verified material is not, so refuse unless the caller
             # explicitly opted into overwriting.
             reset_loss = self._delete_loss(text_layer, sentence_layer, sentence_ids_to_delete)
+            # The new breaks also cut every relation a layer keeps inside one
+            # sentence whose ends they leave in two (core's same-ancestor
+            # rule, in the same transaction): another app's graph over nodes
+            # that are nested in no sentence survives the reset, its edges
+            # across the breaks do not.
+            cut = self._partition_cut_loss(text_layer, sentence_layer, sentences_to_create,
+                                           sentence_ids_to_delete)
+            reset_loss = {**reset_loss, 'total': reset_loss['total'] + cut['total'],
+                          'protected': reset_loss['protected'] + cut['protected']}
             if reset_loss['protected'] and not overwrite:
                 raise ValueError(
                     f"Re-tokenizing would delete {reset_loss['protected']} human-made or "
-                    f"human-verified annotation(s) on the sentence and the words in it. "
+                    f"human-verified annotation(s) in the sentence. "
                     f"Re-run with overwrite enabled to replace them."
                 )
         elif sentence_layer:
@@ -473,6 +482,76 @@ class TokenProcessor:
                     for rel in rl.get('relations', []) or []:
                         if rel.get('source') in dying_spans or rel.get('target') in dying_spans:
                             tally(rel.get('metadata'))
+        return loss
+
+    def _partition_cut_loss(self, text_layer: Dict, sentence_layer: Dict,
+                            new_sentences: List[Dict], deleting: List[str]) -> Dict[str, int]:
+        """The relations a new sentence partition deletes: those on a relation
+        layer that declares ``same-ancestor`` over the sentence layer whose
+        two ends lie in one sentence today, or in none, and in two of
+        ``new_sentences`` after. An end lies at the smallest begin of its
+        span's tokens and one in no sentence crosses nothing, as in core. A
+        relation on a span the reset deletes with its tokens is counted by
+        ``_delete_loss`` and left out here. The Python twin of plaid-ui's
+        ``countPartitionLoss``. Returns ``{'total', 'protected'}``."""
+        layers = text_layer.get('token_layers', []) or []
+        layer_id = sentence_layer['id']
+        begin_of = {t['id']: t['begin'] for tl in layers for t in tl.get('tokens') or []}
+        dying = set(deleting)
+        children = {}
+        for tl in layers:
+            if tl.get('parent_token_layer'):
+                children.setdefault(tl['parent_token_layer'], []).append(tl)
+        roots = [t for t in sentence_layer.get('tokens') or [] if t['id'] in dying]
+        queue = [layer_id]
+        while queue:
+            for child in children.get(queue.pop(0), []):
+                queue.append(child['id'])
+                for t in child.get('tokens') or []:
+                    if any(r['begin'] <= t['begin'] and t['end'] <= r['end'] for r in roots):
+                        dying.add(t['id'])
+
+        def holder(ranges):
+            def at(p):
+                if p is None:
+                    return None
+                return next((i for i, (b, e) in enumerate(ranges) if b <= p < e), None)
+            return at
+
+        now = holder([(t['begin'], t['end']) for t in sentence_layer.get('tokens') or []])
+        after = holder([(t['begin'], t['end']) for t in new_sentences])
+
+        def crosses(anc, a, b):
+            x, y = anc(a), anc(b)
+            return x is not None and y is not None and x != y
+
+        def keeps_within(rl):
+            for rules in (rl.get('constraints') or {}).values():
+                for c in rules if isinstance(rules, list) else []:
+                    if isinstance(c, dict) and c.get('type') == 'same-ancestor' and \
+                            (c.get('token_layer') or c.get('tokenLayer') or c.get('token-layer')) == layer_id:
+                        return True
+            return False
+
+        loss = {'total': 0, 'protected': 0}
+        for tl in layers:
+            for sl in tl.get('span_layers') or []:
+                spans = {sp['id']: sp for sp in sl.get('spans') or []}
+                for rl in sl.get('relation_layers') or []:
+                    if not keeps_within(rl):
+                        continue
+                    for rel in rl.get('relations') or []:
+                        ends = [spans.get(rel.get('source')), spans.get(rel.get('target'))]
+                        if any(sp and sp.get('tokens') and all(t in dying for t in sp['tokens'])
+                               for sp in ends):
+                            continue
+                        places = [min((begin_of[t] for t in (sp or {}).get('tokens') or []
+                                       if t in begin_of), default=None) for sp in ends]
+                        if crosses(now, *places) or not crosses(after, *places):
+                            continue
+                        loss['total'] += 1
+                        if is_protected(rel.get('metadata')):
+                            loss['protected'] += 1
         return loss
 
     def _split_cross_sentence_tokens(self, tokens: List[Dict], sentences: List[Dict]) -> List[Dict]:
