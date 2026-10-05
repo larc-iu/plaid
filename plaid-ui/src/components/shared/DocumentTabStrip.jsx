@@ -83,7 +83,11 @@ export const DocumentTabStrip = ({
       const heading = headingRef.current;
       const row = rowRef.current;
       if (!heading || !row) return;
-      setScrolledPast(heading.getBoundingClientRect().bottom <= row.getBoundingClientRect().top);
+      // At rest the heading sits just above the row too, so the row must
+      // also be pinned: at its sticky offset, under the app header.
+      const top = row.getBoundingClientRect().top;
+      const stickyTop = parseFloat(window.getComputedStyle(row).top) || 0;
+      setScrolledPast(top <= stickyTop + 0.5 && heading.getBoundingClientRect().bottom <= top);
     };
     const onScroll = () => {
       if (!frame) frame = window.requestAnimationFrame(check);

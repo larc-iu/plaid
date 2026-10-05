@@ -179,10 +179,14 @@ describe('DocumentTabStrip', () => {
 
 describe('the pinned row, once the heading has scrolled away', () => {
   // The page has no layout under test, so where the heading and the row
-  // stand is said outright: the heading's bottom against the row's top.
+  // stand is said outright, in the numbers measured on a real document page
+  // (igt, 2026-10-05): the app header is 57px, the row's sticky offset, and
+  // at rest the heading ends at 152 with the row 8px below it at 160.
   const place = (headingBottom, rowTop) => {
     const h1 = view.container.querySelector('h1');
     const row = view.container.querySelector('[data-testid="document-tab-row"]');
+    row.style.position = 'sticky';
+    row.style.top = '57px';
     h1.getBoundingClientRect = () => ({ bottom: headingBottom });
     row.getBoundingClientRect = () => ({ top: rowTop });
   };
@@ -191,18 +195,28 @@ describe('the pinned row, once the heading has scrolled away', () => {
       window.dispatchEvent(new Event('scroll'));
       await new Promise((r) => window.requestAnimationFrame(() => r()));
     });
+  const link = () => view.container.querySelector('[data-testid="tab-row-project"]');
 
   it('starts with a link back to the project, and only then', async () => {
     await mount({ document: { name: 'One' }, sticky: true });
-    place(200, 120);
+    // At the top of the page: the heading is in view, above the row.
+    place(152, 160);
     await scroll();
-    expect(view.container.querySelector('[data-testid="tab-row-project"]')).toBeNull();
+    expect(link()).toBeNull();
+    // Part way: the row is not pinned yet and the heading still shows.
+    place(90, 98);
+    await scroll();
+    expect(link()).toBeNull();
+    // The row has reached the header and the heading has gone up behind it.
     place(40, 57);
     await scroll();
-    const link = view.container.querySelector('[data-testid="tab-row-project"]');
-    expect(link.getAttribute('href')).toContain('/projects/p1');
+    expect(link().getAttribute('href')).toContain('/projects/p1');
     // Named, since a project can turn its tartan off and the link must still say where it goes.
-    expect(link.textContent).toBe('Ay');
+    expect(link().textContent).toBe('Ay');
+    // Back at the top it goes again.
+    place(152, 160);
+    await scroll();
+    expect(link()).toBeNull();
   });
 
   it('is never drawn on a strip that is not pinned', async () => {
