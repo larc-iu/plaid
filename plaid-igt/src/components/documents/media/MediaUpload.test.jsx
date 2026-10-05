@@ -1,6 +1,30 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { MediaUpload } from './MediaUpload.jsx';
+import { notifyError, notifyInfo } from '@/utils/feedback';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+vi.mock('@/utils/feedback', () => ({
+  notifyError: vi.fn(),
+  notifyInfo: vi.fn(),
+}));
+
+const fixtureFile = (name, as = name) =>
+  new File(
+    [
+      readFileSync(
+        path.join(
+          path.dirname(fileURLToPath(import.meta.url)),
+          '../../../domain/media/adpcm-fixtures',
+          name,
+        ),
+      ),
+    ],
+    as,
+    { type: 'audio/wav' },
+  );
 
 // The upload card shows the upload: the bytes as a bar with a count while
 // they go up, then a pulsing bar while the server checks and saves the file.
@@ -85,6 +109,62 @@ describe('MediaUpload', () => {
     await choose(audio, fileOf(120 * MB, 'rec.wav', 'audio/wav'));
     expect(audio.container.textContent).not.toContain('without the picture');
     await audio.unmount();
+  });
+
+  it('sends an ADPCM WAV as PCM, of the same name, and says so in one line', async () => {
+    notifyInfo.mockClear();
+    const onUpload = vi.fn();
+    const r = await renderComponent(<MediaUpload onUpload={onUpload} isUploading={false} />);
+    await choose(r, fixtureFile('ima-mono.wav', 'story.wav'));
+    expect(onUpload).toHaveBeenCalledTimes(1);
+    const sent = onUpload.mock.calls[0][0];
+    expect(sent.name).toBe('story.wav');
+    const bytes = new Uint8Array(await sent.arrayBuffer());
+    // A PCM WAV with libsndfile's samples.
+    expect(new DataView(bytes.buffer).getUint16(20, true)).toBe(1);
+    expect(bytes.length).toBe(fixtureFile('ima-mono.ref.wav').size);
+    expect(notifyInfo).toHaveBeenCalledWith('Converted story.wav from IMA ADPCM to PCM WAV.');
+    await r.unmount();
+  });
+
+  it('weighs the converted file against the limit, not the original', async () => {
+    const onUpload = vi.fn();
+    const original = fixtureFile('ms-mono.wav');
+    const r = await renderComponent(
+      <MediaUpload onUpload={onUpload} isUploading={false} maxBytes={original.size + 100} />,
+    );
+    await choose(r, original);
+    expect(onUpload).not.toHaveBeenCalled();
+    expect(buttonSaying(r.container, 'Upload as it is').disabled).toBe(true);
+    await r.unmount();
+  });
+
+  it('refuses a WAV coding it cannot convert, naming the file, and sends nothing', async () => {
+    notifyError.mockClear();
+    const onUpload = vi.fn();
+    const r = await renderComponent(<MediaUpload onUpload={onUpload} isUploading={false} />);
+    await choose(r, fixtureFile('gsm.wav', 'phone.wav'));
+    expect(onUpload).not.toHaveBeenCalled();
+    expect(notifyError).toHaveBeenCalledWith(
+      'phone.wav cannot be played in a browser (GSM 6.10 WAV).',
+    );
+    await r.unmount();
+  });
+
+  it('refuses any other file this browser cannot play', async () => {
+    notifyError.mockClear();
+    const onUpload = vi.fn();
+    const r = await renderComponent(
+      <MediaUpload
+        onUpload={onUpload}
+        isUploading={false}
+        prepareOptions={{ canPlay: async () => false }}
+      />,
+    );
+    await choose(r, fileOf(2 * MB, 'interview.amr', 'audio/amr'));
+    expect(onUpload).not.toHaveBeenCalled();
+    expect(notifyError).toHaveBeenCalledWith('interview.amr cannot be played in this browser.');
+    await r.unmount();
   });
 
   it('shows the conversion running, not the upload', async () => {

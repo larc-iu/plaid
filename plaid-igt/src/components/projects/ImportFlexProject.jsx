@@ -47,6 +47,7 @@ import { canManageVocabulary } from '@ui/domain/permissions.js';
 import { countOf } from '@ui/lib/plural.js';
 import { readTextFile } from '@ui/lib/textFile.js';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
+import { readyRecordings } from '@/utils/readyRecordings';
 
 // What differs between the two FieldWorks formats, on screen and in the
 // import record (`kind`, which also names the route a resume comes back to).
@@ -143,7 +144,8 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
         fileCount: 1,
         projectName: name,
         ir: parseFwdata(xml),
-        media: files.filter(isMediaFile),
+        // A recording no browser plays is refused here, an ADPCM WAV converted.
+        media: await readyRecordings(files.filter(isMediaFile)),
       };
     }
     const picked = files.filter((f) => /\.flextext$/i.test(f.name));
@@ -531,9 +533,10 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                 accept="audio/*,video/*"
                 multiple
                 className="hidden"
-                onChange={(e) => {
-                  const added = [...(e.target.files ?? [])].filter(isMediaFile);
+                onChange={async (e) => {
+                  const chosen = [...(e.target.files ?? [])].filter(isMediaFile);
                   e.target.value = '';
+                  const added = await readyRecordings(chosen);
                   // A file chosen again under a name already chosen replaces it.
                   setMediaFiles((prev) => [
                     ...prev.filter(

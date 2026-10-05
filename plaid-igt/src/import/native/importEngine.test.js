@@ -797,6 +797,47 @@ describe('runNativeImport (full archive)', () => {
     expect(last[2]).toMatchObject({ Source: 'notes', importDone: true });
   });
 
+  // A recording an earlier server stored as ADPCM, which no browser plays.
+  const adpcmFixture = (name) =>
+    new Uint8Array(
+      readFileSync(
+        path.join(
+          path.dirname(fileURLToPath(import.meta.url)),
+          '../../domain/media/adpcm-fixtures',
+          name,
+        ),
+      ),
+    );
+  async function runWithMedia(bytes) {
+    const archive = buildArchive();
+    archive.documents[0].mediaBytes = bytes;
+    const client = stubClient();
+    const sent = [];
+    client.documents.uploadMedia = async (id, file) => {
+      sent.push(file);
+      return {};
+    };
+    const result = await runNativeImport({ client, projectId: 'newp', archive });
+    return { client, result, sent };
+  }
+
+  it('uploads an ADPCM WAV from the archive as PCM, and says so', async () => {
+    const { result, sent } = await runWithMedia(adpcmFixture('ima-mono.wav'));
+    expect(sent).toHaveLength(1);
+    expect(sent[0].name).toBe('Doc One.wav');
+    expect(sent[0].size).toBe(adpcmFixture('ima-mono.ref.wav').length);
+    expect(result.warnings).toEqual(['Converted Doc One.wav from IMA ADPCM to PCM WAV.']);
+  });
+
+  it('leaves out a WAV no browser plays, says so, and still marks the document done', async () => {
+    const { client, result, sent } = await runWithMedia(adpcmFixture('gsm.wav'));
+    expect(sent).toHaveLength(0);
+    expect(result.warnings).toEqual([
+      '"Doc One": Doc One.wav cannot be played in a browser (GSM 6.10 WAV). Not uploaded.',
+    ]);
+    expect(client.calls.at(-1)[2]).toMatchObject({ importDone: true });
+  });
+
   it('writes autoAnalysis config from the schema', async () => {
     const { client } = await run();
     expect(callsOf(client, 'projects.setConfig')[0].slice(1)).toEqual([

@@ -20,6 +20,7 @@ import { recordProjectLanguages } from '../projectLanguages.js';
 import { createDocumentShell, resolveIgtTargets, setupDataFor } from '../project.js';
 import { IGT_NAMESPACE, readVocabFields } from '../../domain/igtConfig.js';
 import { mediaUploadFailure } from '../mediaUpload.js';
+import { convertedNote, prepareRecording } from '../../domain/media/playableRecording.js';
 
 const ITEM_SOURCE_KEY = 'cldfEntry';
 
@@ -358,10 +359,15 @@ async function importDocument({
     check();
     progress('Uploading media');
     try {
-      await client.documents.uploadMedia(
-        docId,
-        new File([doc.mediaBytes], doc.mediaName || 'media'),
-      );
+      // An ADPCM WAV goes up as PCM, and one no browser plays not at all.
+      const ready = await prepareRecording(new File([doc.mediaBytes], doc.mediaName || 'media'));
+      if (ready.refused) warnings?.push(`"${doc.name}": ${ready.refused} Not uploaded.`);
+      else {
+        if (ready.convertedFrom) {
+          warnings?.push(convertedNote([{ name: ready.file.name, from: ready.convertedFrom }]));
+        }
+        await client.documents.uploadMedia(docId, ready.file);
+      }
     } catch (err) {
       mediaFailed = true;
       warnings?.push(

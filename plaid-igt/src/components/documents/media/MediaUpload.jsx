@@ -5,6 +5,7 @@ import { Progress } from '@ui/components/ui/progress';
 import { formatBytes } from '@/utils/formatBytes';
 import { conversionNeed, conversionNote, estimateMp3Bytes } from '@/domain/media/transcodeToMp3';
 import { readDuration } from '@/domain/media/mediaDuration';
+import { readyRecordings } from '@/utils/readyRecordings';
 
 // The upload prompt, and the upload itself once a file is chosen: the bytes
 // going up as a bar with the count, then a pulsing bar while the server checks
@@ -18,6 +19,8 @@ export const MediaUpload = ({
   convertProgress = null,
   maxBytes = null,
   readOnly = false,
+  // prepareRecording's options, for a test to say what the browser plays.
+  prepareOptions = undefined,
 }) => {
   const inputRef = useRef(null);
   // A large file waits here for the choice between sending it and converting
@@ -49,7 +52,11 @@ export const MediaUpload = ({
   const overLimit = !!pending && conversionNeed(pending.size, maxBytes) === 'required';
   const smaller = Number.isFinite(seconds) && seconds > 0 ? estimateMp3Bytes(seconds) : null;
 
-  const choose = (file) => {
+  // A recording the browser cannot play is refused here, and an ADPCM WAV is
+  // swapped for its PCM decoding, before anything below sees its size.
+  const choose = async (picked) => {
+    if (!picked) return;
+    const [file] = await readyRecordings([picked], prepareOptions);
     if (!file) return;
     if (conversionNeed(file.size, maxBytes)) setPending(file);
     else onUpload(file);

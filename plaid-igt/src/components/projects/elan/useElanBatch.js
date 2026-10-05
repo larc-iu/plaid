@@ -12,6 +12,7 @@ import { readTextFile } from '@ui/lib/textFile.js';
 import { compareSchemas, validateBatch, ROLES, SCOPE_OF_ROLE } from '@/import/elan/schema';
 import { buildElanBatch, defaultFieldName, matchMediaFiles } from '@/import/elan/buildDocuments';
 import { fieldWorksFieldNames } from '@/import/elan/tierNaming';
+import { readyRecordings } from '@/utils/readyRecordings';
 
 const EAF = /\.eaf$/i;
 
@@ -45,7 +46,12 @@ const newFieldNames = (nodes, roles) => fieldWorksFieldNames(fieldTierEntries(no
  *   the tier's own name. It decides for the whole batch at once because some
  *   pairings only follow from the set (see suggestFieldNames).
  */
-export function useElanBatch({ skipEmptyTiers = false, namesFor = newFieldNames } = {}) {
+export function useElanBatch({
+  skipEmptyTiers = false,
+  namesFor = newFieldNames,
+  // prepareRecording's options, for a test to say what the browser plays.
+  prepareOptions = undefined,
+} = {}) {
   const [files, setFiles] = useState(null); // parsed .eaf objects
   const [mediaFiles, setMediaFiles] = useState([]);
   const [comparison, setComparison] = useState(null);
@@ -167,7 +173,9 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = newFieldNames 
    * takes instead of its own suggestions.
    */
   const readFiles = async (fileList, given = null) => {
-    const { eafs, media: picked } = partitionPicked(fileList);
+    const { eafs, media: chosen } = partitionPicked(fileList);
+    // A recording no browser plays is refused here, an ADPCM WAV converted.
+    const picked = chosen.length ? await readyRecordings(chosen, prepareOptions) : [];
     // Picking the same recording twice (choosing again, or dragging a folder
     // over one already staged) must not stage it twice: the second copy would
     // find its .eaf already claimed and sit there reading "no .eaf names this
@@ -179,7 +187,7 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = newFieldNames 
       });
     }
     if (!eafs.length) {
-      if (picked.length) return false; // media added to an existing batch
+      if (chosen.length) return false; // media added to an existing batch
       throw new Error('Choose one or more .eaf files.');
     }
     const parsed = [];

@@ -23,3 +23,11 @@ configureUi({
 // no-op, which is why this is here rather than in any one test file: what
 // needs it is whichever environment a test asks for.
 Element.prototype.scrollIntoView ??= () => {};
+
+// A test environment decodes no media, and its canPlayType answers "" for
+// every type, which would send each chosen recording to a load that never
+// finishes (domain/media/playableRecording.js). Here every type is playable,
+// and a test about a refusal passes its own `canPlay`.
+if (typeof HTMLMediaElement !== 'undefined') {
+  HTMLMediaElement.prototype.canPlayType = () => 'maybe';
+}

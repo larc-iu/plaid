@@ -56,6 +56,7 @@ import {
 } from '../../domain/igtConfig.js';
 import { createDocumentShell, resolveIgtTargets, setupDataFor } from '../project.js';
 import { humanizeError } from '@ui/lib/errors.js';
+import { convertedNote, prepareRecording } from '../../domain/media/playableRecording.js';
 
 const ITEM_SOURCE_KEY = 'nativeImportId';
 
@@ -888,7 +889,15 @@ async function importNativeDocument({
     check();
     progress('Uploading media');
     try {
-      await client.documents.uploadMedia(docId, new File([mediaBytes], mediaName || 'media'));
+      // An ADPCM WAV goes up as PCM, and one no browser plays not at all.
+      const ready = await prepareRecording(new File([mediaBytes], mediaName || 'media'));
+      if (ready.refused) warnings.push(`"${docData.name}": ${ready.refused} Not uploaded.`);
+      else {
+        if (ready.convertedFrom) {
+          warnings.push(convertedNote([{ name: ready.file.name, from: ready.convertedFrom }]));
+        }
+        await client.documents.uploadMedia(docId, ready.file);
+      }
     } catch (err) {
       mediaFailed = true;
       warnings.push(

@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { zipSync, strToU8 } from 'fflate';
 import { readCldfDataset } from './readDataset.js';
 import { buildCldfDocuments } from './buildDocuments.js';
@@ -594,5 +597,47 @@ describe('runCldfImport', () => {
     const res = await runCldfImport({ client, projectId: 'p1', build });
     expect(res.warnings.join(' ')).toMatch(/media upload failed/);
     expect(callsOf(client, 'documents.setMetadata')).toHaveLength(0);
+  });
+
+  const adpcmFixture = (name) =>
+    new Uint8Array(
+      readFileSync(
+        path.join(
+          path.dirname(fileURLToPath(import.meta.url)),
+          '../../domain/media/adpcm-fixtures',
+          name,
+        ),
+      ),
+    );
+
+  it('uploads an ADPCM WAV as PCM, and says so', async () => {
+    const client = stubClient();
+    const sent = [];
+    client.documents.uploadMedia = async (docId, file) => sent.push(file);
+    const build = fixtureBuild();
+    build.documents[0].mediaBytes = adpcmFixture('ms-stereo.wav');
+    build.documents[0].mediaName = 'a.wav';
+    const res = await runCldfImport({ client, projectId: 'p1', build });
+    expect(sent.map((f) => [f.name, f.size])).toEqual([
+      ['a.wav', adpcmFixture('ms-stereo.ref.wav').length],
+    ]);
+    expect(res.warnings).toContain('Converted a.wav from MS ADPCM to PCM WAV.');
+  });
+
+  it('leaves out a WAV no browser plays and finishes the document', async () => {
+    const client = stubClient();
+    const sent = [];
+    client.documents.uploadMedia = async (docId, file) => sent.push(file);
+    const build = fixtureBuild();
+    build.documents[0].mediaBytes = adpcmFixture('g721.wav');
+    build.documents[0].mediaName = 'a.wav';
+    const res = await runCldfImport({ client, projectId: 'p1', build });
+    expect(sent).toEqual([]);
+    expect(
+      res.warnings.some((w) =>
+        w.endsWith('a.wav cannot be played in a browser (G.721 ADPCM WAV). Not uploaded.'),
+      ),
+    ).toBe(true);
+    expect(callsOf(client, 'documents.setMetadata')).toHaveLength(1);
   });
 });

@@ -1,7 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { notifyError, notifyInfo } from '@/utils/feedback';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { useElanBatch } from './useElanBatch';
 import { ROLES } from '@/import/elan/schema';
+
+vi.mock('@/utils/feedback', () => ({ notifyError: vi.fn(), notifyInfo: vi.fn() }));
 
 // A resumed ELAN import runs against the tier mapping the first run was given.
 // Only one utterance root is ever suggested, so a corpus whose second speaker
@@ -206,6 +212,77 @@ describe('useElanBatch reading the files', () => {
     await expect(v.read().readFiles([file])).rejects.toThrow(
       'corpus.eaf is not UTF-8. Save it as UTF-8 and import it again.',
     );
+    await v.unmount();
+  });
+});
+
+// The recordings chosen with a batch are readied as they are chosen: an ADPCM
+// WAV, which no browser plays, is staged as its PCM decoding under the same
+// name, so it still pairs with the .eaf that names it, and a WAV coding that
+// cannot be converted is refused by name and never staged.
+describe('useElanBatch recordings', () => {
+  const fixture = (name, as) =>
+    new File(
+      [
+        readFileSync(
+          path.join(
+            path.dirname(fileURLToPath(import.meta.url)),
+            '../../../domain/media/adpcm-fixtures',
+            name,
+          ),
+        ),
+      ],
+      as,
+      { type: 'audio/wav' },
+    );
+  const named = (recording) =>
+    eaf(TWO_SPEAKERS).replace(
+      '<HEADER TIME_UNITS="milliseconds"/>',
+      `<HEADER TIME_UNITS="milliseconds"><MEDIA_DESCRIPTOR MEDIA_URL="file:///${recording}" MIME_TYPE="audio/x-wav" RELATIVE_MEDIA_URL="./${recording}"/></HEADER>`,
+    );
+
+  it('stages an ADPCM WAV as PCM, paired with its .eaf, and says so', async () => {
+    notifyInfo.mockClear();
+    const v = await mount();
+    const adpcm = fixture('ima-stereo.wav', 'story.wav');
+    await v.step(() => v.read().readFiles([new File([named('story.wav')], 'story.eaf'), adpcm]));
+    const [staged] = v.read().mediaFiles;
+    expect(staged.name).toBe('story.wav');
+    expect(staged).not.toBe(adpcm);
+    expect(staged.size).toBe(fixture('ima-stereo.ref.wav', 'x').size);
+    expect(v.read().media.byFile.get('story.eaf')).toBe(staged);
+    expect(notifyInfo).toHaveBeenCalledWith('Converted story.wav from IMA ADPCM to PCM WAV.');
+    await v.unmount();
+  });
+
+  it('refuses a WAV it cannot convert, by name, and stages the rest', async () => {
+    notifyError.mockClear();
+    const v = await mount();
+    await v.step(() =>
+      v
+        .read()
+        .readFiles([
+          new File([named('a.wav')], 'a.eaf'),
+          fixture('g721.wav', 'a.wav'),
+          fixture('pcm.wav', 'b.wav'),
+        ]),
+    );
+    expect(v.read().mediaFiles.map((f) => f.name)).toEqual(['b.wav']);
+    expect(notifyError).toHaveBeenCalledWith(
+      'a.wav cannot be played in a browser (G.721 ADPCM WAV).',
+    );
+    await v.unmount();
+  });
+
+  it('adds nothing and throws nothing when every recording added later is refused', async () => {
+    const v = await mount();
+    await v.step(() => v.read().readFiles(picked(TWO_SPEAKERS)));
+    let answer;
+    await v.step(async () => {
+      answer = await v.read().readFiles([fixture('gsm.wav', 'late.wav')]);
+    });
+    expect(answer).toBe(false);
+    expect(v.read().mediaFiles).toEqual([]);
     await v.unmount();
   });
 });
