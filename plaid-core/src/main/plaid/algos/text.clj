@@ -2412,24 +2412,25 @@
                            placed)
         made (into []
                    (mapcat (fn [[w {kp :keep :keys [pieces layer]}]]
-                             (distinct
-                              (for [p pieces
-                                    t (concat
-                                       (when (not= p kp)
-                                         (cons {:token/layer layer :token/begin (first p) :token/end (second p)}
-                                               (keep (fn [[[w2 l] ts]]
-                                                       (when (and (= w2 w) (not (shared (:token/id (first ts)))))
-                                                         {:token/layer l :token/begin (first p) :token/end (second p)}))
-                                                     under)))
+                             ;; one new token per token reaching over a cut,
+                             ;; even where two reach the same letters
+                             (for [p pieces
+                                   t (concat
+                                      (when (not= p kp)
+                                        (cons {:token/layer layer :token/begin (first p) :token/end (second p)}
+                                              (keep (fn [[[w2 l] ts]]
+                                                      (when (and (= w2 w) (not (shared (:token/id (first ts)))))
+                                                        {:token/layer l :token/begin (first p) :token/end (second p)}))
+                                                    under)))
                                        ;; the pieces of the tokens under it
                                        ;; reaching over a cut, on this part
-                                       (for [c placed
-                                             :let [pu (placed-under (:token/id c))]
-                                             :when (= w (:word pu))
-                                             [x y] (:others pu)
-                                             :when (and (<= (first p) x) (<= y (second p)))]
-                                         {:token/layer (:token/layer c) :token/begin x :token/end y}))]
-                                t))))
+                                      (for [c placed
+                                            :let [pu (placed-under (:token/id c))]
+                                            :when (= w (:word pu))
+                                            [x y] (:others pu)
+                                            :when (and (<= (first p) x) (<= y (second p)))]
+                                        {:token/layer (:token/layer c) :token/begin x :token/end y}))]
+                               t)))
                    splits)
         edge-moves (into {} (map (fn [[[ob _] {[x y] :keep}]] [ob [x y]])) splits)
         end-moves (into {} (map (fn [[[_ oe] {[x y] :keep}]] [oe [x y]])) splits)]

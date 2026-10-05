@@ -1030,16 +1030,16 @@
                                              home (or (first (filter (fn [[b e]] (and (<= kx b) (<= e ky))) reach)) (first reach))]
                                          [id [home (remove #(= % home) reach) layer]])))))
                            tokens)
-        want-made (sort (distinct
-                         (concat
-                          (mapcat (fn [[w ps]]
-                                    (for [piece ps :when (not= piece (moved w))
-                                          l (cons :w (keep (fn [[[w2 l] ts]] (when (and (= w2 w) (not (shared (:token/id (first ts))))) l)) under))]
-                                      [l (first piece) (second piece)]))
-                                  pieces-of)
+        ;; one new token per token reaching over a cut
+        want-made (sort (concat
+                         (mapcat (fn [[w ps]]
+                                   (for [piece ps :when (not= piece (moved w))
+                                         l (cons :w (keep (fn [[[w2 l] ts]] (when (and (= w2 w) (not (shared (:token/id (first ts))))) l)) under))]
+                                     [l (first piece) (second piece)]))
+                                 pieces-of)
                           ;; and the pieces of those shorter than it on the
                           ;; parts they reach
-                          (for [[_ [_ others l]] under-placed [b e] others] [l b e]))))
+                         (for [[_ [_ others l]] under-placed [b e] others] [l b e])))
         out (transient [])]
     (when (not= want-made (sort (map (juxt :token/layer :token/begin :token/end) (:made split))))
       (conj! out (str "made " (pr-str (:made split)) ", want " (pr-str want-made))))

@@ -677,6 +677,12 @@
         (is (= {:body "I ca n't go" :live {:s "I ca n't go" :w "n't" :ca "n't" :nt "n't"} :gone #{}
                 :made [[:w "ca"] [:x "ca"]]}
                (run body toks [(ins 4 " ")] {:children #{:x}})))))
+    (testing "two morphemes over the cut that overlap: each gets its own new piece (REV-FX6 F4)"
+      (let [body "singers"
+            toks [(t :s :s 0 7) (t :w :w 0 7) (t :m1 :m 2 7) (t :m2 :m 3 7)]]
+        (is (= {:body "sing ers" :live {:s "sing ers" :w "sing" :m1 "ng" :m2 "g"} :gone #{}
+                :made [[:w "ers"] [:m "ers"] [:m "ers"]]}
+               (run body toks [(ins 4 " ")] {:children #{:m}})))))
     (testing "a whole-body save alike"
       (let [r (ta/plain-body "singers" "sing ers" [(t :s :s 0 7) (t :w :w 0 7) (t :si :m 0 2) (t :ngers :m 2 7)]
                              #{:s} #{:w} {:split-on-space true :children #{:m}})]
