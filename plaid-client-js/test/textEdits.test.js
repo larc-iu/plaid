@@ -134,3 +134,21 @@ test('property: composed ops make the same body, gaps are sorted and apart, and 
     assert.deepEqual(composeTextEdits(body, composed), gaps, JSON.stringify({ body, ops }));
   }
 });
+
+// A whole text pasted in one run is longer than a spread's argument limit
+// (about 120,000 in V8), so the composer must not spread the typed run.
+test('a 300,000-character typed run composes into one gap', () => {
+  const unit = [...'abcdé𐌰 '];
+  const long = Array.from({ length: 300000 }, (_, i) => unit[i % unit.length]).join('');
+  assert.deepEqual(composeTextEdits('', [{ type: 'insert', index: 0, value: long }]), [
+    { start: 0, end: 0, value: long },
+  ]);
+  const body = 'old text';
+  assert.deepEqual(
+    composeTextEdits(body, [
+      { type: 'replace', index: 0, length: 8, value: long },
+      { type: 'insert', index: 300000, value: '!' },
+    ]),
+    [{ start: 0, end: 8, value: `${long}!` }],
+  );
+});

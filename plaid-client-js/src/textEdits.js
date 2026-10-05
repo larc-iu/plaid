@@ -144,7 +144,7 @@ export function composeTextEdits(body, ops) {
       close(seg.start);
       kept = seg.end;
     } else {
-      typed.push(...seg.chars);
+      for (const c of seg.chars) typed.push(c);
     }
   }
   close(old.length);
