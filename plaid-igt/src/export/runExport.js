@@ -40,7 +40,16 @@ import { buildContextRows } from '../components/projects/search/searchRunner.js'
 import { buildEafDocument } from './elan.js';
 import { serializeVocabTsv } from './vocabTsv.js';
 import { buildCldfDataset } from './cldf.js';
-import { buildLatexBook, formatChapter, latexSelection } from './latexBook.js';
+import {
+  buildLatexBook,
+  entryNumbers,
+  exampleNumbersOf,
+  formatChapter,
+  formatVocabulary,
+  latexSelection,
+  latexVocabulary,
+  linkedEntryIds,
+} from './latexBook.js';
 import {
   buildProjectFile,
   serializeVocabularyNative,
@@ -59,6 +68,9 @@ export class ExportCancelled extends Error {
 }
 
 const toJson = (obj) => JSON.stringify(obj, null, 2);
+
+// The project's language as a tag Intl.Collator can read, else null.
+const languageTag = (lang) => lang?.tag || lang?.iso639P3 || null;
 
 // A read is tried again after a dropped connection or a 502, 503 or 504, at
 // the client's own pacing for an answer that never came (1 s, 3 s, 9 s, each
@@ -347,8 +359,20 @@ export async function runExport({
   // carry no metadata at all: cf fell back to the citation form, undecorated,
   // which is exactly the match FLEx cannot make.
   const wantEntries = isFlex && preset.options?.citationForms !== false;
+  // A LaTeX book reads the vocabularies for its vocabulary chapter and for
+  // the entry numbers in its texts.
+  const latexVocab = isLatex ? latexVocabulary(preset.options, project.vocabs) : null;
+  const wantVocabChapter = !!latexVocab?.include && latexVocab.vocabularies.some((v) => v.on);
+  const wantLatexVocab = wantVocabChapter || !!latexVocab?.numbersInTexts;
   let vocabs = [];
-  if (wantVocabTsvs || isNative || wantCldfDictionary || wantLexicon || wantEntries) {
+  if (
+    wantVocabTsvs ||
+    isNative ||
+    wantCldfDictionary ||
+    wantLexicon ||
+    wantEntries ||
+    wantLatexVocab
+  ) {
     // A historical export carries the vocabularies as they were at the same
     // time as the documents.
     // The loader goes on past a vocabulary it cannot read, so each of its
@@ -416,6 +440,18 @@ export async function runExport({
   const inScope = new Set(docIds);
   const exampleDocIds = [...exampleTokensByDoc.keys()].filter((id) => !inScope.has(id));
   const exampleTexts = new Map();
+  // The book's vocabulary: the entries its texts link to, and the example
+  // number of each promoted example that is in the book.
+  const latexNumbers = latexVocab?.numbersInTexts ? entryNumbers(vocabs) : null;
+  const linkedIds = new Set();
+  const bookExamples = new Map();
+  const wantedExamples = new Set();
+  if (wantVocabChapter) {
+    const chosen = new Set(latexVocab.vocabularies.filter((v) => v.on).map((v) => v.id));
+    for (const ref of collectExampleRefs(vocabs.filter((v) => chosen.has(v.id)))) {
+      wantedExamples.add(exampleKey(ref.document, ref.token));
+    }
+  }
   const progressTotal = docIds.length + exampleDocIds.length;
 
   // Media archive names must be decided before each doc is serialized (the
@@ -486,6 +522,12 @@ export async function runExport({
     const name = igtDoc.document?.name || docIds[i];
     onProgress({ done: i, total: progressTotal, name });
 
+    if (wantVocabChapter) {
+      linkedEntryIds(igtDoc, linkedIds);
+      if (wantedExamples.size) {
+        exampleNumbersOf(igtDoc, docIds[i], i + 1, wantedExamples, bookExamples);
+      }
+    }
     const exampleTokens = exampleTokensByDoc.get(docIds[i]);
     if (exampleTokens) harvestExampleSentences(igtDoc, docIds[i], exampleTokens, exampleTexts);
 
@@ -534,7 +576,9 @@ export async function runExport({
         data: isCldf
           ? null
           : isLatex
-            ? formatChapter(igtDoc, latexSelection(preset.options || {}, layers))
+            ? formatChapter(igtDoc, latexSelection(preset.options || {}, layers), {
+                numbers: latexNumbers,
+              })
             : isNative
               ? toJson(
                   serializeDocumentNative(igtDoc, {
@@ -680,6 +724,15 @@ export async function runExport({
               : project.name || 'Texts',
           texts: docFiles.map((f) => ({ name: f.docName, tex: f.data })),
           projectConfig: project.config,
+          vocabulary: wantVocabChapter
+            ? formatVocabulary({
+                vocabularies: vocabs,
+                choice: latexVocab,
+                used: linkedIds,
+                exampleNumbers: bookExamples,
+                lang: languageTag(readLanguages(project.config).object),
+              })
+            : null,
         }),
       ),
       warnings,

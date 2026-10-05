@@ -1449,7 +1449,95 @@ describe('runExport: LaTeX book', () => {
     expect(text(entries, 'texts/001-alpha.tex')).toContain(
       '\\gla \\PlaidWord{hi} \\PlaidWord{yo} //',
     );
-    // No vocabulary is read: the book has no place for one.
+    // The vocabulary is read for its chapter, which lists nothing: no text
+    // links to an entry.
+    expect(client.calls.some((c) => c[0] === 'vocabLayers.get')).toBe(true);
+  });
+
+  // "perro yo" with perro linked to the entry i1, which has it as an example.
+  const linkedDoc = (id, name) => {
+    const doc = rawDoc(id, name, 'perro yo');
+    doc.textLayers[0].tokenLayers[0].vocabs = [
+      {
+        id: 'v1',
+        name: 'Lexicon',
+        vocabLinks: [
+          { id: `${id}-l`, tokens: [`${id}-w0`], vocabItem: { id: 'i1', form: 'perro' } },
+        ],
+      },
+    ];
+    return doc;
+  };
+  const LINKED_VOCAB = {
+    ...VOCAB,
+    items: [
+      {
+        id: 'i1',
+        form: 'perro',
+        metadata: { gloss: 'dog', examples: [{ document: 'd2', token: 'd2-w0' }] },
+      },
+      { id: 'i2', form: 'gato', metadata: { gloss: 'cat' } },
+      { id: 'i3', form: 'perro', metadata: { gloss: 'bitch' } },
+    ],
+  };
+  const withVocabulary = (vocabulary) => {
+    const preset = latexPreset();
+    return { ...preset, options: { ...preset.options, vocabulary } };
+  };
+
+  it('ends the book with the entries its texts use, and the examples that show them', async () => {
+    const docs = [rawDoc('d1', 'Alpha', 'hi'), linkedDoc('d2', 'Beta')];
+    const client = stubClient({ docs, vocab: LINKED_VOCAB });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: latexPreset(),
+      scope: { type: 'project' },
+    });
+    const entries = await unzipBlob(result.blob);
+    const vocabulary = text(entries, 'vocabulary.tex');
+    expect(vocabulary).toContain('\\chapter*{Vocabulary}');
+    // Both entries spelled perro, the homographs, are numbered as the vocabulary numbers them.
+    expect(vocabulary).toContain(
+      '\\PlaidEntry{\\PlaidEntryForm{perro}\\PlaidHomonym{1}}{\\PlaidEntryGloss{dog} \\PlaidEntryExamples{\\PlaidExampleRef{2}{1}}}',
+    );
+    expect(vocabulary).not.toContain('gato');
+    expect(vocabulary).not.toContain('bitch');
+    expect(text(entries, 'main.tex')).toContain('\\backmatter\n\\include{vocabulary}');
+    // The texts show no numbers unless asked.
+    expect(text(entries, 'texts/002-beta.tex')).toContain('\\gla \\PlaidWord{perro} ');
+  });
+
+  it('lists every entry when asked, and numbers the linked words in the texts', async () => {
+    const client = stubClient({ docs: [linkedDoc('d2', 'Beta')], vocab: LINKED_VOCAB });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: withVocabulary({ scope: 'all', numbersInTexts: true }),
+      scope: { type: 'project' },
+    });
+    const entries = await unzipBlob(result.blob);
+    const vocabulary = text(entries, 'vocabulary.tex');
+    expect(vocabulary.indexOf('{gato}')).toBeLessThan(vocabulary.indexOf('{perro}'));
+    expect(vocabulary).toContain(
+      '\\PlaidEntryForm{perro}\\PlaidHomonym{2}}{\\PlaidEntryGloss{bitch}}',
+    );
+    expect(text(entries, 'texts/001-beta.tex')).toContain(
+      '\\gla \\PlaidWord{perro\\PlaidHomonym{1}} \\PlaidWord{yo} //',
+    );
+  });
+
+  it('reads no vocabulary when the chapter and the numbers are off', async () => {
+    const client = stubClient({ docs: [linkedDoc('d2', 'Beta')], vocab: LINKED_VOCAB });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: withVocabulary({ include: false }),
+      scope: { type: 'project' },
+    });
+    const entries = await unzipBlob(result.blob);
+    expect(entries['vocabulary.tex']).toBeUndefined();
+    expect(text(entries, 'main.tex')).not.toContain('\\include{vocabulary}');
     expect(client.calls.some((c) => c[0] === 'vocabLayers.get')).toBe(false);
   });
 

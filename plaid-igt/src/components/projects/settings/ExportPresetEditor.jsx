@@ -197,6 +197,7 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
           <LatexOptions
             options={draft.options || {}}
             layers={layers}
+            vocabularies={project.vocabs || []}
             onChange={(options) => update({ options })}
           />
         ) : draft.format === 'plaid-igt-json' ? (

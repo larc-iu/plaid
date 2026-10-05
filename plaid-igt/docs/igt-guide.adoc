@@ -1156,11 +1156,25 @@ The list of abbreviations names every one the texts use, with the description it
 An abbreviation with neither is listed with a blank to fill in.
 A document written right to left is set right to left.
 
+With **Vocabulary chapter** on, the book ends with the project's vocabulary.
+It is on when the project has a vocabulary.
+**Entries** chooses between the entries the texts link to (**Used in the texts**) and every entry (**All**).
+A headword is listed with all its senses when the texts link to it or to any of them.
+Each vocabulary can be switched off, and each of its fields too.
+The chapter is called "Vocabulary", or, with more than one vocabulary, one chapter per vocabulary under its name.
+Headwords are in alphabetical order for the project's language, an affix such as `-s` under its letters, and headwords spelled alike in the order of their numbers.
+Each headword shows its form, its number as a subscript (kai₁), its gloss and fields, the numbers of the examples promoted to it that are in the book, and then each sense by its number.
+An example number such as 3.12 is the twelfth example of chapter 3, and it links to it in the PDF.
+**Entry numbers in the texts** writes the entry's number after each linked word and morpheme in the examples, as the vocabulary chapter writes it, so a reader finds the right one of the entries spelled alike.
+A morpheme's number is on the morpheme line, and a word's on the word line.
+A headword with no senses and no other headword spelled alike has no number, and shows none.
+
 The `.zip` holds:
 
 * `main.tex`: the book, with a marked place for front matter such as a title page, preface, and acknowledgments.
 * `abbreviations.tex`: the list of abbreviations.
 * `texts/`: one file per document.
+* `vocabulary.tex`: the vocabulary, when the book has one.
 * `latexmkrc` and `README.txt`: the compiler setting and how to compile.
 
 To make the book, unpack the `.zip` and compile `main.tex` with LuaLaTeX through latexmk:
@@ -1175,7 +1189,7 @@ An online LaTeX editor that compiles with latexmk takes the `.zip` as it is, wit
 
 The book uses the Charis SIL font, with a Noto font for any other script the texts are written in.
 A character no installed font has is left out, and the log says so.
-The look of each line, such as italic words, is set by the `+\Plaid...+` commands at the top of `main.tex`.
+The look of each line, such as italic words, is set by the `+\Plaid...+` commands at the top of `main.tex`, and so is the look of a vocabulary entry and of its number.
 
 To grab a single sentence instead, use **Copy as IGT** in the Analyze tab.
 

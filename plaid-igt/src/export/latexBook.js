@@ -9,6 +9,7 @@
 //   main.tex           preamble, title, table of contents, one \include per text
 //   abbreviations.tex  every gloss abbreviation the texts use
 //   texts/NNN-name.tex one chapter per document, in the order of the export
+//   vocabulary.tex     the entries the texts use, when the preset asks for it
 //   latexmkrc          makes latexmk (and so Overleaf) run LuaLaTeX
 //   README.txt         how to compile it
 //
@@ -27,9 +28,21 @@
 //
 // Pure functions: no DOM, no client.
 
-import { texCell, texGloss, texWord, wordCells } from '../domain/igtExport.js';
+import { morphFormOf, texCell, texGloss, texWord, wordCells } from '../domain/igtExport.js';
+import { joinerBetween } from '../domain/affixMarkers.js';
 import { texEscape, texLine } from '../domain/tex.js';
 import { readTagsets } from '../domain/tagsets.js';
+import { readVocabFields } from '../domain/igtConfig.js';
+import { FIELD_TYPES, exportedVocabFields, fieldLabel } from '../domain/vocabFields.js';
+import {
+  buildItemNumbers,
+  buildSenseTree,
+  descendantsOf,
+  exampleKey,
+  exampleRefs,
+  fieldsForItem,
+  refIds,
+} from '../domain/vocabDictionary.js';
 import { detectDirection, userMetadata, RTL } from '@ui/domain/textDirection.js';
 import { phraseSpeakerFor } from './flextext.js';
 
@@ -253,6 +266,37 @@ const plainCell = (macro, docDir) => (text) =>
 const glossCell = (macro, docDir) => (text, pieces) =>
   inScript(texWord((t) => texGloss(t, pieces))(text), texLine(text), docDir, macro);
 
+// An entry's dotted number (buildItemNumbers) as a subscript after its form,
+// kai₁, in the texts and in the vocabulary alike. Digits and dots only.
+const homonym = (number) => (number ? `\\PlaidHomonym{${number}}` : '');
+
+// A word cell with its entry's number after it.
+const numberedWordCell = (macro, docDir) => (text, number) =>
+  number
+    ? inScript(
+        texWord((t) => `${texEscape(t)}${homonym(number)}`)(text),
+        texLine(text),
+        docDir,
+        macro,
+      )
+    : plainCell(macro, docDir)(text);
+
+// A segmented word with each morpheme's entry number after that morpheme,
+// joined as the plain line joins them (joinerBetween on the bare forms).
+const numberedMorphemes = (morphemes, numbers) => {
+  const forms = morphemes.map((m) => morphFormOf(m));
+  const piece = (i) => ({
+    text: forms[i],
+    morphType: morphemes[i].morphType ?? morphemes[i].metadata?.morphType,
+  });
+  return forms
+    .map(
+      (form, i) =>
+        `${i === 0 ? '' : joinerBetween(piece(i - 1), piece(i))}${texEscape(texLine(form))}${homonym(numbers[i])}`,
+    )
+    .join('');
+};
+
 // ---- one sentence ---------------------------------------------------------
 
 /**
@@ -264,25 +308,37 @@ const glossCell = (macro, docDir) => (text, pieces) =>
  */
 const namesOf = (rows, kind) => rows.filter((r) => r.kind === kind).map((r) => r.name);
 
-function sentenceColumns(sentence, selection) {
+function sentenceColumns(sentence, selection, numbers = null) {
   const fields = {
     morphFields: namesOf(selection.rows, ROW_KINDS.MORPHEME_FIELD),
     wordFields: namesOf(selection.rows, ROW_KINDS.WORD_FIELD),
   };
   const orthographies = namesOf(selection.rows, ROW_KINDS.ORTHOGRAPHY);
   const pieces = sentence.pieces || (sentence.tokens || []).map((t) => ({ type: 'token', ...t }));
+  // The number of the entry a word or morpheme is linked to, when it has one.
+  const numberOf = (linked) => (numbers && linked?.id ? (numbers.get(linked.id) ?? '') : '');
   const columns = [];
   for (const piece of pieces) {
     if (piece.type === 'token') {
       const cells = wordCells(piece, fields);
+      const morphemes = piece.morphemes || [];
+      const word = piece.content ?? '';
+      // A word with no morphemes (punctuation the project skips) has none to show.
+      const segmented = morphemes.length ? cells.segmented : '';
+      const morphNumbers = morphemes.map((m) => numberOf(m.vocabItem));
       columns.push({
-        word: piece.content ?? '',
+        word,
         orthographies: orthographies.map((o) => piece.orthographies?.[o] ?? ''),
         wordLines: cells.wordLines,
-        // A word with no morphemes (punctuation the project skips) has none to show.
-        segmented: (piece.morphemes || []).length ? cells.segmented : '',
+        segmented,
         morphLines: cells.morphLines,
         morphPieces: cells.morphPieces,
+        morphemes,
+        morphNumbers,
+        wordNumber: numberOf(piece.vocabItem),
+        // A word that is its one morpheme shows that morpheme's number when
+        // the morpheme line is not printed.
+        soleNumber: morphemes.length === 1 && segmented === word ? morphNumbers[0] : '',
       });
       continue;
     }
@@ -295,6 +351,10 @@ function sentenceColumns(sentence, selection) {
         segmented: '',
         morphLines: fields.morphFields.map(() => ''),
         morphPieces: fields.morphFields.map(() => null),
+        morphemes: [],
+        morphNumbers: [],
+        wordNumber: '',
+        soleNumber: '',
       });
     }
   }
@@ -317,12 +377,16 @@ function glossLines(columns, selection, docDir) {
     if (!hasValue(texts)) return;
     lines.push(texts.map((t, i) => render(t, pieces?.[i])));
   };
+  const morphemeLine =
+    selection.rows.some((r) => r.kind === ROW_KINDS.MORPHEMES) &&
+    columns.some((c) => c.segmented !== '' && c.segmented !== c.word);
   const index = { orthography: 0, wordField: 0, morphemeField: 0 };
   for (const row of selection.rows) {
     if (row.kind === ROW_KINDS.WORDS) {
       add(
         columns.map((c) => c.word),
-        plainCell('PlaidWord', docDir),
+        numberedWordCell('PlaidWord', docDir),
+        columns.map((c) => c.wordNumber || (morphemeLine ? '' : c.soleNumber)),
       );
     } else if (row.kind === ROW_KINDS.ORTHOGRAPHY) {
       const i = index.orthography++;
@@ -337,10 +401,20 @@ function glossLines(columns, selection, docDir) {
         glossCell('PlaidWordField', docDir),
       );
     } else if (row.kind === ROW_KINDS.MORPHEMES) {
-      if (columns.some((c) => c.segmented !== '' && c.segmented !== c.word)) {
+      if (morphemeLine) {
+        const plain = plainCell('PlaidMorphemes', docDir);
         add(
           columns.map((c) => c.segmented),
-          plainCell('PlaidMorphemes', docDir),
+          (text, c) =>
+            c.morphNumbers.some(Boolean)
+              ? inScript(
+                  texWord(() => numberedMorphemes(c.morphemes, c.morphNumbers))(text),
+                  texLine(text),
+                  docDir,
+                  'PlaidMorphemes',
+                )
+              : plain(text),
+          columns,
         );
       }
     } else if (row.kind === ROW_KINDS.MORPHEME_FIELD) {
@@ -360,8 +434,12 @@ function glossLines(columns, selection, docDir) {
  * the free translation, in quotes. Every other one follows on its own line
  * under its field name.
  */
-export function formatExample(sentence, selection, { docDir = 'ltr', speaker = null } = {}) {
-  const columns = sentenceColumns(sentence, selection);
+export function formatExample(
+  sentence,
+  selection,
+  { docDir = 'ltr', speaker = null, numbers = null } = {},
+) {
+  const columns = sentenceColumns(sentence, selection, numbers);
   const lines = glossLines(columns, selection, docDir);
   const free = selection.sentFields
     .map((name) => ({ name, value: texLine(sentence.annotations?.[name]?.value ?? '') }))
@@ -393,9 +471,10 @@ const RUNNING_HEAD_CHARS = 45;
 /**
  * One document as a chapter: its name, the metadata fields that have a value
  * (when the preset includes them), and its sentences as examples numbered
- * from 1. Returns the file's text.
+ * from 1. `numbers` (entry id -> its number) writes each linked word's or
+ * morpheme's entry number after it. Returns the file's text.
  */
-export function formatChapter(igtDoc, selection) {
+export function formatChapter(igtDoc, selection, { numbers = null } = {}) {
   const docData = igtDoc.document || {};
   const docDir = igtDoc.textDirection === RTL ? RTL : 'ltr';
   const name = texLine(docData.name ?? '');
@@ -425,7 +504,7 @@ export function formatChapter(igtDoc, selection) {
   const alignment = igtDoc.alignmentTokens || [];
   for (const sentence of igtDoc.sortedSentences || []) {
     const speaker = phraseSpeakerFor(sentence, alignment);
-    out.push(formatExample(sentence, selection, { docDir, speaker }), '');
+    out.push(formatExample(sentence, selection, { docDir, speaker, numbers }), '');
   }
   if (docDir === RTL) out.push('\\end{PlaidRightToLeft}', '');
   return `${out.join('\n')}\n`;
@@ -753,6 +832,259 @@ export function formatAbbreviations(tags, projectConfig) {
   ].join('\n');
 }
 
+// ---- the vocabulary -------------------------------------------------------
+
+// Which entries a vocabulary chapter lists: those the texts in the book link
+// to (a headword with every sense, when any of them is linked), or all.
+export const VOCAB_SCOPES = Object.freeze({ USED: 'used', ALL: 'all' });
+
+/**
+ * The preset's vocabulary choices as the project has them now. `vocabs` is
+ * the project's list of vocabularies as a project read gives it ({ id, name,
+ * config }). The chapter is on by default when there is a vocabulary, every
+ * vocabulary and every field it exports is on unless the preset switched it
+ * off, the chapter lists the entries the texts use, and the texts show no
+ * entry numbers.
+ */
+export function latexVocabulary(options, vocabs) {
+  const saved =
+    options?.vocabulary && typeof options.vocabulary === 'object' ? options.vocabulary : {};
+  const savedVocabs = Array.isArray(saved.vocabularies) ? saved.vocabularies : [];
+  const list = (vocabs || []).filter((v) => v && v.id);
+  return {
+    include: typeof saved.include === 'boolean' ? saved.include : list.length > 0,
+    scope: saved.scope === VOCAB_SCOPES.ALL ? VOCAB_SCOPES.ALL : VOCAB_SCOPES.USED,
+    numbersInTexts: saved.numbersInTexts === true,
+    vocabularies: list.map((v) => {
+      const s = savedVocabs.find((x) => x?.id === v.id);
+      const savedFields = Array.isArray(s?.fields) ? s.fields : [];
+      return {
+        id: v.id,
+        name: v.name ?? '',
+        on: s?.on !== false,
+        fields: exportedVocabFields(readVocabFields(v.config)).map((f) => ({
+          name: f.name,
+          on: savedFields.find((x) => x?.name === f.name)?.on !== false,
+        })),
+      };
+    }),
+  };
+}
+
+/** latexVocabulary's result as a preset stores it: ids and names, no labels. */
+export const storedLatexVocabulary = (choice) => ({
+  include: choice.include,
+  scope: choice.scope,
+  numbersInTexts: choice.numbersInTexts,
+  vocabularies: choice.vocabularies.map((v) => ({
+    id: v.id,
+    on: v.on,
+    fields: v.fields.map((f) => ({ name: f.name, on: f.on })),
+  })),
+});
+
+/** Every entry's number across `vocabularies`, by entry id (buildItemNumbers). */
+export const entryNumbers = (vocabularies) => {
+  const out = new Map();
+  for (const v of vocabularies || []) {
+    for (const [id, n] of buildItemNumbers(v.items || [])) out.set(id, n);
+  }
+  return out;
+};
+
+/** The ids of the entries a document's words and morphemes are linked to. */
+export const linkedEntryIds = (igtDoc, out = new Set()) => {
+  for (const vocab of Object.values(igtDoc?.vocabularies || {})) {
+    for (const link of vocab?.vocabLinks || []) {
+      const id = link?.vocabItem?.id ?? link?.vocabItem;
+      if (typeof id === 'string') out.add(id);
+    }
+  }
+  return out;
+};
+
+/**
+ * The book's example number of each sentence, word and morpheme of `igtDoc`
+ * that is in `wanted` (exampleKey strings), as [chapter, example]: the
+ * chapter is the document's place in the book, the example its sentence's,
+ * both from 1.
+ */
+export const exampleNumbersOf = (igtDoc, docId, chapter, wanted, out = new Map()) => {
+  (igtDoc?.sortedSentences || []).forEach((sentence, i) => {
+    const ids = [sentence.id];
+    for (const token of sentence.tokens || []) {
+      ids.push(token.id, ...(token.morphemes || []).map((m) => m.id));
+    }
+    for (const id of ids) {
+      const key = exampleKey(docId, id);
+      if (wanted.has(key) && !out.has(key)) out.set(key, [chapter, i + 1]);
+    }
+  });
+  return out;
+};
+
+// A form with its entry number, set in its script. The number goes inside
+// the form's direction, after it in reading order.
+const entryName = (form, number, macro = null) => {
+  const text = texLine(form);
+  const body = macro ? `\\${macro}{${texEscape(text)}}` : texEscape(text);
+  return inScript(`${body}${homonym(number)}`, text, 'ltr');
+};
+
+const fieldText = (value) =>
+  Array.isArray(value)
+    ? value.filter((v) => v != null && typeof v !== 'object').join('; ')
+    : value != null && typeof value !== 'object'
+      ? String(value)
+      : '';
+
+const collatorFor = (lang) => {
+  try {
+    return new Intl.Collator(lang || 'und');
+  } catch {
+    return new Intl.Collator('und');
+  }
+};
+
+/**
+ * One vocabulary's entries: each headword in the collation of `lang`, with
+ * its number, its gloss and fields, the examples of the book that show it,
+ * and then each of its senses by its number. Returns null when
+ * no entry is listed.
+ */
+function vocabularyEntries({ vocab, choice, scope, used, exampleNumbers, collator }) {
+  const items = vocab.items || [];
+  const tree = buildSenseTree(items);
+  const numbers = buildItemNumbers(items, tree);
+  const on = new Set(choice.fields.filter((f) => f.on).map((f) => f.name));
+  // The gloss comes first, after the form, and the other fields in the
+  // vocabulary's order.
+  const fields = exportedVocabFields(readVocabFields(vocab.config))
+    .filter((f) => on.has(f.name))
+    .sort((a, b) => (b.name === 'gloss') - (a.name === 'gloss'));
+  const nameOf = (id) => {
+    const target = tree.byId.get(id);
+    return target ? entryName(target.form ?? '', numbers.get(id)) : '';
+  };
+  const parts = (item) => {
+    const out = [];
+    for (const f of fieldsForItem(fields, item)) {
+      if (f.type === FIELD_TYPES.ITEM) {
+        const names = refIds(item, f).map(nameOf).filter(Boolean);
+        if (names.length) {
+          out.push(`\\PlaidEntryField{${runText(fieldLabel(f), 'ltr')}}{${names.join(', ')}}`);
+        }
+        continue;
+      }
+      const value = texLine(fieldText(item.metadata?.[f.name]));
+      if (value === '') continue;
+      out.push(
+        f.name === 'gloss'
+          ? `\\PlaidEntryGloss{${runText(value, 'ltr')}}`
+          : `\\PlaidEntryField{${runText(fieldLabel(f), 'ltr')}}{${runText(value, 'ltr')}}`,
+      );
+    }
+    const refs = [];
+    const seen = new Set();
+    for (const ref of exampleRefs(item)) {
+      const at = exampleNumbers.get(exampleKey(ref.document, ref.token));
+      if (!at || seen.has(at.join('.'))) continue;
+      seen.add(at.join('.'));
+      refs.push(at);
+    }
+    refs.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    if (refs.length) {
+      out.push(
+        `\\PlaidEntryExamples{${refs.map(([c, n]) => `\\PlaidExampleRef{${c}}{${n}}`).join(', ')}}`,
+      );
+    }
+    return out;
+  };
+  const listed = tree.roots.filter(
+    (root) =>
+      scope === VOCAB_SCOPES.ALL ||
+      used.has(root.id) ||
+      descendantsOf(tree, root.id).some((s) => used.has(s.id)),
+  );
+  if (!listed.length) return null;
+  const position = new Map(items.map((it, i) => [it.id, i]));
+  const homographNo = (it) => Number.parseInt(numbers.get(it.id) || '0', 10);
+  // An affix files under its letters: -s with s, not before a.
+  const sortKey = (it) => texLine(it.form ?? '').replace(/^[-=]+|[-=]+$/g, '');
+  listed.sort(
+    (a, b) =>
+      collator.compare(sortKey(a), sortKey(b)) ||
+      homographNo(a) - homographNo(b) ||
+      position.get(a.id) - position.get(b.id),
+  );
+  return listed.map((root) => {
+    const body = parts(root);
+    for (const sense of descendantsOf(tree, root.id)) {
+      // A sense goes by its whole number, as the texts write it (kai 2.1).
+      // One spelled like its headword shows no form of its own.
+      const form =
+        texLine(sense.form ?? '') !== texLine(root.form ?? '')
+          ? `${entryName(sense.form ?? '', '', 'PlaidEntryForm')} `
+          : '';
+      body.push(`\\PlaidSense{${numbers.get(sense.id)}}{${form}${parts(sense).join(' ')}}`);
+    }
+    return `\\PlaidEntry{${entryName(root.form ?? '', numbers.get(root.id), 'PlaidEntryForm')}}{${body.join(' ')}}`;
+  });
+}
+
+/**
+ * The vocabulary at the end of the book: one chapter per vocabulary chosen,
+ * headed "Vocabulary" when there is one and by each vocabulary's name when
+ * there are several. A vocabulary with no entry to list is left out, and
+ * with none left this returns null.
+ *
+ * vocabularies: the loaded vocabularies ({ id, name, config, items }).
+ * choice: latexVocabulary's result. used: the ids of the entries the texts
+ * link to. exampleNumbers: exampleKey -> [chapter, example] (exampleNumbersOf).
+ * lang: the language the entries are written in (a BCP 47 tag), for their
+ * order, else the root collation.
+ */
+export function formatVocabulary({
+  vocabularies,
+  choice,
+  used = new Set(),
+  exampleNumbers = new Map(),
+  lang = null,
+}) {
+  const collator = collatorFor(lang);
+  const byId = new Map((vocabularies || []).map((v) => [v.id, v]));
+  const chapters = [];
+  for (const c of choice.vocabularies) {
+    const vocab = byId.get(c.id);
+    if (!c.on || !vocab) continue;
+    const entries = vocabularyEntries({
+      vocab,
+      choice: c,
+      scope: choice.scope,
+      used,
+      exampleNumbers,
+      collator,
+    });
+    if (entries) chapters.push({ name: vocab.name ?? c.name ?? '', entries });
+  }
+  if (!chapters.length) return null;
+  const out = [];
+  for (const { name, entries } of chapters) {
+    const title = chapters.length === 1 ? 'Vocabulary' : heading(texLine(name)) || 'Vocabulary';
+    out.push(
+      `\\chapter*{${title}}`,
+      `\\addcontentsline{toc}{chapter}{${title}}`,
+      `\\markboth{${title}}{${title}}`,
+      '',
+      '\\begin{PlaidEntryList}',
+      ...entries,
+      '\\end{PlaidEntryList}',
+      '',
+    );
+  }
+  return out.join('\n');
+}
+
 // ---- the bundle -----------------------------------------------------------
 
 /**
@@ -792,7 +1124,7 @@ const fallbackFonts = (scripts) =>
     .join('\n');
 
 /** main.tex: the preamble, a place for front matter, and one \include per text. */
-function formatMain({ title, chapters, scripts, abbreviations = true }) {
+function formatMain({ title, chapters, scripts, abbreviations = true, vocabulary = false }) {
   const includes = chapters.map((c) => `\\include{texts/${c}}`).join('\n');
   return `% ${texLine(title)}
 % Compile with LuaLaTeX, twice, or with latexmk, which runs it as often as
@@ -841,8 +1173,10 @@ ${scriptFonts(scripts)}
 % A sentence too long for the line breaks into blocks, set ragged right, and
 % an example too long for the page continues on the next.
 \\lingset{glbreaking,glrightskip=0pt plus .5\\hsize,aboveglftskip=.3ex}
-% An example's number reads left to right in a text written right to left too.
-\\lingset{exnoformat=\\begingroup\\textdir TLT(X)\\endgroup}
+% An example's number reads left to right in a text written right to left too,
+% and the vocabulary links to it.
+\\newcommand{\\PlaidExampleNumber}[1]{\\hypertarget{plaidex.\\thechapter.#1}{(#1)}}
+\\lingset{exnoformat=\\begingroup\\textdir TLT\\PlaidExampleNumber X\\endgroup}
 
 % How each line looks. Change one here to change it throughout the book.
 \\newcommand{\\PlaidWord}[1]{\\textit{#1}}           % the words
@@ -861,6 +1195,17 @@ ${scriptFonts(scripts)}
   \\begin{list}{}{\\setlength{\\labelwidth}{4.5em}\\setlength{\\leftmargin}{5em}%
     \\setlength{\\itemsep}{0pt}\\setlength{\\parsep}{0pt}\\renewcommand{\\makelabel}[1]{##1\\hfil}}}%
   {\\end{list}\\end{multicols}}
+
+% The vocabulary, and an entry's number after a form in the texts.
+\\newcommand{\\PlaidHomonym}[1]{\\textsubscript{\\normalfont #1}} % an entry's number: kai₁
+\\newcommand{\\PlaidEntry}[2]{\\par\\hangindent=1em\\hangafter=1\\noindent #1 #2\\par} % an entry
+\\newcommand{\\PlaidEntryForm}[1]{\\textbf{#1}}     % an entry's form
+\\newcommand{\\PlaidEntryGloss}[1]{‘#1’}            % its gloss
+\\newcommand{\\PlaidEntryField}[2]{\\textit{#1:} #2.} % each other field
+\\newcommand{\\PlaidEntryExamples}[1]{(#1)}         % the examples that show it
+\\newcommand{\\PlaidExampleRef}[2]{\\hyperlink{plaidex.#1.#2}{#1.#2}} % chapter and example
+\\newcommand{\\PlaidSense}[2]{\\textbf{#1.}~#2}     % a sense, by its number
+\\newenvironment{PlaidEntryList}{\\begin{multicols}{2}\\raggedright\\small}{\\end{multicols}}
 
 % Text that reads the other way from the text around it. A right-to-left run
 % inside left-to-right text is boxed, since LuaTeX shapes it backwards
@@ -902,7 +1247,7 @@ ${abbreviations ? '\\include{abbreviations}\n' : ''}% ---- End of front matter -
 ${includes}
 
 \\backmatter
-\\end{document}
+${vocabulary ? '\\include{vocabulary}\n' : ''}\\end{document}
 `;
 }
 
@@ -913,7 +1258,7 @@ $lualatex = 'lualatex %O %S';
 `;
 
 /** README.txt: how to compile, in the fewest words. */
-const formatReadme = ({ title, chapterCount }) =>
+const formatReadme = ({ title, chapterCount, vocabulary = false }) =>
   [
     `${texLine(title)}: LaTeX source for a book of interlinear texts, exported from Plaid.`,
     '',
@@ -921,6 +1266,7 @@ const formatReadme = ({ title, chapterCount }) =>
     '  main.tex           the book: preamble, front matter, table of contents',
     '  abbreviations.tex  the gloss abbreviations the texts use',
     `  texts/             one chapter per text (${chapterCount})`,
+    ...(vocabulary ? ['  vocabulary.tex     the vocabulary the texts use'] : []),
     '  latexmkrc          makes latexmk use LuaLaTeX',
     '',
     'To compile, with TeX Live 2023 or later:',
@@ -948,10 +1294,11 @@ const formatReadme = ({ title, chapterCount }) =>
 /**
  * The whole bundle from each text's chapter source.
  *
- * texts: [{ name, tex }] in book order. Returns [{ path, data }] for
+ * texts: [{ name, tex }] in book order. vocabulary: the vocabulary
+ * chapters' source (formatVocabulary), or null. Returns [{ path, data }] for
  * assembleZip.
  */
-export function buildLatexBook({ title, texts, projectConfig }) {
+export function buildLatexBook({ title, texts, projectConfig, vocabulary = null }) {
   const chapters = texts.map((t, i) => chapterFileName(i, texts.length, t.name));
   const scripts = scriptCollector();
   const tags = [];
@@ -960,11 +1307,19 @@ export function buildLatexBook({ title, texts, projectConfig }) {
     tags.push(...smallCapsIn(t.tex));
   }
   scripts.add(title);
+  if (vocabulary) scripts.add(vocabulary);
   return [
-    { path: 'main.tex', data: formatMain({ title, chapters, scripts: scripts.scripts() }) },
+    {
+      path: 'main.tex',
+      data: formatMain({ title, chapters, scripts: scripts.scripts(), vocabulary: !!vocabulary }),
+    },
     { path: 'abbreviations.tex', data: formatAbbreviations(tags, projectConfig) },
     ...texts.map((t, i) => ({ path: `texts/${chapters[i]}.tex`, data: t.tex })),
     { path: 'latexmkrc', data: LATEXMKRC },
-    { path: 'README.txt', data: formatReadme({ title, chapterCount: texts.length }) },
+    ...(vocabulary ? [{ path: 'vocabulary.tex', data: vocabulary }] : []),
+    {
+      path: 'README.txt',
+      data: formatReadme({ title, chapterCount: texts.length, vocabulary: !!vocabulary }),
+    },
   ];
 }

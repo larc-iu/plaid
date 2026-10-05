@@ -7,6 +7,7 @@ import {
   formatExt,
   suggestPresetName,
 } from './presets.js';
+import { latexVocabulary, storedLatexVocabulary } from './latexBook.js';
 
 const LAYERS = {
   orthographies: ['IPA', 'Cyrillic Translit!'],
@@ -122,6 +123,28 @@ describe('preset persistence', () => {
     expect(patched.config.igt.languages).toEqual({ object: { name: 'Onin' } });
     expect(patched.config.plaid).toEqual({ role: 'baseline' });
     expect(readExportPresets(project)).toEqual([]); // the original is untouched
+  });
+
+  it("keeps a LaTeX preset's vocabulary choices through the project config", () => {
+    const vocabs = [{ id: 'v1', name: 'Lexicon', config: { igt: { fields: { gloss: {} } } } }];
+    const preset = newPreset('latex', LAYERS, 'Book');
+    // A new preset leaves the vocabulary to its defaults: the chapter is on
+    // when the project has a vocabulary.
+    expect(preset.options.vocabulary).toBeUndefined();
+    expect(latexVocabulary(preset.options, vocabs).include).toBe(true);
+    const choice = latexVocabulary(preset.options, vocabs);
+    choice.scope = 'all';
+    choice.numbersInTexts = true;
+    choice.vocabularies[0].fields[0].on = false;
+    const edited = {
+      ...preset,
+      options: { ...preset.options, vocabulary: storedLatexVocabulary(choice) },
+    };
+    const stored = JSON.parse(
+      JSON.stringify(applyExportPresets({ id: 'p1', config: {} }, [edited])),
+    );
+    const [read] = readExportPresets(stored);
+    expect(latexVocabulary(read.options, vocabs)).toEqual(choice);
   });
 });
 
