@@ -549,6 +549,15 @@ export function segmentServer(raw) {
         return { value: id, ops: [{ description: `Update token ${id}` }] };
       });
     },
+    // Another user's upload of a recording in place of the one stored (or,
+    // with `url` null, its delete): the document's media URL, and its
+    // version, move on.
+    otherReplacesMedia(url, user = 'b') {
+      return other(user, () => {
+        stored.mediaUrl = url;
+        return { value: url, ops: [{ description: 'Upload media' }] };
+      });
+    },
     // Another user's save of the whole body in the Baseline tab, as a text
     // edit: `edits` are running ops (plaid-client `applyTextOps`).
     otherSaves(edits, user = 'b') {

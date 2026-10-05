@@ -19,4 +19,14 @@ describe('recordingChangeNotice', () => {
     expect(recordingChangeNotice(null, A)).toBeNull();
     expect(recordingChangeNotice(A, null, { ownDelete: true })).toBeNull();
   });
+  it('says what a write refused for the change left unsaved', () => {
+    expect(recordingChangeNotice(A, B, { notSaved: 'Segment' })).toEqual({
+      title: 'Recording replaced',
+      message: 'Replaced elsewhere. Segment not saved.',
+    });
+    expect(recordingChangeNotice(A, null, { notSaved: 'Segment times' })).toEqual({
+      title: 'Recording deleted',
+      message: 'Deleted elsewhere. Segment times not saved.',
+    });
+  });
 });

@@ -452,6 +452,13 @@ const textConflict = (conflict) =>
     conflict,
   });
 
+// The recording a write's times were chosen on: the document's media URL as
+// the page showed it, whose `?v=` names the recording.
+const recordingOf = (raw) => raw?.mediaUrl ?? null;
+
+// Whether a row edit's metadata patch sets a time.
+const setsTimes = (patch) => 'timeBegin' in patch || 'timeEnd' in patch;
+
 export const alignmentMutations = {
   // Create a new alignment by inserting `text` into the body at a position
   // chosen to preserve temporal ordering, then creating the alignment token
@@ -491,12 +498,17 @@ export const alignmentMutations = {
       return false;
     }
     const meta = { ...alignmentMeta(timeBegin, timeEnd, speaker), ...(this.createStamp || {}) };
+    const seen = recordingOf(this._raw);
 
     // A refused insert is made again where the segment goes in the body as
     // stored, when it still fits there. It only adds text, so it overwrites
     // nothing. The cross-talk rule is asked again of the document as stored,
-    // where a segment made meanwhile may be one it overlaps.
-    const replan = (fresh) => {
+    // where a segment made meanwhile may be one it overlaps. Its times were
+    // chosen on the recording the page played: a recording replaced or
+    // deleted meanwhile refuses it.
+    const replan = (fresh, updated) => {
+      const refusal = this._recordingRefusal(seen, updated, 'Segment');
+      if (refusal) return { refusal };
       if (crossTalkProblem(fresh, { timeBegin, timeEnd, speaker })) return { conflict: null };
       const again = planCreate(fresh, trimmed, timeBegin);
       return again.error ? { conflict: null } : { plan: again };
@@ -507,6 +519,7 @@ export const alignmentMutations = {
       metadata: meta,
       speaker,
       replan,
+      recheck: this._sameRecording(seen, 'Segment'),
     });
   },
 
@@ -574,7 +587,11 @@ export const alignmentMutations = {
     // set meanwhile is a change to another field of it, and stays, since only
     // the keys this edit changed are written. The same field changed on both
     // sides is a conflict.
-    const replan = (fresh) => {
+    const seen = recordingOf(this._raw);
+    const timed = setsTimes(rowPatch(mine, was));
+    const replan = (fresh, updated) => {
+      const refusal = timed ? this._recordingRefusal(seen, updated, 'Segment edit') : null;
+      if (refusal) return { refusal };
       const found = segmentConflict(fresh, existingAlignmentId, over, trimmed);
       if (!found.segment || found.conflict || found.landed) return found;
       if (!replannedMetadata(mine, was, found.segment.metadata)) {
@@ -604,6 +621,7 @@ export const alignmentMutations = {
       patch: rowPatch(mine, was, this.editStamp(was)),
       speaker,
       replan,
+      recheck: timed ? this._sameRecording(seen, 'Segment edit') : null,
     });
   },
 
@@ -676,6 +694,7 @@ export const alignmentMutations = {
       seedLength: null,
       words: [],
       speaker,
+      recheck: this._sameRecording(recordingOf(this._raw), 'Segment'),
     });
   },
 
@@ -838,12 +857,16 @@ export const alignmentMutations = {
     // contributed segment, a contributor's marks it contributed). setMetadata
     // would wipe prov, recording a machine-made segment as origin-less.
     const patch = { timeBegin, timeEnd, ...(this.editStamp(token.metadata) || {}) };
+    const recheck = this._sameRecording(recordingOf(this._raw), 'Segment times');
     this._applyRawPatch((next, infoNext) => {
       const t = (infoNext.alignmentTokenLayer?.tokens || []).find((x) => x.id === alignmentId);
       if (t) t.metadata = mergeMetadata(t.metadata, patch);
     });
-    return this._queueWrite(label, () =>
-      this._client.tokens.patchMetadata(settledId(alignmentId), metadataOps(patch)),
+    return this._queueWrite(
+      label,
+      () => this._client.tokens.patchMetadata(settledId(alignmentId), metadataOps(patch)),
+      undefined,
+      { recheck },
     );
   },
 
@@ -905,10 +928,11 @@ export const alignmentMutations = {
   // words of the text it adds (`words`). `replan(fresh)`
   // makes the write again on the layers of the document as stored, after a
   // refusal: `{ plan }` to send (with its own `metadata` when it differs),
-  // or `{ conflict }` to refuse with.
+  // or `{ conflict }` to refuse with. `recheck` is the write's
+  // (`_sameRecording`), for when it waits behind a refused one.
   _showSegmentWrite(
     label,
-    { textId, textOps, token, metadata, seedLength, words, speaker, replan },
+    { textId, textOps, token, metadata, seedLength, words, speaker, replan, recheck = null },
   ) {
     if (!this._canWrite(label)) return false;
     const info = this.layerInfo;
@@ -977,12 +1001,12 @@ export const alignmentMutations = {
       send: (base) => send(sent, base),
       dropWords: () => this._dropWords(textId, sent),
     };
-    return this._queueWrite(label, async () => {
+    const write = async () => {
       const results = !textOps.length
         ? await send(sent)
         : await this._sendOverSegmentText(state, {
             replan: (fresh, updated) => {
-              const again = replan(fresh);
+              const again = replan(fresh, updated);
               if (!again.plan) return again;
               const m = made(again.plan, sent);
               sent = m;
@@ -1015,7 +1039,8 @@ export const alignmentMutations = {
         if (state.again || wasReplayed(results)) this._writes.reloadWhenDrained = true;
       }
       await this._rememberSpeaker(speaker);
-    });
+    };
+    return this._queueWrite(label, write, undefined, { recheck });
   },
 
   // A segment's text changed by a row edit, shown at once: the edits shown
@@ -1028,10 +1053,23 @@ export const alignmentMutations = {
   // `reshape` is shown (`_showRowAnswer`). A segment typed over whole keeps
   // its token, since the text rules keep a token holding the stretch typed
   // over. `replan(fresh)`
-  // is as `_showSegmentWrite` has it, its plan with its own `patch`.
+  // is as `_showSegmentWrite` has it, its plan with its own `patch`, and so
+  // is `recheck`.
   _showRowEdit(
     label,
-    { textId, segmentId, gaps, extent, typed, seedLength, words, patch, speaker, replan },
+    {
+      textId,
+      segmentId,
+      gaps,
+      extent,
+      typed,
+      seedLength,
+      words,
+      patch,
+      speaker,
+      replan,
+      recheck = null,
+    },
   ) {
     if (!this._canWrite(label)) return false;
     const info = this.layerInfo;
@@ -1104,10 +1142,10 @@ export const alignmentMutations = {
       send: (base) => send(sent, base),
       dropWords: () => this._dropWords(textId, sent),
     };
-    return this._queueWrite(label, async () => {
+    const write = async () => {
       const results = await this._sendOverSegmentText(state, {
         replan: (fresh, updated) => {
-          const again = replan(fresh);
+          const again = replan(fresh, updated);
           if (!again.plan) return again;
           const m = made(again.plan, sent);
           sent = m;
@@ -1148,7 +1186,43 @@ export const alignmentMutations = {
         this._showRowAnswer(textId, segmentId, sent, answer);
       }
       await this._rememberSpeaker(speaker);
-    });
+    };
+    return this._queueWrite(label, write, undefined, { recheck });
+  },
+
+  // The refusal of a write whose times were chosen on the recording `seen`
+  // (`recordingOf` the document when it was made), when the document as
+  // stored, `raw`, holds another recording or none. Null when it holds that
+  // one, or there was none. `what` is what goes unsaved ("Segment"). While
+  // the page still shows `seen`, the Media tab's notice of the change says
+  // so (`takeRecordingRefusal`), and the refusal is `reported`: no toast of
+  // its own. Otherwise that notice has gone out already, and the refusal is
+  // toasted.
+  _recordingRefusal(seen, raw, what) {
+    const now = recordingOf(raw);
+    if (!seen || seen === now) return null;
+    const reported = recordingOf(this._raw) === seen;
+    if (reported) this._recordingRefused = { url: now, what };
+    const message = `${now ? 'Replaced' : 'Deleted'} elsewhere. ${what} not saved.`;
+    return Object.assign(new Error(message), { changedElsewhere: true, reported });
+  },
+
+  // The `recheck` of a write whose times were chosen on the recording `seen`
+  // (DocumentModel `_queueWrite`): asked when the write is to go on a newer
+  // version, it refuses the write when the recording is another one now.
+  _sameRecording(seen, what) {
+    return (fresh) => this._recordingRefusal(seen, fresh.raw, what) ?? true;
+  },
+
+  /**
+   * What a write refused because the recording changed left unsaved
+   * ("Segment"), for the Media tab's notice of the change to the recording
+   * now at `url`, or null. Answered once.
+   */
+  takeRecordingRefusal(url) {
+    const refused = this._recordingRefused;
+    this._recordingRefused = null;
+    return refused && refused.url === (url ?? null) ? refused.what : null;
   },
 
   // The answer to a row edit's text write shown: what it did to the tokens
@@ -1236,8 +1310,9 @@ export const alignmentMutations = {
   // gone), or that body's digest is not known, the document is read, put on
   // screen with the edits queued behind shown on top, and
   // `replan(fresh, updated)` goes by the segment on it (`fresh` its layers):
-  // `{ conflict }` refuses the write unsent, `{ landed: true }` finds it
-  // stored already, and anything else is the write made again, whose `show()`
+  // `{ conflict }` refuses the write unsent, `{ refusal }` refuses it unsent
+  // with that error, `{ landed: true }` finds it stored already, and anything
+  // else is the write made again, whose `show()`
   // puts it on screen and whose `send(base)` goes once, with the digest read.
   // A request refused because its key was sent before with another one is read
   // back too: `landed(fresh)` says whether the write is stored, and otherwise
@@ -1281,6 +1356,10 @@ export const alignmentMutations = {
     if (again.landed) {
       this._showRead(updated);
       return null;
+    }
+    if (again.refusal) {
+      this._showRead(updated);
+      throw again.refusal;
     }
     if ('conflict' in again) {
       this._showRead(updated);

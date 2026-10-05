@@ -261,8 +261,9 @@ export const useMediaOperations = () => {
   }, [mediaSrcUrl]);
 
   // A recording deleted or replaced by someone else is said so once the
-  // document is read again (recordingChange.js). This page's own delete is
-  // not: it shows at once, and the flag is up while it does.
+  // document is read again (recordingChange.js), with what a write refused
+  // for it left unsaved. This page's own delete is not: it shows at once,
+  // and the flag is up while it does.
   const ownDeleteRef = useRef(false);
   const seenMediaRef = useRef({ id: doc.document.id, url: mediaSrcUrl });
   useEffect(() => {
@@ -271,9 +272,10 @@ export const useMediaOperations = () => {
     if (seen.id !== doc.document.id) return;
     const notice = recordingChangeNotice(seen.url, mediaSrcUrl, {
       ownDelete: ownDeleteRef.current,
+      notSaved: seen.url !== mediaSrcUrl ? doc.takeRecordingRefusal?.(mediaSrcUrl) : null,
     });
     if (notice) notifyWarning(notice.message, notice.title);
-  }, [doc.document.id, mediaSrcUrl]);
+  }, [doc, doc.document.id, mediaSrcUrl]);
 
   const authenticatedMediaUrl = media.url;
   const mediaBlob = media.blob;
