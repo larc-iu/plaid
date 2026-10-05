@@ -43,6 +43,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { notifyError, notifySuccess, notifyWarning, humanizeError } from '@/utils/feedback';
 import { runElanImport } from '../../import/elan/importEngine';
 import { priorImports } from '../../import/resume';
+import { elanTally } from '../../import/elan/tally';
 import {
   addOrthographies,
   createFields,
@@ -239,10 +240,7 @@ export const ImportElanDocuments = () => {
           'Import finished',
         );
       } else {
-        notifySuccess(
-          `Added ${res.imported} document${res.imported === 1 ? '' : 's'}.`,
-          'Import complete',
-        );
+        notifySuccess(elanTally(res), 'Import complete');
       }
     } catch (e) {
       console.error('ELAN import failed:', e);
@@ -522,21 +520,7 @@ export const ImportElanDocuments = () => {
         {stage === 'done' && results && (
           <div className="flex flex-col gap-4">
             <Panel tone="success" title="Import complete">
-              <p className="mt-1 text-xs">
-                {results.imported - results.redone} added
-                {results.copied
-                  ? `, ${results.copied} added as ${results.copied === 1 ? 'a copy' : 'copies'}`
-                  : ''}
-                {results.skipped ? `, ${results.skipped} kept` : ''}
-                {results.redone ? `, ${results.redone} replaced` : ''}
-                {results.recordingsAdded
-                  ? `, ${results.recordingsAdded === 1 ? 'a recording' : `${results.recordingsAdded} recordings`} added to ${results.recordingsAdded === 1 ? 'an existing document' : 'existing documents'}`
-                  : ''}
-                {results.recordingsUnused
-                  ? `, ${results.recordingsUnused === 1 ? 'a recording' : `${results.recordingsUnused} recordings`} not used`
-                  : ''}
-                .
-              </p>
+              <p className="mt-1 text-xs">{elanTally(results)}</p>
             </Panel>
             {log.length > 0 ? (
               <WarningLog log={log} />
