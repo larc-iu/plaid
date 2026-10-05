@@ -736,3 +736,30 @@ describe('degenerate input', () => {
     expect(dom.documentElement.tagName).toBe('ANNOTATION_DOCUMENT');
   });
 });
+
+describe('a long document', () => {
+  // A tier's lines are five per annotation, so 40,000 words make a Word tier
+  // longer than a spread's argument limit (about 120,000 in V8).
+  it('writes a Word tier of 40,000 words', () => {
+    const n = 40000;
+    const tokens = Array.from({ length: n }, (_, i) => ({
+      id: `t${i}`,
+      begin: i * 3,
+      end: i * 3 + 2,
+      content: 'ka',
+      metadata: {},
+      orthographies: {},
+      annotations: {},
+      vocabItem: null,
+      morphemes: [],
+    }));
+    const doc = {
+      document: { id: 'd3', name: 'Long', mediaUrl: null, metadata: {} },
+      body: 'ka '.repeat(n).trimEnd(),
+      sortedSentences: [makeSentence({ begin: 0, end: n * 3 - 1, tokens })],
+      alignmentTokens: [],
+    };
+    const xml = buildEafDocument(doc, { segmentMorphemes: false }, CONTEXT);
+    expect(xml.match(/<REF_ANNOTATION /g)).toHaveLength(n);
+  });
+});

@@ -430,6 +430,10 @@ export function buildEafDocument(igtDoc, options = {}, context = {}) {
   const morphName = wantMorphTier ? alloc(names.morph, 'Morph') : null;
 
   const lines = [];
+  // A tier can be longer than a spread's argument limit, so it is appended by hand.
+  const emit = (more) => {
+    for (const line of more) lines.push(line);
+  };
   // A document with no sentences still gets the tier set, under no speaker.
   for (const speaker of model.speakers.length ? model.speakers : ['']) {
     const suffix = speaker ? `@${speaker}` : '';
@@ -441,8 +445,8 @@ export function buildEafDocument(igtDoc, options = {}, context = {}) {
     const words = sentences.flatMap((s) => s.words);
     const morphs = words.flatMap((w) => w.morphs);
 
-    lines.push(
-      ...tier(t(sentenceName), TYPE_SENTENCE, {
+    emit(
+      tier(t(sentenceName), TYPE_SENTENCE, {
         participant: speaker,
         annotations: sentences.flatMap((s) =>
           alignable('    ', s.annId, s.beginSlot, s.endSlot, s.value),
@@ -451,8 +455,8 @@ export function buildEafDocument(igtDoc, options = {}, context = {}) {
     );
 
     if (segmentName) {
-      lines.push(
-        ...tier(t(segmentName), TYPE_SEGMENT, {
+      emit(
+        tier(t(segmentName), TYPE_SEGMENT, {
           parent: t(sentenceName),
           participant: speaker,
           annotations: sentences.flatMap((s) =>
@@ -463,8 +467,8 @@ export function buildEafDocument(igtDoc, options = {}, context = {}) {
     }
 
     // Symbolic_Subdivision children are an ordered chain per parent.
-    lines.push(
-      ...tier(t(wordName), TYPE_WORD, {
+    emit(
+      tier(t(wordName), TYPE_WORD, {
         parent: t(sentenceName),
         participant: speaker,
         annotations: sentences.flatMap((s) =>
@@ -476,8 +480,8 @@ export function buildEafDocument(igtDoc, options = {}, context = {}) {
     );
 
     for (const [field, tierName] of orthNames) {
-      lines.push(
-        ...associationTier(
+      emit(
+        associationTier(
           t(tierName),
           t(wordName),
           speaker,
@@ -488,8 +492,8 @@ export function buildEafDocument(igtDoc, options = {}, context = {}) {
       );
     }
     for (const [field, tierName] of wordFieldNames) {
-      lines.push(
-        ...associationTier(
+      emit(
+        associationTier(
           t(tierName),
           t(wordName),
           speaker,
@@ -505,8 +509,8 @@ export function buildEafDocument(igtDoc, options = {}, context = {}) {
     }
 
     if (morphName) {
-      lines.push(
-        ...tier(t(morphName), TYPE_MORPH, {
+      emit(
+        tier(t(morphName), TYPE_MORPH, {
           parent: t(wordName),
           participant: speaker,
           annotations: words.flatMap((w) =>
@@ -523,8 +527,8 @@ export function buildEafDocument(igtDoc, options = {}, context = {}) {
         }),
       );
       for (const [field, tierName] of morphFieldNames) {
-        lines.push(
-          ...associationTier(
+        emit(
+          associationTier(
             t(tierName),
             t(morphName),
             speaker,
@@ -541,8 +545,8 @@ export function buildEafDocument(igtDoc, options = {}, context = {}) {
     }
 
     for (const [field, tierName] of sentFieldNames) {
-      lines.push(
-        ...associationTier(
+      emit(
+        associationTier(
           t(tierName),
           t(sentenceName),
           speaker,
