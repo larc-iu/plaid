@@ -93,7 +93,7 @@
         ;; Before, the same query passed the 30 s limit.
         (is (< ms 15000) (str ms " ms"))))
     (testing "from one span, its subtree"
-      (let [root (ffirst (sort (filter (fn [[a _]] (= a (ffirst (sort expected)))) expected)))
+      (let [root (ffirst (sort expected))
             below (set (keep (fn [[a b]] (when (= a root) b)) expected))
             [r ms] (timed #(qe/run db "admin@example.com"
                                    {"find" ["?b"]

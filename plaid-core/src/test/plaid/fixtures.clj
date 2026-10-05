@@ -164,6 +164,23 @@
     ;; be cleared by hand to match the now-empty user_avatars table.
     (jdbc/execute! tx ["UPDATE users SET avatar_hash = NULL"])))
 
+(defn forget-planner-statistics!
+  "Drop the planner statistics a test's ANALYZE left in `ds`, and close the
+  pool's connections that loaded them, so the next test plans on SQLite's
+  defaults, as on a new database. `reset-db!` deletes rows, not
+  `sqlite_stat1`: statistics a test gathered on its three spans once
+  outlived it, and `related*` over the 4,000 spans of a later test in the
+  same JVM was planned as a scan per pair and ran past the 30 s limit.
+  A test that wants stale statistics makes them itself. Costs one query
+  when nothing was analysed."
+  [ds]
+  (let [stats (mapv :sqlite_master/name
+                    (jdbc/execute! ds ["SELECT name FROM sqlite_schema WHERE type = 'table' AND name LIKE 'sqlite_stat%'"]))]
+    (when (seq stats)
+      (doseq [t stats]
+        (jdbc/execute! ds [(str "DROP TABLE " t)]))
+      (.softEvictConnections (.getHikariPoolMXBean ^com.zaxxer.hikari.HikariDataSource ds)))))
+
 (defn- reset-in-memory-state!
   "Reset every in-process atom that survives between deftests inside a
   single JVM run. These atoms are not in the DB, so `reset-db!` alone
@@ -223,6 +240,7 @@
     (f)
     (finally
       (reset-db! shared-ds)
+      (forget-planner-statistics! shared-ds)
       (reset-in-memory-state!))))
 
 (defn- ensure-user! [db email admin? password]
