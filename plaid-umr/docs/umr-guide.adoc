@@ -114,6 +114,8 @@ Each file becomes a document named after the file, with its sentences, words, gr
 
 When the project already has a document of the file's name whose words match the file's, sentence by sentence, and which has no graph yet, the file's graphs land on that document's words instead.
 This is how a document glossed in Plaid IGT gets its UMR annotation from a file.
+A document-level relation between constants, such as `(root :modal author)`, that the document already has and the file leaves out is kept.
+One the file puts under another sentence is exported under that sentence only.
 A document of the file's name that already has a graph, or a graph kept as text, refuses the file: `"Okul" already has a graph.`
 When that document's words differ from the file's, or it has none, the file becomes a new document of that name, and the report says why: `Imported as a new document: ...`.
 A file whose name two documents of the project already share is refused.
@@ -239,6 +241,8 @@ A node whose words are deleted (deleting a word in Plaid IGT keeps its text) bec
 Tokenizing the text again does not anchor it again.
 A sentence with no words at all (after **Clear tokens** in Plaid IGT) is left as it is until it is tokenized again, and its nodes keep their anchors.
 Its graph is still drawn, with every node unaligned, and can be edited as usual except for **Change anchor**, which needs a word.
+A document with no sentences at all keeps every node and edge, and shows `No sentences.` until it is tokenized again.
+Tokenizing it again puts each node back in its sentence.
 
 When sentences are added or removed before a sentence, its variables take its new number and keep the rest of the name (`s2v` in what is now sentence 1 is `s1v`).
 Variables are not renumbered in a document whose first `# :: snt` number, as imported, is not 1, such as an excerpt that starts at `snt5`. Its variables stay as the file named them.
